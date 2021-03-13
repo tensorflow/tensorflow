@@ -118,6 +118,19 @@ XLA_TEST_F(SortingTest, TopK3From8Values5Partitions) {
   ComputeAndCompareR1<float>(&builder, {7.0, 6.0, 5.0}, {});
 }
 
+XLA_TEST_F(SortingTest, DISABLED_TopKLargeInput) {
+  XlaBuilder builder(TestName());
+  Array<float> input({2, 1000000});
+  input.FillRandom(1.0f, 2.0f);
+  auto x =
+      CreateConstantFromLiteral(LiteralUtil::CreateFromArray(input), &builder);
+  Array2D<float> expected_array(2, 1000);
+  expected_array.Fill(2.0f);
+  xla::GetTupleElement(xla::TopK(x, 1000), 0);
+  ErrorSpec error_spec(10.0f, 10.0f);
+  ComputeAndCompareR2<float>(&builder, expected_array, {}, error_spec);
+}
+
 XLA_TEST_F(SortingTest, TopK3From8Indices5Partitions) {
   XlaBuilder builder(TestName());
   auto x_rev =

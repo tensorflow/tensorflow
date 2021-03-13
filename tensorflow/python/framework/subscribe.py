@@ -67,6 +67,8 @@ def _recursive_apply(tensors, apply_fn):
 class _ControlOutputCache(object):
   """Helper class to manage calculating and caching control_outputs in graph."""
 
+  __slots__ = ['cache']
+
   def __init__(self):
     self.cache = {}
 

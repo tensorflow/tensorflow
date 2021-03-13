@@ -20,9 +20,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
+#include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 
 namespace tflite {
 namespace gpu {
@@ -30,7 +32,7 @@ namespace cl {
 
 // Buffer represent linear GPU data storage with arbitrary data format.
 // Buffer is moveable but not copyable.
-class Buffer {
+class Buffer : public GPUObject {
  public:
   Buffer() {}  // just for using Buffer as a class members
   Buffer(cl_mem buffer, size_t size_in_bytes);
@@ -41,7 +43,7 @@ class Buffer {
   Buffer(const Buffer&) = delete;
   Buffer& operator=(const Buffer&) = delete;
 
-  ~Buffer();
+  virtual ~Buffer() { Release(); }
 
   // for profiling and memory statistics
   uint64_t GetMemorySizeInBytes() const { return size_; }
@@ -56,6 +58,12 @@ class Buffer {
   // Reads data from Buffer into CPU memory.
   template <typename T>
   absl::Status ReadData(CLCommandQueue* queue, std::vector<T>* result) const;
+
+  absl::Status GetGPUResources(const GPUObjectDescriptor* obj_ptr,
+                               GPUResourcesWithValue* resources) const override;
+
+  absl::Status CreateFromBufferDescriptor(const BufferDescriptor& desc,
+                                          CLContext* context);
 
  private:
   void Release();

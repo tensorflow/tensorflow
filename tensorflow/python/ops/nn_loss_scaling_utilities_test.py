@@ -22,6 +22,7 @@ from absl.testing import parameterized
 
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import test_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -35,7 +36,7 @@ from tensorflow.python.platform import test as test_lib
 class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
 
   def setUp(self):
-    strategy_combinations.set_virtual_cpus_to_at_least(3)
+    test_util.set_logical_devices_to_at_least("CPU", 3)
     super(LossUtilitiesTest, self).setUp()
 
   def testComputeAverageLossGlobalBatchSize(self):
@@ -97,9 +98,8 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
           self.evaluate(loss), (2. * 0.3 + 0.5 * 0.7 + 4. * 0.2 + 1. * 0.8) / 2)
 
   def testComputeAverageLossInvalidSampleWeights(self):
-    with self.assertRaisesRegexp((ValueError, errors_impl.InvalidArgumentError),
-                                 (r"Incompatible shapes: \[3\] vs. \[2\]|"
-                                  "Dimensions must be equal")):
+    with self.assertRaisesIncompatibleShapesError(
+        (ValueError, errors_impl.InvalidArgumentError)):
       nn_impl.compute_average_loss([2.5, 6.2, 5.],
                                    sample_weight=[0.2, 0.8],
                                    global_batch_size=10)

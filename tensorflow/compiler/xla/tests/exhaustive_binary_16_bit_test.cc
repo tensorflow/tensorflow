@@ -123,8 +123,16 @@ BINARY_TEST_16BIT(Min, {
 })
 
 // TODO(bixia): Pow fails with bfloat16 on CPU.
-BINARY_TEST_16BIT(DISABLED_ON_CPU(Pow),
-                  { Run(AddEmptyBroadcastDimension(Pow), std::pow); })
+BINARY_TEST_16BIT(DISABLED_ON_GPU(DISABLED_ON_CPU(Pow)), {
+  // See b/162664705.
+  known_incorrect_fn_ = [](int64 val) {
+    Eigen::bfloat16 f;
+    uint16_t val_16 = val;
+    memcpy(&f, &val_16, 2);
+    return std::isnan(f);
+  };
+  Run(AddEmptyBroadcastDimension(Pow), std::pow);
+})
 
 // TODO(bixia): Atan2 fails with bfloat16 on CPU.
 BINARY_TEST_16BIT(DISABLED_ON_CPU(Atan2),

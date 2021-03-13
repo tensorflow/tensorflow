@@ -105,6 +105,9 @@ class InitializeTableFromTextFileOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("vocab_size", &vocab_size_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("key_index", &key_index_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("value_index", &value_index_));
+    if (ctx->HasAttr("offset")) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("offset", &offset_));
+    }
     string delimiter;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("delimiter", &delimiter));
     OP_REQUIRES(ctx, delimiter.size() == 1,
@@ -141,7 +144,7 @@ class InitializeTableFromTextFileOp : public OpKernel {
     }
     OP_REQUIRES_OK(ctx, lookup::InitializeTableFromTextFile(
                             vocab_filename, vocab_size_, delimiter_, key_index_,
-                            value_index_, ctx->env(), table));
+                            value_index_, offset_, ctx->env(), table));
     if (ctx->track_allocations()) {
       ctx->record_persistent_memory_allocation(table->MemoryUsed() -
                                                memory_used_before);
@@ -154,6 +157,7 @@ class InitializeTableFromTextFileOp : public OpKernel {
   char delimiter_;
   int64 key_index_;
   int64 value_index_;
+  int64 offset_ = 0;
 
   TF_DISALLOW_COPY_AND_ASSIGN(InitializeTableFromTextFileOp);
 };
@@ -164,24 +168,29 @@ REGISTER_KERNEL_BUILDER(
     Name("InitializeTableFromTextFileV2").Device(DEVICE_CPU),
     InitializeTableFromTextFileOp);
 
-class InitializeTableFromDatasetOp : public OpKernel {
+class InitializeTableFromDatasetOp : public AsyncOpKernel {
  public:
   explicit InitializeTableFromDatasetOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx) {}
+      : AsyncOpKernel(ctx),
+        background_worker_(ctx->env(), "initialize_table_from_dataset") {}
 
-  void Compute(OpKernelContext* ctx) override {
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     lookup::InitializableLookupTable* table;
-    OP_REQUIRES_OK(ctx,
-                   GetInitializableLookupTable("table_handle", ctx, &table));
+    OP_REQUIRES_OK_ASYNC(
+        ctx, GetInitializableLookupTable("table_handle", ctx, &table), done);
     core::ScopedUnref unref_me(table);
-    DatasetBase* dataset;
-    OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(1), &dataset));
-    OP_REQUIRES_OK(ctx,
-                   lookup::InitializeTableFromDataset(ctx, dataset, table));
+    data::DatasetBase* dataset;
+    OP_REQUIRES_OK_ASYNC(
+        ctx, GetDatasetFromVariantTensor(ctx->input(1), &dataset), done);
+    background_worker_.Schedule([ctx, dataset, table, done]() {
+      lookup::InitializeTableFromDataset(ctx, dataset, table, done);
+    });
   }
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(InitializeTableFromDatasetOp);
+
+  data::BackgroundWorker background_worker_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("InitializeTableFromDataset").Device(DEVICE_CPU),

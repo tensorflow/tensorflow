@@ -54,8 +54,8 @@ class GrpcDebugServerTest(test_util.TensorFlowTestCase):
     # The server is started asynchronously. It needs to be polled till its state
     # has become started.
 
-    with self.assertRaisesRegexp(
-        ValueError, "Server has already started running"):
+    with self.assertRaisesRegex(ValueError,
+                                "Server has already started running"):
       server.run_server()
 
     server.stop_server().wait()
@@ -68,7 +68,7 @@ class GrpcDebugServerTest(test_util.TensorFlowTestCase):
     server.stop_server().wait()
     server_thread.join()
 
-    with self.assertRaisesRegexp(ValueError, "Server has already stopped"):
+    with self.assertRaisesRegex(ValueError, "Server has already stopped"):
       server.stop_server().wait()
 
   def testRunServerAfterStopRaisesException(self):
@@ -78,7 +78,7 @@ class GrpcDebugServerTest(test_util.TensorFlowTestCase):
     server.stop_server().wait()
     server_thread.join()
 
-    with self.assertRaisesRegexp(ValueError, "Server has already stopped"):
+    with self.assertRaisesRegex(ValueError, "Server has already stopped"):
       server.run_server()
 
   def testStartServerWithoutBlocking(self):
@@ -91,7 +91,8 @@ class GrpcDebugServerTest(test_util.TensorFlowTestCase):
     server.stop_server().wait()
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only(
+    "GrpcDebugWrapperSession and GrpcDebugHookare are for tf.Session only")
 class SessionDebugGrpcTest(session_debug_testlib.SessionDebugTestBase):
 
   @classmethod
@@ -130,14 +131,14 @@ class SessionDebugGrpcTest(session_debug_testlib.SessionDebugTestBase):
   def testConstructGrpcDebugWrapperSessionWithInvalidTypeRaisesException(self):
     sess = session.Session(
         config=session_debug_testlib.no_rewrite_session_config())
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, "Expected type str or list in grpc_debug_server_addresses"):
       grpc_wrapper.GrpcDebugWrapperSession(sess, 1337)
 
   def testConstructGrpcDebugWrapperSessionWithInvalidTypeRaisesException2(self):
     sess = session.Session(
         config=session_debug_testlib.no_rewrite_session_config())
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, "Expected type str in list grpc_debug_server_addresses"):
       grpc_wrapper.GrpcDebugWrapperSession(sess, ["localhost:1337", 1338])
 
@@ -206,8 +207,8 @@ class SessionDebugGrpcTest(session_debug_testlib.SessionDebugTestBase):
       del feeds, fetch_keys
       return framework.WatchOptions(
           debug_ops=["DebugIdentity", "DebugNumericSummary"],
-          node_name_regex_whitelist=r".*/read",
-          op_type_regex_whitelist=None,
+          node_name_regex_allowlist=r".*/read",
+          op_type_regex_allowlist=None,
           tolerate_debug_op_creation_failures=True)
 
     u = variables.VariableV1(2.1, name="u")
@@ -306,11 +307,10 @@ class SessionDebugGrpcTest(session_debug_testlib.SessionDebugTestBase):
 
     # Check that the server has _not_ received any tracebacks, as a result of
     # the disabling above.
-    with self.assertRaisesRegexp(
-        ValueError, r"Op .*u/read.* does not exist"):
+    with self.assertRaisesRegex(ValueError, r"Op .*u/read.* does not exist"):
       self.assertTrue(self._server.query_op_traceback("u/read"))
-    with self.assertRaisesRegexp(
-        ValueError, r".* has not received any source file"):
+    with self.assertRaisesRegex(ValueError,
+                                r".* has not received any source file"):
       self._server.query_source_file_line(__file__, 1)
 
   def testConstructGrpcDebugHookWithOrWithouGrpcInUrlWorks(self):
@@ -354,7 +354,7 @@ class SessionDebugConcurrentTest(
     return urls
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("GrpcDebugWrapperSession is for tf.Session only")
 class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
   """Test server gating of debug ops."""
 
@@ -692,11 +692,11 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
 
         # No op traceback or source code should have been received by the debug
         # server due to the disabling above.
-        with self.assertRaisesRegexp(
-            ValueError, r"Op .*delta_1.* does not exist"):
+        with self.assertRaisesRegex(ValueError,
+                                    r"Op .*delta_1.* does not exist"):
           self.assertTrue(self._server_1.query_op_traceback("delta_1"))
-        with self.assertRaisesRegexp(
-            ValueError, r".* has not received any source file"):
+        with self.assertRaisesRegex(ValueError,
+                                    r".* has not received any source file"):
           self._server_1.query_source_file_line(__file__, 1)
 
   def testGetGrpcDebugWatchesReturnsCorrectAnswer(self):
@@ -732,7 +732,7 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
       self.assertEqual("DebugNumericSummary", debug_watch.debug_op)
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("GrpcDebugWrapperSession is for tf.Session only")
 class DelayedDebugServerTest(test_util.TensorFlowTestCase):
 
   def testDebuggedSessionRunWorksWithDelayedDebugServerStartup(self):

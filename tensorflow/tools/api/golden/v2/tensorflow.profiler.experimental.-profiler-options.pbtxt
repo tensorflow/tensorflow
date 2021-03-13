@@ -4,6 +4,10 @@ tf_class {
   is_instance: "<class \'tensorflow.python.profiler.profiler_v2.ProfilerOptions\'>"
   is_instance: "<type \'tuple\'>"
   member {
+    name: "delay_ms"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "device_tracer_level"
     mtype: "<type \'property\'>"
   }

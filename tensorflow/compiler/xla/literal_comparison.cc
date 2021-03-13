@@ -218,23 +218,12 @@ int64 RecursiveElementCount(const Shape& shape) {
 // Returns whether the given value is infinity.
 template <typename NativeT>
 bool IsInf(NativeT val) {
-  return std::isinf(val);
+  return Eigen::numext::isinf(val);
 }
-
-template <>
-bool IsInf<half>(half val) {
-  return std::isinf(static_cast<float>(val));
-}
-
 // Returns whether the given value is nan.
 template <typename NativeT>
-float IsNan(NativeT value) {
-  return std::isnan(value);
-}
-
-template <>
-float IsNan(half value) {
-  return IsNan<float>(static_cast<float>(value));
+bool IsNan(NativeT value) {
+  return Eigen::numext::isnan(value);
 }
 
 // Converts the given floating-point value to a string.
@@ -408,7 +397,7 @@ class NearComparator {
           (error_.relaxed_nans && !IsNan(expected) && IsNan(actual))) {
         num_nan_mismatches_++;
         // A nan mismatch is considered to have infinite error. rel_error is
-        // used for sorting a std::set of the top mismatchs, and a nan value
+        // used for sorting a std::set of the top mismatches, and a nan value
         // here will result in undefined behavior because nan's do not satisfy
         // the strict weak ordering requirement of std containers.
         abs_error = std::numeric_limits<float>::infinity();
@@ -636,7 +625,7 @@ class NearComparator {
   // Callback to invoke on miscompare.
   MiscompareCallback miscompare_callback_;
 
-  // Number of element element mismatches encountered so far.
+  // Number of element mismatches encountered so far.
   int64 num_mismatches_ = 0;
 
   // Number of elements with a nan mismatch.

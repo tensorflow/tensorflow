@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/lite/kernels/test_delegate_providers.h"
 #include "tensorflow/lite/testing/parse_testdata.h"
 #include "tensorflow/lite/testing/tflite_driver.h"
 #include "tensorflow/lite/testing/util.h"
@@ -47,7 +48,6 @@ string* FLAGS_tar_binary_path = new string("/bin/tar");
 string* FLAGS_unzip_binary_path = new string("/system/bin/unzip");
 string* FLAGS_tar_binary_path = new string("/system/bin/tar");
 #endif
-bool FLAGS_use_nnapi = false;
 bool FLAGS_ignore_unsupported_nnapi = false;
 }  // namespace
 
@@ -100,7 +100,6 @@ const std::map<string, string>& GetKnownBrokenTests() {
       {R"(^\/floor_mod.*activation=True.*dtype=tf\.int32)", "112968789"},
       {R"(^\/floor_mod.*activation=True.*dtype=tf\.int64)", "112968789"},
 
-      {R"(^\/sub.*dtype=tf\.int64)", "119126484"},
       {R"(^\/div.*dtype=tf\.int64)", "119126484"},
       {R"(^\/mul.*dtype=tf\.int64)", "119126484"},
       {R"(^\/add.*dtype=tf\.int64)", "119126484"},
@@ -256,7 +255,7 @@ tensorflow::Status ReadManifest(const string& original_file, const string& dir,
   size_t pos = 0;
   int added = 0;
   while (true) {
-    size_t end_pos = manifest.find("\n", pos);
+    size_t end_pos = manifest.find('\n', pos);
     if (end_pos == string::npos) break;
     string filename = manifest.substr(pos, end_pos - pos);
     test_paths->push_back(dir + "/" + filename);
@@ -292,20 +291,28 @@ std::vector<string> UnarchiveAndFindTestNames(const string& zip_file,
 class OpsTest : public ::testing::TestWithParam<string> {};
 
 TEST_P(OpsTest, RunZipTests) {
-  string test_path = GetParam();
+  string test_path_and_label = GetParam();
+  string test_path = test_path_and_label;
+  string label = test_path_and_label;
+  size_t end_pos = test_path_and_label.find(' ');
+  if (end_pos != string::npos) {
+    test_path = test_path_and_label.substr(0, end_pos);
+    label = test_path_and_label.substr(end_pos + 1);
+  }
   string tflite_test_case = test_path + "_tests.txt";
-  string tflite_dir = test_path.substr(0, test_path.find_last_of("/"));
-  string test_name = test_path.substr(test_path.find_last_of('/'));
+  string tflite_dir = test_path.substr(0, test_path.find_last_of('/'));
+  string test_name = label.substr(label.find_last_of('/'));
 
   std::ifstream tflite_stream(tflite_test_case);
   ASSERT_TRUE(tflite_stream.is_open()) << tflite_test_case;
-  tflite::testing::TfLiteDriver test_driver(
-      FLAGS_use_nnapi ? TfLiteDriver::DelegateType::kNnapi
-                      : TfLiteDriver::DelegateType::kNone);
+  tflite::testing::TfLiteDriver test_driver;
+  const bool use_nnapi =
+      tflite::KernelTestDelegateProviders::Get()->ConstParams().Get<bool>(
+          "use_nnapi");
 
   auto quantized_tests_error = GetQuantizeTestsError();
   bool fully_quantize = false;
-  if (test_path.find("fully_quantize=True") != std::string::npos) {
+  if (label.find("fully_quantize=True") != std::string::npos) {
     for (const auto& p : quantized_tests_error) {
       if (RE2::PartialMatch(test_name, p.first)) {
         test_driver.SetQuantizationErrorMultiplier(p.second);
@@ -318,7 +325,7 @@ TEST_P(OpsTest, RunZipTests) {
   test_driver.SetModelBaseDir(tflite_dir);
 
   auto broken_tests = GetKnownBrokenTests();
-  if (FLAGS_use_nnapi) {
+  if (use_nnapi) {
     auto kBrokenNnapiTests = GetKnownBrokenNnapiTests();
     broken_tests.insert(kBrokenNnapiTests.begin(), kBrokenNnapiTests.end());
   }
@@ -335,7 +342,7 @@ TEST_P(OpsTest, RunZipTests) {
       }
     }
     if (bug_number.empty()) {
-      if (FLAGS_use_nnapi && FLAGS_ignore_unsupported_nnapi && !result) {
+      if (use_nnapi && FLAGS_ignore_unsupported_nnapi && !result) {
         EXPECT_EQ(message, string("Failed to invoke interpreter")) << message;
       } else {
         EXPECT_TRUE(result) << message;
@@ -409,8 +416,6 @@ int main(int argc, char** argv) {
       tensorflow::Flag("tar_binary_path",
                        tflite::testing::FLAGS_tar_binary_path,
                        "Location of a suitable tar binary."),
-      tensorflow::Flag("use_nnapi", &tflite::testing::FLAGS_use_nnapi,
-                       "Whether to enable the NNAPI delegate"),
       tensorflow::Flag("ignore_unsupported_nnapi",
                        &tflite::testing::FLAGS_ignore_unsupported_nnapi,
                        "Don't fail tests just because delegation to NNAPI "
@@ -418,7 +423,12 @@ int main(int argc, char** argv) {
   bool success = tensorflow::Flags::Parse(&argc, argv, flags);
   if (!success || (argc == 2 && !strcmp(argv[1], "--helpfull"))) {
     fprintf(stderr, "%s", tensorflow::Flags::Usage(argv[0], flags).c_str());
-    return 1;
+    return EXIT_FAILURE;
+  }
+
+  if (!tflite::testing::TfLiteDriver::InitTestDelegateProviders(
+          &argc, const_cast<const char**>(argv))) {
+    return EXIT_FAILURE;
   }
 
   ::tflite::LogToStderr();

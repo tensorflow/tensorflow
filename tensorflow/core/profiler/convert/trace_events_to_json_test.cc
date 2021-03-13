@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/trace_events_to_json.h"
 
-#include "include/json/json.h"
+#include <string>
+
+#include "json/json.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
@@ -24,13 +26,13 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-string ConvertTextFormattedTraceToJson(const string& trace_str) {
+std::string ConvertTextFormattedTraceToJson(const std::string& trace_str) {
   Trace trace;
-  ::tensorflow::protobuf::TextFormat::ParseFromString(trace_str, &trace);
+  EXPECT_TRUE(protobuf::TextFormat::ParseFromString(trace_str, &trace));
   return TraceEventsToJson(trace);
 }
 
-Json::Value ToJsonValue(const string& json_str) {
+Json::Value ToJsonValue(const std::string& json_str) {
   Json::Value json;
   Json::Reader reader;
   EXPECT_TRUE(reader.parse(json_str, json));
@@ -38,47 +40,48 @@ Json::Value ToJsonValue(const string& json_str) {
 }
 
 TEST(TraceEventsToJson, JsonConversion) {
-  string json_output = ConvertTextFormattedTraceToJson(R"(
-      devices { key: 2 value {
+  std::string json_output = ConvertTextFormattedTraceToJson(R"proto(
+    devices {
+      key: 2
+      value {
         name: 'D2'
         device_id: 2
-        resources { key: 2 value {
-          resource_id: 2
-          name: 'R2.2'
-        } }
-      } }
-      devices { key: 1 value {
+        resources {
+          key: 2
+          value { resource_id: 2 name: 'R2.2' }
+        }
+      }
+    }
+    devices {
+      key: 1
+      value {
         name: 'D1'
         device_id: 1
-        resources { key: 2 value {
-          resource_id: 1
-          name: 'R1.2'
-        } }
-      } }
+        resources {
+          key: 2
+          value { resource_id: 1 name: 'R1.2' }
+        }
+      }
+    }
+    trace_events {
+      device_id: 1
+      resource_id: 2
+      name: 'E1.2.1'
+      timestamp_ps: 100000
+      duration_ps: 10000
+      args { key: 'long_name' value: 'E1.2.1 long' }
+      args { key: 'arg2' value: 'arg2 val' }
+    }
+    trace_events {
+      device_id: 2
+      resource_id: 2
+      name: 'E2.2.1 # "comment"'
+      timestamp_ps: 105000
+    }
+  )proto");
+  Json::Value json = ToJsonValue(json_output);
 
-      trace_events {
-        device_id: 1
-        resource_id: 2
-        name: 'E1.2.1'
-        timestamp_ps: 100000
-        duration_ps: 10000
-        args {
-          key: 'long_name'
-          value: 'E1.2.1 long'
-        }
-        args {
-          key: 'arg2'
-          value: 'arg2 val'
-        }
-      }
-      trace_events {
-        device_id: 2
-        resource_id: 2
-        name: 'E2.2.1 # "comment"'
-        timestamp_ps: 105000
-      }
-  )");
-  string expected_json = R"(
+  Json::Value expected_json = ToJsonValue(R"(
   {
     "displayTimeUnit": "ns",
     "metadata": { "highres-ticks": true },
@@ -95,7 +98,6 @@ TEST(TraceEventsToJson, JsonConversion) {
        "args":{"name":"R2.2"}},
       {"ph":"M", "pid":2, "tid":2, "name":"thread_sort_index",
        "args":{"sort_index":2}},
-
       {
         "ph" : "X",
         "pid" : 1,
@@ -115,8 +117,9 @@ TEST(TraceEventsToJson, JsonConversion) {
       },
       {}
     ]
-  })";
-  EXPECT_EQ(ToJsonValue(json_output), ToJsonValue(expected_json));
+  })");
+
+  EXPECT_EQ(json, expected_json);
 }
 
 }  // namespace

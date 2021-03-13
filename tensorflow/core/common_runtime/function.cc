@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -44,7 +45,9 @@ limitations under the License.
 #include "tensorflow/core/graph/optimizer_cse.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
@@ -325,7 +328,6 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
                              const FunctionLibraryDefinition* lib_def,
                              thread::ThreadPool* default_thread_pool,
                              const OptimizerOptions& optimizer_options,
-                             const CustomKernelCreator* custom_kernel_creator,
                              const SessionMetadata* session_metadata,
                              ProcessFunctionLibraryRuntime* parent);
 
@@ -382,6 +384,44 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
  private:
   typedef FunctionLibraryRuntimeImpl ME;
 
+  // Thread-safe data structure for caching function instantiations that uses
+  // LRU policy for replacement.
+  class FunctionHandleCache {
+   public:
+    explicit FunctionHandleCache(FunctionLibraryRuntime* lib, int64 capacity);
+    ~FunctionHandleCache();
+
+    // Looks up the function to be instantiated in the cache first. If present,
+    // returns handle from there. Otherwise, instantiates a new function
+    // and stores handle in the cache.
+    Status Instantiate(const string& function_name, AttrSlice attrs,
+                       FunctionLibraryRuntime::InstantiateOptions options,
+                       FunctionLibraryRuntime::Handle* handle);
+
+    // Releases all the handles in the cache, clearing out the state for all
+    // functions involved.
+    Status Clear();
+
+   private:
+    struct Entry {
+      FunctionLibraryRuntime::Handle handle;
+      std::list<string>::iterator lru_iterator;
+    };
+
+    // If the given key exists, returns true, updates the LRU state, and sets
+    // `handle` to point to the cached handle. Otherwise, returns false and the
+    // LRU state and `handle` are unchanged.
+    bool Lookup(const string& key, FunctionLibraryRuntime::Handle* handle)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+    mutex mu_;
+    FunctionLibraryRuntime* lib_ = nullptr;  // not owned
+    const string state_handle_;
+    absl::flat_hash_map<string, Entry> handles_ TF_GUARDED_BY(mu_);
+    std::list<string> lru_list_ TF_GUARDED_BY(mu_);
+    const int64 capacity_;
+  };
+
   const DeviceMgr* const device_mgr_;
   Device* const device_;
   Env* const env_;
@@ -389,10 +429,10 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   const int graph_def_version_;
   const FunctionLibraryDefinition* const base_lib_def_;
   GraphOptimizer optimizer_;
-  const CustomKernelCreator* custom_kernel_creator_;
   const SessionMetadata* const session_metadata_;
   Executor::Args::Runner default_runner_;
   const string device_name_;
+  std::unique_ptr<FunctionHandleCache> function_handle_cache_;
 
   std::function<Status(const string&, const OpDef**)> get_func_sig_;
   std::function<Status(const std::shared_ptr<const NodeProperties>&,
@@ -461,7 +501,6 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
     int graph_def_version, const FunctionLibraryDefinition* lib_def,
     thread::ThreadPool* default_thread_pool,
     const OptimizerOptions& optimizer_options,
-    const CustomKernelCreator* custom_kernel_creator,
     const SessionMetadata* session_metadata,
     ProcessFunctionLibraryRuntime* parent)
     : device_mgr_(dmgr),
@@ -471,12 +510,14 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
       graph_def_version_(graph_def_version),
       base_lib_def_(lib_def),
       optimizer_(optimizer_options),
-      custom_kernel_creator_(custom_kernel_creator),
       session_metadata_(session_metadata),
       default_runner_(nullptr),
       device_name_(device_ == nullptr
                        ? ProcessFunctionLibraryRuntime::kDefaultFLRDevice
                        : device_->name()),
+      // TODO(jsimsa): Make cache capacity configurable.
+      function_handle_cache_(
+          absl::make_unique<FunctionHandleCache>(this, /*capacity=*/1000)),
       next_handle_(0),
       items_(new std::unordered_map<Handle, std::unique_ptr<Item>>),
       parent_(parent) {
@@ -608,10 +649,12 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(
     FunctionLibraryRuntime* flr, OpKernel** kernel) {
   // If a custom kernel creator is given, try that.
   Status s;
-  if (custom_kernel_creator_ != nullptr &&
-      custom_kernel_creator_->CanCreateKernel(*this, props)) {
+  const CustomKernelCreator* custom_kernel_creator =
+      GetDefaultCustomKernelCreator();
+  if (custom_kernel_creator &&
+      custom_kernel_creator->CanCreateKernel(*this, props)) {
     std::unique_ptr<OpKernel> ret;
-    s = custom_kernel_creator_->CreateKernel(this, props, &ret);
+    s = custom_kernel_creator->CreateKernel(this, props, &ret);
     if (s.ok()) {
       *kernel = ret.release();
     } else {
@@ -741,6 +784,13 @@ bool FunctionLibraryRuntimeImpl::IsLocalTarget(
 Status FunctionLibraryRuntimeImpl::Instantiate(
     const string& function_name, AttrSlice attrs,
     const InstantiateOptions& options, Handle* handle) {
+  if (options.use_function_cache) {
+    InstantiateOptions options_copy(options);
+    options_copy.use_function_cache = false;
+    return function_handle_cache_->Instantiate(function_name, attrs,
+                                               options_copy, handle);
+  }
+
   if (!IsLocalTarget(options)) {
     return parent_->Instantiate(function_name, attrs, options, handle);
   }
@@ -1143,6 +1193,14 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     return;
   }
 
+  profiler::TraceMeProducer activity(
+      // To TraceMeConsumers in ExecutorState::Process/Finish.
+      [&opts] {
+        return profiler::TraceMeEncode("FunctionRun", {{"id", opts.step_id}});
+      },
+      profiler::ContextType::kTfExecutor, opts.step_id,
+      profiler::TraceMeLevel::kInfo);
+
   Executor::Args exec_args;
   ExecutorArgsFromOptions(run_opts, frame, &exec_args);
 
@@ -1206,6 +1264,14 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     run_opts.runner = &default_runner_;
   }
   DCHECK(run_opts.runner != nullptr);
+
+  profiler::TraceMeProducer activity(
+      // To TraceMeConsumers in ExecutorState::Process/Finish.
+      [&opts] {
+        return profiler::TraceMeEncode("FunctionRun", {{"id", opts.step_id}});
+      },
+      profiler::ContextType::kTfExecutor, opts.step_id,
+      profiler::TraceMeLevel::kInfo);
 
   Executor::Args exec_args;
   ExecutorArgsFromOptions(run_opts, frame, &exec_args);
@@ -1311,15 +1377,91 @@ Status FunctionLibraryRuntimeImpl::Clone(
     std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
     std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
     FunctionLibraryRuntime** out_flr, bool skip_flib_def) {
-  TF_RETURN_IF_ERROR(parent_->Clone(
-      env_, graph_def_version_, optimizer_.options(), custom_kernel_creator_,
-      out_lib_def, out_pflr, skip_flib_def));
+  TF_RETURN_IF_ERROR(parent_->Clone(env_, graph_def_version_,
+                                    optimizer_.options(), out_lib_def, out_pflr,
+                                    skip_flib_def));
   *out_flr = (*out_pflr)->GetFLR(device_->name());
   if (*out_flr != nullptr) {
     return Status::OK();
   } else {
     return errors::Internal("Cloning FunctionLibraryRuntime failed.");
   }
+}
+
+FunctionLibraryRuntimeImpl::FunctionHandleCache::FunctionHandleCache(
+    FunctionLibraryRuntime* lib, int64 capacity)
+    : lib_(lib),
+      state_handle_(
+          strings::Printf("%lld", static_cast<long long>(random::New64()))),
+      capacity_(capacity) {}
+
+FunctionLibraryRuntimeImpl::FunctionHandleCache::~FunctionHandleCache() {
+  Status s = Clear();
+  if (!s.ok()) {
+    LOG(ERROR) << "Failed to clear function handle cache: " << s.ToString();
+  }
+}
+
+Status FunctionLibraryRuntimeImpl::FunctionHandleCache::Instantiate(
+    const string& function_name, AttrSlice attrs,
+    FunctionLibraryRuntime::InstantiateOptions options,
+    FunctionLibraryRuntime::Handle* handle) {
+  string key = Canonicalize(function_name, attrs, options);
+  {
+    mutex_lock l(mu_);
+    if (Lookup(key, handle)) {
+      return Status::OK();
+    }
+  }
+  // We release the lock to avoid holding it across function instantiations. As
+  // a consequence, multiple callers may execute the block below for the same
+  // key. We account for this by calling `Lookup()` again to check if the key
+  // already exists.
+  options.state_handle = state_handle_;
+  TF_RETURN_IF_ERROR(lib_->Instantiate(function_name, attrs, options, handle));
+
+  mutex_lock l(mu_);
+  FunctionLibraryRuntime::Handle tmp_handle;
+  if (Lookup(key, &tmp_handle)) {
+    TF_RETURN_IF_ERROR(lib_->ReleaseHandle(*handle));
+    *handle = tmp_handle;
+    return Status::OK();
+  }
+  // At this point we know that the key does not exist.
+  if (lru_list_.size() >= capacity_) {
+    string lru_key = lru_list_.back();
+    Status s = lib_->ReleaseHandle(handles_[lru_key].handle);
+    if (!s.ok()) {
+      TF_RETURN_IF_ERROR(lib_->ReleaseHandle(*handle));
+      return s;
+    }
+    handles_.erase(lru_key);
+    lru_list_.pop_back();
+  }
+  lru_list_.push_front(key);
+  handles_.emplace(std::make_pair(key, Entry{*handle, lru_list_.begin()}));
+  return Status::OK();
+}
+
+bool FunctionLibraryRuntimeImpl::FunctionHandleCache::Lookup(
+    const string& key, FunctionLibraryRuntime::Handle* handle) {
+  Entry* entry = gtl::FindOrNull(handles_, key);
+  if (entry == nullptr) return false;
+  lru_list_.splice(lru_list_.begin(), lru_list_, entry->lru_iterator);
+  entry->lru_iterator = lru_list_.begin();
+  *handle = entry->handle;
+  return true;
+}
+
+Status FunctionLibraryRuntimeImpl::FunctionHandleCache::Clear() {
+  mutex_lock l(mu_);
+  while (!lru_list_.empty()) {
+    string lru_key = lru_list_.back();
+    TF_RETURN_IF_ERROR(lib_->ReleaseHandle(handles_[lru_key].handle));
+    handles_.erase(lru_key);
+    lru_list_.pop_back();
+  }
+  return Status::OK();
 }
 
 namespace {
@@ -1359,12 +1501,11 @@ std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
     Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def, thread::ThreadPool* thread_pool,
     const OptimizerOptions& optimizer_options,
-    const CustomKernelCreator* custom_kernel_creator,
     const SessionMetadata* session_metadata,
     ProcessFunctionLibraryRuntime* parent) {
   return std::unique_ptr<FunctionLibraryRuntime>(new FunctionLibraryRuntimeImpl(
       device_mgr, env, config, device, graph_def_version, lib_def, thread_pool,
-      optimizer_options, custom_kernel_creator, session_metadata, parent));
+      optimizer_options, session_metadata, parent));
 }
 
 class SymbolicGradientHelper {

@@ -119,7 +119,8 @@ def _read_file(filename):
   if not file_io.file_exists(filename):
     raise IOError("File %s does not exist." % filename)
   # First try to read it as a binary file.
-  file_content = file_io.FileIO(filename, "rb").read()
+  with file_io.FileIO(filename, "rb") as f:
+    file_content = f.read()
   try:
     graph_def.ParseFromString(file_content)
     return graph_def
@@ -161,12 +162,17 @@ def ops_used_by_graph_def(graph_def):
       functions_to_process.append(name_to_function[op])
     used_ops.add(op)
 
-  for node in graph_def.node:
+  def process_node(node):
     mark_op_as_used(node.op)
+    if node.op in ["PartitionedCall", "StatefulPartitionedCall"]:
+      mark_op_as_used(node.attr["f"].func.name)
+
+  for node in graph_def.node:
+    process_node(node)
   while functions_to_process:
     fun = functions_to_process.pop()
     for node in fun.node_def:
-      mark_op_as_used(node.op)
+      process_node(node)
 
   return [op for op in used_ops if op not in name_to_function]
 
@@ -624,7 +630,8 @@ def read_meta_graph_file(filename):
   if not file_io.file_exists(filename):
     raise IOError("File %s does not exist." % filename)
   # First try to read it as a binary file.
-  file_content = file_io.FileIO(filename, "rb").read()
+  with file_io.FileIO(filename, "rb") as f:
+    file_content = f.read()
   try:
     meta_graph_def.ParseFromString(file_content)
     return meta_graph_def

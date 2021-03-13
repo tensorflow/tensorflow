@@ -37,14 +37,9 @@ template <typename T>
 void TileSimple(const Eigen::GpuDevice& d, Tensor* out, const Tensor& in);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-void TileSimple(const Eigen::SyclDevice& d, Tensor* out, const Tensor& in);
-#endif
-
 template <typename Device, typename T, typename Tmultiples, int NDIM>
 void TileUsingEigen(const Device& d, Tensor* out, const Tensor& in,
-                    const gtl::ArraySlice<Tmultiples>& broadcast_array) {
+                    const gtl::ArraySlice<Tmultiples> broadcast_array) {
   auto x = in.tensor<T, NDIM>();
   auto y = out->tensor<T, NDIM>();
 
@@ -62,7 +57,7 @@ void TileUsingEigen(const Device& d, Tensor* out, const Tensor& in,
 
 template <typename Device, typename T, typename Tmultiples>
 void TileUsingEigen(const Device& d, Tensor* out, const Tensor& in,
-                    const gtl::ArraySlice<Tmultiples>&) {
+                    const gtl::ArraySlice<Tmultiples>) {
   auto x = in.tensor<T, 0>();
   auto y = out->tensor<T, 0>();
   // In the scalar case we simply copy the input.

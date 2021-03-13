@@ -29,12 +29,19 @@ REGISTER5(BinaryOp, CPU, "DivNoNan", functor::div_no_nan, Eigen::half, float,
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // ROCM TODO: re-enable complex64 / complex128 after compiler fix
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER9(BinaryOp, GPU, "Div", functor::div, float, Eigen::half, double, uint8,
           uint16, int16, int64, complex64, complex128);
-REGISTER4(BinaryOp, GPU, "TruncateDiv", functor::div, uint8, uint16, int16,
-          int64);
 REGISTER5(BinaryOp, GPU, "RealDiv", functor::div, float, Eigen::half, double,
           complex64, complex128);
+REGISTER4(BinaryOp, GPU, "TruncateDiv", functor::div, uint8, uint16, int16,
+          int64);
+#else
+REGISTER4(BinaryOp, GPU, "Div", functor::div, uint8, uint16, complex64,
+          complex128);
+REGISTER2(BinaryOp, GPU, "RealDiv", functor::div, complex64, complex128);
+REGISTER2(BinaryOp, GPU, "TruncateDiv", functor::div, uint8, uint16);
+#endif
 REGISTER5(BinaryOp, GPU, "DivNoNan", functor::div_no_nan, Eigen::half, float,
           double, complex64, complex128);
 
@@ -50,15 +57,4 @@ REGISTER_KERNEL_BUILDER(Name("Div")
                         BinaryOp<CPUDevice, functor::safe_div<int32>>);
 #endif
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER2(BinaryOp, SYCL, "Div", functor::div, float, double);
-REGISTER2(BinaryOp, SYCL, "RealDiv", functor::div, float, double);
-REGISTER_KERNEL_BUILDER(Name("Div")
-                            .Device(DEVICE_SYCL)
-                            .HostMemory("x")
-                            .HostMemory("y")
-                            .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::safe_div<int32>>);
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

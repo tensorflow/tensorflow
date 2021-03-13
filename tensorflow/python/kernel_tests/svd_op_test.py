@@ -52,12 +52,12 @@ class SvdOpTest(test.TestCase):
   def testWrongDimensions(self):
     # The input to svd should be a tensor of at least rank 2.
     scalar = constant_op.constant(1.)
-    with self.assertRaisesRegexp((ValueError, errors_impl.InvalidArgumentError),
-                                 "rank.* 2.*0"):
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
+                                "rank.* 2.*0"):
       linalg_ops.svd(scalar)
     vector = constant_op.constant([1., 2.])
-    with self.assertRaisesRegexp((ValueError, errors_impl.InvalidArgumentError),
-                                 "rank.* 2.*1"):
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
+                                "rank.* 2.*1"):
       linalg_ops.svd(vector)
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
@@ -163,7 +163,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
       if use_static_shape_:
         s_tf_val, u_tf_val, v_tf_val = self.evaluate([s_tf, u_tf, v_tf])
       else:
-        with self.session(use_gpu=True) as sess:
+        with self.session() as sess:
           s_tf_val, u_tf_val, v_tf_val = sess.run(
               [s_tf, u_tf, v_tf], feed_dict={x_tf: x_np})
     else:
@@ -172,7 +172,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
       if use_static_shape_:
         s_tf_val = self.evaluate(s_tf)
       else:
-        with self.session(use_gpu=True) as sess:
+        with self.session() as sess:
           s_tf_val = sess.run(s_tf, feed_dict={x_tf: x_np})
 
     if compute_uv_:
@@ -284,7 +284,7 @@ def _GetSvdGradGradOpTest(dtype_, shape_, compute_uv_, full_matrices_):
     epsilon = np.finfo(dtype_).eps
     delta = 0.1 * epsilon**(1.0 / 3.0)
     tol = 1e-5
-    with self.session(use_gpu=True):
+    with self.session():
       tf_a = constant_op.constant(a)
       if compute_uv_:
         tf_s, tf_u, tf_v = _NormalizingSvd(tf_a, full_matrices_)
@@ -343,7 +343,7 @@ class SVDBenchmark(test.Benchmark):
             low=-1.0, high=1.0, size=shape_).astype(np.float32)
         matrix = variables.Variable(matrix_value)
         u, s, v = linalg_ops.svd(matrix)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         self.run_op_benchmark(
             sess,
             control_flow_ops.group(u, s, v),
@@ -358,7 +358,7 @@ class SVDBenchmark(test.Benchmark):
               low=-1.0, high=1.0, size=shape_).astype(np.float32)
           matrix = variables.Variable(matrix_value)
           u, s, v = linalg_ops.svd(matrix)
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(u, s, v),

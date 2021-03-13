@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.compiler.tf2xla.python import xla as xla_ops
 from tensorflow.python.compiler.xla import jit
 from tensorflow.python.compiler.xla import xla
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
@@ -38,6 +39,10 @@ from tensorflow.python.platform import test
 
 @test_util.run_all_in_graph_and_eager_modes
 class PForTest(PForTestCase):
+
+  def __init__(self, method_name="runTest"):
+    super(PForTest, self).__init__(method_name)
+    context.context().enable_xla_devices()
 
   def test_xla_einsum(self):
     num_loop = 10
@@ -71,12 +76,12 @@ class PForTest(PForTestCase):
         vectorized_compute, inputs=[array_ops.ones((10, 5, 3))])
     self.run_and_assert_equal(result, array_ops.ones((10, 1, 3)))
 
-  def test_function_experimental_compile(self):
+  def test_function_jit_compile(self):
 
     def compute(x):
       return math_ops.reduce_mean(x, axis=0, keepdims=True)
 
-    @def_function.function(experimental_compile=True)
+    @def_function.function(jit_compile=True)
     def vectorized_compute(x):
       return pfor_control_flow_ops.vectorized_map(compute, x)
 
@@ -107,7 +112,7 @@ class PForTest(PForTestCase):
   def test_reduce_mean(self):
     x = random_ops.random_uniform([8, 3])
 
-    @def_function.function(experimental_compile=True)
+    @def_function.function(jit_compile=True)
     def f():
 
       def loop_fn(i, pfor_config):
@@ -167,7 +172,7 @@ class WhileV2Test(PForTestCase):
     # TODO(agarwal): The following may complain about uncompilable nodes. Hence
     # these are currently not enabled for all tests.
     if force_xla:
-      out_exp_compile_f = def_function.function(experimental_compile=True)(f)()
+      out_exp_compile_f = def_function.function(jit_compile=True)(f)()
       self.run_and_assert_equal(out, out_exp_compile_f)
       out_xla_compile_f = xla.compile(f, inputs=[])
       self.run_and_assert_equal(out, out_xla_compile_f)
@@ -233,8 +238,7 @@ class WhileV2Test(PForTestCase):
           body,
           [True, 0, 0.])
 
-    # b/155430349: Enabling forrce_xla=True triggers a CHECK in debug mode.
-    self._test_loop_fn(loop_fn, 3, force_xla=False)
+    self._test_loop_fn(loop_fn, 3, force_xla=True)
 
 
 if __name__ == "__main__":

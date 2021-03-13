@@ -55,19 +55,21 @@ namespace toco {
   auto* stitch_op = static_cast<DynamicStitchOperator*>(op_it->get());
 
   // Split up the DynamicStitch inputs into the indices and data.
-  std::vector<string> stitch_indices_inputs;
-  std::vector<string> stitch_data_inputs;
-  for (size_t i = 0; i < stitch_op->num_partitions; ++i) {
+  std::vector<std::string> stitch_indices_inputs;
+  std::vector<std::string> stitch_data_inputs;
+  stitch_indices_inputs.reserve(stitch_op->num_partitions);
+  for (int i = 0; i < stitch_op->num_partitions; ++i) {
     stitch_indices_inputs.push_back(stitch_op->inputs[i]);
   }
-  for (size_t i = stitch_op->num_partitions; i < stitch_op->num_partitions * 2;
+  for (int i = stitch_op->num_partitions; i < stitch_op->num_partitions * 2;
        ++i) {
     stitch_data_inputs.push_back(stitch_op->inputs[i]);
   }
 
   // Validate all indices come from the same DynamicPartition.
   DynamicPartitionOperator* indices_partition_op = nullptr;
-  for (const string& indices_partition_output_name : stitch_indices_inputs) {
+  for (const std::string& indices_partition_output_name :
+       stitch_indices_inputs) {
     auto* op = GetOpWithOutput(*model, indices_partition_output_name);
     CHECK(op) << "Source of " << indices_partition_output_name << " not found";
     if (op->type != OperatorType::kDynamicPartition) {
@@ -112,7 +114,7 @@ namespace toco {
 
   // Find all of the gathers used for the data inputs.
   std::vector<GatherOperator*> gather_ops;
-  for (const string& gather_output_name : stitch_data_inputs) {
+  for (const std::string& gather_output_name : stitch_data_inputs) {
     auto* op = GetOpWithOutput(*model, gather_output_name);
     CHECK(op) << "Source of " << gather_output_name << " not found";
     if (op->type != OperatorType::kGather) {

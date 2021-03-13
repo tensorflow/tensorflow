@@ -14,24 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/model_builder.h"
 
-#include <fcntl.h>
+#include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include <memory>
+#include <string>
+#include <utility>
+
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/core/api/verifier.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/util.h"
-#include "tensorflow/lite/version.h"
-
-#if defined(TFLITE_ENABLE_DEFAULT_PROFILER)
-#include "tensorflow/lite/profiling/platform_profiler.h"
-#endif
+#include "tensorflow/lite/stderr_reporter.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 
@@ -47,12 +43,10 @@ ErrorReporter* ValidateErrorReporter(ErrorReporter* e) {
 #ifndef TFLITE_MCU
 // Loads a model from `filename`. If `mmap_file` is true then use mmap,
 // otherwise make a copy of the model in a buffer.
-std::unique_ptr<Allocation> GetAllocationFromFile(const char* filename,
-                                                  bool mmap_file,
-                                                  ErrorReporter* error_reporter,
-                                                  bool use_nnapi) {
+std::unique_ptr<Allocation> GetAllocationFromFile(
+    const char* filename, ErrorReporter* error_reporter) {
   std::unique_ptr<Allocation> allocation;
-  if (mmap_file && MMAPAllocation::IsSupported()) {
+  if (MMAPAllocation::IsSupported()) {
     allocation.reset(new MMAPAllocation(filename, error_reporter));
   } else {
     allocation.reset(new FileCopyAllocation(filename, error_reporter));
@@ -63,41 +57,17 @@ std::unique_ptr<Allocation> GetAllocationFromFile(const char* filename,
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
     const char* filename, ErrorReporter* error_reporter) {
   error_reporter = ValidateErrorReporter(error_reporter);
-
-  std::unique_ptr<FlatBufferModel> model;
-  auto allocation = GetAllocationFromFile(filename, /*mmap_file=*/true,
-                                          error_reporter, /*use_nnapi=*/true);
-  model.reset(new FlatBufferModel(std::move(allocation), error_reporter));
-  if (!model->initialized()) model.reset();
-  return model;
+  return BuildFromAllocation(GetAllocationFromFile(filename, error_reporter),
+                             error_reporter);
 }
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromFile(
     const char* filename, TfLiteVerifier* extra_verifier,
     ErrorReporter* error_reporter) {
   error_reporter = ValidateErrorReporter(error_reporter);
-
-  std::unique_ptr<FlatBufferModel> model;
-  auto allocation = GetAllocationFromFile(filename, /*mmap_file=*/true,
-                                          error_reporter, /*use_nnapi=*/true);
-
-  flatbuffers::Verifier base_verifier(
-      reinterpret_cast<const uint8_t*>(allocation->base()),
-      allocation->bytes());
-  if (!VerifyModelBuffer(base_verifier)) {
-    TF_LITE_REPORT_ERROR(error_reporter,
-                         "The model is not a valid Flatbuffer file");
-    return nullptr;
-  }
-
-  if (extra_verifier &&
-      !extra_verifier->Verify(static_cast<const char*>(allocation->base()),
-                              allocation->bytes(), error_reporter)) {
-    return model;
-  }
-  model.reset(new FlatBufferModel(std::move(allocation), error_reporter));
-  if (!model->initialized()) model.reset();
-  return model;
+  return VerifyAndBuildFromAllocation(
+      GetAllocationFromFile(filename, error_reporter), extra_verifier,
+      error_reporter);
 }
 #endif
 
@@ -105,34 +75,57 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromBuffer(
     const char* caller_owned_buffer, size_t buffer_size,
     ErrorReporter* error_reporter) {
   error_reporter = ValidateErrorReporter(error_reporter);
-
-  std::unique_ptr<FlatBufferModel> model;
   std::unique_ptr<Allocation> allocation(
       new MemoryAllocation(caller_owned_buffer, buffer_size, error_reporter));
-  model.reset(new FlatBufferModel(std::move(allocation), error_reporter));
-  if (!model->initialized()) model.reset();
-  return model;
+  return BuildFromAllocation(std::move(allocation), error_reporter);
 }
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromBuffer(
     const char* caller_owned_buffer, size_t buffer_size,
     TfLiteVerifier* extra_verifier, ErrorReporter* error_reporter) {
   error_reporter = ValidateErrorReporter(error_reporter);
+  std::unique_ptr<Allocation> allocation(
+      new MemoryAllocation(caller_owned_buffer, buffer_size, error_reporter));
+  return VerifyAndBuildFromAllocation(std::move(allocation), extra_verifier,
+                                      error_reporter);
+}
+
+std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromAllocation(
+    std::unique_ptr<Allocation> allocation, ErrorReporter* error_reporter) {
+  std::unique_ptr<FlatBufferModel> model(new FlatBufferModel(
+      std::move(allocation), ValidateErrorReporter(error_reporter)));
+  if (!model->initialized()) {
+    model.reset();
+  }
+  return model;
+}
+
+std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromAllocation(
+    std::unique_ptr<Allocation> allocation, TfLiteVerifier* extra_verifier,
+    ErrorReporter* error_reporter) {
+  error_reporter = ValidateErrorReporter(error_reporter);
+  if (!allocation || !allocation->valid()) {
+    TF_LITE_REPORT_ERROR(error_reporter, "The model allocation is null/empty");
+    return nullptr;
+  }
 
   flatbuffers::Verifier base_verifier(
-      reinterpret_cast<const uint8_t*>(caller_owned_buffer), buffer_size);
+      reinterpret_cast<const uint8_t*>(allocation->base()),
+      allocation->bytes());
   if (!VerifyModelBuffer(base_verifier)) {
     TF_LITE_REPORT_ERROR(error_reporter,
                          "The model is not a valid Flatbuffer buffer");
     return nullptr;
   }
 
-  if (extra_verifier && !extra_verifier->Verify(caller_owned_buffer,
-                                                buffer_size, error_reporter)) {
+  if (extra_verifier &&
+      !extra_verifier->Verify(static_cast<const char*>(allocation->base()),
+                              allocation->bytes(), error_reporter)) {
+    // The verifier will have already logged an appropriate error message.
     return nullptr;
   }
 
-  return BuildFromBuffer(caller_owned_buffer, buffer_size, error_reporter);
+  return BuildFromAllocation(std::move(allocation), error_reporter);
 }
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromModel(
@@ -140,9 +133,11 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromModel(
     ErrorReporter* error_reporter) {
   error_reporter = ValidateErrorReporter(error_reporter);
 
-  std::unique_ptr<FlatBufferModel> model;
-  model.reset(new FlatBufferModel(caller_owned_model_spec, error_reporter));
-  if (!model->initialized()) model.reset();
+  std::unique_ptr<FlatBufferModel> model(
+      new FlatBufferModel(caller_owned_model_spec, error_reporter));
+  if (!model->initialized()) {
+    model.reset();
+  }
   return model;
 }
 
@@ -193,7 +188,9 @@ FlatBufferModel::FlatBufferModel(std::unique_ptr<Allocation> allocation,
                                  ErrorReporter* error_reporter)
     : error_reporter_(ValidateErrorReporter(error_reporter)),
       allocation_(std::move(allocation)) {
-  if (!allocation_->valid() || !CheckModelIdentifier()) return;
+  if (!allocation_ || !allocation_->valid() || !CheckModelIdentifier()) {
+    return;
+  }
 
   model_ = ::tflite::GetModel(allocation_->base());
 }

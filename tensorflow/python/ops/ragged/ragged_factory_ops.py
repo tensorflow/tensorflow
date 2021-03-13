@@ -346,5 +346,6 @@ def placeholder(dtype, ragged_rank, value_shape=None, name=None):
     for i in reversed(range(ragged_rank)):
       row_splits = array_ops.placeholder(dtypes.int64, [None],
                                          "row_splits_%d" % i)
-      result = ragged_tensor.RaggedTensor.from_row_splits(result, row_splits)
+      result = ragged_tensor.RaggedTensor.from_row_splits(result, row_splits,
+                                                          validate=False)
     return result

@@ -19,22 +19,24 @@ limitations under the License.
 #include "mli_api.h"  // NOLINT
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 constexpr int kFracBitsQ15 = 15;
+constexpr int kFracBitsQ31 = 31;
 
 namespace tflite {
 namespace ops {
 namespace micro {
 
-template <typename datatype>
-static void ConvertToMliTensorData(const TfLiteTensor* tfT, mli_tensor* mliT) {
-  mliT->data = (void*)GetTensorData<datatype>(tfT);
+inline void ConvertToMliTensorData(const TfLiteTensor* tfT, mli_tensor* mliT) {
+  // Data is NULL until MliTensorAttachBuffer is called.
+  mliT->data = NULL;
   if (tfT->type == kTfLiteInt8) {
     mliT->el_type = MLI_EL_ASYM_I8;
   } else if (tfT->type == kTfLiteInt32) {
     mliT->el_type = MLI_EL_ASYM_I32;
   } else {
-    TF_LITE_FATAL("Wrong data type. Expected int8 or int32.");
+    TF_LITE_FATAL("Wrong data type. Expected int8_t or int32_t.");
   }
 
   mliT->capacity = tfT->bytes;
@@ -44,19 +46,19 @@ static void ConvertToMliTensorData(const TfLiteTensor* tfT, mli_tensor* mliT) {
   }
 }
 
-static void ConvertToMliQuantParams(const TfLiteTensor* tfT, mli_tensor* mliT) {
+inline void ConvertToMliQuantParams(const TfLiteTensor* tfT, mli_tensor* mliT) {
   mliT->el_params.asym.dim = -1;
   mliT->el_params.asym.zero_point.i16 = tfT->params.zero_point;
   float fscale = tfT->params.scale;
   int exp;
   frexpf(fscale, &exp);
-  int frac_bits = kFracBitsQ15 - exp;
-  int32_t iscale = (1 << frac_bits) * fscale + 0.5f;
+  int frac_bits = kFracBitsQ31 - exp;
+  int32_t iscale = (int32_t)((1ll << frac_bits) * fscale + 0.5f);
   mliT->el_params.asym.scale_frac_bits = frac_bits;
-  mliT->el_params.asym.scale.i16 = (int16_t)iscale;
+  mliT->el_params.asym.scale.i32 = (int32_t)iscale;
 }
 
-static void ConvertToMliQuantParamsPerChannel(const TfLiteTensor* tfT,
+inline void ConvertToMliQuantParamsPerChannel(const TfLiteTensor* tfT,
                                               mli_tensor* mliT) {
   // mli tensor scale and zero_point arrays should be allocated at this point
   TFLITE_DCHECK_NE(mliT->el_params.asym.scale.pi16, 0);
@@ -75,7 +77,7 @@ static void ConvertToMliQuantParamsPerChannel(const TfLiteTensor* tfT,
   for (int i = 0; i < num_channels; i++) {
     int exp;
     frexpf(fscale[i], &exp);
-    int cur_frac_bits = kFracBitsQ15 - exp;
+    int cur_frac_bits = kFracBitsQ31 - exp;
     if (i == 0) {
       min_frac_bits = cur_frac_bits;
     } else {
@@ -86,21 +88,29 @@ static void ConvertToMliQuantParamsPerChannel(const TfLiteTensor* tfT,
   mliT->el_params.asym.scale_frac_bits = min_frac_bits;
 
   for (int i = 0; i < num_channels; i++) {
-    int16_t iscale = (int16_t)((1 << min_frac_bits) * fscale[i] + 0.5f);
-    mliT->el_params.asym.scale.pi16[i] = iscale;
+    int32_t iscale = (int32_t)((1ll << min_frac_bits) * fscale[i] + 0.5f);
+    mliT->el_params.asym.scale.pi32[i] = iscale;
   }
 }
 
 template <typename datatype>
-static void ConvertToMliTensor(const TfLiteTensor* tfT, mli_tensor* mliT) {
-  ConvertToMliTensorData<datatype>(tfT, mliT);
+inline void MliTensorAttachBuffer(const TfLiteEvalTensor* tfT,
+                                  mli_tensor* mliT) {
+  // "const_cast" here used to attach const data buffer to the initially
+  // non-const mli_tensor. This is required by current implementation of MLI
+  // backend and planned for redesign due to this and some other aspects.
+  mliT->data = const_cast<void*>(
+      static_cast<const void*>(tflite::micro::GetTensorData<datatype>(tfT)));
+}
+
+inline void ConvertToMliTensor(const TfLiteTensor* tfT, mli_tensor* mliT) {
+  ConvertToMliTensorData(tfT, mliT);
   ConvertToMliQuantParams(tfT, mliT);
 }
 
-template <typename datatype>
-static void ConvertToMliTensorPerChannel(const TfLiteTensor* tfT,
+inline void ConvertToMliTensorPerChannel(const TfLiteTensor* tfT,
                                          mli_tensor* mliT) {
-  ConvertToMliTensorData<datatype>(tfT, mliT);
+  ConvertToMliTensorData(tfT, mliT);
   ConvertToMliQuantParamsPerChannel(tfT, mliT);
 }
 }  // namespace micro

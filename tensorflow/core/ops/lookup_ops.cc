@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/framework/dataset_stateful_op_whitelist.h"
+#include "tensorflow/core/framework/dataset_stateful_op_allowlist.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -87,10 +87,35 @@ REGISTER_OP("LookupTableFind")
       return Status::OK();
     });
 
+Status ValidateTableType(InferenceContext* c,
+                         const ShapeAndType& key_shape_and_type,
+                         const string& key_dtype_attr,
+                         const ShapeAndType& value_shape_and_type,
+                         const string& value_dtype_attr) {
+  DataType key_dtype;
+  TF_RETURN_IF_ERROR(c->GetAttr(key_dtype_attr, &key_dtype));
+  if (key_shape_and_type.dtype != key_dtype) {
+    return errors::InvalidArgument(
+        "Trying to read value with wrong dtype. "
+        "Expected ",
+        DataTypeString(key_shape_and_type.dtype), " got ",
+        DataTypeString(key_dtype));
+  }
+  DataType value_dtype;
+  TF_RETURN_IF_ERROR(c->GetAttr(value_dtype_attr, &value_dtype));
+  if (value_shape_and_type.dtype != value_dtype) {
+    return errors::InvalidArgument(
+        "Trying to read value with wrong dtype. "
+        "Expected ",
+        DataTypeString(value_shape_and_type.dtype), " got ",
+        DataTypeString(value_dtype));
+  }
+  return Status::OK();
+}
+
 Status ValidateTableResourceHandle(InferenceContext* c, ShapeHandle keys,
                                    const string& key_dtype_attr,
                                    const string& value_dtype_attr,
-                                   bool is_lookup,
                                    ShapeAndType* output_shape_and_type) {
   auto* handle_data = c->input_handle_shapes_and_types(0);
   if (handle_data == nullptr || handle_data->size() != 2) {
@@ -99,57 +124,35 @@ Status ValidateTableResourceHandle(InferenceContext* c, ShapeHandle keys,
   } else {
     const ShapeAndType& key_shape_and_type = (*handle_data)[0];
     const ShapeAndType& value_shape_and_type = (*handle_data)[1];
-    DataType key_dtype;
-    TF_RETURN_IF_ERROR(c->GetAttr(key_dtype_attr, &key_dtype));
-    if (key_shape_and_type.dtype != key_dtype) {
-      return errors::InvalidArgument(
-          "Trying to read value with wrong dtype. "
-          "Expected ",
-          DataTypeString(key_shape_and_type.dtype), " got ",
-          DataTypeString(key_dtype));
-    }
-    DataType value_dtype;
-    TF_RETURN_IF_ERROR(c->GetAttr(value_dtype_attr, &value_dtype));
-    if (value_shape_and_type.dtype != value_dtype) {
-      return errors::InvalidArgument(
-          "Trying to read value with wrong dtype. "
-          "Expected ",
-          DataTypeString(value_shape_and_type.dtype), " got ",
-          DataTypeString(value_dtype));
-    }
+    TF_RETURN_IF_ERROR(ValidateTableType(c, key_shape_and_type, key_dtype_attr,
+                                         value_shape_and_type,
+                                         value_dtype_attr));
     output_shape_and_type->dtype = value_shape_and_type.dtype;
-
-    if (is_lookup) {
-      if (c->RankKnown(key_shape_and_type.shape) && c->RankKnown(keys)) {
-        int keys_rank = c->Rank(keys);
-        int key_suffix_rank = c->Rank(key_shape_and_type.shape);
-        if (keys_rank < key_suffix_rank) {
-          return errors::InvalidArgument(
-              "Expected keys to have suffix ",
-              c->DebugString(key_shape_and_type.shape),
-              " but saw shape: ", c->DebugString(keys));
-        }
-        for (int d = 0; d < key_suffix_rank; d++) {
-          // Ensure the suffix of keys match what's in the Table.
-          DimensionHandle dim = c->Dim(key_shape_and_type.shape, d);
-          TF_RETURN_IF_ERROR(
-              c->ReplaceDim(keys, keys_rank - key_suffix_rank + d, dim, &keys));
-        }
-        std::vector<DimensionHandle> keys_prefix_vec;
-        keys_prefix_vec.reserve(keys_rank - key_suffix_rank);
-        for (int d = 0; d < keys_rank - key_suffix_rank; ++d) {
-          keys_prefix_vec.push_back(c->Dim(keys, d));
-        }
-        ShapeHandle keys_prefix = c->MakeShape(keys_prefix_vec);
-        TF_RETURN_IF_ERROR(c->Concatenate(keys_prefix,
-                                          value_shape_and_type.shape,
-                                          &output_shape_and_type->shape));
-      } else {
-        output_shape_and_type->shape = c->UnknownShape();
+    if (c->RankKnown(key_shape_and_type.shape) && c->RankKnown(keys)) {
+      int keys_rank = c->Rank(keys);
+      int key_suffix_rank = c->Rank(key_shape_and_type.shape);
+      if (keys_rank < key_suffix_rank) {
+        return errors::InvalidArgument(
+            "Expected keys to have suffix ",
+            c->DebugString(key_shape_and_type.shape),
+            " but saw shape: ", c->DebugString(keys));
       }
-    } else {
-      TF_RETURN_IF_ERROR(c->Concatenate(keys, value_shape_and_type.shape,
+      for (int d = 0; d < key_suffix_rank; d++) {
+        // Ensure the suffix of keys match what's in the Table.
+        DimensionHandle dim = c->Dim(key_shape_and_type.shape, d);
+        TF_RETURN_IF_ERROR(
+            c->ReplaceDim(keys, keys_rank - key_suffix_rank + d, dim, &keys));
+      }
+      std::vector<DimensionHandle> keys_prefix_vec;
+      keys_prefix_vec.reserve(keys_rank - key_suffix_rank);
+      for (int d = 0; d < keys_rank - key_suffix_rank; ++d) {
+        keys_prefix_vec.push_back(c->Dim(keys, d));
+      }
+      ShapeHandle keys_prefix = c->MakeShape(keys_prefix_vec);
+      TF_RETURN_IF_ERROR(c->Concatenate(keys_prefix, value_shape_and_type.shape,
                                         &output_shape_and_type->shape));
+    } else {
+      output_shape_and_type->shape = c->UnknownShape();
     }
   }
   return Status::OK();
@@ -166,22 +169,17 @@ REGISTER_OP("LookupTableFindV2")
       ShapeHandle handle;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
 
-      // Default value must be scalar or vector.
-      ShapeHandle keys;
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(2), 1, &keys));
-
       ShapeAndType value_shape_and_type;
       TF_RETURN_IF_ERROR(ValidateTableResourceHandle(
           c,
           /*keys=*/c->input(1),
           /*key_dtype_attr=*/"Tin",
-          /*value_dtype_attr=*/"Tout",
-          /*is_lookup=*/true, &value_shape_and_type));
+          /*value_dtype_attr=*/"Tout", &value_shape_and_type));
       c->set_output(0, value_shape_and_type.shape);
 
       return Status::OK();
     });
-WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("LookupTableFindV2");
+ALLOW_STATEFUL_OP_FOR_DATASET_FUNCTIONS("LookupTableFindV2");
 // TODO(b/72710477): Update this.
 
 REGISTER_OP("LookupTableInsert")
@@ -231,13 +229,13 @@ REGISTER_OP("LookupTableSize")
     .Input("table_handle: Ref(string)")
     .Output("size: int64")
     .SetShapeFn(TwoElementVectorInputsAndScalarOutputs);
-WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("LookupTableSize");
+ALLOW_STATEFUL_OP_FOR_DATASET_FUNCTIONS("LookupTableSize");
 
 REGISTER_OP("LookupTableSizeV2")
     .Input("table_handle: resource")
     .Output("size: int64")
     .SetShapeFn(ScalarAndTwoElementVectorInputsAndScalarOutputs);
-WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("LookupTableSizeV2");
+ALLOW_STATEFUL_OP_FOR_DATASET_FUNCTIONS("LookupTableSizeV2");
 
 REGISTER_OP("LookupTableExport")
     .Input("table_handle: Ref(string)")
@@ -268,16 +266,18 @@ REGISTER_OP("LookupTableExportV2")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle handle;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
-      ShapeHandle keys = c->UnknownShapeOfRank(1);
-      ShapeAndType value_shape_and_type;
-      TF_RETURN_IF_ERROR(ValidateTableResourceHandle(
-          c,
-          /*keys=*/keys,
-          /*key_dtype_attr=*/"Tkeys",
-          /*value_dtype_attr=*/"Tvalues",
-          /*is_lookup=*/false, &value_shape_and_type));
-      c->set_output(0, keys);
-      c->set_output(1, value_shape_and_type.shape);
+      auto* handle_data = c->input_handle_shapes_and_types(0);
+      if (handle_data != nullptr && handle_data->size() == 2) {
+        const ShapeAndType& key_shape_and_type = (*handle_data)[0];
+        const ShapeAndType& value_shape_and_type = (*handle_data)[1];
+        TF_RETURN_IF_ERROR(ValidateTableType(c, key_shape_and_type,
+                                             /*key_dtype_attr*/ "Tkeys",
+                                             value_shape_and_type,
+                                             /*value_dtype_attr*/ "Tvalues"));
+      }
+      // Different lookup tables have different output shapes.
+      c->set_output(0, c->UnknownShape());
+      c->set_output(1, c->UnknownShape());
       return Status::OK();
     });
 
@@ -480,6 +480,7 @@ REGISTER_OP("InitializeTableFromTextFile")
     .Attr("value_index: int >= -2")
     .Attr("vocab_size: int >= -1 = -1")
     .Attr("delimiter: string = '\t'")
+    .Attr("offset: int = 0")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle handle;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &handle));
@@ -497,6 +498,7 @@ REGISTER_OP("InitializeTableFromTextFileV2")
     .Attr("value_index: int >= -2")
     .Attr("vocab_size: int >= -1 = -1")
     .Attr("delimiter: string = '\t'")
+    .Attr("offset: int = 0")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle handle;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));

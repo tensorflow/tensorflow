@@ -87,6 +87,13 @@ class ZipDatasetOp::Dataset : public DatasetBase {
     return result;
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    for (const auto& input : inputs_) {
+      inputs->push_back(input);
+    }
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override {
     for (const auto& input : inputs_) {
       TF_RETURN_IF_ERROR(input->CheckExternalState());

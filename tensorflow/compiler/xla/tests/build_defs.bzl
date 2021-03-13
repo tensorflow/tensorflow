@@ -1,32 +1,17 @@
 """Build rules for XLA testing."""
 
-load("@local_config_cuda//cuda:build_defs.bzl", "cuda_is_configured")
-load("@local_config_rocm//rocm:build_defs.bzl", "rocm_is_configured")
-load("//tensorflow/compiler/xla/tests:plugin.bzl", "plugins")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/compiler/xla/tests:plugin.bzl", "plugins")
+load(
+    "//tensorflow/stream_executor:build_defs.bzl",
+    "if_gpu_is_configured",
+)
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
-    "tf_cuda_tests_tags",
+    "tf_gpu_tests_tags",
 )
 
 all_backends = ["cpu", "gpu"] + plugins.keys()
-
-def filter_backends(backends):
-    """Removes "gpu" from a backend list if CUDA or ROCm is not enabled.
-
-    This allows us to simply hardcode lists including "gpu" here and in the
-    BUILD file, without causing failures when CUDA or ROCm isn't enabled.'
-
-    Args:
-      backends: A list of backends to filter.
-
-    Returns:
-      The filtered list of backends.
-    """
-    if cuda_is_configured() or rocm_is_configured():
-        return backends
-    else:
-        return [backend for backend in backends if backend != "gpu"]
 
 def xla_test(
         name,
@@ -34,7 +19,7 @@ def xla_test(
         deps,
         xla_test_library_deps = [],
         backends = [],
-        blacklisted_backends = [],
+        disabled_backends = [],
         real_hardware_only = False,
         args = [],
         tags = [],
@@ -99,7 +84,7 @@ def xla_test(
       backends: A list of backends to generate tests for. Supported values: "cpu",
         "gpu". If this list is empty, the test will be generated for all supported
         backends.
-      blacklisted_backends: A list of backends to NOT generate tests for.
+      disabled_backends: A list of backends to NOT generate tests for.
       args: Test arguments for the target.
       tags: Tags for the target.
       copts: Additional copts to pass to the build.
@@ -121,7 +106,7 @@ def xla_test(
     backends = [
         backend
         for backend in backends
-        if backend not in blacklisted_backends
+        if backend not in disabled_backends
     ]
 
     native.cc_library(
@@ -132,7 +117,7 @@ def xla_test(
         deps = deps,
     )
 
-    for backend in filter_backends(backends):
+    for backend in backends:
         test_name = "%s_%s" % (name, backend)
         this_backend_tags = ["xla_%s" % backend]
         this_backend_copts = []
@@ -142,9 +127,9 @@ def xla_test(
             backend_deps = ["//tensorflow/compiler/xla/service:cpu_plugin"]
             backend_deps += ["//tensorflow/compiler/xla/tests:test_macros_cpu"]
         elif backend == "gpu":
-            backend_deps = ["//tensorflow/compiler/xla/service:gpu_plugin"]
-            backend_deps += ["//tensorflow/compiler/xla/tests:test_macros_gpu"]
-            this_backend_tags += tf_cuda_tests_tags()
+            backend_deps = if_gpu_is_configured(["//tensorflow/compiler/xla/service:gpu_plugin"])
+            backend_deps += if_gpu_is_configured(["//tensorflow/compiler/xla/tests:test_macros_gpu"])
+            this_backend_tags += tf_gpu_tests_tags()
         elif backend in plugins:
             backend_deps = []
             backend_deps += plugins[backend]["deps"]
@@ -219,7 +204,7 @@ def xla_test_library(
     if not backends:
         backends = all_backends
 
-    for backend in filter_backends(backends):
+    for backend in backends:
         this_backend_copts = []
         if backend in ["cpu", "gpu"]:
             backend_deps = ["//tensorflow/compiler/xla/tests:test_macros_%s" % backend]
@@ -242,7 +227,7 @@ def xla_test_library(
 def generate_backend_suites(backends = []):
     if not backends:
         backends = all_backends
-    for backend in filter_backends(backends):
+    for backend in backends:
         native.test_suite(
             name = "%s_tests" % backend,
             tags = ["xla_%s" % backend, "-broken", "manual"],
@@ -251,7 +236,7 @@ def generate_backend_suites(backends = []):
 def generate_backend_test_macros(backends = []):
     if not backends:
         backends = all_backends
-    for backend in filter_backends(backends):
+    for backend in backends:
         manifest = ""
         if backend in plugins:
             manifest = plugins[backend]["disabled_manifest"]
@@ -266,11 +251,6 @@ def generate_backend_test_macros(backends = []):
                 "-DXLA_DISABLED_MANIFEST=\\\"%s\\\"" % manifest,
             ],
             deps = [
-                "@com_google_absl//absl/container:flat_hash_map",
-                "@com_google_absl//absl/strings",
-                "//tensorflow/compiler/xla:types",
-                "//tensorflow/core:lib",
-                "//tensorflow/core:regexp_internal",
-                "//tensorflow/core:test",
+                "//tensorflow/core/platform:logging",
             ],
         )

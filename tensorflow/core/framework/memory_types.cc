@@ -64,7 +64,8 @@ void MemoryTypesHelper(const NameRangeMap& name_map,
 
 bool IsFunctionCallOp(const string& op_type) {
   return op_type == "SymbolicGradient" || op_type == "PartitionedCall" ||
-         op_type == "StatefulPartitionedCall" || op_type == "While";
+         op_type == "StatefulPartitionedCall" || op_type == "While" ||
+         op_type == "StatelessWhile";
 }
 
 }  // namespace
@@ -161,6 +162,7 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
       }
     }
   }
+  hostmem_attr.clear();
   if (TryGetNodeAttr(ndef, "_output_hostmem", &hostmem_attr)) {
     for (int32 i : hostmem_attr) {
       if (0 <= i && i < out_mtypes->size()) {

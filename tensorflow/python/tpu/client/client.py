@@ -19,11 +19,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import datetime
+import json
 import logging
 import os
 import time
-from concurrent import futures
 
+from absl import flags
+from concurrent import futures
 from six.moves.urllib import request
 from six.moves.urllib.error import HTTPError
 
@@ -34,21 +37,47 @@ try:
 except ImportError:
   _GOOGLE_API_CLIENT_INSTALLED = False
 
+FLAGS = flags.FLAGS
+
+flags.DEFINE_bool('runtime_oom_exit', True,
+                  'Exit the script when the TPU runtime is OOM.')
+flags.DEFINE_bool('hbm_oom_exit', True,
+                  'Exit the script when the TPU HBM is OOM.')
+
 _GKE_ENV_VARIABLE = 'KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS'
 _ENDPOINTS_SEPARATOR = ','
 _DEFAULT_ENV_VARIABLE = 'TPU_NAME'
 _DISCOVERY_SERVICE_URL_ENV_VARIABLE = 'TPU_API_DISCOVERY_URL'
-_GCE_METADATA_ENDPOINT = 'http://metadata.google.internal'
+_GCE_METADATA_URL_ENV_VARIABLE = 'GCE_METADATA_IP'
 _DEFAULT_ENDPOINT_PORT = '8470'
+_OOM_EVENT_COOL_TIME_SEC = 90
+_VERSION_SWITCHER_ENDPOINT = 'http://{}:8475/requestversion'
+
+
+def _utcnow():
+  """A wrapper function around datetime.datetime.utcnow.
+
+  This function is created for unit testing purpose. It's not easy to do
+  StubOutWithMock with datetime.datetime package.
+
+  Returns:
+    datetime.datetime
+  """
+  return datetime.datetime.utcnow()
 
 
 def _environment_discovery_url():
   return os.environ.get(_DISCOVERY_SERVICE_URL_ENV_VARIABLE)
 
 
+def _gce_metadata_endpoint():
+  return 'http://' + os.environ.get(_GCE_METADATA_URL_ENV_VARIABLE,
+                                    'metadata.google.internal')
+
+
 def _request_compute_metadata(path):
   req = request.Request(
-      '%s/computeMetadata/v1/%s' % (_GCE_METADATA_ENDPOINT, path),
+      '%s/computeMetadata/v1/%s' % (_gce_metadata_endpoint(), path),
       headers={'Metadata-Flavor': 'Google'})
   resp = request.urlopen(req)
   return _as_text(resp.read())
@@ -140,6 +169,52 @@ class Client(object):
         self._zone = zone_path.split('/')[-1]
       self._discovery_url = _environment_discovery_url() or discovery_url
 
+  def _symptom_msg(self, msg):
+    """Return the structured Symptom message."""
+    return 'Symptom: ' + msg
+
+  def _oom_event(self, symptoms):
+    """Check if a runtime OOM event is reported."""
+    if not symptoms:
+      return False
+    for symptom in reversed(symptoms):
+      if symptom['symptomType'] != 'OUT_OF_MEMORY':
+        continue
+      oom_datetime_str = symptom['createTime'].split('.')[0]
+      oom_datetime = datetime.datetime.strptime(oom_datetime_str,
+                                                '%Y-%m-%dT%H:%M:%S')
+      time_diff = _utcnow() - oom_datetime
+      if time_diff < datetime.timedelta(seconds=_OOM_EVENT_COOL_TIME_SEC):
+        logging.warning(self._symptom_msg(
+            'a recent runtime OOM has occured ~{} seconds ago. The model '
+            'script will terminate automatically. To prevent future OOM '
+            'events, please consider reducing the model size. To disable this '
+            'behavior, set flag --runtime_oom_exit=false when starting the '
+            'script.'.format(time_diff.seconds)))
+        return True
+    return False
+
+  def _hbm_oom_event(self, symptoms):
+    """Check if a HBM OOM event is reported."""
+    if not symptoms:
+      return False
+    for symptom in reversed(symptoms):
+      if symptom['symptomType'] != 'HBM_OUT_OF_MEMORY':
+        continue
+      oom_datetime_str = symptom['createTime'].split('.')[0]
+      oom_datetime = datetime.datetime.strptime(oom_datetime_str,
+                                                '%Y-%m-%dT%H:%M:%S')
+      time_diff = _utcnow() - oom_datetime
+      if time_diff < datetime.timedelta(seconds=_OOM_EVENT_COOL_TIME_SEC):
+        logging.warning(self._symptom_msg(
+            'a recent HBM OOM has occured ~{} seconds ago. The model '
+            'script will terminate automatically. To prevent future HBM OOM '
+            'events, please consider reducing the model size. To disable this '
+            'behavior, set flag --hbm_oom_exit=false when starting the '
+            'script.'.format(time_diff.seconds)))
+        return True
+    return False
+
   def _tpu_service(self):
     """Creates a new Cloud TPU API object.
 
@@ -211,9 +286,18 @@ class Client(object):
     If false the TPU is in a unrecoverable state and should be recreated.
     """
     state = self.state()
+    symptoms = self.symptoms()
     if state and state in ['TERMINATED', 'PREEMPTED']:
       return False
+    elif FLAGS.runtime_oom_exit and self._oom_event(symptoms):
+      return False
+    elif FLAGS.hbm_oom_exit and self._hbm_oom_event(symptoms):
+      return False
     return True
+
+  def symptoms(self):
+    """Return Cloud TPU Symptoms of the TPU."""
+    return self._get_tpu_property('symptoms')
 
   def state(self):
     """Return state of the TPU."""
@@ -225,6 +309,22 @@ class Client(object):
 
   def runtime_version(self):
     """Return runtime version of the TPU."""
+
+    if not self._use_api:
+      # Fallback on getting version directly from TPU.
+      url = _VERSION_SWITCHER_ENDPOINT.format(
+          self.network_endpoints()[0]['ipAddress'])
+      try:
+        req = request.Request(url)
+        resp = request.urlopen(req)
+        version_details = json.loads(resp.read())
+        return version_details.get('currentVersion')
+      except HTTPError as e:
+        status_code = e.code
+        if status_code == 404:
+          return None
+        else:
+          raise e
     return self._get_tpu_property('tensorflowVersion')
 
   def accelerator_type(self):
@@ -298,7 +398,7 @@ class Client(object):
           be sent.
       """
       ip_address = worker['ipAddress']
-      url = 'http://{}:8475/requestversion/{}?restartType={}'.format(
+      url = (_VERSION_SWITCHER_ENDPOINT + '/{}?restartType={}').format(
           ip_address, version, restart_type)
       req = request.Request(url, data=b'')
       try:

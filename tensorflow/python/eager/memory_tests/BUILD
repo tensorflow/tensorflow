@@ -11,6 +11,7 @@ package(
 py_library(
     name = "memory_test_util",
     srcs = ["memory_test_util.py"],
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = ["@six_archive//:six"],
 )
@@ -43,6 +44,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["remote_memory_test.py"],
     tags = [
+        "no_gpu",  # TODO(b/168058741): Enable the test for GPU
         "optonly",  # The test is too slow in non-opt mode
     ],
     xla_enable_strict_auto_jit = False,  # b/140261762

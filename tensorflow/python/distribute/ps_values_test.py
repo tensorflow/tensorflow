@@ -57,7 +57,7 @@ class AggregatingVariableTest(test.TestCase, parameterized.TestCase):
 
     per_replica_results = self.evaluate(
         distribution.experimental_local_results(
-            distribution.experimental_run_v2(assign)))
+            distribution.run(assign)))
     self.assertAllEqual([3], per_replica_results)
 
 

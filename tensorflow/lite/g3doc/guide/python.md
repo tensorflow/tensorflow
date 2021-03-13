@@ -10,121 +10,58 @@ just a few minutes. All you need is a TensorFlow model [converted to TensorFlow
 Lite](../convert/). (If you don't have a model converted yet, you can experiment
 using the model provided with the example linked below.)
 
-## Install just the TensorFlow Lite interpreter
+## About the TensorFlow Lite runtime package
 
-To quickly run TensorFlow Lite models with Python, you can install just the
-TensorFlow Lite interpreter, instead of all TensorFlow packages.
+To quickly start executing TensorFlow Lite models with Python, you can install
+just the TensorFlow Lite interpreter, instead of all TensorFlow packages. We
+call this simplified Python package `tflite_runtime`.
 
-This interpreter-only package is a fraction the size of the full TensorFlow
+The `tflite_runtime` package is a fraction the size of the full `tensorflow`
 package and includes the bare minimum code required to run inferences with
-TensorFlow Lite—it includes only the
-[`tf.lite.Interpreter`](https://www.tensorflow.org/api_docs/python/tf/lite/Interpreter)
+TensorFlow Lite—primarily the
+[`Interpreter`](https://www.tensorflow.org/api_docs/python/tf/lite/Interpreter)
 Python class. This small package is ideal when all you want to do is execute
 `.tflite` models and avoid wasting disk space with the large TensorFlow library.
 
-Note: If you need access to other Python APIs, such as the [TensorFlow Lite
-Converter](../convert/python_api.md), you must install the [full TensorFlow
-package](https://www.tensorflow.org/install/).
+Note: If you need access to other Python APIs, such as the
+[TensorFlow Lite Converter](../convert/), you must install the
+[full TensorFlow package](https://www.tensorflow.org/install/).
 
-To install, run `pip3 install` and pass it the appropriate Python wheel URL from
-the following table.
+## Install TensorFlow Lite for Python
 
-For example, if you have Raspberry Pi that's running Raspbian Buster (which has
-Python 3.7), install the Python wheel as follows:
+If you're running Debian Linux or a derivative of Debian (including Raspberry Pi
+OS), you should install from our Debian package repo. This requires that you add
+a new repo list and key to your system and then install as follows:
 
-<pre class="devsite-terminal devsite-click-to-copy">
-pip3 install https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-linux_armv7l.whl
+<pre class="devsite-terminal">
+echo "deb https://packages.cloud.google.com/apt coral-edgetpu-stable main" | sudo tee /etc/apt/sources.list.d/coral-edgetpu.list
+<code class="devsite-terminal"
+>curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+</code><code class="devsite-terminal"
+>sudo apt-get update
+</code><code class="devsite-terminal"
+>sudo apt-get install python3-tflite-runtime</code>
 </pre>
 
-<table>
-<tr><th>Platform</th><th>Python</th><th>URL</th></tr>
-<tr>
-  <td style="white-space:nowrap" rowspan="3">Linux (ARM 32)</td>
-  <td style="white-space:nowrap">3.5</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp35-cp35m-linux_armv7l.whl</td>
-</tr>
-<tr>
-  <!-- ARM 32 -->
-  <td style="white-space:nowrap">3.6</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp36-cp36m-linux_armv7l.whl</td>
-</tr>
-<tr>
-  <!-- ARM 32 -->
-  <td style="white-space:nowrap">3.7</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-linux_armv7l.whl</td>
-</tr>
-<tr>
-  <td style="white-space:nowrap" rowspan="3">Linux (ARM 64)</td>
-  <td style="white-space:nowrap">3.5</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp35-cp35m-linux_aarch64.whl</td>
-</tr>
-<tr>
-  <!-- ARM 64 -->
-  <td style="white-space:nowrap">3.6</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp36-cp36m-linux_aarch64.whl</td>
-</tr>
-<tr>
-  <!-- ARM 64 -->
-  <td style="white-space:nowrap">3.7</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-linux_aarch64.whl</td>
-</tr>
-<tr>
-  <td style="white-space:nowrap" rowspan="3">Linux (x86-64)</td>
-  <td style="white-space:nowrap">3.5</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp35-cp35m-linux_x86_64.whl</td>
-</tr>
-<tr>
-  <!-- x86-64 -->
-  <td style="white-space:nowrap">3.6</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp36-cp36m-linux_x86_64.whl</td>
-</tr>
-<tr>
-  <!-- x86-64 -->
-  <td style="white-space:nowrap">3.7</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-linux_x86_64.whl</td>
-</tr>
+For all other systems, you can install with pip:
 
-<tr>
-  <td style="white-space:nowrap" rowspan="3">macOS 10.14</td>
-  <td style="white-space:nowrap">3.5</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp35-cp35m-macosx_10_14_x86_64.whl</td>
-</tr>
-<tr>
-  <!-- Mac -->
-  <td style="white-space:nowrap">3.6</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp36-cp36m-macosx_10_14_x86_64.whl</td>
-</tr>
-<tr>
-  <!-- Mac -->
-  <td style="white-space:nowrap">3.7</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-macosx_10_14_x86_64.whl</td>
-</tr>
+<pre class="devsite-terminal devsite-click-to-copy">
+pip3 install --extra-index-url https://google-coral.github.io/py-repo/ tflite_runtime
+</pre>
 
-<tr>
-  <td style="white-space:nowrap" rowspan="3">Windows 10</td>
-  <td style="white-space:nowrap">3.5</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp35-cp35m-win_amd64.whl</td>
-</tr>
-<tr>
-  <!-- Win -->
-  <td style="white-space:nowrap">3.6</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp36-cp36m-win_amd64.whl</td>
-</tr>
-<tr>
-  <!-- Win -->
-  <td style="white-space:nowrap">3.7</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-win_amd64.whl</td>
-</tr>
+If you'd like to manually install a Python wheel, you can select one from
+[all `tflite_runtime` wheels](https://github.com/google-coral/pycoral/releases/).
 
-</table>
+Note: If you're on Debian Linux and you install the `tflite_runtime` using pip,
+it can cause runtime failures when using other software that you installed as
+Debian packages and that depends on TF Lite (such as
+[Coral libraries](https://coral.ai/software/)). You can fix it if you uninstall
+`tflite_runtime` with pip and then reinstall it with the `apt-get` commands
+above.
 
 ## Run an inference using tflite_runtime
 
-To distinguish this interpreter-only package from the full TensorFlow package
-(allowing both to be installed, if you choose), the Python module provided in
-the above wheel is named `tflite_runtime`.
-
-So instead of importing `Interpreter` from the `tensorflow` module, you need to
+Instead of importing `Interpreter` from the `tensorflow` module, you now need to
 import it from `tflite_runtime`.
 
 For example, after you install the package above, copy and run the

@@ -1,0 +1,15 @@
+path: "tensorflow.distribute.experimental.coordinator"
+tf_module {
+  member {
+    name: "ClusterCoordinator"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "PerWorkerValues"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RemoteValue"
+    mtype: "<type \'type\'>"
+  }
+}

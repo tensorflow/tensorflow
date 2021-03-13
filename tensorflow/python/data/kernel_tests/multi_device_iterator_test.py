@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for `tf.data.MultiDeviceIterator`."""
+"""Tests for the non-public `MultiDeviceIterator` API."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -33,22 +33,19 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import test
 
 
-def skip_v2_test_combinations():
-  # TODO(b/121264236): Support v2 behavior for these tests.
-  return combinations.combine(tf_api_version=1, mode=["eager", "graph"])
-
-
+# TODO(b/121264236): Support v2 behavior for these tests.
 class MultiDeviceIteratorTest(test_base.DatasetTestBase,
                               parameterized.TestCase):
 
   @combinations.generate(
-      combinations.times(skip_v2_test_combinations(),
+      combinations.times(test_base.v1_only_combinations(),
                          combinations.combine(num_inits=[0, 1, 42])))
   def testInitOnly(self, num_inits):
     dataset = dataset_ops.Dataset.range(10)
@@ -60,11 +57,17 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
       for _ in range(num_inits):
         self.evaluate(multi_device_iterator.initializer)
 
-  @combinations.generate(skip_v2_test_combinations())
-  def testBasic(self):
+  @combinations.generate(
+      combinations.times(
+          test_base.v1_only_combinations(),
+          combinations.combine(
+              max_buffer_size=[0, 1, 10], prefetch_buffer_size=[0, 1, 10])))
+  def testBasic(self, prefetch_buffer_size, max_buffer_size):
     dataset = dataset_ops.Dataset.range(10)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-        dataset, ["/cpu:1", "/cpu:2"])
+        dataset, ["/cpu:1", "/cpu:2"],
+        max_buffer_size=max_buffer_size,
+        prefetch_buffer_size=prefetch_buffer_size)
 
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
     with self.test_session(config=config):
@@ -78,7 +81,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
-  @combinations.generate(skip_v2_test_combinations())
+  @combinations.generate(test_base.v1_only_combinations())
   def testOneOnSameDevice(self):
     with ops.device("/cpu:0"):
       dataset = dataset_ops.Dataset.range(10)
@@ -97,7 +100,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
-  @combinations.generate(skip_v2_test_combinations())
+  @combinations.generate(test_base.v1_only_combinations())
   def testRepeatDevices(self):
     with ops.device("/cpu:0"):
       dataset = dataset_ops.Dataset.range(20)
@@ -122,7 +125,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_3)
         self.evaluate(elem_on_4)
 
-  @combinations.generate(skip_v2_test_combinations())
+  @combinations.generate(test_base.v1_only_combinations())
   def testNotFullyDivisible(self):
     dataset = dataset_ops.Dataset.range(9)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
@@ -142,7 +145,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
-  @combinations.generate(skip_v2_test_combinations())
+  @combinations.generate(test_base.v1_only_combinations())
   def testGetNextAsOptional(self):
     if context.executing_eagerly():
       return
@@ -179,7 +182,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
       with self.assertRaises(errors.InvalidArgumentError):
         self.evaluate(elem_on_2_t)
 
-  @combinations.generate(skip_v2_test_combinations())
+  @combinations.generate(test_base.v1_only_combinations())
   def testUneven(self):
     dataset = dataset_ops.Dataset.range(10)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
@@ -199,7 +202,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
-  @combinations.generate(skip_v2_test_combinations())
+  @combinations.generate(test_base.v1_only_combinations())
   def testMultipleInitializationsGraph(self):
     if context.executing_eagerly():
       return
@@ -223,7 +226,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.assertEqual([(i, 0), (i, 1)], self.evaluate([elem_on_1,
                                                           elem_on_2]))
 
-  @combinations.generate(skip_v2_test_combinations())
+  @combinations.generate(test_base.v1_only_combinations())
   def testMultipleInitializationsEager(self):
     if not context.executing_eagerly():
       return
@@ -239,7 +242,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
       elem_on_1, elem_on_2 = multi_device_iterator.get_next()
       self.assertEqual([(0, 0), (1, 1)], self.evaluate([elem_on_1, elem_on_2]))
 
-  @combinations.generate(skip_v2_test_combinations())
+  @combinations.generate(test_base.v1_only_combinations())
   def testBasicGpu(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -260,7 +263,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
-  @combinations.generate(skip_v2_test_combinations())
+  @combinations.generate(test_base.v1_only_combinations())
   def testUnevenGpu(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -283,7 +286,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
-  @combinations.generate(skip_v2_test_combinations())
+  @combinations.generate(test_base.v1_only_combinations())
   def testGetNextAsOptionalGpu(self):
     if not test_util.is_gpu_available() or context.executing_eagerly():
       self.skipTest("No GPU available")
@@ -320,7 +323,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
       with self.assertRaises(errors.InvalidArgumentError):
         self.evaluate(elem_on_2_t)
 
-  @combinations.generate(skip_v2_test_combinations())
+  @combinations.generate(test_base.v1_only_combinations())
   def testOptimization(self):
     dataset = dataset_ops.Dataset.range(10)
     dataset = dataset.apply(testing.assert_next(["MemoryCacheImpl"]))
@@ -350,8 +353,12 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
 class OwnedMultiDeviceIteratorTest(test_base.DatasetTestBase,
                                    parameterized.TestCase):
 
-  @combinations.generate(combinations.combine(tf_api_version=2, mode="eager"))
-  def testBasic(self):
+  @combinations.generate(
+      combinations.times(
+          test_base.v2_eager_only_combinations(),
+          combinations.combine(
+              max_buffer_size=[0, 1, 10], prefetch_buffer_size=[0, 1, 10])))
+  def testBasic(self, max_buffer_size, prefetch_buffer_size):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
 
@@ -359,12 +366,14 @@ class OwnedMultiDeviceIteratorTest(test_base.DatasetTestBase,
       dataset = dataset_ops.Dataset.range(1000)
 
     mdi = multi_device_iterator_ops.OwnedMultiDeviceIterator(
-        dataset, ["/cpu:0", "/gpu:0"])
+        dataset, ["/cpu:0", "/gpu:0"],
+        max_buffer_size=max_buffer_size,
+        prefetch_buffer_size=prefetch_buffer_size)
 
     for i, el in enumerate(mdi):
       self.assertEqual([i * 2, i * 2 + 1], [el[0].numpy(), el[1].numpy()])
 
-  @combinations.generate(combinations.combine(tf_api_version=2, mode="eager"))
+  @combinations.generate(test_base.v2_eager_only_combinations())
   def testBasicFunction(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -387,7 +396,7 @@ class OwnedMultiDeviceIteratorTest(test_base.DatasetTestBase,
     for i in range(10):
       self.assertEqual(queue.dequeue().numpy(), i)
 
-  @combinations.generate(combinations.combine(tf_api_version=2, mode="eager"))
+  @combinations.generate(test_base.v2_eager_only_combinations())
   def testFunctionError(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -411,7 +420,12 @@ class OwnedMultiDeviceIteratorTest(test_base.DatasetTestBase,
 
     @def_function.function
     def fn():
-      dataset = dataset_ops._GeneratorDataset(1, init_fn, next_fn, finalize_fn)
+      dataset = dataset_ops._GeneratorDataset(
+          1,
+          init_fn,
+          next_fn,
+          finalize_fn,
+          output_signature=tensor_spec.TensorSpec([], dtypes.int64))
       iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
           dataset, ["/cpu:0", "/gpu:0"])
       next(iterator)
@@ -421,7 +435,7 @@ class OwnedMultiDeviceIteratorTest(test_base.DatasetTestBase,
 
     self.assertEqual(queue.size().numpy(), 2)
 
-  @combinations.generate(combinations.combine(tf_api_version=2, mode="eager"))
+  @combinations.generate(test_base.v2_eager_only_combinations())
   def testMultipleInitializations(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -436,7 +450,7 @@ class OwnedMultiDeviceIteratorTest(test_base.DatasetTestBase,
       for i, el in enumerate(multi_device_iterator):
         self.assertEqual([i * 2, i * 2 + 1], [el[0].numpy(), el[1].numpy()])
 
-  @combinations.generate(combinations.combine(tf_api_version=2, mode="eager"))
+  @combinations.generate(test_base.v2_eager_only_combinations())
   def testLimitedRetracing(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")

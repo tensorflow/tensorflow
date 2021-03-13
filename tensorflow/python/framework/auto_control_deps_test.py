@@ -50,7 +50,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
         v.assign(2 * v)
         val = v.read_value()
         val = c.mark_as_return(val)
-      self.assertAllEqual(val.eval(), 4.0)
+      self.assertAllEqual(val, 4.0)
 
   def testNoControlDepsBetweenVariableReads(self):
     with context.graph_mode(), self.cached_session():
@@ -102,23 +102,16 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertNotIn(read_op1, read_op2.control_inputs)
       self.assertNotIn(read_op2, read_op1.control_inputs)
 
-  def testVariableReadsNotInOpsWithMustRun(self):
+  def testVariableReadsInOpsWithMustRun(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
       self.evaluate(variables.global_variables_initializer())
       with acd.AutomaticControlDependencies() as c:
-        read_op1 = gen_resource_variable_ops.read_variable_op(
-            v.handle, v.dtype).op
-        read_op2 = gen_resource_variable_ops.read_variable_op(
-            v.handle, v.dtype).op
-        assign_op = gen_resource_variable_ops.assign_variable_op(
-            v.handle, v + 1)
-      # Reads must not be in `ops_which_must_run` since those get added to the
-      # `control_outputs`.
-      self.assertNotIn(read_op1, c.ops_which_must_run)
-      self.assertNotIn(read_op2, c.ops_which_must_run)
-      # Last write must be in `ops_which_must_run`.
-      self.assertIn(assign_op, c.ops_which_must_run)
+        read_op = gen_resource_variable_ops.read_variable_op(v.handle,
+                                                             v.dtype).op
+        # Read ops get added to control outputs only if they have consumers.
+        c.mark_as_return(read_op.outputs[0])
+      self.assertIn(read_op, c.ops_which_must_run)
 
   def testVariableMultipleReadsAndWrites(self):
     with context.graph_mode(), self.cached_session():
@@ -142,6 +135,11 @@ class AutomaticControlDependenciesTest(test.TestCase):
             v.handle, v + 1)
         assign_op4 = gen_resource_variable_ops.assign_variable_op(
             v.handle, v + 1)
+        # Read ops get added to control outputs only if they have consumers.
+        c.mark_as_return(read_op1.outputs[0])
+        c.mark_as_return(read_op2.outputs[0])
+        c.mark_as_return(read_op3.outputs[0])
+        c.mark_as_return(read_op4.outputs[0])
 
       # Verify the control edges.
       self.assertIn(read_op1, assign_op1.control_inputs)
@@ -158,11 +156,11 @@ class AutomaticControlDependenciesTest(test.TestCase):
       for src_op, tgt_op in itertools.product(read_ops, read_ops):
         self.assertNotIn(src_op, tgt_op.control_inputs)
 
-      # Reads must not be in `ops_which_must_run`.
-      self.assertNotIn(read_op1, c.ops_which_must_run)
-      self.assertNotIn(read_op2, c.ops_which_must_run)
-      self.assertNotIn(read_op3, c.ops_which_must_run)
-      self.assertNotIn(read_op4, c.ops_which_must_run)
+      # Reads must be in `ops_which_must_run`.
+      self.assertIn(read_op1, c.ops_which_must_run)
+      self.assertIn(read_op2, c.ops_which_must_run)
+      self.assertIn(read_op3, c.ops_which_must_run)
+      self.assertIn(read_op4, c.ops_which_must_run)
       # Last write must be in `ops_which_must_run`.
       self.assertIn(assign_op4, c.ops_which_must_run)
 
@@ -607,9 +605,9 @@ class AutomaticControlDependenciesTest(test.TestCase):
         one = constant_op.constant(1.0)
         one = c.mark_as_return(one)
       one.eval(feed_dict={p: False})
-      self.assertAllEqual(v.read_value().eval(), 5.0)
+      self.assertAllEqual(v.read_value(), 5.0)
       one.eval(feed_dict={p: True})
-      self.assertAllEqual(v.read_value().eval(), 6.0)
+      self.assertAllEqual(v.read_value(), 6.0)
 
   @test_util.run_v1_only("b/120545219")
   def testCondNested(self):
@@ -737,7 +735,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
         v.assign(2 * v)
         return v.read_value()
 
-      self.assertAllEqual(f().eval(), 4.0)
+      self.assertAllEqual(f(), 4.0)
 
   def testOptimizerInDefun(self):
     def loss(v):
@@ -761,8 +759,8 @@ class AutomaticControlDependenciesTest(test.TestCase):
     v = resource_variable_ops.ResourceVariable(1.0)
     grad = backprop.implicit_grad(lambda v: v**2)(v)
 
-    with self.assertRaisesRegexp(TypeError,
-                                 ".*must return zero or more Tensors.*"):
+    with self.assertRaisesRegex(TypeError,
+                                ".*must return zero or more Tensors.*"):
       # TODO(akshayka): We might want to allow defun-ing Python functions
       # that return operations (and just execute the op instead of running it).
       optimizer.apply_gradients(grad)

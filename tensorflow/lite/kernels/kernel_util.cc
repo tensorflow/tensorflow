@@ -14,14 +14,178 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/kernel_util.h"
 
-#include <algorithm>
-#include <cmath>
-#include <memory>
+#include <stdint.h>
+#include <stdlib.h>
 
+#include <algorithm>
+#include <complex>
+#include <limits>
+#include <memory>
+#ifndef TF_LITE_STATIC_MEMORY
+#include <string>
+#endif  // TF_LITE_STATIC_MEMORY
+
+#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 
 namespace tflite {
+
+namespace {
+
+// Assumes tensor_index is a valid index (in bounds)
+inline TfLiteTensor* GetTensorAtIndex(const TfLiteContext* context,
+                                      int tensor_index) {
+  if (context->tensors != nullptr) {
+    return &context->tensors[tensor_index];
+  } else {
+    return context->GetTensor(context, tensor_index);
+  }
+}
+
+// Validate in a single place to reduce binary size
+inline TfLiteStatus ValidateTensorIndexingSafe(const TfLiteContext* context,
+                                               int index, int max_size,
+                                               const int* tensor_indices,
+                                               int* tensor_index) {
+  if (index < 0 || index >= max_size) {
+    TF_LITE_KERNEL_LOG(const_cast<TfLiteContext*>(context),
+                       "Invalid tensor index %d (not in [0, %d))\n", index,
+                       max_size);
+    return kTfLiteError;
+  }
+  if (tensor_indices[index] == kTfLiteOptionalTensor) {
+    TF_LITE_KERNEL_LOG(const_cast<TfLiteContext*>(context),
+                       "Tensor at index %d was optional but was expected\n",
+                       index);
+    return kTfLiteError;
+  }
+
+  *tensor_index = tensor_indices[index];
+  return kTfLiteOk;
+}
+
+// Same as above but returns -1 for invalid inputs instead of status + logging
+// error.
+inline int ValidateTensorIndexing(const TfLiteContext* context, int index,
+                                  int max_size, const int* tensor_indices) {
+  if (index >= 0 && index < max_size) {
+    const int tensor_index = tensor_indices[index];
+    if (tensor_index != kTfLiteOptionalTensor) {
+      return tensor_index;
+    }
+  }
+  return -1;
+}
+
+inline TfLiteTensor* GetMutableInput(const TfLiteContext* context,
+                                     const TfLiteNode* node, int index) {
+  const int tensor_index = ValidateTensorIndexing(
+      context, index, node->inputs->size, node->inputs->data);
+  if (tensor_index < 0) {
+    return nullptr;
+  }
+  return GetTensorAtIndex(context, tensor_index);
+}
+
+inline TfLiteStatus GetMutableInputSafe(const TfLiteContext* context,
+                                        const TfLiteNode* node, int index,
+                                        const TfLiteTensor** tensor) {
+  int tensor_index;
+  TF_LITE_ENSURE_OK(
+      context, ValidateTensorIndexingSafe(context, index, node->inputs->size,
+                                          node->inputs->data, &tensor_index));
+  *tensor = GetTensorAtIndex(context, tensor_index);
+  return kTfLiteOk;
+}
+
+}  // anonymous namespace.
+
+const TfLiteTensor* GetInput(const TfLiteContext* context,
+                             const TfLiteNode* node, int index) {
+  return GetMutableInput(context, node, index);
+}
+
+TfLiteStatus GetInputSafe(const TfLiteContext* context, const TfLiteNode* node,
+                          int index, const TfLiteTensor** tensor) {
+  return GetMutableInputSafe(context, node, index, tensor);
+}
+
+TfLiteTensor* GetVariableInput(TfLiteContext* context, const TfLiteNode* node,
+                               int index) {
+  TfLiteTensor* tensor = GetMutableInput(context, node, index);
+  return tensor->is_variable ? tensor : nullptr;
+}
+
+TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
+                        int index) {
+  const int tensor_index = ValidateTensorIndexing(
+      context, index, node->outputs->size, node->outputs->data);
+  if (tensor_index < 0) {
+    return nullptr;
+  }
+  return GetTensorAtIndex(context, tensor_index);
+}
+
+TfLiteStatus GetOutputSafe(const TfLiteContext* context, const TfLiteNode* node,
+                           int index, TfLiteTensor** tensor) {
+  int tensor_index;
+  TF_LITE_ENSURE_OK(
+      context, ValidateTensorIndexingSafe(context, index, node->outputs->size,
+                                          node->outputs->data, &tensor_index));
+  *tensor = GetTensorAtIndex(context, tensor_index);
+  return kTfLiteOk;
+}
+
+const TfLiteTensor* GetOptionalInputTensor(const TfLiteContext* context,
+                                           const TfLiteNode* node, int index) {
+  return GetInput(context, node, index);
+}
+
+#ifndef TF_LITE_STATIC_MEMORY
+TfLiteTensor* GetTemporary(TfLiteContext* context, const TfLiteNode* node,
+                           int index) {
+  const int tensor_index = ValidateTensorIndexing(
+      context, index, node->temporaries->size, node->temporaries->data);
+  if (tensor_index < 0) {
+    return nullptr;
+  }
+  return GetTensorAtIndex(context, tensor_index);
+}
+
+TfLiteStatus GetTemporarySafe(const TfLiteContext* context,
+                              const TfLiteNode* node, int index,
+                              TfLiteTensor** tensor) {
+  int tensor_index;
+  TF_LITE_ENSURE_OK(context, ValidateTensorIndexingSafe(
+                                 context, index, node->temporaries->size,
+                                 node->temporaries->data, &tensor_index));
+  *tensor = GetTensorAtIndex(context, tensor_index);
+  return kTfLiteOk;
+}
+
+const TfLiteTensor* GetIntermediates(TfLiteContext* context,
+                                     const TfLiteNode* node, int index) {
+  const int tensor_index = ValidateTensorIndexing(
+      context, index, node->intermediates->size, node->intermediates->data);
+  if (tensor_index < 0) {
+    return nullptr;
+  }
+  return GetTensorAtIndex(context, tensor_index);
+}
+
+TfLiteStatus GetIntermediatesSafe(const TfLiteContext* context,
+                                  const TfLiteNode* node, int index,
+                                  TfLiteTensor** tensor) {
+  int tensor_index;
+  TF_LITE_ENSURE_OK(context, ValidateTensorIndexingSafe(
+                                 context, index, node->intermediates->size,
+                                 node->intermediates->data, &tensor_index));
+  *tensor = GetTensorAtIndex(context, tensor_index);
+  return kTfLiteOk;
+}
+#endif  // TF_LITE_STATIC_MEMORY
 
 // Per-axis
 TfLiteStatus PopulateConvolutionQuantizationParams(
@@ -122,8 +286,7 @@ TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
                                               double* multiplier) {
   const double input_product_scale = static_cast<double>(input->params.scale) *
                                      static_cast<double>(filter->params.scale);
-  // TODO(ahentz): The following conditions must be guaranteed by the training
-  // pipeline.
+  // The following conditions must be guaranteed by the training pipeline.
   if (bias) {
     const double bias_scale = static_cast<double>(bias->params.scale);
     // Here we're making sure the input_product_scale & bias_scale are about the
@@ -183,7 +346,7 @@ void CalculateActivationRangeQuantizedImpl(TfLiteFusedActivation activation,
   } else if (activation == kTfLiteActRelu6) {
     *act_min = std::max(qmin, quantize(0.0));
     *act_max = std::min(qmax, quantize(6.0));
-  } else if (activation == kTfLiteActRelu1) {
+  } else if (activation == kTfLiteActReluN1To1) {
     *act_min = std::max(qmin, quantize(-1.0));
     *act_max = std::min(qmax, quantize(1.0));
   } else {
@@ -222,9 +385,25 @@ bool HaveSameShapes(const TfLiteTensor* input1, const TfLiteTensor* input2) {
   return TfLiteIntArrayEqual(input1->dims, input2->dims);
 }
 
-// TODO(petewarden): Having macros around this is ugly, look at other strategies
-// before replicating this approach elsewhere.
 #ifndef TF_LITE_STATIC_MEMORY
+
+// TODO(b/172067338): Having this function be part of TF_LITE_STATIC_MEMORY
+// build results in a 6KB size increase, even though the function is unsused for
+// that build. What appears to be happening is that while the linker drops the
+// unsused function, the string library that gets pulled in is not dropped,
+// resulting in the increased binary size.
+std::string GetShapeDebugString(const TfLiteIntArray* shape) {
+  std::string str;
+  for (int d = 0; d < shape->size; ++d) {
+    if (str.empty())
+      str = "[" + std::to_string(shape->data[d]);
+    else
+      str += ", " + std::to_string(shape->data[d]);
+  }
+  str += "]";
+  return str;
+}
+
 TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
                                         const TfLiteTensor* input1,
                                         const TfLiteTensor* input2,
@@ -241,7 +420,13 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
   for (int i = 0; i < out_dims; ++i) {
     int d1 = i >= dims1 ? 1 : SizeOfDimension(input1, dims1 - i - 1);
     int d2 = i >= dims2 ? 1 : SizeOfDimension(input2, dims2 - i - 1);
-    TF_LITE_ENSURE(context, d1 == d2 || d1 == 1 || d2 == 1);
+    if (!(d1 == d2 || d1 == 1 || d2 == 1)) {
+      context->ReportError(context,
+                           "Given shapes, %s and %s, are not broadcastable.",
+                           GetShapeDebugString(input1->dims).c_str(),
+                           GetShapeDebugString(input2->dims).c_str());
+      return kTfLiteError;
+    }
     shape->data[out_dims - i - 1] = std::max(d1, d2);
   }
   *output_shape = shape.release();
@@ -264,14 +449,66 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
     int d2 = i >= dims2 ? 1 : SizeOfDimension(input2, dims2 - i - 1);
     int d3 = i >= dims3 ? 1 : SizeOfDimension(input3, dims3 - i - 1);
     int max_value = std::max(std::max(d1, d2), d3);
-    TF_LITE_ENSURE(context, d1 == 1 || d1 == max_value);
-    TF_LITE_ENSURE(context, d2 == 1 || d2 == max_value);
-    TF_LITE_ENSURE(context, d3 == 1 || d3 == max_value);
+    if (!(d1 == 1 || d1 == max_value) || !(d2 == 1 || d2 == max_value) ||
+        !(d3 == 1 || d3 == max_value)) {
+      context->ReportError(
+          context, "Given shapes, %s, %s and %s, are not broadcastable.",
+          GetShapeDebugString(input1->dims).c_str(),
+          GetShapeDebugString(input2->dims).c_str(),
+          GetShapeDebugString(input3->dims).c_str());
+      return kTfLiteError;
+    }
     shape->data[out_dims - i - 1] = max_value;
   }
   *output_shape = shape.release();
   return kTfLiteOk;
 }
 #endif  // TF_LITE_STATIC_MEMORY
+
+// Size of string is not constant, return 0 in such case.
+int TfLiteTypeGetSize(TfLiteType type) {
+  switch (type) {
+    case kTfLiteUInt8:
+      TF_LITE_ASSERT_EQ(sizeof(uint8_t), 1);
+      return 1;
+    case kTfLiteInt8:
+      TF_LITE_ASSERT_EQ(sizeof(int8_t), 1);
+      return 1;
+    case kTfLiteBool:
+      return sizeof(bool);
+    case kTfLiteInt16:
+      TF_LITE_ASSERT_EQ(sizeof(int16_t), 2);
+      return 2;
+    case kTfLiteFloat16:
+      TF_LITE_ASSERT_EQ(sizeof(int16_t), 2);
+      return 2;
+    case kTfLiteFloat32:
+      TF_LITE_ASSERT_EQ(sizeof(float), 4);
+      return 4;
+    case kTfLiteInt32:
+      TF_LITE_ASSERT_EQ(sizeof(int32_t), 4);
+      return 4;
+    case kTfLiteUInt32:
+      TF_LITE_ASSERT_EQ(sizeof(uint32_t), 4);
+      return 4;
+    case kTfLiteInt64:
+      TF_LITE_ASSERT_EQ(sizeof(int64_t), 8);
+      return 8;
+    case kTfLiteUInt64:
+      TF_LITE_ASSERT_EQ(sizeof(uint64_t), 8);
+      return 8;
+    case kTfLiteFloat64:
+      TF_LITE_ASSERT_EQ(sizeof(double), 8);
+      return 8;
+    case kTfLiteComplex64:
+      TF_LITE_ASSERT_EQ(sizeof(std::complex<float>), 8);
+      return 8;
+    case kTfLiteComplex128:
+      TF_LITE_ASSERT_EQ(sizeof(std::complex<double>), 16);
+      return 16;
+    default:
+      return 0;
+  }
+}
 
 }  // namespace tflite

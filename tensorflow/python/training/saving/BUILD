@@ -15,15 +15,16 @@ exports_files(["LICENSE"])
 py_library(
     name = "checkpoint_options",
     srcs = ["checkpoint_options.py"],
+    srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:tf_export",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
 py_library(
     name = "functional_saver",
     srcs = ["functional_saver.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":checkpoint_options",
         ":saveable_hook",
@@ -39,10 +40,15 @@ cuda_py_test(
     srcs = [
         "functional_saver_test.py",
     ],
+    tags = [
+        "no_tfrt",  # TODO(b/171765113)
+        "no_windows",  # TODO(b/171350346)
+    ],
     deps = [
         ":checkpoint_options",
         ":functional_saver",
         ":saveable_hook",
+        "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
     ],
 )
@@ -50,12 +56,13 @@ cuda_py_test(
 py_library(
     name = "saveable_object",
     srcs = ["saveable_object.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 py_library(
     name = "saveable_hook",
     srcs = ["saveable_hook.py"],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:constant_op",
         "//tensorflow/python/training/tracking:base",
@@ -65,7 +72,7 @@ py_library(
 py_library(
     name = "saveable_object_util",
     srcs = ["saveable_object_util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",

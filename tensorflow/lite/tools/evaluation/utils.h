@@ -21,12 +21,18 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#if defined(__ANDROID__)
-#include "tensorflow/lite/delegates/gpu/delegate.h"
-#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
-#if (defined(__arm__) || defined(__aarch64__))
-#include "tensorflow/lite/delegates/hexagon/hexagon_delegate.h"
+#if defined(__ANDROID__) || defined(CL_DELEGATE_NO_GL)
+#define TFLITE_SUPPORTS_GPU_DELEGATE 1
 #endif
+
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
+
+#if TFLITE_SUPPORTS_GPU_DELEGATE
+#include "tensorflow/lite/delegates/gpu/delegate.h"
+#endif
+
+#if defined(__ANDROID__) && (defined(__arm__) || defined(__aarch64__))
+#include "tensorflow/lite/delegates/hexagon/hexagon_delegate.h"
 #endif
 
 // TODO(b/149248802): include XNNPACK delegate when the issue is resolved.
@@ -39,8 +45,8 @@ limitations under the License.
 namespace tflite {
 namespace evaluation {
 
-// Same w/ Interpreter::TfLiteDelegatePtr to avoid pulling
-// tensorflow/lite/interpreter.h dependency
+// Same as Interpreter::TfLiteDelegatePtr, defined here to avoid pulling
+// in tensorflow/lite/interpreter.h dependency.
 using TfLiteDelegatePtr =
     std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;
 
@@ -61,13 +67,12 @@ inline TfLiteStatus GetSortedFileNames(const std::string& directory,
                             std::unordered_set<std::string>());
 }
 
+// Returns nullptr on error, e.g. if NNAPI isn't supported on this platform.
 TfLiteDelegatePtr CreateNNAPIDelegate();
-#if defined(__ANDROID__)
 TfLiteDelegatePtr CreateNNAPIDelegate(StatefulNnApiDelegate::Options options);
-#endif
 
 TfLiteDelegatePtr CreateGPUDelegate();
-#if defined(__ANDROID__)
+#if TFLITE_SUPPORTS_GPU_DELEGATE
 TfLiteDelegatePtr CreateGPUDelegate(TfLiteGpuDelegateOptionsV2* options);
 #endif
 

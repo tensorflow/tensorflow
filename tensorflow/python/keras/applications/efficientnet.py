@@ -16,9 +16,9 @@
 # pylint: disable=missing-docstring
 """EfficientNet models for Keras.
 
-Reference paper:
-  - [EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks]
-    (https://arxiv.org/abs/1905.11946) (ICML 2019)
+Reference:
+  - [EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks](
+      https://arxiv.org/abs/1905.11946) (ICML 2019)
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -154,7 +154,7 @@ BASE_DOCSTRING = """Instantiates the {name} architecture.
   the one specified in your Keras config at `~/.keras/keras.json`.
   If you have never configured it, it defaults to `"channels_last"`.
 
-  Arguments:
+  Args:
     include_top: Whether to include the fully-connected
         layer at the top of the network. Defaults to True.
     weights: One of `None` (random initialization),
@@ -210,7 +210,7 @@ def EfficientNet(
     classifier_activation='softmax'):
   """Instantiates the EfficientNet architecture using given scaling coefficients.
 
-  Reference paper:
+  Reference:
   - [EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks](
       https://arxiv.org/abs/1905.11946) (ICML 2019)
 
@@ -218,7 +218,7 @@ def EfficientNet(
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
 
-  Arguments:
+  Args:
     width_coefficient: float, scaling coefficient for network width.
     depth_coefficient: float, scaling coefficient for network depth.
     default_size: integer, default input image size.
@@ -269,7 +269,7 @@ def EfficientNet(
   if blocks_args == 'default':
     blocks_args = DEFAULT_BLOCKS_ARGS
 
-  if not (weights in {'imagenet', None} or file_io.file_exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
@@ -334,7 +334,7 @@ def EfficientNet(
   blocks_args = copy.deepcopy(blocks_args)
 
   b = 0
-  blocks = float(sum(args['repeats'] for args in blocks_args))
+  blocks = float(sum(round_repeats(args['repeats']) for args in blocks_args))
   for (i, args) in enumerate(blocks_args):
     assert args['repeats'] > 0
     # Update block input and output filters based on depth multiplier.
@@ -423,7 +423,7 @@ def block(inputs,
           id_skip=True):
   """An inverted residual block.
 
-  Arguments:
+  Args:
       inputs: input tensor.
       activation: activation function.
       drop_rate: float between 0 and 1, fraction of the input units to drop.
@@ -479,7 +479,11 @@ def block(inputs,
   if 0 < se_ratio <= 1:
     filters_se = max(1, int(filters_in * se_ratio))
     se = layers.GlobalAveragePooling2D(name=name + 'se_squeeze')(x)
-    se = layers.Reshape((1, 1, filters), name=name + 'se_reshape')(se)
+    if bn_axis == 1:
+      se_shape = (filters, 1, 1)
+    else:
+      se_shape = (1, 1, filters)
+    se = layers.Reshape(se_shape, name=name + 'se_reshape')(se)
     se = layers.Conv2D(
         filters_se,
         1,

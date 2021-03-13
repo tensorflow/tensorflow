@@ -739,6 +739,42 @@ class XRTCompactAllocationsOp : public OpKernel {
   }
 };
 
+template <class DeviceAccessor>
+class XRTMemoryInfoOp : public OpKernel {
+ public:
+  explicit XRTMemoryInfoOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  ~XRTMemoryInfoOp() override = default;
+  XRTMemoryInfoOp(const XRTMemoryInfoOp&) = delete;
+  XRTMemoryInfoOp& operator=(const XRTMemoryInfoOp&) = delete;
+
+  void Compute(OpKernelContext* ctx) override {
+    auto kernel_fn = [&]() -> Status {
+      VLOG(1) << "XRTMemoryInfoOp::Compute";
+
+      class DeviceAccessor::ScopedRef device_ref;
+      TF_RETURN_IF_ERROR(DeviceAccessor::InitScopedRef(ctx, &device_ref));
+      TF_ASSIGN_OR_RETURN(
+          se::StreamExecutor * stream_executor,
+          device_ref.backend()->stream_executor(device_ref.device_ordinal()));
+      int64 mem_free = -1;
+      int64 mem_total = -1;
+      if (!stream_executor->DeviceMemoryUsage(&mem_free, &mem_total)) {
+        VLOG(2) << "Device " << ctx->device()->name()
+                << " does not expose memory information";
+      }
+      xrt::MemoryInfo mem_info;
+      mem_info.set_kb_total((mem_total >= 0) ? mem_total / 1024 : -1);
+      mem_info.set_kb_free((mem_free >= 0) ? mem_free / 1024 : -1);
+
+      Tensor output(DT_STRING, TensorShape({}));
+      output.scalar<tstring>()() = mem_info.SerializeAsString();
+      ctx->set_output(0, output);
+      return Status::OK();
+    };
+    OP_REQUIRES_OK(ctx, kernel_fn());
+  }
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_XRT_KERNELS_XRT_STATE_OPS_H_

@@ -269,8 +269,8 @@ class NestedStructureTest(test.TestCase):
     encoded = struct_pb2.StructuredValue()
     encoded.type_spec_value.type_spec_class = 0
     encoded.type_spec_value.type_spec_class_name = "FutureTensorSpec"
-    with self.assertRaisesRegexp(
-        ValueError, "The type 'FutureTensorSpec' is not supported"):
+    with self.assertRaisesRegex(ValueError,
+                                "The type 'FutureTensorSpec' is not supported"):
       self._coder.decode_proto(encoded)
 
   def testEncodeDecodeBoundedTensorSpec(self):

@@ -31,13 +31,18 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-CholeskyThunk::CholeskyThunk(const CholeskyOptions& options,
+static tensorflow::mutex contexts_mu(tensorflow::LINKER_INITIALIZED);
+static auto contexts =
+    new absl::flat_hash_map<se::Stream*, CusolverContext> TF_GUARDED_BY(
+        contexts_mu);
+
+CholeskyThunk::CholeskyThunk(ThunkInfo thunk_info,
+                             const CholeskyOptions& options,
                              BufferAllocation::Slice a_buffer,
                              BufferAllocation::Slice workspace_buffer,
                              BufferAllocation::Slice info_buffer,
-                             PrimitiveType type, int64 batch_size, int64 n,
-                             const HloInstruction* hlo)
-    : Thunk(Kind::kCholesky, hlo),
+                             PrimitiveType type, int64 batch_size, int64 n)
+    : Thunk(Kind::kCholesky, thunk_info),
       uplo_(options.lower() ? se::blas::UpperLower::kLower
                             : se::blas::UpperLower::kUpper),
       a_buffer_(a_buffer),
@@ -45,9 +50,7 @@ CholeskyThunk::CholeskyThunk(const CholeskyOptions& options,
       info_buffer_(info_buffer),
       type_(type),
       batch_size_(batch_size),
-      a_batch_stride_(n * n *
-                      ShapeUtil::ByteSizeOfPrimitiveType(
-                          hlo->operand(0)->shape().element_type())),
+      a_batch_stride_(n * n * ShapeUtil::ByteSizeOfPrimitiveType(type)),
       n_(n) {}
 
 Status CholeskyThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -60,8 +63,8 @@ Status CholeskyThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   CusolverContext* context;
   {
-    tensorflow::mutex_lock lock(mu_);
-    auto result = contexts_.emplace(params.stream, CusolverContext());
+    tensorflow::mutex_lock lock(contexts_mu);
+    auto result = contexts->emplace(params.stream, CusolverContext());
     if (result.second) {
       TF_ASSIGN_OR_RETURN(result.first->second,
                           CusolverContext::Create(params.stream));

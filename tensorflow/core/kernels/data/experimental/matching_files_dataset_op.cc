@@ -82,6 +82,11 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
       return "MatchingFilesDatasetOp::Dataset";
     }
 
+    Status InputDatasets(
+        std::vector<const DatasetBase*>* inputs) const override {
+      return Status::OK();
+    }
+
     Status CheckExternalState() const override { return Status::OK(); }
 
    protected:

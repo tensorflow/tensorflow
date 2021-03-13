@@ -476,12 +476,12 @@ inline SparseTensor SparseTensor::Concat(
     // Fill in indices & values.
     if (st_num_entries > 0) {
       std::copy_n(&st.vals_.vec<T>()(0), st_num_entries, &vals_t(offset));
-    }
 
-    const auto* st_ix = &st.ix_.matrix<int64>()(0, 0);
-    auto* ix_out = &ix_t(offset, 0);
-    for (std::size_t i = 0; i < st_num_entries * dims; ++i) {
-      *ix_out++ = *st_ix++ + ((i % dims == primary_dim) ? shape_offset : 0);
+      const auto* st_ix = &st.ix_.matrix<int64>()(0, 0);
+      auto* ix_out = &ix_t(offset, 0);
+      for (std::size_t i = 0; i < st_num_entries * dims; ++i) {
+        *ix_out++ = *st_ix++ + ((i % dims == primary_dim) ? shape_offset : 0);
+      }
     }
 
     offset += st_num_entries;

@@ -1,13 +1,13 @@
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
 
-common_copts = [
-    "-Wall",
-] + tflite_copts()
+common_copts = tflite_copts() + tflite_copts_warnings()
 
 cc_library(
     name = "profiler",
@@ -23,6 +23,16 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "profiler_test",
+    srcs = ["profiler_test.cc"],
+    deps = [
+        ":profiler",
+        ":test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 cc_library(
     name = "atrace_profiler",
     srcs = ["atrace_profiler.cc"],
@@ -35,27 +45,40 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "atrace_profiler_test",
+    srcs = ["atrace_profiler_test.cc"],
+    deps = [
+        ":atrace_profiler",
+        ":test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+objc_library(
+    name = "signpost_profiler",
+    hdrs = ["signpost_profiler.h"],
+    copts = common_copts,
+    non_arc_srcs = ["signpost_profiler.mm"],
+    tags = ["apple"],
+    deps = [
+        "//tensorflow/lite/core/api",
+    ],
+)
+
 cc_library(
     name = "platform_profiler",
     srcs = ["platform_profiler.cc"],
     hdrs = ["platform_profiler.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = common_copts,
     deps = [
         "//tensorflow/lite/core/api",
     ] + select({
         "//tensorflow:android": [":atrace_profiler"],
+        "//tensorflow:ios": [":signpost_profiler"],
         "//conditions:default": [],
     }),
-)
-
-cc_test(
-    name = "profiler_test",
-    srcs = ["profiler_test.cc"],
-    deps = [
-        ":profiler",
-        "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
-    ],
 )
 
 cc_library(
@@ -69,11 +92,31 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "profile_buffer_test",
+    srcs = ["profile_buffer_test.cc"],
+    deps = [
+        ":profile_buffer",
+        ":test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 cc_library(
     name = "time",
     srcs = ["time.cc"],
     hdrs = ["time.h"],
     copts = common_copts,
+)
+
+cc_test(
+    name = "time_test",
+    srcs = ["time_test.cc"],
+    deps = [
+        ":test_main",
+        ":time",
+        "@com_google_googletest//:gtest",
+    ],
 )
 
 cc_library(
@@ -84,30 +127,20 @@ cc_library(
 )
 
 cc_test(
-    name = "time_test",
-    srcs = ["time_test.cc"],
-    copts = common_copts,
-    deps = [
-        ":time",
-        "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
     name = "memory_info_test",
     srcs = ["memory_info_test.cc"],
-    copts = common_copts,
     tags = [
         # Some low-level checks, like heap size check, may break in asan, msan
         # and tsan. So, disable such tests.
         "noasan",
         "nomsan",
         "notsan",
+        # TODO(b/166227284): Fix the test for Android.
+        "tflite_not_portable_android",
     ],
     deps = [
         ":memory_info",
-        "//tensorflow/lite/testing:util",
+        ":test_main",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -125,10 +158,9 @@ cc_library(
 cc_test(
     name = "profile_summary_formatter_test",
     srcs = ["profile_summary_formatter_test.cc"],
-    copts = common_copts,
     deps = [
         ":profile_summary_formatter",
-        "//tensorflow/lite/testing:util",
+        ":test_main",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -151,26 +183,28 @@ cc_library(
 cc_test(
     name = "profile_summarizer_test",
     srcs = ["profile_summarizer_test.cc"],
-    copts = common_copts,
     deps = [
         ":profile_summarizer",
         ":profiler",
+        ":test_main",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "test_main",
+    testonly = 1,
+    srcs = ["test_main.cc"],
+    visibility = ["//visibility:private"],
+    deps = [
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
 )
 
-cc_test(
-    name = "profile_buffer_test",
-    srcs = ["profile_buffer_test.cc"],
-    deps = [
-        ":profile_buffer",
-        "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
-    ],
-)
+tflite_portable_test_suite_combined(combine_conditions = {"deps": [":test_main"]})

@@ -68,7 +68,7 @@ class DnnScratchAllocator : public se::ScratchAllocator {
                                            memory_limit_, ").")};
     }
     AllocationAttributes allocation_attr;
-    allocation_attr.no_retry_on_failure = true;
+    allocation_attr.retry_on_failure = false;
     Status allocation_status(context_->allocate_temp(
         DT_UINT8, TensorShape({byte_size}), &temporary_memory,
         AllocatorAttributes(), allocation_attr));

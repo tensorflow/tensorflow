@@ -90,7 +90,8 @@ class EagerServiceImpl {
   static constexpr uint64 kInvalidStreamId = 0;
 
   // Used by both Enqueue and StreamingEnqueue RPCs.
-  Status Enqueue(const EnqueueRequest* request, EnqueueResponse* response,
+  Status Enqueue(CallOptions* call_opts, const EnqueueRequest* request,
+                 EnqueueResponse* response,
                  uint64 stream_id = kInvalidStreamId);
 
   Status WaitQueueDone(const WaitQueueDoneRequest* request,
@@ -148,9 +149,8 @@ class EagerServiceImpl {
 
     bool IsStale() {
       mutex_lock l(last_accessed_mu_);
-      return (destroy_after_micros_ > 0 &&
-              (env_->env->NowMicros() - last_accessed_micros_) >
-                  destroy_after_micros_);
+      const int64 time_passed = env_->env->NowMicros() - last_accessed_micros_;
+      return (destroy_after_micros_ > 0 && time_passed > destroy_after_micros_);
     }
 
    private:
@@ -208,8 +208,8 @@ class EagerServiceImpl {
   };
 
  private:
-  Status ExecuteOp(const Operation& operation, EagerContext* eager_context,
-                   EagerExecutor* eager_executor,
+  Status ExecuteOp(CallOptions* call_opts, const Operation& operation,
+                   EagerContext* eager_context, EagerExecutor* eager_executor,
                    QueueResponse* queue_response);
   Status SendTensor(const SendTensorOp& send_tensor,
                     EagerContext* eager_context);

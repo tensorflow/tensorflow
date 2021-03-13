@@ -17,7 +17,6 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
-#include "tensorflow/core/common_runtime/mkl_layout_pass.h"
 #include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/mkl_util.h"
@@ -51,13 +50,11 @@ class MklEagerOpRewrite : public EagerOpRewrite {
   static Status CreateGenericMklOp(EagerOperation* orig_op,
                                    std::unique_ptr<EagerOperation>* mkl_op);
 
-  // Creates new MKL op for Conv2D, Conv2DBackpropInput and
-  // Conv2DBackpropFilter.
-  static Status CreateMklConv2DOp(
-      EagerOperation* orig_op, std::unique_ptr<EagerOperation>* mkl_conv2d_op);
-
   // Rewrite rule for Conv2D, Conv2DBackpropInput and Conv2DBackpropFilter.
   static bool RewriteConv2D(EagerOperation* op);
+
+  // Rewrite rule for FusedBatchNormV3 and FusedBatchNormGradV3
+  static bool RewriteFusedBatchNormV3(EagerOperation* op);
 
   // Calls op-specific rewrite function to create new MKL op.
   Status RewriteToMklOp(EagerOperation* orig_op,
@@ -89,11 +86,36 @@ REGISTER_REWRITE(EagerOpRewriteRegistry::PRE_EXECUTION, MklEagerOpRewrite);
 // Constructor
 MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
     : EagerOpRewrite(name, file, line), registered_kernels_map_() {
+  InsertMKLEagerOps({"AvgPool", AlwaysRewrite, CreateGenericMklOp});
+  InsertMKLEagerOps({"AvgPoolGrad", AlwaysRewrite, CreateGenericMklOp});
+  InsertMKLEagerOps({"AvgPool3D", AlwaysRewrite, CreateGenericMklOp});
+  InsertMKLEagerOps({"AvgPool3DGrad", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"BatchMatMul", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"BatchMatMulV2", AlwaysRewrite, CreateGenericMklOp});
-  InsertMKLEagerOps({"Conv2D", RewriteConv2D, CreateMklConv2DOp});
-  InsertMKLEagerOps({"Conv2DBackpropInput", RewriteConv2D, CreateMklConv2DOp});
-  InsertMKLEagerOps({"Conv2DBackpropFilter", RewriteConv2D, CreateMklConv2DOp});
+  InsertMKLEagerOps({"Conv2D", AlwaysRewrite, CreateGenericMklOp});
+  InsertMKLEagerOps(
+      {"Conv2DBackpropFilter", RewriteConv2D, CreateGenericMklOp});
+  InsertMKLEagerOps({"Conv2DBackpropInput", RewriteConv2D, CreateGenericMklOp});
+  InsertMKLEagerOps({"Conv3D", AlwaysRewrite, CreateGenericMklOp});
+  InsertMKLEagerOps(
+      {"Conv3DBackpropFilterV2", RewriteConv2D, CreateGenericMklOp});
+  InsertMKLEagerOps(
+      {"Conv3DBackpropInputV2", RewriteConv2D, CreateGenericMklOp});
+  InsertMKLEagerOps(
+      {"DepthwiseConv2dNative", AlwaysRewrite, CreateGenericMklOp});
+  InsertMKLEagerOps({"DepthwiseConv2dNativeBackpropFilter", RewriteConv2D,
+                     CreateGenericMklOp});
+  InsertMKLEagerOps({"DepthwiseConv2dNativeBackpropInput", RewriteConv2D,
+                     CreateGenericMklOp});
+  InsertMKLEagerOps({"FusedBatchNorm", AlwaysRewrite, CreateGenericMklOp});
+  InsertMKLEagerOps({"FusedBatchNormGrad", AlwaysRewrite, CreateGenericMklOp});
+  InsertMKLEagerOps(
+      {"FusedBatchNormGradV2", AlwaysRewrite, CreateGenericMklOp});
+  InsertMKLEagerOps(
+      {"FusedBatchNormGradV3", RewriteFusedBatchNormV3, CreateGenericMklOp});
+  InsertMKLEagerOps({"FusedBatchNormV2", AlwaysRewrite, CreateGenericMklOp});
+  InsertMKLEagerOps(
+      {"FusedBatchNormV3", RewriteFusedBatchNormV3, CreateGenericMklOp});
   InsertMKLEagerOps({"MatMul", AlwaysRewrite, CreateGenericMklOp});
 };
 
@@ -121,7 +143,7 @@ Status MklEagerOpRewrite::SetupNewOp(
   int num_inputs = orig_op->Inputs().size();
   // Add all inputs to the new op.
   for (int i = 0; i < num_inputs; ++i) {
-    (*new_mkl_op)->AddInput(orig_op->Inputs()[i]);
+    TF_RETURN_IF_ERROR((*new_mkl_op)->AddInput(orig_op->Inputs()[i]));
   }
 
   // Copy all attributes to the new op.
@@ -142,16 +164,9 @@ Status MklEagerOpRewrite::SetupNewOp(
 
 Status MklEagerOpRewrite::CreateGenericMklOp(
     EagerOperation* orig_op, std::unique_ptr<EagerOperation>* mkl_op) {
-  const string mkl_op_name = mkl_op_registry::GetMklOpName(orig_op->Name());
-  TF_CHECK_OK(SetupNewOp(orig_op, mkl_op_name, mkl_op));
-  return Status::OK();
-}
-
-Status MklEagerOpRewrite::CreateMklConv2DOp(
-    EagerOperation* orig_op, std::unique_ptr<EagerOperation>* mkl_conv2d_op) {
   const string mkl_op_name =
-      mkl_op_registry::GetMklEagerOpName(orig_op->Name());
-  TF_CHECK_OK(SetupNewOp(orig_op, mkl_op_name, mkl_conv2d_op));
+      mkl_op_registry::GetMklNativeOpName(orig_op->Name());
+  TF_CHECK_OK(SetupNewOp(orig_op, mkl_op_name, mkl_op));
   return Status::OK();
 }
 
@@ -196,7 +211,7 @@ bool MklEagerOpRewrite::FastCheckIfKernelRegistered(std::string op_name,
     registered_kernels_map_.insert(
         std::make_pair(registered_kernels_key, kernel_registered));
   } else {
-    // Kernel is visited atleast once. return stored registration result.
+    // Kernel is visited at least once. Return stored registration result.
     kernel_registered = kernel_element->second;
   }
 
@@ -207,10 +222,10 @@ bool MklEagerOpRewrite::SlowCheckIfKernelRegistered(string op_name,
                                                     DataType dt) {
   // Find if the eager op_name exists in mkl_eager_ops_ list.
   auto element = mkl_eager_ops_.find(op_name);
-  if (element != mkl_eager_ops_.end() && dt == DT_FLOAT) {
+  if (element != mkl_eager_ops_.end()) {
     // Eager Op exists. So verify registry and return registered or not.
     return (mkl_op_registry::IsMklNameChangeOp(
-                mkl_op_registry::GetMklEagerOpName(op_name), dt) ||
+                mkl_op_registry::GetMklNativeOpName(op_name), dt) ||
             mkl_op_registry::IsMklNameChangeOp(
                 mkl_op_registry::GetMklOpName(op_name), dt));
   } else {
@@ -222,7 +237,8 @@ Status MklEagerOpRewrite::RewriteToMklOp(
     EagerOperation* orig_op, std::unique_ptr<EagerOperation>* mkl_op) {
   // TODO(intel-tf): mkl_eager_ops_ lookup can be reduced from twice
   // (once each in ShouldRewriteOp & RewriteToMklOp) to just once.
-  mkl_eager_ops_[orig_op->Name()].CreateMklOp(orig_op, mkl_op);
+  TF_RETURN_IF_ERROR(
+      mkl_eager_ops_[orig_op->Name()].CreateMklOp(orig_op, mkl_op));
   return Status::OK();
 }
 
@@ -232,6 +248,16 @@ bool MklEagerOpRewrite::RewriteConv2D(EagerOperation* op) {
   TF_CHECK_OK(GetNodeAttr(ndef, "padding", &padding));
   // Right now MKL Conv2D does not support explicit padding.
   return (padding != "EXPLICIT");
+}
+
+bool MklEagerOpRewrite::RewriteFusedBatchNormV3(EagerOperation* op) {
+  const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
+  if (Check5DFormat(ndef)) {
+    VLOG(1) << "Eager Op Rewrite: FusedBatchNorm(Grad)V3 op currently does not "
+            << "support 5D tensors.";
+    return false;
+  }
+  return true;
 }
 
 }  // namespace tensorflow

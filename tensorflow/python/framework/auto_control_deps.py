@@ -41,9 +41,13 @@ from tensorflow.python.util import tf_decorator
 # asynchronously to avoid deadlock.
 ASYNC_STATEFUL_OPS = [
     "CollectiveGather",
+    "CollectiveGatherV2",
     "CollectiveReduce",
+    "CollectiveReduceV2",
     "CollectiveBcastSend",
+    "CollectiveBcastSendV2",
     "CollectiveBcastRecv",
+    "CollectiveBcastRecvV2",
     "NcclAllReduce",
     # We do not add "Send" here since we want it to be added as a control output
     # in order to avoid being pruned.
@@ -74,13 +78,13 @@ LEGACY_RANDOM_OPS = [
     # random OpKernel instantiation is reused across multiple steps
     # of the loop.  Since legacy Random OpKernels have an internal rng state,
     # automatic dependency tracking across loop steps would likely
-    # fix this race; and for that case this blacklist is problematic.
+    # fix this race; and for that case this denylist is problematic.
     # However, since automatic dependency tracking inside while loops is not
     # currently supported, and there are no other examples of OpKernel reuse
     # (each OpKernel is associated with a unique op in graph mode),
-    # this blacklist has no effect on the aforementioned behavior.
+    # this denylist has no effect on the aforementioned behavior.
     #
-    # TODO(ebrevdo,skyewm): Modify the check against this blacklist to
+    # TODO(ebrevdo,skyewm): Modify the check against this denylist to
     # only occur when the op is inside a "variable initialization scope"; and
     # add proper autodeps inside while_loops that respects this updated check.
     "RandomUniform",
@@ -97,20 +101,21 @@ LEGACY_RANDOM_OPS = [
 ]
 
 _ORDER_INSENSITIVE_STATEFUL_OPS = [
-    "CudnnRNNV2", "CudnnRNNV3", "CudnnRNNBackpropV2", "CudnnRNNBackpropV3",
+    "CudnnRNN", "CudnnRNNBackprop", "CudnnRNNV2", "CudnnRNNV3",
+    "CudnnRNNBackpropV2", "CudnnRNNBackpropV3",
     "EnqueueTPUEmbeddingSparseBatch", "EnqueueTPUEmbeddingIntegerBatch",
     "EnqueueTPUEmbeddingSparseTensorBatch",
-    "EnqueueTPUEmbeddingRaggedTensorBatch"
+    "EnqueueTPUEmbeddingRaggedTensorBatch", "RestoreV2", "SaveV2"
 ]
 # LINT.ThenChange(//tensorflow/core/grappler/optimizers/function_optimizer.cc)
 
-_ALL_BLACKLISTED_OPS = (
+_ALL_DENYLISTED_OPS = (
     set(ASYNC_STATEFUL_OPS) | set(LEGACY_RANDOM_OPS)
     | set(_ORDER_INSENSITIVE_STATEFUL_OPS))
 
-# Op types that are marked as stateless, but should be whitelisted to add auto
+# Op types that are marked as stateless, but should be allowlisted to add auto
 # control dependencies.
-_WHITELIST_STATELESS_OPS = [
+_ALLOWLIST_STATELESS_OPS = [
     # As TPU collective ops are blocking, if there are more than one collective
     # op in the function, we need to make sure different collectives ops are
     # scheduled in certain orders. Otherwise if at the same time all the
@@ -124,8 +129,8 @@ _WHITELIST_STATELESS_OPS = [
 
 def op_is_stateful(op):
   # pylint: disable=protected-access
-  return (op._is_stateful and op.type not in _ALL_BLACKLISTED_OPS) or (
-      op.type in _WHITELIST_STATELESS_OPS)
+  return (op._is_stateful and op.type not in _ALL_DENYLISTED_OPS) or (
+      op.type in _ALLOWLIST_STATELESS_OPS)
 
 
 class ResourceType(enum.Enum):
@@ -174,6 +179,11 @@ class AutomaticControlDependencies(object):
 
   NOT THREAD SAFE
   """
+
+  __slots__ = [
+      "_returned_tensors", "ops_which_must_run", "_graph", "_n_operations",
+      "collective_manager_ids_used"
+  ]
 
   def __init__(self):
     self._returned_tensors = object_identity.ObjectIdentitySet()
@@ -365,11 +375,14 @@ class AutomaticControlDependencies(object):
       if control_flow_util.IsInWhileLoop(op):
         continue
       control_inputs = set()
-      # Ensure stateful ops run
+      # Ensure stateful ops run.
+      # Read-only ops are added to control outputs if the read value is
+      # consumed. This covers the case when the read value is returned from
+      # the function since that goes through a tf.identity in mark_as_return.
       if (op_def_registry.get(op.type) is None or
-          (op_is_stateful(op) and op.type not in utils.RESOURCE_READ_OPS)):
-        # TODO(srbs): Do not add functional ops to `ops_which_must_run` if
-        # they only have variable reads and are otherwise stateless.
+          (op_is_stateful(op) and
+           (op.type not in utils.RESOURCE_READ_OPS or
+            any(output.consumers() for output in op.outputs)))):
         ops_which_must_run.add(op)
       # Make a note of all opened manager_ids.
       if op.type == "NoOp":

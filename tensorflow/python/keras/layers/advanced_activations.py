@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
@@ -27,6 +28,10 @@ from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import keras_export
+
+
+def get_globals():
+  return globals()
 
 
 @keras_export('keras.layers.LeakyReLU')
@@ -59,13 +64,17 @@ class LeakyReLU(Layer):
   Output shape:
     Same shape as the input.
 
-  Arguments:
+  Args:
     alpha: Float >= 0. Negative slope coefficient. Default to 0.3.
 
   """
 
   def __init__(self, alpha=0.3, **kwargs):
     super(LeakyReLU, self).__init__(**kwargs)
+    if alpha is None:
+      raise ValueError('The alpha value of a Leaky ReLU layer '
+                       'cannot be None, needs a float. '
+                       'Got %s' % alpha)
     self.supports_masking = True
     self.alpha = K.cast_to_floatx(alpha)
 
@@ -103,7 +112,7 @@ class PReLU(Layer):
   Output shape:
     Same shape as the input.
 
-  Arguments:
+  Args:
     alpha_initializer: Initializer function for the weights.
     alpha_regularizer: Regularizer for the weights.
     alpha_constraint: Constraint for the weights.
@@ -195,12 +204,15 @@ class ELU(Layer):
   Output shape:
     Same shape as the input.
 
-  Arguments:
+  Args:
     alpha: Scale for the negative factor.
   """
 
   def __init__(self, alpha=1.0, **kwargs):
     super(ELU, self).__init__(**kwargs)
+    if alpha is None:
+      raise ValueError('Alpha of an ELU layer cannot be None, '
+                       'requires a float. Got %s' % alpha)
     self.supports_masking = True
     self.alpha = K.cast_to_floatx(alpha)
 
@@ -236,12 +248,18 @@ class ThresholdedReLU(Layer):
   Output shape:
     Same shape as the input.
 
-  Arguments:
+  Args:
     theta: Float >= 0. Threshold location of activation.
   """
 
   def __init__(self, theta=1.0, **kwargs):
     super(ThresholdedReLU, self).__init__(**kwargs)
+    if theta is None:
+      raise ValueError('Theta of a Thresholded ReLU layer cannot be '
+                       'None, requires a float. Got %s' % theta)
+    if theta < 0:
+      raise ValueError('The theta value of a Thresholded ReLU layer '
+                       'should be >=0, got %s' % theta)
     self.supports_masking = True
     self.theta = K.cast_to_floatx(theta)
 
@@ -259,9 +277,36 @@ class ThresholdedReLU(Layer):
     return input_shape
 
 
+def _large_compatible_negative(tensor_type):
+  """Large negative number as Tensor.
+
+  This function is necessary because the standard value for epsilon
+  in this module (-1e9) cannot be represented using tf.float16
+
+  Args:
+    tensor_type: a dtype to determine the type.
+
+  Returns:
+    a large negative number.
+  """
+  if tensor_type == dtypes.float16:
+    return dtypes.float16.min
+  return -1e9
+
+
 @keras_export('keras.layers.Softmax')
 class Softmax(Layer):
   """Softmax activation function.
+
+  Example without mask:
+
+  >>> inp = np.asarray([1., 2., 1.])
+  >>> layer = tf.keras.layers.Softmax()
+  >>> layer(inp).numpy()
+  array([0.21194157, 0.5761169 , 0.21194157], dtype=float32)
+  >>> mask = np.asarray([True, False, True], dtype=bool)
+  >>> layer(inp, mask).numpy()
+  array([0.5, 0. , 0.5], dtype=float32)
 
   Input shape:
     Arbitrary. Use the keyword argument `input_shape`
@@ -271,8 +316,16 @@ class Softmax(Layer):
   Output shape:
     Same shape as the input.
 
-  Arguments:
-    axis: Integer, axis along which the softmax normalization is applied.
+  Args:
+    axis: Integer, or list of Integers, axis along which the softmax
+      normalization is applied.
+  Call arguments:
+    inputs: The inputs, or logits to the softmax layer.
+    mask: A boolean mask of the same shape as `inputs`. Defaults to `None`. The
+      mask specifies 1 to keep and 0 to mask.
+
+  Returns:
+    softmaxed output with the same shape as `inputs`.
   """
 
   def __init__(self, axis=-1, **kwargs):
@@ -280,7 +333,23 @@ class Softmax(Layer):
     self.supports_masking = True
     self.axis = axis
 
-  def call(self, inputs):
+  def call(self, inputs, mask=None):
+    if mask is not None:
+      # Since mask is 1.0 for positions we want to keep and 0.0 for
+      # masked positions, this operation will create a tensor which is 0.0 for
+      # positions we want to attend and -1e.9 for masked positions.
+      adder = (1.0 - math_ops.cast(mask, inputs.dtype)) * (
+          _large_compatible_negative(inputs.dtype))
+
+      # Since we are adding it to the raw scores before the softmax, this is
+      # effectively the same as removing these entirely.
+      inputs += adder
+    if isinstance(self.axis, (tuple, list)):
+      if len(self.axis) > 1:
+        return math_ops.exp(inputs - math_ops.reduce_logsumexp(
+            inputs, axis=self.axis, keepdims=True))
+      else:
+        return K.softmax(inputs, axis=self.axis[0])
     return K.softmax(inputs, axis=self.axis)
 
   def get_config(self):
@@ -334,7 +403,7 @@ class ReLU(Layer):
   Output shape:
     Same shape as the input.
 
-  Arguments:
+  Args:
     max_value: Float >= 0. Maximum activation value. Default to None, which
       means unlimited.
     negative_slope: Float >= 0. Negative slope coefficient. Default to 0.
@@ -353,7 +422,7 @@ class ReLU(Layer):
       raise ValueError('threshold of Relu layer '
                        'cannot be None. Required a float')
 
-    self.support_masking = True
+    self.supports_masking = True
     if max_value is not None:
       max_value = K.cast_to_floatx(max_value)
     self.max_value = max_value

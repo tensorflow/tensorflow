@@ -168,9 +168,17 @@ def get_pybind_export_symbols(symbols_file, lib_paths_file):
     lib_paths_file: String that is the path to txt file that lists
                     cc_library target execpaths for exporting symbols.
   """
-  # cc_library target name is always in [target_name] format in
-  # `symbols_pybind.txt`.
-  section_header_filter = r"\[(\S+)\]"  # e.g. `[cpp_python_util]`
+  # A cc_library target name must begin its own line, and it must begin with
+  # `//tensorflow`. It can then optionally have some number of directories, and
+  # it must end with a target name directly preceded by either a slash or a
+  # colon. A directory or target name is any combination of letters, numbers,
+  # underscores, and dashes.
+  # Examples of possible headers:
+  # `[//tensorflow/core/util/tensor_bundle]`
+  # `[//tensorflow/python:safe_ptr]`
+  # `[//tensorflow:target_name_v2_25]`
+  # `[//tensorflow/-/24/util_:port-5]`
+  section_header_filter = r"^\[\/\/(tensorflow(\/[\w-]+)*(:|\/)[\w-]+)\]"
 
   # Create a dict of target libs and their symbols to be exported and populate
   # it. (key = cc_library target, value = list of symbols) that we need to
@@ -199,20 +207,31 @@ def get_pybind_export_symbols(symbols_file, lib_paths_file):
   symbols_all = []
   for lib in lib_paths:
     if lib:
-      for cc_lib in symbols:  # keys in symbols = cc_library target name
-        path_to_lib = cc_lib.split("/")
-        cc_target = path_to_lib[-1]
-        # if `len(path_to_lib)` is larger than 1, that means, we are given one
-        # or more parent directory of the target. e.g. `[foo/bar]` instead of
-        # just the target name `[bar]`.
-        if len(path_to_lib) > 1:
-          parent_dir = path_to_lib[0]
+      for cc_lib in symbols:   # keys in symbols = cc_library target name
+        if cc_lib.count(":") == 1:
+          formatted_cc_lib = cc_lib.replace(":", "/")
+        elif cc_lib.count(":") == 0:
+          formatted_cc_lib = cc_lib
         else:
-          parent_dir = ""
-        if cc_target in lib and parent_dir in lib:
-          symbols_all.extend(
-            get_symbols(lib, "|".join(symbols[cc_lib])))
-
+          raise ValueError(f"Detected wrong format for symbols header in"
+                           "`symbols_pybind.txt`. Header must have 0 or 1 "
+                           "colon (e.g. `[//third_party/tensorflow/python:safe_ptr]`"
+                           "or `[tensorflow/core/util/tensor_bundle]`) but "
+                           "detected: {cc_lib}")
+        path_to_lib = formatted_cc_lib.split("/")
+        # `path_to_lib` is a bazel out path, which means the actual path string
+        # we get here differs from the package path listed in
+        # `win_lib_files_for_exported_symbols` and `symbols_pybind.txt`.
+        # For example, the target `tensorflow/core:op_gen_lib` in
+        # `win_lib_files_for_exported_symbols` generates the bazel library path
+        # `bazel-out/x64_windows-opt/bin/tensorflow/core/framework/op_gen_lib.lib`
+        lib_and_cc_lib_match = True
+        for p in path_to_lib:
+          if p not in lib:
+            lib_and_cc_lib_match = False
+            break
+        if lib_and_cc_lib_match:
+          symbols_all.extend(get_symbols(lib, "|".join(symbols[cc_lib])))
   return symbols_all
 
 def main():
@@ -249,6 +268,14 @@ def main():
       def_fp.write("LIBRARY " + args.target + "\n")
     def_fp.write("EXPORTS\n")
     def_fp.write("\t ??1OpDef@tensorflow@@UEAA@XZ\n")
+    # Write additional symbols:
+    def_fp.write("\t ??0SessionOptions@tensorflow@@QEAA@XZ\n")
+    def_fp.write("\t ?NewSession@tensorflow@@YAPEAVSession@1@AEBUSessionOptions@1@@Z\n")
+    def_fp.write("\t ??1SavedModelBundleInterface@tensorflow@@UEAA@XZ\n")
+    def_fp.write("\t ?LoadSavedModel@tensorflow@@YA?AVStatus@1@AEBUSessionOptions@1@AEBVRunOptions@1@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV?$unordered_set@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@U?$hash@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@U?$equal_to@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@6@QEAUSavedModelBundle@1@@Z\n")
+    def_fp.write("\t ?MaybeSavedModelDirectory@tensorflow@@YA_NAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z\n")
+    def_fp.write("\t ?_TensorShapeProto_default_instance_@tensorflow@@3VTensorShapeProtoDefaultTypeInternal@1@A\n")
+    def_fp.write("\t ?_GraphDef_default_instance_@tensorflow@@3VGraphDefDefaultTypeInternal@1@A\n")
 
     # Each symbols returned by undname matches the same position in candidates.
     # We compare on undname but use the decorated name from candidates.

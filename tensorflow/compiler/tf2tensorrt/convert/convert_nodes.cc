@@ -26,11 +26,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
@@ -54,12 +56,12 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/strided_slice_op.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
 #include "third_party/tensorrt/NvInferPlugin.h"
 
@@ -84,52 +86,88 @@ namespace tensorflow {
 namespace tensorrt {
 namespace convert {
 
+using absl::StrAppend;
+using absl::StrCat;
+
+namespace {
+
+#define ADD_LAYER(layer_name)              \
+  case nvinfer1::LayerType::k##layer_name: \
+    return #layer_name;
+
+const char* LayerTypeToString(nvinfer1::LayerType layer_type) {
+  switch (layer_type) {
+    ADD_LAYER(CONVOLUTION)
+    ADD_LAYER(FULLY_CONNECTED)
+    ADD_LAYER(ACTIVATION)
+    ADD_LAYER(POOLING)
+    ADD_LAYER(LRN)
+    ADD_LAYER(SCALE)
+    ADD_LAYER(SOFTMAX)
+    ADD_LAYER(DECONVOLUTION)
+    ADD_LAYER(CONCATENATION)
+    ADD_LAYER(ELEMENTWISE)
+    ADD_LAYER(PLUGIN)
+    ADD_LAYER(RNN)
+    ADD_LAYER(UNARY)
+    ADD_LAYER(PADDING)
+    ADD_LAYER(SHUFFLE)
+    ADD_LAYER(REDUCE)
+    ADD_LAYER(TOPK)
+    ADD_LAYER(GATHER)
+    ADD_LAYER(MATRIX_MULTIPLY)
+    ADD_LAYER(RAGGED_SOFTMAX)
+    ADD_LAYER(CONSTANT)
+    ADD_LAYER(RNN_V2)
+    ADD_LAYER(IDENTITY)
+    ADD_LAYER(PLUGIN_V2)
+    ADD_LAYER(SLICE)
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+    ADD_LAYER(SHAPE)
+    ADD_LAYER(PARAMETRIC_RELU)
+    ADD_LAYER(RESIZE)
+#endif
+#if IS_TRT_VERSION_GE(7, 0, 0, 0)
+    ADD_LAYER(TRIP_LIMIT)
+    ADD_LAYER(RECURRENCE)
+    ADD_LAYER(ITERATOR)
+    ADD_LAYER(LOOP_OUTPUT)
+    ADD_LAYER(SELECT)
+    ADD_LAYER(FILL)
+#endif
+  }
+  return "UNKNOWN_LAYER";
+}
+
+#undef ADD_LAYER
+
+// Sets the ILayer name in the form of
+// <engine_name>/<tf_related_part>:<trt_operation_name>.
+void SetLayerNameHelper(nvinfer1::ILayer* layer, absl::string_view engine_name,
+                        absl::string_view tf_name) {
+  const char* trt_name = LayerTypeToString(layer->getType());
+  layer->setName(
+      absl::StrCat(engine_name, "/", tf_name, ":", trt_name).c_str());
+}
+
+// Returns a string in the form of <sub_op_name><sub_op_instance>.
+std::string GetLayerNameSuffix(absl::string_view sub_op_name,
+                               absl::optional<int> sub_op_instance) {
+  std::string op_suffix(sub_op_name);
+  if (sub_op_instance.has_value()) {
+    op_suffix =
+        absl::StrCat(op_suffix, "_", std::to_string(sub_op_instance.value()));
+  }
+  return op_suffix;
+}
+
+}  // namespace
+
 bool IsEngineInput(absl::string_view name) {
   return absl::StartsWith(name, IONamePrefixes::kInputPHName);
 }
 bool IsEngineOutput(absl::string_view name) {
   return absl::StartsWith(name, IONamePrefixes::kOutputPHName);
-}
-
-using absl::StrAppend;
-using absl::StrCat;
-
-inline Status TfDataTypeToTrt(DataType tf_dtype,
-                              nvinfer1::DataType* trt_dtype) {
-  switch (tf_dtype) {
-    case DataType::DT_FLOAT:
-      *trt_dtype = nvinfer1::DataType::kFLOAT;
-      break;
-    case DataType::DT_HALF:
-      *trt_dtype = nvinfer1::DataType::kHALF;
-      break;
-    case DataType::DT_INT32:
-      *trt_dtype = nvinfer1::DataType::kINT32;
-      break;
-    default:
-      return errors::InvalidArgument("Unsupported data type ",
-                                     DataTypeString(tf_dtype));
-  }
-  return Status::OK();
-}
-
-inline Status TrtDataTypeToTf(nvinfer1::DataType trt_dtype,
-                              DataType* tf_dtype) {
-  switch (trt_dtype) {
-    case nvinfer1::DataType::kFLOAT:
-      *tf_dtype = DataType::DT_FLOAT;
-      break;
-    case nvinfer1::DataType::kHALF:
-      *tf_dtype = DataType::DT_HALF;
-      break;
-    case nvinfer1::DataType::kINT32:
-      *tf_dtype = DataType::DT_INT32;
-      break;
-    default:
-      return errors::InvalidArgument("Unsupported data type ",
-                                     DebugString(trt_dtype));
-  }
-  return Status::OK();
 }
 
 class TFAttrs {
@@ -181,7 +219,7 @@ std::vector<float> TFAttrs::get<std::vector<float>>(const string& key) const {
 template <>
 nvinfer1::DataType TFAttrs::get<nvinfer1::DataType>(const string& key) const {
   nvinfer1::DataType trt_dtype(nvinfer1::DataType::kFLOAT);
-  TF_CHECK_OK(TfDataTypeToTrt(this->at(key)->type(), &trt_dtype));
+  TF_CHECK_OK(TfTypeToTrtType(this->at(key)->type(), &trt_dtype));
   return trt_dtype;
 }
 
@@ -210,7 +248,7 @@ Status TensorShapeArrayToTrtDims(const Container& shape, nvinfer1::Dims* out,
                                  bool ignore_first_dim = false) {
   PartialTensorShape tensor_shape;
   TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(shape, &tensor_shape));
-  *out = TensorShapeToTrtDims(tensor_shape, ignore_first_dim);
+  TF_RETURN_IF_ERROR(TensorShapeToTrtDims(tensor_shape, ignore_first_dim, out));
   return Status::OK();
 }
 
@@ -270,7 +308,7 @@ Status ValidateTensorProperties(const string& producer_node_type,
                                 nvinfer1::DataType* trt_dtype,
                                 nvinfer1::Dims* trt_dims, int* batch_size) {
   // Convert data type.
-  TF_RETURN_IF_ERROR(TfDataTypeToTrt(dtype, trt_dtype));
+  TF_RETURN_IF_ERROR(TfTypeToTrtType(dtype, trt_dtype));
 
   // Convert shape.
   if (shape.dims() < 0) {
@@ -287,8 +325,9 @@ Status ValidateTensorProperties(const string& producer_node_type,
         "Scalar input tensor is not supported since the first dimension "
         "is treated as batch dimension by TRT");
   }
-  *trt_dims = TensorShapeToTrtDims(shape,
-                                   /*ignore_first_dim=*/use_implicit_batch);
+  TF_RETURN_IF_ERROR(
+      TensorShapeToTrtDims(shape,
+                           /*ignore_first_dim=*/use_implicit_batch, trt_dims));
   // Get batch size for tensor if it will not be included the shape.
   if (use_implicit_batch) {
     *batch_size = shape.dim_size(0);
@@ -429,11 +468,88 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
   return Status::OK();
 }
 
+// Prepares a dynamic shape tensor for broadcast by adding leading 1 dimensions.
+Status DynamicBroadcast(nvinfer1::ITensor* operand, OpConverterParams* params,
+                        nvinfer1::ITensor** output, int broadcasted_nbDims) {
+  int operand_nbDims = operand->getDimensions().nbDims;
+  if (broadcasted_nbDims > operand_nbDims) {
+    if (params->validation_only) return Status::OK();
+    int n_extra_dims = broadcasted_nbDims - operand_nbDims;
+    VLOG(2) << "Dynamic broadcast adding " << n_extra_dims << " leading 1s";
+    TF_RETURN_IF_ERROR(params->converter->DynamicReshape(
+        operand, {std::make_pair(0, operand_nbDims)}, params, output,
+        {n_extra_dims}));
+  } else {
+    *output = operand;
+  }
+  return Status::OK();
+}
+
+Status BroadcastWeights(std::unique_ptr<TRT_TensorOrWeights>& p,
+                        nvinfer1::Dims broadcasted_dims) {
+  if (!p->is_weights()) return errors::Internal("Weight input expected");
+  if (p->GetTrtDims().nbDims != broadcasted_dims.nbDims) {
+    TRT_ShapedWeights weights(p->weights());
+    TF_RETURN_IF_ERROR(weights.SetShape(broadcasted_dims));
+    p = std::make_unique<TRT_TensorOrWeights>(weights);
+  }
+  return Status::OK();
+}
+
+Status ApplyBroadcast(std::unique_ptr<TRT_TensorOrWeights>& operand,
+                      nvinfer1::Dims broadcasted_dims,
+                      OpConverterParams* params) {
+  if (operand->is_weights()) {
+    TF_RETURN_IF_ERROR(BroadcastWeights(operand, broadcasted_dims));
+  } else {
+    nvinfer1::ITensor* tensor = nullptr;
+    auto is_static_shuffle_compatible = [](nvinfer1::Dims dims) {
+      return std::count(dims.d, dims.d + dims.nbDims, -1) <= 1;
+    };
+    if (is_static_shuffle_compatible(broadcasted_dims)) {
+      TF_RETURN_IF_ERROR(PrepareTensorForShape(
+          params->converter, *operand, broadcasted_dims,
+          params->validation_only, &tensor, params->node_def));
+    } else {
+      TF_RETURN_IF_ERROR(DynamicBroadcast(operand->tensor(), params, &tensor,
+                                          broadcasted_dims.nbDims));
+    }
+    operand = std::make_unique<TRT_TensorOrWeights>(tensor);
+  }
+  return Status::OK();
+}
+
+// Inserts leading 1 dimensions so that both operands have the same rank.
+// Note: In implicit batch mode, weights' shape can include an explicit 1 batch
+// dimension. The broadcasted shape might loose this leading batch dim, because
+// the broadcasted shape does not include the implicit batch dim.
+// TODO(tfeher): Other code blocks that use GetTrtBroadcastShape need to be
+// fixed to use this routine to handle dynamic inputs. Eventually,
+// GetTrtBroadcastShape should only be used by this routine.
+Status BroadcastTensors(std::unique_ptr<TRT_TensorOrWeights>& operand_l,
+                        std::unique_ptr<TRT_TensorOrWeights>& operand_r,
+                        bool check_feasibility, OpConverterParams* params) {
+  nvinfer1::Dims broadcasted_dims_l, broadcasted_dims_r;
+  TF_RETURN_IF_ERROR(GetTrtBroadcastShape(
+      *operand_l, *operand_r, check_feasibility, params->use_implicit_batch,
+      &broadcasted_dims_l, &broadcasted_dims_r));
+
+  if (params->validation_only) return Status::OK();
+
+  TF_RETURN_IF_ERROR(ApplyBroadcast(operand_l, broadcasted_dims_l, params));
+  TF_RETURN_IF_ERROR(ApplyBroadcast(operand_r, broadcasted_dims_r, params));
+
+  return Status::OK();
+}
+
 nvinfer1::ITensor* Converter::CreateConstantLayer(
     const TRT_ShapedWeights& weights, const nvinfer1::Dims& dims) {
   nvinfer1::Weights trt_weights = weights.GetTrtWeights();
   nvinfer1::IConstantLayer* layer = network()->addConstant(dims, trt_weights);
   if (!layer) return nullptr;
+  SetLayerName(layer, "_tftrt_constant_",
+               std::to_string(next_constant_layer_id_));
+  next_constant_layer_id_++;
   nvinfer1::ITensor* trt_tensor = layer->getOutput(0);
 #if !IS_TRT_VERSION_GE(5, 1, 3, 0)
   // TODO(laigd): there is a bug in TensorRT 5.0 library that, if we don't set
@@ -470,7 +586,7 @@ Status CreateBroadcastableScalarConstant(OpConverterParams* params, float value,
   TFAttrs attrs(params->node_def);
   if (attrs.count(dtype_attr_name)) {
     DataType dtype = attrs.get<DataType>(dtype_attr_name);
-    TF_RETURN_IF_ERROR(TfDataTypeToTrt(dtype, &trt_type));
+    TF_RETURN_IF_ERROR(TfTypeToTrtType(dtype, &trt_type));
   }
 
   // In order to be broadcastable, the number of dims has to match.
@@ -546,15 +662,6 @@ int64_t Prod(const nvinfer1::Dims& dims) {
   return count;
 }
 
-// Returns total number of elements in a TensorRT weights dimensions.
-// Returning 0 means either some dim is 0 or the number of dims is 0 (TensorRT
-// doesn't allow scalar weights).
-// Note that for TF scalar constant, we always convert to dims [1].
-int64_t TrtWeightDimsNumElements(const nvinfer1::Dims& dims) {
-  if (dims.nbDims == 0) return 0;
-  return Prod(dims);
-}
-
 // Returns total number of elements in an ITensor dimension.
 // Returns 1 if the number of dims is 0 (the total number is fully determined by
 // the batch size).
@@ -564,26 +671,22 @@ int64_t TrtTensorDimsNumElements(const nvinfer1::Dims& dims) {
   return Prod(dims);
 }
 
-bool DimsHaveSameSize(const nvinfer1::Dims& lhs, const nvinfer1::Dims& rhs,
-                      bool is_tensor) {
-  if (is_tensor) {
-    return TrtTensorDimsNumElements(lhs) == TrtTensorDimsNumElements(rhs);
-  }
-  return TrtWeightDimsNumElements(lhs) == TrtWeightDimsNumElements(rhs);
+bool DimsHaveSameSize(const nvinfer1::Dims& lhs, const nvinfer1::Dims& rhs) {
+  return TrtTensorDimsNumElements(lhs) == TrtTensorDimsNumElements(rhs);
 }
 
 // Returns whether both dimensions are fully specified and the total number of
 // elements equals.
 bool AreDimsStaticWithSameSize(const nvinfer1::Dims& lhs,
-                               const nvinfer1::Dims& rhs, bool is_tensor) {
+                               const nvinfer1::Dims& rhs) {
   if (!HasStaticShape(lhs) || !HasStaticShape(rhs)) return false;
-  return DimsHaveSameSize(lhs, rhs, is_tensor);
+  return DimsHaveSameSize(lhs, rhs);
 }
 
 bool AreDimsStaticWithDifferentSize(const nvinfer1::Dims& lhs,
-                                    const nvinfer1::Dims& rhs, bool is_tensor) {
+                                    const nvinfer1::Dims& rhs) {
   if (!HasStaticShape(lhs) || !HasStaticShape(rhs)) return false;
-  return !DimsHaveSameSize(lhs, rhs, is_tensor);
+  return !DimsHaveSameSize(lhs, rhs);
 }
 
 static std::vector<std::pair<int, int>> CreateSamePadding(
@@ -635,6 +738,8 @@ Status VerifyShapesMatch(absl::Span<const TRT_TensorOrWeights> inputs,
           "Received inputs with inconsistent rank, at ", node_name);
     }
     for (size_t j = 0; j < dims_0.nbDims; ++j) {
+      // Dynamic dimensions will be verified at runtime.
+      if (dim_i.d[j] == -1 || dims_0.d[j] == -1) continue;
       if (dim_i.d[j] != dims_0.d[j] && j != masked_dim) {
         return errors::InvalidArgument(
             "Received inputs with inconsistent shape, at ", node_name);
@@ -646,17 +751,26 @@ Status VerifyShapesMatch(absl::Span<const TRT_TensorOrWeights> inputs,
 
 TRT_ShapedWeights::TRT_ShapedWeights(nvinfer1::DataType type) : type_(type) {
   shape_.nbDims = 0;
+  shape_.d[0] = 0;
 }
 
 TRT_ShapedWeights::TRT_ShapedWeights(nvinfer1::DataType type,
                                      nvinfer1::Dims dims, Tensor tensor)
-    : shape_(dims), type_(type), tensor_(tensor) {}
+    : shape_(dims), type_(type), tensor_(tensor) {
+  if (dims.nbDims == 0) {
+    DCHECK(dims.d[0] == 0 || dims.d[0] == 1);
+  }
+}
 
 TRT_ShapedWeights::TRT_ShapedWeights(const TRT_ShapedWeights& rhs)
     : shape_(rhs.shape_), type_(rhs.type_), tensor_(rhs.tensor_) {}
 
-int64_t TRT_ShapedWeights::count() const {
-  return TrtWeightDimsNumElements(shape_);
+int64_t TRT_ShapedWeights::count(nvinfer1::Dims dims) {
+  if (dims.nbDims == 0) {
+    assert(dims.d[0] == 0 || dims.d[0] == 1);
+    return dims.d[0];
+  }
+  return Prod(dims);
 }
 
 nvinfer1::Weights TRT_ShapedWeights::GetTrtWeights() const {
@@ -685,6 +799,17 @@ Status TRT_ShapedWeights::SetValues(T value) {
       return errors::InvalidArgument("Unsupported data type ",
                                      tensorflow::tensorrt::DebugString(type_));
   }
+  return Status::OK();
+}
+
+Status TRT_ShapedWeights::SetShape(nvinfer1::Dims dims) {
+  if (this->count() != TRT_ShapedWeights::count(dims)) {
+    VLOG(2) << "Changing shape from "
+            << tensorflow::tensorrt::DebugString(shape_) << ", to "
+            << tensorflow::tensorrt::DebugString(dims);
+    return errors::Internal("SetShape would change number of elements");
+  }
+  shape_ = dims;
   return Status::OK();
 }
 
@@ -1047,7 +1172,7 @@ TRT_ShapedWeights TrtWeightStore::GetTempWeights(nvinfer1::DataType trt_dtype,
   DataType tf_dtype;
   // TODO(laigd): make it return a status.
   TF_CHECK_OK(TensorShapeUtils::MakeShape(dims.d, dims.nbDims, &shape));
-  TF_CHECK_OK(TrtDataTypeToTf(trt_dtype, &tf_dtype));
+  TF_CHECK_OK(TrtTypeToTfType(trt_dtype, &tf_dtype));
   // TODO(jie): check weights size_bytes. 0 means type error
   Tensor tensor(tf_dtype, shape);
   TRT_ShapedWeights weights(trt_dtype, dims, tensor);
@@ -1195,58 +1320,27 @@ Status TrtNodeValidator::ConvertConstToWeights(
   return status;
 }
 
-static void InitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
-  static mutex plugin_mutex(LINKER_INITIALIZED);
-  static bool plugin_initialized = false;
-  mutex_lock lock(plugin_mutex);
-  if (plugin_initialized) return;
-
-  LOG(INFO) << "Linked TensorRT version: " << GetLinkedTensorRTVersion();
-  LOG(INFO) << "Loaded TensorRT version: " << GetLoadedTensorRTVersion();
-
-  plugin_initialized = initLibNvInferPlugins(trt_logger, "");
-  if (!plugin_initialized) {
-    LOG(ERROR) << "Failed to initialize TensorRT plugins, and conversion may "
-                  "fail later.";
-  }
-
-  int num_trt_plugins = 0;
-  nvinfer1::IPluginCreator* const* trt_plugin_creator_list =
-      getPluginRegistry()->getPluginCreatorList(&num_trt_plugins);
-  if (!trt_plugin_creator_list) {
-    LOG(WARNING) << "Can not find any TensorRT plugins in registry.";
-  } else {
-    VLOG(1) << "Found the following " << num_trt_plugins
-            << " TensorRT plugins in registry:";
-    for (int i = 0; i < num_trt_plugins; ++i) {
-      if (!trt_plugin_creator_list[i]) {
-        LOG(WARNING) << "TensorRT plugin at index " << i
-                     << " is not accessible (null pointer returned by "
-                        "getPluginCreatorList for this plugin)";
-      } else {
-        VLOG(1) << "  " << trt_plugin_creator_list[i]->getPluginName();
-      }
-    }
-  }
-}
-
 // static
 StatusOr<std::unique_ptr<Converter>> Converter::Create(
     TrtPrecisionMode precision_mode, bool use_calibration,
-    nvinfer1::ILogger* trt_logger, const bool use_implicit_batch) {
-  std::unique_ptr<Converter> converter = absl::WrapUnique(new Converter(
-      precision_mode, use_calibration, trt_logger, use_implicit_batch));
+    nvinfer1::ILogger* trt_logger, const bool use_implicit_batch,
+    absl::string_view engine_name) {
+  std::unique_ptr<Converter> converter = absl::WrapUnique(
+      new Converter(precision_mode, use_calibration, trt_logger,
+                    use_implicit_batch, engine_name));
   TF_RETURN_IF_ERROR(converter->Init(trt_logger));
   return converter;
 }
 
 Converter::Converter(TrtPrecisionMode precision_mode, bool use_calibration,
                      nvinfer1::ILogger* trt_logger,
-                     const bool use_implicit_batch)
+                     const bool use_implicit_batch,
+                     absl::string_view engine_name)
     : precision_mode_(precision_mode),
       use_calibration_(use_calibration),
-      use_implicit_batch_(use_implicit_batch) {
-  InitializeTrtPlugins(trt_logger);
+      use_implicit_batch_(use_implicit_batch),
+      engine_name_(engine_name) {
+  MaybeInitializeTrtPlugins(trt_logger);
   this->RegisterOpConverters();
 }
 
@@ -1346,6 +1440,7 @@ Status Converter::AddInputTensor(const string& name, nvinfer1::DataType dtype,
 
 Status Converter::RenameAndMarkOutputTensors(
     const std::vector<Converter::EngineOutputInfo>& output_tensors) {
+  int output_index = 0;
   for (const auto& output : output_tensors) {
     TRT_TensorOrWeights tensor_or_weights;
     TF_RETURN_IF_ERROR(
@@ -1374,6 +1469,7 @@ Status Converter::RenameAndMarkOutputTensors(
       nvinfer1::IShuffleLayer* layer = network()->addShuffle(*tensor);
       TFTRT_RETURN_ERROR_IF_NULLPTR(
           layer, StrCat("Output Copy for ", tensor->getName()));
+      SetLayerName(layer, tensor->getName(), "shuffle", output_index);
       MarkQuantizationRangesAsInferrable(tensor, layer->getOutput(0));
       tensor = layer->getOutput(0);
     }
@@ -1382,6 +1478,7 @@ Status Converter::RenameAndMarkOutputTensors(
     // Set type after marking as output. TRT only supports setType for engine
     // outputs and inputs (type is inferred otherwise).
     tensor->setType(output.trt_dtype);
+    output_index++;
     VLOG(1) << "Marking output TRT tensor " << output.source_tensor_name
             << " with data type " << DebugString(output.trt_dtype)
             << ", which feeds TF node " << output.dest_node_name;
@@ -1399,10 +1496,49 @@ Status Converter::RenameAndMarkOutputTensors(
   return Status::OK();
 }
 
+#if IS_TRT_VERSION_GE(7, 1, 3, 0)
+// An algorithm selector that always returns a specific ID for selectAlgorithms.
+// This is used to support the implementation of using environment variable
+// `TF_TRT_FIXED_ALGORITHM_ID` for debugging TensorRT.
+class StaticAlgorithmSelector : public nvinfer1::IAlgorithmSelector {
+ private:
+  int32_t algorithm_id_;
+
+ public:
+  StaticAlgorithmSelector(int32_t algorithm_id) : algorithm_id_(algorithm_id) {}
+
+  // Returns value in [0, nbChoices] for a valid algorithm.
+  int32_t selectAlgorithms(const nvinfer1::IAlgorithmContext& algoContext,
+                           const nvinfer1::IAlgorithm* const* algoChoices,
+                           int32_t nbChoices, int32_t* selection) override {
+    // TensorRT always provides more than zero number of algorithms
+    // in selectAlgorithms.
+    assert(nbChoices > 0);
+
+    // making sure that the requested TRT algorithm ID doesn't go above the
+    // max value accepted.
+    selection[0] = std::min(algorithm_id_, nbChoices);
+    return 1;
+  }
+
+  // Called by TensorRT to report choices it made.
+  void reportAlgorithms(const nvinfer1::IAlgorithmContext* const* algoContexts,
+                        const nvinfer1::IAlgorithm* const* algoChoices,
+                        int32_t nbAlgorithms) override {}  // do nothing
+};
+#endif
+
 Status Converter::BuildCudaEngine(
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, int max_batch_size,
     size_t max_workspace_size_bytes, nvinfer1::IGpuAllocator* allocator,
     TRTInt8Calibrator* calibrator, TrtShapeOptimizationProfile* profiles) {
+  tensorflow::profiler::AnnotatedTraceMe activity(
+      [&]() {
+        return tensorflow::profiler::TraceMeOpOverride("TRTEngineOp",
+                                                       "BuildEngine");
+      },
+      tensorflow::profiler::TraceMeLevel::kInfo);
+
   VLOG(1) << "Configuring TensorRT builder";
   trt_builder_->setMaxBatchSize(max_batch_size);
   trt_builder_->setGpuAllocator(allocator);
@@ -1411,6 +1547,23 @@ Status Converter::BuildCudaEngine(
   TrtUniquePtrType<nvinfer1::IBuilderConfig> builder_config(
       trt_builder_->createBuilderConfig());
   builder_config->setMaxWorkspaceSize(max_workspace_size_bytes);
+
+#if IS_TRT_VERSION_GE(7, 1, 3, 0)
+  static int32_t trt_algorithm_id = [] {
+    int64 trt_algorithm_id;
+    TF_CHECK_OK(tensorflow::ReadInt64FromEnvVar("TF_TRT_FIXED_ALGORITHM_ID",
+                                                /*default_val=*/-1,
+                                                &trt_algorithm_id));
+    return static_cast<int32_t>(trt_algorithm_id);
+  }();
+
+  if (trt_algorithm_id >= 0) {
+    VLOG(1) << "Forcing TRT algorithm selection to: ID=" << trt_algorithm_id;
+    StaticAlgorithmSelector trt_algorithm_selector(trt_algorithm_id);
+    builder_config->setAlgorithmSelector(&trt_algorithm_selector);
+  }
+#endif
+
   if (precision_mode_ == TrtPrecisionMode::FP16) {
     builder_config->setFlag(nvinfer1::BuilderFlag::kFP16);
   } else if (precision_mode_ == TrtPrecisionMode::INT8) {
@@ -1426,7 +1579,32 @@ Status Converter::BuildCudaEngine(
     TF_RETURN_IF_ERROR(profiles->ConfigureBuilder(
         trt_builder_.get(), builder_config.get(), network()));
   }
+
+  string precision_mode_str;
+  TF_RETURN_IF_ERROR(
+      TrtPrecisionModeToName(precision_mode_, &precision_mode_str));
+  string trt_network_name = StrCat(
+      "TF:", TF_VERSION_STRING, ", ",
+      "TRT:", absl::StrJoin(GetLoadedTensorRTVersion(), "."), "-",
+      "Precision:", precision_mode_str, ", ", "Calibration:", use_calibration_,
+      ", ", "Max-Batch-Size:", max_batch_size, ", ",
+      "Max-Workspace-Size:", max_workspace_size_bytes);
+  VLOG(1) << "Setting TensorRT network name to " << trt_network_name;
+  network()->setName(trt_network_name.c_str());
+
   VLOG(1) << "Building TensorRT engine";
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << "Network inputs";
+    int n_inputs = network()->getNbInputs();
+    for (int i = 0; i < n_inputs; i++) {
+      const nvinfer1::ITensor* input = network()->getInput(i);
+      if (input) {
+        VLOG(2) << "  " << i << " " << input->getName();
+      } else {
+        VLOG(2) << "Could not find input " << i;
+      }
+    }
+  }
   engine->reset(
       trt_builder_->buildEngineWithConfig(*network(), *builder_config));
 #else
@@ -1446,24 +1624,19 @@ Status Converter::BuildCudaEngine(
     }
   }
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  string precision_mode_str;
-  TF_RETURN_IF_ERROR(
-      TrtPrecisionModeToName(precision_mode_, &precision_mode_str));
-  string trt_network_name = StrCat(
-      "TF:", TF_VERSION_STRING, ", ", "TRT:", GetLoadedTensorRTVersion(), "-",
-      "Precision:", precision_mode_str, ", ", "Calibration:", use_calibration_,
-      ", ", "Max-Batch-Size:", max_batch_size, ", ",
-      "Max-Workspace-Size:", max_workspace_size_bytes);
-  VLOG(1) << "Setting TensorRT network name to " << trt_network_name;
-  network()->setName(trt_network_name.c_str());
-#endif  // #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-
   VLOG(1) << "Building TensorRT engine";
   engine->reset(trt_builder_->buildCudaEngine(*network()));
 #endif
   if (engine->get() == nullptr) {
     return errors::Internal("Failed to build TensorRT engine");
+  }
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << "TRT engine created";
+    int nbBindings = (*engine)->getNbBindings();
+    VLOG(2) << "Number of engine bindings: " << nbBindings;
+    for (int i = 0; i < nbBindings; i++) {
+      VLOG(2) << "Binding " << i << " name: " << (*engine)->getBindingName(i);
+    }
   }
   return Status::OK();
 }
@@ -1508,8 +1681,9 @@ Status Converter::GetTensorOrWeights(const string& name,
 
 Status Converter::TransposeTensor(nvinfer1::ITensor* input_tensor,
                                   const std::vector<int>& order_with_batch_dim,
-                                  absl::string_view name,
-                                  nvinfer1::ITensor** output_tensor) {
+                                  nvinfer1::ITensor** output_tensor,
+                                  const NodeDef& node_def,
+                                  absl::string_view sub_op_name) {
   const auto dims = input_tensor->getDimensions();
   const int order_size = use_implicit_batch_ ? order_with_batch_dim.size() - 1
                                              : order_with_batch_dim.size();
@@ -1524,7 +1698,8 @@ Status Converter::TransposeTensor(nvinfer1::ITensor* input_tensor,
 
   nvinfer1::IShuffleLayer* layer = this->network()->addShuffle(*input_tensor);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, "TF-TRT Internal Transpose");
-  layer->setName(std::basic_string<char>(name).c_str());
+  SetLayerName(layer, node_def, sub_op_name);
+
   MarkQuantizationRangesAsInferrable(input_tensor, layer->getOutput(0));
 
   nvinfer1::Permutation permutation;
@@ -1585,19 +1760,66 @@ Status Converter::GetWeightRange(const TRT_ShapedWeights& weights,
   return Status::OK();
 }
 
-Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
-                                        const nvinfer1::Dims& dims,
-                                        const bool validation_only,
-                                        nvinfer1::ITensor** tensor) {
+// Constructs <tf_related_part> for the ILayer name as
+// <tf_node_def_name>_<sub_op_name>_<sub_op_instance> and callSetLayerNameHelper
+// to set the name for the ILayer.
+//
+// If the operation represented by the ILayer is generated by the converter to
+// support the conversion of node_def, callers need to specify a non-empty
+// sub_op_name to be appended to the name of node_def to avoid layer name
+// conflicts. If the operation is generated multiple times, callers also need
+// to specify sub_op_instance to be appended to the name of the layers to avoid
+// layer name conflicts.
+void Converter::SetLayerName(nvinfer1::ILayer* layer, const NodeDef& node_def,
+                             absl::string_view sub_op_name,
+                             absl::optional<int> sub_op_instance) {
+  std::string sub_op_suffix = GetLayerNameSuffix(sub_op_name, sub_op_instance);
+  if (sub_op_suffix.empty()) {
+    SetLayerNameHelper(layer, engine_name_, node_def.name());
+  } else {
+    SetLayerNameHelper(layer, engine_name_,
+                       absl::StrCat(node_def.name(), "-", sub_op_suffix));
+  }
+}
+
+// Constructs <tf_related_part> for the ILayer name as
+// <main_op_name>_<sub_op_name>_<sub_op_instance> and callSetLayerNameHelper to
+// set the name for the ILayer.
+void Converter::SetLayerName(nvinfer1::ILayer* layer,
+                             absl::string_view main_op_name,
+                             absl::string_view sub_op_name,
+                             absl::optional<int> sub_op_instance) {
+  std::string layer_name_suffix =
+      GetLayerNameSuffix(sub_op_name, sub_op_instance);
+  SetLayerNameHelper(layer, engine_name_,
+                     absl::StrCat(main_op_name, "-", layer_name_suffix));
+}
+
+// Converts 'input' of 'node_def' into 'tensor' with shape specified by 'dims'
+// (which doesn't contain the batch dimension).
+//
+// If validation_only is true, it doesn't do the conversion but only do some
+// minimum validation for the eligibility of the conversion, and *tensor will
+// be set to nullptr.
+Status PrepareTensorForShape(Converter* converter,
+                             const TRT_TensorOrWeights& input,
+                             const nvinfer1::Dims& dims,
+                             const bool validation_only,
+                             nvinfer1::ITensor** tensor,
+                             const NodeDef& node_def,
+                             absl::optional<int> op_instance) {
   const nvinfer1::Dims input_dims = input.GetTrtDims();
-  // If one of input_dims and dims doesn't have static shape, it means some of
-  // the dims are unknown or need to be inferred. And we don't do further checks
-  // but rely on the caller to not make mistakes.
-  // Otherwise we do simple check to make sure the total sizes are the same.
+  // The input shape may have -1s for dynamic shape. The target shape may have
+  // 0s representing copy over the corresponding input dimensions. It may also
+  // have at most one -1 representing a dimension value that needs to be
+  // inferred. If none of those special values present, we verify that the total
+  // sizes of the input and output shape are the same.
+  // TODO(tfeher): Verify that the total sizes of the input and output shape are
+  // the same in the present of 0s but no -1 in the target shape.
   // If an input is a weight, it is going to become a tensor via
   // CreateConstantLayer. So we can treat it as a tensor for
   // AreDimsStaticWithDifferentSize(). This really only matters for 0-D tensors.
-  if (AreDimsStaticWithDifferentSize(input_dims, dims, /*is_tensor=*/true)) {
+  if (Prod(dims) > 0 && AreDimsStaticWithDifferentSize(input_dims, dims)) {
     return errors::InvalidArgument(
         "Incompatible shapes: ", DebugString(input_dims), " vs. ",
         DebugString(dims));
@@ -1612,28 +1834,32 @@ Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
     return Status::OK();
   }
 
+  TFTRT_RETURN_ERROR_IF_NULLPTR(converter, "converter is nullptr");
   if (input.is_tensor()) {
     if (DimsEqual(input_dims, dims)) {
       *tensor = input.tensor();
     } else {
       nvinfer1::IShuffleLayer* layer =
-          this->network()->addShuffle(*input.tensor());
+          converter->network()->addShuffle(*input.tensor());
       TFTRT_RETURN_ERROR_IF_NULLPTR(layer, "TF-TRT Internal Reshape");
+      converter->SetLayerName(layer, node_def, "shuffle", op_instance);
       layer->setReshapeDimensions(dims);
-      MarkQuantizationRangesAsInferrable(input.tensor(), layer->getOutput(0));
+      converter->MarkQuantizationRangesAsInferrable(input.tensor(),
+                                                    layer->getOutput(0));
       *tensor = layer->getOutput(0);
     }
   } else {
-    *tensor = CreateConstantLayer(input.weights(), dims);
+    *tensor = converter->CreateConstantLayer(input.weights(), dims);
     TFTRT_RETURN_ERROR_IF_NULLPTR(*tensor, "TF-TRT Internal Reshape");
-    if (precision_mode() == TrtPrecisionMode::INT8 && !use_calibration()) {
+    if (converter->precision_mode() == TrtPrecisionMode::INT8 &&
+        !converter->use_calibration()) {
       // If we are in int8 mode and not calibrating, we need to explicitly set a
       // quantization range for the output tensor of the IConstantLayer. Here we
       // set the range to [min(weights), max(weights)].
       float min_range = 0.0f;
       float max_range = 0.0f;
       TF_RETURN_IF_ERROR(
-          GetWeightRange(input.weights(), &min_range, &max_range));
+          converter->GetWeightRange(input.weights(), &min_range, &max_range));
       // Avoid setting range to 0 because TRT will throw an error. If the
       // weights are zero then the range doesn't matter: using 127.0f should
       // ensure the quantized weight will be exactly zero.
@@ -1641,7 +1867,7 @@ Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
         min_range = -127.0f;
         max_range = 127.0f;
       }
-      ProvideQuantizationRange(*tensor, min_range, max_range);
+      converter->ProvideQuantizationRange(*tensor, min_range, max_range);
     }
   }
   return Status::OK();
@@ -1827,9 +2053,9 @@ void Converter::MaybeApplyQuantizationRanges() {
       // are tensors which are created internally by TF-TRT. The ranges for
       // these unnamed ITensors are always inferred from user provided ranges,
       // thus there will also be a warning for the range(s) the user missed.
-      LOG(WARNING) << "Quantization range was not found for "
-                   << tensor->getName() << ". "
-                   << "Setting invalid quantization range.";
+      LOG_WARNING_WITH_PREFIX << "Quantization range was not found for "
+                              << tensor->getName() << ". "
+                              << "Setting invalid quantization range.";
       // Set the range to something unusable so the engine will fail if it
       // tries to actually use the tensor's range.
       tensor->setDynamicRange(0, 0);
@@ -2119,6 +2345,7 @@ Status Conv2DPaddingHelper(OpConverterParams* params, const TFAttrs& attrs,
         *tensor, nvinfer1::DimsHW((*padding)[0].first, (*padding)[1].first),
         nvinfer1::DimsHW((*padding)[0].second, (*padding)[1].second));
     TFTRT_RETURN_ERROR_IF_NULLPTR(pad_layer, params->node_def.name());
+    params->converter->SetLayerName(pad_layer, params->node_def, "pad");
     params->converter->MarkQuantizationRangesAsInferrable(
         tensor, pad_layer->getOutput(0));
     *padding = {{0, 0}, {0, 0}};
@@ -2219,7 +2446,7 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   const bool need_transpose = (data_format == "NHWC");
   if (need_transpose) {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        tensor, {0, 3, 1, 2}, StrCat(node_def.name(), "_to_NCHW"), &tensor));
+        tensor, {0, 3, 1, 2}, &tensor, node_def, "to_NCHW"));
   }
   // Dimensions of transposed tensor.
   const auto tensor_dim = tensor->getDimensions();
@@ -2285,7 +2512,6 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
 #else
     layer->setPadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
 #endif
-    layer->setName(node_def.name().c_str());
     layer->setNbGroups(num_groups);
     conv_layer = layer;
   } else {
@@ -2302,11 +2528,11 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
 #else
     layer->setPadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
 #endif
-    layer->setName(node_def.name().c_str());
     layer->setNbGroups(num_groups);
     layer->setDilation(dilation);
     conv_layer = layer;
   }
+  params->converter->SetLayerName(conv_layer, node_def, "conv");
   nvinfer1::ITensor* output_tensor = conv_layer->getOutput(0);
   // Add an extra padding for Deconv because TRT doesn't accept the
   // argument output_shape and thus the TRT output shape could be wrong
@@ -2339,13 +2565,13 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
           params->converter->network()->addPadding(*output_tensor, pre_padding,
                                                    post_padding);
       output_tensor = padding_layer->getOutput(0);
+      params->converter->SetLayerName(padding_layer, node_def, "pad");
     }
   }
   // Restore transpose.
   if (need_transpose) {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        output_tensor, {0, 2, 3, 1}, StrCat(node_def.name(), "_to_NHWC"),
-        &output_tensor));
+        output_tensor, {0, 2, 3, 1}, &output_tensor, node_def, "to_NHWC"));
   }
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
@@ -2390,49 +2616,132 @@ Status ConvertTranspose(OpConverterParams* params) {
         "Transpose at batch dimension is not supported.");
   }
 
-  // TensorRT as of version 7.0.0.11 is slow transposing large tensors.
+#if !IS_TRT_VERSION_GE(7, 1, 3, 4)
+  // TensorRT versions before 7.1.3.4 is slow transposing large tensors.
   // So check tensor size, and don't convert if it is too large.
   constexpr int64_t kMaxEfficientTranspose = 2500000;
   int64_t tensor_size = TrtTensorDimsNumElements(input_tensor->getDimensions());
   if (!AllowInefficientTranspose() && tensor_size > kMaxEfficientTranspose) {
     return errors::Unimplemented(StrCat("Transpose too large:", tensor_size));
   }
+#endif
 
   if (params->validation_only) return Status::OK();
 
   // Start conversion.
   nvinfer1::ITensor* output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-      input_tensor, perm, params->node_def.name(), &output_tensor));
+      input_tensor, perm, &output_tensor, params->node_def));
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
 }
 
-Status ConvertReshape(OpConverterParams* params) {
+Status ConvertShape(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   TF_RETURN_IF_ERROR(
-      CheckInputsWeights(*params, {{"tensor", false}, {"shape", true}}));
-  TF_RETURN_IF_ERROR(AllowDataTypes(
-      *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
+      CheckInputsWeights(*params, {{"input", TrtInputArg::kBoth}}));
+  if (params->use_implicit_batch) {
+    return errors::Unimplemented(
+        "Shape is only supported for explicit batch mode.");
+  }
+  if (HasStaticShape(inputs.at(0).GetTrtDims())) {
+    if (params->validation_only) return Status::OK();
+    nvinfer1::Dims input_dims = inputs.at(0).GetTrtDims();
+    nvinfer1::Dims output_dims{1, {input_dims.nbDims}};
+    // Create a const node with the values of output_dims
+    TRT_ShapedWeights weight = params->weight_store->GetTempWeights(
+        nvinfer1::DataType::kINT32, output_dims);
+    int32* values_ptr = static_cast<int32*>(weight.GetValues());
+    std::copy(input_dims.d, input_dims.d + input_dims.nbDims, values_ptr);
+    auto output = params->converter->CreateConstantLayer(weight, output_dims);
+    params->outputs->push_back(TRT_TensorOrWeights(output));
+    return Status::OK();
+  }
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  if (params->validation_only) return Status::OK();
+  nvinfer1::IShapeLayer* shape_layer =
+      params->converter->network()->addShape(*inputs.at(0).tensor());
+  TFTRT_RETURN_ERROR_IF_NULLPTR(shape_layer, params->node_def.name());
+  params->converter->SetLayerName(shape_layer, params->node_def, "shape");
+  params->outputs->push_back(TRT_TensorOrWeights(shape_layer->getOutput(0)));
+  return Status::OK();
+#else
+  return errors::Unavailable(
+      "Shape op conversion requires TensorRT 6 or above");
+#endif
+}
+
+Status ExpectShapeTensor(const TRT_TensorOrWeights& tensor) {
+  if (tensor.tensor()->getType() != nvinfer1::DataType::kINT32) {
+    return errors::InvalidArgument("Expected a shape tensor with INT32 type");
+  }
+  if (tensor.GetTrtDims().nbDims > 1) {
+    return errors::InvalidArgument("Expected a 0D or 1D shape tensor");
+  }
+  return Status::OK();
+}
+
+// Converts Reshape op if the input has dynamic (unknown) dims.
+Status ConvertDynamicReshape(OpConverterParams* params) {
+  if (params->use_implicit_batch) {
+    return errors::InvalidArgument(
+        "The input \"shape\" for Reshape must be a constant in implicit batch"
+        " mode, at ",
+        params->node_def.name());
+  }
+  if (!IS_TRT_VERSION_GE(7, 1, 3, 0)) {
+    // While officially TRT supports shape value input as of TRT 6, there are
+    // problems with shape input handling that cause networks converted with
+    // ConvertDynamicReshape fail. Here we conservatively switch off the
+    // converter before TRT 7.1.3.
+    return errors::InvalidArgument(
+        "Non constant shape input tensor for Reshape requires minimum TRT "
+        "7.1.3");
+  }
+  const auto& inputs = params->inputs;
   const TRT_TensorOrWeights& input_tensor = inputs.at(0);
 
-  // TODO(bixia): we can't use inputs.at(1).weights().ToVector<int>() for two
-  // reasons: (1) When weights.count()==0, TRT_ShapedWeights::tensor_ dtype is
-  // not properly set to INT32. (2) I tried a fix for the first problem, I got
-  // shared pointer related error in convert_nodes_test. We should fix the
-  // problems and switch to use inputs.at(1).weights().ToVector<int>(), a type
-  // safe method to access the content of the tensor.
-  TRT_ShapedWeights weights = inputs.at(1).weights();
-  if (weights.count() == 0) {
-    return errors::Unimplemented("Reshape to shape=[] is not supported, at ",
-                                 params->node_def.name());
+  // If the input is a tensor it must be a shape tensor.
+  TF_RETURN_IF_ERROR(ExpectShapeTensor(inputs.at(1)));
+  if (inputs.at(1).tensor()->getDimensions().nbDims == 0) {
+    // Dynamic reshape requires a 1D shape tensor.
+    return errors::Unimplemented(
+        "Reshape with dynamic input requires 1D input tensor, at ",
+        params->node_def.name());
   }
+  if (params->validation_only) return Status::OK();
+  nvinfer1::IShuffleLayer* layer =
+      params->converter->network()->addShuffle(*input_tensor.tensor());
+  VLOG(2) << "ConvertReshape setInput (1) "
+          << DebugString(inputs.at(1).tensor()->getDimensions());
+  layer->setInput(1, *inputs.at(1).tensor());
+  params->converter->MarkQuantizationRangesAsInferrable(input_tensor.tensor(),
+                                                        layer->getOutput(0));
+  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
+  return Status::OK();
+}
 
-  const int* output_shape_dims = static_cast<int*>(weights.GetValues());
-  size_t output_shape_dims_count = weights.count();
+// Converts Reshape in explicit batch mode if the input has static (known) dims.
+Status ConvertStaticReshapeForExplicitBatchMode(
+    OpConverterParams* params, const int* output_dims, int num_dims,
+    nvinfer1::ITensor** output_tensor) {
+  nvinfer1::Dims dims;
+  dims.nbDims = num_dims;
+  std::copy(output_dims, output_dims + num_dims, dims.d);
+  return PrepareTensorForShape(params->converter, params->inputs.at(0), dims,
+                               params->validation_only, output_tensor,
+                               params->node_def);
+}
 
+// Converts Reshape in implicit batch mode. The input has static (known) dims.
+Status ConvertStaticReshapeForImplicitBatchMode(
+    OpConverterParams* params, const int* output_shape_dims,
+    int output_shape_dims_count, nvinfer1::ITensor** output_tensor) {
+  const auto& inputs = params->inputs;
+  const TRT_TensorOrWeights& input_tensor = inputs.at(0);
   const int input_batch_dim = input_tensor.batch_size();
-  const int output_batch_dim = output_shape_dims[0];
+  const int output_batch_dim =
+      (output_shape_dims_count > 0) ? output_shape_dims[0] : 0;
 
   const nvinfer1::Dims input_nonbatch_dims = input_tensor.GetTrtDims();
   nvinfer1::Dims output_nonbatch_dims;
@@ -2453,8 +2762,7 @@ Status ConvertReshape(OpConverterParams* params) {
     reshape_may_change_batch_dim = (input_batch_dim != output_batch_dim);
   } else {
     reshape_may_change_batch_dim =
-        !AreDimsStaticWithSameSize(input_nonbatch_dims, output_nonbatch_dims,
-                                   /*is_tensor=*/true);
+        !AreDimsStaticWithSameSize(input_nonbatch_dims, output_nonbatch_dims);
   }
   if (reshape_may_change_batch_dim) {
     const string msg =
@@ -2465,12 +2773,46 @@ Status ConvertReshape(OpConverterParams* params) {
                DebugString(output_nonbatch_dims));
     return errors::Unimplemented(msg);
   }
-
   // Perform the conversion.
+  return PrepareTensorForShape(params->converter, input_tensor,
+                               output_nonbatch_dims, params->validation_only,
+                               output_tensor, params->node_def);
+}
+
+Status ConvertReshape(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  TF_RETURN_IF_ERROR(CheckInputsWeights(
+      *params,
+      {{"tensor", TrtInputArg::kTensor}, {"shape", TrtInputArg::kBoth}}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(
+      *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
+  if (inputs.at(1).is_tensor()) {
+    return ConvertDynamicReshape(params);
+  }
+
+  // TODO(bixia): we can't use inputs.at(1).weights().ToVector<int>() for two
+  // reasons: (1) When weights.count()==0, TRT_ShapedWeights::tensor_ dtype is
+  // not properly set to INT32. (2) I tried a fix for the first problem, I got
+  // shared pointer related error in convert_nodes_test. We should fix the
+  // problems and switch to use inputs.at(1).weights().ToVector<int>(), a type
+  // safe method to access the content of the tensor.
+  TRT_ShapedWeights weights = inputs.at(1).weights();
+  if (weights.count() == 0 && params->use_implicit_batch) {
+    return errors::Unimplemented("Reshape to shape=[] is not supported, at ",
+                                 params->node_def.name());
+  }
+
+  const int* output_shape_dims = static_cast<int*>(weights.GetValues());
+  size_t output_shape_dims_count = weights.count();
   nvinfer1::ITensor* output_tensor = nullptr;
-  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      input_tensor, output_nonbatch_dims, params->validation_only,
-      &output_tensor));
+
+  if (!params->use_implicit_batch) {
+    TF_RETURN_IF_ERROR(ConvertStaticReshapeForExplicitBatchMode(
+        params, output_shape_dims, output_shape_dims_count, &output_tensor));
+  } else {
+    TF_RETURN_IF_ERROR(ConvertStaticReshapeForImplicitBatchMode(
+        params, output_shape_dims, output_shape_dims_count, &output_tensor));
+  }
   if (params->validation_only) return Status::OK();
 
   // Record the conversion result.
@@ -2512,8 +2854,9 @@ Status ConvertExpandDims(OpConverterParams* params) {
     // Reshape tensor.
     nvinfer1::Dims new_dims;
     TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(input_dims, &new_dims));
-    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-        input_tensor, new_dims, /*validation_only=*/false, &output_tensor));
+    TF_RETURN_IF_ERROR(PrepareTensorForShape(
+        params->converter, input_tensor, new_dims, /*validation_only=*/false,
+        &output_tensor, params->node_def));
   }
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
@@ -2523,7 +2866,8 @@ Status Converter::DynamicReshape(nvinfer1::ITensor* input,
                                  std::vector<std::pair<int, int>> slices,
                                  OpConverterParams* params,
                                  nvinfer1::ITensor** output,
-                                 std::vector<int> size_for_added_dims) {
+                                 std::vector<int> size_for_added_dims,
+                                 absl::optional<int> op_instance) {
   *output = nullptr;
   // DynamicReshape relies on INetworkDefinition::addShape that was introduced
   // in TensorRT 6.
@@ -2535,30 +2879,39 @@ Status Converter::DynamicReshape(nvinfer1::ITensor* input,
   nvinfer1::ITensor* shape = network()->addShape(*input)->getOutput(0);
   // Build new shape = shape[:trt_axis] + [1] + shape[trt_axis:]
   std::vector<nvinfer1::ITensor const*> concat_inputs;
-  for (int i = 0; i < std::max(slices.size(), size_for_added_dims.size());
-       i++) {
+  int max_num_slices = std::max(slices.size(), size_for_added_dims.size());
+  int op_instance_value = op_instance.has_value() ? op_instance.value() : 0;
+  for (int i = 0; i < max_num_slices; i++) {
     nvinfer1::ITensor* tensor;
+    int slice_instance = i * max_num_slices + op_instance_value;
     // maybe_add_a_dimension(i);
     if (i < size_for_added_dims.size() && size_for_added_dims[i] >= 0) {
+      nvinfer1::Dims dims{1, {1}};
+      if (size_for_added_dims[i] > 0) {
+        dims.d[0] = size_for_added_dims[i];
+      }
       TF_RETURN_IF_ERROR(
-          CreateScalarConstant(params, size_for_added_dims[i], &tensor));
+          CreateScalarConstant(params, std::min(size_for_added_dims[i], 1),
+                               &tensor, nvinfer1::DataType::kINT32, dims));
       concat_inputs.push_back(tensor);
     }
     if (i < slices.size()) {
-      concat_inputs.push_back(
-          network()
-              ->addSlice(*shape, {1, {slices[i].first}},
-                         {1, {slices[i].second - slices[i].first}}, {1, {1}})
-              ->getOutput(0));
+      nvinfer1::ISliceLayer* slice_layer = network()->addSlice(
+          *shape, {1, {slices[i].first}},
+          {1, {slices[i].second - slices[i].first}}, {1, {1}});
+      concat_inputs.push_back(slice_layer->getOutput(0));
+      SetLayerName(slice_layer, params->node_def, "slice", slice_instance);
     }
   }
   nvinfer1::IConcatenationLayer* concat_layer = network()->addConcatenation(
       const_cast<nvinfer1::ITensor* const*>(concat_inputs.data()),
       concat_inputs.size());
+  SetLayerName(concat_layer, params->node_def, "concat", op_instance);
   concat_layer->setAxis(0);
   nvinfer1::ITensor* new_shape = concat_layer->getOutput(0);
   // Reshape input using new shape
   nvinfer1::IShuffleLayer* shuffle = network()->addShuffle(*input);
+  SetLayerName(shuffle, params->node_def, "shuffle", op_instance);
   shuffle->setInput(1, *new_shape);
   *output = shuffle->getOutput(0);
   return Status::OK();
@@ -2571,7 +2924,8 @@ Status Converter::DynamicReshape(nvinfer1::ITensor* input,
 Status Converter::DynamicExpandDims(nvinfer1::ITensor* input,
                                     const nvinfer1::Dims& dims, int axis,
                                     OpConverterParams* params,
-                                    nvinfer1::ITensor** output) {
+                                    nvinfer1::ITensor** output,
+                                    absl::optional<int> op_instance) {
   if (params->validation_only) {
     *output = nullptr;
     return errors::Internal(
@@ -2587,7 +2941,7 @@ Status Converter::DynamicExpandDims(nvinfer1::ITensor* input,
   if (axis != dims.nbDims) {
     slices.push_back(std::pair<int, int>{axis, dims.nbDims});
   }
-  return DynamicReshape(input, slices, params, output, extra_dims);
+  return DynamicReshape(input, slices, params, output, extra_dims, op_instance);
 }
 
 Status Converter::SqueezeTensor(nvinfer1::ITensor* input,
@@ -2614,8 +2968,9 @@ Status Converter::SqueezeTensor(nvinfer1::ITensor* input,
   nvinfer1::Dims new_dims;
   VLOG(2) << "input_dims" << input_dims;
   TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(*input_dims, &new_dims));
-  TF_RETURN_IF_ERROR(PrepareTensorForShape(TRT_TensorOrWeights(input), new_dims,
-                                           /*validation_only=*/false, output));
+  TF_RETURN_IF_ERROR(PrepareTensorForShape(
+      params->converter, TRT_TensorOrWeights(input), new_dims,
+      /*validation_only=*/false, output, params->node_def));
   return Status::OK();
 }
 
@@ -2679,11 +3034,11 @@ Status ConvertSqueeze(OpConverterParams* params) {
 }
 
 template <typename Container>
-Status ConvertStridedSliceHelper(OpConverterParams* params,
-                                 const TRT_TensorOrWeights& input,
-                                 Container begin, Container size,
-                                 const Container& stride,
-                                 const nvinfer1::Dims* final_shape = nullptr) {
+Status ConvertStridedSliceHelper(
+    OpConverterParams* params, const TRT_TensorOrWeights& input,
+    Container begin, Container size, const Container& stride,
+    const nvinfer1::Dims* final_shape = nullptr,
+    absl::optional<int> op_instance = absl::nullopt) {
   const auto& node_def = params->node_def;
   // Get input dims.
   nvinfer1::Dims dims = input.GetTrtDims();
@@ -2708,6 +3063,7 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
                                      node_def.op(), ", at ", node_def.name());
     }
   }
+
 // TRT 5.1 adds ISliceLayer. For older versions, we attempt to use the
 // padding layer with negative padding.
 #if IS_TRT_VERSION_GE(5, 1, 3, 1)
@@ -2722,12 +3078,14 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
 
   nvinfer1::ISliceLayer* layer = params->converter->network()->addSlice(
       *input.tensor(), begin_dims, size_dims, stride_dims);
+  params->converter->SetLayerName(layer, params->node_def, "slice",
+                                  op_instance);
   nvinfer1::ITensor* tensor = layer->getOutput(0);
   // Reshape for shrink_axis.
   if (final_shape) {
-    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-        TRT_TensorOrWeights(tensor), *final_shape, /*validation_only=*/false,
-        &tensor));
+    TF_RETURN_IF_ERROR(PrepareTensorForShape(
+        params->converter, TRT_TensorOrWeights(tensor), *final_shape,
+        /*validation_only=*/false, &tensor, node_def, op_instance));
   }
   params->outputs->push_back(TRT_TensorOrWeights(tensor));
   return Status::OK();
@@ -2781,6 +3139,7 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
     if (params->validation_only) return Status::OK();
     nvinfer1::IShuffleLayer* layer =
         params->converter->network()->addShuffle(*input.tensor());
+    SetLayerName(layer, params->node_def, "shuffle", op_instance);
     params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
     return Status::OK();
   } else if (pad_dims.size() == 1) {
@@ -2828,31 +3187,33 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
   // Start conversion.
   nvinfer1::ITensor* tensor = input.tensor();
   if (need_reshape) {
-    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-        input, reshape_dims, /*validation_only=*/false, &tensor));
+    TF_RETURN_IF_ERROR(PrepareTensorForShape(
+        params->converter, input, reshape_dims, /*validation_only=*/false,
+        &tensor, node_def, op_instance));
   }
   if (need_transpose) {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        tensor, transpose_order, StrCat(node_def.name(), "_for_pad"), &tensor));
+        tensor, transpose_order, &tensor, node_def, "for_pad", op_instance));
   }
   // Add padding layer
   nvinfer1::IPaddingLayer* layer = params->converter->network()->addPadding(
       *tensor, pre_padding, post_padding);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  SetLayerName(layer, params->node_def, "pad");
   params->converter->MarkQuantizationRangesAsInferrable(tensor,
                                                         layer->getOutput(0));
   tensor = layer->getOutput(0);
   // Restore transpose
   if (need_transpose) {
-    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        tensor, inv_transpose_order, StrCat(node_def.name(), "_after_pad"),
-        &tensor));
+    TF_RETURN_IF_ERROR(
+        params->converter->TransposeTensor(tensor, inv_transpose_order, &tensor,
+                                           node_def, "after_pad", op_instance));
   }
   // Reshape for shrink_axis.
   if (final_shape) {
-    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-        TRT_TensorOrWeights(tensor), *final_shape, /*validation_only=*/false,
-        &tensor));
+    TF_RETURN_IF_ERROR(PrepareTensorForShape(
+        params->converter, TRT_TensorOrWeights(tensor), *final_shape,
+        /*validation_only=*/false, &tensor, node_def, op_instance));
   } else if (need_reshape) {
     // Restore reshape.
     // Calculate output dimensions
@@ -2873,9 +3234,9 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
     nvinfer1::Dims new_dims;
     TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(input_dims, &new_dims,
                                                  /*ignore_first_dim=*/true));
-    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-        TRT_TensorOrWeights(tensor), new_dims, /*validation_only=*/false,
-        &tensor));
+    TF_RETURN_IF_ERROR(PrepareTensorForShape(
+        params->converter, TRT_TensorOrWeights(tensor), new_dims,
+        /*validation_only=*/false, &tensor, node_def, op_instance));
   }
 
   params->outputs->push_back(TRT_TensorOrWeights(tensor));
@@ -3031,8 +3392,8 @@ Status ConvertStridedSlice(OpConverterParams* params) {
   nvinfer1::Dims final_shape_dims;
   nvinfer1::Dims* final_shape_dims_ptr = nullptr;
   if (shrink_axis_mask) {
-    final_shape_dims =
-        TensorShapeToTrtDims(final_shape, /*ignore_first_dim=*/true);
+    TF_RETURN_IF_ERROR(TensorShapeToTrtDims(
+        final_shape, /*ignore_first_dim=*/true, &final_shape_dims));
     final_shape_dims_ptr = &final_shape_dims;
   }
   return ConvertStridedSliceHelper(params, inputs.at(0), begin, size, strides,
@@ -3158,6 +3519,15 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
     }
   }
 
+  // Channel dim must be static for Conv3D since we use that value for
+  // num_groups at build time.
+  // TODO: Allow conversion if kImplicitBatchModeCompatible||kOptimal is used.
+  int implicit_batch_offset = params->use_implicit_batch ? -1 : 0;
+  if (tensor->getDimensions().d[c_index + implicit_batch_offset] == -1) {
+    return errors::InvalidArgument("Channel dimension must be static, at ",
+                                   node_def.name());
+  }
+
   // Finished validation checks
   if (params->validation_only) return Status::OK();
 
@@ -3165,8 +3535,7 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
   const bool need_transpose = is_ndhwc;
   if (need_transpose) {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        tensor, {0, 4, 1, 2, 3}, StrCat(node_def.name(), "_to_NCDHW"),
-        &tensor));
+        tensor, {0, 4, 1, 2, 3}, &tensor, node_def, "to_NCDHW"));
   }
 
   // group == 0 signifies that this is a depthwise convolution, so set
@@ -3205,7 +3574,6 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
       layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
     }
 
-    layer->setName(node_def.name().c_str());
     layer->setNbGroups(num_groups);
     conv_layer = layer;
   } else {
@@ -3221,18 +3589,17 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
       layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
     }
 
-    layer->setName(node_def.name().c_str());
     layer->setNbGroups(num_groups);
     layer->setDilationNd(dilation_dhw);
     conv_layer = layer;
   }
+  params->converter->SetLayerName(conv_layer, node_def, "conv");
   nvinfer1::ITensor* output_tensor = conv_layer->getOutput(0);
 
   // Restore transpose.
   if (need_transpose) {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        output_tensor, {0, 2, 3, 4, 1}, StrCat(node_def.name(), "_to_NDHWC"),
-        &output_tensor));
+        output_tensor, {0, 2, 3, 4, 1}, &output_tensor, node_def, "to_NDHWC"));
   }
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
@@ -3301,8 +3668,7 @@ Status ConvertPool3D(OpConverterParams* params) {
   if (data_format == "NDHWC") {
     // NDHWC => NCDHW
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        tensor, {0, 4, 1, 2, 3}, StrCat(node_def.name(), "_to_NCDHW"),
-        &tensor));
+        tensor, {0, 4, 1, 2, 3}, &tensor, node_def, "to_NCDHW"));
   }
 
   const nvinfer1::Dims3 stride(tf_stride[d_index], tf_stride[h_index],
@@ -3323,14 +3689,13 @@ Status ConvertPool3D(OpConverterParams* params) {
     // SAME_UPPER means that post padding is preferred.
     layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
   }
-  layer->setName(node_def.name().c_str());
+  params->converter->SetLayerName(layer, node_def, "pooling");
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
   if (data_format == "NDHWC") {
     // NCDHW => NDHWC
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        output_tensor, {0, 2, 3, 4, 1}, StrCat(node_def.name(), "_to_NDHWC"),
-        &output_tensor));
+        output_tensor, {0, 2, 3, 4, 1}, &output_tensor, node_def, "to_NDHWC"));
   }
 
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
@@ -3425,7 +3790,7 @@ Status ConvertFusedConv2DBiasActivation(OpConverterParams* params) {
   const bool need_transpose = (data_format == "NHWC");
   if (need_transpose) {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        tensor, {0, 3, 1, 2}, StrCat(node_def.name(), "_to_NCHW"), &tensor));
+        tensor, {0, 3, 1, 2}, &tensor, node_def, "to_NCHW"));
   }
 
   nvinfer1::DimsHW kernel_size;
@@ -3481,7 +3846,7 @@ Status ConvertFusedConv2DBiasActivation(OpConverterParams* params) {
 #else
   conv_layer->setPadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
 #endif
-  conv_layer->setName(node_def.name().c_str());
+  params->converter->SetLayerName(conv_layer, node_def, "conv");
   conv_layer->setNbGroups(1);
   conv_layer->setDilation(dilation);
   nvinfer1::ITensor* output_tensor = conv_layer->getOutput(0);
@@ -3492,13 +3857,13 @@ Status ConvertFusedConv2DBiasActivation(OpConverterParams* params) {
         params->converter->network()->addActivation(*output_tensor,
                                                     op_pair->second);
     TFTRT_RETURN_ERROR_IF_NULLPTR(activation_layer, node_def.name());
+    params->converter->SetLayerName(activation_layer, node_def, "activation");
     output_tensor = activation_layer->getOutput(0);
   }
   // Restore transpose.
   if (need_transpose) {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        output_tensor, {0, 2, 3, 1}, StrCat(node_def.name(), "_to_NHWC"),
-        &output_tensor));
+        output_tensor, {0, 2, 3, 1}, &output_tensor, node_def, "to_NHWC"));
   }
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
@@ -3508,8 +3873,13 @@ Status ConvertPool(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
-  TF_RETURN_IF_ERROR(
-      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+#if IS_TRT_VERSION_GE(5, 1, 0, 0)
+  std::set<DataType> allowed_types{DataType::DT_FLOAT, DataType::DT_HALF,
+                                   DataType::DT_INT8};
+#else
+  std::set<DataType> allowed_types{DataType::DT_FLOAT, DataType::DT_HALF};
+#endif
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, allowed_types));
   nvinfer1::PoolingType type;
   if (node_def.op() == "MaxPool") {
     type = nvinfer1::PoolingType::kMAX;
@@ -3535,7 +3905,7 @@ Status ConvertPool(OpConverterParams* params) {
     h_index = 1;
     w_index = 2;
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        tensor, {0, 3, 1, 2}, StrCat(node_def.name(), "_to_NCHW"), &tensor));
+        tensor, {0, 3, 1, 2}, &tensor, node_def, "to_NCHW"));
   }
 
   const auto tf_stride = attrs.get<std::vector<int64>>("strides");
@@ -3569,6 +3939,7 @@ Status ConvertPool(OpConverterParams* params) {
         *tensor, nvinfer1::DimsHW(padding[0].first, padding[1].first),
         nvinfer1::DimsHW(padding[0].second, padding[1].second));
     TFTRT_RETURN_ERROR_IF_NULLPTR(pad_layer, node_def.name());
+    params->converter->SetLayerName(pad_layer, node_def, "pad");
     params->converter->MarkQuantizationRangesAsInferrable(
         tensor, pad_layer->getOutput(0));
     padding = {{0, 0}, {0, 0}};
@@ -3598,13 +3969,12 @@ Status ConvertPool(OpConverterParams* params) {
 #else
   layer->setPadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
 #endif
-  layer->setName(node_def.name().c_str());
+  params->converter->SetLayerName(layer, node_def, "pooling");
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
   if (data_format == "NHWC") {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        output_tensor, {0, 2, 3, 1}, StrCat(node_def.name(), "_to_NHWC"),
-        &output_tensor));
+        output_tensor, {0, 2, 3, 1}, &output_tensor, node_def, "to_NHWC"));
   }
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
@@ -3627,6 +3997,7 @@ Status ConvertLeakyRelu(OpConverterParams* params) {
       params->converter->network()->addActivation(
           *inputs.at(0).tensor(), nvinfer1::ActivationType::kLEAKY_RELU);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->converter->SetLayerName(layer, node_def, "activation");
   layer->setAlpha(alpha);
   params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
   return Status::OK();
@@ -3649,12 +4020,14 @@ Status ConvertLeakyRelu(OpConverterParams* params) {
       params->converter->network()->addElementWise(
           *tensor, *const_alpha_tensor, nvinfer1::ElementWiseOperation::kPROD);
   TFTRT_RETURN_ERROR_IF_NULLPTR(mul_layer, node_def.name());
+  params->converter->SetLayerName(mul_layer, node_def, "mul");
   // max(x, alpha * x)
   nvinfer1::IElementWiseLayer* max_layer =
       params->converter->network()->addElementWise(
           *tensor, *mul_layer->getOutput(0),
           nvinfer1::ElementWiseOperation::kMAX);
   TFTRT_RETURN_ERROR_IF_NULLPTR(max_layer, node_def.name());
+  params->converter->SetLayerName(mul_layer, node_def, "max");
   nvinfer1::ITensor* output_tensor = max_layer->getOutput(0);
   params->converter->MarkQuantizationRangesAsInferrable(
       output_tensor, mul_layer->getOutput(0));
@@ -3699,6 +4072,7 @@ Status ConvertClipByValue(OpConverterParams* params) {
   layer->setAlpha(clip_value_min);
   layer->setBeta(clip_value_max);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->converter->SetLayerName(layer, node_def, "activation");
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   params->converter->ProvideQuantizationRange(output_tensor, clip_value_min,
                                               clip_value_max);
@@ -3742,6 +4116,7 @@ Status ConvertActivation(OpConverterParams* params) {
       params->converter->network()->addActivation(*inputs.at(0).tensor(),
                                                   op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->converter->SetLayerName(layer, node_def, "activation");
   // Set parameters.
 #if IS_TRT_VERSION_GE(5, 1, 2, 0)
   if (node_def.op() == "Elu") {
@@ -3842,9 +4217,10 @@ Status ConvertRelu6(OpConverterParams* params) {
   nvinfer1::IActivationLayer* layer =
       params->converter->network()->addActivation(
           *inputs.at(0).tensor(), nvinfer1::ActivationType::kCLIP);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   layer->setAlpha(0.0f);
   layer->setBeta(6.0f);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->converter->SetLayerName(layer, node_def, "activation");
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   params->converter->ProvideQuantizationRange(output_tensor, 0.0f, 6.0f);
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
@@ -3859,6 +4235,7 @@ Status ConvertRelu6(OpConverterParams* params) {
       params->converter->network()->addActivation(
           *tensor, nvinfer1::ActivationType::kRELU);
   TFTRT_RETURN_ERROR_IF_NULLPTR(relu_layer, node_def.name());
+  params->converter->SetLayerName(relu_layer, node_def, "activation");
 
   // Large range of relu is problematic during quantization in INT8 precision
   // mode. Setting dynamic range of relu = [0.f, 6.0f] helps with quantization.
@@ -3880,6 +4257,7 @@ Status ConvertRelu6(OpConverterParams* params) {
           *relu_layer->getOutput(0), *const6_tensor,
           nvinfer1::ElementWiseOperation::kMIN);
   TFTRT_RETURN_ERROR_IF_NULLPTR(relu6_layer, node_def.name());
+  params->converter->SetLayerName(relu6_layer, node_def, "min");
   nvinfer1::ITensor* output_tensor = relu6_layer->getOutput(0);
   params->converter->ProvideQuantizationRange(output_tensor, 0.0f, 6.0f);
 
@@ -3924,6 +4302,8 @@ Status ConvertBiasAddInt8WithoutCalibration(OpConverterParams* params) {
     nvinfer1::IShuffleLayer* shuffle_layer =
         params->converter->network()->addShuffle(*tensor);
     TFTRT_RETURN_ERROR_IF_NULLPTR(shuffle_layer, node_def.name());
+    params->converter->SetLayerName(shuffle_layer, node_def, "shuffle",
+                                    /*op_instance=*/0);
     params->converter->MarkQuantizationRangesAsInferrable(
         tensor, shuffle_layer->getOutput(0));
 
@@ -3955,6 +4335,7 @@ Status ConvertBiasAddInt8WithoutCalibration(OpConverterParams* params) {
       *tensor, mode, weights.GetTrtWeights(), empty_weights.GetTrtWeights(),
       empty_weights.GetTrtWeights());
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->converter->SetLayerName(layer, node_def, "scale");
 
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
@@ -3963,6 +4344,8 @@ Status ConvertBiasAddInt8WithoutCalibration(OpConverterParams* params) {
     nvinfer1::IShuffleLayer* shuffle_layer =
         params->converter->network()->addShuffle(*output_tensor);
     TFTRT_RETURN_ERROR_IF_NULLPTR(shuffle_layer, node_def.name());
+    params->converter->SetLayerName(shuffle_layer, node_def, "shuffle",
+                                    /*op_instance=*/1);
     // NOTE: for same reason as mentioned above we need to apply the reshape
     // unconditionally.
     nvinfer1::Dims reshape_dims = original_dims;
@@ -4046,14 +4429,18 @@ Status ConvertBiasAdd(OpConverterParams* params) {
 
   // Convert input to a TRT tensor
   nvinfer1::ITensor* input_tensor{nullptr};
-  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      inputs.at(0), input_shape, params->validation_only, &input_tensor));
+  TF_RETURN_IF_ERROR(PrepareTensorForShape(params->converter, inputs.at(0),
+                                           input_shape, params->validation_only,
+                                           &input_tensor, node_def,
+                                           /*op_instance=*/0));
 
   // Finally, reshape bias. Since the bias is usually a constant, this will
   // normally happen at conversion-time.
   nvinfer1::ITensor* bias_tensor{nullptr};
-  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      inputs.at(1), bias_shape, params->validation_only, &bias_tensor));
+  TF_RETURN_IF_ERROR(PrepareTensorForShape(params->converter, inputs.at(1),
+                                           bias_shape, params->validation_only,
+                                           &bias_tensor, node_def,
+                                           /*op_instance=*/1));
   VLOG(2) << "Bias shape adjusted to " << DebugString(bias_shape);
 
   if (params->validation_only) return Status::OK();
@@ -4062,6 +4449,7 @@ Status ConvertBiasAdd(OpConverterParams* params) {
       params->converter->network()->addElementWise(
           *input_tensor, *bias_tensor, nvinfer1::ElementWiseOperation::kSUM);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->converter->SetLayerName(layer, node_def, "sum");
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
@@ -4072,7 +4460,11 @@ void GetTensorDimsWithProtoShape(const Tensor& tensor, nvinfer1::Dims* dims) {
   if (tensor.dims() > 0) {
     *dims = GetTrtDimsForTensor(tensor);
   } else {
-    dims->nbDims = 1;
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+    dims->nbDims = 0;  // Use scalar weights to implement scalar constants.
+#else
+    dims->nbDims = 1;  // Use 1D weights to implement scalar constants.
+#endif
     // No dimension provided. Flatten it.
     dims->d[0] = tensor.NumElements();
     dims->type[0] = nvinfer1::DimensionType::kSPATIAL;
@@ -4129,7 +4521,7 @@ Status TfTensorToTrtWeights(const Tensor& tensor, TrtWeightStore* weight_store,
 
   // Verify that the dtype is supported by TensorRT. Otherwise, return an error.
   nvinfer1::DataType trt_dtype;
-  TF_RETURN_IF_ERROR(TfDataTypeToTrt(converted_dtype, &trt_dtype));
+  TF_RETURN_IF_ERROR(TfTypeToTrtType(converted_dtype, &trt_dtype));
 
   if (tensor.NumElements() == 0) {
     // Return empty weights.
@@ -4238,8 +4630,11 @@ BinaryOperationMap() {
         {"Mul", nvinfer1::ElementWiseOperation::kPROD},
         {"Sub", nvinfer1::ElementWiseOperation::kSUB},
         {"Div", nvinfer1::ElementWiseOperation::kDIV},
-#if IS_TRT_VERSION_GE(5, 1, 0, 0)
-        // This op applies Floor after Div.
+#if IS_TRT_VERSION_GE(6, 0, 1, 0)
+        // Use TensorRT native FloorDiv.
+        {"FloorDiv", nvinfer1::ElementWiseOperation::kFLOOR_DIV},
+#elif IS_TRT_VERSION_GE(5, 1, 0, 0)
+        // Emulate FloorDiv by doing Div then Floor.
         {"FloorDiv", nvinfer1::ElementWiseOperation::kDIV},
 #endif
         {"RealDiv", nvinfer1::ElementWiseOperation::kDIV},
@@ -4289,24 +4684,27 @@ Status ConvertBinary(OpConverterParams* params) {
   nvinfer1::ITensor* tensor_l = nullptr;
   nvinfer1::ITensor* tensor_r = nullptr;
   // This will also convert constants to tensors, and set quantization ranges.
-  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      operand_l, broadcasted_dims_l, params->validation_only, &tensor_l));
-  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      operand_r, broadcasted_dims_r, params->validation_only, &tensor_r));
+  TF_RETURN_IF_ERROR(PrepareTensorForShape(
+      params->converter, operand_l, broadcasted_dims_l, params->validation_only,
+      &tensor_l, node_def, /*op_instance=*/0));
+  TF_RETURN_IF_ERROR(PrepareTensorForShape(
+      params->converter, operand_r, broadcasted_dims_r, params->validation_only,
+      &tensor_r, node_def, /*op_instance=*/1));
   if (params->validation_only) return Status::OK();
 
   // Add ElementWise layer.
   nvinfer1::ILayer* layer = params->converter->network()->addElementWise(
       *tensor_l, *tensor_r, op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  layer->setName(node_def.name().c_str());
+  params->converter->SetLayerName(layer, node_def);
   nvinfer1::ITensor* trt_tensor = layer->getOutput(0);
 
-#if IS_TRT_VERSION_GE(5, 1, 0, 0)
+#if IS_TRT_VERSION_GE(5, 1, 0, 0) and !IS_TRT_VERSION_GE(6, 0, 1, 0)
   if (node_def.op() == "FloorDiv") {
     layer = params->converter->network()->addUnary(
         *trt_tensor, nvinfer1::UnaryOperation::kFLOOR);
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+    params->converter->SetLayerName(layer, node_def, "floor");
     trt_tensor = layer->getOutput(0);
   }
 #endif
@@ -4345,10 +4743,12 @@ Status ConvertRsqrt(OpConverterParams* params) {
   nvinfer1::IUnaryLayer* sqrt_layer = params->converter->network()->addUnary(
       *tensor, nvinfer1::UnaryOperation::kSQRT);
   TFTRT_RETURN_ERROR_IF_NULLPTR(sqrt_layer, node_def.name());
+  params->converter->SetLayerName(sqrt_layer, node_def, "sqrt");
   // Recip
   nvinfer1::IUnaryLayer* recip_layer = params->converter->network()->addUnary(
       *sqrt_layer->getOutput(0), nvinfer1::UnaryOperation::kRECIP);
   TFTRT_RETURN_ERROR_IF_NULLPTR(recip_layer, node_def.name());
+  params->converter->SetLayerName(recip_layer, node_def, "recip");
   params->outputs->push_back(TRT_TensorOrWeights(recip_layer->getOutput(0)));
   return Status::OK();
 }
@@ -4400,6 +4800,7 @@ Status ConvertUnary(OpConverterParams* params) {
   nvinfer1::IUnaryLayer* layer =
       params->converter->network()->addUnary(*tensor, op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->converter->SetLayerName(layer, node_def);
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
   // Set quantization ranges.
@@ -4424,8 +4825,13 @@ Status ConvertSquare(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
+#if IS_TRT_VERSION_GE(6, 0, 1, 0)
+  TF_RETURN_IF_ERROR(AllowDataTypes(
+      *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
+#else
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+#endif
   if (params->validation_only) return Status::OK();
 
   // Constant 2 with same rank as input
@@ -4439,6 +4845,7 @@ Status ConvertSquare(OpConverterParams* params) {
           *inputs.at(0).tensor(), *const2_tensor,
           nvinfer1::ElementWiseOperation::kPOW);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->converter->SetLayerName(layer, node_def);
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
@@ -4472,7 +4879,7 @@ Status ConvertReduce(OpConverterParams* params) {
     int trt_axis;
     TF_RETURN_IF_ERROR(
         ConvertAxis(tf_axes_list[i], tensor->getDimensions().nbDims,
-                    node_def.name(), /*use_implicit_batch=*/true, &trt_axis));
+                    node_def.name(), params->use_implicit_batch, &trt_axis));
     axes |= (1 << trt_axis);
   }
 
@@ -4497,6 +4904,7 @@ Status ConvertReduce(OpConverterParams* params) {
   nvinfer1::ILayer* layer = params->converter->network()->addReduce(
       *tensor, reduce_operation, axes, keep_dims);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->converter->SetLayerName(layer, node_def);
 
   params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
   return Status::OK();
@@ -4518,29 +4926,53 @@ Status ConvertPack(OpConverterParams* params) {
         node_def.name());
   }
 
-  // Validate inputs. Values must be tensors for now.
-  std::vector<std::pair<string, bool>> inputs_is_weight;
+  // In implicit batch mode we do not allow weight input. An input tensor with
+  // dims NCHW is represented with dims CHW during conversion time, and N is
+  // defined only during runtime. A weight is represented with dims NCHW. We
+  // cannot be sure that the runtime N will agree with the conversion time N,
+  // therefore we do not convert the pack op if it has both tensor and weight
+  // inputs. This restriction does not apply in explicit batch mode, in that
+  // case the input tensors are also represented with full dims that include the
+  // batch size.
+  TrtInputArg expected_arg =
+      params->use_implicit_batch ? TrtInputArg::kTensor : TrtInputArg::kBoth;
+
+  std::vector<std::pair<string, TrtInputArg>> inputs_is_weight;
+  inputs_is_weight.reserve(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
-    inputs_is_weight.push_back({StrCat("values_", i), false});
+    inputs_is_weight.push_back({StrCat("values_", i), expected_arg});
   }
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, inputs_is_weight));
 
-  // TODO(hinsu): Enable INT32 with TensorRT version 5.1.3 after testing.
-  TF_RETURN_IF_ERROR(
-      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  std::set<DataType> allowed_types{DataType::DT_FLOAT, DataType::DT_HALF,
+                                   DataType::DT_INT32};
+#else
+  std::set<DataType> allowed_types{DataType::DT_FLOAT, DataType::DT_HALF};
+#endif
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, allowed_types));
   if (num_inputs > 1) {
     // Verify that inputs are compatible for concatenation after the expansion.
     TF_RETURN_IF_ERROR(
         VerifyShapesMatch(inputs, /*masked_dim=*/-1, node_def.name()));
   }
 
+  // Find the dimension of the inputs. In general inputs can have dynamic shape,
+  // in that case we have to use DynamicExpandDims to calculate the expanded
+  // dimensions. To avoid that, we try to find a weight input which is
+  // guaranteed to have known static shape.
+  int idx = 0;
+  for (int i = 1; i < inputs.size(); i++) {
+    if (HasStaticShape(inputs.at(i).GetTrtDims())) {
+      idx = i;
+    }
+  }
+  const nvinfer1::Dims dims = inputs.at(idx).GetTrtDims();
   // Convert axis from the TensorFlow format to TensorRT format.
-  const nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
   const int64 tf_axis = attrs.get<int64>("axis");
   int trt_axis;
   TF_RETURN_IF_ERROR(ConvertAxis(tf_axis, dims.nbDims + 1, node_def.name(),
-                                 /*use_implicit_batch=*/true, &trt_axis));
+                                 params->use_implicit_batch, &trt_axis));
 
   // Compute expanded dimensions and then reshape input tensors.
   std::vector<int> tensor_dims(dims.d, dims.d + dims.nbDims);
@@ -4548,13 +4980,25 @@ Status ConvertPack(OpConverterParams* params) {
   nvinfer1::Dims expanded_dims;
   TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(tensor_dims, &expanded_dims));
   std::vector<nvinfer1::ITensor*> expanded_tensors;
-  for (const TRT_TensorOrWeights& tensor : inputs) {
+  int input_index = 0;
+  for (const TRT_TensorOrWeights& input : inputs) {
     nvinfer1::ITensor* expanded_tensor = nullptr;
-    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-        tensor, expanded_dims, params->validation_only, &expanded_tensor));
+    if (input.is_tensor() && !params->use_implicit_batch &&
+        !HasStaticShape(dims)) {
+      if (!params->validation_only) {
+        TF_RETURN_IF_ERROR(params->converter->DynamicExpandDims(
+            input.tensor(), dims, trt_axis, params, &expanded_tensor,
+            input_index));
+      }
+    } else {
+      TF_RETURN_IF_ERROR(PrepareTensorForShape(
+          params->converter, input, expanded_dims, params->validation_only,
+          &expanded_tensor, node_def, input_index));
+    }
     if (!params->validation_only) {
       expanded_tensors.push_back(expanded_tensor);
     }
+    input_index++;
   }
   if (params->validation_only) return Status::OK();
 
@@ -4570,6 +5014,7 @@ Status ConvertPack(OpConverterParams* params) {
           const_cast<nvinfer1::ITensor**>(expanded_tensors.data()),
           expanded_tensors.size());
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->converter->SetLayerName(layer, node_def, "concat");
   // Note that trt_axis stays the same even after expanding tensors at the axis.
   layer->setAxis(trt_axis);
   params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
@@ -4581,15 +5026,22 @@ Status ConvertPad(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(
       CheckInputsWeights(*params, {{"tensor", false}, {"paddings", true}}));
-  TF_RETURN_IF_ERROR(
-      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(
+      *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT8}));
 
   // Implement tensor binaryOp weight [channel wise] for now;
   nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   const auto dims = tensor->getDimensions();
   // Restore implicit batch dimension
-  const int nb_dims = dims.nbDims + 1;
+  const int nb_dims =
+      params->use_implicit_batch ? dims.nbDims + 1 : dims.nbDims;
 
+  // TODO(tfeher): Support nb_dims < 4 by inserting extra dimensions to the
+  // original input.
+  if (nb_dims < 4) {
+    return errors::InvalidArgument("Convertpad requires at least 4D input, at ",
+                                   node_def.name());
+  }
   TRT_ShapedWeights pads = inputs.at(1).weights();
 
   TFAttrs attrs(node_def);
@@ -4599,9 +5051,9 @@ Status ConvertPad(OpConverterParams* params) {
   // TODO(jie): handle data type conversion for TRT?
 
   if (pads.shape_.d[0] != nb_dims || pads.shape_.d[1] != 2) {
-    return errors::InvalidArgument(
-        "Pad only supports explicit padding on 4 dimensional tensor, at ",
-        node_def.name());
+    return errors::InvalidArgument("Paddings at ", node_def.name(),
+                                   " must be a weight with shape [n, 2], "
+                                   "where n is the rank of input tensor");
   }
 
   // Only expect to handle INT32 as attributes for now
@@ -4610,72 +5062,100 @@ Status ConvertPad(OpConverterParams* params) {
   }
   auto pad_data = static_cast<int*>(pads.GetValues());
 
-  std::vector<int32_t> pad_index;
+  std::vector<int32_t> tf_pad_index;
   for (int i = 0; i < nb_dims; i++) {
     if (pad_data[2 * i] != 0 || pad_data[2 * i + 1] != 0) {
-      pad_index.push_back(i);
+      tf_pad_index.push_back(i);
     }
   }
 
   // No padding at all, we should exit
-  if (pad_index.empty()) {
+  if (tf_pad_index.empty()) {
     params->outputs->push_back(inputs.at(0));
     return Status::OK();
   }
 
-  // Only supports padding on less than 2 axis GIE-2579
-  if (pad_index.size() > 2) {
+  // TRT pad layer can only support padding on up to 2 dimensions (TRT-2579).
+  // TODO(tfeher): Use multiple TRT pad layers to support padding on more than 2
+  // dimensions.
+  if (tf_pad_index.size() > 2) {
     return errors::InvalidArgument(
         "Padding layer does not support padding on > 2");
   }
 
   // Padding on batch dimension is not supported
-  if (pad_index[0] == 0) {
+  if (params->use_implicit_batch && tf_pad_index[0] == 0) {
     return errors::InvalidArgument(
         "Padding layer does not support padding on batch dimension");
   }
 
-  // Not doing the legit thing here. ignoring padding on dim 1 and 3;
-  // TODO(jie): implement pad as uff parser
-  if (pad_index.size() == 2 && pad_index[0] == 0 && pad_index[1] == 3) {
-    return errors::Unimplemented(
-        "Padding layer does not support padding on dimension 1 and 3 yet");
-  }
   if (params->validation_only) return Status::OK();
 
-  bool legit_pad = true;
+  // TRT can only do the padding at the last two dimensions. We transpose the
+  // input tensor if needed.
+  bool transposed_pad = false;
+  std::vector<int> transpose_idx(nb_dims);
+  std::iota(transpose_idx.begin(), transpose_idx.end(), 0);
+
+  // trt_pad_index denotes the actual idx where the padding is performed by TRT.
+  std::vector<int> trt_pad_index{nb_dims - 2, nb_dims - 1};
+
+  // How many zeros are padded at the last two dimensions.
   nvinfer1::DimsHW pre_padding(0, 0);
   nvinfer1::DimsHW post_padding(0, 0);
 
-  std::vector<int32_t> permuted_pad_index(pad_index);
-  if (pad_index[0] == 1) {
-    legit_pad = false;
-    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        tensor, {0, 3, 2, 1}, StrCat(node_def.name(), "_to_pad"), &tensor));
-    permuted_pad_index[0] = 3;
+  // Dimension to set in the pre_padding and post_padding array.
+  std::vector<int> trt_pre_post_padding_index{0, 1};
+
+  // Two special cases where we can avoid permutations.
+  if (tf_pad_index.size() == 1 && tf_pad_index[0] == nb_dims - 1) {
+    // Only one dimension needs to be padded. We store its index at
+    // trt_pad_index[0]. We ignore trt_pad_index[1].
+    trt_pad_index[0] = nb_dims - 1;
+    trt_pre_post_padding_index[0] = 1;
+  }
+  if (tf_pad_index.size() == 2 && tf_pad_index[1] == nb_dims - 2) {
+    // tf_pad_index only has two values that are in ascending order. If
+    // tf_pad_index[1] is nb_dims-2, then swapping the two values in
+    // trt_pad_index here makes it possible to only swap one pair of dimensions
+    // (swap tf_pad_index[0] with nb_dims-1) in the input tensor. Otherwise, we
+    // would have to swap two pairs of dimensions in the input tensor:
+    // (tf_pad_index[0] with nb_dims-2) and (tf_pad_index[1], with nb_dims-1).
+    // Here is an example for a 4D input tensor:
+    // tf_pad_index = [1, 2]
+    // trt_pad_index = [3, 2]
+    // transpose_idx = [0, 3, 2, 1]
+    std::swap(trt_pad_index[0], trt_pad_index[1]);
+    std::swap(trt_pre_post_padding_index[0], trt_pre_post_padding_index[1]);
   }
 
-  for (size_t i = 0; i < pad_index.size(); i++) {
-    int index = pad_index[i];
-    if (permuted_pad_index[i] == 2) {
-      pre_padding.h() = pad_data[index * 2];
-      post_padding.h() = pad_data[index * 2 + 1];
-    } else if (permuted_pad_index[i] == 3) {
-      pre_padding.w() = pad_data[index * 2];
-      post_padding.w() = pad_data[index * 2 + 1];
+  for (int i = 0; i < tf_pad_index.size(); i++) {
+    const int tf_index = tf_pad_index[i];
+    const int trt_index = trt_pad_index[i];
+    const int k = trt_pre_post_padding_index[i];
+    pre_padding.d[k] = pad_data[tf_index * 2];
+    post_padding.d[k] = pad_data[tf_index * 2 + 1];
+    if (tf_index != trt_index) {
+      transposed_pad = true;
+      std::swap(transpose_idx[tf_index], transpose_idx[trt_index]);
     }
+  }
+
+  if (transposed_pad) {
+    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
+        tensor, transpose_idx, &tensor, node_def, "to_pad"));
   }
 
   nvinfer1::IPaddingLayer* layer = params->converter->network()->addPadding(
       *tensor, pre_padding, post_padding);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->converter->SetLayerName(layer, node_def);
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   params->converter->MarkQuantizationRangesAsInferrable(tensor, output_tensor);
 
-  if (!legit_pad) {
+  if (transposed_pad) {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        output_tensor, {0, 3, 2, 1}, StrCat(node_def.name(), "_from_pad"),
-        &output_tensor));
+        output_tensor, transpose_idx, &output_tensor, node_def, "from_pad"));
   }
 
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
@@ -4690,7 +5170,7 @@ Status ConvertSplitHelper(OpConverterParams* params,
   // Convert axis.
   int trt_axis;
   TF_RETURN_IF_ERROR(ConvertAxis(tf_axis, dims.nbDims, node_def.name(),
-                                 /*use_implicit_batch=*/true, &trt_axis));
+                                 params->use_implicit_batch, &trt_axis));
   // Dimension must equal num_splits for Unstack (when squeeze_after is true)
   if (squeeze_after && dims.d[trt_axis] != num_splits) {
     return errors::InvalidArgument(
@@ -4735,7 +5215,7 @@ Status ConvertSplitHelper(OpConverterParams* params,
   for (int i = 0; i < num_splits; ++i) {
     begin[trt_axis + 1] = i * split_size_on_axis;
     TF_RETURN_IF_ERROR(ConvertStridedSliceHelper(
-        params, input, begin, size, stride, final_shape_for_unpack_ptr));
+        params, input, begin, size, stride, final_shape_for_unpack_ptr, i));
   }
   return Status::OK();
 }
@@ -4809,6 +5289,7 @@ Status ConvertCast(OpConverterParams* params) {
   nvinfer1::ITensor* input = params->inputs.at(0).tensor();
   nvinfer1::IIdentityLayer* layer =
       params->converter->network()->addIdentity(*input);
+  params->converter->SetLayerName(layer, node_def);
   layer->setPrecision(nvinfer1::DataType::kFLOAT);
 
   if (layer->getOutput(0)->getType() != nvinfer1::DataType::kFLOAT) {
@@ -4830,17 +5311,25 @@ Status ConvertConcat(OpConverterParams* params) {
         "Number of inputs for ConcatV2 is inconsistent with N attribute, at ",
         node_def.name());
   }
-  // Validate inputs. Values must be tensors for now.
-  std::vector<std::pair<string, bool>> inputs_is_weight;
+  // Validate inputs. Values must be tensors for now, although it would be
+  // possible to accept weights in explicit batch mode. See CheckInputsWeights
+  // for details. TODO(tfeher): Allow weight input in explicit batch mode.
+  std::vector<std::pair<string, TrtInputArg>> inputs_kinds;
+  TrtInputArg expected_input = TrtInputArg::kTensor;
+  inputs_kinds.reserve(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
-    inputs_is_weight.push_back({StrCat("values_", i), false});
+    inputs_kinds.push_back({StrCat("values_", i), expected_input});
   }
-  inputs_is_weight.push_back({"axis", true});
-  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, inputs_is_weight));
-  // TODO(tmorris): There is a bug with Concat and INT32 in TRT - it is supposed
-  // to be supported.
-  TF_RETURN_IF_ERROR(
-      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+  inputs_kinds.push_back({"axis", TrtInputArg::kWeight});
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, inputs_kinds));
+
+#if IS_TRT_VERSION_GE(7, 0, 0, 0)
+  std::set<DataType> allowed_types{DataType::DT_FLOAT, DataType::DT_HALF,
+                                   DataType::DT_INT32};
+#else
+  std::set<DataType> allowed_types{DataType::DT_FLOAT, DataType::DT_HALF};
+#endif
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, allowed_types));
   const auto axis = inputs.at(num_inputs).weights().GetSpan<int>();
   if (axis.size() != 1) {
     return errors::InvalidArgument("Axis for ConcatV2 must be a scalar, at ",
@@ -4849,7 +5338,7 @@ Status ConvertConcat(OpConverterParams* params) {
   int trt_axis = 0;
   const auto dim = inputs.at(0).GetTrtDims();
   TF_RETURN_IF_ERROR(ConvertAxis(axis[0], dim.nbDims, node_def.name(),
-                                 /*use_implicit_batch=*/true, &trt_axis));
+                                 params->use_implicit_batch, &trt_axis));
   // Check that dimensions match on non-concatenate axis.
   TF_RETURN_IF_ERROR(VerifyShapesMatch(
       absl::Span<const TRT_TensorOrWeights>(inputs).first(num_inputs), trt_axis,
@@ -4858,6 +5347,7 @@ Status ConvertConcat(OpConverterParams* params) {
 
   // Gather inputs as tensors
   std::vector<nvinfer1::ITensor const*> input_tensors;
+  input_tensors.reserve(num_inputs);
   for (int i = 0; i < num_inputs; i++) {
     input_tensors.push_back(inputs.at(i).tensor());
   }
@@ -4866,6 +5356,7 @@ Status ConvertConcat(OpConverterParams* params) {
           const_cast<nvinfer1::ITensor* const*>(input_tensors.data()),
           input_tensors.size());
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->converter->SetLayerName(layer, node_def);
   layer->setAxis(trt_axis);
   params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
   return Status::OK();
@@ -4893,16 +5384,28 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
     // Trying to use batchnorm in training mode is a very common problem.
     // Because the error message will only be printed in VLOG(1) by the
     // segmenter, we issue a special warning so that users will actually see it.
-    LOG(WARNING) << node_def.op() << " only supports is_training=false. If you "
-                 << "are using Keras, please call "
-                 << "keras.backend.set_learning_phase(0) before constructing "
-                 << "your model. At " << node_def.name();
+    LOG_WARNING_WITH_PREFIX
+        << node_def.op() << " only supports is_training=false. If you "
+        << "are using Keras, please call "
+        << "keras.backend.set_learning_phase(0) before constructing "
+        << "your model. At " << node_def.name();
     return errors::Unimplemented(node_def.op(),
                                  " only supports is_training=false, at ",
                                  node_def.name());
   }
   nvinfer1::ITensor* tensor = inputs.at(0).tensor();
-
+  if (!params->use_implicit_batch && tensor->getDimensions().d[1] == -1) {
+    // This check is to make sure that channel dimension is known during
+    // conversion.
+    //
+    // We check this only in explicit batch mode and reject an op with unknown
+    // channel dimension during segmentation. In implicit batch mode we have
+    // known shapes during conversion even though the shapes may not be known
+    // during segmentation (see the actual argument for input_shapes when
+    // ConvertGraphDefToEngine is called from TRTEngineOp::BuildEngine).
+    return errors::InvalidArgument("Channel dimension must be static, at ",
+                                   node_def.name());
+  }
   //  Check parameter types
   auto parameter_type = inputs.at(1).weights().TrtDType();
   if ((parameter_type != nvinfer1::DataType::kFLOAT) &&
@@ -5000,6 +5503,7 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
       combined_scale_weights.GetTrtWeights(),
       dummy_power_weights.GetTrtWeights());
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->converter->SetLayerName(layer, node_def);
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
@@ -5079,6 +5583,7 @@ Status ConvertGather(OpConverterParams* params) {
   nvinfer1::IGatherLayer* layer = params->converter->network()->addGather(
       *params_tensor, *indices_input.tensor(), trt_axis);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->converter->SetLayerName(layer, node_def);
 
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   nvinfer1::Dims trt_gather_output_dims = output_tensor->getDimensions();
@@ -5103,139 +5608,188 @@ Status ConvertGather(OpConverterParams* params) {
     trt_gather_output_dims.d[trt_axis] = 1;
     ++trt_gather_output_dims.nbDims;
 
-    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-        TRT_TensorOrWeights(output_tensor), trt_gather_output_dims,
-        /*validation_only=*/false, &output_tensor));
+    TF_RETURN_IF_ERROR(PrepareTensorForShape(
+        params->converter, TRT_TensorOrWeights(output_tensor),
+        trt_gather_output_dims,
+        /*validation_only=*/false, &output_tensor, node_def));
   }
 
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
 }
 
+// Converts the input matrix multiplication node to a fully connected (FC) layer
+// if possible, as the FC layer has more tactics and INT implementations. Set
+// *converted true if the node is converted. Otherwise, *converted==false and
+// Status::OK indicates the node can't be converted to an FC layer. An error
+// Status indicates internal problems during conversion.
 Status ConvertFullyConnectedHelper(OpConverterParams* params,
-                                   nvinfer1::ITensor* tensor_a,
-                                   TRT_ShapedWeights weights_b,
-                                   bool transpose_b, const string& node_name) {
-  // Reshape input to 3D - this will be a no-op unless using int8 precision.
-  auto input_dim = tensor_a->getDimensions();
-  while (input_dim.nbDims < 3) {
-    input_dim.d[input_dim.nbDims++] = 1;
+                                   TRT_TensorOrWeights input_a,
+                                   TRT_TensorOrWeights input_b,
+                                   bool transpose_a, bool transpose_b,
+                                   bool* converted) {
+  *converted = false;
+
+  if (!(!transpose_a && input_a.is_tensor() && input_b.is_weights())) {
+    VLOG(2) << "Not FC compatible, A must be non transposed tensor, and B "
+               "must be constant.";
+    return Status::OK();
   }
-  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      TRT_TensorOrWeights(tensor_a), input_dim, /*validation_only=*/false,
-      &tensor_a));
+
+  if (!params->use_implicit_batch && input_b.GetTrtDims().nbDims > 2 &&
+      input_b.GetTrtDims().d[0] != 1) {
+    // Implicit broadcasting, if needed, has already been considered to
+    // transform the inputs and ensure the two operands have the same rank here.
+    // If the inputs have rank >= 3, then d[0] is the explicit batch dimension.
+    // The weight (input_b) must have batch size 1 in implicit batch mode.
+    VLOG(2) << "Not FC compatible, if B has an explicit batch dimension, then "
+               "it must be 1.";
+    return Status::OK();
+  }
+
+  nvinfer1::Dims input_dim = input_a.GetTrtDims();
+  if (input_dim.d[input_dim.nbDims - 1] == -1) {
+    VLOG(2) << "Not FC compatible, last dim of A must be static.";
+    return Status::OK();
+  }
+
+  if (input_dim.nbDims + 2 > nvinfer1::Dims::MAX_DIMS) {
+    VLOG(2) << "Not FC compatible, cannot expand A's shape.";
+    return Status::OK();
+  }
+
+  // Add two trailing 1's because FC layer combines the last three dims.
+  nvinfer1::ITensor* tensor_a = nullptr;
+  nvinfer1::Dims reshape_dim{input_dim.nbDims + 2, {}};
+  // The empty braces initialize the elements of reshap_dim.d to 0. A value 0 in
+  // reshape_dim.d[i] will preserve the i-th dimension value from the shape of
+  // input_a.
+  reshape_dim.d[input_dim.nbDims] = 1;
+  reshape_dim.d[input_dim.nbDims + 1] = 1;
+  const NodeDef& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(PrepareTensorForShape(
+      params->converter, input_a, reshape_dim,
+      /*validation_only=*/false, &tensor_a, node_def, /*op_instance=*/0));
+
+  VLOG(2) << "New shape of A " << DebugString(tensor_a->getDimensions());
+
+  TRT_ShapedWeights weights_b = input_b.weights();
+  TRT_ShapedWeights weights_2D(weights_b);
+  if (weights_b.shape_.nbDims > 2) {
+    // Combine first nbDims-1 dims into a single dim, e.g. for a 4D tensor we
+    // transform [N, H, W, C] -> [N*H*W, C].
+    int k = weights_b.shape_.d[weights_b.shape_.nbDims - 1];
+    nvinfer1::Dims dims{2, {static_cast<int>(weights_b.count() / k), k}};
+    TF_RETURN_IF_ERROR(weights_2D.SetShape(dims));
+  }
 
   // FC layer will transpose weights, so we need to pre-transpose.
-  TRT_ShapedWeights weights(weights_b.TrtDType());
+  TRT_ShapedWeights weights(weights_2D.TrtDType());
   if (!transpose_b) {
-    weights = params->weight_store->GetTempWeights(weights_b);
-    ReorderCKtoKC(weights_b, &weights);
+    weights = params->weight_store->GetTempWeights(weights_2D);
+    ReorderCKtoKC(weights_2D, &weights);
   } else {
-    weights = weights_b;
+    weights = weights_2D;
   }
   TRT_ShapedWeights biases(weights.TrtDType());
-  const int noutput = weights.shape_.d[0];
+  int k = weights.shape_.d[weights.shape_.nbDims - 1];
+  const int noutput = weights.count() / k;
+  VLOG(2) << "Using fully connected layer with k=" << k
+          << ", n_output=" << noutput
+          << " weights shape: " << DebugString(weights.shape_) << " to convert "
+          << node_def.op();
   nvinfer1::IFullyConnectedLayer* layer =
       params->converter->network()->addFullyConnected(
           *tensor_a, noutput, weights.GetTrtWeights(), biases.GetTrtWeights());
 
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_name);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->converter->SetLayerName(layer, node_def);
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
-  // Reshape output to 1D - this will be a no-op unless using int8 precision.
+  // A fully connected layer produces output with two trailing singleton
+  // dimensions. We remove these.
   auto output_dim = output_tensor->getDimensions();
-  output_dim.nbDims = 1;
-  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      TRT_TensorOrWeights(output_tensor), output_dim, /*validation_only=*/false,
-      &output_tensor));
-
+  output_dim.nbDims -= 2;
+  // A zero in output_dim indicates copying the corresponding input dimension
+  // value during reshape.
+  std::fill(output_dim.d, output_dim.d + output_dim.nbDims, 0);
+  TF_RETURN_IF_ERROR(PrepareTensorForShape(
+      params->converter, TRT_TensorOrWeights(output_tensor), output_dim,
+      /*validation_only=*/false, &output_tensor, node_def,
+      /*op_instance=*/1));
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  *converted = true;
   return Status::OK();
 }
 
 Status ConvertMatMulHelper(OpConverterParams* params,
                            TRT_TensorOrWeights input_a,
                            TRT_TensorOrWeights input_b, bool transpose_a,
-                           bool transpose_b, string node_name) {
-  // TODO: ReorderCKtoKC is currently not general enough to transpose weights
-  // that are not 2D.
-  if ((transpose_a && input_a.is_weights() &&
-       input_a.GetTrtDims().nbDims != 2) ||
-      (transpose_b && input_b.is_weights() &&
-       input_b.GetTrtDims().nbDims != 2)) {
-    return errors::InvalidArgument(
-        "Cannot currently transpose constant input if it is not 2 dimensional");
+                           bool transpose_b) {
+  if (params->use_implicit_batch) {
+    // In implicit batch mode we are very limited when can we multiply 2D
+    // matrices. If input_A is a 2D tensor, then nbDims==1 (implicit batch dim
+    // not counted). If A is not transposed and B is weight, then we can convert
+    // this treating A as a batch of vectors. This is the only possibility
+    // to implement MatMul with 2D input in implicit batch mode.
+    if ((input_a.GetTrtDims().nbDims < 2 &&
+         (transpose_a || !input_b.is_weights())) ||
+        (input_b.GetTrtDims().nbDims < 2)) {
+      return errors::InvalidArgument(
+          "MatMul with 2D tensors requires explicit batch mode, or that tensor"
+          " A is not transposed and B is a constant tensor.");
+    }
   }
 
-  // If A is a tensor, we can only transpose if it is at least 3D in TF,
-  // or TRT will not do the correct transposition.
-  if (transpose_a && input_a.is_tensor() && input_a.GetTrtDims().nbDims < 2) {
-    return errors::InvalidArgument(
-        "Cannot transpose first input if it is a tensor with fewer than 2 "
-        "non-batch dimensions.");
-  }
-
-  // If B is a tensor, then it must be at least 3D in TF,
-  // or TRT won't be able to handle the multiply correctly.
-  if (input_b.is_tensor() && input_b.GetTrtDims().nbDims < 2) {
-    return errors::InvalidArgument(
-        "Second input must either be a constant, or contain at least 2 "
-        "non-batch dimensions.");
-  }
   if (params->validation_only) return Status::OK();
 
-  // If an FC layer can be used and would be faster, use that instead.
-  const bool can_use_fc =
-      !transpose_a && input_a.is_tensor() && input_b.is_weights();
-  const bool should_use_fc = can_use_fc && input_a.GetTrtDims().nbDims >= 3 &&
-                             input_b.GetTrtDims().nbDims == 2;
-  // If int8 is specified, FC must be used unless it is not compatible, as MM
-  // does not support int8 at this time.
-  if (should_use_fc || (can_use_fc && params->converter->precision_mode() ==
-                                          TrtPrecisionMode::INT8)) {
-    return ConvertFullyConnectedHelper(
-        params, input_a.tensor(), input_b.weights(), transpose_b, node_name);
-  }
+  bool converted = false;
+  TF_RETURN_IF_ERROR(ConvertFullyConnectedHelper(
+      params, input_a, input_b, transpose_a, transpose_b, &converted));
+  if (converted == true) return Status::OK();
 
-  const auto get_matrix_op = [](nvinfer1::ITensor* in,
-                                bool transpose) -> nvinfer1::MatrixOperation {
-    return (in->getDimensions().nbDims < 2)
-               ? nvinfer1::MatrixOperation::kVECTOR
-               : (transpose) ? nvinfer1::MatrixOperation::kTRANSPOSE
-                             : nvinfer1::MatrixOperation::kNONE;
-  };
-
-  // If the MatMul operand is a constant, applies transposes at conversion-time
-  // as necessary. If the operand is a tensor, does nothing. If required
-  // transposes were applied, sets transpose to false.
-  const auto prepare_matmul_operand =
-      [&params](TRT_TensorOrWeights operand,
-                bool* transpose) -> nvinfer1::ITensor* {
+  const auto convert_to_itensor =
+      [&params](TRT_TensorOrWeights operand) -> nvinfer1::ITensor* {
     if (operand.is_tensor()) {
       return operand.tensor();
     } else {
-      TRT_ShapedWeights weights(operand.weights().TrtDType());
-      if (*transpose) {
-        weights = params->weight_store->GetTempWeights(operand.weights());
-        ReorderCKtoKC(operand.weights(), &weights);
-        // Weights have been transposed, can set transpose to false
-        *transpose = false;
-      } else {
-        weights = operand.weights();
-      }
-      return params->converter->CreateConstantLayer(weights, weights.shape_);
+      return params->converter->CreateConstantLayer(operand.weights(),
+                                                    operand.GetTrtDims());
     }
   };
 
-  nvinfer1::ITensor* tensor_a = prepare_matmul_operand(input_a, &transpose_a);
-  nvinfer1::ITensor* tensor_b = prepare_matmul_operand(input_b, &transpose_b);
+  nvinfer1::ITensor* tensor_a = convert_to_itensor(input_a);
+  nvinfer1::ITensor* tensor_b = convert_to_itensor(input_b);
+
+  const auto get_matrix_op = [](nvinfer1::ITensor* in,
+                                bool transpose) -> nvinfer1::MatrixOperation {
+    return (transpose) ? nvinfer1::MatrixOperation::kTRANSPOSE
+                       : nvinfer1::MatrixOperation::kNONE;
+  };
+  nvinfer1::MatrixOperation op_a, op_b;
+  // Note: In implicit batch mode kTRANSPOSE and kNONE are only valid if the
+  // matrix has at least 2 non-batch dimension. In implicit batch mode, if a has
+  // 1 dim (excluding batch dim), then we can only use kVECTOR, which will treat
+  // matrix A as a batch of vectors.
+  op_a = (tensor_a->getDimensions().nbDims < 2)
+             ? nvinfer1::MatrixOperation::kVECTOR
+             : get_matrix_op(tensor_a, transpose_a);
+  // In implicit batch mode, if B has only 1 dims (excluding batch dim) then we
+  // already reject the case and don't convert. One could consider using the
+  // kVECTOR flag to express C = MatMul(A, B.T) if A is weight, but the result
+  // will not have the correct shape: in TRT's implicit batch implementation,
+  // the result is a batch of vectors D_ji = A_ik * B_jk, where j is the batch
+  // dimension. In contrast, the TF MatMul op produces C = D.T, and we cannot
+  // transpose over the batch dimension (implicit batch mode).
+  op_b = get_matrix_op(tensor_b, transpose_b);
 
   nvinfer1::IMatrixMultiplyLayer* layer =
-      params->converter->network()->addMatrixMultiply(
-          *tensor_a, get_matrix_op(tensor_a, transpose_a), *tensor_b,
-          get_matrix_op(tensor_b, transpose_b));
+      params->converter->network()->addMatrixMultiply(*tensor_a, op_a,
+                                                      *tensor_b, op_b);
 
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_name);
+  const auto& node_def = params->node_def;
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->converter->SetLayerName(layer, node_def);
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
@@ -5258,7 +5812,7 @@ Status ConvertMatMul(OpConverterParams* params) {
   bool transpose_b = attrs.get<bool>("transpose_b");
 
   return ConvertMatMulHelper(params, inputs.at(0), inputs.at(1), transpose_a,
-                             transpose_b, node_def.name());
+                             transpose_b);
 }
 
 Status ConvertBatchMatMul(OpConverterParams* params) {
@@ -5269,44 +5823,45 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
                                    " inputs but expected 2, at ",
                                    node_def.name());
   }
-  // TODO(tmorris): Enable once false is updated to mean either tensor or weight
-  // TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}, {"y",
-  // false}}));
+  TF_RETURN_IF_ERROR(CheckInputsWeights(
+      *params, {{"x", TrtInputArg::kBoth}, {"y", TrtInputArg::kBoth}}));
+  // TODO(tfeher): Consider adding INT8 type because FC layer can support it.
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   if (inputs.at(0).is_weights() && inputs.at(1).is_weights()) {
     return errors::InvalidArgument(
         "All inputs are weights, but Grappler is expected to fold them.");
   }
-  if (inputs.at(0).is_tensor() && inputs.at(1).is_tensor() &&
-      inputs.at(0).GetTrtDims().nbDims != inputs.at(1).GetTrtDims().nbDims) {
-    return errors::Unimplemented(
-        "Inputs must have the same rank if they are both tensors.");
-  }
 
   TFAttrs attrs(node_def);
   const bool transpose_a = attrs.get<bool>("adj_x");
   const bool transpose_b = attrs.get<bool>("adj_y");
 
-  // There is no way to batch constants in TRT. Example:
-  // Tensor with TF Dims: 12 5 3 -> TRT Dims: 5 3
-  // Weight with TF Dims: 12 3 6 -> TRT Dims: 12 3 6
-  // It is not possible to treat the weight input as a batched [3, 6] tensor.
+  // In case input_l is weight, check whether input_l has implicit batch mode
+  // compatible batch dim.
   const auto check_weight_is_not_batched =
       [](const TRT_TensorOrWeights& input_l,
          const TRT_TensorOrWeights& input_r) {
-        // If input_l is a weight, then input_r must be a tensor because
-        // otherwise the op would be handled by Grappler.
+        // There is no way to batch constants in TRT using implicit batch mode.
+        // Example:
+        // Tensor with TF Dims: 12 5 3 -> TRT Dims: 5 3
+        // Weight with TF Dims: 12 3 6 -> TRT Dims: 12 3 6
+        // It is not possible to treat the weight input as a batched [3, 6]
+        // tensor. Batched weight tensors must have batch dim = 1 (after the
+        // broadcast).
         if (input_l.is_weights() &&
             input_l.GetTrtDims().nbDims > input_r.GetTrtDims().nbDims &&
             input_l.GetTrtDims().d[0] != 1) {
           return errors::Unimplemented(
-              "TensorRT does not support batched constants.");
+              "TensorRT does not support batched constants in implicit batch "
+              "mode.");
         }
         return Status::OK();
       };
-  TF_RETURN_IF_ERROR(check_weight_is_not_batched(inputs.at(0), inputs.at(1)));
-  TF_RETURN_IF_ERROR(check_weight_is_not_batched(inputs.at(1), inputs.at(0)));
+  if (params->use_implicit_batch) {
+    TF_RETURN_IF_ERROR(check_weight_is_not_batched(inputs.at(0), inputs.at(1)));
+    TF_RETURN_IF_ERROR(check_weight_is_not_batched(inputs.at(1), inputs.at(0)));
+  }
 
   // Broadcast inputs. We don't check feasibility since the dimensions in a
   // MatMul don't need to match. For example, consider a valid set of inputs
@@ -5314,21 +5869,15 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
   // input 0: [N, T, C]
   // input 1: [1, C, K]
   // Since C != K and T != C, check feasiblity would fail.
-  nvinfer1::Dims broadcasted_dims_l, broadcasted_dims_r;
-  TF_RETURN_IF_ERROR(GetTrtBroadcastShape(
-      inputs.at(0), inputs.at(1), /*check_feasibility=*/false,
-      params->use_implicit_batch, &broadcasted_dims_l, &broadcasted_dims_r));
-  nvinfer1::ITensor* tensor_l = nullptr;
-  nvinfer1::ITensor* tensor_r = nullptr;
-  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      inputs.at(0), broadcasted_dims_l, params->validation_only, &tensor_l));
-  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      inputs.at(1), broadcasted_dims_r, params->validation_only, &tensor_r));
+  auto input_l = std::make_unique<TRT_TensorOrWeights>(inputs.at(0));
+  auto input_r = std::make_unique<TRT_TensorOrWeights>(inputs.at(1));
+  TF_RETURN_IF_ERROR(BroadcastTensors(input_l, input_r,
+                                      /*check_feasibility=*/false, params));
+
   if (params->validation_only) return Status::OK();
 
-  return ConvertMatMulHelper(params, TRT_TensorOrWeights(tensor_l),
-                             TRT_TensorOrWeights(tensor_r), transpose_a,
-                             transpose_b, node_def.name());
+  return ConvertMatMulHelper(params, *input_l, *input_r, transpose_a,
+                             transpose_b);
 }
 
 Status ConvertSoftmax(OpConverterParams* params) {
@@ -5350,6 +5899,7 @@ Status ConvertSoftmax(OpConverterParams* params) {
   nvinfer1::ISoftMaxLayer* layer =
       params->converter->network()->addSoftMax(*tensor);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->converter->SetLayerName(layer, node_def);
   // Tensorflow SoftMax assumes applying softmax on the last dimension.
   layer->setAxes(1 << (num_trt_dims - 1));
 
@@ -5378,7 +5928,7 @@ Status ConvertArgMinMax(OpConverterParams* params) {
   int trt_axis;
   nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
   TF_RETURN_IF_ERROR(ConvertAxis(tf_axis, dims.nbDims, node_def.name(),
-                                 /*use_implicit_batch=*/true, &trt_axis));
+                                 params->use_implicit_batch, &trt_axis));
   nvinfer1::TopKOperation topk_op;
   if (node_def.op() == "ArgMin") {
     topk_op = nvinfer1::TopKOperation::kMIN;
@@ -5387,6 +5937,18 @@ Status ConvertArgMinMax(OpConverterParams* params) {
   } else {
     return errors::InvalidArgument("Unsupported ArgMin/Max operation");
   }
+
+#if !IS_TRT_VERSION_GE(7, 0, 0, 11)
+  const nvinfer1::Dims trt_dims = params->inputs.at(0).GetTrtDims();
+  if (trt_dims.nbDims >= 4) {
+    string trt_dim_str = DebugString(trt_dims);
+
+    return errors::Unimplemented(node_def.op(), "op is not able to support",
+                                 " tensors with 4+ dimensions (excluding batch",
+                                 " size). Received: ", trt_dim_str);
+  }
+#endif
+
   if (params->validation_only) return Status::OK();
 
   // Use TopK with k = 1. Only indices output is needed (output 1).
@@ -5394,19 +5956,17 @@ Status ConvertArgMinMax(OpConverterParams* params) {
   nvinfer1::ITopKLayer* layer = params->converter->network()->addTopK(
       *inputs.at(0).tensor(), topk_op, 1, reduce_axes);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->converter->SetLayerName(layer, node_def, "topk");
   nvinfer1::ITensor* output_indices_tensor = layer->getOutput(1);
 
   // Squeeze on axis.
-  std::vector<int> size(dims.d, dims.d + dims.nbDims);
-  size.erase(size.begin() + trt_axis);
-  nvinfer1::Dims new_dims;
-  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(size, &new_dims));
+  std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
+  input_dims[trt_axis] = 0;
   nvinfer1::ITensor* output_tensor = nullptr;
-  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      TRT_TensorOrWeights(output_indices_tensor), new_dims,
-      /*validation_only=*/false, &output_tensor));
-
+  TF_RETURN_IF_ERROR(params->converter->SqueezeTensor(
+      output_indices_tensor, &input_dims, params, &output_tensor));
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+
   return Status::OK();
 }
 
@@ -5450,6 +6010,7 @@ Status ConvertTopK(OpConverterParams* params) {
   nvinfer1::ITopKLayer* layer =
       params->converter->network()->addTopK(*tensor, op, k, reduce_axes);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->converter->SetLayerName(layer, node_def);
 
   nvinfer1::ITensor* output_value_tensor = layer->getOutput(0);
   nvinfer1::ITensor* output_indices_tensor = layer->getOutput(1);
@@ -5525,6 +6086,8 @@ Status ConvertDepthSpaceShuffle(OpConverterParams* params) {
   nvinfer1::IShuffleLayer* first_shuffle =
       params->converter->network()->addShuffle(*inputs.at(0).tensor());
   TFTRT_RETURN_ERROR_IF_NULLPTR(first_shuffle, node_def.name());
+  params->converter->SetLayerName(first_shuffle, node_def, "shuffle",
+                                  /*op_instance=*/0);
   if (data_format == "NHWC") {
     first_shuffle->setFirstTranspose({2, 0, 1});
   }
@@ -5534,6 +6097,8 @@ Status ConvertDepthSpaceShuffle(OpConverterParams* params) {
   nvinfer1::IShuffleLayer* second_shuffle =
       params->converter->network()->addShuffle(*first_shuffle->getOutput(0));
   TFTRT_RETURN_ERROR_IF_NULLPTR(second_shuffle, node_def.name());
+  params->converter->SetLayerName(second_shuffle, node_def, "shuffle",
+                                  /*op_instance=*/1);
   second_shuffle->setReshapeDimensions(second_shuffle_shape);
   if (data_format == "NHWC") {
     second_shuffle->setSecondTranspose({1, 2, 0});
@@ -5560,10 +6125,12 @@ Status ConvertSquaredDifference(OpConverterParams* params) {
       params->use_implicit_batch, &broadcasted_dims_l, &broadcasted_dims_r));
   nvinfer1::ITensor* tensor_l = nullptr;
   nvinfer1::ITensor* tensor_r = nullptr;
-  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      inputs.at(0), broadcasted_dims_l, params->validation_only, &tensor_l));
-  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      inputs.at(1), broadcasted_dims_r, params->validation_only, &tensor_r));
+  TF_RETURN_IF_ERROR(
+      PrepareTensorForShape(params->converter, inputs.at(0), broadcasted_dims_l,
+                            params->validation_only, &tensor_l, node_def));
+  TF_RETURN_IF_ERROR(
+      PrepareTensorForShape(params->converter, inputs.at(1), broadcasted_dims_r,
+                            params->validation_only, &tensor_r, node_def));
   if (params->validation_only) return Status::OK();
 
   // Subtract x - y.
@@ -5571,18 +6138,35 @@ Status ConvertSquaredDifference(OpConverterParams* params) {
       params->converter->network()->addElementWise(
           *tensor_l, *tensor_r, nvinfer1::ElementWiseOperation::kSUB);
   TFTRT_RETURN_ERROR_IF_NULLPTR(sub, node_def.name());
+  params->converter->SetLayerName(sub, node_def, "sub");
+
   // Multiply (x - y) * (x - y).
   nvinfer1::IElementWiseLayer* mul =
       params->converter->network()->addElementWise(
           *sub->getOutput(0), *sub->getOutput(0),
           nvinfer1::ElementWiseOperation::kPROD);
   TFTRT_RETURN_ERROR_IF_NULLPTR(mul, node_def.name());
+  params->converter->SetLayerName(mul, node_def, "mul");
 
   params->outputs->push_back(TRT_TensorOrWeights(mul->getOutput(0)));
   return Status::OK();
 }
 
-#if IS_TRT_VERSION_GE(5, 1, 0, 0)
+#if IS_TRT_VERSION_GE(7, 1, 3, 0)
+
+bool AllowNmsTopkOverride() {
+  static bool result = [] {
+    bool value;
+    Status status = ReadBoolFromEnvVar("TF_TRT_ALLOW_NMS_TOPK_OVERRIDE",
+                                       /*default_value=*/false, &value);
+    if (!status.ok()) {
+      LOG(ERROR) << status;
+    }
+    return value;
+  }();
+  return result;
+}
+
 Status ConvertCombinedNMS(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
       CheckInputsWeights(*params, {{"boxes", false},
@@ -5604,22 +6188,32 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
   // Validate tensors and weights (also set some of the needed plugin fields)
   const auto boxes_dims = boxes_tensor->getDimensions();
   const auto scores_dims = scores_tensor->getDimensions();
-  if (boxes_dims.nbDims != 3) {
+  if (!params->use_implicit_batch &&
+      (!HasStaticShape(boxes_dims) || !HasStaticShape(scores_dims))) {
+    return errors::Unimplemented(
+        "TensorRT BatchedNMS Plugin requires input with static shape");
+  }
+  const int offset = params->use_implicit_batch ? 0 : 1;
+  if (boxes_dims.nbDims != 3 + offset) {
     return errors::InvalidArgument(
-        "TensorRT BatchedNMS Plugin input boxes must be 3-D excluding batch ",
+        "TensorRT BatchedNMS Plugin input boxes must be 4-D including batch ",
         node_def.name());
   }
-  const int num_classes = scores_dims.d[1];
-  bool box_check = boxes_dims.d[1] == 1 || boxes_dims.d[1] == num_classes;
+  const int class_idx = 1 + offset;
+  const int num_classes = scores_dims.d[class_idx];
+  const int num_boxes = boxes_dims.d[0 + offset];
+  bool box_check =
+      boxes_dims.d[class_idx] == 1 || boxes_dims.d[class_idx] == num_classes;
   if (!box_check) {
     return errors::InvalidArgument(
         "TensorRT BatchedNMS Plugin third dimension of boxes must be either 1 "
         "or num_classes ",
         node_def.name());
   }
-  if (output_size_per_class.shape_.nbDims != 1) {
+
+  if (output_size_per_class.count() != 1) {
     return errors::InvalidArgument(
-        "TensorRT BatchedNMS Plugin max_output_size_per_class must be 0-D ",
+        "TensorRT BatchedNMS Plugin max_output_size_per_class must be scalar ",
         node_def.name());
   }
   int max_size_per_class =
@@ -5629,9 +6223,9 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
         "TensorRT BatchedNMS Plugin max_output_size_per_class should be > 0",
         node_def.name());
   }
-  if (total_size.shape_.nbDims != 1) {
+  if (total_size.count() != 1) {
     return errors::InvalidArgument(
-        "TensorRT BatchedNMS Plugin max_total_size must be 0-D ",
+        "TensorRT BatchedNMS Plugin max_total_size must be scalar ",
         node_def.name());
   }
   int max_total_size = *(static_cast<int*>(total_size.GetValues()));
@@ -5640,9 +6234,9 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
         "TensorRT BatchedNMS Plugin max_total_size should be > 0",
         node_def.name());
   }
-  if (iou_threshold.shape_.nbDims != 1) {
+  if (iou_threshold.count() != 1) {
     return errors::InvalidArgument(
-        "TensorRT BatchedNMS Plugin iou_threshold must be 0-D ",
+        "TensorRT BatchedNMS Plugin iou_threshold must be scalar ",
         node_def.name());
   }
   float iou_thresh = *(static_cast<float*>(iou_threshold.GetValues()));
@@ -5651,31 +6245,58 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
         "TensorRT BatchedNMS Plugin iou_threshold must be in [0, 1]",
         node_def.name());
   }
-  if (score_threshold.shape_.nbDims != 1) {
+  if (score_threshold.count() != 1) {
     return errors::InvalidArgument(
-        "TensorRT BatchedNMS Plugin score_threshold must be 0-D ",
+        "TensorRT BatchedNMS Plugin score_threshold must be scalar ",
         node_def.name());
   }
 
-  if (params->validation_only) return Status::OK();
-
-  // TF op CombinedNonMaxSuppression doesn't have the option of
-  // not normalizing coordinates.
+  // TRT op is_normalized=False treats input corrdinates as pixels and
+  // calculates width/height as (max - min + 1).
+  //
+  // TF op CombinedNonMaxSuppression doesn't care about the normalization and
+  // calculates width/height  as (max-min).
+  //
+  // We set is_normalized = true to be consistent with TF IOU calculaton.
   const bool is_normalized = true;
-  // Set plugin fields and the field collection
+
   TFAttrs attrs(node_def);
-  bool share_location = (boxes_dims.d[1] == 1);
+  bool share_location = (boxes_dims.d[class_idx] == 1);
   const bool pad_per_class = attrs.get<bool>("pad_per_class");
-  int top_k;
+  const bool clip_boxes = attrs.get<bool>("clip_boxes");
+  int keep_top_k = 0;
   if (pad_per_class) {
-    top_k = std::min(max_size_per_class * num_classes, max_total_size);
+    keep_top_k = std::min(max_size_per_class * num_classes, max_total_size);
   } else {
-    top_k = max_total_size;
+    keep_top_k = max_total_size;
   }
-  const int keep_top_k = top_k;
+
+  // According to the batchedNMS plugin description we need to set top_k so that
+  // keep_top_k <= top_k
+  // https://github.com/NVIDIA/TensorRT/tree/master/plugin/batchedNMSPlugin
+  // Before the NMS step, TRT selects top_k candidate from each class and
+  // discards the rest. The NMS step is performed only among the top_k
+  // candidates. To be strictly compatible with the TF op, we need that top_k is
+  // greater equal to num_boxes.
+  int top_k = std::max(num_boxes, keep_top_k);
+  // TRT has a limitation: top_k <=4096.
+  if (top_k > 4096) {
+    if (AllowNmsTopkOverride()) {
+      top_k = 4096;
+      keep_top_k = std::min(top_k, keep_top_k);
+    } else {
+      return errors::InvalidArgument(
+          "TRT NMS plugin allow top_k<=4096, where top_k = max(num_boxes, "
+          "max_total_size). You can override this by setting "
+          "TF_TRT_ALLOW_NMS_TOPK_OVERRIDE=1 environment variable, but this can "
+          "result in a loss of accuracy.");
+    }
+  }
+
+  if (params->validation_only) return Status::OK();
   float score_thresh = *(static_cast<float*>(score_threshold.GetValues()));
   const int background_id = -1;
-  nvinfer1::PluginField fields[8] = {
+  nvinfer1::PluginField fields[9] = {
       nvinfer1::PluginField{"shareLocation", &share_location,
                             nvinfer1::PluginFieldType::kINT32, 1},
       nvinfer1::PluginField{"backgroundLabelId", &background_id,
@@ -5692,8 +6313,9 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
                             nvinfer1::PluginFieldType::kFLOAT32, 1},
       nvinfer1::PluginField{"isNormalized", &is_normalized,
                             nvinfer1::PluginFieldType::kINT32, 1},
-  };
-  nvinfer1::PluginFieldCollection fc{8, fields};
+      nvinfer1::PluginField{"clipBoxes", &clip_boxes,
+                            nvinfer1::PluginFieldType::kINT32, 1}};
+  nvinfer1::PluginFieldCollection fc{9, fields};
 
   // Get plugin creator
   auto creator =
@@ -5714,39 +6336,15 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
   nvinfer1::IPluginV2Layer* layer = params->converter->network()->addPluginV2(
       &plugin_inputs[0], static_cast<int>(plugin_inputs.size()), *plugin);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->converter->SetLayerName(layer, node_def, "plugin");
 
   // Set plugin outputs
   nvinfer1::ITensor* output_nmsed_boxes = layer->getOutput(1);
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+
   // TRT6 fixes (removes) the extra last dimension in CombinedNMS outputs
   nvinfer1::ITensor* output_num_detections = layer->getOutput(0);
   nvinfer1::ITensor* output_nmsed_scores = layer->getOutput(2);
   nvinfer1::ITensor* output_nmsed_classes = layer->getOutput(3);
-#else
-  nvinfer1::ITensor* output_num_detections = nullptr;
-  nvinfer1::ITensor* output_nmsed_scores = nullptr;
-  nvinfer1::ITensor* output_nmsed_classes = nullptr;
-
-  auto shrink_last_dim = [params](nvinfer1::ITensor* in_tensor,
-                                  nvinfer1::ITensor** out_tensor) {
-    nvinfer1::Dims dims = in_tensor->getDimensions();
-    if (dims.d[dims.nbDims - 1] != 1) {
-      return errors::Internal("Expect last dims to be 1, for tensor ",
-                              DebugString(*in_tensor));
-    }
-    --dims.nbDims;
-    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-        TRT_TensorOrWeights(in_tensor), dims,
-        /*validation_only=*/false, out_tensor));
-    return Status::OK();
-  };
-  TF_RETURN_IF_ERROR(
-      shrink_last_dim(layer->getOutput(2), &output_nmsed_scores));
-  TF_RETURN_IF_ERROR(
-      shrink_last_dim(layer->getOutput(3), &output_nmsed_classes));
-  TF_RETURN_IF_ERROR(
-      shrink_last_dim(layer->getOutput(0), &output_num_detections));
-#endif  // IS_TRT_VERSION_GE(6, 0, 0, 0)
 
   params->outputs->push_back(TRT_TensorOrWeights(output_nmsed_boxes));
   params->outputs->push_back(TRT_TensorOrWeights(output_nmsed_scores));
@@ -5755,7 +6353,7 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
 
   return Status::OK();
 }
-#endif  // IS_TRT_VERSION_GE(5, 1, 0, 0)
+#endif  // IS_TRT_VERSION_GE(7, 1, 3, 0)
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
 Status ConvertResize(OpConverterParams* params) {
@@ -5767,8 +6365,9 @@ Status ConvertResize(OpConverterParams* params) {
       *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
 
   // Get input tensor. Transpose it from NHWC to NCHW.
-  nvinfer1::ITensor* tensor = inputs.at(0).tensor();
-  TFTRT_RETURN_ERROR_IF_NULLPTR(tensor, params->node_def.name());
+  nvinfer1::ITensor* inputs_tensor = inputs.at(0).tensor();
+
+  TFTRT_RETURN_ERROR_IF_NULLPTR(inputs_tensor, params->node_def.name());
 
   // Get output size. It must constain two values i.e. [H_out, W_out]
   TRT_ShapedWeights weights = inputs.at(1).weights();
@@ -5787,6 +6386,12 @@ Status ConvertResize(OpConverterParams* params) {
   // Verify resize mode. Initialize resize mode if supported.
   nvinfer1::ResizeMode resize_mode;
   if (node_def.op() == "ResizeBilinear") {
+#if IS_TRT_VERSION_GE(7, 1, 0, 0)
+    if (!align_corners) {
+      return errors::InvalidArgument(
+          "Cannot Convert Bilinear Resize when align_corners=False");
+    }
+#endif
     resize_mode = nvinfer1::ResizeMode::kLINEAR;
   } else if (node_def.op() == "ResizeNearestNeighbor") {
     resize_mode = nvinfer1::ResizeMode::kNEAREST;
@@ -5795,28 +6400,37 @@ Status ConvertResize(OpConverterParams* params) {
                                  node_def.name());
   }
 
+  // Validate inputs_tensor.
+  // TODO: Allow dynamic shape for input-1 when shape input tensors are handled.
+  const auto inputs_dims = inputs_tensor->getDimensions();
+  if (!params->use_implicit_batch && !HasStaticShape(inputs_dims)) {
+    return errors::Unimplemented(
+        "TensorRT IResizeLayer requires input with static shape");
+  }
+
   // return after validation if only validation is requested.
   if (params->validation_only) return Status::OK();
 
   // Transpose tensor from NHWC to NCHW format.
   TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-      tensor, {0, 3, 1, 2}, StrCat(node_def.name(), "_to_NCHW"), &tensor));
+      inputs_tensor, {0, 3, 1, 2}, &inputs_tensor, node_def, "to_NCHW"));
 
   // Calculate output dimensions.
   // Given input dimensions [N, C, H, W] and output size [H_out, W_out],
   // output dimensions equals [N, C, H_out, W_out]
   nvinfer1::Dims output_dimensions;
-  output_dimensions.nbDims = tensor->getDimensions().nbDims;
+  output_dimensions.nbDims = inputs_tensor->getDimensions().nbDims;
   for (int i = 0; i < output_dimensions.nbDims; ++i) {
-    output_dimensions.d[i] = tensor->getDimensions().d[i];
+    output_dimensions.d[i] = inputs_tensor->getDimensions().d[i];
   }
   output_dimensions.d[output_dimensions.nbDims - 2] = weights_ptr[0];
   output_dimensions.d[output_dimensions.nbDims - 1] = weights_ptr[1];
 
   // Add resize layer.
   nvinfer1::IResizeLayer* layer =
-      params->converter->network()->addResize(*tensor);
+      params->converter->network()->addResize(*inputs_tensor);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->converter->SetLayerName(layer, node_def);
 
   // Set layer parameters.
   layer->setResizeMode(resize_mode);
@@ -5827,7 +6441,7 @@ Status ConvertResize(OpConverterParams* params) {
   nvinfer1::ITensor* output = layer->getOutput(0);
 
   TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-      output, {0, 2, 3, 1}, StrCat(node_def.name(), "_to_NHWC"), &output));
+      output, {0, 2, 3, 1}, &output, node_def, "to_NHWC"));
   params->outputs->push_back(TRT_TensorOrWeights(output));
   // Success
   return Status::OK();
@@ -5876,6 +6490,7 @@ Status ConvertAddN(OpConverterParams* params) {
     nvinfer1::ILayer* layer = params->converter->network()->addElementWise(
         *lhs, *rhs, nvinfer1::ElementWiseOperation::kSUM);
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+    params->converter->SetLayerName(layer, node_def, std::to_string(i));
     lhs = layer->getOutput(0);
   }
   params->outputs->push_back(TRT_TensorOrWeights(lhs));
@@ -5888,7 +6503,7 @@ static void RegisterValidatableOpConverters(
 #if IS_TRT_VERSION_GE(5, 1, 2, 0)
   (*registration)["ClipByValue"] = ConvertClipByValue;
 #endif
-#if IS_TRT_VERSION_GE(5, 1, 0, 0)
+#if IS_TRT_VERSION_GE(7, 1, 3, 0)
   (*registration)["CombinedNonMaxSuppression"] = ConvertCombinedNMS;
 #endif
   (*registration)["AddN"] = ConvertAddN;
@@ -5919,6 +6534,7 @@ static void RegisterValidatableOpConverters(
     (*registration)[pool_op_type] = ConvertPool3D;
   }
 #endif
+  (*registration)["Shape"] = ConvertShape;
   (*registration)["Rsqrt"] = ConvertRsqrt;
   (*registration)["Slice"] = ConvertSlice;
   (*registration)["Softmax"] = ConvertSoftmax;
@@ -5985,18 +6601,20 @@ Status ConvertGraphDefToEngine(
     TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
     const bool use_implicit_batch, bool* convert_successfully,
-    TrtShapeOptimizationProfile* profiles) {
+    TrtShapeOptimizationProfile* profiles, absl::string_view engine_name) {
   engine->reset();
   if (convert_successfully) *convert_successfully = false;
 
   // Creating converter, TensorRT builder and network
   auto statusor = Converter::Create(precision_mode, use_calibration, trt_logger,
-                                    use_implicit_batch);
+                                    use_implicit_batch, engine_name);
   TF_RETURN_IF_ERROR(statusor.status());
   auto converter = std::move(statusor.ValueOrDie());
 
   VLOG(1) << "Starting to convert TensorFlow ops to TensorRT layers";
   std::vector<Converter::EngineOutputInfo> output_tensors;
+  int num_layers = converter->network()->getNbLayers();
+  absl::flat_hash_set<const char*> layer_names;
   // Graph nodes are already topologically sorted during construction
   for (const auto& node_def : gdef.node()) {
     const string& node_name = node_def.name();
@@ -6034,7 +6652,7 @@ Status ConvertGraphDefToEngine(
         const string error_message =
             StrCat("Validation failed for ", node_name, " and input slot ",
                    slot_number, ": ", status.error_message());
-        LOG(WARNING) << error_message;
+        LOG_WARNING_WITH_PREFIX << error_message;
         return Status(status.code(), error_message);
       }
       VLOG(2) << "Adding engine input tensor " << node_name << " with shape "
@@ -6066,7 +6684,7 @@ Status ConvertGraphDefToEngine(
       TFAttrs attrs(node_def);
       DataType tf_dtype = attrs.get<DataType>("T");
       nvinfer1::DataType trt_dtype;
-      TF_RETURN_IF_ERROR(TfDataTypeToTrt(tf_dtype, &trt_dtype));
+      TF_RETURN_IF_ERROR(TfTypeToTrtType(tf_dtype, &trt_dtype));
       if (output_tensors.size() <= slot_number) {
         output_tensors.resize(slot_number + 1);
       }
@@ -6075,6 +6693,25 @@ Status ConvertGraphDefToEngine(
     } else {
       TF_RETURN_IF_ERROR(converter->ConvertNode(node_def));
     }
+
+    // To support TF-TRT profiling, we ensure each ILayer has a non-empty name.
+    // BuildCudaEngine returns an error if there is any ILayer name collision.
+    // We want to report the error here before BuildCudaEngine in a more
+    // meaningful way.
+    int new_num_layers = converter->network()->getNbLayers();
+    for (int i = num_layers; i < new_num_layers; i++) {
+      auto layer = converter->network()->getLayer(i);
+      if (layer->getName() == nullptr ||
+          !layer_names.insert(layer->getName()).second) {
+        std::string error_message =
+            absl::StrCat("Converting node ", node_name, ", op=", node_def.op(),
+                         layer->getName() ? "create a layer with name collision"
+                                          : "create a layer without a name");
+        LOG_WARNING_WITH_PREFIX << error_message;
+        return errors::Internal(error_message);
+      }
+    }
+    num_layers = new_num_layers;
   }
   TF_RETURN_IF_ERROR(converter->RenameAndMarkOutputTensors(output_tensors));
   if (convert_successfully) *convert_successfully = true;
@@ -6250,5 +6887,4 @@ bool OutputEdgeValidator::operator()(const Edge* out_edge) const {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

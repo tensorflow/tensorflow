@@ -1,5 +1,12 @@
 # Building TensorFlow Lite for Microcontrollers for Synopsys DesignWare ARC EM/HS Processors
 
+## Maintainers
+
+*   [dzakhar](https://github.com/dzakhar)
+*   [JaccovG](https://github.com/JaccovG)
+
+## Introduction
+
 This document contains the general information on building and running
 TensorFlow Lite Micro for targets based on the Synopsys ARC EM/HS Processors.
 
@@ -63,7 +70,7 @@ section for instructions on toolchain installation.
 
 If you wish to use the MetaWare Debugger to debug your code, you need to also
 install the Digilent Adept 2 software, which includes the necessary drivers for
-connecting to the targets. This is available from oficial
+connecting to the targets. This is available from official
 [Digilent site](https://reference.digilentinc.com/reference/software/adept/start?redirect=1#software_downloads).
 You should install the “System” component, and Runtime. Utilities and SDK are
 NOT required.
@@ -97,7 +104,8 @@ output from the EM SDP.
 
 If you want to self-boot your application (start it independently from a
 debugger connection), you also need a microSD card with a minimum size of 512 MB
-and a way to write to the card from your development host
+and a way to write to the card from your development host. Note that the card
+must be formatted as FAT32 with default cluster size (but less than 32 Kbytes)
 
 ### Connect the Board
 
@@ -141,7 +149,7 @@ use a shell to execute the following command from the root directory of the
 TensorFlow repo:
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile generate_person_detection_test_int8_make_project TARGET=arc_emsdp
+make -f tensorflow/lite/micro/tools/make/Makefile generate_person_detection_test_int8_make_project TARGET=arc_emsdp OPTIMIZED_KERNEL_DIR=arc_mli
 ```
 
 The application project will be generated into
@@ -158,8 +166,8 @@ is used by default to speed up execution of some kernels for asymmetrically
 quantized layers. Kernels which use MLI-based implementations are kept in the
 *tensorflow/lite/micro/kernels/arc_mli* folder. For applications which may not
 benefit from MLI library, the project can be generated without these
-implementations by adding `TAGS=no_arc_mli` in the command line. This can reduce
-code size when the optimized kernels are not required.
+implementations by adding `ARC_TAGS=no_arc_mli` in the command line. This can
+reduce code size when the optimized kernels are not required.
 
 For more options on embARC MLI usage see
 [kernels/arc_mli/README.md](/tensorflow/lite/micro/kernels/arc_mli/README.md).
@@ -207,16 +215,32 @@ In both cases you will see the application output in the serial terminal.
 1.  Use the following command in the same command shell you used for building
     the application, as described in the previous step
 
+```
     make flash
+```
 
-2.  Copy the content of the created *./bin* folder into the root of microSD
+1.  Copy the content of the created *./bin* folder into the root of microSD
     card. Note that the card must be formatted as FAT32 with default cluster
     size (but less than 32 Kbytes)
 
-3.  Plug in the microSD card into the J11 connector.
+2.  Plug in the microSD card into the J11 connector.
 
-4.  Push the RST button. If a red LED is lit beside RST button, push the CFG
+3.  Push the RST button. If a red LED is lit beside RST button, push the CFG
     button.
+
+4.  Using serial terminal, create uboot environment file to automatically run
+    the application on start-up. Type or copy next sequence of commands into
+    serial terminal one-by-another:
+
+```
+   setenv loadaddr 0x10800000
+   setenv bootfile app.elf
+   setenv bootdelay 1
+   setenv bootcmd fatload mmc 0 \$\{loadaddr\} \$\{bootfile\} \&\& bootelf
+   saveenv
+```
+
+1.  Reset the board (see step 4 above)
 
 You will see the application output in the serial terminal.
 
@@ -245,7 +269,7 @@ comments about make versions.
 Before building the application itself, you need to generate the project for
 this application from TensorFlow sources and external dependencies. To generate
 it for a custom TCF you need to set the following variables in the make command
-line: * TARGET_ARCH=arc * TCF_FILE=<path to TCF file> * (optional)
+line: * TARGET=arc_custom * TCF_FILE=<path to TCF file> * (optional)
 LCF_FILE=<path to LCF file>
 
 If you don’t supply an external LCF, the one embedded in the TCF will be used
@@ -255,7 +279,7 @@ For instance, to build **Person Detection** test application, use the following
 command from the root directory of the TensorFlow repo:
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile generate_person_detection_test_int8_make_project TARGET_ARCH=arc TCF_FILE=<path_to_tcf_file> LCF_FILE=<path_to_lcf_file>
+make -f tensorflow/lite/micro/tools/make/Makefile generate_person_detection_test_int8_make_project TARGET=arc_custom OPTIMIZED_KERNEL_DIR=arc_mli TCF_FILE=<path_to_tcf_file> LCF_FILE=<path_to_lcf_file>
 ```
 
 The application project will be generated into
@@ -267,8 +291,8 @@ is used by default to speed up execution of some kernels for asymmetrically
 quantized layers. Kernels which use MLI-based implementations are kept in the
 *tensorflow/lite/micro/kernels/arc_mli* folder. For applications which may not
 benefit from MLI library, the project can be generated without these
-implementations by adding `TAGS=no_arc_mli` in the command line. This can reduce
-code size when the optimized kernels are not required.
+implementations by adding `ARC_TAGS=no_arc_mli` in the command line. This can
+reduce code size when the optimized kernels are not required.
 
 For more options on embARC MLI usage see
 [kernels/arc_mli/README.md](/tensorflow/lite/micro/kernels/arc_mli/README.md).

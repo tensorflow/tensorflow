@@ -32,6 +32,7 @@ class DebugEventsWriter(object):
 
   def __init__(self,
                dump_root,
+               tfdbg_run_id,
                circular_buffer_size=DEFAULT_CIRCULAR_BUFFER_SIZE):
     """Construct a DebugEventsWriter object.
 
@@ -43,6 +44,7 @@ class DebugEventsWriter(object):
     Args:
       dump_root: The root directory for dumping debug data. If `dump_root` does
         not exist as a directory, it will be created.
+      tfdbg_run_id: Debugger Run ID.
       circular_buffer_size: Size of the circular buffer for each of the two
         execution-related debug events files: with the following suffixes: -
           .execution - .graph_execution_traces If <= 0, the circular-buffer
@@ -51,7 +53,9 @@ class DebugEventsWriter(object):
     if not dump_root:
       raise ValueError("Empty or None dump root")
     self._dump_root = dump_root
-    _pywrap_debug_events_writer.Init(self._dump_root, circular_buffer_size)
+    self._tfdbg_run_id = tfdbg_run_id
+    _pywrap_debug_events_writer.Init(self._dump_root, self._tfdbg_run_id,
+                                     circular_buffer_size)
 
   def WriteSourceFile(self, source_file):
     """Write a SourceFile proto with the writer.

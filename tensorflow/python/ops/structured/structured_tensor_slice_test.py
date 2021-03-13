@@ -256,7 +256,7 @@ class StructuredTensorSliceTest(test_util.TensorFlowTestCase,
   ])
   def testGetItemError(self, slice_spec, error, exception=ValueError):
     struct = structured_tensor.StructuredTensor.from_pyval(EXAMPLE_STRUCT)
-    with self.assertRaisesRegexp(exception, error):
+    with self.assertRaisesRegex(exception, error):
       struct.__getitem__(slice_spec)
 
   @parameterized.parameters([
@@ -266,7 +266,7 @@ class StructuredTensorSliceTest(test_util.TensorFlowTestCase,
   def testGetItemFromVectorError(self, slice_spec, error, exception=ValueError):
     struct = structured_tensor.StructuredTensor.from_pyval(
         EXAMPLE_STRUCT_VECTOR)
-    with self.assertRaisesRegexp(exception, error):
+    with self.assertRaisesRegex(exception, error):
       struct.__getitem__(slice_spec)
 
 

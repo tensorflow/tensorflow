@@ -41,6 +41,7 @@ using tensorflow::DT_FLOAT;
 using tensorflow::DT_INT16;
 using tensorflow::DT_INT32;
 using tensorflow::DT_INT64;
+using tensorflow::DT_UINT32;
 using tensorflow::DT_UINT8;
 using tensorflow::GraphDef;
 using tensorflow::TensorProto;
@@ -49,7 +50,7 @@ namespace toco {
 namespace {
 
 tensorflow::DataType GetTensorFlowDataType(ArrayDataType data_type,
-                                           const string& error_location) {
+                                           const std::string& error_location) {
   switch (data_type) {
     case ArrayDataType::kBool:
       return tensorflow::DT_BOOL;
@@ -59,6 +60,8 @@ tensorflow::DataType GetTensorFlowDataType(ArrayDataType data_type,
       return tensorflow::DT_UINT8;
     case ArrayDataType::kInt32:
       return tensorflow::DT_INT32;
+    case ArrayDataType::kUint32:
+      return tensorflow::DT_UINT32;
     case ArrayDataType::kInt64:
       return tensorflow::DT_INT64;
     case ArrayDataType::kString:
@@ -74,12 +77,12 @@ tensorflow::DataType GetTensorFlowDataType(ArrayDataType data_type,
 }
 
 tensorflow::DataType GetTensorFlowDataTypeForOp(ArrayDataType data_type,
-                                                const string& op_name) {
+                                                const std::string& op_name) {
   return GetTensorFlowDataType(data_type, "op '" + op_name + "'");
 }
 
 tensorflow::DataType GetTensorFlowDataType(const Model& model,
-                                           const string& array_name) {
+                                           const std::string& array_name) {
   return GetTensorFlowDataType(model.GetArray(array_name).data_type,
                                "array '" + array_name + "'");
 }
@@ -113,8 +116,8 @@ void ExportFloatArray(const Shape& input_shape, const float* input_data,
     }
   }
   output_tensor->set_tensor_content(
-      string(reinterpret_cast<const char*>(input_data),
-             sizeof(*input_data) * input_flat_size));
+      std::string(reinterpret_cast<const char*>(input_data),
+                  sizeof(*input_data) * input_flat_size));
 }
 
 void ExportFloatArray(AxesOrder input_axes_order, const Shape& input_shape,
@@ -137,7 +140,7 @@ void ExportFloatArray(AxesOrder input_axes_order, const Shape& input_shape,
                    legacy_scalar_policy);
 }
 
-bool HasAlreadyExportedConst(const string& name,
+bool HasAlreadyExportedConst(const std::string& name,
                              const GraphDef& tensorflow_graph) {
   for (const auto& node : tensorflow_graph.node()) {
     if (node.op() == "Const" && node.name() == name) {
@@ -147,7 +150,7 @@ bool HasAlreadyExportedConst(const string& name,
   return false;
 }
 
-void ConvertFloatTensorConst(const string& name, const Shape& input_shape,
+void ConvertFloatTensorConst(const std::string& name, const Shape& input_shape,
                              const float* input_data,
                              AxesOrder input_axes_order,
                              AxesOrder output_axes_order,
@@ -165,7 +168,7 @@ void ConvertFloatTensorConst(const string& name, const Shape& input_shape,
                    tensor, legacy_scalar_policy);
 }
 
-void ConvertFloatTensorConst(const string& name, const Shape& input_shape,
+void ConvertFloatTensorConst(const std::string& name, const Shape& input_shape,
                              const float* input_data,
                              AxesOrder input_axes_order,
                              AxesOrder output_axes_order,
@@ -175,7 +178,7 @@ void ConvertFloatTensorConst(const string& name, const Shape& input_shape,
                           LegacyScalarPolicy::kAvoidLegacyScalars);
 }
 
-void ConvertFloatTensorConst(const Model& model, const string& name,
+void ConvertFloatTensorConst(const Model& model, const std::string& name,
                              AxesOrder input_axes_order,
                              AxesOrder output_axes_order,
                              GraphDef* tensorflow_graph) {
@@ -193,7 +196,7 @@ void ConvertFloatTensorConst(const Model& model, const string& name,
                           output_axes_order, tensorflow_graph);
 }
 
-void ConvertFloatTensorConst(const Model& model, const string& name,
+void ConvertFloatTensorConst(const Model& model, const std::string& name,
                              GraphDef* tensorflow_graph) {
   if (HasAlreadyExportedConst(name, *tensorflow_graph)) {
     return;
@@ -214,7 +217,7 @@ void ConvertFloatTensorConst(const Model& model, const string& name,
                    LegacyScalarPolicy::kAvoidLegacyScalars);
 }
 
-void ConvertBoolTensorConst(const Model& model, const string& name,
+void ConvertBoolTensorConst(const Model& model, const std::string& name,
                             GraphDef* tensorflow_graph) {
   if (HasAlreadyExportedConst(name, *tensorflow_graph)) {
     return;
@@ -238,7 +241,7 @@ void ConvertBoolTensorConst(const Model& model, const string& name,
   }
 }
 
-void ConvertIntTensorConst(const Model& model, const string& name,
+void ConvertIntTensorConst(const Model& model, const std::string& name,
                            GraphDef* tensorflow_graph) {
   if (HasAlreadyExportedConst(name, *tensorflow_graph)) {
     return;
@@ -262,7 +265,8 @@ void ConvertIntTensorConst(const Model& model, const string& name,
   }
 }
 
-void CreateIntTensorConst(const string& name, const std::vector<int32>& data,
+void CreateIntTensorConst(const std::string& name,
+                          const std::vector<int32>& data,
                           const std::vector<int32>& shape,
                           GraphDef* tensorflow_graph) {
   if (HasAlreadyExportedConst(name, *tensorflow_graph)) {
@@ -286,7 +290,7 @@ void CreateIntTensorConst(const string& name, const std::vector<int32>& data,
   CHECK_EQ(num_elements, data.size());
 }
 
-void ConvertComplex64TensorConst(const Model& model, const string& name,
+void ConvertComplex64TensorConst(const Model& model, const std::string& name,
                                  GraphDef* tensorflow_graph) {
   if (HasAlreadyExportedConst(name, *tensorflow_graph)) {
     return;
@@ -311,7 +315,7 @@ void ConvertComplex64TensorConst(const Model& model, const string& name,
   }
 }
 
-void CreateMatrixShapeTensorConst(const string& name, int rows, int cols,
+void CreateMatrixShapeTensorConst(const std::string& name, int rows, int cols,
                                   GraphDef* tensorflow_graph) {
   if (HasAlreadyExportedConst(name, *tensorflow_graph)) {
     return;
@@ -324,12 +328,12 @@ void CreateMatrixShapeTensorConst(const string& name, int rows, int cols,
   tensor->set_dtype(DT_INT32);
   const int32 data[2] = {cols, rows};
   tensor->set_tensor_content(
-      string(reinterpret_cast<const char*>(data), sizeof(data)));
+      std::string(reinterpret_cast<const char*>(data), sizeof(data)));
   auto* shape = tensor->mutable_tensor_shape();
   shape->add_dim()->set_size(2);
 }
 
-void CreateDummyConcatDimTensorConst(const string& name, int dim,
+void CreateDummyConcatDimTensorConst(const std::string& name, int dim,
                                      GraphDef* tensorflow_graph) {
   if (HasAlreadyExportedConst(name, *tensorflow_graph)) {
     return;
@@ -343,7 +347,7 @@ void CreateDummyConcatDimTensorConst(const string& name, int dim,
   tensor->add_int_val(dim);
 }
 
-void CreateReshapeShapeTensorConst(const string& name,
+void CreateReshapeShapeTensorConst(const std::string& name,
                                    const std::vector<int32>& shape,
                                    GraphDef* tensorflow_graph) {
   if (HasAlreadyExportedConst(name, *tensorflow_graph)) {
@@ -367,7 +371,7 @@ void CreateReshapeShapeTensorConst(const string& name,
   }
 }
 
-string WalkUpToConstantArray(const Model& model, const string& name) {
+std::string WalkUpToConstantArray(const Model& model, const std::string& name) {
   const Array& original_array = model.GetArray(name);
   if (original_array.buffer) {
     return name;
@@ -375,7 +379,7 @@ string WalkUpToConstantArray(const Model& model, const string& name) {
   const auto* op = GetOpWithOutput(model, name);
   CHECK(op);
   CHECK(op->type == OperatorType::kFakeQuant);
-  const string& input_of_fakequant_name = op->inputs[0];
+  const std::string& input_of_fakequant_name = op->inputs[0];
   const Array& input_of_fakequant = model.GetArray(input_of_fakequant_name);
   CHECK(input_of_fakequant.buffer);
   return input_of_fakequant_name;
@@ -384,7 +388,7 @@ string WalkUpToConstantArray(const Model& model, const string& name) {
 void ConvertConvOperator(const Model& model, const ConvOperator& src_op,
                          GraphDef* tensorflow_graph) {
   const bool has_bias = src_op.inputs.size() >= 3;
-  string conv_output = src_op.outputs[0];
+  std::string conv_output = src_op.outputs[0];
   if (has_bias) {
     conv_output += "/conv";
   }
@@ -395,7 +399,7 @@ void ConvertConvOperator(const Model& model, const ConvOperator& src_op,
   *conv2d_op->add_input() = src_op.inputs[0];
   *conv2d_op->add_input() = src_op.inputs[1];
   (*conv2d_op->mutable_attr())["T"].set_type(DT_FLOAT);
-  const string& weights_array_name =
+  const std::string& weights_array_name =
       WalkUpToConstantArray(model, src_op.inputs[1]);
   const auto& weights_array = model.GetArray(weights_array_name);
   CHECK(weights_array.buffer->type == ArrayDataType::kFloat);
@@ -414,7 +418,7 @@ void ConvertConvOperator(const Model& model, const ConvOperator& src_op,
     dilations.mutable_list()->add_i(src_op.dilation_width_factor);
     dilations.mutable_list()->add_i(1);
   }
-  string padding;
+  std::string padding;
   if (src_op.padding.type == PaddingType::kSame) {
     padding = "SAME";
   } else if (src_op.padding.type == PaddingType::kValid) {
@@ -432,7 +436,7 @@ void ConvertConvOperator(const Model& model, const ConvOperator& src_op,
     biasadd_op->add_input(src_op.inputs[2]);
     (*biasadd_op->mutable_attr())["T"].set_type(DT_FLOAT);
     CHECK(model.HasArray(src_op.inputs[2]));
-    const string& bias_array_name =
+    const std::string& bias_array_name =
         WalkUpToConstantArray(model, src_op.inputs[2]);
     const auto& bias_array = model.GetArray(bias_array_name);
     // TODO(b/62904716) Bias arrays should be 1-D, and used directly.
@@ -452,7 +456,7 @@ void ConvertDepthwiseConvOperator(const Model& model,
                                   const DepthwiseConvOperator& src_op,
                                   GraphDef* tensorflow_graph) {
   const bool has_bias = src_op.inputs.size() >= 3;
-  string conv_output = src_op.outputs[0];
+  std::string conv_output = src_op.outputs[0];
   if (has_bias) {
     conv_output += "/conv";
   }
@@ -469,7 +473,7 @@ void ConvertDepthwiseConvOperator(const Model& model,
   // That's only a matter of constructing a Dims object; the actual
   // array layout is the same.
   CHECK(model.HasArray(src_op.inputs[1]));
-  const string& src_weights_name =
+  const std::string& src_weights_name =
       WalkUpToConstantArray(model, src_op.inputs[1]);
   const auto& src_weights_array = model.GetArray(src_weights_name);
   const auto& src_weights_shape = src_weights_array.shape();
@@ -505,7 +509,7 @@ void ConvertDepthwiseConvOperator(const Model& model,
     dilations.mutable_list()->add_i(src_op.dilation_width_factor);
     dilations.mutable_list()->add_i(1);
   }
-  string padding;
+  std::string padding;
   if (src_op.padding.type == PaddingType::kSame) {
     padding = "SAME";
   } else if (src_op.padding.type == PaddingType::kValid) {
@@ -523,7 +527,8 @@ void ConvertDepthwiseConvOperator(const Model& model,
     biasadd_op->add_input(src_op.inputs[2]);
     (*biasadd_op->mutable_attr())["T"].set_type(DT_FLOAT);
     CHECK(model.HasArray(src_op.inputs[2]));
-    const string& bias_name = WalkUpToConstantArray(model, src_op.inputs[2]);
+    const std::string& bias_name =
+        WalkUpToConstantArray(model, src_op.inputs[2]);
     const auto& bias_array = model.GetArray(bias_name);
     // TODO(b/62904716) Bias arrays should be 1-D, and used directly.
     Shape bias_shape_1d = bias_array.shape();
@@ -548,7 +553,7 @@ void ConvertTransposeConvOperator(const Model& model,
   *conv2d_op->add_input() = src_op.inputs[1];
   *conv2d_op->add_input() = src_op.inputs[2];
   (*conv2d_op->mutable_attr())["T"].set_type(DT_FLOAT);
-  const string& weights_array_name = WalkUpToConstantArray(
+  const std::string& weights_array_name = WalkUpToConstantArray(
       model, src_op.inputs[TransposeConvOperator::WEIGHTS]);
   const auto& weights_array = model.GetArray(weights_array_name);
   CHECK(weights_array.buffer->type == ArrayDataType::kFloat);
@@ -559,7 +564,7 @@ void ConvertTransposeConvOperator(const Model& model,
   strides.mutable_list()->add_i(src_op.stride_height);
   strides.mutable_list()->add_i(src_op.stride_width);
   strides.mutable_list()->add_i(1);
-  string padding;
+  std::string padding;
   if (src_op.padding.type == PaddingType::kSame) {
     padding = "SAME";
   } else if (src_op.padding.type == PaddingType::kValid) {
@@ -596,9 +601,9 @@ void ConvertFullyConnectedOperator(const Model& model,
                                    const FullyConnectedOperator& src_op,
                                    GraphDef* tensorflow_graph) {
   // Reshape input activations to have the shape expected by the MatMul.
-  const string reshape_output =
+  const std::string reshape_output =
       AvailableArrayName(model, src_op.outputs[0] + "/reshape");
-  const string reshape_shape =
+  const std::string reshape_shape =
       AvailableArrayName(model, reshape_output + "/shape");
   const auto& fc_weights_array = model.GetArray(src_op.inputs[1]);
   const auto& fc_weights_shape = fc_weights_array.shape();
@@ -614,7 +619,7 @@ void ConvertFullyConnectedOperator(const Model& model,
       GetTensorFlowDataType(model, src_op.inputs[0]));
 
   const bool has_bias = src_op.inputs.size() >= 3;
-  string matmul_output = src_op.outputs[0];
+  std::string matmul_output = src_op.outputs[0];
   if (has_bias) {
     matmul_output += "/matmul";
   }
@@ -622,9 +627,9 @@ void ConvertFullyConnectedOperator(const Model& model,
   // Transpose the RHS input from column-major to row-major to match TensorFlow
   // expectations. This is the inverse of the transpose we do during
   // ResolveTensorFlowMatMul.
-  const string transpose_output =
+  const std::string transpose_output =
       AvailableArrayName(model, matmul_output + "/transpose_weights");
-  const string transpose_perm =
+  const std::string transpose_perm =
       AvailableArrayName(model, transpose_output + "/perm");
   CreateIntTensorConst(transpose_perm, {1, 0}, {2}, tensorflow_graph);
   tensorflow::NodeDef* transpose_op = tensorflow_graph->add_node();
@@ -733,9 +738,9 @@ void ConvertReluOperator(const Model& model, const ReluOperator& src_op,
 
 void ConvertRelu1Operator(const Relu1Operator& src_op,
                           GraphDef* tensorflow_graph) {
-  const string max_bounds = src_op.outputs[0] + "/max_bounds";
-  const string min_bounds = src_op.outputs[0] + "/min_bounds";
-  const string max_output = src_op.outputs[0] + "/max_output";
+  const std::string max_bounds = src_op.outputs[0] + "/max_bounds";
+  const std::string min_bounds = src_op.outputs[0] + "/min_bounds";
+  const std::string max_output = src_op.outputs[0] + "/max_output";
 
   tensorflow::NodeDef* max_bounds_const_op = tensorflow_graph->add_node();
   max_bounds_const_op->set_op("Const");
@@ -808,15 +813,16 @@ void ConvertTanhOperator(const TanhOperator& src_op,
 
 void ConvertSoftmaxOperator(const Model& model, const SoftmaxOperator& src_op,
                             GraphDef* tensorflow_graph) {
-  string softmax_input;
+  std::string softmax_input;
   Operator* providing_op = GetOpWithOutput(model, src_op.inputs[0]);
   if (providing_op != nullptr && providing_op->type == OperatorType::kReshape) {
     softmax_input = src_op.inputs[0];
   } else {
     // Insert a reshape operator that reduces the dimensions down to the 2 that
     // are required for TensorFlow Logits.
-    const string reshape_output = src_op.outputs[0] + "/softmax_insert_reshape";
-    const string softmax_size = src_op.outputs[0] + "/softmax_insert_size";
+    const std::string reshape_output =
+        src_op.outputs[0] + "/softmax_insert_reshape";
+    const std::string softmax_size = src_op.outputs[0] + "/softmax_insert_size";
     softmax_input = reshape_output;
 
     tensorflow::NodeDef* reshape_op = tensorflow_graph->add_node();
@@ -848,16 +854,17 @@ void ConvertSoftmaxOperator(const Model& model, const SoftmaxOperator& src_op,
 void ConvertLogSoftmaxOperator(const Model& model,
                                const LogSoftmaxOperator& src_op,
                                GraphDef* tensorflow_graph) {
-  string softmax_input;
+  std::string softmax_input;
   Operator* providing_op = GetOpWithOutput(model, src_op.inputs[0]);
   if (providing_op != nullptr && providing_op->type == OperatorType::kReshape) {
     softmax_input = src_op.inputs[0];
   } else {
     // Insert a reshape operator that reduces the dimensions down to the 2 that
     // are required for TensorFlow Logits.
-    const string reshape_output =
+    const std::string reshape_output =
         src_op.outputs[0] + "/log_softmax_insert_reshape";
-    const string softmax_size = src_op.outputs[0] + "/log_softmax_insert_size";
+    const std::string softmax_size =
+        src_op.outputs[0] + "/log_softmax_insert_size";
     softmax_input = reshape_output;
 
     tensorflow::NodeDef* reshape_op = tensorflow_graph->add_node();
@@ -886,11 +893,12 @@ void ConvertLogSoftmaxOperator(const Model& model,
 
 void ConvertL2NormalizationOperator(const L2NormalizationOperator& src_op,
                                     GraphDef* tensorflow_graph) {
-  const string square_output = src_op.outputs[0] + "/square";
-  const string sum_reduction_indices = src_op.outputs[0] + "/reduction_indices";
-  const string sum_output = src_op.outputs[0] + "/sum";
-  const string rsqrt_output = src_op.outputs[0] + "/rsqrt";
-  const string rsqrt_tiled_output = src_op.outputs[0] + "/rsqrt_tiled";
+  const std::string square_output = src_op.outputs[0] + "/square";
+  const std::string sum_reduction_indices =
+      src_op.outputs[0] + "/reduction_indices";
+  const std::string sum_output = src_op.outputs[0] + "/sum";
+  const std::string rsqrt_output = src_op.outputs[0] + "/rsqrt";
+  const std::string rsqrt_tiled_output = src_op.outputs[0] + "/rsqrt_tiled";
 
   tensorflow::NodeDef* sum_reduction_indices_op = tensorflow_graph->add_node();
   sum_reduction_indices_op->set_op("Const");
@@ -975,7 +983,7 @@ void ConvertMaxPoolOperator(const MaxPoolOperator& src_op,
   strides.mutable_list()->add_i(src_op.stride_height);
   strides.mutable_list()->add_i(src_op.stride_width);
   strides.mutable_list()->add_i(1);
-  string padding;
+  std::string padding;
   if (src_op.padding.type == PaddingType::kSame) {
     padding = "SAME";
   } else if (src_op.padding.type == PaddingType::kValid) {
@@ -1003,7 +1011,7 @@ void ConvertAveragePoolOperator(const AveragePoolOperator& src_op,
   strides.mutable_list()->add_i(src_op.stride_height);
   strides.mutable_list()->add_i(src_op.stride_width);
   strides.mutable_list()->add_i(1);
-  string padding;
+  std::string padding;
   if (src_op.padding.type == PaddingType::kSame) {
     padding = "SAME";
   } else if (src_op.padding.type == PaddingType::kValid) {
@@ -1026,7 +1034,7 @@ void ConvertConcatenationOperator(const Model& model,
   tensorflow::NodeDef* dc_op = tensorflow_graph->add_node();
   dc_op->set_op("ConcatV2");
   dc_op->set_name(src_op.outputs[0]);
-  const string dummy_axis = src_op.outputs[0] + "/axis";
+  const std::string dummy_axis = src_op.outputs[0] + "/axis";
   CreateDummyConcatDimTensorConst(dummy_axis, src_op.axis, tensorflow_graph);
   for (const auto& input : src_op.inputs) {
     *dc_op->add_input() = input;
@@ -1060,8 +1068,8 @@ void ConvertTensorFlowReshapeOperator(const Model& model,
 
 void ConvertL2PoolOperator(const L2PoolOperator& src_op,
                            GraphDef* tensorflow_graph) {
-  const string square_output = src_op.outputs[0] + "/square";
-  const string avgpool_output = src_op.outputs[0] + "/avgpool";
+  const std::string square_output = src_op.outputs[0] + "/square";
+  const std::string avgpool_output = src_op.outputs[0] + "/avgpool";
 
   tensorflow::NodeDef* square_op = tensorflow_graph->add_node();
   square_op->set_op("Square");
@@ -1069,7 +1077,7 @@ void ConvertL2PoolOperator(const L2PoolOperator& src_op,
   *square_op->add_input() = src_op.inputs[0];
   (*square_op->mutable_attr())["T"].set_type(DT_FLOAT);
 
-  string padding;
+  std::string padding;
   if (src_op.padding.type == PaddingType::kSame) {
     padding = "SAME";
   } else if (src_op.padding.type == PaddingType::kValid) {
@@ -1235,7 +1243,7 @@ void ConvertGatherOperator(const Model& model, const GatherOperator& src_op,
   } else {
     // Constant axis.
     CHECK_EQ(src_op.inputs.size(), 2);
-    const string gather_axis =
+    const std::string gather_axis =
         AvailableArrayName(model, gather_op->name() + "/axis");
     CreateIntTensorConst(gather_axis, {src_op.axis.value()}, {},
                          tensorflow_graph);
@@ -1454,8 +1462,8 @@ absl::string_view FindLongestCommonPrefix(absl::string_view a,
 
   const char* pa = a.data();
   const char* pb = b.data();
-  string::difference_type count = 0;
-  const string::difference_type limit = std::min(a.size(), b.size());
+  std::string::difference_type count = 0;
+  const std::string::difference_type limit = std::min(a.size(), b.size());
   while (count < limit && *pa == *pb) {
     ++pa;
     ++pb;
@@ -1469,12 +1477,12 @@ absl::string_view FindLongestCommonPrefix(absl::string_view a,
 void ConvertLstmCellOperator(const Model& model, const LstmCellOperator& src_op,
                              GraphDef* tensorflow_graph) {
   // Find the base name
-  const string base(
+  const std::string base(
       FindLongestCommonPrefix(src_op.outputs[LstmCellOperator::STATE_OUTPUT],
                               src_op.outputs[LstmCellOperator::ACTIV_OUTPUT]));
 
   // Concatenate inputs
-  const string concat_output = base + "basic_lstm_cell/concat";
+  const std::string concat_output = base + "basic_lstm_cell/concat";
   // Op names have been chosen to match the tf.slim LSTM naming
   // as closely as possible.
   const int axis =
@@ -1484,7 +1492,7 @@ void ConvertLstmCellOperator(const Model& model, const LstmCellOperator& src_op,
       1;
   // Note that DATA_INPUT may have extra size 1 dimensions, but TF concat
   // works the same since the tensor has the same underlying data layout.
-  const string axis_output = concat_output + "/axis";
+  const std::string axis_output = concat_output + "/axis";
   CreateDummyConcatDimTensorConst(axis_output, axis, tensorflow_graph);
   tensorflow::NodeDef* concat_op = tensorflow_graph->add_node();
   concat_op->set_op("ConcatV2");
@@ -1497,9 +1505,9 @@ void ConvertLstmCellOperator(const Model& model, const LstmCellOperator& src_op,
   (*concat_op->mutable_attr())["N"].set_i(2);  // Number of inputs
 
   // Write weights
-  const string weights_output = base + "weights";
+  const std::string weights_output = base + "weights";
   CHECK(model.HasArray(src_op.inputs[LstmCellOperator::WEIGHTS_INPUT]));
-  const string weights_name = WalkUpToConstantArray(
+  const std::string weights_name = WalkUpToConstantArray(
       model, src_op.inputs[LstmCellOperator::WEIGHTS_INPUT]);
   const auto& weights_array = model.GetArray(weights_name);
   // Convert 4D FullyConnected weights into 2D matrix
@@ -1513,7 +1521,7 @@ void ConvertLstmCellOperator(const Model& model, const LstmCellOperator& src_op,
                           AxesOrder::kCR, AxesOrder::kRC, tensorflow_graph);
 
   // Fully connected matrix multiply
-  const string matmul_output = base + "MatMul";
+  const std::string matmul_output = base + "MatMul";
   tensorflow::NodeDef* matmul_op = tensorflow_graph->add_node();
   matmul_op->set_op("MatMul");
   matmul_op->set_name(matmul_output);
@@ -1524,9 +1532,9 @@ void ConvertLstmCellOperator(const Model& model, const LstmCellOperator& src_op,
   (*matmul_op->mutable_attr())["T"].set_type(DT_FLOAT);
 
   // Write biases
-  const string biases_output = base + "biases";
+  const std::string biases_output = base + "biases";
   CHECK(model.HasArray(src_op.inputs[LstmCellOperator::BIASES_INPUT]));
-  const string bias_name = WalkUpToConstantArray(
+  const std::string bias_name = WalkUpToConstantArray(
       model, src_op.inputs[LstmCellOperator::BIASES_INPUT]);
   const auto& bias_array = model.GetArray(bias_name);
   // TODO(b/62904716) Bias arrays should be 1-D, and used directly.
@@ -1542,7 +1550,7 @@ void ConvertLstmCellOperator(const Model& model, const LstmCellOperator& src_op,
                           LegacyScalarPolicy::kDoCreateLegacyScalars);
 
   // Add biases
-  string biasadd_output = base + "BiasAdd";
+  std::string biasadd_output = base + "BiasAdd";
   tensorflow::NodeDef* biasadd_op = tensorflow_graph->add_node();
   biasadd_op->set_op("BiasAdd");
   biasadd_op->set_name(biasadd_output);
@@ -1552,10 +1560,10 @@ void ConvertLstmCellOperator(const Model& model, const LstmCellOperator& src_op,
   (*biasadd_op->mutable_attr())["T"].set_type(DT_FLOAT);
 
   // Split
-  string split_dim_output = base + "split/split_dim";
+  std::string split_dim_output = base + "split/split_dim";
   // The dimension is the same as the concatenation dimension
   CreateDummyConcatDimTensorConst(split_dim_output, axis, tensorflow_graph);
-  string split_output = base + "split";
+  std::string split_output = base + "split";
   tensorflow::NodeDef* split_op = tensorflow_graph->add_node();
   split_op->set_op("Split");
   split_op->set_name(split_output);
@@ -1565,21 +1573,21 @@ void ConvertLstmCellOperator(const Model& model, const LstmCellOperator& src_op,
   (*split_op->mutable_attr())["num_split"].set_i(4);  // Split into four outputs
 
   // Activation functions and memory computations
-  const string tanh_0_output = base + "Tanh";
+  const std::string tanh_0_output = base + "Tanh";
   tensorflow::NodeDef* tanh_0_op = tensorflow_graph->add_node();
   tanh_0_op->set_op("Tanh");
   tanh_0_op->set_name(tanh_0_output);
   *tanh_0_op->add_input() = split_output + ":1";
   (*tanh_0_op->mutable_attr())["T"].set_type(DT_FLOAT);
 
-  const string sigmoid_1_output = base + "Sigmoid_1";
+  const std::string sigmoid_1_output = base + "Sigmoid_1";
   tensorflow::NodeDef* logistic_1_op = tensorflow_graph->add_node();
   logistic_1_op->set_op("Sigmoid");
   logistic_1_op->set_name(sigmoid_1_output);
   *logistic_1_op->add_input() = split_output;
   (*logistic_1_op->mutable_attr())["T"].set_type(DT_FLOAT);
 
-  const string mul_1_output = base + "mul_1";
+  const std::string mul_1_output = base + "mul_1";
   tensorflow::NodeDef* mul_1_op = tensorflow_graph->add_node();
   mul_1_op->set_op("Mul");
   mul_1_op->set_name(mul_1_output);
@@ -1587,21 +1595,21 @@ void ConvertLstmCellOperator(const Model& model, const LstmCellOperator& src_op,
   *mul_1_op->add_input() = tanh_0_output;
   (*mul_1_op->mutable_attr())["T"].set_type(DT_FLOAT);
 
-  const string sigmoid_0_output = base + "Sigmoid";
+  const std::string sigmoid_0_output = base + "Sigmoid";
   tensorflow::NodeDef* logistic_2_op = tensorflow_graph->add_node();
   logistic_2_op->set_op("Sigmoid");
   logistic_2_op->set_name(sigmoid_0_output);
   *logistic_2_op->add_input() = split_output + ":2";
   (*logistic_2_op->mutable_attr())["T"].set_type(DT_FLOAT);
 
-  const string sigmoid_2_output = base + "Sigmoid_2";
+  const std::string sigmoid_2_output = base + "Sigmoid_2";
   tensorflow::NodeDef* logistic_3_op = tensorflow_graph->add_node();
   logistic_3_op->set_op("Sigmoid");
   logistic_3_op->set_name(sigmoid_2_output);
   *logistic_3_op->add_input() = split_output + ":3";
   (*logistic_3_op->mutable_attr())["T"].set_type(DT_FLOAT);
 
-  const string mul_0_output = base + "mul";
+  const std::string mul_0_output = base + "mul";
   tensorflow::NodeDef* mul_0_op = tensorflow_graph->add_node();
   mul_0_op->set_op("Mul");
   mul_0_op->set_name(mul_0_output);
@@ -1609,7 +1617,8 @@ void ConvertLstmCellOperator(const Model& model, const LstmCellOperator& src_op,
   *mul_0_op->add_input() = sigmoid_0_output;
   (*mul_0_op->mutable_attr())["T"].set_type(DT_FLOAT);
 
-  const string add_1_output = src_op.outputs[LstmCellOperator::STATE_OUTPUT];
+  const std::string add_1_output =
+      src_op.outputs[LstmCellOperator::STATE_OUTPUT];
   tensorflow::NodeDef* add_1_op = tensorflow_graph->add_node();
   add_1_op->set_op("Add");
   add_1_op->set_name(add_1_output);
@@ -1617,14 +1626,15 @@ void ConvertLstmCellOperator(const Model& model, const LstmCellOperator& src_op,
   *add_1_op->add_input() = mul_1_output;
   (*add_1_op->mutable_attr())["T"].set_type(DT_FLOAT);
 
-  const string tanh_1_output = base + "Tanh_1";
+  const std::string tanh_1_output = base + "Tanh_1";
   tensorflow::NodeDef* tanh_1_op = tensorflow_graph->add_node();
   tanh_1_op->set_op("Tanh");
   tanh_1_op->set_name(tanh_1_output);
   *tanh_1_op->add_input() = add_1_output;
   (*tanh_1_op->mutable_attr())["T"].set_type(DT_FLOAT);
 
-  const string mul_2_output = src_op.outputs[LstmCellOperator::ACTIV_OUTPUT];
+  const std::string mul_2_output =
+      src_op.outputs[LstmCellOperator::ACTIV_OUTPUT];
   tensorflow::NodeDef* mul_2_op = tensorflow_graph->add_node();
   mul_2_op->set_op("Mul");
   mul_2_op->set_name(mul_2_output);
@@ -1730,7 +1740,8 @@ void ConvertPadV2Operator(const Model& model, const PadV2Operator& src_op,
   shape->add_dim()->set_size(2);
 }
 
-void CreateSliceInput(const string& input_name, const std::vector<int>& values,
+void CreateSliceInput(const std::string& input_name,
+                      const std::vector<int>& values,
                       GraphDef* tensorflow_graph) {
   tensorflow::NodeDef* params_op = tensorflow_graph->add_node();
   params_op->set_op("Const");
@@ -1797,7 +1808,8 @@ void ConvertSliceOperator(const Model& model, const SliceOperator& src_op,
 
 template <typename T>
 void ConvertReduceOperator(const Model& model, const T& src_op,
-                           GraphDef* tensorflow_graph, const string& op_name) {
+                           GraphDef* tensorflow_graph,
+                           const std::string& op_name) {
   tensorflow::NodeDef* new_op = tensorflow_graph->add_node();
   new_op->set_op(op_name);
   new_op->set_name(src_op.outputs[0]);
@@ -2412,7 +2424,7 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   }
 }
 
-void AddPlaceholder(const string& name, ArrayDataType type,
+void AddPlaceholder(const std::string& name, ArrayDataType type,
                     GraphDef* tensorflow_graph) {
   tensorflow::NodeDef* placeholder = tensorflow_graph->add_node();
   placeholder->set_op("Placeholder");
@@ -2429,6 +2441,9 @@ void AddPlaceholder(const string& name, ArrayDataType type,
     case ArrayDataType::kInt32:
       (*placeholder->mutable_attr())["dtype"].set_type(DT_INT32);
       break;
+    case ArrayDataType::kUint32:
+      (*placeholder->mutable_attr())["dtype"].set_type(DT_UINT32);
+      break;
     case ArrayDataType::kInt64:
       (*placeholder->mutable_attr())["dtype"].set_type(DT_INT64);
       break;
@@ -2444,8 +2459,8 @@ void AddPlaceholder(const string& name, ArrayDataType type,
   placeholder->set_name(name);
 }
 
-void AddPlaceholderForRNNState(const Model& model, const string& name, int size,
-                               GraphDef* tensorflow_graph) {
+void AddPlaceholderForRNNState(const Model& model, const std::string& name,
+                               int size, GraphDef* tensorflow_graph) {
   tensorflow::NodeDef* placeholder = tensorflow_graph->add_node();
   placeholder->set_op("Placeholder");
   placeholder->set_name(name);
@@ -2484,7 +2499,7 @@ void ExportTensorFlowGraphDefImplementation(const Model& model,
   // after, as some operators need to export arrays that they reference
   // in a specific way, rather than in the generic way done below.
   for (const auto& array_pair : model.GetArrayMap()) {
-    const string& array_name = array_pair.first;
+    const std::string& array_name = array_pair.first;
     const auto& array = *array_pair.second;
     if (array.buffer) {
       switch (array.data_type) {
@@ -2510,12 +2525,12 @@ void ExportTensorFlowGraphDefImplementation(const Model& model,
 
 void EncodeConstantArraysMinMaxByWrappingThemInFakeQuantNodes(Model* model) {
   for (const auto& array_kv : model->GetArrayMap()) {
-    const string& array_name = array_kv.first;
+    const std::string& array_name = array_kv.first;
     Array& array = *array_kv.second;
     if (!array.buffer || !array.minmax) {
       continue;
     }
-    const string& wrapped_array_name =
+    const std::string& wrapped_array_name =
         AvailableArrayName(*model, array_name + "/data");
     Array& wrapped_array = model->GetOrCreateArray(wrapped_array_name);
     wrapped_array.data_type = array.data_type;
@@ -2533,7 +2548,7 @@ void EncodeConstantArraysMinMaxByWrappingThemInFakeQuantNodes(Model* model) {
 }
 
 void ExportTensorFlowGraphDef(const Model& model,
-                              string* output_file_contents) {
+                              std::string* output_file_contents) {
   CHECK(output_file_contents->empty());
   GraphDef tensorflow_graph;
   ExportTensorFlowGraphDefImplementation(model, &tensorflow_graph);

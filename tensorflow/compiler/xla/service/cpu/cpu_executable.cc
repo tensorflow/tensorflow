@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
+#include "tensorflow/compiler/xla/service/xla_debug_info_manager.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -60,19 +61,31 @@ CpuExecutable::CpuExecutable(
     : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
       jit_(std::move(jit)),
-      assignment_(std::move(assignment)) {
+      assignment_(std::move(assignment)),
+      module_name_(entry_function_name) {
+  if (assignment_) {
+    buffer_assignment_.reset(new BufferAssignmentProto(assignment_->ToProto()));
+  }
+  XlaDebugInfoManager::Get()->RegisterModule(module_name_, shared_module(),
+                                             buffer_assignment_);
+
   // Resolve symbols in the constructor rather than at execution time to avoid
   // races because FindSymbol is not thread safe.
-  llvm::JITSymbol sym = jit_->FindCompiledSymbol(entry_function_name);
+  llvm::Expected<llvm::JITEvaluatedSymbol> sym =
+      jit_->FindCompiledSymbol(entry_function_name);
   // We expect to find the symbol provided with entry_function_name; otherwise
   // this is an internal error.
-  CHECK(sym) << "Symbol " << entry_function_name << " not found.";
+  CHECK(*sym) << "Symbol " << entry_function_name << " not found.";
   // getAddress can do work under the hood in the jit, so it needs to be
   // guarded by the mutex.
-  compute_function_ =
-      reinterpret_cast<ComputeFunctionType>(cantFail(sym.getAddress()));
+  compute_function_ = reinterpret_cast<ComputeFunctionType>(sym->getAddress());
   VLOG(1) << "compute_function_ at address "
           << reinterpret_cast<void*>(compute_function_);
+}
+
+CpuExecutable::~CpuExecutable() {
+  XlaDebugInfoManager::Get()->UnregisterModule(module_name_, shared_module(),
+                                               buffer_assignment_);
 }
 
 static StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
@@ -151,6 +164,10 @@ Status CpuExecutable::ExecuteComputeFunction(
 
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
+  XlaDebugInfoManager::Get()->OnModuleStart(module_name_);
+  auto cleanup = MakeCleanup(
+      [&]() { XlaDebugInfoManager::Get()->OnModuleStop(module_name_); });
+
   size_t profile_counters_size =
       hlo_execution_profile ? hlo_execution_profile->profile_counters().size()
                             : 0;
@@ -210,12 +227,13 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
     absl::Span<MaybeOwningDeviceMemory> buffers,
     absl::Span<ExecutionInput> arguments) {
   se::Stream* stream = run_options->stream();
-  ExecutionOutput result(/*on_host_shape=*/result_shape(),
-                         /*on_device_shape=*/result_shape(),
+  ExecutionOutput result(/*on_device_shape=*/result_shape(),
                          run_options->allocator(),
                          stream->parent()->device_ordinal());
   const HloInputOutputAliasConfig& input_output_alias =
       module().input_output_alias_config();
+  HloInstruction* root = hlo_module_->entry_computation()->root_instruction();
+  const Shape& root_shape = root->shape();
 
   // Move se::OwningDeviceMemory values which contain the array(s) of the result
   // into the respective location in ScopedShapedBuffer which is returned to the
@@ -230,6 +248,13 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
     const HloValue* value_source = sources.values()[0];
     HloInstruction* src = value_source->instruction();
 
+    // The source for this result buffer can be a nested buffer such as
+    // a tuple element.
+    TF_ASSIGN_OR_RETURN(
+        const BufferAllocation::Slice slice,
+        this->assignment_->GetUniqueSlice(src, value_source->index()));
+    const BufferAllocation::Index buffer_index = slice.index();
+
     // TODO(cheshire): duplication with other backends.
     absl::optional<HloInputOutputAliasConfig::Alias> alias =
         input_output_alias.GetAliasedParameter(index);
@@ -238,6 +263,12 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
       ExecutionInput& input = arguments[alias->parameter_number];
       MaybeOwningDeviceMemory* maybe_owning_memory =
           input.MutableBuffer(alias->parameter_index);
+      if (alias->must_alias() && !maybe_owning_memory->HasOwnership()) {
+        return InvalidArgument(
+            "An input was configured to be must-alias at "
+            "compile time but not donated at runtime: %s",
+            alias->ToString());
+      }
       if (absl::optional<se::OwningDeviceMemory> owning =
               maybe_owning_memory->Release()) {
         // If the caller passes the ownership of the device memory, reuse it
@@ -247,28 +278,36 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
         se::DeviceMemoryBase argument_buffer = owning->Release();
         *maybe_owning_memory = argument_buffer;
         result_buffer = argument_buffer;
-        if (alias->kind == HloInputOutputAliasConfig::kUserAlias) {
-          // This is a user alias, so a must alias. The caller is giving us the
-          // input buffer, but in case of error of the execute call, we should
-          // not be releasing it as it contains valid data (for example, it is a
-          // parameter which the user wants us to alias, in a gradient update
-          // computation). So we store the index into the result in the aliased
-          // vactor, which will be fed to the ExecutionOutput, which will be
-          // using the indices to drop the addresses from its own
-          // ScopedShapedBuffer result, if the ExecutionOutput is not committed.
-          result.AddAliasedIndex(index);
-        }
+        // The caller is giving us the
+        // input buffer, but in case of error of the execute call, we should
+        // not be releasing it as it contains valid data (for example, it is a
+        // parameter which the user wants us to alias, in a gradient update
+        // computation). So we store the index into the result in the aliased
+        // vactor, which will be fed to the ExecutionOutput, which will be
+        // using the indices to drop the addresses from its own
+        // ScopedShapedBuffer result, if the ExecutionOutput is not committed.
+        result.AddAliasedIndex(index);
+      } else {
+        VLOG(3) << "Using copy-protection: aliasing is specified, but the "
+                   "buffer is not donated; allocating a fresh buffer";
+        int64 allocation_size =
+            ShapeUtil::ByteSizeOf(ShapeUtil::GetSubshape(root_shape, index));
+        TF_ASSIGN_OR_RETURN(
+            se::OwningDeviceMemory allocated_buffer,
+            run_options->allocator()->Allocate(
+                stream->parent()->device_ordinal(), allocation_size));
+        result_buffer = allocated_buffer.Release();
+        MaybeOwningDeviceMemory& registered_buffer = buffers[buffer_index];
+        CHECK_EQ(result_buffer.size(),
+                 registered_buffer.AsDeviceMemoryBase().size());
+        std::memcpy(/*dest=*/result_buffer.opaque(),
+                    /*src=*/registered_buffer.AsDeviceMemoryBase().opaque(),
+                    /*n=*/result_buffer.size());
+        registered_buffer = result_buffer;
       }
     }
 
     if (result_buffer.is_null()) {
-      // The source for this result buffer can be a nested buffer such as
-      // a tuple element. The source instruction should have a
-      // non-parameter buffer assigned.
-      TF_ASSIGN_OR_RETURN(
-          const BufferAllocation::Slice slice,
-          this->assignment_->GetUniqueSlice(src, value_source->index()));
-      const BufferAllocation::Index buffer_index = slice.index();
       MaybeOwningDeviceMemory& buffer = buffers[buffer_index];
       if (absl::optional<se::OwningDeviceMemory> owned_buffer =
               buffer.Release()) {
@@ -299,12 +338,11 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
       const Shape& expected_shape =
           entry_comp->parameter_instruction(i)->shape();
       const Shape& actual_shape = arguments[i].Buffers().shape();
-      CHECK(
-          Shape::Equal().IgnoreDynamicDimension()(expected_shape, actual_shape))
-          << absl::StreamFormat(
-                 "Shape mismatch on argument %d.  Expected %s, but was %s.", i,
-                 expected_shape.ToString(/*print_layout=*/true),
-                 actual_shape.ToString(/*print_layout=*/true));
+      TF_RET_CHECK(
+          ShapeUtil::DynamicShapeIsCompatible(actual_shape, expected_shape))
+          << "Shape mismatch on argument " << i << ", "
+          << expected_shape.ToString(/*print_layout=*/true) << " vs. "
+          << actual_shape.ToString(/*print_layout=*/true);
     }
   }
 
@@ -350,16 +388,7 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
                        std::move(buffers)),
                    hlo_execution_profile});
 
-  // TODO(cheshire): Duplication with other executables.
-  for (ExecutionInput& argument : arguments) {
-    for (auto& index_buffer : *argument.MutableBuffers()) {
-      absl::optional<se::OwningDeviceMemory> maybe_owning_buffer =
-          index_buffer.second.Release();
-      if (maybe_owning_buffer) {
-        result.AddToBeReleased(std::move(*maybe_owning_buffer));
-      }
-    }
-  }
+  MarkToBeReleasedArguments(absl::MakeSpan(arguments), result);
   return std::move(result);
 }
 

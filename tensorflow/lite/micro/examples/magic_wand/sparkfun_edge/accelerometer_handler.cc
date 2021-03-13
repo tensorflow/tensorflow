@@ -173,23 +173,24 @@ bool ReadAccelerometer(tflite::ErrorReporter* error_reporter, float* input,
   }
 
   // Load data from FIFO buffer
-  axis3bit16_t data_raw_acceleration;
+  axis3bit16_t data_raw_acceleration_local;
   for (int i = 0; i < samples; i++) {
     // Zero out the struct that holds raw accelerometer data
-    memset(data_raw_acceleration.u8bit, 0x00, 3 * sizeof(int16_t));
+    memset(data_raw_acceleration_local.u8bit, 0x00, 3 * sizeof(int16_t));
     // If the return value is non-zero, sensor data was successfully read
-    if (lis2dh12_acceleration_raw_get(&dev_ctx, data_raw_acceleration.u8bit)) {
+    if (lis2dh12_acceleration_raw_get(&dev_ctx,
+                                      data_raw_acceleration_local.u8bit)) {
       TF_LITE_REPORT_ERROR(error_reporter, "Failed to get raw data.");
     } else {
       // Convert each raw 16-bit value into floating point values representing
       // milli-Gs, a unit of acceleration, and store in the current position of
       // our buffer
       save_data[begin_index++] =
-          lis2dh12_from_fs2_hr_to_mg(data_raw_acceleration.i16bit[0]);
+          lis2dh12_from_fs2_hr_to_mg(data_raw_acceleration_local.i16bit[0]);
       save_data[begin_index++] =
-          lis2dh12_from_fs2_hr_to_mg(data_raw_acceleration.i16bit[1]);
+          lis2dh12_from_fs2_hr_to_mg(data_raw_acceleration_local.i16bit[1]);
       save_data[begin_index++] =
-          lis2dh12_from_fs2_hr_to_mg(data_raw_acceleration.i16bit[2]);
+          lis2dh12_from_fs2_hr_to_mg(data_raw_acceleration_local.i16bit[2]);
       // Start from beginning, imitating loop array.
       if (begin_index >= 600) begin_index = 0;
     }

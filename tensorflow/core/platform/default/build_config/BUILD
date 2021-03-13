@@ -1,10 +1,9 @@
 # Description:
 # Platform-specific build configurations.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_copts", "tf_cuda_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
-load("@local_config_sycl//sycl:platform.bzl", "sycl_library_path")
-load("@local_config_sycl//sycl:build_defs.bzl", "if_ccpp")
 
 package(default_visibility = ["//tensorflow:internal"])
 
@@ -28,6 +27,20 @@ cc_library(
     deps = [],
 )
 
+cc_library(
+    name = "_empty_lib",
+    visibility = ["//visibility:private"],
+)
+
+alias(
+    name = "_cuda_runtime",
+    actual = select({
+        "//tensorflow:framework_shared_object": ":_empty_lib",
+        "//conditions:default": "//tensorflow/stream_executor/cuda:all_runtime",
+    }),
+    visibility = ["//visibility:private"],
+)
+
 tf_cuda_library(
     name = "stream_executor",
     cuda_deps = [
@@ -45,14 +58,13 @@ tf_cuda_library(
         "//tensorflow/stream_executor/platform:dso_loader",
         "//tensorflow/stream_executor/rocm:rocm_platform_id",
     ] + select({
-        "@local_config_cuda//cuda:darwin": ["IOKit"],
+        "//tensorflow:macos": ["IOKit"],
         "//conditions:default": [],
     }) + select({
-        "//tensorflow:using_cuda_clang": ["//tensorflow/stream_executor/cuda:all_runtime"],
-        "//tensorflow:using_cuda_nvcc": ["//tensorflow/stream_executor/cuda:all_runtime"],
-        "//tensorflow:using_cuda_clang_with_dynamic_build": [],
-        "//tensorflow:using_cuda_nvcc_with_dynamic_build": [],
-        "//tensorflow:using_rocm_hipcc": ["//tensorflow/stream_executor/rocm:all_runtime"],
+        "//tensorflow:is_cuda_enabled": [":_cuda_runtime"],
+        "//tensorflow:using_rocm_hipcc": [
+            "//tensorflow/stream_executor/rocm:all_runtime",
+        ],
         "//conditions:default": [],
     }),
 )
@@ -68,7 +80,7 @@ cc_library(
             ":cuda",
         ],
     }) + select({
-        "@local_config_cuda//cuda:darwin": ["IOKit"],
+        "//tensorflow:macos": ["IOKit"],
         "//conditions:default": [],
     }),
 )
@@ -195,7 +207,7 @@ cc_library(
         "@local_config_cuda//cuda:cudart",
     ],
     linkopts = select({
-        "@local_config_cuda//cuda:darwin": [
+        "//tensorflow:macos": [
             "-Wl,-rpath,../local_config_cuda/cuda/lib",
             "-Wl,-rpath,../local_config_cuda/cuda/extras/CUPTI/lib",
         ],
@@ -218,18 +230,4 @@ cc_library(
         ],
     }),
     deps = [],
-)
-
-cc_library(
-    name = "sycl",
-    data = if_ccpp([
-        "@local_config_sycl//sycl:{}".format(sycl_library_path("ComputeCpp")),
-    ]),
-    linkopts = if_ccpp([
-        "-Wl,-rpath,../local_config_sycl/sycl/lib",
-    ]),
-    deps = if_ccpp(
-        ["@local_config_sycl//sycl:syclrt"],
-        ["@local_config_sycl//sycl:sycl_headers"],
-    ),
 )

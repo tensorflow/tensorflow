@@ -26,5 +26,5 @@ from __future__ import print_function
 
 
 def is_mlir_bridge_enabled():
-  """Returns true to if MLIR bridge should be enabled for tests."""
+  """Returns true if MLIR bridge should be enabled for tests."""
   return True

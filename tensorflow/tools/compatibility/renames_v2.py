@@ -157,7 +157,7 @@ renames = {
     'tf.assert_greater_equal':
         'tf.compat.v1.assert_greater_equal',
     'tf.assert_integer':
-        'tf.compat.v1.assert_integer',
+        'tf.debugging.assert_integer',
     'tf.assert_less_equal':
         'tf.compat.v1.assert_less_equal',
     'tf.assert_near':
@@ -183,7 +183,7 @@ renames = {
     'tf.assert_scalar':
         'tf.compat.v1.assert_scalar',
     'tf.assert_type':
-        'tf.compat.v1.assert_type',
+        'tf.debugging.assert_type',
     'tf.assert_variables_initialized':
         'tf.compat.v1.assert_variables_initialized',
     'tf.assign':
@@ -282,6 +282,8 @@ renames = {
         'tf.compat.v1.disable_v2_behavior',
     'tf.disable_v2_tensorshape':
         'tf.compat.v1.disable_v2_tensorshape',
+    'tf.distribute.experimental.ParameterServerStrategy':
+        'tf.compat.v1.distribute.experimental.ParameterServerStrategy',
     'tf.distribute.get_loss_reduction':
         'tf.compat.v1.distribute.get_loss_reduction',
     'tf.distributions.Bernoulli':
@@ -768,6 +770,12 @@ renames = {
         'tf.linalg.matrix_transpose',
     'tf.matrix_triangular_solve':
         'tf.linalg.triangular_solve',
+    'tf.mixed_precision.DynamicLossScale':
+        'tf.compat.v1.mixed_precision.DynamicLossScale',
+    'tf.mixed_precision.FixedLossScale':
+        'tf.compat.v1.mixed_precision.FixedLossScale',
+    'tf.mixed_precision.LossScale':
+        'tf.compat.v1.mixed_precision.LossScale',
     'tf.metrics.accuracy':
         'tf.compat.v1.metrics.accuracy',
     'tf.metrics.auc':
@@ -836,6 +844,12 @@ renames = {
         'tf.compat.v1.metrics.true_positives_at_thresholds',
     'tf.min_max_variable_partitioner':
         'tf.compat.v1.min_max_variable_partitioner',
+    'tf.mixed_precision.MixedPrecisionLossScaleOptimizer':
+        'tf.compat.v1.mixed_precision.MixedPrecisionLossScaleOptimizer',
+    'tf.mixed_precision.disable_mixed_precision_graph_rewrite':
+        'tf.compat.v1.mixed_precision.disable_mixed_precision_graph_rewrite',
+    'tf.mixed_precision.enable_mixed_precision_graph_rewrite':
+        'tf.compat.v1.mixed_precision.enable_mixed_precision_graph_rewrite',
     'tf.mod':
         'tf.math.floormod',
     'tf.model_variables':
@@ -1372,6 +1386,8 @@ renames = {
         'tf.compat.v1.tpu.shard',
     'tf.tpu.shutdown_system':
         'tf.compat.v1.tpu.shutdown_system',
+    'tf.tpu.XLAOptions':
+        'tf.compat.v1.tpu.XLAOptions',
     'tf.trace':
         'tf.linalg.trace',
     'tf.train.AdadeltaOptimizer':

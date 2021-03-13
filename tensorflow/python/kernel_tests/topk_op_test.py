@@ -47,7 +47,7 @@ class TopKTest(test.TestCase):
                     sorted=True):  # pylint: disable=redefined-builtin
     np_expected_values = np.array(expected_values)
     np_expected_indices = np.array(expected_indices)
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session():
       values_op, indices_op = nn_ops.top_k(inputs, k, sorted=sorted)
       values, indices = self.evaluate([values_op, indices_op])
 
@@ -102,11 +102,13 @@ class TopKTest(test.TestCase):
     self._validateTopK(inputs, 2, [[0.4, 0.3], [0.4, 0.3]], [[3, 1], [2, 1]])
 
   def testTop3(self):
-    k = 5
-    inputs = np.random.permutation(np.linspace(0, 100, 6140, dtype=np.float64))
-    indices = np.argsort(-inputs)[:k]
-    values = -np.sort(-inputs)[:k]
-    self._validateTopK(inputs, k, values, indices)
+    for k in range(3, 11, 2):
+      for dim in range(512, 12288, 512):
+        inputs = np.random.permutation(
+            np.linspace(0, 100, dim, dtype=np.float64))
+        indices = np.argsort(-inputs)[:k]
+        values = -np.sort(-inputs)[:k]
+        self._validateTopK(inputs, k, values, indices)
 
   def testTop1AllNan(self):
     inputs = [[np.NaN, np.NaN], [np.NaN, np.NaN]]
@@ -194,7 +196,7 @@ class TopKTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testKNegative(self):
     inputs = [[0.1, 0.2], [0.3, 0.4]]
-    with self.session(use_gpu=True):
+    with self.session():
       k = array_ops.placeholder(dtypes.int32)
       values, _ = nn_ops.top_k(inputs, k)
       with self.assertRaisesOpError("Need k >= 0, got -7"):
@@ -203,13 +205,13 @@ class TopKTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testKTooLarge(self):
     inputs = [[0.1, 0.2], [0.3, 0.4]]
-    with self.assertRaisesRegexp(ValueError,
-                                 r"must have last dimension >= k = 4"):
+    with self.assertRaisesRegex(ValueError,
+                                r"must have last dimension >= k = 4"):
       nn_ops.top_k(inputs, 4)
 
   @test_util.run_deprecated_v1
   def testTopKGradients(self):
-    with self.session(use_gpu=True) as sess:
+    with self.session() as sess:
       inputs = array_ops.placeholder(dtypes.float32, shape=[2, 5])
       values, _ = nn_ops.top_k(inputs, 3)
       grad = sess.run(
@@ -240,7 +242,7 @@ class TopKBenchmark(test.Benchmark):
           v = resource_variable_ops.ResourceVariable(x)
           op = nn_ops.top_k(v, k)
         with session.Session() as sess:
-          v.initializer.run()
+          self.evaluate(v.initializer)
           r = self.run_op_benchmark(sess, op, min_iters=100, name=name)
           gb_processed_input = m * n / 1.0e9
           throughput = gb_processed_input / r["wall_time"]

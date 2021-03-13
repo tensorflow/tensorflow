@@ -19,26 +19,17 @@ namespace tensorflow {
 REGISTER8(BinaryOp, CPU, "BitwiseXor", functor::bitwise_xor, int8, int16, int32,
           int64, uint8, uint16, uint32, uint64);
 
-#if TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(TYPE)                                      \
-  REGISTER_KERNEL_BUILDER(                                              \
-      Name("BitwiseXor").Device(DEVICE_SYCL).TypeConstraint<TYPE>("T"), \
-      BinaryOp<SYCLDevice, functor::bitwise_xor<TYPE>>);
-REGISTER_SYCL_KERNEL(int8);
-REGISTER_SYCL_KERNEL(int16);
-REGISTER_SYCL_KERNEL(int32);
-REGISTER_SYCL_KERNEL(int64);
-REGISTER_SYCL_KERNEL(uint8);
-REGISTER_SYCL_KERNEL(uint16);
-REGISTER_SYCL_KERNEL(uint32);
-REGISTER_SYCL_KERNEL(uint64);
-#undef REGISTER_SYCL_KERNEL
-
-#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER8(BinaryOp, GPU, "BitwiseXor", functor::bitwise_xor, int8, int16, int32,
           int64, uint8, uint16, uint32, uint64);
+#else
+// TODO(b/172804967): We do not generate unsigned kernels for GPU via mlir.
+REGISTER4(BinaryOp, GPU, "BitwiseXor", functor::bitwise_xor, uint8, uint16,
+          uint32, uint64);
+#endif  // !MLIR_GENERATED_GPU_KERNELS_ENABLED ||
+        // !MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

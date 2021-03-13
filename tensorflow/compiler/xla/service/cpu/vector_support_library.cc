@@ -33,7 +33,7 @@ VectorSupportLibrary::VectorSupportLibrary(PrimitiveType primitive_type,
   scalar_type_ = llvm_ir::PrimitiveTypeToIrType(
       primitive_type, b_->GetInsertBlock()->getModule());
   scalar_pointer_type_ = llvm::PointerType::getUnqual(scalar_type_);
-  vector_type_ = llvm::VectorType::get(scalar_type_, vector_size);
+  vector_type_ = llvm::VectorType::get(scalar_type_, vector_size, false);
   vector_pointer_type_ = llvm::PointerType::getUnqual(vector_type_);
 }
 
@@ -80,10 +80,11 @@ llvm::Value* VectorSupportLibrary::Sub(llvm::Value* lhs, llvm::Value* rhs) {
   return b()->CreateFSub(lhs, rhs);
 }
 
-llvm::Value* VectorSupportLibrary::Max(llvm::Value* lhs, llvm::Value* rhs) {
+llvm::Value* VectorSupportLibrary::Max(llvm::Value* lhs, llvm::Value* rhs,
+                                       bool enable_fast_min_max) {
   AssertCorrectTypes({lhs, rhs});
   if (scalar_type_->isFloatingPointTy()) {
-    return llvm_ir::EmitFloatMax(lhs, rhs, b_);
+    return llvm_ir::EmitFloatMax(lhs, rhs, b_, enable_fast_min_max);
   } else {
     LOG(FATAL) << "Max for integers is unimplemented";
   }
@@ -154,7 +155,7 @@ llvm::Type* VectorSupportLibrary::IntegerTypeForFloatSize(bool vector) {
   int64 float_size_bits = data_layout.getTypeSizeInBits(scalar_type());
   llvm::Type* scalar_int_type = b()->getIntNTy(float_size_bits);
   if (vector) {
-    return llvm::VectorType::get(scalar_int_type, vector_size());
+    return llvm::VectorType::get(scalar_int_type, vector_size(), false);
   } else {
     return scalar_int_type;
   }
@@ -218,7 +219,8 @@ llvm::Value* VectorSupportLibrary::LoadVector(llvm::Value* pointer) {
     pointer = b()->CreateBitCast(pointer, vector_pointer_type(), name());
   }
   return b()->CreateAlignedLoad(
-      pointer, ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_), name());
+      pointer, llvm::Align(ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_)),
+      name());
 }
 
 llvm::Value* VectorSupportLibrary::LoadScalar(llvm::Value* pointer) {
@@ -226,7 +228,8 @@ llvm::Value* VectorSupportLibrary::LoadScalar(llvm::Value* pointer) {
     pointer = b()->CreateBitCast(pointer, scalar_pointer_type(), name());
   }
   return b()->CreateAlignedLoad(
-      pointer, ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_), name());
+      pointer, llvm::Align(ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_)),
+      name());
 }
 
 void VectorSupportLibrary::StoreVector(llvm::Value* value,
@@ -235,8 +238,9 @@ void VectorSupportLibrary::StoreVector(llvm::Value* value,
   if (pointer->getType() != vector_pointer_type()) {
     pointer = b()->CreateBitCast(pointer, vector_pointer_type());
   }
-  b()->CreateAlignedStore(value, pointer,
-                          ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_));
+  b()->CreateAlignedStore(
+      value, pointer,
+      llvm::Align(ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_)));
 }
 
 void VectorSupportLibrary::StoreScalar(llvm::Value* value,
@@ -245,8 +249,9 @@ void VectorSupportLibrary::StoreScalar(llvm::Value* value,
   if (pointer->getType() != scalar_pointer_type()) {
     pointer = b()->CreateBitCast(pointer, scalar_pointer_type(), name());
   }
-  b()->CreateAlignedStore(value, pointer,
-                          ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_));
+  b()->CreateAlignedStore(
+      value, pointer,
+      llvm::Align(ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_)));
 }
 
 llvm::Value* VectorSupportLibrary::LoadBroadcast(llvm::Value* pointer) {

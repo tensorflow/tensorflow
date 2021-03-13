@@ -26,6 +26,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.tests import model_architectures
 from tensorflow.python.platform import test
@@ -62,7 +63,7 @@ class TestModelArchitectures(keras_parameterized.TestCase):
   def get_custom_objects(self):
     """Define custom_objects."""
 
-    class CustomOpt(keras.optimizers.SGD):
+    class CustomOpt(optimizer_v1.SGD):
       pass
 
     def custom_loss(y_true, y_pred):

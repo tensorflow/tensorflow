@@ -26,11 +26,10 @@ TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(TestImageProvider) {
   tflite::MicroErrorReporter micro_error_reporter;
-  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
-  uint8_t image_data[kMaxImageSize];
-  TfLiteStatus get_status =
-      GetImage(error_reporter, kNumCols, kNumRows, kNumChannels, image_data);
+  int8_t image_data[kMaxImageSize];
+  TfLiteStatus get_status = GetImage(&micro_error_reporter, kNumCols, kNumRows,
+                                     kNumChannels, image_data);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, get_status);
   TF_LITE_MICRO_EXPECT_NE(image_data, nullptr);
 

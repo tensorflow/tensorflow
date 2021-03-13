@@ -150,6 +150,17 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertDatasetProduces(device_dataset, list(range(10)))
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testPrefetchToDeviceCorrectPlacement(self):
+
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.apply(prefetching_ops.prefetch_to_device("/gpu:0"))
+
+    self.assertIn("gpu:0", dataset._variant_tensor.device.lower())
+
   @combinations.generate(test_base.graph_only_combinations())
   def testPrefetchToDeviceWithReInit(self):
     host_dataset = dataset_ops.Dataset.range(10)

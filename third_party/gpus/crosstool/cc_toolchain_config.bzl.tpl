@@ -3,6 +3,7 @@
 load(
     "@bazel_tools//tools/cpp:cc_toolchain_config_lib.bzl",
     "action_config",
+    "artifact_name_pattern",
     "env_entry",
     "env_set",
     "feature",
@@ -496,12 +497,11 @@ def _features(cpu, compiler, ctx):
                     ),
                     flag_set(
                         actions = all_link_actions(),
-                        flag_groups = [
-                            flag_group(flags = (
-                                ["-Wl,-no-as-needed"] if cpu == "local" else []
-                            ) + [
-                                "-B" + ctx.attr.linker_bin_path,
-                            ]),
+                        flag_groups = ([
+                            flag_group(flags = ["-Wl,-no-as-needed"])
+                        ] if cpu == "local" else []) + ([
+                            flag_group(flags = ["-B" + ctx.attr.linker_bin_path])
+                        ] if ctx.attr.linker_bin_path else []) + [
                             flag_group(
                                 flags = ["@%{linker_param_file}"],
                                 expand_if_available = "linker_param_file",
@@ -583,7 +583,11 @@ def _features(cpu, compiler, ctx):
                     ),
                 ],
             ),
-            feature(name = "opt"),
+            feature(name = "disable-assertions"),
+            feature(
+                name = "opt",
+                implies = ["disable-assertions"],
+            ),
             feature(name = "fastbuild"),
             feature(name = "dbg"),
             feature(name = "supports_dynamic_linker", enabled = True),
@@ -967,6 +971,7 @@ def _impl(ctx):
             linker_path = ctx.attr.host_compiler_path,
             strip_path = ctx.attr.host_compiler_prefix + "/strip",
         )
+        artifact_name_patterns = []
     elif (cpu == "local"):
         toolchain_identifier = "local_linux"
         target_cpu = "local"
@@ -980,6 +985,7 @@ def _impl(ctx):
             linker_path = ctx.attr.host_compiler_path,
             strip_path = ctx.attr.host_compiler_prefix + "/strip",
         )
+        artifact_name_patterns = []
     elif (cpu == "x64_windows"):
         toolchain_identifier = "local_windows"
         target_cpu = "x64_windows"
@@ -993,6 +999,38 @@ def _impl(ctx):
             linker_path = ctx.attr.msvc_link_path,
             strip_path = "fake_tool_strip_not_supported",
         )
+        artifact_name_patterns = [
+            artifact_name_pattern(
+                category_name = "object_file",
+                prefix = "",
+                extension = ".obj",
+            ),
+            artifact_name_pattern(
+                category_name = "static_library",
+                prefix = "",
+                extension = ".lib",
+            ),
+            artifact_name_pattern(
+                category_name = "alwayslink_static_library",
+                prefix = "",
+                extension = ".lo.lib",
+            ),
+            artifact_name_pattern(
+                category_name = "executable",
+                prefix = "",
+                extension = ".exe",
+            ),
+            artifact_name_pattern(
+                category_name = "dynamic_library",
+                prefix = "",
+                extension = ".dll",
+            ),
+            artifact_name_pattern(
+                category_name = "interface_library",
+                prefix = "",
+                extension = ".if.lib",
+            ),
+        ]
     else:
         fail("Unreachable")
 
@@ -1003,7 +1041,7 @@ def _impl(ctx):
             ctx = ctx,
             features = _features(cpu, compiler, ctx),
             action_configs = action_configs,
-            artifact_name_patterns = [],
+            artifact_name_patterns = artifact_name_patterns,
             cxx_builtin_include_directories = ctx.attr.builtin_include_directories,
             toolchain_identifier = toolchain_identifier,
             host_system_name = "local",

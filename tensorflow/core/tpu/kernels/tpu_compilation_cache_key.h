@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 
 namespace tensorflow {
@@ -42,6 +43,16 @@ struct TpuCompilationCacheKey {
 
   // A more verbose key for debugging purpose.
   std::string debug_string;
+
+  // Constructs the TPU compilation cache key by concatenating the `prefix`,
+  // `session_handle` and `guaranteed_const_fingerprint`.
+  std::string ToString() const {
+    if (!has_guaranteed_const) {
+      return prefix;
+    }
+    return absl::StrCat(prefix, "|", session_handle, "|",
+                        guaranteed_const_fingerprint());
+  }
 
   explicit TpuCompilationCacheKey() {}
   explicit TpuCompilationCacheKey(const std::string& p) : prefix(p) {}

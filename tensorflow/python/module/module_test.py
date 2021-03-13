@@ -31,8 +31,10 @@ from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values as distributed_values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.module import module
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -109,7 +111,7 @@ class TestModuleNaming(test_util.TensorFlowTestCase):
 
   def test_invalid_name(self):
     msg = ".* is not a valid module name"
-    with self.assertRaisesRegexp(ValueError, msg):
+    with self.assertRaisesRegex(ValueError, msg):
       module.Module(name="$Foo")
 
   @test_util.run_in_graph_and_eager_modes
@@ -260,6 +262,37 @@ class VariableTrackingTest(test_util.TensorFlowTestCase):
     m.c = aggregating
     self.assertEqual(m.variables, (mirrored, tpu, aggregating))
 
+  def test_composite_variable(self):
+
+    class Spec(type_spec.TypeSpec):
+
+      value_type = property(lambda self: CompositeVariable)
+
+      def _component_specs(self):
+        pass
+
+      def _serialize(self):
+        pass
+
+      def _to_components(self, value):
+        return value._variables
+
+      def _from_components(self, variable_list):
+        return CompositeVariable(variable_list)
+
+    class CompositeVariable(composite_tensor.CompositeTensor):
+
+      def __init__(self, variable_list):
+        self._variables = variable_list
+
+      @property
+      def _type_spec(self):
+        return Spec()
+
+    m = module.Module()
+    m.a = CompositeVariable([variables.Variable(1.), variables.Variable(2.)])
+    self.assertAllEqual(m.variables, m.a._variables)
+
 
 class ModuleTrackingTest(test_util.TensorFlowTestCase):
 
@@ -302,8 +335,8 @@ class ForwardMethodsTest(test_util.TensorFlowTestCase):
 class AbcTest(test_util.TensorFlowTestCase):
 
   def testAbstract(self):
-    msg = "Can't instantiate .* abstract methods"
-    with self.assertRaisesRegexp(TypeError, msg):
+    msg = "Can't instantiate.*abstract"
+    with self.assertRaisesRegex(TypeError, msg):
       AbstractModule()  # pylint: disable=abstract-class-instantiated
 
   def testConcrete(self):

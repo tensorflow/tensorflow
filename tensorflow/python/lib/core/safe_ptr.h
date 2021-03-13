@@ -16,19 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_LIB_CORE_SAFE_PTR_H_
 #define TENSORFLOW_PYTHON_LIB_CORE_SAFE_PTR_H_
 
-#include <memory>
-
 #include <Python.h>
+
+#include <memory>
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 
 namespace tensorflow {
 namespace detail {
-
-struct PyDecrefDeleter {
-  void operator()(PyObject* p) const { Py_DECREF(p); }
-};
 
 struct TFTensorDeleter {
   void operator()(TF_Tensor* p) const { TF_DeleteTensor(p); }
@@ -47,11 +44,6 @@ struct TFBufferDeleter {
 };
 
 }  // namespace detail
-
-// Safe container for an owned PyObject. On destruction, the reference count of
-// the contained object will be decremented.
-using Safe_PyObjectPtr = std::unique_ptr<PyObject, detail::PyDecrefDeleter>;
-Safe_PyObjectPtr make_safe(PyObject* o);
 
 // Safe containers for an owned TF_Tensor. On destruction, the tensor will be
 // deleted by TF_DeleteTensor.

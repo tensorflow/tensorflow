@@ -1241,15 +1241,15 @@ class FusedBatchNormOpBase : public OpKernel {
   // If use_reserved_space is false, we don't have 5th output.
   virtual void ComputeWithReservedSpace(OpKernelContext* context,
                                         bool use_reserved_space) {
-    const Tensor& x = context->input(0);
+    Tensor x = context->input(0);
     const Tensor& scale = context->input(1);
     const Tensor& offset = context->input(2);
     const Tensor& estimated_mean = context->input(3);
     const Tensor& estimated_variance = context->input(4);
     const Tensor* side_input = has_side_input_ ? &context->input(5) : nullptr;
 
-    OP_REQUIRES(context, x.dims() == 4,
-                errors::InvalidArgument("input must be 4-dimensional",
+    OP_REQUIRES(context, x.dims() == 4 || x.dims() == 5,
+                errors::InvalidArgument("input must be 4 or 5-dimensional",
                                         x.shape().DebugString()));
     OP_REQUIRES(context, scale.dims() == 1,
                 errors::InvalidArgument("scale must be 1-dimensional",
@@ -1264,6 +1264,21 @@ class FusedBatchNormOpBase : public OpKernel {
         context, estimated_variance.dims() == 1,
         errors::InvalidArgument("estimated_variance must be 1-dimensional",
                                 estimated_variance.shape().DebugString()));
+    bool use_reshape = (x.dims() == 5);
+    auto x_shape = x.shape();
+    TensorShape dest_shape;
+    if (use_reshape) {
+      const int64 in_batch = GetTensorDim(x, tensor_format_, 'N');
+      int64 in_planes = GetTensorDim(x, tensor_format_, '0');
+      int64 in_rows = GetTensorDim(x, tensor_format_, '1');
+      int64 in_cols = GetTensorDim(x, tensor_format_, '2');
+      const int64 in_depth = GetTensorDim(x, tensor_format_, 'C');
+      dest_shape = ShapeFromFormat(tensor_format_, in_batch,
+                                   {{in_planes, in_rows * in_cols}}, in_depth);
+      OP_REQUIRES(context, x.CopyFrom(x, dest_shape),
+                  errors::InvalidArgument("Error during tensor copy."));
+    }
+
     if (has_side_input_) {
       OP_REQUIRES(context, side_input->shape() == x.shape(),
                   errors::InvalidArgument(
@@ -1282,8 +1297,10 @@ class FusedBatchNormOpBase : public OpKernel {
     }
 
     Tensor* y = nullptr;
+    auto alloc_shape = use_reshape ? dest_shape : x_shape;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
-                                {0}, 0, x.shape(), &y));
+                                {0}, 0, alloc_shape, &y));
+
     Tensor* batch_mean = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {3}, 1, scale.shape(), &batch_mean));
@@ -1309,6 +1326,10 @@ class FusedBatchNormOpBase : public OpKernel {
           side_input, epsilon_, exponential_avg_factor_, activation_mode_, y,
           batch_mean, batch_var, saved_mean, saved_maybe_inv_var,
           tensor_format_, use_reserved_space);
+    }
+    if (use_reshape) {
+      OP_REQUIRES(context, y->CopyFrom(*y, x_shape),
+                  errors::InvalidArgument("Error during tensor copy."));
     }
   }
 
@@ -1375,8 +1396,8 @@ class FusedBatchNormGradOpBase : public OpKernel {
 
   virtual void ComputeWithReservedSpace(OpKernelContext* context,
                                         bool use_reserved_space) {
-    const Tensor& y_backprop = context->input(0);
-    const Tensor& x = context->input(1);
+    Tensor y_backprop = context->input(0);
+    Tensor x = context->input(1);
     const Tensor& scale = context->input(2);
     // When is_training=True, batch mean and variance/inverted variance are
     // saved in the forward pass to be reused here. When is_training=False,
@@ -1387,11 +1408,11 @@ class FusedBatchNormGradOpBase : public OpKernel {
     // saves inverted variance.
     const Tensor& saved_maybe_inv_var_or_pop_var = context->input(4);
 
-    OP_REQUIRES(context, y_backprop.dims() == 4,
-                errors::InvalidArgument("input must be 4-dimensional",
+    OP_REQUIRES(context, y_backprop.dims() == 4 || y_backprop.dims() == 5,
+                errors::InvalidArgument("input must be 4 or 5-dimensional",
                                         y_backprop.shape().DebugString()));
-    OP_REQUIRES(context, x.dims() == 4,
-                errors::InvalidArgument("input must be 4-dimensional",
+    OP_REQUIRES(context, x.dims() == 4 || x.dims() == 5,
+                errors::InvalidArgument("input must be 4 or 5-dimensional",
                                         x.shape().DebugString()));
     OP_REQUIRES(context, scale.dims() == 1,
                 errors::InvalidArgument("scale must be 1-dimensional",
@@ -1404,10 +1425,27 @@ class FusedBatchNormGradOpBase : public OpKernel {
                 errors::InvalidArgument(
                     "saved variance must be 1-dimensional",
                     saved_maybe_inv_var_or_pop_var.shape().DebugString()));
+    bool use_reshape = (x.dims() == 5);
+    auto x_shape = x.shape();
+    TensorShape dest_shape;
+    if (use_reshape) {
+      const int64 in_batch = GetTensorDim(x, tensor_format_, 'N');
+      int64 in_planes = GetTensorDim(x, tensor_format_, '0');
+      int64 in_rows = GetTensorDim(x, tensor_format_, '1');
+      int64 in_cols = GetTensorDim(x, tensor_format_, '2');
+      const int64 in_depth = GetTensorDim(x, tensor_format_, 'C');
+      dest_shape = ShapeFromFormat(tensor_format_, in_batch,
+                                   {{in_planes, in_rows * in_cols}}, in_depth);
+      OP_REQUIRES(context, x.CopyFrom(x, dest_shape),
+                  errors::InvalidArgument("Error during tensor copy."));
+      OP_REQUIRES(context, y_backprop.CopyFrom(y_backprop, dest_shape),
+                  errors::InvalidArgument("Error during tensor copy."));
+    }
 
     Tensor* x_backprop = nullptr;
+    auto alloc_shape = use_reshape ? dest_shape : x_shape;
     OP_REQUIRES_OK(context,
-                   context->allocate_output(0, x.shape(), &x_backprop));
+                   context->allocate_output(0, alloc_shape, &x_backprop));
 
     const TensorShape& scale_offset_shape = scale.shape();
     Tensor* scale_backprop = nullptr;
@@ -1441,14 +1479,19 @@ class FusedBatchNormGradOpBase : public OpKernel {
           offset_backprop, use_reserved_space, tensor_format_);
     } else {
       // Necessary layout conversion is currently done in python.
-      CHECK(tensor_format_ == FORMAT_NHWC)
-          << "The implementation of FusedBatchNormGrad with is_training=False "
-             "only support "
-          << "NHWC tensor format for now.";
+      OP_REQUIRES(context, tensor_format_ == FORMAT_NHWC,
+                  errors::InvalidArgument(
+                      "The implementation of "
+                      "FusedBatchNormGrad with is_training=False only support "
+                      "NHWC tensor format for now."));
       functor::FusedBatchNormFreezeGrad<Device, T, U>()(
           context, y_backprop, x, scale, saved_mean_or_pop_mean,
           saved_maybe_inv_var_or_pop_var, epsilon_, x_backprop, scale_backprop,
           offset_backprop);
+    }
+    if (use_reshape) {
+      OP_REQUIRES(context, x_backprop->CopyFrom(*x_backprop, x_shape),
+                  errors::InvalidArgument("Error during tensor copy."));
     }
   }
 

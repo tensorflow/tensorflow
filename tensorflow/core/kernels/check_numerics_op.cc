@@ -16,7 +16,7 @@ limitations under the License.
 // See docs in ../ops/array_ops.cc.
 
 // clang-format off
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
+#include "tensorflow/core/platform/bfloat16.h"
 
 #include <math.h>  // NOLINT
 #include <algorithm>  // NOLINT

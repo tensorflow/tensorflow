@@ -66,11 +66,25 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
   }
   HANDLER(CreateContext);
   HANDLER(UpdateContext);
-  HANDLER(Enqueue);
   HANDLER(WaitQueueDone);
   HANDLER(KeepAlive);
   HANDLER(CloseContext);
 #undef HANDLER
+
+  void EnqueueHandler(EagerCall<EnqueueRequest, EnqueueResponse>* call) {
+    env_->compute_pool->Schedule([this, call]() {
+      auto call_opts = std::make_shared<CallOptions>();
+      call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
+      call->SendResponse(ToGrpcStatus(local_impl_.Enqueue(
+          call_opts.get(), &call->request, &call->response)));
+    });
+    Call<GrpcEagerServiceImpl, grpc::EagerService::AsyncService, EnqueueRequest,
+         EnqueueResponse>::
+        EnqueueRequest(&service_, cq_.get(),
+                       &grpc::EagerService::AsyncService::RequestEnqueue,
+                       &GrpcEagerServiceImpl::EnqueueHandler,
+                       /*supports_cancel=*/true);
+  }
 
   void RunComponentFunctionHandler(
       EagerCall<RunComponentFunctionRequest, RunComponentFunctionResponse>*
@@ -81,6 +95,7 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
       local_impl_.RunComponentFunction(call_opts.get(), &call->request,
                                        &call->response,
                                        [call, call_opts](const Status& s) {
+                                         call->ClearCancelCallback();
                                          call->SendResponse(ToGrpcStatus(s));
                                        });
     });
@@ -115,7 +130,7 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
       // reuse the same StreamingCall for multiple requests in the same
       // streaming connection.
       Status status = local_impl_.Enqueue(
-          &call->request(), call->mutable_response(),
+          /*call_opts=*/nullptr, &call->request(), call->mutable_response(),
           reinterpret_cast<uint64>(static_cast<void*>(call)));
 
       if (status.ok()) {

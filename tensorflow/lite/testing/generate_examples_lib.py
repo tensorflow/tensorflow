@@ -52,7 +52,6 @@ from tensorflow.lite.testing.op_tests.cast import make_cast_tests
 from tensorflow.lite.testing.op_tests.ceil import make_ceil_tests
 from tensorflow.lite.testing.op_tests.concat import make_concat_tests
 from tensorflow.lite.testing.op_tests.constant import make_constant_tests
-from tensorflow.lite.testing.op_tests.control_dep import make_control_dep_tests
 from tensorflow.lite.testing.op_tests.conv import make_conv_tests
 from tensorflow.lite.testing.op_tests.conv2d_transpose import make_conv2d_transpose_tests
 from tensorflow.lite.testing.op_tests.conv_activation import make_conv_relu_tests, make_conv_relu1_tests, make_conv_relu6_tests
@@ -125,7 +124,6 @@ from tensorflow.lite.testing.op_tests.resize_nearest_neighbor import make_resize
 from tensorflow.lite.testing.op_tests.resolve_constant_strided_slice import make_resolve_constant_strided_slice_tests
 from tensorflow.lite.testing.op_tests.reverse_sequence import make_reverse_sequence_tests
 from tensorflow.lite.testing.op_tests.reverse_v2 import make_reverse_v2_tests
-from tensorflow.lite.testing.op_tests.rfft2d import make_rfft2d_tests
 from tensorflow.lite.testing.op_tests.round import make_round_tests
 from tensorflow.lite.testing.op_tests.scatter_nd import make_scatter_nd_tests
 from tensorflow.lite.testing.op_tests.shape import make_shape_tests
@@ -240,6 +238,13 @@ class Options(object):
     # TODO(juhoha): Separate the state from the options.
     self.multi_gen_state = None
     self.use_experimental_converter = False
+    self.mlir_quantizer = False
+    # The list of ops' name that should exist in the converted model.
+    # This feature is currently only supported in MLIR conversion path.
+    # Example of supported ops' name:
+    # - "AVERAGE_POOL_2D" for builtin op.
+    # - "NumericVerify" for custom op.
+    self.expected_ops_in_converted_model = []
 
 
 def _prepare_dir(options):
@@ -275,7 +280,10 @@ def generate_examples(options):
   else:
     # Remove suffixes to extract the test name from the output name.
     test_name = re.sub(
-        r"(_(|toco-flex|forward-compat|edgetpu))?\.zip$", "", out, count=1)
+        r"(_(|toco-flex|forward-compat|edgetpu|mlir-quant))?\.zip$",
+        "",
+        out,
+        count=1)
 
   test_function_name = "make_%s_tests" % test_name
   test_function = get_test_function(test_function_name)
@@ -315,12 +323,16 @@ def generate_multi_set_examples(options, test_sets):
 
       # Remove suffix and set test_name to run proper test generation function.
       multi_gen_state.test_name = re.sub(
-          r"(_(|toco-flex|forward-compat))?$", "", test_name, count=1)
+          r"(_(|toco-flex|forward-compat|mlir-quant))?$",
+          "",
+          test_name,
+          count=1)
       # Set label base path to write test data files with proper path.
       multi_gen_state.label_base_path = os.path.join(
           os.path.dirname(zip_path), test_name + ".zip")
 
       generate_examples(new_options)
 
-    archive.writestr("manifest.txt", "".join(multi_gen_state.zip_manifest),
+    zipinfo = zipfile.ZipInfo("manifest.txt")
+    archive.writestr(zipinfo, "".join(multi_gen_state.zip_manifest),
                      zipfile.ZIP_DEFLATED)

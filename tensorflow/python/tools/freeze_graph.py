@@ -41,15 +41,15 @@ import argparse
 import re
 import sys
 
-from google.protobuf import text_format
+from absl import app
 
+from google.protobuf import text_format
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.core.protobuf.meta_graph_pb2 import MetaGraphDef
 from tensorflow.python.client import session
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
-from tensorflow.python.platform import app
 from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import tag_constants
@@ -84,7 +84,7 @@ def freeze_graph_with_def_protos(input_graph_def,
                                  clear_devices,
                                  initializer_nodes,
                                  variable_names_whitelist="",
-                                 variable_names_blacklist="",
+                                 variable_names_denylist="",
                                  input_meta_graph_def=None,
                                  input_saved_model_dir=None,
                                  saved_model_tags=None,
@@ -107,7 +107,7 @@ def freeze_graph_with_def_protos(input_graph_def,
                        freezing.
     variable_names_whitelist: The set of variable names to convert (optional, by
                               default, all variables are converted).
-    variable_names_blacklist: The set of variable names to omit converting
+    variable_names_denylist: The set of variable names to omit converting
                               to constants (optional).
     input_meta_graph_def: A `MetaGraphDef` (optional),
     input_saved_model_dir: Path to the dir with TensorFlow 'SavedModel' file
@@ -213,9 +213,9 @@ def freeze_graph_with_def_protos(input_graph_def,
     variable_names_whitelist = (
         variable_names_whitelist.replace(" ", "").split(",")
         if variable_names_whitelist else None)
-    variable_names_blacklist = (
-        variable_names_blacklist.replace(" ", "").split(",")
-        if variable_names_blacklist else None)
+    variable_names_denylist = (
+        variable_names_denylist.replace(" ", "").split(",")
+        if variable_names_denylist else None)
 
     if input_meta_graph_def:
       output_graph_def = graph_util.convert_variables_to_constants(
@@ -223,14 +223,14 @@ def freeze_graph_with_def_protos(input_graph_def,
           input_meta_graph_def.graph_def,
           output_node_names.replace(" ", "").split(","),
           variable_names_whitelist=variable_names_whitelist,
-          variable_names_blacklist=variable_names_blacklist)
+          variable_names_blacklist=variable_names_denylist)
     else:
       output_graph_def = graph_util.convert_variables_to_constants(
           sess,
           input_graph_def,
           output_node_names.replace(" ", "").split(","),
           variable_names_whitelist=variable_names_whitelist,
-          variable_names_blacklist=variable_names_blacklist)
+          variable_names_blacklist=variable_names_denylist)
 
   # Write GraphDef to file if output path has been given.
   if output_graph:
@@ -294,7 +294,7 @@ def freeze_graph(input_graph,
                  clear_devices,
                  initializer_nodes,
                  variable_names_whitelist="",
-                 variable_names_blacklist="",
+                 variable_names_denylist="",
                  input_meta_graph=None,
                  input_saved_model_dir=None,
                  saved_model_tags=tag_constants.SERVING,
@@ -318,7 +318,7 @@ def freeze_graph(input_graph,
                        freezing.
     variable_names_whitelist: The set of variable names to convert (optional, by
                               default, all variables are converted),
-    variable_names_blacklist: The set of variable names to omit converting
+    variable_names_denylist: The set of variable names to omit converting
                               to constants (optional).
     input_meta_graph: A `MetaGraphDef` file to load (optional).
     input_saved_model_dir: Path to the dir with TensorFlow 'SavedModel' file and
@@ -354,7 +354,7 @@ def freeze_graph(input_graph,
       clear_devices,
       initializer_nodes,
       variable_names_whitelist,
-      variable_names_blacklist,
+      variable_names_denylist,
       input_meta_graph_def,
       input_saved_model_dir,
       [tag for tag in saved_model_tags.replace(" ", "").split(",") if tag],
@@ -373,7 +373,7 @@ def main(unused_args, flags):
                flags.input_checkpoint, flags.output_node_names,
                flags.restore_op_name, flags.filename_tensor_name,
                flags.output_graph, flags.clear_devices, flags.initializer_nodes,
-               flags.variable_names_whitelist, flags.variable_names_blacklist,
+               flags.variable_names_whitelist, flags.variable_names_denylist,
                flags.input_meta_graph, flags.input_saved_model_dir,
                flags.saved_model_tags, checkpoint_version)
 
@@ -456,7 +456,7 @@ def run_main():
       only those variables will be converted to constants.\
       """)
   parser.add_argument(
-      "--variable_names_blacklist",
+      "--variable_names_denylist",
       type=str,
       default="",
       help="""\

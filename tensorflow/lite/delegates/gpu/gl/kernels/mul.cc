@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/lite/delegates/gpu/common/convert.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
@@ -80,19 +81,11 @@ absl::Status GenerateApplyMaskCode(const NodeShader::GenerationContext& ctx,
 
 absl::Status GenerateMultiplyScalarCode(
     const NodeShader::GenerationContext& ctx, GeneratedCode* generated_code) {
-  const auto& attr = absl::any_cast<const MultiplyAttributes&>(ctx.op_attr);
-  auto muls = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
-  auto scalar = absl::get_if<float>(&attr.param);
+  const auto& attr = absl::any_cast<const ElementwiseAttributes&>(ctx.op_attr);
 
-  const auto* hwc_tensor =
-      absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.param);
-  if (hwc_tensor) {
-    return absl::UnimplementedError("Mul does not support HWC constant tensor");
-  }
-
-  if (scalar) {
+  if (absl::holds_alternative<float>(attr.param)) {
     *generated_code = {
-        /*parameters=*/{{"scalar", *scalar}},
+        /*parameters=*/{{"scalar", absl::get<float>(attr.param)}},
         /*objects=*/{},
         /*shared_variables=*/{},
         /*workload=*/uint3(),
@@ -101,13 +94,16 @@ absl::Status GenerateMultiplyScalarCode(
         /*input=*/IOStructure::AUTO,
         /*output=*/IOStructure::AUTO,
     };
-  } else {
-    if (!muls) {
-      return absl::InvalidArgumentError("Empty parameters for Multiplication.");
-    }
+    return absl::OkStatus();
+  }
+
+  if (absl::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(attr.param)) {
     *generated_code = {
         /*parameters=*/{},
-        /*objects=*/{{"mul_buffer", MakeReadonlyObject(muls->data)}},
+        /*objects=*/
+        {{"mul_buffer",
+          MakeReadonlyObject(
+              absl::get<Tensor<Linear, DataType::FLOAT32>>(attr.param).data)}},
         /*shared_variables=*/{},
         // Declare workload explicitly because shader depends on gid.z.
         /*workload=*/
@@ -119,9 +115,35 @@ absl::Status GenerateMultiplyScalarCode(
         /*input=*/IOStructure::AUTO,
         /*output=*/IOStructure::AUTO,
     };
+    return absl::OkStatus();
   }
 
-  return absl::OkStatus();
+  if (absl::holds_alternative<Tensor<HWC, DataType::FLOAT32>>(attr.param)) {
+    *generated_code = {
+        /*parameters=*/{},
+        /*objects=*/
+        {{"hwc_buffer",
+          MakeReadonlyObject(
+              uint3(static_cast<int>(ctx.input_shapes[0][2]),
+                    static_cast<int>(ctx.input_shapes[0][1]),
+                    DivideRoundUp(static_cast<int>(ctx.input_shapes[0][3]), 4)),
+              ConvertToPHWC4(
+                  absl::get<Tensor<HWC, DataType::FLOAT32>>(attr.param)))}},
+        /*shared_variables=*/{},
+        // Declare workload explicitly because shader depends on gid.z.
+        /*workload=*/
+        uint3(static_cast<int>(ctx.input_shapes[0][2]),
+              static_cast<int>(ctx.input_shapes[0][1]),
+              DivideRoundUp(static_cast<int>(ctx.input_shapes[0][3]), 4)),
+        /*workgroup=*/uint3(),
+        /*source_code=*/"value_0 *= $hwc_buffer[gid.x, gid.y, gid.z]$;",
+        /*input=*/IOStructure::AUTO,
+        /*output=*/IOStructure::AUTO,
+    };
+    return absl::OkStatus();
+  }
+
+  return absl::InvalidArgumentError("Unsupported Multiplication case.");
 }
 
 class Multiply : public NodeShader {

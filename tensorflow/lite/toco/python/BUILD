@@ -30,11 +30,16 @@ cc_library(
     name = "toco_python_api",
     srcs = ["toco_python_api.cc"],
     hdrs = ["toco_python_api.h"],
+    features = ["-parse_headers"],
     visibility = [
         "//tensorflow/python:__subpackages__",
     ],
     deps = [
         "@com_google_protobuf//:protobuf_headers",
+        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
+        "//tensorflow/c:kernels",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
@@ -70,6 +75,7 @@ cc_library(
 py_library(
     name = "tensorflow_wrap_toco",
     srcs = ["tensorflow_wrap_toco.py"],
+    srcs_version = "PY3",
     visibility = [
         "//learning/expander/pod/deep_pod/utils:__subpackages__",
         "//research/handwriting/converters/tflite:__subpackages__",
@@ -84,11 +90,12 @@ py_binary(
     name = "toco_from_protos",
     srcs = ["toco_from_protos.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:_pywrap_toco_api",
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",
+        "@absl_py//absl:app",
     ],
 )
 

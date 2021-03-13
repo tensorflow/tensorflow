@@ -7,6 +7,13 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("@bazel_skylib//lib:selects.bzl", "selects")
+
+selects.config_setting_group(
+    name = "is_linux_debug",
+    match_all = ["@org_tensorflow//tensorflow:linux_x86_64", "@org_tensorflow//tensorflow:debug"],
+)
+
 cc_library(
     name = "aws-checksums",
     srcs = select({
@@ -16,6 +23,7 @@ cc_library(
         "//conditions:default": [],
     }) + glob([
         "source/intel/*.c",
+        "source/arm/*.c",
         "source/*.c",
     ]),
     hdrs = glob([
@@ -27,4 +35,10 @@ cc_library(
     deps = [
         "@aws-c-common",
     ],
+    defines = select({
+        ":is_linux_debug": [
+            "DEBUG_BUILD"
+        ],
+        "//conditions:default": [],
+    }),
 )

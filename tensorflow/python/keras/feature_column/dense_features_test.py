@@ -23,7 +23,6 @@ import numpy as np
 
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
-from tensorflow.python.eager import context
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.feature_column import sequence_feature_column as sfc
 from tensorflow.python.framework import constant_op
@@ -32,6 +31,8 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.feature_column import dense_features as df
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
@@ -48,165 +49,165 @@ def _initialized_session(config=None):
   return sess
 
 
-class DenseFeaturesTest(test.TestCase):
+class DenseFeaturesTest(keras_parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_retrieving_input(self):
     features = {'a': [0.]}
     dense_features = df.DenseFeatures(fc.numeric_column('a'))
     inputs = self.evaluate(dense_features(features))
     self.assertAllClose([[0.]], inputs)
 
+  @combinations.generate(combinations.combine(mode=['eager']))
   def test_reuses_variables(self):
-    with context.eager_mode():
-      sparse_input = sparse_tensor.SparseTensor(
-          indices=((0, 0), (1, 0), (2, 0)),
-          values=(0, 1, 2),
-          dense_shape=(3, 3))
+    sparse_input = sparse_tensor.SparseTensor(
+        indices=((0, 0), (1, 0), (2, 0)),
+        values=(0, 1, 2),
+        dense_shape=(3, 3))
 
-      # Create feature columns (categorical and embedding).
-      categorical_column = fc.categorical_column_with_identity(
-          key='a', num_buckets=3)
-      embedding_dimension = 2
+    # Create feature columns (categorical and embedding).
+    categorical_column = fc.categorical_column_with_identity(
+        key='a', num_buckets=3)
+    embedding_dimension = 2
 
-      def _embedding_column_initializer(shape, dtype, partition_info=None):
-        del shape  # unused
-        del dtype  # unused
-        del partition_info  # unused
-        embedding_values = (
-            (1, 0),  # id 0
-            (0, 1),  # id 1
-            (1, 1))  # id 2
-        return embedding_values
+    def _embedding_column_initializer(shape, dtype, partition_info=None):
+      del shape  # unused
+      del dtype  # unused
+      del partition_info  # unused
+      embedding_values = (
+          (1, 0),  # id 0
+          (0, 1),  # id 1
+          (1, 1))  # id 2
+      return embedding_values
 
-      embedding_column = fc.embedding_column(
-          categorical_column,
-          dimension=embedding_dimension,
-          initializer=_embedding_column_initializer)
+    embedding_column = fc.embedding_column(
+        categorical_column,
+        dimension=embedding_dimension,
+        initializer=_embedding_column_initializer)
 
-      dense_features = df.DenseFeatures([embedding_column])
-      features = {'a': sparse_input}
+    dense_features = df.DenseFeatures([embedding_column])
+    features = {'a': sparse_input}
 
-      inputs = dense_features(features)
-      variables = dense_features.variables
+    inputs = dense_features(features)
+    variables = dense_features.variables
 
-      # Sanity check: test that the inputs are correct.
-      self.assertAllEqual([[1, 0], [0, 1], [1, 1]], inputs)
+    # Sanity check: test that the inputs are correct.
+    self.assertAllEqual([[1, 0], [0, 1], [1, 1]], inputs)
 
-      # Check that only one variable was created.
-      self.assertEqual(1, len(variables))
+    # Check that only one variable was created.
+    self.assertEqual(1, len(variables))
 
-      # Check that invoking dense_features on the same features does not create
-      # additional variables
-      _ = dense_features(features)
-      self.assertEqual(1, len(variables))
-      self.assertIs(variables[0], dense_features.variables[0])
+    # Check that invoking dense_features on the same features does not create
+    # additional variables
+    _ = dense_features(features)
+    self.assertEqual(1, len(variables))
+    self.assertIs(variables[0], dense_features.variables[0])
 
+  @combinations.generate(combinations.combine(mode=['eager']))
   def test_dense_feature_with_partitioner(self):
-    with context.eager_mode():
-      sparse_input = sparse_tensor.SparseTensor(
-          indices=((0, 0), (1, 0), (2, 0), (3, 0)),
-          values=(0, 1, 3, 2),
-          dense_shape=(4, 4))
+    sparse_input = sparse_tensor.SparseTensor(
+        indices=((0, 0), (1, 0), (2, 0), (3, 0)),
+        values=(0, 1, 3, 2),
+        dense_shape=(4, 4))
 
-      # Create feature columns (categorical and embedding).
-      categorical_column = fc.categorical_column_with_identity(
-          key='a', num_buckets=4)
-      embedding_dimension = 2
+    # Create feature columns (categorical and embedding).
+    categorical_column = fc.categorical_column_with_identity(
+        key='a', num_buckets=4)
+    embedding_dimension = 2
 
-      def _embedding_column_initializer(shape, dtype, partition_info=None):
-        offset = partition_info._var_offset[0]
-        del shape  # unused
-        del dtype  # unused
-        if offset == 0:
-          embedding_values = (
-              (1, 0),  # id 0
-              (0, 1))  # id 1
-        else:
-          embedding_values = (
-              (1, 1),  # id 2
-              (2, 2))  # id 3
-        return embedding_values
-
-      embedding_column = fc.embedding_column(
-          categorical_column,
-          dimension=embedding_dimension,
-          initializer=_embedding_column_initializer)
-
-      dense_features = df.DenseFeatures(
-          [embedding_column],
-          partitioner=partitioned_variables.fixed_size_partitioner(2))
-      features = {'a': sparse_input}
-
-      inputs = dense_features(features)
-      variables = dense_features.variables
-
-      # Sanity check: test that the inputs are correct.
-      self.assertAllEqual([[1, 0], [0, 1], [2, 2], [1, 1]], inputs)
-
-      # Check that only one variable was created.
-      self.assertEqual(2, len(variables))
-
-      # Check that invoking dense_features on the same features does not create
-      # additional variables
-      _ = dense_features(features)
-      self.assertEqual(2, len(variables))
-      self.assertIs(variables[0], dense_features.variables[0])
-      self.assertIs(variables[1], dense_features.variables[1])
-
-  def test_feature_column_dense_features_gradient(self):
-    with context.eager_mode():
-      sparse_input = sparse_tensor.SparseTensor(
-          indices=((0, 0), (1, 0), (2, 0)),
-          values=(0, 1, 2),
-          dense_shape=(3, 3))
-
-      # Create feature columns (categorical and embedding).
-      categorical_column = fc.categorical_column_with_identity(
-          key='a', num_buckets=3)
-      embedding_dimension = 2
-
-      def _embedding_column_initializer(shape, dtype, partition_info=None):
-        del shape  # unused
-        del dtype  # unused
-        del partition_info  # unused
+    def _embedding_column_initializer(shape, dtype, partition_info=None):
+      offset = partition_info._var_offset[0]
+      del shape  # unused
+      del dtype  # unused
+      if offset == 0:
         embedding_values = (
             (1, 0),  # id 0
-            (0, 1),  # id 1
-            (1, 1))  # id 2
-        return embedding_values
+            (0, 1))  # id 1
+      else:
+        embedding_values = (
+            (1, 1),  # id 2
+            (2, 2))  # id 3
+      return embedding_values
 
-      embedding_column = fc.embedding_column(
-          categorical_column,
-          dimension=embedding_dimension,
-          initializer=_embedding_column_initializer)
+    embedding_column = fc.embedding_column(
+        categorical_column,
+        dimension=embedding_dimension,
+        initializer=_embedding_column_initializer)
 
-      dense_features = df.DenseFeatures([embedding_column])
-      features = {'a': sparse_input}
+    dense_features = df.DenseFeatures(
+        [embedding_column],
+        partitioner=partitioned_variables.fixed_size_partitioner(2))
+    features = {'a': sparse_input}
 
-      def scale_matrix():
-        matrix = dense_features(features)
-        return 2 * matrix
+    inputs = dense_features(features)
+    variables = dense_features.variables
 
-      # Sanity check: Verify that scale_matrix returns the correct output.
-      self.assertAllEqual([[2, 0], [0, 2], [2, 2]], scale_matrix())
+    # Sanity check: test that the inputs are correct.
+    self.assertAllEqual([[1, 0], [0, 1], [2, 2], [1, 1]], inputs)
 
-      # Check that the returned gradient is correct.
-      grad_function = backprop.implicit_grad(scale_matrix)
-      grads_and_vars = grad_function()
-      indexed_slice = grads_and_vars[0][0]
-      gradient = grads_and_vars[0][0].values
+    # Check that only one variable was created.
+    self.assertEqual(2, len(variables))
 
-      self.assertAllEqual([0, 1, 2], indexed_slice.indices)
-      self.assertAllEqual([[2, 2], [2, 2], [2, 2]], gradient)
+    # Check that invoking dense_features on the same features does not create
+    # additional variables
+    _ = dense_features(features)
+    self.assertEqual(2, len(variables))
+    self.assertIs(variables[0], dense_features.variables[0])
+    self.assertIs(variables[1], dense_features.variables[1])
+
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def test_feature_column_dense_features_gradient(self):
+    sparse_input = sparse_tensor.SparseTensor(
+        indices=((0, 0), (1, 0), (2, 0)),
+        values=(0, 1, 2),
+        dense_shape=(3, 3))
+
+    # Create feature columns (categorical and embedding).
+    categorical_column = fc.categorical_column_with_identity(
+        key='a', num_buckets=3)
+    embedding_dimension = 2
+
+    def _embedding_column_initializer(shape, dtype, partition_info=None):
+      del shape  # unused
+      del dtype  # unused
+      del partition_info  # unused
+      embedding_values = (
+          (1, 0),  # id 0
+          (0, 1),  # id 1
+          (1, 1))  # id 2
+      return embedding_values
+
+    embedding_column = fc.embedding_column(
+        categorical_column,
+        dimension=embedding_dimension,
+        initializer=_embedding_column_initializer)
+
+    dense_features = df.DenseFeatures([embedding_column])
+    features = {'a': sparse_input}
+
+    def scale_matrix():
+      matrix = dense_features(features)
+      return 2 * matrix
+
+    # Sanity check: Verify that scale_matrix returns the correct output.
+    self.assertAllEqual([[2, 0], [0, 2], [2, 2]], scale_matrix())
+
+    # Check that the returned gradient is correct.
+    grad_function = backprop.implicit_grad(scale_matrix)
+    grads_and_vars = grad_function()
+    indexed_slice = grads_and_vars[0][0]
+    gradient = grads_and_vars[0][0].values
+
+    self.assertAllEqual([0, 1, 2], indexed_slice.indices)
+    self.assertAllEqual([[2, 2], [2, 2], [2, 2]], gradient)
 
   def test_raises_if_empty_feature_columns(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'feature_columns must not be empty'):
+    with self.assertRaisesRegex(ValueError,
+                                'feature_columns must not be empty'):
       df.DenseFeatures(feature_columns=[])(features={})
 
   def test_should_be_dense_column(self):
-    with self.assertRaisesRegexp(ValueError, 'must be a .*DenseColumn'):
+    with self.assertRaisesRegex(ValueError, 'must be a .*DenseColumn'):
       df.DenseFeatures(feature_columns=[
           fc.categorical_column_with_hash_bucket('wire_cast', 4)
       ])(
@@ -215,7 +216,7 @@ class DenseFeaturesTest(test.TestCase):
           })
 
   def test_does_not_support_dict_columns(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Expected feature_columns to be iterable, found dict.'):
       df.DenseFeatures(feature_columns={'a': fc.numeric_column('a')})(
           features={
@@ -244,7 +245,7 @@ class DenseFeaturesTest(test.TestCase):
       self.assertAllClose([[0., 1.]], self.evaluate(net))
 
   def test_raises_if_duplicate_name(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Duplicate feature column name found for columns'):
       df.DenseFeatures(
           feature_columns=[fc.numeric_column('a'),
@@ -297,7 +298,7 @@ class DenseFeaturesTest(test.TestCase):
     price = fc.numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           Exception,
           r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
         df.DenseFeatures([price])(features)
@@ -367,7 +368,7 @@ class DenseFeaturesTest(test.TestCase):
               sparse_tensor.SparseTensor(
                   indices=[[0, 0], [0, 1]], values=[1, 2], dense_shape=[1, 2])
       }
-      with self.assertRaisesRegexp(Exception, 'must be a .*DenseColumn'):
+      with self.assertRaisesRegex(Exception, 'must be a .*DenseColumn'):
         df.DenseFeatures([animal])(features)
 
   def test_static_batch_size_mismatch(self):
@@ -378,7 +379,7 @@ class DenseFeaturesTest(test.TestCase):
           'price1': [[1.], [5.], [7.]],  # batchsize = 3
           'price2': [[3.], [4.]]  # batchsize = 2
       }
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
         df.DenseFeatures([price1, price2])(features)
@@ -393,7 +394,7 @@ class DenseFeaturesTest(test.TestCase):
           'price2': [[3.], [4.]],  # batchsize = 2
           'price3': [[3.], [4.], [5.]]  # batchsize = 3
       }
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
         df.DenseFeatures([price1, price2, price3])(features)
@@ -408,8 +409,8 @@ class DenseFeaturesTest(test.TestCase):
       }
       net = df.DenseFeatures([price1, price2])(features)
       with _initialized_session() as sess:
-        with self.assertRaisesRegexp(errors.OpError,
-                                     'Dimensions of inputs should match'):
+        with self.assertRaisesRegex(errors.OpError,
+                                    'Dimensions of inputs should match'):
           sess.run(net, feed_dict={features['price1']: [[1.], [5.], [7.]]})
 
   def test_runtime_batch_size_matches(self):
@@ -665,7 +666,7 @@ class DenseFeaturesTest(test.TestCase):
     self.assertEqual(0, features['price'].shape.ndims)
 
     # Static rank 0 should fail
-    with self.assertRaisesRegexp(ValueError, 'Feature .* cannot have rank 0'):
+    with self.assertRaisesRegex(ValueError, 'Feature .* cannot have rank 0'):
       df.DenseFeatures([price])(features)
 
     # Dynamic rank 0 should fail
@@ -1013,7 +1014,7 @@ class SharedEmbeddingColumnTest(test.TestCase, parameterized.TestCase):
     self._test_dense_features(trainable=False)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class DenseFeaturesSerializationTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
@@ -1059,7 +1060,9 @@ class DenseFeaturesSerializationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(new_layer._feature_columns[0].name, 'a')
     self.assertEqual(new_layer._feature_columns[1].initializer.mean, 0.0)
     self.assertEqual(new_layer._feature_columns[1].categorical_column.name, 'b')
-    self.assertIsInstance(new_layer._feature_columns[2], fc.IndicatorColumn)
+    self.assertIsInstance(new_layer._feature_columns[0], cols[0].__class__)
+    self.assertIsInstance(new_layer._feature_columns[1], cols[1].__class__)
+    self.assertIsInstance(new_layer._feature_columns[2], cols[2].__class__)
 
   def test_crossed_column(self):
     a = fc.categorical_column_with_vocabulary_list(
@@ -1078,7 +1081,7 @@ class DenseFeaturesSerializationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(new_layer._feature_columns[0].name, 'a_X_b_indicator')
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class SequenceFeatureColumnsTest(test.TestCase):
   """Tests DenseFeatures with sequence feature columns."""
 
@@ -1098,7 +1101,7 @@ class SequenceFeatureColumnsTest(test.TestCase):
         categorical_column_a, dimension=2)
 
     input_layer = df.DenseFeatures([embedding_column_a])
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r'In embedding_column: aaa_embedding\. categorical_column must not be '
         r'of type SequenceCategoricalColumn\.'):
@@ -1119,7 +1122,7 @@ class SequenceFeatureColumnsTest(test.TestCase):
     indicator_column_a = fc.indicator_column(categorical_column_a)
 
     input_layer = df.DenseFeatures([indicator_column_a])
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r'In indicator_column: aaa_indicator\. categorical_column must not be '
         r'of type SequenceCategoricalColumn\.'):

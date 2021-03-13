@@ -10,7 +10,7 @@ import "tensorflow/core/protobuf/struct.proto";
 import "tensorflow/core/protobuf/trackable_object_graph.proto";
 
 option cc_enable_arenas = true;
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 // A SavedObjectGraph is part of object-based SavedModels in TF 2.0. It
 // describes the directed graph of Python objects (or equivalent in other
@@ -37,7 +37,7 @@ message SavedObject {
   // Objects which this object depends on: named edges in the dependency
   // graph.
   //
-  // Note: currently only valid if kind == "user_object".
+  // Note: currently only valid if kind == "user_object" or "resource".
   repeated TrackableObjectGraph.TrackableObject.ObjectReference children = 1;
 
   // Removed when forking SavedObject from TrackableObjectGraph.
@@ -61,6 +61,8 @@ message SavedObject {
     SavedConstant constant = 9;
     SavedResource resource = 10;
   }
+
+  map<string, SaveableObject> saveable_objects = 11;
 }
 
 // A SavedUserObject is an object (in the object-oriented language of the
@@ -74,6 +76,9 @@ message SavedUserObject {
   string identifier = 1;
   // Version information from the producer of this SavedUserObject.
   VersionDef version = 2;
+  // Deprecated! At the time of deprecation, Keras was the only user of this
+  // field, and its saving and loading code will be updated shortly.
+  // Please save your application-specific metadata to separate file
   // Initialization-related metadata.
   string metadata = 3;
 }
@@ -122,6 +127,13 @@ message SavedBareConcreteFunction {
   repeated string argument_keywords = 2;
   // The prefix of `argument_keywords` which may be identified by position.
   int64 allowed_positional_arguments = 3;
+  // The spec of the function that this ConcreteFunction is traced from. This
+  // allows the ConcreteFunction to be called with nest structure inputs. This
+  // field may not be populated. If this field is absent, the concrete function
+  // can only be called with flat inputs.
+  // TODO(b/169361281): support calling saved ConcreteFunction with structured
+  // inputs in C++ SavedModel API.
+  FunctionSpec function_spec = 4;
 }
 
 message SavedConstant {
@@ -138,7 +150,16 @@ message SavedVariable {
   VariableSynchronization synchronization = 4;
   VariableAggregation aggregation = 5;
   string name = 6;
+  string device = 7;
+  // List of component variables for a distributed variable.
+  //
+  // When this field is non-empty, the SavedVariable will be assumed
+  // to be a distributed variable defined by the components listed here.
+  //
+  // This is only supported by experimental loaders at the moment.
+  repeated SavedVariable experimental_distributed_variable_components = 8;
 }
+
 
 // Represents `FunctionSpec` used in `Function`. This represents a
 // function that has been wrapped as a TensorFlow `Function`.
@@ -149,6 +170,21 @@ message FunctionSpec {
   bool is_method = 2;
   // The input signature, if specified.
   StructuredValue input_signature = 5;
+
+  // Whether the function should be compiled by XLA.
+  //
+  // The public interface to `tf.function` uses an optional boolean to
+  // represent three distinct states for this field.  Unfortunately, proto3
+  // removes the ability to explicitly check for the presence or absence of a
+  // field, so we instead map to an enum.
+  //
+  // See `tf.function` for details.
+  enum JitCompile {
+    DEFAULT = 0;
+    ON = 1;
+    OFF = 2;
+  }
+  JitCompile jit_compile = 6;
 
   reserved 3, 4;
 }
@@ -161,4 +197,10 @@ message SavedResource {
   // creation function, e.g. "CPU". An empty string allows the user to select a
   // device.
   string device = 1;
+}
+
+message SaveableObject {
+  // Node ids of concrete functions for saving and loading from a checkpoint.
+  int32 save_function = 2;
+  int32 restore_function = 3;
 }

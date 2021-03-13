@@ -110,9 +110,8 @@ class NumericsTest(test.TestCase):
     _ = control_flow_ops.cond(predicate,
                               lambda: constant_op.constant([37.]),
                               lambda: constant_op.constant([42.]))
-    with self.assertRaisesRegexp(
-        ValueError,
-        r"`tf\.add_check_numerics_ops\(\) is not compatible with "
+    with self.assertRaisesRegex(
+        ValueError, r"`tf\.add_check_numerics_ops\(\) is not compatible with "
         r"TensorFlow control flow operations such as `tf\.cond\(\)` "
         r"or `tf.while_loop\(\)`\."):
       numerics.add_check_numerics_ops()
@@ -122,9 +121,8 @@ class NumericsTest(test.TestCase):
     _ = control_flow_ops.while_loop(lambda _: predicate,
                                     lambda _: constant_op.constant([37.]),
                                     [constant_op.constant([42.])])
-    with self.assertRaisesRegexp(
-        ValueError,
-        r"`tf\.add_check_numerics_ops\(\) is not compatible with "
+    with self.assertRaisesRegex(
+        ValueError, r"`tf\.add_check_numerics_ops\(\) is not compatible with "
         r"TensorFlow control flow operations such as `tf\.cond\(\)` "
         r"or `tf.while_loop\(\)`\."):
       numerics.add_check_numerics_ops()

@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
@@ -40,7 +41,6 @@ cc_library(
     deps = [
         ":exact_uniform_int",
         ":philox_random",
-        "//tensorflow/core/lib/bfloat16",
         "//tensorflow/core/lib/gtl:array_slice",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
@@ -73,6 +73,7 @@ cc_library(
     visibility = [
         "//tensorflow/c/eager:__pkg__",
         "//tensorflow/core:__pkg__",
+        "//tensorflow/core/grappler/optimizers:__pkg__",
         "//tensorflow/core/lib/core:__pkg__",
         "//tensorflow/core/lib/gtl:__pkg__",
         "//tensorflow/core/lib/io:__pkg__",

@@ -20,11 +20,10 @@ from __future__ import print_function
 
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import numpy_dataset
-from tensorflow.python.distribute import values
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -81,7 +80,7 @@ class OneDeviceStrategy(distribute_lib.Strategy):
     distribute_lib.distribution_strategy_gauge.get_cell("V2").set(
         "OneDeviceStrategy")
 
-  def experimental_distribute_dataset(self, dataset):  # pylint: disable=useless-super-delegation
+  def experimental_distribute_dataset(self, dataset, options=None):  # pylint: disable=useless-super-delegation
     """Distributes a tf.data.Dataset instance provided via dataset.
 
     In this case, there is only one device, so this is only a thin wrapper
@@ -102,14 +101,18 @@ class OneDeviceStrategy(distribute_lib.Strategy):
     ```
     Args:
       dataset: `tf.data.Dataset` to be prefetched to device.
-
+      options: `tf.distribute.InputOptions` used to control options on how this
+        dataset is distributed.
     Returns:
       A "distributed `Dataset`" that the caller can iterate over.
     """
     return super(OneDeviceStrategy, self).experimental_distribute_dataset(
-        dataset)
+        dataset, options)
 
-  def experimental_distribute_datasets_from_function(self, dataset_fn):  # pylint: disable=useless-super-delegation
+  def distribute_datasets_from_function(
+      self,
+      dataset_fn,  # pylint: disable=useless-super-delegation
+      options=None):
     """Distributes `tf.data.Dataset` instances created by calls to `dataset_fn`.
 
     `dataset_fn` will be called once for each worker in the strategy. In this
@@ -126,7 +129,7 @@ class OneDeviceStrategy(distribute_lib.Strategy):
       return d.shard(
           input_context.num_input_pipelines, input_context.input_pipeline_id)
 
-    inputs = strategy.experimental_distribute_datasets_from_function(dataset_fn)
+    inputs = strategy.distribute_datasets_from_function(dataset_fn)
 
     for batch in inputs:
       replica_results = strategy.run(replica_fn, args=(batch,))
@@ -140,14 +143,15 @@ class OneDeviceStrategy(distribute_lib.Strategy):
     Args:
       dataset_fn: A function taking a `tf.distribute.InputContext` instance and
         returning a `tf.data.Dataset`.
+      options: `tf.distribute.InputOptions` used to control options on how this
+        dataset is distributed.
 
     Returns:
       A "distributed `Dataset`", which the caller can iterate over like regular
       datasets.
     """
-    return super(
-        OneDeviceStrategy, self).experimental_distribute_datasets_from_function(
-            dataset_fn)
+    return super(OneDeviceStrategy,
+                 self).distribute_datasets_from_function(dataset_fn, options)
 
   def experimental_local_results(self, value):  # pylint: disable=useless-super-delegation
     """Returns the list of all local per-replica values contained in `value`.
@@ -233,7 +237,7 @@ class OneDeviceStrategy(distribute_lib.Strategy):
     return super(OneDeviceStrategy, self).scope()
 
 
-@tf_export(v1=["distribute.OneDeviceStrategy"])  # pylint: disable=missing-docstring
+@tf_export(v1=["distribute.OneDeviceStrategy"])  # pylint: disable=empty-docstring
 class OneDeviceStrategyV1(distribute_lib.StrategyV1):
 
   __doc__ = OneDeviceStrategy.__doc__.replace(
@@ -254,10 +258,18 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
   def __init__(self, container_strategy, device):
     super(OneDeviceExtended, self).__init__(container_strategy)
     self._device = device_util.resolve(device)
-    suffix_loc = self._device.rfind("/")
-    self._input_device = self._device[:suffix_loc] + "/device:CPU:0"
-    worker_device_pairs = [(self._input_device, [self._device])]
-    self._input_workers = input_lib.InputWorkers(worker_device_pairs)
+    self._input_device = device_util.get_host_for_device(self._device)
+
+  def _input_workers_with_options(self, options=None):
+    if not options or options.experimental_fetch_to_device:
+      return input_lib.InputWorkers([(self._input_device, (self._device,))])
+    else:
+      return input_lib.InputWorkers([(self._input_device,
+                                      (self._input_device,))])
+
+  @property
+  def _input_workers(self):
+    return self._input_workers_with_options()
 
   def _create_variable(self, next_creator, **kwargs):
     colocate_with = kwargs.pop("colocate_with", None)
@@ -272,7 +284,7 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
         return next_creator(**kwargs)
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
-    values.validate_colocate(colocate_with_variable, self)
+    distribute_utils.validate_colocate(colocate_with_variable, self)
 
   def _make_dataset_iterator(self, dataset):
     """Make iterator from dataset without splitting the batch."""
@@ -297,18 +309,36 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
     del destinations
     return tensor
 
-  def _experimental_distribute_dataset(self, dataset):
+  def _experimental_distribute_dataset(self, dataset, options):
     # Note that split_batch_by argument is not passed because it is always 1 in
     # this strategy, and adding it adds unnecessary overhead to the dataset.
-    return input_lib.get_distributed_dataset(dataset, self._input_workers,
-                                             self._container_strategy())
+    if (options and options.experimental_replication_mode ==
+        distribute_lib.InputReplicationMode.PER_REPLICA):
+      raise NotImplementedError(
+          "InputReplicationMode.PER_REPLICA "
+          "is only supported in  "
+          "`experimental_distribute_datasets_from_function`."
+      )
+    return input_lib.get_distributed_dataset(
+        dataset,
+        self._input_workers_with_options(options),
+        self._container_strategy(),
+        options=options)
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn):
+  def _distribute_datasets_from_function(self, dataset_fn, options):
+    if (options and options.experimental_replication_mode ==
+        distribute_lib.InputReplicationMode.PER_REPLICA):
+      raise NotImplementedError(
+          "InputReplicationMode.PER_REPLICA "
+          "is only supported in "
+          "`experimental_distribute_datasets_from_function` "
+          "of tf.distribute.MirroredStrategy")
     return input_lib.get_distributed_datasets_from_function(
         dataset_fn,
-        self._input_workers,
+        self._input_workers_with_options(options),
         [distribute_lib.InputContext()],
-        self._container_strategy())
+        self._container_strategy(),
+        options=options)
 
   def _experimental_distribute_values_from_function(self, value_fn):
     # TODO(b/137795644): This should return a PerReplica value but other
@@ -365,8 +395,12 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
     with ops.device(self._device), _OneDeviceReplicaContext(strategy):
       return fn(*args, **kwargs)
 
-  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
-    del reduce_op, destinations, experimental_hints
+  def _reduce_to(self, reduce_op, value, destinations, options):
+    del reduce_op, destinations, options
+    return value
+
+  def _gather_to_implementation(self, value, destinations, axis, options):
+    del destinations, axis, options
     return value
 
   def _update(self, var, fn, args, kwargs, group):
@@ -439,14 +473,16 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
   def _support_per_replica_values(self):
     return False
 
+  def _get_local_replica_id(self, replica_id_in_sync_group):
+    return replica_id_in_sync_group
+
 
 class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):
   """ReplicaContext for OneDeviceStrategy."""
 
   def __init__(self, strategy):
-    zero = constant_op.constant(0, dtypes.int32)
     distribute_lib.ReplicaContext.__init__(
-        self, strategy, replica_id_in_sync_group=zero)
+        self, strategy, replica_id_in_sync_group=0)
 
   @property
   def devices(self):

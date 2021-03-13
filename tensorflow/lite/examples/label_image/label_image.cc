@@ -44,13 +44,15 @@ limitations under the License.
 #include "tensorflow/lite/optional_debug_tools.h"
 #include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/tools/command_line_flags.h"
+#include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 
 #if defined(__ANDROID__)
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 #endif
 
-#define LOG(x) std::cerr
+#include "tensorflow/lite/examples/label_image/log.h"
 
 namespace tflite {
 namespace label_image {
@@ -59,6 +61,56 @@ double get_us(struct timeval t) { return (t.tv_sec * 1000000 + t.tv_usec); }
 
 using TfLiteDelegatePtr = tflite::Interpreter::TfLiteDelegatePtr;
 using TfLiteDelegatePtrMap = std::map<std::string, TfLiteDelegatePtr>;
+
+class DelegateProviders {
+ public:
+  DelegateProviders()
+      : delegates_list_(tflite::tools::GetRegisteredDelegateProviders()) {
+    for (const auto& delegate : delegates_list_) {
+      params_.Merge(delegate->DefaultParams());
+    }
+  }
+
+  // Initialize delegate-related parameters from parsing command line arguments,
+  // and remove the matching arguments from (*argc, argv). Returns true if all
+  // recognized arg values are parsed correctly.
+  bool InitFromCmdlineArgs(int* argc, const char** argv) {
+    std::vector<tflite::Flag> flags;
+    for (const auto& delegate : delegates_list_) {
+      auto delegate_flags = delegate->CreateFlags(&params_);
+      flags.insert(flags.end(), delegate_flags.begin(), delegate_flags.end());
+    }
+
+    const bool parse_result = Flags::Parse(argc, argv, flags);
+    if (!parse_result) {
+      std::string usage = Flags::Usage(argv[0], flags);
+      LOG(ERROR) << usage;
+    }
+    return parse_result;
+  }
+
+  // Create a list of TfLite delegates based on what have been initialized (i.e.
+  // 'params_').
+  TfLiteDelegatePtrMap CreateAllDelegates() const {
+    TfLiteDelegatePtrMap delegates_map;
+    for (const auto& delegate : delegates_list_) {
+      auto ptr = delegate->CreateTfLiteDelegate(params_);
+      // It's possible that a delegate of certain type won't be created as
+      // user-specified benchmark params tells not to.
+      if (ptr == nullptr) continue;
+      LOG(INFO) << delegate->GetName() << " delegate created.";
+      delegates_map.emplace(delegate->GetName(), std::move(ptr));
+    }
+    return delegates_map;
+  }
+
+ private:
+  // Contain delegate-related parameters that are initialized from command-line
+  // flags.
+  tflite::tools::ToolParams params_;
+
+  const tflite::tools::DelegateProviderList& delegates_list_;
+};
 
 TfLiteDelegatePtr CreateGPUDelegate(Settings* s) {
 #if defined(__ANDROID__)
@@ -74,22 +126,29 @@ TfLiteDelegatePtr CreateGPUDelegate(Settings* s) {
 #endif
 }
 
-TfLiteDelegatePtrMap GetDelegates(Settings* s) {
+TfLiteDelegatePtrMap GetDelegates(Settings* s,
+                                  const DelegateProviders& delegate_providers) {
+  // TODO(b/169681115): deprecate delegate creation path based on "Settings" by
+  // mapping settings to DelegateProvider's parameters.
   TfLiteDelegatePtrMap delegates;
   if (s->gl_backend) {
     auto delegate = CreateGPUDelegate(s);
     if (!delegate) {
       LOG(INFO) << "GPU acceleration is unsupported on this platform.";
     } else {
+      LOG(INFO) << "Use GPU acceleration.";
       delegates.emplace("GPU", std::move(delegate));
     }
   }
 
   if (s->accel) {
-    auto delegate = evaluation::CreateNNAPIDelegate();
+    StatefulNnApiDelegate::Options options;
+    options.allow_fp16 = s->allow_fp16;
+    auto delegate = evaluation::CreateNNAPIDelegate(options);
     if (!delegate) {
       LOG(INFO) << "NNAPI acceleration is unsupported on this platform.";
     } else {
+      LOG(INFO) << "Use NNAPI acceleration.";
       delegates.emplace("NNAPI", std::move(delegate));
     }
   }
@@ -102,6 +161,7 @@ TfLiteDelegatePtrMap GetDelegates(Settings* s) {
     if (!delegate) {
       LOG(INFO) << "Hexagon acceleration is unsupported on this platform.";
     } else {
+      LOG(INFO) << "Use Hexagon acceleration.";
       delegates.emplace("Hexagon", std::move(delegate));
     }
   }
@@ -111,8 +171,21 @@ TfLiteDelegatePtrMap GetDelegates(Settings* s) {
     if (!delegate) {
       LOG(INFO) << "XNNPACK acceleration is unsupported on this platform.";
     } else {
+      LOG(INFO) << "Use XNNPACK acceleration.";
       delegates.emplace("XNNPACK", std::move(delegate));
     }
+  }
+
+  // Independent of above delegate creation options that are specific to this
+  // binary, we use delegate providers to create TFLite delegates. Delegate
+  // providers have been used in TFLite benchmark/evaluation tools and testing
+  // so that we have a single and more comprehensive set of command line
+  // arguments for delegate creation.
+  TfLiteDelegatePtrMap delegates_from_providers =
+      delegate_providers.CreateAllDelegates();
+  for (auto& name_and_delegate : delegates_from_providers) {
+    delegates.emplace("Delegate_Provider_" + name_and_delegate.first,
+                      std::move(name_and_delegate.second));
   }
 
   return delegates;
@@ -126,7 +199,7 @@ TfLiteStatus ReadLabelsFile(const string& file_name,
                             size_t* found_label_count) {
   std::ifstream file(file_name);
   if (!file) {
-    LOG(FATAL) << "Labels file " << file_name << " not found\n";
+    LOG(ERROR) << "Labels file " << file_name << " not found";
     return kTfLiteError;
   }
   result->clear();
@@ -156,44 +229,43 @@ void PrintProfilingInfo(const profiling::ProfileEvent* e,
             << std::setprecision(3) << op_index << ", OpCode " << std::setw(3)
             << std::setprecision(3) << registration.builtin_code << ", "
             << EnumNameBuiltinOperator(
-                   static_cast<BuiltinOperator>(registration.builtin_code))
-            << "\n";
+                   static_cast<BuiltinOperator>(registration.builtin_code));
 }
 
-void RunInference(Settings* s) {
-  if (!s->model_name.c_str()) {
-    LOG(ERROR) << "no model file name\n";
+void RunInference(Settings* settings,
+                  const DelegateProviders& delegate_providers) {
+  if (!settings->model_name.c_str()) {
+    LOG(ERROR) << "no model file name";
     exit(-1);
   }
 
   std::unique_ptr<tflite::FlatBufferModel> model;
   std::unique_ptr<tflite::Interpreter> interpreter;
-  model = tflite::FlatBufferModel::BuildFromFile(s->model_name.c_str());
+  model = tflite::FlatBufferModel::BuildFromFile(settings->model_name.c_str());
   if (!model) {
-    LOG(FATAL) << "\nFailed to mmap model " << s->model_name << "\n";
+    LOG(ERROR) << "Failed to mmap model " << settings->model_name;
     exit(-1);
   }
-  s->model = model.get();
-  LOG(INFO) << "Loaded model " << s->model_name << "\n";
+  settings->model = model.get();
+  LOG(INFO) << "Loaded model " << settings->model_name;
   model->error_reporter();
-  LOG(INFO) << "resolved reporter\n";
+  LOG(INFO) << "resolved reporter";
 
   tflite::ops::builtin::BuiltinOpResolver resolver;
 
   tflite::InterpreterBuilder(*model, resolver)(&interpreter);
   if (!interpreter) {
-    LOG(FATAL) << "Failed to construct interpreter\n";
+    LOG(ERROR) << "Failed to construct interpreter";
     exit(-1);
   }
 
-  interpreter->UseNNAPI(s->old_accel);
-  interpreter->SetAllowFp16PrecisionForFp32(s->allow_fp16);
+  interpreter->SetAllowFp16PrecisionForFp32(settings->allow_fp16);
 
-  if (s->verbose) {
-    LOG(INFO) << "tensors size: " << interpreter->tensors_size() << "\n";
-    LOG(INFO) << "nodes size: " << interpreter->nodes_size() << "\n";
-    LOG(INFO) << "inputs: " << interpreter->inputs().size() << "\n";
-    LOG(INFO) << "input(0) name: " << interpreter->GetInputName(0) << "\n";
+  if (settings->verbose) {
+    LOG(INFO) << "tensors size: " << interpreter->tensors_size();
+    LOG(INFO) << "nodes size: " << interpreter->nodes_size();
+    LOG(INFO) << "inputs: " << interpreter->inputs().size();
+    LOG(INFO) << "input(0) name: " << interpreter->GetInputName(0);
 
     int t_size = interpreter->tensors_size();
     for (int i = 0; i < t_size; i++) {
@@ -202,46 +274,48 @@ void RunInference(Settings* s) {
                   << interpreter->tensor(i)->bytes << ", "
                   << interpreter->tensor(i)->type << ", "
                   << interpreter->tensor(i)->params.scale << ", "
-                  << interpreter->tensor(i)->params.zero_point << "\n";
+                  << interpreter->tensor(i)->params.zero_point;
     }
   }
 
-  if (s->number_of_threads != -1) {
-    interpreter->SetNumThreads(s->number_of_threads);
+  if (settings->number_of_threads != -1) {
+    interpreter->SetNumThreads(settings->number_of_threads);
   }
 
   int image_width = 224;
   int image_height = 224;
   int image_channels = 3;
-  std::vector<uint8_t> in = read_bmp(s->input_bmp_name, &image_width,
-                                     &image_height, &image_channels, s);
+  std::vector<uint8_t> in = read_bmp(settings->input_bmp_name, &image_width,
+                                     &image_height, &image_channels, settings);
 
   int input = interpreter->inputs()[0];
-  if (s->verbose) LOG(INFO) << "input: " << input << "\n";
+  if (settings->verbose) LOG(INFO) << "input: " << input;
 
   const std::vector<int> inputs = interpreter->inputs();
   const std::vector<int> outputs = interpreter->outputs();
 
-  if (s->verbose) {
-    LOG(INFO) << "number of inputs: " << inputs.size() << "\n";
-    LOG(INFO) << "number of outputs: " << outputs.size() << "\n";
+  if (settings->verbose) {
+    LOG(INFO) << "number of inputs: " << inputs.size();
+    LOG(INFO) << "number of outputs: " << outputs.size();
   }
 
-  auto delegates_ = GetDelegates(s);
+  auto delegates_ = GetDelegates(settings, delegate_providers);
   for (const auto& delegate : delegates_) {
     if (interpreter->ModifyGraphWithDelegate(delegate.second.get()) !=
         kTfLiteOk) {
-      LOG(FATAL) << "Failed to apply " << delegate.first << " delegate.";
+      LOG(ERROR) << "Failed to apply " << delegate.first << " delegate.";
+      exit(-1);
     } else {
       LOG(INFO) << "Applied " << delegate.first << " delegate.";
     }
   }
 
   if (interpreter->AllocateTensors() != kTfLiteOk) {
-    LOG(FATAL) << "Failed to allocate tensors!";
+    LOG(ERROR) << "Failed to allocate tensors!";
+    exit(-1);
   }
 
-  if (s->verbose) PrintInterpreterState(interpreter.get());
+  if (settings->verbose) PrintInterpreterState(interpreter.get());
 
   // get input dimension from the input tensor metadata
   // assuming one input only
@@ -250,54 +324,58 @@ void RunInference(Settings* s) {
   int wanted_width = dims->data[2];
   int wanted_channels = dims->data[3];
 
-  s->input_type = interpreter->tensor(input)->type;
-  switch (s->input_type) {
+  settings->input_type = interpreter->tensor(input)->type;
+  switch (settings->input_type) {
     case kTfLiteFloat32:
       resize<float>(interpreter->typed_tensor<float>(input), in.data(),
                     image_height, image_width, image_channels, wanted_height,
-                    wanted_width, wanted_channels, s);
+                    wanted_width, wanted_channels, settings);
       break;
     case kTfLiteInt8:
       resize<int8_t>(interpreter->typed_tensor<int8_t>(input), in.data(),
                      image_height, image_width, image_channels, wanted_height,
-                     wanted_width, wanted_channels, s);
+                     wanted_width, wanted_channels, settings);
       break;
     case kTfLiteUInt8:
       resize<uint8_t>(interpreter->typed_tensor<uint8_t>(input), in.data(),
                       image_height, image_width, image_channels, wanted_height,
-                      wanted_width, wanted_channels, s);
+                      wanted_width, wanted_channels, settings);
       break;
     default:
-      LOG(FATAL) << "cannot handle input type "
+      LOG(ERROR) << "cannot handle input type "
                  << interpreter->tensor(input)->type << " yet";
       exit(-1);
   }
-  auto profiler =
-      absl::make_unique<profiling::Profiler>(s->max_profiling_buffer_entries);
+  auto profiler = absl::make_unique<profiling::Profiler>(
+      settings->max_profiling_buffer_entries);
   interpreter->SetProfiler(profiler.get());
 
-  if (s->profiling) profiler->StartProfiling();
-  if (s->loop_count > 1)
-    for (int i = 0; i < s->number_of_warmup_runs; i++) {
+  if (settings->profiling) profiler->StartProfiling();
+  if (settings->loop_count > 1) {
+    for (int i = 0; i < settings->number_of_warmup_runs; i++) {
       if (interpreter->Invoke() != kTfLiteOk) {
-        LOG(FATAL) << "Failed to invoke tflite!\n";
+        LOG(ERROR) << "Failed to invoke tflite!";
+        exit(-1);
       }
     }
+  }
 
   struct timeval start_time, stop_time;
   gettimeofday(&start_time, nullptr);
-  for (int i = 0; i < s->loop_count; i++) {
+  for (int i = 0; i < settings->loop_count; i++) {
     if (interpreter->Invoke() != kTfLiteOk) {
-      LOG(FATAL) << "Failed to invoke tflite!\n";
+      LOG(ERROR) << "Failed to invoke tflite!";
+      exit(-1);
     }
   }
   gettimeofday(&stop_time, nullptr);
-  LOG(INFO) << "invoked \n";
+  LOG(INFO) << "invoked";
   LOG(INFO) << "average time: "
-            << (get_us(stop_time) - get_us(start_time)) / (s->loop_count * 1000)
-            << " ms \n";
+            << (get_us(stop_time) - get_us(start_time)) /
+                   (settings->loop_count * 1000)
+            << " ms";
 
-  if (s->profiling) {
+  if (settings->profiling) {
     profiler->StopProfiling();
     auto profile_events = profiler->GetProfileEvents();
     for (int i = 0; i < profile_events.size(); i++) {
@@ -323,21 +401,21 @@ void RunInference(Settings* s) {
   switch (interpreter->tensor(output)->type) {
     case kTfLiteFloat32:
       get_top_n<float>(interpreter->typed_output_tensor<float>(0), output_size,
-                       s->number_of_results, threshold, &top_results,
-                       s->input_type);
+                       settings->number_of_results, threshold, &top_results,
+                       settings->input_type);
       break;
     case kTfLiteInt8:
       get_top_n<int8_t>(interpreter->typed_output_tensor<int8_t>(0),
-                        output_size, s->number_of_results, threshold,
-                        &top_results, s->input_type);
+                        output_size, settings->number_of_results, threshold,
+                        &top_results, settings->input_type);
       break;
     case kTfLiteUInt8:
       get_top_n<uint8_t>(interpreter->typed_output_tensor<uint8_t>(0),
-                         output_size, s->number_of_results, threshold,
-                         &top_results, s->input_type);
+                         output_size, settings->number_of_results, threshold,
+                         &top_results, settings->input_type);
       break;
     default:
-      LOG(FATAL) << "cannot handle output type "
+      LOG(ERROR) << "cannot handle output type "
                  << interpreter->tensor(output)->type << " yet";
       exit(-1);
   }
@@ -345,13 +423,14 @@ void RunInference(Settings* s) {
   std::vector<string> labels;
   size_t label_count;
 
-  if (ReadLabelsFile(s->labels_file_name, &labels, &label_count) != kTfLiteOk)
+  if (ReadLabelsFile(settings->labels_file_name, &labels, &label_count) !=
+      kTfLiteOk)
     exit(-1);
 
   for (const auto& result : top_results) {
     const float confidence = result.first;
     const int index = result.second;
-    LOG(INFO) << confidence << ": " << index << " " << labels[index] << "\n";
+    LOG(INFO) << confidence << ": " << index << " " << labels[index];
   }
 }
 
@@ -359,7 +438,6 @@ void display_usage() {
   LOG(INFO)
       << "label_image\n"
       << "--accelerated, -a: [0|1], use Android NNAPI or not\n"
-      << "--old_accelerated, -d: [0|1], use old Android NNAPI delegate or not\n"
       << "--allow_fp16, -f: [0|1], allow running fp32 models with fp16 or not\n"
       << "--count, -c: loop interpreter->Invoke() for certain times\n"
       << "--gl_backend, -g: [0|1]: use GL GPU Delegate on Android\n"
@@ -374,18 +452,23 @@ void display_usage() {
       << "--threads, -t: number of threads\n"
       << "--verbose, -v: [0|1] print more information\n"
       << "--warmup_runs, -w: number of warmup runs\n"
-      << "--xnnpack_delegate, -x [0:1]: xnnpack delegate\n"
-      << "\n";
+      << "--xnnpack_delegate, -x [0:1]: xnnpack delegate\n";
 }
 
 int Main(int argc, char** argv) {
+  DelegateProviders delegate_providers;
+  bool parse_result = delegate_providers.InitFromCmdlineArgs(
+      &argc, const_cast<const char**>(argv));
+  if (!parse_result) {
+    return EXIT_FAILURE;
+  }
+
   Settings s;
 
   int c;
   while (true) {
     static struct option long_options[] = {
         {"accelerated", required_argument, nullptr, 'a'},
-        {"old_accelerated", required_argument, nullptr, 'd'},
         {"allow_fp16", required_argument, nullptr, 'f'},
         {"count", required_argument, nullptr, 'c'},
         {"verbose", required_argument, nullptr, 'v'},
@@ -423,10 +506,6 @@ int Main(int argc, char** argv) {
         break;
       case 'c':
         s.loop_count =
-            strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
-        break;
-      case 'd':
-        s.old_accel =
             strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
         break;
       case 'e':
@@ -477,7 +556,8 @@ int Main(int argc, char** argv) {
             strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
         break;
       case 'x':
-        s.xnnpack_delegate = optarg;
+        s.xnnpack_delegate =
+            strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
         break;
       case 'h':
       case '?':
@@ -488,7 +568,7 @@ int Main(int argc, char** argv) {
         exit(-1);
     }
   }
-  RunInference(&s);
+  RunInference(&s, delegate_providers);
   return 0;
 }
 

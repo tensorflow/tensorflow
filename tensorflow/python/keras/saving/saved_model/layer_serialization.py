@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.saving.saved_model import base_serialization
 from tensorflow.python.keras.saving.saved_model import constants
 from tensorflow.python.keras.saving.saved_model import save_impl
@@ -33,7 +33,7 @@ class LayerSavedModelSaver(base_serialization.SavedModelSaver):
 
   @property
   def object_identifier(self):
-    return '_tf_keras_layer'
+    return constants.LAYER_IDENTIFIER
 
   @property
   def python_properties(self):
@@ -46,15 +46,16 @@ class LayerSavedModelSaver(base_serialization.SavedModelSaver):
     # TODO(kathywu): Synchronize with the keras spec (go/keras-json-spec) once
     # the python config serialization has caught up.
     metadata = dict(
-        class_name=type(self.obj).__name__,
         name=self.obj.name,
         trainable=self.obj.trainable,
         expects_training_arg=self.obj._expects_training_arg,  # pylint: disable=protected-access
         dtype=policy.serialize(self.obj._dtype_policy),  # pylint: disable=protected-access
         batch_input_shape=getattr(self.obj, '_batch_input_shape', None),
-        stateful=self.obj.stateful)
+        stateful=self.obj.stateful,
+        must_restore_from_config=self.obj._must_restore_from_config,  # pylint: disable=protected-access
+    )
 
-    metadata.update(get_config(self.obj))
+    metadata.update(get_serialized(self.obj))
     if self.obj.input_spec is not None:
       # Layer's input_spec has already been type-checked in the property setter.
       metadata['input_spec'] = nest.map_structure(
@@ -85,7 +86,8 @@ class LayerSavedModelSaver(base_serialization.SavedModelSaver):
     serialized_attr = keras_cache[self.obj] = (
         serialized_attributes.SerializedAttributes.new(self.obj))
 
-    if save_impl.should_skip_serialization(self.obj):
+    if (save_impl.should_skip_serialization(self.obj) or
+        self.obj._must_restore_from_config):  # pylint: disable=protected-access
       return serialized_attr
 
     object_dict, function_dict = self._get_serialized_attributes_internal(
@@ -107,16 +109,12 @@ class LayerSavedModelSaver(base_serialization.SavedModelSaver):
 
 # TODO(kathywu): Move serialization utils (and related utils from
 # generic_utils.py) to a separate file.
-def get_config(obj):
+def get_serialized(obj):
   with generic_utils.skip_failed_serialization():
     # Store the config dictionary, which may be used when reviving the object.
     # When loading, the program will attempt to revive the object from config,
     # and if that fails, the object will be revived from the SavedModel.
-    config = generic_utils.serialize_keras_object(obj)['config']
-
-  if config is not None:
-    return {'config': config}
-  return {}
+    return generic_utils.serialize_keras_object(obj)
 
 
 class InputLayerSavedModelSaver(base_serialization.SavedModelSaver):
@@ -124,10 +122,11 @@ class InputLayerSavedModelSaver(base_serialization.SavedModelSaver):
 
   @property
   def object_identifier(self):
-    return '_tf_keras_input_layer'
+    return constants.INPUT_LAYER_IDENTIFIER
 
   @property
   def python_properties(self):
+
     return dict(
         class_name=type(self.obj).__name__,
         name=self.obj.name,
@@ -149,12 +148,20 @@ class RNNSavedModelSaver(LayerSavedModelSaver):
 
   @property
   def object_identifier(self):
-    return '_tf_keras_rnn_layer'
+    return constants.RNN_LAYER_IDENTIFIER
 
   def _get_serialized_attributes_internal(self, serialization_cache):
     objects, functions = (
         super(RNNSavedModelSaver, self)._get_serialized_attributes_internal(
             serialization_cache))
-
-    objects['states'] = data_structures.wrap_or_unwrap(self.obj.states)
+    states = data_structures.wrap_or_unwrap(self.obj.states)
+    # SaveModel require all the objects to be Trackable when saving.
+    # If the states is still a tuple after wrap_or_unwrap, it means it doesn't
+    # contain any trackable item within it, eg empty tuple or (None, None) for
+    # stateless ConvLSTM2D. We convert them to list so that wrap_or_unwrap can
+    # make it a Trackable again for saving. When loaded, ConvLSTM2D is
+    # able to handle the tuple/list conversion.
+    if isinstance(states, tuple):
+      states = data_structures.wrap_or_unwrap(list(states))
+    objects['states'] = states
     return objects, functions

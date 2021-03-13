@@ -15,6 +15,13 @@ message GenericStepBreakdown {
   map<int32, uint64> type_ps = 1;
 }
 
+// Information about memory transfer to/from device memory.
+message DeviceMemoryTransfer {
+  uint64 occurrence = 1;
+  double time_us = 2;
+  uint64 bytes_transferred = 3;
+}
+
 // Next ID: 5
 // Result proto for StepInfo.
 message StepInfoResult {
@@ -90,12 +97,20 @@ message PerCoreStepInfo {
   // A map from core ID to program replica id. Replica id map could change
   // during a profile session, but should stay stable within a step.
   map<uint32, uint32> core_id_to_replica_id_map = 5;
-  // The result for all-reduce ops.hlo_metrics_db
+  // A map from core_id to all-reduce ops.
   map<uint32, AllReduceDbResult> all_reduce_db_per_core = 6;
+  // Information about deivce memory transfers, categoried by source and
+  // destination. Ordered by following categories:
+  // 1. HostToDevice
+  // 2. DeviceToHost
+  // 3. DeviceToDevice
+  repeated DeviceMemoryTransfer device_memory_transfers = 7;
 }
 
 // Result proto for a StepDatabase.
 message StepDatabaseResult {
+  // A sequence of PerCoreStepInfo.
+  repeated PerCoreStepInfo step_sequence = 1;
   // Whether the step db uses incomplete step information.
   // This flag is set to true when:
   // 1) no step marker or annotation present.
@@ -105,6 +120,6 @@ message StepDatabaseResult {
   // If this flag is true, we will simply aggregate and breakdown over the total
   // profile as a single step.
   bool use_incomplete_step = 2;
-  // A sequence of PerCoreStepInfo.
-  repeated PerCoreStepInfo step_sequence = 1;
+  // Number of steps dropped during post processing.
+  uint32 num_steps_dropped = 3;
 }

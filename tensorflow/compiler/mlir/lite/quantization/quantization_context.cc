@@ -27,11 +27,11 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -83,7 +83,7 @@ LogicalResult QuantizeContext::Handle(
   auto spec = target_spec_.GetKernelSpec(op.logical_kernel(), signature);
   if (!spec.hasValue()) {
     op.emitWarning(
-        "Couldn't find kernel from the registeration for quantization.");
+        "Couldn't find kernel from the registration for quantization.");
     return success();
   }
   switch (spec->type) {
@@ -135,7 +135,7 @@ LogicalResult QuantizeContext::Finalize() {
         input_specs.push_back(TypeAttr::get(state.params));
       }
     }
-    op.setAttr("input_specs", ArrayAttr::get(input_specs, context));
+    op->setAttr("input_specs", ArrayAttr::get(context, input_specs));
 
     llvm::SmallVector<Attribute, 4> output_specs;
     auto original_output_specs = op.output_specs().getValue();
@@ -150,7 +150,7 @@ LogicalResult QuantizeContext::Finalize() {
         output_specs.push_back(TypeAttr::get(state.params));
       }
     }
-    op.setAttr("output_specs", ArrayAttr::get(output_specs, context));
+    op->setAttr("output_specs", ArrayAttr::get(context, output_specs));
   });
   return success();
 }
@@ -189,7 +189,7 @@ void QuantizeContext::DumpStates(QuantizeRegionOp current_op) {
 //   - use the first one in the collection,
 // - use the single input if it is ready, or,
 // - use the single output if it is ready, or,
-// - use use the first ready one in the collection.
+// - use the first ready one in the collection.
 QuantParams QuantizeContext::GetQuantParamsForSameScaleConstraint(
     Operation *op) {
   // Two vector to collect Non-empty operands and results states.

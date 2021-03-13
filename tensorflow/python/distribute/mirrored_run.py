@@ -27,15 +27,12 @@ from tensorflow.python import pywrap_tfe
 from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import shared_variable_creator
-from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tf_device
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
@@ -83,12 +80,12 @@ def call_for_each_replica(strategy, fn, args=None, kwargs=None):
         "overhead currently. We will be working on improving "
         "this in the future, but for now please wrap "
         "`call_for_each_replica` or `experimental_run` or "
-        "`experimental_run_v2` inside a tf.function to get "
+        "`run` inside a tf.function to get "
         "the best performance." % strategy.__class__.__name__, 5)
   else:
     # When a tf.function is wrapped to trigger _call_for_each_replica (see
     # the other branch above), AutoGraph stops conversion at
-    # _call_for_each_replica itself (TF library functions are whitelisted).
+    # _call_for_each_replica itself (TF library functions are allowlisted).
     # This makes sure that the Python function that originally passed to
     # the tf.function is still converted.
     fn = autograph.tf_convert(fn, autograph_ctx.control_status_ctx())
@@ -160,8 +157,8 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
         shared_variable_store, index)
     t = _MirroredReplicaThread(
         distribution, coord, index, devices, variable_creator_fn, fn,
-        values.select_replica(index, args),
-        values.select_replica(index, kwargs))
+        distribute_utils.select_replica(index, args),
+        distribute_utils.select_replica(index, kwargs))
     threads.append(t)
 
   for t in threads:
@@ -209,8 +206,10 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
             raise RuntimeError("Some replicas made a different number of "
                                "replica_context().merge_call() calls.")
           # get_replica_context().merge_call() case
-          merge_args = values.regroup(tuple(t.merge_args for t in threads))
-          merge_kwargs = values.regroup(tuple(t.merge_kwargs for t in threads))
+          merge_args = distribute_utils.regroup(
+              tuple(t.merge_args for t in threads))
+          merge_kwargs = distribute_utils.regroup(
+              tuple(t.merge_kwargs for t in threads))
           # We capture the name_scope of the MRT when we call merge_fn
           # to ensure that if we have opened a name scope in the MRT,
           # it will be respected when executing the merge function. We only
@@ -228,13 +227,13 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
             merge_result = threads[0].merge_fn(distribution, *merge_args,
                                                **merge_kwargs)
           for r, t in enumerate(threads):
-            t.merge_result = values.select_replica(r, merge_result)
+            t.merge_result = distribute_utils.select_replica(r, merge_result)
   finally:
     for t in threads:
       t.should_run.set()
     coord.join(threads)
 
-  return values.regroup(tuple(t.main_result for t in threads))
+  return distribute_utils.regroup(tuple(t.main_result for t in threads))
 
 
 class _MirroredReplicaThread(threading.Thread):
@@ -247,6 +246,9 @@ class _MirroredReplicaThread(threading.Thread):
     self.distribution = dist
     self.devices = devices
     self.replica_id = replica_id
+    self.replica_id_in_sync_group = (
+        dist.extended._get_replica_id_in_sync_group(replica_id))  # pylint: disable=protected-access
+
     self.variable_creator_fn = variable_creator_fn
     # State needed to run and return the results of `fn`.
     self.main_fn = fn
@@ -311,8 +313,8 @@ class _MirroredReplicaThread(threading.Thread):
           _enter_graph(self.graph, self.in_eager,
                        self._variable_creator_stack), \
           context.device_policy(self.context_device_policy), \
-          _MirroredReplicaContext(self.distribution, constant_op.constant(
-              self.replica_id, dtypes.int32)), \
+          _MirroredReplicaContext(self.distribution,
+                                  self.replica_id_in_sync_group), \
           ops.device(self.devices[self.replica_id]), \
           ops.name_scope(self._name_scope), \
           variable_scope.variable_scope(
@@ -450,5 +452,7 @@ class _MirroredReplicaContext(distribute_lib.ReplicaContext):
   @property
   def devices(self):
     distribute_lib.require_replica_context(self)
-    replica_id = tensor_util.constant_value(self._replica_id_in_sync_group)
-    return [self._strategy.extended.worker_devices_by_replica[replica_id]]
+    return [
+        self._strategy.extended.worker_devices_by_replica[
+            self._replica_id_in_sync_group]
+    ]

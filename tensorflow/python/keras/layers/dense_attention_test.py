@@ -23,11 +23,14 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers import dense_attention
+from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
 
@@ -41,11 +44,14 @@ class BaseDenseAttentionTest(test.TestCase, parameterized.TestCase):
     v = np.array([[[1.6]]], dtype=np.float32)
     # Scores mask tensor of shape [1, 1, 1]
     scores_mask = np.array([[[True]]], dtype=np.bool_)
-    actual = dense_attention.BaseDenseAttention()._apply_scores(
+    actual, actual_scores = dense_attention.BaseDenseAttention()._apply_scores(
         scores=scores, value=v, scores_mask=scores_mask)
 
+    # Expected softmax_scores = [[[1]]]
+    expected_scores = np.array([[[1.]]], dtype=np.float32)
+    self.assertAllClose(expected_scores, actual_scores)
     # Expected tensor of shape [1, 1, 1].
-    # expected000 = softmax(scores)[0, 0] * 1.6 = 1.6
+    # expected000 = softmax_scores[0, 0] * 1.6 = 1.6
     expected = np.array([[[1.6]]], dtype=np.float32)
     self.assertAllClose(expected, actual)
 
@@ -54,11 +60,14 @@ class BaseDenseAttentionTest(test.TestCase, parameterized.TestCase):
     scores = np.array([[[1.1]]], dtype=np.float32)
     # Value tensor of shape [1, 1, 1]
     v = np.array([[[1.6]]], dtype=np.float32)
-    actual = dense_attention.BaseDenseAttention()._apply_scores(
+    actual, actual_scores = dense_attention.BaseDenseAttention()._apply_scores(
         scores=scores, value=v)
 
+    # Expected softmax_scores = [[[1]]]
+    expected_scores = np.array([[[1.]]], dtype=np.float32)
+    self.assertAllClose(expected_scores, actual_scores)
     # Expected tensor of shape [1, 1, 1].
-    # expected000 = softmax(scores)[0, 0] * 1.6 = 1.6
+    # expected000 = softmax_scores[0, 0] * 1.6 = 1.6
     expected = np.array([[[1.6]]], dtype=np.float32)
     self.assertAllClose(expected, actual)
 
@@ -69,15 +78,17 @@ class BaseDenseAttentionTest(test.TestCase, parameterized.TestCase):
     v = np.array([[[1.6], [0.7], [-0.8]]], dtype=np.float32)
     # Scores mask tensor of shape [1, 1, 3]
     scores_mask = np.array([[[True, True, False]]], dtype=np.bool_)
-    actual = dense_attention.BaseDenseAttention()._apply_scores(
+    actual, actual_scores = dense_attention.BaseDenseAttention()._apply_scores(
         scores=scores, value=v, scores_mask=scores_mask)
 
-    # Expected attention distribution = softmax(scores) with zeros in
-    # positions where v_mask == False.
-    # => attention_distribution000 = exp(1)/(exp(1) + exp(0)) = 0.73105857863
-    #    attention_distribution001 = exp(0)/(exp(1) + exp(0)) = 0.26894142137
-    #    attention_distribution002 = 0
-    #
+    # Expected softmax scores = softmax(scores) with zeros in positions where
+    # v_mask == False.
+    # => softmax_scores000 = exp(1)/(exp(1) + exp(0)) = 0.73105857863
+    #    softmax_scores001 = exp(0)/(exp(1) + exp(0)) = 0.26894142137
+    #    softmax_scores002 = 0
+    expected_scores = np.array([[[0.73105857863, 0.26894142137, 0.]]],
+                               dtype=np.float32)
+    self.assertAllClose(expected_scores, actual_scores)
     # Expected tensor of shape [1, 1, 1].
     # expected000 = 0.73105857863 * 1.6 + 0.26894142137 * 0.7 - 0 * 0.8
     #             = 1.35795272077
@@ -89,17 +100,19 @@ class BaseDenseAttentionTest(test.TestCase, parameterized.TestCase):
     scores = np.array([[[1., 0., 1.]]], dtype=np.float32)
     # Value tensor of shape [1, 3, 1]
     v = np.array([[[1.6], [0.7], [-0.8]]], dtype=np.float32)
-    actual = dense_attention.BaseDenseAttention()._apply_scores(
+    actual, actual_scores = dense_attention.BaseDenseAttention()._apply_scores(
         scores=scores, value=v)
 
-    # Expected attention distribution = softmax(scores).
-    # => attention_distribution000 = exp(1)/(exp(1) + exp(0) + exp(1))
-    #                              = 0.42231879825
-    #    attention_distribution001 = exp(0)/(exp(1) + exp(0) + exp(1))
-    #                              = 0.15536240349
-    #    attention_distribution002 = exp(1)/(exp(1) + exp(0) + exp(1))
-    #                              = 0.42231879825
-    #
+    # Expected softmax_scores = softmax(scores).
+    # => softmax_scores000 = exp(1)/(exp(1) + exp(0) + exp(1))
+    #                      = 0.42231879825
+    #    softmax_scores001 = exp(0)/(exp(1) + exp(0) + exp(1))
+    #                      = 0.15536240349
+    #    softmax_scores002 = exp(1)/(exp(1) + exp(0) + exp(1))
+    #                      = 0.42231879825
+    expected_scores = np.array(
+        [[[0.42231879825, 0.15536240349, 0.42231879825]]], dtype=np.float32)
+    self.assertAllClose(expected_scores, actual_scores)
     # Expected tensor of shape [1, 1, 1].
     # expected000 = 0.42231879825 * 1.6 + 0.15536240349 * 0.7
     #               - 0.42231879825 * 0.8
@@ -114,12 +127,15 @@ class BaseDenseAttentionTest(test.TestCase, parameterized.TestCase):
     v = np.array([[[1.6]], [[2.6]]], dtype=np.float32)
     # Scpres mask tensor of shape [2, 1, 1]
     scores_mask = np.array([[[True]], [[True]]], dtype=np.bool_)
-    actual = dense_attention.BaseDenseAttention()._apply_scores(
+    actual, actual_scores = dense_attention.BaseDenseAttention()._apply_scores(
         scores=scores, value=v, scores_mask=scores_mask)
 
+    # Expected softmax_scores = [[[1]], [[1]]]
+    expected_scores = np.array([[[1.]], [[1.]]], dtype=np.float32)
+    self.assertAllClose(expected_scores, actual_scores)
     # Expected tensor of shape [2, 1, 1].
-    # expected000 = softmax(scores)[0, 0] * 1.6 = 1.6
-    # expected100 = softmax(scores)[1, 0] * 2.6 = 2.6
+    # expected000 = softmax_scores[0, 0] * 1.6 = 1.6
+    # expected100 = softmax_scores[1, 0] * 2.6 = 2.6
     expected = np.array([[[1.6]], [[2.6]]], dtype=np.float32)
     self.assertAllClose(expected, actual)
 
@@ -132,9 +148,13 @@ class BaseDenseAttentionTest(test.TestCase, parameterized.TestCase):
     dim = 7
     scores = np.ones((batch_size, tq, tv))
     value = np.ones((batch_size, tv, dim))
-    actual = dense_attention.BaseDenseAttention(dropout=0.1)._apply_scores(
-        scores=scores, value=value, training=False)
+    actual, actual_scores = dense_attention.BaseDenseAttention(
+        dropout=0.1)._apply_scores(
+            scores=scores, value=value, training=False)
 
+    # Expected Tensor of shape `[batch_size, tq, tv]`.
+    expected_scores_shape = [batch_size, tq, tv]
+    self.assertAllEqual(expected_scores_shape, array_ops.shape(actual_scores))
     # Expected Tensor of shape `[batch_size, tq, dim]`.
     expected_shape = [batch_size, tq, dim]
     self.assertAllEqual(expected_shape, array_ops.shape(actual))
@@ -171,8 +191,7 @@ class AttentionTest(test.TestCase, parameterized.TestCase):
 
   def test_calculate_scores_multi_dim(self):
     # Query tensor of shape [1, 2, 4]
-    q = np.array(
-        [[[1., 1.1, 1.2, 1.3], [2., 2.1, 2.2, 2.3]]], dtype=np.float32)
+    q = np.array([[[1., 1.1, 1.2, 1.3], [2., 2.1, 2.2, 2.3]]], dtype=np.float32)
     # Key tensor of shape [1, 3, 4]
     k = np.array(
         [[[1.5, 1.6, 1.7, 1.8], [2.5, 2.6, 2.7, 2.8], [3.5, 3.6, 3.7, 3.8]]],
@@ -188,8 +207,8 @@ class AttentionTest(test.TestCase, parameterized.TestCase):
     # expected010 = 2.*1.5+2.1*1.6+2.2*1.7+2.3*1.8 = 14.24
     # expected011 = 2.*2.5+2.1*2.6+2.2*2.7+2.3*2.8 = 22.84
     # expected012 = 2.*3.5+2.1*3.6+2.2*3.7+2.3*3.8 = 31.44
-    expected = np.array(
-        [[[7.64, 12.24, 16.84], [14.24, 22.84, 31.44]]], dtype=np.float32)
+    expected = np.array([[[7.64, 12.24, 16.84], [14.24, 22.84, 31.44]]],
+                        dtype=np.float32)
     self.assertAllClose(expected, actual)
 
   def test_calculate_scores_one_dim_batch_size_two(self):
@@ -225,8 +244,7 @@ class AttentionTest(test.TestCase, parameterized.TestCase):
 
   def test_shape(self):
     # Query tensor of shape [1, 2, 4]
-    q = np.array(
-        [[[1., 1.1, 1.2, 1.3], [2., 2.1, 2.2, 2.3]]], dtype=np.float32)
+    q = np.array([[[1., 1.1, 1.2, 1.3], [2., 2.1, 2.2, 2.3]]], dtype=np.float32)
     # Value tensor of shape [1, 3, 4]
     v = np.array(
         [[[1.5, 1.6, 1.7, 1.8], [2.5, 2.6, 2.7, 2.8], [3.5, 3.6, 3.7, 3.8]]],
@@ -241,8 +259,7 @@ class AttentionTest(test.TestCase, parameterized.TestCase):
 
   def test_shape_with_key(self):
     # Query tensor of shape [1, 2, 4]
-    q = np.array(
-        [[[1., 1.1, 1.2, 1.3], [2., 2.1, 2.2, 2.3]]], dtype=np.float32)
+    q = np.array([[[1., 1.1, 1.2, 1.3], [2., 2.1, 2.2, 2.3]]], dtype=np.float32)
     # Value tensor of shape [1, 3, 4]
     v = np.array(
         [[[1.5, 1.6, 1.7, 1.8], [2.5, 2.6, 2.7, 2.8], [3.5, 3.6, 3.7, 3.8]]],
@@ -313,7 +330,11 @@ class AttentionTest(test.TestCase, parameterized.TestCase):
     expected = np.array([[[0.58127362329]]], dtype=np.float32)
     self.assertAllClose(expected, actual)
 
-  def test_multi_dim_with_query_mask(self):
+  @parameterized.named_parameters(
+      ('', False),
+      ('return_attention_scores', True),
+  )
+  def test_multi_dim_with_query_mask(self, return_attention_scores):
     # Query tensor of shape [1, 2, 1]
     q = np.array([[[1.1], [-0.5]]], dtype=np.float32)
     # Value tensor of shape [1, 3, 1]
@@ -323,7 +344,15 @@ class AttentionTest(test.TestCase, parameterized.TestCase):
     # Value mask tensor of shape [1, 3]
     v_mask = np.array([[True, True, False]], dtype=np.bool_)
     attention_layer = dense_attention.Attention()
-    actual = attention_layer([q, v], mask=[q_mask, v_mask])
+    if return_attention_scores:
+      actual, actual_scores = attention_layer(
+          [q, v],
+          mask=[q_mask, v_mask],
+          return_attention_scores=return_attention_scores)
+    else:
+      actual = attention_layer([q, v],
+                               mask=[q_mask, v_mask],
+                               return_attention_scores=return_attention_scores)
 
     # Expected scores of shape [1, 2, 3]
     # scores = [[[1.1*1.6, 1.1*0.7, -1.1*0.8], [-0.5*1.6, -0.5*0.7, 0.5*0.8]]]
@@ -340,7 +369,11 @@ class AttentionTest(test.TestCase, parameterized.TestCase):
     #    attention_distribution011 = exp(-0.35)/(exp(-0.8) + exp(-0.35))
     #                              = 0.61063923394
     #    attention_distribution012 = 0
-    #
+    if return_attention_scores:
+      expected_scores = np.array([[[0.72908792234, 0.27091207765, 0.],
+                                   [0.38936076605, 0.61063923394, 0.]]],
+                                 dtype=np.float32)
+      self.assertAllClose(expected_scores, actual_scores)
     # Expected tensor of shape [1, 2, 1] with zeros where  q_mask == False.
     # expected000 = 0.72908792234 * 1.6 + 0.27091207765 * 0.7 - 0 * 0.8
     #             = 1.3561791301
@@ -356,12 +389,12 @@ class AttentionTest(test.TestCase, parameterized.TestCase):
 
   def test_scale_init_eager(self):
     """Tests that scale initializes to 1 when use_scale=True."""
-    with context.eager_mode():
-      attention_layer = dense_attention.Attention(use_scale=True)
-      attention_layer.build(input_shape=([1, 1, 1], [1, 1, 1]))
-      self.assertAllClose(1., attention_layer.scale.value())
+    if not context.executing_eagerly():
+      self.skipTest('Only run in eager mode')
+    attention_layer = dense_attention.Attention(use_scale=True)
+    attention_layer.build(input_shape=([1, 1, 1], [1, 1, 1]))
+    self.assertAllClose(1., attention_layer.scale.value())
 
-  @test_util.deprecated_graph_mode_only
   def test_scale_init_graph(self):
     """Tests that scale initializes to 1 when use_scale=True."""
     with self.cached_session() as sess:
@@ -370,11 +403,20 @@ class AttentionTest(test.TestCase, parameterized.TestCase):
       sess.run(attention_layer.scale.initializer)
       self.assertAllClose(1., attention_layer.scale.value())
 
-  def test_self_attention_causal(self):
+  @parameterized.named_parameters(
+      ('', False),
+      ('return_attention_scores', True),
+  )
+  def test_self_attention_causal(self, return_attention_scores):
     # Query-value tensor of shape [1, 3, 1]
     q = np.array([[[0.5], [0.8], [-0.3]]], dtype=np.float32)
     attention_layer = dense_attention.Attention(causal=True)
-    actual = attention_layer([q, q])
+    if return_attention_scores:
+      actual, actual_scores = attention_layer(
+          [q, q], return_attention_scores=return_attention_scores)
+    else:
+      actual = attention_layer([q, q],
+                               return_attention_scores=return_attention_scores)
 
     # Expected scores of shape [1, 3, 3]
     # scores = [[0.25, 0.4, -0.15], [0.4, 0.64, -0.24], [-0.15, -0.24, 0.09]]
@@ -387,53 +429,56 @@ class AttentionTest(test.TestCase, parameterized.TestCase):
     #      = [exp(-0.15), exp(-0.24), exp(0.09)]
     #        / (exp(-0.15) + exp(-0.24) + exp(0.09))
     #      = [0.31395396638, 0.28693232061, 0.399113713]
-    #
+    if return_attention_scores:
+      expected_scores = np.array(
+          [[[1., 0., 0.], [0.44028635073, 0.55971364926, 0.],
+            [0.31395396638, 0.28693232061, 0.399113713]]],
+          dtype=np.float32)
+      self.assertAllClose(expected_scores, actual_scores)
     # Expected tensor of shape [1, 3, 1].
     # expected000 = 0.5
     # expected010 = 0.44028635073 * 0.5 + 0.55971364926 * 0.8
     #             = 0.66791409477
     # expected020 = 0.31395396638 * 0.5 +0.28693232061 * 0.8 -0.399113713 * 0.3
     #             = 0.26678872577
-    expected = np.array(
-        [[[0.5], [0.66791409477], [0.26678872577]]], dtype=np.float32)
+    expected = np.array([[[0.5], [0.66791409477], [0.26678872577]]],
+                        dtype=np.float32)
     self.assertAllClose(expected, actual)
 
   def test_inputs_not_list(self):
     attention_layer = dense_attention.Attention()
     q = np.array([[[1.1]]], dtype=np.float32)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Attention layer must be called on a list of inputs'):
       attention_layer(q)
 
   def test_inputs_too_short(self):
     attention_layer = dense_attention.Attention()
     q = np.array([[[1.1]]], dtype=np.float32)
-    with self.assertRaisesRegexp(
-        ValueError,
-        'Attention layer accepts inputs list of length 2 or 3'):
+    with self.assertRaisesRegex(
+        ValueError, 'Attention layer accepts inputs list of length 2 or 3'):
       attention_layer([q])
 
   def test_inputs_too_long(self):
     attention_layer = dense_attention.Attention()
     q = np.array([[[1.1]]], dtype=np.float32)
-    with self.assertRaisesRegexp(
-        ValueError,
-        'Attention layer accepts inputs list of length 2 or 3'):
+    with self.assertRaisesRegex(
+        ValueError, 'Attention layer accepts inputs list of length 2 or 3'):
       attention_layer([q, q, q, q])
 
   def test_mask_not_list(self):
     attention_layer = dense_attention.Attention()
     q = np.array([[[1.1]]], dtype=np.float32)
     mask = np.array([[True]], dtype=np.bool_)
-    with self.assertRaisesRegexp(
-        ValueError, 'Attention layer mask must be a list'):
+    with self.assertRaisesRegex(ValueError,
+                                'Attention layer mask must be a list'):
       attention_layer([q, q], mask=mask)
 
   def test_mask_too_short(self):
     attention_layer = dense_attention.Attention()
     q = np.array([[[1.1]]], dtype=np.float32)
     mask = np.array([[True]], dtype=np.bool_)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Attention layer mask must be a list of length 2'):
       attention_layer([q, q], mask=[mask])
 
@@ -441,7 +486,7 @@ class AttentionTest(test.TestCase, parameterized.TestCase):
     attention_layer = dense_attention.Attention()
     q = np.array([[[1.1]]], dtype=np.float32)
     mask = np.array([[True]], dtype=np.bool_)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Attention layer mask must be a list of length 2'):
       attention_layer([q, q], mask=[mask, mask, mask])
 
@@ -459,17 +504,21 @@ class AttentionTest(test.TestCase, parameterized.TestCase):
     actual = attention_layer([q, v])
     self.assertAllClose([[[0], [1]]], actual)
 
-  def test_serialization(self):
+  @parameterized.named_parameters(
+      ('', False),
+      ('use_scale', True),
+  )
+  def test_serialization(self, use_scale):
     # Test serialization with use_scale
-    layer = dense_attention.Attention(use_scale=True)
+    layer = dense_attention.Attention(use_scale=use_scale)
 
     config = keras.layers.serialize(layer)
     new_layer = keras.layers.deserialize(config)
-    self.assertEqual(new_layer.use_scale, True)
+    self.assertEqual(new_layer.use_scale, use_scale)
 
     config = layer.get_config()
     new_layer = dense_attention.Attention.from_config(config)
-    self.assertEqual(new_layer.use_scale, True)
+    self.assertEqual(new_layer.use_scale, use_scale)
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -493,8 +542,7 @@ class AdditiveAttentionTest(test.TestCase, parameterized.TestCase):
 
   def test_calculate_scores_multi_dim(self):
     # Query tensor of shape [1, 2, 4]
-    q = np.array(
-        [[[1., 1.1, 1.2, 1.3], [2., 2.1, 2.2, 2.3]]], dtype=np.float32)
+    q = np.array([[[1., 1.1, 1.2, 1.3], [2., 2.1, 2.2, 2.3]]], dtype=np.float32)
     # Key tensor of shape [1, 3, 4]
     k = np.array(
         [[[1.5, 1.6, 1.7, 1.8], [2.5, 2.6, 2.7, 2.8], [3.5, 3.6, 3.7, 3.8]]],
@@ -513,10 +561,9 @@ class AdditiveAttentionTest(test.TestCase, parameterized.TestCase):
     # expected011 = 0.5*tanh(2.+2.5) + 0.6*tanh(2.1+2.6) + 0.7*tanh(2.2+2.7) + 0.8*tanh(2.3+2.8) = 2.59964024652
     # expected012 = 0.5*tanh(2.+3.5) + 0.6*tanh(2.1+3.6) + 0.7*tanh(2.2+3.7) + 0.8*tanh(2.3+3.8) = 2.59995130916
     # pylint:enable=line-too-long
-    expected = np.array(
-        [[[2.58044532581, 2.59734317449, 2.59964024652],
-          [2.59734317449, 2.59964024652, 2.59995130916]]],
-        dtype=np.float32)
+    expected = np.array([[[2.58044532581, 2.59734317449, 2.59964024652],
+                          [2.59734317449, 2.59964024652, 2.59995130916]]],
+                        dtype=np.float32)
     self.assertAllClose(expected, actual)
 
   def test_calculate_scores_one_dim_batch_size_two(self):
@@ -533,14 +580,13 @@ class AdditiveAttentionTest(test.TestCase, parameterized.TestCase):
     # Expected tensor of shape [2, 1, 1].
     # expected000 = 0.5 * tanh(1.1 + 1.6) = 0.49550372683
     # expected100 = 0.5 * tanh(2.1 + 2.6) = 0.49991728277
-    expected = np.array(
-        [[[0.49550372683]], [[0.49991728277]]], dtype=np.float32)
+    expected = np.array([[[0.49550372683]], [[0.49991728277]]],
+                        dtype=np.float32)
     self.assertAllClose(expected, actual)
 
   def test_shape(self):
     # Query tensor of shape [1, 2, 4]
-    q = np.array(
-        [[[1., 1.1, 1.2, 1.3], [2., 2.1, 2.2, 2.3]]], dtype=np.float32)
+    q = np.array([[[1., 1.1, 1.2, 1.3], [2., 2.1, 2.2, 2.3]]], dtype=np.float32)
     # Value tensor of shape [1, 3, 4]
     v = np.array(
         [[[1.5, 1.6, 1.7, 1.8], [2.5, 2.6, 2.7, 2.8], [3.5, 3.6, 3.7, 3.8]]],
@@ -555,8 +601,7 @@ class AdditiveAttentionTest(test.TestCase, parameterized.TestCase):
 
   def test_shape_no_scale(self):
     # Query tensor of shape [1, 2, 4]
-    q = np.array(
-        [[[1., 1.1, 1.2, 1.3], [2., 2.1, 2.2, 2.3]]], dtype=np.float32)
+    q = np.array([[[1., 1.1, 1.2, 1.3], [2., 2.1, 2.2, 2.3]]], dtype=np.float32)
     # Value tensor of shape [1, 3, 4]
     v = np.array(
         [[[1.5, 1.6, 1.7, 1.8], [2.5, 2.6, 2.7, 2.8], [3.5, 3.6, 3.7, 3.8]]],
@@ -571,8 +616,7 @@ class AdditiveAttentionTest(test.TestCase, parameterized.TestCase):
 
   def test_shape_with_key(self):
     # Query tensor of shape [1, 2, 4]
-    q = np.array(
-        [[[1., 1.1, 1.2, 1.3], [2., 2.1, 2.2, 2.3]]], dtype=np.float32)
+    q = np.array([[[1., 1.1, 1.2, 1.3], [2., 2.1, 2.2, 2.3]]], dtype=np.float32)
     # Value tensor of shape [1, 3, 4]
     v = np.array(
         [[[1.5, 1.6, 1.7, 1.8], [2.5, 2.6, 2.7, 2.8], [3.5, 3.6, 3.7, 3.8]]],
@@ -717,6 +761,17 @@ class AdditiveAttentionTest(test.TestCase, parameterized.TestCase):
     new_layer = dense_attention.AdditiveAttention.from_config(config)
     self.assertEqual(new_layer.use_scale, True)
 
+  @testing_utils.enable_v2_dtype_behavior
+  def test_mixed_float16_policy(self):
+    # Test case for GitHub issue:
+    # https://github.com/tensorflow/tensorflow/issues/46064
+    with policy.policy_scope('mixed_float16'):
+      q = math_ops.cast(random_ops.random_uniform((2, 3, 4), seed=1), 'float16')
+      v = math_ops.cast(random_ops.random_uniform((2, 3, 4), seed=2), 'float16')
+      k = math_ops.cast(random_ops.random_uniform((2, 3, 4), seed=3), 'float16')
+      layer = dense_attention.AdditiveAttention(causal=True)
+      _ = layer([q, v, k])
+
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class LowerTriangularMaskTest(test.TestCase, parameterized.TestCase):
@@ -730,8 +785,8 @@ class LowerTriangularMaskTest(test.TestCase, parameterized.TestCase):
 
   def test_orthogonal_shape(self):
     actual = dense_attention._lower_triangular_mask([3, 2])
-    expected = np.array(
-        [[True, False], [True, True], [True, True]], dtype=np.bool_)
+    expected = np.array([[True, False], [True, True], [True, True]],
+                        dtype=np.bool_)
     self.assertAllEqual(expected, actual)
 
   def test_three_dim(self):

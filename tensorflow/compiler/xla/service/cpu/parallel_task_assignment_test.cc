@@ -191,5 +191,19 @@ TEST_F(ParallelTaskAssignmentTest, AllReduceNotParallelized) {
   EXPECT_FALSE(changed);
 }
 
+TEST_F(ParallelTaskAssignmentTest, ConstantNotParallelized) {
+  constexpr char hlo_string[] = R"(
+  HloModule TestTaskParallel_constant
+    ENTRY const {
+      ROOT constant = f32[1234567] constant({...})
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(m.get()));
+  EXPECT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace xla

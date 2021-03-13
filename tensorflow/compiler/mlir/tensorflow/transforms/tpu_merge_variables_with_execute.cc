@@ -30,7 +30,7 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -42,14 +42,16 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #define DEBUG_TYPE "tf-tpu-merge-variables-with-execute"
 
 namespace mlir {
 namespace TFTPU {
 
 namespace {
+constexpr char kAliasingAttr[] = "tf.aliasing_output";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncDeviceAttr[] = "tf.device";
 
@@ -126,7 +128,7 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
   VariableAccessesForTPUExecute infos;
   Attribute device_attr = execute_launch.deviceAttr();
   if (check_device && !device_attr) return infos;
-  auto func = execute_launch.getParentOfType<mlir::FuncOp>();
+  auto func = execute_launch->getParentOfType<mlir::FuncOp>();
 
   // Track the first read op found, which is used later to check if there are
   // assign ops between it and the TPUExecute op. We will exclude reads before
@@ -134,20 +136,19 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
   // consider resource accesses in other islands since they ordering is enforced
   // by inter-island dependencies.
   Operation* first_read = nullptr;
-  Operation& execute = execute_launch.GetBody().front();
+  auto execute = cast<TF::TPUExecuteOp>(execute_launch.GetBody().front());
   auto parallel_execute = llvm::dyn_cast<tf_device::ParallelExecuteOp>(
-      execute_launch.getParentOp());
+      execute_launch->getParentOp());
   Operation* execute_parent =
       parallel_execute ? parallel_execute.getOperation() : execute_launch;
   // Find inputs that are variable reads.
-  for (auto operand : llvm::enumerate(execute.getOpOperands())) {
+  for (auto operand : llvm::enumerate(execute->getOpOperands())) {
     infos.new_operand_values.push_back(operand.value().get());
-    if (!operand.value().get().getDefiningOp()) continue;
-    auto read_op = llvm::dyn_cast<TF::ReadVariableOp>(
+    auto read_op = llvm::dyn_cast_or_null<TF::ReadVariableOp>(
         operand.value().get().getDefiningOp());
     if (!read_op) continue;
     if (check_same_region &&
-        read_op.getParentRegion() != execute_parent->getParentRegion())
+        read_op->getParentRegion() != execute_parent->getParentRegion())
       continue;
 
     auto resource = read_op.resource();
@@ -239,7 +240,7 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
   auto execute_outputs =
       parallel_execute
           ? parallel_execute.GetRegionOutputs(
-                execute_launch.getParentRegion()->getRegionNumber())
+                execute_launch->getParentRegion()->getRegionNumber())
           : execute_launch.getResults();
   for (auto execute_output : llvm::enumerate(execute_outputs)) {
     // TODO(lyandy): Handle updates to resource writes by remapping to parent
@@ -298,7 +299,7 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
   // Populate infos.old_to_new_output_mapping.
   int new_output_index = 0;
   infos.old_to_new_output_mapping.resize(execute_launch.getNumResults());
-  for (int i = 0; i < execute_launch.getNumResults(); ++i) {
+  for (int i = 0, end = execute_launch.getNumResults(); i < end; ++i) {
     if (output_fused[i]) {
       infos.old_to_new_output_mapping[i] = -1;
     } else {
@@ -339,7 +340,7 @@ void ReplaceParallelExecute(tf_device::ParallelExecuteOp parallel_execute,
   llvm::SmallVector<Type, 8> output_types;
   const int parallel_execute_num_results = parallel_execute_op->getNumResults();
   output_types.reserve(parallel_execute_num_results);
-  Region* execute_region = merged_execute_launch.getParentRegion();
+  Region* execute_region = merged_execute_launch->getParentRegion();
   const int region_index = execute_region->getRegionNumber();
   const int num_results_before_region =
       AppendTypes(&output_types, parallel_execute, 0, region_index);
@@ -375,7 +376,7 @@ void ReplaceParallelExecute(tf_device::ParallelExecuteOp parallel_execute,
   // Replace the uses of the original parallel_execute for the region containing
   // the merged execute.
   auto old_region_results = parallel_execute.GetRegionOutputs(region_index);
-  for (int i = 0; i < infos.old_to_new_output_mapping.size(); ++i) {
+  for (int i = 0, end = infos.old_to_new_output_mapping.size(); i < end; ++i) {
     if (infos.old_to_new_output_mapping[i] < 0) continue;
     old_region_results[i].replaceAllUsesWith(new_parallel_execute_op->getResult(
         infos.old_to_new_output_mapping[i] + num_results_before_region));
@@ -407,7 +408,7 @@ void ReplaceExecute(tf_device::LaunchOp execute_launch,
                     tf_device::LaunchOp merged_execute_launch,
                     const VariableAccessesForTPUExecute& infos) {
   // Replace the uses.
-  for (int i = 0; i < infos.old_to_new_output_mapping.size(); ++i) {
+  for (int i = 0, end = infos.old_to_new_output_mapping.size(); i < end; ++i) {
     if (infos.old_to_new_output_mapping[i] < 0) continue;
     execute_launch.getResult(i).replaceAllUsesWith(
         merged_execute_launch.getResult(infos.old_to_new_output_mapping[i]));
@@ -418,15 +419,89 @@ void ReplaceExecute(tf_device::LaunchOp execute_launch,
   execute_launch.erase();
 }
 
+// Returns TPUCompileMlir op that generates the program executed by the
+// TPUExecute op.
+TF::_TPUCompileMlirOp GetTPUCompileOp(tf_device::LaunchOp execute_launch) {
+  auto execute =
+      llvm::dyn_cast<TF::TPUExecuteOp>(execute_launch.GetBody().front());
+  if (!execute) return {};
+  auto compile_launch = llvm::dyn_cast_or_null<tf_device::LaunchOp>(
+      execute.getOperand(execute.getNumOperands() - 1).getDefiningOp());
+  if (!compile_launch) return {};
+  return llvm::dyn_cast<TF::_TPUCompileMlirOp>(
+      compile_launch.GetBody().front());
+}
+
+// Updates the serialized module associated with the TPUExecute op to reflect
+// the aliasing information for better management of device memory.
+LogicalResult UpdateSerializedModule(tf_device::LaunchOp execute_launch,
+                                     VariableAccessesForTPUExecute& infos) {
+  TF::_TPUCompileMlirOp compile = GetTPUCompileOp(execute_launch);
+
+  // Skip adding alias information in case of model parallelism i.e.,
+  // TPUCompileMlir op generates multiple programs.
+  if (!compile || compile.program().size() > 1) return failure();
+
+  // Parse the serialized module
+  mlir::OwningModuleRef module_ref;
+  tensorflow::Status status = tensorflow::DeserializeMlirModule(
+      compile.mlir_module().str(), compile.getContext(), &module_ref);
+  if (!status.ok()) {
+    LLVM_DEBUG(llvm::dbgs() << "Error in parsing serialized module: "
+                            << status.error_message() << "\n");
+
+    return failure();
+  }
+
+  // Add aliasing information to main function arguments.
+  FuncOp main_func = module_ref->lookupSymbol<FuncOp>("main");
+  if (!main_func) return failure();
+
+  OpBuilder builder(main_func.getContext());
+  for (auto resource : infos.resources_read) {
+    auto& info = infos.per_resource_info[resource];
+    if (info.execute_input_index < 0 || info.execute_output_index < 0) continue;
+    auto aliasing_attr = main_func.getArgAttrOfType<mlir::IntegerAttr>(
+        info.execute_input_index, kAliasingAttr);
+
+    // Set only if aliasing attribute does not exist.
+    if (!aliasing_attr) {
+      main_func.setArgAttr(
+          info.execute_input_index, kAliasingAttr,
+          builder.getI64IntegerAttr(info.execute_output_index));
+      continue;
+    }
+    // If aliasing attribute already exists, it must match the new value.
+    assert(aliasing_attr.getInt() == info.execute_output_index);
+  }
+
+  // Serialize the updated module back into the TPUCompileMlir op.
+  auto module_string = tensorflow::SerializeMlirModule(module_ref.get());
+  compile.mlir_moduleAttr(
+      mlir::StringAttr::get(module_ref->getContext(), module_string));
+  return success();
+}
+
 // Merges the variable accesses into one TPUExecute op.
-void MergeForOneTPUExecute(tf_device::LaunchOp execute_launch,
-                           bool check_device, bool check_same_region,
-                           OpBuilder* builder) {
+LogicalResult MergeForOneTPUExecute(tf_device::LaunchOp execute_launch,
+                                    bool check_device, bool check_same_region,
+                                    OpBuilder* builder) {
   auto infos =
       BuildVariableAccessInfo(execute_launch, check_device, check_same_region);
-  if (infos.per_resource_info.empty()) {
-    return;
+  if (infos.per_resource_info.empty()) return success();
+
+  // Update the serialized module with aliasing information for better memory
+  // management on device.
+  // TODO(b/172608422): Benchmark the cost of deserialization/serialization of
+  // the attached module. We can avoid it by serializing it at the end of the
+  // bridge pipeline.
+  if (failed(UpdateSerializedModule(execute_launch, infos))) {
+    LLVM_DEBUG(
+        llvm::dbgs()
+        << "Unable to update the serialized module with aliasing information "
+           "which can lead to poor memory management on device.\n");
   }
+
   // Start creating the new TPUExecuteAndUpdateVariables op.
   builder->setInsertionPoint(execute_launch);
   // Output types. Skip the original outputs for fused assigns.
@@ -446,6 +521,23 @@ void MergeForOneTPUExecute(tf_device::LaunchOp execute_launch,
     device_var_reads_indices.push_back(info.execute_input_index);
     device_var_updates_indices.push_back(info.execute_output_index);
   }
+
+  // Check that all resources op are either read or written to.
+  for (auto it : llvm::enumerate(infos.new_operand_values)) {
+    Type type = it.value().getType();
+    if (type.isa<TensorType>() &&
+        type.cast<TensorType>().getElementType().isa<TF::ResourceType>()) {
+      if (!llvm::is_contained(device_var_reads_indices, it.index()) &&
+          !llvm::is_contained(device_var_updates_indices, it.index())) {
+        return execute_launch.GetBody().front().emitError("operand #")
+               << it.index()
+               << " is a resource that was neither read nor written to; this "
+                  "resource potentially failed to be hoisted";
+      }
+    }
+  }
+
+  // Create the merged execute and update variables op.
   auto merged_execute = builder->create<TF::TPUExecuteAndUpdateVariablesOp>(
       execute_launch.getLoc(), new_output_types, infos.new_operand_values,
       llvm::ArrayRef<NamedAttribute>{
@@ -470,7 +562,7 @@ void MergeForOneTPUExecute(tf_device::LaunchOp execute_launch,
       merged_execute_launch.GetBody().getTerminator());
 
   if (auto parallel_execute = llvm::dyn_cast<tf_device::ParallelExecuteOp>(
-          execute_launch.getParentOp()))
+          execute_launch->getParentOp()))
     ReplaceParallelExecute(parallel_execute, execute_launch,
                            merged_execute_launch, infos, builder);
   else
@@ -487,6 +579,7 @@ void MergeForOneTPUExecute(tf_device::LaunchOp execute_launch,
     const auto& info = entry.getSecond();
     if (info.read->use_empty()) info.read->erase();
   }
+  return success();
 }
 
 // Checks if an ops parent is a tf_device.parallel_execute and the region the
@@ -514,18 +607,22 @@ void TPUMergeVariablesWithExecutePass::runOnFunction() {
   for (auto execute_launch : execute_launches) {
     OpBuilder builder(&getContext());
     const bool parent_is_replicate =
-        llvm::isa<tf_device::ReplicateOp>(execute_launch.getParentOp()) ||
+        llvm::isa<tf_device::ReplicateOp>(execute_launch->getParentOp()) ||
         (llvm::isa<tf_device::ParallelExecuteOp>(
-             execute_launch.getParentOp()) &&
+             execute_launch->getParentOp()) &&
          llvm::isa<tf_device::ReplicateOp>(
-             execute_launch.getParentOp()->getParentOp()));
+             execute_launch->getParentOp()->getParentOp()));
 
     // If this is inside a tf_device::ReplicateOp, the variables are guaranteed
     // to be on the same device as the TPUExecute op. Skip device checking in
     // that case, but we need to check that we are only merging reads/assigns
     // that are also in this replicated region.
-    MergeForOneTPUExecute(execute_launch, /*check_device=*/!parent_is_replicate,
-                          /*check_same_region=*/parent_is_replicate, &builder);
+    if (failed(MergeForOneTPUExecute(
+            execute_launch, /*check_device=*/!parent_is_replicate,
+            /*check_same_region=*/parent_is_replicate, &builder))) {
+      signalPassFailure();
+      return;
+    }
   }
 }
 

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/refcounting_hash_map.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
@@ -218,14 +219,17 @@ RefcountingHashMap<RendezvousKey, Rendezvous>& GlobalRendezvousMap() {
 }  // anonymous namespace
 
 CollectivePermuteThunk::CollectivePermuteThunk(
-    const BufferAllocation::Slice& src, const BufferAllocation::Slice& dest,
-    const HloInstruction* instr)
-    : Thunk(kCollectivePermute, instr), src_(src), dest_(dest) {}
+    ThunkInfo thunk_info,
+    std::vector<std::pair<int64, int64>> source_target_pairs,
+    const BufferAllocation::Slice& src, const BufferAllocation::Slice& dest)
+    : Thunk(kCollectivePermute, thunk_info),
+      source_target_pairs_(std::move(source_target_pairs)),
+      src_(src),
+      dest_(dest) {}
 
 Status CollectivePermuteThunk::ExecuteOnStream(const ExecuteParams& params) {
-  auto* instr = Cast<HloCollectivePermuteInstruction>(hlo_instruction());
   auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
 
   // Rendezvous with the threads for all other devices that are participating in
   // this CollectivePermute.
@@ -236,13 +240,14 @@ Status CollectivePermuteThunk::ExecuteOnStream(const ExecuteParams& params) {
   std::shared_ptr<Rendezvous> rendezvous =
       GlobalRendezvousMap().GetOrCreateIfAbsent(key, rendezvous_factory);
 
+  TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
+                      params.GetGlobalDeviceId());
   TF_ASSIGN_OR_RETURN(int64 replica_id,
-                      params.device_assn->ReplicaIdForDeviceOrdinal(
-                          params.stream->parent()->device_ordinal()));
+                      params.device_assn->ReplicaIdForDevice(global_device_id));
 
   // Figure out which replicas our data is copied to.
   std::vector<int64> dest_replicas;
-  for (const auto& src_dest : instr->source_target_pairs()) {
+  for (const auto& src_dest : source_target_pairs_) {
     if (src_dest.first == replica_id) {
       dest_replicas.push_back(src_dest.second);
     }
@@ -257,7 +262,7 @@ Status CollectivePermuteThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   // If no replica writes into us (i.e. we aren't the target of any copies), our
   // contract is that we zero our output.
-  if (absl::c_none_of(instr->source_target_pairs(),
+  if (absl::c_none_of(source_target_pairs_,
                       [&](std::pair<int64, int64> src_dest) {
                         return src_dest.second == replica_id;
                       })) {

@@ -25,14 +25,11 @@ import os
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
@@ -40,6 +37,8 @@ from tensorflow.python.keras import layers
 from tensorflow.python.keras import metrics
 from tensorflow.python.keras import Model
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import training as training_mod
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -71,7 +70,7 @@ class KerasSumTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(m.total), 100)
 
       # check update_state() and result() + state accumulation + tensor input
-      update_op = m.update_state(ops.convert_n_to_tensor([1, 5]))
+      update_op = m.update_state(ops.convert_to_tensor_v2_with_dispatch([1, 5]))
       self.evaluate(update_op)
       self.assertAlmostEqual(self.evaluate(m.result()), 106)
       self.assertEqual(self.evaluate(m.total), 106)  # 100 + 1 + 5
@@ -192,7 +191,10 @@ class MeanTest(keras_parameterized.TestCase):
     self.assertEqual(self.evaluate(m.count), 1)
 
     # check update_state() and result() + state accumulation + tensor input
-    update_op = m.update_state(ops.convert_n_to_tensor([1, 5]))
+    update_op = m.update_state([
+        ops.convert_to_tensor_v2_with_dispatch(1),
+        ops.convert_to_tensor_v2_with_dispatch(5)
+    ])
     self.evaluate(update_op)
     self.assertAlmostEqual(self.evaluate(m.result()), 106 / 3, 2)
     self.assertEqual(self.evaluate(m.total), 106)  # 100 + 1 + 5
@@ -210,7 +212,7 @@ class MeanTest(keras_parameterized.TestCase):
     self.assertEqual(m2.dtype, dtypes.float32)
     self.assertEqual(len(m2.variables), 2)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_function_wrapped_reset_state(self):
     m = metrics.Mean(name='my_mean')
 
@@ -1392,7 +1394,7 @@ class MeanTensorTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(m.dtype, dtypes.float32)
       self.assertEmpty(m.variables)
 
-      with self.assertRaisesRegexp(ValueError, 'does not have any result yet'):
+      with self.assertRaisesRegex(ValueError, 'does not have any result yet'):
         m.result()
 
       self.evaluate(m([[3], [5], [3]]))
@@ -1415,7 +1417,10 @@ class MeanTensorTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(self.evaluate(m.count), [1, 1])
 
       # check update_state() and result() + state accumulation + tensor input
-      update_op = m.update_state(ops.convert_n_to_tensor([1, 5]))
+      update_op = m.update_state([
+          ops.convert_to_tensor_v2_with_dispatch(1),
+          ops.convert_to_tensor_v2_with_dispatch(5)
+      ])
       self.evaluate(update_op)
       self.assertAllClose(self.evaluate(m.result()), [50.5, 22.5])
       self.assertAllClose(self.evaluate(m.total), [101, 45])
@@ -1469,7 +1474,7 @@ class MeanTensorTest(test.TestCase, parameterized.TestCase):
   def test_invalid_value_shape(self):
     m = metrics.MeanTensor(dtype=dtypes.float64)
     m([1])
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'MeanTensor input values must always have the same shape'):
       m([1, 5])
 
@@ -1478,7 +1483,7 @@ class MeanTensorTest(test.TestCase, parameterized.TestCase):
     """Ensure that variables are created correctly in a tf function."""
     m = metrics.MeanTensor(dtype=dtypes.float64)
 
-    @eager_function.defun
+    @def_function.function
     def call_metric(x):
       return m(x)
 
@@ -1488,47 +1493,47 @@ class MeanTensorTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(self.evaluate(m.count), [1, 1])
       self.assertAllClose(self.evaluate(call_metric([20, 2])), [60, 21])
 
+  @combinations.generate(combinations.combine(mode=['eager']))
   def test_in_keras_model(self):
-    with context.eager_mode():
-      class ModelWithMetric(Model):
+    class ModelWithMetric(Model):
 
-        def __init__(self):
-          super(ModelWithMetric, self).__init__()
-          self.dense1 = layers.Dense(
-              3, activation='relu', kernel_initializer='ones')
-          self.dense2 = layers.Dense(
-              1, activation='sigmoid', kernel_initializer='ones')
-          self.mean_tensor = metrics.MeanTensor()
+      def __init__(self):
+        super(ModelWithMetric, self).__init__()
+        self.dense1 = layers.Dense(
+            3, activation='relu', kernel_initializer='ones')
+        self.dense2 = layers.Dense(
+            1, activation='sigmoid', kernel_initializer='ones')
+        self.mean_tensor = metrics.MeanTensor()
 
-        def call(self, x):
-          x = self.dense1(x)
-          x = self.dense2(x)
-          self.mean_tensor(self.dense1.kernel)
-          return x
+      def call(self, x):
+        x = self.dense1(x)
+        x = self.dense2(x)
+        self.mean_tensor(self.dense1.kernel)
+        return x
 
-      model = ModelWithMetric()
-      model.compile(
-          loss='mae',
-          optimizer='rmsprop',
-          run_eagerly=True)
+    model = ModelWithMetric()
+    model.compile(
+        loss='mae',
+        optimizer='rmsprop',
+        run_eagerly=True)
 
-      x = np.ones((100, 4))
-      y = np.zeros((100, 1))
-      model.evaluate(x, y, batch_size=50)
-      self.assertAllClose(self.evaluate(model.mean_tensor.result()),
-                          np.ones((4, 3)))
-      self.assertAllClose(self.evaluate(model.mean_tensor.total),
-                          np.full((4, 3), 2))
-      self.assertAllClose(self.evaluate(model.mean_tensor.count),
-                          np.full((4, 3), 2))
+    x = np.ones((100, 4))
+    y = np.zeros((100, 1))
+    model.evaluate(x, y, batch_size=50)
+    self.assertAllClose(self.evaluate(model.mean_tensor.result()),
+                        np.ones((4, 3)))
+    self.assertAllClose(self.evaluate(model.mean_tensor.total),
+                        np.full((4, 3), 2))
+    self.assertAllClose(self.evaluate(model.mean_tensor.count),
+                        np.full((4, 3), 2))
 
-      model.evaluate(x, y, batch_size=25)
-      self.assertAllClose(self.evaluate(model.mean_tensor.result()),
-                          np.ones((4, 3)))
-      self.assertAllClose(self.evaluate(model.mean_tensor.total),
-                          np.full((4, 3), 4))
-      self.assertAllClose(self.evaluate(model.mean_tensor.count),
-                          np.full((4, 3), 4))
+    model.evaluate(x, y, batch_size=25)
+    self.assertAllClose(self.evaluate(model.mean_tensor.result()),
+                        np.ones((4, 3)))
+    self.assertAllClose(self.evaluate(model.mean_tensor.total),
+                        np.full((4, 3), 4))
+    self.assertAllClose(self.evaluate(model.mean_tensor.count),
+                        np.full((4, 3), 4))
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -2062,6 +2067,47 @@ class CustomMetricsTest(test.TestCase):
     metric_result = tf_functioned_metric_fn(sum_metric, y_true, y_pred)
     self.assertAllClose(self.evaluate(metric_result), 10, 1e-2)
 
+  def test_metric_not_tracked_as_sublayer_in_layer(self):
+
+    class MyLayer(base_layer.Layer):
+
+      def __init__(self, **kwargs):
+        super(MyLayer, self).__init__(**kwargs)
+        self.mean_obj = metrics.Mean(name='my_mean_obj')
+
+      def call(self, x):
+        self.add_metric(
+            math_ops.reduce_sum(x), aggregation='mean', name='my_mean_tensor')
+        self.add_metric(self.mean_obj(x))
+        return x
+
+    layer = MyLayer()
+    x = np.ones((1, 1))
+    layer(x)
+    self.assertLen(list(layer._flatten_layers(include_self=False)), 0)
+    self.assertLen(layer.metrics, 2)
+
+  def test_metric_not_tracked_as_sublayer_in_model(self):
+
+    class MyModel(training_mod.Model):
+
+      def __init__(self, **kwargs):
+        super(MyModel, self).__init__(**kwargs)
+        self.mean_obj = metrics.Mean(name='my_mean_obj')
+
+      def call(self, x):
+        self.add_metric(
+            math_ops.reduce_sum(x), aggregation='mean', name='my_mean_tensor')
+        self.add_metric(self.mean_obj(x))
+        return x
+
+    model = MyModel()
+    x = np.ones((1, 1))
+    model(x)
+    self.assertLen(list(model._flatten_layers(include_self=False)), 0)
+    self.assertLen(model.layers, 0)
+    self.assertLen(model.metrics, 2)
+
 
 def _get_model(compile_metrics):
   model_layers = [
@@ -2212,6 +2258,29 @@ class ResetStatesTest(keras_parameterized.TestCase):
                         np.ones((25, 4))))
     y = np.concatenate((np.ones((25, 1)), np.zeros((25, 1)), np.ones((25, 1)),
                         np.zeros((25, 1))))
+
+    for _ in range(2):
+      model.evaluate(x, y)
+      self.assertEqual(self.evaluate(auc_obj.true_positives[1]), 25.)
+      self.assertEqual(self.evaluate(auc_obj.false_positives[1]), 25.)
+      self.assertEqual(self.evaluate(auc_obj.false_negatives[1]), 25.)
+      self.assertEqual(self.evaluate(auc_obj.true_negatives[1]), 25.)
+
+  def test_reset_states_auc_from_logits(self):
+    auc_obj = metrics.AUC(num_thresholds=3, from_logits=True)
+
+    model_layers = [layers.Dense(1, kernel_initializer='ones', use_bias=False)]
+    model = testing_utils.get_model_from_layers(model_layers, input_shape=(4,))
+    model.compile(
+        loss='mae',
+        metrics=[auc_obj],
+        optimizer='rmsprop',
+        run_eagerly=testing_utils.should_run_eagerly())
+
+    x = np.concatenate((np.ones((25, 4)), -np.ones((25, 4)), -np.ones(
+        (25, 4)), np.ones((25, 4))))
+    y = np.concatenate((np.ones((25, 1)), np.zeros((25, 1)), np.ones(
+        (25, 1)), np.zeros((25, 1))))
 
     for _ in range(2):
       model.evaluate(x, y)

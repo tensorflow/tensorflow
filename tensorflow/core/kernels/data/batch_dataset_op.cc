@@ -14,13 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/batch_dataset_op.h"
 
+#include <algorithm>
 #include <utility>
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stringprintf.h"
@@ -49,6 +51,12 @@ class BatchDatasetOp::Dataset : public DatasetBase {
           bool parallel_copy, const DatasetBase* input, int op_version)
       : DatasetBase(DatasetContext(ctx)),
         batch_size_(batch_size),
+        // Dataset batch is sometimes used to stack all elements in the
+        // dataset. In such cases, a very large batch size (e.g., INT32_MAX)
+        // is passed with drop_remainder set to false. Avoid OOM in such case
+        // by limiting `reserve()` size by 2**16.
+        reserve_size_(drop_remainder ? batch_size
+                                     : std::min<int64>(batch_size, 1 << 16)),
         drop_remainder_(drop_remainder),
         parallel_copy_(parallel_copy),
         input_(input),
@@ -66,7 +74,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     const auto& input_shapes = input_->output_shapes();
     output_shapes_.reserve(input_shapes.size());
     for (const auto& input_shape : input_shapes) {
-      if (drop_remainder_) {
+      if (drop_remainder_ || input_->Cardinality() == kInfiniteCardinality) {
         output_shapes_.emplace_back(
             PartialTensorShape({batch_size_}).Concatenate(input_shape));
       } else {
@@ -107,6 +115,11 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       return n;
     }
     return n / batch_size_ + (n % batch_size_ == 0 || drop_remainder_ ? 0 : 1);
+  }
+
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
   }
 
   Status CheckExternalState() const override {
@@ -153,7 +166,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
           *end_of_sequence = true;
           return Status::OK();
         }
-        batch_elements.reserve(dataset()->batch_size_);
+        batch_elements.reserve(dataset()->reserve_size_);
         *end_of_sequence = false;
         for (int i = 0; i < dataset()->batch_size_ && !*end_of_sequence; ++i) {
           std::vector<Tensor> batch_element_tuple;
@@ -186,67 +199,9 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       // respective slice locations. This would require a different GetNext()
       // overload that supports zero-copy, and might make sense in an
       // optimization pass.
-      const size_t num_tuple_components = batch_elements[0].size();
-      out_tensors->reserve(num_tuple_components);
-      const int64 num_batch_elements = batch_elements.size();
-      for (size_t component_index = 0; component_index < num_tuple_components;
-           ++component_index) {
-        const Tensor& first_element = batch_elements[0][component_index];
-        TensorShape batch_component_shape({num_batch_elements});
-        // NOTE(mrry): Copy the shape of the first element here, because
-        // `first_element.shape()` will become undefined after the 0th batch
-        // element is moved into the output batch.
-        TensorShape first_element_shape(first_element.shape());
-        batch_component_shape.AppendShape(first_element_shape);
-        out_tensors->emplace_back(ctx->allocator({}), first_element.dtype(),
-                                  batch_component_shape);
-        if (!out_tensors->back().IsInitialized()) {
-          return errors::ResourceExhausted(
-              "Failed to allocate memory for the batch of component ",
-              component_index);
-        }
-        Tensor& batch_component = out_tensors->back();
-        // Build the output tuple component by copying one slice
-        // from each input element in the batch.
-        auto copy_element_fn = [component_index, &batch_elements,
-                                &batch_component](int index) {
-          TF_RETURN_IF_ERROR(batch_util::CopyElementToSlice(
-              std::move(batch_elements[index][component_index]),
-              &batch_component, index));
-          return Status::OK();
-        };
-        BlockingCounter counter(num_batch_elements);
-        Status status;
-        mutex status_mu;
-        for (size_t i = 0; i < num_batch_elements; ++i) {
-          if (batch_elements[i][component_index].shape() !=
-              first_element_shape) {
-            return errors::InvalidArgument(
-                "Cannot batch tensors with different shapes in "
-                "component ",
-                component_index, ". First element had shape ",
-                first_element_shape.DebugString(), " and element ", i,
-                " had shape ",
-                batch_elements[i][component_index].shape().DebugString(), ".");
-          }
-          if (TF_PREDICT_FALSE(dataset()->parallel_copy_)) {
-            (*ctx->runner())(
-                [i, &status, &status_mu, &counter, &copy_element_fn]() {
-                  Status s = copy_element_fn(i);
-                  {
-                    mutex_lock l(status_mu);
-                    status.Update(s);
-                  }
-                  counter.DecrementCount();
-                });
-          } else {
-            status.Update(copy_element_fn(i));
-            counter.DecrementCount();
-          }
-        }
-        counter.Wait();
-        TF_RETURN_IF_ERROR(status);
-      }
+      TF_RETURN_IF_ERROR(CopyBatch(/*parallel_copy=*/dataset()->parallel_copy_,
+                                   ctx, out_tensors, &batch_elements));
+
       *end_of_sequence = false;
       return Status::OK();
     }
@@ -289,6 +244,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
   };
 
   const int64 batch_size_;
+  const int64 reserve_size_;
   const bool drop_remainder_;
   const bool parallel_copy_;
   const DatasetBase* const input_;

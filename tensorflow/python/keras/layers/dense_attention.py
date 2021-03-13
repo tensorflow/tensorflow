@@ -27,7 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.base_layer import Layer
-from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -50,7 +50,7 @@ class BaseDenseAttention(Layer):
     dropout: Float between 0 and 1. Fraction of the units to drop for the
       attention scores.
 
-  Call Arguments:
+  Call Args:
 
     inputs: List of the following tensors:
       * query: Query `Tensor` of shape `[batch_size, Tq, dim]`.
@@ -67,13 +67,18 @@ class BaseDenseAttention(Layer):
         `mask==False` do not contribute to the result.
     training: Python boolean indicating whether the layer should behave in
       training mode (adding dropout) or in inference mode (no dropout).
+    return_attention_scores: bool, it `True`, returns the attention scores
+      (after masking and softmax) as an additional output argument.
 
-  Output shape:
+  Output:
 
     Attention outputs of shape `[batch_size, Tq, dim]`.
+    [Optional] Attention scores after masking and softmax with shape
+      `[batch_size, Tq, Tv]`.
   """
 
-  def __init__(self, causal=False, dropout=0.0, **kwargs):
+  def __init__(self, causal=False, dropout=0.0,
+               **kwargs):
     super(BaseDenseAttention, self).__init__(**kwargs)
     self.causal = causal
     self.dropout = dropout
@@ -115,11 +120,17 @@ class BaseDenseAttention(Layer):
 
     Returns:
       Tensor of shape `[batch_size, Tq, dim]`.
+      Attention scores after masking and softmax with shape
+        `[batch_size, Tq, Tv]`.
     """
     if scores_mask is not None:
       padding_mask = math_ops.logical_not(scores_mask)
       # Bias so padding positions do not contribute to attention distribution.
-      scores -= 1.e9 * math_ops.cast(padding_mask, dtype=K.floatx())
+      # Note 65504. is the max float16 value.
+      if scores.dtype is dtypes.float16:
+        scores -= 65504. * math_ops.cast(padding_mask, dtype=scores.dtype)
+      else:
+        scores -= 1.e9 * math_ops.cast(padding_mask, dtype=scores.dtype)
     if training is None:
       training = K.learning_phase()
     weights = nn.softmax(scores)
@@ -127,14 +138,16 @@ class BaseDenseAttention(Layer):
     def dropped_weights():
       return nn.dropout(weights, rate=self.dropout)
 
-    weights = tf_utils.smart_cond(
-        training,
-        dropped_weights,
-        lambda: array_ops.identity(weights))
-    return math_ops.matmul(weights, value)
+    weights = control_flow_util.smart_cond(training, dropped_weights,
+                                           lambda: array_ops.identity(weights))
+    return math_ops.matmul(weights, value), weights
 
   # TODO(b/125916026): Consider exposing a __call__ method with named args.
-  def call(self, inputs, mask=None, training=None):
+  def call(self,
+           inputs,
+           mask=None,
+           training=None,
+           return_attention_scores=False):
     self._validate_call_args(inputs=inputs, mask=mask)
     q = inputs[0]
     v = inputs[1]
@@ -158,12 +171,14 @@ class BaseDenseAttention(Layer):
     else:
       causal_mask = None
     scores_mask = _merge_masks(v_mask, causal_mask)
-    result = self._apply_scores(
+    result, attention_scores = self._apply_scores(
         scores=scores, value=v, scores_mask=scores_mask, training=training)
     if q_mask is not None:
       # Mask of shape [batch_size, Tq, 1].
       q_mask = array_ops.expand_dims(q_mask, axis=-1)
       result *= math_ops.cast(q_mask, dtype=result.dtype)
+    if return_attention_scores:
+      return result, attention_scores
     return result
 
   def compute_mask(self, inputs, mask=None):
@@ -172,7 +187,7 @@ class BaseDenseAttention(Layer):
       q_mask = mask[0]
       if q_mask is None:
         return None
-      return ops.convert_to_tensor_v2(q_mask)
+      return ops.convert_to_tensor_v2_with_dispatch(q_mask)
     return None
 
   def _validate_call_args(self, inputs, mask):
@@ -192,7 +207,7 @@ class BaseDenseAttention(Layer):
         raise ValueError(
             '{} layer mask must be a list, '
             'namely [query_mask, value_mask].'.format(class_name))
-      if len(mask) != 2:
+      if len(mask) < 2 or len(mask) > len(inputs):
         raise ValueError(
             '{} layer mask must be a list of length 2, namely [query_mask, '
             'value_mask]. Given length: {}'.format(class_name, len(mask)))
@@ -231,7 +246,7 @@ class Attention(BaseDenseAttention):
     dropout: Float between 0 and 1. Fraction of the units to drop for the
       attention scores.
 
-  Call Arguments:
+  Call Args:
 
     inputs: List of the following tensors:
       * query: Query `Tensor` of shape `[batch_size, Tq, dim]`.
@@ -246,12 +261,16 @@ class Attention(BaseDenseAttention):
       * value_mask: A boolean mask `Tensor` of shape `[batch_size, Tv]`.
         If given, will apply the mask such that values at positions where
         `mask==False` do not contribute to the result.
+    return_attention_scores: bool, it `True`, returns the attention scores
+      (after masking and softmax) as an additional output argument.
     training: Python boolean indicating whether the layer should behave in
       training mode (adding dropout) or in inference mode (no dropout).
 
-  Output shape:
+  Output:
 
     Attention outputs of shape `[batch_size, Tq, dim]`.
+    [Optional] Attention scores after masking and softmax with shape
+      `[batch_size, Tq, Tv]`.
 
   The meaning of `query`, `value` and `key` depend on the application. In the
   case of text similarity, for example, `query` is the sequence embeddings of
@@ -266,7 +285,7 @@ class Attention(BaseDenseAttention):
   value_input = tf.keras.Input(shape=(None,), dtype='int32')
 
   # Embedding lookup.
-  token_embedding = tf.keras.layers.Embedding(max_tokens, dimension)
+  token_embedding = tf.keras.layers.Embedding(input_dim=1000, output_dim=64)
   # Query embeddings of shape [batch_size, Tq, dimension].
   query_embeddings = token_embedding(query_input)
   # Value embeddings of shape [batch_size, Tv, dimension].
@@ -355,7 +374,7 @@ class AdditiveAttention(BaseDenseAttention):
   3. Use scores to calculate a distribution with shape
      `[batch_size, Tq, Tv]`: `distribution = tf.nn.softmax(scores)`.
   4. Use `distribution` to create a linear combination of `value` with
-     shape `batch_size, Tq, dim]`:
+     shape `[batch_size, Tq, dim]`:
      `return tf.matmul(distribution, value)`.
 
   Args:
@@ -366,7 +385,7 @@ class AdditiveAttention(BaseDenseAttention):
     dropout: Float between 0 and 1. Fraction of the units to drop for the
       attention scores.
 
-  Call Arguments:
+  Call Args:
 
     inputs: List of the following tensors:
       * query: Query `Tensor` of shape `[batch_size, Tq, dim]`.
@@ -383,10 +402,14 @@ class AdditiveAttention(BaseDenseAttention):
         `mask==False` do not contribute to the result.
     training: Python boolean indicating whether the layer should behave in
       training mode (adding dropout) or in inference mode (no dropout).
+    return_attention_scores: bool, it `True`, returns the attention scores
+      (after masking and softmax) as an additional output argument.
 
-  Output shape:
+  Output:
 
     Attention outputs of shape `[batch_size, Tq, dim]`.
+    [Optional] Attention scores after masking and softmax with shape
+      `[batch_size, Tq, Tv]`.
 
   The meaning of `query`, `value` and `key` depend on the application. In the
   case of text similarity, for example, `query` is the sequence embeddings of

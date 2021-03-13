@@ -32,9 +32,9 @@ namespace gpu {
 // Thunk that zeroes out a given chunk of memory.
 class MemzeroThunk : public Thunk {
  public:
-  explicit MemzeroThunk(const BufferAllocation::Slice& dest,
-                        const HloInstruction* hlo)
-      : Thunk(Kind::kMemzero, hlo), dest_(dest) {}
+  explicit MemzeroThunk(ThunkInfo thunk_info,
+                        const BufferAllocation::Slice& dest)
+      : Thunk(Kind::kMemzero, thunk_info), dest_(dest) {}
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
@@ -46,15 +46,16 @@ class MemzeroThunk : public Thunk {
 // destination chunk must have size divisible by 32 bits.
 class Memset32BitValueThunk : public Thunk {
  public:
-  explicit Memset32BitValueThunk(uint32 value,
-                                 const BufferAllocation::Slice& dest,
-                                 const HloInstruction* hlo)
-      : Thunk(Kind::kMemset32BitValue, hlo), value_(value), dest_(dest) {}
+  explicit Memset32BitValueThunk(ThunkInfo thunk_info, uint32 value,
+                                 const BufferAllocation::Slice& dest)
+      : Thunk(Kind::kMemset32BitValue, thunk_info),
+        value_(value),
+        dest_(dest) {}
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  uint32 value_;
+  const uint32 value_;
   const BufferAllocation::Slice dest_;
 };
 

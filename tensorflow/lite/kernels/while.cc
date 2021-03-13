@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <stddef.h>
+
 #include <cstring>
+#include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
@@ -78,6 +81,9 @@ TfLiteStatus CopyTensorsData(TfLiteContext* context, Subgraph* src_subgraph,
     const TfLiteTensor* src_tensor =
         src_subgraph->tensor(src_tensor_indices[i]);
     TfLiteTensor* dst_tensor = dst_subgraph->tensor(dst_tensor_indices[i]);
+    if (IsDynamicTensor(dst_tensor)) {
+      TfLiteTensorRealloc(src_tensor->bytes, dst_tensor);
+    }
     TF_LITE_ENSURE_EQ(context, src_tensor->bytes, dst_tensor->bytes);
     memcpy(dst_tensor->data.raw, src_tensor->data.raw, src_tensor->bytes);
   }
@@ -87,7 +93,7 @@ TfLiteStatus CopyTensorsData(TfLiteContext* context, Subgraph* src_subgraph,
 TfLiteStatus CheckCondOutput(TfLiteContext* context,
                              const TfLiteTensor* cond_output) {
   // The condition output must be a single boolean value.
-  TF_LITE_ENSURE_EQ(context, cond_output->type, kTfLiteBool);
+  TF_LITE_ENSURE_TYPES_EQ(context, cond_output->type, kTfLiteBool);
   if (cond_output->dims->size == 0) {
     // It's okay if it's a 0D scalar.
     return kTfLiteOk;
@@ -152,7 +158,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, cond_subgraph->AllocateTensors());
   TfLiteTensor* cond_output =
       cond_subgraph->tensor(cond_subgraph->outputs()[0]);
-  // TODO(ycling): Handle the case the cond subgraph has dynamic tensor outputs.
   // This should rarely happens. In most cases the output is static with shape
   // [1]. However theoretically intermediate tensors in the cond subgraph
   // can be dynamic.
@@ -176,9 +181,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
           body_subgraph->tensor(body_subgraph->inputs()[i]);
       TfLiteTensor* body_output =
           body_subgraph->tensor(body_subgraph->outputs()[i]);
-      TF_LITE_ENSURE_EQ(context, body_input->type, body_output->type);
+      TF_LITE_ENSURE_TYPES_EQ(context, body_input->type, body_output->type);
 
-      // TODO(ycling): Support dynamic sized body subgraph.
       TF_LITE_ENSURE(context, !IsDynamicTensor(body_output));
       if (!TfLiteIntArrayEqual(body_input->dims, body_output->dims)) {
         // If the output shape of the body subgraph is static w.r.t. a fixed
@@ -192,7 +196,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
   }
   for (int i = 0; i < num_inputs; ++i) {
-    TfLiteTensor* output = GetOutput(context, node, i);
+    TfLiteTensor* output;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, i, &output));
     if (op_data->body_has_dynamic_output_tensors) {
       SetTensorToDynamic(output);
     } else {

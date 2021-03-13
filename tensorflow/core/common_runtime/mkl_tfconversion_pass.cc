@@ -430,6 +430,11 @@ Status MklToTfConversionPass::Run(const GraphOptimizationPassOptions& options) {
     VLOG(2) << "TF-MKL: Disabling MKL";
     return Status::OK();
   }
+  if (NativeFormatEnabled()) {
+    VLOG(2)
+        << "Running in native format mode, MklToTfConversionPass won't run.";
+    return Status::OK();
+  }
 
   auto process_graph = [&](std::unique_ptr<Graph>* g) {
     // Get the ownership of graph

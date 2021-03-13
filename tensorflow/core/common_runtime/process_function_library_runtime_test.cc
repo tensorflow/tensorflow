@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/type_index.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -67,6 +68,11 @@ class TestClusterFLR : public DistributedFunctionLibraryRuntime {
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::LocalHandle handle,
            gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+           FunctionLibraryRuntime::DoneCallback done) override {}
+
+  void Run(const FunctionLibraryRuntime::Options& opts,
+           FunctionLibraryRuntime::LocalHandle handle,
+           gtl::ArraySlice<FunctionArg> args, std::vector<FunctionRet>* rets,
            FunctionLibraryRuntime::DoneCallback done) override {}
 
   void CleanUp(uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,
@@ -133,8 +139,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     proc_flr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), /*config=*/nullptr,
         TF_GRAPH_DEF_VERSION, lib_def_.get(), opts,
-        /*thread_pool=*/nullptr, cluster_flr_.get(),
-        /*custom_kernel_creator=*/nullptr, session_metadata,
+        /*thread_pool=*/nullptr, cluster_flr_.get(), session_metadata,
         Rendezvous::Factory{
             [this](const int64 step_id, const DeviceMgr* device_mgr,
                    Rendezvous** r) {
@@ -203,12 +208,12 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   }
 
-  template <typename T>
+  template <typename T, typename K>
   Status RunWithRuntime(
       const string& name, FunctionLibraryRuntime::Options opts,
       test::function::Attrs attrs,
       const FunctionLibraryRuntime::InstantiateOptions& instantiate_opts,
-      const T& args, std::vector<Tensor*> rets,
+      const T& args, std::vector<K*> rets,
       ProcessFunctionLibraryRuntime* pflr) {
     FunctionLibraryRuntime::Handle handle;
     Status status = pflr->Instantiate(name, attrs, instantiate_opts, &handle);
@@ -228,7 +233,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
 
     Notification done;
     opts.runner = &runner;
-    std::vector<Tensor> out;
+    std::vector<K> out;
     pflr->Run(opts, handle, args, &out, [&status, &done](const Status& s) {
       status = s;
       done.Notify();
@@ -267,7 +272,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
              const FunctionLibraryRuntime::InstantiateOptions& instantiate_opts,
              const std::vector<Tensor>& args, std::vector<Tensor*> rets,
              ProcessFunctionLibraryRuntime* pflr = nullptr) {
-    return RunWithRuntime<std::vector<Tensor>>(
+    return RunWithRuntime<std::vector<Tensor>, Tensor>(
         name, opts, attrs, instantiate_opts, args, rets, proc_flr_.get());
   }
 
@@ -275,9 +280,9 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
       const string& name, FunctionLibraryRuntime::Options opts,
       test::function::Attrs attrs,
       const FunctionLibraryRuntime::InstantiateOptions& instantiate_opts,
-      const FunctionArgsInterface& args, std::vector<Tensor*> rets,
+      const FunctionArgsInterface& args, std::vector<FunctionRet*> rets,
       ProcessFunctionLibraryRuntime* pflr = nullptr) {
-    return RunWithRuntime<FunctionArgsInterface>(
+    return RunWithRuntime<FunctionArgsInterface, FunctionRet>(
         name, opts, attrs, instantiate_opts, args, rets, proc_flr_.get());
   }
 
@@ -763,8 +768,8 @@ Tensor GetResourceHandle(const string& var_name, const string& container,
   handle.set_device(device_name);
   handle.set_container(container);
   handle.set_name(var_name);
-  handle.set_hash_code(MakeTypeIndex<Var>().hash_code());
-  handle.set_maybe_type_name(MakeTypeIndex<Var>().name());
+  handle.set_hash_code(TypeIndex::Make<Var>().hash_code());
+  handle.set_maybe_type_name(TypeIndex::Make<Var>().name());
   Tensor tensor(DT_RESOURCE, TensorShape({}));
   tensor.scalar<ResourceHandle>()() = handle;
   return tensor;
@@ -867,14 +872,31 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_CompositeDevice) {
   inst_opts.input_resource_dtypes_and_shapes[0] = {
       initial_resource_value0.dtype(), initial_resource_value0.shape()};
 
-  gtl::InlinedVector<TensorValue, 4> handles;
-  handles.push_back(TensorValue(&resource_handle0));
-  handles.push_back(TensorValue(&resource_handle1));
-  TestFunctionPackedArgs args(0, std::move(handles));
-  Tensor ret;
-  TF_CHECK_OK(RunWithPackedArgs("AddVarAcrossDevices", opts, {{"T", DT_FLOAT}},
-                                inst_opts, args, {&ret}));
-  test::ExpectTensorEqual<float>(ret, test::AsTensor<float>({40, 60}));
+  // Packed TensorHandle
+  {
+    gtl::InlinedVector<TensorValue, 4> handles;
+    handles.push_back(TensorValue(&resource_handle0));
+    handles.push_back(TensorValue(&resource_handle1));
+    TestFunctionPackedArgs args(0, std::move(handles));
+    FunctionRet ret;
+    TF_CHECK_OK(RunWithPackedArgs("AddVarAcrossDevices", opts,
+                                  {{"T", DT_FLOAT}}, inst_opts, args, {&ret}));
+    EXPECT_EQ(ret.index(), 0);
+    test::ExpectTensorEqual<float>(absl::get<Tensor>(ret),
+                                   test::AsTensor<float>({40, 60}));
+  }
+
+  // Packed Tensor
+  {
+    Tensor arg(DT_RESOURCE, TensorShape({2}));
+    arg.flat<ResourceHandle>()(0) = resource_handle0.scalar<ResourceHandle>()();
+    arg.flat<ResourceHandle>()(1) = resource_handle1.scalar<ResourceHandle>()();
+
+    Tensor ret;
+    TF_CHECK_OK(Run("AddVarAcrossDevices", opts, {{"T", DT_FLOAT}}, inst_opts,
+                    {arg}, {&ret}));
+    test::ExpectTensorEqual<float>(ret, test::AsTensor<float>({40, 60}));
+  }
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ResourceOutput_GPU) {
@@ -1167,6 +1189,28 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SessionMetadataPresent) {
   EXPECT_EQ(session_metadata.version(), read_metadata.version());
 }
 
+TEST_F(ProcessFunctionLibraryRuntimeTest, CompositeDevicesAfterCloning) {
+  Init({AddVarAcrossDevices()});
+
+  Status s;
+  std::unique_ptr<CompositeDevice> composite_device =
+      CompositeDevice::MakeDevice({device0_->name(), device1_->name()},
+                                  /*unique_device_id=*/0,
+                                  device_mgr_->HostCPU()->parsed_name(), &s);
+  TF_ASSERT_OK(s);
+  AddCompositeDevice(composite_device.get());
+
+  auto* flr = proc_flr_->GetFLR("/job:a/replica:0/task:0/cpu:0");
+  ASSERT_NE(nullptr, flr);
+  std::unique_ptr<FunctionLibraryDefinition> cloned_lib_def;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> cloned_proc_flr;
+  FunctionLibraryRuntime* cloned_flr;
+  TF_ASSERT_OK(flr->Clone(&cloned_lib_def, &cloned_proc_flr, &cloned_flr));
+  EXPECT_EQ(
+      cloned_proc_flr->device_set()->FindDeviceByName(composite_device->name()),
+      composite_device.get());
+}
+
 TEST_F(ProcessFunctionLibraryRuntimeTest, SessionMetadataPresentAfterCloning) {
   const SessionMetadata session_metadata = GenerateSessionMetadata();
   Init({SessionMetadataReaderOpFn()}, &session_metadata);
@@ -1183,9 +1227,10 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SessionMetadataPresentAfterCloning) {
   instantiate_opts.target = "/job:a/replica:0/task:0/cpu:0";
   const auto x = test::AsTensor<int64>({17});
   Tensor y;
-  TF_CHECK_OK(RunWithRuntime<std::vector<Tensor>>(
+  Status s = RunWithRuntime<std::vector<Tensor>, Tensor>(
       "SessionMetadataReaderFn", opts, {}, instantiate_opts, {x}, {&y},
-      cloned_proc_flr.get()));
+      cloned_proc_flr.get());
+  TF_CHECK_OK(s);
   SessionMetadata read_metadata;
   ASSERT_TRUE(protobuf::TextFormat::ParseFromString(y.scalar<tstring>()(),
                                                     &read_metadata));

@@ -74,6 +74,34 @@ limitations under the License.
 #define TF_HAS_BUILTIN(x) 0
 #endif
 
+// C++11-style attributes (N2761)
+#if defined(__has_cpp_attribute)
+// Safely checks if an attribute is supported. Equivalent to
+// ABSL_HAVE_CPP_ATTRIBUTE.
+#define TF_HAS_CPP_ATTRIBUTE(n) __has_cpp_attribute(n)
+#else
+#define TF_HAS_CPP_ATTRIBUTE(n) 0
+#endif
+
+// [[clang::annotate("x")]] allows attaching custom strings (e.g. "x") to
+// declarations (variables, functions, fields, etc.) for use by tools. They are
+// represented in the Clang AST (as AnnotateAttr nodes) and in LLVM IR, but not
+// in final output.
+#if TF_HAS_CPP_ATTRIBUTE(clang::annotate)
+#define TF_ATTRIBUTE_ANNOTATE(str) [[clang::annotate(str)]]
+#else
+#define TF_ATTRIBUTE_ANNOTATE(str)
+#endif
+
+// A variable declaration annotated with the `TF_CONST_INIT` attribute will
+// not compile (on supported platforms) unless the variable has a constant
+// initializer.
+#if TF_HAS_CPP_ATTRIBUTE(clang::require_constant_initialization)
+#define TF_CONST_INIT [[clang::require_constant_initialization]]
+#else
+#define TF_CONST_INIT
+#endif
+
 // Compilers can be told that a certain branch is not likely to be taken
 // (for instance, a CHECK failure), and use that information in static
 // analysis. Giving it this information can help it optimize for the
@@ -120,5 +148,14 @@ limitations under the License.
   do {                          \
   } while (0)
 #endif
+
+namespace tensorflow {
+namespace internal {
+template <typename T>
+void remove_unused_variable_compiler_warning(const T&){};
+}
+}  // namespace tensorflow
+#define TF_UNUSED_VARIABLE(x) \
+  tensorflow::internal::remove_unused_variable_compiler_warning(x)
 
 #endif  // TENSORFLOW_CORE_PLATFORM_MACROS_H_

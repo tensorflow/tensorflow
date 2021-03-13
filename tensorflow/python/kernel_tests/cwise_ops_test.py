@@ -217,9 +217,8 @@ class ComparisonOpTest(test.TestCase):
     for t in dtypes:
       for f in funcs:
         with self.subTest(t=t, f=f):
-          with self.assertRaisesRegexp(
-              (ValueError, errors.InvalidArgumentError),
-              "Incompatible shapes|Dimensions must be equal"):
+          with self.assertRaisesIncompatibleShapesError(
+              (ValueError, errors.InvalidArgumentError)):
             f(x.astype(t), y.astype(t))
 
 
@@ -767,6 +766,14 @@ class MinMaxOpTest(test.TestCase):
         self._compare(x.astype(t), y.astype(t), use_gpu=False)
         self._compare(x.astype(t), y.astype(t), use_gpu=True)
 
+  def testNaNPropagation(self):
+    x = np.array([1., np.nan, 1., np.nan], dtype=np.float64)
+    y = np.array([1., 1., np.nan, np.nan], dtype=np.float64)
+    for t in [np.float16, np.float32, np.float64]:
+      with self.subTest(t=t):
+        self._compare(x.astype(t), y.astype(t), use_gpu=False)
+        self._compare(x.astype(t), y.astype(t), use_gpu=True)
+
   def testDifferentShapes(self):
     x = np.random.rand(1, 3, 2) * 100.
     y = np.random.rand(2) * 100.  # should broadcast
@@ -840,11 +847,16 @@ class MathOpsOverloadTest(test.TestCase):
       return self.evaluate(z)
 
   def _compareBinary(self, x, y, dtype, np_func, tf_func):
-    np_ans = np_func(x, y).astype(dtype.as_numpy_dtype)
+    # astype and assertAllClose do not properly handle bfloat16 values
+    np_ans = np_func(x, y).astype(np.float32 if dtype == dtypes_lib.bfloat16
+                                  else dtype.as_numpy_dtype)
+    rtol = 1e-2 if dtype == dtypes_lib.bfloat16 else 1e-6
     self.assertAllClose(np_ans,
-                        self._computeTensorAndLiteral(x, y, dtype, tf_func))
+                        self._computeTensorAndLiteral(x, y, dtype, tf_func),
+                        rtol=rtol)
     self.assertAllClose(np_ans,
-                        self._computeLiteralAndTensor(x, y, dtype, tf_func))
+                        self._computeLiteralAndTensor(x, y, dtype, tf_func),
+                        rtol=rtol)
 
   def _compareUnary(self, x, dtype, np_func, tf_func):
     np_ans = np_func(x).astype(dtype.as_numpy_dtype)
@@ -857,6 +869,12 @@ class MathOpsOverloadTest(test.TestCase):
         dtypes_lib.float16,
         dtypes_lib.float32,
         dtypes_lib.float64,
+        dtypes_lib.bfloat16,
+        dtypes_lib.uint16,
+        dtypes_lib.uint32,
+        dtypes_lib.uint64,
+        dtypes_lib.int8,
+        dtypes_lib.int16,
         dtypes_lib.int32,
         dtypes_lib.int64,
         dtypes_lib.complex64,
@@ -876,6 +894,10 @@ class MathOpsOverloadTest(test.TestCase):
           if dtype in (dtypes_lib.complex64,
                        dtypes_lib.complex128) and tf_func == _FLOORDIV:
             continue  # floordiv makes no sense for complex
+          if dtype in (dtypes_lib.uint16, dtypes_lib.uint32,
+                       dtypes_lib.uint64) and tf_func in (_POW, _FLOORDIV,
+                                                          _TRUEDIV):
+            continue  # power and div not supported for unsigned types
           self._compareBinary(10, 5, dtype, np_func, tf_func)
     # Mod only works for int32 and int64.
     for dtype in [dtypes_lib.int32, dtypes_lib.int64]:
@@ -887,6 +909,12 @@ class MathOpsOverloadTest(test.TestCase):
         dtypes_lib.float16,
         dtypes_lib.float32,
         dtypes_lib.float64,
+        dtypes_lib.uint8,
+        dtypes_lib.uint16,
+        dtypes_lib.uint32,
+        dtypes_lib.uint64,
+        dtypes_lib.int8,
+        dtypes_lib.int16,
         dtypes_lib.int32,
         dtypes_lib.int64,
     ]
@@ -920,12 +948,16 @@ class MathOpsOverloadTest(test.TestCase):
 class IsFiniteInfNanTest(test.TestCase):
 
   def _compare(self, x, use_gpu):
-    np_finite, np_inf, np_nan = np.isfinite(x), np.isinf(x), np.isnan(x)
     with test_util.device(use_gpu=use_gpu):
       inx = ops.convert_to_tensor(x)
       ofinite, oinf, onan = math_ops.is_finite(inx), math_ops.is_inf(
           inx), math_ops.is_nan(inx)
       tf_finite, tf_inf, tf_nan = self.evaluate([ofinite, oinf, onan])
+    if x.dtype == dtypes_lib.bfloat16.as_numpy_dtype:
+      # Numpy will implicitly convert bfloat16 value to float16, so we cast to
+      # float32 to avoid this.
+      x = x.astype(np.float32)
+    np_finite, np_inf, np_nan = np.isfinite(x), np.isinf(x), np.isnan(x)
     self.assertAllEqual(np_inf, tf_inf)
     self.assertAllEqual(np_nan, tf_nan)
     self.assertAllEqual(np_finite, tf_finite)
@@ -934,11 +966,18 @@ class IsFiniteInfNanTest(test.TestCase):
     self.assertShapeEqual(np_finite, ofinite)
 
   def _testDtype(self, dtype):
-    fi = np.finfo(dtype)
-    data = np.array([
-        0, -1, 1, fi.resolution, -fi.resolution, fi.min, fi.max, -np.inf,
-        np.inf, np.nan
-    ]).astype(dtype)
+    if dtype != dtypes_lib.bfloat16.as_numpy_dtype:
+      fi = np.finfo(dtype)
+      data = np.array([
+          0, -1, 1, fi.resolution, -fi.resolution, fi.min, fi.max, -np.inf,
+          np.inf, np.nan
+      ]).astype(dtype)
+    else:
+      # np.finfo does not support bfloat16
+      data = np.array([
+          0, -1, 1, 0.01, -0.01, -3.3895e+38, 3.3895e+38, -np.inf, np.inf,
+          np.nan
+      ]).astype(dtype)
     self._compare(data, use_gpu=False)
     self._compare(data, use_gpu=True)
 
@@ -950,6 +989,9 @@ class IsFiniteInfNanTest(test.TestCase):
 
   def testDouble(self):
     self._testDtype(np.float64)
+
+  def testBfloat16(self):
+    self._testDtype(dtypes_lib.bfloat16.as_numpy_dtype)
 
   def testSqrt(self):
     for dtype in [np.float16, np.float32, np.float64]:
@@ -998,8 +1040,8 @@ class RoundingTest(test.TestCase):
   def _testDtype(self, dtype):
     data = (np.arange(-3, 3) / 4.).reshape(1, 3, 2).astype(dtype)
     self._compare(data)
-    # TODO: rint op is not supported for float16
-    if dtype is np.float16:
+    # TODO(reedwm): rint op is not supported for float16 and bfloat16
+    if dtype in (np.float16, dtypes_lib.bfloat16.as_numpy_dtype):
       return
     self._compare_values(data)
     x = [0.5, 0.5000001]
@@ -1012,8 +1054,8 @@ class RoundingTest(test.TestCase):
     self._compare_values(x, y=y)
 
   def testTypes(self):
-    self.skipTest("b/131162241")
-    for dtype in [np.float16, np.float32, np.float64]:
+    for dtype in [np.float16, np.float32, np.float64,
+                  dtypes_lib.bfloat16.as_numpy_dtype]:
       with self.subTest(dtype=dtype):
         self._testDtype(dtype)
 
@@ -1158,8 +1200,8 @@ class ComplexMakeRealImagTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testConjString(self):
     x = array_ops.placeholder(dtypes_lib.string)
-    with self.assertRaisesRegexp(TypeError,
-                                 r"Expected numeric or variant tensor"):
+    with self.assertRaisesRegex(TypeError,
+                                r"Expected numeric or variant tensor"):
       math_ops.conj(x)
 
   def _compareGradient(self, x):
@@ -1281,7 +1323,7 @@ class PolyvalTest(test.TestCase):
   def test_coeffs_raise(self):
     x = np.random.rand(2, 2).astype(np.float32)
     coeffs = {}
-    with self.assertRaisesRegexp(ValueError, "Argument coeffs must be list"):
+    with self.assertRaisesRegex(ValueError, "Argument coeffs must be list"):
       math_ops.polyval(coeffs, x)
 
 

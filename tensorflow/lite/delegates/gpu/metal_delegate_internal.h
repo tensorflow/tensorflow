@@ -24,19 +24,18 @@ struct TfLiteDelegate;
 
 // Binds Metal buffer to an input or an output tensor in the initialized
 // delegate. Bound buffer should have sufficient storage to accommodate all
-// elements of a tensor. Returns non-zero on success, or zero otherwise.
+// elements of a tensor. For quantized model, the buffer is bound to internal
+// dequantized float32 tensor.
+// Returns non-zero on success, or zero otherwise.
 //
-// *** Must be called *before* `Interpreter::ModifyGraphWithDelegate`. ***
+// *** Must be called *after* `Interpreter::ModifyGraphWithDelegate`. ***
 bool TFLGpuDelegateBindMetalBufferToTensor(TfLiteDelegate* delegate,
                                            int tensor_index,
                                            id<MTLBuffer> metal_buffer);
 
-// Binds user-defined MTLComputeCommandEncoder. The delegate puts all GPU tasks
-// into this encoder instead of the internal encoder.
-// The callback is a user-defined function to take control over encoder and
-// command buffer. Can be nullptr.
-bool TFLGpuDelegateSetCommandEncoder(
-    TfLiteDelegate* delegate, id<MTLComputeCommandEncoder> encoder,
-    std::function<id<MTLComputeCommandEncoder>(bool is_last)> control_encoder);
+// Binds user-defined MTLCommandBuffer. The delegate puts all GPU tasks
+// into this buffer instead of the internal command buffer.
+bool TFLGpuDelegateSetCommandBuffer(TfLiteDelegate* delegate,
+                                    id<MTLCommandBuffer> command_buffer);
 
 #endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_DELEGATE_INTERNAL_H_

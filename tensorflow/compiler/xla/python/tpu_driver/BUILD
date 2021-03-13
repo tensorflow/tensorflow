@@ -1,24 +1,24 @@
-load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library_cc")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load(
     "//tensorflow/compiler/xla/python/tpu_driver:platform/external/tools.bzl",
     "external_deps",
     "go_grpc_library",
-    "go_proto_library",
 )
 
 licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//visibility:public"])
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "tpu_driver_proto",
     srcs = ["tpu_driver.proto"],
     cc_api_version = 2,
     protodeps = [],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "tpu_service_proto",
     srcs = ["tpu_service.proto"],
     has_services = 1,
@@ -50,7 +50,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/compiler/xla/python/tpu_driver:tpu_driver_proto_cc",
+        ":tpu_driver_proto_cc",
     ] + external_deps(),
 )
 
@@ -67,8 +67,8 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/compiler/xla/python/tpu_driver:tpu_service_proto_cc",
-        "//tensorflow/compiler/xla/python/tpu_driver:tpu_driver_proto_cc",
+        ":tpu_service_proto_cc",
+        ":tpu_driver_proto_cc",
         tf_grpc_cc_dependency(),
     ] + external_deps(),
     alwayslink = 1,
@@ -77,6 +77,7 @@ cc_library(
 cc_library(
     name = "direct_tpu_driver",
     srcs = ["direct_tpu_driver.cc"],
+    compatible_with = [],
     deps = [
         ":tpu_driver",
         "@com_google_absl//absl/strings:str_format",
@@ -108,17 +109,29 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/python/tpu_driver:tpu_driver_proto_cc",
-        "//tensorflow/compiler/xla/python/tpu_driver:tpu_service_proto_cc",
+        ":tpu_driver_proto_cc",
+        ":tpu_service_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
     ] + external_deps(),
     alwayslink = 1,
 )
 
-go_proto_library(
-    name = "tpu_service_go_proto",
-    compatible_with = ["//buildenv/target:gce"],
-    deps = [":tpu_service_proto"],
+cc_library(
+    name = "pod_tpu_driver",
+    srcs = ["pod_tpu_driver.cc"],
+    deps = [
+        ":grpc_tpu_driver",
+        ":tpu_driver",
+        ":tpu_driver_proto_cc",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "//tensorflow/compiler/xla/pjrt:semaphore",
+        "//tensorflow/compiler/xla/pjrt:worker_thread",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        tf_grpc_cc_dependency(),
+    ] + external_deps(),
+    alwayslink = 1,
 )
 
 go_grpc_library(

@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 
+#include "absl/base/call_once.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/scoped_allocator.h"
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
@@ -50,26 +50,22 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
                                name, DEVICE_CPU, memory_limit, locality)),
       allocator_(allocator),
       scoped_allocator_mgr_(new ScopedAllocatorMgr(name)) {
-#if !defined(ENABLE_MKLDNN_THREADPOOL) && defined(INTEL_MKL)
+#if defined(ENABLE_ONEDNN_OPENMP) && defined(INTEL_MKL)
   // Early return when MKL is disabled
   if (DisableMKL()) return;
 #ifdef _OPENMP
   const char* user_omp_threads = getenv("OMP_NUM_THREADS");
+  static absl::once_flag omp_setting_flag;
   if (user_omp_threads == nullptr) {
     // OMP_NUM_THREADS controls MKL's intra-op parallelization
     // Default to available physical cores
     const int mkl_intra_op = port::NumSchedulableCPUs();
     const int ht = port::NumHyperthreadsPerCore();
-    omp_set_num_threads((mkl_intra_op + ht - 1) / ht);
-  } else {
-    uint64 user_val = 0;
-    if (strings::safe_strtou64(user_omp_threads, &user_val)) {
-      // Superflous but triggers OpenMP loading
-      omp_set_num_threads(user_val);
-    }
+    absl::call_once(omp_setting_flag, omp_set_num_threads,
+                    (mkl_intra_op + ht - 1) / ht);
   }
 #endif  // _OPENMP
-#endif  // !defined(ENABLE_MKLDNN_THREADPOOL) && defined(INTEL_MKL)
+#endif  // defined(ENABLE_ONEDNN_OPENMP) && defined(INTEL_MKL)
 }
 
 ThreadPoolDevice::~ThreadPoolDevice() {}

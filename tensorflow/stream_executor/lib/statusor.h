@@ -195,6 +195,27 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
   const T&& ValueOrDie() const &&;
   T&& ValueOrDie() &&;
 
+  // Returns a reference to the current value.
+  //
+  // REQUIRES: this->ok() == true, otherwise the behavior is undefined.
+  //
+  // Use this->ok() or `operator bool()` to verify that there is a current
+  // value. Alternatively, see ValueOrDie() for a similar API that guarantees
+  // CHECK-failing if there is no current value.
+  const T& operator*() const&;
+  T& operator*() &;
+  const T&& operator*() const&&;
+  T&& operator*() &&;
+
+  // Returns a pointer to the current value.
+  //
+  // REQUIRES: this->ok() == true, otherwise the behavior is undefined.
+  //
+  // Use this->ok() or `operator bool()` to verify that there is a current
+  // value.
+  const T* operator->() const;
+  T* operator->();
+
   T ConsumeValueOrDie() { return std::move(ValueOrDie()); }
 
   // Ignores any errors. This method does nothing except potentially suppress
@@ -299,6 +320,42 @@ const T&& StatusOr<T>::ValueOrDie() const && {
 
 template <typename T>
 T&& StatusOr<T>::ValueOrDie() && {
+  this->EnsureOk();
+  return std::move(this->data_);
+}
+
+template <typename T>
+const T* StatusOr<T>::operator->() const {
+  this->EnsureOk();
+  return &this->data_;
+}
+
+template <typename T>
+T* StatusOr<T>::operator->() {
+  this->EnsureOk();
+  return &this->data_;
+}
+
+template <typename T>
+const T& StatusOr<T>::operator*() const& {
+  this->EnsureOk();
+  return this->data_;
+}
+
+template <typename T>
+T& StatusOr<T>::operator*() & {
+  this->EnsureOk();
+  return this->data_;
+}
+
+template <typename T>
+const T&& StatusOr<T>::operator*() const&& {
+  this->EnsureOk();
+  return std::move(this->data_);
+}
+
+template <typename T>
+T&& StatusOr<T>::operator*() && {
   this->EnsureOk();
   return std::move(this->data_);
 }

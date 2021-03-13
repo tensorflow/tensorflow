@@ -19,8 +19,9 @@ from __future__ import print_function
 
 import numpy as np
 from tensorflow.python import keras
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras.distribute import keras_correctness_test_base
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
 from tensorflow.python.platform import test
@@ -31,7 +32,6 @@ def strategies_for_stateful_embedding_model():
 
   return [
       strategy_combinations.tpu_strategy_one_core,
-      strategy_combinations.tpu_strategy_one_step_one_core
   ]
 
 
@@ -82,7 +82,7 @@ class DistributionStrategyStatefulLstmModelCorrectnessTest(
 
   # TODO(jhseu): Disabled to fix b/130808953. Need to investigate why it
   # doesn't work and enable for DistributionStrategy more generally.
-  @combinations.generate(test_combinations_for_stateful_embedding_model())
+  @ds_combinations.generate(test_combinations_for_stateful_embedding_model())
   def disabled_test_stateful_lstm_model_correctness(
       self, distribution, use_numpy, use_validation_data):
     self.run_correctness_test(
@@ -91,14 +91,14 @@ class DistributionStrategyStatefulLstmModelCorrectnessTest(
         use_validation_data,
         is_stateful_model=True)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.times(
-          keras_correctness_test_base.test_combinations_with_tpu_strategies()))
+          keras_correctness_test_base
+          .test_combinations_with_tpu_strategies_graph()))
   def test_incorrectly_use_multiple_cores_for_stateful_lstm_model(
       self, distribution, use_numpy, use_validation_data):
-    with self.assertRaisesRegexp(
-        ValueError,
-        'RNNs with stateful=True not yet supported with '
+    with self.assertRaisesRegex(
+        ValueError, 'RNNs with stateful=True not yet supported with '
         'tf.distribute.Strategy.'):
       self.run_correctness_test(
           distribution,

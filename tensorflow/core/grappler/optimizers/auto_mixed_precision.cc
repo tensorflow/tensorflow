@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/auto_mixed_precision.h"
 
 #include <fstream>
+#include <memory>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -52,6 +53,7 @@ const std::pair<int, int> kMinGPUArch = {0, 0};
 
 const char kSuffix[] = "AutoMixedPrecision";
 const char kCastToFp16[] = "CastToFp16";
+const char kCastToBf16[] = "CastToBf16";
 const char kCastToFp32[] = "CastToFp32";
 
 // Instances of this class represent unique type attribute identifiers within a
@@ -291,7 +293,7 @@ class NodeTypeAttrMap {
     }
     // Note that the mappings generated here include inputs/outputs with fixed
     // types. This makes the mappings complete (all inputs and outputs are
-    // included), and allows the graph rewriter to propagate black paint
+    // included), and allows the graph rewriter to propagate deny paint
     // from/through ops with fixed types.
     io2type_entry.first.reserve(input_arg_inds.size());
     for (int i = 0; i < static_cast<int>(input_arg_inds.size()); ++i) {
@@ -840,27 +842,11 @@ DataTypeSet AllowedDataTypes(const OpDef& op_def, const TypeAttrId& t_attr_id) {
   return AllowedDataTypes(*attr_def);
 }
 
-NodeDef BuildCastNode(const MutableGraphView::OutputPort& src, bool to_fp16,
-                      const string& device) {
-  const char* cast_string = to_fp16 ? kCastToFp16 : kCastToFp32;
-  string name = strings::StrCat(src.node->name(), "-", src.port_id, "-",
-                                cast_string, "-", kSuffix);
-  NodeDef node;
-  node.set_name(name);
-  node.set_op("Cast");
-  node.set_device(device);
-  node.add_input(strings::StrCat(src.node->name(), ":", src.port_id));
-  (*node.mutable_attr())["SrcT"].set_type(to_fp16 ? DT_FLOAT : DT_HALF);
-  (*node.mutable_attr())["DstT"].set_type(to_fp16 ? DT_HALF : DT_FLOAT);
-  (*node.mutable_attr())["Truncate"].set_b(false);
-  return node;
-}
-
-Status ValidateLists(const gtl::FlatSet<string>& white_list,
-                     const gtl::FlatSet<string>& black_list,
-                     const gtl::FlatSet<string>& gray_list,
+Status ValidateLists(const gtl::FlatSet<string>& allow_list,
+                     const gtl::FlatSet<string>& deny_list,
+                     const gtl::FlatSet<string>& infer_list,
                      const gtl::FlatSet<string>& clear_list) {
-  std::vector<gtl::FlatSet<string>> lists{white_list, black_list, gray_list,
+  std::vector<gtl::FlatSet<string>> lists{allow_list, deny_list, infer_list,
                                           clear_list};
   std::multiset<string> counts;
   for (const auto& list : lists) {
@@ -941,7 +927,8 @@ class AutoMixedPrecisionImpl {
  public:
   AutoMixedPrecisionImpl(Cluster* cluster,
                          const std::unordered_set<string>& nodes_to_preserve,
-                         GraphDef* graph, string id)
+                         GraphDef* graph, string id,
+                         AutoMixedPrecisionMode mode)
       : virtual_placer_(cluster->GetDevices()),
         nodes_to_preserve_(nodes_to_preserve),
         graph_(graph),
@@ -949,48 +936,64 @@ class AutoMixedPrecisionImpl {
         id_(id),
         graph_view_(graph),
         cuda_version_(GetCudaVersion(*cluster)),
-        cudnn_version_(GetCudnnVersion(*cluster)) {}
+        cudnn_version_(GetCudnnVersion(*cluster)),
+        mode_(mode),
+        target_dtype_(mode_ == AutoMixedPrecisionMode::CUDA ? DT_HALF
+                                                            : DT_BFLOAT16) {}
 
   Status Optimize();
 
  private:
   typedef absl::flat_hash_set<NodeTypeId> NodeTypeIdSet;
 
+  std::unique_ptr<AutoMixedPrecisionLists> get_mixed_precision_lists() const {
+    switch (mode_) {
+      case AutoMixedPrecisionMode::CUDA:
+        return std::make_unique<AutoMixedPrecisionListsCuda>(cuda_version_,
+                                                             cudnn_version_);
+      case AutoMixedPrecisionMode::MKL:
+        return std::make_unique<AutoMixedPrecisionListsMkl>();
+    }
+  }
   Status PrintDebugLogs(bool preop, size_t timestamp);
   void LogSkippedNode(const NodeDef& node) const;
   bool MustPreserve(const NodeDef& node) const;
-  bool IsOnGPU(const NodeDef& node) const;
+  bool IsOnDevice(const NodeDef& node, const string& device_type) const;
   bool IsOnSuitableGPUArch(const NodeDef& node) const;
   bool ShouldProcess(const NodeDef& node) const;
-  bool NodeHasFP16KernelForTypeAttr(const NodeDef& node, TypeAttrId taid) const;
+  bool NodeHasF16KernelForTypeAttr(const NodeDef& node, TypeAttrId taid) const;
   bool NodeImplicitlyReadsNonResourceVariable(const NodeDef& node) const;
   void ConvertBatchNormOpsToV2();
-  bool SupportsFloat16(const NodeTypeId& node_type) const;
+  bool SupportsF16(const NodeTypeId& node_type) const;
+  bool SupportsF16DataType(const NodeTypeId& node_type) const;
   const NodeTypeId* GetTensorListFloat32NodeTypeId(const NodeDef& node) const;
   bool IsSourceOrSinkOp(const string& op) const;
-  void FindFloat32TensorListOpClustersAndBlacklistUnsafe(
+  void FindFloat32TensorListOpClustersAndDenylistUnsafe(
       std::vector<absl::flat_hash_set<const NodeDef*>>* clusters,
-      absl::flat_hash_set<int>* black_set) const;
+      absl::flat_hash_set<int>* deny_set) const;
   void FindTensorListImplicitFloat32Edges(
       const absl::flat_hash_set<const NodeDef*>& tensor_list_nodes,
       std::vector<NodeTypeIdEdge>* implicit_data_edges) const;
-  void AddWhitelistOps(absl::flat_hash_set<int>* white_set) const;
-  void PropagateBlackFwdThroughClearAndGray(
-      absl::flat_hash_set<int>* black_set) const;
+  void AddAllowlistOps(absl::flat_hash_set<int>* allow_set) const;
+  void RemoveAllowsetWithFp32(absl::flat_hash_set<int>* allow_set) const;
+  void PropagateDenyFwdThroughClearAndInfer(
+      absl::flat_hash_set<int>* deny_set) const;
   void ForceColorMatchBetweenTensorListOps(
       const absl::flat_hash_set<const NodeDef*>& tensor_list_nodes,
-      absl::flat_hash_set<int>* white_set,
-      absl::flat_hash_set<int>* black_set) const;
-  void AddClearAndGrayToWhiteIfBetweenWhite(
-      const absl::flat_hash_set<int>& black_set,
-      absl::flat_hash_set<int>* white_set) const;
-  void PropagateWhiteThroughClear(const absl::flat_hash_set<int>& black_set,
-                                  absl::flat_hash_set<int>* white_set) const;
+      absl::flat_hash_set<int>* allow_set,
+      absl::flat_hash_set<int>* deny_set) const;
+  void AddClearAndInferToAllowIfBetweenAllow(
+      const absl::flat_hash_set<int>& deny_set,
+      absl::flat_hash_set<int>* allow_set) const;
+  void PropagateAllowThroughClear(const absl::flat_hash_set<int>& deny_set,
+                                  absl::flat_hash_set<int>* allow_set) const;
   Status ForceColorMatchOnRecurrentEdges(
-      absl::flat_hash_set<int>* white_set) const;
-  void MakeCastsWhiteIfAllOutputsWhite(
-      absl::flat_hash_set<int>* white_set) const;
-  Status ChangeTypeAttrsAndAddCasts(const absl::flat_hash_set<int>& white_set);
+      absl::flat_hash_set<int>* allow_set) const;
+  void MakeCastsAllowIfAllOutputsAllow(
+      absl::flat_hash_set<int>* allow_set) const;
+  NodeDef BuildCastNode(const MutableGraphView::OutputPort& src, bool to_f16,
+                        const string& device) const;
+  Status ChangeTypeAttrsAndAddCasts(const absl::flat_hash_set<int>& allow_set);
 
   VirtualPlacer virtual_placer_;
   std::unordered_set<string> nodes_to_preserve_;
@@ -1003,21 +1006,44 @@ class AutoMixedPrecisionImpl {
   NodeTypeAttrMap node_type_map_;
   GraphTypeTopologyView graph_type_view_;
   bool force_all_fp16_;
-  gtl::FlatSet<string> fp16_whitelist_;
-  gtl::FlatSet<string> fp16_blacklist_;
-  gtl::FlatSet<string> fp16_graylist_;
-  gtl::FlatSet<string> fp16_clearlist_;
+  AutoMixedPrecisionMode mode_;
+  gtl::FlatSet<string> f16_allowlist_;
+  gtl::FlatSet<string> f16_denylist_;
+  gtl::FlatSet<string> f16_inferlist_;
+  gtl::FlatSet<string> f16_clearlist_;
   absl::flat_hash_set<const NodeDef*> should_process_nodes_;
+  DataType target_dtype_;  // Either DT_HALF or DT_BFLOAT16
 };
 
-bool AutoMixedPrecisionImpl::NodeHasFP16KernelForTypeAttr(
+NodeDef AutoMixedPrecisionImpl::BuildCastNode(
+    const MutableGraphView::OutputPort& src, bool to_f16,
+    const string& device) const {
+  DataType src_type = to_f16 ? DT_FLOAT : target_dtype_;
+  DataType dst_type = to_f16 ? target_dtype_ : DT_FLOAT;
+  const char* cast_string =
+      !to_f16 ? kCastToFp32
+              : target_dtype_ == DT_HALF ? kCastToFp16 : kCastToBf16;
+  string name = strings::StrCat(src.node->name(), "-", src.port_id, "-",
+                                cast_string, "-", kSuffix);
+  NodeDef node;
+  node.set_name(name);
+  node.set_op("Cast");
+  node.set_device(device);
+  node.add_input(strings::StrCat(src.node->name(), ":", src.port_id));
+  (*node.mutable_attr())["SrcT"].set_type(src_type);
+  (*node.mutable_attr())["DstT"].set_type(dst_type);
+  (*node.mutable_attr())["Truncate"].set_b(false);
+  return node;
+}
+
+bool AutoMixedPrecisionImpl::NodeHasF16KernelForTypeAttr(
     const NodeDef& node, TypeAttrId taid) const {
   NodeDef node_copy(node);
   if (node.device().empty()) {
     string device_name = virtual_placer_.get_canonical_device_name(node);
     node_copy.set_device(device_name);
   }
-  if (!SetDataType(&node_copy, taid, DataType::DT_HALF)) {
+  if (!SetDataType(&node_copy, taid, target_dtype_)) {
     return false;
   }
   return IsKernelRegisteredForNode(node_copy).ok();
@@ -1053,21 +1079,22 @@ Status AutoMixedPrecisionImpl::PrintDebugLogs(bool preop, size_t timestamp) {
     fname = io::JoinPath(prepend_path,
                          strings::StrCat("paintbuckets", suffix, ".txt"));
     f.open(fname.c_str(), std::fstream::out);
-    f << "WhiteList:\n";
-    for (const auto& x :
-         AutoMixedPrecisionLists::WhiteList(cuda_version_, cudnn_version_)) {
+    std::unique_ptr<AutoMixedPrecisionLists> mp_lists =
+        get_mixed_precision_lists();
+    f << "AllowList:\n";
+    for (const auto& x : mp_lists->AllowList()) {
       f << x << "\n";
     }
-    f << "\nBlackList:\n";
-    for (const auto& x : AutoMixedPrecisionLists::BlackList()) {
+    f << "\nDenyList:\n";
+    for (const auto& x : mp_lists->DenyList()) {
       f << x << "\n";
     }
-    f << "\nGrayList:\n";
-    for (const auto& x : AutoMixedPrecisionLists::GrayList()) {
+    f << "\nInferList:\n";
+    for (const auto& x : mp_lists->InferList()) {
       f << x << "\n";
     }
     f << "\nClearList:\n";
-    for (const auto& x : AutoMixedPrecisionLists::ClearList()) {
+    for (const auto& x : mp_lists->ClearList()) {
       f << x << "\n";
     }
     f.close();
@@ -1088,7 +1115,8 @@ bool AutoMixedPrecisionImpl::MustPreserve(const NodeDef& node) const {
   return nodes_to_preserve_.count(node.name());
 }
 
-bool AutoMixedPrecisionImpl::IsOnGPU(const NodeDef& node) const {
+bool AutoMixedPrecisionImpl::IsOnDevice(const NodeDef& node,
+                                        const string& device_type) const {
   string device_name;
   if (node.device().empty()) {
     device_name = virtual_placer_.get_canonical_device_name(node);
@@ -1099,7 +1127,7 @@ bool AutoMixedPrecisionImpl::IsOnGPU(const NodeDef& node) const {
   string not_used;
   if (DeviceNameUtils::SplitDeviceName(device_name, &not_used, &device) &&
       absl::StrContains(absl::AsciiStrToLower(device),
-                        absl::AsciiStrToLower(DEVICE_GPU))) {
+                        absl::AsciiStrToLower(device_type))) {
     return true;
   }
   return false;
@@ -1164,15 +1192,23 @@ bool IsTensorListWriterOp(const string& op) {
   return tensor_list_writer_ops.count(op);
 }
 
-bool AutoMixedPrecisionImpl::SupportsFloat16(
-    const NodeTypeId& node_type) const {
+bool AutoMixedPrecisionImpl::SupportsF16(const NodeTypeId& node_type) const {
   const OpDef* op_def;
   Status status =
       OpRegistry::Global()->LookUpOpDef(node_type.node->op(), &op_def);
   if (!status.ok()) return false;
   return AllowedDataTypes(*op_def, node_type.type_attr)
-             .Contains(DataType::DT_HALF) &&
-         NodeHasFP16KernelForTypeAttr(*node_type.node, node_type.type_attr);
+             .Contains(target_dtype_) &&
+         NodeHasF16KernelForTypeAttr(*node_type.node, node_type.type_attr);
+}
+
+bool AutoMixedPrecisionImpl::SupportsF16DataType(
+    const NodeTypeId& node_type) const {
+  const OpDef* op_def;
+  Status status =
+      OpRegistry::Global()->LookUpOpDef(node_type.node->op(), &op_def);
+  if (!status.ok()) return false;
+  return AllowedDataTypes(*op_def, node_type.type_attr).Contains(target_dtype_);
 }
 
 // TODO(mconley): Make this change the node's name (to aid debugging). Need to
@@ -1219,22 +1255,40 @@ Status AutoMixedPrecisionImpl::Optimize() {
       "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_LEVEL", "", &optimization_level));
   optimization_level = absl::AsciiStrToUpper(optimization_level);
   force_all_fp16_ = optimization_level == "UNSAFE_FORCE_ALL";
+  if (force_all_fp16_ && mode_ == AutoMixedPrecisionMode::MKL) {
+    // Many ops do not support bfloat16 on the CPU so we disallowing forcing to
+    // bfloat16.
+    return errors::InvalidArgument(
+        "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_LEVEL cannot be set to "
+        "UNSAFE_FORCE_ALL when MKL is used");
+  }
 
-  fp16_whitelist_ =
-      AutoMixedPrecisionLists::WhiteList(cuda_version_, cudnn_version_);
-  fp16_blacklist_ = AutoMixedPrecisionLists::BlackList();
-  fp16_graylist_ = AutoMixedPrecisionLists::GrayList();
-  fp16_clearlist_ = AutoMixedPrecisionLists::ClearList();
-  TF_RETURN_IF_ERROR(ValidateLists(fp16_whitelist_, fp16_blacklist_,
-                                   fp16_graylist_, fp16_clearlist_));
+  std::unique_ptr<AutoMixedPrecisionLists> mp_lists =
+      get_mixed_precision_lists();
+  f16_allowlist_ = mp_lists->AllowList();
+  f16_denylist_ = mp_lists->DenyList();
+  f16_inferlist_ = mp_lists->InferList();
+  f16_clearlist_ = mp_lists->ClearList();
+  TF_RETURN_IF_ERROR(ValidateLists(f16_allowlist_, f16_denylist_,
+                                   f16_inferlist_, f16_clearlist_));
 
   size_t timestamp = Env::Default()->NowMicros() / 1000;
   TF_RETURN_IF_ERROR(PrintDebugLogs(/* preop = */ true, timestamp));
 
   VLOG(2) << "Identifying nodes that should be processed";
   for (const NodeDef& node : graph_->node()) {
-    if (!MustPreserve(node) && IsOnGPU(node) &&
-        (ShouldIgnorePerformance() || IsOnSuitableGPUArch(node))) {
+    bool should_process;
+    switch (mode_) {
+      case AutoMixedPrecisionMode::CUDA:
+        should_process =
+            !MustPreserve(node) && IsOnDevice(node, DEVICE_GPU) &&
+            (ShouldIgnorePerformance() || IsOnSuitableGPUArch(node));
+        break;
+      case AutoMixedPrecisionMode::MKL:
+        should_process = !MustPreserve(node) && IsOnDevice(node, DEVICE_CPU);
+        break;
+    }
+    if (should_process) {
       should_process_nodes_.insert(&node);
     } else {
       LogSkippedNode(node);
@@ -1251,92 +1305,98 @@ Status AutoMixedPrecisionImpl::Optimize() {
   TF_RETURN_IF_ERROR(
       graph_type_view_.InitializeFromGraph(*graph_, node_type_map_));
 
-  absl::flat_hash_set<int> black_set;
+  absl::flat_hash_set<int> deny_set;
 
   std::vector<absl::flat_hash_set<const NodeDef*>> tensor_list_clusters;
-  FindFloat32TensorListOpClustersAndBlacklistUnsafe(&tensor_list_clusters,
-                                                    &black_set);
+  FindFloat32TensorListOpClustersAndDenylistUnsafe(&tensor_list_clusters,
+                                                   &deny_set);
   std::vector<NodeTypeIdEdge> ephemeral_edges;
   for (const auto& cluster : tensor_list_clusters) {
     VLOG(1) << "Found safe Tensor List cluster of size " << cluster.size();
     for (const NodeDef* node : cluster) {
-      VLOG(2) << "Cluster member: " << node->op() << " node " << node->name();
+      VLOG(2) << "  Cluster member: " << node->op() << " node " << node->name();
     }
     FindTensorListImplicitFloat32Edges(cluster, &ephemeral_edges);
   }
   TF_RETURN_IF_ERROR(graph_type_view_.AddEphemeralEdges(ephemeral_edges));
 
-  // The goal here is to change performance-critical ops to fp16, and to do so
-  // with the minimal number of casts, subject to the constraint that the
+  // The goal here is to change performance-critical ops to fp16 or bf16, and to
+  // do so with the minimal number of casts, subject to the constraint that the
   // model's convergence is not affected. This is achieved by first identifying
-  // which nodes should be changed to fp16 and then inserting casts at the
-  // boundaries between fp16/non-fp16 nodes.
+  // which nodes should be changed to f16 and then inserting casts at the
+  // boundaries between f16/non-f16 nodes.
 
-  // The algorithm for deciding which nodes to change to fp16 is as follows:
-  // 1) Add all performance-critical ops (aka "whitelist" ops) to the white_set.
-  //    This is done under the assumption that whitelist ops are always
-  //    numerically-safe in fp16 and that they are the most important ops for
+  // The algorithm for deciding which nodes to change to f16 is as follows:
+  // 1) Add all performance-critical ops (aka "allowlist" ops) to the allow_set.
+  //    This is done under the assumption that allowlist ops are always
+  //    numerically-safe in f16 and that they are the most important ops for
   //    improving performance.
-  // 2) Add nodes to the black_set iff they are numerically-dangerous (aka
-  //    "blacklist" ops) or they are on a forward path from a blacklist node to
-  //    a black/gray node (including the node at the end of the path) through
-  //    non-numerically-dangerous ops (aka "greylist" and "clearlist" ops).
+  // 2) Add nodes to the deny_set iff they are numerically-dangerous (aka
+  //    "denylist" ops) or they are on a forward path from a denylist node to
+  //    a deny/infer node (including the node at the end of the path) through
+  //    non-numerically-dangerous ops (aka "inferlist" and "clearlist" ops).
   //    This is done to prevent numerically-dangerous ops and their downstream
-  //    effects from being changed to fp16, which would risk breaking the
+  //    effects from being changed to f16, which would risk breaking the
   //    numerical accuracy of the model.
-  // 3) For all remaining nodes that are not considered dangerous (greylist
+  // 3) For all remaining nodes that are not considered dangerous (inferlist
   //    and clearlist ops), find those that are between (i.e., both upstream
-  //    and downstream of) white nodes, and add them to the white_set.
-  //    This is done to avoid unnecessary casts between whitelist ops.
-  // 4) For all remaining clearlist nodes, add them to the white_set if they are
-  //    connected to a node in the white_set via other clearlist nodes.
-  //    This is done to increase the number of ops in the white_set without
+  //    and downstream of) allow nodes, and add them to the allow_set.
+  //    This is done to avoid unnecessary casts between allowlist ops.
+  // 4) For all remaining clearlist nodes, add them to the allow_set if they are
+  //    connected to a node in the allow_set via other clearlist nodes.
+  //    This is done to increase the number of ops in the allow_set without
   //    affecting numerical stability.
 
-  absl::flat_hash_set<int> white_set;
-  VLOG(2) << "Beginning pass 1 to add whitelist ops";
-  AddWhitelistOps(&white_set);
+  absl::flat_hash_set<int> allow_set;
+  VLOG(2) << "Beginning pass 1 to add allowlist ops";
+  AddAllowlistOps(&allow_set);
   VLOG(2) << "Finished pass 1";
 
-  if (white_set.empty()) {
-    LOG(INFO) << "No whitelist ops found, nothing to do";
+  if (allow_set.empty()) {
+    LOG(INFO) << "No allowlist ops found, nothing to do";
     return Status::OK();
   }
 
-  VLOG(2) << "Beginning pass 2 to propagate black forwards from blacklist ops "
-             "through clear/graylist ops";
-  PropagateBlackFwdThroughClearAndGray(&black_set);
+  VLOG(2) << "Beginning pass 2 to propagate deny forwards from denylist ops "
+             "through clear/inferlist ops";
+  PropagateDenyFwdThroughClearAndInfer(&deny_set);
   VLOG(2) << "Finished pass 2";
 
   VLOG(2) << "Forcing color match between data structure ops";
   for (const auto& cluster : tensor_list_clusters) {
-    ForceColorMatchBetweenTensorListOps(cluster, &white_set, &black_set);
+    ForceColorMatchBetweenTensorListOps(cluster, &allow_set, &deny_set);
   }
 
-  VLOG(2) << "Beginning pass 3 to set clear and gray nodes to white if they "
-             "are between white ops";
-  AddClearAndGrayToWhiteIfBetweenWhite(black_set, &white_set);
+  VLOG(2) << "Beginning pass 3 to set clear and infer nodes to allow if they "
+             "are between allow ops";
+  AddClearAndInferToAllowIfBetweenAllow(deny_set, &allow_set);
   VLOG(2) << "Finished pass 3";
 
-  VLOG(2) << "Beginning pass 4 to propagate white from white nodes through "
+  VLOG(2) << "Beginning pass 4 to propagate allow from allow nodes through "
              "clearlist ops";
-  PropagateWhiteThroughClear(black_set, &white_set);
+  PropagateAllowThroughClear(deny_set, &allow_set);
   VLOG(2) << "Finished pass 4";
+
+  VLOG(2) << "Beginning pass 5 to remove some nodes which could not be changed "
+             "to F16"
+             "from allow set";
+  RemoveAllowsetWithFp32(&allow_set);
+  VLOG(2) << "Finished pass 5";
 
   VLOG(2) << "Forcing color match between data structure ops";
   for (const auto& cluster : tensor_list_clusters) {
-    ForceColorMatchBetweenTensorListOps(cluster, &white_set, &black_set);
+    ForceColorMatchBetweenTensorListOps(cluster, &allow_set, &deny_set);
   }
 
   VLOG(2) << "Forcing color match on loop edges";
-  TF_RETURN_IF_ERROR(ForceColorMatchOnRecurrentEdges(&white_set));
+  TF_RETURN_IF_ERROR(ForceColorMatchOnRecurrentEdges(&allow_set));
 
-  VLOG(2) << "Finding existing casts that can be made white";
-  MakeCastsWhiteIfAllOutputsWhite(&white_set);
+  VLOG(2) << "Finding existing casts that can be made allow";
+  MakeCastsAllowIfAllOutputsAllow(&allow_set);
 
   VLOG(2) << "Beginning final pass to change type attributes and insert Cast "
              "ops at paint boundaries";
-  TF_RETURN_IF_ERROR(ChangeTypeAttrsAndAddCasts(white_set));
+  TF_RETURN_IF_ERROR(ChangeTypeAttrsAndAddCasts(allow_set));
   VLOG(2) << "Finished final pass";
 
   TF_RETURN_IF_ERROR(PrintDebugLogs(/* preop = */ false, timestamp));
@@ -1383,11 +1443,11 @@ bool AutoMixedPrecisionImpl::IsSourceOrSinkOp(const string& op) const {
 // Finds all clusters of float32 Tensor List nodes that are connected via their
 // handle edges. Unsafe clusters (those with unprocessable nodes, or with edges
 // that cross untraversable boundaries via _Arg, _Ret, PartitionedCall etc.
-// nodes) are added to black_set. The caller should paint all nodes in a cluster
+// nodes) are added to deny_set. The caller should paint all nodes in a cluster
 // the same color, as they may all refer to the same Tensor List.
-void AutoMixedPrecisionImpl::FindFloat32TensorListOpClustersAndBlacklistUnsafe(
+void AutoMixedPrecisionImpl::FindFloat32TensorListOpClustersAndDenylistUnsafe(
     std::vector<absl::flat_hash_set<const NodeDef*>>* tensor_list_clusters,
-    absl::flat_hash_set<int>* black_set) const {
+    absl::flat_hash_set<int>* deny_set) const {
   absl::flat_hash_set<const NodeDef*> tensor_list_prop_set;
   for (int root_idx = 0; root_idx < graph_type_view_.num_nodes(); ++root_idx) {
     const NodeTypeId& root = *graph_type_view_.GetNode(root_idx);
@@ -1420,7 +1480,7 @@ void AutoMixedPrecisionImpl::FindFloat32TensorListOpClustersAndBlacklistUnsafe(
                          cluster.insert(node);
                          if (!ShouldProcess(*node)) {
                            // The cluster contains an un-processable node.
-                           black_set->insert(root_fp32_idx);
+                           deny_set->insert(root_fp32_idx);
                          }
                          // TODO(benbarsdell): In a theoretical pathological
                          // case of a Tensor List of Tensor List handles, the
@@ -1428,7 +1488,7 @@ void AutoMixedPrecisionImpl::FindFloat32TensorListOpClustersAndBlacklistUnsafe(
                          // sink.
                        } else if (IsSourceOrSinkOp(node->op())) {
                          // The cluster crosses an untraversable boundary.
-                         black_set->insert(root_fp32_idx);
+                         deny_set->insert(root_fp32_idx);
                        }
                      }));
     tensor_list_clusters->push_back(cluster);
@@ -1473,39 +1533,39 @@ void AutoMixedPrecisionImpl::FindTensorListImplicitFloat32Edges(
   }
 }
 
-void AutoMixedPrecisionImpl::AddWhitelistOps(
-    absl::flat_hash_set<int>* white_set) const {
-  // Add whitelisted ops to white_set.
+void AutoMixedPrecisionImpl::AddAllowlistOps(
+    absl::flat_hash_set<int>* allow_set) const {
+  // Add allowlisted ops to allow_set.
   for (int root_idx = 0; root_idx < graph_type_view_.num_nodes(); ++root_idx) {
     const NodeTypeId& root = *graph_type_view_.GetNode(root_idx);
     if (!ShouldProcess(*root.node)) continue;
-    bool force_white = force_all_fp16_ && CanForceFP16(*root.node);
-    if (fp16_whitelist_.count(root.node->op()) || force_white) {
-      bool inserted = white_set->insert(root_idx).second;
+    bool force_allow = force_all_fp16_ && CanForceFP16(*root.node);
+    if (f16_allowlist_.count(root.node->op()) || force_allow) {
+      bool inserted = allow_set->insert(root_idx).second;
       if (VLOG_IS_ON(2) && inserted) {
         VLOG(2) << "Painting type " << root.type_attr.DebugString()
-                << " of node " << root.node->name() << " WHITE because its op "
-                << root.node->op() << " is on the whitelist";
+                << " of node " << root.node->name() << " ALLOW because its op "
+                << root.node->op() << " is on the allowlist";
       }
     }
   }
 }
 
-// Adds nodes to black_set iff they are on the blacklist or they are on a
-// forward path from a blacklist node to a black/gray node (including the node
-// at the end of the path) through clear and gray nodes.
-// E.g., black -> gray -> clear -> gray -> clear -> white -> gray
-// becomes: black -> black -> black -> black -> clear -> white -> gray.
-void AutoMixedPrecisionImpl::PropagateBlackFwdThroughClearAndGray(
-    absl::flat_hash_set<int>* black_set) const {
+// Adds nodes to deny_set iff they are on the denylist or they are on a
+// forward path from a denylist node to a deny/infer node (including the node
+// at the end of the path) through clear and infer nodes.
+// E.g., deny -> infer -> clear -> infer -> clear -> allow -> infer
+// becomes: deny -> deny -> deny -> deny -> clear -> allow -> infer.
+void AutoMixedPrecisionImpl::PropagateDenyFwdThroughClearAndInfer(
+    absl::flat_hash_set<int>* deny_set) const {
   if (force_all_fp16_) return;
 
-  // Find clear nodes that are upstream of black or gray.
-  absl::flat_hash_set<int> upstream_of_black_or_gray_set;
+  // Find clear nodes that are upstream of deny or infer.
+  absl::flat_hash_set<int> upstream_of_deny_or_infer_set;
   for (int root_idx = 0; root_idx < graph_type_view_.num_nodes(); ++root_idx) {
     const NodeTypeId& root = *graph_type_view_.GetNode(root_idx);
-    if (!(fp16_blacklist_.count(root.node->op()) ||
-          fp16_graylist_.count(root.node->op()))) {
+    if (!(f16_denylist_.count(root.node->op()) ||
+          f16_inferlist_.count(root.node->op()))) {
       continue;
     }
     DfsTypeTraversal(graph_type_view_, {&root},
@@ -1513,46 +1573,46 @@ void AutoMixedPrecisionImpl::PropagateBlackFwdThroughClearAndGray(
                      DfsTypePredicates::Enter([&](int idx) -> bool {
                        const NodeTypeId& item = *graph_type_view_.GetNode(idx);
                        return idx == root_idx ||
-                              (!upstream_of_black_or_gray_set.count(idx) &&
-                               fp16_clearlist_.count(item.node->op()));
+                              (!upstream_of_deny_or_infer_set.count(idx) &&
+                               f16_clearlist_.count(item.node->op()));
                      }),
                      DfsTypeCallbacks::PreOrder([&](int idx) {
-                       upstream_of_black_or_gray_set.insert(idx);
+                       upstream_of_deny_or_infer_set.insert(idx);
                      }));
   }
 
-  // Propagate black forward through nodes in upstream_of_black_or_gray_set.
+  // Propagate deny forward through nodes in upstream_of_deny_or_infer_set.
   for (int root_idx = 0; root_idx < graph_type_view_.num_nodes(); ++root_idx) {
     const NodeTypeId& root = *graph_type_view_.GetNode(root_idx);
-    if (black_set->count(root_idx) || !fp16_blacklist_.count(root.node->op())) {
+    if (deny_set->count(root_idx) || !f16_denylist_.count(root.node->op())) {
       continue;
     }
     DfsTypeTraversal(
         graph_type_view_, {&root}, TypeTraversalDirection::kFollowOutputs,
         DfsTypePredicates::Enter([&](int idx) -> bool {
-          return idx == root_idx || (!black_set->count(idx) &&
-                                     upstream_of_black_or_gray_set.count(idx));
+          return idx == root_idx || (!deny_set->count(idx) &&
+                                     upstream_of_deny_or_infer_set.count(idx));
         }),
         DfsTypeCallbacks::PreOrder([&](int idx) {
-          bool inserted = black_set->insert(idx).second;
+          bool inserted = deny_set->insert(idx).second;
           if (VLOG_IS_ON(2) && inserted) {
             const NodeTypeId& item = *graph_type_view_.GetNode(idx);
             VLOG(2) << "Painting type " << item.type_attr.DebugString()
                     << " of " << item.node->op() << " node "
-                    << item.node->name() << " BLACK";
+                    << item.node->name() << " DENY";
           }
         }));
   }
 }
 
-void AutoMixedPrecisionImpl::AddClearAndGrayToWhiteIfBetweenWhite(
-    const absl::flat_hash_set<int>& black_set,
-    absl::flat_hash_set<int>* white_set) const {
-  // Find clear/graylist ops that are downstream of white ops.
-  absl::flat_hash_set<int> downstream_of_white_set;
+void AutoMixedPrecisionImpl::AddClearAndInferToAllowIfBetweenAllow(
+    const absl::flat_hash_set<int>& deny_set,
+    absl::flat_hash_set<int>* allow_set) const {
+  // Find clear/inferlist ops that are downstream of allow ops.
+  absl::flat_hash_set<int> downstream_of_allow_set;
   for (int root_idx = 0; root_idx < graph_type_view_.num_nodes(); ++root_idx) {
     const NodeTypeId& root = *graph_type_view_.GetNode(root_idx);
-    if (!ShouldProcess(*root.node) || !fp16_whitelist_.count(root.node->op())) {
+    if (!ShouldProcess(*root.node) || !f16_allowlist_.count(root.node->op())) {
       continue;
     }
     DfsTypeTraversal(
@@ -1560,56 +1620,56 @@ void AutoMixedPrecisionImpl::AddClearAndGrayToWhiteIfBetweenWhite(
         DfsTypePredicates::Enter([&](int idx) -> bool {
           const NodeTypeId& item = *graph_type_view_.GetNode(idx);
           return idx == root_idx ||
-                 (!downstream_of_white_set.count(idx) &&
-                  !fp16_whitelist_.count(item.node->op()) &&
-                  !black_set.count(idx) && ShouldProcess(*item.node) &&
+                 (!downstream_of_allow_set.count(idx) &&
+                  !f16_allowlist_.count(item.node->op()) &&
+                  !deny_set.count(idx) && ShouldProcess(*item.node) &&
                   // TODO(benbarsdell): Consider allowing propagation through
                   // ops that are already float16 in order to reduce the number
                   // of casts.
-                  IsFloat32(item) && SupportsFloat16(item) &&
-                  (fp16_clearlist_.count(item.node->op()) ||
-                   fp16_graylist_.count(item.node->op())));
+                  IsFloat32(item) && SupportsF16(item) &&
+                  (f16_clearlist_.count(item.node->op()) ||
+                   f16_inferlist_.count(item.node->op())));
         }),
         DfsTypeCallbacks::PreOrder(
-            [&](int idx) { downstream_of_white_set.insert(idx); }));
+            [&](int idx) { downstream_of_allow_set.insert(idx); }));
   }
 
-  // Set nodes that are both downstream and upstream of white ops to white.
-  absl::flat_hash_set<int> upstream_of_white_set;
+  // Set nodes that are both downstream and upstream of allow ops to allow.
+  absl::flat_hash_set<int> upstream_of_allow_set;
   for (int root_idx = 0; root_idx < graph_type_view_.num_nodes(); ++root_idx) {
     const NodeTypeId& root = *graph_type_view_.GetNode(root_idx);
-    if (!ShouldProcess(*root.node) || upstream_of_white_set.count(root_idx) ||
-        !fp16_whitelist_.count(root.node->op())) {
+    if (!ShouldProcess(*root.node) || upstream_of_allow_set.count(root_idx) ||
+        !f16_allowlist_.count(root.node->op())) {
       continue;
     }
     DfsTypeTraversal(
         graph_type_view_, {&root}, TypeTraversalDirection::kFollowInputs,
         DfsTypePredicates::Enter([&](int idx) -> bool {
-          return idx == root_idx || (!upstream_of_white_set.count(idx) &&
-                                     downstream_of_white_set.count(idx));
+          return idx == root_idx || (!upstream_of_allow_set.count(idx) &&
+                                     downstream_of_allow_set.count(idx));
         }),
         DfsTypeCallbacks::PreOrder([&](int idx) {
-          upstream_of_white_set.insert(idx);
-          bool inserted = white_set->insert(idx).second;
+          upstream_of_allow_set.insert(idx);
+          bool inserted = allow_set->insert(idx).second;
           if (VLOG_IS_ON(2) && inserted) {
             const NodeTypeId& item = *graph_type_view_.GetNode(idx);
             VLOG(2) << "Painting type " << item.type_attr.DebugString()
                     << " of " << item.node->op() << " node "
-                    << item.node->name() << " WHITE";
+                    << item.node->name() << " ALLOW";
           }
         }));
   }
 }
 
-void AutoMixedPrecisionImpl::PropagateWhiteThroughClear(
-    const absl::flat_hash_set<int>& black_set,
-    absl::flat_hash_set<int>* white_set) const {
-  // Propagate white from white nodes through clearlist ops.
+void AutoMixedPrecisionImpl::PropagateAllowThroughClear(
+    const absl::flat_hash_set<int>& deny_set,
+    absl::flat_hash_set<int>* allow_set) const {
+  // Propagate allow from allow nodes through clearlist ops.
   absl::flat_hash_set<int> clear_prop_set;
   for (int root_idx = 0; root_idx < graph_type_view_.num_nodes(); ++root_idx) {
     const NodeTypeId& root = *graph_type_view_.GetNode(root_idx);
     if (!ShouldProcess(*root.node) || clear_prop_set.count(root_idx) ||
-        !white_set->count(root_idx)) {
+        !allow_set->count(root_idx)) {
       continue;
     }
     DfsTypeTraversal(
@@ -1618,10 +1678,10 @@ void AutoMixedPrecisionImpl::PropagateWhiteThroughClear(
         DfsTypePredicates::Enter([&](int idx) -> bool {
           const NodeTypeId& item = *graph_type_view_.GetNode(idx);
           return idx == root_idx ||
-                 (!white_set->count(idx) && !black_set.count(idx) &&
+                 (!allow_set->count(idx) && !deny_set.count(idx) &&
                   ShouldProcess(*item.node) && IsFloat32(item) &&
-                  SupportsFloat16(item) &&
-                  (fp16_clearlist_.count(item.node->op())) &&
+                  SupportsF16(item) &&
+                  (f16_clearlist_.count(item.node->op())) &&
                   // We don't propagate (backwards) through nodes that read
                   // Variables because it can break the behavior of TensorBoard
                   // visualization and/or (in the case of Enter nodes) the model
@@ -1630,30 +1690,49 @@ void AutoMixedPrecisionImpl::PropagateWhiteThroughClear(
         }),
         DfsTypeCallbacks::PreOrder([&](int idx) {
           clear_prop_set.insert(idx);
-          bool inserted = white_set->insert(idx).second;
+          bool inserted = allow_set->insert(idx).second;
           if (VLOG_IS_ON(2) && inserted) {
             const NodeTypeId& item = *graph_type_view_.GetNode(idx);
             VLOG(2) << "Painting type " << item.type_attr.DebugString()
                     << " of " << item.node->op() << " node "
-                    << item.node->name() << " WHITE";
+                    << item.node->name() << " ALLOW";
           }
         }));
   }
 }
 
+// If ops have one or more type_attr, But this type_attr could not be converted
+// to F16. Such as FusedBatchNormV2/FusedBatchNormV3, its type_attr 'U' only
+// support float. So we will remove this node from allow_set.
+void AutoMixedPrecisionImpl::RemoveAllowsetWithFp32(
+    absl::flat_hash_set<int>* allow_set) const {
+  for (int root_idx = 0; root_idx < graph_type_view_.num_nodes(); ++root_idx) {
+    const NodeTypeId& root = *graph_type_view_.GetNode(root_idx);
+    if (f16_allowlist_.count(root.node->op()) && allow_set->count(root_idx) &&
+        !SupportsF16DataType(root)) {
+      auto erased = allow_set->erase(root_idx);
+      if (VLOG_IS_ON(2) && erased) {
+        VLOG(2) << "UnPainting type " << root.type_attr.DebugString()
+                << " of node " << root.node->name() << " ALLOW because its op "
+                << root.node->op() << " is not support F16 DataType";
+      }
+    }
+  }
+}
+
 // Forces NextIteration nodes and their output Merge node(s) to have the same
-// color. Specifically, it removes them all from white_set if any of the Merge
-// nodes is not in white_set, otherwise it adds the NextIteration node to
-// white_set.
+// color. Specifically, it removes them all from allow_set if any of the Merge
+// nodes is not in allow_set, otherwise it adds the NextIteration node to
+// allow_set.
 Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
-    absl::flat_hash_set<int>* white_set) const {
+    absl::flat_hash_set<int>* allow_set) const {
   for (const NodeDef& node : graph_->node()) {
     if (node.op() == "NextIteration") {
       GraphView::OutputPort output_port(&node, 0);
       const auto& fanout = graph_view_.GetFanout(output_port);
       std::vector<int> merge_idxs;
       merge_idxs.reserve(fanout.size());
-      bool any_merge_is_not_white = false;
+      bool any_merge_is_not_allow = false;
       for (const auto& output : fanout) {
         const NodeDef& merge_node = *output.node;
         if (merge_node.op() != "Merge") {
@@ -1669,8 +1748,8 @@ Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
         }
         int merge_idx = maybe_merge_idx.value();
         merge_idxs.push_back(merge_idx);
-        any_merge_is_not_white =
-            any_merge_is_not_white || !white_set->count(merge_idx);
+        any_merge_is_not_allow =
+            any_merge_is_not_allow || !allow_set->count(merge_idx);
       }
       const absl::optional<int> maybe_nextiter_idx =
           graph_type_view_.GetNodeIndex(node.name(), TypeAttrId("T"));
@@ -1679,24 +1758,24 @@ Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
                                 node.name(), " not found in graph view");
       }
       int nextiter_idx = maybe_nextiter_idx.value();
-      if (any_merge_is_not_white) {
+      if (any_merge_is_not_allow) {
         for (int merge_idx : merge_idxs) {
-          if (white_set->erase(merge_idx)) {
+          if (allow_set->erase(merge_idx)) {
             VLOG(2) << "Painting type T of Merge node "
                     << graph_type_view_.GetNode(merge_idx)->node->name()
-                    << " BLACK to match the color of its sibling Merge nodes "
+                    << " DENY to match the color of its sibling Merge nodes "
                        "with common NextIteration node "
                     << node.name();
           }
         }
-        if (white_set->erase(nextiter_idx)) {
+        if (allow_set->erase(nextiter_idx)) {
           VLOG(2) << "Painting type T of NextIteration node " << node.name()
-                  << " BLACK to match the color of its output Merge node(s)";
+                  << " DENY to match the color of its output Merge node(s)";
         }
       } else {
-        if (white_set->insert(nextiter_idx).second) {
+        if (allow_set->insert(nextiter_idx).second) {
           VLOG(2) << "Painting type T of NextIteration node " << node.name()
-                  << " WHITE to match the color of its output Merge node(s)";
+                  << " ALLOW to match the color of its output Merge node(s)";
         }
       }
     }
@@ -1707,10 +1786,10 @@ Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
 // Forces all of the given Tensor List nodes into the same color set.
 void AutoMixedPrecisionImpl::ForceColorMatchBetweenTensorListOps(
     const absl::flat_hash_set<const NodeDef*>& tensor_list_nodes,
-    absl::flat_hash_set<int>* white_set,
-    absl::flat_hash_set<int>* black_set) const {
-  bool any_black = false;
-  bool any_white = false;
+    absl::flat_hash_set<int>* allow_set,
+    absl::flat_hash_set<int>* deny_set) const {
+  bool any_deny = false;
+  bool any_allow = false;
   std::vector<int> node_type_idxs;
   node_type_idxs.reserve(tensor_list_nodes.size());
   for (const NodeDef* node : tensor_list_nodes) {
@@ -1723,26 +1802,26 @@ void AutoMixedPrecisionImpl::ForceColorMatchBetweenTensorListOps(
     node_type_idxs.push_back(maybe_node_type_idx.value());
   }
   for (int node_type_idx : node_type_idxs) {
-    if (black_set->count(node_type_idx)) {
-      any_black = true;
+    if (deny_set->count(node_type_idx)) {
+      any_deny = true;
       break;
-    } else if (white_set->count(node_type_idx)) {
-      any_white = true;
+    } else if (allow_set->count(node_type_idx)) {
+      any_allow = true;
     }
   }
-  if (!any_black && !any_white) return;
+  if (!any_deny && !any_allow) return;
   for (int node_type_idx : node_type_idxs) {
     const NodeTypeId& node_type = *graph_type_view_.GetNode(node_type_idx);
     VLOG(2) << "Painting type " << node_type.type_attr.DebugString() << " of "
             << node_type.node->op() << " node " << node_type.node->name() << " "
-            << (any_black ? "BLACK" : "WHITE")
+            << (any_deny ? "DENY" : "ALLOW")
             << " because at least one of its siblings is "
-            << (any_black ? "BLACK" : "WHITE");
-    if (any_black) {
-      white_set->erase(node_type_idx);
-      black_set->insert(node_type_idx);
+            << (any_deny ? "DENY" : "ALLOW");
+    if (any_deny) {
+      allow_set->erase(node_type_idx);
+      deny_set->insert(node_type_idx);
     } else {
-      white_set->insert(node_type_idx);
+      allow_set->insert(node_type_idx);
     }
   }
 }
@@ -1764,10 +1843,10 @@ bool AutoMixedPrecisionImpl::NodeImplicitlyReadsNonResourceVariable(
   return false;
 }
 
-// This adds existing Cast nodes to white_set if all of their outputs are white,
+// This adds existing Cast nodes to allow_set if all of their outputs are allow,
 // avoiding the need to add a new Cast node after an existing Cast.
-void AutoMixedPrecisionImpl::MakeCastsWhiteIfAllOutputsWhite(
-    absl::flat_hash_set<int>* white_set) const {
+void AutoMixedPrecisionImpl::MakeCastsAllowIfAllOutputsAllow(
+    absl::flat_hash_set<int>* allow_set) const {
   int num_nodes_preop = graph_->node_size();
   for (int node_idx = 0; node_idx < num_nodes_preop; ++node_idx) {
     NodeDef* node = graph_->mutable_node(node_idx);
@@ -1775,7 +1854,7 @@ void AutoMixedPrecisionImpl::MakeCastsWhiteIfAllOutputsWhite(
     if (node->op() != "Cast" || !IsFloat32(node_type)) {
       continue;
     }
-    bool all_fanouts_white = true;
+    bool all_fanouts_allow = true;
     MutableGraphView::OutputPort src(node, 0);
     const auto& fanout = graph_view_.GetFanout(src);
     for (const MutableGraphView::InputPort& dst : fanout) {
@@ -1787,13 +1866,13 @@ void AutoMixedPrecisionImpl::MakeCastsWhiteIfAllOutputsWhite(
           << "Type attribute " << dst_type_attr.DebugString() << " of node "
           << dst.node->name() << " not found in graph view";
       int dst_type_idx = maybe_dst_type_idx.value();
-      bool dst_is_white = white_set->count(dst_type_idx);
-      if (!dst_is_white) {
-        all_fanouts_white = false;
+      bool dst_is_allow = allow_set->count(dst_type_idx);
+      if (!dst_is_allow) {
+        all_fanouts_allow = false;
         break;
       }
     }
-    if (!fanout.empty() && all_fanouts_white) {
+    if (!fanout.empty() && all_fanouts_allow) {
       const absl::optional<int> maybe_node_type_idx =
           graph_type_view_.GetNodeIndex(node_type);
       DCHECK(maybe_node_type_idx.has_value())
@@ -1801,18 +1880,18 @@ void AutoMixedPrecisionImpl::MakeCastsWhiteIfAllOutputsWhite(
           << " of node " << node_type.node->name()
           << " not found in graph view";
       int node_type_idx = maybe_node_type_idx.value();
-      white_set->insert(node_type_idx);
+      allow_set->insert(node_type_idx);
     }
   }
 }
 
-// Changes all white-painted type attributes to DT_HALF, and inserts Cast nodes
-// at node outputs for all edges that connect white-painted <->
-// non-white-painted type attributes.
+// Changes all allow-painted type attributes to DT_HALF or DT_BFLOAT16, and
+// inserts Cast nodes at node outputs for all edges that connect
+// allow-painted <-> non-allow-painted type attributes.
 Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
-    const absl::flat_hash_set<int>& white_set) {
+    const absl::flat_hash_set<int>& allow_set) {
   int num_nodes_changed = 0;
-  int num_nonvar_casts_to_fp16 = 0;
+  int num_nonvar_casts_to_f16 = 0;
   int num_nodes_preop = graph_->node_size();
   for (int node_idx = 0; node_idx < num_nodes_preop; ++node_idx) {
     NodeDef* node = graph_->mutable_node(node_idx);
@@ -1826,11 +1905,12 @@ Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
       }
       int node_type_idx = maybe_node_type_idx.value();
       if (!IsFloat32(*graph_type_view_.GetNode(node_type_idx))) continue;
-      bool src_is_white = white_set.count(node_type_idx);
-      if (src_is_white) {
+      bool src_is_allow = allow_set.count(node_type_idx);
+      if (src_is_allow) {
         VLOG(1) << "Changing type " << type_attr.DebugString() << " of "
-                << node->op() << " node " << node->name() << " to DT_HALF";
-        if (!SetDataType(node, type_attr, DT_HALF)) {
+                << node->op() << " node " << node->name() << " to "
+                << DataTypeString(target_dtype_);
+        if (!SetDataType(node, type_attr, target_dtype_)) {
           return errors::Internal("Failed to set type attribute");
         }
         ++num_nodes_changed;
@@ -1852,19 +1932,19 @@ Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
                                     " not found in graph view");
           }
           int dst_type_idx = maybe_dst_type_idx.value();
-          bool dst_is_white = white_set.count(dst_type_idx);
-          if (src_is_white != dst_is_white) {
+          bool dst_is_allow = allow_set.count(dst_type_idx);
+          if (src_is_allow != dst_is_allow) {
             if (!added_cast_node) {
-              bool to_fp16 = dst_is_white;
+              bool to_f16 = dst_is_allow;
               VLOG(1) << "Inserting cast to "
-                      << (to_fp16 ? "DT_HALF" : "DT_FLOAT") << " at "
-                      << src.node->op() << " " << src.node->name() << ":"
-                      << src.port_id;
+                      << (to_f16 ? DataTypeString(target_dtype_) : "DT_FLOAT")
+                      << " at " << src.node->op() << " " << src.node->name()
+                      << ":" << src.port_id;
               added_cast_node = graph_view_.AddNode(
-                  BuildCastNode(src, to_fp16, src.node->device()));
-              if (to_fp16 && !IsConstant(*node) && !IsVariable(*node) &&
+                  BuildCastNode(src, to_f16, src.node->device()));
+              if (to_f16 && !IsConstant(*node) && !IsVariable(*node) &&
                   !NodeImplicitlyReadsNonResourceVariable(*node)) {
-                ++num_nonvar_casts_to_fp16;
+                ++num_nonvar_casts_to_f16;
               }
             }
             TF_RETURN_IF_ERROR(graph_view_.UpdateRegularFaninByPort(
@@ -1874,9 +1954,13 @@ Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
       }
     }
   }
+  // Use Python type names (e.g. float16) instead of C++ type names (e.g. half)
+  // since many Python users will see this message.
+  const char* type_str = target_dtype_ == DT_HALF ? "float16" : "bfloat16";
   LOG(INFO) << "Converted " << num_nodes_changed << "/" << num_nodes_preop
-            << " nodes to float16 precision using " << num_nonvar_casts_to_fp16
-            << " cast(s) to float16 (excluding Const and Variable casts)";
+            << " nodes to " << type_str << " precision using "
+            << num_nonvar_casts_to_f16 << " cast(s) to " << type_str
+            << " (excluding Const and Variable casts)";
   return Status::OK();
 }
 
@@ -1902,12 +1986,24 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
     return errors::InvalidArgument("cluster == nullptr");
   }
 
+#if !defined(INTEL_MKL)
+  if (mode_ == AutoMixedPrecisionMode::MKL) {
+    return errors::Unimplemented(
+        "The auto_mixed_precision_mkl optimizer cannot be used since "
+        "this build of TensorFlow is not compiled with MKL support for "
+        "bfloat16. "
+        "For information on MKL builds, see: "
+        "https://software.intel.com/en-us/articles/intel-optimization-for-"
+        "tensorflow-installation-guide");
+  }
+#endif
+
   // Start by copying input graph to output.
   *output = item.graph;
 
   int num_gpus = ShouldIgnorePerformance() ? GetNumGPUs(*cluster)
                                            : GetNumGPUs(*cluster, kMinGPUArch);
-  if (num_gpus < 1) {
+  if (num_gpus < 1 && mode_ == AutoMixedPrecisionMode::CUDA) {
     // AutoMixedPrecision is currently only tuned for GPU.
     LOG(WARNING) << "No (suitable) GPUs detected, skipping " << name()
                  << " graph optimizer";
@@ -1916,7 +2012,7 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   // Optimize the output graph in-place.
   AutoMixedPrecisionImpl optimizer(cluster, item.NodesToPreserve(), output,
-                                   item.id);
+                                   item.id, mode_);
   if (item.id == "tf_graph") {
     LOG(INFO) << "Running " << name() << " graph optimizer";
   } else {

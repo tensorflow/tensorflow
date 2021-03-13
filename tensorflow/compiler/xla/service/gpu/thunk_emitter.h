@@ -35,18 +35,15 @@ class ThunkEmitter {
     virtual StatusOr<BufferAllocation::Slice> MaybeGetAllocationSlice(
         const HloInstruction& hlo, const ShapeIndex& index) const = 0;
     virtual int64 ByteSizeOf(const Shape& shape) const = 0;
-    virtual const se::Platform* platform() const = 0;
+    virtual absl::string_view platform_name() const = 0;
+    virtual Thunk::ThunkInfo GetThunkInfo(const HloInstruction* hlo) const;
 
     virtual ~EmissionContext() = default;
   };
 
   explicit ThunkEmitter(EmissionContext* context) : context_(context) {}
 
-  Status HandleCustomCall(HloInstruction* custom_call);
-  Status HandleFft(HloInstruction* fft);
   Status HandleTriangularSolve(HloInstruction* hlo);
-  Status HandleInfeed(HloInstruction* xla_infeed);
-  Status HandleOutfeed(HloInstruction* outfeed);
 
  private:
   EmissionContext* context_;
@@ -62,33 +59,19 @@ class ThunkEmitter {
 
   int64 ByteSizeOf(const Shape& shape) { return context_->ByteSizeOf(shape); }
 
-  const se::Platform* platform() const { return context_->platform(); }
+  absl::string_view platform_name() const { return context_->platform_name(); }
 
   BufferAllocation::Slice GetAllocationSlice(
       const HloInstruction& hlo, const ShapeIndex& index = {}) const {
     return MaybeGetAllocationSlice(hlo, index).ValueOrDie();
   }
 
-  // Returns a FftThunk that calls cuFFT to implement `inst`.
-  std::unique_ptr<Thunk> BuildFftThunk(const HloInstruction* inst);
-
   // Returns a CholeskyThunk that calls cuSolver to implement `inst`.
   std::unique_ptr<Thunk> BuildCholeskyThunk(const HloInstruction* inst);
-
-  // Returns a TriangularSolveThunk that calls cuBlas to implement `inst`.
-  std::unique_ptr<Thunk> BuildTriangularSolveThunk(const HloInstruction* inst);
 
   // Returns a GemmThunk that calls gemm to implement `inst`. The caller needs
   // to make sure `inst` outlives the lifetime of the returned Thunk object.
   std::unique_ptr<Thunk> BuildGemmThunk(const HloInstruction* inst);
-
-  // Returns an InfeedThunk that performs a host-to-device memcpy to implement
-  // `inst`.
-  std::unique_ptr<Thunk> BuildInfeedThunk(const HloInstruction* inst);
-
-  // Returns an OutfeedThunk that performs a device-to-host memcpy to implement
-  // `inst`.
-  std::unique_ptr<Thunk> BuildOutfeedThunk(const HloInstruction* inst);
 };
 
 }  // namespace gpu

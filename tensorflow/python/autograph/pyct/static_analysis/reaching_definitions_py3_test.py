@@ -78,7 +78,7 @@ class ReachingDefinitionsAnalyzerTest(
 
     self.assertSameDef(local_body[1].test, local_body[2].value.elts[0])
 
-    # Note: the function name is is visible inside the function body. But it's
+    # Note: the function name is visible inside the function body. But it's
     # a closure variable, not a local.
     #
     # Example:

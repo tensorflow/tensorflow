@@ -17,6 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_OP_KERNEL_H_
 
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "tensorflow/compiler/tf2xla/xla_context.h"
+#include "tensorflow/compiler/tf2xla/xla_expression.h"
+#include "tensorflow/compiler/tf2xla/xla_resource.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -86,10 +89,16 @@ class XlaOpKernelContext {
   // xla::PRIMITIVE_TYPE_INVALID.
   xla::PrimitiveType InputXlaType(absl::string_view name);
 
-  // Returns the shape of input `index`.
+  // Returns the shape of input at `index` or input the given `name`. Note that
+  // in case the shape of the input is not static, then the returned shape has
+  // bounds as the dimension size instead of having unknown dimensions. Use
+  // InputXlaShape instead that provides shapes with dynamism information.
+  //
+  ABSL_DEPRECATED(
+      "Prefer InputXlaShape which handles dynamic shapes accurately.")
   TensorShape InputShape(int index);
-
-  // Returns the shape of input with name `name`.
+  ABSL_DEPRECATED(
+      "Prefer InputXlaShape which handles dynamic shapes accurately.")
   TensorShape InputShape(absl::string_view name);
 
   // Returns input `index` as a XlaOp. Unlike
@@ -113,7 +122,10 @@ class XlaOpKernelContext {
   // returns a one-element list.
   Status InputList(absl::string_view name, std::vector<xla::XlaOp>* handles,
                    std::vector<TensorShape>* shapes);
-
+  // Evaluates input and returns their dynamism vector in a vector of
+  // predicates.
+  Status ResolveInputDynamismIntoPredVector(int index, std::vector<bool>* out);
+  Status ResolveInputDynamismIntoPred(int index, bool* out);
   // Helper methods for constant inputs.
 
   // Evaluates input `index` and stores it in `*constant_literal`. If the
@@ -284,12 +296,9 @@ class XlaOpKernelContext {
   // separate specialization of the computation for each DataType.
   const xla::XlaComputation* GetOrCreateMul(const DataType type);
 
-  // Assigns an XlaExpression to a tensor on an XLA compilation device.
-  static void AssignExpressionToTensor(const XlaExpression& value,
-                                       Tensor* tensor);
-
-  // Retrieves an XlaExpression that was assigned to the specified tensor.
-  static const XlaExpression* CastExpressionFromTensor(const Tensor& tensor);
+  // Returns stack trace encoded as a string at a given module, or an empty
+  // string if none found.
+  std::string StackTrace() const;
 
  private:
   // Returns the tensor of input `name`.

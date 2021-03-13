@@ -24,7 +24,10 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/cpu_backend_gemm.h"
+#include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 
 namespace tflite {
@@ -170,6 +173,38 @@ void SseMatrixBatchVectorMultiplyAccumulateImpl(
   }  // for batch
 }
 
+void SseCpuBackendGemm(const int8_t* input, const int32_t* bias,
+                       const int8_t* input_to_gate_weights, int32_t n_batch,
+                       int32_t n_input, int32_t n_output, int32_t output_zp,
+                       int32_t* scratch, CpuBackendContext* context) {
+  using ::tflite::cpu_backend_gemm::Gemm;
+  using ::tflite::cpu_backend_gemm::GemmParams;
+  using ::tflite::cpu_backend_gemm::MatrixParams;
+
+  MatrixParams<int8_t> lhs_params;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.rows = n_output;
+  lhs_params.cols = n_input;
+  lhs_params.cache_policy = cpu_backend_gemm::CachePolicy::kCacheIfLargeSpeedup;
+
+  MatrixParams<int8_t> rhs_params;
+  rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  rhs_params.rows = n_input;
+  rhs_params.cols = n_batch;
+
+  MatrixParams<int32_t> dst_params;
+  dst_params.order = cpu_backend_gemm::Order::kColMajor;
+  dst_params.rows = n_output;
+  dst_params.cols = n_batch;
+
+  GemmParams<int32, int32> gemm_params;
+  if (bias) {
+    gemm_params.bias = bias;
+  }
+  cpu_backend_gemm::Gemm(lhs_params, input_to_gate_weights, rhs_params, input,
+                         dst_params, scratch, gemm_params, context);
+}
+
 void SseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors,
@@ -184,12 +219,61 @@ void SseMatrixBatchVectorMultiplyAccumulate(
 void SseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch, int32_t* scratch,
+    float* __restrict__ result, CpuBackendContext* context) {
+  if (m_rows % 4 == 0) {
+    const int32_t* bias = static_cast<const int32_t*>(nullptr);
+    SseCpuBackendGemm(vectors, bias, matrix, n_batch, m_cols, m_rows,
+                      /*output_zp=*/0, scratch, context);
+
+    {
+      ruy::profiler::ScopeLabel label("HybridMultiplyScalingFactor");
+      // Multiply by float scaling factors and write to result
+      const int total_size = n_batch * m_rows;
+      int i = 0;
+      for (; i <= total_size - 8; i += 8, result += 8) {
+        const float batch_scaling_factor0 = scaling_factors[i / m_rows];
+        const float batch_scaling_factor1 = scaling_factors[(i + 4) / m_rows];
+        const __m128 scaling_factor0 = _mm_set1_ps(batch_scaling_factor0);
+        const __m128 scaling_factor1 = _mm_set1_ps(batch_scaling_factor1);
+        const __m128i scratch_val0 =
+            _mm_loadu_si128(reinterpret_cast<const __m128i*>(scratch + i));
+        const __m128i scratch_val1 =
+            _mm_loadu_si128(reinterpret_cast<const __m128i*>(scratch + i + 4));
+        const __m128 float_val0 = _mm_cvtepi32_ps(scratch_val0);
+        const __m128 float_val1 = _mm_cvtepi32_ps(scratch_val1);
+        const __m128 prod0 = _mm_mul_ps(float_val0, scaling_factor0);
+        const __m128 result0 = _mm_add_ps(_mm_load1_ps(result), prod0);
+        const __m128 prod1 = _mm_mul_ps(float_val1, scaling_factor1);
+        const __m128 result1 = _mm_add_ps(_mm_load1_ps(result + 4), prod1);
+        _mm_store_ps(result, result0);
+        _mm_store_ps(result + 4, result1);
+      }
+      scratch += i;
+      for (; i < total_size; i++) {
+        const float batch_scaling_factor = scaling_factors[i / m_rows];
+        int32_t x = *(scratch++);
+        *result += x * batch_scaling_factor;
+        ++result;
+      }
+    }
+    return;
+  }
+
+  SseMatrixBatchVectorMultiplyAccumulateImpl(
+      matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result,
+      /*per_channel_scale=*/nullptr, /*input_offset=*/nullptr,
+      /*row_sums=*/nullptr);
+}
+
+void SseMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
     float* __restrict__ result, const float* per_channel_scale,
     const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
     bool* compute_row_sums, CpuBackendContext* context) {
   if ((input_offset != nullptr) && (!compute_row_sums || *compute_row_sums)) {
-    memset(row_sums, 0, sizeof(int32_t) * m_rows);
     SseReductionSumVector(matrix, row_sums, m_rows, m_cols);
     if (compute_row_sums) {
       *compute_row_sums = false;
@@ -362,9 +446,9 @@ void SseReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
 #pragma clang loop unroll(disable) vectorize(disable)
 #endif
     for (; col < reduction_size; col++) {
-      row_sum += *(row_ptr + col);
+      row_sum += row_ptr[col];
     }
-    *(output_vector + row) += row_sum;
+    output_vector[row] = row_sum;
   }
 }
 

@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = [
@@ -8,11 +8,16 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
 
 py_library(
     name = "feature_column",
     srcs = ["__init__.py"],
+    srcs_version = "PY3",
     deps = [
         ":base_feature_layer",
         ":dense_features",
@@ -24,6 +29,7 @@ py_library(
 py_library(
     name = "base_feature_layer",
     srcs = ["base_feature_layer.py"],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:variable_scope",
@@ -38,13 +44,14 @@ py_library(
     srcs = [
         "dense_features.py",
     ],
+    srcs_version = "PY3",
     deps = [
         ":base_feature_layer",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
         "//tensorflow/python/feature_column:feature_column_v2",
         "//tensorflow/python/keras:backend",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -53,12 +60,14 @@ py_library(
     srcs = [
         "dense_features_v2.py",
     ],
+    srcs_version = "PY3",
     deps = [
         ":base_feature_layer",
         ":dense_features",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python/feature_column:feature_column_v2",
+        "//tensorflow/python/keras/utils:tf_contextlib",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -83,6 +92,8 @@ tf_py_test(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/feature_column:feature_column_v2",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
     ],
 )
 
@@ -106,20 +117,23 @@ tf_py_test(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/feature_column:feature_column_v2",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
     ],
 )
 
 py_library(
     name = "sequence_feature_column",
     srcs = ["sequence_feature_column.py"],
+    srcs_version = "PY3",
     deps = [
         ":base_feature_layer",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python/feature_column:feature_column_v2",
         "//tensorflow/python/keras:backend",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -145,15 +159,16 @@ tf_py_test(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "sequence_feature_column_integration_test",
     srcs = ["sequence_feature_column_integration_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = ["no_pip"],
     deps = [
         ":dense_features",
         ":sequence_feature_column",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:init_ops_v2",
@@ -163,6 +178,9 @@ py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/feature_column:feature_column_v2",
+        "//tensorflow/python/keras:metrics",  # Import it here since base_layer didn't import it due to circular dependency.
+        "//tensorflow/python/keras/layers:core",
+        "//tensorflow/python/keras/layers:merge",
         "//tensorflow/python/keras/layers:recurrent",
     ],
 )

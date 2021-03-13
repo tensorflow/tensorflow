@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/lite/context.h"
+#include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/tflite/op_version.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
@@ -52,7 +53,7 @@ using ::tflite::Tensor;
 namespace {
 
 // Check if a TensorFlow Op is a control flow op by its name.
-bool IsControlFlowOp(const string& tensorflow_op) {
+bool IsControlFlowOp(const std::string& tensorflow_op) {
   // Technically this is equivalent to `::tensorflow::Node::IsControlFlow()`.
   // It requires to construct a `::tensorflow::Graph` to use that helper
   // function, so we simply hardcode the list of control flow ops here.
@@ -68,7 +69,7 @@ bool IsControlFlowOp(const string& tensorflow_op) {
 }
 
 // Check if a TensorFlow Op is unsupported by the Flex runtime.
-bool IsUnsupportedFlexOp(const string& tensorflow_op) {
+bool IsUnsupportedFlexOp(const std::string& tensorflow_op) {
   if (IsControlFlowOp(tensorflow_op)) {
     return true;
   }
@@ -82,14 +83,14 @@ bool IsUnsupportedFlexOp(const string& tensorflow_op) {
 }
 
 // Map from operator name to TF Lite enum value, for all builtins.
-const std::map<string, BuiltinOperator>& GetBuiltinOpsMap() {
-  static std::map<string, BuiltinOperator>* builtin_ops = nullptr;
+const std::map<std::string, BuiltinOperator>& GetBuiltinOpsMap() {
+  static std::map<std::string, BuiltinOperator>* builtin_ops = nullptr;
   if (builtin_ops == nullptr) {
-    builtin_ops = new std::map<string, BuiltinOperator>();
+    builtin_ops = new std::map<std::string, BuiltinOperator>();
 
     for (int i = BuiltinOperator_MIN; i <= BuiltinOperator_MAX; ++i) {
       BuiltinOperator op = static_cast<BuiltinOperator>(i);
-      string name = EnumNameBuiltinOperator(op);
+      std::string name = EnumNameBuiltinOperator(op);
       if (op != BuiltinOperator_CUSTOM && !name.empty()) {
         (*builtin_ops)[name] = op;
       }
@@ -99,10 +100,10 @@ const std::map<string, BuiltinOperator>& GetBuiltinOpsMap() {
 }
 
 void WriteModelToString(const flatbuffers::FlatBufferBuilder& builder,
-                        string* file_contents) {
+                        std::string* file_contents) {
   const uint8_t* buffer = builder.GetBufferPointer();
   int size = builder.GetSize();
-  *file_contents = string(reinterpret_cast<const char*>(buffer), size);
+  *file_contents = std::string(reinterpret_cast<const char*>(buffer), size);
 }
 
 }  // Anonymous namespace.
@@ -115,7 +116,7 @@ OperatorKey::OperatorKey(
     bool enable_select_tf_ops) {
   // Get the op name (by Toco definition).
   const ::toco::Operator& op = *op_signature.op;
-  string name = HelpfulOperatorTypeName(op);
+  std::string name = HelpfulOperatorTypeName(op);
 
   bool is_builtin = false;
   const auto& builtin_ops = GetBuiltinOpsMap();
@@ -146,7 +147,7 @@ OperatorKey::OperatorKey(
       is_flex_op_ = true;
       flex_tensorflow_op_ = tensorflow_op;
       custom_code_ =
-          string(::tflite::kFlexCustomCodePrefix) + flex_tensorflow_op_;
+          std::string(::tflite::kFlexCustomCodePrefix) + flex_tensorflow_op_;
     } else {
       custom_code_ = tensorflow_op;
     }
@@ -158,7 +159,7 @@ OperatorKey::OperatorKey(
     is_flex_op_ = true;
     flex_tensorflow_op_ = name;
     custom_code_ =
-        string(::tflite::kFlexCustomCodePrefix) + flex_tensorflow_op_;
+        std::string(::tflite::kFlexCustomCodePrefix) + flex_tensorflow_op_;
   } else {
     // If Flex is disabled or the original TensorFlow NodeDef isn't available,
     // we produce a custom op. This gives developers a chance to implement
@@ -175,7 +176,7 @@ OperatorKey::OperatorKey(
 
 void LoadTensorsMap(const Model& model, TensorsMap* tensors_map) {
   // First find a list of unique array names.
-  std::set<string> names;
+  std::set<std::string> names;
   for (const auto& array_pair : model.GetArrayMap()) {
     names.insert(array_pair.first);
   }
@@ -218,7 +219,7 @@ Offset<Vector<Offset<Tensor>>> ExportTensors(
   std::map<int, Offset<Tensor>> ordered_tensors;
 
   for (const auto& array_pair : model.GetArrayMap()) {
-    const string& tensor_name = array_pair.first;
+    const std::string& tensor_name = array_pair.first;
     const toco::Array& array = *array_pair.second;
 
     int buffer_index = buffers_to_write->size();
@@ -283,7 +284,7 @@ Offset<Vector<int32_t>> ExportOutputTensors(
     const Model& model, const details::TensorsMap& tensors_map,
     FlatBufferBuilder* builder) {
   std::vector<int32_t> outputs;
-  for (const string& output : model.flags.output_arrays()) {
+  for (const std::string& output : model.flags.output_arrays()) {
     outputs.push_back(tensors_map.at(output));
   }
   return builder->CreateVector<int32_t>(outputs);
@@ -295,10 +296,10 @@ Offset<Vector<Offset<OperatorCode>>> ExportOperatorCodes(
     const details::OperatorsMap& operators_map, FlatBufferBuilder* builder,
     const ExportParams& params) {
   // Map from operator name to TF Lite enum value, for all builtins.
-  std::map<string, BuiltinOperator> builtin_ops;
+  std::map<std::string, BuiltinOperator> builtin_ops;
   for (int i = BuiltinOperator_MIN; i <= BuiltinOperator_MAX; ++i) {
     BuiltinOperator op = static_cast<BuiltinOperator>(i);
-    string name = EnumNameBuiltinOperator(op);
+    std::string name = EnumNameBuiltinOperator(op);
     if (op != BuiltinOperator_CUSTOM && !name.empty()) {
       builtin_ops[name] = op;
     }
@@ -349,13 +350,13 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
   std::vector<Offset<Operator>> op_vector;
   for (const auto& op : model.operators) {
     std::vector<int32_t> inputs;
-    for (const string& input : op->inputs) {
+    for (const std::string& input : op->inputs) {
       // -1 is the ID for optional tensor in TFLite output
       int id = model.IsOptionalArray(input) ? -1 : tensors_map.at(input);
       inputs.push_back(id);
     }
     std::vector<int32_t> outputs;
-    for (const string& output : op->outputs) {
+    for (const std::string& output : op->outputs) {
       outputs.push_back(tensors_map.at(output));
     }
     const toco::OperatorSignature op_signature = {op.get(), &model};
@@ -428,15 +429,15 @@ Offset<Vector<Offset<Buffer>>> ExportBuffers(
   return builder->CreateVector(buffer_vector);
 }
 
-tensorflow::Status Export(const Model& model, string* output_file_contents,
+tensorflow::Status Export(const Model& model, std::string* output_file_contents,
                           const ExportParams& params) {
   const auto ops_by_type = BuildOperatorByTypeMap(params.enable_select_tf_ops);
   return Export(model, output_file_contents, params, ops_by_type);
 }
 
-void ParseControlFlowErrors(std::set<string>* custom_ops,
-                            std::vector<string>* error_msgs) {
-  std::set<string> unsupported_control_flow_ops;
+void ParseControlFlowErrors(std::set<std::string>* custom_ops,
+                            std::vector<std::string>* error_msgs) {
+  std::set<std::string> unsupported_control_flow_ops;
   // Check if unsupported ops contains control flow ops. It's impossible
   // to implement these ops as custom ops at the moment.
   for (const auto& op : *custom_ops) {
@@ -471,10 +472,10 @@ void ExportModelVersionBuffer(
 }
 
 tensorflow::Status Export(
-    const Model& model, string* output_file_contents,
+    const Model& model, std::string* output_file_contents,
     const ExportParams& params,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
-  for (const string& input_array : model.GetInvalidInputArrays()) {
+  for (const std::string& input_array : model.GetInvalidInputArrays()) {
     if (model.HasArray(input_array)) {
       return tensorflow::errors::InvalidArgument(
           absl::StrCat("Placeholder ", input_array,
@@ -509,11 +510,11 @@ tensorflow::Status Export(
   }
 
   // The set of used builtin ops.
-  std::set<string> builtin_ops;
+  std::set<std::string> builtin_ops;
   // The set of custom ops (not including Flex ops).
-  std::set<string> custom_ops;
+  std::set<std::string> custom_ops;
   // The set of Flex ops which are not supported.
-  std::set<string> unsupported_flex_ops;
+  std::set<std::string> unsupported_flex_ops;
 
   for (const auto& it : operators_map) {
     const details::OperatorKey& key = it.first;
@@ -540,7 +541,7 @@ tensorflow::Status Export(
                "40-tflite-op-request.md\n and pasting the following:\n\n";
       };
 
-      std::vector<string> error_msgs;
+      std::vector<std::string> error_msgs;
       ParseControlFlowErrors(&custom_ops, &error_msgs);
 
       // Remove ExpandDims and ReorderAxes from unimplemented list unless they
@@ -549,7 +550,7 @@ tensorflow::Status Export(
       // transformation is unable to run because the output shape is not
       // defined. This causes unnecessary confusion during model conversion
       // time.
-      std::set<string> custom_ops_final;
+      std::set<std::string> custom_ops_final;
       for (const auto& op_type : custom_ops) {
         if (op_type != "ReorderAxes" && op_type != "ExpandDims") {
           custom_ops_final.insert(op_type);

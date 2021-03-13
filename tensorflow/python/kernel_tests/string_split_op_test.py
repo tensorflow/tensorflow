@@ -217,7 +217,7 @@ class StringSplitOpTest(test.TestCase, parameterized.TestCase):
                                    expected=None,
                                    error=None):
     if error is not None:
-      with self.assertRaisesRegexp(ValueError, error):
+      with self.assertRaisesRegex(ValueError, error):
         ragged_string_ops.string_split(source, sep, skip_empty, delimiter,
                                        result_type)
     if expected is not None:
@@ -447,7 +447,7 @@ class StringSplitV2OpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                      self.evaluate(actual_sparse_v1.dense_shape).tolist())
 
   def testSplitV1BadResultType(self):
-    with self.assertRaisesRegexp(ValueError, "result_type must be .*"):
+    with self.assertRaisesRegex(ValueError, "result_type must be .*"):
       ragged_string_ops.strings_split_v1("foo", result_type="BouncyTensor")
 
   def _py_split(self, strings, **kwargs):

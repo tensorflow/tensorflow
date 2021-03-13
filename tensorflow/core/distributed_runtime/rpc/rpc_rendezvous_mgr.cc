@@ -277,6 +277,7 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
 
   // RendezvousMgr already aborted, shouldn't send RPC call any more
   if (!call->status().ok()) {
+    DeregisterCall(call);
     // NOTE: `*sess` can potentially be deleted before we return from
     // `call->done()(...)`, so we must release the worker before calling the
     // callback.

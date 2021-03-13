@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
 namespace py = pybind11;
+using tflite::calibration_wrapper::AddIntermediateTensors;
 using tflite::calibration_wrapper::CalibrationWrapper;
 
 PYBIND11_MODULE(_pywrap_tensorflow_lite_calibration_wrapper, m) {
@@ -25,9 +26,17 @@ PYBIND11_MODULE(_pywrap_tensorflow_lite_calibration_wrapper, m) {
     _pywrap_tensorflow_lite_calibration_wrapper
     -----
   )pbdoc";
+  m.def("AddIntermediateTensors", [](py::handle& data) {
+    return tensorflow::PyoOrThrow(AddIntermediateTensors(data.ptr()));
+  });
   py::class_<CalibrationWrapper>(m, "CalibrationWrapper")
       .def(py::init([](py::handle& data) {
-        return ::CalibrationWrapper::CreateWrapperCPPFromBuffer(data.ptr());
+        auto* wrapper =
+            ::CalibrationWrapper::CreateWrapperCPPFromBuffer(data.ptr());
+        if (PyErr_Occurred()) {
+          throw py::error_already_set();
+        }
+        return wrapper;
       }))
       .def("Prepare",
            [](CalibrationWrapper& self, py::handle& input_shapes) {
@@ -43,15 +52,18 @@ PYBIND11_MODULE(_pywrap_tensorflow_lite_calibration_wrapper, m) {
            })
       .def("QuantizeModel",
            [](CalibrationWrapper& self, int input_py_type, int output_py_type,
-              bool allow_float, bool enable_mlir_quantizer) {
-             return tensorflow::PyoOrThrow(self.QuantizeModel(
-                 input_py_type, output_py_type, allow_float));
+              bool allow_float, int activations_py_type,
+              bool enable_mlir_quantizer) {
+             return tensorflow::PyoOrThrow(
+                 self.QuantizeModel(input_py_type, output_py_type, allow_float,
+                                    activations_py_type));
            })
       .def("QuantizeModel",
            [](CalibrationWrapper& self, int input_py_type, int output_py_type,
-              bool allow_float) {
-             return tensorflow::PyoOrThrow(self.QuantizeModel(
-                 input_py_type, output_py_type, allow_float));
+              bool allow_float, int activations_py_type) {
+             return tensorflow::PyoOrThrow(
+                 self.QuantizeModel(input_py_type, output_py_type, allow_float,
+                                    activations_py_type));
            })
       .def("QuantizeModel",
            [](CalibrationWrapper& self, int input_py_type, int output_py_type,

@@ -22,12 +22,21 @@ from absl.testing import parameterized
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
+
+try:
+  import attr  # pylint:disable=g-import-not-at-top
+except ImportError:
+  attr = None
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -38,14 +47,17 @@ class TestIsSymbolicTensor(test.TestCase, parameterized.TestCase):
       self.assertFalse(tf_utils.is_symbolic_tensor(
           variables.Variable(name='blah', initial_value=0.)))
       self.assertFalse(
-          tf_utils.is_symbolic_tensor(ops.convert_to_tensor_v2(0.)))
+          tf_utils.is_symbolic_tensor(
+              ops.convert_to_tensor_v2_with_dispatch(0.)))
       self.assertFalse(tf_utils.is_symbolic_tensor(
           sparse_tensor.SparseTensor(
               indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])))
     else:
       self.assertTrue(tf_utils.is_symbolic_tensor(
           variables.Variable(name='blah', initial_value=0.)))
-      self.assertTrue(tf_utils.is_symbolic_tensor(ops.convert_to_tensor_v2(0.)))
+      self.assertTrue(
+          tf_utils.is_symbolic_tensor(
+              ops.convert_to_tensor_v2_with_dispatch(0.)))
       self.assertTrue(tf_utils.is_symbolic_tensor(
           sparse_tensor.SparseTensor(
               indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])))
@@ -55,7 +67,7 @@ class TestIsSymbolicTensor(test.TestCase, parameterized.TestCase):
     class CustomClass(object):
 
       def value(self):
-        return ops.convert_to_tensor_v2(42.)
+        return ops.convert_to_tensor_v2_with_dispatch(42.)
 
     ops.register_tensor_conversion_function(
         CustomClass, lambda value, **_: value.value())
@@ -66,7 +78,8 @@ class TestIsSymbolicTensor(test.TestCase, parameterized.TestCase):
       self.assertFalse(tf_utils.is_symbolic_tensor(
           variables.Variable(name='blah', initial_value=0.)))
       self.assertFalse(
-          tf_utils.is_symbolic_tensor(ops.convert_to_tensor_v2(0.)))
+          tf_utils.is_symbolic_tensor(
+              ops.convert_to_tensor_v2_with_dispatch(0.)))
       self.assertFalse(tf_utils.is_symbolic_tensor(
           sparse_tensor.SparseTensor(
               indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])))
@@ -74,7 +87,9 @@ class TestIsSymbolicTensor(test.TestCase, parameterized.TestCase):
     else:
       self.assertTrue(tf_utils.is_symbolic_tensor(
           variables.Variable(name='blah', initial_value=0.)))
-      self.assertTrue(tf_utils.is_symbolic_tensor(ops.convert_to_tensor_v2(0.)))
+      self.assertTrue(
+          tf_utils.is_symbolic_tensor(
+              ops.convert_to_tensor_v2_with_dispatch(0.)))
       self.assertTrue(tf_utils.is_symbolic_tensor(
           sparse_tensor.SparseTensor(
               indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])))
@@ -89,7 +104,7 @@ class TestIsSymbolicTensor(test.TestCase, parameterized.TestCase):
 
       def __init__(self, input_):
         self._input = input_
-        self.value = ops.convert_to_tensor_v2([[42.]])
+        self.value = ops.convert_to_tensor_v2_with_dispatch([[42.]])
 
       @property
       def dtype(self):
@@ -104,7 +119,7 @@ class TestIsSymbolicTensor(test.TestCase, parameterized.TestCase):
       def __init__(self, fn, **kwargs):
         def _fn(*fargs, **fkwargs):
           d = fn(*fargs, **fkwargs)
-          x = ops.convert_to_tensor_v2(d)
+          x = ops.convert_to_tensor_v2_with_dispatch(d)
           d.shape = x.shape
           d.get_shape = x.get_shape
           return d, x
@@ -132,7 +147,7 @@ class TestIsSymbolicTensor(test.TestCase, parameterized.TestCase):
     model = keras.Model(model.inputs, model(model.outputs))
     # Now we instantiate the model and verify we have a `Foo` object, not a
     # `Tensor`.
-    y = model(ops.convert_to_tensor_v2([[7.]]))
+    y = model(ops.convert_to_tensor_v2_with_dispatch([[7.]]))
     self.assertIsInstance(y, Foo)
     # Confirm that (custom) loss sees `Foo` instance, not Tensor.
     obtained_prediction_box = [None]
@@ -157,6 +172,55 @@ class ConvertInnerNodeDataTest(test.TestCase):
                                             wrap=True)
     self.assertTrue(all(isinstance(ele, tf_utils.ListWrapper) for ele in data))
 
+
+class AttrsTest(test.TestCase):
+
+  def test_map_structure_with_atomic_accept_attr(self):
+    if attr is None:
+      self.skipTest('attr module is unavailable.')
+
+    @attr.s(frozen=True)
+    class Foo(object):
+
+      bar = attr.ib()
+
+    self.assertEqual(
+        Foo(2),
+        tf_utils.map_structure_with_atomic(
+            is_atomic_fn=lambda x: isinstance(x, int),
+            map_fn=lambda x: x + 1,
+            nested=Foo(1)))
+
+
+class TestIsRagged(test.TestCase):
+
+  def test_is_ragged_return_true_for_ragged_tensor(self):
+    tensor = ragged_tensor.RaggedTensor.from_row_splits(
+        values=[3, 1, 4, 1, 5, 9, 2, 6], row_splits=[0, 4, 4, 7, 8, 8])
+    self.assertTrue(tf_utils.is_ragged(tensor))
+
+  def test_is_ragged_return_false_for_list(self):
+    tensor = [1., 2., 3.]
+    self.assertFalse(tf_utils.is_ragged(tensor))
+
+
+class TestIsExtensionType(test.TestCase):
+
+  def test_is_extension_type_return_true_for_ragged_tensor(self):
+    self.assertTrue(tf_utils.is_extension_type(
+        ragged_factory_ops.constant([[1, 2], [3]])))
+
+  def test_is_extension_type_return_true_for_sparse_tensor(self):
+    self.assertTrue(tf_utils.is_extension_type(
+        sparse_ops.from_dense([[1, 2], [3, 4]])))
+
+  def test_is_extension_type_return_false_for_dense_tensor(self):
+    self.assertFalse(tf_utils.is_extension_type(
+        constant_op.constant([[1, 2], [3, 4]])))
+
+  def test_is_extension_type_return_false_for_list(self):
+    tensor = [1., 2., 3.]
+    self.assertFalse(tf_utils.is_extension_type(tensor))
 
 if __name__ == '__main__':
   test.main()

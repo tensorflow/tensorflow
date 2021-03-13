@@ -48,13 +48,13 @@ const char kScopedAllocatorAttrName[] = "_scoped_allocator";
 // matches op_name, i.e. it looks from the name like this node is
 // of that op type.
 bool HasOpName(const string& node_name, const string& op_name) {
-  size_t begin = node_name.rfind("/");
+  size_t begin = node_name.rfind('/');
   if (begin == string::npos) {
     begin = 0;
   } else {
     ++begin;
   }
-  size_t end = node_name.rfind("_");
+  size_t end = node_name.rfind('_');
   if (end != string::npos) {
     size_t p = end + 1;
     while (p < node_name.size()) {
@@ -73,7 +73,8 @@ bool HasOpName(const string& node_name, const string& op_name) {
 Status GetOutputDataType(
     const std::vector<OpInfo::TensorProperties>& output_props, int output_index,
     DataType* dtype) {
-  if (output_index >= output_props.size()) {
+  int output_props_size = output_props.size();
+  if (output_index >= output_props_size) {
     return errors::Internal("Invalid output index ", output_index,
                             " size of output_props ", output_props.size());
   }
@@ -103,31 +104,31 @@ Status CheckTypesAndGetShapes(const GraphProperties& graph_properties,
             << shapes->size();
     if (!graph_properties.HasOutputProperties(n->name())) {
       LOG(ERROR) << "Node " << n->DebugString() << " lacks output shape.";
-      return errors::Internal("Node ", n->name(), " lacks output shape.");
+      return errors::Aborted("Node ", n->name(), " lacks output shape.");
     }
     const std::vector<OpInfo::TensorProperties>& prop_list =
         graph_properties.GetOutputProperties(n->name());
     if (prop_list.size() != 1) {
-      return errors::Internal("Node ", n->name(),
-                              " does not have exactly one output as expected "
-                              "by ScopedAllocatorOptimizer");
+      return errors::Aborted("Node ", n->name(),
+                             " does not have exactly one output as expected "
+                             "by ScopedAllocatorOptimizer");
     }
     const OpInfo::TensorProperties& props = prop_list[0];
     if (shapes->empty()) {
       *type = props.dtype();
     } else if (*type != props.dtype()) {
-      return errors::Internal("Group ops don't all have same type");
-    } else if (!TensorShape::IsValid(props.shape()) ||
-               props.shape().unknown_rank()) {
-      // TensorShape::IsValid may return true if unknown_rank is True, i.e.
-      // number of dimensions is unknown.  But for ScopedAllocatorOptimizer we
-      // need to know the shape fully.
-      return errors::Internal("Complete shape not known for ", n->name());
+      return errors::Aborted("Group ops don't all have same type");
     }
     if (*type != dtype) {
       return errors::Internal(
           "Type mismatch: type in op attr = ", DataTypeString(dtype),
           ", type in output props = ", DataTypeString(*type));
+    }
+    if (!TensorShape::IsValid(props.shape()) || props.shape().unknown_rank()) {
+      // TensorShape::IsValid may return true if unknown_rank is True, i.e.
+      // number of dimensions is unknown.  But for ScopedAllocatorOptimizer we
+      // need to know the shape fully.
+      return errors::Aborted("Complete shape not known for ", n->name());
     }
     VLOG(2) << "Adding shape " << props.shape().DebugString();
     shapes->push_back(TensorShape(props.shape()));
@@ -217,8 +218,9 @@ Status MaybeRewriteInput(ScopedAllocatorOptimizer* sa_opti,
                          NodeDef* input, const string& edge_name,
                          int output_index, NodeDef* op, NodeDef** new_input,
                          int* new_output_index, bool* rewrite) {
-  *rewrite = IsExit(*input) || (sa_opti->repeated_outputs().find(edge_name) !=
-                                sa_opti->repeated_outputs().end());
+  *rewrite = IsConstant(*input) || IsExit(*input) ||
+             (sa_opti->repeated_outputs().find(edge_name) !=
+              sa_opti->repeated_outputs().end());
   if (!(*rewrite)) {
     *new_input = input;
     *new_output_index = output_index;
@@ -300,8 +302,8 @@ Status GetInputs(ScopedAllocatorOptimizer* sa_opti, int64 invocation_count,
           GetOutputDataType(inode_output_props, output_index, &inode_dtype));
     }
     if (inode_dtype != dtype) {
-      return errors::Internal("ScopedAllocatorOptimizer expected input type ",
-                              dtype, " but found ", inode_dtype);
+      return errors::Aborted("ScopedAllocatorOptimizer expected input type ",
+                             dtype, " but found ", inode_dtype);
     }
     inputs->emplace_back(inode, output_index, n);
   }
@@ -361,6 +363,20 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
  public:
   ~UnaryElementwiseRewriter() override {}
 
+  // Return non-OK if any input is an op that does not use the
+  // AllocatorAttributes set by executor to allocate its output.
+  Status CheckUsesAllocatorAttributes(const std::vector<InputDesc>& inputs) {
+    for (const InputDesc& nd : inputs) {
+      if (IsConstant(*nd.from_node_def)) {
+        return errors::Aborted(
+            "Abandoning ScopedAllocatorOptimizer because input ",
+            nd.from_node_def->name(),
+            " is a Const op which does not use AllocatorAttributes");
+      }
+    }
+    return Status::OK();
+  }
+
   // Return non-OK if any input is already committed to a ScopedAllocator.
   //
   // We insert an identity to ensure that inputs are not committed to different
@@ -378,7 +394,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
         LOG(INFO) << "Abandoning ScopedAllocatorOptimizer because input "
                   << nd.from_node_def->name() << " output " << scope_ids[0]
                   << " is already assigned to scope_id " << scope_ids[1];
-        return errors::Internal(
+        return errors::Aborted(
             "Abandoning ScopedAllocatorOptimizer because input ",
             nd.from_node_def->name(), " output ", scope_ids[0], " is already ",
             "assigned to scope_id ", scope_ids[1]);
@@ -393,10 +409,10 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     for (const InputDesc& nd : inputs) {
       if (op_set.find(nd.from_node_def->name()) != op_set.end()) {
         if (nd.output_slot != tensorflow::Graph::kControlSlot) {
-          return errors::Internal("Data edge exists between ",
-                                  nd.from_node_def->name(),
-                                  " and another "
-                                  "node in the set");
+          return errors::Aborted("Data edge exists between ",
+                                 nd.from_node_def->name(),
+                                 " and another "
+                                 "node in the set");
         }
       }
     }
@@ -440,6 +456,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     LOG_WARNING_AND_RETURN_IF_ERROR(
         GetInputs(sa_opti, invocation_count, graph, *graph_properties_,
                   sa_opti->node_map(), ops, *dtype, inputs));
+    LOG_WARNING_AND_RETURN_IF_ERROR(CheckUsesAllocatorAttributes(*inputs));
     LOG_WARNING_AND_RETURN_IF_ERROR(CheckExistingScopedAllocator(*inputs));
     LOG_WARNING_AND_RETURN_IF_ERROR(
         CheckInternalDataDependency(op_instance_names, *inputs));
@@ -520,10 +537,10 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
 
     // Add control edges from the ScopedAllocatorOp to all of the
     // input nodes and mark them for allocation from backing tensor.
-    for (int i = 0; i < inputs.size(); ++i) {
+    for (int i = 0, end = inputs.size(); i < end; ++i) {
       auto& nd = inputs[i];
       if (IsArg(*nd.from_node_def)) {
-        return errors::Internal(
+        return errors::Aborted(
             "ScopedAllocatorOptimizer does not work well when the op inputs "
             "are _Arg ops; skipping this optimizer for this function");
       }
@@ -547,7 +564,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
       std::vector<InputDesc> inputs_to_first;
       LOG_WARNING_AND_RETURN_IF_ERROR(GetDataInputs(
           graph, sa_opti->node_map(), nd.from_node_def, &inputs_to_first));
-      for (int i = 0; i < inputs_to_first.size(); ++i) {
+      for (int i = 0, end = inputs_to_first.size(); i < end; ++i) {
         if (fanout.find(inputs_to_first[i].from_node_def) != fanout.end()) {
           VLOG(2) << "Found node " << inputs_to_first[i].from_node_def->name()
                   << " in the fanout of " << sa_name;
@@ -587,7 +604,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     VLOG(2) << "BuildSAConcatNode " << sac_name;
     // control input: edge name -> source node name
     absl::flat_hash_map<string, string> sac_ctl_inputs;
-    for (int i = 0; i < ops.size(); ++i) {
+    for (int i = 0, end = ops.size(); i < end; ++i) {
       NodeDef* old_op = ops[i];
       for (const string& old_op_input : old_op->input()) {
         int position = 0;
@@ -603,9 +620,9 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
           if (op_instance_names.find(old_op_input) != op_instance_names.end()) {
             LOG(ERROR) << "Data edge between " << old_op_input << " and "
                        << old_op->name() << " cannot build ScopedAllocator.";
-            return errors::Internal("Data edge between ", old_op_input, " and ",
-                                    old_op->name(),
-                                    " cannot build ScopedAllocator.");
+            return errors::Aborted("Data edge between ", old_op_input, " and ",
+                                   old_op->name(),
+                                   " cannot build ScopedAllocator.");
           }
           sac_inputs->push_back(
               NodeDefBuilder::NodeOut(old_op_input, 0, dtype));
@@ -708,7 +725,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
                         const std::set<string>& op_instance_names,
                         const string& op_name, const string& sas_name) {
     VLOG(2) << "RewireSubgraph";
-    for (int op_idx = 0; op_idx < ops.size(); ++op_idx) {
+    for (int op_idx = 0, idx_limit = ops.size(); op_idx < idx_limit; ++op_idx) {
       NodeDef* old_op = ops[op_idx];
       // Copy the output node set since we'll be modifying the version
       // maintained by NodeMap in the loop.
@@ -936,7 +953,7 @@ int ScopedAllocatorOptimizer::NewScopedAllocatorId(int num_fields) {
 Status ScopedAllocatorOptimizer::NewIdentityId(int* id) {
   *id = next_identity_id_++;
   if (next_identity_id_ < 0) {
-    return errors::Internal("NewIdentityId overflow");
+    return errors::Aborted("NewIdentityId overflow");
   }
   return Status::OK();
 }
@@ -1180,9 +1197,9 @@ Status ScopedAllocatorOptimizer::OrderNodeSet(
   // the same instance_key.
   if (nodes->size() <= 1) return Status::OK();
   if (IsCollectiveNode(*nodes->at(0))) {
-    sort(nodes->begin(), nodes->end(), InstanceKeyLess());
+    std::sort(nodes->begin(), nodes->end(), InstanceKeyLess());
   } else {
-    sort(nodes->begin(), nodes->end(), NameLess());
+    std::sort(nodes->begin(), nodes->end(), NameLess());
   }
   return Status::OK();
 }

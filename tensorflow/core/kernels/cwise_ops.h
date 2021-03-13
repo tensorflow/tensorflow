@@ -943,12 +943,6 @@ struct acos : base<T, Eigen::internal::scalar_acos_op<T>> {};
 template <typename T>
 struct atan : base<T, Eigen::internal::scalar_atan_op<T>> {};
 
-template <typename T>
-struct bessel_i0e : base<T, Eigen::internal::scalar_bessel_i0e_op<T>> {};
-
-template <typename T>
-struct bessel_i1e : base<T, Eigen::internal::scalar_bessel_i1e_op<T>> {};
-
 struct logical_not : base<bool, Eigen::internal::scalar_boolean_not_op<bool>> {
 };
 
@@ -985,6 +979,7 @@ struct round : base<T, Eigen::internal::scalar_round_half_to_even_op<T>> {};
 template <typename T>
 struct ceil : base<T, Eigen::internal::scalar_ceil_op<T>> {};
 
+// Note: rint rounds half values to even, just like round_half_to_even_op.
 template <typename T>
 struct rint : base<T, Eigen::internal::scalar_rint_op<T>> {};
 
@@ -1076,11 +1071,35 @@ struct safe_pow : base<T, Eigen::internal::safe_scalar_binary_pow_op<T, T>> {
   static constexpr bool has_errors = true;
 };
 
+// Version of safe_pow for integers which returns 0 if RHS is negative and LHS
+// is not 1 or -1. For use on GPUs, where we cannot raise an error.
 template <typename T>
-struct maximum : base<T, Eigen::internal::scalar_max_op<T>> {};
+struct safe_pow_ignore_error_op {
+  static_assert(std::is_integral<T>::value, "Integer type expected");
+  EIGEN_EMPTY_STRUCT_CTOR(safe_pow_ignore_error_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x,
+                                                     const T& y) const {
+    if (TF_PREDICT_FALSE(y < 0)) {
+      if (x == T(-1)) {
+        T trunc_mod = Eigen::internal::scalar_mod2_op<T>()(y, T(2));
+        return trunc_mod == T(-1) ? T(-1) : T(1);
+      }
+      return x == T(1) ? T(1) : T(0);
+    }
+    return Eigen::internal::scalar_pow_op<T, T>{}(x, y);
+  }
+};
 
 template <typename T>
-struct minimum : base<T, Eigen::internal::scalar_min_op<T>> {};
+struct safe_pow_ignore_error : base<T, safe_pow_ignore_error_op<T>> {};
+
+template <typename T>
+struct maximum
+    : base<T, Eigen::internal::scalar_max_op<T, T, Eigen::PropagateNaN>> {};
+
+template <typename T>
+struct minimum
+    : base<T, Eigen::internal::scalar_min_op<T, T, Eigen::PropagateNaN>> {};
 
 template <typename T>
 struct igamma : base<T, Eigen::internal::scalar_igamma_op<T>> {};
@@ -1103,9 +1122,7 @@ struct scalar_atan2_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_atan2_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& y, const Scalar& x) const {
-#if GOOGLE_CUDA
-    return std::atan2(y, x);
-#elif TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
     return ::atan2(y, x);
 #else
     return std::atan2(y, x);

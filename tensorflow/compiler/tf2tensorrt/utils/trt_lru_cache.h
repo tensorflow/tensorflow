@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_engine_utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_int8_calibrator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
@@ -115,20 +116,17 @@ class LRUCache {
   }
 };
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 struct EngineContext {
   EngineContext() {}  // Creates an empty context.
-  EngineContext(
-      TrtUniquePtrType<nvinfer1::ICudaEngine>&& input_cuda_engine,
-      TrtUniquePtrType<nvinfer1::IExecutionContext>&& input_execution_context)
+  EngineContext(TrtUniquePtrType<nvinfer1::ICudaEngine>&& input_cuda_engine,
+                ExecutionContext&& input_execution_context)
       : cuda_engine(std::move(input_cuda_engine)) {
     execution_context.push_back(std::move(input_execution_context));
   }
   EngineContext(TrtUniquePtrType<nvinfer1::ICudaEngine>&& input_cuda_engine,
-                std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>>&&
-                    input_execution_context)
+                std::vector<ExecutionContext>&& input_execution_context)
       : cuda_engine(std::move(input_cuda_engine)),
         execution_context(std::move(input_execution_context)) {}
 
@@ -142,17 +140,31 @@ struct EngineContext {
                               ", but only ", execution_context.size(),
                               "contexts are present.");
     }
-    *exec_ctx = execution_context[idx].get();
+    *exec_ctx = execution_context[idx];
     return Status::OK();
   }
 
+  int GetNumContexts() {
+    mutex_lock lock(mu);
+    return execution_context.size();
+  }
+
   // In explicit batch mode, we maintain a vector of contexts for each engine,
-  // where each context is created for a different profile. The
+  // where each context is created for a specific profile. This is because it is
+  // either not possible or non-trivial to change the profile of a context for
+  // the following reasons:
+  // - In TRT 6 it is not possible to switch a profile after it is set
+  //   https://docs.nvidia.com/deeplearning/tensorrt/archives/tensorrt-601/tensorrt-api/c_api/classnvinfer1_1_1_i_execution_context.html#aba0731b9fbc926c477010df818650b0a
+  // - To switch profiles (from TRT 7), one must first ensure that all inference
+  //   calls in that context are finished. This would require an additional
+  //   synchronization before we call setOptimizationProfile. To avoid this
+  //   extra sync call, we mantain separate execution context for each profile.
   // IExecutionContext object is not thread safe: only one thread should use it
   // for inference at a time therefore we need a mutex. More details at
   // https://docs.nvidia.com/deeplearning/sdk/tensorrt-best-practices/index.html#thread-safety
-  std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>> execution_context
-      TF_GUARDED_BY(mu);
+  // Additional discussion about execution context management and thread safety
+  // at https://github.com/tensorflow/tensorflow/issues/36959
+  std::vector<ExecutionContext> execution_context TF_GUARDED_BY(mu);
 };
 
 // Contains the context required to build the calibration data.
@@ -223,8 +235,7 @@ class TRTEngineCacheResource : public ResourceBase {
   TrtShapeOptimizationProfile profiles_;
 };
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 }  // namespace tensorrt
 }  // namespace tensorflow

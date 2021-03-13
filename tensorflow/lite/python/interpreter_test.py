@@ -22,6 +22,8 @@ import ctypes
 import io
 import sys
 
+from unittest import mock
+
 import numpy as np
 import six
 
@@ -37,12 +39,18 @@ from tensorflow.lite.python.testdata import _pywrap_test_registerer as test_regi
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
+try:
+  from tensorflow.lite.python import metrics_portable
+  metrics = metrics_portable
+except ImportError:
+  from tensorflow.lite.python import metrics_nonportable
+  metrics = metrics_nonportable
 # pylint: enable=g-import-not-at-top
 
 
 class InterpreterCustomOpsTest(test_util.TensorFlowTestCase):
 
-  def testRegisterer(self):
+  def testRegistererByName(self):
     interpreter = interpreter_wrapper.InterpreterWithCustomOps(
         model_path=resource_loader.get_path_to_datafile(
             'testdata/permute_float.tflite'),
@@ -50,14 +58,28 @@ class InterpreterCustomOpsTest(test_util.TensorFlowTestCase):
     self.assertTrue(interpreter._safe_to_run())
     self.assertEqual(test_registerer.get_num_test_registerer_calls(), 1)
 
+  def testRegistererByFunc(self):
+    interpreter = interpreter_wrapper.InterpreterWithCustomOps(
+        model_path=resource_loader.get_path_to_datafile(
+            'testdata/permute_float.tflite'),
+        custom_op_registerers=[test_registerer.TF_TestRegisterer])
+    self.assertTrue(interpreter._safe_to_run())
+    self.assertEqual(test_registerer.get_num_test_registerer_calls(), 1)
+
   def testRegistererFailure(self):
     bogus_name = 'CompletelyBogusRegistererName'
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Looking up symbol \'' + bogus_name + '\' failed'):
       interpreter_wrapper.InterpreterWithCustomOps(
           model_path=resource_loader.get_path_to_datafile(
               'testdata/permute_float.tflite'),
           custom_op_registerers=[bogus_name])
+
+  def testNoCustomOps(self):
+    interpreter = interpreter_wrapper.InterpreterWithCustomOps(
+        model_path=resource_loader.get_path_to_datafile(
+            'testdata/permute_float.tflite'))
+    self.assertTrue(interpreter._safe_to_run())
 
 
 class InterpreterTest(test_util.TensorFlowTestCase):
@@ -68,35 +90,83 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(zero_points, params['zero_points'])
     self.assertEqual(quantized_dimension, params['quantized_dimension'])
 
-  def testFloat(self):
+  def testThreads_NegativeValue(self):
+    with self.assertRaisesRegex(ValueError, 'num_threads should >= 1'):
+      interpreter_wrapper.Interpreter(
+          model_path=resource_loader.get_path_to_datafile(
+              'testdata/permute_float.tflite'),
+          num_threads=-1)
+
+  def testThreads_WrongType(self):
+    with self.assertRaisesRegex(ValueError,
+                                'type of num_threads should be int'):
+      interpreter_wrapper.Interpreter(
+          model_path=resource_loader.get_path_to_datafile(
+              'testdata/permute_float.tflite'),
+          num_threads=4.2)
+
+  def testNotSupportedOpResolver(self):
+    with self.assertRaisesRegex(ValueError,
+                                'Unrecognized passed in op resolver: test'):
+      interpreter_wrapper.Interpreter(
+          model_path=resource_loader.get_path_to_datafile(
+              'testdata/permute_float.tflite'),
+          experimental_op_resolver='test')
+
+  def testFloatWithDifferentOpResolvers(self):
+    op_resolvers = [
+        interpreter_wrapper.OpResolver.BUILTIN,
+        interpreter_wrapper.OpResolver.BUILTIN_REF,
+        interpreter_wrapper.OpResolver.BUILTIN_WITHOUT_DEFAULT_DELEGATES
+    ]
+
+    for op_resolver in op_resolvers:
+      interpreter = interpreter_wrapper.Interpreter(
+          model_path=resource_loader.get_path_to_datafile(
+              'testdata/permute_float.tflite'),
+          experimental_op_resolver=op_resolver)
+      interpreter.allocate_tensors()
+
+      input_details = interpreter.get_input_details()
+      self.assertEqual(1, len(input_details))
+      self.assertEqual('input', input_details[0]['name'])
+      self.assertEqual(np.float32, input_details[0]['dtype'])
+      self.assertTrue(([1, 4] == input_details[0]['shape']).all())
+      self.assertEqual((0.0, 0), input_details[0]['quantization'])
+      self.assertQuantizationParamsEqual(
+          [], [], 0, input_details[0]['quantization_parameters'])
+
+      output_details = interpreter.get_output_details()
+      self.assertEqual(1, len(output_details))
+      self.assertEqual('output', output_details[0]['name'])
+      self.assertEqual(np.float32, output_details[0]['dtype'])
+      self.assertTrue(([1, 4] == output_details[0]['shape']).all())
+      self.assertEqual((0.0, 0), output_details[0]['quantization'])
+      self.assertQuantizationParamsEqual(
+          [], [], 0, output_details[0]['quantization_parameters'])
+
+      test_input = np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32)
+      expected_output = np.array([[4.0, 3.0, 2.0, 1.0]], dtype=np.float32)
+      interpreter.set_tensor(input_details[0]['index'], test_input)
+      interpreter.invoke()
+
+      output_data = interpreter.get_tensor(output_details[0]['index'])
+      self.assertTrue((expected_output == output_data).all())
+
+  def testFloatWithTwoThreads(self):
     interpreter = interpreter_wrapper.Interpreter(
         model_path=resource_loader.get_path_to_datafile(
-            'testdata/permute_float.tflite'))
+            'testdata/permute_float.tflite'),
+        num_threads=2)
     interpreter.allocate_tensors()
 
     input_details = interpreter.get_input_details()
-    self.assertEqual(1, len(input_details))
-    self.assertEqual('input', input_details[0]['name'])
-    self.assertEqual(np.float32, input_details[0]['dtype'])
-    self.assertTrue(([1, 4] == input_details[0]['shape']).all())
-    self.assertEqual((0.0, 0), input_details[0]['quantization'])
-    self.assertQuantizationParamsEqual(
-        [], [], 0, input_details[0]['quantization_parameters'])
-
-    output_details = interpreter.get_output_details()
-    self.assertEqual(1, len(output_details))
-    self.assertEqual('output', output_details[0]['name'])
-    self.assertEqual(np.float32, output_details[0]['dtype'])
-    self.assertTrue(([1, 4] == output_details[0]['shape']).all())
-    self.assertEqual((0.0, 0), output_details[0]['quantization'])
-    self.assertQuantizationParamsEqual(
-        [], [], 0, output_details[0]['quantization_parameters'])
-
     test_input = np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32)
     expected_output = np.array([[4.0, 3.0, 2.0, 1.0]], dtype=np.float32)
     interpreter.set_tensor(input_details[0]['index'], test_input)
     interpreter.invoke()
 
+    output_details = interpreter.get_output_details()
     output_data = interpreter.get_tensor(output_details[0]['index'])
     self.assertTrue((expected_output == output_data).all())
 
@@ -129,8 +199,7 @@ class InterpreterTest(test_util.TensorFlowTestCase):
 
     test_input = np.array([[1, 2, 3, 4]], dtype=np.uint8)
     expected_output = np.array([[4, 3, 2, 1]], dtype=np.uint8)
-    interpreter.resize_tensor_input(input_details[0]['index'],
-                                    test_input.shape)
+    interpreter.resize_tensor_input(input_details[0]['index'], test_input.shape)
     interpreter.allocate_tensors()
     interpreter.set_tensor(input_details[0]['index'], test_input)
     interpreter.invoke()
@@ -178,6 +247,18 @@ class InterpreterTest(test_util.TensorFlowTestCase):
 
     output_data = interpreter.get_tensor(output_details[0]['index'])
     self.assertTrue((expected_output == output_data).all())
+
+  def testStringZeroDim(self):
+    data = b'abcd' + bytes(16)
+    interpreter = interpreter_wrapper.Interpreter(
+        model_path=resource_loader.get_path_to_datafile(
+            'testdata/gather_string_0d.tflite'))
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    interpreter.set_tensor(input_details[0]['index'], np.array(data))
+    test_input_tensor = interpreter.get_tensor(input_details[0]['index'])
+    self.assertEqual(len(data), len(test_input_tensor.item(0)))
 
   def testPerChannelParams(self):
     interpreter = interpreter_wrapper.Interpreter(
@@ -227,30 +308,37 @@ class InterpreterTest(test_util.TensorFlowTestCase):
                         [0, 2, 3])
     self.assertAllEqual(s_params['dim_metadata'][1]['array_indices'], [0, 1, 1])
 
+  @mock.patch.object(metrics.TFLiteMetrics,
+                     'increase_counter_interpreter_creation')
+  def testCreationCounter(self, increase_call):
+    interpreter_wrapper.Interpreter(
+        model_path=resource_loader.get_path_to_datafile(
+            'testdata/permute_float.tflite'))
+    increase_call.assert_called_once()
+
 
 class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
 
   def testInvalidModelContent(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'Model provided has model identifier \''):
+    with self.assertRaisesRegex(ValueError,
+                                'Model provided has model identifier \''):
       interpreter_wrapper.Interpreter(model_content=six.b('garbage'))
 
   def testInvalidModelFile(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'Could not open \'totally_invalid_file_name\''):
-      interpreter_wrapper.Interpreter(
-          model_path='totally_invalid_file_name')
+    with self.assertRaisesRegex(ValueError,
+                                'Could not open \'totally_invalid_file_name\''):
+      interpreter_wrapper.Interpreter(model_path='totally_invalid_file_name')
 
   def testInvokeBeforeReady(self):
     interpreter = interpreter_wrapper.Interpreter(
         model_path=resource_loader.get_path_to_datafile(
             'testdata/permute_float.tflite'))
-    with self.assertRaisesRegexp(RuntimeError,
-                                 'Invoke called on model that is not ready'):
+    with self.assertRaisesRegex(RuntimeError,
+                                'Invoke called on model that is not ready'):
       interpreter.invoke()
 
   def testInvalidModelFileContent(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, '`model_path` or `model_content` must be specified.'):
       interpreter_wrapper.Interpreter(model_path=None, model_content=None)
 
@@ -260,9 +348,9 @@ class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
             'testdata/permute_float.tflite'))
     interpreter.allocate_tensors()
     # Invalid tensor index passed.
-    with self.assertRaisesRegexp(ValueError, 'Tensor with no shape found.'):
+    with self.assertRaisesRegex(ValueError, 'Tensor with no shape found.'):
       interpreter._get_tensor_details(4)
-    with self.assertRaisesRegexp(ValueError, 'Invalid node index'):
+    with self.assertRaisesRegex(ValueError, 'Invalid node index'):
       interpreter._get_op_details(4)
 
 
@@ -309,12 +397,10 @@ class InterpreterTensorAccessorTest(test_util.TensorFlowTestCase):
   def testBaseProtectsFunctions(self):
     in0 = self.interpreter.tensor(self.input0)()
     # Make sure we get an exception if we try to run an unsafe operation
-    with self.assertRaisesRegexp(
-        RuntimeError, 'There is at least 1 reference'):
+    with self.assertRaisesRegex(RuntimeError, 'There is at least 1 reference'):
       _ = self.interpreter.allocate_tensors()
     # Make sure we get an exception if we try to run an unsafe operation
-    with self.assertRaisesRegexp(
-        RuntimeError, 'There is at least 1 reference'):
+    with self.assertRaisesRegex(RuntimeError, 'There is at least 1 reference'):
       _ = self.interpreter.invoke()
     # Now test that we can run
     del in0  # this is our only buffer reference, so now it is safe to change
@@ -396,16 +482,19 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
     self.skipTest('TODO(b/142136355): fix flakiness and re-enable')
     # Track which order destructions were doned in
     destructions = []
+
     def register_destruction(x):
       destructions.append(
           x if isinstance(x, str) else six.ensure_text(x, 'utf-8'))
       return 0
+
     # Make a wrapper for the callback so we can send this to ctypes
     delegate = interpreter_wrapper.load_delegate(self._delegate_file)
     # Make an interpreter with the delegate
     interpreter = interpreter_wrapper.Interpreter(
         model_path=resource_loader.get_path_to_datafile(
-            'testdata/permute_float.tflite'), experimental_delegates=[delegate])
+            'testdata/permute_float.tflite'),
+        experimental_delegates=[delegate])
 
     class InterpreterDestroyCallback(object):
 
@@ -453,7 +542,7 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
     self.assertEqual(lib.get_options_counter(), 2)
 
   def testFail(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         # Due to exception chaining in PY3, we can't be more specific here and check that
         # the phrase 'Fail argument sent' is present.
         ValueError,

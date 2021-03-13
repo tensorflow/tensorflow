@@ -36,7 +36,7 @@ class EinsumDense(Layer):
 
   This layer can perform einsum calculations of arbitrary dimensionality.
 
-  Arguments:
+  Args:
     equation: An equation describing the einsum to perform. This equation must
       be a valid einsum string of the form `ab,bc->ac`, `...ab,bc->...ac`, or
       `ab...,bc->ac...` where 'ab', 'bc', and 'ac' can be any valid einsum axis
@@ -73,7 +73,7 @@ class EinsumDense(Layer):
   >>> input_tensor = tf.keras.Input(shape=[32])
   >>> output_tensor = layer(input_tensor)
   >>> output_tensor
-  <tf.Tensor '...' shape=(None, 64) dtype=...>
+  <... shape=(None, 64) dtype=...>
 
   **Applying a dense layer to a sequence**
 
@@ -89,7 +89,7 @@ class EinsumDense(Layer):
   >>> input_tensor = tf.keras.Input(shape=[32, 128])
   >>> output_tensor = layer(input_tensor)
   >>> output_tensor
-  <tf.Tensor '...' shape=(None, 32, 64) dtype=...>
+  <... shape=(None, 32, 64) dtype=...>
 
   **Applying a dense layer to a sequence using ellipses**
 
@@ -106,7 +106,7 @@ class EinsumDense(Layer):
   >>> input_tensor = tf.keras.Input(shape=[32, 128])
   >>> output_tensor = layer(input_tensor)
   >>> output_tensor
-  <tf.Tensor '...' shape=(None, 32, 64) dtype=...>
+  <... shape=(None, 32, 64) dtype=...>
   """
 
   def __init__(self,

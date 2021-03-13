@@ -20,8 +20,14 @@ def _remote_platform_configure_impl(repository_ctx):
         cpu = "s390x"
     elif machine_type.startswith("aarch64"):
         cpu = "aarch64"
+    elif machine_type.startswith("arm64"):
+        cpu = "aarch64"
     elif machine_type.startswith("arm"):
         cpu = "arm"
+    elif machine_type.startswith("mips64"):
+        cpu = "mips64"
+    elif machine_type.startswith("riscv64"):
+        cpu = "riscv64"
 
     exec_properties = repository_ctx.attr.platform_exec_properties
 

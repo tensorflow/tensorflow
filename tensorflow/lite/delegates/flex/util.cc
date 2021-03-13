@@ -68,18 +68,28 @@ TF_DataType GetTensorFlowDataType(TfLiteType type) {
       return TF_INT16;
     case kTfLiteInt32:
       return TF_INT32;
+    case kTfLiteUInt32:
+      return TF_UINT32;
     case kTfLiteUInt8:
       return TF_UINT8;
     case kTfLiteInt8:
       return TF_INT8;
     case kTfLiteInt64:
       return TF_INT64;
+    case kTfLiteUInt64:
+      return TF_UINT64;
     case kTfLiteComplex64:
       return TF_COMPLEX64;
+    case kTfLiteComplex128:
+      return TF_COMPLEX128;
     case kTfLiteString:
       return TF_STRING;
     case kTfLiteBool:
       return TF_BOOL;
+    case kTfLiteResource:
+      return TF_RESOURCE;
+    case kTfLiteVariant:
+      return TF_VARIANT;
   }
 }
 
@@ -89,6 +99,8 @@ TfLiteType GetTensorFlowLiteType(TF_DataType type) {
       return kTfLiteFloat32;
     case TF_HALF:
       return kTfLiteFloat16;
+    case TF_DOUBLE:
+      return kTfLiteFloat64;
     case TF_INT16:
       return kTfLiteInt16;
     case TF_INT32:
@@ -99,12 +111,20 @@ TfLiteType GetTensorFlowLiteType(TF_DataType type) {
       return kTfLiteInt8;
     case TF_INT64:
       return kTfLiteInt64;
+    case TF_UINT64:
+      return kTfLiteUInt64;
     case TF_COMPLEX64:
       return kTfLiteComplex64;
+    case TF_COMPLEX128:
+      return kTfLiteComplex128;
     case TF_STRING:
       return kTfLiteString;
     case TF_BOOL:
       return kTfLiteBool;
+    case TF_RESOURCE:
+      return kTfLiteResource;
+    case TF_VARIANT:
+      return kTfLiteVariant;
     default:
       return kTfLiteNoType;
   }

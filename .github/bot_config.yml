@@ -12,12 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-#
-# THIS IS A GENERATED DOCKERFILE.
-#
-# This file was assembled from multiple pieces, whose use is documented
-# throughout. Please refer to the TensorFlow dockerfiles documentation
-# for more information.
 
 # A list of assignees
 assignees:
@@ -27,6 +21,35 @@ assignees:
 # A list of assignees for compiler folder
 compiler_assignees:
    - joker-eph
+# filesystem path
+filesystem_path:
+   - tensorflow/c/experimental/filesystem
+# security path
+security_path:
+   - tensorflow/security
+# words checklist
+segfault_memory:
+   - segfault
+   - memory leaks
+# assignees
+filesystem_security_assignee:
+   - mihaimaruseac
+   
+tflite_micro_path:
+   - tensorflow/lite/micro
+   
+tflite_micro_comment: >
+   Thanks for contributing to TensorFlow Lite Micro.
+   
+
+   To keep this process moving along, we'd like to make sure that you have completed the items on this list:
+      * Read the [contributing guidelines for TensorFlow Lite Micro](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/CONTRIBUTING.md)
+      * Created a [TF Lite Micro Github issue](https://github.com/tensorflow/tensorflow/issues/new?labels=comp%3Amicro&template=70-tflite-micro-issue.md)
+      * Linked to the issue from the PR description
+      
+
+   We would like to have a discussion on the Github issue first to determine the best path forward, and then proceed to the PR review.
+
 # Cuda Comment
 cuda_comment: >
    From the template it looks like you are installing **TensorFlow** (TF) prebuilt binaries:

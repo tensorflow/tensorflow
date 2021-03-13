@@ -26,29 +26,32 @@ cc_library(
         "-ldl",
     ],
     deps = [
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite:op_resolver",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/experimental/tflite_api_dispatcher:tflite_api_dispatcher_with_kernels",
+        "//tensorflow/lite/core/shims:common",
+        "//tensorflow/lite/core/shims:framework",
+        "//tensorflow/lite/core/shims:jni_initialization",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
         "//tensorflow/lite/java/jni",
     ],
     alwayslink = 1,
 )
 
-# This includes all ops. If you want a smaller binary, you should copy and
-# modify builtin_ops_jni.cc.  You should then link your binary against both
-# ":native_framework_only" and your own version of ":native_builtin_ops".
+# This includes all ops. If you want a smaller binary, you should use
+# tflite_custom_cc_library or tflite_custom_android_library rules.
 cc_library(
     name = "native",
-    srcs = [
-        "builtin_ops_jni.cc",
-    ],
     copts = tflite_copts(),
     deps = [
         ":native_framework_only",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite:create_op_resolver_with_builtin_ops",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/shims:builtin_ops",
+        "//tensorflow/lite/core/shims:framework",
+        "//tensorflow/lite/kernels:deprecated_backends",
     ],
     alwayslink = 1,
 )

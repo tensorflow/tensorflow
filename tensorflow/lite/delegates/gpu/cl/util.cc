@@ -168,6 +168,79 @@ int ChannelTypeToSizeInBytes(cl_channel_type type) {
 
 bool OpenCLSupported() { return LoadOpenCL().ok(); }
 
+absl::Status CreateCLBuffer(cl_context context, int size_in_bytes,
+                            bool read_only, void* data, cl_mem* result) {
+  cl_mem_flags flags = read_only ? CL_MEM_READ_ONLY : CL_MEM_READ_WRITE;
+  if (data) {
+    flags |= CL_MEM_COPY_HOST_PTR;
+  }
+  cl_int error_code;
+  *result = clCreateBuffer(context, flags, size_in_bytes, data, &error_code);
+  if (!*result) {
+    return absl::UnknownError(
+        absl::StrCat("Failed to allocate device memory (clCreateBuffer): ",
+                     CLErrorCodeToString(error_code)));
+  }
+  return absl::OkStatus();
+}
+
+cl_channel_type DataTypeToChannelType(DataType type, bool normalized) {
+  switch (type) {
+    case DataType::FLOAT32:
+      return CL_FLOAT;
+    case DataType::FLOAT16:
+      return CL_HALF_FLOAT;
+    case DataType::INT8:
+      return normalized ? CL_SNORM_INT8 : CL_SIGNED_INT8;
+    case DataType::UINT8:
+      return normalized ? CL_UNORM_INT8 : CL_UNSIGNED_INT8;
+    case DataType::INT16:
+      return normalized ? CL_SNORM_INT16 : CL_SIGNED_INT16;
+    case DataType::UINT16:
+      return normalized ? CL_UNORM_INT16 : CL_UNSIGNED_INT16;
+    case DataType::INT32:
+      return CL_SIGNED_INT32;
+    case DataType::UINT32:
+      return CL_UNSIGNED_INT32;
+    default:
+      return CL_FLOAT;
+  }
+}
+
+absl::Status CreateRGBAImage2D(cl_context context, int width, int height,
+                               cl_channel_type channel_type, void* data,
+                               cl_mem* result) {
+  cl_image_desc desc;
+  desc.image_type = CL_MEM_OBJECT_IMAGE2D;
+  desc.image_width = width;
+  desc.image_height = height;
+  desc.image_depth = 0;
+  desc.image_row_pitch = 0;
+  desc.image_slice_pitch = 0;
+  desc.num_mip_levels = 0;
+  desc.num_samples = 0;
+  desc.buffer = nullptr;
+
+  cl_image_format format;
+  format.image_channel_order = CL_RGBA;
+  format.image_channel_data_type = channel_type;
+
+  cl_mem_flags flags = CL_MEM_READ_WRITE;
+  if (data) {
+    flags |= CL_MEM_COPY_HOST_PTR;
+  }
+
+  cl_int error_code;
+  *result =
+      CreateImage2DLegacy(context, flags, &format, &desc, data, &error_code);
+  if (error_code != CL_SUCCESS) {
+    return absl::UnknownError(
+        absl::StrCat("Failed to create 2D texture (clCreateImage): ",
+                     CLErrorCodeToString(error_code)));
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

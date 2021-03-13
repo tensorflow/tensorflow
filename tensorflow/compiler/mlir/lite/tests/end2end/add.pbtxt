@@ -96,5 +96,6 @@ versions {
 # CHECK-NEXT:   metadata: [ {
 # CHECK-NEXT:   name: "min_runtime_version",
 # CHECK-NEXT:   buffer: 4
-# CHECK-NEXT:   } ]
+# CHECK-NEXT:   } ],
+# CHECK-NEXT:   signature_defs: [ ]
 # CHECK-NEXT: }

@@ -1,7 +1,15 @@
 path: "tensorflow.data.experimental.service"
 tf_module {
   member {
-    name: "MasterServer"
+    name: "DispatchServer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "DispatcherConfig"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "WorkerConfig"
     mtype: "<type \'type\'>"
   }
   member {
@@ -10,6 +18,14 @@ tf_module {
   }
   member_method {
     name: "distribute"
-    argspec: "args=[\'processing_mode\', \'service\', \'job_name\', \'max_outstanding_requests\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'processing_mode\', \'service\', \'job_name\', \'consumer_index\', \'num_consumers\', \'max_outstanding_requests\', \'data_transfer_protocol\', \'compression\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'AUTO\'], "
+  }
+  member_method {
+    name: "from_dataset_id"
+    argspec: "args=[\'processing_mode\', \'service\', \'dataset_id\', \'element_spec\', \'job_name\', \'consumer_index\', \'num_consumers\', \'max_outstanding_requests\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "register_dataset"
+    argspec: "args=[\'service\', \'dataset\'], varargs=None, keywords=None, defaults=None"
   }
 }

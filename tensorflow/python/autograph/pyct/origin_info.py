@@ -247,11 +247,19 @@ def resolve(node, source, context_filepath, context_lineno, context_col_offset):
   # TODO(mdan): Pull this to a separate utility.
   code_reader = six.StringIO(source)
   comments_map = {}
-  for token in tokenize.generate_tokens(code_reader.readline):
-    tok_type, tok_string, loc, _, _ = token
-    srow, _ = loc
-    if tok_type == tokenize.COMMENT:
-      comments_map[srow] = tok_string.strip()[1:].strip()
+  try:
+    for token in tokenize.generate_tokens(code_reader.readline):
+      tok_type, tok_string, loc, _, _ = token
+      srow, _ = loc
+      if tok_type == tokenize.COMMENT:
+        comments_map[srow] = tok_string.strip()[1:].strip()
+  except tokenize.TokenError:
+    if isinstance(node, gast.Lambda):
+      # Source code resolution in older Python versions is brittle for
+      # lambda functions, and may contain garbage.
+      pass
+    else:
+      raise
 
   source_lines = source.split('\n')
   visitor = OriginResolver(node, source_lines, comments_map,
@@ -271,3 +279,15 @@ def resolve_entity(node, source, entity):
   col_offset = len(definition_line) - len(definition_line.lstrip())
 
   resolve(node, source, filepath, lineno, col_offset)
+
+
+def copy_origin(from_node, to_node):
+  """Copies the origin info from a node to another, recursively."""
+  origin = anno.Basic.ORIGIN.of(from_node, default=None)
+  if origin is None:
+    return
+  if not isinstance(to_node, (list, tuple)):
+    to_node = (to_node,)
+  for node in to_node:
+    for n in gast.walk(node):
+      anno.setanno(n, anno.Basic.ORIGIN, origin)

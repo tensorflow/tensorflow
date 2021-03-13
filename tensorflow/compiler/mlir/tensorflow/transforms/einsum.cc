@@ -16,12 +16,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
 
 #include <algorithm>
+#include <cctype>
 #include <climits>
 #include <cstdint>
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
@@ -29,123 +33,21 @@ limitations under the License.
 #include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
 namespace mlir {
 namespace TF {
 
 namespace {
-
-// All supported Einsum equations.
-enum EinsumEquation {
-  BatchMatMul,
-  FourDMatrixDotProd,
-  ThreeDReshapeTail,
-  FourDBatchMatMul,
-  BroadcastMatMul,
-  ReduceSum,
-  TransposeMatMul,
-  UnsupportedEquation
-};
-
-// Tokens for parsing the given equation string.
-enum EquationToken {
-  A,
-  B,
-  C,
-  D,
-  E,
-  COMMA,
-  ARROW,
-};
-constexpr int kNumSupportedEquationVariables = 5;  // A - E for now.
-
-bool tokenizeEquation(const llvm::StringRef& equation,
-                      std::vector<EquationToken>* tokens) {
-  std::map<char, EquationToken> label_axis_mapping;
-  int index = 0;
-  int variable_count = 0;
-  llvm::Regex r("[[:alpha:]]");
-  while (index < equation.size()) {
-    if (r.match(equation.substr(index, 1))) {
-      const char ltr = equation[index];
-      auto itr = label_axis_mapping.find(ltr);
-      if (itr == label_axis_mapping.end() &&
-          variable_count < kNumSupportedEquationVariables) {
-        label_axis_mapping[ltr] = EquationToken(variable_count);
-        tokens->push_back(EquationToken(variable_count));
-        variable_count++;
-      } else if (itr != label_axis_mapping.end()) {
-        tokens->push_back(itr->second);
-      } else {
-        // Ran out of equation variables.
-        return false;
-      }
-    } else if (equation.substr(index, 1).contains(",")) {
-      tokens->push_back(COMMA);
-    } else if ((index < (equation.size() - 1)) &&
-               (equation.substr(index, 2).contains("->"))) {
-      tokens->push_back(ARROW);
-      index++;
-    } else {
-      // Unallowed character encountered.
-      return false;
-    }
-    index++;
-  }
-  return true;
-}
-
-EinsumEquation parseEquation(const std::vector<EquationToken>& eqn) {
-  auto is_equal = [](const std::vector<EquationToken>& eqn1,
-                     const std::initializer_list<EquationToken>& eqn2) {
-    return std::equal(eqn1.begin(), eqn1.end(), eqn2.begin(), eqn2.end());
-  };
-  // IJK,IKM->IJM
-  if (is_equal(eqn, {A, B, C, COMMA, A, C, D, ARROW, A, B, D})) {
-    return EinsumEquation::BatchMatMul;
-  }
-  // BFND,NDH->BFH
-  if (is_equal(eqn, {A, B, C, D, COMMA, C, D, E, ARROW, A, B, E})) {
-    return EinsumEquation::FourDMatrixDotProd;
-  }
-  // BFNH,BTNH->BNFT
-  if (is_equal(eqn, {A, B, C, D, COMMA, A, E, C, D, ARROW, A, C, B, E})) {
-    return EinsumEquation::FourDBatchMatMul;
-  }
-  // BFD,DNH->BFNH
-  if (is_equal(eqn, {A, B, C, COMMA, C, D, E, ARROW, A, B, D, E})) {
-    return EinsumEquation::ThreeDReshapeTail;
-  }
-  // BFH,HO->BFO
-  if (is_equal(eqn, {A, B, C, COMMA, C, D, ARROW, A, B, D})) {
-    return EinsumEquation::BroadcastMatMul;
-  }
-  // LBH,BL->BH
-  if (is_equal(eqn, {A, B, C, COMMA, B, A, ARROW, B, C})) {
-    return EinsumEquation::ReduceSum;
-  }
-  // LBH,BKL->BKH
-  if (is_equal(eqn, {A, B, C, COMMA, B, D, A, ARROW, B, D, C})) {
-    return EinsumEquation::TransposeMatMul;
-  }
-  return EinsumEquation::UnsupportedEquation;
-}
-
-EinsumEquation tokenizeAndParse(const llvm::StringRef& equation) {
-  std::vector<EquationToken> tokens;
-  if (tokenizeEquation(equation, &tokens)) {
-    return parseEquation(tokens);
-  }
-  return EinsumEquation::UnsupportedEquation;
-}
 
 TF::TransposeOp createTransposeOp(Value value, Location loc,
                                   llvm::ArrayRef<int32_t> permutation,
@@ -156,36 +58,14 @@ TF::TransposeOp createTransposeOp(Value value, Location loc,
       {static_cast<int32_t>(permutation.size())}, rewriter->getIntegerType(32));
   auto perm_attr = DenseElementsAttr::get(perm_type, permutation);
   auto perm_op = rewriter->create<ConstantOp>(loc, perm_type, perm_attr);
-  std::vector<int64_t> transposed_shape(shape.begin(), shape.end());
-  for (int i = 0; i < shape.size(); ++i) {
+  SmallVector<int64_t, 4> transposed_shape(shape.begin(), shape.end());
+  for (int i = 0, end = shape.size(); i < end; ++i) {
     transposed_shape[i] = shape[permutation[i]];
   }
   auto transposed_type =
       RankedTensorType::get(transposed_shape, value_type.getElementType());
   return rewriter->create<TF::TransposeOp>(loc, transposed_type, value,
                                            perm_op);
-}
-
-TF::SumOp createSumOp(Value value, Location loc,
-                      llvm::ArrayRef<int32_t> redux_axes,
-                      PatternRewriter* rewriter) {
-  auto value_type = value.getType().cast<RankedTensorType>();
-  auto shape = value_type.getShape();
-  auto redux_type = RankedTensorType::get(
-      {static_cast<int32_t>(redux_axes.size())}, rewriter->getIntegerType(32));
-  auto redux_attr = DenseElementsAttr::get(redux_type, redux_axes);
-  auto redux_op = rewriter->create<ConstantOp>(loc, redux_type, redux_attr);
-  std::vector<int64_t> sum_shape(shape.size() - redux_axes.size());
-  int count = 0;
-  for (int i = 0; i < shape.size(); ++i) {
-    if (std::find(redux_axes.begin(), redux_axes.end(), i) ==
-        redux_axes.end()) {
-      sum_shape[count] = shape[i];
-      count++;
-    }
-  }
-  auto sum_type = RankedTensorType::get(sum_shape, value_type.getElementType());
-  return rewriter->create<TF::SumOp>(loc, sum_type, value, redux_op);
 }
 
 TF::ReshapeOp createReshapeOp(Value value, ArrayRef<int64_t> shape,
@@ -202,154 +82,284 @@ TF::ReshapeOp createReshapeOp(Value value, ArrayRef<int64_t> shape,
                                          /*shape=*/shape_tensor);
 }
 
+struct EinsumDimensionNumbers {
+  // Each field contains the list of dimensions appearing only in the specifed
+  // arguments of the einsum op with natural ordering. For example `rhs_out`
+  // contains the dimensions appearing in the RHS and the OUTPUT of the einsum
+  // but not in the LHS.
+  std::vector<int64_t> lhs;
+  std::vector<int64_t> rhs;
+  std::vector<std::tuple<int64_t, int64_t>> lhs_rhs;
+  std::vector<std::tuple<int64_t, int64_t>> lhs_out;
+  std::vector<std::tuple<int64_t, int64_t>> rhs_out;
+  std::vector<std::tuple<int64_t, int64_t, int64_t>> lhs_rhs_out;
+};
+
+llvm::Optional<llvm::SmallDenseMap<char, int64_t>> EquationToMap(
+    llvm::StringRef equation) {
+  llvm::SmallDenseMap<char, int64_t> map;
+  for (int64_t i = 0; i < equation.size(); ++i) {
+    if (!std::isalpha(equation[i])) {
+      // Unsupported character in the equation.
+      return llvm::None;
+    }
+    if (map.count(equation[i])) {
+      // Duplicate character in the equation.
+      return llvm::None;
+    }
+    map.try_emplace(equation[i], i);
+  }
+  return map;
+}
+
+llvm::Optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
+    llvm::StringRef equation) {
+  llvm::StringRef lhs_rhs;
+  llvm::StringRef out;
+  std::tie(lhs_rhs, out) = equation.split("->");
+  if (lhs_rhs.empty() || out.empty()) return llvm::None;
+
+  llvm::StringRef lhs;
+  llvm::StringRef rhs;
+  std::tie(lhs, rhs) = lhs_rhs.split(',');
+  if (lhs.empty() || rhs.empty()) return llvm::None;
+
+  auto lhs_map_or = EquationToMap(lhs);
+  if (!lhs_map_or.hasValue()) return llvm::None;
+  auto lhs_map = lhs_map_or.getValue();
+
+  auto rhs_map_or = EquationToMap(rhs);
+  if (!rhs_map_or.hasValue()) return llvm::None;
+  auto rhs_map = rhs_map_or.getValue();
+
+  auto out_map_or = EquationToMap(out);
+  if (!out_map_or.hasValue()) return llvm::None;
+  auto out_map = out_map_or.getValue();
+
+  EinsumDimensionNumbers dnums;
+  for (int64_t i = 0, e = lhs.size(); i < e; ++i) {
+    auto rhs_index = rhs_map.find(lhs[i]);
+    auto out_index = out_map.find(lhs[i]);
+    if (rhs_index == rhs_map.end() && out_index == out_map.end()) {
+      dnums.lhs.emplace_back(i);
+    } else if (rhs_index == rhs_map.end()) {
+      dnums.lhs_out.emplace_back(i, out_index->second);
+    } else if (out_index == out_map.end()) {
+      dnums.lhs_rhs.emplace_back(i, rhs_index->second);
+    } else {
+      dnums.lhs_rhs_out.emplace_back(i, rhs_index->second, out_index->second);
+    }
+  }
+  for (int64_t i = 0, e = rhs.size(); i < e; ++i) {
+    auto lhs_index = lhs_map.find(rhs[i]);
+    auto out_index = out_map.find(rhs[i]);
+    if (lhs_index == lhs_map.end()) {
+      if (out_index == out_map.end()) {
+        dnums.rhs.emplace_back(i);
+      } else {
+        dnums.rhs_out.emplace_back(i, out_index->second);
+      }
+    }
+  }
+  for (int64_t i = 0, e = out.size(); i < e; ++i) {
+    auto lhs_index = lhs_map.find(out[i]);
+    auto rhs_index = rhs_map.find(out[i]);
+    if (lhs_index == lhs_map.end() && rhs_index == rhs_map.end()) {
+      // out only isn't supported
+      return llvm::None;
+    }
+  }
+  return dnums;
+}
+
+std::vector<int64_t> inverseTransposeVector(
+    llvm::ArrayRef<int64_t> input, llvm::ArrayRef<int32_t> permutation) {
+  std::vector<int64_t> output(input.size());
+  for (int64_t i = 0; i < input.size(); ++i) {
+    output[permutation[i]] = input[i];
+  }
+  return output;
+}
+
+// Computes the transpositions required to convert dnums to one supported by
+// tf.BatchMatmulV2 and returns the new set of dimension numbers with them.
+LogicalResult transposeForBatchMatmul(
+    const Location& loc, EinsumDimensionNumbers& dnums, Value* lhs, Value* rhs,
+    std::vector<int32_t>* out_inverse_transpose, PatternRewriter* rewriter) {
+  std::vector<int32_t> lhs_transpose;
+  std::vector<int32_t> rhs_transpose;
+  std::vector<int32_t> out_transpose;
+  lhs_transpose.reserve(dnums.lhs_rhs_out.size() + dnums.lhs_out.size() +
+                        dnums.lhs_rhs.size());
+  rhs_transpose.reserve(dnums.lhs_rhs_out.size() + dnums.rhs_out.size() +
+                        dnums.lhs_rhs.size());
+  out_transpose.reserve(dnums.lhs_rhs_out.size() + dnums.lhs_out.size() +
+                        dnums.rhs_out.size());
+  for (int64_t i = 0, e = dnums.lhs_rhs_out.size(); i < e; ++i) {
+    lhs_transpose.push_back(std::get<0>(dnums.lhs_rhs_out[i]));
+    rhs_transpose.push_back(std::get<1>(dnums.lhs_rhs_out[i]));
+    out_transpose.push_back(std::get<2>(dnums.lhs_rhs_out[i]));
+    dnums.lhs_rhs_out[i] = std::make_tuple(i, i, i);
+  }
+
+  for (int64_t i = 0, e = dnums.lhs_out.size(); i < e; ++i) {
+    lhs_transpose.push_back(std::get<0>(dnums.lhs_out[i]));
+    out_transpose.push_back(std::get<1>(dnums.lhs_out[i]));
+    dnums.lhs_out[i] =
+        std::make_tuple(lhs_transpose.size() - 1, out_transpose.size() - 1);
+  }
+  for (int64_t i = 0, e = dnums.lhs_rhs.size(); i < e; ++i) {
+    lhs_transpose.push_back(std::get<0>(dnums.lhs_rhs[i]));
+    rhs_transpose.push_back(std::get<1>(dnums.lhs_rhs[i]));
+    dnums.lhs_rhs[i] =
+        std::make_tuple(lhs_transpose.size() - 1, rhs_transpose.size() - 1);
+  }
+  for (int64_t i = 0, e = dnums.rhs_out.size(); i < e; ++i) {
+    rhs_transpose.push_back(std::get<0>(dnums.rhs_out[i]));
+    out_transpose.push_back(std::get<1>(dnums.rhs_out[i]));
+    dnums.rhs_out[i] =
+        std::make_tuple(rhs_transpose.size() - 1, out_transpose.size() - 1);
+  }
+
+  out_inverse_transpose->resize(out_transpose.size());
+  for (int64_t i = 0, e = out_transpose.size(); i < e; ++i) {
+    out_inverse_transpose->at(out_transpose[i]) = i;
+  }
+
+  *lhs = createTransposeOp(*lhs, loc, lhs_transpose, rewriter);
+  *rhs = createTransposeOp(*rhs, loc, rhs_transpose, rewriter);
+  return success();
+}
+
+// Reshapes LHS and RHS to have B0,...,Bn,L,C and B0,...,Bn,C,R shape
+// respectively while assuming that the initial shape for them is
+// B0,...,Bn,L0,...,Ln,C0,...,Cn and B0,...,Bn,C0,...,Cn,R0,...,Rn respectively.
+LogicalResult reshapeForBatchMatmul(const Location& loc,
+                                    EinsumDimensionNumbers& dnums, Value* lhs,
+                                    Value* rhs, std::vector<int64_t>* out_shape,
+                                    PatternRewriter* rewriter) {
+  RankedTensorType lhs_type = lhs->getType().cast<RankedTensorType>();
+  RankedTensorType rhs_type = rhs->getType().cast<RankedTensorType>();
+
+  std::vector<int64_t> lhs_shape;
+  std::vector<int64_t> rhs_shape;
+  lhs_shape.reserve(dnums.lhs_rhs_out.size() + dnums.lhs_out.size() + 1);
+  rhs_shape.reserve(dnums.lhs_rhs_out.size() + 2);
+  for (auto i : dnums.lhs_rhs_out) {
+    int64_t b = lhs_type.getShape()[std::get<0>(i)];
+    lhs_shape.push_back(b);
+    rhs_shape.push_back(b);
+    out_shape->push_back(b);
+  }
+
+  if (dnums.lhs_out.empty()) {
+    lhs_shape.push_back(1);
+    out_shape->push_back(1);
+    dnums.lhs_out.emplace_back(lhs_shape.size() - 1, out_shape->size() - 1);
+  } else if (dnums.lhs_rhs_out.empty()) {
+    for (auto i : dnums.lhs_out) {
+      int64_t b = lhs_type.getShape()[std::get<0>(i)];
+      lhs_shape.push_back(b);
+      out_shape->push_back(b);
+    }
+  } else {
+    int64_t lhs_out_size = 1;
+    for (auto i : dnums.lhs_out) {
+      lhs_out_size *= lhs_type.getShape()[std::get<0>(i)];
+    }
+    lhs_shape.push_back(lhs_out_size);
+    out_shape->push_back(lhs_out_size);
+  }
+
+  int64_t lhs_rhs_size = 1;
+  for (auto i : dnums.lhs_rhs) {
+    lhs_rhs_size *= lhs_type.getShape()[std::get<0>(i)];
+  }
+  lhs_shape.push_back(lhs_rhs_size);
+  rhs_shape.push_back(lhs_rhs_size);
+
+  int64_t rhs_size = 1;
+  for (auto i : dnums.rhs_out) {
+    rhs_size *= rhs_type.getShape()[std::get<0>(i)];
+  }
+  rhs_shape.push_back(rhs_size);
+  out_shape->push_back(rhs_size);
+
+  if (failed(VerifyShapeOfReshapeOp(lhs_shape)) ||
+      failed(VerifyShapeOfReshapeOp(rhs_shape)))
+    return failure();
+
+  *lhs = createReshapeOp(*lhs, lhs_shape, lhs_type.getElementType(), loc,
+                         rewriter);
+  *rhs = createReshapeOp(*rhs, rhs_shape, rhs_type.getElementType(), loc,
+                         rewriter);
+
+  dnums.lhs_rhs.assign(
+      {std::make_tuple(dnums.lhs_rhs_out.size() + dnums.lhs_out.size(),
+                       dnums.lhs_rhs_out.size())});
+  dnums.rhs_out.assign(
+      {std::make_tuple(dnums.lhs_rhs_out.size() + dnums.lhs_out.size(),
+                       dnums.lhs_rhs_out.size() + dnums.lhs_out.size())});
+  return success();
+}
+
+LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
+                                   EinsumDimensionNumbers dnums,
+                                   PatternRewriter& rewriter) {
+  if (!dnums.lhs.empty() || !dnums.rhs.empty()) return failure();
+
+  auto inputs = op.inputs();
+  if (inputs.size() != 2) return failure();
+  Value lhs = inputs.front();
+  Value rhs = inputs.back();
+
+  RankedTensorType original_type =
+      op.getResult().getType().dyn_cast_or_null<RankedTensorType>();
+  if (!original_type) return failure();
+
+  std::vector<int32_t> out_transpose;
+  if (failed(transposeForBatchMatmul(op.getLoc(), dnums, &lhs, &rhs,
+                                     &out_transpose, &rewriter)))
+    return failure();
+
+  std::vector<int64_t> matmul_shape;
+  if (failed(reshapeForBatchMatmul(op.getLoc(), dnums, &lhs, &rhs,
+                                   &matmul_shape, &rewriter)))
+    return failure();
+
+  std::vector<int64_t> reshape_shape =
+      inverseTransposeVector(original_type.getShape(), out_transpose);
+  if (failed(VerifyShapeOfReshapeOp(reshape_shape))) return failure();
+
+  auto matmul_type =
+      RankedTensorType::get(matmul_shape, original_type.getElementType());
+  Value out = rewriter.create<TF::BatchMatMulV2Op>(
+      op.getLoc(), matmul_type, lhs, rhs, rewriter.getBoolAttr(false),
+      rewriter.getBoolAttr(false));
+
+  out = createReshapeOp(out, reshape_shape, original_type.getElementType(),
+                        op.getLoc(), &rewriter);
+  out = createTransposeOp(out, op.getLoc(), out_transpose, &rewriter);
+
+  rewriter.replaceOp(op, out);
+  return success();
+}
+
 }  // namespace
 
 LogicalResult ConvertTFEinsumOp::matchAndRewrite(
     TF::EinsumOp op, PatternRewriter& rewriter) const {
-  Type output_type = op.getResult().getType();
-  Value lhs = op.getOperand(0);
-  Value rhs = op.getOperand(1);
-  Location loc = op.getLoc();
-  if (!lhs.getType().isa<RankedTensorType>()) {
-    // LHS must be a ranked tensor type
-    return failure();
-  }
-  if (!rhs.getType().isa<RankedTensorType>()) {
-    // RHS must be a ranked tensor type
-    return failure();
-  }
+  const auto dnums_or = GetEinsumDimensionNumbers(op.equation());
+  if (!dnums_or.hasValue()) return failure();
+  const auto& dnums = dnums_or.getValue();
 
-  auto lhs_type = lhs.getType().cast<RankedTensorType>();
-  auto rhs_type = rhs.getType().cast<RankedTensorType>();
-  auto lhs_shape = lhs_type.getShape();
-  auto rhs_shape = rhs_type.getShape();
+  RankedTensorType lhs =
+      op.getOperand(0).getType().dyn_cast_or_null<RankedTensorType>();
+  RankedTensorType rhs =
+      op.getOperand(1).getType().dyn_cast_or_null<RankedTensorType>();
+  if (!lhs || !rhs) return failure();
 
-  // Currently only support static shapes.
-  if (!(lhs_type.hasStaticShape() && rhs_type.hasStaticShape())) {
-    return failure();
-  }
-
-  // Currently support use cases of LHS dims \in {3,4}  RHS dims \in {2, 3, 4}
-  const int dims_lhs = lhs_shape.size();
-  const int dims_rhs = rhs_shape.size();
-  if (dims_lhs < 3 || dims_lhs > 4 || dims_rhs < 2 || dims_rhs > 4) {
-    return failure();
-  }
-
-  EinsumEquation einsum_eqn = tokenizeAndParse(op.equation());
-  if (einsum_eqn == EinsumEquation::BatchMatMul) {
-    // Case "IJK,IKM->IJM"
-    auto bmm_op = rewriter.create<TF::BatchMatMulV2Op>(
-        loc, ArrayRef<Type>{output_type}, lhs, rhs, rewriter.getBoolAttr(false),
-        rewriter.getBoolAttr(false));
-    rewriter.replaceOp(op, bmm_op.getResult());
-    return success();
-  }
-  if (einsum_eqn == EinsumEquation::BroadcastMatMul) {
-    // Case "BFH,HO->BFO"
-    auto bmm_op = rewriter.create<TF::BatchMatMulV2Op>(
-        loc, ArrayRef<Type>{output_type}, lhs, rhs, rewriter.getBoolAttr(false),
-        rewriter.getBoolAttr(false));
-    rewriter.replaceOp(op, bmm_op.getResult());
-    return success();
-  }
-  if (einsum_eqn == EinsumEquation::ReduceSum) {
-    // Case "LBH,BL->BH"
-    // Transpose LHS
-    lhs = createTransposeOp(lhs, loc, {1, 2, 0}, &rewriter);
-    // Reshape RHS
-    auto rhs_element_type = rhs_type.getElementType();
-    const int rhs_dim0 = rhs_shape[0];
-    const int rhs_dim1 = rhs_shape[1];
-    auto reshaped_rhs = createReshapeOp(rhs, {rhs_dim0, 1, rhs_dim1},
-                                        rhs_element_type, loc, &rewriter);
-    auto mul_op = rewriter.create<TF::MulOp>(loc, lhs, reshaped_rhs);
-
-    auto sum_op = createSumOp(mul_op, loc, {2}, &rewriter);
-    rewriter.replaceOp(op, {sum_op.getResult()});
-    return success();
-  }
-  if (einsum_eqn == EinsumEquation::TransposeMatMul) {
-    // Case "LBH,BKL->BKH"
-    // Transpose LHS
-    lhs = createTransposeOp(lhs, loc, {1, 2, 0}, &rewriter);
-    // Transpose RHS
-    rhs = createTransposeOp(rhs, loc, {0, 2, 1}, &rewriter);
-    std::vector<int64_t> bmm_shape = {lhs_shape[1], lhs_shape[2], rhs_shape[1]};
-    auto bmm_type = RankedTensorType::get(bmm_shape, rhs_type.getElementType());
-    auto bmm_op = rewriter.create<TF::BatchMatMulV2Op>(
-        loc, ArrayRef<Type>{bmm_type}, lhs, rhs, rewriter.getBoolAttr(false),
-        rewriter.getBoolAttr(false));
-
-    auto trans_bmm = createTransposeOp(bmm_op, loc, {0, 2, 1}, &rewriter);
-    rewriter.replaceOp(op, {trans_bmm.getResult()});
-    return success();
-  }
-  if (einsum_eqn == EinsumEquation::ThreeDReshapeTail) {
-    // Case "BFD,DNH->BFNH"
-    auto lhs_type = lhs.getType().cast<RankedTensorType>();
-    auto lhs_shape = lhs_type.getShape();
-    const int lhs_dim0 = lhs_shape[0];
-    const int lhs_dim1 = lhs_shape[1];
-    // Reshape RHS
-    auto rhs_type = rhs.getType().cast<RankedTensorType>();
-    auto rhs_shape = rhs_type.getShape();
-    auto rhs_element_type = rhs_type.getElementType();
-    const int rhs_dim0 = rhs_shape[0];
-    const int rhs_dim1 = rhs_shape[1];
-    const int rhs_dim2 = rhs_shape[2];
-    auto reshaped_rhs = createReshapeOp(rhs, {rhs_dim0, rhs_dim1 * rhs_dim2},
-                                        rhs_element_type, loc, &rewriter);
-
-    std::vector<int64_t> bmm_shape = {lhs_dim0, lhs_dim1, rhs_dim1 * rhs_dim2};
-    auto bmm_type = RankedTensorType::get(bmm_shape, rhs_type.getElementType());
-    auto bmm_op = rewriter.create<TF::BatchMatMulV2Op>(
-        loc, ArrayRef<Type>{bmm_type}, lhs, reshaped_rhs,
-        rewriter.getBoolAttr(false), rewriter.getBoolAttr(false));
-    auto bmm_element_type = bmm_type.getElementType();
-    auto final_reshape =
-        createReshapeOp(bmm_op, {lhs_dim0, lhs_dim1, rhs_dim1, rhs_dim2},
-                        bmm_element_type, loc, &rewriter);
-    rewriter.replaceOp(op, {final_reshape.getResult()});
-    return success();
-  }
-  if (einsum_eqn == EinsumEquation::FourDMatrixDotProd) {
-    // Case "BFND,NDH->BFH"
-    // Reshape LHS
-    auto lhs_element_type = lhs_type.getElementType();
-    const int lhs_dim0 = lhs_shape[0];
-    const int lhs_dim1 = lhs_shape[1];
-    const int lhs_dim2 = lhs_shape[2];
-    const int lhs_dim3 = lhs_shape[3];
-    auto reshaped_lhs =
-        createReshapeOp(lhs, {lhs_dim0, lhs_dim1, lhs_dim2 * lhs_dim3},
-                        lhs_element_type, loc, &rewriter);
-    // Reshape RHS
-    auto rhs_element_type = rhs_type.getElementType();
-    const int rhs_dim0 = rhs_shape[0];
-    const int rhs_dim1 = rhs_shape[1];
-    const int rhs_dim2 = rhs_shape[2];
-    auto reshaped_rhs = createReshapeOp(rhs, {rhs_dim0 * rhs_dim1, rhs_dim2},
-                                        rhs_element_type, loc, &rewriter);
-    auto bmm_op = rewriter.create<TF::BatchMatMulV2Op>(
-        loc, ArrayRef<Type>{output_type}, reshaped_lhs, reshaped_rhs,
-        rewriter.getBoolAttr(false), rewriter.getBoolAttr(false));
-    rewriter.replaceOp(op, {bmm_op.getResult()});
-    return success();
-  }
-  if (einsum_eqn == EinsumEquation::FourDBatchMatMul) {
-    // Case "BFNH,BTNH->BNFT"
-    // Transpose LHS
-    lhs = createTransposeOp(lhs, loc, {0, 2, 1, 3}, &rewriter);
-    // Transpose RHS
-    rhs = createTransposeOp(rhs, loc, {0, 2, 3, 1}, &rewriter);
-    auto bmm_op = rewriter.create<TF::BatchMatMulV2Op>(
-        loc, ArrayRef<Type>{output_type}, lhs, rhs, rewriter.getBoolAttr(false),
-        rewriter.getBoolAttr(false));
-    rewriter.replaceOp(op, {bmm_op.getResult()});
-    return success();
-  }
-  return failure();
+  return rewriteToBatchMatmul(op, dnums, rewriter);
 }
 
 // Transform Einsum to other TF Ops for the supported variants.
@@ -363,7 +373,7 @@ void TransformEinsumPass::runOnFunction() {
   auto func = getFunction();
 
   patterns.insert<ConvertTFEinsumOp>(&getContext());
-  applyPatternsAndFoldGreedily(func, patterns);
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 static PassRegistration<TransformEinsumPass> pass(

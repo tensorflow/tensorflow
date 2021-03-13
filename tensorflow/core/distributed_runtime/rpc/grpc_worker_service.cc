@@ -194,7 +194,7 @@ class GrpcWorkerServiceThread {
     auto closure = [this, call]() {                                           \
       Status s = worker_->method(&call->request, &call->response);            \
       if (!s.ok()) {                                                          \
-        VLOG(1) << "Bad response from " << #method << ": " << s;              \
+        VLOG(3) << "Bad response from " << #method << ": " << s;              \
       }                                                                       \
       call->SendResponse(ToGrpcStatus(s));                                    \
     };                                                                        \
@@ -223,7 +223,7 @@ class GrpcWorkerServiceThread {
     Schedule([this, call]() {
       worker_->GetStepSequenceAsync(
           &call->request, &call->response, [call](const Status& s) {
-            VLOG(1) << "Bad response from GetStepSequence:" << s;
+            VLOG(3) << "Bad response from GetStepSequence:" << s;
             call->SendResponse(ToGrpcStatus(s));
           });
     });
@@ -232,7 +232,7 @@ class GrpcWorkerServiceThread {
 
   void MarkRecvFinishedHandler(
       WorkerCall<MarkRecvFinishedRequest, MarkRecvFinishedResponse>* call) {
-    VLOG(1) << "Clean cache entry for request " << call->request.request_id();
+    VLOG(3) << "Clean cache entry for request " << call->request.request_id();
     worker_->RemoveCacheEntryForId(call->request.request_id());
     call->SendResponse(::grpc::Status::OK);
     ENQUEUE_REQUEST(MarkRecvFinished, false);
@@ -249,9 +249,9 @@ class GrpcWorkerServiceThread {
       worker_->RunGraphAsync(call_opts, wrapped_request, wrapped_response,
                              [call, call_opts, wrapped_request,
                               wrapped_response](const Status& s) {
-                               VLOG(1) << "RunGraph::Done";
+                               VLOG(3) << "RunGraph::Done";
                                if (!s.ok()) {
-                                 VLOG(1) << "Bad response from RunGraph:" << s;
+                                 VLOG(3) << "Bad response from RunGraph:" << s;
                                }
                                call->ClearCancelCallback();
                                delete call_opts;
@@ -275,7 +275,7 @@ class GrpcWorkerServiceThread {
             call->ClearCancelCallback();
             delete call_opts;
             if (!s.ok()) {
-              VLOG(1) << "Bad response from RecvTensor:" << s;
+              VLOG(3) << "Bad response from RecvTensor:" << s;
             }
             call->SendResponse(ToGrpcStatus(s));
           });
@@ -292,7 +292,7 @@ class GrpcWorkerServiceThread {
                               call->ClearCancelCallback();
                               delete call_opts;
                               if (!s.ok()) {
-                                VLOG(1) << "Bad response from RecvBuf:" << s;
+                                VLOG(3) << "Bad response from RecvBuf:" << s;
                               }
                               call->SendResponse(ToGrpcStatus(s));
                             });
@@ -311,7 +311,7 @@ class GrpcWorkerServiceThread {
             call->ClearCancelCallback();
             delete call_opts;
             if (!s.ok()) {
-              VLOG(1) << "Bad response from CompleteGroup:" << s;
+              VLOG(3) << "Bad response from CompleteGroup:" << s;
             }
             call->SendResponse(ToGrpcStatus(s));
           });
@@ -330,7 +330,7 @@ class GrpcWorkerServiceThread {
             call->ClearCancelCallback();
             delete call_opts;
             if (!s.ok()) {
-              VLOG(1) << "Bad response from CompleteInstance:" << s;
+              VLOG(3) << "Bad response from CompleteInstance:" << s;
             }
             call->SendResponse(ToGrpcStatus(s));
           });
@@ -430,7 +430,7 @@ GrpcWorker::GrpcWorker(WorkerEnv* worker_env, const ConfigProto& config)
 }
 
 void GrpcWorker::EnableResponseCache() {
-  VLOG(1) << "Enabling gRPC tensor response cache.";
+  VLOG(3) << "Enabling gRPC tensor response cache.";
   response_cache_ = absl::make_unique<GrpcResponseCache>();
 }
 
@@ -441,7 +441,7 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
                                      const RecvTensorRequest* request,
                                      ::grpc::ByteBuffer* response,
                                      StatusCallback done) {
-  VLOG(1) << "GrpcRecvTensorAsync req: " << request->DebugString();
+  VLOG(3) << "GrpcRecvTensorAsync req: " << request->DebugString();
   const int64 request_id = request->request_id();
   const int64 step_id = request->step_id();
 
@@ -696,7 +696,8 @@ void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
   };
   rma->buf_rendezvous()->ConsumeBuf(
       request->buf_rendezvous_key(), request->src_device(),
-      request->src_incarnation(), consumer_callback);
+      request->src_incarnation(), consumer_callback,
+      /*cancellation_manager=*/nullptr);
 }
 
 void GrpcWorker::LoggingAsync(const LoggingRequest* request,

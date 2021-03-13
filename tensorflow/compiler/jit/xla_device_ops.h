@@ -21,9 +21,11 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/constant_op.h"
+#include "tensorflow/core/kernels/data/finalize_dataset_op.h"
 #include "tensorflow/core/kernels/data/generator_dataset_op.h"
 #include "tensorflow/core/kernels/data/iterator_ops.h"
 #include "tensorflow/core/kernels/data/optional_ops.h"
+#include "tensorflow/core/kernels/data/options_dataset_op.h"
 #include "tensorflow/core/kernels/data/prefetch_dataset_op.h"
 #include "tensorflow/core/kernels/fifo_queue.h"
 #include "tensorflow/core/kernels/function_ops.h"
@@ -117,6 +119,18 @@ class XlaAssignVariableOp : public OpKernel {
                               .TypeConstraint<int64>("out_type")               \
                               .TypeConstraint("T", TYPES),                     \
                           ShapeNOp<int64>);                                    \
+  REGISTER_KERNEL_BUILDER(Name("VariableShape")                                \
+                              .Device(DEVICE)                                  \
+                              .TypeConstraint<int32>("out_type")               \
+                              .HostMemory("output")                            \
+                              .HostMemory("input"),                            \
+                          VariableShapeOp<int32>);                             \
+  REGISTER_KERNEL_BUILDER(Name("VariableShape")                                \
+                              .Device(DEVICE)                                  \
+                              .TypeConstraint<int64>("out_type")               \
+                              .HostMemory("output")                            \
+                              .HostMemory("input"),                            \
+                          VariableShapeOp<int64>);                             \
   REGISTER_KERNEL_BUILDER(Name("Size")                                         \
                               .Device(DEVICE)                                  \
                               .HostMemory("output")                            \
@@ -172,6 +186,16 @@ class XlaAssignVariableOp : public OpKernel {
                               .HostMemory("input_dataset")                     \
                               .HostMemory("handle"),                           \
                           data::PrefetchDatasetOp);                            \
+  REGISTER_KERNEL_BUILDER(Name("OptionsDataset")                               \
+                              .Device(DEVICE)                                  \
+                              .HostMemory("input_dataset")                     \
+                              .HostMemory("handle"),                           \
+                          data::OptionsDatasetOp);                             \
+  REGISTER_KERNEL_BUILDER(Name("FinalizeDataset")                              \
+                              .Device(DEVICE)                                  \
+                              .HostMemory("input_dataset")                     \
+                              .HostMemory("handle"),                           \
+                          data::FinalizeDatasetOp);                            \
                                                                                \
   REGISTER_KERNEL_BUILDER(Name("IteratorV2").Device(DEVICE),                   \
                           data::IteratorHandleOp);                             \

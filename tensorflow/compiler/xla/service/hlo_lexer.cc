@@ -281,6 +281,8 @@ TokKind HloLexer::LexIdentifier() {
   KEYWORD(ROOT);
   KEYWORD(maximal);
   KEYWORD(replicated);
+  KEYWORD(manual);
+  KEYWORD(last_tile_dim_replicate);
 
 #undef KEYWORD
 
@@ -384,6 +386,12 @@ TokKind HloLexer::LexNumberOrPattern() {
   if (RE2::Consume(&consumable, *neg_inf)) {
     current_ptr_ = consumable.begin();
     return TokKind::kNegInf;
+  }
+
+  static LazyRE2 neg_nan = {"-nan"};
+  if (RE2::Consume(&consumable, *neg_nan)) {
+    current_ptr_ = consumable.begin();
+    return TokKind::kNegNan;
   }
 
   return TokKind::kError;
@@ -495,10 +503,16 @@ string TokKindToString(TokKind kind) {
       return "kw_maximal";
     case TokKind::kw_replicated:
       return "kw_replicated";
+    case TokKind::kw_manual:
+      return "kw_manual";
+    case TokKind::kw_last_tile_dim_replicate:
+      return "kw_last_tile_dim_replicate";
     case TokKind::kw_nan:
       return "kw_nan";
     case TokKind::kw_inf:
       return "kw_inf";
+    case TokKind::kNegNan:
+      return "kNegNan";
     case TokKind::kNegInf:
       return "kNegInf";
     case TokKind::kPrimitiveType:

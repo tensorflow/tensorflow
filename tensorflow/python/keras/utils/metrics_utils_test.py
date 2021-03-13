@@ -28,7 +28,7 @@ from tensorflow.python.keras.utils import metrics_utils
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -288,7 +288,7 @@ class FilterTopKTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     def _filter_top_k(x):
       # This loses the static shape.
-      x = script_ops.py_func_common(_identity, (x,), dtypes.float32)
+      x = script_ops.numpy_function(_identity, (x,), dtypes.float32)
 
       return metrics_utils._filter_top_k(x=x, k=2)
 
@@ -301,4 +301,4 @@ class FilterTopKTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
 
 if __name__ == '__main__':
-  googletest.main()
+  test.main()

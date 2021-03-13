@@ -174,14 +174,12 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
  private:
   Rendezvous* local_;  // Owns a Ref on this object.
 
-  // Guards mutable state that is read-mostly after this rendezvous is
-  // initialized.
-  mutable mutex init_mu_;
+  mutable mutex mu_;
 
   // Status given by StartAbort() if any.
-  Status status_ TF_GUARDED_BY(init_mu_);
+  Status status_ TF_GUARDED_BY(mu_);
 
-  WorkerSession* session_ TF_GUARDED_BY(init_mu_);  // Not owned.
+  WorkerSession* session_ TF_GUARDED_BY(mu_);  // Not owned.
 
   // Data structures to handle calls when partially initialized.
   struct DeferredCall {
@@ -190,16 +188,14 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
 
     DeferredCall(const ParsedKey& parsed, DoneCallback done);
   };
-  std::vector<DeferredCall> deferred_calls_ TF_GUARDED_BY(init_mu_);
+  std::vector<DeferredCall> deferred_calls_ TF_GUARDED_BY(mu_);
 
   typedef std::function<void()> InactiveCallback;
 
-  // Active outstanding RecvTensor calls.
-  mutex active_mu_;
   std::unordered_map<BaseRecvTensorCall*, InactiveCallback> active_
-      TF_GUARDED_BY(active_mu_);
+      TF_GUARDED_BY(mu_);
 
-  bool is_initialized_locked() TF_SHARED_LOCKS_REQUIRED(init_mu_) {
+  bool is_initialized_locked() TF_SHARED_LOCKS_REQUIRED(mu_) {
     return session_ != nullptr;
   }
 

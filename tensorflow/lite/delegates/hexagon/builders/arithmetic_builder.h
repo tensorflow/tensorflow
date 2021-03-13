@@ -38,8 +38,7 @@ class ArithmeticOpBuilder : public OpBuilder {
 
  private:
   TensorID node_output_;
-  float input1_min_, input1_max_, input2_min_, input2_max_, output_min_,
-      output_max_;
+  float output_min_, output_max_;
 };
 
 }  // namespace hexagon

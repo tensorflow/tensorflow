@@ -66,7 +66,7 @@ class FIFOQueueTest(xla_test.XLATestCase):
   def testEnqueueDictWithoutNames(self):
     with self.session(), self.test_scope():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
-      with self.assertRaisesRegexp(ValueError, "must have names"):
+      with self.assertRaisesRegex(ValueError, "must have names"):
         q.enqueue({"a": 12.0})
 
   def testParallelEnqueue(self):

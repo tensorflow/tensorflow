@@ -26,6 +26,7 @@ limitations under the License.
 
 // Please see the implementation file for documentation of these options.
 
+// Import options.
 extern llvm::cl::opt<std::string> input_arrays;
 extern llvm::cl::opt<std::string> input_dtypes;
 extern llvm::cl::opt<std::string> input_shapes;
@@ -39,7 +40,10 @@ extern llvm::cl::opt<bool> prune_unused_nodes;
 extern llvm::cl::opt<bool> convert_legacy_fed_inputs;
 extern llvm::cl::opt<bool> graph_as_function;
 extern llvm::cl::opt<bool> upgrade_legacy;
-// TODO(jpienaar): Temporary flag, flip default and and remove.
+// TODO(jpienaar): Temporary flag, flip default and remove.
 extern llvm::cl::opt<bool> enable_shape_inference;
+
+// Export options.
+extern llvm::cl::opt<bool> export_entry_func_to_flib;
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_TF_MLIR_TRANSLATE_CL_H_

@@ -60,7 +60,14 @@ static llvm::cl::opt<bool> import_saved_model_object_graph(
 static llvm::cl::opt<bool> import_saved_model_signature_defs(
     "savedmodel-signaturedefs-to-mlir",
     llvm::cl::desc(
-        "Import a saved model's SignatureDefs to to their MLIR representation"),
+        "Import a saved model's SignatureDefs to their MLIR representation"),
+    llvm::cl::value_desc("dir"));
+
+// NOLINTNEXTLINE
+static llvm::cl::opt<bool> import_saved_model_signature_defs_lite(
+    "savedmodel-signaturedefs-to-mlir-lite",
+    llvm::cl::desc("Import a saved model's SignatureDefs to to their MLIR "
+                   "representation without any graph transformation"),
     llvm::cl::value_desc("dir"));
 
 // NOLINTNEXTLINE
@@ -87,11 +94,14 @@ int main(int argc, char** argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF MLIR translation driver\n");
 
   if (!import_saved_model_object_graph && !import_saved_model_signature_defs &&
-      !requested_translation) {
+      !import_saved_model_signature_defs_lite && !requested_translation) {
     llvm::errs() << "error: need to specify one translation to perform\n";
     return 1;
-  } else if (import_saved_model_object_graph &&
-             import_saved_model_signature_defs && requested_translation) {
+  } else if (import_saved_model_object_graph +
+                 import_saved_model_signature_defs +
+                 import_saved_model_signature_defs_lite +
+                 (requested_translation != nullptr) >
+             1) {
     llvm::errs()
         << "error: cannot specify more than one translation to perform\n";
     return 1;
@@ -111,20 +121,29 @@ int main(int argc, char** argv) {
 
   if (import_saved_model_object_graph) {
     mlir::MLIRContext context;
-
-    auto module = tensorflow::SavedModelObjectGraphToMlirImport(
+    auto module_or = tensorflow::SavedModelObjectGraphToMlirImport(
         input_filename, tags, exported_names, &context);
-    if (!module) return 1;
+    if (!module_or.status().ok()) return 1;
 
-    module->print(output->os());
+    module_or.ConsumeValueOrDie()->print(output->os());
   } else if (import_saved_model_signature_defs) {
     mlir::MLIRContext context;
+    tensorflow::MLIRImportOptions import_options;
+    import_options.upgrade_legacy = upgrade_legacy;
+    auto module_or = tensorflow::SavedModelSignatureDefsToMlirImport(
+        input_filename, tags, exported_names, &context, import_options);
+    if (!module_or.status().ok()) return 1;
 
-    auto module = tensorflow::SavedModelSignatureDefsToMlirImport(
-        input_filename, tags, exported_names, &context);
-    if (!module) return 1;
+    module_or.ConsumeValueOrDie()->print(output->os());
+  } else if (import_saved_model_signature_defs_lite) {
+    mlir::MLIRContext context;
+    tensorflow::MLIRImportOptions import_options;
+    import_options.upgrade_legacy = upgrade_legacy;
+    auto module_or = tensorflow::SavedModelSignatureDefsToMlirImportLite(
+        input_filename, tags, exported_names, &context, import_options);
+    if (!module_or.status().ok()) return 1;
 
-    module->print(output->os());
+    module_or.ConsumeValueOrDie()->print(output->os());
   } else {
     auto input = mlir::openInputFile(input_filename, &error_message);
 

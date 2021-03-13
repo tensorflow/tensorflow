@@ -438,8 +438,8 @@ bool HasUnusedOutputs(const NodeDef& func_node, const FunctionDef& func,
   int num_outputs = func.signature().output_arg_size();
   const absl::flat_hash_set<int> active_outputs =
       GetActiveOutputs(func_node, ctx, /*size_hind*/ num_outputs);
-
-  return active_outputs.size() != num_outputs;
+  int active_outputs_size = active_outputs.size();
+  return active_outputs_size != num_outputs;
 }
 
 // Return pruned FunctionDefLibrary with functions that are reachable from
@@ -563,7 +563,8 @@ void RemoveUnusedOutputsTypes(const FunctionSpecialization& specialization,
   if (tout == nullptr || !tout->has_list()) return;
 
   // Nothing to do if all outputs are active.
-  if (specialization.active_outputs.size() == tout->list().type_size()) return;
+  int specialization_active_outputs_size = specialization.active_outputs.size();
+  if (specialization_active_outputs_size == tout->list().type_size()) return;
 
   // Clear input types for the specialized node.
   auto* attr = specialized_func_node->mutable_attr();
@@ -827,8 +828,10 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
       {// LINT.IfChange
        // Op types that should not run in program order, e.g. because they need
        // to run asynchronously to avoid deadlock.
-       "CollectiveGather", "CollectiveReduce", "CollectiveBcastSend",
-       "CollectiveBcastRecv", "NcclAllReduce", "Send", "Recv",
+       "CollectiveGather", "CollectiveGatherV2", "CollectiveReduce",
+       "CollectiveReduceV2", "CollectiveBcastSend", "CollectiveBcastRecv",
+       "CollectiveBcastSendV2", "CollectiveBcastRecvV2", "NcclAllReduce",
+       "Send", "Recv",
 
        // Legacy random ops.
        // See details in tensorflow/python/framework/auto_control_deps.py.
@@ -836,7 +839,6 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
        "ParameterizedTruncatedNormal", "TruncatedNormal", "RandomShuffle",
        "Multinomial", "RandomGamma", "RandomGammaGrad", "RandomPoisson",
        "RandomPoissonV2",
-       // LINT.ThenChange(//tensorflow/python/framework/auto_control_deps.py)
 
        // ReadVariableOp marked as stateful because it consumes DT_RESOURCE,
        // but it can't generate any observable side-effect.
@@ -844,13 +846,19 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
 
        // CudnnRNN ops are stateful but they can't generate any observable
        // side-effect.
-       "CudnnRNNV2", "CudnnRNNV3", "CudnnRNNBackpropV2", "CudnnRNNBackpropV3",
+       "CudnnRNN", "CudnnRNNBackprop", "CudnnRNNV2", "CudnnRNNV3",
+       "CudnnRNNBackpropV2", "CudnnRNNBackpropV3",
 
        // TPUEmbedding EnqueueOps are stateful but this is only between ops with
        // the same device_ordinal on the same host.
        "EnqueueTPUEmbeddingSparseBatch", "EnqueueTPUEmbeddingIntegerBatch",
        "EnqueueTPUEmbeddingSparseTensorBatch",
-       "EnqueueTPUEmbeddingRaggedTensorBatch"});
+       "EnqueueTPUEmbeddingRaggedTensorBatch",
+
+       // SaveV2 and RestoreV2 should be allowed to operate in parallel on
+       // multiple hosts.
+       "SaveV2", "RestoreV2"});
+  // LINT.ThenChange(//tensorflow/python/framework/auto_control_deps.py)
   return exemption->contains(op);
 }
 
@@ -1142,7 +1150,8 @@ void AddFrameForwardingControlEdge(const std::vector<ControlFlowInfo>& info,
                                    Node* caller, Graph* g) {
   // All nodes added to the graph by v2 control flow lowering and function
   // inlining are guaranteed to have control edges to nested function calls.
-  if (caller->id() >= info.size()) return;
+  int info_size = info.size();
+  if (caller->id() >= info_size) return;
 
   // Check if a lowered node is executing inside a while loop.
   const Node* frame = info[caller->id()].frame;
@@ -1244,7 +1253,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
 
       if (n->IsIfNode()) {
         TF_RETURN_IF_ERROR(RewriteIfNode(n, graph.get(), false));
-      } else if (n->type_string() == "Case") {
+      } else if (n->IsCaseNode()) {
         TF_RETURN_IF_ERROR(RewriteCaseNode(n, graph.get(), false));
       } else if (n->IsWhileNode()) {
         TF_RETURN_IF_ERROR(RewriteWhileNode(n, graph.get(), false));

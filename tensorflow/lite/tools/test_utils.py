@@ -21,7 +21,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from flatbuffers.python import flatbuffers
+import flatbuffers
 from tensorflow.lite.python import schema_py_generated as schema_fb
 
 TFLITE_SCHEMA_VERSION = 3
@@ -155,6 +155,8 @@ def build_mock_flatbuffer_model():
 
   schema_fb.OperatorCodeStart(builder)
   schema_fb.OperatorCodeAddBuiltinCode(builder, schema_fb.BuiltinOperator.ADD)
+  schema_fb.OperatorCodeAddDeprecatedBuiltinCode(builder,
+                                                 schema_fb.BuiltinOperator.ADD)
   schema_fb.OperatorCodeAddVersion(builder, 1)
   code_offset = schema_fb.OperatorCodeEnd(builder)
 
@@ -194,6 +196,40 @@ def build_mock_flatbuffer_model():
   builder.PrependUOffsetTRelative(subgraph_offset)
   subgraphs_offset = builder.EndVector(1)
 
+  signature_method = builder.CreateString('my_method')
+  signature_key = builder.CreateString('my_key')
+  input_tensor_string = builder.CreateString('input_tensor')
+  output_tensor_string = builder.CreateString('output_tensor')
+
+  # Signature Inputs
+  schema_fb.TensorMapStart(builder)
+  schema_fb.TensorMapAddName(builder, input_tensor_string)
+  schema_fb.TensorMapAddTensorIndex(builder, 1)
+  input_tensor = schema_fb.TensorMapEnd(builder)
+
+  # Signature Outputs
+  schema_fb.TensorMapStart(builder)
+  schema_fb.TensorMapAddName(builder, output_tensor_string)
+  schema_fb.TensorMapAddTensorIndex(builder, 2)
+  output_tensor = schema_fb.TensorMapEnd(builder)
+
+  schema_fb.SignatureDefStartInputsVector(builder, 1)
+  builder.PrependUOffsetTRelative(input_tensor)
+  signature_inputs_offset = builder.EndVector(1)
+  schema_fb.SignatureDefStartOutputsVector(builder, 1)
+  builder.PrependUOffsetTRelative(output_tensor)
+  signature_outputs_offset = builder.EndVector(1)
+
+  schema_fb.SignatureDefStart(builder)
+  schema_fb.SignatureDefAddKey(builder, signature_key)
+  schema_fb.SignatureDefAddMethodName(builder, signature_method)
+  schema_fb.SignatureDefAddInputs(builder, signature_inputs_offset)
+  schema_fb.SignatureDefAddOutputs(builder, signature_outputs_offset)
+  signature_offset = schema_fb.SignatureDefEnd(builder)
+  schema_fb.ModelStartSignatureDefsVector(builder, 1)
+  builder.PrependUOffsetTRelative(signature_offset)
+  signature_defs_offset = builder.EndVector(1)
+
   string4_offset = builder.CreateString('model_description')
   schema_fb.ModelStart(builder)
   schema_fb.ModelAddVersion(builder, TFLITE_SCHEMA_VERSION)
@@ -201,6 +237,7 @@ def build_mock_flatbuffer_model():
   schema_fb.ModelAddSubgraphs(builder, subgraphs_offset)
   schema_fb.ModelAddDescription(builder, string4_offset)
   schema_fb.ModelAddBuffers(builder, buffers_offset)
+  schema_fb.ModelAddSignatureDefs(builder, signature_defs_offset)
   model_offset = schema_fb.ModelEnd(builder)
   builder.Finish(model_offset)
   model = builder.Output()

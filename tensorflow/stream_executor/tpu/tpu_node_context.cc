@@ -12,14 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include "tensorflow/stream_executor/tpu/tpu_node_context.h"
 
-#include "tensorflow/compiler/xla/service/backend.h"
-#include "tensorflow/compiler/xla/service/platform_util.h"
-#include "tensorflow/compiler/xla/service/transfer_manager.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
+#include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
-#include "tensorflow/stream_executor/tpu/tpu_node_context_c_api.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -27,50 +25,54 @@ namespace tpu {
 using stream_executor::port::Status;
 using stream_executor::port::StatusOr;
 
-/*static*/ StatusOr<std::unique_ptr<TpuNodeContext>> TpuNodeContext::Initialize(
+/*static*/
+StatusOr<std::unique_ptr<TpuNodeContext>> TpuNodeContext::Create(
     int device_ordinal) {
   StatusHelper status;
   XLA_TpuNodeContext* node_context =
-      TpuNodeContext_Create(device_ordinal, status.c_status);
+      tpu::OpsApiFn()->TpuNodeContext_CreateFn(device_ordinal, status.c_status);
   if (!status.status().ok()) {
-    TpuNodeContext_Free(node_context);
+    // TpuNodeContext_CreateFn allocates a new XLA_TpuNodeContext regardless of
+    // status. It needs to be freed if it's not given to a TpuNodeContext below.
+    tpu::OpsApiFn()->TpuNodeContext_FreeFn(node_context);
     return status.status();
   }
   return std::make_unique<TpuNodeContext>(device_ordinal, node_context);
 }
 
-TpuNodeContext::~TpuNodeContext() { TpuNodeContext_Free(node_context_); }
+TpuNodeContext::~TpuNodeContext() {
+  tpu::OpsApiFn()->TpuNodeContext_FreeFn(node_context_);
+}
 
 /* static */
 Status TpuNodeContext::StopChipHeartbeats() {
   StatusHelper status;
-  TpuNodeContext_StopChipHeartbeats(status.c_status);
+  tpu::OpsApiFn()->TpuNodeContext_StopChipHeartbeatsFn(status.c_status);
   return status.status();
 }
 
 /* static */
 Status TpuNodeContext::CloseTpuHost() {
   StatusHelper status;
-  TpuNodeContext_CloseTpuHost(status.c_status);
+  tpu::OpsApiFn()->TpuNodeContext_CloseTpuHostFn(status.c_status);
   return status.status();
 }
 
 /* static */
-tensorflow::tpu::TpuPlatformInterface* TpuNodeContext::platform() {
+Status TpuNodeContext::Initialize(int device_ordinal) {
+  StatusHelper status;
+  tpu::OpsApiFn()->TpuNodeContext_InitializeFn(device_ordinal, status.c_status);
+  return status.status();
+}
+
+/* static */
+TpuPlatformInterface* TpuNodeContext::platform() {
   return TpuPlatformInterface::GetRegisteredPlatform();
 }
 
-/* static */
-stream_executor::DeviceMemoryAllocator* TpuNodeContext::memory_allocator() {
-  static stream_executor::StreamExecutorMemoryAllocator* memory_allocator =
-      new stream_executor::StreamExecutorMemoryAllocator(
-          platform(),
-          xla::PlatformUtil::GetStreamExecutors(platform()).ValueOrDie());
-  return memory_allocator;
-}
+int TpuNodeContext::device_ordinal() const { return device_ordinal_; }
 
-/* static */
-xla::Backend* TpuNodeContext::backend() {
+xla::Backend* TpuNodeContext::backend() const {
   static xla::Backend* backend =
       xla::Backend::CreateBackend(
           xla::BackendOptions().set_platform(platform()))
@@ -79,21 +81,12 @@ xla::Backend* TpuNodeContext::backend() {
   return backend;
 }
 
-/* static */
-StatusOr<xla::StreamPool::Ptr> TpuNodeContext::BorrowStream(
-    int device_ordinal) {
-  return backend()->BorrowStream(device_ordinal);
+stream_executor::StreamExecutor* TpuNodeContext::stream_executor() const {
+  return backend()->stream_executor(device_ordinal_).ValueOrDie();
 }
 
-/* static */
-StatusOr<xla::StreamPool::Ptr> TpuNodeContext::BorrowStream(
-    stream_executor::StreamExecutor* executor) {
-  return backend()->BorrowStream(executor);
-}
-
-/* static */
-xla::TransferManager* TpuNodeContext::transfer_manager() {
-  return xla::TransferManager::GetForPlatform(platform()).ValueOrDie();
+bool TpuNodeContext::CompactionSupported(int device_ordinal) const {
+  return tpu::OpsApiFn()->TpuNodeContext_CompactionSupportedFn(device_ordinal);
 }
 
 }  // namespace tpu

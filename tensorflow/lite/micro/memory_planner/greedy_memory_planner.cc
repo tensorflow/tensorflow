@@ -48,10 +48,10 @@ GreedyMemoryPlanner::GreedyMemoryPlanner(unsigned char* scratch_buffer,
   requirements_ = reinterpret_cast<BufferRequirements*>(next_free);
   next_free += sizeof(BufferRequirements) * max_buffer_count_;
 
-  buffer_sizes_sorted_by_size_ = reinterpret_cast<int*>(next_free);
+  buffer_sizes_sorted_ = reinterpret_cast<int*>(next_free);
   next_free += sizeof(int) * max_buffer_count_;
 
-  buffer_ids_sorted_by_size_ = reinterpret_cast<int*>(next_free);
+  buffer_ids_sorted_ = reinterpret_cast<int*>(next_free);
   next_free += sizeof(int) * max_buffer_count_;
 
   buffers_sorted_by_offset_ = reinterpret_cast<ListEntry*>(next_free);
@@ -76,8 +76,21 @@ TfLiteStatus GreedyMemoryPlanner::AddBuffer(
   current->size = size;
   current->first_time_used = first_time_used;
   current->last_time_used = last_time_used;
+  current->offline_offset = kOnlinePlannedBuffer;
   ++buffer_count_;
   need_to_calculate_offsets_ = true;
+  return kTfLiteOk;
+}
+
+TfLiteStatus GreedyMemoryPlanner::AddBuffer(
+    tflite::ErrorReporter* error_reporter, int size, int first_time_used,
+    int last_time_used, int offline_offset) {
+  BufferRequirements* current = &requirements_[buffer_count_];
+  if (AddBuffer(error_reporter, size, first_time_used, last_time_used) !=
+      kTfLiteOk) {
+    return kTfLiteError;
+  }
+  current->offline_offset = offline_offset;
   return kTfLiteOk;
 }
 
@@ -102,7 +115,7 @@ GreedyMemoryPlanner::NextSimultaneouslyActiveBuffer(
   ListEntry* result = nullptr;
   ListEntry* candidate_next_entry;
   if (start == nullptr) {
-    candidate_next_entry = &buffers_sorted_by_offset_[0];
+    candidate_next_entry = &buffers_sorted_by_offset_[first_entry_index_];
   } else {
     if (start->next_entry_index == -1) {
       return nullptr;
@@ -134,29 +147,51 @@ void GreedyMemoryPlanner::CalculateOffsetsIfNeeded() {
   // This helps find a more compact layout. Intuitively, you can think
   // about putting the large buffers in place first, and then the
   // smaller buffers can fit in the gaps, rather than fragmenting the
-  // gaps with small buffers at the beginning.
+  // gaps with small buffers at the beginning. Add offline planned offsets
+  // first in the list, since they have a predetermined offset.
+  int idx_from_tail = buffer_count_;
+  int idx_from_head = 0;
   for (int i = 0; i < buffer_count_; ++i) {
-    buffer_sizes_sorted_by_size_[i] = requirements_[i].size;
-    buffer_ids_sorted_by_size_[i] = i;
-    buffer_offsets_[i] = -1;
+    if (requirements_[i].offline_offset == kOnlinePlannedBuffer) {
+      idx_from_tail--;
+      buffer_sizes_sorted_[idx_from_tail] = requirements_[i].size;
+      buffer_ids_sorted_[idx_from_tail] = i;
+      buffer_offsets_[i] = -1;
+    } else {
+      buffer_sizes_sorted_[idx_from_head] = requirements_[i].size;
+      buffer_ids_sorted_[idx_from_head] = i;
+      buffer_offsets_[i] = requirements_[i].offline_offset;
+      idx_from_head++;
+    }
   }
-  // This sorting algorithm is naive, and may end up taking a very long time
-  // with hundreds of buffers.
-  ReverseSortInPlace(buffer_sizes_sorted_by_size_, buffer_ids_sorted_by_size_,
-                     buffer_count_);
 
-  // Put the largest buffer at offset zero to start the process.
-  ListEntry* first_entry = &buffers_sorted_by_offset_[0];
-  first_entry->offset = 0;
-  first_entry->requirements_index = buffer_ids_sorted_by_size_[0];
-  first_entry->next_entry_index = -1;
+  // This sorting algorithm is naive, and may end up taking a very long time
+  // with hundreds of buffers. Do not sort the offline planned offsets.
+  ReverseSortInPlace(&buffer_sizes_sorted_[idx_from_head],
+                     &buffer_ids_sorted_[idx_from_head],
+                     buffer_count_ - idx_from_head);
+
+  // Initialize the first entry to the first buffer in
+  // buffer_ids_sorted_.
+  //   - If there are no offline planned offsets, the largest buffer will be
+  //     first, and the buffers will be handled in size order.
+  //   - If offline offsets are present, these will be handled first in order
+  //     for the greedy algorithm to utilized gaps in the offline plan.
+  first_entry_index_ = 0;
   next_free_entry_ = 1;
-  buffer_offsets_[buffer_ids_sorted_by_size_[0]] = 0;
+  ListEntry* first_entry = &buffers_sorted_by_offset_[first_entry_index_];
+  first_entry->next_entry_index = -1;  // to mark the entry as end of list
+  int buffer_id = buffer_ids_sorted_[0];
+  first_entry->requirements_index = buffer_id;
+  if (requirements_[buffer_id].offline_offset == kOnlinePlannedBuffer) {
+    buffer_offsets_[buffer_id] = 0;
+  }
+  first_entry->offset = buffer_offsets_[buffer_id];
 
   // Work through the rest of the buffers to find a good gap to place each one.
   for (int i = 1; i < buffer_count_; ++i) {
     // The id is the order the buffer was originally added by the client.
-    const int buffer_id = buffer_ids_sorted_by_size_[i];
+    buffer_id = buffer_ids_sorted_[i];
     // Look at what size and time range the buffer needs to be active.
     BufferRequirements* wanted_requirements = &requirements_[buffer_id];
     const int wanted_size = wanted_requirements->size;
@@ -168,37 +203,43 @@ void GreedyMemoryPlanner::CalculateOffsetsIfNeeded() {
     // so that it's easy to find the next buffer in memory, and so the gap.
     // The candidate_entry variable holds the buffer that we're considering
     // placing the current buffer after.
-    ListEntry* prior_entry = nullptr;
+
     int candidate_offset = 0;
     // Loop through the offset-ordered list of buffers, looking for gaps.
-    while (true) {
-      // Find out what the next active buffer is.
-      ListEntry* next_entry = NextSimultaneouslyActiveBuffer(
-          prior_entry, wanted_first_time_used, wanted_last_time_used);
+    if (wanted_requirements->offline_offset == kOnlinePlannedBuffer) {
+      ListEntry* prior_entry = nullptr;
+      while (true) {
+        // Find out what the next active buffer is.
+        ListEntry* next_entry = NextSimultaneouslyActiveBuffer(
+            prior_entry, wanted_first_time_used, wanted_last_time_used);
 
-      if (prior_entry) {
-        BufferRequirements* candidate_requirements =
-            &requirements_[prior_entry->requirements_index];
-        const int prior_entry_offset =
-            prior_entry->offset + candidate_requirements->size;
-        if (prior_entry_offset > candidate_offset) {
-          candidate_offset = prior_entry_offset;
+        if (prior_entry) {
+          BufferRequirements* candidate_requirements =
+              &requirements_[prior_entry->requirements_index];
+          const int prior_entry_offset =
+              prior_entry->offset + candidate_requirements->size;
+          if (prior_entry_offset > candidate_offset) {
+            candidate_offset = prior_entry_offset;
+          }
         }
+        if (next_entry == nullptr) {
+          // We're at the end of the list, so we can always append the buffer
+          // here.
+          break;
+        }
+        // Find out how much space there is between us and the next buffer.
+        const int gap = next_entry->offset - candidate_offset;
+        if (gap >= wanted_size) {
+          // This entry has a big enough gap between it and the next, so
+          // use it!
+          break;
+        }
+        // The gap wasn't big enough, so move on to another candidate.
+        prior_entry = next_entry;
       }
-      if (next_entry == nullptr) {
-        // We're at the end of the list, so we can always append the buffer
-        // here.
-        break;
-      }
-      // Find out how much space there is between us and the next buffer.
-      const int gap = next_entry->offset - candidate_offset;
-      if (gap >= wanted_size) {
-        // This entry has a big enough gap between it and the next, so
-        // use it!
-        break;
-      }
-      // The gap wasn't big enough, so move on to another candidate.
-      prior_entry = next_entry;
+    } else {
+      // Offline planned offset are to be considered constant
+      candidate_offset = wanted_requirements->offline_offset;
     }
     // At this point, we've either found a gap (possibly at the end of the
     // list) and want to place the buffer there, or there are no other active
@@ -212,26 +253,36 @@ void GreedyMemoryPlanner::CalculateOffsetsIfNeeded() {
     new_entry->requirements_index = buffer_id;
     const int new_entry_index = next_free_entry_;
     ++next_free_entry_;
-    ListEntry* current_entry = first_entry;
-    // Make sure that we insert the buffer at the correct place in the ordered
-    // list.
-    while (true) {
-      const int next_entry_index = current_entry->next_entry_index;
-      if (next_entry_index == -1) {
-        // We're at the end of the list, so just add the new entry here.
-        current_entry->next_entry_index = new_entry_index;
-        new_entry->next_entry_index = -1;
-        break;
+
+    if (first_entry->offset > candidate_offset) {
+      // The new entry offset is smaller than the first entry offset =>
+      // replace the first entry
+      first_entry = new_entry;
+      first_entry->next_entry_index = first_entry_index_;
+      first_entry_index_ = new_entry_index;
+    } else {
+      ListEntry* current_entry = first_entry;
+      // Make sure that we insert the buffer at the correct place in the
+      // buffer-offset-ordered list
+      while (true) {
+        const int next_entry_index = current_entry->next_entry_index;
+        if (next_entry_index == -1) {
+          // We're at the end of the list, so just add the new entry here.
+          current_entry->next_entry_index = new_entry_index;
+          new_entry->next_entry_index = -1;
+          break;
+        }
+        // not at the end of the list -> take a look at next entry
+        ListEntry* next_entry = &buffers_sorted_by_offset_[next_entry_index];
+        if (next_entry->offset > candidate_offset) {
+          // We're at the right spot to do an insertion and retain the sorting
+          // order, so place the new entry here.
+          new_entry->next_entry_index = current_entry->next_entry_index;
+          current_entry->next_entry_index = new_entry_index;
+          break;
+        }
+        current_entry = next_entry;
       }
-      ListEntry* next_entry = &buffers_sorted_by_offset_[next_entry_index];
-      if (next_entry->offset > candidate_offset) {
-        // We're at the right spot to do an insertion and retain the sorting
-        // order, so place the new entry here.
-        new_entry->next_entry_index = current_entry->next_entry_index;
-        current_entry->next_entry_index = new_entry_index;
-        break;
-      }
-      current_entry = next_entry;
     }
   }
 }
@@ -241,7 +292,7 @@ size_t GreedyMemoryPlanner::GetMaximumMemorySize() {
   if (buffer_count_ == 0) {
     return 0;
   }
-  ListEntry* entry = &buffers_sorted_by_offset_[0];
+  ListEntry* entry = &buffers_sorted_by_offset_[first_entry_index_];
   size_t max_size = 0;
   while (entry) {
     BufferRequirements* requirements =

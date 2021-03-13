@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/op_resolver.h"
+#include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/util.h"
@@ -428,6 +429,19 @@ TEST(VerifyModel, UseUnsupportedCustomOps) {
                   "Unsupported custom op: Not supported, version: 1"));
 }
 
+TEST(VerifyModel, UseUnnamedCustomOps) {
+  TfLiteFlatbufferModelBuilder builder({BuiltinOperator_ADD}, {"NewOp"});
+  builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input1");
+  builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input2");
+  builder.AddTensor({2, 2}, TensorType_UINT8, {}, "output");
+  builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "");
+  builder.FinishModel({}, {});
+  ASSERT_FALSE(builder.Verify());
+  EXPECT_THAT(builder.GetErrorString(),
+              ::testing::ContainsRegex(
+                  "Invalid custom op name, cannot be null/empty."));
+}
+
 TEST(VerifyModel, UnpopulatedInputToOp) {
   TfLiteFlatbufferModelBuilder builder({}, {"test"});
   builder.AddOperator({1, 2}, {3}, BuiltinOperator_CUSTOM, "test");
@@ -544,7 +558,9 @@ TEST(VerifyModel, TypedTensorShapeMatchesTensorBufferSize) {
   TfLiteFlatbufferModelBuilder builder;
   for (int tensor_type = TensorType_MIN; tensor_type <= TensorType_MAX;
        ++tensor_type) {
-    if (tensor_type == TensorType_STRING) continue;
+    if (tensor_type == TensorType_STRING ||
+        tensor_type == TensorType_RESOURCE || tensor_type == TensorType_VARIANT)
+      continue;
     TfLiteType lite_type = kTfLiteNoType;
     ASSERT_EQ(ConvertTensorType(static_cast<TensorType>(tensor_type),
                                 &lite_type, /*error_reporter=*/nullptr),

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# LINT.IfChange
 """Classes for different types of export output."""
 
 from __future__ import absolute_import
@@ -26,6 +27,7 @@ import six
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.saved_model import signature_def_utils
 
 
@@ -342,16 +344,16 @@ class _SupervisedOutput(ExportOutput):
         raise ValueError(
             '{} output value must be a Tensor; got {}.'.format(
                 key, metric_val))
-      if (not isinstance(metric_op, ops.Tensor) and
-          not isinstance(metric_op, ops.Operation)):
+      if not (tensor_util.is_tf_type(metric_op) or
+              isinstance(metric_op, ops.Operation)):
         raise ValueError(
             '{} update_op must be a Tensor or Operation; got {}.'.format(
                 key, metric_op))
 
-      # We must wrap any ops in a Tensor before export, as the SignatureDef
-      # proto expects tensors only. See b/109740581
+      # We must wrap any ops (or variables) in a Tensor before export, as the
+      # SignatureDef proto expects tensors only. See b/109740581
       metric_op_tensor = metric_op
-      if isinstance(metric_op, ops.Operation):
+      if not isinstance(metric_op, ops.Tensor):
         with ops.control_dependencies([metric_op]):
           metric_op_tensor = constant_op.constant([], name='metric_op_wrapper')
 
@@ -405,3 +407,4 @@ class EvalOutput(_SupervisedOutput):
 
   def _get_signature_def_fn(self):
     return signature_def_utils.supervised_eval_signature_def
+# LINT.ThenChange(//tensorflow/python/keras/saving/utils_v1/export_output.py)

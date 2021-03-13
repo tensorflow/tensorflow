@@ -222,21 +222,24 @@ static Graph* Gather(int dim) {
   return g;
 }
 
-#define BM_GATHER(DEVICE, INDEX)                                  \
-  static void BM_##DEVICE##_gather_##INDEX(int iters, int dim) {  \
-    const int64 tot = static_cast<int64>(iters) * kLookups * dim; \
-    testing::ItemsProcessed(tot);                                 \
-    testing::BytesProcessed(tot * sizeof(float));                 \
-    testing::UseRealTime();                                       \
-    test::Benchmark(#DEVICE, Gather<INDEX>(dim)).Run(iters);      \
-  }                                                               \
-  BENCHMARK(BM_##DEVICE##_gather_##INDEX)                         \
-      ->Arg(1)                                                    \
-      ->Arg(10)                                                   \
-      ->Arg(20)                                                   \
-      ->Arg(64)                                                   \
-      ->Arg(100)                                                  \
-      ->Arg(200)                                                  \
+#define BM_GATHER(DEVICE, INDEX)                                               \
+  static void BM_##DEVICE##_gather_##INDEX(                                    \
+      ::testing::benchmark::State& state) {                                    \
+    const int dim = state.range(0);                                            \
+    test::Benchmark(#DEVICE, Gather<INDEX>(dim), /*old_benchmark_api=*/false)  \
+        .Run(state);                                                           \
+    const int64 tot = static_cast<int64>(state.iterations()) * kLookups * dim; \
+    state.SetItemsProcessed(tot);                                              \
+    state.SetBytesProcessed(tot * sizeof(float));                              \
+  }                                                                            \
+  BENCHMARK(BM_##DEVICE##_gather_##INDEX)                                      \
+      ->UseRealTime()                                                          \
+      ->Arg(1)                                                                 \
+      ->Arg(10)                                                                \
+      ->Arg(20)                                                                \
+      ->Arg(64)                                                                \
+      ->Arg(100)                                                               \
+      ->Arg(200)                                                               \
       ->Arg(1000)
 
 BM_GATHER(cpu, int32);

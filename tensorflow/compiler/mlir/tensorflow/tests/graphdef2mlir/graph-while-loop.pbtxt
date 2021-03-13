@@ -7,7 +7,7 @@
 # CHECK:    %[[NEXTITERATION:[a-z0-9]+]], %[[NEXTITERATION_token:[a-z0-9]+]], {{.*}} = tf_executor.NextIteration.Source
 # CHECK:    tf_executor.Merge {{.*}} %[[NEXTITERATION]]
 
-# CHECK:    tf_executor.NextIteration.Sink [%[[NEXTITERATION_token]]]
+# CHECK:    tf_executor.NextIteration.Sink[%[[NEXTITERATION_token]]]
 
 node {
   name: "Const"

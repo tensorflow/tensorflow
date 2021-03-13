@@ -20,11 +20,12 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
+#include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
 
 namespace tflite {
 namespace gpu {
@@ -32,7 +33,7 @@ namespace cl {
 
 // Texture2D represent formatted GPU data storage.
 // Texture2D is moveable but not copyable.
-class Texture2D {
+class Texture2D : public GPUObject {
  public:
   Texture2D() {}  // just for using Texture2D as a class members
   Texture2D(cl_mem texture, int width, int height, cl_channel_type type);
@@ -43,7 +44,7 @@ class Texture2D {
   Texture2D(const Texture2D&) = delete;
   Texture2D& operator=(const Texture2D&) = delete;
 
-  ~Texture2D();
+  virtual ~Texture2D() { Release(); }
 
   cl_mem GetMemoryPtr() const { return texture_; }
 
@@ -55,6 +56,12 @@ class Texture2D {
   // Reads data from Texture2D into CPU memory.
   template <typename T>
   absl::Status ReadData(CLCommandQueue* queue, std::vector<T>* result) const;
+
+  absl::Status GetGPUResources(const GPUObjectDescriptor* obj_ptr,
+                               GPUResourcesWithValue* resources) const override;
+
+  absl::Status CreateFromTexture2DDescriptor(const Texture2DDescriptor& desc,
+                                             CLContext* context);
 
  private:
   void Release();

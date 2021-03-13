@@ -16,19 +16,27 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_KERNEL_LOWERING_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_KERNEL_LOWERING_H_
 
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 namespace mlir_gpu {
 
+struct LowerLHLOToGPUOptions {
+  llvm::ArrayRef<unsigned> tile_sizes = {16, 64};
+  llvm::ArrayRef<unsigned> unroll_factors = {};
+  bool collapse_parallel_loops = true;
+  bool rewrite_signature = true;
+  bool use_approximations = false;
+};
+
 Status LowerLHLOToGPU(mlir::ModuleOp module,
-                      llvm::ArrayRef<unsigned> tile_sizes = {16, 64},
-                      llvm::ArrayRef<unsigned> unroll_factors = {},
-                      bool collapseParallelLoops = true);
+                      LowerLHLOToGPUOptions options = {});
 
 Status LowerKernelBodiesToNVVM(mlir::ModuleOp module);
+
+Status LowerKernelBodiesToROCDL(mlir::ModuleOp module);
 
 StatusOr<mlir::ModuleOp> ExtractKernelModule(mlir::ModuleOp module);
 

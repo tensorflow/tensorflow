@@ -18,13 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import embedding_ops
@@ -55,7 +56,7 @@ class Embedding(Layer):
   >>> print(output_array.shape)
   (32, 10, 64)
 
-  Arguments:
+  Args:
     input_dim: Integer. Size of the vocabulary,
       i.e. maximum integer index + 1.
     output_dim: Integer. Dimension of the dense embedding.
@@ -105,13 +106,17 @@ class Embedding(Layer):
       raise ValueError('Both `input_dim` and `output_dim` should be positive, '
                        'found input_dim {} and output_dim {}'.format(
                            input_dim, output_dim))
-    dtype = kwargs.pop('dtype', K.floatx())
+    if (not base_layer_utils.v2_dtype_behavior_enabled() and
+        'dtype' not in kwargs):
+      # In TF1, the dtype defaults to the input dtype which is typically int32,
+      # so explicitly set it to floatx
+      kwargs['dtype'] = K.floatx()
     # We set autocast to False, as we do not want to cast floating- point inputs
     # to self.dtype. In call(), we cast to int32, and casting to self.dtype
     # before casting to int32 might cause the int32 values to be different due
     # to a loss of precision.
     kwargs['autocast'] = False
-    super(Embedding, self).__init__(dtype=dtype, **kwargs)
+    super(Embedding, self).__init__(**kwargs)
 
     self.input_dim = input_dim
     self.output_dim = output_dim
@@ -130,24 +135,24 @@ class Embedding(Layer):
     # since it knows all kernels using the variable only exist on CPU.
     # When eager execution is enabled, the placement decision has to be made
     # right now. Checking for the presence of GPUs to avoid complicating the
-    # TPU codepaths which can handle sparse optimizers. But if we are within
-    # a tf.function, we go back the graph mode logic and rely on the placer.
-    if (context.executing_eagerly() and context.context().num_gpus() and
-        not ops.inside_function()):
+    # TPU codepaths which can handle sparse optimizers.
+    if context.executing_eagerly() and tf_config.list_logical_devices('GPU'):
       with ops.device('cpu:0'):
         self.embeddings = self.add_weight(
             shape=(self.input_dim, self.output_dim),
             initializer=self.embeddings_initializer,
             name='embeddings',
             regularizer=self.embeddings_regularizer,
-            constraint=self.embeddings_constraint)
+            constraint=self.embeddings_constraint,
+            experimental_autocast=False)
     else:
       self.embeddings = self.add_weight(
           shape=(self.input_dim, self.output_dim),
           initializer=self.embeddings_initializer,
           name='embeddings',
           regularizer=self.embeddings_regularizer,
-          constraint=self.embeddings_constraint)
+          constraint=self.embeddings_constraint,
+          experimental_autocast=False)
     self.built = True
 
   def compute_mask(self, inputs, mask=None):
@@ -184,10 +189,11 @@ class Embedding(Layer):
     dtype = K.dtype(inputs)
     if dtype != 'int32' and dtype != 'int64':
       inputs = math_ops.cast(inputs, 'int32')
-    if isinstance(self.embeddings, sharded_variable.ShardedVariable):
-      out = embedding_ops.embedding_lookup_v2(self.embeddings.variables, inputs)
-    else:
-      out = embedding_ops.embedding_lookup_v2(self.embeddings, inputs)
+    out = embedding_ops.embedding_lookup_v2(self.embeddings, inputs)
+    if self._dtype_policy.compute_dtype != self._dtype_policy.variable_dtype:
+      # Instead of casting the variable as in most layers, cast the output, as
+      # this is mathematically equivalent but is faster.
+      out = math_ops.cast(out, self._dtype_policy.compute_dtype)
     return out
 
   def get_config(self):

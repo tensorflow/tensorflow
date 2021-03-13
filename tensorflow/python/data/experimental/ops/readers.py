@@ -25,6 +25,7 @@ import gzip
 import numpy as np
 
 from tensorflow.python import tf2
+from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.experimental.ops import parsing_ops
 from tensorflow.python.data.ops import dataset_ops
@@ -342,10 +343,52 @@ def make_csv_dataset_v2(
 ):
   """Reads CSV files into a dataset.
 
-  Reads CSV files into a dataset, where each element is a (features, labels)
-  tuple that corresponds to a batch of CSV rows. The features dictionary
-  maps feature column names to `Tensor`s containing the corresponding
+  Reads CSV files into a dataset, where each element of the dataset is a
+  (features, labels) tuple that corresponds to a batch of CSV rows. The features
+  dictionary maps feature column names to `Tensor`s containing the corresponding
   feature data, and labels is a `Tensor` containing the batch's label data.
+
+  By default, the first rows of the CSV files are expected to be headers listing
+  the column names. If the first rows are not headers, set `header=False` and
+  provide the column names with the `column_names` argument.
+
+  By default, the dataset is repeated indefinitely, reshuffling the order each
+  time. This behavior can be modified by setting the `num_epochs` and `shuffle`
+  arguments.
+
+  For example, suppose you have a CSV file containing
+
+  | Feature_A | Feature_B |
+  | --------- | --------- |
+  | 1         | "a"       |
+  | 2         | "b"       |
+  | 3         | "c"       |
+  | 4         | "d"       |
+
+  ```
+  # No label column specified
+  dataset = tf.data.experimental.make_csv_dataset(filename, batch_size=2)
+  iterator = ds.as_numpy_iterator()
+  print(dict(next(iterator)))
+  # prints a dictionary of batched features:
+  # OrderedDict([('Feature_A', array([1, 4], dtype=int32)),
+  #              ('Feature_B', array([b'a', b'd'], dtype=object))])
+  ```
+
+  ```
+  # Set Feature_B as label column
+  dataset = tf.data.experimental.make_csv_dataset(
+      filename, batch_size=2, label_name="Feature_B")
+  iterator = ds.as_numpy_iterator()
+  print(next(iterator))
+  # prints (features, labels) tuple:
+  # (OrderedDict([('Feature_A', array([1, 2], dtype=int32))]),
+  #  array([b'a', b'b'], dtype=object))
+  ```
+
+  See the
+  [Load CSV data guide](https://www.tensorflow.org/tutorials/load_data/csv) for
+  more examples of using `make_csv_dataset` to read CSV data.
 
   Args:
     file_pattern: List of files or patterns of file paths containing CSV
@@ -471,7 +514,7 @@ def make_csv_dataset_v2(
   if column_defaults is not None:
     column_defaults = [
         constant_op.constant([], dtype=x)
-        if not tensor_util.is_tensor(x) and x in _ACCEPTABLE_CSV_TYPES else x
+        if not tensor_util.is_tf_type(x) and x in _ACCEPTABLE_CSV_TYPES else x
         for x in column_defaults
     ]
   else:
@@ -612,6 +655,186 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
                field_delim=",",
                use_quote_delim=True,
                na_value="",
+               select_cols=None,
+               exclude_cols=None):
+    """Creates a `CsvDataset` by reading and decoding CSV files.
+
+    The elements of this dataset correspond to records from the file(s).
+    RFC 4180 format is expected for CSV files
+    (https://tools.ietf.org/html/rfc4180)
+    Note that we allow leading and trailing spaces with int or float field.
+
+
+    For example, suppose we have a file 'my_file0.csv' with four CSV columns of
+    different data types:
+    ```
+    abcdefg,4.28E10,5.55E6,12
+    hijklmn,-5.3E14,,2
+    ```
+
+    We can construct a CsvDataset from it as follows:
+
+    ```python
+     dataset = tf.data.experimental.CsvDataset(
+        "my_file*.csv",
+        [tf.float32,  # Required field, use dtype or empty tensor
+         tf.constant([0.0], dtype=tf.float32),  # Optional field, default to 0.0
+         tf.int32,  # Required field, use dtype or empty tensor
+         ],
+        select_cols=[1,2,3]  # Only parse last three columns
+    )
+    ```
+
+    The expected output of its iterations is:
+
+    ```python
+    for element in dataset:
+      print(element)
+
+    >> (4.28e10, 5.55e6, 12)
+    >> (-5.3e14, 0.0, 2)
+    ```
+
+
+    Alternatively, suppose we have a CSV file of floats with 200 columns,
+    and we want to use all columns besides the first. We can construct a
+    CsvDataset from it as follows:
+
+    ```python
+    dataset = tf.data.experimental.CsvDataset(
+        "my_file.csv",
+        [tf.float32] * 199,  # Parse 199 required columns as floats
+        exclude_cols=[0]  # Parse all columns except the first
+    )
+    ```
+
+    Args:
+      filenames: A `tf.string` tensor containing one or more filenames.
+      record_defaults: A list of default values for the CSV fields. Each item in
+        the list is either a valid CSV `DType` (float32, float64, int32, int64,
+        string), or a `Tensor` object with one of the above types. One per
+        column of CSV data, with either a scalar `Tensor` default value for the
+        column if it is optional, or `DType` or empty `Tensor` if required. If
+        both this and `select_columns` are specified, these must have the same
+        lengths, and `column_defaults` is assumed to be sorted in order of
+        increasing column index. If both this and 'exclude_cols' are specified,
+        the sum of lengths of record_defaults and exclude_cols should equal
+        the total number of columns in the CSV file.
+      compression_type: (Optional.) A `tf.string` scalar evaluating to one of
+        `""` (no compression), `"ZLIB"`, or `"GZIP"`. Defaults to no
+        compression.
+      buffer_size: (Optional.) A `tf.int64` scalar denoting the number of bytes
+        to buffer while reading files. Defaults to 4MB.
+      header: (Optional.) A `tf.bool` scalar indicating whether the CSV file(s)
+        have header line(s) that should be skipped when parsing. Defaults to
+        `False`.
+      field_delim: (Optional.) A `tf.string` scalar containing the delimiter
+        character that separates fields in a record. Defaults to `","`.
+      use_quote_delim: (Optional.) A `tf.bool` scalar. If `False`, treats
+        double quotation marks as regular characters inside of string fields
+        (ignoring RFC 4180, Section 2, Bullet 5). Defaults to `True`.
+      na_value: (Optional.) A `tf.string` scalar indicating a value that will
+        be treated as NA/NaN.
+      select_cols: (Optional.) A sorted list of column indices to select from
+        the input data. If specified, only this subset of columns will be
+        parsed. Defaults to parsing all columns. At most one of `select_cols`
+        and `exclude_cols` can be specified.
+      exclude_cols: (Optional.) A sorted list of column indices to exclude from
+        the input data. If specified, only the complement of this set of column
+        will be parsed. Defaults to parsing all columns. At most one of
+        `select_cols` and `exclude_cols` can be specified.
+
+    Raises:
+       InvalidArgumentError: If exclude_cols is not None and
+           len(exclude_cols) + len(record_defaults) does not match the total
+           number of columns in the file(s)
+
+
+    """
+    self._filenames = ops.convert_to_tensor(
+        filenames, dtype=dtypes.string, name="filenames")
+    self._compression_type = convert.optional_param_to_tensor(
+        "compression_type",
+        compression_type,
+        argument_default="",
+        argument_dtype=dtypes.string)
+    record_defaults = [
+        constant_op.constant([], dtype=x)
+        if not tensor_util.is_tf_type(x) and x in _ACCEPTABLE_CSV_TYPES else x
+        for x in record_defaults
+    ]
+    self._record_defaults = ops.convert_n_to_tensor(
+        record_defaults, name="record_defaults")
+    self._buffer_size = convert.optional_param_to_tensor(
+        "buffer_size", buffer_size, _DEFAULT_READER_BUFFER_SIZE_BYTES)
+    self._header = ops.convert_to_tensor(
+        header, dtype=dtypes.bool, name="header")
+    self._field_delim = ops.convert_to_tensor(
+        field_delim, dtype=dtypes.string, name="field_delim")
+    self._use_quote_delim = ops.convert_to_tensor(
+        use_quote_delim, dtype=dtypes.bool, name="use_quote_delim")
+    self._na_value = ops.convert_to_tensor(
+        na_value, dtype=dtypes.string, name="na_value")
+    self._select_cols = convert.optional_param_to_tensor(
+        "select_cols",
+        select_cols,
+        argument_default=[],
+        argument_dtype=dtypes.int64,
+    )
+    self._exclude_cols = convert.optional_param_to_tensor(
+        "exclude_cols",
+        exclude_cols,
+        argument_default=[],
+        argument_dtype=dtypes.int64,
+    )
+    self._element_spec = tuple(
+        tensor_spec.TensorSpec([], d.dtype) for d in self._record_defaults)
+    if compat.forward_compatible(2020, 7, 3) or exclude_cols is not None:
+      variant_tensor = gen_experimental_dataset_ops.csv_dataset_v2(
+          filenames=self._filenames,
+          record_defaults=self._record_defaults,
+          buffer_size=self._buffer_size,
+          header=self._header,
+          output_shapes=self._flat_shapes,
+          field_delim=self._field_delim,
+          use_quote_delim=self._use_quote_delim,
+          na_value=self._na_value,
+          select_cols=self._select_cols,
+          exclude_cols=self._exclude_cols,
+          compression_type=self._compression_type)
+    else:
+      variant_tensor = gen_experimental_dataset_ops.csv_dataset(
+          filenames=self._filenames,
+          record_defaults=self._record_defaults,
+          buffer_size=self._buffer_size,
+          header=self._header,
+          output_shapes=self._flat_shapes,
+          field_delim=self._field_delim,
+          use_quote_delim=self._use_quote_delim,
+          na_value=self._na_value,
+          select_cols=self._select_cols,
+          compression_type=self._compression_type)
+    super(CsvDatasetV2, self).__init__(variant_tensor)
+
+  @property
+  def element_spec(self):
+    return self._element_spec
+
+
+@tf_export(v1=["data.experimental.CsvDataset"])
+class CsvDatasetV1(dataset_ops.DatasetV1Adapter):
+  """A Dataset comprising lines from one or more CSV files."""
+
+  @functools.wraps(CsvDatasetV2.__init__, ("__module__", "__name__"))
+  def __init__(self,
+               filenames,
+               record_defaults,
+               compression_type=None,
+               buffer_size=None,
+               header=False,
+               field_delim=",",
+               use_quote_delim=True,
+               na_value="",
                select_cols=None):
     """Creates a `CsvDataset` by reading and decoding CSV files.
 
@@ -660,7 +883,9 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
         column if it is optional, or `DType` or empty `Tensor` if required. If
         both this and `select_columns` are specified, these must have the same
         lengths, and `column_defaults` is assumed to be sorted in order of
-        increasing column index.
+        increasing column index. If both this and 'exclude_cols' are specified,
+        the sum of lengths of record_defaults and exclude_cols should equal the
+        total number of columns in the CSV file.
       compression_type: (Optional.) A `tf.string` scalar evaluating to one of
         `""` (no compression), `"ZLIB"`, or `"GZIP"`. Defaults to no
         compression.
@@ -671,80 +896,16 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
         `False`.
       field_delim: (Optional.) A `tf.string` scalar containing the delimiter
         character that separates fields in a record. Defaults to `","`.
-      use_quote_delim: (Optional.) A `tf.bool` scalar. If `False`, treats
-        double quotation marks as regular characters inside of string fields
-        (ignoring RFC 4180, Section 2, Bullet 5). Defaults to `True`.
-      na_value: (Optional.) A `tf.string` scalar indicating a value that will
-        be treated as NA/NaN.
+      use_quote_delim: (Optional.) A `tf.bool` scalar. If `False`, treats double
+        quotation marks as regular characters inside of string fields (ignoring
+        RFC 4180, Section 2, Bullet 5). Defaults to `True`.
+      na_value: (Optional.) A `tf.string` scalar indicating a value that will be
+        treated as NA/NaN.
       select_cols: (Optional.) A sorted list of column indices to select from
         the input data. If specified, only this subset of columns will be
-        parsed. Defaults to parsing all columns.
+        parsed. Defaults to parsing all columns. At most one of `select_cols`
+        and `exclude_cols` can be specified.
     """
-    self._filenames = ops.convert_to_tensor(
-        filenames, dtype=dtypes.string, name="filenames")
-    self._compression_type = convert.optional_param_to_tensor(
-        "compression_type",
-        compression_type,
-        argument_default="",
-        argument_dtype=dtypes.string)
-    record_defaults = [
-        constant_op.constant([], dtype=x)
-        if not tensor_util.is_tensor(x) and x in _ACCEPTABLE_CSV_TYPES else x
-        for x in record_defaults
-    ]
-    self._record_defaults = ops.convert_n_to_tensor(
-        record_defaults, name="record_defaults")
-    self._buffer_size = convert.optional_param_to_tensor(
-        "buffer_size", buffer_size, _DEFAULT_READER_BUFFER_SIZE_BYTES)
-    self._header = ops.convert_to_tensor(
-        header, dtype=dtypes.bool, name="header")
-    self._field_delim = ops.convert_to_tensor(
-        field_delim, dtype=dtypes.string, name="field_delim")
-    self._use_quote_delim = ops.convert_to_tensor(
-        use_quote_delim, dtype=dtypes.bool, name="use_quote_delim")
-    self._na_value = ops.convert_to_tensor(
-        na_value, dtype=dtypes.string, name="na_value")
-    self._select_cols = convert.optional_param_to_tensor(
-        "select_cols",
-        select_cols,
-        argument_default=[],
-        argument_dtype=dtypes.int64,
-    )
-    self._element_spec = tuple(
-        tensor_spec.TensorSpec([], d.dtype) for d in self._record_defaults)
-    variant_tensor = gen_experimental_dataset_ops.csv_dataset(
-        filenames=self._filenames,
-        record_defaults=self._record_defaults,
-        buffer_size=self._buffer_size,
-        header=self._header,
-        output_shapes=self._flat_shapes,
-        field_delim=self._field_delim,
-        use_quote_delim=self._use_quote_delim,
-        na_value=self._na_value,
-        select_cols=self._select_cols,
-        compression_type=self._compression_type)
-    super(CsvDatasetV2, self).__init__(variant_tensor)
-
-  @property
-  def element_spec(self):
-    return self._element_spec
-
-
-@tf_export(v1=["data.experimental.CsvDataset"])
-class CsvDatasetV1(dataset_ops.DatasetV1Adapter):
-  """A Dataset comprising lines from one or more CSV files."""
-
-  @functools.wraps(CsvDatasetV2.__init__)
-  def __init__(self,
-               filenames,
-               record_defaults,
-               compression_type=None,
-               buffer_size=None,
-               header=False,
-               field_delim=",",
-               use_quote_delim=True,
-               na_value="",
-               select_cols=None):
     wrapped = CsvDatasetV2(filenames, record_defaults, compression_type,
                            buffer_size, header, field_delim, use_quote_delim,
                            na_value, select_cols)

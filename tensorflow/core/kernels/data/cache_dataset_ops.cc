@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/cache_ops.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -36,6 +37,8 @@ namespace data {
 /* static */ constexpr const char* const CacheDatasetOp::kFileName;
 /* static */ constexpr const char* const CacheDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const CacheDatasetOp::kOutputShapes;
+
+namespace {
 
 constexpr char kKeyStrFormat[] = "%%%zuzu_%%%zuzu";
 constexpr char kPaddingSizeStrFormat[] = "%zu";
@@ -56,6 +59,14 @@ constexpr char kCacheCompleted[] = "cache_completed";
 constexpr char kIndex[] = "index";
 constexpr char kImpl[] = "Impl";
 constexpr char kCacheDataset[] = "CacheDataset";
+constexpr char kIncompleteCacheErrorMessage[] =
+    "The calling iterator did not fully read the dataset being cached. In "
+    "order to avoid unexpected truncation of the dataset, the partially cached "
+    "contents of the dataset  will be discarded. This can happen if you have "
+    "an input pipeline similar to `dataset.cache().take(k).repeat()`. You "
+    "should use `dataset.take(k).cache().repeat()` instead.";
+
+}  // namespace
 
 class CacheDatasetOp::FileDatasetBase : public DatasetBase {
  public:
@@ -100,6 +111,11 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
   }
 
   int64 Cardinality() const override { return input_->Cardinality(); }
+
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
+  }
 
   Status CheckExternalState() const override {
     return input_->CheckExternalState();
@@ -214,6 +230,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
 
       ~FileWriterIterator() override {
         if (!dataset()->env_->FileExists(MetaFilename(filename_)).ok()) {
+          LOG(WARNING) << kIncompleteCacheErrorMessage;
           std::vector<string> cache_files;
           Status s = dataset()->env_->GetMatchingPaths(
               strings::StrCat(filename_, "*"), &cache_files);
@@ -641,57 +658,6 @@ class CacheDatasetOp::FileDatasetV2 : public CacheDatasetOp::FileDatasetBase {
   const Tensor resource_handle_;
 };
 
-namespace {
-template <typename T, typename FullNameFn>
-Status SaveCache(IteratorStateWriter* writer, T* cache, FullNameFn full_name) {
-  size_t cache_size = cache->size();
-  TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCacheSize), cache_size));
-  for (size_t i = 0; i < cache_size; i++) {
-    auto& element = cache->at(i);
-    TF_RETURN_IF_ERROR(writer->WriteScalar(
-        full_name(strings::StrCat(kCache, "[", i, "]", kSizeSuffix)),
-        element.size()));
-    for (size_t j = 0; j < element.size(); ++j) {
-      TF_RETURN_IF_ERROR(writer->WriteTensor(
-          full_name(strings::StrCat(kCache, "[", i, "][", j, "]")),
-          element[j]));
-    }
-  }
-  return Status::OK();
-}
-
-template <typename T, typename FullNameFn>
-Status RestoreCache(IteratorContext* ctx, IteratorStateReader* reader, T* cache,
-                    FullNameFn full_name) {
-  size_t cache_size;
-  {
-    int64 temp;
-    TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCacheSize), &temp));
-    cache_size = static_cast<size_t>(temp);
-  }
-  for (size_t i = 0; i < cache_size; ++i) {
-    std::vector<Tensor> element;
-    size_t element_size;
-    {
-      int64 temp;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(
-          full_name(strings::StrCat(kCache, "[", i, "]", kSizeSuffix)), &temp));
-      element_size = static_cast<size_t>(temp);
-    }
-    element.reserve(element_size);
-    for (size_t j = 0; j < element_size; ++j) {
-      element.emplace_back();
-      TF_RETURN_IF_ERROR(reader->ReadTensor(
-          full_name(strings::StrCat(kCache, "[", i, "][", j, "]")),
-          &element.back()));
-    }
-    cache->emplace_back(std::move(element));
-  }
-  return Status::OK();
-}
-
-}  // namespace
-
 class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
  public:
   explicit MemoryDatasetBase(OpKernelContext* ctx, const DatasetBase* input,
@@ -730,6 +696,11 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
 
   int64 Cardinality() const override { return input_->Cardinality(); }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override {
     return input_->CheckExternalState();
   }
@@ -764,8 +735,8 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
       mutex_lock l(mu_);
       if (cache_->IsCompleted()) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCacheCompleted), ""));
-        TF_RETURN_IF_ERROR(SaveCache(
-            writer, cache_, [this](const string& s) { return full_name(s); }));
+        TF_RETURN_IF_ERROR(
+            WriteElementsToCheckpoint(writer, prefix(), cache_->data()));
       }
       return SaveInput(ctx, writer, iterator_);
     }
@@ -778,8 +749,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
       if (reader->Contains(full_name(kCacheCompleted))) {
         std::vector<std::vector<Tensor>> temp_cache;
         TF_RETURN_IF_ERROR(
-            RestoreCache(ctx, reader, &temp_cache,
-                         [this](const string& s) { return full_name(s); }));
+            ReadElementsFromCheckpoint(reader, prefix(), &temp_cache));
         cache_->Complete(std::move(temp_cache));
       }
       TF_RETURN_IF_ERROR(InitializeIterator(ctx));
@@ -795,13 +765,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
       ~MemoryWriterIterator() override {
         mutex_lock l(mu_);
         if (!temp_cache_.empty() && !cache_->IsCompleted()) {
-          LOG(WARNING)
-              << "The calling iterator did not fully read the dataset being "
-                 "cached. In order to avoid unexpected truncation of the "
-                 "dataset, the partially cached contents of the dataset "
-                 "will be discarded. This can happen if you have an input "
-                 "pipeline similar to `dataset.cache().take(k).repeat()`. "
-                 "You should use `dataset.take(k).cache().repeat()` instead.";
+          LOG(WARNING) << kIncompleteCacheErrorMessage;
           cache_->Reset();
         }
       }
@@ -846,8 +810,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
         mutex_lock l(mu_);
         if (!cache_->IsCompleted()) {
           TF_RETURN_IF_ERROR(
-              SaveCache(writer, &temp_cache_,
-                        [this](const string& s) { return full_name(s); }));
+              WriteElementsToCheckpoint(writer, prefix(), temp_cache_));
         }
         return SaveInput(ctx, writer, input_impl_);
       }
@@ -857,8 +820,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
         mutex_lock l(mu_);
         if (!reader->Contains(full_name(kCacheCompleted))) {
           TF_RETURN_IF_ERROR(
-              RestoreCache(ctx, reader, &temp_cache_,
-                           [this](const string& s) { return full_name(s); }));
+              ReadElementsFromCheckpoint(reader, prefix(), &temp_cache_));
         }
         return RestoreInput(ctx, reader, input_impl_);
       }
@@ -925,8 +887,12 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         {
-          int64 temp;
-          TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kIndex), &temp));
+          // kIndex will not be set if we are restoring from a checkpoint
+          // written by a MemoryWriterIterator that has completed its cache.
+          int64 temp = cache_->size();
+          if (reader->Contains(full_name(kIndex))) {
+            TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kIndex), &temp));
+          }
           index_ = static_cast<size_t>(temp);
         }
         return Status::OK();

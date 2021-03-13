@@ -40,7 +40,7 @@ from tensorflow.python.util.tf_export import keras_export
 class ConvRNN2D(RNN):
   """Base class for convolutional-recurrent layers.
 
-  Arguments:
+  Args:
     cell: A RNN cell instance. A RNN cell is a class that has:
       - a `call(input_at_t, states_at_t)` method, returning
         `(output_at_t, states_at_t_plus_1)`. The call method of the
@@ -424,7 +424,7 @@ class ConvRNN2D(RNN):
 class ConvLSTM2DCell(DropoutRNNCellMixin, Layer):
   """Cell class for the ConvLSTM2D layer.
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space
       (i.e. the number of output filters in the convolution).
     kernel_size: An integer or tuple/list of n integers, specifying the
@@ -434,6 +434,9 @@ class ConvLSTM2DCell(DropoutRNNCellMixin, Layer):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: One of `"valid"` or `"same"` (case-insensitive).
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
       It defaults to the `image_data_format` value found in your
@@ -700,7 +703,7 @@ class ConvLSTM2D(ConvRNN2D):
   It is similar to an LSTM layer, but the input transformations
   and recurrent transformations are both convolutional.
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space
       (i.e. the number of output filters in the convolution).
     kernel_size: An integer or tuple/list of n integers, specifying the
@@ -710,6 +713,9 @@ class ConvLSTM2D(ConvRNN2D):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: One of `"valid"` or `"same"` (case-insensitive).
+      `"valid"` means no padding. `"same"` results in padding evenly to 
+      the left/right or up/down of the input such that output has the same 
+      height/width dimension as the input.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -753,7 +759,9 @@ class ConvLSTM2D(ConvRNN2D):
       the `recurrent_kernel` weights matrix.
     bias_constraint: Constraint function applied to the bias vector.
     return_sequences: Boolean. Whether to return the last output
-      in the output sequence, or the full sequence.
+      in the output sequence, or the full sequence. (default False)
+    return_state: Boolean Whether to return the last state
+      in addition to the output. (default False)
     go_backwards: Boolean (default False).
       If True, process the input sequence backwards.
     stateful: Boolean (default False). If True, the last state
@@ -786,22 +794,27 @@ class ConvLSTM2D(ConvRNN2D):
         `(samples, time, rows, cols, channels)`
 
   Output shape:
-    - If `return_sequences`
-       - If data_format='channels_first'
-          5D tensor with shape:
-          `(samples, time, filters, output_row, output_col)`
-       - If data_format='channels_last'
-          5D tensor with shape:
-          `(samples, time, output_row, output_col, filters)`
-    - Else
-      - If data_format ='channels_first'
-          4D tensor with shape:
-          `(samples, filters, output_row, output_col)`
-      - If data_format='channels_last'
-          4D tensor with shape:
-          `(samples, output_row, output_col, filters)`
-      where `o_row` and `o_col` depend on the shape of the filter and
-      the padding
+    - If `return_state`: a list of tensors. The first tensor is
+      the output. The remaining tensors are the last states,
+      each 4D tensor with shape:
+      `(samples, filters, new_rows, new_cols)`
+      if data_format='channels_first'
+      or 4D tensor with shape:
+      `(samples, new_rows, new_cols, filters)`
+      if data_format='channels_last'.
+      `rows` and `cols` values might have changed due to padding.
+    - If `return_sequences`: 5D tensor with shape:
+      `(samples, timesteps, filters, new_rows, new_cols)`
+      if data_format='channels_first'
+      or 5D tensor with shape:
+      `(samples, timesteps, new_rows, new_cols, filters)`
+      if data_format='channels_last'.
+    - Else, 4D tensor with shape:
+      `(samples, filters, new_rows, new_cols)`
+      if data_format='channels_first'
+      or 4D tensor with shape:
+      `(samples, new_rows, new_cols, filters)`
+      if data_format='channels_last'.
 
   Raises:
     ValueError: in case of invalid constructor arguments.
@@ -834,6 +847,7 @@ class ConvLSTM2D(ConvRNN2D):
                recurrent_constraint=None,
                bias_constraint=None,
                return_sequences=False,
+               return_state=False,
                go_backwards=False,
                stateful=False,
                dropout=0.,
@@ -863,13 +877,13 @@ class ConvLSTM2D(ConvRNN2D):
                           dtype=kwargs.get('dtype'))
     super(ConvLSTM2D, self).__init__(cell,
                                      return_sequences=return_sequences,
+                                     return_state=return_state,
                                      go_backwards=go_backwards,
                                      stateful=stateful,
                                      **kwargs)
     self.activity_regularizer = regularizers.get(activity_regularizer)
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self._maybe_reset_cell_dropout_mask(self.cell)
     return super(ConvLSTM2D, self).call(inputs,
                                         mask=mask,
                                         training=training,

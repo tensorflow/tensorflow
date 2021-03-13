@@ -13,11 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <stddef.h>
+
 #include <cstring>
+#include <memory>
+#include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
@@ -48,7 +53,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, node->inputs->size > 0);
 
   // The first input is the condition.
-  const TfLiteTensor* cond = GetInput(context, node, 0);
+  const TfLiteTensor* cond;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &cond));
   // Currently only bool is supported.
   // TODO(ycling): Support other types since TensorFlow also support
   // non-bool types as condition.
@@ -79,12 +85,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     for (int i = 0; i < num_inputs; ++i) {
       // The first input of the node is the condition. The indices of the inputs
       // passed to the subgraphs are offset by 1.
-      const TfLiteTensor* input = GetInput(context, node, i + 1);
+      const TfLiteTensor* input;
+      TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, i + 1, &input));
       std::vector<int> dims(input->dims->data,
                             input->dims->data + input->dims->size);
       subgraph->ResizeInputTensor(i, dims);
       TfLiteTensor* subgraph_input = subgraph->tensor(subgraph->inputs()[i]);
-      TF_LITE_ENSURE_EQ(context, input->type, subgraph_input->type);
+      TF_LITE_ENSURE_TYPES_EQ(context, input->type, subgraph_input->type);
     }
     // Note: The `Prepare` function is responsible to run `AllocateTensors` on
     // both subgraphs. It's intentionally not to break out of the loop when
@@ -109,7 +116,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   for (int i = 0; i < num_outputs; ++i) {
-    TfLiteTensor* output = GetOutput(context, node, i);
+    TfLiteTensor* output;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, i, &output));
     if (has_dynamic_output_tensors) {
       SetTensorToDynamic(output);
     } else {
@@ -129,7 +137,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
 
-  const TfLiteTensor* cond = GetInput(context, node, 0);
+  const TfLiteTensor* cond;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &cond));
   bool cond_value = cond->data.b[0];
 
   Subgraph* this_subgraph = reinterpret_cast<Subgraph*>(context->impl_);
@@ -143,9 +152,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   Subgraph& active_branch_subgraph =
       *(*subgraphs)[active_branch_subgraph_index];
   for (int i = 0; i < active_branch_subgraph.inputs().size(); ++i) {
-    const TfLiteTensor* input = GetInput(context, node, i + 1);
+    const TfLiteTensor* input;
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, i + 1, &input));
     TfLiteTensor* subgraph_input =
         active_branch_subgraph.tensor(active_branch_subgraph.inputs()[i]);
+
+    if (IsDynamicTensor(subgraph_input)) {
+      TfLiteTensorRealloc(input->bytes, subgraph_input);
+    }
+
     TF_LITE_ENSURE_EQ(context, input->bytes, subgraph_input->bytes);
     memcpy(subgraph_input->data.raw, input->data.raw, input->bytes);
   }
@@ -160,7 +175,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   bool has_dynamic_output_tensors = false;
   for (int i = 0; i < node->outputs->size; ++i) {
-    TfLiteTensor* output = GetOutput(context, node, i);
+    TfLiteTensor* output;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, i, &output));
     if (IsDynamicTensor(output)) {
       has_dynamic_output_tensors = true;
       break;
@@ -169,7 +185,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   if (has_dynamic_output_tensors) {
     for (int i = 0; i < node->outputs->size; ++i) {
-      TfLiteTensor* output = GetOutput(context, node, i);
+      TfLiteTensor* output;
+      TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, i, &output));
       TfLiteTensor* subgraph_output =
           active_branch_subgraph.tensor(active_branch_subgraph.outputs()[i]);
       TfLiteIntArray* output_size = TfLiteIntArrayCopy(subgraph_output->dims);
@@ -181,7 +198,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   for (int i = 0; i < active_branch_subgraph.outputs().size(); ++i) {
     const TfLiteTensor* subgraph_output =
         active_branch_subgraph.tensor(active_branch_subgraph.outputs()[i]);
-    TfLiteTensor* output = GetOutput(context, node, i);
+    TfLiteTensor* output;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, i, &output));
+
+    if (IsDynamicTensor(output)) {
+      TfLiteTensorRealloc(subgraph_output->bytes, output);
+    }
+
     TF_LITE_ENSURE_EQ(context, output->bytes, subgraph_output->bytes);
     memcpy(output->data.raw, subgraph_output->data.raw, output->bytes);
   }

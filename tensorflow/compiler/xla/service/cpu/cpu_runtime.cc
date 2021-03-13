@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 
+#include <cstdarg>
 #include <cstddef>
 #include <cstring>
 #include <functional>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -115,13 +117,17 @@ extern const char* const kReleaseOutfeedBufferAfterPopulationSymbolName =
     "__xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation";
 extern const char* const kParallelForkJoinSymbolName =
     "__xla_cpu_runtime_ParallelForkJoin";
+extern const char* const kPrintfToStderrSymbolName =
+    "__xla_cpu_runtime_PrintfToStderr";
 extern const char* const kKeyValueSortSymbolName =
     "__xla_cpu_runtime_KeyValueSort";
+extern const char* const kTopKF32SymbolName = "__xla_cpu_runtime_TopKF32";
 extern const char* const kTracingStartSymbolName =
     "__xla_cpu_runtime_TracingStart";
 extern const char* const kTracingEndSymbolName = "__xla_cpu_runtime_TracingEnd";
 extern const char* const kXlaCpuRuntimeSymbolNamePrefix = "__xla_cpu_runtime_";
 extern const char* const kAllReduceSymbolName = "__xla_cpu_runtime_AllReduce";
+extern const char* const kAllToAllSymbolName = "__xla_cpu_runtime_AllToAll";
 extern const char* const kCollectivePermuteSymbolName =
     "__xla_cpu_runtime_CollectivePermute";
 extern const char* const kReplicaIdSymbolName = "__xla_cpu_runtime_ReplicaId";
@@ -131,6 +137,56 @@ extern const char* const kReplicaIdSymbolName = "__xla_cpu_runtime_ReplicaId";
 }  // namespace xla
 
 namespace {
+
+struct CollectivePermuteParticipantData : xla::ParticipantData {
+  CollectivePermuteParticipantData(const xla::RendezvousKey& rendezvous_key_p,
+                                   xla::int64 device_ordinal_p,
+                                   se::Stream* stream_p)
+      : ParticipantData(rendezvous_key_p, device_ordinal_p, stream_p) {}
+
+  int replica_id;
+  se::DeviceMemoryBase source_data;
+  se::DeviceMemoryBase destination_data;
+  xla::int64 byte_size;
+  std::vector<int> replica_ids_to_copy_to;
+
+  std::string ToString() const override {
+    return absl::StrFormat(
+        "CollectivePermuteParticipantData{replica_id=%d, "
+        "source_data=%p, destination_data=%p, byte_size=%d, "
+        "replica_ids_to_copy_to=[%s]}",
+        replica_id, source_data.opaque(), destination_data.opaque(), byte_size,
+        absl::StrJoin(replica_ids_to_copy_to, ", "));
+  }
+};
+
+struct AllToAllParticipantData : xla::ParticipantData {
+  AllToAllParticipantData(const xla::RendezvousKey& rendezvous_key_p,
+                          xla::int64 device_ordinal_p, se::Stream* stream_p)
+      : ParticipantData(rendezvous_key_p, device_ordinal_p, stream_p) {}
+
+  std::vector<se::DeviceMemoryBase> source_buffers;
+  std::vector<se::DeviceMemoryBase> destination_buffers;
+  int replica_id;
+
+  // Replica ids participating in AllToAll, concatenation happens in the order
+  // of appearence.
+  std::vector<int> replica_ids_to_copy_to;
+
+  std::string ToString() const override {
+    auto addr_formatter = [](std::string* out,
+                             const se::DeviceMemoryBase& mem) {
+      absl::StrAppend(out, absl::StrFormat("%p", mem.opaque()));
+    };
+    return absl::StrFormat(
+        "AllToAllParticipantData{replica_id=%d, "
+        "replica_ids_to_copy_to=[%s], source_buffers=[%s], "
+        "destination_buffers=[%s]}",
+        replica_id, absl::StrJoin(replica_ids_to_copy_to, ", "),
+        absl::StrJoin(source_buffers, ", ", addr_formatter),
+        absl::StrJoin(destination_buffers, ", ", addr_formatter));
+  }
+};
 
 // Inverses the encoding of a Shape protobuf into an LLVM global variable.
 xla::StatusOr<xla::Shape> DecodeSelfDescribingShapeConstant(
@@ -159,6 +215,16 @@ tensorflow::string ShapeString(const void* shape_ptr, xla::int32 shape_length) {
 }  // namespace
 
 extern "C" {
+
+TF_ATTRIBUTE_NO_SANITIZE_MEMORY int __xla_cpu_runtime_PrintfToStderr(
+    const char* format, ...) {
+  VLOG(3) << "__xla_cpu_runtime_PrintfToStderr " << format;
+  va_list args;
+  va_start(args, format);
+  int result = vfprintf(stderr, format, args);
+  va_end(args);
+  return result;
+}
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY xla::int64 __xla_cpu_runtime_TracingStart(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
@@ -264,17 +330,76 @@ __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
 
 namespace {
 
-class CpuCollectivePermuteRendezvous
-    : public xla::Rendezvous<xla::CollectivePermuteParticipantData,
-                             std::nullptr_t> {
+class CpuAllToAllRendezvous
+    : public xla::Rendezvous<AllToAllParticipantData, std::nullptr_t> {
  public:
-  explicit CpuCollectivePermuteRendezvous(const xla::RendezvousKey& k)
-      : xla::Rendezvous<xla::CollectivePermuteParticipantData, std::nullptr_t>(
-            k) {}
+  explicit CpuAllToAllRendezvous(const xla::RendezvousKey& k)
+      : xla::Rendezvous<AllToAllParticipantData, std::nullptr_t>(k) {}
 
  protected:
-  xla::StatusOr<ParticipantImplOutput> SubmitParticipantImpl(
-      const xla::CollectivePermuteParticipantData& participant) override {
+  xla::StatusOr<std::nullptr_t> RunCollectiveOp(
+      const AllToAllParticipantData& /*participant*/) override {
+    bool is_primary = InitializationBarrier();
+
+    if (is_primary) {
+      tensorflow::mutex_lock lock(mu_);
+
+      CHECK(!participants_.empty());
+      CHECK(!participants_[0].source_buffers.empty());
+      int expected_buffer_size = participants_[0].source_buffers[0].size();
+
+      // Replica id -> position in participants_.
+      absl::flat_hash_map<int, int> replica_id_map;
+
+      for (int pos = 0; pos < participants_.size(); pos++) {
+        const AllToAllParticipantData& p = participants_[pos];
+        CHECK_EQ(p.source_buffers.size(), p.destination_buffers.size());
+        CHECK_EQ(p.source_buffers.size(), participants_.size());
+        for (int i = 0; i < p.source_buffers.size(); i++) {
+          CHECK_EQ(p.destination_buffers[i].size(), expected_buffer_size);
+          CHECK_EQ(p.source_buffers[i].size(), expected_buffer_size);
+        }
+        replica_id_map[p.replica_id] = pos;
+      }
+
+      const std::vector<int>& replica_ids_to_copy_to =
+          participants_[0].replica_ids_to_copy_to;
+
+      // Replica id -> rank
+      absl::flat_hash_map<int, int> replica_ranks;
+      for (int rank = 0; rank < replica_ids_to_copy_to.size(); ++rank) {
+        int replica_id = replica_ids_to_copy_to[rank];
+        replica_ranks[replica_id] = rank;
+      }
+
+      for (const AllToAllParticipantData& sender : participants_) {
+        VLOG(3) << "Processing AllToAll participant: " << sender.ToString();
+
+        int rank = xla::FindOrDie(replica_ranks, sender.replica_id);
+
+        for (int i = 0; i < participants_.size(); ++i) {
+          int replica_id = replica_ids_to_copy_to[i];
+          int participant_num = xla::FindOrDie(replica_id_map, replica_id);
+          AllToAllParticipantData& receiver = participants_[participant_num];
+
+          std::memcpy(receiver.destination_buffers[rank].opaque(),
+                      sender.source_buffers[i].opaque(), expected_buffer_size);
+        }
+      }
+    }
+    return nullptr;
+  }
+};
+
+class CpuCollectivePermuteRendezvous
+    : public xla::Rendezvous<CollectivePermuteParticipantData, std::nullptr_t> {
+ public:
+  explicit CpuCollectivePermuteRendezvous(const xla::RendezvousKey& k)
+      : xla::Rendezvous<CollectivePermuteParticipantData, std::nullptr_t>(k) {}
+
+ protected:
+  xla::StatusOr<std::nullptr_t> RunCollectiveOp(
+      const CollectivePermuteParticipantData& /*participant*/) override {
     bool primary = InitializationBarrier();
 
     // Perform all copies from the primary thread.
@@ -304,7 +429,7 @@ class CpuCollectivePermuteRendezvous
         std::memset(p.destination_data.opaque(), 0, p.byte_size);
       }
     }
-    return ParticipantImplOutput{primary, /*custom_output=*/nullptr};
+    return nullptr;
   }
 };
 
@@ -315,7 +440,7 @@ class CpuAllReduceRendezvous
       : xla::Rendezvous<xla::AllReduceParticipantData, std::nullptr_t>(k) {}
 
  protected:
-  xla::StatusOr<ParticipantImplOutput> SubmitParticipantImpl(
+  xla::StatusOr<std::nullptr_t> RunCollectiveOp(
       const xla::AllReduceParticipantData& participant) override {
     xla::PrimitiveType datatype = participant.buffers.front().primitive_type;
     bool primary = InitializationBarrier();
@@ -354,7 +479,7 @@ class CpuAllReduceRendezvous
           LOG(FATAL) << "Unexpected datatype;";
       }
     }
-    return ParticipantImplOutput{primary, /*custom_output=*/nullptr};
+    return nullptr;
   }
 
  private:
@@ -466,6 +591,13 @@ GlobalCollectivePermuteRendezvousMap() {
   return m;
 }
 
+xla::RefcountingHashMap<xla::RendezvousKey, CpuAllToAllRendezvous>&
+GlobalAllToAllRendezvousMap() {
+  static auto& m =
+      *new xla::RefcountingHashMap<xla::RendezvousKey, CpuAllToAllRendezvous>;
+  return m;
+}
+
 int GetDeviceOrdinal(const xla::ExecutableRunOptions* run_options) {
   if (run_options->stream()) {
     return run_options->stream()->parent()->device_ordinal();
@@ -480,29 +612,63 @@ xla::RendezvousKey GetRendezvousKey(
     xla::int64 op_id) {
   const xla::DeviceAssignment& device_assignment =
       *run_options->device_assignment();
-  xla::int32 replica_count = device_assignment.replica_count();
   int device_ordinal = GetDeviceOrdinal(run_options);
-  CHECK_EQ(device_assignment.computation_count(), 1);
-  std::vector<xla::int64> participating_replicas =
-      xla::GetParticipatingReplicas(xla::GlobalDeviceId(device_ordinal), group,
-                                    replica_count,
-                                    *run_options->device_assignment())
-          .ValueOrDie();
   xla::RendezvousKey::CollectiveOpKind op_kind =
       channel_id_present ? xla::RendezvousKey::kCrossModule
                          : xla::RendezvousKey::kCrossReplica;
-  std::vector<xla::GlobalDeviceId> participating_devices;
-  participating_devices.reserve(participating_replicas.size());
-  for (xla::int64 replica : participating_replicas) {
-    participating_devices.push_back(
-        xla::GlobalDeviceId(device_assignment(replica, 0)));
-  }
-  return xla::RendezvousKey{
-      run_options->run_id(), std::move(participating_devices),
-      static_cast<int>(participating_replicas.size()), op_kind, op_id};
+  std::vector<xla::GlobalDeviceId> participating_devices =
+      xla::GetParticipatingDevices(xla::GlobalDeviceId(device_ordinal),
+                                   device_assignment, group,
+                                   xla::CollectiveOpGroupMode::kCrossReplica)
+          .ValueOrDie();
+  int num_local_participants = participating_devices.size();
+  return xla::RendezvousKey{run_options->run_id(),
+                            std::move(participating_devices),
+                            num_local_participants, op_kind, op_id};
 }
 
 }  // namespace
+
+TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllToAll(
+    const xla::ExecutableRunOptions* run_options, xla::int32 channel_id_present,
+    xla::int64 op_id, const void* replica_groups_str,
+    xla::int32 replica_groups_str_size, xla::int32 num_buffers,
+    xla::int64 buffer_size, void** source_buffers, void** destination_buffers) {
+  int device_ordinal = GetDeviceOrdinal(run_options);
+  xla::int32 replica_id =
+      run_options->device_assignment()
+          ->ReplicaIdForDevice(xla::GlobalDeviceId(device_ordinal))
+          .ValueOrDie();
+  absl::string_view replica_groups_serialized(
+      static_cast<const char*>(replica_groups_str), replica_groups_str_size);
+  std::vector<xla::ReplicaGroup> group =
+      xla::ParseReplicaGroupsOnly(replica_groups_serialized).ValueOrDie();
+  xla::RendezvousKey rendezvous_key =
+      GetRendezvousKey(run_options, group, channel_id_present, op_id);
+
+  AllToAllParticipantData participant(rendezvous_key, device_ordinal,
+                                      run_options->stream());
+  participant.replica_id = replica_id;
+  participant.replica_ids_to_copy_to =
+      xla::GetParticipatingIDs(
+          replica_id, run_options->device_assignment()->replica_count(), group)
+          .ValueOrDie();
+  for (int i = 0; i < num_buffers; i++) {
+    participant.source_buffers.emplace_back(source_buffers[i], buffer_size);
+    participant.destination_buffers.emplace_back(destination_buffers[i],
+                                                 buffer_size);
+  }
+  auto make_cpu_rendezvous = [](const xla::RendezvousKey& k) {
+    return absl::make_unique<CpuAllToAllRendezvous>(k);
+  };
+  TF_CHECK_OK(CpuAllToAllRendezvous::SubmitParticipant(
+                  [&] {
+                    return GlobalAllToAllRendezvousMap().GetOrCreateIfAbsent(
+                        rendezvous_key, make_cpu_rendezvous);
+                  },
+                  participant)
+                  .status());
+}
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllReduce(
     const xla::ExecutableRunOptions* run_options,
@@ -526,9 +692,8 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllReduce(
   CHECK((num_buffers > 1 && shape.IsTuple()) ||
         (num_buffers == 1 && xla::LayoutUtil::IsDenseArray(shape)));
 
-  xla::AllReduceParticipantData participant(rendezvous_key);
-  participant.device_ordinal = device_ordinal;
-  participant.stream = run_options->stream();
+  xla::AllReduceParticipantData participant(rendezvous_key, device_ordinal,
+                                            run_options->stream());
   participant.reduction_kind = static_cast<xla::ReductionKind>(reduction_kind);
   for (int i = 0; i < num_buffers; i++) {
     xla::Shape subshape = num_buffers == 1 ? shape : shape.tuple_shapes(i);
@@ -558,9 +723,10 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllReduce(
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ReplicaId(
     const xla::ExecutableRunOptions* run_options, void* output_buffer) {
   int device_ordinal = GetDeviceOrdinal(run_options);
-  xla::int32 replica_id = run_options->device_assignment()
-                              ->ReplicaIdForDeviceOrdinal(device_ordinal)
-                              .ValueOrDie();
+  xla::int32 replica_id =
+      run_options->device_assignment()
+          ->ReplicaIdForDevice(xla::GlobalDeviceId(device_ordinal))
+          .ValueOrDie();
   std::memcpy(output_buffer, &replica_id, 4);
 }
 
@@ -573,9 +739,10 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_CollectivePermute(
   absl::string_view source_target_pairs_serialized(
       static_cast<const char*>(source_target_pairs), source_target_pairs_size);
   auto pairs = absl::StrSplit(source_target_pairs_serialized, ',');
-  xla::int32 replica_id = run_options->device_assignment()
-                              ->ReplicaIdForDeviceOrdinal(device_ordinal)
-                              .ValueOrDie();
+  xla::int32 replica_id =
+      run_options->device_assignment()
+          ->ReplicaIdForDevice(xla::GlobalDeviceId(device_ordinal))
+          .ValueOrDie();
   std::vector<int> copy_to;
   for (auto& p : pairs) {
     std::vector<std::string> mapping = absl::StrSplit(p, '=');
@@ -589,10 +756,9 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_CollectivePermute(
   xla::RendezvousKey rendezvous_key =
       GetRendezvousKey(run_options, {}, channel_id_present, op_id);
 
-  xla::CollectivePermuteParticipantData participant(rendezvous_key);
+  CollectivePermuteParticipantData participant(rendezvous_key, device_ordinal,
+                                               run_options->stream());
   participant.replica_id = replica_id;
-  participant.device_ordinal = device_ordinal;
-  participant.stream = run_options->stream();
   participant.source_data = se::DeviceMemoryBase(input_buffer, byte_size);
   participant.destination_data = se::DeviceMemoryBase(output_buffer, byte_size);
   participant.replica_ids_to_copy_to = copy_to;

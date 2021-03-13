@@ -30,13 +30,13 @@ class ZeroOut3Test(tf.test.TestCase):
   def test(self):
     with self.cached_session():
       result = zero_out_op_3.zero_out([5, 4, 3, 2, 1])
-      self.assertAllEqual(result.eval(), [5, 0, 0, 0, 0])
+      self.assertAllEqual(result, [5, 0, 0, 0, 0])
 
   @test_util.run_deprecated_v1
   def testAttr(self):
     with self.cached_session():
       result = zero_out_op_3.zero_out([5, 4, 3, 2, 1], preserve_index=3)
-      self.assertAllEqual(result.eval(), [0, 0, 0, 2, 0])
+      self.assertAllEqual(result, [0, 0, 0, 2, 0])
 
   @test_util.run_deprecated_v1
   def testNegative(self):

@@ -112,6 +112,7 @@ class SaveV2 : public OpKernel {
     for (int i = 0; i < num_tensors; ++i) {
       const string& tensor_name = tensor_names_flat(i);
       const Tensor& tensor = context->input(i + kFixedInputs);
+      VLOG(2) << "Starting save of " << tensor_name;
 
       if (!shape_and_slices_flat(i).empty()) {
         const string& shape_spec = shape_and_slices_flat(i);
@@ -133,8 +134,28 @@ class SaveV2 : public OpKernel {
       } else {
         OP_REQUIRES_OK(context, writer.Add(tensor_name, tensor));
       }
+
+      if (VLOG_IS_ON(5)) {
+        if (tensor.dtype() == DT_FLOAT) {
+          const float* t_data = tensor.flat<float>().data();
+          float min = std::numeric_limits<float>::infinity();
+          float max = -std::numeric_limits<float>::infinity();
+          double avg = 0.0;
+          for (int i = 0; i < tensor.NumElements(); ++i) {
+            if (t_data[i] < min) min = t_data[i];
+            if (t_data[i] > max) max = t_data[i];
+            avg += t_data[i];
+          }
+          VLOG(5) << " min " << min << " max " << max << " avg "
+                  << avg / tensor.NumElements() << " total elts "
+                  << tensor.NumElements();
+        }
+      }
+
+      VLOG(2) << "Done save of " << tensor_name;
     }
     OP_REQUIRES_OK(context, writer.Finish());
+    VLOG(1) << "Done BundleWriter, prefix_string: " << prefix_string;
   }
 };
 REGISTER_KERNEL_BUILDER(Name("SaveV2").Device(DEVICE_CPU), SaveV2);

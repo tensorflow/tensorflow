@@ -2,175 +2,195 @@
 
 This page shows how to use the TensorFlow Lite Converter in the command line.
 
+_Note: If possible, use the **recommended** [Python API](python_api.md)
+instead._
+
 ## Command-line tools <a name="tools"></a>
+
+### Starting from TensorFlow 1.9
 
 There are two approaches to running the converter in the command line.
 
-*   `tflite_convert`: Starting from TensorFlow 1.9, the command-line tool
-    `tflite_convert` is installed as part of the Python package. All of the
-    examples below use `tflite_convert` for simplicity.
-    *   Example: `tflite_convert --output_file=...`
-*   `bazel`: In order to run the latest version of the TensorFlow Lite Converter
-    either install the nightly build using
-    [pip](https://www.tensorflow.org/install/pip) or
-    [clone the TensorFlow repository](https://www.tensorflow.org/install/source)
-    and use `bazel`.
-    *   Example: `bazel run
-        //third_party/tensorflow/lite/python:tflite_convert --
+*   `tflite_convert` (**recommended**):
+    *   *Install*: TensorFlow using
+        [pip](https://www.tensorflow.org/install/pip).
+    *   *Example*: `tflite_convert --output_file=...`
+*   `bazel`:
+    *   *Install*: TensorFlow from
+        [source](https://www.tensorflow.org/install/source).
+    *   *Example*: `bazel run tensorflow/lite/python:tflite_convert --
         --output_file=...`
 
-### Converting models prior to TensorFlow 1.9 <a name="pre_tensorflow_1.9"></a>
+*All of the following examples use `tflite_convert` for simplicity.
+Alternatively, you can replace '`tflite_convert`' with '`bazel run
+tensorflow/lite/python:tflite_convert --`'*
+
+### Prior to TensorFlow 1.9 <a name="pre_tensorflow_1.9"></a>
 
 The recommended approach for using the converter prior to TensorFlow 1.9 is the
-[Python API](python_api.md#pre_tensorflow_1.9). If a command line tool is
-desired, the `toco` command line tool was available in TensorFlow 1.7. Enter
-`toco --help` in Terminal for additional details on the command-line flags
-available. There were no command line tools in TensorFlow 1.8.
+[Python API](python_api.md). Only in TensorFlow 1.7, a command line tool `toco`
+was available (run `toco --help` for additional details).
 
-## Basic examples <a name="basic"></a>
+## Usage <a name="usage"></a>
 
-The following section shows examples of how to convert a basic float-point model
-from each of the supported data formats into a TensorFlow Lite FlatBuffers.
+### Setup <a name="download_models"></a>
 
-### Convert a TensorFlow GraphDef <a name="graphdef"></a>
-
-The follow example converts a basic TensorFlow GraphDef (frozen by
-[freeze_graph.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/tools/freeze_graph.py))
-into a TensorFlow Lite FlatBuffer to perform floating-point inference. Frozen
-graphs contain the variables stored in Checkpoint files as Const ops.
+Before we begin, download the models required to run the examples in this
+document:
 
 ```
+echo "Download MobileNet V1"
 curl https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_0.50_128_frozen.tgz \
   | tar xzv -C /tmp
+
+echo "Download Inception V1"
+curl https://storage.googleapis.com/download.tensorflow.org/models/inception_v1_2016_08_28_frozen.pb.tar.gz \
+  | tar xzv -C /tmp
+```
+
+### Basic examples <a name="basic"></a>
+
+The following section shows examples of how to convert a basic model from each
+of the supported data formats into a TensorFlow Lite model.
+
+#### Convert a SavedModel <a name="savedmodel"></a>
+
+```
 tflite_convert \
-  --output_file=/tmp/foo.tflite \
+  --saved_model_dir=/tmp/saved_model \
+  --output_file=/tmp/foo.tflite
+```
+
+#### Convert a tf.keras model <a name="keras"></a>
+
+```
+tflite_convert \
+  --keras_model_file=/tmp/keras_model.h5 \
+  --output_file=/tmp/foo.tflite
+```
+
+#### Convert a Frozen GraphDef <a name="graphdef"></a>
+
+```
+tflite_convert \
   --graph_def_file=/tmp/mobilenet_v1_0.50_128/frozen_graph.pb \
+  --output_file=/tmp/foo.tflite \
   --input_arrays=input \
   --output_arrays=MobilenetV1/Predictions/Reshape_1
 ```
 
-The value for `input_shapes` is automatically determined whenever possible.
+Frozen GraphDef models (or frozen graphs) are produced by
+[freeze_graph.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/tools/freeze_graph.py)
+and require additional flags `--input_arrays` and `--output_arrays` as this
+information is not stored in the model format.
 
-### Convert a TensorFlow SavedModel <a name="savedmodel"></a>
+### Advanced examples
 
-The follow example converts a basic TensorFlow SavedModel into a Tensorflow Lite
-FlatBuffer to perform floating-point inference.
+#### Convert a quantization aware trained model into a quantized TensorFlow Lite model
 
-```
-tflite_convert \
-  --output_file=/tmp/foo.tflite \
-  --saved_model_dir=/tmp/saved_model
-```
-
-[SavedModel](https://www.tensorflow.org/guide/saved_model#using_savedmodel_with_estimators)
-has fewer required flags than frozen graphs due to access to additional data
-contained within the SavedModel. The values for `--input_arrays` and
-`--output_arrays` are an aggregated, alphabetized list of the inputs and outputs
-in the [SignatureDefs](../../serving/signature_defs.md) within
-the
-[MetaGraphDef](https://www.tensorflow.org/saved_model#apis_to_build_and_load_a_savedmodel)
-specified by `--saved_model_tag_set`. As with the GraphDef, the value for
-`input_shapes` is automatically determined whenever possible.
-
-There is currently no support for MetaGraphDefs without a SignatureDef or for
-MetaGraphDefs that use the [`assets/`
-directory](https://www.tensorflow.org/guide/saved_model#structure_of_a_savedmodel_directory).
-
-### Convert a tf.Keras model <a name="keras"></a>
-
-The following example converts a `tf.keras` model into a TensorFlow Lite
-Flatbuffer. The `tf.keras` file must contain both the model and the weights.
+If you have a quantization aware trained model (i.e, a model inserted with
+`FakeQuant*` operations which record the (min, max) ranges of tensors in order
+to quantize them), then convert it into a quantized TensorFlow Lite model as
+shown below:
 
 ```
 tflite_convert \
+  --graph_def_file=/tmp/some_mobilenetv1_quantized_frozen_graph.pb \
   --output_file=/tmp/foo.tflite \
-  --keras_model_file=/tmp/keras_model.h5
-```
-
-## Quantization
-
-### Convert a TensorFlow GraphDef for quantized inference <a name="graphdef_quant"></a>
-
-The TensorFlow Lite Converter is compatible with fixed point quantization models
-described
-[here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/quantize/README.md).
-These are float models with `FakeQuant*` ops inserted at the boundaries of fused
-layers to record min-max range information. This generates a quantized inference
-workload that reproduces the quantization behavior that was used during
-training.
-
-The following command generates a quantized TensorFlow Lite FlatBuffer from a
-"quantized" TensorFlow GraphDef.
-
-```
-tflite_convert \
-  --output_file=/tmp/foo.tflite \
-  --graph_def_file=/tmp/some_quantized_graph.pb \
-  --inference_type=QUANTIZED_UINT8 \
   --input_arrays=input \
   --output_arrays=MobilenetV1/Predictions/Reshape_1 \
-  --mean_values=128 \
-  --std_dev_values=127
+  --inference_type=INT8 \
+  --mean_values=-0.5 \
+  --std_dev_values=127.7
 ```
 
-### Use \"dummy-quantization\" to try out quantized inference on a float graph <a name="dummy_quant"></a>
+*If you're setting `--inference_type=UINT8` then update `--mean_values=128` and
+`--std_dev_values=127`*
 
-In order to evaluate the possible benefit of generating a quantized graph, the
-converter allows "dummy-quantization" on float graphs. The flags
-`--default_ranges_min` and `--default_ranges_max` accept plausible values for
-the min-max ranges of the values in all arrays that do not have min-max
-information. "Dummy-quantization" will produce lower accuracy but will emulate
-the performance of a correctly quantized model.
+#### Convert a model with \"dummy-quantization\" into a quantized TensorFlow Lite model
+
+If you have a regular float model and only want to estimate the benefit of a
+quantized model, i.e, estimate the performance of the model as if it were
+quantized aware trained, then perform "dummy-quantization" using the flags
+`--default_ranges_min` and `--default_ranges_max`. When specified, they will be
+used as default (min, max) range for all the tensors that lack (min, max) range
+information. This will allow quantization to proceed and help you emulate the
+performance of a quantized TensorFlow Lite model but it will have a lower
+accuracy.
 
 The example below contains a model using Relu6 activation functions. Therefore,
 a reasonable guess is that most activation ranges should be contained in [0, 6].
 
 ```
-curl https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_0.50_128_frozen.tgz \
-  | tar xzv -C /tmp
 tflite_convert \
-  --output_file=/tmp/foo.cc \
   --graph_def_file=/tmp/mobilenet_v1_0.50_128/frozen_graph.pb \
-  --inference_type=QUANTIZED_UINT8 \
+  --output_file=/tmp/foo.tflite \
   --input_arrays=input \
   --output_arrays=MobilenetV1/Predictions/Reshape_1 \
+  --inference_type=INT8 \
+  --mean_values=-0.5 \
+  --std_dev_values=127.7 \
   --default_ranges_min=0 \
-  --default_ranges_max=6 \
-  --mean_values=128 \
-  --std_dev_values=127
+  --default_ranges_max=6
 ```
 
-## Specifying input and output arrays
+*If you're setting `--inference_type=UINT8` then update `--mean_values=128` and
+`--std_dev_values=127`*
 
-### Multiple input arrays
+#### Convert a model with select TensorFlow operators.
+
+Since TensorFlow Lite only supports a limited number of TensorFlow operators,
+not every model is convertible. For details, refer to
+[operator compatibility](https://www.tensorflow.org/lite/guide/ops_compatibility).
+To allow conversion, users can enable the usage of
+[certain TensorFlow ops](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/flex/allowlisted_flex_ops.cc)
+in their TensorFlow Lite model, as shown in the following example.
+
+```
+tflite_convert \
+  --graph_def_file=/tmp/foo.pb \
+  --output_file=/tmp/foo.tflite \
+  --input_arrays=input \
+  --output_arrays=MobilenetV1/Predictions/Reshape_1 \
+  --target_ops=TFLITE_BUILTINS,SELECT_TF_OPS
+```
+
+When building and running `tflite_convert` with `bazel`, please pass
+`--define=tflite_convert_with_select_tf_ops=true` as an additional argument.
+
+```
+bazel run --define=tflite_convert_with_select_tf_ops=true tflite_convert -- \
+  --graph_def_file=/tmp/foo.pb \
+  --output_file=/tmp/foo.tflite \
+  --input_arrays=input \
+  --output_arrays=MobilenetV1/Predictions/Reshape_1 \
+  --target_ops=TFLITE_BUILTINS,SELECT_TF_OPS
+```
+
+#### Convert a model with multiple input arrays
 
 The flag `input_arrays` takes in a comma-separated list of input arrays as seen
 in the example below. This is useful for models or subgraphs with multiple
-inputs.
+inputs. Note that `--input_shapes` is provided as a colon-separated list. Each
+input shape corresponds to the input array at the same position in the
+respective list.
 
 ```
-curl https://storage.googleapis.com/download.tensorflow.org/models/inception_v1_2016_08_28_frozen.pb.tar.gz \
-  | tar xzv -C /tmp
 tflite_convert \
   --graph_def_file=/tmp/inception_v1_2016_08_28_frozen.pb \
   --output_file=/tmp/foo.tflite \
-  --input_shapes=1,28,28,96:1,28,28,16:1,28,28,192:1,28,28,64 \
   --input_arrays=InceptionV1/InceptionV1/Mixed_3b/Branch_1/Conv2d_0a_1x1/Relu,InceptionV1/InceptionV1/Mixed_3b/Branch_2/Conv2d_0a_1x1/Relu,InceptionV1/InceptionV1/Mixed_3b/Branch_3/MaxPool_0a_3x3/MaxPool,InceptionV1/InceptionV1/Mixed_3b/Branch_0/Conv2d_0a_1x1/Relu \
+  --input_shapes=1,28,28,96:1,28,28,16:1,28,28,192:1,28,28,64 \
   --output_arrays=InceptionV1/Logits/Predictions/Reshape_1
 ```
 
-Note that `input_shapes` is provided as a colon-separated list. Each input shape
-corresponds to the input array at the same position in the respective list.
+#### Convert a model with multiple output arrays
 
-### Multiple output arrays
-
-The flag `output_arrays` takes in a comma-separated list of output arrays as
+The flag `--output_arrays` takes in a comma-separated list of output arrays as
 seen in the example below. This is useful for models or subgraphs with multiple
 outputs.
 
 ```
-curl https://storage.googleapis.com/download.tensorflow.org/models/inception_v1_2016_08_28_frozen.pb.tar.gz \
-  | tar xzv -C /tmp
 tflite_convert \
   --graph_def_file=/tmp/inception_v1_2016_08_28_frozen.pb \
   --output_file=/tmp/foo.tflite \
@@ -178,101 +198,50 @@ tflite_convert \
   --output_arrays=InceptionV1/InceptionV1/Mixed_3b/Branch_1/Conv2d_0a_1x1/Relu,InceptionV1/InceptionV1/Mixed_3b/Branch_2/Conv2d_0a_1x1/Relu
 ```
 
-### Specifying subgraphs
+### Convert a model by specifying subgraphs
 
 Any array in the input file can be specified as an input or output array in
-order to extract subgraphs out of an input graph file. The TensorFlow Lite
-Converter discards the parts of the graph outside of the specific subgraph. Use
-[graph visualizations](#graph_visualizations) to identify the input and output
-arrays that make up the desired subgraph.
+order to extract subgraphs out of an input model file. The TensorFlow Lite
+Converter discards the parts of the model outside of the specific subgraph. Use
+[visualization](#visualization) to identify the input and output arrays that
+make up the desired subgraph.
 
 The follow command shows how to extract a single fused layer out of a TensorFlow
 GraphDef.
 
 ```
-curl https://storage.googleapis.com/download.tensorflow.org/models/inception_v1_2016_08_28_frozen.pb.tar.gz \
-  | tar xzv -C /tmp
 tflite_convert \
   --graph_def_file=/tmp/inception_v1_2016_08_28_frozen.pb \
   --output_file=/tmp/foo.pb \
-  --input_shapes=1,28,28,96:1,28,28,16:1,28,28,192:1,28,28,64 \
   --input_arrays=InceptionV1/InceptionV1/Mixed_3b/Branch_1/Conv2d_0a_1x1/Relu,InceptionV1/InceptionV1/Mixed_3b/Branch_2/Conv2d_0a_1x1/Relu,InceptionV1/InceptionV1/Mixed_3b/Branch_3/MaxPool_0a_3x3/MaxPool,InceptionV1/InceptionV1/Mixed_3b/Branch_0/Conv2d_0a_1x1/Relu \
+  --input_shapes=1,28,28,96:1,28,28,16:1,28,28,192:1,28,28,64 \
   --output_arrays=InceptionV1/InceptionV1/Mixed_3b/concat_v2
 ```
 
-Note that the final representation in TensorFlow Lite FlatBuffers tends to have
+Note that the final representation in TensorFlow Lite models tends to have
 coarser granularity than the very fine granularity of the TensorFlow GraphDef
 representation. For example, while a fully-connected layer is typically
-represented as at least four separate ops in TensorFlow GraphDef (Reshape,
-MatMul, BiasAdd, Relu...), it is typically represented as a single "fused" op
-(FullyConnected) in the converter's optimized representation and in the final
-on-device representation. As the level of granularity gets coarser, some
-intermediate arrays (say, the array between the MatMul and the BiasAdd in the
-TensorFlow GraphDef) are dropped.
+represented as at least four separate operations in TensorFlow GraphDef
+(Reshape, MatMul, BiasAdd, Relu...), it is typically represented as a single
+"fused" op (FullyConnected) in the converter's optimized representation and in
+the final on-device representation. As the level of granularity gets coarser,
+some intermediate arrays (say, the array between the MatMul and the BiasAdd in
+the TensorFlow GraphDef) are dropped.
 
 When specifying intermediate arrays as `--input_arrays` and `--output_arrays`,
 it is desirable (and often required) to specify arrays that are meant to survive
-in the final form of the graph, after fusing. These are typically the outputs of
+in the final form of the model, after fusing. These are typically the outputs of
 activation functions (since everything in each layer until the activation
 function tends to get fused).
 
-## Logging
-
-
-## Graph visualizations
-
-The converter can export a graph to the Graphviz Dot format for easy
-visualization using either the `--output_format` flag or the
-`--dump_graphviz_dir` flag. The subsections below outline the use cases for
-each.
-
-### Using `--output_format=GRAPHVIZ_DOT` <a name="using_output_format_graphviz_dot"></a>
-
-The first way to get a Graphviz rendering is to pass `GRAPHVIZ_DOT` into
-`--output_format`. This results in a plausible visualization of the graph. This
-reduces the requirements that exist during conversion from a TensorFlow GraphDef
-to a TensorFlow Lite FlatBuffer. This may be useful if the conversion to TFLite
-is failing.
-
-```
-curl https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_0.50_128_frozen.tgz \
-  | tar xzv -C /tmp
-tflite_convert \
-  --graph_def_file=/tmp/mobilenet_v1_0.50_128/frozen_graph.pb \
-  --output_file=/tmp/foo.dot \
-  --output_format=GRAPHVIZ_DOT \
-  --input_shape=1,128,128,3 \
-  --input_arrays=input \
-  --output_arrays=MobilenetV1/Predictions/Reshape_1
-```
-
-The resulting `.dot` file can be rendered into a PDF as follows:
-
-```
-dot -Tpdf -O /tmp/foo.dot
-```
-
-And the resulting `.dot.pdf` can be viewed in any PDF viewer, but we suggest one
-with a good ability to pan and zoom across a very large page. Google Chrome does
-well in that respect.
-
-```
-google-chrome /tmp/foo.dot.pdf
-```
-
-Example PDF files are viewable online in the next section.
+## Visualization <a name="visualization"></a>
 
 ### Using `--dump_graphviz_dir`
 
-The second way to get a Graphviz rendering is to pass the `--dump_graphviz_dir`
-flag, specifying a destination directory to dump Graphviz rendering to. Unlike
-the previous approach, this one retains the original output format. This
-provides a visualization of the actual graph resulting from a specific
-conversion process.
+The first way to get a Graphviz rendering is to pass the `--dump_graphviz_dir`
+flag, specifying a destination directory to dump Graphviz rendering to.
 
 ```
-curl https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_0.50_128_frozen.tgz \
-  | tar xzv -C /tmp
 tflite_convert \
   --graph_def_file=/tmp/mobilenet_v1_0.50_128/frozen_graph.pb \
   --output_file=/tmp/foo.tflite \
@@ -283,19 +252,28 @@ tflite_convert \
 
 This generates a few files in the destination directory. The two most important
 files are `toco_AT_IMPORT.dot` and `/tmp/toco_AFTER_TRANSFORMATIONS.dot`.
-`toco_AT_IMPORT.dot` represents the original graph containing only the
-transformations done at import time. This tends to be a complex visualization
-with limited information about each node. It is useful in situations where a
-conversion command fails.
 
-`toco_AFTER_TRANSFORMATIONS.dot` represents the graph after all transformations
-were applied to it, just before it is exported. Typically, this is a much
-smaller graph with more information about each node.
+-   `toco_AT_IMPORT.dot` represents the original model containing only the
+    transformations done at import time. This tends to be a complex
+    visualization with limited information about each node. It is useful in
+    situations where a conversion command fails.
 
-As before, these can be rendered to PDFs:
+-   `toco_AFTER_TRANSFORMATIONS.dot` represents the model after all
+    transformations were applied to it, just before it is exported. Typically,
+    this is a much smaller model with more information about each node.
+
+These can be rendered to PDFs:
 
 ```
-dot -Tpdf -O /tmp/toco_*.dot
+dot -Tpdf /tmp/toco_*.dot -O
+```
+
+And the resulting `.dot.pdf` can be viewed in any PDF viewer, but we suggest one
+with a good ability to pan and zoom across a very large page. Google Chrome does
+well in that respect.
+
+```
+google-chrome /tmp/foo.dot.pdf
 ```
 
 Sample output files can be seen here below. Note that it is the same
@@ -316,15 +294,55 @@ Sample output files can be seen here below. Note that it is the same
 <tr><td>before</td><td>after</td></tr>
 </table>
 
-### Graph "video" logging
+### Using `--output_format=GRAPHVIZ_DOT` <a name="using_output_format_graphviz_dot"></a>
+
+*Note: This only works when you set flag `experimental_new_converter=False`.
+Also, as this format leads to loss of TFLite specific transformations, we
+recommend that you use `--dump_graphviz_dir` instead to get a final
+visualization with all graph transformations.*
+
+The second way to get a Graphviz rendering is to pass `GRAPHVIZ_DOT` into
+`--output_format`. This results in a plausible visualization of the model. This
+reduces the requirements that exist during conversion from a TensorFlow GraphDef
+to a TensorFlow Lite model. This may be useful if the conversion to TFLite is
+failing.
+
+```
+tflite_convert \
+  --experimental_new_converter=False
+  --graph_def_file=/tmp/mobilenet_v1_0.50_128/frozen_graph.pb \
+  --output_format=GRAPHVIZ_DOT \
+  --output_file=/tmp/foo.dot \
+  --output_format=GRAPHVIZ_DOT \
+  --input_arrays=input \
+  --input_shape=1,128,128,3 \
+  --output_arrays=MobilenetV1/Predictions/Reshape_1
+
+```
+
+The resulting `.dot` file can be rendered into a PDF as follows:
+
+```
+dot -Tpdf /tmp/foo.dot -O
+```
+
+And the resulting `.dot.pdf` can be viewed in any PDF viewer, but we suggest one
+with a good ability to pan and zoom across a very large page. Google Chrome does
+well in that respect.
+
+```
+google-chrome /tmp/foo.dot.pdf
+```
+
+### Video logging
 
 When `--dump_graphviz_dir` is used, one may additionally pass
-`--dump_graphviz_video`. This causes a graph visualization to be dumped after
-each individual graph transformation, resulting in thousands of files.
+`--dump_graphviz_video`. This causes a model visualization to be dumped after
+each individual model transformation, resulting in thousands of files.
 Typically, one would then bisect into these files to understand when a given
-change was introduced in the graph.
+change was introduced in the model.
 
-### Legend for the graph visualizations <a name="graphviz_legend"></a>
+### Legend for the Visualizations <a name="graphviz_legend"></a>
 
 *   Operators are red square boxes with the following hues of red:
     *   Most operators are

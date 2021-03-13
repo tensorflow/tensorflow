@@ -42,6 +42,8 @@ int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
       return NPY_FLOAT64;
     case kTfLiteInt32:
       return NPY_INT32;
+    case kTfLiteUInt32:
+      return NPY_UINT32;
     case kTfLiteInt16:
       return NPY_INT16;
     case kTfLiteUInt8:
@@ -50,12 +52,19 @@ int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
       return NPY_INT8;
     case kTfLiteInt64:
       return NPY_INT64;
+    case kTfLiteUInt64:
+      return NPY_UINT64;
     case kTfLiteString:
       return NPY_STRING;
     case kTfLiteBool:
       return NPY_BOOL;
     case kTfLiteComplex64:
       return NPY_COMPLEX64;
+    case kTfLiteComplex128:
+      return NPY_COMPLEX128;
+    case kTfLiteResource:
+    case kTfLiteVariant:
+      return NPY_OBJECT;
     case kTfLiteNoType:
       return NPY_NOTYPE;
       // Avoid default so compiler errors created when new types are made.
@@ -69,8 +78,12 @@ TfLiteType TfLiteTypeFromPyType(int py_type) {
       return kTfLiteFloat32;
     case NPY_FLOAT16:
       return kTfLiteFloat16;
+    case NPY_FLOAT64:
+      return kTfLiteFloat64;
     case NPY_INT32:
       return kTfLiteInt32;
+    case NPY_UINT32:
+      return kTfLiteUInt32;
     case NPY_INT16:
       return kTfLiteInt16;
     case NPY_UINT8:
@@ -79,6 +92,8 @@ TfLiteType TfLiteTypeFromPyType(int py_type) {
       return kTfLiteInt8;
     case NPY_INT64:
       return kTfLiteInt64;
+    case NPY_UINT64:
+      return kTfLiteUInt64;
     case NPY_BOOL:
       return kTfLiteBool;
     case NPY_OBJECT:
@@ -87,7 +102,8 @@ TfLiteType TfLiteTypeFromPyType(int py_type) {
       return kTfLiteString;
     case NPY_COMPLEX64:
       return kTfLiteComplex64;
-      // Avoid default so compiler errors created when new types are made.
+    case NPY_COMPLEX128:
+      return kTfLiteComplex128;
   }
   return kTfLiteNoType;
 }
@@ -151,6 +167,11 @@ bool FillStringBufferWithPyArray(PyObject* value,
     case NPY_OBJECT:
     case NPY_STRING:
     case NPY_UNICODE: {
+      if (PyArray_NDIM(array) == 0) {
+        dynamic_buffer->AddString(static_cast<char*>(PyArray_DATA(array)),
+                                  PyArray_NBYTES(array));
+        return true;
+      }
       UniquePyObjectRef iter(PyArray_IterNew(value));
       while (PyArray_ITER_NOTDONE(iter.get())) {
         UniquePyObjectRef item(PyArray_GETITEM(

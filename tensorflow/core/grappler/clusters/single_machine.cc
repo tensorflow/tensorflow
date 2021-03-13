@@ -92,14 +92,15 @@ Status SingleMachine::Provision() {
         return errors::InvalidArgument(
             strings::StrCat("Not able to parse GPU device name: ", dev.name()));
       }
-      TfGpuId tf_gpu_id(parsed.id);
-      PlatformGpuId platform_gpu_id;
-      Status s = GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id);
+      TfDeviceId tf_device_id(parsed.id);
+      PlatformDeviceId platform_device_id;
+      Status s =
+          GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id);
       if (!s.ok()) {
         return errors::Unavailable("Unknown TF GPU device with id ",
-                                   tf_gpu_id.value(), ": ", s.ToString());
+                                   tf_device_id.value(), ": ", s.ToString());
       }
-      attr = GetLocalGPUInfo(platform_gpu_id);
+      attr = GetLocalGPUInfo(platform_device_id);
     } else if (dev.device_type().find("XLA") == string::npos) {
       // Filter out the fake XLA devices to avoid double counting the actual
       // hardware resources that are available.
@@ -202,9 +203,9 @@ Status SingleMachine::Run(const GraphDef& graph_def,
   return Status::OK();
 }
 
-Status SingleMachine::EnablePeakMemoryStats(bool enable) {
-  EnableCPUAllocatorStats(enable);
-  cpu_allocator_stats_enabled_ = enable;
+Status SingleMachine::EnablePeakMemoryStats() {
+  EnableCPUAllocatorStats();
+  cpu_allocator_stats_enabled_ = true;
   // No need to enable GPU allocator stats since its stats are always collected.
   return Status::OK();
 }

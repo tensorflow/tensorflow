@@ -12,11 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
+#include <initializer_list>
+#include <vector>
+
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -167,6 +171,36 @@ TEST(SelectOpTest, RankOneSelectInt32) {
   model.Invoke();
 
   EXPECT_THAT(model.GetOutput<int32_t>(), ElementsAreArray({5, 6, 3, 4}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 1, 2, 1}));
+}
+
+TEST(SelectOpTest, ScalarFalseConditionInt32) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  SelectOpModel model({}, {2, 1, 2, 1}, {2, 1, 2, 1}, TensorType_INT32);
+
+  model.PopulateTensor<bool>(model.input1(), {false});
+  model.PopulateTensor<int32_t>(model.input2(), {1, 2, 3, 4});
+  model.PopulateTensor<int32_t>(model.input3(), {5, 6, 7, 8});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput<int32_t>(), ElementsAreArray({5, 6, 7, 8}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 1, 2, 1}));
+}
+
+TEST(SelectOpTest, ScalarTrueConditionInt32) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  SelectOpModel model({}, {2, 1, 2, 1}, {2, 1, 2, 1}, TensorType_INT32);
+
+  model.PopulateTensor<bool>(model.input1(), {true});
+  model.PopulateTensor<int32_t>(model.input2(), {1, 2, 3, 4});
+  model.PopulateTensor<int32_t>(model.input3(), {5, 6, 7, 8});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput<int32_t>(), ElementsAreArray({1, 2, 3, 4}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 1, 2, 1}));
 }
 

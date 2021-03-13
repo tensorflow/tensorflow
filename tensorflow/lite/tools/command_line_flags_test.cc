@@ -356,5 +356,13 @@ TEST(CommandLineFlagsTest, DuplicateFlagsAndArgs) {
   EXPECT_EQ(argc, 2);
 }
 
+TEST(CommandLineFlagsTest, ArgsToString) {
+  int argc = 3;
+  const char* argv_strings[] = {"program_name", "--some_int=1", "--some_int=2"};
+  std::string args =
+      Flags::ArgsToString(argc, reinterpret_cast<const char**>(argv_strings));
+  EXPECT_EQ("--some_int=1 --some_int=2", args);
+}
+
 }  // namespace
 }  // namespace tflite

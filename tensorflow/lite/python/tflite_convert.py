@@ -24,16 +24,20 @@ import os
 import sys
 import warnings
 
+from absl import app
 import six
 from six.moves import zip
+import tensorflow as tf  # pylint: disable=unused-import
 
 from tensorflow.lite.python import lite
-from tensorflow.lite.python import lite_constants
+from tensorflow.lite.python.convert import register_custom_opdefs
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.lite.toco.logging import gen_html
-from tensorflow.python import keras
 from tensorflow.python import tf2
-from tensorflow.python.platform import app
+from tensorflow.python.framework import dtypes
+from tensorflow.python.util import keras_deps
+
+# Needed to enable TF2 by default.
 
 
 def _parse_array(values, type_fn=str):
@@ -62,13 +66,14 @@ def _parse_inference_type(value, flag):
     ValueError: Unsupported value.
   """
   if value == "FLOAT":
-    return lite_constants.FLOAT
-  if value == "QUANTIZED_UINT8":
-    return lite_constants.QUANTIZED_UINT8
+    return dtypes.float32
   if value == "INT8":
-    return lite_constants.INT8
-  raise ValueError("Unsupported value for --{0}. Only FLOAT and "
-                   "QUANTIZED_UINT8 are supported.".format(flag))
+    return dtypes.int8
+  if value == "UINT8" or value == "QUANTIZED_UINT8":
+    return dtypes.uint8
+  raise ValueError(
+      "Unsupported value for `{}` flag. Expected FLOAT, INT8, UINT8, or "
+      "QUANTIZED_UINT8 instead got {}.".format(flag, value))
 
 
 def _get_tflite_converter(flags):
@@ -128,6 +133,10 @@ def _convert_tf1_model(flags):
   Raises:
     ValueError: Invalid flags.
   """
+  # Register custom opdefs before converter object creation.
+  if flags.custom_opdefs:
+    register_custom_opdefs(_parse_array(flags.custom_opdefs))
+
   # Create converter.
   converter = _get_tflite_converter(flags)
   if flags.inference_type:
@@ -146,10 +155,10 @@ def _convert_tf1_model(flags):
 
     # In quantized inference, mean_value has to be integer so that the real
     # value 0.0 is exactly representable.
-    if converter.inference_type == lite_constants.QUANTIZED_UINT8:
-      mean_values = _parse_array(flags.mean_values, type_fn=int)
-    else:
+    if converter.inference_type == dtypes.float32:
       mean_values = _parse_array(flags.mean_values, type_fn=float)
+    else:
+      mean_values = _parse_array(flags.mean_values, type_fn=int)
     quant_stats = list(zip(mean_values, std_dev_values))
     if ((not flags.input_arrays and len(input_arrays) > 1) or
         (len(input_arrays) != len(quant_stats))):
@@ -176,8 +185,7 @@ def _convert_tf1_model(flags):
 
   if flags.allow_custom_ops:
     converter.allow_custom_ops = flags.allow_custom_ops
-  if flags.custom_opdefs:
-    converter._custom_opdefs = _parse_array(flags.custom_opdefs)  # pylint: disable=protected-access
+
   if flags.target_ops:
     ops_set_options = lite.OpsSet.get_options()
     converter.target_spec.supported_ops = set()
@@ -187,15 +195,25 @@ def _convert_tf1_model(flags):
                          "{0}".format(",".join(ops_set_options)))
       converter.target_spec.supported_ops.add(lite.OpsSet(option))
 
+  if flags.experimental_select_user_tf_ops:
+    if lite.OpsSet.SELECT_TF_OPS not in converter.target_spec.supported_ops:
+      raise ValueError("--experimental_select_user_tf_ops can only be set if "
+                       "--target_ops contains SELECT_TF_OPS.")
+    user_op_set = set()
+    for op_name in six.ensure_str(
+        flags.experimental_select_user_tf_ops).split(","):
+      user_op_set.add(op_name)
+    converter.target_spec.experimental_select_user_tf_ops = list(user_op_set)
+
   if flags.post_training_quantize:
     converter.optimizations = [lite.Optimize.DEFAULT]
-    if converter.inference_type == lite_constants.QUANTIZED_UINT8:
+    if converter.inference_type != dtypes.float32:
       print("--post_training_quantize quantizes a graph of inference_type "
-            "FLOAT. Overriding inference type QUANTIZED_UINT8 to FLOAT.")
-      converter.inference_type = lite_constants.FLOAT
+            "FLOAT. Overriding inference_type to FLOAT.")
+      converter.inference_type = dtypes.float32
 
   if flags.quantize_to_float16:
-    converter.target_spec.supported_types = [lite.constants.FLOAT16]
+    converter.target_spec.supported_types = [dtypes.float16]
     if not flags.post_training_quantize:
       print("--quantize_to_float16 will only take effect with the "
             "--post_training_quantize flag enabled.")
@@ -209,6 +227,9 @@ def _convert_tf1_model(flags):
 
   if flags.experimental_new_converter is not None:
     converter.experimental_new_converter = flags.experimental_new_converter
+
+  if flags.experimental_new_quantizer is not None:
+    converter.experimental_new_quantizer = flags.experimental_new_quantizer
 
   # Convert model.
   output_data = converter.convert()
@@ -227,13 +248,19 @@ def _convert_tf2_model(flags):
   """
   # Load the model.
   if flags.saved_model_dir:
-    converter = lite.TFLiteConverterV2.from_saved_model(flags.saved_model_dir)
+    converter = lite.TFLiteConverterV2.from_saved_model(
+        flags.saved_model_dir,
+        signature_keys=_parse_array(flags.saved_model_signature_key),
+        tags=_parse_set(flags.saved_model_tag_set))
   elif flags.keras_model_file:
-    model = keras.models.load_model(flags.keras_model_file)
+    model = keras_deps.get_load_model_function()(flags.keras_model_file)
     converter = lite.TFLiteConverterV2.from_keras_model(model)
 
   if flags.experimental_new_converter is not None:
     converter.experimental_new_converter = flags.experimental_new_converter
+
+  if flags.experimental_new_quantizer is not None:
+    converter.experimental_new_quantizer = flags.experimental_new_quantizer
 
   # Convert the model.
   tflite_model = converter.convert()
@@ -308,6 +335,10 @@ def _check_tf1_flags(flags, unparsed):
                      "--experimental_new_converter")
   if flags.custom_opdefs and not flags.allow_custom_ops:
     raise ValueError("--custom_opdefs must be used with --allow_custom_ops")
+  if (flags.experimental_select_user_tf_ops and
+      not flags.experimental_new_converter):
+    raise ValueError("--experimental_select_user_tf_ops must be used with "
+                     "--experimental_new_converter")
 
 
 def _check_tf2_flags(flags):
@@ -354,14 +385,15 @@ def _get_tf1_flags(parser):
   parser.add_argument(
       "--inference_type",
       type=str.upper,
-      choices=["FLOAT", "QUANTIZED_UINT8", "INT8"],
-      help="Target data type of real-number arrays in the output file.")
+      default="FLOAT",
+      help=("Target data type of real-number arrays in the output file. "
+            "Must be either FLOAT, INT8 or UINT8."))
   parser.add_argument(
       "--inference_input_type",
       type=str.upper,
-      choices=["FLOAT", "QUANTIZED_UINT8", "INT8"],
       help=("Target data type of real-number input arrays. Allows for a "
-            "different type for input arrays in the case of quantization."))
+            "different type for input arrays in the case of quantization. "
+            "Must be either FLOAT, INT8 or UINT8."))
 
   # Input and output arrays flags.
   parser.add_argument(
@@ -485,6 +517,11 @@ def _get_tf1_flags(parser):
             "indicating which converter to use. Options: {0}. One or more "
             "option may be specified. (default set([OpsSet.TFLITE_BUILTINS]))"
             "".format(",".join(lite.OpsSet.get_options()))))
+  parser.add_argument(
+      "--experimental_select_user_tf_ops",
+      type=str,
+      help=("Experimental flag, subject to change. Comma separated list of "
+            "user's defined TensorFlow operators required in the runtime."))
 
   # Logging flags.
   parser.add_argument(
@@ -524,6 +561,18 @@ def _get_tf2_flags(parser):
       "--keras_model_file",
       type=str,
       help="Full filepath of HDF5 file containing tf.Keras model.")
+  # SavedModel related flags.
+  parser.add_argument(
+      "--saved_model_tag_set",
+      type=str,
+      help=("Comma-separated set of tags identifying the MetaGraphDef within "
+            "the SavedModel to analyze. All tags must be present. In order to "
+            "pass in an empty tag set, pass in \"\". (default \"serve\")"))
+  parser.add_argument(
+      "--saved_model_signature_key",
+      type=str,
+      help=("Key identifying the SignatureDef containing inputs and outputs. "
+            "(default DEFAULT_SERVING_SIGNATURE_DEF_KEY)"))
 
   # Enables 1.X converter in 2.X.
   parser.add_argument(
@@ -532,8 +581,8 @@ def _get_tf2_flags(parser):
       help=("Enables the TensorFlow V1 converter in 2.0"))
 
 
-class _ParseExperimentalNewConverter(argparse.Action):
-  """Helper class to parse --experimental_new_converter argument."""
+class _ParseBooleanFlag(argparse.Action):
+  """Helper class to parse boolean flag that optionally accepts truth value."""
 
   def __init__(self, option_strings, dest, nargs=None, **kwargs):
     if nargs != "?":
@@ -541,25 +590,26 @@ class _ParseExperimentalNewConverter(argparse.Action):
       # nargs="?".
       raise ValueError(
           "This parser only supports nargs='?' (0 or 1 additional arguments)")
-    super(_ParseExperimentalNewConverter, self).__init__(
+    super(_ParseBooleanFlag, self).__init__(
         option_strings, dest, nargs=nargs, **kwargs)
 
   def __call__(self, parser, namespace, values, option_string=None):
     if values is None:
-      # Handling `--experimental_new_converter`.
+      # Handling `--boolean_flag`.
       # Without additional arguments, it implies enabling the new converter.
-      experimental_new_converter = True
+      flag_value = True
     elif values.lower() == "true":
-      # Handling `--experimental_new_converter=true`.
+      # Handling `--boolean_flag=true`.
       # (Case insensitive after the equal sign)
-      experimental_new_converter = True
+      flag_value = True
     elif values.lower() == "false":
-      # Handling `--experimental_new_converter=false`.
+      # Handling `--boolean_flag=false`.
       # (Case insensitive after the equal sign)
-      experimental_new_converter = False
+      flag_value = False
     else:
-      raise ValueError("Invalid --experimental_new_converter argument.")
-    setattr(namespace, self.dest, experimental_new_converter)
+      raise ValueError("Invalid argument to --{}. Must use flag alone,"
+                       " or specify true/false.".format(self.dest))
+    setattr(namespace, self.dest, flag_value)
 
 
 def _get_parser(use_v2_converter):
@@ -586,10 +636,17 @@ def _get_parser(use_v2_converter):
 
   parser.add_argument(
       "--experimental_new_converter",
-      action=_ParseExperimentalNewConverter,
+      action=_ParseBooleanFlag,
       nargs="?",
       help=("Experimental flag, subject to change. Enables MLIR-based "
             "conversion instead of TOCO conversion. (default True)"))
+
+  parser.add_argument(
+      "--experimental_new_quantizer",
+      action=_ParseBooleanFlag,
+      nargs="?",
+      help=("Experimental flag, subject to change. Enables MLIR-based "
+            "quantizer instead of flatbuffer conversion. (default True)"))
   return parser
 
 

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_HARDWARE_TYPE_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_HARDWARE_TYPE_UTILS_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 
 namespace tensorflow {
@@ -24,6 +25,14 @@ namespace profiler {
 // Get peak single precision throughput of the GPU in GFLOPS per
 // streaming multiprocessor.
 double GetFlopMaxThroughputPerSM(const DeviceCapabilities& device_cap);
+
+// Returns the GPU model name from the given DeviceCapabilities.
+absl::string_view GpuModelName(const DeviceCapabilities& device_cap);
+
+HardwareType ParseHardwareType(absl::string_view device_type);
+
+// Returns true if the given hardware type has a device.
+bool HasDevice(HardwareType x);
 
 }  // namespace profiler
 }  // namespace tensorflow

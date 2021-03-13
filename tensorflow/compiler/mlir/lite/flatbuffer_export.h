@@ -17,27 +17,32 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_EXPORT_H_
 
 #include <string>
+#include <unordered_set>
 
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 
 namespace tflite {
+// Options for exporting to Flatbuffer.
+struct FlatbufferExportOptions {
+  bool emit_builtin_tflite_ops = false;
+  bool emit_select_tf_ops = false;
+  bool emit_custom_ops = false;
+  // When exporting from SavedModel, this will have the requested tags.
+  std::unordered_set<std::string> saved_model_tags;
+  // TF custom op passed by the user.
+  std::unordered_set<std::string> select_user_tf_ops;
+  // OpOrArgNameMapper to convert location of the op to name in flatbuffer.
+  // If not set, a default mapper will be used.
+  tensorflow::OpOrArgNameMapper* op_or_arg_name_mapper = nullptr;
+};
 
 // Translates the given MLIR `module` into a FlatBuffer and stores the
-// serialized flatbuffer into the string. This uses OpOrArgLocNameMapper to
-// convert location of the op to name in flatbuffer. Returns true if translation
-// fails, otherwise returns false.
+// serialized flatbuffer into the string.
+// Returns true on successful exporting, false otherwise.
 bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
-                                       std::string* serialized_flatbuffer,
-                                       bool emit_builtin_tflite_ops,
-                                       bool emit_select_tf_ops,
-                                       bool emit_custom_ops);
-
-// Same as the above but with a custom op name mapper.
-bool MlirToFlatBufferTranslateFunction(
-    mlir::ModuleOp module, std::string* serialized_flatbuffer,
-    bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
-    tensorflow::OpOrArgNameMapper* op_or_arg_name_mapper);
+                                       const FlatbufferExportOptions& options,
+                                       std::string* serialized_flatbuffer);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_EXPORT_H_

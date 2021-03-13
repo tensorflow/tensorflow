@@ -18,6 +18,8 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+
+from tensorflow.python.framework import dtypes
 from tensorflow.python.util.lazy_loader import LazyLoader
 
 # Lazy load since some of the performance benchmark skylark rules
@@ -27,6 +29,11 @@ _calibration_wrapper = LazyLoader(
     "_calibration_wrapper", globals(),
     "tensorflow.lite.python.optimize."
     "_pywrap_tensorflow_lite_calibration_wrapper")
+
+
+def add_intermediate_tensors(model_content):
+  """Adds intermediate tensors to fused op if needed."""
+  return _calibration_wrapper.AddIntermediateTensors(model_content)
 
 
 class Calibrator(object):
@@ -59,6 +66,7 @@ class Calibrator(object):
                              input_type,
                              output_type,
                              allow_float,
+                             activations_type=dtypes.int8,
                              resize_input=True):
     """Calibrates the model with specified generator and then quantizes it.
 
@@ -73,9 +81,11 @@ class Calibrator(object):
       input_type: A tf.dtype representing the desired real-value input type.
       output_type: A tf.dtype representing the desired real-value output type.
       allow_float: A boolean. False if the resulting model cannot perform float
-        computation, useful when targeting an integer-only backend. If False, an
-        error will be thrown if an operation cannot be quantized, otherwise the
-        model will fallback to float ops.
+                   computation, useful when targeting an integer-only backend.
+                   If False, an error will be thrown if an operation cannot be
+                   quantized, otherwise the model will fallback to float ops.
+      activations_type: A tf.dtype representing the desired type for
+                   activations.
       resize_input: A boolean. True if the shape of the sample data is different
         from the input.
     """
@@ -90,7 +100,8 @@ class Calibrator(object):
       self._calibrator.FeedTensor(sample)
     return self._calibrator.QuantizeModel(
         np.dtype(input_type.as_numpy_dtype()).num,
-        np.dtype(output_type.as_numpy_dtype()).num, allow_float)
+        np.dtype(output_type.as_numpy_dtype()).num, allow_float,
+        np.dtype(activations_type.as_numpy_dtype()).num)
 
   def calibrate_and_quantize_single(self,
                                     dataset_gen,

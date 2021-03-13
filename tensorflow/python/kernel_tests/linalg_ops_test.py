@@ -59,7 +59,7 @@ class CholeskySolveTest(test.TestCase):
   def test_works_with_five_different_random_pos_def_matrices(self):
     for n in range(1, 6):
       for np_type, atol in [(np.float32, 0.05), (np.float64, 1e-5)]:
-        with self.session(use_gpu=True):
+        with self.session():
           # Create 2 x n x n matrix
           array = np.array(
               [_RandomPDMatrix(n, self.rng),
@@ -69,8 +69,7 @@ class CholeskySolveTest(test.TestCase):
             with self.subTest(n=n, np_type=np_type, atol=atol, k=k):
               rhs = self.rng.randn(2, n, k).astype(np_type)
               x = linalg_ops.cholesky_solve(chol, rhs)
-              self.assertAllClose(
-                  rhs, math_ops.matmul(array, x).eval(), atol=atol)
+              self.assertAllClose(rhs, math_ops.matmul(array, x), atol=atol)
 
 
 class LogdetTest(test.TestCase):
@@ -86,7 +85,7 @@ class LogdetTest(test.TestCase):
         with self.subTest(n=n, np_dtype=np_dtype, atol=atol):
           matrix = _RandomPDMatrix(n, self.rng, np_dtype)
           _, logdet_np = np.linalg.slogdet(matrix)
-          with self.session(use_gpu=True):
+          with self.session():
             # Create 2 x n x n matrix
             # matrix = np.array(
             #     [_RandomPDMatrix(n, self.rng, np_dtype),
@@ -100,7 +99,7 @@ class LogdetTest(test.TestCase):
       with self.subTest(np_dtype=np_dtype, atol=atol):
         matrix = (np.eye(20) * 1e-6).astype(np_dtype)
         _, logdet_np = np.linalg.slogdet(matrix)
-        with self.session(use_gpu=True):
+        with self.session():
           logdet_tf = linalg.logdet(matrix)
           self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=atol)
 
@@ -118,7 +117,7 @@ class SlogdetTest(test.TestCase):
         with self.subTest(n=n, np_dtype=np_dtype, atol=atol):
           matrix = _RandomPDMatrix(n, self.rng, np_dtype)
           sign_np, log_abs_det_np = np.linalg.slogdet(matrix)
-          with self.session(use_gpu=True):
+          with self.session():
             sign_tf, log_abs_det_tf = linalg.slogdet(matrix)
             self.assertAllClose(
                 log_abs_det_np, self.evaluate(log_abs_det_tf), atol=atol)
@@ -130,7 +129,7 @@ class SlogdetTest(test.TestCase):
       with self.subTest(np_dtype=np_dtype, atol=atol):
         matrix = (np.eye(20) * 1e-6).astype(np_dtype)
         sign_np, log_abs_det_np = np.linalg.slogdet(matrix)
-        with self.session(use_gpu=True):
+        with self.session():
           sign_tf, log_abs_det_tf = linalg.slogdet(matrix)
           self.assertAllClose(
               log_abs_det_np, self.evaluate(log_abs_det_tf), atol=atol)
@@ -260,7 +259,7 @@ class EyeTest(parameterized.TestCase, test.TestCase):
         num_columns=num_columns_placeholder,
         batch_shape=batch_shape_placeholder,
         dtype=dtype)
-    with self.session(use_gpu=True) as sess:
+    with self.session() as sess:
       eye_tf = sess.run(
           eye,
           feed_dict={

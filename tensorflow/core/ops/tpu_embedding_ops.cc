@@ -70,7 +70,6 @@ REGISTER_OP("RecvTPUEmbeddingActivations")
       if (!config.ParseFromString(config_string)) {
         return errors::InvalidArgument("Malformed tpu_embedding_config.");
       }
-      tpu::AddDefaultEmbeddingOutputLayoutIfNeeded(&config);
       std::vector<TensorShapeProto> output_shapes;
       TF_RETURN_IF_ERROR(ComputeOutputTensorShapes(config, &output_shapes));
       if (c->num_outputs() != output_shapes.size()) {
@@ -165,6 +164,7 @@ REGISTER_OP("EnqueueTPUEmbeddingSparseTensorBatch")
     .Attr("combiners: list(string) = []")
     .Attr("table_ids: list(int)")
     .Attr("max_sequence_lengths: list(int) = []")
+    .Attr("num_features: list(int) = []")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 
@@ -181,6 +181,7 @@ REGISTER_OP("EnqueueTPUEmbeddingRaggedTensorBatch")
     .Attr("combiners: list(string) = []")
     .Attr("table_ids: list(int)")
     .Attr("max_sequence_lengths: list(int) = []")
+    .Attr("num_features: list(int) = []")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 

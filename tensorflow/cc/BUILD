@@ -2,15 +2,20 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "cc_library_with_android_deps",
-    "tf_cc_binary",
     "tf_cc_test",
     "tf_copts",
-    "tf_gen_op_wrappers_cc",
     "transitive_hdrs",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrappers_cc")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -245,7 +250,6 @@ cc_library_with_android_deps(
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_experimental",
         "//tensorflow/core:protos_all_cc",
     ],
 )
@@ -260,7 +264,6 @@ tf_cc_test(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_experimental",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -558,6 +561,7 @@ tf_gen_op_wrappers_cc(
         "io_ops",
         "linalg_ops",
         "list_ops",
+        "map_ops",
         "logging_ops",
         "lookup_ops",
         "manip_ops",
@@ -743,36 +747,6 @@ tf_gen_op_wrappers_cc(
     ],
 )
 
-tf_cc_binary(
-    name = "tutorials_example_trainer",
-    srcs = ["tutorials/example_trainer.cc"],
-    copts = tf_copts(),
-    linkopts = select({
-        "//tensorflow:windows": [],
-        "//tensorflow:macos": [
-            "-lm",
-            "-lpthread",
-        ],
-        "//tensorflow:ios": [
-            "-lm",
-            "-lpthread",
-        ],
-        "//conditions:default": [
-            "-lm",
-            "-lpthread",
-            "-lrt",
-        ],
-    }),
-    deps = [
-        ":cc_ops",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
-    ],
-)
-
 cc_library(
     name = "queue_runner",
     srcs = ["training/queue_runner.cc"],
@@ -851,7 +825,6 @@ transitive_hdrs(
         ":queue_runner",
         ":remote_fused_graph_ops",
         ":scope",
-        "//tensorflow/cc/profiler",
         "//tensorflow/cc/saved_model:constants",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/cc/saved_model:reader",

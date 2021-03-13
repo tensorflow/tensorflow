@@ -16,10 +16,12 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/kernels/data/dataset_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -29,37 +31,17 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-class DatasetHashUtilsTest : public ::testing::Test {
- protected:
-  uint64 GetHash(const FunctionDefLibrary& library, const FunctionDef& fn) {
-    // Construct a node with a function as an attr.
-    GraphDef graph_def;
-    *graph_def.mutable_library() = library;
-    NodeDef* node = graph_def.add_node();
-    node->set_op("RemoteCall");
-    NameAttrList func;
-    func.set_name(fn.signature().name());
-    AddNodeAttr("f", func, node);
-    uint64 hash = 0;
-    TF_CHECK_OK(HashNode(graph_def, *node, &hash));
-    return hash;
-  }
+using ::testing::UnorderedElementsAre;
 
-  uint64 GetHash(const GraphDef& graph, const NodeDef& node) {
-    uint64 hash = 0;
-    TF_CHECK_OK(HashNode(graph, node, &hash));
-    return hash;
-  }
+string full_name(string key) { return FullName("Iterator:", key); }
 
-  uint64 GetHash(const Tensor& tensor) {
-    uint64 hash = 0;
-    TF_CHECK_OK(HashTensor(tensor, &hash));
-    return hash;
-  }
-};
-
-string full_name(string key) {
-  return strings::StrCat(kFullNameRandomHex, kPipe, "Iterator:", key);
+TEST(DatasetUtilsTest, MatchesAnyVersion) {
+  EXPECT_TRUE(MatchesAnyVersion("BatchDataset", "BatchDataset"));
+  EXPECT_TRUE(MatchesAnyVersion("BatchDataset", "BatchDatasetV2"));
+  EXPECT_TRUE(MatchesAnyVersion("BatchDataset", "BatchDatasetV3"));
+  EXPECT_FALSE(MatchesAnyVersion("BatchDataset", "BatchDatasetXV3"));
+  EXPECT_FALSE(MatchesAnyVersion("BatchDataset", "BatchV2Dataset"));
+  EXPECT_FALSE(MatchesAnyVersion("BatchDataset", "PaddedBatchDataset"));
 }
 
 TEST(DatasetUtilsTest, VariantTensorDataRoundtrip) {
@@ -149,6 +131,33 @@ TEST(DatasetUtilsTest, VariantTensorDataWriteAfterFlushing) {
             writer.WriteTensor(full_name("Tensor"), input_tensor).code());
 }
 
+TEST(DatasetUtilsTest, CheckpointElementsRoundTrip) {
+  std::vector<std::vector<Tensor>> elements;
+  elements.push_back(CreateTensors<int32>(TensorShape({3}), {{1, 2, 3}}));
+  elements.push_back(CreateTensors<int32>(TensorShape({2}), {{4, 5}}));
+  VariantTensorDataWriter writer;
+  tstring test_prefix = full_name("test_prefix");
+  TF_ASSERT_OK(WriteElementsToCheckpoint(&writer, test_prefix, elements));
+  std::vector<const VariantTensorData*> data;
+  writer.GetData(&data);
+
+  VariantTensorDataReader reader(data);
+  std::vector<std::vector<Tensor>> read_elements;
+  TF_ASSERT_OK(
+      ReadElementsFromCheckpoint(&reader, test_prefix, &read_elements));
+  ASSERT_EQ(elements.size(), read_elements.size());
+  for (int i = 0; i < elements.size(); ++i) {
+    std::vector<Tensor>& original = elements[i];
+    std::vector<Tensor>& read = read_elements[i];
+
+    ASSERT_EQ(original.size(), read.size());
+    for (int j = 0; j < original.size(); ++j) {
+      EXPECT_EQ(original[j].NumElements(), read[j].NumElements());
+      EXPECT_EQ(original[j].flat<int32>()(0), read[j].flat<int32>()(0));
+    }
+  }
+}
+
 TEST(DatasetUtilsTest, AddToFunctionLibrary) {
   auto make_fn_a = [](const string& fn_name) {
     return FunctionDefHelper::Create(
@@ -234,6 +243,26 @@ TEST(DatasetUtilsTest, AddToFunctionLibraryWithConflictingSignatures) {
       s.error_message());
 }
 
+TEST(DatasetUtilsTest, StripDevicePlacement) {
+  FunctionDefLibrary flib;
+  *flib.add_function() = FunctionDefHelper::Create(
+      /*function_name=*/"0",
+      /*in_def=*/{"arg: int64"},
+      /*out_def=*/{"ret: int64"},
+      /*attr_def=*/{},
+      /*node_def=*/
+      {{{"node"},
+        "Identity",
+        {"arg"},
+        {{"T", DT_INT64}},
+        /*dep=*/{},
+        /*device=*/"device:CPU:0"}},
+      /*ret_def=*/{{"ret", "arg"}});
+  EXPECT_EQ(flib.function(0).node_def(0).device(), "device:CPU:0");
+  StripDevicePlacement(&flib);
+  EXPECT_EQ(flib.function(0).node_def(0).device(), "");
+}
+
 TEST(DatasetUtilsTest, RunnerWithMaxParallelism) {
   auto runner =
       RunnerWithMaxParallelism([](const std::function<void()> fn) { fn(); }, 2);
@@ -269,831 +298,221 @@ TEST(DatasetUtilsTest, BoolConstructor) {
   EXPECT_FALSE(DeterminismPolicy(false).IsDefault());
 }
 
-TEST_F(DatasetHashUtilsTest, HashFunctionSameFunctionDifferentNames) {
-  FunctionDefLibrary fl;
+class SelectOptimizationsHashTest : public ::testing::TestWithParam<uint64> {};
 
-  FunctionDef* f1 = fl.add_function();
-  *f1 = FunctionDefHelper::Create(
-      "AddAndMul", {"i: float"}, {"o: float"}, {},
-      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
-       {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
-      /*ret_def=*/{{"o", "ret:z:0"}},
-      /*control_ret_def=*/{{"must_execute", "add"}});
+TEST_P(SelectOptimizationsHashTest, DatasetUtils) {
+  const uint64 hash_result = GetParam();
+  string job_name = "job";
+  auto hash_func = [hash_result](const string& str) { return hash_result; };
+  absl::flat_hash_map<string, uint64> live_experiments = {
+      {"exp1", 0},  {"exp2", 20}, {"exp3", 33}, {"exp4", 45},
+      {"exp5", 67}, {"exp6", 88}, {"exp7", 100}};
+  std::vector<tstring> optimizations_enabled, optimizations_disabled,
+      optimizations_default;
+  std::vector<tstring> optimizations = SelectOptimizations(
+      job_name, live_experiments, optimizations_enabled, optimizations_disabled,
+      optimizations_default, hash_func);
 
-  FunctionDef* f2 = fl.add_function();
-  *f2 = FunctionDefHelper::Create(
-      "AddAndMul2", {"input: float"}, {"o: float"}, {},
-      {{{"add"}, "Add", {"input", "input"}, {{"T", DT_FLOAT}}},
-       {{"ret"}, "Mul", {"input", "input"}, {{"T", DT_FLOAT}}}},
-      /*ret_def=*/{{"o", "ret:z:0"}},
-      /*control_ret_def=*/{{"must_execute", "add"}});
-
-  EXPECT_EQ(GetHash(fl, *f1), GetHash(fl, *f2));
+  int tested_times = 0;
+  switch (hash_result) {
+    case 0:
+    case 100:
+    case 200:
+      tested_times++;
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp2", "exp3", "exp4",
+                                                      "exp5", "exp6", "exp7"));
+      break;
+    case 33:
+    case 133:
+      tested_times++;
+      EXPECT_THAT(optimizations,
+                  UnorderedElementsAre("exp4", "exp5", "exp6", "exp7"));
+      break;
+    case 67:
+    case 167:
+      tested_times++;
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp6", "exp7"));
+      break;
+  }
+  EXPECT_EQ(tested_times, 1);
 }
 
-TEST_F(DatasetHashUtilsTest, HashFunctionDifferentFunctions) {
-  FunctionDefLibrary fl;
+INSTANTIATE_TEST_SUITE_P(Test, SelectOptimizationsHashTest,
+                         ::testing::Values(0, 33, 67, 100, 133, 167, 200));
 
-  FunctionDef* f1 = fl.add_function();
-  *f1 = FunctionDefHelper::Create(
-      "AddAndMul", {"i: float"}, {"o: float"}, {},
-      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
-       {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
-      /*ret_def=*/{{"o", "ret:z:0"}},
-      /*control_ret_def=*/{{"must_execute", "add"}});
+class SelectOptimizationsOptTest
+    : public ::testing::TestWithParam<std::tuple<string, string>> {};
 
-  FunctionDef* f2 = fl.add_function();
-  *f2 = FunctionDefHelper::Create(
-      "AddAndAdd", {"i: float"}, {"o: float"}, {},
-      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
-       {{"ret"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}}},
-      /*ret_def=*/{{"o", "ret:z:0"}},
-      /*control_ret_def=*/{{"must_execute", "add"}});
+TEST_P(SelectOptimizationsOptTest, DatasetUtils) {
+  const string opt_ins = std::get<0>(GetParam());
+  const string opt_outs = std::get<1>(GetParam());
+  if (!opt_ins.empty()) {
+    setenv("TF_DATA_EXPERIMENT_OPT_IN", opt_ins.c_str(), 1);
+  }
+  if (!opt_outs.empty()) {
+    setenv("TF_DATA_EXPERIMENT_OPT_OUT", opt_outs.c_str(), 1);
+  }
+  string job_name = "job";
+  auto hash_func = [](const string& str) { return 50; };
+  absl::flat_hash_map<string, uint64> live_experiments = {
+      {"exp1", 0}, {"exp2", 25}, {"exp3", 50}, {"exp4", 75}, {"exp5", 100}};
+  std::vector<tstring> optimizations_enabled, optimizations_disabled,
+      optimizations_default;
+  std::vector<tstring> optimizations = SelectOptimizations(
+      job_name, live_experiments, optimizations_enabled, optimizations_disabled,
+      optimizations_default, hash_func);
 
-  // The second op in `f2` is changed to "Add"
-  EXPECT_NE(GetHash(fl, *f1), GetHash(fl, *f2));
-}
-
-TEST_F(DatasetHashUtilsTest, HashFunctionDifferentInternalNodeNames) {
-  FunctionDefLibrary fl;
-
-  FunctionDef* f1 = fl.add_function();
-  *f1 = FunctionDefHelper::Create(
-      "AddAndMul", {"i: float", "j: float", "k: float"}, {"o: float"}, {},
-      {{{"add"}, "Add", {"i", "j"}, {{"T", DT_FLOAT}}},
-       {{"ret"}, "Mul", {"add:z:0", "k"}, {{"T", DT_FLOAT}}}},
-      /*ret_def=*/{{"o", "ret:z:0"}},
-      /*control_ret_def=*/{{"must_execute", "ret"}});
-
-  FunctionDef* f2 = fl.add_function();
-  *f2 = FunctionDefHelper::Create(
-      "AddAndMul", {"a: float", "b: float", "c: float"}, {"o: float"}, {},
-      {{{"add"}, "Add", {"a", "b"}, {{"T", DT_FLOAT}}},
-       {{"mul"}, "Mul", {"add:z:0", "c"}, {{"T", DT_FLOAT}}}},
-      /*ret_def=*/{{"o", "mul:z:0"}},
-      /*control_ret_def=*/{{"must_execute", "mul"}});
-
-  EXPECT_EQ(GetHash(fl, *f1), GetHash(fl, *f2));
-}
-
-TEST_F(DatasetHashUtilsTest, HashGraphWithMultipleCycles) {
-  uint64 hash = 0;
-  for (int i = 0; i < 1000; ++i) {
-    GraphDef g;
-    NodeDef* output_node = g.add_node();
-    TF_CHECK_OK(NodeDefBuilder("O", "Add")
-                    .Input("A", 0, DT_FLOAT)
-                    .Input("D", 0, DT_FLOAT)
-                    .Finalize(output_node));
-    TF_CHECK_OK(NodeDefBuilder("A", "Abs")
-                    .Input("B", 0, DT_FLOAT)
-                    .Finalize(g.add_node()));
-    TF_CHECK_OK(NodeDefBuilder("B", "Add")
-                    .Input("C", 0, DT_FLOAT)
-                    .Input("D", 0, DT_FLOAT)
-                    .Finalize(g.add_node()));
-    TF_CHECK_OK(NodeDefBuilder("C", "Ceil")
-                    .Input("A", 0, DT_FLOAT)
-                    .Finalize(g.add_node()));
-    TF_CHECK_OK(NodeDefBuilder("D", "Cos")
-                    .Input("E", 0, DT_FLOAT)
-                    .Finalize(g.add_node()));
-    TF_CHECK_OK(NodeDefBuilder("E", "Floor")
-                    .Input("B", 0, DT_FLOAT)
-                    .Finalize(g.add_node()));
-    uint64 t = GetHash(g, *output_node);
-    if (hash == 0) {
-      hash = t;
-    } else {
-      EXPECT_EQ(t, hash);
+  int tested_times = 0;
+  if (opt_outs == "all") {
+    EXPECT_THAT(optimizations, UnorderedElementsAre());
+    tested_times++;
+  } else if (opt_outs.empty()) {
+    if (opt_ins == "all") {
+      EXPECT_THAT(optimizations,
+                  UnorderedElementsAre("exp1", "exp2", "exp3", "exp4", "exp5"));
+      tested_times++;
+    } else if (opt_ins.empty()) {
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp4", "exp5"));
+      tested_times++;
+    } else if (opt_ins == "exp2,exp4") {
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp2", "exp4", "exp5"));
+      tested_times++;
     }
+  } else if (opt_outs == "exp1,exp5") {
+    if (opt_ins == "all") {
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp2", "exp3", "exp4"));
+      tested_times++;
+    } else if (opt_ins.empty()) {
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp4"));
+      tested_times++;
+    } else if (opt_ins == "exp2,exp4") {
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp2", "exp4"));
+      tested_times++;
+    }
+  }
+  EXPECT_EQ(tested_times, 1);
+
+  if (!opt_ins.empty()) {
+    unsetenv("TF_DATA_EXPERIMENT_OPT_IN");
+  }
+  if (!opt_outs.empty()) {
+    unsetenv("TF_DATA_EXPERIMENT_OPT_OUT");
   }
 }
 
-TEST_F(DatasetHashUtilsTest, HashNodeSameGraphDifferentNames) {
-  GraphDef gd;
-
-  NodeDef* n1 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
-                  .Attr("value", 1)
-                  .Device("CPU:0")
-                  .Finalize(n1));
-
-  NodeDef* n2 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "Const")
-                  .Attr("value", 2)
-                  .Device("CPU:0")
-                  .Finalize(n2));
-
-  NodeDef* n3 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
-                  .Device("CPU:0")
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(n2->name(), 0, DT_INT32)
-                  .Finalize(n3));
-
-  uint64 hash1 = GetHash(gd, *n3);
-
-  n1->Clear();
-  TF_CHECK_OK(NodeDefBuilder("graph_3/node_7", "Const")
-                  .Attr("value", 1)
-                  .Device("CPU:0")
-                  .Finalize(n1));
-
-  n2->Clear();
-  TF_CHECK_OK(NodeDefBuilder("graph_4/node_9", "Const")
-                  .Attr("value", 2)
-                  .Device("CPU:0")
-                  .Finalize(n2));
-
-  n3->Clear();
-  TF_CHECK_OK(NodeDefBuilder("graph_5/node_11", "Add")
-                  .Device("CPU:0")
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(n2->name(), 0, DT_INT32)
-                  .Finalize(n3));
-
-  uint64 hash2 = GetHash(gd, *n3);
-
-  EXPECT_EQ(hash1, hash2);
-}
-
-TEST_F(DatasetHashUtilsTest, HashNodeDifferentGraphs) {
-  GraphDef gd;
-
-  NodeDef* n1 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
-                  .Attr("value", 1)
-                  .Device("CPU:0")
-                  .Finalize(n1));
-
-  NodeDef* n2 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "Const")
-                  .Attr("value", 2)
-                  .Device("CPU:0")
-                  .Finalize(n2));
-
-  NodeDef* n3 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
-                  .Device("CPU:0")
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(n2->name(), 0, DT_INT32)
-                  .Finalize(n3));
-
-  uint64 hash1 = GetHash(gd, *n3);
-
-  n3->Clear();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Mul")
-                  .Device("CPU:0")
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(n2->name(), 0, DT_INT32)
-                  .Finalize(n3));
-
-  uint64 hash2 = GetHash(gd, *n3);
-
-  // We expect different hashes because the op of n3 has changed.
-  EXPECT_NE(hash1, hash2);
-}
-
-TEST_F(DatasetHashUtilsTest, HashSameGraphDifferentSeeds) {
-  GraphDef gd;
-
-  NodeDef* n1 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
-                  .Attr("value", 1)
-                  .Device("CPU:0")
-                  .Finalize(n1));
-
-  NodeDef* seed = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/seed", "Const")
-                  .Attr("value", 123)
-                  .Device("CPU:0")
-                  .Finalize(seed));
-
-  NodeDef* seed2 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/seed2", "Const")
-                  .Attr("value", 456)
-                  .Device("CPU:0")
-                  .Finalize(seed2));
-
-  NodeDef* range_ds = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/range", "RangeDataset")
-                  .Input(n1->name(), 0, DT_INT64)
-                  .Input(n1->name(), 0, DT_INT64)
-                  .Input(n1->name(), 0, DT_INT64)
-                  .Device("CPU:0")
-                  .Finalize(range_ds));
-
-  NodeDef* shuffle_ds = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/shuffle", "ShuffleDataset")
-                  .Input(range_ds->name(), 0, DT_VARIANT)
-                  .Input(n1->name(), 0, DT_INT64)
-                  .Input(seed->name(), 0, DT_INT64)
-                  .Input(seed2->name(), 0, DT_INT64)
-                  .Device("CPU:0")
-                  .Finalize(shuffle_ds));
-
-  uint64 hash1 = GetHash(gd, *shuffle_ds);
-
-  seed->Clear();
-  seed2->Clear();
-
-  TF_CHECK_OK(NodeDefBuilder("graph_1/seed", "Const")
-                  .Attr("value", 789)
-                  .Device("CPU:0")
-                  .Finalize(seed));
-  TF_CHECK_OK(NodeDefBuilder("graph_1/seed2", "Const")
-                  .Attr("value", 654)
-                  .Device("CPU:0")
-                  .Finalize(seed2));
-
-  uint64 hash2 = GetHash(gd, *shuffle_ds);
-
-  EXPECT_EQ(hash1, hash2);
-}
-
-TEST_F(DatasetHashUtilsTest, HashNodeSameGraphDifferentColocationNames) {
-  GraphDef gd;
-
-  NodeDef* n1 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
-                  .Attr("value", 1)
-                  .Attr("_class", {"graph_1/node_2"})
-                  .Device("CPU:0")
-                  .Finalize(n1));
-
-  NodeDef* n2 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "Const")
-                  .Attr("value", 2)
-                  .Device("CPU:0")
-                  .Finalize(n2));
-
-  NodeDef* n3 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
-                  .Device("CPU:0")
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(n2->name(), 0, DT_INT32)
-                  .Finalize(n3));
-
-  uint64 hash1 = GetHash(gd, *n3);
-
-  n1->Clear();
-  TF_CHECK_OK(NodeDefBuilder("graph_3/node_7", "Const")
-                  .Attr("value", 1)
-                  .Attr("_class", {"graph_3/node_9"})
-                  .Device("CPU:0")
-                  .Finalize(n1));
-
-  n2->Clear();
-  TF_CHECK_OK(NodeDefBuilder("graph_4/node_9", "Const")
-                  .Attr("value", 2)
-                  .Device("CPU:0")
-                  .Finalize(n2));
-
-  n3->Clear();
-  TF_CHECK_OK(NodeDefBuilder("graph_5/node_11", "Add")
-                  .Device("CPU:0")
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(n2->name(), 0, DT_INT32)
-                  .Finalize(n3));
-
-  uint64 hash2 = GetHash(gd, *n3);
-
-  EXPECT_EQ(hash1, hash2);
-}
-
-TEST_F(DatasetHashUtilsTest, HashNodeReversedOrder) {
-  GraphDef gd;
-
-  NodeDef* n1 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
-                  .Attr("value", 1)
-                  .Device("CPU:0")
-                  .Finalize(n1));
-
-  NodeDef* n2 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "Const")
-                  .Attr("value", 2)
-                  .Device("CPU:0")
-                  .Finalize(n2));
-
-  NodeDef* n3 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
-                  .Device("CPU:0")
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(n2->name(), 0, DT_INT32)
-                  .Finalize(n3));
-
-  uint64 hash1 = GetHash(gd, *n3);
-
-  n3->Clear();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
-                  .Device("CPU:0")
-                  .Input(n2->name(), 0, DT_INT32)
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Finalize(n3));
-
-  uint64 hash2 = GetHash(gd, *n3);
-
-  // We expect different hashes because the inputs of n3 are swapped.
-  EXPECT_NE(hash1, hash2);
-}
-
-TEST_F(DatasetHashUtilsTest, HashNodeInputPortChanged) {
-  GraphDef gd;
-
-  NodeDef* n1 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
-                  .Attr("value", 1)
-                  .Device("CPU:0")
-                  .Finalize(n1));
-
-  NodeDef* n2 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "Const")
-                  .Attr("value", 2)
-                  .Device("CPU:0")
-                  .Finalize(n2));
-
-  NodeDef* n3 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
-                  .Device("CPU:0")
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(n2->name(), 0, DT_INT32)
-                  .Finalize(n3));
-
-  uint64 hash1 = GetHash(gd, *n3);
-
-  n3->Clear();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
-                  .Device("CPU:0")
-                  .Input(n1->name(), 1, DT_INT32)
-                  .Input(n2->name(), 2, DT_INT32)
-                  .Finalize(n3));
-
-  uint64 hash2 = GetHash(gd, *n3);
-
-  // We expect different hashes because the input ports for nodes used by n3
-  // has changed.
-  EXPECT_NE(hash1, hash2);
-}
-
-TEST_F(DatasetHashUtilsTest, HashNodeSameFunctionDifferentNames) {
-  GraphDef gd;
-  FunctionDefLibrary* fl1 = gd.mutable_library();
-
-  FunctionDef* f1 = fl1->add_function();
-  *f1 = FunctionDefHelper::Create(
-      "AddAndMul", {"i: float"}, {"o: float"}, {},
-      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
-       {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
-      /*ret_def=*/{{"o", "ret:z:0"}},
-      /*control_ret_def=*/{{"must_execute", "add"}});
-
-  FunctionDef* f2 = fl1->add_function();
-  *f2 = FunctionDefHelper::Create(
-      "AddAndMul2", {"input: float"}, {"o: float"}, {},
-      {{{"add"}, "Add", {"input", "input"}, {{"T", DT_FLOAT}}},
-       {{"ret"}, "Mul", {"input", "input"}, {{"T", DT_FLOAT}}}},
-      /*ret_def=*/{{"o", "ret:z:0"}},
-      /*control_ret_def=*/{{"must_execute", "add"}});
-
-  AttrValue a1;
-  NameAttrList* nal1 = a1.mutable_func();
-  nal1->set_name("AddAndMul");
-
-  NodeDef* n1 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
-                  .Attr("value", 1)
-                  .Device("CPU:0")
-                  .Finalize(n1));
-
-  std::vector<NodeDefBuilder::NodeOut> func_inputs;
-  func_inputs.emplace_back(n1->name(), 0, DT_FLOAT);
-  func_inputs.emplace_back(n1->name(), 0, DT_FLOAT);
-
-  NodeDef* n2 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "For")
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(func_inputs)
-                  .Attr("body", a1)
-                  .Device("CPU:0")
-                  .Finalize(n2));
-
-  uint64 hash1 = GetHash(gd, *n2);
-
-  n2->Clear();
-  AttrValue a2;
-  NameAttrList* nal2 = a2.mutable_func();
-  nal2->set_name("AddAndMul2");
-
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "For")
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(func_inputs)
-                  .Attr("body", a2)
-                  .Device("CPU:0")
-                  .Finalize(n2));
-
-  uint64 hash2 = GetHash(gd, *n2);
-
-  EXPECT_EQ(hash1, hash2);
-}
-
-TEST_F(DatasetHashUtilsTest, HashNodeDifferentFunctions) {
-  GraphDef gd;
-
-  FunctionDefLibrary* fl1 = gd.mutable_library();
-  FunctionDef* f1 = fl1->add_function();
-
-  FunctionDef func = FunctionDefHelper::Create(
-      "AddAndMul", {"i: float"}, {"o: float"}, {},
-      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
-       {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
-      /*ret_def=*/{{"o", "ret:z:0"}},
-      /*control_ret_def=*/{{"must_execute", "add"}});
-  *f1 = func;
-
-  FunctionDef* f2 = fl1->add_function();
-  func = FunctionDefHelper::Create(
-      "AddAndMul2", {"i: float"}, {"o: float"}, {},
-      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
-       {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
-      /*ret_def=*/{{"o", "ret:z:0"}},
-      /*control_ret_def=*/{{"must_execute", "ret"}});
-  *f2 = func;
-
-  AttrValue a1;
-  NameAttrList* nal1 = a1.mutable_func();
-  nal1->set_name("AddAndMul");
-
-  NodeDef* n1 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
-                  .Attr("value", 1)
-                  .Device("CPU:0")
-                  .Finalize(n1));
-
-  std::vector<NodeDefBuilder::NodeOut> func_inputs;
-  func_inputs.emplace_back(n1->name(), 0, DT_FLOAT);
-  func_inputs.emplace_back(n1->name(), 0, DT_FLOAT);
-
-  NodeDef* n2 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "For")
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(func_inputs)
-                  .Attr("body", a1)
-                  .Device("CPU:0")
-                  .Finalize(n2));
-
-  uint64 hash1 = GetHash(gd, *n2);
-
-  n2->Clear();
-  AttrValue a2;
-  NameAttrList* nal2 = a2.mutable_func();
-  nal2->set_name("AddAndMul2");
-
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "For")
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(func_inputs)
-                  .Attr("body", a2)
-                  .Device("CPU:0")
-                  .Finalize(n2));
-
-  uint64 hash2 = GetHash(gd, *n2);
-
-  EXPECT_NE(hash1, hash2);
-}
-
-TEST_F(DatasetHashUtilsTest, HashNodeDifferentControlInputs) {
-  GraphDef gd;
-
-  NodeDef* n1 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
-                  .Attr("value", 1)
-                  .Device("CPU:0")
-                  .Finalize(n1));
-
-  NodeDef* n2 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "Const")
-                  .Attr("value", 2)
-                  .Device("CPU:0")
-                  .Finalize(n2));
-
-  NodeDef* n3 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Const")
-                  .Attr("value", 10)
-                  .Device("CPU:0")
-                  .Finalize(n3));
-
-  NodeDef* n4 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_4", "Identity")
-                  .Device("CPU:0")
-                  .Input(n1->name(), 0, DT_INT32)
-                  .ControlInput(n2->name())
-                  .Finalize(n4));
-
-  uint64 hash1 = GetHash(gd, *n4);
-
-  n4->Clear();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_4", "Identity")
-                  .Device("CPU:0")
-                  .Input(n1->name(), 0, DT_INT32)
-                  .ControlInput(n3->name())
-                  .Finalize(n4));
-
-  uint64 hash2 = GetHash(gd, *n4);
-
-  // Control inputs are different between these two graphs.
-  EXPECT_NE(hash1, hash2);
-}
-
-TEST_F(DatasetHashUtilsTest, HashNodeControlInputDifferentOrdering) {
-  GraphDef gd;
-
-  NodeDef* n1 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
-                  .Attr("value", 1)
-                  .Device("CPU:0")
-                  .Finalize(n1));
-
-  NodeDef* n2 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "Const")
-                  .Attr("value", 2)
-                  .Device("CPU:0")
-                  .Finalize(n2));
-
-  NodeDef* n3 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Const")
-                  .Attr("value", 10)
-                  .Device("CPU:0")
-                  .Finalize(n3));
-
-  NodeDef* n4 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_4", "Identity")
-                  .Device("CPU:0")
-                  .Input(n1->name(), 0, DT_INT32)
-                  .ControlInput(n2->name())
-                  .ControlInput(n3->name())
-                  .Finalize(n4));
-
-  uint64 hash1 = GetHash(gd, *n4);
-
-  n4->Clear();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_4", "Identity")
-                  .Device("CPU:0")
-                  .Input(n1->name(), 0, DT_INT32)
-                  .ControlInput(n3->name())
-                  .ControlInput(n2->name())
-                  .Finalize(n4));
-
-  uint64 hash2 = GetHash(gd, *n4);
-
-  EXPECT_EQ(hash1, hash2);
-}
-
-TEST_F(DatasetHashUtilsTest, HashNodeDifferentGraphSamePartialGraph) {
-  GraphDef gd;
-
-  NodeDef* n1 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
-                  .Attr("value", 1)
-                  .Device("CPU:0")
-                  .Finalize(n1));
-
-  NodeDef* n2 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "Const")
-                  .Attr("value", 2)
-                  .Device("CPU:0")
-                  .Finalize(n2));
-
-  NodeDef* n3 = gd.add_node();
-
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
-                  .Device("CPU:0")
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(n2->name(), 0, DT_INT32)
-                  .Finalize(n3));
-
-  uint64 hash1 = GetHash(gd, *n1);
-
-  n3->Clear();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Mul")
-                  .Device("CPU:0")
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(n2->name(), 0, DT_INT32)
-                  .Finalize(n3));
-
-  uint64 hash2 = GetHash(gd, *n1);
-
-  EXPECT_EQ(hash1, hash2);
-}
-
-TEST_F(DatasetHashUtilsTest, HashNodeWithManyControlDependencies) {
-  GraphDef gd;
-  NodeDef* n;
-
-  for (int i = 0; i < 1000; ++i) {
-    n = gd.add_node();
-    NodeDefBuilder ndb(absl::StrCat("graph_1/node_", i), "Const");
-    ndb.Attr("value", 1);
-    ndb.Device("CPU:0");
-    for (int j = 0; j < i; ++j) {
-      ndb.ControlInput(absl::StrCat("graph_1/node_", j));
-    }
-    TF_CHECK_OK(ndb.Finalize(n));
+INSTANTIATE_TEST_SUITE_P(
+    Test, SelectOptimizationsOptTest,
+    ::testing::Combine(::testing::Values("all", "", "exp2,exp4"),
+                       ::testing::Values("all", "", "exp1,exp5")));
+
+class SelectOptimizationsConflictTest
+    : public ::testing::TestWithParam<std::tuple<string, string, uint64>> {};
+
+TEST_P(SelectOptimizationsConflictTest, DatasetUtils) {
+  const string opt_ins = std::get<0>(GetParam());
+  const string opt_outs = std::get<1>(GetParam());
+  const uint64 hash_result = std::get<2>(GetParam());
+  if (!opt_ins.empty()) {
+    setenv("TF_DATA_EXPERIMENT_OPT_IN", opt_ins.c_str(), 1);
   }
+  if (!opt_outs.empty()) {
+    setenv("TF_DATA_EXPERIMENT_OPT_OUT", opt_outs.c_str(), 1);
+  }
+  string job_name = "job";
+  auto hash_func = [hash_result](const string& str) { return hash_result; };
+  absl::flat_hash_map<string, uint64> live_experiments = {
+      {"exp1", 20}, {"exp2", 30}, {"exp3", 40},
+      {"exp4", 60}, {"exp5", 70}, {"exp6", 80}};
+  std::vector<tstring> optimizations_enabled = {"exp1", "exp4"},
+                       optimizations_disabled = {"exp2", "exp5"},
+                       optimizations_default = {"exp3", "exp6"};
+  std::vector<tstring> optimizations = SelectOptimizations(
+      job_name, live_experiments, optimizations_enabled, optimizations_disabled,
+      optimizations_default, hash_func);
 
-  // No checks here, because so long as this does not time out, we are OK.
-  GetHash(gd, *n);
+  int tested_times = 0;
+  if (opt_outs.empty()) {
+    EXPECT_THAT(optimizations,
+                UnorderedElementsAre("exp1", "exp3", "exp4", "exp6"));
+    tested_times++;
+  } else if (opt_outs == "exp1,exp3") {
+    EXPECT_THAT(optimizations, UnorderedElementsAre("exp1", "exp4", "exp6"));
+    tested_times++;
+  }
+  EXPECT_EQ(tested_times, 1);
+
+  if (!opt_ins.empty()) {
+    unsetenv("TF_DATA_EXPERIMENT_OPT_IN");
+  }
+  if (!opt_outs.empty()) {
+    unsetenv("TF_DATA_EXPERIMENT_OPT_OUT");
+  }
 }
 
-TEST_F(DatasetHashUtilsTest, HashFunctionsWithControlDependencyLoop) {
-  GraphDef gd;
+INSTANTIATE_TEST_SUITE_P(Test, SelectOptimizationsConflictTest,
+                         ::testing::Combine(::testing::Values("", "exp2"),
+                                            ::testing::Values("", "exp1,exp3"),
+                                            ::testing::Values(10, 50, 90)));
 
-  FunctionDefLibrary* fl1 = gd.mutable_library();
-  FunctionDef* f1 = fl1->add_function();
+class SelectOptimizationsJobTest
+    : public ::testing::TestWithParam<std::tuple<string, string, string>> {};
 
-  AttrValue a1;
-  NameAttrList* nal1 = a1.mutable_func();
-  nal1->set_name("AddAndMul");
+TEST_P(SelectOptimizationsJobTest, DatasetUtils) {
+  const string job_name = std::get<0>(GetParam());
+  const string opt_ins = std::get<1>(GetParam());
+  const string opt_outs = std::get<2>(GetParam());
+  if (!opt_ins.empty()) {
+    setenv("TF_DATA_EXPERIMENT_OPT_IN", opt_ins.c_str(), 1);
+  }
+  if (!opt_outs.empty()) {
+    setenv("TF_DATA_EXPERIMENT_OPT_OUT", opt_outs.c_str(), 1);
+  }
+  std::vector<tstring> optimizations_enabled = {"exp4"}, optimizations_disabled,
+                       optimizations_default = {"exp2"};
+  absl::flat_hash_map<string, uint64> live_experiments = {
+      {"exp1", 0}, {"exp2", 100}, {"exp3", 100}};
+  auto hash_func = [](const string& str) { return Hash64(str); };
+  std::vector<tstring> optimizations = SelectOptimizations(
+      job_name, live_experiments, optimizations_enabled, optimizations_disabled,
+      optimizations_default, hash_func);
 
-  std::pair<string, FunctionDefHelper::AttrValueWrapper> func_attr = {
-      "body", FunctionDefHelper::AttrValueWrapper(*nal1)};
+  int tested_times = 0;
+  if (job_name.empty()) {
+    EXPECT_THAT(optimizations, UnorderedElementsAre("exp2", "exp4"));
+    tested_times++;
+  } else if (opt_ins.empty()) {
+    if (opt_outs.empty()) {
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp2", "exp3", "exp4"));
+      tested_times++;
+    } else if (opt_outs == "exp2,exp3") {
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp4"));
+      tested_times++;
+    }
+  } else if (opt_ins == "exp1") {
+    if (opt_outs.empty()) {
+      EXPECT_THAT(optimizations,
+                  UnorderedElementsAre("exp1", "exp2", "exp3", "exp4"));
+      tested_times++;
+    } else if (opt_outs == "exp2,exp3") {
+      EXPECT_THAT(optimizations, UnorderedElementsAre("exp1", "exp4"));
+      tested_times++;
+    }
+  }
+  EXPECT_EQ(tested_times, 1);
 
-  FunctionDef func = FunctionDefHelper::Create(
-      /*function_name=*/"AddAndMul",
-      /*in_def=*/{"i: float", "j: int32"},
-      /*out_def=*/{"o: float"},
-      /*attr_def=*/{},
-      /*node_def=*/
-      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}, {"ret"}},
-       // This creates a dependency on the same function.
-       {{"for"}, "For", {"j", "j", "j"}, {func_attr, {"T", DT_FLOAT}}, {"ret"}},
-       {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
-      /*ret_def=*/{{"o", "ret:z:0"}},
-      /*control_ret_def=*/{{"must_execute", "add"}});
-  *f1 = func;
-
-  NodeDef* n1 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
-                  .Attr("value", 1)
-                  .Device("CPU:0")
-                  .Finalize(n1));
-
-  std::vector<NodeDefBuilder::NodeOut> func_inputs;
-  func_inputs.emplace_back(n1->name(), 0, DT_FLOAT);
-  func_inputs.emplace_back(n1->name(), 0, DT_FLOAT);
-
-  NodeDef* n2 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "For")
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(func_inputs)
-                  .ControlInput("graph_1/node_2")
-                  .Attr("body", a1)
-                  .Device("CPU:0")
-                  .Finalize(n2));
-
-  // No checks in the test, the fact that it runs and doesn't timeout or exhaust
-  // the stack means it is successful.
-  GetHash(gd, *n2);
+  if (!opt_ins.empty()) {
+    unsetenv("TF_DATA_EXPERIMENT_OPT_IN");
+  }
+  if (!opt_outs.empty()) {
+    unsetenv("TF_DATA_EXPERIMENT_OPT_OUT");
+  }
 }
 
-TEST_F(DatasetHashUtilsTest, HashNodeWithControlDependencyLoop) {
-  GraphDef gd;
-
-  NodeDef* n1 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
-                  .Attr("value", 1)
-                  .Device("CPU:0")
-                  .ControlInput("graph_1/node_2")
-                  .Finalize(n1));
-
-  NodeDef* n2 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "Const")
-                  .Attr("value", 2)
-                  .Device("CPU:0")
-                  .ControlInput("graph_1/node_1")
-                  .Finalize(n2));
-
-  NodeDef* n3 = gd.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
-                  .Device("CPU:0")
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(n2->name(), 0, DT_INT32)
-                  .ControlInput("graph_1/node_1")
-                  .ControlInput("graph_1/node_2")
-                  .Finalize(n3));
-
-  // No checks in the test, the fact that it runs and doesn't timeout or exhaust
-  // the stack means it is successful.
-  GetHash(gd, *n3);
-}
-
-TEST_F(DatasetHashUtilsTest, HashNodeWithControlDependencyLoopDifferentNames) {
-  GraphDef gd1;
-
-  NodeDef* n1 = gd1.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
-                  .Attr("value", 1)
-                  .Device("CPU:0")
-                  .ControlInput("graph_1/node_2")
-                  .Finalize(n1));
-
-  NodeDef* n2 = gd1.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_2", "Const")
-                  .Attr("value", 2)
-                  .Device("CPU:0")
-                  .ControlInput("graph_1/node_1")
-                  .Finalize(n2));
-
-  NodeDef* n3 = gd1.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Add")
-                  .Device("CPU:0")
-                  .Input(n1->name(), 0, DT_INT32)
-                  .Input(n2->name(), 0, DT_INT32)
-                  .ControlInput("graph_1/node_1")
-                  .ControlInput("graph_1/node_2")
-                  .Finalize(n3));
-
-  GraphDef gd2;
-
-  NodeDef* n4 = gd2.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_4", "Const")
-                  .Attr("value", 1)
-                  .Device("CPU:0")
-                  .ControlInput("graph_1/node_5")
-                  .Finalize(n4));
-
-  NodeDef* n5 = gd2.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_5", "Const")
-                  .Attr("value", 2)
-                  .Device("CPU:0")
-                  .ControlInput("graph_1/node_4")
-                  .Finalize(n5));
-
-  NodeDef* n6 = gd2.add_node();
-  TF_CHECK_OK(NodeDefBuilder("graph_1/node_6", "Add")
-                  .Device("CPU:0")
-                  .Input(n4->name(), 0, DT_INT32)
-                  .Input(n5->name(), 0, DT_INT32)
-                  .ControlInput("graph_1/node_4")
-                  .ControlInput("graph_1/node_5")
-                  .Finalize(n6));
-
-  EXPECT_EQ(GetHash(gd1, *n3), GetHash(gd2, *n6));
-}
-
-TEST_F(DatasetHashUtilsTest, HashInt32Tensor) {
-  Tensor s1(42);
-  Tensor s2(42);
-  Tensor s3(43);
-
-  EXPECT_EQ(GetHash(s1), GetHash(s2));
-  EXPECT_NE(GetHash(s1), GetHash(s3));
-
-  Tensor v1(DT_INT32, TensorShape({2}));
-  v1.vec<int32>()(0) = 0;
-  v1.vec<int32>()(1) = 1;
-  Tensor v2(DT_INT32, TensorShape({2}));
-  v2.vec<int32>()(0) = 0;
-  v2.vec<int32>()(1) = 1;
-  Tensor v3(DT_INT32, TensorShape({2}));
-  v3.vec<int32>()(0) = 0;
-  v3.vec<int32>()(1) = 2;
-
-  EXPECT_EQ(GetHash(v1), GetHash(v2));
-  EXPECT_NE(GetHash(v1), GetHash(v3));
-}
-
-TEST_F(DatasetHashUtilsTest, HashStringTensor) {
-  Tensor s1("hello");
-  Tensor s2("hello");
-  Tensor s3("world");
-
-  EXPECT_EQ(GetHash(s1), GetHash(s2));
-  EXPECT_NE(GetHash(s1), GetHash(s3));
-
-  Tensor v1(DT_STRING, TensorShape({2}));
-  v1.vec<tstring>()(0) = "hello";
-  v1.vec<tstring>()(1) = "world";
-  Tensor v2(DT_STRING, TensorShape({2}));
-  v2.vec<tstring>()(0) = "hello";
-  v2.vec<tstring>()(1) = "world";
-  Tensor v3(DT_STRING, TensorShape({2}));
-  v3.vec<tstring>()(0) = "hello";
-  v3.vec<tstring>()(1) = "universe";
-
-  EXPECT_EQ(GetHash(v1), GetHash(v2));
-  EXPECT_NE(GetHash(v1), GetHash(v3));
-}
+INSTANTIATE_TEST_SUITE_P(Test, SelectOptimizationsJobTest,
+                         ::testing::Combine(::testing::Values("", "job"),
+                                            ::testing::Values("", "exp1"),
+                                            ::testing::Values("",
+                                                              "exp2,exp3")));
 
 }  // namespace
 }  // namespace data

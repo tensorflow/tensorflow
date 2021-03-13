@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/utils/simple_delegate.h"
 
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -78,6 +79,10 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context,
                              TfLiteDelegate* base_delegate) {
   auto* delegate =
       reinterpret_cast<SimpleDelegateInterface*>(base_delegate->data_);
+  auto delegate_options = delegate->DelegateOptions();
+  if (delegate_options.max_delegated_partitions <= 0)
+    delegate_options.max_delegated_partitions = std::numeric_limits<int>::max();
+
   TF_LITE_ENSURE_STATUS(delegate->Initialize(context));
   delegates::IsNodeSupportedFn node_supported_fn =
       [=](TfLiteContext* context, TfLiteNode* node,
@@ -89,7 +94,9 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context,
   delegates::GraphPartitionHelper helper(context, node_supported_fn);
   TF_LITE_ENSURE_STATUS(helper.Partition(nullptr));
 
-  std::vector<int> supported_nodes = helper.GetNodesOfFirstNLargestPartitions();
+  std::vector<int> supported_nodes = helper.GetNodesOfFirstNLargestPartitions(
+      delegate_options.max_delegated_partitions,
+      delegate_options.min_nodes_per_partition);
 
   TFLITE_LOG_PROD(tflite::TFLITE_LOG_INFO,
                   "%s delegate: %d nodes delegated out of %d nodes with "
@@ -106,13 +113,13 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context,
 }  // namespace
 
 TfLiteDelegate* TfLiteDelegateFactory::CreateSimpleDelegate(
-    std::unique_ptr<SimpleDelegateInterface> simple_delegate) {
+    std::unique_ptr<SimpleDelegateInterface> simple_delegate, int64_t flag) {
   if (simple_delegate == nullptr) {
     return nullptr;
   }
   auto delegate = new TfLiteDelegate();
   delegate->Prepare = &DelegatePrepare;
-  delegate->flags = kTfLiteDelegateFlagsNone;
+  delegate->flags = flag;
   delegate->CopyFromBufferHandle = nullptr;
   delegate->CopyToBufferHandle = nullptr;
   delegate->FreeBufferHandle = nullptr;

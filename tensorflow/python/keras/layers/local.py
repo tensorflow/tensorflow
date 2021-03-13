@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Locally-connected layers.
-"""
+"""Locally-connected layers."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -29,6 +28,9 @@ from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_sparse_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -56,79 +58,62 @@ class LocallyConnected1D(Layer):
       # now model.output_shape == (None, 6, 32)
   ```
 
-  Arguments:
-      filters: Integer, the dimensionality of the output space
-          (i.e. the number of output filters in the convolution).
-      kernel_size: An integer or tuple/list of a single integer,
-          specifying the length of the 1D convolution window.
-      strides: An integer or tuple/list of a single integer,
-          specifying the stride length of the convolution.
-          Specifying any stride value != 1 is incompatible with specifying
-          any `dilation_rate` value != 1.
-      padding: Currently only supports `"valid"` (case-insensitive).
-          `"same"` may be supported in the future.
-      data_format: A string,
-          one of `channels_last` (default) or `channels_first`.
-          The ordering of the dimensions in the inputs.
-          `channels_last` corresponds to inputs with shape
-          `(batch, length, channels)` while `channels_first`
-          corresponds to inputs with shape
-          `(batch, channels, length)`.
-          It defaults to the `image_data_format` value found in your
-          Keras config file at `~/.keras/keras.json`.
-          If you never set it, then it will be "channels_last".
-      activation: Activation function to use.
-          If you don't specify anything, no activation is applied
+  Args:
+      filters: Integer, the dimensionality of the output space (i.e. the number
+        of output filters in the convolution).
+      kernel_size: An integer or tuple/list of a single integer, specifying the
+        length of the 1D convolution window.
+      strides: An integer or tuple/list of a single integer, specifying the
+        stride length of the convolution.
+      padding: Currently only supports `"valid"` (case-insensitive). `"same"`
+        may be supported in the future. `"valid"` means no padding.
+      data_format: A string, one of `channels_last` (default) or
+        `channels_first`. The ordering of the dimensions in the inputs.
+        `channels_last` corresponds to inputs with shape `(batch, length,
+        channels)` while `channels_first` corresponds to inputs with shape
+        `(batch, channels, length)`. It defaults to the `image_data_format`
+        value found in your Keras config file at `~/.keras/keras.json`. If you
+        never set it, then it will be "channels_last".
+      activation: Activation function to use. If you don't specify anything, no
+        activation is applied
           (ie. "linear" activation: `a(x) = x`).
       use_bias: Boolean, whether the layer uses a bias vector.
       kernel_initializer: Initializer for the `kernel` weights matrix.
       bias_initializer: Initializer for the bias vector.
-      kernel_regularizer: Regularizer function applied to
-          the `kernel` weights matrix.
+      kernel_regularizer: Regularizer function applied to the `kernel` weights
+        matrix.
       bias_regularizer: Regularizer function applied to the bias vector.
-      activity_regularizer: Regularizer function applied to
-          the output of the layer (its "activation")..
+      activity_regularizer: Regularizer function applied to the output of the
+        layer (its "activation")..
       kernel_constraint: Constraint function applied to the kernel matrix.
       bias_constraint: Constraint function applied to the bias vector.
-      implementation: implementation mode, either `1`, `2`, or `3`.
-          `1` loops over input spatial locations to perform the forward pass.
-          It is memory-efficient but performs a lot of (small) ops.
-
-          `2` stores layer weights in a dense but sparsely-populated 2D matrix
-          and implements the forward pass as a single matrix-multiply. It uses
-          a lot of RAM but performs few (large) ops.
-
-          `3` stores layer weights in a sparse tensor and implements the forward
-          pass as a single sparse matrix-multiply.
-
+      implementation: implementation mode, either `1`, `2`, or `3`. `1` loops
+        over input spatial locations to perform the forward pass. It is
+        memory-efficient but performs a lot of (small) ops.  `2` stores layer
+        weights in a dense but sparsely-populated 2D matrix and implements the
+        forward pass as a single matrix-multiply. It uses a lot of RAM but
+        performs few (large) ops.  `3` stores layer weights in a sparse tensor
+        and implements the forward pass as a single sparse matrix-multiply.
           How to choose:
-
           `1`: large, dense models,
           `2`: small models,
-          `3`: large, sparse models,
-
-          where "large" stands for large input/output activations
-          (i.e. many `filters`, `input_filters`, large `input_size`,
-          `output_size`), and "sparse" stands for few connections between inputs
-          and outputs, i.e. small ratio
-          `filters * input_filters * kernel_size / (input_size * strides)`,
-          where inputs to and outputs of the layer are assumed to have shapes
-          `(input_size, input_filters)`, `(output_size, filters)`
-          respectively.
-
-          It is recommended to benchmark each in the setting of interest to pick
-          the most efficient one (in terms of speed and memory usage). Correct
-          choice of implementation can lead to dramatic speed improvements (e.g.
-          50X), potentially at the expense of RAM.
-
-          Also, only `padding="valid"` is supported by `implementation=1`.
-
+          `3`: large, sparse models,  where "large" stands for large
+            input/output activations (i.e. many `filters`, `input_filters`,
+            large `input_size`, `output_size`), and "sparse" stands for few
+            connections between inputs and outputs, i.e. small ratio `filters *
+            input_filters * kernel_size / (input_size * strides)`, where inputs
+            to and outputs of the layer are assumed to have shapes `(input_size,
+            input_filters)`, `(output_size, filters)` respectively.  It is
+            recommended to benchmark each in the setting of interest to pick the
+            most efficient one (in terms of speed and memory usage). Correct
+            choice of implementation can lead to dramatic speed improvements
+            (e.g. 50X), potentially at the expense of RAM.  Also, only
+            `padding="valid"` is supported by `implementation=1`.
   Input shape:
       3D tensor with shape: `(batch_size, steps, input_dim)`
-
   Output shape:
-      3D tensor with shape: `(batch_size, new_steps, filters)`
-      `steps` value might have changed due to padding or strides.
+      3D tensor with shape: `(batch_size, new_steps, filters)` `steps` value
+        might have changed due to padding or strides.
   """
 
   def __init__(self,
@@ -155,8 +140,8 @@ class LocallyConnected1D(Layer):
     self.padding = conv_utils.normalize_padding(padding)
     if self.padding != 'valid' and implementation == 1:
       raise ValueError('Invalid border mode for LocallyConnected1D '
-                       '(only "valid" is supported if implementation is 1): '
-                       + padding)
+                       '(only "valid" is supported if implementation is 1): ' +
+                       padding)
     self.data_format = conv_utils.normalize_data_format(data_format)
     self.activation = activations.get(activation)
     self.use_bias = use_bias
@@ -178,10 +163,13 @@ class LocallyConnected1D(Layer):
       input_dim, input_length = input_shape[2], input_shape[1]
 
     if input_dim is None:
-      raise ValueError('Axis 2 of input should be fully-defined. '
-                       'Found shape:', input_shape)
-    self.output_length = conv_utils.conv_output_length(
-        input_length, self.kernel_size[0], self.padding, self.strides[0])
+      raise ValueError(
+          'Axis 2 of input should be fully-defined. '
+          'Found shape:', input_shape)
+    self.output_length = conv_utils.conv_output_length(input_length,
+                                                       self.kernel_size[0],
+                                                       self.padding,
+                                                       self.strides[0])
 
     if self.implementation == 1:
       self.kernel_shape = (self.output_length, self.kernel_size[0] * input_dim,
@@ -196,17 +184,18 @@ class LocallyConnected1D(Layer):
 
     elif self.implementation == 2:
       if self.data_format == 'channels_first':
-        self.kernel_shape = (input_dim, input_length,
-                             self.filters, self.output_length)
+        self.kernel_shape = (input_dim, input_length, self.filters,
+                             self.output_length)
       else:
-        self.kernel_shape = (input_length, input_dim,
-                             self.output_length, self.filters)
+        self.kernel_shape = (input_length, input_dim, self.output_length,
+                             self.filters)
 
-      self.kernel = self.add_weight(shape=self.kernel_shape,
-                                    initializer=self.kernel_initializer,
-                                    name='kernel',
-                                    regularizer=self.kernel_regularizer,
-                                    constraint=self.kernel_constraint)
+      self.kernel = self.add_weight(
+          shape=self.kernel_shape,
+          initializer=self.kernel_initializer,
+          name='kernel',
+          regularizer=self.kernel_regularizer,
+          constraint=self.kernel_constraint)
 
       self.kernel_mask = get_locallyconnected_mask(
           input_shape=(input_length,),
@@ -228,8 +217,7 @@ class LocallyConnected1D(Layer):
               padding=self.padding,
               filters_in=input_dim,
               filters_out=self.filters,
-              data_format=self.data_format)
-      )
+              data_format=self.data_format))
 
       self.kernel = self.add_weight(
           shape=(len(self.kernel_idxs),),
@@ -239,8 +227,8 @@ class LocallyConnected1D(Layer):
           constraint=self.kernel_constraint)
 
     else:
-      raise ValueError('Unrecognized implementation mode: %d.'
-                       % self.implementation)
+      raise ValueError('Unrecognized implementation mode: %d.' %
+                       self.implementation)
 
     if self.use_bias:
       self.bias = self.add_weight(
@@ -288,8 +276,8 @@ class LocallyConnected1D(Layer):
                                         self.compute_output_shape(inputs.shape))
 
     else:
-      raise ValueError('Unrecognized implementation mode: %d.'
-                       % self.implementation)
+      raise ValueError('Unrecognized implementation mode: %d.' %
+                       self.implementation)
 
     if self.use_bias:
       output = K.bias_add(output, self.bias, data_format=self.data_format)
@@ -362,87 +350,72 @@ class LocallyConnected2D(Layer):
       # now model.output_shape == (None, 28, 28, 32)
   ```
 
-  Arguments:
-      filters: Integer, the dimensionality of the output space
-          (i.e. the number of output filters in the convolution).
-      kernel_size: An integer or tuple/list of 2 integers, specifying the
-          width and height of the 2D convolution window.
-          Can be a single integer to specify the same value for
-          all spatial dimensions.
-      strides: An integer or tuple/list of 2 integers,
-          specifying the strides of the convolution along the width and height.
-          Can be a single integer to specify the same value for
-          all spatial dimensions.
-      padding: Currently only support `"valid"` (case-insensitive).
-          `"same"` will be supported in future.
-      data_format: A string,
-          one of `channels_last` (default) or `channels_first`.
-          The ordering of the dimensions in the inputs.
-          `channels_last` corresponds to inputs with shape
-          `(batch, height, width, channels)` while `channels_first`
-          corresponds to inputs with shape
-          `(batch, channels, height, width)`.
-          It defaults to the `image_data_format` value found in your
-          Keras config file at `~/.keras/keras.json`.
-          If you never set it, then it will be "channels_last".
-      activation: Activation function to use.
-          If you don't specify anything, no activation is applied
+  Args:
+      filters: Integer, the dimensionality of the output space (i.e. the number
+        of output filters in the convolution).
+      kernel_size: An integer or tuple/list of 2 integers, specifying the width
+        and height of the 2D convolution window. Can be a single integer to
+        specify the same value for all spatial dimensions.
+      strides: An integer or tuple/list of 2 integers, specifying the strides of
+        the convolution along the width and height. Can be a single integer to
+        specify the same value for all spatial dimensions.
+      padding: Currently only support `"valid"` (case-insensitive). `"same"`
+        will be supported in future. `"valid"` means no padding.
+      data_format: A string, one of `channels_last` (default) or
+        `channels_first`. The ordering of the dimensions in the inputs.
+        `channels_last` corresponds to inputs with shape `(batch, height, width,
+        channels)` while `channels_first` corresponds to inputs with shape
+        `(batch, channels, height, width)`. It defaults to the
+        `image_data_format` value found in your Keras config file at
+        `~/.keras/keras.json`. If you never set it, then it will be
+        "channels_last".
+      activation: Activation function to use. If you don't specify anything, no
+        activation is applied
           (ie. "linear" activation: `a(x) = x`).
       use_bias: Boolean, whether the layer uses a bias vector.
       kernel_initializer: Initializer for the `kernel` weights matrix.
       bias_initializer: Initializer for the bias vector.
-      kernel_regularizer: Regularizer function applied to
-          the `kernel` weights matrix.
+      kernel_regularizer: Regularizer function applied to the `kernel` weights
+        matrix.
       bias_regularizer: Regularizer function applied to the bias vector.
-      activity_regularizer: Regularizer function applied to
-          the output of the layer (its "activation").
+      activity_regularizer: Regularizer function applied to the output of the
+        layer (its "activation").
       kernel_constraint: Constraint function applied to the kernel matrix.
       bias_constraint: Constraint function applied to the bias vector.
-      implementation: implementation mode, either `1`, `2`, or `3`.
-          `1` loops over input spatial locations to perform the forward pass.
-          It is memory-efficient but performs a lot of (small) ops.
-
-          `2` stores layer weights in a dense but sparsely-populated 2D matrix
-          and implements the forward pass as a single matrix-multiply. It uses
-          a lot of RAM but performs few (large) ops.
-
-          `3` stores layer weights in a sparse tensor and implements the forward
-          pass as a single sparse matrix-multiply.
-
+      implementation: implementation mode, either `1`, `2`, or `3`. `1` loops
+        over input spatial locations to perform the forward pass. It is
+        memory-efficient but performs a lot of (small) ops.  `2` stores layer
+        weights in a dense but sparsely-populated 2D matrix and implements the
+        forward pass as a single matrix-multiply. It uses a lot of RAM but
+        performs few (large) ops.  `3` stores layer weights in a sparse tensor
+        and implements the forward pass as a single sparse matrix-multiply.
           How to choose:
-
           `1`: large, dense models,
           `2`: small models,
-          `3`: large, sparse models,
-
-          where "large" stands for large input/output activations
-          (i.e. many `filters`, `input_filters`, large `np.prod(input_size)`,
-          `np.prod(output_size)`), and "sparse" stands for few connections
-          between inputs and outputs, i.e. small ratio
-          `filters * input_filters * np.prod(kernel_size) / (np.prod(input_size)
-          * np.prod(strides))`, where inputs to and outputs of the layer are
-          assumed to have shapes `input_size + (input_filters,)`,
-          `output_size + (filters,)` respectively.
-
-          It is recommended to benchmark each in the setting of interest to pick
-          the most efficient one (in terms of speed and memory usage). Correct
-          choice of implementation can lead to dramatic speed improvements (e.g.
-          50X), potentially at the expense of RAM.
-
-          Also, only `padding="valid"` is supported by `implementation=1`.
-
+          `3`: large, sparse models,  where "large" stands for large
+            input/output activations (i.e. many `filters`, `input_filters`,
+            large `np.prod(input_size)`, `np.prod(output_size)`), and "sparse"
+            stands for few connections between inputs and outputs, i.e. small
+            ratio `filters * input_filters * np.prod(kernel_size) /
+            (np.prod(input_size) * np.prod(strides))`, where inputs to and
+            outputs of the layer are assumed to have shapes `input_size +
+            (input_filters,)`, `output_size + (filters,)` respectively.  It is
+            recommended to benchmark each in the setting of interest to pick the
+            most efficient one (in terms of speed and memory usage). Correct
+            choice of implementation can lead to dramatic speed improvements
+            (e.g. 50X), potentially at the expense of RAM.  Also, only
+            `padding="valid"` is supported by `implementation=1`.
   Input shape:
-      4D tensor with shape:
-      `(samples, channels, rows, cols)` if data_format='channels_first'
-      or 4D tensor with shape:
-      `(samples, rows, cols, channels)` if data_format='channels_last'.
-
+      4D tensor with shape: `(samples, channels, rows, cols)` if
+        data_format='channels_first'
+      or 4D tensor with shape: `(samples, rows, cols, channels)` if
+        data_format='channels_last'.
   Output shape:
-      4D tensor with shape:
-      `(samples, filters, new_rows, new_cols)` if data_format='channels_first'
-      or 4D tensor with shape:
-      `(samples, new_rows, new_cols, filters)` if data_format='channels_last'.
-      `rows` and `cols` values might have changed due to padding.
+      4D tensor with shape: `(samples, filters, new_rows, new_cols)` if
+        data_format='channels_first'
+      or 4D tensor with shape: `(samples, new_rows, new_cols, filters)` if
+        data_format='channels_last'. `rows` and `cols` values might have changed
+        due to padding.
   """
 
   def __init__(self,
@@ -469,8 +442,8 @@ class LocallyConnected2D(Layer):
     self.padding = conv_utils.normalize_padding(padding)
     if self.padding != 'valid' and implementation == 1:
       raise ValueError('Invalid border mode for LocallyConnected2D '
-                       '(only "valid" is supported if implementation is 1): '
-                       + padding)
+                       '(only "valid" is supported if implementation is 1): ' +
+                       padding)
     self.data_format = conv_utils.normalize_data_format(data_format)
     self.activation = activations.get(activation)
     self.use_bias = use_bias
@@ -505,10 +478,8 @@ class LocallyConnected2D(Layer):
     self.output_col = output_col
 
     if self.implementation == 1:
-      self.kernel_shape = (
-          output_row * output_col,
-          self.kernel_size[0] * self.kernel_size[1] * input_filter,
-          self.filters)
+      self.kernel_shape = (output_row * output_col, self.kernel_size[0] *
+                           self.kernel_size[1] * input_filter, self.filters)
 
       self.kernel = self.add_weight(
           shape=self.kernel_shape,
@@ -519,17 +490,18 @@ class LocallyConnected2D(Layer):
 
     elif self.implementation == 2:
       if self.data_format == 'channels_first':
-        self.kernel_shape = (input_filter, input_row, input_col,
-                             self.filters, self.output_row, self.output_col)
+        self.kernel_shape = (input_filter, input_row, input_col, self.filters,
+                             self.output_row, self.output_col)
       else:
         self.kernel_shape = (input_row, input_col, input_filter,
                              self.output_row, self.output_col, self.filters)
 
-      self.kernel = self.add_weight(shape=self.kernel_shape,
-                                    initializer=self.kernel_initializer,
-                                    name='kernel',
-                                    regularizer=self.kernel_regularizer,
-                                    constraint=self.kernel_constraint)
+      self.kernel = self.add_weight(
+          shape=self.kernel_shape,
+          initializer=self.kernel_initializer,
+          name='kernel',
+          regularizer=self.kernel_regularizer,
+          constraint=self.kernel_constraint)
 
       self.kernel_mask = get_locallyconnected_mask(
           input_shape=(input_row, input_col),
@@ -551,8 +523,7 @@ class LocallyConnected2D(Layer):
               padding=self.padding,
               filters_in=input_filter,
               filters_out=self.filters,
-              data_format=self.data_format)
-      )
+              data_format=self.data_format))
 
       self.kernel = self.add_weight(
           shape=(len(self.kernel_idxs),),
@@ -562,8 +533,8 @@ class LocallyConnected2D(Layer):
           constraint=self.kernel_constraint)
 
     else:
-      raise ValueError('Unrecognized implementation mode: %d.'
-                       % self.implementation)
+      raise ValueError('Unrecognized implementation mode: %d.' %
+                       self.implementation)
 
     if self.use_bias:
       self.bias = self.add_weight(
@@ -615,8 +586,8 @@ class LocallyConnected2D(Layer):
                                         self.compute_output_shape(inputs.shape))
 
     else:
-      raise ValueError('Unrecognized implementation mode: %d.'
-                       % self.implementation)
+      raise ValueError('Unrecognized implementation mode: %d.' %
+                       self.implementation)
 
     if self.use_bias:
       output = K.bias_add(output, self.bias, data_format=self.data_format)
@@ -681,11 +652,11 @@ def get_locallyconnected_mask(input_shape, kernel_shape, strides, padding,
   to make it perform an unshared convolution with given `kernel_shape`,
   `strides`, `padding` and `data_format`.
 
-  Arguments:
-    input_shape: tuple of size N: `(d_in1, ..., d_inN)`
-                 spatial shape of the input.
-    kernel_shape: tuple of size N, spatial shape of the convolutional kernel
-                  / receptive field.
+  Args:
+    input_shape: tuple of size N: `(d_in1, ..., d_inN)` spatial shape of the
+      input.
+    kernel_shape: tuple of size N, spatial shape of the convolutional kernel /
+      receptive field.
     strides: tuple of size N, strides along each spatial dimension.
     padding: type of padding, string `"same"` or `"valid"`.
     data_format: a string, `"channels_first"` or `"channels_last"`.
@@ -705,8 +676,7 @@ def get_locallyconnected_mask(input_shape, kernel_shape, strides, padding,
       input_shape=input_shape,
       kernel_shape=kernel_shape,
       strides=strides,
-      padding=padding
-  )
+      padding=padding)
 
   ndims = int(mask.ndim / 2)
 
@@ -734,35 +704,27 @@ def local_conv_matmul(inputs, kernel, kernel_mask, output_shape):
   (the remaining entries in `kernel`) weights. It also does the necessary
   reshapes to make `inputs` and `kernel` 2-D and `output` (N+2)-D.
 
-  Arguments:
-      inputs: (N+2)-D tensor with shape
-          `(batch_size, channels_in, d_in1, ..., d_inN)`
-          or
-          `(batch_size, d_in1, ..., d_inN, channels_in)`.
+  Args:
+      inputs: (N+2)-D tensor with shape `(batch_size, channels_in, d_in1, ...,
+        d_inN)` or `(batch_size, d_in1, ..., d_inN, channels_in)`.
       kernel: the unshared weights for N-D convolution,
-          an (N+2)-D tensor of shape:
-          `(d_in1, ..., d_inN, channels_in, d_out2, ..., d_outN, channels_out)`
-          or
-          `(channels_in, d_in1, ..., d_inN, channels_out, d_out2, ..., d_outN)`,
-          with the ordering of channels and spatial dimensions matching
-          that of the input.
-          Each entry is the weight between a particular input and
-          output location, similarly to a fully-connected weight matrix.
-      kernel_mask: a float 0/1 mask tensor of shape:
-           `(d_in1, ..., d_inN, 1, d_out2, ..., d_outN, 1)`
-           or
-           `(1, d_in1, ..., d_inN, 1, d_out2, ..., d_outN)`,
-           with the ordering of singleton and spatial dimensions
-           matching that of the input.
-           Mask represents the connectivity pattern of the layer and is
-           precomputed elsewhere based on layer parameters: stride,
-           padding, and the receptive field shape.
+          an (N+2)-D tensor of shape: `(d_in1, ..., d_inN, channels_in, d_out2,
+            ..., d_outN, channels_out)` or `(channels_in, d_in1, ..., d_inN,
+            channels_out, d_out2, ..., d_outN)`, with the ordering of channels
+            and spatial dimensions matching that of the input. Each entry is the
+            weight between a particular input and output location, similarly to
+            a fully-connected weight matrix.
+      kernel_mask: a float 0/1 mask tensor of shape: `(d_in1, ..., d_inN, 1,
+        d_out2, ..., d_outN, 1)` or `(1, d_in1, ..., d_inN, 1, d_out2, ...,
+        d_outN)`, with the ordering of singleton and spatial dimensions matching
+        that of the input. Mask represents the connectivity pattern of the layer
+        and is
+           precomputed elsewhere based on layer parameters: stride, padding, and
+             the receptive field shape.
       output_shape: a tuple of (N+2) elements representing the output shape:
-          `(batch_size, channels_out, d_out1, ..., d_outN)`
-          or
-          `(batch_size, d_out1, ..., d_outN, channels_out)`,
-          with the ordering of channels and spatial dimensions matching that of
-          the input.
+        `(batch_size, channels_out, d_out1, ..., d_outN)` or `(batch_size,
+        d_out1, ..., d_outN, channels_out)`, with the ordering of channels and
+        spatial dimensions matching that of the input.
 
   Returns:
       Output (N+2)-D tensor with shape `output_shape`.
@@ -772,9 +734,10 @@ def local_conv_matmul(inputs, kernel, kernel_mask, output_shape):
   kernel = kernel_mask * kernel
   kernel = make_2d(kernel, split_dim=K.ndim(kernel) // 2)
 
-  output_flat = K.math_ops.sparse_matmul(inputs_flat, kernel, b_is_sparse=True)
-  output = K.reshape(output_flat,
-                     [K.shape(output_flat)[0],] + output_shape.as_list()[1:])
+  output_flat = math_ops.sparse_matmul(inputs_flat, kernel, b_is_sparse=True)
+  output = K.reshape(output_flat, [
+      K.shape(output_flat)[0],
+  ] + output_shape.as_list()[1:])
   return output
 
 
@@ -786,7 +749,7 @@ def local_conv_sparse_matmul(inputs, kernel, kernel_idxs, kernel_shape,
   values=kernel, dense_shape=kernel_shape)`, with `.` standing for
   matrix-multiply. It also reshapes `inputs` to 2-D and `output` to (N+2)-D.
 
-  Arguments:
+  Args:
       inputs: (N+2)-D tensor with shape `(batch_size, channels_in, d_in1, ...,
         d_inN)` or `(batch_size, d_in1, ..., d_inN, channels_in)`.
       kernel: a 1-D tensor with shape `(len(kernel_idxs),)` containing all the
@@ -805,14 +768,17 @@ def local_conv_sparse_matmul(inputs, kernel, kernel_idxs, kernel_shape,
       Output (N+2)-D dense tensor with shape `output_shape`.
   """
   inputs_flat = K.reshape(inputs, (K.shape(inputs)[0], -1))
-  output_flat = K.sparse_ops.sparse_tensor_dense_mat_mul(
-      kernel_idxs, kernel, kernel_shape, inputs_flat, adjoint_b=True)
+  output_flat = gen_sparse_ops.SparseTensorDenseMatMul(
+      a_indices=kernel_idxs,
+      a_values=kernel,
+      a_shape=kernel_shape,
+      b=inputs_flat,
+      adjoint_b=True)
   output_flat_transpose = K.transpose(output_flat)
 
-  output_reshaped = K.reshape(
-      output_flat_transpose,
-      [K.shape(output_flat_transpose)[0],] + output_shape.as_list()[1:]
-  )
+  output_reshaped = K.reshape(output_flat_transpose, [
+      K.shape(output_flat_transpose)[0],
+  ] + output_shape.as_list()[1:])
   return output_reshaped
 
 
@@ -822,20 +788,20 @@ def make_2d(tensor, split_dim):
   Dimensions before (excluding) and after (including) `split_dim` are grouped
   together.
 
-  Arguments:
+  Args:
     tensor: a tensor of shape `(d0, ..., d(N-1))`.
     split_dim: an integer from 1 to N-1, index of the dimension to group
-        dimensions before (excluding) and after (including).
+      dimensions before (excluding) and after (including).
 
   Returns:
     Tensor of shape
     `(d0 * ... * d(split_dim-1), d(split_dim) * ... * d(N-1))`.
   """
-  shape = K.array_ops.shape(tensor)
+  shape = array_ops.shape(tensor)
   in_dims = shape[:split_dim]
   out_dims = shape[split_dim:]
 
-  in_size = K.math_ops.reduce_prod(in_dims)
-  out_size = K.math_ops.reduce_prod(out_dims)
+  in_size = math_ops.reduce_prod(in_dims)
+  out_size = math_ops.reduce_prod(out_dims)
 
-  return K.array_ops.reshape(tensor, (in_size, out_size))
+  return array_ops.reshape(tensor, (in_size, out_size))

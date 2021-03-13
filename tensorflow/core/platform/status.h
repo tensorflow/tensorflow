@@ -20,9 +20,11 @@ limitations under the License.
 #include <iosfwd>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/stack_frame.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -43,7 +45,15 @@ class Status {
 
   /// \brief Create a status with the specified error code and msg as a
   /// human-readable string containing more detailed information.
-  Status(tensorflow::error::Code code, tensorflow::StringPiece msg);
+  Status(tensorflow::error::Code code, tensorflow::StringPiece msg)
+      : Status(code, msg, {}) {}
+
+  /// \brief Create a status with the specified error code, msg, and stack trace
+  /// as a human-readable string containing more detailed information.
+#ifndef SWIG
+  Status(tensorflow::error::Code code, tensorflow::StringPiece msg,
+         std::vector<StackFrame>&& stack_trace);
+#endif
 
   /// Copy the specified status.
   Status(const Status& s);
@@ -56,7 +66,7 @@ class Status {
   static Status OK() { return Status(); }
 
   /// Returns true iff the status indicates success.
-  bool ok() const { return (state_ == NULL); }
+  bool ok() const { return (state_ == nullptr); }
 
   tensorflow::error::Code code() const {
     return ok() ? tensorflow::error::OK : state_->code;
@@ -64,6 +74,10 @@ class Status {
 
   const std::string& error_message() const {
     return ok() ? empty_string() : state_->msg;
+  }
+
+  const std::vector<StackFrame>& stack_trace() const {
+    return ok() ? empty_stack_trace() : state_->stack_trace;
   }
 
   bool operator==(const Status& x) const;
@@ -89,12 +103,43 @@ class Status {
   // the floor.
   void IgnoreError() const;
 
+  // The Payload-related APIs are cloned from absl::Status.
+  //
+  // Returns the payload of a status given its unique `type_url` key, if
+  // present. Returns an empty StringPiece if the status is ok, or if the key is
+  // not present.
+  tensorflow::StringPiece GetPayload(tensorflow::StringPiece type_url) const;
+
+  // Sets the payload for a non-ok status using a `type_url` key, overwriting
+  // any existing payload for that `type_url`.
+  //
+  // This function does nothing if the Status is ok.
+  void SetPayload(tensorflow::StringPiece type_url,
+                  tensorflow::StringPiece payload);
+
+  // Erases the payload corresponding to the `type_url` key.  Returns `true` if
+  // the payload was present.
+  bool ErasePayload(tensorflow::StringPiece type_url);
+
+  // Returns all the payload information.
+  // Returns an empty result if status is ok.
+  const std::unordered_map<std::string, std::string> GetAllPayloads() const;
+
+  // Copies all the payloads using the input and discards existing payloads.
+  // Does nothing if status is ok or 'payloads' is empty.
+  void ReplaceAllPayloads(
+      const std::unordered_map<std::string, std::string>& payloads);
+
  private:
   static const std::string& empty_string();
+  static const std::vector<StackFrame>& empty_stack_trace();
   struct State {
     tensorflow::error::Code code;
     std::string msg;
+    std::vector<StackFrame> stack_trace;
+    std::unordered_map<std::string, std::string> payloads;
   };
+
   // OK status has a `NULL` state_.  Otherwise, `state_` points to
   // a `State` structure containing the error code and message(s)
   std::unique_ptr<State> state_;

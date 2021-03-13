@@ -21,8 +21,8 @@ namespace tflite {
 namespace reference_integer_ops {
 
 inline void L2Normalization(int32_t input_zero_point, int32_t outer_size,
-                            int32_t depth, const int8* input_data,
-                            int8* output_data) {
+                            int32_t depth, const int8_t* input_data,
+                            int8_t* output_data) {
   static constexpr int8_t kMinInt8 = std::numeric_limits<int8_t>::min();
   static constexpr int8_t kMaxInt8 = std::numeric_limits<int8_t>::max();
   // The output scale must be in sync with Prepare().
@@ -30,7 +30,7 @@ inline void L2Normalization(int32_t input_zero_point, int32_t outer_size,
   // to [-1, 127/128].
   static constexpr int32_t kOutputScale = 7;
   for (int outer_index = 0; outer_index < outer_size; ++outer_index) {
-    // int32 = (int8 - int8) ^ 2.
+    // int32_t = (int8_t - int8_t) ^ 2.
     // ([-128, 127] - [-128, 127]) ^ 2 = [0, (2^8 - 1)^2] so the accumulator is
     // safe from overflowing in at least 2^16 steps.
     int32_t acc = 0;
@@ -55,7 +55,7 @@ inline void L2Normalization(int32_t input_zero_point, int32_t outer_size,
           std::min(static_cast<int32_t>(kMaxInt8),
                    std::max(static_cast<int32_t>(kMinInt8), output_in_q24));
       output_data[depth * outer_index + inner_index] =
-          static_cast<int8>(output_in_q24);
+          static_cast<int8_t>(output_in_q24);
     }
   }
 }

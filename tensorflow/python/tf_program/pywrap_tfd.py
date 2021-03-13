@@ -85,7 +85,7 @@ class OrOp(object):
   def create(cls, opb, loc, values):
     state = mlir.OperationState(loc, "tfp.Or")
     state.addTypes(
-        [UnrankedTensorType.get(IntegerType.get(1, opb.getContext()))])
+        [UnrankedTensorType.get(IntegerType.get(opb.getContext(), 1))])
     state.addOperands(values)
     return opb.createOperation(state)
 
@@ -103,7 +103,7 @@ class AndOp(object):
   def create(cls, opb, loc, values):
     state = mlir.OperationState(loc, "tfp.And")
     state.addTypes(
-        [UnrankedTensorType.get(IntegerType.get(1, opb.getContext()))])
+        [UnrankedTensorType.get(IntegerType.get(opb.getContext(), 1))])
     state.addOperands(values)
     return opb.createOperation(state)
 
@@ -137,8 +137,8 @@ class TFProgram(object):
   """Python wrap for a Tensorflow Program (essentially an mlir Module)."""
 
   def __init__(self):
-    mlir.registerDialects()
     self.ctx = mlir.MLIRContext()
+    mlir.preloadTensorFlowDialects(self.ctx)
     self.builder = mlir.Builder(self.ctx)
     self.module = mlir.ModuleOp.create(mlir.UnknownLoc.get(self.ctx))
     self.curr_func = None

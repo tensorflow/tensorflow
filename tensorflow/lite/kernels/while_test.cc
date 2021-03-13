@@ -12,20 +12,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
+#include <memory>
+#include <vector>
+
 #include <gtest/gtest.h>
-#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
-#include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
 
 namespace tflite {
 
 using subgraph_test_util::CheckIntTensor;
+using subgraph_test_util::CheckScalarStringTensor;
+using subgraph_test_util::CheckStringTensor;
 using subgraph_test_util::ControlFlowOpTest;
 using subgraph_test_util::FillIntTensor;
+using subgraph_test_util::FillScalarStringTensor;
 
 namespace {
 
@@ -78,6 +81,41 @@ TEST_F(WhileTest, TestPadLoop) {
   CheckIntTensor(output1, {1}, {4});
   TfLiteTensor* output2 = interpreter_->tensor(interpreter_->outputs()[1]);
   CheckIntTensor(output2, {11}, {0, 0, 0, 5, 7, 0, 0, 0, 0, 0, 0});
+
+  // The extra invocation serves as a regression test: There was a bug that
+  // invoking a while loop with dynamic shaped body makes the interpreter
+  // state uninvokable.
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+}
+
+TEST_F(WhileTest, TestWhileLoopWithDynamicTensor) {
+  interpreter_.reset(new Interpreter);
+  interpreter_->AddSubgraphs(2);
+  builder_->BuildLessEqualCondSubgraphWithDynamicTensor(
+      interpreter_->subgraph(1), 3);
+  builder_->BuildBodySubgraphWithDynamicTensor(interpreter_->subgraph(2));
+  builder_->BuildWhileSubgraphWithDynamicTensor(
+      &interpreter_->primary_subgraph());
+
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {});
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {});
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[2], {1});
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  FillScalarStringTensor(interpreter_->tensor(interpreter_->inputs()[0]), "A");
+  FillScalarStringTensor(interpreter_->tensor(interpreter_->inputs()[1]), "A");
+  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[2]), {1});
+
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  TfLiteTensor* string_output1 =
+      interpreter_->tensor(interpreter_->outputs()[0]);
+  CheckScalarStringTensor(string_output1, "A");
+  TfLiteTensor* string_output2 =
+      interpreter_->tensor(interpreter_->outputs()[1]);
+  CheckStringTensor(string_output2, {4}, {"A", "A", "A", "A"});
+  TfLiteTensor* integer_output =
+      interpreter_->tensor(interpreter_->outputs()[2]);
+  CheckIntTensor(integer_output, {1}, {4});
 
   // The extra invocation serves as a regression test: There was a bug that
   // invoking a while loop with dynamic shaped body makes the interpreter

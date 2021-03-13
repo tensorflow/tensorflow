@@ -18,52 +18,32 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
-#include "tensorflow/core/tpu/kernels/tpu_program_group.h"
+#include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
 
 namespace tensorflow {
 namespace tpu {
 
-// A version of `CompilationCacheEntry` that exposes Tpu binary program
-// `XLA_TpuProgram`.
+// Cache entry to hold a `TpuProgramGroupInterface` object that can be used to
+// fetch a TPU program for a given TPU core index.
 class TpuCompilationCacheEntry {
  public:
   explicit TpuCompilationCacheEntry(
-      const TpuProgramGroupInterface* tpu_program_group, int core_index);
+      const TpuProgramGroupInterface* tpu_program_group, int core_index)
+      : tpu_program_group_(tpu_program_group), core_index_(core_index) {}
+
   // Constructor for an empty entry.
-  TpuCompilationCacheEntry();
-  const TPUExecutableInfoProto* get_executable_info() const;
-  const TPUHostTransferInfoProto* get_host_transfer_info() const;
-  const xla::HloProto* get_hlo_metadata() const;
-  // TODO(henrytan): maybe nicer to return C++ wrapper of `XLA_TpuProgram`
-  const XLA_TpuProgram* get_tpu_program() const;
+  TpuCompilationCacheEntry() : tpu_program_group_(nullptr), core_index_(-1) {}
+
+  const TpuProgramGroupInterface* tpu_program_group() const {
+    return tpu_program_group_;
+  }
+
+  int core_index() const { return core_index_; }
 
  private:
-  const TpuProgramGroup* tpu_program_group_;
+  const TpuProgramGroupInterface* tpu_program_group_;
   int core_index_;
 };
-
-// Base class for a reference to a cached proto. A unique_ptr to a
-// CompilationCacheEntryRef is returned by all the cache Lookup methods below,
-// and ensures the underlying proto is not garbage-collected until the client
-// discards the ptr.
-class CompilationCacheEntryRef {
- public:
-  virtual ~CompilationCacheEntryRef() = default;
-
-  // Returns a CompilationCacheEntry that should not be used beyond the lifetime
-  // of the CompilationCacheEntryRef.
-  virtual TpuCompilationCacheEntry get() = 0;
-};
-
-// Base class that holds references to compiled protos so that the protos are
-// not garbage-collected before being used by execute ops. Use
-// TpuCompilationCache::MakePerStepRefHolder to create an instance of a concrete
-// ref holder object.
-class CompilationRefHolder : public ResourceBase {
- public:
-  ~CompilationRefHolder() override = default;
-};
-
 }  // namespace tpu
 }  // namespace tensorflow
 

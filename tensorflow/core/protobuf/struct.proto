@@ -6,7 +6,7 @@ import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 // `StructuredValue` represents a dynamically typed value representing various
 // data structures that are inspired by Python data structures typically used in
@@ -136,6 +136,7 @@ message TypeSpecProto {
     PER_REPLICA_SPEC = 8;     // PerReplicaSpec from distribute/values.py
     VARIABLE_SPEC = 9;        // tf.VariableSpec
     ROW_PARTITION_SPEC = 10;  // RowPartitionSpec from ragged/row_partition.py
+    reserved 11;
   }
   TypeSpecClass type_spec_class = 1;
 

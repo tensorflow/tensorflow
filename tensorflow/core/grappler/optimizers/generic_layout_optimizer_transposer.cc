@@ -30,11 +30,13 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/frame.h"
+#include "tensorflow/core/grappler/utils/graph_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -65,6 +67,8 @@ constexpr char kOpConst[] = "Const";
 constexpr char kReshape[] = "Reshape";
 constexpr char kReshapeConst[] = "ReshapeConst";
 constexpr int kRank = 4;
+constexpr int kUnknownRank = -1;
+constexpr int kInvalidRank = -2;
 
 inline bool AttrDataFormatMatch(const utils::MutableNodeView& node,
                                 absl::string_view src_data_format,
@@ -81,6 +85,16 @@ inline bool AttrDataFormatMatch(const utils::MutableNodeView& node,
                                 absl::string_view src_data_format) {
   bool missing = false;
   return AttrDataFormatMatch(node, src_data_format, &missing);
+}
+
+bool IsNonFloatingConv2D(const utils::MutableNodeView& node) {
+  if (IsConv2D(*node.node()) || IsConv2DBackpropInput(*node.node())) {
+    const auto* attr = node.GetAttr(kAttrT);
+    if (attr != nullptr) {
+      return !kDataTypeIsFloating.Contains(attr->type());
+    }
+  }
+  return false;
 }
 
 // Utils for layout agnostic transposer.
@@ -155,6 +169,55 @@ std::vector<int> GetDimensionIndicesFromLabel(
   return indices;
 }
 
+// RAII-styled object for keeping track of 4D to 5D data format
+// upgrade/conversion. Currently only NHWC -> NDHWC and NCHW -> NCDHW are
+// supported.
+class ScopedDataFormatUpgrader {
+ public:
+  ScopedDataFormatUpgrader(TransposeContext* context, int rank)
+      : context_(context) {
+    if (rank == 5 && IsSupportedDataFormat(context_->src_format) &&
+        IsSupportedDataFormat(context_->dst_format)) {
+      old_src_format_ = context_->src_format;
+      old_dst_format_ = context_->dst_format;
+      std::string new_src_format = GetUpgradedDataFormat(context_->src_format);
+      std::string new_dst_format = GetUpgradedDataFormat(context_->dst_format);
+      context_->AssignDeviceAndDataFormats(context_->target_device,
+                                           new_src_format, new_dst_format);
+      upgraded_ = true;
+    }
+  }
+
+  ScopedDataFormatUpgrader(const ScopedDataFormatUpgrader&) = delete;
+  ScopedDataFormatUpgrader& operator=(const ScopedDataFormatUpgrader&) = delete;
+
+  ~ScopedDataFormatUpgrader() {
+    if (upgraded_) {
+      context_->AssignDeviceAndDataFormats(context_->target_device,
+                                           old_src_format_, old_dst_format_);
+    }
+  }
+
+ private:
+  bool IsSupportedDataFormat(absl::string_view data_format) {
+    return data_format == "NHWC" || data_format == "NCHW";
+  }
+
+  std::string GetUpgradedDataFormat(absl::string_view data_format) {
+    if (data_format == "NHWC") {
+      return "NDHWC";
+    }
+
+    DCHECK_EQ(data_format, "NCHW");
+    return "NCDHW";
+  }
+
+  TransposeContext* context_ = nullptr;
+  bool upgraded_ = false;
+  std::string old_src_format_;
+  std::string old_dst_format_;
+};
+
 }  // namespace
 
 // TransposeContext.
@@ -205,15 +268,19 @@ bool Transposer::ShouldProcess(const TransposeContext& context,
       GetDeviceName(context.virtual_placer.get(), *node_def);
   string device;
   string task;
-  bool is_on_target_device =
+  const bool is_on_target_device =
       DeviceNameUtils::SplitDeviceName(device_name, &task, &device) &&
       absl::StrContains(absl::AsciiStrToLower(device),
                         absl::AsciiStrToLower(context.target_device));
 
   // Only checks data format for layout sensitive op.
-  bool data_format_match = !IsLayoutSensitiveOp(*node_def) ||
-                           AttrDataFormatMatch(node, context.src_format);
-  return is_on_target_device && data_format_match &&
+  const bool data_format_match = !IsLayoutSensitiveOp(*node_def) ||
+                                 AttrDataFormatMatch(node, context.src_format);
+
+  // Only transposes floating point nodes.
+  const bool is_integer_conv2d = IsNonFloatingConv2D(node);
+
+  return is_on_target_device && data_format_match && !is_integer_conv2d &&
          !context.nodes_to_preserve.contains(node_def->name()) &&
          !(node.NumRegularFanouts() == 0 && node.NumControlledFanouts() == 0);
 }
@@ -241,8 +308,8 @@ Status Transposer::CreateConstPermNode(TransposeContext* context,
   node.mutable_attr()->insert({"dtype", attr_data_type});
 
   AttrValue attr_tensor;
-  Tensor tensor(DT_INT32, TensorShape({4}));
-  for (int i = 0; i < permutation.size(); i++) {
+  Tensor tensor(DT_INT32, TensorShape({(long long)permutation.size()}));
+  for (int i = 0, end = permutation.size(); i < end; i++) {
     tensor.flat<int>()(i) = permutation[i];
   }
   tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
@@ -489,15 +556,23 @@ Status Transposer::UpdateEdge(
   return Status::OK();
 }
 
-bool Transposer::IsFanoutPortRankN(const utils::MutableNodeView& node, int port,
-                                   int n) const {
+int Transposer::GetFanoutPortRank(const utils::MutableNodeView& node,
+                                  int port) const {
   const auto* output_shape_attr = node.GetAttr(kAttrOutputShape);
   if (output_shape_attr == nullptr ||
       output_shape_attr->list().shape_size() <= port) {
-    return false;
+    return kInvalidRank;
   }
   const auto& shape = output_shape_attr->list().shape(port);
-  return !shape.unknown_rank() && shape.dim_size() == n;
+  if (shape.unknown_rank()) {
+    return kUnknownRank;
+  }
+  return shape.dim_size();
+}
+
+bool Transposer::IsFanoutPortRankN(const utils::MutableNodeView& node, int port,
+                                   int n) const {
+  return GetFanoutPortRank(node, port) == n;
 }
 
 bool Transposer::IsFanoutPortsRankN(const utils::MutableNodeView& node,
@@ -510,14 +585,18 @@ bool Transposer::IsFanoutPortsRankN(const utils::MutableNodeView& node,
   return true;
 }
 
-bool Transposer::IsFaninPortRankN(const utils::MutableNodeView& node, int port,
-                                  int n) const {
+int Transposer::GetFaninPortRank(const utils::MutableNodeView& node,
+                                 int port) const {
   if (port < node.NumRegularFanins() && port >= 0) {
     const auto& regular_fanin = node.GetRegularFanin(port);
-    return IsFanoutPortRankN(*regular_fanin.node_view(), regular_fanin.index(),
-                             n);
+    return GetFanoutPortRank(*regular_fanin.node_view(), regular_fanin.index());
   }
-  return false;
+  return kInvalidRank;
+}
+
+bool Transposer::IsFaninPortRankN(const utils::MutableNodeView& node, int port,
+                                  int n) const {
+  return GetFaninPortRank(node, port) == n;
 }
 
 bool Transposer::IsFaninPortDimsNIfConst(const utils::MutableNodeView& node,
@@ -538,10 +617,11 @@ bool Transposer::IsFaninPortDimsNIfConst(const utils::MutableNodeView& node,
     if (!tensor.FromProto(value_attr->tensor())) {
       return false;
     }
-    if (tensor.dims() != dims.size()) {
+    const int dims_size = dims.size();
+    if (tensor.dims() != dims_size) {
       return false;
     }
-    for (int i = 0; i < dims.size(); ++i) {
+    for (int i = 0; i < dims_size; ++i) {
       if (tensor.dim_size(i) != dims[i]) {
         return false;
       }
@@ -653,7 +733,12 @@ Status LayoutSensitiveOpTransposer::UpdateNode(TransposeContext* context,
 Status DefaultLayoutSensitiveOpTransposer::TransposeNode(
     TransposeContext* context, utils::MutableNodeView* node) {
   DCHECK(IsDefaultLayoutSensitiveOp(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4)) {
+  const int rank = GetFanoutPortRank(*node, 0);
+  if (rank != 4 && rank != 5) {
+    return Status::OK();
+  }
+  ScopedDataFormatUpgrader data_format_upgrader(context, rank);
+  if (!ShouldProcess(*context, *node)) {
     return Status::OK();
   }
   VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
@@ -682,16 +767,51 @@ Status AvgPoolGradTransposer::TransposeNode(TransposeContext* context,
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
-Status BiasAddGradTransposer::TransposeNode(TransposeContext* context,
-                                            utils::MutableNodeView* node) {
-  DCHECK(IsBiasAddGrad(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFaninPortRankN(*node, 0, 4)) {
+Status BiasAddTransposer::TransposeNode(TransposeContext* context,
+                                        utils::MutableNodeView* node) {
+  // This TransposeNode allows for BiasAdd but not BiasAddV1, since BiasAdd
+  // supports different data format.
+  DCHECK(IsBiasAddV2(*node->node()));
+  const int rank = GetFanoutPortRank(*node, 0);
+  if (rank != 4 && rank != 5) {
+    return Status::OK();
+  }
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, rank)) {
     return Status::OK();
   }
   VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
           << "' with op '" << node->GetOp() << "' from data format '"
           << context->src_format << "' to '" << context->dst_format << "'";
+  // BiasAdd itself only needs NCHW/NHWC to determine whether C dim is the
+  // second or the last dim. Therefore, we use the original 4D data format in
+  // the context to update the node. For the input/output tensor, the
+  // corresponding 4D or 5D data format is needed.
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
+  ScopedDataFormatUpgrader data_format_upgrader(context, rank);
+  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {0}, node, kOpTranspose));
+  TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
+  return context->graph_view->GetMutationBuilder()->Apply();
+}
+
+Status BiasAddGradTransposer::TransposeNode(TransposeContext* context,
+                                            utils::MutableNodeView* node) {
+  DCHECK(IsBiasAddGrad(*node->node()));
+  const int rank = GetFaninPortRank(*node, 0);
+  if (rank != 4 && rank != 5) {
+    return Status::OK();
+  }
+  if (!ShouldProcess(*context, *node)) {
+    return Status::OK();
+  }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
+  // BiasAddGrad itself only needs NCHW/NHWC to determine whether C dim is the
+  // second or the last dim. Therefore, we use the original 4D data format in
+  // the context to update the node. For the input tensor, the corresponding 4D
+  // or 5D data format is needed.
+  TF_RETURN_IF_ERROR(UpdateNode(context, node));
+  ScopedDataFormatUpgrader data_format_upgrader(context, rank);
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {0}, node, kOpTranspose));
   // No need to update output shape, as it is always of shape 1-D with size the
   // feature dimension of `out_backprop`, regardless of whether NCHW or NHWC is
@@ -751,6 +871,71 @@ Status Conv2DBackpropInputTransposer::TransposeNode(
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
+Status Conv3DTransposer::TransposeNode(TransposeContext* context,
+                                       utils::MutableNodeView* node) {
+  DCHECK(IsConv3D(*node->node()));
+  const int rank = GetFanoutPortRank(*node, 0);
+  if (rank != 5) {
+    return Status::OK();
+  }
+  ScopedDataFormatUpgrader data_format_upgrader(context, rank);
+  if (!ShouldProcess(*context, *node)) {
+    return Status::OK();
+  }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
+  TF_RETURN_IF_ERROR(UpdateNode(context, node));
+  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {0}, node, kOpTranspose));
+  TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
+  return context->graph_view->GetMutationBuilder()->Apply();
+}
+
+Status Conv3DBackpropFilterTransposer::TransposeNode(
+    TransposeContext* context, utils::MutableNodeView* node) {
+  DCHECK(IsConv3DBackpropFilterV2(*node->node()));
+  const int rank = GetFanoutPortRank(*node, 0);
+  if (rank != 5) {
+    return Status::OK();
+  }
+  ScopedDataFormatUpgrader data_format_upgrader(context, rank);
+  if (!ShouldProcess(*context, *node)) {
+    return Status::OK();
+  }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
+  TF_RETURN_IF_ERROR(UpdateNode(context, node));
+  TF_RETURN_IF_ERROR(
+      UpdateFaninEdgesWithOp(context, {0, 2}, node, kOpTranspose));
+  // No need to update output shape, as it is always of shape
+  // [filter_height, filter_width, in_channels, out_channels], regardless of
+  // whether NCHW or NHWC is used.
+  return context->graph_view->GetMutationBuilder()->Apply();
+}
+
+Status Conv3DBackpropInputTransposer::TransposeNode(
+    TransposeContext* context, utils::MutableNodeView* node) {
+  DCHECK(IsConv3DBackpropInputV2(*node->node()));
+  const int rank = GetFanoutPortRank(*node, 0);
+  if (rank != 5) {
+    return Status::OK();
+  }
+  ScopedDataFormatUpgrader data_format_upgrader(context, rank);
+  if (!ShouldProcess(*context, *node)) {
+    return Status::OK();
+  }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
+  TF_RETURN_IF_ERROR(UpdateNode(context, node));
+  TF_RETURN_IF_ERROR(
+      UpdateFaninEdgesWithOp(context, {0}, node, kOpDataFormatVecPermute));
+  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {2}, node, kOpTranspose));
+  TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
+  return context->graph_view->GetMutationBuilder()->Apply();
+}
+
 Status FusedBatchNormExTransposer::TransposeNode(TransposeContext* context,
                                                  utils::MutableNodeView* node) {
   DCHECK(IsFusedBatchNormEx(*node->node()));
@@ -784,8 +969,12 @@ bool FusedBatchNormGradTransposer::IsTraining(
 Status FusedBatchNormGradTransposer::TransposeNode(
     TransposeContext* context, utils::MutableNodeView* node) {
   DCHECK(IsFusedBatchNormGrad(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
-      !IsTraining(*node)) {
+  const int rank = GetFanoutPortRank(*node, 0);
+  if (rank != 4 && rank != 5) {
+    return Status::OK();
+  }
+  ScopedDataFormatUpgrader data_format_upgrader(context, rank);
+  if (!ShouldProcess(*context, *node) || !IsTraining(*node)) {
     return Status::OK();
   }
   VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
@@ -863,12 +1052,13 @@ inline bool IsValidConstPermTransposeNode(const utils::MutableNodeView& node,
   if (!GetValueAttrFromConstInputNode(node, IsTranspose, 1, &tensor)) {
     return false;
   }
-  if (tensor.NumElements() != permutation.size()) {
+  const int permutation_size = permutation.size();
+  if (tensor.NumElements() != permutation_size) {
     return false;
   }
 
   const auto& tensor_data = tensor.unaligned_flat<int32>();
-  for (int i = 0; i < permutation.size(); i++) {
+  for (int i = 0; i < permutation_size; i++) {
     if (permutation[i] != tensor_data(i)) {
       return false;
     }
@@ -941,8 +1131,9 @@ bool LayoutAgnosticOpTransposer::IsAfterDstToSrcTransform(
   return false;
 }
 
-std::vector<int> LayoutAgnosticOpTransposer::GetVariadic4DFaninPorts(
-    const TransposeContext& context, const utils::MutableNodeView& node) const {
+std::vector<int> LayoutAgnosticOpTransposer::GetVariadicNDFaninPorts(
+    const TransposeContext& context, const utils::MutableNodeView& node,
+    int rank) const {
   std::vector<int> ports;
   const int num_regular_fanins = node.NumRegularFanins();
   ports.reserve(num_regular_fanins);
@@ -950,7 +1141,7 @@ std::vector<int> LayoutAgnosticOpTransposer::GetVariadic4DFaninPorts(
     const auto& regular_fanin = node.GetRegularFanin(i);
     auto* regular_fanin_node = regular_fanin.node_view();
     int regular_fanin_port = regular_fanin.index();
-    if (IsFanoutPortRankN(*regular_fanin_node, regular_fanin_port, 4) &&
+    if ((IsFanoutPortRankN(*regular_fanin_node, regular_fanin_port, rank)) &&
         ((IsAfterDstToSrcTransform(context, *regular_fanin_node) &&
           IsLayoutAgnosticOp(*regular_fanin_node->node())) ||
          IsLayoutOptimizerAddedDstToSrcTranspose(context,
@@ -964,10 +1155,18 @@ std::vector<int> LayoutAgnosticOpTransposer::GetVariadic4DFaninPorts(
 Status DefaultLayoutAgnosticOpTransposer::TransposeNode(
     TransposeContext* context, utils::MutableNodeView* node) {
   DCHECK(IsDefaultLayoutAgnosticOp(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
+  const int rank = GetFanoutPortRank(*node, 0);
+  if (rank != 4 && rank != 5) {
+    return Status::OK();
+  }
+  ScopedDataFormatUpgrader data_format_upgrader(context, rank);
+  if (!ShouldProcess(*context, *node) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {0}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
   return context->graph_view->GetMutationBuilder()->Apply();
@@ -976,10 +1175,18 @@ Status DefaultLayoutAgnosticOpTransposer::TransposeNode(
 Status AddNTransposer::TransposeNode(TransposeContext* context,
                                      utils::MutableNodeView* node) {
   DCHECK(IsAddN(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
+  const int rank = GetFanoutPortRank(*node, 0);
+  if (rank != 4 && rank != 5) {
+    return Status::OK();
+  }
+  ScopedDataFormatUpgrader data_format_upgrader(context, rank);
+  if (!ShouldProcess(*context, *node) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, GetDataFaninPorts(*node),
                                             node, kOpTranspose));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
@@ -992,19 +1199,20 @@ bool BinaryOpTransposer::IsNDOperateWithMD(const utils::MutableNodeView& node,
 }
 
 bool BinaryOpTransposer::IsFaninShapeSupported(
-    const utils::MutableNodeView& node) {
-  return (IsNDOperateWithMD(node, 4, 0) || IsNDOperateWithMD(node, 4, 1) ||
-          IsNDOperateWithMD(node, 4, 4) || IsNDOperateWithMD(node, 0, 4) ||
-          IsNDOperateWithMD(node, 1, 4));
+    const utils::MutableNodeView& node, int rank) {
+  return (IsNDOperateWithMD(node, rank, 0) ||
+          IsNDOperateWithMD(node, rank, 1) ||
+          IsNDOperateWithMD(node, rank, rank) ||
+          IsNDOperateWithMD(node, 0, rank) || IsNDOperateWithMD(node, 1, rank));
 }
 
-std::vector<int> BinaryOpTransposer::Get4DDataFaninPorts(
-    const utils::MutableNodeView& node) {
+std::vector<int> BinaryOpTransposer::GetNDDataFaninPorts(
+    const utils::MutableNodeView& node, int rank) {
   std::vector<int> values;
-  if (IsFaninPortRankN(node, 0, 4)) {
+  if (IsFaninPortRankN(node, 0, rank)) {
     values.push_back(0);
   }
-  if (IsFaninPortRankN(node, 1, 4)) {
+  if (IsFaninPortRankN(node, 1, rank)) {
     values.push_back(1);
   }
   return values;
@@ -1034,12 +1242,10 @@ Status BinaryOpTransposer::AddNodeReshape(
   return status;
 }
 
-Status BinaryOpTransposer::AddNodeShapeConst(utils::Mutation* mutation,
-                                             absl::string_view node_name,
-                                             absl::string_view node_device,
-                                             bool node_in_frame,
-                                             int num_channels,
-                                             absl::string_view depended_node) {
+Status BinaryOpTransposer::AddNodeShapeConst(
+    utils::Mutation* mutation, absl::string_view node_name,
+    absl::string_view node_device, bool node_in_frame, int num_channels,
+    absl::string_view depended_node, int rank) {
   NodeDef new_node;
   new_node.set_name(string(node_name));
   new_node.set_op(kOpConst);
@@ -1049,8 +1255,9 @@ Status BinaryOpTransposer::AddNodeShapeConst(utils::Mutation* mutation,
   new_node.mutable_attr()->insert({"dtype", attr_data_type});
 
   AttrValue attr_tensor;
-  Tensor tensor(DT_INT32, TensorShape({4}));
-  std::vector<int> shape = {1, num_channels, 1, 1};
+  Tensor tensor(DT_INT32, TensorShape({rank}));
+  std::vector<int> shape(rank, 1);
+  shape[1] = num_channels;
   for (int i = 0; i < static_cast<int>(shape.size()); i++) {
     tensor.flat<int>()(i) = shape[i];
   }
@@ -1068,12 +1275,13 @@ Status BinaryOpTransposer::AddNodeShapeConst(utils::Mutation* mutation,
   return status;
 }
 
-Status BinaryOpTransposer::MaybeReshapeVectorFanin(
-    TransposeContext* context, utils::MutableNodeView* node) {
+Status BinaryOpTransposer::MaybeReshapeVectorFanin(TransposeContext* context,
+                                                   utils::MutableNodeView* node,
+                                                   int rank) {
   int vector_index = -1;
-  if (IsNDOperateWithMD(*node, 4, 1)) {
+  if (IsNDOperateWithMD(*node, rank, 1)) {
     vector_index = 1;
-  } else if (IsNDOperateWithMD(*node, 1, 4)) {
+  } else if (IsNDOperateWithMD(*node, 1, rank)) {
     vector_index = 0;
   }
   if (vector_index != -1) {
@@ -1095,7 +1303,7 @@ Status BinaryOpTransposer::MaybeReshapeVectorFanin(
     TF_RETURN_IF_ERROR(
         AddNodeShapeConst(mutation, shape_const_node_name, node_device,
                           context->frames.IsInFrame(*node->node()), vector_size,
-                          fanin_node->GetName()));
+                          fanin_node->GetName(), rank));
     const auto* t_attr = node->GetAttr(kAttrT);
     if (t_attr == nullptr) {
       return errors::InvalidArgument("Missing attribute ", kAttrT);
@@ -1113,13 +1321,21 @@ Status BinaryOpTransposer::MaybeReshapeVectorFanin(
 Status BinaryOpTransposer::TransposeNode(TransposeContext* context,
                                          utils::MutableNodeView* node) {
   DCHECK(IsBinaryOp(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFaninShapeSupported(*node) ||
+  const int rank = GetFanoutPortRank(*node, 0);
+  if (rank != 4 && rank != 5) {
+    return Status::OK();
+  }
+  ScopedDataFormatUpgrader data_format_upgrader(context, rank);
+  if (!ShouldProcess(*context, *node) || !IsFaninShapeSupported(*node, rank) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
-  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, Get4DDataFaninPorts(*node),
-                                            node, kOpTranspose));
-  TF_RETURN_IF_ERROR(MaybeReshapeVectorFanin(context, node));
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
+  TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(
+      context, GetNDDataFaninPorts(*node, rank), node, kOpTranspose));
+  TF_RETURN_IF_ERROR(MaybeReshapeVectorFanin(context, node, rank));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
   return context->graph_view->GetMutationBuilder()->Apply();
 }
@@ -1127,7 +1343,12 @@ Status BinaryOpTransposer::TransposeNode(TransposeContext* context,
 Status ConcatOpTransposer::TransposeNode(TransposeContext* context,
                                          utils::MutableNodeView* node) {
   DCHECK(IsConcat(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
+  const int rank = GetFanoutPortRank(*node, 0);
+  if (rank != 4 && rank != 5) {
+    return Status::OK();
+  }
+  ScopedDataFormatUpgrader data_format_upgrader(context, rank);
+  if (!ShouldProcess(*context, *node) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
@@ -1140,6 +1361,9 @@ Status ConcatOpTransposer::TransposeNode(TransposeContext* context,
       axis_node = n_attr->i();
     }
   }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
   TF_RETURN_IF_ERROR(
       UpdateFaninEdgesWithOp(context, {axis_node}, node, kOpDataFormatDimMap));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
@@ -1163,14 +1387,33 @@ Status FillOpTransposer::TransposeNode(TransposeContext* context,
 Status IdentityNTransposer::TransposeNode(TransposeContext* context,
                                           utils::MutableNodeView* node) {
   DCHECK(IsIdentityN(*node->node()));
-  const auto ports = GetVariadic4DFaninPorts(*context, *node);
-  if (!ShouldProcess(*context, *node) || ports.empty()) {
+  const auto ports_4d = GetVariadicNDFaninPorts(*context, *node, 4);
+
+  // Temporarily upgrade the context to obtain the number of 5D fanin ports.
+  std::vector<int> ports_5d;
+  {
+    ScopedDataFormatUpgrader data_format_upgrader(context, 5);
+    ports_5d = GetVariadicNDFaninPorts(*context, *node, 5);
+  }
+
+  if (!ShouldProcess(*context, *node)) {
     return Status::OK();
   }
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, ports, node, kOpTranspose));
-  TF_RETURN_IF_ERROR(
-      UpdateFanoutEdgesWithOp(context, ports, node, kOpTranspose));
+
+  if (!ports_4d.empty()) {
+    TF_RETURN_IF_ERROR(
+        UpdateFaninEdgesWithOp(context, ports_4d, node, kOpTranspose));
+    TF_RETURN_IF_ERROR(
+        UpdateFanoutEdgesWithOp(context, ports_4d, node, kOpTranspose));
+  }
+
+  if (!ports_5d.empty()) {
+    ScopedDataFormatUpgrader data_format_upgrader(context, 5);
+    TF_RETURN_IF_ERROR(
+        UpdateFaninEdgesWithOp(context, ports_5d, node, kOpTranspose));
+    TF_RETURN_IF_ERROR(
+        UpdateFanoutEdgesWithOp(context, ports_5d, node, kOpTranspose));
+  }
   return context->graph_view->GetMutationBuilder()->Apply();
 }
 
@@ -1229,11 +1472,17 @@ bool ReduceTransposer::KeepDims(const utils::MutableNodeView& node) {
 
 bool ReduceTransposer::IsAlongAxis(const Tensor& tensor,
                                    absl::Span<const int> axis, int rank) {
-  if (tensor.dims() != 1 || tensor.dim_size(0) != axis.size()) {
+  const int axis_size = axis.size();
+  if (tensor.dims() != 1 || tensor.dim_size(0) != axis_size) {
     return false;
   }
-  for (int i = 0; i < axis.size(); ++i) {
-    int local_axis = tensor.flat<int>()(i);
+  for (int i = 0; i < axis_size; ++i) {
+    int local_axis = 0;
+    if (tensor.dtype() == DT_INT32) {
+      local_axis = tensor.flat<int32>()(i);
+    } else {
+      local_axis = tensor.flat<int64>()(i);
+    }
     if (local_axis < 0) {
       local_axis += rank;
     }
@@ -1251,8 +1500,9 @@ bool ReduceTransposer::IsAlongAxis(const Tensor& tensor,
   return true;
 }
 
-bool ReduceTransposer::IsReduceAxisSupported(
-    const TransposeContext& context, const utils::MutableNodeView& node) {
+bool ReduceTransposer::IsReduceAxisSupported(const TransposeContext& context,
+                                             const utils::MutableNodeView& node,
+                                             int rank) {
   if (KeepDims(node)) {
     return true;
   }
@@ -1273,21 +1523,37 @@ bool ReduceTransposer::IsReduceAxisSupported(
   auto indices = [&context](absl::Span<const char> labels) {
     return GetDimensionIndicesFromLabel(context.src_dim_indices, labels);
   };
-  return IsAlongAxis(tensor, indices({'N', 'H', 'W', 'C'}), kRank) ||
-         IsAlongAxis(tensor, indices({'H', 'W', 'C'}), kRank) ||
-         IsAlongAxis(tensor, indices({'N', 'H', 'W'}), kRank) ||
-         IsAlongAxis(tensor, indices({'H', 'W'}), kRank) ||
-         IsAlongAxis(tensor, indices({'C'}), kRank);
+  if (rank == 5) {
+    return IsAlongAxis(tensor, indices({'N', 'D', 'H', 'W', 'C'}), 5) ||
+           IsAlongAxis(tensor, indices({'D', 'H', 'W', 'C'}), 5) ||
+           IsAlongAxis(tensor, indices({'N', 'D', 'H', 'W'}), 5) ||
+           IsAlongAxis(tensor, indices({'D', 'H', 'W'}), 5) ||
+           IsAlongAxis(tensor, indices({'C'}), 5);
+  }
+  DCHECK_EQ(rank, 4);
+  return IsAlongAxis(tensor, indices({'N', 'H', 'W', 'C'}), 4) ||
+         IsAlongAxis(tensor, indices({'H', 'W', 'C'}), 4) ||
+         IsAlongAxis(tensor, indices({'N', 'H', 'W'}), 4) ||
+         IsAlongAxis(tensor, indices({'H', 'W'}), 4) ||
+         IsAlongAxis(tensor, indices({'C'}), 4);
 }
 
 Status ReduceTransposer::TransposeNode(TransposeContext* context,
                                        utils::MutableNodeView* node) {
   DCHECK(IsReduceOp(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFaninPortRankN(*node, 0, 4) ||
-      !IsReduceAxisSupported(*context, *node) ||
+  const int rank = GetFaninPortRank(*node, 0);
+  if (rank != 4 && rank != 5) {
+    return Status::OK();
+  }
+  ScopedDataFormatUpgrader data_format_upgrader(context, rank);
+  if (!ShouldProcess(*context, *node) ||
+      !IsReduceAxisSupported(*context, *node, rank) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {0}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(
       UpdateFaninEdgesWithOp(context, {1}, node, kOpDataFormatDimMap));
@@ -1348,10 +1614,18 @@ Status SelectTransposer::TransposeNode(TransposeContext* context,
 Status ShapeTransposer::TransposeNode(TransposeContext* context,
                                       utils::MutableNodeView* node) {
   DCHECK(IsShape(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFaninPortRankN(*node, 0, 4) ||
+  const int rank = GetFaninPortRank(*node, 0);
+  if (rank != 4 && rank != 5) {
+    return Status::OK();
+  }
+  ScopedDataFormatUpgrader data_format_upgrader(context, rank);
+  if (!ShouldProcess(*context, *node) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {0}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(
       UpdateFanoutEdgesWithOp(context, {0}, node, kOpDataFormatVecPermute));
@@ -1361,10 +1635,20 @@ Status ShapeTransposer::TransposeNode(TransposeContext* context,
 Status ShapeNTransposer::TransposeNode(TransposeContext* context,
                                        utils::MutableNodeView* node) {
   DCHECK(IsShapeN(*node->node()));
-  const auto ports = GetVariadic4DFaninPorts(*context, *node);
+  // ShapeN requires all input tensors to have the same dimensions. Therefore,
+  // we simply use the 0th fanin port.
+  const int rank = GetFaninPortRank(*node, 0);
+  if (rank != 4 && rank != 5) {
+    return Status::OK();
+  }
+  ScopedDataFormatUpgrader data_format_upgrader(context, rank);
+  const auto ports = GetVariadicNDFaninPorts(*context, *node, rank);
   if (!ShouldProcess(*context, *node) || ports.empty()) {
     return Status::OK();
   }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
   TF_RETURN_IF_ERROR(
       UpdateFaninEdgesWithOp(context, ports, node, kOpTranspose));
   TF_RETURN_IF_ERROR(
@@ -1375,11 +1659,19 @@ Status ShapeNTransposer::TransposeNode(TransposeContext* context,
 Status SliceTransposer::TransposeNode(TransposeContext* context,
                                       utils::MutableNodeView* node) {
   DCHECK(IsSlice(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
-      !IsFaninPortsDimsNIfConst(*node, {1, 2}, {4}) ||
+  const int rank = GetFanoutPortRank(*node, 0);
+  if (rank != 4 && rank != 5) {
+    return Status::OK();
+  }
+  ScopedDataFormatUpgrader data_format_upgrader(context, rank);
+  if (!ShouldProcess(*context, *node) ||
+      !IsFaninPortsDimsNIfConst(*node, {1, 2}, {rank}) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {0}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(
       UpdateFaninEdgesWithOp(context, {1, 2}, node, kOpDataFormatVecPermute));
@@ -1444,12 +1736,13 @@ bool SqueezeTransposer::IsAlongAxis(const AttrValue& attr,
                                     int rank) const {
   const auto& list = attr.list();
   // If list is empty, Squeeze op will squeeze all dimensions of size 1.
+  int axis_size = axis.size();
   if (list.i_size() == 0) {
     return true;
-  } else if (list.i_size() != axis.size()) {
+  } else if (list.i_size() != axis_size) {
     return false;
   }
-  for (int i = 0; i < axis.size(); ++i) {
+  for (int i = 0; i < axis_size; ++i) {
     int local_axis = list.i(i);
     if (local_axis < 0) {
       local_axis += rank;
@@ -1489,21 +1782,21 @@ Status SqueezeTransposer::UpdateSqueezeDims(TransposeContext* context,
   if (squeeze_dims_attr == nullptr) {
     return errors::InvalidArgument("Missing attribute ", kAttrSqueezeDims);
   }
-  const int max_num_squeeze_dim = context->src_format.length() - 1;
-  const int min_squeeze_dim = -(max_num_squeeze_dim + 1);
+  const int num_input_dims = context->src_format.length();
+  const int min_squeeze_dim = -num_input_dims;
   std::vector<int> squeeze_dims_mapped;
   const int squeeze_dims_size = squeeze_dims_attr->list().i_size();
   squeeze_dims_mapped.reserve(squeeze_dims_size);
   for (int i = 0; i < squeeze_dims_size; ++i) {
     int dim = squeeze_dims_attr->list().i(i);
-    if (dim < min_squeeze_dim || dim >= max_num_squeeze_dim) {
+    if (dim < min_squeeze_dim || dim >= num_input_dims) {
       return errors::InvalidArgument(
           "Attribute '", kAttrSqueezeDims, "' contains out of range index '",
           dim, "', index must be between [", min_squeeze_dim, ", ",
-          max_num_squeeze_dim, ")");
+          num_input_dims, ")");
     }
     if (dim < 0) {
-      dim += max_num_squeeze_dim;
+      dim += num_input_dims;
     }
     squeeze_dims_mapped.push_back(context->dst_to_src[dim]);
   }
@@ -1563,7 +1856,7 @@ Status StridedSliceTransposer::PermuteMask(TransposeContext* context,
     return errors::InvalidArgument("invalid mask value: ", mask_i);
   }
   int result = 0;
-  for (int i = 0; i < context->src_to_dst.size(); i++) {
+  for (int i = 0, end = context->src_to_dst.size(); i < end; i++) {
     const int final_pos = context->src_to_dst[i];
     const int position_mask = 1 << final_pos;
     const int bit_i = (mask_i & position_mask) >> final_pos;
@@ -1638,10 +1931,18 @@ Status TileTransposer::TransposeNode(TransposeContext* context,
 Status UnaryGradTransposer::TransposeNode(TransposeContext* context,
                                           utils::MutableNodeView* node) {
   DCHECK(IsUnaryGrad(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
+  const int rank = GetFanoutPortRank(*node, 0);
+  if (rank != 4 && rank != 5) {
+    return Status::OK();
+  }
+  ScopedDataFormatUpgrader data_format_upgrader(context, rank);
+  if (!ShouldProcess(*context, *node) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
+  VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
+          << "' with op '" << node->GetOp() << "' from data format '"
+          << context->src_format << "' to '" << context->dst_format << "'";
   TF_RETURN_IF_ERROR(
       UpdateFaninEdgesWithOp(context, {0, 1}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
@@ -1659,23 +1960,24 @@ string GetDeviceName(const VirtualPlacer* virtual_placer, const NodeDef& node) {
 bool IsDefaultLayoutSensitiveOp(const NodeDef& node) {
   static absl::flat_hash_set<string>* default_layout_sensitive_ops =
       new absl::flat_hash_set<std::string>(
-          {"AvgPool", "BiasAdd", "Conv2D", "DepthwiseConv2dNative",
-           "DepthToSpace", "FusedBatchNorm", "FusedBatchNormV2",
-           "FusedBatchNormV3", "FusedConv2DBiasActivation", "MaxPool",
-           "SpaceToDepth"});
+          {"AvgPool", "Conv2D", "DepthwiseConv2dNative", "DepthToSpace",
+           "FusedBatchNorm", "FusedBatchNormV2", "FusedBatchNormV3",
+           "FusedConv2DBiasActivation", "MaxPool", "SpaceToDepth"});
   return default_layout_sensitive_ops->find(node.op()) !=
          default_layout_sensitive_ops->end();
 }
 
 bool IsLayoutSensitiveOp(const NodeDef& node) {
   return IsDefaultLayoutSensitiveOp(node) || IsAvgPoolGrad(node) ||
-         IsBiasAddGrad(node) || IsConv2DBackpropFilter(node) ||
-         IsConv2DBackpropInput(node) ||
+         IsBiasAddV2(node) || IsBiasAddGrad(node) ||
+         IsConv2DBackpropFilter(node) || IsConv2DBackpropInput(node) ||
          IsDepthwiseConv2dNativeBackpropFilter(node) ||
          IsDepthwiseConv2dNativeBackpropInput(node) ||
          IsFusedBatchNormEx(node) || IsFusedBatchNormGrad(node) ||
          IsMaxPoolV2(node) || IsMaxPoolGrad(node) || IsMaxPoolGradV2(node) ||
-         IsMaxPoolGradGradV1(node) || IsMaxPoolGradGradV2(node);
+         IsMaxPoolGradGradV1(node) || IsMaxPoolGradGradV2(node) ||
+         IsConv3D(node) || IsConv3DBackpropInputV2(node) ||
+         IsConv3DBackpropFilterV2(node);
 }
 
 bool IsDefaultLayoutAgnosticOp(const NodeDef& node) {
@@ -1714,6 +2016,7 @@ bool IsDefaultLayoutAgnosticOp(const NodeDef& node) {
                                             "IsFinite",
                                             "IsInf",
                                             "IsNan",
+                                            "LeakyRelu",
                                             "Lgamma",
                                             "Log",
                                             "LogicalNot",
@@ -1724,6 +2027,7 @@ bool IsDefaultLayoutAgnosticOp(const NodeDef& node) {
                                             "PreventGradient",
                                             "QuantizeAndDequantizeV2",
                                             "QuantizeAndDequantizeV3",
+                                            "QuantizeAndDequantizeV4",
                                             "Real",
                                             "Reciprocal",
                                             "Relu",
@@ -1762,10 +2066,11 @@ bool IsTernaryOp(const NodeDef& node) { return IsBetainc(node); }
 
 bool IsUnaryGrad(const NodeDef& node) {
   bool is_unary_grad =
-      IsEluGrad(node) || IsInvGrad(node) || IsReciprocalGrad(node) ||
-      IsRelu6Grad(node) || IsReluGrad(node) || IsRsqrtGrad(node) ||
-      IsSeluGrad(node) || IsSigmoidGrad(node) || IsSoftplusGrad(node) ||
-      IsSoftsignGrad(node) || IsSqrtGrad(node) || IsTanhGrad(node);
+      IsEluGrad(node) || IsInvGrad(node) || IsLeakyReluGrad(node) ||
+      IsReciprocalGrad(node) || IsRelu6Grad(node) || IsReluGrad(node) ||
+      IsRsqrtGrad(node) || IsSeluGrad(node) || IsSigmoidGrad(node) ||
+      IsSoftplusGrad(node) || IsSoftsignGrad(node) || IsSqrtGrad(node) ||
+      IsTanhGrad(node);
   return is_unary_grad;
 }
 

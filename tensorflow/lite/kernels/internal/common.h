@@ -55,9 +55,12 @@ inline void GetActivationMinMax(FusedActivationFunctionType ac,
   }
 }
 
-inline float ActivationFunctionWithMinMax(float x, float output_activation_min,
-                                          float output_activation_max) {
-  return std::min(std::max(x, output_activation_min), output_activation_max);
+template <typename T>
+inline T ActivationFunctionWithMinMax(T x, T output_activation_min,
+                                      T output_activation_max) {
+  using std::max;
+  using std::min;
+  return min(max(x, output_activation_min), output_activation_max);
 }
 
 // Legacy function, left for compatibility only.
@@ -135,23 +138,24 @@ inline void BiasAndClamp(float clamp_min, float clamp_max, int bias_size,
 #endif
 }
 
-inline int32 MultiplyByQuantizedMultiplierSmallerThanOneExp(
-    int32 x, int32 quantized_multiplier, int left_shift) {
+inline int32_t MultiplyByQuantizedMultiplierSmallerThanOneExp(
+    int32_t x, int32_t quantized_multiplier, int left_shift) {
   using gemmlowp::RoundingDivideByPOT;
   using gemmlowp::SaturatingRoundingDoublingHighMul;
   return RoundingDivideByPOT(
       SaturatingRoundingDoublingHighMul(x, quantized_multiplier), -left_shift);
 }
 
-inline int32 MultiplyByQuantizedMultiplierGreaterThanOne(
-    int32 x, int32 quantized_multiplier, int left_shift) {
+inline int32_t MultiplyByQuantizedMultiplierGreaterThanOne(
+    int32_t x, int32_t quantized_multiplier, int left_shift) {
   using gemmlowp::SaturatingRoundingDoublingHighMul;
   return SaturatingRoundingDoublingHighMul(x * (1 << left_shift),
                                            quantized_multiplier);
 }
 
-inline int32 MultiplyByQuantizedMultiplier(int32 x, int32 quantized_multiplier,
-                                           int shift) {
+inline int32_t MultiplyByQuantizedMultiplier(int32_t x,
+                                             int32_t quantized_multiplier,
+                                             int shift) {
   using gemmlowp::RoundingDivideByPOT;
   using gemmlowp::SaturatingRoundingDoublingHighMul;
   int left_shift = shift > 0 ? shift : 0;
@@ -161,26 +165,66 @@ inline int32 MultiplyByQuantizedMultiplier(int32 x, int32 quantized_multiplier,
                              right_shift);
 }
 
-inline int32 MultiplyByQuantizedMultiplier(int64_t x,
-                                           int32 quantized_multiplier,
-                                           int shift) {
+inline int32_t MultiplyByQuantizedMultiplier(int64_t x,
+                                             int32_t quantized_multiplier,
+                                             int shift) {
   // Inputs:
   // - quantized_multiplier has fixed point at bit 31
   // - shift is -31 to +7 (negative for right shift)
   //
   // Assumptions: The following input ranges are assumed
   // - quantize_scale>=0  (the usual range is (1<<30) to (1>>31)-1)
-  // - scaling is chosen so final scaled result fits in int32
+  // - scaling is chosen so final scaled result fits in int32_t
   // - input x is in the range -(1<<47) <= x < (1<<47)
   assert(quantized_multiplier >= 0);
   assert(shift >= -31 && shift < 8);
+  assert(x >= -(static_cast<int64_t>(1) << 47) &&
+         x < (static_cast<int64_t>(1) << 47));
 
-  int32_t reduced_multiplier = (quantized_multiplier + (1 << 15)) >> 16;
+  int32_t reduced_multiplier = (quantized_multiplier < 0x7FFF0000)
+                                   ? ((quantized_multiplier + (1 << 15)) >> 16)
+                                   : 0x7FFF;
   int total_shift = 15 - shift;
   x = (x * (int64_t)reduced_multiplier) + ((int64_t)1 << (total_shift - 1));
   int32_t result = x >> total_shift;
   return result;
 }
+
+#ifdef USE_NEON
+// Round uses ARM's rounding shift right.
+inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
+    int32x4x4_t input_val, int32_t quantized_multiplier, int shift) {
+  const int left_shift = std::max(shift, 0);
+  const int right_shift = std::min(shift, 0);
+  int32x4x4_t result;
+
+  int32x4_t multiplier_dup = vdupq_n_s32(quantized_multiplier);
+  int32x4_t left_shift_dup = vdupq_n_s32(left_shift);
+  int32x4_t right_shift_dup = vdupq_n_s32(right_shift);
+
+  result.val[0] =
+      vrshlq_s32(vqrdmulhq_s32(vshlq_s32(input_val.val[0], left_shift_dup),
+                               multiplier_dup),
+                 right_shift_dup);
+
+  result.val[1] =
+      vrshlq_s32(vqrdmulhq_s32(vshlq_s32(input_val.val[1], left_shift_dup),
+                               multiplier_dup),
+                 right_shift_dup);
+
+  result.val[2] =
+      vrshlq_s32(vqrdmulhq_s32(vshlq_s32(input_val.val[2], left_shift_dup),
+                               multiplier_dup),
+                 right_shift_dup);
+
+  result.val[3] =
+      vrshlq_s32(vqrdmulhq_s32(vshlq_s32(input_val.val[3], left_shift_dup),
+                               multiplier_dup),
+                 right_shift_dup);
+
+  return result;
+}
+#endif
 
 template <typename T>
 int CountLeadingZeros(T integer_input) {
@@ -215,9 +259,9 @@ inline int CountLeadingSignBits(T integer_input) {
   using U = typename std::make_unsigned<T>::type;
   return integer_input >= 0
              ? CountLeadingZeros(static_cast<U>(integer_input)) - 1
-             : integer_input != std::numeric_limits<T>::min()
-                   ? CountLeadingZeros(2 * static_cast<U>(-integer_input) - 1)
-                   : 0;
+         : integer_input != std::numeric_limits<T>::min()
+             ? CountLeadingZeros(2 * static_cast<U>(-integer_input) - 1)
+             : 0;
 #endif
 }
 
@@ -237,8 +281,12 @@ inline Integer FloorLog2(Integer n) {
 
 // generate INT16 LUT for function(), e.g., table exp(x) and 1/(1+x) used in
 // softmax
-inline void gen_lut(const std::function<double(double)>& func, double min,
-                    double max, int16_t* table, const int num) {
+// func - the function to build the LUT for (e.g exp(x))
+// min,max - table limits
+// table - pointer to buffer
+// num - number of elements in the LUT
+inline void gen_lut(double (*func)(double), double min, double max,
+                    int16_t* table, const int num) {
   // size of table should equal to num + 1
   // last element only for slope calculation
   double step = (max - min) / (num - 1);
@@ -253,13 +301,43 @@ inline void gen_lut(const std::function<double(double)>& func, double min,
         TfLiteRound(func(min + i * step + half_step) * 32768.0);
     double midpoint_err = midpoint_interp_val - midpoint_val;
     double bias = TfLiteRound(midpoint_err / 2.0);
-    table[i] = std::min(std::max(sample_val - bias, -32768.0), 32767.0);
+    table[i] = std::min<double>(std::max<double>(sample_val - bias, -32768.0),
+                                32767.0);
   }
-  table[num - 1] =
-      std::min(std::max(TfLiteRound(func(max) * 32768.0), -32768.0), 32767.0);
+  table[num - 1] = std::min<double>(
+      std::max<double>(TfLiteRound(func(max) * 32768.0), -32768.0), 32767.0);
 }
 
-// int16 func table lookup, e.g., lookup exp() and 1/(1+x) used in softmax
+// generate INT16 LUT for function(), e.g., table exp(x) and 1/(1+x) used in
+// softmax
+// func - the function to build the LUT for (e.g exp(x))
+// min,max - table limits
+// table - pointer to buffer
+// num - number of elements in the LUT
+inline void gen_lut(float (*func)(float), float min, float max, int16_t* table,
+                    const int num) {
+  // size of table should equal to num + 1
+  // last element only for slope calculation
+  float step = (max - min) / (num - 1);
+  float half_step = step / 2.0f;
+  for (int i = 0; i < num - 1; i++) {
+    float sample_val = TfLiteRound(func(min + i * step) * 32768.0f);
+    float midpoint_interp_val =
+        TfLiteRound((func(min + (i + 1) * step) * 32768.0f +
+                     TfLiteRound(func(min + i * step) * 32768.0f)) /
+                    2.0f);
+    float midpoint_val =
+        TfLiteRound(func(min + i * step + half_step) * 32768.0f);
+    float midpoint_err = midpoint_interp_val - midpoint_val;
+    float bias = TfLiteRound(midpoint_err / 2.0f);
+    table[i] = std::min<float>(std::max<float>(sample_val - bias, -32768.0f),
+                               32767.0f);
+  }
+  table[num - 1] = std::min<float>(
+      std::max<float>(TfLiteRound(func(max) * 32768.0f), -32768.0f), 32767.0f);
+}
+
+// int16_t func table lookup, e.g., lookup exp() and 1/(1+x) used in softmax
 inline int16_t generic_int16_table_lookup(int16_t value, const int16_t* lut) {
   // 512 base value, lut[513] only for calculate slope
   uint16_t index = static_cast<uint16_t>(256 + (value >> 7));
@@ -410,6 +488,23 @@ SaturatingRoundingMultiplyByPOTParam(
       SaturatingRoundingMultiplyByPOTParam(a.raw(), exponent));
 }
 
+// Convert int32_t multiplier to int16_t with rounding.
+inline void DownScaleInt32ToInt16Multiplier(int32_t multiplier_int32_t,
+                                            int16_t* multiplier_int16_t) {
+  TFLITE_DCHECK_GE(multiplier_int32_t, 0);
+  static constexpr int32_t kRoundingOffset = 1 << 15;
+  if (multiplier_int32_t >=
+      std::numeric_limits<int32_t>::max() - kRoundingOffset) {
+    *multiplier_int16_t = std::numeric_limits<int16_t>::max();
+    return;
+  }
+  const int32_t result = (multiplier_int32_t + kRoundingOffset) >> 16;
+  TFLITE_DCHECK_LE(result << 16, multiplier_int32_t + kRoundingOffset);
+  TFLITE_DCHECK_GT(result << 16, multiplier_int32_t - kRoundingOffset);
+  *multiplier_int16_t = result;
+  TFLITE_DCHECK_EQ(*multiplier_int16_t, result);
+}
+
 // Minimum output bits to accommodate log of maximum input range.  It actually
 // does not matter if one considers, say, [-64,64] or [-64,64).
 //
@@ -418,15 +513,13 @@ SaturatingRoundingMultiplyByPOTParam(
 //  ceil(log(abs( log(2.^(0:127))+1 ))/log(2)); ...
 //  ceil(log(abs( log(2.^(0:127))+1 ))/log(2))]
 constexpr int min_log_x_output_bits(int input_bits) {
-  return input_bits > 90
-             ? 7
-             : input_bits > 44
-                   ? 6
-                   : input_bits > 21
-                         ? 5
-                         : input_bits > 10
-                               ? 4
-                               : input_bits > 4 ? 3 : input_bits > 1 ? 2 : 1;
+  return input_bits > 90   ? 7
+         : input_bits > 44 ? 6
+         : input_bits > 21 ? 5
+         : input_bits > 10 ? 4
+         : input_bits > 4  ? 3
+         : input_bits > 1  ? 2
+                           : 1;
 }
 
 // Although currently the name of this function says that it cannot handle
@@ -434,17 +527,17 @@ constexpr int min_log_x_output_bits(int input_bits) {
 // x_max is the largest representable input.  In other words, the output range
 // is symmetric.
 template <int OutputIntegerBits, int InputIntegerBits>
-inline gemmlowp::FixedPoint<int32, OutputIntegerBits>
+inline gemmlowp::FixedPoint<int32_t, OutputIntegerBits>
 log_x_for_x_greater_than_or_equal_to_1_impl(
-    gemmlowp::FixedPoint<int32, InputIntegerBits> input_val) {
-  // assert(__builtin_clz(0u) >= std::numeric_limits<uint32>::digits - 1);
-  // assert(__builtin_clz(0u) <= std::numeric_limits<uint32>::digits);
-  using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
+    gemmlowp::FixedPoint<int32_t, InputIntegerBits> input_val) {
+  // assert(__builtin_clz(0u) >= std::numeric_limits<uint32_t>::digits - 1);
+  // assert(__builtin_clz(0u) <= std::numeric_limits<uint32_t>::digits);
+  using FixedPoint0 = gemmlowp::FixedPoint<int32_t, 0>;
   // The reason for accumulating the result with an extra bit of headroom is
   // that z_pow_2_adj * log_2 might be saturated, and adding num_scaled *
   // recip_denom will otherwise introduce an error.
   static constexpr int kAccumIntegerBits = OutputIntegerBits + 1;
-  using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumIntegerBits>;
+  using FixedPointAccum = gemmlowp::FixedPoint<int32_t, kAccumIntegerBits>;
 
   const FixedPoint0 log_2 = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
       FixedPoint0, 1488522236, std::log(2.0));
@@ -472,10 +565,10 @@ log_x_for_x_greater_than_or_equal_to_1_impl(
   // required shift "ourselves" instead of using, say, Rescale.
   FixedPoint0 z_a = FixedPoint0::FromRaw(input_val.raw());
   // z_a_pow_2 = input_integer_bits - z_a_headroom;
-  int z_a_headroom_plus_1 = CountLeadingZeros(static_cast<uint32>(z_a.raw()));
+  int z_a_headroom_plus_1 = CountLeadingZeros(static_cast<uint32_t>(z_a.raw()));
   FixedPoint0 r_a_tmp =
       SaturatingRoundingMultiplyByPOTParam(z_a, (z_a_headroom_plus_1 - 1));
-  const int32 r_a_raw =
+  const int32_t r_a_raw =
       SaturatingRoundingMultiplyByPOTParam((r_a_tmp * sqrt_half).raw(), 1);
   // z_pow_2_adj = max(z_pow_2_a - 0.75, z_pow_2_b - 0.25);
   // z_pow_2_adj = max(InputIntegerBits - z_a_headroom_plus_1 + 0.25,
@@ -487,8 +580,8 @@ log_x_for_x_greater_than_or_equal_to_1_impl(
 
   // z_b is treated like z_a, but premultiplying by sqrt(0.5).
   FixedPoint0 z_b = z_a * sqrt_half;
-  int z_b_headroom = CountLeadingZeros(static_cast<uint32>(z_b.raw())) - 1;
-  const int32 r_b_raw =
+  int z_b_headroom = CountLeadingZeros(static_cast<uint32_t>(z_b.raw())) - 1;
+  const int32_t r_b_raw =
       SaturatingRoundingMultiplyByPOTParam(z_a.raw(), z_b_headroom);
   const FixedPointAccum z_b_pow_2_adj = SaturatingSub(
       FixedPointAccum::FromRaw(SaturatingRoundingMultiplyByPOTParam(
@@ -516,9 +609,9 @@ log_x_for_x_greater_than_or_equal_to_1_impl(
 }
 
 template <int OutputIntegerBits, int InputIntegerBits>
-inline gemmlowp::FixedPoint<int32, OutputIntegerBits>
+inline gemmlowp::FixedPoint<int32_t, OutputIntegerBits>
 log_x_for_x_greater_than_or_equal_to_1(
-    gemmlowp::FixedPoint<int32, InputIntegerBits> input_val) {
+    gemmlowp::FixedPoint<int32_t, InputIntegerBits> input_val) {
   static_assert(
       OutputIntegerBits >= min_log_x_output_bits(InputIntegerBits),
       "Output integer bits must be sufficient to accommodate logs of inputs.");
@@ -527,25 +620,25 @@ log_x_for_x_greater_than_or_equal_to_1(
       input_val);
 }
 
-inline int32 GetReciprocal(int32 x, int x_integer_digits,
-                           int* num_bits_over_unit) {
-  int headroom_plus_one = CountLeadingZeros(static_cast<uint32>(x));
+inline int32_t GetReciprocal(int32_t x, int x_integer_digits,
+                             int* num_bits_over_unit) {
+  int headroom_plus_one = CountLeadingZeros(static_cast<uint32_t>(x));
   // This is the number of bits to the left of the binary point above 1.0.
   // Consider x=1.25.  In that case shifted_scale=0.8 and
   // no later adjustment will be needed.
   *num_bits_over_unit = x_integer_digits - headroom_plus_one;
-  const int32 shifted_sum_minus_one =
-      static_cast<int32>((static_cast<uint32>(x) << headroom_plus_one) -
-                         (static_cast<uint32>(1) << 31));
+  const int32_t shifted_sum_minus_one =
+      static_cast<int32_t>((static_cast<uint32_t>(x) << headroom_plus_one) -
+                           (static_cast<uint32_t>(1) << 31));
 
-  gemmlowp::FixedPoint<int32, 0> shifted_scale =
+  gemmlowp::FixedPoint<int32_t, 0> shifted_scale =
       gemmlowp::one_over_one_plus_x_for_x_in_0_1(
-          gemmlowp::FixedPoint<int32, 0>::FromRaw(shifted_sum_minus_one));
+          gemmlowp::FixedPoint<int32_t, 0>::FromRaw(shifted_sum_minus_one));
   return shifted_scale.raw();
 }
 
-inline void GetInvSqrtQuantizedMultiplierExp(int32 input, int reverse_shift,
-                                             int32* output_inv_sqrt,
+inline void GetInvSqrtQuantizedMultiplierExp(int32_t input, int reverse_shift,
+                                             int32_t* output_inv_sqrt,
                                              int* output_shift) {
   TFLITE_DCHECK_GE(input, 0);
   if (input <= 1) {
@@ -565,7 +658,7 @@ inline void GetInvSqrtQuantizedMultiplierExp(int32 input, int reverse_shift,
     ++*output_shift;
   }
   const unsigned max_left_shift_bits =
-      CountLeadingZeros(static_cast<uint32>(input)) - 1;
+      CountLeadingZeros(static_cast<uint32_t>(input)) - 1;
   const unsigned max_left_shift_bit_pairs = max_left_shift_bits / 2;
   const unsigned left_shift_bit_pairs = max_left_shift_bit_pairs - 1;
   *output_shift -= left_shift_bit_pairs;
@@ -577,8 +670,8 @@ inline void GetInvSqrtQuantizedMultiplierExp(int32 input, int reverse_shift,
   using gemmlowp::SaturatingRoundingMultiplyByPOT;
   // Using 3 integer bits gives us enough room for the internal arithmetic in
   // this Newton-Raphson iteration.
-  using F3 = FixedPoint<int32, 3>;
-  using F0 = FixedPoint<int32, 0>;
+  using F3 = FixedPoint<int32_t, 3>;
+  using F0 = FixedPoint<int32_t, 0>;
   const F3 fixedpoint_input = F3::FromRaw(input >> 1);
   const F3 fixedpoint_half_input =
       SaturatingRoundingMultiplyByPOT<-1>(fixedpoint_input);
@@ -643,6 +736,13 @@ inline int SubscriptToIndex(const NdArrayDesc<5>& desc, int indexes[5]) {
   return indexes[0] * desc.strides[0] + indexes[1] * desc.strides[1] +
          indexes[2] * desc.strides[2] + indexes[3] * desc.strides[3] +
          indexes[4] * desc.strides[4];
+}
+
+inline int SubscriptToIndex(const NdArrayDesc<8>& desc, int indexes[8]) {
+  return indexes[0] * desc.strides[0] + indexes[1] * desc.strides[1] +
+         indexes[2] * desc.strides[2] + indexes[3] * desc.strides[3] +
+         indexes[4] * desc.strides[4] + indexes[5] * desc.strides[5] +
+         indexes[6] * desc.strides[6] + indexes[7] * desc.strides[7];
 }
 
 // Given the dimensions of the operands for an element-wise binary broadcast,

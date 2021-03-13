@@ -221,8 +221,9 @@ def NameListToString(name_list):
     return name_list
   else:
     result = ""
-    for val in name_list:
-      result = result + chr(int(val))
+    if name_list is not None:
+      for val in name_list:
+        result = result + chr(int(val))
     return result
 
 
@@ -233,6 +234,8 @@ class OpCodeMapper(object):
     self.code_to_name = {}
     for idx, d in enumerate(data["operator_codes"]):
       self.code_to_name[idx] = BuiltinCodeToName(d["builtin_code"])
+      if self.code_to_name[idx] == "CUSTOM":
+        self.code_to_name[idx] = NameListToString(d["custom_code"])
 
   def __call__(self, x):
     if x not in self.code_to_name:
@@ -449,8 +452,12 @@ def CreateHtmlFile(tflite_input, html_output):
   # Spec on what keys to display
   buffer_keys_to_display = [("data", DataSizeMapper())]
   operator_keys_to_display = [("builtin_code", BuiltinCodeToName),
-                              ("custom_code", None),
+                              ("custom_code", NameListToString),
                               ("version", None)]
+
+  # Update builtin code fields.
+  for idx, d in enumerate(data["operator_codes"]):
+    d["builtin_code"] = max(d["builtin_code"], d["deprecated_builtin_code"])
 
   for subgraph_idx, g in enumerate(data["subgraphs"]):
     # Subgraph local specs on what to display

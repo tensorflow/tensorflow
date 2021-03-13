@@ -24,11 +24,10 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -36,21 +35,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace mlir {
 namespace TF {
 namespace collection_ops_util {
 
-Value CreateScalarConst(int value, OpBuilder builder, Location loc) {
-  tensorflow::Tensor scalar_tensor(tensorflow::DT_INT32, {});
-  scalar_tensor.scalar<tensorflow::int32>()() = value;
-  return builder.create<TF::ConstOp>(
-      loc, tensorflow::ConvertTensor(scalar_tensor, &builder).ValueOrDie());
+Value CreateScalarConst(int32_t value, OpBuilder builder, Location loc) {
+  auto attr = DenseIntElementsAttr::get(
+      RankedTensorType::get({}, builder.getI32Type()), value);
+  return builder.create<TF::ConstOp>(loc, attr);
 }
 
 Value GetR1Const(ArrayRef<int64_t> r1, OpBuilder builder, Location loc,
@@ -60,7 +53,7 @@ Value GetR1Const(ArrayRef<int64_t> r1, OpBuilder builder, Location loc,
   values.reserve(rank);
   for (int i = 0; i < rank; ++i) values.push_back(APInt(bitwidth, r1[i]));
   auto result_type = RankedTensorType::get(
-      {rank}, IntegerType::get(bitwidth, builder.getContext()));
+      {rank}, IntegerType::get(builder.getContext(), bitwidth));
   return builder.create<TF::ConstOp>(
       loc, DenseElementsAttr::get(result_type, values));
 }
@@ -77,8 +70,7 @@ Value GetIndicesForElement(Value index, Value buffer, OpBuilder builder,
       ArrayRef<Type>{RankedTensorType::get(
           {static_cast<int64_t>(buffer_type.getShape().size())},
           getElementTypeOrSelf(index.getType()))},
-      ArrayRef<Value>{index, zeros_tensor, CreateScalarConst(0, builder, loc)},
-      ArrayRef<NamedAttribute>{});
+      ArrayRef<Value>{index, zeros_tensor, CreateScalarConst(0, builder, loc)});
 }
 
 Value GetElement(Value index, Value buffer, OpBuilder builder, Location loc,
@@ -95,15 +87,14 @@ Value GetElement(Value index, Value buffer, OpBuilder builder, Location loc,
   auto slice = builder.create<TF::SliceOp>(
       loc, ArrayRef<Type>{slice_type},
       ArrayRef<Value>{buffer, GetIndicesForElement(index, buffer, builder, loc),
-                      size_const},
-      ArrayRef<NamedAttribute>{});
+                      size_const});
   if (keep_slice_shape) return slice;
   auto element_type = RankedTensorType::get(buffer_type.getShape().drop_front(),
                                             buffer_type.getElementType());
   auto reshape = builder.create<TF::ReshapeOp>(
       loc, ArrayRef<Type>{element_type},
-      ArrayRef<Value>{slice, GetR1Const(element_type.getShape(), builder, loc)},
-      ArrayRef<NamedAttribute>{});
+      ArrayRef<Value>{slice,
+                      GetR1Const(element_type.getShape(), builder, loc)});
   return reshape.output();
 }
 
@@ -120,15 +111,13 @@ Value SetElement(Value index, Value buffer, Value element, OpBuilder builder,
   if (element.getType() != slice_type) {
     update_slice = builder.create<TF::ReshapeOp>(
         loc, ArrayRef<Type>{slice_type},
-        ArrayRef<Value>{element, GetR1Const(slice_shape, builder, loc)},
-        ArrayRef<NamedAttribute>{});
+        ArrayRef<Value>{element, GetR1Const(slice_shape, builder, loc)});
   }
   return builder
       .create<TF::XlaDynamicUpdateSliceOp>(
           loc, ArrayRef<Type>{buffer.getType()},
           ArrayRef<Value>{buffer, update_slice,
-                          GetIndicesForElement(index, buffer, builder, loc)},
-          ArrayRef<NamedAttribute>{})
+                          GetIndicesForElement(index, buffer, builder, loc)})
       .output();
 }
 
@@ -140,8 +129,7 @@ Value ReshapeScalarToSizeType(OpBuilder builder, Value scalar, Location loc) {
   auto size_type = GetSizeType(builder);
   return builder.create<TF::ReshapeOp>(
       loc, ArrayRef<Type>{size_type},
-      ArrayRef<Value>{scalar, GetR1Const(size_type.getShape(), builder, loc)},
-      ArrayRef<NamedAttribute>{});
+      ArrayRef<Value>{scalar, GetR1Const(size_type.getShape(), builder, loc)});
 }
 
 LogicalResult CreateInitBufferValue(ArrayRef<int64_t> element_shape,
@@ -171,13 +159,12 @@ LogicalResult CreateInitBufferValue(ArrayRef<int64_t> element_shape,
   if (getElementTypeOrSelf(zero.getType()) != element_dtype) {
     zero = builder.create<TF::CastOp>(
         op->getLoc(), ArrayRef<Type>{RankedTensorType::get({}, element_dtype)},
-        ArrayRef<Value>{zero}, ArrayRef<NamedAttribute>{});
+        ArrayRef<Value>{zero});
   }
   auto buffer_type = RankedTensorType::get(buffer_shape, element_dtype);
   auto broadcast = builder.create<TF::BroadcastToOp>(
       op->getLoc(), ArrayRef<Type>{buffer_type},
-      ArrayRef<Value>{zero, GetR1Const(buffer_shape, builder, op->getLoc())},
-      ArrayRef<NamedAttribute>{});
+      ArrayRef<Value>{zero, GetR1Const(buffer_shape, builder, op->getLoc())});
   *buffer = broadcast.output();
   return success();
 }
@@ -187,14 +174,14 @@ llvm::Optional<RankedTensorType> GetElementTypeFromAccess(
     llvm::function_ref<llvm::Optional<Type>(Operation*)> infer_from_op) {
   for (auto& use : collection.getUses()) {
     if (auto while_op = llvm::dyn_cast<TF::WhileOp>(use.getOwner())) {
-      auto body = module.lookupSymbol<FuncOp>(while_op.body());
+      auto body = while_op.body_function();
       assert(body);
       auto type_from_body = GetElementTypeFromAccess(
           body.getArgument(use.getOperandNumber()), module, infer_from_op);
       if (type_from_body.hasValue()) return type_from_body;
     } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(use.getOwner())) {
-      auto then_branch = module.lookupSymbol<FuncOp>(if_op.then_branch());
-      auto else_branch = module.lookupSymbol<FuncOp>(if_op.else_branch());
+      auto then_branch = if_op.then_function();
+      auto else_branch = if_op.else_function();
       assert(then_branch && else_branch);
       auto type_from_then = GetElementTypeFromAccess(
           then_branch.getArgument(use.getOperandNumber() - 1), module,
@@ -204,23 +191,12 @@ llvm::Optional<RankedTensorType> GetElementTypeFromAccess(
           else_branch.getArgument(use.getOperandNumber() - 1), module,
           infer_from_op);
       if (type_from_else.hasValue()) return type_from_else;
-    } else if (auto pcall =
-                   llvm::dyn_cast<TF::PartitionedCallOp>(use.getOwner())) {
-      if (!pcall.f().isa<FlatSymbolRefAttr>()) continue;
-      auto callee = module.lookupSymbol<FuncOp>(pcall.f().getRootReference());
-      assert(callee);
+    } else if (auto call = llvm::dyn_cast<CallOpInterface>(use.getOwner())) {
+      auto callee = dyn_cast<FuncOp>(call.resolveCallable());
       auto type_from_callee = GetElementTypeFromAccess(
           callee.getArgument(use.getOperandNumber()), module, infer_from_op);
       if (type_from_callee.hasValue()) return type_from_callee;
-    } else if (auto spcall = llvm::dyn_cast<TF::StatefulPartitionedCallOp>(
-                   use.getOwner())) {
-      auto callee = module.lookupSymbol<FuncOp>(spcall.f());
-      assert(callee);
-      auto type_from_callee = GetElementTypeFromAccess(
-          callee.getArgument(use.getOperandNumber()), module, infer_from_op);
-      if (type_from_callee.hasValue()) return type_from_callee;
-    } else if (llvm::isa<TF::IdentityOp>(use.getOwner()) ||
-               llvm::isa<TF::IdentityNOp>(use.getOwner())) {
+    } else if (llvm::isa<TF::IdentityOp, TF::IdentityNOp>(use.getOwner())) {
       auto type_from_alias = GetElementTypeFromAccess(
           use.getOwner()->getResult(use.getOperandNumber()), module,
           infer_from_op);
@@ -242,27 +218,24 @@ Value ReadLocalVariable(Value local_var, OpBuilder builder, Location loc) {
           ArrayRef<Type>{getElementTypeOrSelf(local_var.getType())
                              .cast<TF::ResourceType>()
                              .getSubtypes()[0]},
-          ArrayRef<Value>{local_var}, ArrayRef<NamedAttribute>{})
+          ArrayRef<Value>{local_var})
       .value();
 }
 
 // Creates an AssignVariableOp on a local variable.
 TF::AssignVariableOp WriteLocalVariable(Value local_var, Value value,
                                         OpBuilder builder, Location loc) {
-  return builder.create<TF::AssignVariableOp>(loc, ArrayRef<Type>{},
-                                              ArrayRef<Value>{local_var, value},
-                                              ArrayRef<NamedAttribute>{});
+  return builder.create<TF::AssignVariableOp>(
+      loc, ArrayRef<Type>{}, ArrayRef<Value>{local_var, value});
 }
 
 Value AccumulateBuffers(Value a, Value b, OpBuilder builder, Location loc) {
   if (getElementTypeOrSelf(a.getType()) == builder.getI1Type()) {
     return builder.create<TF::LogicalOrOp>(loc, ArrayRef<Type>{a.getType()},
-                                           ArrayRef<Value>{a, b},
-                                           ArrayRef<NamedAttribute>{});
+                                           ArrayRef<Value>{a, b});
   }
   return builder.create<TF::AddV2Op>(loc, ArrayRef<Type>{a.getType()},
-                                     ArrayRef<Value>{a, b},
-                                     ArrayRef<NamedAttribute>{});
+                                     ArrayRef<Value>{a, b});
 }
 
 namespace {
@@ -304,15 +277,13 @@ Value GatherElements(Value indices, Value buffer, OpBuilder builder,
     return builder.create<TF::SliceOp>(
         loc, ArrayRef<Type>{slice_type},
         ArrayRef<Value>{buffer, GetR1Const(slice_starts, builder, loc),
-                        GetR1Const(result_shape, builder, loc)},
-        ArrayRef<NamedAttribute>{});
+                        GetR1Const(result_shape, builder, loc)});
   }
   auto result_type =
       RankedTensorType::get(result_shape, buffer_type.getElementType());
   return builder.create<TF::GatherV2Op>(
       loc, ArrayRef<Type>{result_type},
-      ArrayRef<Value>{buffer, indices, CreateScalarConst(0, builder, loc)},
-      ArrayRef<NamedAttribute>{});
+      ArrayRef<Value>{buffer, indices, CreateScalarConst(0, builder, loc)});
 }
 
 Value ScatterAccumulateElements(Value indices, Value updates, Value buffer,
@@ -335,8 +306,7 @@ Value ScatterAccumulateElements(Value indices, Value updates, Value buffer,
     auto index = builder.create<TF::SliceOp>(
         loc, ArrayRef<Type>{GetSizeType(builder)},
         ArrayRef<Value>{indices, GetR1Const({i}, builder, loc),
-                        GetR1Const({1}, builder, loc)},
-        ArrayRef<NamedAttribute>{});
+                        GetR1Const({1}, builder, loc)});
     auto old_slice =
         GetElement(index, buffer, builder, loc, /*keep_slice_shape=*/true);
     starts_in_update[0] = i;
@@ -345,8 +315,7 @@ Value ScatterAccumulateElements(Value indices, Value updates, Value buffer,
         builder
             .create<TF::SliceOp>(
                 loc, ArrayRef<Type>{old_slice.getType()},
-                ArrayRef<Value>{updates, update_slice_starts, slice_sizes},
-                ArrayRef<NamedAttribute>{})
+                ArrayRef<Value>{updates, update_slice_starts, slice_sizes})
             .output();
     slice = AccumulateBuffers(old_slice, slice, builder, loc);
     buffer = SetElement(index, buffer, slice, builder, loc);

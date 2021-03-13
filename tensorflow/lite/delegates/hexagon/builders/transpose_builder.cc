@@ -29,25 +29,9 @@ TfLiteStatus TransposeOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   const auto& input_tensor = context->tensors[tensor_id];
   AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
   // permutation tensor.
-  tensor_id = inputs->data[1];
-  const auto& control_tensor = context->tensors[tensor_id];
-  if (control_tensor.allocation_type == kTfLiteMmapRo) {
-    auto* const_control_tensor_node =
-        graph_builder_->AddConstNodeWithData(tensor_id, control_tensor);
-    AddInput(TensorID(const_control_tensor_node->GetID(), 0));
-  } else {
-    AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
-  }
+  AddInput(graph_builder_->GetHexagonTensorId(inputs->data[1]));
 
-  TF_LITE_ENSURE_STATUS(
-      ComputeMinAndMaxQuantValues(input_tensor, &input_min_, &input_max_));
-  auto* input_min_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&input_min_), sizeof(input_min_));
-  auto* input_max_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&input_max_), sizeof(input_max_));
-  // Min/max values for input tensor.
-  AddInput(TensorID(input_min_const->GetID(), 0));
-  AddInput(TensorID(input_max_const->GetID(), 0));
+  TF_LITE_ENSURE_STATUS(ComputeAndAddMinAndMax(context, input_tensor));
 
   // Hexagon outputs for this node.
   int output_batch_size, output_height_size, output_width_size,

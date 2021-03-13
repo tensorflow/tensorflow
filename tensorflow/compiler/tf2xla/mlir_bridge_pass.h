@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_MLIR_BRIDGE_PASS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_MLIR_BRIDGE_PASS_H_
 
+#include "tensorflow/compiler/mlir/mlir_bridge_rollout_policy.h"
 #include "llvm/ADT/StringRef.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/mlir_graph_optimization_pass.h"
 
 namespace tensorflow {
@@ -28,13 +30,16 @@ class MlirBridgePass : public MlirOptimizationPass {
  public:
   llvm::StringRef name() const override { return "bridge"; }
 
-  bool IsEnabled(const ConfigProto& config_proto) const override {
-    return config_proto.experimental().enable_mlir_bridge();
-  }
+  MlirOptimizationPassState GetPassState(
+      const DeviceSet* device_set, const ConfigProto& config_proto,
+      const Graph& graph,
+      const FunctionLibraryDefinition& function_library) const override;
 
   // This should be used as a thin mapper around mlir::ModulePass::runOnModule
   // API integrated with the Tensorflow runtime.
-  Status Run(const ConfigProto& config_proto, mlir::ModuleOp module) override;
+  Status Run(const ConfigProto& config_proto, mlir::ModuleOp module,
+             const Graph& graph,
+             const FunctionLibraryDefinition& function_library) override;
 };
 
 // This pass uses MLIR to implement all the conversion steps to target XLA from
@@ -44,9 +49,10 @@ class MlirBridgeV1CompatPass : public MlirV1CompatOptimizationPass {
  public:
   llvm::StringRef name() const override { return "bridge"; }
 
-  bool IsEnabled(const ConfigProto& config_proto) const override {
-    return config_proto.experimental().enable_mlir_bridge();
-  }
+  MlirOptimizationPassState GetPassState(
+      const DeviceSet* device_set, const ConfigProto& config_proto,
+      const Graph& graph,
+      const FunctionLibraryDefinition& function_library) const override;
 
   // This should be used as a thin mapper around mlir::ModulePass::runOnModule
   // API integrated with the Tensorflow runtime.

@@ -43,17 +43,17 @@ def _make_strided_slice_tests(options, test_parameters, expected_tf_failures=0):
       begin = tf.compat.v1.placeholder(
           dtype=parameters["index_type"],
           name="begin",
-          shape=[len(parameters["input_shape"])])
+          shape=[len(parameters["begin"])])
       end = tf.compat.v1.placeholder(
           dtype=parameters["index_type"],
           name="end",
-          shape=[len(parameters["input_shape"])])
+          shape=[len(parameters["end"])])
       strides = None
       if parameters["strides"] is not None:
         strides = tf.compat.v1.placeholder(
             dtype=parameters["index_type"],
             name="strides",
-            shape=[len(parameters["input_shape"])])
+            shape=[len(parameters["strides"])])
       tensors = [input_tensor, begin, end]
       if strides is not None:
         tensors.append(strides)
@@ -63,7 +63,8 @@ def _make_strided_slice_tests(options, test_parameters, expected_tf_failures=0):
         end,
         strides,
         begin_mask=parameters["begin_mask"],
-        end_mask=parameters["end_mask"])
+        end_mask=parameters["end_mask"],
+        shrink_axis_mask=parameters["shrink_axis_mask"])
     return tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
@@ -141,7 +142,7 @@ def make_strided_slice_tests(options):
           "begin_mask": [0],
           "end_mask": [0],
           "shrink_axis_mask": [1],
-          "constant_indices": [True],
+          "constant_indices": [True, False],
           "fully_quantize": [False],
       },
       # 2-D
@@ -201,7 +202,52 @@ def make_strided_slice_tests(options):
           "fully_quantize": [True],
       },
   ]
-  _make_strided_slice_tests(options, test_parameters, expected_tf_failures=2)
+
+  if options.use_experimental_converter:
+    test_parameters = test_parameters + [
+        # Begin equal to input dim.
+        {
+            "dtype": [tf.float32],
+            "index_type": [tf.int32],
+            "input_shape": [[1, 1, 2]],
+            "begin": [[1]],
+            "end": [[0]],
+            "strides": [[1]],
+            "begin_mask": [0],
+            "end_mask": [1],
+            "shrink_axis_mask": [0],
+            "constant_indices": [True, False],
+            "fully_quantize": [False],
+        },
+        {
+            "dtype": [tf.float32],
+            "index_type": [tf.int32],
+            "input_shape": [[1, 1, 2]],
+            "begin": [[1, 0, 0]],
+            "end": [[0, -1, -1]],
+            "strides": [[1, 1, 1]],
+            "begin_mask": [6],
+            "end_mask": [7],
+            "shrink_axis_mask": [0],
+            "constant_indices": [True, False],
+            "fully_quantize": [False],
+        },
+        # String input.
+        {
+            "dtype": [tf.string],
+            "index_type": [tf.int32],
+            "input_shape": [[12, 2, 2, 5]],
+            "begin": [[0, 0, 0, 0]],
+            "end": [[8, 2, 2, 3]],
+            "strides": [[2, 1, 3, 1]],
+            "begin_mask": [8],
+            "end_mask": [3],
+            "shrink_axis_mask": [None],
+            "constant_indices": [True, False],
+            "fully_quantize": [False],
+        }
+    ]
+  _make_strided_slice_tests(options, test_parameters, expected_tf_failures=29)
 
 
 @register_make_test_function()

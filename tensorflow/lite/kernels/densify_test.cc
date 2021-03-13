@@ -13,19 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdint>
-#include <initializer_list>
+#include <memory>
+#include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/types.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
 
 namespace tflite {
 
@@ -44,7 +41,7 @@ using ::testing::ElementsAreArray;
 template <typename T>
 class DensifyOpModel : public SingleOpModel {
  public:
-  DensifyOpModel(const TensorData& input, std::initializer_list<T> input_data,
+  DensifyOpModel(const TensorData& input, const std::vector<T>& input_data,
                  int version = 1) {
     input_ = AddConstSparseInput(input, input_data);
     output_ = AddOutput({input.type, input.shape});
@@ -67,9 +64,8 @@ class DensifyOpModel : public SingleOpModel {
 };
 
 TEST(DensifyOpTest, Float) {
-  std::initializer_list<float> dense_values = {6, 0, 9, 8, 0, 0,
-                                               0, 0, 5, 0, 0, 7};
-  std::initializer_list<float> sparse_values = {6, 9, 8, 5, 7};
+  std::vector<float> dense_values = {6, 0, 9, 8, 0, 0, 0, 0, 5, 0, 0, 7};
+  std::vector<float> sparse_values = {6, 9, 8, 5, 7};
   TensorData input = {};
   input.type = TensorType_FLOAT32;
   input.shape = {3, 4};
@@ -82,9 +78,8 @@ TEST(DensifyOpTest, Float) {
 }
 
 TEST(DensifyOpTest, Float3D) {
-  std::initializer_list<float> dense_values = {6, 0, 9, 8, 0, 0,
-                                               0, 0, 5, 0, 0, 7};
-  std::initializer_list<float> sparse_values = {6, 9, 8, 5, 7};
+  std::vector<float> dense_values = {6, 0, 9, 8, 0, 0, 0, 0, 5, 0, 0, 7};
+  std::vector<float> sparse_values = {6, 9, 8, 5, 7};
   TensorData input = {};
   input.type = TensorType_FLOAT32;
   input.shape = {3, 2, 2};
@@ -97,9 +92,8 @@ TEST(DensifyOpTest, Float3D) {
 }
 
 TEST(DensifyOpTest, Int8) {
-  std::initializer_list<int8_t> dense_values = {6, 0, 9, 8, 0, 0,
-                                                0, 0, 5, 0, 0, 7};
-  std::initializer_list<int8_t> sparse_values = {6, 9, 8, 5, 7};
+  std::vector<int8_t> dense_values = {6, 0, 9, 8, 0, 0, 0, 0, 5, 0, 0, 7};
+  std::vector<int8_t> sparse_values = {6, 9, 8, 5, 7};
   TensorData input = {};
   input.type = TensorType_INT8;
   input.shape = {3, 4};

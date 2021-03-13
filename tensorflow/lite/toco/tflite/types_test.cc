@@ -71,6 +71,7 @@ TEST(DataType, SupportedTypes) {
   std::vector<std::pair<ArrayDataType, ::tflite::TensorType>> testdata = {
       {ArrayDataType::kUint8, ::tflite::TensorType_UINT8},
       {ArrayDataType::kInt32, ::tflite::TensorType_INT32},
+      {ArrayDataType::kUint32, ::tflite::TensorType_UINT32},
       {ArrayDataType::kInt64, ::tflite::TensorType_INT64},
       {ArrayDataType::kFloat, ::tflite::TensorType_FLOAT32},
       {ArrayDataType::kBool, ::tflite::TensorType_BOOL},
@@ -152,6 +153,12 @@ TEST(DataBuffer, Int32) {
   Array recovered = ToFlatBufferAndBack<ArrayDataType::kInt32>({1, 1 << 30});
   EXPECT_THAT(recovered.GetBuffer<ArrayDataType::kInt32>().data,
               ::testing::ElementsAre(1, 1 << 30));
+}
+
+TEST(DataBuffer, Uint32) {
+  Array recovered = ToFlatBufferAndBack<ArrayDataType::kUint32>({1, 1U << 31});
+  EXPECT_THAT(recovered.GetBuffer<ArrayDataType::kUint32>().data,
+              ::testing::ElementsAre(1, 1U << 31));
 }
 
 TEST(DataBuffer, Int16) {

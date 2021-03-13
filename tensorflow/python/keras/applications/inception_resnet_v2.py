@@ -16,7 +16,7 @@
 """Inception-ResNet V2 model for Keras.
 
 
-Reference paper:
+Reference:
   - [Inception-v4, Inception-ResNet and the Impact of
      Residual Connections on Learning](https://arxiv.org/abs/1602.07261)
     (AAAI 2017)
@@ -61,10 +61,12 @@ def InceptionResNetV2(include_top=True,
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
 
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.inception_resnet_v2.preprocess_input` for an example.
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For InceptionResNetV2, call
+  `tf.keras.applications.inception_resnet_v2.preprocess_input`
+  on your inputs before passing them to the model.
 
-  Arguments:
+  Args:
     include_top: whether to include the fully-connected
       layer at the top of the network.
     weights: one of `None` (random initialization),
@@ -112,7 +114,7 @@ def InceptionResNetV2(include_top=True,
     layers = VersionAwareLayers()
   if kwargs:
     raise ValueError('Unknown argument(s): %s' % (kwargs,))
-  if not (weights in {'imagenet', None} or file_io.file_exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
@@ -258,7 +260,7 @@ def conv2d_bn(x,
               name=None):
   """Utility function to apply conv + BN.
 
-  Arguments:
+  Args:
     x: input tensor.
     filters: filters in `Conv2D`.
     kernel_size: kernel size as in `Conv2D`.
@@ -291,7 +293,7 @@ def conv2d_bn(x,
 
 
 def inception_resnet_block(x, scale, block_type, block_idx, activation='relu'):
-  """Adds a Inception-ResNet block.
+  """Adds an Inception-ResNet block.
 
   This function builds 3 types of Inception-ResNet blocks mentioned
   in the paper, controlled by the `block_type` argument (which is the
@@ -300,27 +302,22 @@ def inception_resnet_block(x, scale, block_type, block_idx, activation='relu'):
   - Inception-ResNet-B: `block_type='block17'`
   - Inception-ResNet-C: `block_type='block8'`
 
-  Arguments:
+  Args:
     x: input tensor.
-    scale: scaling factor to scale the residuals (i.e., the output of
-      passing `x` through an inception module) before adding them
-      to the shortcut branch.
-      Let `r` be the output from the residual branch,
-      the output of this block will be `x + scale * r`.
-    block_type: `'block35'`, `'block17'` or `'block8'`, determines
-      the network structure in the residual branch.
-    block_idx: an `int` used for generating layer names.
-      The Inception-ResNet blocks
-      are repeated many times in this network.
-      We use `block_idx` to identify
-      each of the repetitions. For example,
-      the first Inception-ResNet-A block
-      will have `block_type='block35', block_idx=0`,
-      and the layer names will have
-      a common prefix `'block35_0'`.
-    activation: activation function to use at the end of the block
-      (see [activations](../activations.md)).
-      When `activation=None`, no activation is applied
+    scale: scaling factor to scale the residuals (i.e., the output of passing
+      `x` through an inception module) before adding them to the shortcut
+      branch. Let `r` be the output from the residual branch, the output of this
+      block will be `x + scale * r`.
+    block_type: `'block35'`, `'block17'` or `'block8'`, determines the network
+      structure in the residual branch.
+    block_idx: an `int` used for generating layer names. The Inception-ResNet
+      blocks are repeated many times in this network. We use `block_idx` to
+      identify each of the repetitions. For example, the first
+      Inception-ResNet-A block will have `block_type='block35', block_idx=0`,
+      and the layer names will have a common prefix `'block35_0'`.
+    activation: activation function to use at the end of the block (see
+      [activations](../activations.md)). When `activation=None`, no activation
+      is applied
       (i.e., "linear" activation: `a(x) = x`).
 
   Returns:

@@ -29,6 +29,7 @@ import numpy as np
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.experimental.ops import threading_options
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
@@ -36,6 +37,7 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
@@ -56,6 +58,8 @@ from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
+from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 def _test_combinations_with_mode_v1(mode):
@@ -1012,7 +1016,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(_test_combinations())
   def testReturnValueError(self, apply_map):
     dataset = dataset_ops.Dataset.from_tensors([1.0, 2.0, 3.0])
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, r"Unsupported return value from function passed to "
         r"Dataset.map\(\)"):
       _ = apply_map(dataset, lambda x: Foo)
@@ -1379,6 +1383,132 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = apply_map(dataset, map_function)
     self.assertDatasetProduces(dataset, expected_output=[21])
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testCheckpointLargeBuffer(self):
+    # Tensor of size 100M
+    dataset = dataset_ops.Dataset.from_tensors(
+        array_ops.ones((25, 1000, 1000), dtype=dtypes.float32))
+    # Repeat 25 times to exceed the 2G proto limit
+    dataset = dataset.repeat(30)
+    dataset = dataset.map(lambda x: x * 2, num_parallel_calls=25)
+
+    iterator = iter(dataset)
+    # Call next() to trigger parallel map calls.
+    next(iterator)
+    ckpt = trackable_utils.Checkpoint(iterator=iterator)
+    manager = checkpoint_management.CheckpointManager(
+        ckpt, self.get_temp_dir(), max_to_keep=1)
+    manager.save()
+
+
+class MapDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                               parameterized.TestCase):
+
+  def setUp(self):
+    self._tensor_slice_len = 7
+    self._num_epochs = 7
+    self._num_outputs = self._tensor_slice_len * self._num_epochs
+
+  def _build_ds(self, multiplier=37.0):
+    components = (np.arange(self._tensor_slice_len), np.array([[1, 2, 3]]) *
+                  np.arange(self._tensor_slice_len)[:, np.newaxis],
+                  np.array(multiplier) * np.arange(self._tensor_slice_len))
+
+    def _map_fn(x, y, z):
+      return math_ops.square(x), math_ops.square(y), math_ops.square(z)
+
+    return (
+        dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn).repeat(
+            self._num_epochs))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSaveRestoreCore(self):
+    self.run_core_tests(self._build_ds, self._num_outputs)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSaveStatefulFunction(self):
+
+    def _build_ds():
+
+      def _map_fn(x):
+        return random_ops.random_uniform(
+            (), 0, 10, dtype=dtypes.int32) * math_ops.cast(x, dtypes.int32)
+
+      return dataset_ops.Dataset.range(100).map(_map_fn)
+
+    self.verify_error_on_save(_build_ds, 15, errors.FailedPreconditionError)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCaptureVariableInMapFn(self):
+
+    def _build_ds():
+      counter_var = variable_scope.get_variable(
+          "counter", (), dtypes.int32, use_resource=True)
+      return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
+          lambda _: counter_var.assign_add(1)))
+
+    self.verify_error_on_save(_build_ds, 15, errors.FailedPreconditionError)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCaptureConstantInMapFn(self):
+    num_outputs = 10
+
+    def _build_ds():
+      constant_var = constant_op.constant(5)
+      return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
+          lambda x: x + constant_var))
+
+    self.run_core_tests(_build_ds, num_outputs)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCaptureDefunInMapFn(self):
+    num_outputs = 10
+
+    def _build_ds():
+
+      @function.Defun(dtypes.int64)
+      def defun_fn(x):
+        return constant_op.constant(1000) + math_ops.cast(x, dtypes.int32)
+
+      return dataset_ops.Dataset.range(num_outputs).map(defun_fn)
+
+    self.run_core_tests(_build_ds, num_outputs)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testBuildDefunInMapFn(self):
+    num_outputs = 10
+
+    def _build_ds():
+
+      @function.Defun(dtypes.int64)
+      def defun_fn(x):
+
+        @function.Defun(dtypes.int32)
+        def defun_fn_deep(x):
+          return constant_op.constant(1000) + math_ops.cast(x, dtypes.int32)
+
+        return constant_op.constant(11000) + defun_fn_deep(
+            math_ops.cast(x, dtypes.int32))
+
+      return dataset_ops.Dataset.range(num_outputs).map(defun_fn)
+
+    self.run_core_tests(_build_ds, num_outputs)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSparseCore(self):
+
+    def _sparse(i):
+      return sparse_tensor.SparseTensorValue(
+          indices=np.array([[0, 0]]),
+          values=(i * np.array([1])),
+          dense_shape=np.array([1, 1]))
+
+    def _build_ds(num_outputs):
+      return dataset_ops.Dataset.range(num_outputs).map(_sparse)
+
+    num_outputs = 10
+    self.run_core_tests(lambda: _build_ds(num_outputs), num_outputs)
 
 
 if __name__ == "__main__":

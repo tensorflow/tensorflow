@@ -25,6 +25,7 @@ namespace tflite {
 namespace ops {
 namespace micro {
 
+#ifdef __Xxy
 static void get_arc_two_buffer_sizes(int request_size_1, int request_size_2,
                                      int* grant_size_1, int* grant_size_2) {
   int maxrequest = 0;
@@ -66,7 +67,6 @@ static void get_arc_two_buffer_sizes(int request_size_1, int request_size_2,
 
 static TfLiteStatus get_arc_scratch_buffer_for_io_tensors(
     TfLiteContext* context, mli_tensor* in, mli_tensor* out) {
-#ifdef __Xxy
   int request_size_in = 0;
   int request_size_out = 0;
   int grant_size_in = 0;
@@ -103,9 +103,10 @@ static TfLiteStatus get_arc_scratch_buffer_for_io_tensors(
     out->capacity = grant_size_out;
     if (out->data == NULL) return kTfLiteError;
   }
-#endif
+
   return kTfLiteOk;
 }
+#endif
 
 TfLiteStatus get_arc_scratch_buffer_for_conv_tensors(TfLiteContext* context,
                                                      mli_tensor* in,
@@ -162,7 +163,7 @@ TfLiteStatus get_arc_scratch_buffer_for_fully_connect_tensors(
   init_arc_scratch_buffers();
   /* strategy for FC kernels:
      first allocate input, because this cannot be sliced. (in case of batch
-     processing, only a single input needs to be allocated) then weigths & bias
+     processing, only a single input needs to be allocated) then weights & bias
      because if fully loaded, they can be reused over batches. then output.
      The number of output channels (for weights slicing) depends on size of
      output and size of weights&bias */
@@ -246,12 +247,15 @@ TfLiteStatus arc_scratch_buffer_calc_slice_size_io(
   int max_lines_in = 0;
   int max_lines_out = 0;
   int max_out_lines_for_input = 0;
-  bool fit = (in->capacity >= in_height * line_size_in) &&
-             (out->capacity >= out_height * line_size_out);
+  bool fit = (static_cast<int>(in->capacity) >= in_height * line_size_in) &&
+             (static_cast<int>(out->capacity) >= out_height * line_size_out);
   if (fit) {
     // in case both tensors completely fit in the capacity, there is no need for
-    // slicing
-    *in_slice_height = in_height;
+    // slicing. As padding can affect effective input region, we also derive it
+    // from output height, and rely on a clipping logic which intend to reduce
+    // last smaller slice. I.e the only slice is a kind of
+    // "smaller last slice that need to be corrected"
+    *in_slice_height = std::max(in_height, out_height * stride_height);
     *out_slice_height = out_height;
   } else {
     // First compute how many lines fit into the input tensor, and compute how
@@ -271,7 +275,7 @@ TfLiteStatus arc_scratch_buffer_calc_slice_size_io(
       max_out_lines_for_input =
           (max_lines_in - kernel_height + 1) / stride_height;
     }
-    // Ten compute how many ouput lines fit into the output tensor.
+    // Then compute how many output lines fit into the output tensor.
     max_lines_out =
         std::min(out_height, static_cast<int>(out->capacity) / line_size_out);
     // the smallest of the two determines the slice height for the output, and
@@ -298,8 +302,8 @@ TfLiteStatus arc_scratch_buffer_calc_slice_size_weights(
   int max_ch_weigths = 0;
   int max_ch_bias = 0;
 
-  bool fit = (weights->capacity >= channels * ch_size_w) &&
-             (bias->capacity >= channels * ch_size_b);
+  bool fit = (static_cast<int>(weights->capacity) >= channels * ch_size_w) &&
+             (static_cast<int>(bias->capacity) >= channels * ch_size_b);
   if (fit) {
     // in case both tensors completely fit in the capacity, there is no need for
     // slicing

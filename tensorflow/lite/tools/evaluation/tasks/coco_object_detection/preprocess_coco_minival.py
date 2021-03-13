@@ -16,13 +16,13 @@
 
 The 2014 validation images & annotations can be downloaded from:
 http://cocodataset.org/#download
-The minival image ID whitelist, a subset of the 2014 validation set, can be
+The minival image ID allowlist, a subset of the 2014 validation set, can be
 found here:
 https://github.com/tensorflow/models/blob/master/research/object_detection/data/mscoco_minival_ids.txt.
 
 This script takes in the original images folder, instances JSON file and
-image ID whitelist and produces the following in the specified output folder:
-A subfolder for whitelisted images (images/), and a file (ground_truth.pbtxt)
+image ID allowlist and produces the following in the specified output folder:
+A subfolder for allowlisted images (images/), and a file (ground_truth.pbtxt)
 containing an instance of tflite::evaluation::ObjectDetectionGroundTruth.
 """
 
@@ -36,21 +36,23 @@ import collections
 import os
 import shutil
 import sys
+
+from absl import logging
 from tensorflow.lite.tools.evaluation.proto import evaluation_stages_pb2
 
 
 def _get_ground_truth_detections(instances_file,
-                                 whitelist_file=None,
+                                 allowlist_file=None,
                                  num_images=None):
-  """Processes the annotations JSON file and returns ground truth data corresponding to whitelisted image IDs.
+  """Processes the annotations JSON file and returns ground truth data corresponding to allowlisted image IDs.
 
   Args:
     instances_file: COCO instances JSON file, usually named as
       instances_val20xx.json.
-    whitelist_file: File containing COCO minival image IDs to whitelist for
+    allowlist_file: File containing COCO minival image IDs to allowlist for
       evaluation, one per line.
-    num_images: Number of whitelisted images to pre-process. First num_images
-      are chosen based on sorted list of filenames. If None, all whitelisted
+    num_images: Number of allowlisted images to pre-process. First num_images
+      are chosen based on sorted list of filenames. If None, all allowlisted
       files are preprocessed.
 
   Returns:
@@ -68,46 +70,57 @@ def _get_ground_truth_detections(instances_file,
     data_dict = ast.literal_eval(annotation_dump.readline())
 
   image_data = collections.OrderedDict()
-  all_file_names = []
 
-  # Read whitelist.
-  if whitelist_file is not None:
-    with open(whitelist_file, 'r') as whitelist:
-      image_id_whitelist = set([int(x) for x in whitelist.readlines()])
+  # Read allowlist.
+  if allowlist_file is not None:
+    with open(allowlist_file, 'r') as allowlist:
+      image_id_allowlist = set([int(x) for x in allowlist.readlines()])
   else:
-    image_id_whitelist = [image['id'] for image in data_dict['images']]
+    image_id_allowlist = [image['id'] for image in data_dict['images']]
 
   # Get image names and dimensions.
   for image_dict in data_dict['images']:
     image_id = image_dict['id']
-    if image_id not in image_id_whitelist:
+    if image_id not in image_id_allowlist:
       continue
     image_data_dict = {}
     image_data_dict['id'] = image_dict['id']
     image_data_dict['file_name'] = image_dict['file_name']
-    all_file_names.append(image_data_dict['file_name'])
     image_data_dict['height'] = image_dict['height']
     image_data_dict['width'] = image_dict['width']
     image_data_dict['detections'] = []
     image_data[image_id] = image_data_dict
 
+  shared_image_ids = set()
+  for annotation_dict in data_dict['annotations']:
+    image_id = annotation_dict['image_id']
+    if image_id in image_data:
+      shared_image_ids.add(image_id)
+
+  output_image_ids = sorted(shared_image_ids)
   if num_images:
-    all_file_names.sort()
-    all_file_names = all_file_names[:num_images]
-  all_file_names = set(all_file_names)
+    if num_images <= 0:
+      logging.warning(
+          '--num_images is %d, hence outputing all annotated images.',
+          num_images)
+    elif num_images > len(shared_image_ids):
+      logging.warning(
+          '--num_images (%d) is larger than the number of annotated images.',
+          num_images)
+    else:
+      output_image_ids = output_image_ids[:num_images]
+
+  for image_id in list(image_data):
+    if image_id not in output_image_ids:
+      del image_data[image_id]
 
   # Get detected object annotations per image.
   for annotation_dict in data_dict['annotations']:
     image_id = annotation_dict['image_id']
-    if image_id not in image_id_whitelist:
-      continue
-    if image_id not in image_data:
-      continue
-    image_data_dict = image_data[image_id]
-    if image_data_dict['file_name'] not in all_file_names:
-      del image_data[image_id]
+    if image_id not in output_image_ids:
       continue
 
+    image_data_dict = image_data[image_id]
     bbox = annotation_dict['bbox']
     # bbox format is [x, y, width, height]
     # Refer: http://cocodataset.org/#format-data
@@ -133,7 +146,7 @@ def _dump_data(ground_truth_detections, images_folder_path, output_folder_path):
   """Dumps images & data from ground-truth objects into output_folder_path.
 
   The following are created in output_folder_path:
-    images/: sub-folder for whitelisted validation images.
+    images/: sub-folder for allowlisted validation images.
     ground_truth.pb: A binary proto file containing all ground-truth
     object-sets.
 
@@ -193,14 +206,14 @@ def _parse_args():
       help='Full path of the input JSON file, like instances_val20xx.json.',
       required=True)
   parser.add_argument(
-      '--whitelist_file',
+      '--allowlist_file',
       type=str,
       help='File with COCO image ids to preprocess, one on each line.',
       required=False)
   parser.add_argument(
       '--num_images',
       type=int,
-      help='Number of whitelisted images to preprocess into the output folder.',
+      help='Number of allowlisted images to preprocess into the output folder.',
       required=False)
   parser.add_argument(
       '--output_folder',
@@ -213,6 +226,6 @@ def _parse_args():
 if __name__ == '__main__':
   args = _parse_args()
   ground_truths = _get_ground_truth_detections(args.instances_file,
-                                               args.whitelist_file,
+                                               args.allowlist_file,
                                                args.num_images)
   _dump_data(ground_truths, args.images_folder, args.output_folder)

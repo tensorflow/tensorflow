@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
-#include "tensorflow/lite/delegates/utils.h"
 #include "tensorflow/lite/delegates/hexagon/hexagon_implementation.h"
 #include "tensorflow/lite/delegates/hexagon/utils.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -50,13 +49,6 @@ TfLiteStatus HexagonDelegateKernel::Init(TfLiteContext* context,
   if (hexagon_nn_ == nullptr) {
     TF_LITE_KERNEL_LOG(context, "Hexagon interface not available.");
     return kTfLiteError;
-  }
-  if (params != nullptr && params->delegate != nullptr) {
-    const ::TfLiteHexagonDelegateOptions* options_ptr =
-        reinterpret_cast<const ::TfLiteHexagonDelegateOptions*>(
-            params->delegate->data_);
-    params_ = (options_ptr == nullptr ? ::TfLiteHexagonDelegateOptions()
-                                      : *options_ptr);
   }
 
   // Ensure Hexagon NNLib is ready to start working.
@@ -94,8 +86,8 @@ TfLiteStatus HexagonDelegateKernel::Init(TfLiteContext* context,
   return kTfLiteOk;
 }
 
-TfLiteStatus HexagonDelegateKernel::Invoke(TfLiteContext* context,
-                                           TfLiteNode* node) {
+TfLiteStatus HexagonDelegateKernel::Eval(TfLiteContext* context,
+                                         TfLiteNode* node) {
   if (hexagon_nn_ == nullptr) {
     TF_LITE_KERNEL_LOG(context, "Hexagon interface not available.");
     return kTfLiteError;
@@ -272,8 +264,9 @@ TfLiteStatus HexagonDelegateKernel::BuildGraph(
       if (tensor_id == -1) continue;
       const auto& input_tensor = context->tensors[tensor_id];
       if (input_tensor.allocation_type == kTfLiteMmapRo) {
-        builder_->AddConstNodeWithData(tensor_id, input_tensor,
-                                       /*int8_to_uint8*/ true);
+        builder_->AddConstNodeWithData(
+            tensor_id, input_tensor,
+            /*int8_to_uint8*/ (input_tensor.type == kTfLiteInt8));
       }
     }
     auto* op_builder =
@@ -335,8 +328,8 @@ void HexagonDelegateKernel::PrintPerformanceData(Profiler* profiler) {
     int node_id = builder_->GetTFLiteNodeID(perf_data[i].node_id);
     if (node_id != -1 && op_type_id >= 0) {
       profiler->AddEvent((op_type_id < 0 ? "" : op_name.data()),
-                         Profiler::EventType::OPERATOR_INVOKE_EVENT, node_id, 0,
-                         counter);
+                         Profiler::EventType::OPERATOR_INVOKE_EVENT, 0, counter,
+                         node_id);
     }
   }
 }

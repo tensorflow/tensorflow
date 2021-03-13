@@ -24,7 +24,7 @@ namespace data {
 // Helper class for unit testing a tf.data service cluster.
 class TestCluster {
  public:
-  // Creates a new test cluster with a master and `num_workers` workers.
+  // Creates a new test cluster with a dispatcher and `num_workers` workers.
   explicit TestCluster(int num_workers);
 
   // Initializes the test cluster. This must be called before interacting with
@@ -32,8 +32,8 @@ class TestCluster {
   Status Initialize();
   // Adds a new worker to the cluster.
   Status AddWorker();
-  // Returns the master address in the form "hostname:port".
-  std::string MasterAddress();
+  // Returns the dispatcher address in the form "hostname:port".
+  std::string DispatcherAddress();
   // Returns the address of the worker at the specified index, in the form
   // "hostname:port". The index must be non-negative and less than the number of
   // workers in the cluster.
@@ -42,8 +42,8 @@ class TestCluster {
  private:
   bool initialized_ = false;
   int num_workers_;
-  std::unique_ptr<MasterGrpcDataServer> master_;
-  std::string master_address_;
+  std::unique_ptr<DispatchGrpcDataServer> dispatcher_;
+  std::string dispatcher_address_;
   std::vector<std::unique_ptr<WorkerGrpcDataServer>> workers_;
   std::vector<std::string> worker_addresses_;
 };

@@ -686,8 +686,7 @@ typedef Converter<bool> BoolConverter;
 // other.
 TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
   Safe_TF_TensorPtr tf_tensor = make_safe(static_cast<TF_Tensor*>(nullptr));
-  Status status = tensorflow::NdarrayToTensor(ctx, obj, &tf_tensor,
-                                              true /*convert_string*/);
+  Status status = tensorflow::NdarrayToTensor(ctx, obj, &tf_tensor);
 
   if (TF_PREDICT_FALSE(!status.ok())) {
     PyErr_SetString(PyExc_ValueError,
@@ -881,10 +880,13 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
 
     case DT_INVALID:  // Only occurs for empty tensors.
     {
-      Tensor tensor(requested_dtype == DT_INVALID ? DT_FLOAT : requested_dtype,
-                    TensorShape(state.inferred_shape));
-      TensorInterface t(std::move(tensor));
-      return tensorflow::wrap(tensorflow::unwrap(ctx)->CreateLocalHandle(&t));
+      AbstractTensorInterface* t = tensorflow::unwrap(ctx)->CreateTensor(
+          requested_dtype == DT_INVALID ? DT_FLOAT : requested_dtype,
+          state.inferred_shape);
+      auto* result =
+          tensorflow::wrap(tensorflow::unwrap(ctx)->CreateLocalHandle(t));
+      t->Release();
+      return result;
     }
 
     default:

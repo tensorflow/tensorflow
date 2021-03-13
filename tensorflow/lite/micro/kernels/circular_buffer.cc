@@ -13,15 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#define FLATBUFFERS_LOCALE_INDEPENDENT 0
+#include "flatbuffers/flexbuffers.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/reference/integer_ops/add.h"
-#include "tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 /*
  * The circular buffer custom operator is used to implement strided streaming
@@ -56,7 +57,7 @@ constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
 // TODO(b/149795762): Add this to TfLiteStatus enum.
-constexpr int kTfLiteAbort = -9;
+constexpr TfLiteStatus kTfLiteAbort = static_cast<TfLiteStatus>(-9);
 
 // These fields control the stride period of a strided streaming model. This op
 // returns kTfLiteAbort until cycles_until_run-- is zero.  At this time,
@@ -66,45 +67,64 @@ struct OpData {
   int cycles_max;
 };
 
-// These constants represent constants specific to the music detect model.
-// They exist until (b/132070898) is fixed.
-constexpr int kMaxOpDataSize = 7;
-int op_data_counter = 0;
-OpData op_data_array[kMaxOpDataSize];
-
 }  // namespace
 
-void Free(TfLiteContext* context, void* buffer) { op_data_counter = 0; }
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  OpData* op_data = static_cast<OpData*>(
+      context->AllocatePersistentBuffer(context, sizeof(OpData)));
+
+  if (buffer != nullptr && length > 0) {
+    const uint8_t* buffer_t = reinterpret_cast<const uint8_t*>(buffer);
+    const flexbuffers::Map& m = flexbuffers::GetRoot(buffer_t, length).AsMap();
+    op_data->cycles_max = m["cycles_max"].AsInt32();
+  } else {
+    op_data->cycles_max = 0;
+  }
+
+  return op_data;
+}
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
+  TFLITE_DCHECK(node->user_data != nullptr);
+  OpData* op_data = static_cast<OpData*>(node->user_data);
+
   TF_LITE_ENSURE(context, input != nullptr);
   TF_LITE_ENSURE(context, output != nullptr);
-  TF_LITE_ENSURE_EQ(context, 1, output->dims->data[0]);
-  TF_LITE_ENSURE_EQ(context, 1, input->dims->data[0]);
+  TF_LITE_ENSURE_EQ(context, input->dims->data[0], output->dims->data[0]);
   TF_LITE_ENSURE_EQ(context, 1, input->dims->data[1]);
-  TF_LITE_ENSURE_EQ(context, 1, output->dims->data[2]);
-  TF_LITE_ENSURE_EQ(context, 1, input->dims->data[2]);
+  TF_LITE_ENSURE_EQ(context, input->dims->data[2], output->dims->data[2]);
   TF_LITE_ENSURE_EQ(context, output->dims->data[3], input->dims->data[3]);
 
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
   // The circular buffer custom operator currently only supports int8.
-  TF_LITE_ENSURE_EQ(context, input->type, kTfLiteInt8);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteInt8);
 
-  // TODO(b/132070898): Use statically slotted OpData structures until a
-  // scratch memory API is ready.
-  TFLITE_DCHECK_LE(op_data_counter, kMaxOpDataSize);
-  OpData* op_data = &op_data_array[op_data_counter++];
-  // The last circular buffer layer (length 5) simply accumulates outputs, and
-  // does not run periodically.
-  // TODO(b/150001379): Move this special case logic to the tflite flatbuffer.
-  if (output->dims->data[1] == 5) {
-    op_data->cycles_max = 1;
-  } else {
-    op_data->cycles_max = 2;
+  if (op_data->cycles_max <= 0) {
+    // The last circular buffer layer simply accumulates outputs, and does not
+    // run periodically.
+    // TODO(b/150001379): Move this special case logic to the tflite flatbuffer.
+    static int cb_prepare_count = 0;
+    cb_prepare_count++;
+    // These checks specifically work for the only two streaming models
+    // supported on TFLM. They use the shape of the output tensor along with the
+    // layer number to determine if the circular buffer period should be 1 or 2.
+
+    // These models are outlined int the following documents:
+    // https://docs.google.com/document/d/1lc_G2ZFhjiKFo02UHjBaljye1xsL0EkfybkaVELEE3Q/edit?usp=sharing
+    // https://docs.google.com/document/d/1pGc42PuWyrk-Jy1-9qeqtggvsmHr1ifz8Lmqfpr2rKA/edit?usp=sharing
+    if (output->dims->data[1] == 5 || output->dims->data[1] == 13 ||
+        (cb_prepare_count == 5 && output->dims->data[2] == 2 &&
+         output->dims->data[3] == 96)) {
+      op_data->cycles_max = 1;
+      cb_prepare_count = 0;
+    } else {
+      op_data->cycles_max = 2;
+    }
   }
   op_data->cycles_until_run = op_data->cycles_max;
   node->user_data = op_data;
@@ -121,17 +141,20 @@ void EvalInt8(const int8_t* input, int num_slots, int depth, int8_t* output) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
 
+  TFLITE_DCHECK(node->user_data != nullptr);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
   int num_slots = output->dims->data[1];
-  int depth = output->dims->data[3];
+  int depth = output->dims->data[2] * output->dims->data[3];
 
   if (input->type == kTfLiteInt8) {
-    EvalInt8(GetTensorData<int8_t>(input), num_slots, depth,
-             GetTensorData<int8_t>(output));
+    EvalInt8(tflite::micro::GetTensorData<int8_t>(input), num_slots, depth,
+             tflite::micro::GetTensorData<int8_t>(output));
   } else {
     TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
                        TfLiteTypeGetName(input->type), input->type);
@@ -145,12 +168,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     return static_cast<TfLiteStatus>(kTfLiteAbort);
   }
 
-  // If prepare is ever called more than one time (for example, when testing the
-  // ambient model, the interpreter is created a few times), this op data
-  // counter needs to be reset so that future instances do not overrun this op
-  // data array.
-  op_data_counter = 0;
-
   data->cycles_until_run = data->cycles_max;
 
   return kTfLiteOk;
@@ -159,8 +176,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace circular_buffer
 
 TfLiteRegistration* Register_CIRCULAR_BUFFER() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/circular_buffer::Free,
+  static TfLiteRegistration r = {/*init=*/circular_buffer::Init,
+                                 /*free=*/nullptr,
                                  /*prepare=*/circular_buffer::Prepare,
                                  /*invoke=*/circular_buffer::Eval,
                                  /*profiling_string=*/nullptr,

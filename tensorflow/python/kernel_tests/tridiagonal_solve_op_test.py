@@ -77,7 +77,7 @@ class TridiagonalSolveOpTest(test.TestCase):
             diags_format="compact",
             transpose_rhs=False,
             conjugate_rhs=False):
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       pivoting = True
       if hasattr(self, "pivoting"):
         pivoting = self.pivoting
@@ -412,7 +412,7 @@ class TridiagonalSolveOpTest(test.TestCase):
             transpose_rhs=transpose_rhs,
             conjugate_rhs=conjugate_rhs)
         res = math_ops.reduce_sum(x * y)
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       actual_grad_diags = sess.run(
           tape_diags.gradient(res, diags), feed_dict=feed_dict)
       actual_rhs_diags = sess.run(
@@ -563,7 +563,7 @@ class TridiagonalSolveOpTest(test.TestCase):
       return
     x = linalg_impl.tridiagonal_solve(
         diags, rhs, diags_format, partial_pivoting=self.pivoting)
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       result = sess.run(x, feed_dict={diags: diags_feed, rhs: rhs_feed})
       self.assertAllClose(result, expected)
 
@@ -648,7 +648,7 @@ class TridiagonalSolveOpTest(test.TestCase):
                                       rhs,
                                       diagonals_format="sequence",
                                       partial_pivoting=self.pivoting)
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       result = sess.run(
           x,
           feed_dict={
@@ -708,7 +708,7 @@ class TridiagonalSolveOpTest(test.TestCase):
             return
           x = linalg_impl.tridiagonal_solve(
               diags, rhs, partial_pivoting=pivoting)
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(x),

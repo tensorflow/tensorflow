@@ -16,13 +16,11 @@ limitations under the License.
 #include "tensorflow/lite/micro/examples/image_recognition_experimental/first_10_cifar_images.h"
 #include "tensorflow/lite/micro/examples/image_recognition_experimental/image_recognition_model.h"
 #include "tensorflow/lite/micro/examples/image_recognition_experimental/util.h"
-#include "tensorflow/lite/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/version.h"
 
 #define IMAGE_BYTES 3072
 #define LABEL_BYTES 1
@@ -32,11 +30,10 @@ TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(TestImageRecognitionInvoke) {
   tflite::MicroErrorReporter micro_error_reporter;
-  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
   const tflite::Model* model = ::tflite::GetModel(image_recognition_model_data);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
-    TF_LITE_REPORT_ERROR(error_reporter,
+    TF_LITE_REPORT_ERROR(&micro_error_reporter,
                          "Model provided is schema version %d not equal "
                          "to supported version %d.\n",
                          model->version(), TFLITE_SCHEMA_VERSION);
@@ -44,20 +41,17 @@ TF_LITE_MICRO_TEST(TestImageRecognitionInvoke) {
 
   tflite::MicroMutableOpResolver<4> micro_op_resolver;
 
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
-                               tflite::ops::micro::Register_CONV_2D());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_MAX_POOL_2D,
-                               tflite::ops::micro::Register_MAX_POOL_2D());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_FULLY_CONNECTED,
-                               tflite::ops::micro::Register_FULLY_CONNECTED());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
-                               tflite::ops::micro::Register_SOFTMAX());
+  micro_op_resolver.AddConv2D();
+  micro_op_resolver.AddMaxPool2D();
+  micro_op_resolver.AddFullyConnected();
+  micro_op_resolver.AddSoftmax();
 
   const int tensor_arena_size = 50 * 1024;
   uint8_t tensor_arena[tensor_arena_size];
 
   tflite::MicroInterpreter interpreter(model, micro_op_resolver, tensor_arena,
-                                       tensor_arena_size, error_reporter);
+                                       tensor_arena_size,
+                                       &micro_error_reporter);
   interpreter.AllocateTensors();
 
   TfLiteTensor* input = interpreter.input(0);
@@ -88,7 +82,7 @@ TF_LITE_MICRO_TEST(TestImageRecognitionInvoke) {
     TfLiteStatus invoke_status = interpreter.Invoke();
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
     if (invoke_status != kTfLiteOk) {
-      TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed\n");
+      TF_LITE_REPORT_ERROR(&micro_error_reporter, "Invoke failed\n");
     }
 
     TfLiteTensor* output = interpreter.output(0);

@@ -79,6 +79,34 @@ class GradientsTest(tf.test.TestCase):
     for g, g_re in zip(grads, grads_re):
       self.assertAllClose(g, g_re)
 
+  def testLSTMBatchJacobian(self):
+    class HasLSTM(tf.keras.Model):
+
+      def __init__(self):
+        super(HasLSTM, self).__init__()
+        self.lstm = tf.keras.layers.LSTM(units=5)
+        self.dense = tf.keras.layers.Dense(1, activation=tf.nn.sigmoid)
+
+      def call(self, x):
+        return self.dense(self.lstm(x))
+
+    m = HasLSTM()
+
+    def jacobian(x):
+      with tf.GradientTape() as tape:
+        tape.watch(x)
+        y = m(x)  # pylint: disable=not-callable
+      return tape.batch_jacobian(y, x)
+
+    inp = tf.nn.l2_normalize(tf.ones([1, 2, 3]), axis=[1, 2])
+    eager_result = jacobian(inp)
+    function_result = tf.function(jacobian)(inp)
+    self.assertAllClose(eager_result, function_result)
+    backprop_result, numeric_result = tf.test.compute_gradient(
+        m, [inp], delta=1e-3)
+    self.assertAllClose(numeric_result, backprop_result, rtol=1e-2)
+    self.assertAllClose(tf.reshape(numeric_result, [-1]),
+                        tf.reshape(eager_result, [-1]), rtol=1e-2)
 
 if __name__ == "__main__":
   tf.test.main()

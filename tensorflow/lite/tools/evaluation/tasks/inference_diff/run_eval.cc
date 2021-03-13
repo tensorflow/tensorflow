@@ -19,7 +19,6 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
-#include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 #include "tensorflow/lite/tools/evaluation/stages/inference_profiler_stage.h"
@@ -37,11 +36,14 @@ constexpr char kDelegateFlag[] = "delegate";
 
 class InferenceDiff : public TaskExecutor {
  public:
-  InferenceDiff(int* argc, char* argv[]);
+  InferenceDiff() : num_runs_(50), num_interpreter_threads_(1) {}
   ~InferenceDiff() override {}
 
+ protected:
+  std::vector<Flag> GetFlags() final;
+
   // If the run is successful, the latest metrics will be returned.
-  absl::optional<EvaluationStageMetrics> Run() final;
+  absl::optional<EvaluationStageMetrics> RunImpl() final;
 
  private:
   void OutputResult(const EvaluationStageMetrics& latest_metrics) const;
@@ -50,11 +52,9 @@ class InferenceDiff : public TaskExecutor {
   std::string delegate_;
   int num_runs_;
   int num_interpreter_threads_;
-  DelegateProviders delegate_providers_;
 };
 
-InferenceDiff::InferenceDiff(int* argc, char* argv[])
-    : num_runs_(50), num_interpreter_threads_(1) {
+std::vector<Flag> InferenceDiff::GetFlags() {
   // Command Line Flags.
   std::vector<tflite::Flag> flag_list = {
       tflite::Flag::CreateFlag(kModelFileFlag, &model_file_path_,
@@ -72,11 +72,11 @@ InferenceDiff::InferenceDiff(int* argc, char* argv[])
           "Delegate to use for test inference, if available. "
           "Must be one of {'nnapi', 'gpu', 'hexagon', 'xnnpack'}"),
   };
-  tflite::Flags::Parse(argc, const_cast<const char**>(argv), flag_list);
-  delegate_providers_.InitFromCmdlineArgs(argc, const_cast<const char**>(argv));
+
+  return flag_list;
 }
 
-absl::optional<EvaluationStageMetrics> InferenceDiff::Run() {
+absl::optional<EvaluationStageMetrics> InferenceDiff::RunImpl() {
   // Initialize evaluation stage.
   EvaluationStageConfig eval_config;
   eval_config.set_name("inference_profiling");
@@ -137,8 +137,8 @@ void InferenceDiff::OutputResult(
   }
 }
 
-std::unique_ptr<TaskExecutor> CreateTaskExecutor(int* argc, char* argv[]) {
-  return std::unique_ptr<TaskExecutor>(new InferenceDiff(argc, argv));
+std::unique_ptr<TaskExecutor> CreateTaskExecutor() {
+  return std::unique_ptr<TaskExecutor>(new InferenceDiff());
 }
 
 }  // namespace evaluation

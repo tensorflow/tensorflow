@@ -1,6 +1,8 @@
 # Description:
 # TensorFlow SavedModel.
 
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -19,10 +21,7 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files([
-    "LICENSE",
-    "loader.h",
-])
+exports_files(["loader.h"])
 
 cc_library(
     name = "constants",
@@ -39,16 +38,28 @@ cc_library(
     hdrs = ["tag_constants.h"],
 )
 
+# copybara:uncomment_begin(google-only)
+# cc_library(
+#     name = "mobile_only_deps",
+#     visibility = ["//visibility:private"],
+#     deps = if_mobile(["//tensorflow/core:portable_tensorflow_lib"]),
+# )
+# copybara:uncomment_end
+
 cc_library(
     name = "reader",
     srcs = ["reader.cc"],
     hdrs = ["reader.h"],
-    deps = [":constants"] + if_not_mobile([
+    deps = [
+        ":constants",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/util/tensor_bundle",
+    ] + if_not_mobile([
         # TODO(b/111634734): :lib and :protos_all contain dependencies that
         # cannot be built on mobile platforms. Instead, include the appropriate
         # tf_lib depending on the build platform.
+        "@com_google_absl//absl/memory:memory",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
     ]),
 )
 
@@ -56,7 +67,7 @@ tf_cc_test(
     name = "reader_test",
     srcs = ["reader_test.cc"],
     data = [
-        ":saved_model_half_plus_two",
+        ":saved_model_test_files",
     ],
     linkstatic = 1,
     deps = [
@@ -106,6 +117,7 @@ cc_library(
     hdrs = ["loader.h"],
     deps = [
         ":constants",
+        ":loader_util",
         ":reader",
     ] + if_not_mobile([
         "//tensorflow/core:core_cpu",
@@ -132,11 +144,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "loader_util",
+    srcs = ["loader_util.cc"],
+    hdrs = ["loader_util.h"],
+    deps = [":constants"] + if_not_mobile([
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+    ]),
+)
+
 tf_cc_test(
     name = "bundle_v2_test",
     srcs = ["bundle_v2_test.cc"],
     data = [
-        ":saved_model_half_plus_two",
+        ":saved_model_test_files",
     ],
     linkstatic = 1,
     deps = [
@@ -153,12 +176,13 @@ tf_cc_test(
     name = "saved_model_bundle_test",
     srcs = ["saved_model_bundle_test.cc"],
     data = [
-        ":saved_model_half_plus_two",
+        ":saved_model_test_files",
     ],
     linkstatic = 1,
     deps = [
         ":constants",
         ":loader",
+        ":reader",
         ":signature_constants",
         ":tag_constants",
         "//tensorflow/core:lib",
@@ -174,7 +198,7 @@ tf_cc_test(
     name = "saved_model_bundle_lite_test",
     srcs = ["saved_model_bundle_lite_test.cc"],
     data = [
-        ":saved_model_half_plus_two",
+        ":saved_model_test_files",
     ],
     linkstatic = 1,
     deps = [
@@ -195,11 +219,17 @@ tf_cc_test(
 py_binary(
     name = "testdata/generate_saved_models",
     srcs = ["testdata/generate_saved_models.py"],
+    data = [
+        ":saved_model_asset_data",
+        ":saved_model_static_hashtable_asset_data",
+    ],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:lookup_ops",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
@@ -207,22 +237,45 @@ py_binary(
         "//tensorflow/python/module",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/saved_model:save_options",
+        "//tensorflow/python/training/tracking",
         "@absl_py//absl:app",
     ],
 )
 
 # TODO(b/32673259): add a test to continuously validate these files.
 filegroup(
-    name = "saved_model_half_plus_two",
+    name = "saved_model_test_files",
     srcs = glob([
+        "testdata/AssetModule/**",
         "testdata/half_plus_two_pbtxt/**",
         "testdata/half_plus_two_main_op/**",
         "testdata/half_plus_two/**",
         "testdata/half_plus_two_v2/**",
         "testdata/x_plus_y_v2_debuginfo/**",
         "testdata/CyclicModule/**",
+        "testdata/StaticHashTableModule/**",
         "testdata/VarsAndArithmeticObjectGraph/**",
+        "testdata/fuzz_generated/**",
     ]),
+)
+
+alias(
+    name = "saved_model_half_plus_two",
+    actual = ":saved_model_test_files",
+)
+
+filegroup(
+    name = "saved_model_asset_data",
+    srcs = [
+        "testdata/test_asset.txt",
+    ],
+)
+
+filegroup(
+    name = "saved_model_static_hashtable_asset_data",
+    srcs = [
+        "testdata/static_hashtable_asset.txt",
+    ],
 )
 
 exports_files(
@@ -234,5 +287,6 @@ exports_files(
         "testdata/x_plus_y_v2_debuginfo/**",
         "testdata/CyclicModule/**",
         "testdata/VarsAndArithmeticObjectGraph/**",
+        "testdata/fuzz_generated/**",
     ]),
 )

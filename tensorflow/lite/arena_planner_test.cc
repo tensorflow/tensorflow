@@ -14,12 +14,22 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/arena_planner.h"
 
-#include <cstdarg>
-#include <cstdint>
+#include <stdio.h>
 
-#include <gmock/gmock.h>
+#include <algorithm>
+#include <cstdarg>
+#include <cstddef>
+#include <cstdint>
+#include <initializer_list>
+#include <memory>
+#include <set>
+#include <utility>
+#include <vector>
+
 #include <gtest/gtest.h>
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
@@ -134,7 +144,8 @@ class TestGraphInfo : public GraphInfo {
   TfLiteTensor* tensor(size_t index) override {
     return &graph_->tensors()->at(index);
   }
-  size_t num_nodes() const override { return graph_->nodes().size(); }
+  size_t num_execution_nodes() const override { return graph_->nodes().size(); }
+  size_t num_total_nodes() const override { return graph_->nodes().size(); }
   const TfLiteNode& node(size_t index) const override {
     return graph_->nodes()[index];
   }
@@ -163,12 +174,13 @@ void ReportError(TfLiteContext* context, const char* format, ...) {
 
 class ArenaPlannerTest : public ::testing::Test {
  protected:
-  void SetGraph(TestGraph* graph, bool preserve_inputs = false) {
+  void SetGraph(TestGraph* graph, bool preserve_inputs = false,
+                bool preserve_intermediates = false) {
     graph_ = graph;
     context_.ReportError = ReportError;
     planner_.reset(new ArenaPlanner(
         &context_, std::unique_ptr<GraphInfo>(new TestGraphInfo(graph)),
-        preserve_inputs, /*preserve intermediates*/ false, kTensorAlignment));
+        preserve_inputs, preserve_intermediates, kTensorAlignment));
     CHECK(planner_->ResetAllocations() == kTfLiteOk);
     CHECK(planner_->PlanAllocations() == kTfLiteOk);
   }
@@ -353,6 +365,40 @@ TEST_F(ArenaPlannerTest, SimpleGraphWithResetAllocationsAfter) {
   EXPECT_TRUE(IsUnallocated(3));
   EXPECT_TRUE(IsUnallocated(4));
   EXPECT_TRUE(IsUnallocated(5));
+}
+
+TEST_F(ArenaPlannerTest, SimpleGraphWithPersistentResetAllocationsAfter) {
+  TestGraph graph({0, 1},
+                  {
+                      /* in, out, tmp */
+                      {{0, 1}, {2}, {}},   // First op
+                      {{2, 0}, {4}, {5}},  // Second op, with temporary
+                      {{4}, {3}, {}}       // Third op
+                  },
+                  {3});
+  // Make the tensor #5 persistent.
+  (*graph.tensors())[5].allocation_type = kTfLiteArenaRwPersistent;
+  SetGraph(&graph);
+  Execute(0, 10);
+
+  // Save the pointer of the persistent temporary tensor #5.
+  void* tensor5_ptr = (*graph.tensors())[5].data.raw;
+
+  // Reset allocations after the first node
+  ResetAllocationsAfter(0);
+
+  EXPECT_FALSE(IsUnallocated(0));
+  EXPECT_FALSE(IsUnallocated(1));
+  EXPECT_FALSE(IsUnallocated(2));
+  EXPECT_TRUE(IsUnallocated(3));
+  EXPECT_TRUE(IsUnallocated(4));
+  EXPECT_FALSE(IsUnallocated(5));
+
+  // Second run
+  Execute(0, 10);
+
+  // Check if the persistent pointer isn't changed.
+  EXPECT_TRUE(tensor5_ptr == (*graph.tensors())[5].data.raw);
 }
 
 TEST_F(ArenaPlannerTest, SimpleGraphWithOptionals) {
@@ -708,6 +754,35 @@ TEST_F(ArenaPlannerTest, GraphWithIntermediates) {
   // 2 is allocated in the smallest suitable gap, which is not equal to the
   // first available one.
   EXPECT_EQ(GetOffset(2), GetOffsetAfter(5));
+}
+
+TEST_F(ArenaPlannerTest, DebugTensors) {
+  TestGraph graph({0, 1},
+                  {
+                      /* in, out, tmp */
+                      {{0, 1}, {2}, {5}},  // First op, with temporary
+                      {{2, 0}, {4}, {6}},  // Second op, with temporary
+                      {{4}, {3}, {7}}      // Third op, with temporary
+                  },
+                  {3});
+  SetGraph(&graph, false, /*preserve_intermediates=*/false);
+  Execute(0, 10);
+
+  // Memory of temporary tensors are shared by default.
+  EXPECT_EQ(GetOffset(5), 0);
+  EXPECT_EQ(GetOffset(6), 0);
+  EXPECT_EQ(GetOffset(7), 0);
+
+  SetGraph(&graph, false, /*preserve_intermediates=*/true);
+  Execute(0, 10);
+
+  std::set<std::ptrdiff_t> tensorOffsets;
+  for (int i = 0; i < 8; i++) {
+    tensorOffsets.insert(GetOffset(i));
+  }
+  // Every tensor should have unique memory allocation with
+  // preserve_intermediates.
+  EXPECT_EQ(tensorOffsets.size(), 8);
 }
 
 }  // namespace

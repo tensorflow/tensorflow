@@ -1,0 +1,27 @@
+path: "tensorflow.__internal__.tracking"
+tf_module {
+  member {
+    name: "AutoTrackable"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Trackable"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TrackableDataStructure"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TrackableReference"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "register_session_provider"
+    argspec: "args=[\'session_provider\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "wrap"
+    argspec: "args=[\'value\'], varargs=None, keywords=None, defaults=None"
+  }
+}

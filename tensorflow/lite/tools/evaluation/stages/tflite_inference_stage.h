@@ -58,6 +58,9 @@ class TfliteInferenceStage : public EvaluationStage {
     inputs_ = &raw_input_ptrs;
   }
 
+  // Resize input tensors with given shapes.
+  TfLiteStatus ResizeInputs(const std::vector<std::vector<int>>& shapes);
+
   // Applies provided delegate to the underlying TFLite Interpreter.
   TfLiteStatus ApplyCustomDelegate(Interpreter::TfLiteDelegatePtr delegate);
 

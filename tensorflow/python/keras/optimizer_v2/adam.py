@@ -26,7 +26,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.training import training_ops
+from tensorflow.python.training import gen_training_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -144,7 +144,8 @@ class Adam(optimizer_v2.OptimizerV2):
     apply_state[(var_device, var_dtype)].update(
         dict(
             lr=lr,
-            epsilon=ops.convert_to_tensor_v2(self.epsilon, var_dtype),
+            epsilon=ops.convert_to_tensor_v2_with_dispatch(
+                self.epsilon, var_dtype),
             beta_1_t=beta_1_t,
             beta_1_power=beta_1_power,
             one_minus_beta_1_t=1 - beta_1_t,
@@ -171,32 +172,32 @@ class Adam(optimizer_v2.OptimizerV2):
     v = self.get_slot(var, 'v')
 
     if not self.amsgrad:
-      return training_ops.resource_apply_adam(
-          var.handle,
-          m.handle,
-          v.handle,
-          coefficients['beta_1_power'],
-          coefficients['beta_2_power'],
-          coefficients['lr_t'],
-          coefficients['beta_1_t'],
-          coefficients['beta_2_t'],
-          coefficients['epsilon'],
-          grad,
+      return gen_training_ops.ResourceApplyAdam(
+          var=var.handle,
+          m=m.handle,
+          v=v.handle,
+          beta1_power=coefficients['beta_1_power'],
+          beta2_power=coefficients['beta_2_power'],
+          lr=coefficients['lr_t'],
+          beta1=coefficients['beta_1_t'],
+          beta2=coefficients['beta_2_t'],
+          epsilon=coefficients['epsilon'],
+          grad=grad,
           use_locking=self._use_locking)
     else:
       vhat = self.get_slot(var, 'vhat')
-      return training_ops.resource_apply_adam_with_amsgrad(
-          var.handle,
-          m.handle,
-          v.handle,
-          vhat.handle,
-          coefficients['beta_1_power'],
-          coefficients['beta_2_power'],
-          coefficients['lr_t'],
-          coefficients['beta_1_t'],
-          coefficients['beta_2_t'],
-          coefficients['epsilon'],
-          grad,
+      return gen_training_ops.ResourceApplyAdamWithAmsgrad(
+          var=var.handle,
+          m=m.handle,
+          v=v.handle,
+          vhat=vhat.handle,
+          beta1_power=coefficients['beta_1_power'],
+          beta2_power=coefficients['beta_2_power'],
+          lr=coefficients['lr_t'],
+          beta1=coefficients['beta_1_t'],
+          beta2=coefficients['beta_2_t'],
+          epsilon=coefficients['epsilon'],
+          grad=grad,
           use_locking=self._use_locking)
 
   def _resource_apply_sparse(self, grad, var, indices, apply_state=None):
@@ -243,7 +244,7 @@ class Adam(optimizer_v2.OptimizerV2):
     config = super(Adam, self).get_config()
     config.update({
         'learning_rate': self._serialize_hyperparameter('learning_rate'),
-        'decay': self._serialize_hyperparameter('decay'),
+        'decay': self._initial_decay,
         'beta_1': self._serialize_hyperparameter('beta_1'),
         'beta_2': self._serialize_hyperparameter('beta_2'),
         'epsilon': self.epsilon,
@@ -396,7 +397,8 @@ class NonFusedAdam(optimizer_v2.OptimizerV2):
     apply_state[(var_device, var_dtype)].update(
         dict(
             lr=lr,
-            epsilon=ops.convert_to_tensor_v2(self.epsilon, var_dtype),
+            epsilon=ops.convert_to_tensor_v2_with_dispatch(
+                self.epsilon, var_dtype),
             beta_1_t=beta_1_t,
             beta_1_power=beta_1_power,
             one_minus_beta_1_t=1 - beta_1_t,
@@ -414,7 +416,7 @@ class NonFusedAdam(optimizer_v2.OptimizerV2):
       weights = weights[:len(params)]
     super(NonFusedAdam, self).set_weights(weights)
 
-  @def_function.function(experimental_compile=True)
+  @def_function.function(jit_compile=True)
   def _resource_apply_dense(self, grad, var, apply_state=None):
     var_device, var_dtype = var.device, var.dtype.base_dtype
     coefficients = ((apply_state or {}).get((var_device, var_dtype)) or
@@ -435,7 +437,7 @@ class NonFusedAdam(optimizer_v2.OptimizerV2):
     var.assign_sub(
         (m * alpha) / (math_ops.sqrt(v) - coefficients['epsilon']))
 
-  @def_function.function(experimental_compile=True)
+  @def_function.function(jit_compile=True)
   def _resource_apply_sparse(self, grad, var, indices, apply_state=None):
     var_device, var_dtype = var.device, var.dtype.base_dtype
     coefficients = ((apply_state or {}).get((var_device, var_dtype)) or
@@ -466,7 +468,7 @@ class NonFusedAdam(optimizer_v2.OptimizerV2):
     config = super(NonFusedAdam, self).get_config()
     config.update({
         'learning_rate': self._serialize_hyperparameter('learning_rate'),
-        'decay': self._serialize_hyperparameter('decay'),
+        'decay': self._initial_decay,
         'beta_1': self._serialize_hyperparameter('beta_1'),
         'beta_2': self._serialize_hyperparameter('beta_2'),
         'epsilon': self.epsilon,

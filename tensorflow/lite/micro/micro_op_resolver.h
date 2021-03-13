@@ -34,12 +34,7 @@ namespace tflite {
 // registered Ops as the template parameter.
 class MicroOpResolver : public OpResolver {
  public:
-  // TODO(b/149408647): The op_type parameter enables a gradual transfer to
-  // selective registration of the parse function. It should be removed once we
-  // no longer need to use ParseOpData (from flatbuffer_conversions.h) as part
-  // of the MicroMutableOpResolver.
   typedef TfLiteStatus (*BuiltinParseFunction)(const Operator* op,
-                                               BuiltinOperator op_type,
                                                ErrorReporter* error_reporter,
                                                BuiltinDataAllocator* allocator,
                                                void** builtin_data);

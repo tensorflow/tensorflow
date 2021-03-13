@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -91,64 +91,62 @@ Status ConvertDataType(DataType dtype, Builder builder, Type* type) {
 }
 
 Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
-  switch (type.getKind()) {
-    case mlir::StandardTypes::F16:
-      *dtype = DT_HALF;
-      return Status::OK();
-    case mlir::StandardTypes::F32:
-      *dtype = DT_FLOAT;
-      return Status::OK();
-    case mlir::StandardTypes::F64:
-      *dtype = DT_DOUBLE;
-      return Status::OK();
-    case mlir::StandardTypes::BF16:
-      *dtype = DT_BFLOAT16;
-      return Status::OK();
-    case mlir::StandardTypes::Integer: {
-      const auto& itype = type.cast<mlir::IntegerType>();
-      switch (itype.getWidth()) {
-        case 1:
-          *dtype = DT_BOOL;
-          return Status::OK();
-        case 8:
-          *dtype = itype.isUnsigned() ? DT_UINT8 : DT_INT8;
-          return Status::OK();
-        case 16:
-          *dtype = itype.isUnsigned() ? DT_UINT16 : DT_INT16;
-          return Status::OK();
-        case 32:
-          *dtype = itype.isUnsigned() ? DT_UINT32 : DT_INT32;
-          return Status::OK();
-        case 64:
-          *dtype = itype.isUnsigned() ? DT_UINT64 : DT_INT64;
-          return Status::OK();
-        default:
-          return errors::Unimplemented(
-              absl::StrCat("Converting ", debugString(type), " to DataType"));
-      }
-    }
-    case mlir::StandardTypes::Complex: {
-      auto etype = type.cast<mlir::ComplexType>().getElementType();
-      if (etype.isF32()) {
-        *dtype = DT_COMPLEX64;
-        return Status::OK();
-      } else if (etype.isF64()) {
-        *dtype = DT_COMPLEX128;
-        return Status::OK();
-      }
-      return errors::Unimplemented(
-          absl::StrCat("Converting ", debugString(type), " to DataType"));
-    }
-#define HANDLE_TF_TYPE(tftype, enumerant, name) \
-  case mlir::TF::TensorFlowTypes::enumerant:    \
-    *dtype = DT_##enumerant;                    \
+  if (type.isF16()) {
+    *dtype = DT_HALF;
     return Status::OK();
+  } else if (type.isF32()) {
+    *dtype = DT_FLOAT;
+    return Status::OK();
+  } else if (type.isF64()) {
+    *dtype = DT_DOUBLE;
+    return Status::OK();
+  } else if (type.isBF16()) {
+    *dtype = DT_BFLOAT16;
+    return Status::OK();
+  } else if (auto itype = type.dyn_cast<mlir::IntegerType>()) {
+    switch (itype.getWidth()) {
+      case 1:
+        *dtype = DT_BOOL;
+        return Status::OK();
+      case 8:
+        *dtype = itype.isUnsigned() ? DT_UINT8 : DT_INT8;
+        return Status::OK();
+      case 16:
+        *dtype = itype.isUnsigned() ? DT_UINT16 : DT_INT16;
+        return Status::OK();
+      case 32:
+        *dtype = itype.isUnsigned() ? DT_UINT32 : DT_INT32;
+        return Status::OK();
+      case 64:
+        *dtype = itype.isUnsigned() ? DT_UINT64 : DT_INT64;
+        return Status::OK();
+      default:
+        return errors::Unimplemented(
+            absl::StrCat("Converting ", debugString(type), " to DataType"));
+    }
+  } else if (auto complex_type = type.dyn_cast<mlir::ComplexType>()) {
+    auto etype = complex_type.getElementType();
+    if (etype.isF32()) {
+      *dtype = DT_COMPLEX64;
+      return Status::OK();
+    } else if (etype.isF64()) {
+      *dtype = DT_COMPLEX128;
+      return Status::OK();
+    }
+    return errors::Unimplemented(
+        absl::StrCat("Converting ", debugString(type), " to DataType"));
+  }
+
+#define HANDLE_TF_TYPE(tftype, enumerant, name) \
+  if (type.isa<mlir::TF::tftype##Type>()) {     \
+    *dtype = DT_##enumerant;                    \
+    return Status::OK();                        \
+  }
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
-    default:
-      return errors::Unimplemented(
-          absl::StrCat("Converting ", debugString(type), " to DataType"));
-  }
+
+  return errors::Unimplemented(
+      absl::StrCat("Converting ", debugString(type), " to DataType"));
 }
 
 Status ConvertToDataType(Type type, DataType* dtype) {

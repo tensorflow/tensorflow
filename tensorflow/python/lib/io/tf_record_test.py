@@ -491,7 +491,7 @@ class TFRecordRandomReaderTest(TFCompressionTestCase):
       self.assertEqual(record, records[i])
       offsets.append(offset)
     # Reading off the bound should lead to error.
-    with self.assertRaisesRegexp(IndexError, r"Out of range.*offset"):
+    with self.assertRaisesRegex(IndexError, r"Out of range.*offset"):
       reader.read(offset)
     # Do a pass of backward reading.
     for i in range(self._num_records - 1, 0, -1):
@@ -503,8 +503,7 @@ class TFRecordRandomReaderTest(TFCompressionTestCase):
     records = [self._Record(0, i) for i in range(self._num_records)]
     fn = self._WriteRecordsToFile(records, "uncompressed_records")
     reader = tf_record.tf_record_random_reader(fn)
-    with self.assertRaisesRegexp(
-        errors_impl.DataLossError, r"corrupted record"):
+    with self.assertRaisesRegex(errors_impl.DataLossError, r"corrupted record"):
       reader.read(1)  # 1 is guaranteed to be an invalid offset.
 
   def testClosingRandomReaderCausesErrorsForFurtherReading(self):
@@ -512,8 +511,7 @@ class TFRecordRandomReaderTest(TFCompressionTestCase):
     fn = self._WriteRecordsToFile(records, "uncompressed_records")
     reader = tf_record.tf_record_random_reader(fn)
     reader.close()
-    with self.assertRaisesRegexp(
-        errors_impl.FailedPreconditionError, r"closed"):
+    with self.assertRaisesRegex(errors_impl.FailedPreconditionError, r"closed"):
       reader.read(0)
 
 

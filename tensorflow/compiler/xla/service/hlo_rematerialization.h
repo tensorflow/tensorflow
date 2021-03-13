@@ -45,8 +45,8 @@ class HloRematerialization : public HloModulePass {
   // Helper struct that communicates the before / after sizes for the
   // rematerialization process.
   struct RematerializationSizes {
-    int64 before_bytes;
-    int64 after_bytes;
+    int64 before_bytes = -1;
+    int64 after_bytes = -1;
   };
 
   // Mode in which the rematerialization algorithm should be run.
@@ -85,7 +85,8 @@ class HloRematerialization : public HloModulePass {
       RematerializationSizes* sizes, RematerializationPass pass_location,
       int block_size_limit,
       CompactShapeFunction compact_shape_function = nullptr,
-      RematerializationMode mode = RematerializationMode::kRecomputeAndCompress)
+      RematerializationMode mode = RematerializationMode::kRecomputeAndCompress,
+      int64 min_remat_size = 0)
       : size_function_(size_function),
         memory_limit_bytes_(memory_limit_bytes),
         sizes_(sizes),
@@ -94,7 +95,8 @@ class HloRematerialization : public HloModulePass {
         compact_shape_function_(compact_shape_function == nullptr
                                     ? DefaultCompactShapeFunction
                                     : std::move(compact_shape_function)),
-        mode_(mode) {}
+        mode_(mode),
+        min_remat_size_(min_remat_size) {}
   ~HloRematerialization() override = default;
 
   absl::string_view name() const override { return "rematerialization"; }
@@ -114,7 +116,8 @@ class HloRematerialization : public HloModulePass {
   // and inserted into 'order'.
   virtual StatusOr<bool> RematerializeComputation(HloComputation* computation,
                                                   HloSchedule* schedule,
-                                                  int64 memory_limit_bytes);
+                                                  int64 memory_limit_bytes,
+                                                  int64 min_remat_size);
 
   // Computes and returns the peak memory used by the given computation. The
   // peak memory is the maximum total size of all live HLO instruction values at
@@ -185,6 +188,8 @@ class HloRematerialization : public HloModulePass {
   int max_rematerialized_block_size_ = 0;
 
   RematerializationMode mode_;
+
+  int64 min_remat_size_;
 };
 
 }  // namespace xla

@@ -47,6 +47,7 @@ using stream_executor::dnn::DimIndex;
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
+#include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
@@ -1081,7 +1082,8 @@ namespace functor {
       const GPUDevice& d, typename TTypes<T, 5, int>::ConstTensor in, \
       const std::array<int, 3>& padding_left,                         \
       const std::array<int, 3>& padding_right,                        \
-      typename TTypes<T, 5, int>::Tensor out, TensorFormat format);
+      typename TTypes<T, 5, int>::Tensor out, TensorFormat format,    \
+      const T& padding_value);
 
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
@@ -1264,26 +1266,56 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     CHECK(padding_rows >= 0 && padding_cols >= 0 && padding_planes >= 0)
         << "Negative paddings: (" << padding_rows << ", " << padding_cols
         << ", " << padding_planes << ")";
+
+#if GOOGLE_CUDA
+    const bool compute_in_nhwc =
+        CUDNN_VERSION >= 8000 && DataTypeToEnum<T>::value == DT_HALF;
+#else
+    // fast NDHWC implementation is a CUDA only feature
+    const bool compute_in_nhwc = false;
+#endif
+    const TensorFormat compute_data_format =
+        (compute_in_nhwc && data_format_ == FORMAT_NHWC) ? FORMAT_NHWC
+                                                         : FORMAT_NCHW;
+
+    VLOG(3) << "Compute Conv3DBackpropInput with cuDNN:"
+            << " data_format=" << ToString(data_format_)
+            << " compute_data_format=" << ToString(compute_data_format);
+
+    constexpr auto kComputeInNHWC =
+        std::make_tuple(se::dnn::DataLayout::kBatchYXDepth,
+                        se::dnn::FilterLayout::kOutputYXInput);
+    constexpr auto kComputeInNCHW =
+        std::make_tuple(se::dnn::DataLayout::kBatchDepthYX,
+                        se::dnn::FilterLayout::kOutputInputYX);
+
+    se::dnn::DataLayout compute_data_layout;
+    se::dnn::FilterLayout filter_layout;
+
+    std::tie(compute_data_layout, filter_layout) =
+        compute_data_format == FORMAT_NHWC ? kComputeInNHWC : kComputeInNCHW;
+
     se::dnn::BatchDescriptor input_desc(3);
     input_desc.set_count(dims.batch_size)
         .set_spatial_dim(DimIndex::X, compatible_input_shape.dim_size(4))
         .set_spatial_dim(DimIndex::Y, compatible_input_shape.dim_size(3))
         .set_spatial_dim(DimIndex::Z, compatible_input_shape.dim_size(2))
         .set_feature_map_count(dims.in_depth)
-        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(compute_data_layout);
     se::dnn::BatchDescriptor output_desc(3);
     output_desc.set_count(dims.batch_size)
         .set_spatial_dim(DimIndex::X, dims.output_size(2))
         .set_spatial_dim(DimIndex::Y, dims.output_size(1))
         .set_spatial_dim(DimIndex::Z, dims.output_size(0))
         .set_feature_map_count(dims.out_depth)
-        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(compute_data_layout);
     se::dnn::FilterDescriptor filter_desc(3);
     filter_desc.set_spatial_dim(DimIndex::X, dims.filter_size(2))
         .set_spatial_dim(DimIndex::Y, dims.filter_size(1))
         .set_spatial_dim(DimIndex::Z, dims.filter_size(0))
         .set_input_feature_map_count(filter_shape.dim_size(3))
-        .set_output_feature_map_count(filter_shape.dim_size(4));
+        .set_output_feature_map_count(filter_shape.dim_size(4))
+        .set_layout(filter_layout);
     se::dnn::ConvolutionDescriptor conv_desc(3);
     conv_desc.set_dilation_rate(DimIndex::X, dims.dilation(2))
         .set_dilation_rate(DimIndex::Y, dims.dilation(1))
@@ -1298,21 +1330,28 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
 
     // Shape: out, in, z, y, x.
     Tensor transformed_filter;
-    OP_REQUIRES_OK(
-        context, context->allocate_temp(
-                     DataTypeToEnum<T>::value,
-                     TensorShape({filter_shape.dim_size(4),
-                                  filter_shape.dim_size(3), dims.filter_size(0),
-                                  dims.filter_size(1), dims.filter_size(2)}),
-                     &transformed_filter));
+    auto dst_format =
+        compute_data_format == FORMAT_NCHW ? FORMAT_OIHW : FORMAT_OHWI;
+    TensorShape dst_shape =
+        dst_format == FORMAT_OIHW
+            ? TensorShape({filter_shape.dim_size(4), filter_shape.dim_size(3),
+                           dims.filter_size(0), dims.filter_size(1),
+                           dims.filter_size(2)})
+            : TensorShape({filter_shape.dim_size(4), dims.filter_size(0),
+                           dims.filter_size(1), dims.filter_size(2),
+                           filter_shape.dim_size(3)});
+    OP_REQUIRES_OK(context,
+                   context->allocate_temp(DataTypeToEnum<T>::value, dst_shape,
+                                          &transformed_filter));
+
     functor::TransformFilter<GPUDevice, T, int, 5>()(
-        context->eigen_device<GPUDevice>(), FORMAT_OIHW,
+        context->eigen_device<GPUDevice>(), dst_format,
         To32Bit(filter.tensor<T, 5>()),
         To32Bit(transformed_filter.tensor<T, 5>()));
 
     // Shape: batch, filters, z, y, x.
     Tensor transformed_out_backprop;
-    if (data_format_ == FORMAT_NHWC) {
+    if (data_format_ == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
       TensorShape nchw_shape = {dims.batch_size, dims.out_depth,
                                 dims.output_size(0), dims.output_size(1),
                                 dims.output_size(2)};
@@ -1331,10 +1370,16 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     }
     // Shape: batch, filters, z, y, x.
     Tensor pre_transformed_in_backprop;
-    OP_REQUIRES_OK(
-        context,
-        context->allocate_temp(DataTypeToEnum<T>::value, compatible_input_shape,
-                               &pre_transformed_in_backprop));
+    OP_REQUIRES_OK(context,
+                   context->allocate_temp(
+                       DataTypeToEnum<T>::value,
+                       ShapeFromFormat(compute_data_format,
+                                       compatible_input_shape.dim_size(0),
+                                       {{compatible_input_shape.dim_size(2),
+                                         compatible_input_shape.dim_size(3),
+                                         compatible_input_shape.dim_size(4)}},
+                                       compatible_input_shape.dim_size(1)),
+                       &pre_transformed_in_backprop));
 
     auto out_backprop_ptr =
         AsDeviceMemory(transformed_out_backprop.template flat<T>().data(),
@@ -1350,12 +1395,14 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
 
     const int device_id = stream->parent()->device_ordinal();
-    DataType dtype = context->input(0).dtype();
+    // To make sure the Conv3DBackpropInputV2 get the correct dtype, we infer
+    // the dtype from 2nd input, i.e., out_backprop.
+    DataType dtype = context->input(2).dtype();
     const ConvParameters conv_parameters = {
         dims.batch_size,
         dims.in_depth,
         {{dims.input_size(0), dims.input_size(1), dims.input_size(2)}},
-        FORMAT_NCHW,
+        compute_data_format,
         dims.out_depth,
         {{dims.filter_size(0), dims.filter_size(1), dims.filter_size(2)}},
         {{dims.dilation(0), dims.dilation(1), dims.dilation(2)}},
@@ -1404,14 +1451,11 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
                 ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
                 : static_cast<se::ScratchAllocator*>(&scratch_allocator);
         ProfileResult profile_result;
-        bool cudnn_launch_status =
-            stream
-                ->ThenConvolveBackwardDataWithAlgorithm(
-                    filter_desc, filter_ptr, output_desc, out_backprop_ptr,
-                    conv_desc, input_desc, &in_backprop_ptr_rz, allocator_used,
-                    AlgorithmConfig(profile_algorithm), &profile_result)
-                .ok();
-        if (cudnn_launch_status) {
+        auto cudnn_launch_status = stream->ConvolveBackwardDataWithAlgorithm(
+            filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
+            input_desc, &in_backprop_ptr_rz, allocator_used,
+            AlgorithmConfig(profile_algorithm), &profile_result);
+        if (cudnn_launch_status.ok()) {
           if (profile_result.is_valid()) {
             results.emplace_back();
             auto& result = results.back();
@@ -1445,16 +1489,12 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
       for (auto miopen_algorithm : algorithms) {
         auto profile_algorithm = miopen_algorithm.algorithm();
         ProfileResult profile_result;
-        bool miopen_launch_status =
-            stream
-                ->ThenConvolveBackwardDataWithAlgorithm(
-                    filter_desc, filter_ptr, output_desc, out_backprop_ptr,
-                    conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
-                    AlgorithmConfig(profile_algorithm,
-                                    miopen_algorithm.scratch_size()),
-                    &profile_result)
-                .ok();
-        if (miopen_launch_status) {
+        auto miopen_launch_status = stream->ConvolveBackwardDataWithAlgorithm(
+            filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
+            input_desc, &in_backprop_ptr, &scratch_allocator,
+            AlgorithmConfig(profile_algorithm, miopen_algorithm.scratch_size()),
+            &profile_result);
+        if (miopen_launch_status.ok()) {
           if (profile_result.is_valid()) {
             results.emplace_back();
             auto& result = results.back();
@@ -1480,29 +1520,25 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     }
     DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                           context);
-    bool cudnn_launch_status =
-        stream
-            ->ThenConvolveBackwardDataWithAlgorithm(
-                filter_desc, filter_ptr, output_desc, out_backprop_ptr,
-                conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
-                algorithm_config, nullptr)
-            .ok();
+    auto cudnn_launch_status = stream->ConvolveBackwardDataWithAlgorithm(
+        filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
+        input_desc, &in_backprop_ptr, &scratch_allocator, algorithm_config,
+        nullptr);
 
-    if (!cudnn_launch_status) {
-      context->SetStatus(errors::Internal(
-          "cuDNN Backward Data function launch failure : input shape(",
-          input_shape.DebugString(), ") filter shape(",
-          filter_shape.DebugString(), ")"));
+    if (!cudnn_launch_status.ok()) {
+      context->SetStatus(cudnn_launch_status);
     }
 
     if (rows_odd || cols_odd || planes_odd) {
       Tensor in_backprop_remove_padding;
-      OP_REQUIRES_OK(context,
-                     context->allocate_temp(
-                         DataTypeToEnum<T>::value,
-                         {dims.batch_size, dims.in_depth, dims.input_size(0),
-                          dims.input_size(1), dims.input_size(2)},
-                         &in_backprop_remove_padding));
+      OP_REQUIRES_OK(
+          context, context->allocate_temp(
+                       DataTypeToEnum<T>::value,
+                       ShapeFromFormat(compute_data_format, dims.batch_size,
+                                       {{dims.input_size(0), dims.input_size(1),
+                                         dims.input_size(2)}},
+                                       dims.in_depth),
+                       &in_backprop_remove_padding));
 
       // Remove the padding for odd spatial dimensions.
       functor::PadInput<GPUDevice, T, int, 5>()(
@@ -1510,12 +1546,13 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
           To32Bit(const_cast<const Tensor&>(pre_transformed_in_backprop)
                       .tensor<T, 5>()),
           {{0, 0, 0}}, {{-planes_odd, -rows_odd, -cols_odd}},
-          To32Bit(in_backprop_remove_padding.tensor<T, 5>()), FORMAT_NCHW);
+          To32Bit(in_backprop_remove_padding.tensor<T, 5>()),
+          compute_data_format, T{});
 
       pre_transformed_in_backprop = in_backprop_remove_padding;
     }
 
-    if (data_format_ == FORMAT_NHWC) {
+    if (data_format_ == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
       auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
       functor::NCHWToNHWC<GPUDevice, T, 5>()(
           context->eigen_device<GPUDevice>(),
@@ -1715,7 +1752,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
           context->template eigen_device<GPUDevice>(),
           To32Bit(input.tensor<T, 5>()), {{0, 0, 0}},
           {{planes_odd, rows_odd, cols_odd}},
-          To32Bit(compatible_input.tensor<T, 5>()), data_format_);
+          To32Bit(compatible_input.tensor<T, 5>()), data_format_, T{});
     } else {
       compatible_input = input;
     }
@@ -1723,6 +1760,35 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     CHECK(padding_rows >= 0 && padding_cols >= 0 && padding_planes >= 0)
         << "Negative paddings: (" << padding_rows << ", " << padding_cols
         << ", " << padding_planes << ")";
+
+#if GOOGLE_CUDA
+    const bool compute_in_nhwc =
+        CUDNN_VERSION >= 8000 && DataTypeToEnum<T>::value == DT_HALF;
+#else
+    // fast NDHWC implementation is a CUDA only feature
+    const bool compute_in_nhwc = false;
+#endif
+    const TensorFormat compute_data_format =
+        (compute_in_nhwc && data_format_ == FORMAT_NHWC) ? FORMAT_NHWC
+                                                         : FORMAT_NCHW;
+
+    VLOG(3) << "Compute Conv3DBackpropFilter with cuDNN:"
+            << " data_format=" << ToString(data_format_)
+            << " compute_data_format=" << ToString(compute_data_format);
+
+    constexpr auto kComputeInNHWC =
+        std::make_tuple(se::dnn::DataLayout::kBatchYXDepth,
+                        se::dnn::FilterLayout::kOutputYXInput);
+    constexpr auto kComputeInNCHW =
+        std::make_tuple(se::dnn::DataLayout::kBatchDepthYX,
+                        se::dnn::FilterLayout::kOutputInputYX);
+
+    se::dnn::DataLayout compute_data_layout;
+    se::dnn::FilterLayout filter_layout;
+
+    std::tie(compute_data_layout, filter_layout) =
+        compute_data_format == FORMAT_NHWC ? kComputeInNHWC : kComputeInNCHW;
+
     se::dnn::BatchDescriptor input_desc(3);
     input_desc.set_count(dims.batch_size)
         .set_spatial_dim(DimIndex::X,
@@ -1732,20 +1798,21 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         .set_spatial_dim(DimIndex::Z,
                          GetTensorDim(compatible_input, data_format_, '0'))
         .set_feature_map_count(dims.in_depth)
-        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(compute_data_layout);
     se::dnn::BatchDescriptor output_desc(3);
     output_desc.set_count(dims.batch_size)
         .set_spatial_dim(DimIndex::X, dims.output_size(2))
         .set_spatial_dim(DimIndex::Y, dims.output_size(1))
         .set_spatial_dim(DimIndex::Z, dims.output_size(0))
         .set_feature_map_count(dims.out_depth)
-        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(compute_data_layout);
     se::dnn::FilterDescriptor filter_desc(3);
     filter_desc.set_spatial_dim(DimIndex::X, dims.filter_size(2))
         .set_spatial_dim(DimIndex::Y, dims.filter_size(1))
         .set_spatial_dim(DimIndex::Z, dims.filter_size(0))
         .set_input_feature_map_count(filter_shape.dim_size(3))
-        .set_output_feature_map_count(filter_shape.dim_size(4));
+        .set_output_feature_map_count(filter_shape.dim_size(4))
+        .set_layout(filter_layout);
     se::dnn::ConvolutionDescriptor conv_desc(3);
     conv_desc.set_dilation_rate(DimIndex::X, dims.dilation(2))
         .set_dilation_rate(DimIndex::Y, dims.dilation(1))
@@ -1757,17 +1824,25 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         .set_zero_padding(DimIndex::Y, padding_rows / 2)
         .set_zero_padding(DimIndex::Z, padding_planes / 2)
         .set_group_count(dims.in_depth / filter_shape.dim_size(3));
+
     Tensor pre_transformed_filter_backprop;
-    OP_REQUIRES_OK(
-        context, context->allocate_temp(
-                     DataTypeToEnum<T>::value,
-                     TensorShape({filter_shape.dim_size(4),
-                                  filter_shape.dim_size(3), dims.filter_size(0),
-                                  dims.filter_size(1), dims.filter_size(2)}),
-                     &pre_transformed_filter_backprop));
+    auto dst_format =
+        compute_data_format == FORMAT_NCHW ? FORMAT_OIHW : FORMAT_OHWI;
+    TensorShape dst_shape =
+        dst_format == FORMAT_OIHW
+            ? TensorShape({filter_shape.dim_size(4), filter_shape.dim_size(3),
+                           dims.filter_size(0), dims.filter_size(1),
+                           dims.filter_size(2)})
+            : TensorShape({filter_shape.dim_size(4), dims.filter_size(0),
+                           dims.filter_size(1), dims.filter_size(2),
+                           filter_shape.dim_size(3)});
+    OP_REQUIRES_OK(context,
+                   context->allocate_temp(DataTypeToEnum<T>::value, dst_shape,
+                                          &pre_transformed_filter_backprop));
 
     Tensor transformed_out_backprop;
-    if (data_format_ == FORMAT_NHWC) {
+    if (data_format_ == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
+      VLOG(4) << "Convert the `out_backprop` tensor from NDHWC to NCDHW.";
       TensorShape nchw_shape = {dims.batch_size, dims.out_depth,
                                 dims.output_size(0), dims.output_size(1),
                                 dims.output_size(2)};
@@ -1785,7 +1860,8 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
       transformed_out_backprop = out_backprop;
     }
     Tensor transformed_input;
-    if (data_format_ == FORMAT_NHWC) {
+    if (data_format_ == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
+      VLOG(4) << "Convert the `input` tensor from NDHWC to NCDHW.";
       TensorShape nchw_shape = {
           dims.batch_size, dims.in_depth, compatible_input.dim_size(1),
           compatible_input.dim_size(2), compatible_input.dim_size(3)};
@@ -1823,7 +1899,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         dims.batch_size,
         dims.in_depth,
         {{dims.input_size(0), dims.input_size(1), dims.input_size(2)}},
-        FORMAT_NCHW,
+        compute_data_format,
         dims.out_depth,
         {{dims.filter_size(0), dims.filter_size(1), dims.filter_size(2)}},
         {{dims.dilation(0), dims.dilation(1), dims.dilation(2)}},
@@ -1859,15 +1935,11 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                               context);
         ProfileResult profile_result;
-        bool cudnn_launch_status =
-            stream
-                ->ThenConvolveBackwardFilterWithAlgorithm(
-                    input_desc, input_ptr, output_desc, out_backprop_ptr,
-                    conv_desc, filter_desc, &filter_backprop_ptr,
-                    &scratch_allocator, AlgorithmConfig(profile_algorithm),
-                    &profile_result)
-                .ok();
-        if (cudnn_launch_status) {
+        auto cudnn_launch_status = stream->ConvolveBackwardFilterWithAlgorithm(
+            input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
+            filter_desc, &filter_backprop_ptr, &scratch_allocator,
+            AlgorithmConfig(profile_algorithm), &profile_result);
+        if (cudnn_launch_status.ok()) {
           if (profile_result.is_valid()) {
             results.emplace_back();
             auto& result = results.back();
@@ -1894,17 +1966,12 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
       for (auto miopen_algorithm : algorithms) {
         auto profile_algorithm = miopen_algorithm.algorithm();
         ProfileResult profile_result;
-        bool cudnn_launch_status =
-            stream
-                ->ThenConvolveBackwardFilterWithAlgorithm(
-                    input_desc, input_ptr, output_desc, out_backprop_ptr,
-                    conv_desc, filter_desc, &filter_backprop_ptr,
-                    &scratch_allocator,
-                    AlgorithmConfig(profile_algorithm,
-                                    miopen_algorithm.scratch_size()),
-                    &profile_result)
-                .ok();
-        if (cudnn_launch_status) {
+        auto cudnn_launch_status = stream->ConvolveBackwardFilterWithAlgorithm(
+            input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
+            filter_desc, &filter_backprop_ptr, &scratch_allocator,
+            AlgorithmConfig(profile_algorithm, miopen_algorithm.scratch_size()),
+            &profile_result);
+        if (cudnn_launch_status.ok()) {
           if (profile_result.is_valid()) {
             results.emplace_back();
             auto& result = results.back();
@@ -1923,31 +1990,41 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
                              filter_backprop_ptr, out_backprop_ptr, input_desc,
                              filter_desc, output_desc, conv_desc,
                              stream->parent(), results);
-      OP_REQUIRES_OK(context,
-                     BestCudnnConvAlgorithm(results, &algorithm_config));
+      Status s = BestCudnnConvAlgorithm(results, &algorithm_config);
+#if GOOGLE_CUDA
+      if (s.code() == error::NOT_FOUND) {
+        size_t version = cudnnGetVersion();
+        // For cuDNN 8.0.3 and 8.0.4, no cudnnConvolutionBwdFilterAlgo_t will
+        // work in certain cases. In such cases we improve the error message.
+        // This is fixed in cuDNN 8.0.5. For more context, see:
+        // https://github.com/tensorflow/tensorflow/issues/46589
+        if (version == 8003 || version == 8004) {
+          std::string version_str = (version == 8003 ? "8.0.3" : "8.0.4");
+          s = errors::NotFound(
+              "No algorithm worked! Please try upgrading to cuDNN 8.0.5. You "
+              "are using cuDNN ",
+              version_str, ", which has a bug causing this error.");
+        }
+      }
+#endif
+      OP_REQUIRES_OK(context, s);
       AutoTuneConv3dBwdFilter::GetInstance()->Insert(conv_parameters,
                                                      algorithm_config);
     }
     DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                           context);
-    bool cudnn_launch_status =
-        stream
-            ->ThenConvolveBackwardFilterWithAlgorithm(
-                input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
-                filter_desc, &filter_backprop_ptr, &scratch_allocator,
-                algorithm_config, nullptr)
-            .ok();
+    auto cudnn_launch_status = stream->ConvolveBackwardFilterWithAlgorithm(
+        input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
+        filter_desc, &filter_backprop_ptr, &scratch_allocator, algorithm_config,
+        nullptr);
 
-    if (!cudnn_launch_status) {
-      context->SetStatus(errors::Internal(
-          "cuDNN Backward Filter function launch failure : input shape(",
-          input_shape.DebugString(), ") filter shape(",
-          filter_shape.DebugString(), ")"));
+    if (!cudnn_launch_status.ok()) {
+      context->SetStatus(cudnn_launch_status);
     }
 
     auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
     functor::ReverseTransformFilter<GPUDevice, T, 5>()(
-        context->eigen_device<GPUDevice>(), /*src_filter_format=*/FORMAT_OIHW,
+        context->eigen_device<GPUDevice>(), /*src_filter_format=*/dst_format,
         toConstTensor(pre_transformed_filter_backprop).template tensor<T, 5>(),
         filter_backprop->tensor<T, 5>());
   }

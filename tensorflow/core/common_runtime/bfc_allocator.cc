@@ -26,9 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#ifdef TENSORFLOW_MEM_DEBUG
 #include "tensorflow/core/platform/stacktrace.h"
-#endif
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -36,19 +34,23 @@ limitations under the License.
 
 namespace tensorflow {
 
+constexpr BFCAllocator::ChunkHandle BFCAllocator::kInvalidChunkHandle;
+constexpr uint64 BFCAllocator::kMemDebugHistorySize;
+
 BFCAllocator::BFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
                            bool allow_growth, const string& name,
                            bool garbage_collection)
     : garbage_collection_(garbage_collection),
+      coalesce_regions_(sub_allocator->SupportsCoalescing()),
       sub_allocator_(sub_allocator),
       name_(name),
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1) {
   if (allow_growth) {
-    // 1MiB smallest initial allocation, unless total memory available
+    // 2MiB smallest initial allocation, unless total memory available
     // is less.
     curr_region_allocation_bytes_ =
-        RoundedBytes(std::min(total_memory, size_t{1048576}));
+        RoundedBytes(std::min(total_memory, size_t{2 << 20}));
   } else {
     curr_region_allocation_bytes_ = RoundedBytes(total_memory);
   }
@@ -123,7 +125,8 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
 
   // Try allocating.
   size_t bytes = std::min(curr_region_allocation_bytes_, available_bytes);
-  void* mem_addr = sub_allocator_->Alloc(alignment, bytes);
+  size_t bytes_received;
+  void* mem_addr = sub_allocator_->Alloc(alignment, bytes, &bytes_received);
   if (mem_addr == nullptr && !started_backpedal_) {
     // Only backpedal once.
     started_backpedal_ = true;
@@ -134,7 +137,7 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
     while (mem_addr == nullptr) {
       bytes = RoundedBytes(bytes * kBackpedalFactor);
       if (bytes < rounded_bytes) break;
-      mem_addr = sub_allocator_->Alloc(alignment, bytes);
+      mem_addr = sub_allocator_->Alloc(alignment, bytes, &bytes_received);
     }
   }
 
@@ -147,23 +150,30 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
     curr_region_allocation_bytes_ *= 2;
   }
 
-  VLOG(1) << "Extending allocation by " << strings::HumanReadableNumBytes(bytes)
-          << " bytes.";
+  VLOG(1) << "Extending allocation by "
+          << strings::HumanReadableNumBytes(bytes_received) << " bytes.";
 
-  total_region_allocated_bytes_ += bytes;
+  total_region_allocated_bytes_ += bytes_received;
   VLOG(1) << "Total allocated bytes: "
           << strings::HumanReadableNumBytes(total_region_allocated_bytes_);
 
   VLOG(1) << "Allocated memory at " << mem_addr << " to "
-          << static_cast<void*>(static_cast<char*>(mem_addr) + bytes);
-  region_manager_.AddAllocationRegion(mem_addr, bytes);
+          << static_cast<void*>(static_cast<char*>(mem_addr) + bytes_received);
+
+  AllocationRegion* maybe_extended_region = nullptr;
+  if (coalesce_regions_) {
+    maybe_extended_region =
+        region_manager_.AddOrExtendAllocationRegion(mem_addr, bytes_received);
+  } else {
+    region_manager_.AddAllocationRegion(mem_addr, bytes_received);
+  }
 
   // Create one large chunk for the whole memory space that will
   // be chunked later.
   ChunkHandle h = AllocateChunk();
   BFCAllocator::Chunk* c = ChunkFromHandle(h);
   c->ptr = mem_addr;
-  c->size = bytes;
+  c->size = bytes_received;
   c->allocation_id = -1;
   c->prev = kInvalidChunkHandle;
   c->next = kInvalidChunkHandle;
@@ -171,8 +181,23 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
 
   region_manager_.set_handle(c->ptr, h);
 
-  // Insert the chunk into the right bin.
-  InsertFreeChunkIntoBin(h);
+  // If the region was extended, then there exists a previous chunk that should
+  // be linked to the new chunk.
+  if (maybe_extended_region != nullptr) {
+    ChunkHandle prev =
+        maybe_extended_region->get_handle(maybe_extended_region->ptr());
+    BFCAllocator::Chunk* prev_chunk = ChunkFromHandle(prev);
+    // Find the last recorded chunk in the extended region.
+    while (prev_chunk->next != kInvalidChunkHandle) {
+      prev = prev_chunk->next;
+      prev_chunk = ChunkFromHandle(prev);
+    }
+    c->prev = prev;
+    prev_chunk->next = h;
+  }
+
+  // Maybe merge adjacent chunks and insert the chunk into the right bin.
+  InsertFreeChunkIntoBin(TryToCoalesce(h, /*ignore_freed_at=*/false));
 
   return true;
 }
@@ -228,7 +253,7 @@ void* BFCAllocator::AllocateRawInternalWithRetry(
 void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
                                 const AllocationAttributes& allocation_attr) {
   VLOG(1) << "AllocateRaw " << Name() << "  " << num_bytes;
-  if (allocation_attr.no_retry_on_failure) {
+  if (!allocation_attr.retry_on_failure) {
     // Return immediately upon the first failure if this is for allocating an
     // optional scratch space.
     bool dump_log_on_failure = VLOG_IS_ON(2);
@@ -434,6 +459,9 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
         << " (rounded to " << rounded_bytes << ")"
         << "requested by op "
         << ScopedMemoryDebugAnnotation::CurrentAnnotation().pending_op_name
+        << "\nIf the cause is memory fragmentation maybe the environment "
+        << "variable 'TF_GPU_ALLOCATOR=cuda_malloc_async' will "
+        << "improve the situation. \nCurrent allocation summary follows."
         << "\nCurrent allocation summary follows.";
     DumpMemoryLog(rounded_bytes);
     LOG(WARNING) << RenderOccupancy();
@@ -465,31 +493,33 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name, const void* ptr) {
 void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                               const void* chunk_ptr, int64 req_bytes,
                               int64 alloc_bytes) {
-  tensorflow::profiler::TraceMe trace_me(
-      [&]() TF_EXCLUSIVE_LOCKS_REQUIRED(lock_) {
-        AllocatorStats stats = stats_;
-        int64 bytes_available =
-            memory_limit_ - stats.bytes_reserved - stats.bytes_in_use;
-        const auto& annotation =
-            ScopedMemoryDebugAnnotation::CurrentAnnotation();
-        std::string tensor_shape = annotation.pending_shape
-                                       ? annotation.pending_shape->DebugString()
-                                       : "";
-        return absl::StrCat(traceme_name, "#allocator_name=", name_,
-                            ",bytes_reserved=", stats.bytes_reserved,
-                            ",bytes_allocated=", stats.bytes_in_use,
-                            ",bytes_available=", bytes_available,
-                            ",fragmentation=", GetFragmentation(),
-                            ",peak_bytes_in_use=", stats.peak_bytes_in_use,
-                            ",requested_bytes=", req_bytes,
-                            ",allocation_bytes=", alloc_bytes,
-                            ",addr=", reinterpret_cast<uint64>(chunk_ptr),
-                            ",tf_op=", annotation.pending_op_name,
-                            ",id=", annotation.pending_step_id,
-                            ",region_type=", annotation.pending_region_type,
-                            ",data_type=", annotation.pending_data_type,
-                            ",shape=", tensor_shape, "#");
-      },
+  tensorflow::profiler::TraceMe::InstantActivity(
+      [this, traceme_name, chunk_ptr, req_bytes, alloc_bytes]()
+          TF_NO_THREAD_SAFETY_ANALYSIS {
+            int64 bytes_available =
+                memory_limit_ - stats_.bytes_reserved - stats_.bytes_in_use;
+            const auto& annotation =
+                ScopedMemoryDebugAnnotation::CurrentAnnotation();
+            std::string tensor_shape;
+            if (annotation.pending_shape) {
+              tensor_shape = annotation.pending_shape->DebugString();
+            }
+            return tensorflow::profiler::TraceMeEncode(
+                traceme_name, {{"allocator_name", name_},
+                               {"bytes_reserved", stats_.bytes_reserved},
+                               {"bytes_allocated", stats_.bytes_in_use},
+                               {"bytes_available", bytes_available},
+                               {"fragmentation", GetFragmentation()},
+                               {"peak_bytes_in_use", stats_.peak_bytes_in_use},
+                               {"requested_bytes", req_bytes},
+                               {"allocation_bytes", alloc_bytes},
+                               {"addr", reinterpret_cast<uint64>(chunk_ptr)},
+                               {"tf_op", annotation.pending_op_name},
+                               {"id", annotation.pending_step_id},
+                               {"region_type", annotation.pending_region_type},
+                               {"data_type", annotation.pending_data_type},
+                               {"shape", tensor_shape}});
+          },
       /*level=*/profiler::TraceMeLevel::kInfo);
 }
 
@@ -538,27 +568,22 @@ void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
             std::max(stats_.peak_bytes_in_use, stats_.bytes_in_use);
         stats_.largest_alloc_size =
             std::max<std::size_t>(stats_.largest_alloc_size, chunk->size);
-
-#ifdef TENSORFLOW_MEM_DEBUG
         if (ShouldRecordOpName()) {
           const auto& annotation =
               ScopedMemoryDebugAnnotation::CurrentAnnotation();
-          if (annotation.pending_op_name != nullptr) {
-            chunk->op_name = annotation.pending_op_name;
-          } else {
-            LOG(INFO) << "missing pending_op_name for " << Name()
-                      << " reading addr "
-                      << static_cast<const void*>(&annotation.pending_op_name)
-                      << "\n"
-                      << CurrentStackTrace();
-            chunk->op_name = nullptr;
+          chunk->op_name = annotation.pending_op_name;
+          if (!annotation.pending_op_name) {
+            VLOG(2) << "missing pending_op_name for " << Name()
+                    << " reading addr "
+                    << static_cast<const void*>(&annotation.pending_op_name)
+                    << "\n"
+                    << CurrentStackTrace();
           }
-          chunk->action_count = ++action_counter_;
           chunk->step_id = annotation.pending_step_id;
-          int slot = chunk->action_count % MEM_DEBUG_SIZE_HISTORY_SIZE;
+          chunk->action_count = ++action_counter_;
+          uint64 slot = chunk->action_count % kMemDebugHistorySize;
           size_history_[slot] = stats_.bytes_in_use;
         }
-#endif
 
         VLOG(4) << "Returning: " << chunk->ptr;
         if (VLOG_IS_ON(4)) {
@@ -736,13 +761,11 @@ void BFCAllocator::MarkFree(BFCAllocator::ChunkHandle h) {
   // Updates the stats.
   stats_.bytes_in_use -= c->size;
 
-#ifdef TENSORFLOW_MEM_DEBUG
   if (ShouldRecordOpName()) {
     c->action_count = ++action_counter_;
-    int slot = c->action_count % MEM_DEBUG_SIZE_HISTORY_SIZE;
+    uint64 slot = c->action_count % kMemDebugHistorySize;
     size_history_[slot] = stats_.bytes_in_use;
   }
-#endif
 }
 
 BFCAllocator::ChunkHandle BFCAllocator::TryToCoalesce(ChunkHandle h,
@@ -830,7 +853,7 @@ bool BFCAllocator::MergeTimestampedChunks(size_t required_bytes) {
   // to to_merge.  If this is a standard merge (required_bytes == 0) then
   // merge them all, otherwise merge just until a Chunk of the required size
   // is produced.
-  for (int ci = 0; ci < to_merge.size(); ++ci) {
+  for (int ci = 0, end = to_merge.size(); ci < end; ++ci) {
     void* ptr = to_merge[ci];
     // It's possible that the Chunk associated with this memory location got
     // merged and deallocated in a prior iteration so refetch the handle and
@@ -1011,12 +1034,11 @@ void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
       string buf = strings::StrCat(
           (c->in_use() ? "InUse" : "Free "), " at ",
           strings::Hex(reinterpret_cast<uint64>(c->ptr)), " of size ", c->size);
-#ifdef TENSORFLOW_MEM_DEBUG
       if (ShouldRecordOpName()) {
-        strings::StrAppend(&buf, " by op ", c->op_name, " action_count ",
-                           c->action_count, " step ", c->step_id);
+        strings::StrAppend(&buf, " by op ", c->GetDebugOpName(),
+                           " action_count ", c->action_count, " step ",
+                           c->step_id);
       }
-#endif
       strings::StrAppend(&buf, " next ", c->next);
       if (timing_counter_) {
         strings::StrAppend(&buf, " freed_at_count ", c->freed_at_count);
@@ -1106,11 +1128,9 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
       mc->set_size(c->size);
       mc->set_requested_size(c->requested_size);
       mc->set_bin(c->bin_num);
-#ifdef TENSORFLOW_MEM_DEBUG
-      mc->set_op_name(c->op_name ? string(c->op_name) : "UNKNOWN");
+      mc->set_op_name(c->GetDebugOpName());
       mc->set_step_id(c->step_id);
       mc->set_action_count(c->action_count);
-#endif
       if (timing_counter_) {
         mc->set_freed_at_count(c->in_use() ? 0 : c->freed_at_count);
       }
@@ -1120,17 +1140,14 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
 
   mas->set_fragmentation_metric(GetFragmentation());
 
-#ifdef TENSORFLOW_MEM_DEBUG
   // Record the recent size history
-  int history_len = static_cast<int>(std::min(
-      action_counter_, static_cast<long long>(MEM_DEBUG_SIZE_HISTORY_SIZE)));
-  for (int i = action_counter_ - history_len; i < action_counter_; ++i) {
+  uint64 history_len = std::min(action_counter_, kMemDebugHistorySize);
+  for (uint64 i = action_counter_ - history_len; i < action_counter_; ++i) {
     SnapShot* ss = md.add_snap_shot();
     ss->set_action_count(i);
-    int slot = i % MEM_DEBUG_SIZE_HISTORY_SIZE;
+    uint64 slot = i % kMemDebugHistorySize;
     ss->set_size(size_history_[slot]);
   }
-#endif
 
   return md;
 }

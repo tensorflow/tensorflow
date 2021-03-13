@@ -54,6 +54,11 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
     return strings::StrCat("UniqueDatasetOp::Dataset");
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override {
     return input_->CheckExternalState();
   }

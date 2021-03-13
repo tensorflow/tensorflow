@@ -18,16 +18,18 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -39,7 +41,8 @@ namespace mlir {
 namespace TFTPU {
 namespace {
 
-constexpr char kShardingAttr[] = "xla_hlo.sharding";
+constexpr char kShardingAttr[] = "mhlo.sharding";
+constexpr char kReplicateSharding[] = "";
 
 struct TPUShardingIdentificationPass
     : public PassWrapper<TPUShardingIdentificationPass,
@@ -47,154 +50,90 @@ struct TPUShardingIdentificationPass
   void runOnOperation() override;
 };
 
-// Sets `sharding_op` if `op` is XlaShardingOp or if XlaSharding op is adjacent
-// to `op`. XlaSharding op may be direct user of inputs but it may also be
-// followed by an Identity op and, in the case where bfloat16 type is used, Cast
-// op may be added right after the input. As so, parse the users of the
-// operation to access connected XlaSharding op.
+// Returns XLA sharding from TPUPartitionedInput op connected to a
+// `tf_device.cluster_func` operand value. If value is a resource type then
+// TPUPartitionedInput op will be connected to a ReadVariable op that feeds into
+// a `tf_device.cluster_func`.
+llvm::Optional<llvm::StringRef> GetXlaShardingFromOperand(Value value) {
+  Value value_to_visit = value;
+  if (auto read_var = llvm::dyn_cast_or_null<TF::ReadVariableOp>(
+          value_to_visit.getDefiningOp()))
+    value_to_visit = read_var.resource();
+
+  if (auto partitioned_input =
+          llvm::dyn_cast_or_null<TF::TPUPartitionedInputOp>(
+              value_to_visit.getDefiningOp()))
+    return partitioned_input._XlaSharding();
+
+  return llvm::None;
+}
+
+// Returns XLA sharding from a XlaSharding op connected to an argument value. If
+// value is a resource type then XlaSharding op will be connected to a
+// ReadVariable op. XlaSharding op may be direct user of inputs but it may also
+// be followed by an Identity op and, in the case where bfloat16 type is used,
+// Cast op may be added right after the input.
 //
+// TODO(hongjunchoi): Add logic to parse XlaSharding op inside control flow (If,
+// Case, While) ops and Caller return values.
 // TODO(hongjunchoi): Consider explicitly checking op patterns to detect sharded
 // inputs.
-void GetAdjacentXlaShardingOp(Operation* op,
-                              llvm::Optional<TF::XlaShardingOp>* sharding_op) {
-  // TODO(hongjunchoi): Detect the case when sharding configuration is ambiguous
-  // for a single input (i.e. multiple different XlaSharding ops with different
-  // configuration policies are connected).
-  if (sharding_op->hasValue()) return;
+llvm::Optional<llvm::StringRef> GetXlaShardingFromArg(Value value) {
+  llvm::SmallPtrSet<Value, 4> visited_values;
+  llvm::SmallVector<Value, 4> values_to_visit{value};
+  while (!values_to_visit.empty()) {
+    llvm::SmallVector<Value, 4> next_values_to_visit;
+    for (Value value_to_visit : values_to_visit) {
+      if (!visited_values.insert(value_to_visit).second) continue;
 
-  if (auto sharding = llvm::dyn_cast<TF::XlaShardingOp>(op)) {
-    sharding_op->emplace(sharding);
-    return;
-  }
+      for (auto& use : value_to_visit.getUses()) {
+        Operation* owner = use.getOwner();
+        if (auto sharding = llvm::dyn_cast<TF::XlaShardingOp>(owner))
+          return sharding._XlaSharding();
 
-  if (llvm::isa<TF::IdentityOp>(op) || llvm::isa<TF::CastOp>(op)) {
-    for (auto user : op->getUsers())
-      GetAdjacentXlaShardingOp(user, sharding_op);
-  }
-}
+        if (llvm::isa<TF::IdentityOp, TF::CastOp, TF::ReadVariableOp>(owner)) {
+          next_values_to_visit.push_back(use.getOwner()->getResult(0));
+          continue;
+        }
 
-// Parses XlaSharding op connected to input args. If Input to
-// tf_device.ClusterFunc op is of resource type, then XlaSharding op will be
-// connected to following ReadVariable op.
-//
-// TODO(hongjunchoi): Add logic to parse XlaSharding op inside a Call op or
-// If/While op.
-llvm::Optional<llvm::StringRef> ParseInputSharding(const Value& arg) {
-  llvm::Optional<TF::XlaShardingOp> parsed_sharding_op;
-  for (auto user : arg.getUsers()) {
-    if (parsed_sharding_op) continue;
-
-    GetAdjacentXlaShardingOp(user, &parsed_sharding_op);
-    if (parsed_sharding_op) continue;
-
-    if (llvm::isa<TF::ReadVariableOp>(user))
-      for (auto read_variable_user : user->getUsers())
-        GetAdjacentXlaShardingOp(read_variable_user, &parsed_sharding_op);
-  }
-
-  if (!parsed_sharding_op) return llvm::Optional<llvm::StringRef>();
-  return parsed_sharding_op.getValue()._XlaSharding();
-}
-
-// Returns the provided sharding configuration if operand of return value of
-// tf_device.ClusterFunc op is directly from XlaSharding op,
-llvm::Optional<StringRef> ParseReturnValueSharding(FuncOp func,
-                                                   const int output_index,
-                                                   const OpOperand& operand) {
-  if (auto sharding_op = llvm::dyn_cast_or_null<TF::XlaShardingOp>(
-          operand.get().getDefiningOp()))
-    return sharding_op._XlaSharding();
-
-  return llvm::Optional<StringRef>();
-}
-
-// Includes information on Func op and argument index of the input value. This
-// is used to trace Value that is fed into function call ops.
-struct FunctionAndArgumentInfo {
-  FuncOp func;
-  int argument_index;
-};
-
-// Adds tf.PartitionedCall op or tf.StatefulPartitionedCall op to `list`. If
-// `op` is a function call op, then find the func op from provided `module` and
-// add the func op with `arg_index` to `list`. `list` will later be used to
-// trace mlir::Value that is fed into (potentially nested) function call ops.
-void AddFunctionalOpsToList(
-    const int arg_index, ModuleOp module, Operation* op,
-    llvm::SmallVectorImpl<FunctionAndArgumentInfo>* list) {
-  if (auto pcall_op = llvm::dyn_cast<TF::PartitionedCallOp>(op)) {
-    if (!pcall_op.f().isa<FlatSymbolRefAttr>()) return;
-
-    auto pcall_func = llvm::cast<FuncOp>(
-        module.lookupSymbol(pcall_op.f().getRootReference()));
-    assert(pcall_func);
-    list->emplace_back(FunctionAndArgumentInfo{pcall_func, arg_index});
-
-  } else if (auto spcall_op =
-                 llvm::dyn_cast<TF::StatefulPartitionedCallOp>(op)) {
-    auto sp_call_func = llvm::cast<FuncOp>(module.lookupSymbol(spcall_op.f()));
-    assert(sp_call_func);
-    list->emplace_back(FunctionAndArgumentInfo{sp_call_func, arg_index});
-  }
-}
-
-// Walks the MLIR graph from `arg` and return a list of all function call ops to
-// which the `arg` op is directly connected.
-//
-// For example:
-//   argument0 -> PartitionedCallOp -> StatefulPartitionedCallOp -> AddOp
-//
-// For above case, PartitionedCall op and StatefulPartitionedCallOp will be
-// returned.
-llvm::SmallVector<FunctionAndArgumentInfo, 4> ExtractFunctionsConnectedToArg(
-    BlockArgument arg, ModuleOp module) {
-  llvm::SmallVector<FunctionAndArgumentInfo, 4> functions_connected_to_arg;
-  for (auto& arg_use : arg.getUses())
-    AddFunctionalOpsToList(arg_use.getOperandNumber(), module,
-                           arg_use.getOwner(), &functions_connected_to_arg);
-
-  llvm::SmallVector<FunctionAndArgumentInfo, 4> functions_to_parse{
-      functions_connected_to_arg.begin(), functions_connected_to_arg.end()};
-
-  while (!functions_to_parse.empty()) {
-    llvm::SmallVector<FunctionAndArgumentInfo, 4> newly_discovered_functions;
-    for (auto function_info : functions_to_parse) {
-      Block& func_entry_block =
-          function_info.func.getBody().getBlocks().front();
-      auto argument =
-          func_entry_block.getArgument(function_info.argument_index);
-
-      for (auto& arg_use : argument.getUses())
-        AddFunctionalOpsToList(arg_use.getOperandNumber(), module,
-                               arg_use.getOwner(), &newly_discovered_functions);
+        if (auto call_op = llvm::dyn_cast<CallOpInterface>(owner)) {
+          FuncOp func = llvm::dyn_cast<FuncOp>(call_op.resolveCallable());
+          if (!func) continue;
+          next_values_to_visit.push_back(
+              func.getArgument(use.getOperandNumber()));
+        }
+      }
     }
 
-    functions_connected_to_arg.append(newly_discovered_functions.begin(),
-                                      newly_discovered_functions.end());
-    std::swap(functions_to_parse, newly_discovered_functions);
+    values_to_visit.swap(next_values_to_visit);
   }
 
-  return functions_connected_to_arg;
+  return llvm::None;
 }
 
-// Walks the graph from the arguments of the `cluster_func_op` and extracts
-// sharding configurations for all inputs by parsing XlaSharding op connected to
-// the arguments. If argument to the `cluster_func_op` directly feeds into
-// another function call op, then recursively walk the function definition to
-// find the connected XlaSharding op.
+// Extracts sharding configurations for all inputs by parsing XlaSharding/
+// TPUPartitionedInput op connected to the operands/arguments. If argument to
+// the `cluster_func` directly feeds into another function call op, then
+// recursively walk the function definition to find the connected XlaSharding
+// op.
 void IdentifyXlaShardingForComputationInputs(
-    StringRef logical_core_0_sharding, tf_device::ClusterFuncOp cluster_func_op,
-    FuncOp cluster_function, Builder* builder) {
+    StringRef logical_core_0_sharding, bool use_spmd,
+    tf_device::ClusterFuncOp cluster_func, FuncOp func, Builder* builder) {
   // Look up function definition from module.
-  Block& cluster_function_block =
-      cluster_function.getBody().getBlocks().front();
-  ModuleOp module = cluster_func_op.getParentOfType<ModuleOp>();
+  Block& function_block = func.front();
 
-  llvm::SmallVector<llvm::StringRef, 8> sharding_for_args(
-      cluster_function_block.getNumArguments(), logical_core_0_sharding);
+  llvm::SmallVector<llvm::StringRef, 8> sharding_for_args;
+  sharding_for_args.reserve(function_block.getNumArguments());
 
+  // Iterate through operands of `cluster_func`.
+  // The computation operand can either be:
+  //   1) a TPUPartitionedInput Op if the input has a non-resource type;
+  //   2) a ReadVariableOp else.
+  //
+  // Replicate sharding is used if `use_spmd` is set.
+  //
   // Iterate through input arguments to the entry block of
-  // tf_device.ClusterFunc. For input ops, look for following XlaSharding ops.
+  // tf_device.ClusterFunc. For input ops, look for XlaSharding ops.
   // XlaSharding ops can:
   //   1) Directly follow the input argument if input argument has non-resource
   //      types.
@@ -203,72 +142,161 @@ void IdentifyXlaShardingForComputationInputs(
   //
   // Sharding configurations are added to the tf_device.ClusterFunc as an
   // attribute and the function as an argument attribute.
-  for (auto& arg : cluster_function_block.getArguments()) {
-    auto arg_sharding = ParseInputSharding(arg);
-    const int arg_index_to_tpu_computation = arg.getArgNumber();
+  for (auto operand_and_arg :
+       llvm::zip(cluster_func.operands(), function_block.getArguments())) {
+    Value operand = std::get<0>(operand_and_arg);
+    BlockArgument arg = std::get<1>(operand_and_arg);
+    const int index = arg.getArgNumber();
 
-    if (!arg_sharding.hasValue()) {
-      auto connected_functions_to_arg =
-          ExtractFunctionsConnectedToArg(arg, module);
-      for (auto& function_arg_info : connected_functions_to_arg) {
-        if (arg_sharding.hasValue()) break;
-
-        const int function_argument_index = function_arg_info.argument_index;
-        auto& parsed_function = function_arg_info.func;
-        Block& parsed_function_block =
-            parsed_function.getBody().getBlocks().front();
-        arg_sharding = ParseInputSharding(
-            parsed_function_block.getArgument(function_argument_index));
-      }
+    if (auto operand_sharding = GetXlaShardingFromOperand(operand)) {
+      sharding_for_args.push_back(operand_sharding.getValue());
+      func.setArgAttr(index, kShardingAttr,
+                      builder->getStringAttr(operand_sharding.getValue()));
+      continue;
     }
 
+    if (use_spmd) {
+      // If XLA SPMD is enabled, host variables or non-variable per-replica
+      // inputs should take on replicate sharding, unless another sharding is
+      // set via a TPUPartitionedInput op.
+      sharding_for_args.push_back(kReplicateSharding);
+      func.setArgAttr(index, kShardingAttr,
+                      builder->getStringAttr(kReplicateSharding));
+      continue;
+    }
+
+    auto arg_sharding = GetXlaShardingFromArg(arg);
     if (arg_sharding) {
-      sharding_for_args[arg_index_to_tpu_computation] = arg_sharding.getValue();
-      cluster_function.setArgAttr(
-          arg_index_to_tpu_computation, kShardingAttr,
-          builder->getStringAttr(arg_sharding.getValue()));
-    } else {
-      cluster_function.setArgAttr(
-          arg_index_to_tpu_computation, kShardingAttr,
-          builder->getStringAttr(logical_core_0_sharding));
+      sharding_for_args.push_back(arg_sharding.getValue());
+      func.setArgAttr(index, kShardingAttr,
+                      builder->getStringAttr(arg_sharding.getValue()));
+      continue;
     }
+
+    // Default to maximal sharding core 0 if no sharding is present.
+    sharding_for_args.push_back(logical_core_0_sharding);
+    func.setArgAttr(index, kShardingAttr,
+                    builder->getStringAttr(logical_core_0_sharding));
   }
 
-  cluster_func_op.setAttr(tensorflow::kInputShardingAttr,
-                          builder->getStrArrayAttr(sharding_for_args));
+  cluster_func->setAttr(tensorflow::kInputShardingAttr,
+                        builder->getStrArrayAttr(sharding_for_args));
 }
 
-// Parses XlaSharding op directly connected from the outputs of the
-// `cluster_func` and extract sharding configurations for outputs.
-void IdentifyXlaShardingForComputationOutputs(
-    StringRef logical_core_0_sharding, FuncOp func,
-    tf_device::ClusterFuncOp cluster_func, Builder* builder) {
-  // By default return values from logical core 0 is used if no sharding
-  // configuration is defined.
-  Block& function_block = func.getBody().getBlocks().front();
-  Operation* terminator = function_block.getTerminator();
-  llvm::SmallVector<llvm::StringRef, 8> sharding_for_rets(
-      terminator->getNumOperands(), logical_core_0_sharding);
+// Returns XLA sharding from TPUPartitionedOutput or TPUPartitionedInput (via
+// AssignVariableOp/resource write) op connected to a `tf_device.cluster_func`
+// result value.
+llvm::Optional<llvm::StringRef> GetXlaShardingFromResult(Value value) {
+  if (!value.hasOneUse()) return llvm::None;
 
+  Operation* user = *value.getUsers().begin();
+  if (auto partitioned_output =
+          llvm::dyn_cast<TF::TPUPartitionedOutputOp>(user))
+    return partitioned_output._XlaSharding();
+
+  if (auto assign_var = llvm::dyn_cast<TF::AssignVariableOp>(user))
+    if (auto partitioned_input =
+            llvm::dyn_cast_or_null<TF::TPUPartitionedInputOp>(
+                assign_var.resource().getDefiningOp()))
+      return partitioned_input._XlaSharding();
+
+  return llvm::None;
+}
+
+// Returns XLA sharding from XlaSharding op connected to a result value.
+// XlaSharding op may be direct user of inputs but it may also be followed by an
+// Identity op and, in the case where bfloat16 type is used, Cast op may be
+// added right after the input.
+//
+// TODO(hongjunchoi): Add logic to parse XlaSharding op inside control flow (If,
+// Case, While) ops and Caller argument values.
+// TODO(hongjunchoi): Consider explicitly checking op patterns to detect sharded
+// inputs.
+llvm::Optional<StringRef> GetXlaShardingFromRetval(Value value) {
+  llvm::SmallPtrSet<Value, 4> visited_values;
+  Value value_to_visit = value;
+  while (value_to_visit) {
+    if (!visited_values.insert(value_to_visit).second) return llvm::None;
+
+    Operation* def = value_to_visit.getDefiningOp();
+    if (auto sharding = llvm::dyn_cast_or_null<TF::XlaShardingOp>(def))
+      return sharding._XlaSharding();
+
+    if (llvm::isa_and_nonnull<TF::IdentityOp, TF::CastOp>(def)) {
+      value_to_visit = def->getOperand(0);
+      continue;
+    }
+
+    if (auto call_op = llvm::dyn_cast_or_null<CallOpInterface>(def)) {
+      FuncOp func = llvm::dyn_cast<FuncOp>(call_op.resolveCallable());
+      if (!func) continue;
+      value_to_visit = func.front().getTerminator()->getOperand(
+          value_to_visit.cast<OpResult>().getResultNumber());
+      continue;
+    }
+
+    break;
+  }
+
+  return llvm::None;
+}
+
+// Extracts sharding configurations for all outputs by parsing XlaSharding/
+// TPUPartitionedOutput op connected to the retvals/results.
+void IdentifyXlaShardingForComputationOutputs(
+    StringRef logical_core_0_sharding, bool use_spmd,
+    tf_device::ClusterFuncOp cluster_func, FuncOp func, Builder* builder) {
+  Block& function_block = func.front();
+  Operation* terminator = function_block.getTerminator();
+  llvm::SmallVector<llvm::StringRef, 8> sharding_for_rets;
+  sharding_for_rets.reserve(terminator->getNumOperands());
+
+  // Iterate through results of `cluster_func`. For output ops, look for
+  // TPUPartitionedOutput ops.
+  //
+  // Replicate sharding is used if `use_spmd` is set.
+  //
   // Iterate through operands of the terminator. If the preceding op is
   // XlaShardingOp, then the provided sharding configuration is added to the
   // tf_device.ClusterFunc as an attribute and the function as a result
   // attribute.
-  for (auto& ret : terminator->getOpOperands()) {
-    const int index = ret.getOperandNumber();
-    auto ret_sharding = ParseReturnValueSharding(func, index, ret);
+  for (auto result_and_retval :
+       llvm::zip(cluster_func.results(), terminator->getOpOperands())) {
+    Value result = std::get<0>(result_and_retval);
+    OpOperand& retval = std::get<1>(result_and_retval);
+    const int index = retval.getOperandNumber();
 
-    if (ret_sharding) {
-      sharding_for_rets[index] = ret_sharding.getValue();
+    if (auto result_sharding = GetXlaShardingFromResult(result)) {
+      sharding_for_rets.push_back(result_sharding.getValue());
       func.setResultAttr(index, kShardingAttr,
-                         builder->getStringAttr(ret_sharding.getValue()));
-    } else {
-      func.setResultAttr(index, kShardingAttr,
-                         builder->getStringAttr(logical_core_0_sharding));
+                         builder->getStringAttr(result_sharding.getValue()));
+      continue;
     }
+
+    if (use_spmd) {
+      // If XLA SPMD is enabled, outputs all should have replicate sharding,
+      // unless another sharding is set via a TPUPartitionedOutput op.
+      sharding_for_rets.push_back(kReplicateSharding);
+      func.setResultAttr(index, kShardingAttr,
+                         builder->getStringAttr(kReplicateSharding));
+      continue;
+    }
+
+    if (auto retval_sharding = GetXlaShardingFromRetval(retval.get())) {
+      sharding_for_rets.push_back(retval_sharding.getValue());
+      func.setResultAttr(index, kShardingAttr,
+                         builder->getStringAttr(retval_sharding.getValue()));
+      continue;
+    }
+
+    // Default to maximal sharding core 0 if no sharding is present.
+    sharding_for_rets.push_back(logical_core_0_sharding);
+    func.setResultAttr(index, kShardingAttr,
+                       builder->getStringAttr(logical_core_0_sharding));
   }
-  cluster_func.setAttr(tensorflow::kOutputShardingAttr,
-                       builder->getStrArrayAttr(sharding_for_rets));
+
+  cluster_func->setAttr(tensorflow::kOutputShardingAttr,
+                        builder->getStrArrayAttr(sharding_for_rets));
 }
 
 // Extracts input/output sharding configuration of `cluster_func` by parsing
@@ -276,7 +304,7 @@ void IdentifyXlaShardingForComputationOutputs(
 void IdentifyXlaShardingForTPUComputation(
     Builder* builder, tf_device::ClusterFuncOp cluster_func) {
   // Look up function definition from module.
-  FuncOp func = cluster_func.getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(
+  FuncOp func = cluster_func->getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(
       cluster_func.func());
 
   // By default inputs/outputs have maximal sharding and are assigned to logical
@@ -284,11 +312,16 @@ void IdentifyXlaShardingForTPUComputation(
   const std::string logical_core_0_sharding =
       xla::sharding_builder::AssignDevice(0).SerializeAsString();
 
-  IdentifyXlaShardingForComputationInputs(logical_core_0_sharding, cluster_func,
-                                          func, builder);
+  bool use_spmd = false;
+  if (auto use_spmd_attr = cluster_func->getAttrOfType<BoolAttr>(
+          "use_spmd_for_xla_partitioning"))
+    use_spmd = use_spmd_attr.getValue();
 
-  IdentifyXlaShardingForComputationOutputs(logical_core_0_sharding, func,
-                                           cluster_func, builder);
+  IdentifyXlaShardingForComputationInputs(logical_core_0_sharding, use_spmd,
+                                          cluster_func, func, builder);
+
+  IdentifyXlaShardingForComputationOutputs(logical_core_0_sharding, use_spmd,
+                                           cluster_func, func, builder);
 }
 
 void TPUShardingIdentificationPass::runOnOperation() {

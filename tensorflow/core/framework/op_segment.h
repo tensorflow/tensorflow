@@ -46,8 +46,8 @@ class OpSegment {
 
   // A hold can be placed on a session, preventing all its kernels
   // from being deleted.
-  void AddHold(const string& session_handle);
-  void RemoveHold(const string& session_handle);
+  void AddHold(const std::string& session_handle);
+  void RemoveHold(const std::string& session_handle);
 
   // If the kernel for "node_name" has been created in the
   // "session_handle", returns the existing op kernel in "*kernel".
@@ -57,12 +57,13 @@ class OpSegment {
   //
   // OpSegment keeps the ownership of the returned "*kernel".
   typedef std::function<Status(OpKernel**)> CreateKernelFn;
-  Status FindOrCreate(const string& session_handle, const string& node_name,
-                      OpKernel** kernel, CreateKernelFn create_fn);
+  Status FindOrCreate(const std::string& session_handle,
+                      const std::string& node_name, OpKernel** kernel,
+                      CreateKernelFn create_fn);
 
   // Returns true if OpSegment should own the kernel.
   static bool ShouldOwnKernel(FunctionLibraryRuntime* lib,
-                              const string& node_op);
+                              const std::string& node_op);
 
  private:
   // op name -> OpKernel

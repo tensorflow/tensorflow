@@ -28,7 +28,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
+#include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
@@ -36,17 +38,63 @@ namespace profiler {
 
 namespace {
 
-Device BuildDeviceAndResource(const XPlaneVisitor& plane) {
-  Device device;
-  device.set_name(std::string(plane.Name()));
-  device.set_device_id(plane.Id());
+void BuildDeviceAndResources(uint32 device_id, const XPlaneVisitor& plane,
+                             Device* device) {
+  device->set_name(std::string(plane.Name()));
+  device->set_device_id(device_id);
+
+  bool sort_by_ordinal = (device_id == kHostThreadsDeviceId);
+  int ordinal = 0;
   plane.ForEachLine([&](const XLineVisitor& line) {
-    Resource resource;
-    resource.set_resource_id(line.Id());
-    resource.set_name(std::string(line.Name()));
-    (*device.mutable_resources())[line.Id()] = resource;
+    uint32 resource_id = line.DisplayId();
+    Resource& resource = (*device->mutable_resources())[resource_id];
+    resource.set_resource_id(resource_id);
+    resource.set_name(std::string(line.DisplayName()));
+    if (sort_by_ordinal) {
+      // When sort_index is absent (i.e. 0), resource id will be used.
+      // Therefore sort_index starts with 1.
+      resource.set_sort_index(++ordinal);
+    }
   });
-  return device;
+}
+
+void ConvertXPlaneToTraceEvents(uint32 device_id, const XPlaneVisitor& xplane,
+                                Trace* trace) {
+  // Convert devices and resources.
+  BuildDeviceAndResources(device_id, xplane,
+                          &(*trace->mutable_devices())[device_id]);
+
+  // Convert events.
+  xplane.ForEachLine([device_id, trace](const XLineVisitor& xline) {
+    uint32 resource_id = xline.DisplayId();
+    xline.ForEachEvent(
+        [device_id, resource_id, trace](const XEventVisitor& xevent) {
+          int64 event_type =
+              xevent.Type().value_or(HostEventType::kUnknownHostEventType);
+          if (IsInternalEvent(event_type)) return;
+          auto* event = trace->add_trace_events();
+          auto& args = *event->mutable_args();
+          event->set_device_id(device_id);
+          event->set_resource_id(resource_id);
+          if (xevent.HasDisplayName()) {
+            event->set_name(std::string(xevent.DisplayName()));
+            args["long_name"] = std::string(xevent.Name());
+          } else {
+            event->set_name(std::string(xevent.Name()));
+          }
+          event->set_timestamp_ps(xevent.TimestampPs());
+          event->set_duration_ps(xevent.DurationPs());
+
+          xevent.ForEachStat([&](const XStatVisitor& stat) {
+            if (stat.ValueCase() == XStat::VALUE_NOT_SET) return;
+            if (IsInternalStat(stat.Type())) return;
+            if (stat.Type() == StatType::kStepName) {
+              event->set_name(stat.ToString());
+            }
+            args[std::string(stat.Name())] = stat.ToString();
+          });
+        });
+  });
 }
 
 }  // namespace
@@ -73,44 +121,21 @@ void MaybeDropEventsForTraceViewer(Trace* trace, uint32 limit) {
 }
 
 void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace) {
-  auto* trace_devices = trace->mutable_devices();
-
-  for (const auto& raw_plane : xspace.planes()) {
-    XPlaneVisitor xplane = CreateTfXPlaneVisitor(&raw_plane);
-    // Convert devices and resources.
-    int64 device_id = xplane.Id();
-    (*trace_devices)[device_id] = BuildDeviceAndResource(xplane);
-
-    // Convert events.
-    xplane.ForEachLine([&](const XLineVisitor& xline) {
-      int64 resource_id = xline.Id();  // Either thread id or CUDA stream id.
-      xline.ForEachEvent([&](const XEventVisitor& xevent) {
-        int64 event_type =
-            xevent.Type().value_or(HostEventType::kUnknownHostEventType);
-        if (event_type == HostEventType::kMemoryAllocation ||
-            event_type == HostEventType::kMemoryDeallocation) {
-          return;
-        }
-        auto* event = trace->add_trace_events();
-        auto& args = *event->mutable_args();
-        event->set_device_id(device_id);
-        event->set_resource_id(resource_id);
-        if (xevent.HasDisplayName()) {
-          event->set_name(std::string(xevent.DisplayName()));
-          args["long_name"] = std::string(xevent.Name());
-        } else {
-          event->set_name(std::string(xevent.Name()));
-        }
-        event->set_timestamp_ps(xevent.TimestampPs());
-        event->set_duration_ps(xevent.DurationPs());
-
-        xevent.ForEachStat([&](const XStatVisitor& stat) {
-          if (stat.ValueCase() == XStat::VALUE_NOT_SET) return;
-          if (IsInternalStat(stat.Type())) return;
-          args[std::string(stat.Name())] = stat.ToString();
-        });
-      });
-    });
+  const XPlane* host_plane = FindPlaneWithName(xspace, kHostThreadsPlaneName);
+  if (host_plane != nullptr) {
+    XPlaneVisitor xplane = CreateTfXPlaneVisitor(host_plane);
+    ConvertXPlaneToTraceEvents(kHostThreadsDeviceId, xplane, trace);
+  }
+  std::vector<const XPlane*> device_planes =
+      FindPlanesWithPrefix(xspace, kGpuPlanePrefix);
+  // We don't expect GPU and TPU planes to be present in the same XSpace.
+  if (device_planes.empty()) {
+    device_planes = FindPlanesWithPrefix(xspace, kTpuPlanePrefix);
+  }
+  for (const XPlane* device_plane : device_planes) {
+    XPlaneVisitor xplane = CreateTfXPlaneVisitor(device_plane);
+    uint32 device_id = kFirstDeviceId + xplane.Id();
+    ConvertXPlaneToTraceEvents(device_id, xplane, trace);
   }
 
   // Trace viewer (non-streaming) has scalability issues, we need to drop

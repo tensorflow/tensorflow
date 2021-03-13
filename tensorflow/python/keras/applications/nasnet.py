@@ -33,9 +33,9 @@ The below table describes the performance on ImageNet 2012:
 |   NASNet-A (6 @ 4032)  |   82.7 %  |   96.2 %  |      23.8 B    |    88.9    |
 --------------------------------------------------------------------------------
 
-Reference paper:
-  - [Learning Transferable Architectures for Scalable Image Recognition]
-    (https://arxiv.org/abs/1707.07012) (CVPR 2018)
+Reference:
+  - [Learning Transferable Architectures for Scalable Image Recognition](
+      https://arxiv.org/abs/1707.07012) (CVPR 2018)
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -62,20 +62,19 @@ NASNET_LARGE_WEIGHT_PATH_NO_TOP = BASE_WEIGHTS_PATH + 'NASNet-large-no-top.h5'
 layers = VersionAwareLayers()
 
 
-def NASNet(
-    input_shape=None,
-    penultimate_filters=4032,
-    num_blocks=6,
-    stem_block_filters=96,
-    skip_reduction=True,
-    filter_multiplier=2,
-    include_top=True,
-    weights=None,
-    input_tensor=None,
-    pooling=None,
-    classes=1000,
-    default_size=None,
-    classifier_activation='softmax'):
+def NASNet(input_shape=None,
+           penultimate_filters=4032,
+           num_blocks=6,
+           stem_block_filters=96,
+           skip_reduction=True,
+           filter_multiplier=2,
+           include_top=True,
+           weights='imagenet',
+           input_tensor=None,
+           pooling=None,
+           classes=1000,
+           default_size=None,
+           classifier_activation='softmax'):
   """Instantiates a NASNet model.
 
   Reference:
@@ -86,10 +85,7 @@ def NASNet(
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
 
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.nasnet.preprocess_input` for an example.
-
-  Arguments:
+  Args:
     input_shape: Optional shape tuple, the input shape
       is by default `(331, 331, 3)` for NASNetLarge and
       `(224, 224, 3)` for NASNetMobile.
@@ -150,7 +146,7 @@ def NASNet(
     ValueError: if `classifier_activation` is not `softmax` or `None` when
       using a pretrained top layer.
   """
-  if not (weights in {'imagenet', None} or file_io.file_exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
@@ -332,11 +328,19 @@ def NASNetMobile(input_shape=None,
                  classes=1000):
   """Instantiates a Mobile NASNet model in ImageNet mode.
 
+  Reference:
+  - [Learning Transferable Architectures for Scalable Image Recognition](
+      https://arxiv.org/abs/1707.07012) (CVPR 2018)
+
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
 
-  Arguments:
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For NASNet, call `tf.keras.applications.nasnet.preprocess_input` on your
+  inputs before passing them to the model.
+
+  Args:
       input_shape: Optional shape tuple, only to be specified
           if `include_top` is False (otherwise the input shape
           has to be `(224, 224, 3)` for NASNetMobile
@@ -347,6 +351,7 @@ def NASNetMobile(input_shape=None,
           layer at the top of the network.
       weights: `None` (random initialization) or
           `imagenet` (ImageNet weights)
+          For loading `imagenet` weights, `input_shape` should be (224, 224, 3)
       input_tensor: Optional Keras tensor (i.e. output of
           `layers.Input()`)
           to use as image input for the model.
@@ -400,11 +405,19 @@ def NASNetLarge(input_shape=None,
                 classes=1000):
   """Instantiates a NASNet model in ImageNet mode.
 
+  Reference:
+  - [Learning Transferable Architectures for Scalable Image Recognition](
+      https://arxiv.org/abs/1707.07012) (CVPR 2018)
+
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
 
-  Arguments:
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For NASNet, call `tf.keras.applications.nasnet.preprocess_input` on your
+  inputs before passing them to the model.
+
+  Args:
       input_shape: Optional shape tuple, only to be specified
           if `include_top` is False (otherwise the input shape
           has to be `(331, 331, 3)` for NASNetLarge.
@@ -415,6 +428,7 @@ def NASNetLarge(input_shape=None,
           layer at the top of the network.
       weights: `None` (random initialization) or
           `imagenet` (ImageNet weights)
+          For loading `imagenet` weights, `input_shape` should be (331, 331, 3)
       input_tensor: Optional Keras tensor (i.e. output of
           `layers.Input()`)
           to use as image input for the model.
@@ -465,7 +479,7 @@ def _separable_conv_block(ip,
                           block_id=None):
   """Adds 2 blocks of [relu-separable conv-batchnorm].
 
-  Arguments:
+  Args:
       ip: Input tensor
       filters: Number of output filters per layer
       kernel_size: Kernel size of separable convolutions
@@ -524,7 +538,7 @@ def _adjust_block(p, ip, filters, block_id=None):
 
   Used in situations where the output number of filters needs to be changed.
 
-  Arguments:
+  Args:
       p: Input tensor which needs to be modified
       ip: Input tensor whose shape needs to be matched
       filters: Number of output filters to be matched
@@ -607,7 +621,7 @@ def _adjust_block(p, ip, filters, block_id=None):
 def _normal_a_cell(ip, p, filters, block_id=None):
   """Adds a Normal cell for NASNet-A (Fig. 4 in the paper).
 
-  Arguments:
+  Args:
       ip: Input tensor `x`
       p: Input tensor `p`
       filters: Number of output filters
@@ -686,7 +700,7 @@ def _normal_a_cell(ip, p, filters, block_id=None):
 def _reduction_a_cell(ip, p, filters, block_id=None):
   """Adds a Reduction cell for NASNet-A (Fig. 4 in the paper).
 
-  Arguments:
+  Args:
     ip: Input tensor `x`
     p: Input tensor `p`
     filters: Number of output filters

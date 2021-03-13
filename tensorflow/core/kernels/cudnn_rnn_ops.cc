@@ -500,6 +500,9 @@ struct CudnnRnnModelShapes {
   int max_seq_length;
   int batch_size;
   int cell_num_units = 0;
+  // If you add new field to this structure, please take care of
+  // updating IsCompatibleWith() below as well as the hash function in
+  // CudnnRnnConfigHasher.
   TensorShape input_shape;
   TensorShape output_shape;
   TensorShape hidden_state_shape;
@@ -508,7 +511,8 @@ struct CudnnRnnModelShapes {
   bool IsCompatibleWith(const CudnnRnnModelShapes& rhs) const {
     return num_layers == rhs.num_layers && input_size == rhs.input_size &&
            num_units == rhs.num_units && dir_count == rhs.dir_count &&
-           cell_num_units == rhs.cell_num_units;
+           cell_num_units == rhs.cell_num_units &&
+           max_seq_length == rhs.max_seq_length;
   }
   string DebugString() const {
     return strings::Printf(
@@ -530,7 +534,7 @@ struct CudnnRnnConfigHasher {
 
     uint64 hash =
         HashList({shapes.num_layers, shapes.input_size, shapes.num_units,
-                  shapes.dir_count, shapes.batch_size});
+                  shapes.dir_count, shapes.max_seq_length, shapes.batch_size});
     if (algo_desc.has_value()) {
       hash = Hash64Combine(hash, algo_desc->hash());
     }
@@ -690,7 +694,7 @@ Status CreateForwardAndBackwardIODescriptors(
     std::unique_ptr<RnnStateTensorDescriptor>* h_state_desc,
     std::unique_ptr<RnnStateTensorDescriptor>* c_state_desc,
     std::unique_ptr<RnnSequenceTensorDescriptor>* output_desc,
-    const absl::Span<const int>& seq_lengths, bool time_major) {
+    const absl::Span<const int> seq_lengths, bool time_major) {
   StreamExecutor* executor = context->op_device_context()->stream()->parent();
   se::dnn::DataType data_type = ToDataType<T>::value;
 
@@ -822,14 +826,34 @@ Status DoForward(OpKernelContext* context, const RnnDescriptor& rnn_desc,
   }
 
   Stream* stream = context->op_device_context()->stream();
+
+  Tensor seq_lengths_tensor;
+  DeviceMemory<int> seq_lengths_ptr;
+  if (sequence_lengths != nullptr) {
+    TF_RETURN_IF_ERROR(context->allocate_temp(
+        DT_INT32, {static_cast<long>(seq_lengths.size())},
+        &seq_lengths_tensor));
+    seq_lengths_ptr = AsDeviceMemory<int>(&seq_lengths_tensor);
+    if (!stream
+             ->ThenMemcpy(&seq_lengths_ptr, seq_lengths.data(),
+                          seq_lengths.size() * sizeof(int))
+             .ok()) {
+      return errors::InvalidArgument(
+          "Failed to copy memory from host to "
+          "device for sequence_lengths in "
+          "CudnnRNNV3");
+    }
+  }
+
   bool launch_success =
       stream
-          ->ThenRnnForward(rnn_desc, *input_desc, input_data, *h_state_desc,
-                           input_h_data, *c_state_desc, input_c_data,
-                           params_data, *output_desc, &output_data,
-                           *h_state_desc, &output_h_data, *c_state_desc,
-                           &output_c_data, is_training, reserve_space_allocator,
-                           workspace_allocator, output_profile_result)
+          ->ThenRnnForward(rnn_desc, *input_desc, input_data, seq_lengths_ptr,
+                           *h_state_desc, input_h_data, *c_state_desc,
+                           input_c_data, params_data, *output_desc,
+                           &output_data, *h_state_desc, &output_h_data,
+                           *c_state_desc, &output_c_data, is_training,
+                           reserve_space_allocator, workspace_allocator,
+                           output_profile_result)
           .ok();
   return launch_success
              ? Status::OK()
@@ -901,17 +925,36 @@ Status DoBackward(
   // Creates a memory callback for the workspace. The memory lives to the end
   // of this kernel calls.
   Stream* stream = context->op_device_context()->stream();
+
+  Tensor seq_lengths_tensor;
+  DeviceMemory<int> seq_lengths_ptr;
+  if (sequence_lengths != nullptr) {
+    TF_RETURN_IF_ERROR(context->allocate_temp(
+        DT_INT32, {static_cast<long>(seq_lengths.size())},
+        &seq_lengths_tensor));
+    seq_lengths_ptr = AsDeviceMemory<int>(&seq_lengths_tensor);
+    if (!stream
+             ->ThenMemcpy(&seq_lengths_ptr, seq_lengths.data(),
+                          seq_lengths.size() * sizeof(int))
+             .ok()) {
+      return errors::InvalidArgument(
+          "Failed to copy memory from host to "
+          "device for sequence_lengths in "
+          "CudnnRNNBackwardOpV3");
+    }
+  }
+
   bool launch_success =
       stream
           ->ThenRnnBackward(
-              rnn_desc, *input_desc, input_data, *h_state_desc, input_h_data,
-              *c_state_desc, input_c_data, params_data, *output_desc,
-              output_data, *h_state_desc, output_h_data, *c_state_desc,
-              output_c_data, output_backprop_data, output_h_backprop_data,
-              output_c_backprop_data, &input_backprop_data,
-              &input_h_backprop_data, &input_c_backprop_data,
-              &params_backprop_data, &reserve_space_uint8, workspace_allocator,
-              output_profile_result)
+              rnn_desc, *input_desc, input_data, seq_lengths_ptr, *h_state_desc,
+              input_h_data, *c_state_desc, input_c_data, params_data,
+              *output_desc, output_data, *h_state_desc, output_h_data,
+              *c_state_desc, output_c_data, output_backprop_data,
+              output_h_backprop_data, output_c_backprop_data,
+              &input_backprop_data, &input_h_backprop_data,
+              &input_c_backprop_data, &params_backprop_data,
+              &reserve_space_uint8, workspace_allocator, output_profile_result)
           .ok();
   return launch_success
              ? Status::OK()

@@ -26,10 +26,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/benchmark_testlib.h"
 #include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/test.h"
@@ -349,39 +349,69 @@ TEST_F(UtilsTest, NumNonControlOutputs) {
 
   GraphDef graph;
   TF_CHECK_OK(s.ToGraphDef(&graph));
-  NodeMap node_map(&graph);
 
-  const NodeDef* add_node = node_map.GetNode("add");
-  const NodeDef* mul_node = node_map.GetNode("mul");
-  ASSERT_NE(add_node, nullptr);
+  {
+    NodeMap node_map(&graph);
 
-  // [a, b] are only non-control inputs
-  EXPECT_EQ(NumNonControlInputs(*add_node), 2);
-  EXPECT_EQ(NumControlInputs(*add_node), 1);
-  // [sqrt, shape] are non control outputs
-  EXPECT_EQ(NumNonControlOutputs(*add_node, node_map), 2);
-  // sqrt is the only data output
-  EXPECT_EQ(NumNonControlDataOutputs(*add_node, node_map), 1);
-  EXPECT_EQ(NumControlInputs(*mul_node), 0);
+    const NodeDef* add_node = node_map.GetNode("add");
+    const NodeDef* mul_node = node_map.GetNode("mul");
+    ASSERT_NE(add_node, nullptr);
 
-  EXPECT_TRUE(HasControlInputs(*add_node));
-  EXPECT_TRUE(HasRegularInputs(*add_node));
-  EXPECT_TRUE(HasControlOutputs(*add_node, node_map));
-  EXPECT_TRUE(HasRegularOutputs(*add_node, node_map));
+    // [a, b] are only non-control inputs
+    EXPECT_EQ(NumNonControlInputs(*add_node), 2);
+    EXPECT_EQ(NumControlInputs(*add_node), 1);
+    // [sqrt, shape] are non control outputs
+    EXPECT_EQ(NumNonControlOutputs(*add_node, node_map), 2);
+    // sqrt is the only data output
+    EXPECT_EQ(NumNonControlDataOutputs(*add_node, node_map), 1);
+    EXPECT_EQ(NumControlInputs(*mul_node), 0);
 
-  const NodeDef* x_node = node_map.GetNode("x");
-  ASSERT_NE(x_node, nullptr);
-  EXPECT_FALSE(HasControlInputs(*x_node));
-  EXPECT_FALSE(HasRegularInputs(*x_node));
-  EXPECT_FALSE(HasControlOutputs(*x_node, node_map));
-  EXPECT_TRUE(HasRegularOutputs(*x_node, node_map));
+    EXPECT_TRUE(HasControlInputs(*add_node));
+    EXPECT_TRUE(HasRegularInputs(*add_node));
+    EXPECT_TRUE(HasControlOutputs(*add_node, node_map));
+    EXPECT_TRUE(HasRegularOutputs(*add_node, node_map));
 
-  const NodeDef* round_node = node_map.GetNode("round");
-  ASSERT_NE(round_node, nullptr);
-  EXPECT_TRUE(HasControlInputs(*round_node));
-  EXPECT_TRUE(HasRegularInputs(*round_node));
-  EXPECT_FALSE(HasControlOutputs(*round_node, node_map));
-  EXPECT_FALSE(HasRegularOutputs(*round_node, node_map));
+    const NodeDef* x_node = node_map.GetNode("x");
+    ASSERT_NE(x_node, nullptr);
+    EXPECT_FALSE(HasControlInputs(*x_node));
+    EXPECT_FALSE(HasRegularInputs(*x_node));
+    EXPECT_FALSE(HasControlOutputs(*x_node, node_map));
+    EXPECT_TRUE(HasRegularOutputs(*x_node, node_map));
+
+    const NodeDef* round_node = node_map.GetNode("round");
+    ASSERT_NE(round_node, nullptr);
+    EXPECT_TRUE(HasControlInputs(*round_node));
+    EXPECT_TRUE(HasRegularInputs(*round_node));
+    EXPECT_FALSE(HasControlOutputs(*round_node, node_map));
+    EXPECT_FALSE(HasRegularOutputs(*round_node, node_map));
+  }
+
+  {
+    // Similar test for ImmutableNodeMap.
+    ImmutableNodeMap node_map(&graph);
+
+    const NodeDef* add_node = node_map.GetNode("add");
+    const NodeDef* mul_node = node_map.GetNode("mul");
+    ASSERT_NE(add_node, nullptr);
+
+    // [a, b] are only non-control inputs
+    EXPECT_EQ(NumNonControlInputs(*add_node), 2);
+    EXPECT_EQ(NumControlInputs(*add_node), 1);
+    EXPECT_EQ(NumControlInputs(*mul_node), 0);
+
+    EXPECT_TRUE(HasControlInputs(*add_node));
+    EXPECT_TRUE(HasRegularInputs(*add_node));
+
+    const NodeDef* x_node = node_map.GetNode("x");
+    ASSERT_NE(x_node, nullptr);
+    EXPECT_FALSE(HasControlInputs(*x_node));
+    EXPECT_FALSE(HasRegularInputs(*x_node));
+
+    const NodeDef* round_node = node_map.GetNode("round");
+    ASSERT_NE(round_node, nullptr);
+    EXPECT_TRUE(HasControlInputs(*round_node));
+    EXPECT_TRUE(HasRegularInputs(*round_node));
+  }
 }
 
 TEST(CheckAttrExists, All) {
@@ -440,15 +470,16 @@ TEST(IsKernelRegisteredForNode, All) {
   EXPECT_FALSE(IsKernelRegisteredForNode(node).ok());
 }
 
-#define BM_NodePositionIfSameNode(I, N, NAME)               \
-  static void BM_NodePositionIfSameNode_##NAME(int iters) { \
-    string input = I;                                       \
-    string node = N;                                        \
-    for (int i = 0; i < iters; ++i) {                       \
-      const int pos = NodePositionIfSameNode(input, node);  \
-      CHECK_GT(pos, -3);                                    \
-    }                                                       \
-  }                                                         \
+#define BM_NodePositionIfSameNode(I, N, NAME)              \
+  static void BM_NodePositionIfSameNode_##NAME(            \
+      ::testing::benchmark::State& state) {                \
+    string input = I;                                      \
+    string node = N;                                       \
+    for (auto s : state) {                                 \
+      const int pos = NodePositionIfSameNode(input, node); \
+      CHECK_GT(pos, -3);                                   \
+    }                                                      \
+  }                                                        \
   BENCHMARK(BM_NodePositionIfSameNode_##NAME)
 
 BM_NodePositionIfSameNode("foo/bar/baz:7", "foo/bar/baz", Match_7);
@@ -457,10 +488,12 @@ BM_NodePositionIfSameNode("^foo/bar/baz", "foo/bar/baz", Match_Ctrl);
 BM_NodePositionIfSameNode("blah", "foo/bar/baz", NoMatch_0);
 BM_NodePositionIfSameNode("foo/bar/baz/gnu", "foo/bar/baz", NoMatch_end);
 
-static void BM_NodeNameAsStringPiece(int iters, int size) {
+void BM_NodeNameAsStringPiece(::testing::benchmark::State& state) {
+  const int size = state.range(0);
+
   string input(size + 3, 'x');
   input[size] = ':';
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     StringPiece node_name = NodeNameAsStringPiece(input);
     CHECK_GT(node_name.size(), 0);
   }
@@ -468,9 +501,10 @@ static void BM_NodeNameAsStringPiece(int iters, int size) {
 BENCHMARK(BM_NodeNameAsStringPiece)->Range(1, 1024);
 
 #define BM_ParseNodeNameAsStringPiece(I, NAME)                               \
-  static void BM_ParseNodeNameAsStringPiece_##NAME(int iters) {              \
+  static void BM_ParseNodeNameAsStringPiece_##NAME(                          \
+      ::testing::benchmark::State& state) {                                  \
     string input = I;                                                        \
-    for (int i = 0; i < iters; ++i) {                                        \
+    for (auto s : state) {                                                   \
       int position;                                                          \
       const StringPiece name = ParseNodeNameAsStringPiece(input, &position); \
       CHECK_GE(position, -1);                                                \
@@ -518,6 +552,45 @@ TEST_F(UtilsTest, SafeTensorIdToString) {
   EXPECT_EQ(SafeTensorIdToString({"foo", 0}), "foo");
   EXPECT_EQ(SafeTensorIdToString({"foo", 1}), "foo:1");
   EXPECT_EQ(SafeTensorIdToString({"foo", 2}), "foo:2");
+}
+
+TEST_F(UtilsTest, EraseRegularNodeAttributes) {
+  NodeDef node;
+  AttrValue dummy;
+  node.set_name("foo");
+  node.set_op("MatMul");
+  (*node.mutable_attr())["baz"] = dummy;
+  EXPECT_EQ(EraseRegularNodeAttributes(&node), 1);
+  EXPECT_EQ(node.attr_size(), 0);
+  EXPECT_EQ(EraseRegularNodeAttributes(&node), 0);
+
+  (*node.mutable_attr())["baz"] = dummy;
+  (*node.mutable_attr())["_bar"] = dummy;
+  EXPECT_EQ(EraseRegularNodeAttributes(&node), 1);
+  EXPECT_EQ(node.attr_size(), 1);
+  EXPECT_EQ(node.attr().begin()->first, "_bar");
+  EXPECT_EQ(EraseRegularNodeAttributes(&node), 0);
+}
+
+TEST_F(UtilsTest, EraseNodeOutputAttributes) {
+  NodeDef node;
+  AttrValue dummy;
+  node.set_name("foo");
+  node.set_op("MatMul");
+  EXPECT_EQ(EraseNodeOutputAttributes(&node), 0);
+  (*node.mutable_attr())["_xla_inferred_shapes"] = dummy;
+  EXPECT_EQ(EraseNodeOutputAttributes(&node), 1);
+  EXPECT_EQ(node.attr_size(), 0);
+  EXPECT_EQ(EraseNodeOutputAttributes(&node), 0);
+
+  (*node.mutable_attr())["baz"] = dummy;
+  (*node.mutable_attr())["_output_shapes"] = dummy;
+  (*node.mutable_attr())["_xla_inferred_shapes"] = dummy;
+  (*node.mutable_attr())["_output_gnu"] = dummy;
+  EXPECT_EQ(EraseNodeOutputAttributes(&node), 3);
+  EXPECT_EQ(node.attr_size(), 1);
+  EXPECT_EQ(node.attr().begin()->first, "baz");
+  EXPECT_EQ(EraseNodeOutputAttributes(&node), 0);
 }
 
 template <typename T>
@@ -614,16 +687,25 @@ TEST(SetTensorValueTest, Quantized) {
                              /*error_msg=*/"");
 }
 
-static void BM_NodeMapConstruct(int iters, int size) {
-  testing::StopTiming();
+void BM_NodeMapConstruct(::testing::benchmark::State& state) {
+  const int size = state.range(0);
+
   GraphDef graph = test::CreateRandomGraph(size);
-  testing::StartTiming();
-  for (int i = 0; i < iters; i++) {
+  for (auto s : state) {
     NodeMap node_map(&graph);
   }
-  testing::StopTiming();
 }
 BENCHMARK(BM_NodeMapConstruct)->Range(1, 1 << 20);
+
+void BM_ImmutableNodeMapConstruct(::testing::benchmark::State& state) {
+  const int size = state.range(0);
+
+  GraphDef graph = test::CreateRandomGraph(size);
+  for (auto s : state) {
+    ImmutableNodeMap node_map(&graph);
+  }
+}
+BENCHMARK(BM_ImmutableNodeMapConstruct)->Range(1, 1 << 20);
 
 }  // namespace
 }  // namespace grappler

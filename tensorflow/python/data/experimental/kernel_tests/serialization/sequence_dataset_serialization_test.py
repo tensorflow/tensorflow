@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the sequence datasets serialization."""
+"""Tests for checkpointing the sequence datasets."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -20,16 +20,15 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
-class SkipDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase,
-    parameterized.TestCase):
+class SkipDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                parameterized.TestCase):
 
   def _build_skip_dataset(self, count):
     components = (np.arange(10),)
@@ -53,14 +52,13 @@ class SkipDatasetSerializationTest(
 
   @combinations.generate(test_base.default_test_combinations())
   def testInvalidSkip(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'Shape must be rank 0 but is rank 1'):
+    with self.assertRaisesRegex(ValueError,
+                                'Shape must be rank 0 but is rank 1'):
       self.run_core_tests(lambda: self._build_skip_dataset([1, 2]), 0)
 
 
-class TakeDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase,
-    parameterized.TestCase):
+class TakeDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                parameterized.TestCase):
 
   def _build_take_dataset(self, count):
     components = (np.arange(10),)
@@ -83,14 +81,13 @@ class TakeDatasetSerializationTest(
     self.run_core_tests(lambda: self._build_take_dataset(0), 0)
 
   def testInvalidTake(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'Shape must be rank 0 but is rank 1'):
+    with self.assertRaisesRegex(ValueError,
+                                'Shape must be rank 0 but is rank 1'):
       self.run_core_tests(lambda: self._build_take_dataset([1, 2]), 0)
 
 
-class RepeatDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase,
-    parameterized.TestCase):
+class RepeatDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                  parameterized.TestCase):
 
   def _build_repeat_dataset(self, count, take_count=3):
     components = (np.arange(10),)
@@ -120,8 +117,8 @@ class RepeatDatasetSerializationTest(
 
   @combinations.generate(test_base.default_test_combinations())
   def testInvalidRepeat(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'Shape must be rank 0 but is rank 1'):
+    with self.assertRaisesRegex(ValueError,
+                                'Shape must be rank 0 but is rank 1'):
       self.run_core_tests(lambda: self._build_repeat_dataset([1, 2], 0), 0)
 
 

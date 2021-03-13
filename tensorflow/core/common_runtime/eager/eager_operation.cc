@@ -15,9 +15,12 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 
 #include "absl/types/span.h"
-#include "tensorflow/c/eager/tensor_handle_interface.h"
+#include "tensorflow/c/eager/abstract_operation.h"
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
+#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
+#include "tensorflow/core/common_runtime/eager/custom_device.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
@@ -29,10 +32,11 @@ namespace tensorflow {
 // Clear(), and then Reset(...) with the same arguments that would have
 // been provided to the constructor.
 void EagerOperation::Clear() {
-  for (TensorHandle* h : inputs_) {
+  for (ImmediateExecutionTensorHandle* h : inputs_) {
     h->Unref();
   }
   inputs_.clear();
+  custom_device_tensor_handles_count_ = 0;
   ClearInferenceState();
 }
 
@@ -91,8 +95,8 @@ Status EagerOperation::SetAttrShape(const char* attr_name, const int64_t* dims,
   return Status::OK();
 }
 
-Status EagerOperation::SetAttrFunction(
-    const char* attr_name, const AbstractOperationInterface* value) {
+Status EagerOperation::SetAttrFunction(const char* attr_name,
+                                       const AbstractOperation* value) {
   AttrValue attr_value;
   NameAttrList* func = attr_value.mutable_func();
   func->set_name(value->Name());
@@ -194,8 +198,7 @@ Status EagerOperation::SetAttrShapeList(const char* attr_name,
 }
 
 Status EagerOperation::SetAttrFunctionList(
-    const char* attr_name,
-    absl::Span<const AbstractOperationInterface*> values) {
+    const char* attr_name, absl::Span<const AbstractOperation*> values) {
   size_t num_values = values.size();
   std::unique_ptr<NameAttrList[]> funcs(new NameAttrList[num_values]);
   for (int i = 0; i < num_values; i++) {
@@ -234,6 +237,14 @@ Status EagerOperation::InputLength(const char* input_name, int* length) {
   return Status::OK();
 }
 
+absl::Span<ImmediateExecutionTensorHandle* const> EagerOperation::GetInputs()
+    const {
+  // TODO(b/162536003): Remove reinterpret_cast.
+  return absl::MakeSpan(
+      reinterpret_cast<ImmediateExecutionTensorHandle* const*>(inputs_.data()),
+      inputs_.size());
+}
+
 Status EagerOperation::OutputLength(const char* output_name, int* length) {
   Status status;
   const tensorflow::OpDef* op_def = GetOpDef(&status);
@@ -253,23 +264,48 @@ Status EagerOperation::OutputLength(const char* output_name, int* length) {
   return Status::OK();
 }
 
-Status EagerOperation::AddInput(AbstractTensorHandleInterface* input) {
-  TensorHandle* h = TensorHandleFromInterface(input);
+Status EagerOperation::AddInput(AbstractTensorHandle* input) {
+  ImmediateExecutionTensorHandle* h =
+      down_cast<ImmediateExecutionTensorHandle*>(input);
+  // TODO(b/175427838): It would be nice to be able to use tensorflow::isa here.
+  if (CustomDeviceTensorHandle::classof(h)) {
+    custom_device_tensor_handles_count_++;
+  }
   AddTensorHandle(h);
   return MaybeInferSingleInputAttrs(h);
 }
 
 Status EagerOperation::AddInputList(
-    absl::Span<AbstractTensorHandleInterface*> inputs) {
+    absl::Span<AbstractTensorHandle* const> inputs) {
   for (auto& input : inputs) {
-    TensorHandle* h = TensorHandleFromInterface(input);
+    // TODO(b/175427838): It would be nice to be able to use tensorflow::isa
+    // here.
+    if (CustomDeviceTensorHandle::classof(input)) {
+      custom_device_tensor_handles_count_++;
+    }
+    ImmediateExecutionTensorHandle* h =
+        down_cast<ImmediateExecutionTensorHandle*>(input);
     AddTensorHandle(h);
   }
   return InferInputListAttrs(inputs.size());
 }
 
-Status EagerOperation::SetUseXla(bool enable) {
-  use_xla_ = enable;
+Status EagerOperation::SetInput(size_t index,
+                                ImmediateExecutionTensorHandle* input) {
+  if (index >= inputs_.size()) {
+    return errors::InvalidArgument("Index >= inputs.size: %d >= %d", index,
+                                   inputs_.size());
+  }
+  auto* previous = inputs_[index];
+  if (CustomDeviceTensorHandle::classof(previous)) {
+    custom_device_tensor_handles_count_--;
+  }
+  if (CustomDeviceTensorHandle::classof(input)) {
+    custom_device_tensor_handles_count_++;
+  }
+  input->Ref();
+  inputs_[index] = input;
+  previous->Unref();
   return Status::OK();
 }
 
@@ -304,7 +340,7 @@ Status EagerOperation::Reset(
         "registered in the binary running in this process.");
   }
   attrs_.Reset(op);
-  use_xla_ = false;
+  stack_trace_.reset();
   is_function_ = is_function;
   cancellation_manager_ = nullptr;
   executor_ = executor ? executor : &ctx_.Executor();
@@ -313,7 +349,8 @@ Status EagerOperation::Reset(
   return SetDeviceName(device_name);
 }
 
-Status EagerOperation::MaybeInferSingleInputAttrs(TensorHandle* handle) {
+Status EagerOperation::MaybeInferSingleInputAttrs(
+    ImmediateExecutionTensorHandle* handle) {
   if (!op_def_) return Status::OK();
 
   const auto& input_def = op_def_->input_arg(inference_arg_idx_++);
@@ -330,7 +367,7 @@ Status EagerOperation::MaybeInferSingleInputAttrs(TensorHandle* handle) {
   const std::string& type_attr = input_def.type_attr();
   if (!type_attr.empty() &&
       inference_attrs_.find(type_attr) == inference_attrs_.end()) {
-    MutableAttrs()->Set(type_attr, handle->dtype);
+    MutableAttrs()->Set(type_attr, handle->DataType());
     inference_attrs_.insert(type_attr);
   }
   return Status::OK();
@@ -368,16 +405,45 @@ Status EagerOperation::InferInputListAttrs(int num_inputs) {
   if (!input_def.type_list_attr().empty()) {
     std::vector<DataType> dtypes(num_inputs);
     for (int i = 0; i < num_inputs; ++i) {
-      dtypes[i] = inputs_[start + i]->dtype;
+      dtypes[i] = inputs_[start + i]->DataType();
     }
     InferMixedTypeInputListAttrs(input_def, dtypes);
   } else if (!input_def.type_attr().empty() &&
              !input_def.number_attr().empty()) {
-    InferSingleTypeInputListAttrs(input_def, inputs_[start]->dtype, num_inputs);
+    InferSingleTypeInputListAttrs(input_def, inputs_[start]->DataType(),
+                                  num_inputs);
+  } else if (!input_def.number_attr().empty()) {
+    if (inference_attrs_.find(input_def.number_attr()) ==
+        inference_attrs_.end()) {
+      MutableAttrs()->Set(input_def.number_attr(), num_inputs);
+      inference_attrs_.insert(input_def.number_attr());
+    }
   } else {
     return errors::InvalidArgument("Invalid input list definition");
   }
   return Status::OK();
+}
+
+Status EagerOperation::TensorHandleInputs(
+    const absl::InlinedVector<TensorHandle*, 4>** inputs) const {
+  if (TF_PREDICT_TRUE(!HasCustomDeviceInput())) {
+    *inputs = reinterpret_cast<const absl::InlinedVector<TensorHandle*, 4>*>(
+        &inputs_);
+    return Status::OK();
+  } else {
+    return errors::Internal("The operation unexpectedly had custom devices.");
+  }
+}
+
+Status EagerOperation::MutableTensorHandleInputs(
+    absl::InlinedVector<TensorHandle*, 4>** inputs) {
+  if (TF_PREDICT_TRUE(!HasCustomDeviceInput())) {
+    *inputs =
+        reinterpret_cast<absl::InlinedVector<TensorHandle*, 4>*>(&inputs_);
+    return Status::OK();
+  } else {
+    return errors::Internal("The operation unexpectedly had custom devices.");
+  }
 }
 
 Status EagerOperation::SetDeviceName(const char* c_name) {
@@ -389,14 +455,7 @@ Status EagerOperation::SetDeviceName(const char* c_name) {
     }
     last_set_device_name_ = name;
     device_name_ = DeviceNameUtils::ParsedNameToString(device_parsed_name_);
-    CustomDevice* custom_device;
-    if (ctx_.FindCustomDeviceFromName(device_name_, &custom_device).ok()) {
-      device_ = custom_device;
-    } else {
-      // Device placement for physical devices happens lazily in
-      // EagerExecute/EagerRemoteExecute, and can depend on the inputs.
-      device_ = kVariantDeviceNull;
-    }
+    device_ = kVariantDeviceNull;
   }
   return Status::OK();
 }
@@ -411,6 +470,21 @@ bool EagerOperation::IsLocal() const {
   return device_parsed_name_.job == host_cpu_name.job &&
          device_parsed_name_.replica == host_cpu_name.replica &&
          device_parsed_name_.task == host_cpu_name.task;
+}
+
+string VariantDeviceDebugString(VariantDevice device) {
+  if (device == kVariantDeviceNull) {
+    return "[]";
+  } else if (absl::holds_alternative<CustomDevice*>(device)) {
+    return absl::get<CustomDevice*>(device)->name();
+  } else {
+    return absl::get<Device*>(device)->DebugString();
+  }
+}
+const AbstractOpAttrs* EagerOperation::GetOpAttrs() const { return &attrs_; }
+
+void EagerOperation::AddAttrs(const AbstractOpAttrs* op_attrs) {
+  attrs_.CopyAttributes(*(down_cast<const AttrBuilder*>(op_attrs)));
 }
 
 string EagerOperation::DebugString() const {
@@ -432,10 +506,9 @@ string EagerOperation::DebugString() const {
   return out;
 }
 
-void EagerOperation::AddTensorHandle(TensorHandle* h) {
+void EagerOperation::AddTensorHandle(ImmediateExecutionTensorHandle* h) {
   h->Ref();
   inputs_.push_back(h);
   attrs_.NumInputs(static_cast<int>(inputs_.size()));
 }
-
 }  // namespace tensorflow

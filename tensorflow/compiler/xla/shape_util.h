@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <initializer_list>
 #include <string>
+#include <tuple>
 
 #include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
@@ -246,6 +247,11 @@ class ShapeUtil {
   // Precondition: IsArray(lhs) && IsArray(rhs)
   static bool SameDimensions(const Shape& lhs, const Shape& rhs);
 
+  // Returns whether the LHS and RHS shapes have the same rank; note: does
+  // not check element type.
+  // Precondition: IsArray(lhs) && IsArray(rhs)
+  static bool SameRank(const Shape& lhs, const Shape& rhs);
+
   // Returns whether the lhs and rhs shapes have the same element type.
   static bool SameElementType(const Shape& lhs, const Shape& rhs) {
     return lhs.element_type() == rhs.element_type();
@@ -266,13 +272,35 @@ class ShapeUtil {
   // and returns it.
   static PrimitiveType HigherPrecisionElementType(const Shape& a,
                                                   const Shape& b) {
-    if (SameElementType(a, b)) {
+    // Returns a tuple where the elements are lexicographically ordered in terms
+    // of importance.
+    auto type_properties = [](const Shape& shape) {
+      return std::make_tuple(
+          // Prefer floating point types with more range over other
+          // floating-point types or non-floating point types.
+          ElementIsFloating(shape)
+              ? primitive_util::OverflowExponent(shape.element_type())
+              : -1,
+          // Prefer floating point types with more precision over less precise
+          // types.
+          ElementIsFloating(shape)
+              ? primitive_util::SignificandWidth(shape.element_type())
+              : -1,
+          // Prefer wider types over narrower types.
+          primitive_util::BitWidth(shape.element_type()),
+          // Prefer signed integer types over unsigned integer types.
+          primitive_util::IsSignedIntegralType(shape.element_type()));
+    };
+    auto a_properties = type_properties(a);
+    auto b_properties = type_properties(b);
+    if (a_properties > b_properties) {
       return a.element_type();
     }
-    return primitive_util::BitWidth(a.element_type()) <
-                   primitive_util::BitWidth(b.element_type())
-               ? b.element_type()
-               : a.element_type();
+    if (b_properties > a_properties) {
+      return b.element_type();
+    }
+    CHECK(SameElementType(a, b));
+    return a.element_type();
   }
 
   // Returns true if the rank, dimension sizes, and element type are
@@ -284,6 +312,11 @@ class ShapeUtil {
   // and layout are ignored. Tuple elements are compared recursively for
   // compatibility.
   static bool CompatibleIgnoringElementType(const Shape& lhs, const Shape& rhs);
+
+  // Returns true if the tuple tree shapes and leaf ranks are identical.
+  // Leaf dimensions, element type, and layout are ignored. Tuple elements are
+  // compared recursively for compatibility.
+  static bool CompatibleKind(const Shape& lhs, const Shape& rhs);
 
   // As Compatible, but allow one of lhs and rhs to be BF16 while the other
   // being F32. Tuple elements are compared recursively for compatibility.
@@ -376,6 +409,9 @@ class ShapeUtil {
 
   // Appends a major dimension to the shape with the given bound.
   static void AppendMajorDimension(int bound, Shape* shape);
+
+  // Copy the dynamic dimensions property from one shape to another.
+  static void CopyDynamicDimensions(Shape* to, const Shape& from);
 
   // Returns an empty tuple shape. Can be used as a sentinel Shape value.
   static Shape MakeNil() { return MakeTupleShape({}); }
@@ -561,13 +597,13 @@ class ShapeUtil {
   static Shape DropDegenerateDimensions(const Shape& shape);
 
   // Permutes the dimensions by the given permutation, so
-  // return_value.dimensions[permutation[i]] = argument.dimensions[i].
+  // return_value.dimensions[i] = argument.dimensions[permutation[i]].
   //
   // Postcondition: For any valid permutation,
   //
   //   !HasLayout(shape) ||
   //   TransposeIsBitcast(shape, PermuteDimensions(permutation, shape),
-  //                      InversePermutation(permutation)).
+  //                      permutation).
   static Shape PermuteDimensions(absl::Span<const int64> permutation,
                                  const Shape& shape);
 
@@ -657,7 +693,11 @@ class ShapeUtil {
                                 Shape shape);
 
   // Returns true if `dynamic_shape` has dimensions that are less-equal to the
-  // "bounded_shape".
+  // "bounded_shape". Shapes must be arrays.
+  static bool DynamicArrayShapeIsCompatible(const xla::Shape& dynamic_shape,
+                                            const xla::Shape& bounded_shape);
+
+  // Same as DynamicArrayShapeIsCompatible() but supports tuples.
   static bool DynamicShapeIsCompatible(const xla::Shape& dynamic_shape,
                                        const xla::Shape& bounded_shape);
 
@@ -768,7 +808,20 @@ class ShapeUtil {
   static absl::optional<std::vector<int64>> FindTranspose021(const Shape& a,
                                                              const Shape& b);
 
+  // Strips device-specific information, namely tiling and memory-space
+  // information, from a shape.
+  static Shape DeviceShapeToHostShape(Shape s);
+
+  // Returns true iff element type of shape `from` can be safely upcasted to
+  // element type of shape `to`.
+  static bool ElementCanUpcast(const Shape& from, const Shape& to);
+
  private:
+  // Fills *shape. Returns true on success.
+  // REQUIRES: *shape is empty.
+  static bool FillNewShape(PrimitiveType element_type,
+                           absl::Span<const int64> dimensions, Shape* shape);
+
   // Validates the shape size is sane. This makes sure it's safe to do
   // calculations in int64 without overflowing.
   static Status ValidateShapeSize(const Shape& shape);

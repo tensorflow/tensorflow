@@ -20,7 +20,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/../../../.."
 
 DOWNLOADS_DIR=tensorflow/lite/tools/make/downloads
-BZL_FILE_PATH=tensorflow/workspace.bzl
+BZL_FILE_PATH=tensorflow/tensorflow.bzl
 
 if [[ "${OSTYPE}" == "darwin"* ]]; then
   function sha256sum() { shasum -a 256 "$@" ; }
@@ -33,24 +33,34 @@ if [ ! -f $BZL_FILE_PATH ]; then
   exit 1;
 fi
 
-EIGEN_URL="$(grep -o 'https.*gitlab.com/libeigen/eigen/-/archive/.*tar\.gz' "${BZL_FILE_PATH}" | grep -v mirror.tensorflow | head -n1)"
-EIGEN_SHA="$(eval echo $(grep '# SHARED_EIGEN_SHA' "${BZL_FILE_PATH}" | grep -o '\".*\"'))"
-GEMMLOWP_URL="$(grep -o 'https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/gemmlowp/.*zip' "${BZL_FILE_PATH}" | head -n1)"
-GEMMLOWP_SHA="$(eval echo $(grep '# SHARED_GEMMLOWP_SHA' "${BZL_FILE_PATH}" | grep -o '\".*\"'))"
-RUY_URL="https://github.com/google/ruy/archive/34ea9f4993955fa1ff4eb58e504421806b7f2e8f.zip"
-RUY_SHA="8fd4adeeff4f29796bf7cdda64806ec0495a2435361569f02afe3fe33406f07c"
+EIGEN_WORKSPACE_BZL_PATH="third_party/eigen3/workspace.bzl"
+EIGEN_COMMIT="$(grep -oP 'EIGEN_COMMIT = "\K[0-9a-f]{40}' "${EIGEN_WORKSPACE_BZL_PATH}")"
+EIGEN_URL="https://gitlab.com/libeigen/eigen/-/archive/"${EIGEN_COMMIT}"/eigen-"${EIGEN_COMMIT}".tar.gz"
+EIGEN_SHA="$(grep -oP 'EIGEN_SHA256 = "\K[0-9a-f]{64}' "${EIGEN_WORKSPACE_BZL_PATH}")"
+GEMMLOWP_WORKSPACE_BZL_PATH="third_party/gemmlowp/workspace.bzl"
+GEMMLOWP_COMMIT="$(grep -oP 'GEMMLOWP_COMMIT = "\K[0-9a-f]{40}' "${GEMMLOWP_WORKSPACE_BZL_PATH}")"
+GEMMLOWP_URL="https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/gemmlowp/archive/"${GEMMLOWP_COMMIT}".zip"
+GEMMLOWP_SHA="$(grep -oP 'GEMMLOWP_SHA256 = "\K[0-9a-f]{64}' "${GEMMLOWP_WORKSPACE_BZL_PATH}")"
+RUY_URL="https://github.com/google/ruy/archive/54774a7a2cf85963777289193629d4bd42de4a59.zip"
+RUY_SHA="da5ec0cc07472bdb21589b0b51c8f3d7f75d2ed6230b794912adf213838d289a"
 GOOGLETEST_URL="https://github.com/google/googletest/archive/release-1.8.0.tar.gz"
 GOOGLETEST_SHA="58a6f4277ca2bc8565222b3bbd58a177609e9c488e8a72649359ba51450db7d8"
-ABSL_URL="$(grep -o 'https://github.com/abseil/abseil-cpp/.*tar.gz' "${BZL_FILE_PATH}" | head -n1)"
-ABSL_SHA="$(eval echo $(grep '# SHARED_ABSL_SHA' "${BZL_FILE_PATH}" | grep -o '\".*\"'))"
+ABSL_WORKSPACE_BZL_PATH="third_party/absl/workspace.bzl"
+ABSL_COMMIT="$(grep -oP 'ABSL_COMMIT = "\K[0-9a-f]{40}' "${ABSL_WORKSPACE_BZL_PATH}")"
+ABSL_URL="https://storage.googleapis.com/mirror.tensorflow.org/github.com/abseil/abseil-cpp/archive/"${ABSL_COMMIT}".tar.gz"
+ABSL_SHA="$(grep -oP 'ABSL_SHA256 = "\K[0-9a-f]{64}' "${ABSL_WORKSPACE_BZL_PATH}")"
 NEON_2_SSE_URL="https://github.com/intel/ARM_NEON_2_x86_SSE/archive/master.zip"
-FARMHASH_URL="https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/farmhash/archive/816a4ae622e964763ca0862d9dbd19324a1eaf45.tar.gz"
-FARMHASH_SHA="$(eval echo $(grep '# SHARED_FARMHASH_SHA' "${BZL_FILE_PATH}" | grep -o '\".*\"'))"
+FARMHASH_WORKSPACE_BZL_PATH="third_party/farmhash/workspace.bzl"
+FARMHASH_COMMIT="$(grep -oP 'FARMHASH_COMMIT = "\K[0-9a-f]{40}' "${FARMHASH_WORKSPACE_BZL_PATH}")"
+FARMHASH_URL="https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/farmhash/archive/"${FARMHASH_COMMIT}".tar.gz"
+FARMHASH_SHA="$(grep -oP 'FARMHASH_SHA256 = "\K[0-9a-f]{64}' "${FARMHASH_WORKSPACE_BZL_PATH}")"
 FLATBUFFERS_URL="https://github.com/google/flatbuffers/archive/v1.12.0.tar.gz"
 FLATBUFFERS_SHA="62f2223fb9181d1d6338451375628975775f7522185266cd5296571ac152bc45"
 FFT2D_URL="https://storage.googleapis.com/mirror.tensorflow.org/www.kurims.kyoto-u.ac.jp/~ooura/fft2d.tgz"
 FP16_URL="https://github.com/Maratyszcza/FP16/archive/febbb1c163726b5db24bed55cc9dc42529068997.zip"
 FFT2D_SHA="ada7e99087c4ed477bfdf11413f2ba8db8a840ba9bbf8ac94f4f3972e2a7cec9"
+CPUINFO_URL="https://github.com/pytorch/cpuinfo/archive/c2092219e7c874783a00a62edb94ddc672f57ab3.zip"
+CPUINFO_SHA="ea56c399a4f6ca5f749e71acb6a7bfdc653eb65d8f658cb2e414a2fcdca1fe8b"
 # TODO(petewarden): Some new code in Eigen triggers a clang bug with iOS arm64,
 #                   so work around it by patching the source.
 replace_by_sed() {
@@ -115,6 +125,7 @@ download_and_extract "${FARMHASH_URL}" "${DOWNLOADS_DIR}/farmhash" "${FARMHASH_S
 download_and_extract "${FLATBUFFERS_URL}" "${DOWNLOADS_DIR}/flatbuffers" "${FLATBUFFERS_SHA}"
 download_and_extract "${FFT2D_URL}" "${DOWNLOADS_DIR}/fft2d" "${FFT2D_SHA}"
 download_and_extract "${FP16_URL}" "${DOWNLOADS_DIR}/fp16"
+download_and_extract "${CPUINFO_URL}" "${DOWNLOADS_DIR}/cpuinfo"
 
 replace_by_sed 's#static uint32x4_t p4ui_CONJ_XOR = vld1q_u32( conj_XOR_DATA );#static uint32x4_t p4ui_CONJ_XOR; // = vld1q_u32( conj_XOR_DATA ); - Removed by script#' \
   "${DOWNLOADS_DIR}/eigen/Eigen/src/Core/arch/NEON/Complex.h"

@@ -33,7 +33,6 @@ limitations under the License.
 // Windows defines the following macros to convert foo to fooA or fooW,
 // depending on the type of the string argument. We don't use these macros, so
 // undefine them here.
-#undef LoadLibrary
 #undef CopyFile
 #undef DeleteFile
 #undef TranslateName

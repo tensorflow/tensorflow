@@ -26,7 +26,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import benchmark
@@ -38,10 +37,10 @@ class InverseOpTest(test.TestCase):
   def _verifyInverse(self, x, np_type):
     for adjoint in False, True:
       y = x.astype(np_type)
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         # Verify that x^{-1} * x == Identity matrix.
         inv = linalg_ops.matrix_inverse(y, adjoint=adjoint)
-        tf_ans = math_ops.matmul(inv, y, adjoint_b=adjoint)
+        tf_ans = test_util.matmul_without_tf32(inv, y, adjoint_b=adjoint)
         np_ans = np.identity(y.shape[-1])
         if x.ndim > 2:
           tiling = list(y.shape)
@@ -140,7 +139,7 @@ class InverseOpTest(test.TestCase):
 
   @test_util.deprecated_graph_mode_only
   def testConcurrentExecutesWithoutError(self):
-    with self.session(use_gpu=True) as sess:
+    with self.session() as sess:
       all_ops = []
       for adjoint_ in True, False:
         matrix1 = random_ops.random_normal([5, 5], seed=42)
@@ -186,7 +185,7 @@ class MatrixInverseBenchmark(test.Benchmark):
             ops.device("/cpu:0"):
           matrix = self._GenerateMatrix(shape)
           inv = linalg_ops.matrix_inverse(matrix, adjoint=adjoint)
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(inv),
@@ -200,7 +199,7 @@ class MatrixInverseBenchmark(test.Benchmark):
               ops.device("/gpu:0"):
             matrix = self._GenerateMatrix(shape)
             inv = linalg_ops.matrix_inverse(matrix, adjoint=adjoint)
-            variables.global_variables_initializer().run()
+            self.evaluate(variables.global_variables_initializer())
             self.run_op_benchmark(
                 sess,
                 control_flow_ops.group(inv),

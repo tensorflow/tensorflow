@@ -56,6 +56,18 @@ class HloReachabilityMap {
   static std::unique_ptr<HloReachabilityMap> Build(
       const HloComputation* computation);
 
+  // Similar to the above Build operation except that it tries to identify
+  // paths between instructions that do not contain control instructions
+  // and multiple operands, i.e., b is_reachable a == true iff
+  // b = f(f(f(f(f(a), constant), constant), constant).
+  // Further, the only ops allowed in a path are basic math operations such
+  // as add, sub, mul, div.
+  static std::unique_ptr<HloReachabilityMap> BuildWithRestrictions(
+      const HloComputation* computation,
+      absl::FunctionRef<void(const HloInstruction*,
+                             std::vector<HloInstruction*>*)>
+          add_dependencies);
+
   // Set the reachability set of 'instruction' to the union of the reachability
   // sets of 'inputs'. Upon return, IsReachable(x, instruction) where
   // 'x' is not 'instruction' will return true iff IsReachable(x, input) is true
@@ -74,13 +86,34 @@ class HloReachabilityMap {
       absl::Span<const HloInstruction* const> inputs,
       const HloInstruction* instruction);
 
+  // An opaque index that clients can use to make repeated operations for the
+  // same instruction faster, by calling GetIndex once for the instruction,
+  // and then calling the variants of other interfaces that take Index arguments
+  // rather than HloInstruction* arguments.
+  struct Index {
+   private:
+    friend class HloReachabilityMap;
+
+    // Index assigned for a particular instruction.  The value is used to index
+    // into the vector of BitVectors and the BitVectors themselves.
+    int v;
+  };
+  Index GetIndex(const HloInstruction* instruction) const {
+    Index i;
+    i.v = FindOrDie(indices_, GetKey(instruction));
+    return i;
+  }
+
   // Sets entry so that IsReachable(a, b) will return true
   //
   // !!! THIS FUNCTION DOES NOT COMPUTE REACHABILITY !!! It sets the adjacency
   // matrix in the internal graph of this HloReachabilityMap to have an edge
   // from a to b and does not transitively update any other part of the
   // adjacency matrix.
-  void SetReachable(const HloInstruction* a, const HloInstruction* b);
+  void SetReachable(const HloInstruction* a, const HloInstruction* b) {
+    SetReachable(GetIndex(a), GetIndex(b));
+  }
+  void SetReachable(Index a, Index b);
 
   // Updates the given reachability map after the immediate predecessor set
   // (operands and control predecessors) of 'instruction' has changed.
@@ -90,13 +123,21 @@ class HloReachabilityMap {
   //
   // Note that this function only correctly answers queries about reachability
   // if the set of edges that have been provided to this class are transitive.
-  bool IsReachable(const HloInstruction* a, const HloInstruction* b) const;
+  bool IsReachable(const HloInstruction* a, const HloInstruction* b) const {
+    return IsReachable(GetIndex(a), GetIndex(b));
+  }
+  bool IsReachable(Index a, Index b) const { return GetBitVector(b).Get(a.v); }
 
   // Returns true if "b" is reachable from "a" or "a" is reachable from "b"
   //
   // Note that this function only correctly answers queries about reachability
   // if the set of edges that have been provided to this class are transitive.
-  bool IsConnected(const HloInstruction* a, const HloInstruction* b) const;
+  bool IsConnected(const HloInstruction* a, const HloInstruction* b) const {
+    return IsConnected(GetIndex(a), GetIndex(b));
+  }
+  bool IsConnected(Index a, Index b) const {
+    return IsReachable(a, b) || IsReachable(b, a);
+  }
 
   // Checks if an instruction is in the Reachability map.
   bool IsPresent(const HloInstruction* a) const {
@@ -158,11 +199,16 @@ class HloReachabilityMap {
 
   // Return the bitvector storing the reachability-to of the given instruction.
   const BitVector& GetBitVector(const HloInstruction* instruction) const {
-    return bit_vectors_[GetIndex(instruction)];
+    return GetBitVector(GetIndex(instruction));
   }
   BitVector& GetBitVector(const HloInstruction* instruction) {
-    return bit_vectors_[GetIndex(instruction)];
+    return GetBitVector(GetIndex(instruction));
   }
+
+  const BitVector& GetBitVector(Index index) const {
+    return bit_vectors_[index.v];
+  }
+  BitVector& GetBitVector(Index index) { return bit_vectors_[index.v]; }
 
   // Helper for SetReachabilityToUnion/FastSetReachabilityToUnion.
   void SetReachabilityToUnionHelper(
@@ -175,9 +221,8 @@ class HloReachabilityMap {
         absl::bit_cast<uint32>(instruction->parent()->parent()->unique_id());
     return (module_id << 32) | unique_id;
   }
-  // Return the index of the given instruction. The value is used to index into
-  // the vector of BitVectors and the BitVectors themselves.
-  int GetIndex(const HloInstruction* instruction) const {
+  // Return the index of the given instruction.
+  int GetIndexInternal(const HloInstruction* instruction) const {
     return FindOrDie(indices_, GetKey(instruction));
   }
 

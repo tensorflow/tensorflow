@@ -131,7 +131,7 @@ REGISTER_OP("BatchMatMulV2")
     .Input("y: T")
     .Output("output: T")
     .Attr(
-        "T: {bfloat16, half, float, double, int32, int64, complex64, "
+        "T: {bfloat16, half, float, double, int16, int32, int64, complex64, "
         "complex128}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
@@ -201,12 +201,12 @@ REGISTER_OP("ComplexAbs")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 // Declares cwise unary operations signature: 't -> 't
-#define UNARY()                                                          \
-  Input("x: T")                                                          \
-      .Output("y: T")                                                    \
-      .Attr(                                                             \
-          "T: {bfloat16, half, float, double, int32, int64, complex64, " \
-          "complex128}")                                                 \
+#define UNARY()                                                            \
+  Input("x: T")                                                            \
+      .Output("y: T")                                                      \
+      .Attr(                                                               \
+          "T: {bfloat16, half, float, double, int8, int16, int32, int64, " \
+          "complex64, complex128}")                                        \
       .SetShapeFn(shape_inference::UnchangedShape)
 
 #define UNARY_REAL()                              \
@@ -297,10 +297,6 @@ REGISTER_OP("Acos").UNARY();
 
 REGISTER_OP("Atan").UNARY();
 
-REGISTER_OP("BesselI0e").UNARY_REAL();
-
-REGISTER_OP("BesselI1e").UNARY_REAL();
-
 REGISTER_OP("_UnaryOpsComposition")
     .Input("x: T")
     .Output("y: T")
@@ -365,7 +361,7 @@ REGISTER_OP("Rint")
 #define BINARY_MORE()                                                          \
   Input("x: T").Input("y: T").Output("z: T").Attr(                             \
       "T: {bfloat16, half, float, double, uint8, int8, uint16, int16, int32, " \
-      "int64, complex64, complex128}")
+      "uint32, uint64, int64, complex64, complex128}")
 
 #define BINARY_FEWER()                                               \
   Input("x: T").Input("y: T").Output("z: T").Attr(                   \
@@ -386,8 +382,8 @@ REGISTER_OP("AddV2")
     .Input("y: T")
     .Output("z: T")
     .Attr(
-        "T: {bfloat16, half, float, double, uint8, int8, int16, int32, int64, "
-        "complex64, complex128}")
+        "T: {bfloat16, half, float, double, uint8, uint16, uint32, uint64, "
+        "int8, int16, int32, int64, complex64, complex128}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .SetIsAggregate()
     .SetIsCommutative();
@@ -437,7 +433,7 @@ REGISTER_OP("Sub")
     .Output("z: T")
     .Attr(
         "T: {bfloat16, half, float, double, uint8, int8, uint16, int16, int32, "
-        "int64, complex64, complex128, uint32}")
+        "int64, complex64, complex128, uint32, uint64}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("_MklSub")
@@ -498,6 +494,7 @@ REGISTER_OP("TruncateDiv")
 REGISTER_OP("RealDiv").BINARY_MORE().SetShapeFn(
     shape_inference::BroadcastBinaryOpShapeFn);
 
+// Note SquaredDifference implements conj(x - y)*(x - y).
 REGISTER_OP("SquaredDifference")
     .BINARY_FEWER()
     .SetIsCommutative()
@@ -545,7 +542,9 @@ REGISTER_OP("Maximum")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {bfloat16, half, float, double, uint8, int16, int32, int64}")
+    .Attr(
+        "T: {bfloat16, half, float, double, int8, int16, int32, int64, "
+        "uint8, uint16, uint32, uint64}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 // Note: This op is not commutative w.r.t. to all its inputs.
@@ -598,8 +597,8 @@ REGISTER_OP("Pow")
     .Input("y: T")
     .Output("z: T")
     .Attr(
-        "T: {bfloat16, float, half, double, int32, int64, complex64, "
-        "complex128}")
+        "T: {bfloat16, float, half, double, int8, int16, int32, int64, "
+        "complex64, complex128}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("Igammac")
@@ -706,27 +705,24 @@ REGISTER_OP("GreaterEqual").COMPARISON();
 
 // --------------------------------------------------------------------------
 
-#define EQUALITY_COMPARISON()                                              \
-  Input("x: T")                                                            \
-      .Input("y: T")                                                       \
-      .Output("z: bool")                                                   \
-      .SetIsCommutative()                                                  \
-      .Attr(                                                               \
-          "T: {bfloat16, half, float, double, uint8, int8, int16, int32, " \
-          "int64, uint16, uint32, uint64, complex64, "                     \
-          "quint8, qint8, qint32, string, bool, complex128}")              \
-      .Attr("incompatible_shape_error: bool = true")                       \
-      .SetShapeFn([](InferenceContext* c) {                                \
-        ShapeHandle x = c->input(0);                                       \
-        ShapeHandle y = c->input(1);                                       \
-        ShapeHandle output;                                                \
-        bool incompatible_shape_error;                                     \
-        TF_RETURN_IF_ERROR(c->GetAttr("incompatible_shape_error",          \
-                                      &incompatible_shape_error));         \
-        TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(           \
-            c, x, y, incompatible_shape_error, &output));                  \
-        c->set_output(0, output);                                          \
-        return Status::OK();                                               \
+#define EQUALITY_COMPARISON()                                      \
+  Input("x: T")                                                    \
+      .Input("y: T")                                               \
+      .Output("z: bool")                                           \
+      .SetIsCommutative()                                          \
+      .Attr("T: type")                                             \
+      .Attr("incompatible_shape_error: bool = true")               \
+      .SetShapeFn([](InferenceContext* c) {                        \
+        ShapeHandle x = c->input(0);                               \
+        ShapeHandle y = c->input(1);                               \
+        ShapeHandle output;                                        \
+        bool incompatible_shape_error;                             \
+        TF_RETURN_IF_ERROR(c->GetAttr("incompatible_shape_error",  \
+                                      &incompatible_shape_error)); \
+        TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(   \
+            c, x, y, incompatible_shape_error, &output));          \
+        c->set_output(0, output);                                  \
+        return Status::OK();                                       \
       })
 
 REGISTER_OP("Equal").EQUALITY_COMPARISON();
@@ -955,15 +951,13 @@ REGISTER_OP("_FusedMatMul")
     .Output("product: T")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
-#if defined(INTEL_MKL) && defined(ENABLE_INTEL_MKL_BFLOAT16)
     .Attr("T: {bfloat16, float}")
-#else
-    .Attr("T: {float}")
-#endif
     .Attr("num_args: int >= 0")
     .Attr("fused_ops: list(string) = []")
     // Attributes for the FusedBatchNorm ----------- //
     .Attr("epsilon: float = 0.0001")
+    // Attributes for the LeakyRelu ---------------- //
+    .Attr("leakyrelu_alpha: float = 0.2")
     // --------------------------------------------- //
     .SetShapeFn(shape_inference::MatMulShape)
     .Doc(R"doc(
@@ -1033,7 +1027,7 @@ REGISTER_OP("Min")
     .Input("reduction_indices: Tidx")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
-    .Attr("T: numbertype")
+    .Attr("T: {realnumbertype, quantizedtype}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::ReductionShape);
 
@@ -1042,7 +1036,7 @@ REGISTER_OP("Max")
     .Input("reduction_indices: Tidx")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
-    .Attr("T: numbertype")
+    .Attr("T: {realnumbertype, quantizedtype}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::ReductionShape);
 
@@ -1450,9 +1444,11 @@ Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
   }
 
   auto size = (std::is_integral<T>::value
-                   ? ((std::abs(limit - start) + std::abs(delta) - T(1)) /
-                      std::abs(delta))
-                   : (std::ceil(std::abs((limit - start) / delta))));
+                   ? ((Eigen::numext::abs(limit - start) +
+                       Eigen::numext::abs(delta) - T(1)) /
+                      Eigen::numext::abs(delta))
+                   : (Eigen::numext::ceil(
+                         Eigen::numext::abs((limit - start) / delta))));
   c->set_output(0, c->Vector(static_cast<int64>(size)));
   return Status::OK();
 }
@@ -1464,7 +1460,9 @@ REGISTER_OP("Range")
     .Input("limit: Tidx")
     .Input("delta: Tidx")
     .Output("output: Tidx")
-    .Attr("Tidx: {bfloat16, half, float, double, int32, int64} = DT_INT32")
+    .Attr(
+        "Tidx: {bfloat16, half, float, double, int8, int16, int32, int64} = "
+        "DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(0), 0, &unused),
@@ -1484,6 +1482,10 @@ REGISTER_OP("Range")
       }
       if (dtype == DT_INT32) {
         return RangeSize<int32>(start_t, limit_t, delta_t, c);
+      } else if (dtype == DT_INT16) {
+        return RangeSize<int16>(start_t, limit_t, delta_t, c);
+      } else if (dtype == DT_INT8) {
+        return RangeSize<int8>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_INT64) {
         return RangeSize<int64>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_FLOAT) {

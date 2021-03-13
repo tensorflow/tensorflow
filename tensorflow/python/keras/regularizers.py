@@ -31,7 +31,7 @@ from tensorflow.python.util.tf_export import keras_export
 
 
 def _check_penalty_number(x):
-  """check penalty number availability, raise ValueError if failed"""
+  """check penalty number availability, raise ValueError if failed."""
   if not isinstance(x, (float, int)):
     raise ValueError(('Value: {} is not a valid regularization penalty number, '
                       'expected an int or float value').format(x))
@@ -41,6 +41,10 @@ def _check_penalty_number(x):
         ('Value: {} is not a valid regularization penalty number, '
          'a positive/negative infinity or NaN is not a property value'
         ).format(x))
+
+
+def _none_to_default(inputs, default):
+  return default if inputs is None else default
 
 
 @keras_export('keras.regularizers.Regularizer')
@@ -179,7 +183,7 @@ class Regularizer(object):
     loading models to HDF5 formats, Keras model cloning, some visualization
     utilities, and exporting models to and from JSON.
 
-    Arguments:
+    Args:
         config: A Python dictionary, typically the output of get_config.
 
     Returns:
@@ -230,6 +234,11 @@ class L1L2(Regularizer):
   """
 
   def __init__(self, l1=0., l2=0.):  # pylint: disable=redefined-outer-name
+    # The default value for l1 and l2 are different from the value in l1_l2
+    # for backward compatibility reason. Eg, L1L2(l2=0.1) will only have l2
+    # and no l1 penalty.
+    l1 = 0. if l1 is None else l1
+    l2 = 0. if l2 is None else l2
     _check_penalty_number(l1)
     _check_penalty_number(l2)
 
@@ -270,6 +279,7 @@ class L1(Regularizer):
     if kwargs:
       raise TypeError('Argument(s) not recognized: %s' % (kwargs,))
 
+    l1 = 0.01 if l1 is None else l1
     _check_penalty_number(l1)
 
     self.l1 = backend.cast_to_floatx(l1)
@@ -303,6 +313,7 @@ class L2(Regularizer):
     if kwargs:
       raise TypeError('Argument(s) not recognized: %s' % (kwargs,))
 
+    l2 = 0.01 if l2 is None else l2
     _check_penalty_number(l2)
 
     self.l2 = backend.cast_to_floatx(l2)
@@ -324,7 +335,7 @@ def l1_l2(l1=0.01, l2=0.01):  # pylint: disable=redefined-outer-name
   The L2 regularization penalty is computed as:
   `loss = l2 * reduce_sum(square(x))`
 
-  Arguments:
+  Args:
       l1: Float; L1 regularization factor.
       l2: Float; L2 regularization factor.
 

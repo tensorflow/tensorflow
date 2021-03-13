@@ -18,9 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests import sql_dataset_test_base
+from tensorflow.python.data.experimental.ops import readers
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
@@ -517,6 +521,27 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase,
     self.assertAllEqual(self.evaluate(get_next()), [2])
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
+
+
+class SqlDatasetCheckpointTest(sql_dataset_test_base.SqlDatasetTestBase,
+                               checkpoint_test_base.CheckpointTestBase,
+                               parameterized.TestCase):
+
+  def _build_dataset(self, num_repeats):
+    data_source_name = os.path.join(test.get_temp_dir(), "tftest.sqlite")
+    driver_name = array_ops.placeholder_with_default(
+        array_ops.constant("sqlite", dtypes.string), shape=[])
+    query = ("SELECT first_name, last_name, motto FROM students ORDER BY "
+             "first_name DESC")
+    output_types = (dtypes.string, dtypes.string, dtypes.string)
+    return readers.SqlDataset(driver_name, data_source_name, query,
+                              output_types).repeat(num_repeats)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCore(self):
+    num_repeats = 4
+    num_outputs = num_repeats * 2
+    self.run_core_tests(lambda: self._build_dataset(num_repeats), num_outputs)
 
 
 if __name__ == "__main__":

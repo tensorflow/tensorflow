@@ -4,8 +4,9 @@ func @main(tensor<1x384xf32>, tensor<1x96xf32>, tensor<384x480xf32>, tensor<384x
 // CHECK: {
 // CHECK-NEXT:  version: 3,
 // CHECK-NEXT:  operator_codes: [ {
-// CHECK-NEXT:    builtin_code: LSTM,
+// CHECK-NEXT:    deprecated_builtin_code: 16,
 // CHECK-NEXT:    version: 2
+// CHECK-NEXT:    builtin_code: LSTM
 // CHECK-NEXT:  } ],
 // CHECK-NEXT:  subgraphs: [ {
 // CHECK-NEXT:    tensors: [ {
@@ -83,7 +84,8 @@ func @main(tensor<1x384xf32>, tensor<1x96xf32>, tensor<384x480xf32>, tensor<384x
 // CHECK-NEXT:        cell_clip: 1.0,
 // CHECK-NEXT:        proj_clip: 2.0,
 // CHECK-NEXT:        kernel_type: BASIC
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      intermediates: [ ]
 // CHECK-NEXT:    } ],
 // CHECK-NEXT:    name: "main"
 // CHECK-NEXT:  } ],
@@ -115,6 +117,7 @@ func @main(tensor<1x384xf32>, tensor<1x96xf32>, tensor<384x480xf32>, tensor<384x
 // CHECK-NEXT:  name: "min_runtime_version",
 // CHECK-NEXT:  buffer: 10
 // CHECK-NEXT:  } ]
+// CHECK-NEXT:  signature_defs: [ ]
 // CHECK-NEXT:}
 
 ^bb0(%arg0: tensor<1x384xf32>, %arg1: tensor<1x96xf32>, %arg2: tensor<384x480xf32>, %arg3: tensor<384xf32>, %arg4: tensor<1x96xf32>):

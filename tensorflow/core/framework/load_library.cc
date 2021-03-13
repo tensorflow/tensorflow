@@ -21,9 +21,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mem.h"
-#if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/tpu/tpu_library_loader.h"
-#endif  // IS_MOBILE_PLATFORM
 
 namespace tensorflow {
 
@@ -46,8 +43,8 @@ struct Library {
 // and OpList. Ops and kernels are registered as globals when a library is
 // loaded for the first time. Without caching, every subsequent load would not
 // perform initialization again, so the OpList would be empty.
-Status LoadLibrary(const char* library_filename, void** result,
-                   const void** buf, size_t* len) {
+Status LoadDynamicLibrary(const char* library_filename, void** result,
+                          const void** buf, size_t* len) {
   static mutex mu(LINKER_INITIALIZED);
   static std::unordered_map<string, Library> loaded_libs;
   Env* env = Env::Default();
@@ -79,7 +76,7 @@ Status LoadLibrary(const char* library_filename, void** result,
             return s;
           }));
       OpRegistry::Global()->DeferRegistrations();
-      s = env->LoadLibrary(library_filename, &library.handle);
+      s = env->LoadDynamicLibrary(library_filename, &library.handle);
       if (s.ok()) {
         s = OpRegistry::Global()->ProcessRegistrations();
       }
@@ -99,17 +96,6 @@ Status LoadLibrary(const char* library_filename, void** result,
   memcpy(str_buf, str.data(), str.length());
   *buf = str_buf;
   *len = str.length();
-
-#if !defined(IS_MOBILE_PLATFORM)
-  // Determine if this library is a TPU library, and if so, calls the TPU
-  // initialization functions to populate function tables, etc...
-  void* unused_symbol;
-  if (env->GetSymbolFromLibrary(library.handle, "TfTpu_Initialize",
-                                &unused_symbol)
-          .ok()) {
-    TF_RETURN_IF_ERROR(tensorflow::tpu::InitializeTpuLibrary(library.handle));
-  }
-#endif  // IS_MOBILE_PLATFORM
 
   *result = library.handle;
   return Status::OK();

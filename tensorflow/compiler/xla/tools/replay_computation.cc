@@ -61,8 +61,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
-#include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -86,7 +84,7 @@ namespace {
 // Command-line opts to this tool.  See main() for descriptions of these
 // fields.
 struct Options {
-  Options() : intra_op_thread_pool_size(tensorflow::port::MaxParallelism()) {}
+  Options() {}
 
   bool NeedsRealData() const { return !use_fake_data && !compile_only; }
 
@@ -106,7 +104,7 @@ struct Options {
   bool print_result = true;
   int num_runs = 1;
 
-  int intra_op_thread_pool_size;
+  int intra_op_thread_pool_size = -1;
 
   bool compile_only = false;
 };
@@ -173,7 +171,7 @@ absl::optional<Shape> GetXfeedShape(bool is_infeed,
   if (!fake_xfeed_shape.empty()) {
     xfeed_shape = std::move(ParseShape(fake_xfeed_shape)).ValueOrDie();
   } else if (generate_fake_xfeed) {
-    CHECK_LT(xfeed_instrs.size(), 2)
+    QCHECK_LT(xfeed_instrs.size(), 2)
         << "--generate_fake_" << xfeed_name
         << " only works if the model has 0 or 1 " << xfeed_name << " ops.";
     if (xfeed_instrs.empty()) {
@@ -196,7 +194,7 @@ absl::optional<Shape> GetXfeedShape(bool is_infeed,
                  << " ops, but this model has " << xfeed_instrs.size()
                  << " of them:";
       log_xfeed_instrs();
-      LOG(FATAL) << "Can't run model with --generate_fake_infeed.";
+      LOG(QFATAL) << "Can't run model with --generate_fake_infeed.";
     }
   } else if (!xfeed_instrs.empty()) {
     LOG(ERROR) << "Model contains " << xfeed_instrs.size() << " " << xfeed_name
@@ -233,8 +231,15 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   if (opts.use_fake_data) {
     // Run fake computations with debug options ignoring XLA_FLAGS.  Users very
     // likely want XLA_FLAGS only to apply to the "real" computation being run,
-    // not to the fake computations we use for generating arguments.
+    // not to the fake computations we use for generating arguments. There is
+    // an exception. ptxas can be called during the generation of fake
+    // data. As it is cached in the process memory, the flag affecting this call
+    // should not be ignored.
+    auto debug_opts_flags = GetDebugOptionsFromFlags();
     auto debug_opts = DefaultDebugOptionsIgnoringFlags();
+    debug_opts.set_xla_gpu_asm_extra_flags(
+        debug_opts_flags.xla_gpu_asm_extra_flags());
+
     global_data_arguments =
         MakeFakeArgumentsOrDie(computation, client, &debug_opts);
     for (const auto& data : global_data_arguments) {
@@ -255,38 +260,14 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
     }
   }
 
+  std::shared_ptr<Literal> infeed_data;
   if (absl::optional<Shape> infeed_shape = GetXfeedShape(
           /*is_infeed=*/true, computation.proto(), opts)) {
-    auto infeed_data = std::make_shared<Literal>(
+    infeed_data = std::make_shared<Literal>(
         std::move(MakeFakeLiteral(*infeed_shape)).ValueOrDie());
-    xla::gpu::GetOrCreateInfeedManager()
-        ->RegisterBeforeGetNextDestinationCallback([infeed_data, client] {
-          TF_CHECK_OK(client->TransferToInfeed(*infeed_data));
-        });
   }
-
-  absl::optional<tensorflow::thread::ThreadPool> outfeed_thread_pool;
-  if (absl::optional<Shape> outfeed_shape = GetXfeedShape(
-          /*is_infeed=*/false, computation.proto(), opts)) {
-    // For each an outfeed that runs, enqueue a task that will consume it.  We
-    // need a thread pool because the act of running an outfeed blocks on there
-    // being a destination available, and the act of making a destination
-    // available blocks on there being outfeed data available.
-    outfeed_thread_pool.emplace(tensorflow::Env::Default(), "infeed",
-                                /*num_threads=*/1);
-    auto consume_outfeed = [client, outfeed_shape] {
-      TF_CHECK_OK(
-          client->TransferFromOutfeedLocal(*outfeed_shape, /*device_ordinal=*/0)
-              .status());
-      VLOG(1) << "Received outfeed data of shape "
-              << ShapeUtil::HumanStringWithLayout(*outfeed_shape);
-    };
-    xla::gpu::GetOrCreateOutfeedManager()
-        ->RegisterBeforeGetNextDestinationCallback(
-            [consume_outfeed, &outfeed_thread_pool] {
-              outfeed_thread_pool->Schedule(consume_outfeed);
-            });
-  }
+  absl::optional<Shape> outfeed_shape =
+      GetXfeedShape(/*is_infeed=*/false, computation.proto(), opts);
 
   // Do not attempt to run the executable if num_runs is less than 1.
   if (opts.num_runs < 1) {
@@ -300,6 +281,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
       client->platform(),
       {client->platform()->ExecutorForDevice(0).ValueOrDie()});
   absl::optional<ScopedShapedBuffer> final_result;
+  LOG(ERROR) << "Running " << opts.num_runs << " number of times\n";
   for (int i = 0; i < opts.num_runs; ++i) {
     // If xla_hlo_profile is enabled, print a noisy message before the last run,
     // making it easier to separate this profile from the others in the logspam.
@@ -307,8 +289,11 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
     if (xla_hlo_profile && is_final_result) {
       LOG(INFO) << "\n\n***** Final run below ******";
     }
+    int thread_pool_size = opts.intra_op_thread_pool_size < 0
+                               ? tensorflow::port::MaxParallelism()
+                               : opts.intra_op_thread_pool_size;
     tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "XLAEigen",
-                                        opts.intra_op_thread_pool_size);
+                                        thread_pool_size);
     Eigen::ThreadPoolDevice thread_pool(pool.AsEigenThreadPool(),
                                         pool.NumThreads());
 
@@ -317,6 +302,23 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
     run_options.set_execution_profile(&profile);
     run_options.set_allocator(&allocator);
     run_options.set_intra_op_thread_pool(&thread_pool);
+
+    if (infeed_data) {
+      TF_CHECK_OK(client->TransferToInfeed(*infeed_data));
+    }
+    std::unique_ptr<tensorflow::Thread> outfeed_drain_thread;
+    if (outfeed_shape) {
+      // TransferFromOutfeedLocal blocks till the outfeed is available, so do
+      // it asynchronously separate thread.
+      outfeed_drain_thread.reset(tensorflow::Env::Default()->StartThread(
+          tensorflow::ThreadOptions(), "outfeed_drain_thread", [&] {
+            Literal outfeed(*outfeed_shape);
+            TF_CHECK_OK(client->TransferFromOutfeedLocal(/*device_ordinal=*/0,
+                                                         &outfeed));
+            VLOG(1) << "Received outfeed data of shape "
+                    << ShapeUtil::HumanStringWithLayout(*outfeed_shape);
+          }));
+    }
 
     TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
                         executable->Run(argument_ptrs, run_options));
@@ -359,10 +361,10 @@ StatusOr<std::vector<HloSnapshot>> ParseRecordIoFile(absl::string_view filename,
       LOG(ERROR) << "Encountered bad proto";
     }
   }
-  CHECK(!snapshots.empty())
+  QCHECK(!snapshots.empty())
       << "No proto is successfully parsed from the file - the file possibly "
          "has a mismatched compression option, format, etc.";
-  CHECK(!opts.NeedsRealData())
+  QCHECK(!opts.NeedsRealData())
       << "Without --use_fake_data or --compile_only, you must pass an "
          "HloSnapshot -- HloProto and textual HLO don't carry real data.";
   return snapshots;
@@ -380,7 +382,7 @@ StatusOr<HloSnapshot> ParseSingleHloFile(const string& filename,
   if (s.code() == tensorflow::error::NOT_FOUND) {
     return s;
   }
-  CHECK(!opts.NeedsRealData())
+  QCHECK(!opts.NeedsRealData())
       << "Without --use_fake_data or --compile_only, you must pass an "
          "HloSnapshot -- HloProto and textual HLO don't carry real data.";
   fprintf(stderr, "%s: is not HloSnapshot. Trying HloProto.\n",

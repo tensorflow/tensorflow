@@ -38,9 +38,11 @@ export TF_ENABLE_XLA=0
 
 yes '' | ./configure
 
-# Fix for curl build problem in 32-bit, see https://stackoverflow.com/questions/35181744/size-of-array-curl-rule-01-is-negative
-sudo sed -i 's/define CURL_SIZEOF_LONG 8/define CURL_SIZEOF_LONG 4/g' /usr/include/curl/curlbuild.h
-sudo sed -i 's/define CURL_SIZEOF_CURL_OFF_T 8/define CURL_SIZEOF_CURL_OFF_T 4/g' /usr/include/curl/curlbuild.h
+if [[ $1 != "AARCH64" ]]; then
+  # Fix for curl build problem in 32-bit, see https://stackoverflow.com/questions/35181744/size-of-array-curl-rule-01-is-negative
+  sudo sed -i 's/define CURL_SIZEOF_LONG 8/define CURL_SIZEOF_LONG 4/g' /usr/include/curl/curlbuild.h
+  sudo sed -i 's/define CURL_SIZEOF_CURL_OFF_T 8/define CURL_SIZEOF_CURL_OFF_T 4/g' /usr/include/curl/curlbuild.h
+fi
 
 # The system-installed OpenSSL headers get pulled in by the latest BoringSSL
 # release on this configuration, so move them before we build:
@@ -79,6 +81,7 @@ if [[ $1 == "PI_ONE" ]]; then
   make PREFIX=${OPENBLAS_INSTALL_PATH} install
 
   PI_COPTS="--copt=-march=armv6 --copt=-mfpu=vfp
+  --cpu=armeabi --crosstool_top=@local_config_arm_compiler//:toolchain
   --copt=-DUSE_GEMM_FOR_CONV --copt=-DUSE_OPENBLAS
   --copt=-isystem --copt=${OPENBLAS_INSTALL_PATH}/include/
   --copt=-std=gnu11 --copt=-DS_IREAD=S_IRUSR --copt=-DS_IWRITE=S_IWUSR
@@ -87,8 +90,15 @@ if [[ $1 == "PI_ONE" ]]; then
   --linkopt=-l:libopenblas.a"
   echo "Building for the Pi One/Zero, with no NEON support"
   WHEEL_ARCH=linux_armv6l
+elif [[ $1 == "AARCH64" ]]; then
+  PI_COPTS="--config=elinux_aarch64
+  --copt=-std=gnu11
+  --copt=-O3"
+  WHEEL_ARCH=linux_aarch64
+  echo "Building for the aarch64"
 else
   PI_COPTS="--copt=-march=armv7-a --copt=-mfpu=neon-vfpv4
+  --cpu=armeabi --crosstool_top=@local_config_arm_compiler//:toolchain
   --copt=-std=gnu11 --copt=-DS_IREAD=S_IRUSR --copt=-DS_IWRITE=S_IWUSR
   --copt=-O3 --copt=-fno-tree-pre --copt=-fpermissive
   --copt=-U__GCC_HAVE_SYNC_COMPARE_AND_SWAP_1
@@ -107,8 +117,7 @@ cd ${WORKSPACE_PATH}
 bazel build -c opt ${PI_COPTS} \
   --config=monolithic \
   --copt=-funsafe-math-optimizations --copt=-ftree-vectorize \
-  --copt=-fomit-frame-pointer --cpu=armeabi \
-  --crosstool_top=@local_config_arm_compiler//:toolchain \
+  --copt=-fomit-frame-pointer \
   --define tensorflow_mkldnn_contraction_kernel=0 \
   --verbose_failures \
   //tensorflow:libtensorflow.so \

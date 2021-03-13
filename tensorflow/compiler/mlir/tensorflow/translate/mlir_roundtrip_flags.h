@@ -57,6 +57,12 @@ struct GraphImportConfig {
   // If true, upgrade legacy features of the graph (for instance, functionalize
   // control-flow).
   bool upgrade_legacy = false;
+  // If true, functionalization is restricted to TPU nodes. This is only needed
+  // if upgrade_legacy is true and if upgrading legacy features of the graph
+  // (which includes functionalization) runs before TPU cluster extraction, as
+  // for example in the MLIR-based TPU bridge. Otherwise, this parameter should
+  // stay false.
+  bool restrict_functionalization_to_tpu_nodes = false;
   // If true, enables shape inference on input.
   // TODO(jpienaar): This will be removed shortly.
   bool enable_shape_inference = true;
@@ -69,6 +75,9 @@ struct GraphExportConfig {
   bool export_library = true;
   // Whether to export debug original node name in the GraphDef.
   bool export_debug_info = true;
+  // Whether to export the entry function to function library instead of the
+  // graph.
+  bool export_entry_func_to_flib = false;
 };
 
 // Parses the command line flag strings to the specification of nodes in
@@ -86,10 +95,29 @@ Status ParseInputArrayInfo(absl::string_view array_names,
                            absl::string_view shapes,
                            GraphImportConfig::InputArrays* inputs);
 
-Status ParseInputArrayInfo(const std::vector<string>& node_names,
-                           const std::vector<string>& node_dtypes,
-                           const std::vector<std::vector<int>>& node_shapes,
-                           GraphImportConfig::InputArrays* inputs);
+Status ParseInputArrayInfo(
+    const std::vector<string>& node_names,
+    const std::vector<string>& node_dtypes,
+    const std::vector<llvm::Optional<std::vector<int>>>& node_shapes,
+    GraphImportConfig::InputArrays* inputs);
+
+// Parses shapes from the given string into shapes_vector which is a structured
+// format.
+// NOTE: If shapes_str is empty, shapes_vector will also be empty.
+Status ParseNodeShapes(
+    absl::string_view shapes_str,
+    std::vector<llvm::Optional<std::vector<int>>>& shapes_vector);
+
+// Parses names from the given string into the names_vector.
+// NOTE: If names_str is empty, names_vector will also be empty.
+Status ParseNodeNames(absl::string_view names_str,
+                      std::vector<std::string>& names_vector);
+
+// Parses data types from the given string into the data_type_vector.
+// NOTE: If data_types_str is empty, data_type_vector will also be empty.
+Status ParseNodeDataTypes(absl::string_view data_types_str,
+                          std::vector<std::string>& data_type_vector);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_MLIR_ROUNDTRIP_FLAGS_H_

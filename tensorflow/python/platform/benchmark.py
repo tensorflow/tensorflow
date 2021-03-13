@@ -26,6 +26,7 @@ import sys
 import time
 import types
 
+from absl import app
 import six
 
 from tensorflow.core.protobuf import config_pb2
@@ -33,7 +34,6 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.util import test_log_pb2
 from tensorflow.python.client import timeline
 from tensorflow.python.framework import ops
-from tensorflow.python.platform import app
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
@@ -65,13 +65,24 @@ def _rename_function(f, arg_num, name):
                               func_code.co_firstlineno, func_code.co_lnotab,
                               func_code.co_freevars, func_code.co_cellvars)
   else:
-    new_code = types.CodeType(arg_num, 0, func_code.co_nlocals,
-                              func_code.co_stacksize, func_code.co_flags,
-                              func_code.co_code, func_code.co_consts,
-                              func_code.co_names, func_code.co_varnames,
-                              func_code.co_filename, name,
-                              func_code.co_firstlineno, func_code.co_lnotab,
-                              func_code.co_freevars, func_code.co_cellvars)
+    if sys.version_info > (3, 8, 0, "alpha", 3):
+      # Python3.8 / PEP570 added co_posonlyargcount argument to CodeType.
+      new_code = types.CodeType(arg_num, func_code.co_posonlyargcount,
+                                0, func_code.co_nlocals,
+                                func_code.co_stacksize, func_code.co_flags,
+                                func_code.co_code, func_code.co_consts,
+                                func_code.co_names, func_code.co_varnames,
+                                func_code.co_filename, name,
+                                func_code.co_firstlineno, func_code.co_lnotab,
+                                func_code.co_freevars, func_code.co_cellvars)
+    else:
+      new_code = types.CodeType(arg_num, 0, func_code.co_nlocals,
+                                func_code.co_stacksize, func_code.co_flags,
+                                func_code.co_code, func_code.co_consts,
+                                func_code.co_names, func_code.co_varnames,
+                                func_code.co_filename, name,
+                                func_code.co_firstlineno, func_code.co_lnotab,
+                                func_code.co_freevars, func_code.co_cellvars)
 
   return types.FunctionType(new_code, f.__globals__, name, f.__defaults__,
                             f.__closure__)
@@ -168,11 +179,35 @@ class _BenchmarkRegistrar(type):
     return newclass
 
 
+@tf_export("__internal__.test.ParameterizedBenchmark", v1=[])
 class ParameterizedBenchmark(_BenchmarkRegistrar):
-  """Metaclass to generate parameterized benchmarks."""
+  """Metaclass to generate parameterized benchmarks.
+
+  Use this class as a metaclass and override the `_benchmark_parameters` to
+  generate multiple benchmark test cases. For example:
+
+  class FooBenchmark(metaclass=tf.test.ParameterizedBenchmark,
+                     tf.test.Benchmark):
+    # The `_benchmark_parameters` is expected to be a list with test cases.
+    # Each of the test case is a tuple, with the first time to be test case
+    # name, followed by any number of the parameters needed for the test case.
+    _benchmark_parameters = [
+      ('case_1', Foo, 1, 'one'),
+      ('case_2', Bar, 2, 'two'),
+    ]
+
+    def benchmark_test(self, target_class, int_param, string_param):
+      # benchmark test body
+
+  The example above will generate two benchmark test cases:
+  "benchmark_test__case_1" and "benchmark_test__case_2".
+  """
 
   def __new__(mcs, clsname, base, attrs):
     param_config_list = attrs["_benchmark_parameters"]
+
+    def create_benchmark_function(original_benchmark, params):
+      return lambda self: original_benchmark(self, *params)
 
     for name in attrs.copy().keys():
       if not name.startswith("benchmark"):
@@ -189,10 +224,7 @@ class ParameterizedBenchmark(_BenchmarkRegistrar):
           raise Exception(
               "Benchmark named {} already defined.".format(benchmark_name))
 
-        def create_benchmark_function(params):
-          return lambda self: original_benchmark(self, *params)
-
-        benchmark = create_benchmark_function(params)
+        benchmark = create_benchmark_function(original_benchmark, params)
         # Renaming is important because `report_benchmark` function looks up the
         # function name in the stack trace.
         attrs[benchmark_name] = _rename_function(benchmark, 1, benchmark_name)
@@ -430,9 +462,13 @@ def _run_benchmarks(regex):
 
   Args:
     regex: The string regular expression to match Benchmark classes against.
+
+  Raises:
+    ValueError: If no benchmarks were selected by the input regex.
   """
   registry = list(GLOBAL_BENCHMARK_REGISTRY)
 
+  selected_benchmarks = []
   # Match benchmarks in registry against regex
   for benchmark in registry:
     benchmark_name = "%s.%s" % (benchmark.__module__, benchmark.__name__)
@@ -448,12 +484,16 @@ def _run_benchmarks(regex):
         continue
       full_benchmark_name = "%s.%s" % (benchmark_name, attr)
       if regex == "all" or re.search(regex, full_benchmark_name):
+        selected_benchmarks.append(full_benchmark_name)
         # Instantiate the class if it hasn't been instantiated
         benchmark_instance = benchmark_instance or benchmark()
         # Get the method tied to the class
         instance_benchmark_fn = getattr(benchmark_instance, attr)
         # Call the instance method
         instance_benchmark_fn()
+
+  if not selected_benchmarks:
+    raise ValueError("No benchmarks matched the pattern: '{}'".format(regex))
 
 
 def benchmarks_main(true_main, argv=None):

@@ -20,11 +20,11 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -42,13 +42,13 @@ class XlaBuilderTest : public ::testing::Test {
  protected:
   XlaBuilderTest()
       : name_(SetupTest()),
-        context_(),
         module_(mlir::ModuleOp::create(mlir::UnknownLoc::get(&context_))),
         builder_(&module_->getBodyRegion()),
-        xla_builder_(name_, builder_, module_->getLoc()) {}
+        xla_builder_(name_, builder_, module_->getLoc()) {
+    context_.loadDialect<mlir::mhlo::MhloDialect>();
+  }
 
   string SetupTest() {
-    mlir::registerDialect<mlir::xla_hlo::XlaHloDialect>();
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 
@@ -75,7 +75,7 @@ TEST_F(XlaBuilderTest, CreateToken) {
   TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
 
   ExpectHasSubstr(GetMlirOpString(token),
-                  R"("xla_hlo.create_token"() : () -> !xla_hlo.token)");
+                  R"("mhlo.create_token"() : () -> !mhlo.token)");
 }
 
 TEST_F(XlaBuilderTest, Infeed) {
@@ -85,7 +85,7 @@ TEST_F(XlaBuilderTest, Infeed) {
   TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
   ExpectHasSubstr(
       GetMlirOpString(infeed),
-      R"("xla_hlo.infeed"(%0) {infeed_config = ""} : (!xla_hlo.token) -> tuple<tensor<4x8xf32>, !xla_hlo.token>)");
+      R"("mhlo.infeed"(%0) {infeed_config = ""} : (!mhlo.token) -> tuple<tensor<4x8xf32>, !mhlo.token>)");
 }
 
 TEST_F(XlaBuilderTest, Outfeed) {
@@ -99,7 +99,7 @@ TEST_F(XlaBuilderTest, Outfeed) {
   TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
   ExpectHasSubstr(
       GetMlirOpString(outfeed),
-      R"("xla_hlo.outfeed"(%0, %1) {outfeed_config = ""} : (tensor<4x8xf32>, !xla_hlo.token) -> !xla_hlo.token)");
+      R"("mhlo.outfeed"(%0, %1) {outfeed_config = ""} : (tensor<4x8xf32>, !mhlo.token) -> !mhlo.token)");
 }
 
 TEST_F(XlaBuilderTest, ConcatInDim) {
@@ -112,7 +112,7 @@ TEST_F(XlaBuilderTest, ConcatInDim) {
   TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
   ExpectHasSubstr(
       GetMlirOpString(concat),
-      R"("xla_hlo.concatenate"(%0, %1) {dimension = 1 : i64} : (tensor<2x4x5xf32>, tensor<2x6x5xf32>) -> tensor<2x10x5xf32>)");
+      R"("mhlo.concatenate"(%0, %1) {dimension = 1 : i64} : (tensor<2x4x5xf32>, tensor<2x6x5xf32>) -> tensor<2x10x5xf32>)");
 }
 
 TEST_F(XlaBuilderTest, Tuple) {
@@ -125,7 +125,7 @@ TEST_F(XlaBuilderTest, Tuple) {
   TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
   ExpectHasSubstr(
       GetMlirOpString(tuple),
-      R"("xla_hlo.tuple"(%0, %1) : (tensor<3x7xf32>, tensor<f32>) -> tuple<tensor<3x7xf32>, tensor<f32>>)");
+      R"("mhlo.tuple"(%0, %1) : (tensor<3x7xf32>, tensor<f32>) -> tuple<tensor<3x7xf32>, tensor<f32>>)");
 }
 
 TEST_F(XlaBuilderTest, GetTupleElement) {
@@ -139,7 +139,7 @@ TEST_F(XlaBuilderTest, GetTupleElement) {
   TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
   ExpectHasSubstr(
       GetMlirOpString(gte),
-      R"("xla_hlo.get_tuple_element"(%2) {index = 1 : i32} : (tuple<tensor<3x7xf32>, tensor<f32>>) -> tensor<f32>)");
+      R"("mhlo.get_tuple_element"(%2) {index = 1 : i32} : (tuple<tensor<3x7xf32>, tensor<f32>>) -> tensor<f32>)");
 }
 
 TEST_F(XlaBuilderTest, Slice) {
@@ -150,7 +150,7 @@ TEST_F(XlaBuilderTest, Slice) {
   TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
   ExpectHasSubstr(
       GetMlirOpString(slice),
-      R"("xla_hlo.slice"(%0) {limit_indices = dense<[2, 5]> : tensor<2xi64>, start_indices = dense<[0, 1]> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<3x7xf32>) -> tensor<2x4xf32>)");
+      R"("mhlo.slice"(%0) {limit_indices = dense<[2, 5]> : tensor<2xi64>, start_indices = dense<[0, 1]> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<3x7xf32>) -> tensor<2x4xf32>)");
 }
 
 TEST_F(XlaBuilderTest, Pad) {
@@ -172,7 +172,7 @@ TEST_F(XlaBuilderTest, Pad) {
   TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
   ExpectHasSubstr(
       GetMlirOpString(pad),
-      R"("xla_hlo.pad"(%0, %1) {edge_padding_high = dense<[2, 0]> : tensor<2xi64>, edge_padding_low = dense<[1, 3]> : tensor<2xi64>, interior_padding = dense<[0, 1]> : tensor<2xi64>} : (tensor<3x7xf32>, tensor<f32>) -> tensor<6x16xf32>)");
+      R"("mhlo.pad"(%0, %1) {edge_padding_high = dense<[2, 0]> : tensor<2xi64>, edge_padding_low = dense<[1, 3]> : tensor<2xi64>, interior_padding = dense<[0, 1]> : tensor<2xi64>} : (tensor<3x7xf32>, tensor<f32>) -> tensor<6x16xf32>)");
 }
 
 }  // namespace

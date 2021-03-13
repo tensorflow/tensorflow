@@ -84,9 +84,8 @@ class DumpingCallbackTest(
       return "/job:localhost/replica:0/task:0/device:CPU:0"
 
   def testInvalidTensorDebugModeCausesError(self):
-    with self.assertRaisesRegexp(
-        ValueError,
-        r"Invalid value in tensor_debug_mode \(\'NONSENSICAL\'\).*"
+    with self.assertRaisesRegex(
+        ValueError, r"Invalid value in tensor_debug_mode \(\'NONSENSICAL\'\).*"
         r"Valid options.*NO_TENSOR.*"):
       dumping_callback.enable_dump_debug_info(
           self.dump_root, tensor_debug_mode="NONSENSICAL")
@@ -947,19 +946,16 @@ class DumpingCallbackTest(
             tensor_values[2], np.log(5.0) + 1.0)  # 2nd AddV2 op.
 
   def testIncorrectTensorDTypeArgFormatLeadsToError(self):
-    with self.assertRaisesRegexp(
-        ValueError,
-        r".*expected.*list.*tuple.*callable.*but received.*\{\}"):
+    with self.assertRaisesRegex(
+        ValueError, r".*expected.*list.*tuple.*callable.*but received.*\{\}"):
       dumping_callback.enable_dump_debug_info(self.dump_root,
                                               tensor_dtypes=dict())
-    with self.assertRaisesRegexp(
-        ValueError,
-        r".*expected.*list.*tuple.*callable.*but received.*"):
+    with self.assertRaisesRegex(
+        ValueError, r".*expected.*list.*tuple.*callable.*but received.*"):
       dumping_callback.enable_dump_debug_info(self.dump_root,
                                               tensor_dtypes="float32")
-    with self.assertRaisesRegexp(
-        ValueError,
-        r".*expected.*list.*tuple.*callable.*but received.*"):
+    with self.assertRaisesRegex(
+        ValueError, r".*expected.*list.*tuple.*callable.*but received.*"):
       dumping_callback.enable_dump_debug_info(
           self.dump_root, tensor_dtypes=dtypes.float32)
     with self.assertRaises(TypeError):
@@ -1220,7 +1216,7 @@ class DumpingCallbackTest(
         # array.
         self.assertAllEqual(tensor_value, [])
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r"already.*NO_TENSOR.*FULL_TENSOR.*not be honored"):
       dumping_callback.enable_dump_debug_info(
           self.dump_root, tensor_debug_mode="FULL_TENSOR")

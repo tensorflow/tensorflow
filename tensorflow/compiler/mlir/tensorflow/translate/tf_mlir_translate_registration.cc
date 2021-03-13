@@ -21,8 +21,9 @@ limitations under the License.
 
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Translation.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
@@ -42,11 +43,13 @@ inline absl::string_view StringRefToView(llvm::StringRef ref) {
 
 static OwningModuleRef GraphdefToMlirTranslateFunction(llvm::StringRef input,
                                                        MLIRContext* context) {
-  return tensorflow::GraphdefToMlirTranslateFunction(
+  auto module_or = tensorflow::GraphdefToMlirTranslateFunction(
       input, debug_info_file, input_arrays, input_dtypes, input_shapes,
       output_arrays, control_output_arrays, prune_unused_nodes,
       convert_legacy_fed_inputs, graph_as_function, upgrade_legacy,
       enable_shape_inference, context);
+  if (!module_or.status().ok()) return nullptr;
+  return module_or.ConsumeValueOrDie();
 }
 
 static TranslateToMLIRRegistration GraphdefToMlirTranslate(
@@ -54,11 +57,13 @@ static TranslateToMLIRRegistration GraphdefToMlirTranslate(
 
 static OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
     llvm::StringRef input, MLIRContext* context) {
-  return tensorflow::GraphdefToSplattedMlirTranslateFunction(
+  auto module_or = tensorflow::GraphdefToSplattedMlirTranslateFunction(
       input, debug_info_file, input_arrays, input_dtypes, input_shapes,
       output_arrays, control_output_arrays, prune_unused_nodes,
       convert_legacy_fed_inputs, graph_as_function, upgrade_legacy,
       enable_shape_inference, context);
+  if (!module_or.status().ok()) return nullptr;
+  return module_or.ConsumeValueOrDie();
 }
 
 static TranslateToMLIRRegistration GraphdefToSplattedMlirTranslate(
@@ -70,6 +75,7 @@ static LogicalResult MlirToGraphdefTranslateFunction(
 
   // TODO(fengliuai): Add exporter flags.
   tensorflow::GraphExportConfig confs;
+  confs.export_entry_func_to_flib = export_entry_func_to_flib;
   StatusOr<std::unique_ptr<tensorflow::GraphDef>> graphdef_or(
       tensorflow::ConvertMlirToGraphdef(module, confs));
   if (!graphdef_or.status().ok()) {
@@ -82,6 +88,9 @@ static LogicalResult MlirToGraphdefTranslateFunction(
 }
 
 static TranslateFromMLIRRegistration mlir_to_graphdef_translate(
-    "mlir-to-graphdef", MlirToGraphdefTranslateFunction);
+    "mlir-to-graphdef", MlirToGraphdefTranslateFunction,
+    [](DialectRegistry& registry) {
+      mlir::RegisterAllTensorFlowDialects(registry);
+    });
 
 }  // namespace mlir

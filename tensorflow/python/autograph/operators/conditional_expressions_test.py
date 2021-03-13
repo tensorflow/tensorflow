@@ -48,7 +48,7 @@ class IfExpTest(test.TestCase):
       conditional_expressions.if_exp(
           constant_op.constant(True), lambda: 1.0, lambda: 2, 'expr_repr')
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError,
         "'expr_repr' has dtype float32 in the main.*int32 in the else"):
       test_fn()

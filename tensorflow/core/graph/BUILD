@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -62,6 +64,7 @@ filegroup(
         "graph_node_util.h",
         "node_builder.h",
         "tensor_id.h",
+        "types.h",
     ],
 )
 
@@ -198,6 +201,7 @@ exports_files(
     srcs = [
         "algorithm_test.cc",
         "control_flow_test.cc",
+        "costmodel_test.cc",
         "edgeset_test.cc",
         "graph_def_builder_test.cc",
         "graph_partition_test.cc",

@@ -40,64 +40,6 @@ def : Pat<
     (TF_MulOp $t, (TF_MulOp:$mul (TF_RsqrtOp (TF_AddOp $v, (TF_ConstOp $variance_epsilon))), $gamma)),
     (TF_SubOp $beta, (TF_MulOp $m, $mul)))>;
 
-// Converts tf.FusedBatchNorm & tf.FusedBatchNormV3 into a sequence of more primitive arithmetic
-// operations. Specifically, performs the following calculation:
-//
-//   (x - mean) * scale / sqrt(variance + epsilon) + offset
-//
-// Let multiplier = scale / sqrt(variance + epsilon),
-// to compute
-//   (x - mean) * scale / sqrt(variance + epsilon) + offset,
-// is then to compute
-//   (x * multiplier) + (offset - mean * multiplier).
-def : Pattern<
-    (TF_FusedBatchNormOp:$root
-        $x, $scale, $offset, $mean, $variance,
-        F32Attr:$epsilon, $exponential_avg_factor,
-        $data_format, FalseBoolAttr:$is_training),
-    [(TF_AddOp
-        (TF_MulOp
-            $x,
-            (TF_MulOp:$multiplier
-                $scale,
-                (TF_RsqrtOp
-                    (TF_AddOp $variance,
-                              (TF_ConstOp $epsilon))))),
-        (TF_SubOp $offset, (TF_MulOp $mean, $multiplier))),
-     // We already guaranteed that the last four results has no use so it does
-     // not matter what value we provide here for replacement.
-     /*batch_mean=*/(replaceWithValue $x),
-     /*batch_variance=*/(replaceWithValue $x),
-     /*reserve_space_1=*/(replaceWithValue $x),
-     /*reserve_space_2=*/(replaceWithValue $x)],
-    [(HasNoUseOf:$root__1), (HasNoUseOf:$root__2),
-     (HasNoUseOf:$root__3), (HasNoUseOf:$root__4)]>;
-
-def : Pattern<
-    (TF_FusedBatchNormV3Op:$root
-        $x, $scale, $offset, $mean, $variance,
-        F32Attr:$epsilon, $exponential_avg_factor,
-        $data_format, FalseBoolAttr:$is_training),
-    [(TF_AddOp
-        (TF_MulOp
-            $x,
-            (TF_MulOp:$multiplier
-                $scale,
-                (TF_RsqrtOp
-                    (TF_AddOp $variance,
-                              (TF_ConstOp $epsilon))))),
-        (TF_SubOp $offset, (TF_MulOp $mean, $multiplier))),
-     // We already guaranteed that the last five results have no use so it does
-     // not matter what value we provide here for replacement.
-     /*batch_mean=*/(replaceWithValue $x),
-     /*batch_variance=*/(replaceWithValue $x),
-     /*reserve_space_1=*/(replaceWithValue $x),
-     /*reserve_space_2=*/(replaceWithValue $x),
-     /*reserve_space_3=*/(replaceWithValue $x)],
-    [(HasNoUseOf:$root__1), (HasNoUseOf:$root__2),
-     (HasNoUseOf:$root__3), (HasNoUseOf:$root__4),
-     (HasNoUseOf:$root__5)]>;
-
 class TFi32<int v> : ConstantAttr<I32ElementsAttr, !cast<string>(v)>;
 
 // Matmul without transpose on b to matmul with explicit transpose op and

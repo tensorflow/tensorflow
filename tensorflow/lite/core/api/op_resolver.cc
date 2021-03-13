@@ -18,6 +18,7 @@ limitations under the License.
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 
 namespace tflite {
 
@@ -26,7 +27,7 @@ TfLiteStatus GetRegistrationFromOpCode(
     ErrorReporter* error_reporter, const TfLiteRegistration** registration) {
   TfLiteStatus status = kTfLiteOk;
   *registration = nullptr;
-  auto builtin_code = opcode->builtin_code();
+  auto builtin_code = GetBuiltinCode(opcode);
   int version = opcode->version();
 
   if (builtin_code > BuiltinOperator_MAX ||
@@ -42,7 +43,9 @@ TfLiteStatus GetRegistrationFromOpCode(
     if (*registration == nullptr) {
       TF_LITE_REPORT_ERROR(
           error_reporter,
-          "Didn't find op for builtin opcode '%s' version '%d'\n",
+          "Didn't find op for builtin opcode '%s' version '%d'. "
+          "An older version of this builtin might be supported. "
+          "Are you using an old TFLite binary with a newer model?\n",
           EnumNameBuiltinOperator(builtin_code), version);
       status = kTfLiteError;
     }

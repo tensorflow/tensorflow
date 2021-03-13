@@ -31,10 +31,10 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numbers.h"
@@ -108,44 +108,6 @@ string Reindent(absl::string_view original,
   return absl::StrJoin(pieces, "\n", [indentation](string* out, string s) {
     absl::StrAppend(out, indentation, absl::StripAsciiWhitespace(s));
   });
-}
-
-bool IsPermutation(absl::Span<const int64> permutation, int64 rank) {
-  if (rank != permutation.size()) {
-    return false;
-  }
-  absl::InlinedVector<int64, 8> trivial_permutation(rank);
-  absl::c_iota(trivial_permutation, 0);
-  return absl::c_is_permutation(permutation, trivial_permutation);
-}
-
-std::vector<int64> InversePermutation(
-    absl::Span<const int64> input_permutation) {
-  DCHECK(IsPermutation(input_permutation, input_permutation.size()));
-  std::vector<int64> output_permutation(input_permutation.size(), -1);
-  for (size_t i = 0; i < input_permutation.size(); ++i) {
-    output_permutation.at(input_permutation.at(i)) = i;
-  }
-  return output_permutation;
-}
-
-std::vector<int64> ComposePermutations(absl::Span<const int64> p1,
-                                       absl::Span<const int64> p2) {
-  CHECK_EQ(p1.size(), p2.size());
-  std::vector<int64> output;
-  for (size_t i = 0; i < p1.size(); ++i) {
-    output.push_back(p1.at(p2.at(i)));
-  }
-  return output;
-}
-
-bool IsIdentityPermutation(absl::Span<const int64> permutation) {
-  for (int64 i = 0; i < permutation.size(); ++i) {
-    if (permutation[i] != i) {
-      return false;
-    }
-  }
-  return true;
 }
 
 string RoundTripFpToString(tensorflow::bfloat16 value) {
@@ -265,14 +227,45 @@ int64 Product(absl::Span<const int64> xs) {
 absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
     absl::Span<const int64> a, absl::Span<const int64> b) {
   CHECK_EQ(Product(a), Product(b));
-  if (0 == Product(a)) {
+  absl::InlinedVector<std::pair<int64, int64>, 8> bounds;
+  if (absl::c_equal(a, b)) {
+    bounds.reserve(a.size() + 1);
+    for (int64 i = 0; i <= a.size(); ++i) {
+      bounds.emplace_back(i, i);
+    }
+    return bounds;
+  }
+  int64 i = 0, j = 0, prior_i = -1, prior_j = -1;
+  while (i < a.size() && j < b.size() && a[i] == b[j]) {
+    std::tie(prior_i, prior_j) = std::make_pair(i, j);
+    bounds.emplace_back(i, j);
+    ++i;
+    ++j;
+  }
+  // If the product is different after filtering out zeros, return full group.
+  // E.g.,:
+  // a={0, 10 ,3}
+  //       ^
+  //      i=1
+  //
+  // b={0, 3}
+  //       ^
+  //      j=1
+  if (Product(a.subspan(i)) != Product(b.subspan(j))) {
     return {std::make_pair(0, 0), std::make_pair(a.size(), b.size())};
   }
+  if (0 == Product(a.subspan(i))) {
+    bounds.push_back(std::make_pair(i, j));
+    bounds.push_back(std::make_pair(a.size(), b.size()));
+    return bounds;
+  }
 
-  absl::InlinedVector<std::pair<int64, int64>, 8> bounds;
-  for (int64 i = 0, j = 0, prior_i = -1, prior_j = -1, partial_size_a = 1,
-             partial_size_b = 1;
-       ;) {
+  for (int64 partial_size_a = 1, partial_size_b = 1;;) {
+    if (partial_size_a == partial_size_b && (i > prior_i || j > prior_j)) {
+      std::tie(prior_i, prior_j) = std::make_pair(i, j);
+      bounds.emplace_back(i, j);
+      continue;
+    }
     if (partial_size_a == partial_size_b && (i > prior_i || j > prior_j)) {
       std::tie(prior_i, prior_j) = std::make_pair(i, j);
       bounds.emplace_back(i, j);
@@ -367,14 +360,16 @@ string SanitizeFileName(string file_name) {
 //     precision, Numerische Mathematik, vol. 18, pp. 224–242, 1971.
 std::pair<float, float> SplitF64ToF32(double x) {
   const float x_f32 = static_cast<float>(x);
+
   // Early return if x is an infinity or NaN.
-  if (!std::isfinite(x)) {
+  if (!std::isfinite(x_f32)) {
+    // Only values within the range of F32 are supported, unless it is infinity.
+    // Small values with large negative exponents would be rounded to zero.
+    if (std::isfinite(x)) {
+      LOG(WARNING) << "Out of range F64 constant detected: " << x;
+    }
     return std::make_pair(x_f32, 0.0f);
   }
-
-  // Only values within the range of F32 are supported, unless it is infinity.
-  // Small values with large negative exponents would be rounded to zero.
-  CHECK(std::isfinite(x_f32)) << x;
 
   // The high float is simply the double rounded to the nearest float. Because
   // we are rounding to nearest with ties to even, the error introduced in

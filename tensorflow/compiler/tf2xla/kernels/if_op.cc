@@ -40,11 +40,131 @@ XlaIfOp::XlaIfOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     has_token_input_output_ = false;
   } else {
     has_token_input_output_ = !token_input_nodes_.empty();
+    if (!ctx->GetAttr(kXlaOriginalOutsideCompilationNodeName,
+                      &original_node_name_)
+             .ok())
+      original_node_name_ = name();
   }
   if (ctx->HasAttr(kPropagateCompileTimeConsts)) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kPropagateCompileTimeConsts,
                                      &propagate_compile_time_consts_));
   }
+}
+
+// Populates tensor array gradients for compiled branches, returns whether the
+// set of found tensor array gradients is non-empty.
+static xla::StatusOr<bool> PopulateTensorArrayGradients(
+    XlaOpKernelContext* ctx, xla::XlaBuilder* b,
+    absl::Span<XlaCompiler::Argument> arguments,
+    XlaCompiler::CompilationResult* then_result,
+    XlaCompiler::CompilationResult* else_result) {
+  bool has_tensor_array_gradients = false;
+  for (XlaCompiler::CompilationResult* result : {then_result, else_result}) {
+    for (const XlaCompiler::ResourceUpdate& update : result->resource_updates) {
+      XlaResource* resource;
+      TF_RETURN_IF_ERROR(
+          ctx->GetResourceInput(update.input_index + 1, &resource));
+      XlaCompiler::Argument& arg = arguments[update.input_index];
+
+      // Add any TensorArray gradients touched by the then/else computation to
+      // the enclosing graph.
+      for (const string& grad_source : update.tensor_array_gradients_accessed) {
+        VLOG(5) << "TensorArray " << resource->name() << " accessed gradient "
+                << grad_source;
+        XlaResource* gradient;
+        TF_RETURN_IF_ERROR(resource->GetOrCreateTensorArrayGradient(
+            grad_source, b, &gradient));
+      }
+      // Add all of the TensorArray gradients to the argument. For simplicity,
+      // we always pass all known gradients.
+      for (const auto& gradient : resource->tensor_array_gradients()) {
+        arg.tensor_array_gradients.insert(gradient.first);
+      }
+      if (!resource->tensor_array_gradients().empty())
+        has_tensor_array_gradients = true;
+    }
+  }
+  return has_tensor_array_gradients;
+}
+
+// Checks that shapes matches on both sides of the conditional.
+static Status ValidateShapes(
+    XlaOpKernelContext* ctx, const XlaCompiler::CompilationResult& then_result,
+    const XlaCompiler::CompilationResult& else_result) {
+  // Check that both branches have identical input shapes.
+  if (then_result.xla_input_shapes.size() != 1) {
+    return errors::FailedPrecondition("Expected one input shape");
+  }
+
+  xla::Shape then_input_shape = then_result.xla_input_shapes[0];
+  if (!then_input_shape.IsTuple()) {
+    return errors::FailedPrecondition("Expected tuple shape");
+  }
+
+  if (else_result.xla_input_shapes.size() != 1) {
+    return errors::FailedPrecondition("Expected one input shape");
+  }
+  xla::Shape else_input_shape = else_result.xla_input_shapes[0];
+  if (!else_input_shape.IsTuple()) {
+    return errors::FailedPrecondition("Expected tuple shape");
+  }
+  if (!xla::ShapeUtil::Compatible(then_input_shape, else_input_shape)) {
+    return errors::InvalidArgument(
+        "Input shapes of then and else branches do not match: ",
+        xla::ShapeUtil::HumanString(then_input_shape), " vs. ",
+        xla::ShapeUtil::HumanString(else_input_shape));
+  }
+
+  // Check that both branches have identical output shapes.
+  if (!xla::ShapeUtil::Compatible(then_result.xla_output_shape,
+                                  else_result.xla_output_shape)) {
+    return errors::InvalidArgument(
+        "Output shapes of then and else branches do not match: ",
+        xla::ShapeUtil::HumanString(then_result.xla_output_shape), " vs. ",
+        xla::ShapeUtil::HumanString(else_result.xla_output_shape));
+  }
+
+  // Check that both branches have same TensorList output indices.
+  for (int output_index = 0; output_index < then_result.outputs.size();
+       output_index++) {
+    bool is_tensor_list_in_then_branch =
+        then_result.outputs[output_index].is_tensor_list;
+    bool is_tensor_list_in_else_branch =
+        else_result.outputs[output_index].is_tensor_list;
+    if (is_tensor_list_in_then_branch != is_tensor_list_in_else_branch) {
+      return errors::FailedPrecondition(
+          "Output #", output_index, " is ",
+          (is_tensor_list_in_then_branch ? "" : "not"),
+          " a TensorList in then branch, but is ",
+          (is_tensor_list_in_else_branch ? "" : "not"),
+          " a TensorList in else branch");
+    }
+  }
+
+  VLOG(2) << "Input shape: " << xla::ShapeUtil::HumanString(then_input_shape);
+  VLOG(2) << "Output shape: "
+          << xla::ShapeUtil::HumanString(then_result.xla_output_shape);
+
+  // We set return_updated_values_for_all_resources=true and we pass the same
+  // arguments to both computations, so the resource update count must match.
+  if (then_result.resource_updates.size() !=
+      else_result.resource_updates.size()) {
+    return errors::FailedPrecondition(
+        "Different number of resources in then and else branch");
+  }
+
+  for (int i = 0; i < then_result.resource_updates.size(); ++i) {
+    const auto& lhs = then_result.resource_updates[i];
+    const auto& rhs = else_result.resource_updates[i];
+    bool equal = lhs.input_index == rhs.input_index && lhs.shape == rhs.shape &&
+                 lhs.tensor_array_gradients_accessed ==
+                     rhs.tensor_array_gradients_accessed;
+    if (!equal) {
+      return errors::FailedPrecondition(
+          "Mismatch in resource of then and else branch for resource ", i);
+    }
+  }
+  return Status::OK();
 }
 
 // TODO(b/35949885): There is duplication here with the handling of the
@@ -100,7 +220,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
     OP_REQUIRES_OK(ctx, FindMustBeConstNodes(ctx, then_branch_,
                                              &then_branch_must_be_const_nodes,
                                              &then_body));
-    OP_REQUIRES_OK(ctx, FindMustBeConstNodes(ctx, then_branch_,
+    OP_REQUIRES_OK(ctx, FindMustBeConstNodes(ctx, else_branch_,
                                              &else_branch_must_be_const_nodes,
                                              &else_body));
 
@@ -137,35 +257,12 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, compiler->CompileFunction(options, else_branch_,
                                                 arguments, &else_result));
 
-  bool has_tensor_array_gradients = false;
-  for (XlaCompiler::CompilationResult* result : {&then_result, &else_result}) {
-    for (const XlaCompiler::ResourceUpdate& update : result->resource_updates) {
-      XlaResource* resource;
-      OP_REQUIRES_OK(ctx,
-                     ctx->GetResourceInput(update.input_index + 1, &resource));
-      XlaCompiler::Argument& arg = arguments[update.input_index];
-
-      // Add any TensorArray gradients touched by the then/else computation to
-      // the enclosing graph.
-      for (const string& grad_source : update.tensor_array_gradients_accessed) {
-        VLOG(5) << "TensorArray " << resource->name() << " accessed gradient "
-                << grad_source;
-        XlaResource* gradient;
-        OP_REQUIRES_OK(ctx, resource->GetOrCreateTensorArrayGradient(
-                                grad_source, b, &gradient));
-      }
-      // Add all of the TensorArray gradients to the argument. For simplicity,
-      // we always pass all known gradients.
-      for (const auto& gradient : resource->tensor_array_gradients()) {
-        arg.tensor_array_gradients.insert(gradient.first);
-      }
-      if (!resource->tensor_array_gradients().empty())
-        has_tensor_array_gradients = true;
-    }
-  }
+  xla::StatusOr<bool> has_tensor_array_gradients = PopulateTensorArrayGradients(
+      ctx, b, absl::MakeSpan(arguments), &then_result, &else_result);
+  OP_REQUIRES_OK(ctx, has_tensor_array_gradients.status());
 
   // Recompile the functions to update the argument shapes for tensor arrays.
-  if (has_tensor_array_gradients) {
+  if (*has_tensor_array_gradients) {
     then_result = {};
     OP_REQUIRES_OK(ctx, compiler->CompileFunction(options, then_branch_,
                                                   arguments, &then_result));
@@ -174,72 +271,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
                                                   arguments, &else_result));
   }
 
-  // Check that both branches have identical input shapes.
-  OP_REQUIRES(ctx, then_result.xla_input_shapes.size() == 1,
-              errors::FailedPrecondition("Expected one input shape"));
-  xla::Shape then_input_shape = then_result.xla_input_shapes[0];
-  OP_REQUIRES(ctx, then_input_shape.IsTuple(),
-              errors::FailedPrecondition("Expected tuple shape"));
-  OP_REQUIRES(ctx, else_result.xla_input_shapes.size() == 1,
-              errors::FailedPrecondition("Expected one input shape"));
-  xla::Shape else_input_shape = else_result.xla_input_shapes[0];
-  OP_REQUIRES(ctx, else_input_shape.IsTuple(),
-              errors::FailedPrecondition("Expected tuple shape"));
-  OP_REQUIRES(ctx,
-              xla::ShapeUtil::Compatible(then_input_shape, else_input_shape),
-              errors::InvalidArgument(
-                  "Input shapes of then and else branches do not match: ",
-                  xla::ShapeUtil::HumanString(then_input_shape), " vs. ",
-                  xla::ShapeUtil::HumanString(else_input_shape)));
-
-  // Check that both branches have identical output shapes.
-  OP_REQUIRES(
-      ctx,
-      xla::ShapeUtil::Compatible(then_result.xla_output_shape,
-                                 else_result.xla_output_shape),
-      errors::InvalidArgument(
-          "Output shapes of then and else branches do not match: ",
-          xla::ShapeUtil::HumanString(then_result.xla_output_shape), " vs. ",
-          xla::ShapeUtil::HumanString(else_result.xla_output_shape)));
-
-  // Check that both branches have same TensorList output indices.
-  for (int output_index = 0; output_index < then_result.outputs.size();
-       output_index++) {
-    bool is_tensor_list_in_then_branch =
-        then_result.outputs[output_index].is_tensor_list;
-    bool is_tensor_list_in_else_branch =
-        else_result.outputs[output_index].is_tensor_list;
-    OP_REQUIRES(
-        ctx, is_tensor_list_in_then_branch == is_tensor_list_in_else_branch,
-        errors::FailedPrecondition("Output #", output_index, " is ",
-                                   (is_tensor_list_in_then_branch ? "" : "not"),
-                                   " a TensorList in then branch, but is ",
-                                   (is_tensor_list_in_else_branch ? "" : "not"),
-                                   " a TensorList in else branch"));
-  }
-
-  VLOG(2) << "Input shape: " << xla::ShapeUtil::HumanString(then_input_shape);
-  VLOG(2) << "Output shape: "
-          << xla::ShapeUtil::HumanString(then_result.xla_output_shape);
-
-  // We set return_updated_values_for_all_resources=true and we pass the same
-  // arguments to both computations, so the resource update count must match.
-  OP_REQUIRES(ctx,
-              then_result.resource_updates.size() ==
-                  else_result.resource_updates.size(),
-              errors::FailedPrecondition(
-                  "Different number of resources in then and else branch"));
-  for (int i = 0; i < then_result.resource_updates.size(); ++i) {
-    const auto& lhs = then_result.resource_updates[i];
-    const auto& rhs = else_result.resource_updates[i];
-    bool equal = lhs.input_index == rhs.input_index && lhs.shape == rhs.shape &&
-                 lhs.tensor_array_gradients_accessed ==
-                     rhs.tensor_array_gradients_accessed;
-    OP_REQUIRES(
-        ctx, equal,
-        errors::FailedPrecondition(
-            "Mismatch in resource of then and else branch for resource ", i));
-  }
+  OP_REQUIRES_OK(ctx, ValidateShapes(ctx, then_result, else_result));
 
   int num_inputs = then_result.input_mapping.size();
   std::vector<xla::XlaOp> inputs(num_inputs);
@@ -263,22 +295,18 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
     }
   }
 
-  auto input_tuple = xla::Tuple(b, inputs);
+  xla::XlaOp input_tuple = xla::Tuple(b, inputs);
   xla::XlaOp outputs =
       xla::Conditional(ctx->Input(0), input_tuple, *then_result.computation,
                        input_tuple, *else_result.computation);
+
   // Sets non-variable outputs.
   for (int i = 0; i < output_types_.size(); ++i) {
     xla::XlaOp output_handle = xla::GetTupleElement(outputs, i);
     if (VLOG_IS_ON(2)) {
-      LOG(INFO) << "Setting output " << i;
-      auto shape_or = b->GetShape(output_handle);
-      if (shape_or.ok()) {
-        LOG(INFO) << "Shape for output " << i << ": "
-                  << xla::ShapeUtil::HumanString(shape_or.ValueOrDie());
-      } else {
-        LOG(INFO) << "Shape unknown for output " << i;
-      }
+      xla::StatusOr<xla::Shape> shape = b->GetShape(output_handle);
+      VLOG(2) << "Setting output " << i << " with shape "
+              << (shape.ok() ? shape->ToString() : "<unknown>");
     }
     // We have checked that both branches have same TensorList output indices.
     if (then_result.outputs[i].is_tensor_list) {
@@ -287,6 +315,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
       ctx->SetOutput(i, output_handle);
     }
   }
+
   if (has_token_input_output_) {
     // Set token output for this "If" op. Token output is the last output of
     // XLA computation, which comes after all "normal" TF outputs and resource
@@ -301,7 +330,8 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
                 errors::FailedPrecondition(
                     "Token output is not token type: ",
                     xla::ShapeUtil::HumanString(shape_or.ValueOrDie())));
-    OP_REQUIRES_OK(ctx, compiler->SetNodeToken(name(), token_output));
+    OP_REQUIRES_OK(ctx,
+                   compiler->SetNodeToken(original_node_name_, token_output));
   }
 
   // Updates the values of any resource variables modified by the conditional

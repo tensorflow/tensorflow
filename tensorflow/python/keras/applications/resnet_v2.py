@@ -15,7 +15,7 @@
 # pylint: disable=invalid-name
 """ResNet v2 models for Keras.
 
-Reference paper:
+Reference:
   - [Identity Mappings in Deep Residual Networks]
     (https://arxiv.org/abs/1603.05027) (CVPR 2016)
 """
@@ -148,10 +148,11 @@ DOC = """
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
 
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.resnet_v2.preprocess_input` for an example.
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For ResNetV2, call `tf.keras.applications.resnet_v2.preprocess_input` on your
+  inputs before passing them to the model.
 
-  Arguments:
+  Args:
     include_top: whether to include the fully-connected
       layer at the top of the network.
     weights: one of `None` (random initialization),

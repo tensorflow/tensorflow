@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
@@ -63,6 +64,22 @@ std::string GetDumpDirFromEnvVar();
 // suffixing `name` with ".mlir".
 std::string DumpRawStringToFile(llvm::StringRef name, llvm::StringRef content,
                                 llvm::StringRef dirname = "");
+
+// Enable the crash reproducer on the provided PassManager to the provided
+// directory path. If the provided path is empty, it is retrieved from the
+// environment variable `MLIR_CRASH_REPRODUCER_DIRECTORY`. If the provided path
+// is the string "sponge", the file will be included in the sponge "Output
+// Files" by looking up the environment to infer the directory path.
+void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path = "");
+
+// This applies both the PassManagerCLOptions provided by MLIR along with any
+// tensorflow specific options.
+//
+// Note that this function should be in a more appropriate file, but it is
+// unclear what a proper file would be as no other functions would currently be
+// in the file also.
+void applyTensorflowAndCLOptions(mlir::PassManager& pm,
+                                 llvm::StringRef dir_path = "");
 
 }  // namespace tensorflow
 

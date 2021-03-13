@@ -61,7 +61,7 @@ func @parser_replicate_terminator() {
 func @verifier_replicate_no_block() {
   "tf_device.replicate" () ({
 // expected-error@-1 {{'tf_device.replicate' op region #0 ('body') failed to verify constraint: region with 1 blocks}}
-  }) {n = 2 : i32} : () -> ()
+  }) {n = 2 : i32, operand_segment_sizes = dense<[0, 0]> : vector<2xi32>} : () -> ()
   return
 }
 
@@ -72,7 +72,7 @@ func @verifier_replicate_empty_block() {
   "tf_device.replicate" () ({
 // expected-error@-1 {{'tf_device.replicate' op expects a non-empty block}}
   ^entry:
-  }) {n = 2 : i32} : () -> ()
+  }) {n = 2 : i32, operand_segment_sizes = dense<[0, 0]> : vector<2xi32>} : () -> ()
   return
 }
 
@@ -85,7 +85,7 @@ func @verifier_replicate_terminator() {
 // expected-error@-1 {{'tf_device.replicate' op expects regions to end with 'tf_device.return', found 'std.return'}}
   ^entry:
     return
-  }) {n = 2 : i32} : () -> ()
+  }) {n = 2 : i32, operand_segment_sizes = dense<[0, 0]> : vector<2xi32>} : () -> ()
   return
 }
 
@@ -97,7 +97,7 @@ func @verifier_replicate_n() {
 // expected-error@-1 {{'tf_device.replicate' op attribute 'n' failed to satisfy constraint: 32-bit signless integer attribute whose minimum value is 2}}
   ^entry:
     tf_device.return
-  }) {n = 1 : i32} : () -> ()
+  }) {n = 1 : i32, operand_segment_sizes = dense<[0, 0]> : vector<2xi32>} : () -> ()
 }
 
 // -----
@@ -109,43 +109,66 @@ func @verifier_replicate_n_device() {
 // expected-error@-1 {{'tf_device.replicate' op expects number of devices (2) to be equal to 'n' (3)}}
   ^entry:
     tf_device.return
-  }) {n = 3 : i32, devices = {TPU_REPLICATED_CORE_0 = ["/DEVICE:0", "/DEVICE:1"]}} : () -> ()
+  }) {devices = {TPU_REPLICATED_CORE_0 = ["/DEVICE:0", "/DEVICE:1"]}, n = 3 : i32, operand_segment_sizes = dense<[0, 0]> : vector<2xi32>} : () -> ()
 }
 
 // -----
 
-// Check that replicate op's `devices` attribute must consist of dictionary
+// Check that replicate op's 'devices' attribute must consist of dictionary
 // with values as list with size equal to 'n' attribute.
 func @verifier_replicate_n_device_multiple_alias() {
   "tf_device.replicate" () ({
 // expected-error@-1 {{'tf_device.replicate' op expects number of devices (2) to be equal to 'n' (3)}}
   ^entry:
     tf_device.return
-  }) {n = 3 : i32, devices = {TPU_REPLICATED_CORE_0 = ["/DEVICE:0", "/DEVICE:1"], TPU_REPLICATED_CORE_1 = ["/DEVICE:2"]}} : () -> ()
+  }) {devices = {TPU_REPLICATED_CORE_0 = ["/DEVICE:0", "/DEVICE:1"], TPU_REPLICATED_CORE_1 = ["/DEVICE:2"]}, n = 3 : i32, operand_segment_sizes = dense<[0, 0]> : vector<2xi32>} : () -> ()
 }
 
 // -----
 
-// Check that a replicate with mismatched operand and block arg counts is
-// invalid.
-func @verifier_replicate_operand_block_arg_count(%arg0: tensor<*xi32>) {
-  "tf_device.replicate" (%arg0, %arg0, %arg0) ({
-// expected-error@-1 {{'tf_device.replicate' op expects number of operands (3) to be equal to 'n' * number of block arguments (2 * 1)}}
-  ^entry(%input0: tensor<*xi32>):
+// Check number of replicated inputs is evenly divisible by 'n'.
+func @verifier_replicate_bad_operand_segment_sizes(%arg0: tensor<*xi32>) {
+  "tf_device.replicate" (%arg0, %arg0, %arg0, %arg0) ({
+// expected-error@-1 {{'tf_device.replicate' op expects number of replicated inputs (4) to be evenly divisible by 'n' (3)}}
+  ^entry(%input0: tensor<*xi32>, %input1: tensor<*xi32>):
     tf_device.return
-  }) {n = 2 : i32} : (tensor<*xi32>, tensor<*xi32>, tensor<*xi32>) -> ()
+  }) {n = 3 : i32, operand_segment_sizes = dense<[4, 0]> : vector<2xi32>} : (tensor<*xi32>, tensor<*xi32>, tensor<*xi32>, tensor<*xi32>) -> ()
 }
 
 // -----
 
-// Check that a replicate with incompatible operand and block argument type is
-// invalid.
-func @verifier_replicate_operand_block_arg_type(%arg0: tensor<*xi32>, %arg1: tensor<*xi1>) {
+// Check number of replicated inputs / 'n' + number of packed inputs matches the
+// number of block arguments.
+func @verifier_replicate_num_block_args(%arg0: tensor<*xi32>) {
+  "tf_device.replicate" (%arg0, %arg0, %arg0, %arg0, %arg0) ({
+// expected-error@-1 {{'tf_device.replicate' op expects number of block arguments (2) to be equal to number of replicated inputs (3) / 'n' (3) + number of packed inputs (2)}}
+  ^entry(%input0: tensor<*xi32>, %input1: tensor<*xi32>):
+    tf_device.return
+  }) {n = 3 : i32, operand_segment_sizes = dense<[3, 2]> : vector<2xi32>} : (tensor<*xi32>, tensor<*xi32>, tensor<*xi32>, tensor<*xi32>, tensor<*xi32>) -> ()
+}
+
+// -----
+
+// Check that a replicate with incompatible replicated operand and block
+// argument type is invalid.
+func @verifier_replicate_replicated_operand_block_arg_type(%arg0: tensor<*xi32>, %arg1: tensor<*xi1>) {
   "tf_device.replicate" (%arg0, %arg1) ({
-// expected-error@-1 {{'tf_device.replicate' op incompatible types for operand 1 and block argument 0}}
+// expected-error@-1 {{'tf_device.replicate' op expects operand 1 ('tensor<*xi1>') and block argument 0 ('tensor<*xi32>') to have compatible types}}
   ^entry(%input0: tensor<*xi32>):
     tf_device.return
-  }) {n = 2 : i32} : (tensor<*xi32>, tensor<*xi1>) -> ()
+  }) {n = 2 : i32, operand_segment_sizes = dense<[2, 0]> : vector<2xi32>} : (tensor<*xi32>, tensor<*xi1>) -> ()
+}
+
+// -----
+
+// Check that a replicate with incompatible packed operand and block argument
+// type is invalid.
+func @verifier_replicate_packed_operand_block_arg_type(%arg0: tensor<*xi1>) {
+  "tf_device.replicate" (%arg0) ({
+// expected-error@-1 {{'tf_device.replicate' op expects operand 0 ('tensor<*xi1>') and block argument 0 ('tensor<*xi32>') to have compatible types}}
+  ^entry(%input0: tensor<*xi32>):
+    tf_device.return
+  }) {n = 2 : i32, operand_segment_sizes = dense<[0, 1]> : vector<2xi32>} : (tensor<*xi1>) -> ()
 }
 
 // -----
@@ -157,7 +180,7 @@ func @verifier_replicate_result_return_operand_count(%arg0: tensor<*xi32>) {
 // expected-error@-1 {{'tf_device.replicate' op expects number of results (3) to be equal to 'n' * number of terminator operands (2 * 1)}}
   ^entry:
     tf_device.return %arg0 : tensor<*xi32>
-  }) {n = 2 : i32} : () -> (tensor<*xi32>, tensor<*xi32>, tensor<*xi32>)
+  }) {n = 2 : i32, operand_segment_sizes = dense<[0, 0]> : vector<2xi32>} : () -> (tensor<*xi32>, tensor<*xi32>, tensor<*xi32>)
 }
 
 // -----
@@ -169,7 +192,7 @@ func @verifier_replicate_result_return_operand_type(%arg0: tensor<*xi32>) {
 // expected-error@-1 {{'tf_device.replicate' op incompatible types for result 1 and terminator operand 0}}
   ^entry:
     tf_device.return %arg0 : tensor<*xi32>
-  }) {n = 2 : i32} : () -> (tensor<*xi32>, tensor<*xi1>)
+  }) {n = 2 : i32, operand_segment_sizes = dense<[0, 0]> : vector<2xi32>} : () -> (tensor<*xi32>, tensor<*xi1>)
 }
 
 // -----

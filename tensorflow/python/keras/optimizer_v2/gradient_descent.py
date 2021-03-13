@@ -21,8 +21,8 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.training import training_ops
+from tensorflow.python.ops import gen_resource_variable_ops
+from tensorflow.python.training import gen_training_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -40,10 +40,10 @@ class SGD(optimizer_v2.OptimizerV2):
 
   ```python
   velocity = momentum * velocity - learning_rate * g
-  w = w * velocity
+  w = w + velocity
   ```
 
-  When `nesterov=False`, this rule becomes:
+  When `nesterov=True`, this rule becomes:
 
   ```python
   velocity = momentum * velocity - learning_rate * g
@@ -136,17 +136,20 @@ class SGD(optimizer_v2.OptimizerV2):
 
     if self._momentum:
       momentum_var = self.get_slot(var, "momentum")
-      return training_ops.resource_apply_keras_momentum(
-          var.handle,
-          momentum_var.handle,
-          coefficients["lr_t"],
-          grad,
-          coefficients["momentum"],
+      return gen_training_ops.ResourceApplyKerasMomentum(
+          var=var.handle,
+          accum=momentum_var.handle,
+          lr=coefficients["lr_t"],
+          grad=grad,
+          momentum=coefficients["momentum"],
           use_locking=self._use_locking,
           use_nesterov=self.nesterov)
     else:
-      return training_ops.resource_apply_gradient_descent(
-          var.handle, coefficients["lr_t"], grad, use_locking=self._use_locking)
+      return gen_training_ops.ResourceApplyGradientDescent(
+          var=var.handle,
+          alpha=coefficients["lr_t"],
+          delta=grad,
+          use_locking=self._use_locking)
 
   def _resource_apply_sparse_duplicate_indices(self, grad, var, indices,
                                                **kwargs):
@@ -158,8 +161,10 @@ class SGD(optimizer_v2.OptimizerV2):
       coefficients = (kwargs.get("apply_state", {}).get((var_device, var_dtype))
                       or self._fallback_apply_state(var_device, var_dtype))
 
-      return resource_variable_ops.resource_scatter_add(
-          var.handle, indices, -grad * coefficients["lr_t"])
+      return gen_resource_variable_ops.ResourceScatterAdd(
+          resource=var.handle,
+          indices=indices,
+          updates=-grad * coefficients["lr_t"])
 
   def _resource_apply_sparse(self, grad, var, indices, apply_state=None):
     # This method is only needed for momentum optimization.
@@ -168,13 +173,13 @@ class SGD(optimizer_v2.OptimizerV2):
                     or self._fallback_apply_state(var_device, var_dtype))
 
     momentum_var = self.get_slot(var, "momentum")
-    return training_ops.resource_sparse_apply_keras_momentum(
-        var.handle,
-        momentum_var.handle,
-        coefficients["lr_t"],
-        grad,
-        indices,
-        coefficients["momentum"],
+    return gen_training_ops.ResourceSparseApplyKerasMomentum(
+        var=var.handle,
+        accum=momentum_var.handle,
+        lr=coefficients["lr_t"],
+        grad=grad,
+        indices=indices,
+        momentum=coefficients["momentum"],
         use_locking=self._use_locking,
         use_nesterov=self.nesterov)
 
@@ -182,7 +187,7 @@ class SGD(optimizer_v2.OptimizerV2):
     config = super(SGD, self).get_config()
     config.update({
         "learning_rate": self._serialize_hyperparameter("learning_rate"),
-        "decay": self._serialize_hyperparameter("decay"),
+        "decay": self._initial_decay,
         "momentum": self._serialize_hyperparameter("momentum"),
         "nesterov": self.nesterov,
     })

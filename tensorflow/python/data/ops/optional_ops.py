@@ -110,7 +110,7 @@ class Optional(composite_tensor.CompositeTensor):
     tf.TensorSpec(shape=(), dtype=tf.int32, name=None)
 
     Returns:
-      A nested structure of `tf.TypeSpec` objects matching the structure of an
+      A (nested) structure of `tf.TypeSpec` objects matching the structure of an
       element of this optional, specifying the type of individual components.
     """
     raise NotImplementedError("Optional.element_spec")
@@ -128,7 +128,7 @@ class Optional(composite_tensor.CompositeTensor):
     tf.Tensor(False, shape=(), dtype=bool)
 
     Args:
-      element_spec: A nested structure of `tf.TypeSpec` objects matching the
+      element_spec: A (nested) structure of `tf.TypeSpec` objects matching the
         structure of an element of this optional.
 
     Returns:
@@ -175,22 +175,23 @@ class _OptionalImpl(Optional):
     self._element_spec = element_spec
 
   def has_value(self, name=None):
-    return gen_dataset_ops.optional_has_value(self._variant_tensor, name=name)
+    with ops.colocate_with(self._variant_tensor):
+      return gen_dataset_ops.optional_has_value(self._variant_tensor, name=name)
 
   def get_value(self, name=None):
     # TODO(b/110122868): Consolidate the restructuring logic with similar logic
     # in `Iterator.get_next()` and `StructuredFunctionWrapper`.
     with ops.name_scope(name, "OptionalGetValue",
                         [self._variant_tensor]) as scope:
-      return structure.from_tensor_list(
-          self._element_spec,
-          gen_dataset_ops.optional_get_value(
-              self._variant_tensor,
-              name=scope,
-              output_types=structure.get_flat_tensor_types(
-                  self._element_spec),
-              output_shapes=structure.get_flat_tensor_shapes(
-                  self._element_spec)))
+      with ops.colocate_with(self._variant_tensor):
+        result = gen_dataset_ops.optional_get_value(
+            self._variant_tensor,
+            name=scope,
+            output_types=structure.get_flat_tensor_types(self._element_spec),
+            output_shapes=structure.get_flat_tensor_shapes(self._element_spec))
+      # NOTE: We do not colocate the deserialization of composite tensors
+      # because not all ops are guaranteed to have non-GPU kernels.
+      return structure.from_tensor_list(self._element_spec, result)
 
   @property
   def element_spec(self):
@@ -221,7 +222,7 @@ class OptionalSpec(type_spec.TypeSpec):
   tf.Tensor(25, shape=(), dtype=int32)
 
   Attributes:
-    element_spec: A nested structure of `TypeSpec` objects that represents the
+    element_spec: A (nested) structure of `TypeSpec` objects that represents the
       type specification of the optional element.
   """
 

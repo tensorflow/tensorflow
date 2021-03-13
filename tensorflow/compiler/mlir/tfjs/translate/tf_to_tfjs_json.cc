@@ -26,8 +26,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
@@ -129,20 +129,19 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
       absl::StrSplit(saved_model_exported_names, ',', absl::SkipEmpty());
   absl::Span<std::string> exported_names(exported_names_in_vector);
   if (import_saved_model) {
-    auto module = tensorflow::SavedModelObjectGraphToMlirImport(
+    auto module_or = tensorflow::SavedModelObjectGraphToMlirImport(
         input_filename, tags, absl::Span<std::string>(exported_names), context);
-    if (!module)
-      return tensorflow::errors::InvalidArgument("fail to open input file");
+    if (!module_or.status().ok()) return module_or.status();
     TF_RETURN_IF_ERROR(RegisterCustomOps(extra_tf_opdefs));
-    return module;
+    return module_or.ConsumeValueOrDie();
   } else if (import_saved_model_v1) {
-    auto module = tensorflow::SavedModelSignatureDefsToMlirImport(
-        input_filename, tags, exported_names, context);
+    tensorflow::MLIRImportOptions import_options;
+    auto module_or = tensorflow::SavedModelSignatureDefsToMlirImport(
+        input_filename, tags, exported_names, context, import_options);
 
-    if (!module)
-      return tensorflow::errors::InvalidArgument("fail to open input file");
+    if (!module_or.status().ok()) return module_or.status();
     TF_RETURN_IF_ERROR(RegisterCustomOps(extra_tf_opdefs));
-    return module;
+    return module_or.ConsumeValueOrDie();
   } else {
     return tensorflow::errors::InvalidArgument(
         "Should be either saved model v1 or v2");

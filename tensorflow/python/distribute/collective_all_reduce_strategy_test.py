@@ -18,47 +18,52 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
-from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import cluster_resolver as cluster_resolver_lib
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import cross_device_utils
+from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
+from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
-from tensorflow.python.distribute import values
+from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
-from tensorflow.python.keras import testing_utils
-from tensorflow.python.keras.layers import core
-from tensorflow.python.keras.mixed_precision.experimental import policy
-from tensorflow.python.keras.mixed_precision.experimental import test_util as mp_test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import nn
-from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import test
-from tensorflow.python.training import adam
-from tensorflow.python.training import gradient_descent
-from tensorflow.python.training import training_util
-from tensorflow.python.training.experimental import loss_scale as loss_scale_module
-from tensorflow.python.training.experimental import loss_scale_optimizer
 from tensorflow.python.training.server_lib import ClusterSpec
+
+
+CollectiveAllReduceStrategy = (
+    collective_all_reduce_strategy.CollectiveAllReduceStrategy)
+CollectiveAllReduceExtended = (
+    collective_all_reduce_strategy.CollectiveAllReduceExtended)
+_CollectiveAllReduceStrategyExperimental = (
+    collective_all_reduce_strategy._CollectiveAllReduceStrategyExperimental)
 
 
 def create_test_objects(cluster_spec=None,
@@ -91,14 +96,10 @@ def create_test_objects(cluster_spec=None,
 class CollectiveAllReduceStrategyTestBase(
     multi_worker_test_base.MultiWorkerTestBase):
 
-  collective_key_base = 0
-
   def setUp(self):
     # We use a different key_base for each test so that collective keys won't be
     # reused.
-    # TODO(yuefengz, ayushd): enable it to reuse collective keys in different
-    # tests.
-    CollectiveAllReduceStrategyTestBase.collective_key_base += 100000
+    CollectiveAllReduceStrategy._collective_key_base += 100000
     super(CollectiveAllReduceStrategyTestBase, self).setUp()
 
   def _get_test_object(self, task_type, task_id, num_gpus=0):
@@ -107,17 +108,6 @@ class CollectiveAllReduceStrategyTestBase(
         task_type=task_type,
         task_id=task_id,
         num_gpus=num_gpus)
-
-    collective_keys = cross_device_utils.CollectiveKeys(
-        group_key_start=10 +
-        CollectiveAllReduceStrategyTestBase.collective_key_base,
-        op_instance_key_start=100 +
-        CollectiveAllReduceStrategyTestBase.collective_key_base,
-        variable_instance_key_start=10000 +
-        CollectiveAllReduceStrategyTestBase.collective_key_base)
-    strategy.extended._collective_keys = collective_keys
-    strategy.extended._cross_device_ops._collective_keys = (collective_keys)
-
     return strategy, target, session_config
 
   def _test_minimize_loss_graph(self, task_type, task_id, num_gpus):
@@ -127,11 +117,16 @@ class CollectiveAllReduceStrategyTestBase(
          self.cached_session(config=config,
                              target=master_target) as sess, \
          d.scope():
-      l = core.Dense(1, use_bias=False,
-                     name='gpu_%d' % d.extended._num_gpus_per_worker)
+      initializer = functools.partial(
+          init_ops_v2.GlorotUniform(), (1, 1), dtype=dtypes.float32)
+      kernel = variables.Variable(
+          initial_value=initializer,
+          name='gpu_%d/kernel' % d.extended._num_gpus_per_worker,
+          trainable=True)
 
       def loss_fn(x):
-        y = array_ops.reshape(l(x), []) - constant_op.constant(1.)
+        y = array_ops.reshape(
+            gen_math_ops.mat_mul(x, kernel), []) - constant_op.constant(1.)
         return y * y
 
       # TODO(yuefengz, apassos): eager.backprop.implicit_grad is not safe for
@@ -187,133 +182,6 @@ class CollectiveAllReduceStrategyTestBase(
       # Error should go down
       self.assertLess(error_after, error_before)
 
-  def _test_complex_model(self, task_type, task_id, num_gpus):
-    d, master_target, config = self._get_test_object(task_type, task_id,
-                                                     num_gpus)
-
-    def model_fn():
-      """Mnist model with synthetic input."""
-      data_format = 'channels_last'
-      input_shape = [28, 28, 1]
-      l = keras.layers
-      max_pool = l.MaxPooling2D((2, 2), (2, 2),
-                                padding='same',
-                                data_format=data_format)
-      model = keras.Sequential([
-          l.Reshape(target_shape=input_shape, input_shape=(28 * 28,)),
-          l.Conv2D(
-              32,
-              5,
-              padding='same',
-              data_format=data_format,
-              activation=nn.relu), max_pool,
-          l.Conv2D(
-              64,
-              5,
-              padding='same',
-              data_format=data_format,
-              activation=nn.relu), max_pool,
-          l.Flatten(),
-          l.Dense(1024, activation=nn.relu),
-          l.Dropout(0.4),
-          l.Dense(10)
-      ])
-      image = random_ops.random_uniform([2, 28, 28])
-      label = random_ops.random_uniform([2, 1], maxval=10, dtype=dtypes.int32)
-      logits = model(image, training=True)
-      # TODO(yuefengz): make loss a callable for eager mode.
-      loss = losses.sparse_softmax_cross_entropy(labels=label, logits=logits)
-      optimizer = adam.AdamOptimizer(learning_rate=1e-4)
-      train_op = optimizer.minimize(loss,
-                                    training_util.get_or_create_global_step())
-      return train_op
-
-    with ops.Graph().as_default(), \
-         self.cached_session(config=config,
-                             target=master_target) as sess:
-      with d.scope():
-        train_op = d.extended.call_for_each_replica(model_fn)
-        train_op = d.group(d.experimental_local_results(train_op))
-
-      sess.run(variables.global_variables_initializer())
-      sess.run(train_op)
-
-  def _test_mixed_precision(self, task_type, task_id, num_gpus):
-    """Tests mixed precision works with the CollectiveAllReduceStrategy.
-
-    This tests:
-      1. Variables are in float32, by running with a small enough learning rate
-         that if the variables are float16, their values wouldn't change when
-         gradients are applied.
-      2. The loss scale is doubled if there are no NaNs.
-      3. The loss scale is halved if the first worker has a NaN, even if the
-         other works do not have NaNs.
-
-    Args:
-      task_type: A string, such as "worker", indicating the type of the replica.
-      task_id: Zero-indexed ID of the task.
-      num_gpus: The number of GPUs to use.
-    """
-    d, master_target, config = self._get_test_object(task_type, task_id,
-                                                     num_gpus)
-    # Should be set to mixed_float16 by caller.
-    self.assertEqual(policy.global_policy().name, 'mixed_float16')
-
-    with ops.Graph().as_default(), \
-         self.cached_session(config=config,
-                             target=master_target) as sess:
-      # The loss on the first worker is multiplied by this value. Allows
-      # testing the first worker having NaN loss and gradients while keeping the
-      # other workers' losses and gradients finite.
-      loss_multiplier_for_first_worker = variables.Variable(
-          1., dtype='float16', trainable=False)
-      with d.scope():
-        model = keras.Sequential([
-            mp_test_util.MultiplyLayer(assert_type=dtypes.float16,
-                                       input_shape=(1,)),
-        ])
-        loss_scale = loss_scale_module.DynamicLossScale(2 ** 10,
-                                                        increment_period=1)
-        def model_fn():
-          """Simple model to test mixed precision."""
-          x = np.ones((1, 1))
-          loss = model(x, training=True)
-
-          if ((task_type == 'worker' and task_id == 0) or
-              task_type is task_id is None):
-            loss *= loss_multiplier_for_first_worker
-          # Learning rate is small enough that if applied to a float16 variable,
-          # the variable will not change. So this tests the learning rate is not
-          # applied to a float16 value, but instead the float32 variable.
-          optimizer = gradient_descent.GradientDescentOptimizer(2 ** -14)
-          optimizer = loss_scale_optimizer.MixedPrecisionLossScaleOptimizer(
-              optimizer, loss_scale)
-          train_op = optimizer.minimize(
-              loss, training_util.get_or_create_global_step())
-          return train_op
-
-        train_op = d.extended.call_for_each_replica(model_fn)
-        train_op = d.group(d.experimental_local_results(train_op))
-
-      sess.run(variables.global_variables_initializer())
-      sess.run(train_op)
-
-      (var,) = model.trainable_weights
-      # Variable starts at 1. Each worker's gradient is 2 ** -14, the learning
-      # rate, and each worker's gradient will be subtracted from the variable.
-      expected = 1 - d.num_replicas_in_sync * 2 ** -14
-      self.assertEqual(sess.run(var), expected)
-      # Loss scale should double, as are gradients are finite.
-      self.assertEqual(sess.run(loss_scale()), 2 ** 11)
-
-      # Set the first worker to have NaN loss and gradients.
-      sess.run(loss_multiplier_for_first_worker.assign(float('NaN')))
-      sess.run(train_op)
-      # Variable should not change, since first worker had NaN
-      self.assertEqual(sess.run(var), expected)
-      # Loss scale should halve due to NaN
-      self.assertEqual(sess.run(loss_scale()), 2 ** 10)
-
   def _test_variable_initialization(self, task_type, task_id, num_gpus):
     distribution, master_target, config = self._get_test_object(
         task_type, task_id, num_gpus)
@@ -362,8 +230,8 @@ class CollectiveAllReduceStrategyTestBase(
 
       for expected_value in expected_values:
         next_element = iterator.get_next()
-        computed_value = sess.run([values.select_replica(r, next_element)
-                                   for r in range(len(devices))])
+        computed_value = sess.run([distribute_utils.select_replica(
+            r, next_element) for r in range(len(devices))])
         if ignore_order:
           self.assertCountEqual(list(expected_value), list(computed_value))
         else:
@@ -371,7 +239,7 @@ class CollectiveAllReduceStrategyTestBase(
 
       with self.assertRaises(errors.OutOfRangeError):
         next_element = iterator.get_next()
-        sess.run([values.select_replica(r, next_element)
+        sess.run([distribute_utils.select_replica(r, next_element)
                   for r in range(len(devices))])
 
       # After re-initializing the iterator, should be able to iterate again.
@@ -380,8 +248,9 @@ class CollectiveAllReduceStrategyTestBase(
 
         for expected_value in expected_values:
           next_element = iterator.get_next()
-          computed_value = sess.run([values.select_replica(r, next_element)
-                                     for r in range(len(devices))])
+          computed_value = sess.run([
+              distribute_utils.select_replica(r, next_element)
+              for r in range(len(devices))])
           if ignore_order:
             self.assertCountEqual(list(expected_value), list(computed_value))
           else:
@@ -411,6 +280,53 @@ class DistributedCollectiveAllReduceStrategyTest(
     self.assertEqual(2 * num_workers,
                      distribution.num_replicas_in_sync)
 
+  @combinations.generate(combinations.combine(
+      mode=['graph'],
+      prefetch_to_device=[None, True]))
+  def test_prefetch_to_device_dataset(self, prefetch_to_device):
+    distribution, _, _ = self._get_test_object(
+        task_type='worker',
+        task_id=0,
+        num_gpus=2)
+    if prefetch_to_device is None:
+      input_options = None
+    else:
+      input_options = distribute_lib.InputOptions(
+          experimental_fetch_to_device=prefetch_to_device)
+    dataset = dataset_ops.Dataset.range(100)
+    dataset = dataset.batch(distribution.num_replicas_in_sync)
+    dataset = distribution.experimental_distribute_dataset(
+        dataset, options=input_options)
+    if isinstance(dataset, input_lib.DistributedDatasetV1):
+      item = dataset.make_initializable_iterator().get_next()
+    else:
+      self.skipTest('unsupported test combination')
+    device_types = {
+        tf_device.DeviceSpec.from_string(tensor.device).device_type for
+        tensor in item.values}
+    self.assertAllEqual(list(device_types), ['GPU'])
+
+  @combinations.generate(combinations.combine(mode=['graph']))
+  def test_prefetch_to_host_dataset(self):
+    distribution, _, _ = self._get_test_object(
+        task_type='worker',
+        task_id=0,
+        num_gpus=2)
+    input_options = distribute_lib.InputOptions(
+        experimental_fetch_to_device=False)
+    dataset = dataset_ops.Dataset.range(100)
+    dataset = dataset.batch(distribution.num_replicas_in_sync)
+    dataset = distribution.experimental_distribute_dataset(
+        dataset, options=input_options)
+    if isinstance(dataset, input_lib.DistributedDatasetV1):
+      item = dataset.make_initializable_iterator().get_next()
+    else:
+      self.skipTest('unsupported test combination')
+    device_types = {
+        tf_device.DeviceSpec.from_string(tensor.device).device_type for
+        tensor in item.values}
+    self.assertAllEqual(list(device_types), ['CPU'])
+
   @combinations.generate(
       combinations.combine(mode=['graph'], required_gpus=[0, 1, 2]))
   def testMinimizeLossGraph(self, required_gpus):
@@ -426,52 +342,38 @@ class DistributedCollectiveAllReduceStrategyTest(
         num_gpus=required_gpus)
 
   @combinations.generate(
-      combinations.combine(mode=['graph'], required_gpus=[0, 1, 2]))
-  def testComplexModel(self, required_gpus):
-    self._run_between_graph_clients(
-        self._test_complex_model, self._cluster_spec, num_gpus=required_gpus)
-
-  @combinations.generate(
-      combinations.combine(mode=['graph'], required_gpus=[0, 1, 2]))
-  @testing_utils.enable_v2_dtype_behavior
-  def testMixedPrecision(self, required_gpus):
-    if test_util.is_xla_enabled():
-      self.skipTest('Test gets NaNs with XLA')
-    with policy.policy_scope('mixed_float16'):
-      self._run_between_graph_clients(
-          self._test_mixed_precision,
-          self._cluster_spec,
-          num_gpus=required_gpus)
-
-  @combinations.generate(
       combinations.combine(
           mode=['graph'], required_gpus=[0, 1, 2], use_dataset=[True, False]))
   def testMakeInputFnIterator(self, required_gpus, use_dataset):
-    if use_dataset:
-      fn = lambda: dataset_ops.Dataset.range(100)
-    else:
-      def fn():
-        dataset = dataset_ops.Dataset.range(100)
-        it = dataset_ops.make_one_shot_iterator(dataset)
-        return it.get_next
-    # We use CPU as the device when required_gpus = 0
-    devices_per_worker = max(1, required_gpus)
-    expected_values = [[i+j for j in range(devices_per_worker)]
-                       for i in range(0, 100, devices_per_worker)]
+    def _worker_fn(task_type, task_id, required_gpus):
+      if use_dataset:
+        fn = lambda: dataset_ops.Dataset.range(20)
+      else:
+        def fn():
+          dataset = dataset_ops.Dataset.range(20)
+          it = dataset_ops.make_one_shot_iterator(dataset)
+          return it.get_next
+      # We use CPU as the device when required_gpus = 0
+      devices_per_worker = max(1, required_gpus)
+      expected_values = [[i+j for j in range(devices_per_worker)]
+                         for i in range(0, 20, devices_per_worker)]
 
-    input_fn = self._input_fn_to_test_input_context(
-        fn,
-        expected_num_replicas_in_sync=3*devices_per_worker,
-        expected_num_input_pipelines=3,
-        expected_input_pipeline_id=1)  # because task_id = 1
-    self._test_input_fn_iterator(
-        'worker',
-        1,
-        required_gpus,
-        input_fn,
-        expected_values,
-        test_reinitialize=use_dataset,
-        ignore_order=not use_dataset)
+      input_fn = self._input_fn_to_test_input_context(
+          fn,
+          expected_num_replicas_in_sync=3*devices_per_worker,
+          expected_num_input_pipelines=3,
+          expected_input_pipeline_id=task_id)
+      self._test_input_fn_iterator(
+          task_type,
+          task_id,
+          required_gpus,
+          input_fn,
+          expected_values,
+          test_reinitialize=use_dataset,
+          ignore_order=not use_dataset)
+
+    self._run_between_graph_clients(_worker_fn, self._cluster_spec,
+                                    required_gpus)
 
   @combinations.generate(combinations.combine(mode=['graph']))
   def testUpdateConfigProto(self):
@@ -498,29 +400,6 @@ class DistributedCollectiveAllReduceStrategyTest(
     self.assertEqual(['CollectiveReduce'],
                      new_rewrite_options.scoped_allocator_opts.enable_op)
 
-  @combinations.generate(combinations.combine(mode=['eager']))
-  def testEnableCollectiveOps(self):
-    mock_called = [False]
-
-    # pylint: disable=dangerous-default-value
-    def mock_enable_collective_ops(server_def, mock_called=mock_called):
-      self.assertEqual('worker', server_def.job_name)
-      self.assertEqual(1, server_def.task_index)
-      self.assertEqual('grpc', server_def.protocol)
-      mock_called[0] = True
-
-    def mock_configure_collective_ops(*args, **kwargs):
-      del args, kwargs
-
-    with test.mock.patch.object(context.context(), 'enable_collective_ops',
-                                mock_enable_collective_ops), \
-         test.mock.patch.object(context.context(), 'configure_collective_ops',
-                                mock_configure_collective_ops):
-      strategy, _, _ = self._get_test_object(
-          task_type='worker', task_id=1, num_gpus=2)
-    self.assertTrue(strategy.extended._std_server_started)
-    self.assertTrue(mock_called[0])
-
 
 class DistributedCollectiveAllReduceStrategyTestWithChief(
     CollectiveAllReduceStrategyTestBase, parameterized.TestCase):
@@ -545,24 +424,6 @@ class DistributedCollectiveAllReduceStrategyTestWithChief(
         self._cluster_spec,
         num_gpus=required_gpus)
 
-  @combinations.generate(
-      combinations.combine(mode=['graph'], required_gpus=[0, 1, 2]))
-  def testComplexModel(self, required_gpus):
-    self._run_between_graph_clients(
-        self._test_complex_model, self._cluster_spec, num_gpus=required_gpus)
-
-  @combinations.generate(
-      combinations.combine(mode=['graph'], required_gpus=[0, 1, 2]))
-  @testing_utils.enable_v2_dtype_behavior
-  def testMixedPrecision(self, required_gpus):
-    if test_util.is_xla_enabled():
-      return  # Test gets NaNs with XLA
-    with policy.policy_scope('mixed_float16'):
-      self._run_between_graph_clients(
-          self._test_mixed_precision,
-          self._cluster_spec,
-          num_gpus=required_gpus)
-
 
 class LocalCollectiveAllReduceStrategy(
     CollectiveAllReduceStrategyTestBase,
@@ -579,18 +440,6 @@ class LocalCollectiveAllReduceStrategy(
       self._test_minimize_loss_eager(strategy)
     else:
       self._test_minimize_loss_graph(None, None, required_gpus)
-
-  @combinations.generate(
-      combinations.combine(mode=['graph'], required_gpus=[2, 4]))
-  def testComplexModel(self, required_gpus):
-    self._test_complex_model(None, None, required_gpus)
-
-  @combinations.generate(
-      combinations.combine(mode=['graph'], required_gpus=[2, 4]))
-  @testing_utils.enable_v2_dtype_behavior
-  def testMixedPrecision(self, required_gpus):
-    with policy.policy_scope('mixed_float16'):
-      self._test_mixed_precision(None, None, required_gpus)
 
   @combinations.generate(
       combinations.combine(
@@ -672,5 +521,77 @@ class LocalCollectiveAllReduceStrategy(
         strategy, session=self.cached_session(config=config, target=target))
 
 
+class LogicalDeviceTest(test.TestCase, parameterized.TestCase):
+
+  @combinations.generate(combinations.combine(mode=['eager'], required_gpus=1))
+  def testKeepLogicalDevice(self):
+    # Cannot change logical device after the context initialization.
+    context._reset_context()  # pylint: disable=protected-access
+    cluster_spec = multi_worker_test_base.create_cluster_spec(
+        has_chief=False, num_workers=1)
+    resolver = cluster_resolver_lib.SimpleClusterResolver(
+        cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
+        task_type='worker',
+        task_id=0)
+    gpus = tf_config.list_physical_devices('GPU')
+    tf_config.set_logical_device_configuration(gpus[-1], [
+        context.LogicalDeviceConfiguration(64),
+        context.LogicalDeviceConfiguration(64),
+    ])
+    collective_all_reduce_strategy.CollectiveAllReduceStrategy(
+        cluster_resolver=resolver)
+    # Since we create two logical GPUs out of the last GPU, there should be one
+    # more logical GPUs than physical GPUs.
+    self.assertLen(tf_config.list_logical_devices('GPU'), len(gpus) + 1)
+    context._reset_context()  # pylint: disable=protected-access
+
+
+@combinations.generate(
+    combinations.combine(
+        strategy=[
+            strategy_combinations.multi_worker_mirrored_2x1_cpu,
+            strategy_combinations.multi_worker_mirrored_2x1_gpu,
+            strategy_combinations.multi_worker_mirrored_2x2_gpu,
+        ],
+        mode=['eager']))
+class CollectiveAllReduceStrategyV2Test(test.TestCase, parameterized.TestCase):
+
+  def test_replica_id_in_sync_group(self, strategy):
+
+    def replica_fn():
+      replica_ctx = distribution_strategy_context.get_replica_context()
+      return replica_ctx.replica_id_in_sync_group, replica_ctx._replica_id
+
+    results = test_util.gather(strategy, strategy.run(replica_fn))
+    self.assertAllEqual(list(range(strategy.extended._num_replicas_in_sync)),
+                        results[0].numpy())
+    self.assertAllEqual(
+        list(range(len(strategy.extended.worker_devices))) *
+        strategy.extended._num_workers, results[1].numpy())
+
+
+class ExperimentalCompatibilityTest(test.TestCase):
+
+  def testIsInstance(self):
+    # It's not uncommon for people to special case MultiWorkerMirroredStrategy,
+    # so we need to make sure isinstance check works for combinations between
+    # the experimental and non-experimental endpoints.
+    strategy = CollectiveAllReduceStrategy()
+    experimental_strategy = _CollectiveAllReduceStrategyExperimental()
+    self.assertIsInstance(strategy, CollectiveAllReduceStrategy)
+    self.assertIsInstance(strategy, _CollectiveAllReduceStrategyExperimental)
+    self.assertIsInstance(experimental_strategy, CollectiveAllReduceStrategy)
+    self.assertIsInstance(experimental_strategy,
+                          _CollectiveAllReduceStrategyExperimental)
+
+  def testName(self):
+    # Estimator checks the __name__ to special case MultiWorkerMirroredStrategy.
+    self.assertEqual(CollectiveAllReduceStrategy.__name__,
+                     'CollectiveAllReduceStrategy')
+    self.assertEqual(_CollectiveAllReduceStrategyExperimental.__name__,
+                     'CollectiveAllReduceStrategy')
+
+
 if __name__ == '__main__':
-  test.main()
+  # TODO(b/172304955): enable logical devices.
+  test_util.main(config_logical_devices=False)

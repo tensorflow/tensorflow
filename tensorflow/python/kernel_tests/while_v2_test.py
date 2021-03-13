@@ -20,6 +20,8 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
+from google.protobuf import text_format
+from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.eager import backprop
@@ -28,8 +30,10 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
+from tensorflow.python.framework import importer
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
@@ -39,6 +43,8 @@ from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_list_ops
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import map_fn
@@ -146,7 +152,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
       while_loop_v2(lambda x: x < 10, Body, [x])
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError,
         r"Loop var Const:0 enters the loop with type <dtype: 'float32'> "
         r"but has type <dtype: 'float16'> after 1 iteration."):
@@ -168,10 +174,150 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
       self.assertAllEqual(fnWithLoop(), 4.0)
 
+  def checkIteratedGradients(self, func):
+    with context.eager_mode():
+
+      def _Grad(f):
+        def _GradFunction(primal):
+          with backprop.GradientTape() as tape:
+            tape.watch(primal)
+            primal_out = f(primal)
+          return tape.gradient(primal_out, primal)
+        return _GradFunction
+
+      f = func
+      one = constant_op.constant(1.)
+
+      for _ in range(3):
+        theoretical, numerical = gradient_checker_v2.compute_gradient(
+            def_function.function(f), [one])
+        self.assertAllClose(theoretical, numerical, rtol=1e-3)
+        f = _Grad(f)
+        self.assertAllClose(array_ops.reshape(numerical, []),
+                            def_function.function(f)(one),
+                            rtol=1e-3)
+
+  def testIteratedGradients(self):
+
+    def _Func(x):
+      _, z = while_loop_v2(
+          lambda i, _: i < 2,
+          lambda i, y: (i + 1, math_ops.cos(y)),
+          [0, x])
+      return z
+
+    self.checkIteratedGradients(_Func)
+
+  def testIteratedGradientsWithList(self):
+
+    def _Func(x):
+      results = list_ops.empty_tensor_list(
+          element_shape=[], element_dtype=dtypes.float32)
+
+      def _LoopBody(i, y, handle):
+        return (i + 1, math_ops.cos(y),
+                list_ops.tensor_list_push_back(handle, y))
+
+      _, z, results = while_loop_v2(
+          lambda i, _, h: i < 2, _LoopBody, [0, x, results])
+      return z + math_ops.reduce_sum(list_ops.tensor_list_stack(
+          results, dtypes.float32))
+
+    self.checkIteratedGradients(_Func)
+
+  def testGradWhileGradWhileWithVariable(self):
+    with context.eager_mode():
+      v = variables.Variable(1.)
+
+      @def_function.function
+      def _Func(x):
+
+        def _Inner(a):
+          with backprop.GradientTape() as tape:
+            tape.watch(a)
+            _, b = while_loop_v2(
+                lambda i, _: i < 2,
+                lambda i, y: (i + 1, math_ops.cos(v + y)),
+                [0, a])
+          return tape.gradient(b, a)
+
+        _, z = while_loop_v2(
+            lambda i, _: i < 2,
+            lambda i, y: (i + 1, _Inner(y)),
+            [0, x])
+        return z
+
+      with backprop.GradientTape(persistent=True) as tape:
+        x = constant_op.constant(1.)
+        tape.watch(x)
+        y = _Func(x)
+      dx, _ = tape.gradient(y, [x, v])
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          _Func, [x])
+      self.assertAllClose(numerical, theoretical, rtol=1e-3)
+      self.assertAllClose(array_ops.reshape(numerical, []),
+                          dx, rtol=1e-3)
+
+  def testThreeNestWithLists(self):
+    with context.eager_mode():
+      def _WrapInWhile(f):
+        def _Wrapped(x):
+          results = list_ops.empty_tensor_list(
+              element_shape=[], element_dtype=dtypes.float32)
+
+          def _LoopBody(i, y, handle):
+            return (i + 1, f(math_ops.cos(y)),
+                    list_ops.tensor_list_push_back(handle, y))
+
+          _, z, results = control_flow_ops.while_loop(
+              lambda i, _, h: i < 2, _LoopBody, [0, x, results])
+          return z + math_ops.reduce_sum(list_ops.tensor_list_stack(
+              results, dtypes.float32))
+        return _Wrapped
+
+      f = math_ops.sin
+
+      target_function = _WrapInWhile(_WrapInWhile(_WrapInWhile(f)))
+
+      @def_function.function
+      def _TapeFromGraphMode(x):
+        with backprop.GradientTape(persistent=True) as tape:
+          tape.watch(x)
+          y = target_function(x)
+        return tape.gradient(y, x)
+
+      x = constant_op.constant(1.)
+      dx = _TapeFromGraphMode(x)
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          target_function, [x])
+      self.assertAllClose(numerical, theoretical, rtol=3e-3)
+      self.assertAllClose(array_ops.reshape(numerical, []), dx, rtol=3e-3)
+
+  def testDeviceLabelsInherited(self):
+    def _LoopBody(i, y):
+      result = math_ops.cos(y)
+      self.assertIn("CPU:10", result.device)
+      with ops.device("CPU:11"):
+        result = array_ops.identity(result)
+      self.assertIn("CPU:11", result.device)
+      return i + 1, result
+
+    @def_function.function
+    def _FunctionWithWhileLoop():
+      x = constant_op.constant(1.)
+      with ops.device("CPU:10"):
+        _, z = while_loop_v2(
+            lambda i, _: i < 2,
+            _LoopBody,
+            [0, x])
+      return z
+    # The test assertion runs at trace time.
+    _FunctionWithWhileLoop.get_concrete_function()
+
   def testExternalControlDependencies(self):
     with ops.Graph().as_default(), self.test_session():
       v = variables.Variable(1.)
-      v.initializer.run()
+      self.evaluate(v.initializer)
       op = v.assign_add(1.)
 
       def body_fn(i):  # pylint: disable=invalid-name
@@ -908,25 +1054,21 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     with ops.Graph().as_default():
       while_op = self._createWhile(None)
       self.assertEqual(while_op.name, "while")
-      self.assertRegexpMatches(
-          while_op.get_attr("cond").name, r"while_cond_\d*")
-      self.assertRegexpMatches(
-          while_op.get_attr("body").name, r"while_body_\d*")
+      self.assertRegex(while_op.get_attr("cond").name, r"while_cond_\d*")
+      self.assertRegex(while_op.get_attr("body").name, r"while_body_\d*")
 
     with ops.Graph().as_default():
       with ops.name_scope("foo"):
         while1_op = self._createWhile("")
         self.assertEqual(while1_op.name, "foo/while")
-        self.assertRegexpMatches(
-            while1_op.get_attr("cond").name, r"foo_while_cond_\d*")
-        self.assertRegexpMatches(
-            while1_op.get_attr("body").name, r"foo_while_body_\d*")
+        self.assertRegex(while1_op.get_attr("cond").name, r"foo_while_cond_\d*")
+        self.assertRegex(while1_op.get_attr("body").name, r"foo_while_body_\d*")
 
         while2_op = self._createWhile(None)
         self.assertEqual(while2_op.name, "foo/while_1")
-        self.assertRegexpMatches(
+        self.assertRegex(
             while2_op.get_attr("cond").name, r"foo_while_1_cond_\d*")
-        self.assertRegexpMatches(
+        self.assertRegex(
             while2_op.get_attr("body").name, r"foo_while_1_body_\d*")
 
   @test_util.enable_control_flow_v2
@@ -1176,6 +1318,50 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
     Fn()
 
+  def testDoNotAccumulateForwardTensorsForTensorListReductionOps(self):
+
+    @def_function.function
+    def Fn():
+      with backprop.GradientTape() as tape:
+        e = constant_op.constant(2.)
+        x = list_ops.empty_tensor_list(
+            element_dtype=dtypes.float32, element_shape=e.shape)
+        x = list_ops.tensor_list_push_back(x, e)
+        tape.watch(x)
+
+        def Body(i, x):
+          forward_graph = ops.get_default_graph()
+
+          @custom_gradient.custom_gradient
+          def IdentityWithZeroGrad(x):
+
+            def Grad(unused_g, variables=None):  # pylint: disable=redefined-outer-name
+              del variables
+              gradient_graph = ops.get_default_graph()
+              shape = gen_list_ops.tensor_list_element_shape(
+                  x, shape_type=dtypes.int32)
+              assert shape.graph is forward_graph
+              size = gen_list_ops.tensor_list_length(x)
+              assert size.graph is forward_graph
+              zeros = gen_list_ops.tensor_list_reserve(shape, size,
+                                                       dtypes.float32)
+              assert zeros.graph is gradient_graph
+              return zeros
+
+            return x, Grad
+
+          return i + 1, IdentityWithZeroGrad(x)
+
+        _, result = while_loop_v2(lambda i, _: i < 2, Body, [0, x])
+      ones_like = list_ops.tensor_list_from_tensor(
+          array_ops.ones_like(
+              list_ops.tensor_list_stack(result, element_dtype=dtypes.float32)),
+          element_shape=tensor_shape.TensorShape([]))
+      grad = tape.gradient(result, x, output_gradients=[ones_like])
+      return grad
+
+    Fn()
+
   @test_util.run_v2_only
   def testInheritParentNameScope(self):
 
@@ -1241,6 +1427,607 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     config = config_pb2.ConfigProto()
     config.experimental.executor_type = "SINGLE_THREADED_EXECUTOR"
     self._runBasicWithConfig(config)
+
+  def testIsControlFlowGraph(self):
+    x = constant_op.constant(0)
+
+    @def_function.function
+    def F(c):
+
+      def Cond(i):
+        self.assertTrue(i.graph.is_control_flow_graph)
+        return i < 2
+
+      def Body(i):
+        i = i + 1
+        self.assertTrue(i.graph.is_control_flow_graph)
+        return i
+
+      return while_loop_v2(Cond, Body, [c])
+
+    ret, = F(x)
+    self.assertEqual(2, self.evaluate(ret))
+
+  def testImportFromSerializedWithFunctionInBody(self):
+    serialized = """node {
+      name: "Const"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_FLOAT
+            tensor_shape {
+            }
+            float_val: 1.0
+          }
+        }
+      }
+    }
+    node {
+      name: "while/maximum_iterations"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: -1
+          }
+        }
+      }
+    }
+    node {
+      name: "while/loop_counter"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: 0
+          }
+        }
+      }
+    }
+    node {
+      name: "while"
+      op: "StatelessWhile"
+      input: "while/loop_counter"
+      input: "while/maximum_iterations"
+      input: "Const"
+      attr {
+        key: "T"
+        value {
+          list {
+            type: DT_INT32
+            type: DT_INT32
+            type: DT_FLOAT
+          }
+        }
+      }
+      attr {
+        key: "_lower_using_switch_merge"
+        value {
+          b: true
+        }
+      }
+      attr {
+        key: "_num_original_outputs"
+        value {
+          i: 3
+        }
+      }
+      attr {
+        key: "_read_only_resource_inputs"
+        value {
+          list {
+          }
+        }
+      }
+      attr {
+        key: "body"
+        value {
+          func {
+            name: "while_body_822"
+          }
+        }
+      }
+      attr {
+        key: "cond"
+        value {
+          func {
+            name: "while_cond_821"
+          }
+        }
+      }
+      attr {
+        key: "output_shapes"
+        value {
+          list {
+            shape {
+            }
+            shape {
+            }
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "parallel_iterations"
+        value {
+          i: 10
+        }
+      }
+    }
+    node {
+      name: "while/Identity"
+      op: "Identity"
+      input: "while"
+      attr {
+        key: "T"
+        value {
+          type: DT_INT32
+        }
+      }
+    }
+    node {
+      name: "while/Identity_1"
+      op: "Identity"
+      input: "while:1"
+      attr {
+        key: "T"
+        value {
+          type: DT_INT32
+        }
+      }
+    }
+    node {
+      name: "while/Identity_2"
+      op: "Identity"
+      input: "while:2"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+    }
+    library {
+      function {
+        signature {
+          name: "while_body_822"
+          input_arg {
+            name: "while_loop_counter"
+            type: DT_INT32
+          }
+          input_arg {
+            name: "while_maximum_iterations_0"
+            type: DT_INT32
+          }
+          input_arg {
+            name: "placeholder"
+            type: DT_FLOAT
+          }
+          output_arg {
+            name: "add"
+            type: DT_INT32
+          }
+          output_arg {
+            name: "while_maximum_iterations"
+            type: DT_INT32
+          }
+          output_arg {
+            name: "partitionedcall"
+            type: DT_FLOAT
+          }
+        }
+        node_def {
+          name: "PartitionedCall"
+          op: "PartitionedCall"
+          input: "placeholder"
+          attr {
+            key: "Tin"
+            value {
+              list {
+                type: DT_FLOAT
+              }
+            }
+          }
+          attr {
+            key: "Tout"
+            value {
+              list {
+                type: DT_FLOAT
+              }
+            }
+          }
+          attr {
+            key: "_collective_manager_ids"
+            value {
+              list {
+              }
+            }
+          }
+          attr {
+            key: "_read_only_resource_inputs"
+            value {
+              list {
+              }
+            }
+          }
+          attr {
+            key: "config"
+            value {
+              s: ""
+            }
+          }
+          attr {
+            key: "config_proto"
+            value {
+              s: ""
+            }
+          }
+          attr {
+            key: "executor_type"
+            value {
+              s: ""
+            }
+          }
+          attr {
+            key: "f"
+            value {
+              func {
+                name: "__inference_f_841"
+              }
+            }
+          }
+          experimental_debug_info {
+            original_node_names: "PartitionedCall"
+          }
+        }
+        node_def {
+          name: "add/y"
+          op: "Const"
+          attr {
+            key: "dtype"
+            value {
+              type: DT_INT32
+            }
+          }
+          attr {
+            key: "value"
+            value {
+              tensor {
+                dtype: DT_INT32
+                tensor_shape {
+                }
+                int_val: 1
+              }
+            }
+          }
+          experimental_debug_info {
+            original_node_names: "add/y"
+          }
+        }
+        node_def {
+          name: "add_0"
+          op: "AddV2"
+          input: "while_loop_counter"
+          input: "add/y:output:0"
+          attr {
+            key: "T"
+            value {
+              type: DT_INT32
+            }
+          }
+          experimental_debug_info {
+            original_node_names: "add"
+          }
+        }
+        ret {
+          key: "add"
+          value: "add_0:z:0"
+        }
+        ret {
+          key: "partitionedcall"
+          value: "PartitionedCall:output:0"
+        }
+        ret {
+          key: "while_maximum_iterations"
+          value: "while_maximum_iterations_0"
+        }
+        arg_attr {
+          key: 0
+          value {
+            attr {
+              key: "_output_shapes"
+              value {
+                list {
+                  shape {
+                  }
+                }
+              }
+            }
+          }
+        }
+        arg_attr {
+          key: 1
+          value {
+            attr {
+              key: "_output_shapes"
+              value {
+                list {
+                  shape {
+                  }
+                }
+              }
+            }
+          }
+        }
+        arg_attr {
+          key: 2
+          value {
+            attr {
+              key: "_output_shapes"
+              value {
+                list {
+                  shape {
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      function {
+        signature {
+          name: "while_cond_821"
+          input_arg {
+            name: "while_loop_counter"
+            type: DT_INT32
+          }
+          input_arg {
+            name: "while_maximum_iterations"
+            type: DT_INT32
+          }
+          input_arg {
+            name: "placeholder"
+            type: DT_FLOAT
+          }
+          output_arg {
+            name: "less"
+            type: DT_BOOL
+          }
+        }
+        node_def {
+          name: "Less/y"
+          op: "Const"
+          attr {
+            key: "dtype"
+            value {
+              type: DT_FLOAT
+            }
+          }
+          attr {
+            key: "value"
+            value {
+              tensor {
+                dtype: DT_FLOAT
+                tensor_shape {
+                }
+                float_val: 5.0
+              }
+            }
+          }
+          experimental_debug_info {
+            original_node_names: "Less/y"
+          }
+        }
+        node_def {
+          name: "Less"
+          op: "Less"
+          input: "placeholder"
+          input: "Less/y:output:0"
+          attr {
+            key: "T"
+            value {
+              type: DT_FLOAT
+            }
+          }
+          experimental_debug_info {
+            original_node_names: "Less"
+          }
+        }
+        ret {
+          key: "less"
+          value: "Less:z:0"
+        }
+        arg_attr {
+          key: 0
+          value {
+            attr {
+              key: "_output_shapes"
+              value {
+                list {
+                  shape {
+                  }
+                }
+              }
+            }
+          }
+        }
+        arg_attr {
+          key: 1
+          value {
+            attr {
+              key: "_output_shapes"
+              value {
+                list {
+                  shape {
+                  }
+                }
+              }
+            }
+          }
+        }
+        arg_attr {
+          key: 2
+          value {
+            attr {
+              key: "_output_shapes"
+              value {
+                list {
+                  shape {
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      function {
+        signature {
+          name: "__inference_f_841"
+          input_arg {
+            name: "mul_placeholder"
+            type: DT_FLOAT
+          }
+          output_arg {
+            name: "identity"
+            type: DT_FLOAT
+          }
+        }
+        node_def {
+          name: "mul/y"
+          op: "Const"
+          attr {
+            key: "dtype"
+            value {
+              type: DT_FLOAT
+            }
+          }
+          attr {
+            key: "value"
+            value {
+              tensor {
+                dtype: DT_FLOAT
+                tensor_shape {
+                }
+                float_val: 2.0
+              }
+            }
+          }
+          experimental_debug_info {
+            original_node_names: "mul/y"
+          }
+        }
+        node_def {
+          name: "mul"
+          op: "Mul"
+          input: "mul_placeholder"
+          input: "mul/y:output:0"
+          attr {
+            key: "T"
+            value {
+              type: DT_FLOAT
+            }
+          }
+          experimental_debug_info {
+            original_node_names: "mul"
+          }
+        }
+        node_def {
+          name: "Identity"
+          op: "Identity"
+          input: "mul:z:0"
+          attr {
+            key: "T"
+            value {
+              type: DT_FLOAT
+            }
+          }
+          experimental_debug_info {
+            original_node_names: "Identity"
+          }
+        }
+        ret {
+          key: "identity"
+          value: "Identity:output:0"
+        }
+        arg_attr {
+          key: 0
+          value {
+            attr {
+              key: "_output_shapes"
+              value {
+                list {
+                  shape {
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    versions {
+      producer: 399
+      min_consumer: 12
+    }
+    """
+    # Code for generating above graph:
+    #
+    # def Body(i):
+    #   @tf.function
+    #   def f():
+    #     return i * 2
+    #   return f()
+    # tf.while_loop(lambda i: i < 5., Body, [tf.constant(1.)])
+    graph_def = graph_pb2.GraphDef()
+    text_format.Parse(serialized, graph_def)
+    @def_function.function
+    def F():
+      x, y = importer.import_graph_def(
+          graph_def, return_elements=["Const:0", "while:2"])
+      grad_out, = gradients_impl.gradients(y, x)
+      return grad_out
+    self.assertAllEqual(F(), 8.0)
+
+  def testIndexedSlicesInIncomingGrads(self):
+    @def_function.function
+    def F():
+      x = constant_op.constant([2.])
+      # Computes x^4
+      ret = while_loop_v2(
+          lambda _: True, lambda v: v * v, [x], return_same_structure=False,
+          maximum_iterations=2)
+      v = array_ops.gather(ret, [0])
+      return gradients_impl.gradients(v, [x])[0]  # 4*x^3
+    self.assertAllEqual(self.evaluate(F()), [32.])
 
 
 def ScalarShape():

@@ -20,6 +20,9 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -65,9 +68,26 @@ class AsStringOp : public OpKernel {
     OP_REQUIRES(ctx, !(scientific && shortest),
                 errors::InvalidArgument(
                     "Cannot select both scientific and shortest notation"));
+
     format_ = "%";
+    if (!fill_string.empty()) {
+      switch (fill_string[0]) {
+        case ' ':
+        case '+':
+        case '-':
+        case '0':
+        case '#':
+          strings::Appendf(&format_, "%s", fill_string.c_str());
+          break;
+        default:
+          bool fill_not_supported = true;
+          OP_REQUIRES(ctx, !fill_not_supported,
+                      errors::InvalidArgument("Fill argument not supported: \"",
+                                              fill_string, "\""));
+      }
+    }
     if (width > -1) {
-      strings::Appendf(&format_, "%s%d", fill_string.c_str(), width);
+      strings::Appendf(&format_, "%d", width);
     }
     if (precision > -1) {
       strings::Appendf(&format_, ".%d", precision);
@@ -94,6 +114,8 @@ class AsStringOp : public OpKernel {
         }
         break;
       case DT_BOOL:
+        break;
+      case DT_VARIANT:
         break;
       default:
         bool type_not_supported = true;
@@ -137,6 +159,12 @@ class AsStringOp : public OpKernel {
         const auto& input_flat = input_tensor->flat<bool>();
         for (int i = 0; i < input_flat.size(); ++i) {
           output_flat(i) = (input_flat(i)) ? "true" : "false";
+        }
+      } break;
+      case (DT_VARIANT): {
+        const auto& input_flat = input_tensor->flat<Variant>();
+        for (int i = 0; i < input_flat.size(); ++i) {
+          output_flat(i) = input_flat(i).DebugString();
         }
       } break;
       case (DT_COMPLEX64): {

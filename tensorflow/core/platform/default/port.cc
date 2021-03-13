@@ -14,11 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/base/internal/sysinfo.h"
-
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/numa.h"
+#include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -59,6 +59,14 @@ string Hostname() {
   gethostname(hostname, sizeof hostname);
   hostname[sizeof hostname - 1] = 0;
   return string(hostname);
+}
+
+string JobName() {
+  const char* job_name_cs = std::getenv("TF_JOB_NAME");
+  if (job_name_cs != nullptr) {
+    return string(job_name_cs);
+  }
+  return "";
 }
 
 int NumSchedulableCPUs() {
@@ -345,18 +353,25 @@ bool Snappy_UncompressToIOVec(const char* compressed, size_t compressed_length,
 string Demangle(const char* mangled) { return mangled; }
 
 double NominalCPUFrequency() {
-  return absl::base_internal::NominalCPUFrequency();
+  return tensorflow::profile_utils::CpuUtils::GetCycleCounterFrequency();
 }
 
-int64 AvailableRam() {
+MemoryInfo GetMemoryInfo() {
+  MemoryInfo mem_info = {INT64_MAX, INT64_MAX};
 #if defined(__linux__) && !defined(__ANDROID__)
   struct sysinfo info;
   int err = sysinfo(&info);
   if (err == 0) {
-    return info.freeram;
+    mem_info.free = info.freeram;
+    mem_info.total = info.totalram;
   }
 #endif
-  return INT64_MAX;
+  return mem_info;
+}
+
+MemoryBandwidthInfo GetMemoryBandwidthInfo() {
+  MemoryBandwidthInfo membw_info = {INT64_MAX};
+  return membw_info;
 }
 
 }  // namespace port

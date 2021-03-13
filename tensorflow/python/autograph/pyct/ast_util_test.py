@@ -235,37 +235,6 @@ class AstUtilTest(test.TestCase):
           parser.unparse(node.body, include_encoding_marker=False).strip(),
           expected_bodies)
 
-  def test_find_matching_definitions_lambda(self):
-    node = parser.parse(
-        textwrap.dedent("""
-      f = lambda x: 1
-    """))
-    f = lambda x: x
-    nodes = ast_util.find_matching_definitions(node, f)
-    self.assertLambdaNodes(nodes, ('1',))
-
-  def test_find_matching_definitions_lambda_multiple_matches(self):
-    node = parser.parse(
-        textwrap.dedent("""
-      f = lambda x: 1, lambda x: 2
-    """))
-    f = lambda x: x
-    nodes = ast_util.find_matching_definitions(node, f)
-    self.assertLambdaNodes(nodes, ('1', '2'))
-
-  def test_find_matching_definitions_lambda_uses_arg_names(self):
-    node = parser.parse(
-        textwrap.dedent("""
-      f = lambda x: 1, lambda y: 2
-    """))
-    f = lambda x: x
-    nodes = ast_util.find_matching_definitions(node, f)
-    self.assertLambdaNodes(nodes, ('1',))
-
-    f = lambda y: y
-    nodes = ast_util.find_matching_definitions(node, f)
-    self.assertLambdaNodes(nodes, ('2',))
-
 
 if __name__ == '__main__':
   test.main()

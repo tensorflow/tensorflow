@@ -31,7 +31,6 @@ import tempfile
 
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
-from tensorflow.python.autograph.utils import compat_util
 
 
 def _remove_file(file_name):
@@ -103,6 +102,3 @@ def load_ast(nodes,
 
   # TODO(mdan): Return a structured object.
   return module, source, source_map
-
-
-compat_util.deprecated_py2_support(__name__)

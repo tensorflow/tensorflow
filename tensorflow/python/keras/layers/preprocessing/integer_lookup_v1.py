@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import index_lookup_v1
 from tensorflow.python.keras.layers.preprocessing import integer_lookup
 from tensorflow.python.util.tf_export import keras_export
@@ -24,4 +25,17 @@ from tensorflow.python.util.tf_export import keras_export
 
 @keras_export(v1=["keras.layers.experimental.preprocessing.IntegerLookup"])
 class IntegerLookup(integer_lookup.IntegerLookup, index_lookup_v1.IndexLookup):
-  pass
+  """Maps integers from a vocabulary to integer indices."""
+
+  def __init__(self,
+               max_values=None,
+               num_oov_indices=1,
+               mask_value=0,
+               oov_value=-1,
+               vocabulary=None,
+               invert=False,
+               **kwargs):
+    super(IntegerLookup, self).__init__(max_values, num_oov_indices, mask_value,
+                                        oov_value, vocabulary, invert, **kwargs)
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        "IntegerLookup_V1").set(True)

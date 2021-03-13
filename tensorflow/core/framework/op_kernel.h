@@ -54,11 +54,11 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 
 namespace Eigen {
 struct ThreadPoolDevice;
 struct GpuDevice;
-struct SyclDevice;
 }  // end namespace Eigen
 
 namespace tensorflow {
@@ -145,14 +145,16 @@ class OpKernel {
 
   // Accessors.
   const NodeDef& def() const { return props_->node_def; }
-  const string& name() const { return props_->node_def.name(); }
+  const std::string& name() const { return props_->node_def.name(); }
   absl::string_view name_view() const { return name_view_; }
-  const string& type_string() const { return props_->node_def.op(); }
+  const std::string& type_string() const { return props_->node_def.op(); }
   absl::string_view type_string_view() const { return type_string_view_; }
-  const string& requested_input(int i) const {
+  const std::string& requested_input(int i) const {
     return props_->node_def.input(i);
   }
-  const string& requested_device() const { return props_->node_def.device(); }
+  const std::string& requested_device() const {
+    return props_->node_def.device();
+  }
 
   int num_inputs() const { return props_->input_types.size(); }
   DataType input_type(int i) const { return props_->input_types[i]; }
@@ -177,12 +179,11 @@ class OpKernel {
   // Returns a trace string for current computation, op name/type and input
   // tensor shape/dtype are encoded for profiler cost analysis. Most OpKernel
   // should use the default implementation.
-  // Override this function to add OpKernel specific attributes that are
-  // necessary for cost analysis.
-  virtual string TraceString(OpKernelContext* ctx, bool verbose);
+  virtual std::string TraceString(const OpKernelContext& ctx,
+                                  bool verbose) const;
 
  protected:
-  string GetTraceArgument(OpKernelContext* ctx);
+  std::string ShapeTraceString(const OpKernelContext& ctx) const;
 
  private:
   const std::shared_ptr<const NodeProperties> props_;
@@ -654,7 +655,7 @@ class OpKernelContext {
     SessionState* session_state = nullptr;
 
     // Unique session identifier. Can be empty.
-    string session_handle;
+    std::string session_handle;
 
     // Metadata about the session. Can be nullptr.
     const SessionMetadata* session_metadata = nullptr;
@@ -686,7 +687,7 @@ class OpKernelContext {
     StepStatsCollectorInterface* stats_collector = nullptr;
     GraphCollector* graph_collector = nullptr;
     bool run_all_kernels_inline = false;
-    const string* executor_type = nullptr;
+    const std::string* executor_type = nullptr;
 
     // TensorSliceReaderCache support.
     checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache = nullptr;
@@ -700,6 +701,8 @@ class OpKernelContext {
     // For tracking actively running deferred ops.
     std::function<void()> inc_num_deferred_ops_function;
     std::function<void()> dec_num_deferred_ops_function;
+
+    absl::optional<ManagedStackTrace> stack_trace = {};
 
     // For implementing `OpKernelContext::output_required()`. If null, all
     // outputs are required.
@@ -716,6 +719,11 @@ class OpKernelContext {
   int64 step_id() const { return params_->step_id; }
 
   const OpKernel& op_kernel() const { return *params_->op_kernel; }
+
+  // Stack trace of where the op was defined (if defined in eager mode).
+  const absl::optional<ManagedStackTrace>& stack_trace() const {
+    return params_->stack_trace;
+  }
 
   // Input/output signature.
 
@@ -734,7 +742,7 @@ class OpKernelContext {
   // inputs. For Ref inputs use mutable_input below.
   // REQUIRES: !IsRefType(input_dtype(index))
   // TODO(mrry): Convert this to return Status.
-  const Tensor& input(int index);
+  const Tensor& input(int index) const;
 
   // Returns the named immutable input tensor in "tensor", as defined
   // in the OpDef. May only be used for non-Ref inputs. For Ref inputs
@@ -828,7 +836,7 @@ class OpKernelContext {
 
   // Returns the registered name for the executor type that is executing the
   // current kernel. If empty, the default executor is used.
-  const string& executor_type() const;
+  const std::string& executor_type() const;
 
   // Input to output forwarding.
 
@@ -887,10 +895,14 @@ class OpKernelContext {
 
   // Tries to forward one of the inputs given in input_indices to
   // output[output_index]. If none of the given inputs can be forwarded, calls
-  // allocate_output() to allocate a new output buffer.
+  // allocate_output() to allocate a new output buffer. The index of the
+  // forwarded input will be assign to output argument forwarded_input (if it's
+  // not nullptr). If no inputs are forwarded, forwarded_input will be assigned
+  // -1.
   Status forward_input_or_allocate_output(
       gtl::ArraySlice<int> candidate_input_indices, int output_index,
-      const TensorShape& output_shape, Tensor** output) TF_MUST_USE_RESULT;
+      const TensorShape& output_shape, Tensor** output,
+      int* forwarded_input = nullptr) TF_MUST_USE_RESULT;
   Status forward_input_or_allocate_output(
       gtl::ArraySlice<StringPiece> candidate_input_names,
       StringPiece output_name, const TensorShape& output_shape,
@@ -1098,7 +1110,7 @@ class OpKernelContext {
   SessionState* session_state() const { return params_->session_state; }
 
   // Unique identifier of the session it belongs to. Can be empty.
-  string session_handle() const { return params_->session_handle; }
+  std::string session_handle() const { return params_->session_handle; }
 
   // Metadata about the session. Can be nullptr.
   const SessionMetadata* session_metadata() const {
@@ -1144,11 +1156,6 @@ class OpKernelContext {
   const Eigen::GpuDevice& eigen_gpu_device() const {
     return params_->eigen_gpu_device->device();
   }
-#ifdef TENSORFLOW_USE_SYCL
-  const Eigen::SyclDevice& eigen_sycl_device() const {
-    return *device()->eigen_sycl_device();
-  }
-#endif
   template <typename EigenDeviceType>
   const EigenDeviceType& eigen_device() const;
 
@@ -1331,10 +1338,6 @@ const Eigen::ThreadPoolDevice& OpKernelContext::eigen_device() const;
 template <>
 const Eigen::GpuDevice& OpKernelContext::eigen_device() const;
 
-#ifdef TENSORFLOW_USE_SYCL
-template <>
-const Eigen::SyclDevice& OpKernelContext::eigen_device() const;
-#endif
 
 // Register your OpKernel by specifying the Op's name, the device the
 // kernel runs on, any type attr constraints for this kernel, any
@@ -1403,7 +1406,7 @@ Status SupportedDeviceTypesForNode(
 
 // Returns a message with a description of the kernels registered for op
 // `op_name`.
-string KernelsRegisteredForOp(StringPiece op_name);
+std::string KernelsRegisteredForOp(StringPiece op_name);
 
 // Call once after Op registration has completed.
 Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry);
@@ -1416,72 +1419,74 @@ namespace register_kernel {
 
 class Name : public KernelDefBuilder {
  public:
-  // With selective registration, kernels whose implementation class is not used
-  // by any kernel are disabled with the SHOULD_REGISTER_OP_KERNEL call in
-  // REGISTER_KERNEL_BUILDER_UNIQ. However, an unused kernel that shares an
-  // implementation class with a used kernel would get through that mechanism.
-  //
-  // This mechanism stops that registration by changing the name of the kernel
-  // for the unused op to one that is ignored by
-  // OpKernelRegistrar::InitInternal.  Note that this method alone is
-  // not sufficient - the compiler can't evaluate the entire KernelDefBuilder at
-  // compilation time, so this method doesn't actually reduce code size.
-  explicit Name(const char* op)
-      : KernelDefBuilder(SHOULD_REGISTER_OP(op) ? op : "_no_register") {}
-};
-
-namespace system {
-
-class Name : public KernelDefBuilder {
- public:
-  // For system kernels, we ignore selective registration and
-  // unconditionally register the kernel.
   explicit Name(const char* op) : KernelDefBuilder(op) {}
 };
 
-}  // namespace system
-
 }  // namespace register_kernel
 
+// Kernel registration appears as:
+//   REGISTER_KERNEL_BUILDER(Name("OpName").Device(DEVICE_CPU)..., OpImpl)
+// We'd like to have "OpName" as a constant-expression, without requiring that
+// of the overall KernelDefBuilder expression (beginning with the
+// register_kernel::Name constructor above).
+//
+// So, we pull the "OpName" part to a separate macro-level argument. This
+// involves treating Name("OpName") as a macro call, via token-pasting (e.g.
+// M_## =>  M_Name("OpName")), and having it expand to '"OpName",
+// Name("OpName")' which is then usable as two arguments.
+#define TF_EXTRACT_KERNEL_NAME_Name(name_str) \
+  name_str, ::tensorflow::register_kernel::Name(name_str)
+#define TF_EXTRACT_KERNEL_NAME_IMPL(m, ...) m(__VA_ARGS__)
+#define TF_EXTRACT_KERNEL_NAME(m, kernel_builder, ...)                    \
+  TF_EXTRACT_KERNEL_NAME_IMPL(m, TF_EXTRACT_KERNEL_NAME_##kernel_builder, \
+                              __VA_ARGS__)
+
+// REGISTER_KERNEL_BUILDER_IMPL_2, with a unique 'ctr' as the first argument.
+// TODO(dodgen): There are some uses of this macro inside functions, where
+// kernel_builder refers to (non-const) locals (they should be fixed). To
+// accommodate those, kernel_builder.Build() appears as an argument to an
+// immediately-called lambda (not in the lambda itself).
+#define REGISTER_KERNEL_BUILDER_IMPL_3(ctr, op_name, kernel_builder_expr,   \
+                                       is_system_kernel, ...)               \
+  static ::tensorflow::InitOnStartupMarker const register_kernel_##ctr      \
+      TF_ATTRIBUTE_UNUSED =                                                 \
+          TF_INIT_ON_STARTUP_IF(is_system_kernel ||                         \
+                                (SHOULD_REGISTER_OP_KERNEL(#__VA_ARGS__) && \
+                                 SHOULD_REGISTER_OP(op_name)))              \
+          << ([](::tensorflow::KernelDef const* kernel_def) {               \
+               ::tensorflow::kernel_factory::OpKernelRegistrar registrar(   \
+                   kernel_def, #__VA_ARGS__,                                \
+                   [](::tensorflow::OpKernelConstruction* context)          \
+                       -> ::tensorflow::OpKernel* {                         \
+                     return new __VA_ARGS__(context);                       \
+                   });                                                      \
+               (void)registrar;                                             \
+               return ::tensorflow::InitOnStartupMarker{};                  \
+             })(kernel_builder_expr.Build());
+
+// REGISTER_KERNEL_BUILDER_IMPL, but with kernel_builder split to op_name,
+// kernel_builder_expr.
+#define REGISTER_KERNEL_BUILDER_IMPL_2(op_name, kernel_builder_expr, \
+                                       is_system_kernel, ...)        \
+  TF_NEW_ID_FOR_INIT(REGISTER_KERNEL_BUILDER_IMPL_3, op_name,        \
+                     kernel_builder_expr, is_system_kernel, __VA_ARGS__)
+
+// REGISTER_KERNEL_BUILDER, but with is_system_kernel bound.
+#define REGISTER_KERNEL_BUILDER_IMPL(kernel_builder, is_system_kernel, ...) \
+  TF_EXTRACT_KERNEL_NAME(REGISTER_KERNEL_BUILDER_IMPL_2, kernel_builder,    \
+                         is_system_kernel, __VA_ARGS__)
+
 #define REGISTER_KERNEL_BUILDER(kernel_builder, ...) \
-  REGISTER_KERNEL_BUILDER_UNIQ_HELPER(__COUNTER__, kernel_builder, __VA_ARGS__)
-
-#define REGISTER_KERNEL_BUILDER_UNIQ_HELPER(ctr, kernel_builder, ...) \
-  REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, __VA_ARGS__)
-
-#define REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, ...)        \
-  constexpr bool should_register_##ctr##__flag =                      \
-      SHOULD_REGISTER_OP_KERNEL(#__VA_ARGS__);                        \
-  static ::tensorflow::kernel_factory::OpKernelRegistrar              \
-      registrar__body__##ctr##__object(                               \
-          should_register_##ctr##__flag                               \
-              ? ::tensorflow::register_kernel::kernel_builder.Build() \
-              : nullptr,                                              \
-          #__VA_ARGS__,                                               \
-          [](::tensorflow::OpKernelConstruction* context)             \
-              -> ::tensorflow::OpKernel* {                            \
-            return new __VA_ARGS__(context);                          \
-          });
+  TF_ATTRIBUTE_ANNOTATE("tf:kernel")                 \
+  REGISTER_KERNEL_BUILDER_IMPL(kernel_builder, false, __VA_ARGS__)
 
 // The `REGISTER_SYSTEM_KERNEL_BUILDER()` macro acts as
 // `REGISTER_KERNEL_BUILDER()` except that the kernel is registered
 // unconditionally even when selective registration is used.
-#define REGISTER_SYSTEM_KERNEL_BUILDER(kernel_builder, ...)               \
-  REGISTER_SYSTEM_KERNEL_BUILDER_UNIQ_HELPER(__COUNTER__, kernel_builder, \
-                                             __VA_ARGS__)
-
-#define REGISTER_SYSTEM_KERNEL_BUILDER_UNIQ_HELPER(ctr, kernel_builder, ...) \
-  REGISTER_SYSTEM_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, __VA_ARGS__)
-
-#define REGISTER_SYSTEM_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, ...)    \
-  static ::tensorflow::kernel_factory::OpKernelRegistrar                 \
-      registrar__body__##ctr##__object(                                  \
-          ::tensorflow::register_kernel::system::kernel_builder.Build(), \
-          #__VA_ARGS__,                                                  \
-          [](::tensorflow::OpKernelConstruction* context)                \
-              -> ::tensorflow::OpKernel* {                               \
-            return new __VA_ARGS__(context);                             \
-          });
+#define REGISTER_SYSTEM_KERNEL_BUILDER(kernel_builder, ...) \
+  TF_ATTRIBUTE_ANNOTATE("tf:kernel")                        \
+  TF_ATTRIBUTE_ANNOTATE("tf:kernel:system")                 \
+  REGISTER_KERNEL_BUILDER_IMPL(kernel_builder, true, __VA_ARGS__)
 
 // Checks whether a given kernel is registered on device_type.
 bool KernelDefAvailable(const DeviceType& device_type, const NodeDef& node_def);
@@ -1495,13 +1500,13 @@ Status FindKernelDef(
     bool has_experimental_debug_info,
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
     StringPiece node_op, StringPiece node_device, AttrSlice node_attrs,
-    const KernelDef** def, string* kernel_class_name);
+    const KernelDef** def, std::string* kernel_class_name);
 
 // If node_def has a corresponding kernel registered on device_type,
 // returns OK and fill in the kernel def and kernel_class_name. <def> and
 // <kernel_class_name> may be null.
 Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
-                     const KernelDef** def, string* kernel_class_name);
+                     const KernelDef** def, std::string* kernel_class_name);
 
 // Writes a list of all registered kernels to LOG(INFO), to help users debug
 // missing kernel errors.
@@ -1535,23 +1540,15 @@ class OpKernelRegistrar {
   // KernelDef is required.
   OpKernelRegistrar(const KernelDef* kernel_def, StringPiece kernel_class_name,
                     std::unique_ptr<OpKernelFactory> factory) {
-    // Perform the check in the header to allow compile-time optimization
-    // to a no-op, allowing the linker to remove the kernel symbols.
-    if (kernel_def != nullptr) {
-      InitInternal(kernel_def, kernel_class_name, std::move(factory));
-    }
+    InitInternal(kernel_def, kernel_class_name, std::move(factory));
   }
 
   // Registers the given factory function with TensorFlow. This is equivalent
   // to registering a factory whose Create function invokes `create_fn`.
   OpKernelRegistrar(const KernelDef* kernel_def, StringPiece kernel_class_name,
                     OpKernel* (*create_fn)(OpKernelConstruction*)) {
-    // Perform the check in the header to allow compile-time optimization
-    // to a no-op, allowing the linker to remove the kernel symbols.
-    if (kernel_def != nullptr) {
-      InitInternal(kernel_def, kernel_class_name,
-                   absl::make_unique<PtrOpKernelFactory>(create_fn));
-    }
+    InitInternal(kernel_def, kernel_class_name,
+                 absl::make_unique<PtrOpKernelFactory>(create_fn));
   }
 
  private:
@@ -1638,12 +1635,18 @@ inline TensorValue OpKernelContext::release_output(int index) {
 
 inline Status OpKernelContext::forward_input_or_allocate_output(
     gtl::ArraySlice<int> candidate_input_indices, int output_index,
-    const TensorShape& output_shape, Tensor** output) {
+    const TensorShape& output_shape, Tensor** output, int* forwarded_input) {
   for (int input_index : candidate_input_indices) {
     if (forward_input_to_output_with_shape(input_index, output_index,
                                            output_shape, output)) {
+      if (forwarded_input != nullptr) {
+        *forwarded_input = input_index;
+      }
       return Status::OK();
     }
+  }
+  if (forwarded_input != nullptr) {
+    *forwarded_input = -1;
   }
   return allocate_output(output_index, output_shape, output);
 }

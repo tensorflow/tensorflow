@@ -27,14 +27,14 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import gfile
-from tensorflow.python.profiler import traceme
+from tensorflow.python.profiler import trace
 
 
 class ProfilerTest(test_util.TensorFlowTestCase):
 
   def test_profile(self):
     profiler.start()
-    with traceme.TraceMe('three_times_five'):
+    with trace.Trace('three_times_five'):
       three = constant_op.constant(3)
       five = constant_op.constant(5)
       product = three * five

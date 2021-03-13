@@ -23,12 +23,30 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
 
-// As of September 2016, we continue to attempt to avoid the use of gmock aka
-// googlemock included in the test framework
-// (https://github.com/google/googletest) to discourage over-eager use of mocks
-// that lead to cumbersome class hierarchies and tests that might end up not
-// testing real code in important ways.
 #include <gtest/gtest.h>  // IWYU pragma: export
+
+// Includes gmock.h and enables the use of gmock matchers in tensorflow tests.
+//
+// Test including this header can use the macros EXPECT_THAT(...) and
+// ASSERT_THAT(...) in combination with gmock matchers.
+// Example:
+//  std::vector<int> vec = Foo();
+//  EXPECT_THAT(vec, ::testing::ElementsAre(1,2,3));
+//  EXPECT_THAT(vec, ::testing::UnorderedElementsAre(2,3,1));
+//
+// For more details on gmock matchers see:
+// https://github.com/google/googletest/blob/master/googlemock/docs/CheatSheet.md#matchers
+//
+// The advantages of using gmock matchers instead of self defined matchers are
+// better error messages, more maintainable tests and more test coverage.
+#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
+#include "testing/base/public/gmock.h"  // IWYU pragma: export
+#else
+#include <gmock/gmock-generated-matchers.h>
+#include <gmock/gmock-matchers.h>
+#include <gmock/gmock-more-matchers.h>
+#include <gmock/gmock.h>
+#endif
 
 namespace tensorflow {
 namespace testing {
@@ -36,7 +54,7 @@ namespace testing {
 // Return a temporary directory suitable for temporary testing files.
 //
 // Where possible, consider using Env::LocalTempFilename over this function.
-string TmpDir();
+std::string TmpDir();
 
 // Returns the path to TensorFlow in the directory containing data
 // dependencies.
@@ -45,7 +63,7 @@ string TmpDir();
 // tensorflow/core/platform/resource_loader.h:GetDataDependencyFilepath. That
 // function should do the right thing both within and outside of tests allowing
 // avoiding test specific APIs.
-string TensorFlowSrcRoot();
+std::string TensorFlowSrcRoot();
 
 // Return a random number generator seed to use in randomized tests.
 // Returns the same value for the lifetime of the process.

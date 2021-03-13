@@ -15,9 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_NEON_TENSOR_UTILS_IMPL_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_NEON_TENSOR_UTILS_IMPL_H_
 
-// TODO(ghodrat): Remove this header file and the dependency to internal data
-// structure.
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 
@@ -83,11 +80,12 @@ void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2,
 void NeonCwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
                   int n_input, int16_t* output);
 
-void NeonCwiseClipping(int16_t* input, const int16_t clipping_value,
-                       int32_t n_batch, int32_t n_input);
-
-void NeonCwiseClipping(int8_t* input, const int8_t clipping_value,
-                       int32_t n_batch, int32_t n_input);
+void NeonCwiseClipping(float* vector, const int v_size,
+                       const float clipping_value);
+void NeonCwiseClipping(int16_t* vector, const int v_size,
+                       const int16_t clipping_value);
+void NeonCwiseClipping(int8_t* vector, const int v_size,
+                       const int8_t clipping_value);
 
 void NeonMatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* bias,
@@ -133,10 +131,6 @@ void NeonSub1Vector(const float* vector, int v_size, float* result);
 
 void NeonSub1Vector(const int16_t* vector, int v_size, int16_t* result);
 
-// Clip elements of a vector using a abs_limit value.
-void NeonClipVector(const float* vector, int v_size, float abs_limit,
-                    float* result);
-
 // Multiply all elements of vector with a scalar.
 void NeonVectorScalarMultiply(const int8_t* vector, int v_size, float scale,
                               float* result);
@@ -173,6 +167,15 @@ void NeonReductionSumVector(const float* input_vector, float* output_vector,
 
 void NeonReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
                             int output_size, int reduction_size);
+
+void NeonVectorBatchVectorCwiseProductAccumulate(
+    const int16_t* vector, int v_size, const int16_t* batch_vector, int n_batch,
+    int32_t multiplier, int shift, int16_t* result);
+
+// Layer norm for each batch.
+void NeonMeanStddevNormalization(const float* __restrict__ input_vector,
+                                 float* __restrict__ output_vector, int v_size,
+                                 int n_batch);
 
 #endif  // USE_NEON
 

@@ -22,16 +22,15 @@ from __future__ import print_function
 import argparse
 import os
 import shlex
-from string import maketrans
 import sys
 import time
 
+from absl import app
 import six
 
 from google.protobuf import json_format
 from google.protobuf import text_format
 from tensorflow.core.util import test_log_pb2
-from tensorflow.python.platform import app
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
@@ -86,7 +85,7 @@ def main(unused_args):
     file_name = FLAGS.test_log_output_filename
   else:
     file_name = (
-        six.ensure_str(name).strip("/").translate(maketrans("/:", "__")) +
+        six.ensure_str(name).strip("/").translate(str.maketrans("/:", "__")) +
         time.strftime("%Y%m%d%H%M%S", time.gmtime()))
   if FLAGS.test_log_output_use_tmpdir:
     tmpdir = test.get_temp_dir()

@@ -1,9 +1,7 @@
-load(
-    "//tensorflow/lite/micro/testing:micro_test.bzl",
-    "tflite_micro_cc_test",
+package(
+    features = ["-layering_check"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 package_group(
     name = "micro",
@@ -19,12 +17,8 @@ exports_files(["test_linux_binary.sh"])
 
 cc_library(
     name = "micro_test",
-    srcs = [
-        "test_utils.cc",
-    ],
     hdrs = [
         "micro_test.h",
-        "test_utils.h",
     ],
     visibility = [
         ":micro",
@@ -36,11 +30,12 @@ cc_library(
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:micro_utils",
+        "//tensorflow/lite/micro:system_setup",
         "//tensorflow/lite/micro:test_helpers",
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "util_test",
     srcs = [
         "util_test.cc",
@@ -68,7 +63,11 @@ py_binary(
     srcs = ["generate_test_models.py"],
     python_version = "PY3",
     srcs_version = "PY3ONLY",
-    tags = ["noubsan"],  # TODO(b/144512025): Fix raw_to_bitmap_test to fix ubsan failure.
+    tags = [
+        "no_oss",  # TODO(b/174680668): Exclude python targets from OSS.
+        "nomicro_static",  # TF dep incompatible w/ TF_LITE_STATIC_MEMORY.
+        "noubsan",  # TODO(b/144512025): Fix raw_to_bitmap_test to fix ubsan failure.
+    ],
     deps = [
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",

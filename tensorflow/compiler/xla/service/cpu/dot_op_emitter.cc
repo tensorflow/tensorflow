@@ -24,12 +24,15 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "mlir/Dialect/Linalg/EDSC/Intrinsics.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/EDSC/Intrinsics.h"  // from @llvm-project
 #include "mlir/EDSC/Builders.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
@@ -201,6 +204,20 @@ class DotOpEmitter {
         .value_or(kDefaultTileSize);
   }
 
+  std::array<int64_t, 3> GetMlirGemmTileSize() const {
+    // Tile by 4 x registers x register size. This was picked by running
+    // small matmuls on Haswell and Skylake. There's a lot of room for
+    // improvement here.
+    constexpr int64_t kDefaultTileSizeForM = 4;
+    int64_t elements_per_register =
+        target_machine_features_.vector_register_num_elements(
+            *b_->GetInsertBlock()->getParent(),
+            dot_info_.result_shape.element_type());
+    int64_t num_registers = target_machine_features_.vector_register_count(
+        *b_->GetInsertBlock()->getParent());
+    return {{kDefaultTileSizeForM, num_registers, elements_per_register}};
+  }
+
   DotInfo dot_info_;
   string dot_hlo_name_;
   const llvm_ir::IrArray& target_array_;
@@ -249,14 +266,76 @@ Status DotOpEmitter::EmitLinalgMatmul() {
       absl::StrCat("linalgMatMul_", dot_info_.result_shape.ToString(true), "_",
                    dot_info_.lhs_shape.ToString(true), "_",
                    dot_info_.rhs_shape.ToString(true));
+
   return EmitMlirFuncAndCall(
       mlir_context_, b_, dot_info_.result_shape, operand_shapes, target_ptr,
       operand_ptrs, name, [&](mlir::OpBuilder* builder, mlir::FuncOp function) {
+        CHECK_EQ(dot_info_.dim_nums.lhs_contracting_dimensions_size(), 1);
+        CHECK_EQ(dot_info_.dim_nums.rhs_contracting_dimensions_size(), 1);
+        mlir::MLIRContext* context = builder->getContext();
         mlir::edsc::ScopedContext scope(*builder, function.getLoc());
         mlir::Value a = function.getArgument(0), b = function.getArgument(1),
                     c = function.getArgument(2);
-        mlir::edsc::intrinsics::linalg_matmul(b, c, a);
+
+        llvm::SmallVector<mlir::AffineExpr, 2> b_exprs(
+            dot_info_.lhs_shape.rank());
+        llvm::SmallVector<mlir::AffineExpr, 2> c_exprs(
+            dot_info_.rhs_shape.rank());
+
+        llvm::SmallVector<mlir::AffineExpr, 2> parallel_exprs;
+        mlir::AffineExpr reduce_expr;
+        for (int i = 0; i != dot_info_.result_shape.rank(); ++i) {
+          parallel_exprs.push_back(mlir::getAffineDimExpr(i, context));
+        }
+        reduce_expr =
+            mlir::getAffineDimExpr(dot_info_.result_shape.rank(), context);
+
+        // The reduction expr is shared for both inputs.
+        b_exprs[dot_info_.dim_nums.lhs_contracting_dimensions(0)] = reduce_expr;
+        c_exprs[dot_info_.dim_nums.rhs_contracting_dimensions(0)] = reduce_expr;
+
+        // Fill in the remaining parallel exprs.
+        int par_expr_num = 0;
+        for (auto* v : {&b_exprs, &c_exprs}) {
+          for (auto& e : *v) {
+            if (!e) {
+              e = parallel_exprs[par_expr_num++];
+            }
+          }
+        }
+
+        llvm::SmallVector<mlir::IteratorType, 4> iteratorTypes(
+            parallel_exprs.size(), mlir::IteratorType::Parallel);
+        iteratorTypes.push_back(mlir::IteratorType::Reduction);
+
+        mlir::edsc::StructuredIndexed s_a(a), s_b(b), s_c(c);
+        mlir::edsc::makeGenericLinalgOp(
+            /*iteratorTypes=*/iteratorTypes,
+            /*inputs=*/{s_b(b_exprs), s_c(c_exprs)},
+            /*outputs=*/{s_a(parallel_exprs)},
+            /*resultTensorTypes=*/{}, mlir::edsc::ops::macRegionBuilder);
         mlir::edsc::intrinsics::std_ret();
+
+        mlir::linalg::LinalgTilingOptions tilingOptions;
+        tilingOptions = tilingOptions.setTileSizes(GetMlirGemmTileSize());
+        int64 alignment =
+            target_machine_features_.minimum_alignment_for_allocation(
+                ShapeUtil::ByteSizeOf(dot_info_.result_shape));
+        mlir::linalg::CodegenStrategy strategy;
+        strategy.tile<mlir::linalg::GenericOp>(tilingOptions)
+            .promote<mlir::linalg::GenericOp>(
+                mlir::linalg::LinalgPromotionOptions()
+                    .setAlignment(alignment)
+                    .setUseFullTileBuffersByDefault(true)
+                    .setUseAlloca(true))
+            .vectorize<mlir::linalg::GenericOp>()
+            .setVectorTransformsOptions(
+                mlir::vector::VectorTransformsOptions()
+                    .setVectorTransformsOptions(
+                        mlir::vector::VectorContractLowering::OuterProduct))
+            .setVectorTransferToSCFOptions(
+                mlir::VectorTransferToSCFOptions().setUnroll(true));
+        strategy.transform(function);
       });
 }
 
@@ -572,6 +651,9 @@ void DotOpEmitter::EmitNaiveLlvmIrGemm() {
   } else if (ShapeUtil::ElementIsIntegral(lhs_shape)) {
     llvm::Value* product = b_->CreateMul(lhs_element, rhs_element);
     updated_accum = b_->CreateAdd(accum, product);
+  } else if (lhs_shape.element_type() == PRED) {
+    llvm::Value* product = b_->CreateAnd(lhs_element, rhs_element);
+    updated_accum = b_->CreateOr(accum, product);
   } else {
     llvm::Value* product = b_->CreateFMul(lhs_element, rhs_element);
     updated_accum = b_->CreateFAdd(accum, product);
@@ -946,9 +1028,7 @@ DotImplementationStrategy GetDotImplementationStrategy(
 
   if (IsAlignedGemm(dot_info, target_machine_features)) {
     if (CanEmitTiledLlvmIrGemm(config, dot_info, target_machine_features)) {
-      return options::UseLinalgForDot(config)
-                 ? DotImplementationStrategy::kLinalgMatmul
-                 : DotImplementationStrategy::kTiledLlvmIrGemm;
+      return DotImplementationStrategy::kTiledLlvmIrGemm;
     }
     return DotImplementationStrategy::kEigen;
   }
@@ -964,7 +1044,9 @@ Status EmitNonBatchDotOperation(
     mlir::MLIRContext* mlir_context, const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features) {
   PrimitiveType type = target_array.GetShape().element_type();
-  TF_RET_CHECK(S32 == type || F16 == type || F32 == type || F64 == type ||
+  TF_RET_CHECK(PRED == type || S8 == type || U8 == type || S16 == type ||
+               U16 == type || S32 == type || U32 == type || S64 == type ||
+               U64 == type || F16 == type || F32 == type || F64 == type ||
                C64 == type || C128 == type);
   DotOpEmitter dot_emitter(std::move(dot_info), std::move(hlo_name),
                            target_array, lhs_array, rhs_array, addend_array,

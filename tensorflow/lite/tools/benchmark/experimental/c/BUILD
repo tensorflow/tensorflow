@@ -22,7 +22,6 @@ cc_library(
     srcs = ["benchmark_c_api.cc"],
     hdrs = [
         "benchmark_c_api.h",
-        "c_api_types.h",
     ],
     copts = tflite_copts(),
     visibility = [
@@ -30,6 +29,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core/util:stats_calculator_portable",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/tools/benchmark:benchmark_tflite_model_lib",
     ],
 )

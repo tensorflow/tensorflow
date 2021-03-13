@@ -15,21 +15,27 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_CUSTOM_PARSERS_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_CUSTOM_PARSERS_H_
 
-#include <string>
+#include <cstdint>
+#include <memory>
 
 #include "absl/strings/string_view.h"
 #include "absl/types/any.h"
+#include "tensorflow/lite/delegates/gpu/common/operation_parser.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
 namespace gpu {
 
+// Returns a parser for the provided custom op.
+std::unique_ptr<TFLiteOperationParser> NewCustomOperationParser(
+    absl::string_view op_name);
+
 // Matches the custom operation by the string name and parses attributes stored
 // as flexbuffers.
-absl::Status ParseCustomAttributes(absl::string_view op_name, const void* data,
-                                   uint32_t data_size, absl::any* attr,
-                                   BHWC* output_shape);
+absl::Status ParseCustomAttributes(absl::string_view op_name, int version,
+                                   const void* data, uint32_t data_size,
+                                   absl::any* attr, BHWC* output_shape);
 
 }  // namespace gpu
 }  // namespace tflite

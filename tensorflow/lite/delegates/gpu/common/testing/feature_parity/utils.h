@@ -16,14 +16,24 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TESTING_FEATURE_PARITY_UTILS_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TESTING_FEATURE_PARITY_UTILS_H_
 
+#include <stddef.h>
+
 #include <cstdint>
+#include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/types/span.h"
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 
@@ -181,7 +191,7 @@ void InitializeInputs(int left, int right,
 // Invokes a prebuilt interpreter.
 absl::Status Invoke(std::unique_ptr<Interpreter>* interpreter);
 
-// Usability structure, which is used to pass parameters data to parametrized
+// Usability structure, which is used to pass parameters data to parameterized
 // tests.
 struct TestParams {
   // A gtest name, which will be used for a generated tests.

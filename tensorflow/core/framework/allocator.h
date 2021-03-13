@@ -39,17 +39,19 @@ class TensorShape;
 struct AllocationAttributes {
   AllocationAttributes() = default;
 
-  AllocationAttributes(bool no_retry_on_failure, bool allocation_will_be_logged,
+  AllocationAttributes(bool retry_on_failure, bool allocation_will_be_logged,
                        std::function<uint64()>* freed_by_func)
-      : no_retry_on_failure(no_retry_on_failure),
+      : retry_on_failure(retry_on_failure),
         allocation_will_be_logged(allocation_will_be_logged),
         freed_by_func(freed_by_func) {}
 
-  // If the first attempt to allocate the memory fails, the allocation
-  // should return immediately without retrying.
-  // An example use case is optional scratch spaces where a failure
-  // has only performance impact.
-  bool no_retry_on_failure = false;
+  // If the first attempt to allocate the memory fails, the allocation should
+  // wait and retry (with a timeout).
+  //
+  // This is usually set to true, but we may set it to false in cases where a
+  // failure has only performance impact (e.g. optional scratch space
+  // allocation).
+  bool retry_on_failure = true;
   // If a Tensor is allocated without the following set to true, then
   // it is logged as an unknown allocation. During execution Tensors
   // should be allocated through the OpKernelContext which records
@@ -408,14 +410,17 @@ Allocator* cpu_allocator_base();
 // call it directly.
 Allocator* cpu_allocator(int numa_node = port::kNUMANoAffinity);
 
-// If 'enable' is true, the default CPU allocator implementation will collect
-// AllocatorStats. By default, it's disabled.
-void EnableCPUAllocatorStats(bool enable);
+// Enables AllocatorStats in the default CPU allocator implementation.  By
+// default, it's disabled.
+void EnableCPUAllocatorStats();
+// Disables AllocatorStats in the default CPU allocator implementation.  By
+// default, it's disabled.
+void DisableCPUAllocatorStats();
 bool CPUAllocatorStatsEnabled();
 
-// If 'enable' is true, the default CPU allocator implementation will collect
-// full statistics. By default, it's disabled.
-void EnableCPUAllocatorFullStats(bool enable);
+// Enables full statistics collection in the default CPU allocator
+// implementation.  By default, it's disabled.
+void EnableCPUAllocatorFullStats();
 bool CPUAllocatorFullStatsEnabled();
 
 // An object that does the underlying suballoc/free of memory for a higher-level
@@ -434,8 +439,16 @@ class SubAllocator {
                const std::vector<Visitor>& free_visitors);
 
   virtual ~SubAllocator() {}
-  virtual void* Alloc(size_t alignment, size_t num_bytes) = 0;
+  // Allocates at least num_bytes. Returns actual number of bytes allocated in
+  // bytes_received. The caller can safely use the full bytes_received sized
+  // buffer following the returend pointer.
+  virtual void* Alloc(size_t alignment, size_t num_bytes,
+                      size_t* bytes_received) = 0;
   virtual void Free(void* ptr, size_t num_bytes) = 0;
+
+  // Returns true if the BFC allocator can safely coalesce adjacent regions
+  // returned by this allocator.
+  virtual bool SupportsCoalescing() const = 0;
 
  protected:
   // Implementation of Alloc() method must call this on newly allocated

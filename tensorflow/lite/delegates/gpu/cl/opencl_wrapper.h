@@ -28,7 +28,6 @@ namespace gpu {
 namespace cl {
 
 absl::Status LoadOpenCL();
-void LoadOpenCLFunctions(void *libopencl, bool is_pixel);
 
 typedef cl_int(CL_API_CALL *PFN_clGetPlatformIDs)(
     cl_uint /* num_entries */, cl_platform_id * /* platforms */,

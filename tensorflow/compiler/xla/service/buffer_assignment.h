@@ -140,6 +140,8 @@ class BufferAllocation {
   // be live out of the entry computation.
   bool maybe_live_out() const { return maybe_live_out_; }
 
+  void set_maybe_live_out(bool value) { maybe_live_out_ = value; }
+
   // Returns the size of the allocation. Necessarily this must be at least as
   // large as any LogicalBuffer assigned to this allocation.
   int64 size() const { return size_; }
@@ -272,14 +274,6 @@ class BufferAllocation {
     return index() < other.index();
   }
 
- private:
-  // Only BufferAssigner and BufferAssignment can modify BufferAllocation.
-  friend class BufferAssigner;
-  friend class BufferAssignment;
-
-  // Adds a LogicalBuffer to the set assigned to this buffer.
-  void AddAssignment(const HloValue& buffer, int64 offset, int64 size);
-
   void set_entry_computation_parameter(int64 parameter_number,
                                        ShapeIndex param_shape_index,
                                        bool parameter_aliased_with_output) {
@@ -289,8 +283,15 @@ class BufferAllocation {
     param_shape_index_ = std::move(param_shape_index);
   }
 
+ private:
+  // Only BufferAssigner and BufferAssignment can modify BufferAllocation.
+  friend class BufferAssigner;
+  friend class BufferAssignment;
+
+  // Adds a LogicalBuffer to the set assigned to this buffer.
+  void AddAssignment(const HloValue& buffer, int64 offset, int64 size);
+
   void set_constant(bool is_constant) { is_constant_ = is_constant; }
-  void set_maybe_live_out(bool value) { maybe_live_out_ = value; }
   void set_index(Index index) { index_ = index; }
   void set_size(int64 size) { size_ = size; }
 
@@ -358,9 +359,21 @@ class BufferAssignment {
     return allocations_;
   }
 
+  // This is similar to copying Allocations(), but since it's moved out, it
+  // preserves the addresses. Since BufferAllocation::Slice keeps a
+  // BufferAllocation*, and some backends keep BufferAllocation::Slice in
+  // xla::Executables, migrating off the use of addresses can be hard.
+  std::vector<BufferAllocation> ReleaseAllocations() {
+    return std::move(allocations_);
+  }
+
   // Returns the total size allocation holding all temporary buffers.
   int64 temp_allocation_total_size() const {
     return temp_allocation_total_size_;
+  }
+
+  uint64 multiheap_size_constraint_per_heap() const {
+    return multiheap_size_constraint_per_heap_;
   }
 
   // Returns whether the given buffer has been assigned an allocation.
@@ -453,6 +466,7 @@ class BufferAssignment {
   const HloLiveRange& hlo_live_range() const { return *hlo_live_range_; }
 
   string ToString() const;
+  string BufferInfoString() const;
   BufferAssignmentProto ToProto() const;
 
   // Statistics for the assignment.  Values initialized to -1 are not always
@@ -491,7 +505,14 @@ class BufferAssignment {
         buffer_size_(std::move(buffer_size)),
         color_alignment_(std::move(color_alignment)),
         alias_analysis_(std::move(alias_analysis)),
-        hlo_live_range_(std::move(hlo_live_range)) {}
+        hlo_live_range_(std::move(hlo_live_range)) {
+    int32 raw_value = module->config()
+                          .debug_options()
+                          .xla_multiheap_size_constraint_per_heap();
+    // -1 means no constraint.
+    multiheap_size_constraint_per_heap_ =
+        (raw_value == -1) ? UINT64_MAX : raw_value;
+  }
 
   // Creates and returns a new BufferAllocation, with no assigned
   // LogicalBuffers. Ownership is maintained internally.
@@ -534,6 +555,8 @@ class BufferAssignment {
 
   // The total size of all temporary buffers.
   int64 temp_allocation_total_size_ = 0;
+
+  uint64 multiheap_size_constraint_per_heap_;
 
   // Maps Buffers to the index of the BufferAllocation which holds the buffer.
   absl::flat_hash_map<const HloValue*, BufferAllocation::Index>
@@ -635,10 +658,6 @@ class BufferAssigner {
       absl::flat_hash_set<const HloBuffer*>* assigned_buffers,
       BufferAssignment* assignment);
 
-  // Promotes operations (DUS, scatter) to be done in place: If an operation can
-  // be done in place, merge its buffer with its operand buffer.
-  Status MergeInplaceOpBuffers(BufferAssignment* assignment);
-
   // Assigns a single hlo buffer to an HLO allocation.
   Status AssignSingleHloBuffer(
       const HloBuffer* hlo_buffer, bool is_thread_local,
@@ -661,9 +680,9 @@ class BufferAssigner {
 
   // Uses the results of the heap simulator to create a single allocation, with
   // LogicalBuffers packed to specific offsets.
-  void AssignBuffersFromHeapSimulator(const HeapSimulator::Result& result,
-                                      BufferAssignment* assignment,
-                                      LogicalBuffer::Color color);
+  void AssignBuffersFromHeapSimulator(
+      const HeapSimulator::Result<HloValue>& result,
+      BufferAssignment* assignment, LogicalBuffer::Color color);
 
   // Tries to assign the given instruction to the given buffer. Returns if the
   // assignment was successful.

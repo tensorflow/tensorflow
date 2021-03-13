@@ -1,9 +1,6 @@
 path: "tensorflow.keras.layers.experimental.preprocessing.CategoryEncoding"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.layers.preprocessing.category_encoding_v1.CategoryEncoding\'>"
   is_instance: "<class \'tensorflow.python.keras.layers.preprocessing.category_encoding.CategoryEncoding\'>"
-  is_instance: "<class \'tensorflow.python.keras.engine.base_preprocessing_layer_v1.CombinerPreprocessingLayer\'>"
-  is_instance: "<class \'tensorflow.python.keras.engine.base_preprocessing_layer.CombinerPreprocessingLayer\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_preprocessing_layer.PreprocessingLayer\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
@@ -16,7 +13,15 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "compute_dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "dtype_policy"
     mtype: "<type \'property\'>"
   }
   member {
@@ -41,6 +46,10 @@ tf_class {
   }
   member {
     name: "input_spec"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "is_adapted"
     mtype: "<type \'property\'>"
   }
   member {
@@ -88,6 +97,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "streaming"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "submodules"
     mtype: "<type \'property\'>"
   }
@@ -112,6 +125,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "variable_dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "variables"
     mtype: "<type \'property\'>"
   }
@@ -121,11 +138,11 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'max_tokens\', \'output_mode\', \'sparse\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'binary\', \'False\'], "
+    argspec: "args=[\'self\', \'num_tokens\', \'output_mode\', \'sparse\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'binary\', \'False\'], "
   }
   member_method {
     name: "adapt"
-    argspec: "args=[\'self\', \'data\', \'reset_state\'], varargs=None, keywords=None, defaults=[\'True\'], "
+    argspec: "args=[\'self\', \'data\', \'batch_size\', \'steps\', \'reset_state\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\'], "
   }
   member_method {
     name: "add_loss"
@@ -145,7 +162,7 @@ tf_class {
   }
   member_method {
     name: "add_weight"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'partitioner\', \'use_resource\', \'synchronization\', \'aggregation\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\'], "
+    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'use_resource\', \'synchronization\', \'aggregation\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\'], "
   }
   member_method {
     name: "apply"
@@ -158,6 +175,10 @@ tf_class {
   member_method {
     name: "call"
     argspec: "args=[\'self\', \'inputs\', \'count_weights\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "compile"
+    argspec: "args=[\'self\', \'run_eagerly\', \'steps_per_execution\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "compute_mask"
@@ -173,6 +194,10 @@ tf_class {
   }
   member_method {
     name: "count_params"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "finalize_state"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
@@ -220,16 +245,24 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "set_num_elements"
-    argspec: "args=[\'self\', \'num_elements\'], varargs=None, keywords=None, defaults=None"
+    name: "make_adapt_function"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "set_tfidf_data"
-    argspec: "args=[\'self\', \'tfidf_data\'], varargs=None, keywords=None, defaults=None"
+    name: "merge_state"
+    argspec: "args=[\'self\', \'layers\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reset_state"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "set_weights"
     argspec: "args=[\'self\', \'weights\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "update_state"
+    argspec: "args=[\'self\', \'data\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "with_name_scope"

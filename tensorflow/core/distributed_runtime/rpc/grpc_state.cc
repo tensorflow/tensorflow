@@ -203,7 +203,7 @@ void ExchangeQueue::CheckInvariants() {
     return;
   }
 
-  for (int i = 1; i < exchanges_.size(); ++i) {
+  for (int i = 1, end = exchanges_.size(); i < end; ++i) {
     const Exchange& e0 = exchanges_[i - 1];
     const Exchange& e1 = exchanges_[i];
     // The first exchange in the pair is the one that arrived later and is

@@ -179,6 +179,14 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegex(ValueError, 'No step set'):
         summary_ops.write('tag', 42)
 
+  @test_util.also_run_as_tf_function
+  def testWrite_noStep_okayIfNotRecordingSummaries(self):
+    logdir = self.get_temp_dir()
+    with summary_ops.create_file_writer(logdir).as_default():
+      with summary_ops.record_if(False):
+        # Use assertAllEqual instead of assertFalse since it works in a defun.
+        self.assertAllEqual(False, summary_ops.write('tag', 42))
+
   def testWrite_usingDefaultStep(self):
     logdir = self.get_temp_dir()
     try:
@@ -300,6 +308,85 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
       self.assertEqual(0, events[1].step)
       self.assertEqual(1, events[2].step)
       self.assertEqual(10, events[3].step)
+    finally:
+      # Reset to default state for other tests.
+      summary_ops.set_step(None)
+
+  def testWrite_usingDefaultStep_fromAsDefault(self):
+    logdir = self.get_temp_dir()
+    try:
+      with context.eager_mode():
+        writer = summary_ops.create_file_writer(logdir)
+        with writer.as_default(step=1):
+          summary_ops.write('tag', 1.0)
+          with writer.as_default():
+            summary_ops.write('tag', 1.0)
+            with writer.as_default(step=2):
+              summary_ops.write('tag', 1.0)
+            summary_ops.write('tag', 1.0)
+            summary_ops.set_step(3)
+          summary_ops.write('tag', 1.0)
+      events = events_from_logdir(logdir)
+      self.assertListEqual([1, 1, 2, 1, 3], [e.step for e in events[1:]])
+    finally:
+      # Reset to default state for other tests.
+      summary_ops.set_step(None)
+
+  def testWrite_usingDefaultStepVariable_fromAsDefault(self):
+    logdir = self.get_temp_dir()
+    try:
+      with context.eager_mode():
+        writer = summary_ops.create_file_writer(logdir)
+        mystep = variables.Variable(1, dtype=dtypes.int64)
+        with writer.as_default(step=mystep):
+          summary_ops.write('tag', 1.0)
+          with writer.as_default():
+            mystep.assign(2)
+            summary_ops.write('tag', 1.0)
+            with writer.as_default(step=3):
+              summary_ops.write('tag', 1.0)
+            summary_ops.write('tag', 1.0)
+            mystep.assign(4)
+          summary_ops.write('tag', 1.0)
+      events = events_from_logdir(logdir)
+      self.assertListEqual([1, 2, 3, 2, 4], [e.step for e in events[1:]])
+    finally:
+      # Reset to default state for other tests.
+      summary_ops.set_step(None)
+
+  def testWrite_usingDefaultStep_fromSetAsDefault(self):
+    logdir = self.get_temp_dir()
+    try:
+      with context.eager_mode():
+        writer = summary_ops.create_file_writer(logdir)
+        mystep = variables.Variable(1, dtype=dtypes.int64)
+        writer.set_as_default(step=mystep)
+        summary_ops.write('tag', 1.0)
+        mystep.assign(2)
+        summary_ops.write('tag', 1.0)
+        writer.set_as_default(step=3)
+        summary_ops.write('tag', 1.0)
+        writer.flush()
+      events = events_from_logdir(logdir)
+      self.assertListEqual([1, 2, 3], [e.step for e in events[1:]])
+    finally:
+      # Reset to default state for other tests.
+      summary_ops.set_step(None)
+
+  def testWrite_usingDefaultStepVariable_fromSetAsDefault(self):
+    logdir = self.get_temp_dir()
+    try:
+      with context.eager_mode():
+        writer = summary_ops.create_file_writer(logdir)
+        writer.set_as_default(step=1)
+        summary_ops.write('tag', 1.0)
+        writer.set_as_default(step=2)
+        summary_ops.write('tag', 1.0)
+        writer.set_as_default()
+        summary_ops.write('tag', 1.0)
+        writer.flush()
+      events = events_from_logdir(logdir)
+      self.assertListEqual([1, 2, 2], [e.step for e in events[1:]])
     finally:
       # Reset to default state for other tests.
       summary_ops.set_step(None)
@@ -877,6 +964,16 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
   def tearDown(self):
     summary_ops.trace_off()
 
+  def exec_summary_op(self, summary_op_fn):
+    assert context.executing_eagerly()
+    logdir = self.get_temp_dir()
+    writer = summary_ops.create_file_writer(logdir)
+    with writer.as_default():
+      summary_op_fn()
+    writer.close()
+    events = events_from_logdir(logdir)
+    return events[1]
+
   def run_metadata(self, *args, **kwargs):
     assert context.executing_eagerly()
     logdir = self.get_temp_dir()
@@ -1068,7 +1165,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
 
     with test.mock.patch.object(logging, 'warn') as mock_log:
       f()
-      self.assertRegexpMatches(
+      self.assertRegex(
           str(mock_log.call_args), 'Cannot enable trace inside a tf.function.')
 
   @test_util.run_v2_only
@@ -1076,7 +1173,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
     with test.mock.patch.object(logging, 'warn') as mock_log:
       with context.graph_mode():
         summary_ops.trace_on(graph=True, profiler=False)
-      self.assertRegexpMatches(
+      self.assertRegex(
           str(mock_log.call_args), 'Must enable trace in eager mode.')
 
   @test_util.run_v2_only
@@ -1098,16 +1195,15 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
 
     with test.mock.patch.object(logging, 'warn') as mock_log:
       f()
-      self.assertRegexpMatches(
-          str(mock_log.call_args),
-          'Cannot export trace inside a tf.function.')
+      self.assertRegex(
+          str(mock_log.call_args), 'Cannot export trace inside a tf.function.')
 
   @test_util.run_v2_only
   def testTrace_cannotExportTraceInGraphMode(self):
     with test.mock.patch.object(logging, 'warn') as mock_log:
       with context.graph_mode():
         summary_ops.trace_export(name='foo', step=1)
-      self.assertRegexpMatches(
+      self.assertRegex(
           str(mock_log.call_args),
           'Can only export trace while executing eagerly.')
 
@@ -1127,6 +1223,91 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
     finally:
       # Reset to default state for other tests.
       summary_ops.set_step(None)
+
+  @test_util.run_v2_only
+  def testTrace_withProfiler(self):
+
+    @def_function.function
+    def f():
+      x = constant_op.constant(2)
+      y = constant_op.constant(3)
+      return x**y
+
+    assert context.executing_eagerly()
+    logdir = self.get_temp_dir()
+    writer = summary_ops.create_file_writer(logdir)
+    summary_ops.trace_on(graph=True, profiler=True)
+    profiler_outdir = self.get_temp_dir()
+    with writer.as_default():
+      f()
+      summary_ops.trace_export(
+          name='foo', step=1, profiler_outdir=profiler_outdir)
+    writer.close()
+
+  @test_util.run_v2_only
+  def testGraph_graph(self):
+
+    @def_function.function
+    def f():
+      x = constant_op.constant(2)
+      y = constant_op.constant(3)
+      return x**y
+
+    def summary_op_fn():
+      summary_ops.graph(f.get_concrete_function().graph)
+
+    event = self.exec_summary_op(summary_op_fn)
+    self.assertIsNotNone(event.graph_def)
+
+  @test_util.run_v2_only
+  def testGraph_graphDef(self):
+
+    @def_function.function
+    def f():
+      x = constant_op.constant(2)
+      y = constant_op.constant(3)
+      return x**y
+
+    def summary_op_fn():
+      summary_ops.graph(f.get_concrete_function().graph.as_graph_def())
+
+    event = self.exec_summary_op(summary_op_fn)
+    self.assertIsNotNone(event.graph_def)
+
+  @test_util.run_v2_only
+  def testGraph_invalidData(self):
+    def summary_op_fn():
+      summary_ops.graph('hello')
+
+    with self.assertRaisesRegex(
+        ValueError,
+        r'\'graph_data\' is not tf.Graph or tf.compat.v1.GraphDef',
+    ):
+      self.exec_summary_op(summary_op_fn)
+
+  @test_util.run_v2_only
+  def testGraph_fromGraphMode(self):
+
+    @def_function.function
+    def f():
+      x = constant_op.constant(2)
+      y = constant_op.constant(3)
+      return x**y
+
+    @def_function.function
+    def g(graph):
+      summary_ops.graph(graph)
+
+    def summary_op_fn():
+      graph_def = f.get_concrete_function().graph.as_graph_def(add_shapes=True)
+      func_graph = constant_op.constant(graph_def.SerializeToString())
+      g(func_graph)
+
+    with self.assertRaisesRegex(
+        ValueError,
+        r'graph\(\) cannot be invoked inside a graph context.',
+    ):
+      self.exec_summary_op(summary_op_fn)
 
 
 def events_from_file(filepath):

@@ -94,14 +94,16 @@ bool SplitStructuredLine(absl::string_view line, char delimiter,
 }
 
 inline bool TryStripPrefixString(absl::string_view str,
-                                 absl::string_view prefix, string* result) {
+                                 absl::string_view prefix,
+                                 std::string* result) {
   bool res = absl::ConsumePrefix(&str, prefix);
   result->assign(str.begin(), str.end());
   return res;
 }
 
 inline bool TryStripSuffixString(absl::string_view str,
-                                 absl::string_view suffix, string* result) {
+                                 absl::string_view suffix,
+                                 std::string* result) {
   bool res = absl::ConsumeSuffix(&str, suffix);
   result->assign(str.begin(), str.end());
   return res;
@@ -109,10 +111,10 @@ inline bool TryStripSuffixString(absl::string_view str,
 
 }  // namespace
 
-bool Arg<toco::IntList>::Parse(string text) {
+bool Arg<toco::IntList>::Parse(std::string text) {
   parsed_value_.elements.clear();
   specified_ = true;
-  // strings::Split("") produces {""}, but we need {} on empty input.
+  // absl::StrSplit("") produces {""}, but we need {} on empty input.
   // TODO(aselle): Moved this from elsewhere, but ahentz recommends we could
   // use absl::SplitLeadingDec32Values(text.c_str(), &parsed_values_.elements)
   if (!text.empty()) {
@@ -125,7 +127,7 @@ bool Arg<toco::IntList>::Parse(string text) {
   return true;
 }
 
-bool Arg<toco::StringMapList>::Parse(string text) {
+bool Arg<toco::StringMapList>::Parse(std::string text) {
   parsed_value_.elements.clear();
   specified_ = true;
 
@@ -138,24 +140,24 @@ bool Arg<toco::StringMapList>::Parse(string text) {
   // TODO(aselle): Change argument parsing when absl supports structuredline.
   SplitStructuredLine(text_disposable_copy, ',', "{}", &outer_vector);
   for (const absl::string_view& outer_member_stringpiece : outer_vector) {
-    string outer_member(outer_member_stringpiece);
+    std::string outer_member(outer_member_stringpiece);
     if (outer_member.empty()) {
       continue;
     }
-    string outer_member_copy = outer_member;
+    std::string outer_member_copy = outer_member;
     absl::StripAsciiWhitespace(&outer_member);
     if (!TryStripPrefixString(outer_member, "{", &outer_member)) return false;
     if (!TryStripSuffixString(outer_member, "}", &outer_member)) return false;
-    const std::vector<string> inner_fields_vector =
+    const std::vector<std::string> inner_fields_vector =
         absl::StrSplit(outer_member, ',');
 
-    std::unordered_map<string, string> element;
-    for (const string& member_field : inner_fields_vector) {
-      std::vector<string> outer_member_key_value =
+    std::unordered_map<std::string, std::string> element;
+    for (const std::string& member_field : inner_fields_vector) {
+      std::vector<std::string> outer_member_key_value =
           absl::StrSplit(member_field, ':');
       if (outer_member_key_value.size() != 2) return false;
-      string& key = outer_member_key_value[0];
-      string& value = outer_member_key_value[1];
+      std::string& key = outer_member_key_value[0];
+      std::string& value = outer_member_key_value[1];
       absl::StripAsciiWhitespace(&key);
       absl::StripAsciiWhitespace(&value);
       if (element.count(key) != 0) return false;

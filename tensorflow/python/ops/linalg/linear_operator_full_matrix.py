@@ -133,6 +133,14 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
     Raises:
       TypeError:  If `diag.dtype` is not an allowed type.
     """
+    parameters = dict(
+        matrix=matrix,
+        is_non_singular=is_non_singular,
+        is_self_adjoint=is_self_adjoint,
+        is_positive_definite=is_positive_definite,
+        is_square=is_square,
+        name=name
+    )
 
     with ops.name_scope(name, values=[matrix]):
       self._matrix = linear_operator_util.convert_nonref_to_tensor(
@@ -141,11 +149,11 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
 
       super(LinearOperatorFullMatrix, self).__init__(
           dtype=self._matrix.dtype,
-          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
+          parameters=parameters,
           name=name)
       # TODO(b/143910018) Remove graph_parents in V3.
       self._set_graph_parents([self._matrix])
@@ -160,7 +168,7 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
         dtypes.complex128,
     ]
 
-    matrix = ops.convert_to_tensor(matrix, name="matrix")
+    matrix = ops.convert_to_tensor_v2_with_dispatch(matrix, name="matrix")
 
     dtype = matrix.dtype
     if dtype not in allowed_dtypes:

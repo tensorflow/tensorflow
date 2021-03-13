@@ -137,12 +137,8 @@ class TrackedDeviceBuffer {
       absl::Span<const std::shared_ptr<BufferSequencingEvent>>
           definition_events);
 
-  // Builds a ShapedBuffer view onto the buffers of 'tree'. We require but do
-  // not verify that TransferManager::HostShapeToDeviceShape(on_host_shape) ==
-  // on_device_shape().
-  ShapedBuffer AsShapedBuffer(const Shape& on_host_shape,
-                              const Shape& on_device_shape,
-                              se::Platform* platform) const;
+  // Builds a ShapedBuffer view onto the buffers of 'tree'.
+  ShapedBuffer AsShapedBuffer(const Shape& on_device_shape) const;
 
   // Adds the owned device buffers in order to 'iterator'. Used to add the
   // buffers to an ExecutionInput. We require but do not verify that 'iterator'

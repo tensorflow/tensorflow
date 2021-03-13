@@ -43,8 +43,8 @@ import org.tensorflow.types.UInt8;
  * Wrapper over the TensorFlow API ({@link Graph}, {@link Session}) providing a smaller API surface
  * for inference.
  *
- * <p>See tensorflow/examples/android/src/org/tensorflow/demo/TensorFlowImageClassifier.java for an
- * example usage.
+ * <p>See tensorflow/tools/android/test/src/org/tensorflow/demo/TensorFlowImageClassifier.java for
+ * an example usage.
  */
 public class TensorFlowInferenceInterface {
   private static final String TAG = "TensorFlowInferenceInterface";

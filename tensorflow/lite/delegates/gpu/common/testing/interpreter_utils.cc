@@ -16,15 +16,18 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/testing/interpreter_utils.h"
 
 #include <cstring>
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/context.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 namespace gpu {

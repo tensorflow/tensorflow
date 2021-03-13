@@ -23,13 +23,11 @@ limitations under the License.
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/simple_memory_arena.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 
-// Memory allocation tuning
 constexpr const int kDefaultArenaAlignment = 64;
-constexpr const int kDefaultTensorAlignment = 64;
-
 struct AllocationInfo;
 
 // A memory planner that makes all the allocations using arenas.
@@ -53,7 +51,7 @@ class ArenaPlanner : public MemoryPlanner {
   // them until the end of inference.
   ArenaPlanner(TfLiteContext* context, std::unique_ptr<GraphInfo> graph_info,
                bool preserve_inputs, bool preserve_intermediates,
-               int tensor_alignment = kDefaultTensorAlignment);
+               int tensor_alignment);
   ~ArenaPlanner() override;
   ArenaPlanner(const ArenaPlanner&) = delete;
   ArenaPlanner& operator=(const ArenaPlanner&) = delete;

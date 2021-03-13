@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 
 namespace xla {
@@ -25,10 +26,10 @@ static const char kCpuPlatformName[] = "cpu";
 
 CpuDevice::CpuDevice(int id,
                      std::unique_ptr<LocalDeviceState> local_device_state)
-    : Device(id, std::move(local_device_state), kCpuPlatformName,
-             /*device_kind=*/kCpuPlatformName) {}
+    : PjRtStreamExecutorDevice(id, std::move(local_device_state),
+                               /*device_kind=*/kCpuPlatformName) {}
 
-StatusOr<std::shared_ptr<PjRtClient>> GetCpuClient(bool asynchronous) {
+StatusOr<std::unique_ptr<PjRtClient>> GetCpuClient(bool asynchronous) {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetPlatform("Host"));
   if (platform->VisibleDeviceCount() <= 0) {
@@ -39,7 +40,7 @@ StatusOr<std::shared_ptr<PjRtClient>> GetCpuClient(bool asynchronous) {
   TF_ASSIGN_OR_RETURN(LocalClient * client,
                       ClientLibrary::GetOrCreateLocalClient(options));
 
-  std::vector<std::unique_ptr<Device>> devices;
+  std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   for (int i = 0; i < client->device_count(); ++i) {
     se::StreamExecutorConfig config;
     config.ordinal = i;
@@ -56,10 +57,11 @@ StatusOr<std::shared_ptr<PjRtClient>> GetCpuClient(bool asynchronous) {
     devices.push_back(std::move(device));
   }
 
-  return std::make_shared<PjRtClient>(
-      kCpuPlatformName, client, std::move(devices), /*host_id=*/0,
+  return std::unique_ptr<PjRtClient>(std::make_unique<PjRtStreamExecutorClient>(
+      kCpuName, client, std::move(devices), /*task_id=*/0,
       /*allocator=*/nullptr, /*host_memory_allocator=*/nullptr,
-      /*gpu_run_options=*/nullptr);
+      /*should_stage_host_to_device_transfers=*/false,
+      /*gpu_run_options=*/nullptr));
 }
 
 }  // namespace xla

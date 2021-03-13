@@ -17,7 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -43,7 +43,21 @@ namespace {
 // pass lowers from saved model to pure TF. Hence it fails, if it cannot lower.
 struct FreezeGlobalTensorsPass
     : public PassWrapper<FreezeGlobalTensorsPass, OperationPass<ModuleOp>> {
+  FreezeGlobalTensorsPass() = default;
+
+  explicit FreezeGlobalTensorsPass(bool allow_mutable_tensors) {
+    this->allow_mutable_tensors = allow_mutable_tensors;
+  }
+  FreezeGlobalTensorsPass(const FreezeGlobalTensorsPass& pass) {}
+
   void runOnOperation() override;
+
+ private:
+  // Force a specified data format for all layout sensitive operations.
+  Option<bool> allow_mutable_tensors{
+      *this, "allow-mutable-tensors",
+      llvm::cl::desc("Allows mutable tensors to be in the graph. Default is "
+                     "false which means only immutable are allowed.")};
 };
 
 void FreezeGlobalTensorsPass::runOnOperation() {
@@ -60,20 +74,23 @@ void FreezeGlobalTensorsPass::runOnOperation() {
 
     for (int i = 0, e = func.getNumArguments(); i < e; ++i) {
       SmallVector<TF::ReadVariableOp, 4> read_variable_ops_to_erase;
-      auto global_tensor = LookupBoundInput(func, i, symbol_table);
+      auto global_tensor =
+          LookupBoundInputOfType<GlobalTensorOp>(func, i, symbol_table);
 
       if (!global_tensor) continue;
-      frozen_global_tensors.insert(global_tensor);
 
       // This pass assumes that all global tensors as immutable (e.g. by a
       // previous optimize global tensors pass). If not, this pass has to fail
       // since it cannot perform one of its goals.
       if (global_tensor.is_mutable()) {
-        global_tensor.emitError() << "is not immutable, try running "
-                                     "tf-saved-model-optimize-global-tensors "
-                                     "to prove tensors are immutable";
+        if (allow_mutable_tensors) continue;
+        global_tensor.emitError()
+            << "is not immutable, try removing mutable variables in your model "
+               "since mutable variables are currently not supported through "
+               "this converter";
         return signalPassFailure();
       }
+      frozen_global_tensors.insert(global_tensor);
 
       auto arg = func.getArgument(i);
       for (auto user : arg.getUsers()) {
@@ -106,7 +123,7 @@ void FreezeGlobalTensorsPass::runOnOperation() {
     global_tensor->erase();
   }
 
-  if (!module.getOps<GlobalTensorOp>().empty()) {
+  if (!allow_mutable_tensors && !module.getOps<GlobalTensorOp>().empty()) {
     module.emitError() << "could not freeze all global tensors in the module";
     return signalPassFailure();
   }
@@ -119,8 +136,9 @@ static PassRegistration<FreezeGlobalTensorsPass> pass(
     "tf-saved-model-freeze-global-tensors",
     "Freeze tf_saved_model.global_tensor's in func bodies.");
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeGlobalTensorsPass() {
-  return std::make_unique<FreezeGlobalTensorsPass>();
+std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeGlobalTensorsPass(
+    bool allow_mutable_tensors) {
+  return std::make_unique<FreezeGlobalTensorsPass>(allow_mutable_tensors);
 }
 
 }  // namespace tf_saved_model

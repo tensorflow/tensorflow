@@ -113,7 +113,8 @@ void SigNode::ComputeTopoHash(int distance) {
     return;
   }
 
-  CHECK(topo_hash_.size() == distance);
+  const int64 topo_hash_size = topo_hash_.size();
+  CHECK(topo_hash_size == distance);
 
   int prev = distance - 1;
 
@@ -154,7 +155,8 @@ void SigNode::ComputeTopoHash(int distance) {
 
 size_t SigNode::GetTopoHash(int distance) const {
   CHECK(!topo_hash_.empty());
-  if (distance >= topo_hash_.size()) {
+  const int64 topo_hash_size = topo_hash_.size();
+  if (distance >= topo_hash_size) {
     CHECK(hash_is_final_);
     return topo_hash_.back();
   } else {
@@ -393,7 +395,7 @@ void Signature::OrderLinks() {
     int first_idx = -1;
 
     int idx;
-    for (idx = 0; idx < node->hashed_peers_.size(); ++idx) {
+    for (idx = 0; idx < static_cast<int64>(node->hashed_peers_.size()); ++idx) {
       auto& entry = node->hashed_peers_[idx];
       if (entry.link_hash == cur_link_hash) {
         continue;

@@ -46,6 +46,7 @@ enum {
   ANEURALNETWORKS_TENSOR_QUANT16_SYMM = 7,
   ANEURALNETWORKS_TENSOR_QUANT8_SYMM_PER_CHANNEL = 11,
   ANEURALNETWORKS_TENSOR_QUANT8_SYMM = 13,
+  ANEURALNETWORKS_TENSOR_QUANT8_ASYMM_SIGNED = 14,
 };
 
 /**
@@ -226,6 +227,50 @@ enum {
   ANEURALNETWORKS_PRIORITY_HIGH = 110,
   ANEURALNETWORKS_PRIORITY_DEFAULT = ANEURALNETWORKS_PRIORITY_MEDIUM,
 };
+/**
+ * ANeuralNetworksMemoryDesc is an opaque type that represents a memory
+ * descriptor.
+ *
+ * A memory descriptor describes the properties of a memory object, and is used
+ * by
+ * {@link ANeuralNetworksMemory_createFromDesc}.
+ *
+ * To use:
+ *   - Create a new memory descriptor by calling
+ *     {@link ANeuralNetworksMemoryDesc_create}.
+ *   - Specify all of the intended input and output roles by calling
+ *     {@link ANeuralNetworksMemoryDesc_addInputRole} and
+ *     {@link ANeuralNetworksMemoryDesc_addOutputRole}.
+ *   - Optionally, specify the memory dimensions by calling
+ *     {@link ANeuralNetworksMemoryDesc_setDimensions}.
+ *   - Complete the memory descriptor with {@link
+ * ANeuralNetworksMemoryDesc_finish}.
+ *   - Use the memory descriptor as many times as needed with
+ *     {@link ANeuralNetworksMemory_createFromDesc}.
+ *   - Destroy the memory descriptor with {@link
+ * ANeuralNetworksMemoryDesc_free}.
+ *
+ * A memory descriptor is completed by calling {@link
+ * ANeuralNetworksMemoryDesc_finish}. A memory descriptor is destroyed by
+ * calling {@link ANeuralNetworksMemoryDesc_free}.
+ *
+ * A memory descriptor must not be modified once
+ * {@link ANeuralNetworksMemoryDesc_finish}
+ * has been called on it.
+ *
+ * It is the application's responsibility to make sure that only
+ * one thread modifies a memory descriptor at a given time. It is however
+ * safe for more than one thread to use the memory descriptor once
+ * {@link ANeuralNetworksMemoryDesc_finish} has returned.
+ *
+ * It is also the application's responsibility to ensure that there are no other
+ * uses of the memory descriptor after calling {@link
+ * ANeuralNetworksMemoryDesc_free}. It is however safe to continue using a
+ * {@link ANeuralNetworksMemory} object created from the memory descriptor.
+ *
+ * Available since API level 30.
+ */
+typedef struct ANeuralNetworksMemoryDesc ANeuralNetworksMemoryDesc;
 
 /**
  * ANeuralNetworksMemory is an opaque type that represents memory.
@@ -582,6 +627,26 @@ typedef enum {
   // such as that of the runtime itself and the IPC needed for the runtime to
   // communicate with the driver.
   ANEURALNETWORKS_DURATION_IN_DRIVER = 1,
+  // Execution time on hardware, after all dependencies have been signaled.
+  // If no dependencies specified (for example, if the execution was scheduled
+  // other
+  // than with {@link ANeuralNetworksExecution_startComputeWithDependencies}),
+  // the
+  // reported time will be the same as ANEURALNETWORKS_DURATION_ON_HARDWARE.
+  // Available since API level 30.
+  ANEURALNETWORKS_FENCED_DURATION_ON_HARDWARE = 2,
+  // Execution time in driver, after all dependencies have been signaled.
+  // Excludes
+  // overhead such as that of the runtime itself and the IPC needed for the
+  // runtime
+  // to communicate with the driver.
+  // If no dependencies specified (for example, if the execution was scheduled
+  // other
+  // than with {@link ANeuralNetworksExecution_startComputeWithDependencies}),
+  // the
+  // reported time will be the same as ANEURALNETWORKS_DURATION_IN_DRIVER.
+  // Available since API level 30.
+  ANEURALNETWORKS_FENCED_DURATION_IN_DRIVER = 3,
 } DurationCode;
 
 typedef int (*ANeuralNetworksExecution_getDuration_fn)(
@@ -603,5 +668,44 @@ typedef int (*ANeuralNetworksModel_getExtensionOperationType_fn)(
 typedef int (*ANeuralNetworksModel_setOperandExtensionData_fn)(
     ANeuralNetworksModel* model, int32_t index, const void* data,
     size_t length);
+
+typedef int (*ANeuralNetworksMemoryDesc_create_fn)(
+    ANeuralNetworksMemoryDesc** desc);
+
+typedef void (*ANeuralNetworksMemoryDesc_free_fn)(
+    ANeuralNetworksMemoryDesc* desc);
+
+typedef int (*ANeuralNetworksMemoryDesc_addInputRole_fn)(
+    ANeuralNetworksMemoryDesc* desc,
+    const ANeuralNetworksCompilation* compilation, int32_t index,
+    float frequency);
+
+typedef int (*ANeuralNetworksMemoryDesc_addOutputRole_fn)(
+    ANeuralNetworksMemoryDesc* desc,
+    const ANeuralNetworksCompilation* compilation, uint32_t index,
+    float frequency);
+
+typedef int (*ANeuralNetworksMemoryDesc_setDimensions_fn)(
+    ANeuralNetworksMemoryDesc* desc, uint32_t rank, const uint32_t* dimensions);
+
+typedef int (*ANeuralNetworksMemoryDesc_finish_fn)(
+    ANeuralNetworksMemoryDesc* desc);
+
+typedef int (*ANeuralNetworksMemory_createFromDesc_fn)(
+    const ANeuralNetworksMemoryDesc* desc, ANeuralNetworksMemory** memory);
+
+typedef int (*ANeuralNetworksMemory_copy_fn)(const ANeuralNetworksMemory* src,
+                                             const ANeuralNetworksMemory* dst);
+
+typedef int (*ANeuralNetworksEvent_createFromSyncFenceFd_fn)(
+    int sync_fence_fd, ANeuralNetworksEvent** event);
+
+typedef int (*ANeuralNetworksEvent_getSyncFenceFd_fn)(
+    const ANeuralNetworksEvent* event, int* sync_fence_fd);
+
+typedef int (*ANeuralNetworksExecution_startComputeWithDependencies_fn)(
+    ANeuralNetworksExecution* execution,
+    const ANeuralNetworksEvent* const* dependencies, uint32_t num_dependencies,
+    uint64_t duration, ANeuralNetworksEvent** event);
 
 #endif  // TENSORFLOW_LITE_NNAPI_NEURALNETWORKSTYPES_H_

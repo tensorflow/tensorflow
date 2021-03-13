@@ -21,10 +21,9 @@ from __future__ import print_function
 import json
 
 from tensorflow.python.feature_column import feature_column_v2 as fc
-from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.feature_column import base_feature_layer as kfc
-from tensorflow.python.util import serialization
+from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -112,7 +111,7 @@ class DenseFeatures(kfc._BaseFeaturesLayer):  # pylint: disable=protected-access
     """
     metadata = json.loads(super(DenseFeatures, self)._tracking_metadata)
     metadata['_is_feature_layer'] = True
-    return json.dumps(metadata, default=serialization.get_json_type)
+    return json.dumps(metadata, default=json_utils.get_json_type)
 
   def _target_shape(self, input_shape, total_elements):
     return (input_shape[0], total_elements)
@@ -161,7 +160,7 @@ class DenseFeatures(kfc._BaseFeaturesLayer):  # pylint: disable=protected-access
     transformation_cache = fc.FeatureTransformationCache(features)
     output_tensors = []
     for column in self._feature_columns:
-      with ops.name_scope(column.name):
+      with backend.name_scope(column.name):
         try:
           tensor = column.get_dense_tensor(
               transformation_cache, self._state_manager, training=training)

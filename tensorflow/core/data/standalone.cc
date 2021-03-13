@@ -59,7 +59,6 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
       device_mgr.get(), Env::Default(), /*config=*/nullptr,
       TF_GRAPH_DEF_VERSION, flib_def.get(), OptimizerOptions{},
       /*thread_pool=*/nullptr, /*parent=*/nullptr,
-      /*custom_kernel_creator=*/nullptr,
       /*session_metadata=*/nullptr,
       Rendezvous::Factory{
           [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
@@ -99,7 +98,8 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
   return Status::OK();
 }  // static
 
-Status Dataset::MakeIterator(std::unique_ptr<Iterator>* result) {
+Status Dataset::MakeIterator(std::unique_ptr<SplitProvider> split_provider,
+                             std::unique_ptr<Iterator>* result) {
   // Create an `IteratorContext`, which bundles together the necessary runtime
   // support to create and get elements from an iterator.
   std::unique_ptr<IteratorContext> ctx;
@@ -113,9 +113,9 @@ Status Dataset::MakeIterator(std::unique_ptr<Iterator>* result) {
     op_params.runner = &runner_;
     OpKernelContext op_ctx(&op_params, 0);
     IteratorContext::Params params(&op_ctx);
-    params.function_handle_cache = function_handle_cache_.get();
     params.resource_mgr = &resource_mgr_;
     params.cancellation_manager = &cancellation_manager_;
+    params.split_provider = std::move(split_provider);
 
     ctx = absl::make_unique<IteratorContext>(std::move(params));
   }
@@ -123,12 +123,22 @@ Status Dataset::MakeIterator(std::unique_ptr<Iterator>* result) {
   // Create the iterator from the dataset.
   std::unique_ptr<IteratorBase> iterator;
   TF_RETURN_IF_ERROR(dataset_->MakeIterator(ctx.get(), /*parent=*/nullptr,
-                                            "iterator", &iterator));
+                                            "Iterator", &iterator));
 
   *result = WrapUnique(new Iterator(iterator.release(), ctx.release()));
 
   return Status::OK();
 }
+
+Status Dataset::MakeIterator(std::unique_ptr<Iterator>* result) {
+  return MakeIterator(/*split_provider=*/nullptr, result);
+}
+
+Status Dataset::MakeSplitProvider(std::unique_ptr<SplitProvider>* result) {
+  return dataset_->MakeSplitProvider(result);
+}
+
+const DatasetBase* Dataset::Get() const { return dataset_; }
 
 Dataset::Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,
                  ProcessFunctionLibraryRuntime* pflr,
@@ -139,8 +149,6 @@ Dataset::Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,
       pflr_(pflr),
       pool_(pool) {
   runner_ = [this](std::function<void()> c) { pool_->Schedule(std::move(c)); };
-  function_handle_cache_ =
-      absl::make_unique<FunctionHandleCache>(pflr_->GetFLR("/device:CPU:0"));
 }
 
 Dataset::~Dataset() { dataset_->Unref(); }

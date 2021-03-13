@@ -1,0 +1,33 @@
+// Protobuf containing the metadata for each Keras object saved in a SavedModel.
+
+syntax = "proto3";
+
+package third_party.tensorflow.python.keras.protobuf;
+
+import "tensorflow/core/framework/versions.proto";
+
+message SavedMetadata {
+  // Nodes represent trackable objects in the SavedModel. The data for every
+  // Keras object is stored.
+  repeated SavedObject nodes = 1;
+}
+
+// Metadata of an individual Keras object.
+message SavedObject {
+  // Version defined by the code serializing this Keras object.
+  .tensorflow.VersionDef version = 1;
+  // Index of the node in the SavedModel SavedObjectGraph.
+  int32 node_id = 2;
+  // String path from root (e.g. "root.child_layer")
+  string node_path = 3;
+
+  // Identifier to determine loading function.
+  // Must be one of:
+  //   _tf_keras_input_layer, _tf_keras_layer, _tf_keras_metric,
+  //   _tf_keras_model, _tf_keras_network, _tf_keras_rnn_layer,
+  //   _tf_keras_sequential
+  string identifier = 4;
+  // Metadata containing a JSON-serialized object with the non-TensorFlow
+  // attributes for this Keras object.
+  string metadata = 5;
+}

@@ -43,7 +43,7 @@ namespace tf_executor {
 namespace {
 
 // IslandType is an enum representing if an island is the island (parent)
-// merging another island or is the island (child) being being merged.
+// merging another island or is the island (child) being merged.
 enum IslandType { kParentIsland, kChildIsland };
 
 // IslandResult is a helper struct holding an islands result and associated
@@ -66,7 +66,7 @@ struct ExecutorIslandCoarsening
 // that is closest to the island in the graph. If no candidate can be found or
 // the op found is not an island, an empty optional is returned.
 llvm::Optional<IslandOp> GetOperandCandidateToMergeWith(IslandOp island) {
-  Operation* graph_op = island.getParentOp();
+  Operation* graph_op = island->getParentOp();
   Operation* candidate = nullptr;
 
   // Check island control operands.
@@ -95,7 +95,7 @@ llvm::Optional<IslandOp> GetOperandCandidateToMergeWith(IslandOp island) {
 // an op, that is closest to the island in the graph. If no candidate can be
 // found or the op found is not an island, an empty optional is returned.
 llvm::Optional<IslandOp> GetResultCandidateToMergeWith(IslandOp island) {
-  Operation* graph_op = island.getParentOp();
+  Operation* graph_op = island->getParentOp();
   Operation* candidate = nullptr;
 
   // Check island control results.
@@ -185,8 +185,8 @@ IslandOp CreateNewIsland(IslandOp parent, IslandOp child,
 
   Operation* old_island = insert_position == kParentIsland ? parent : child;
   OpBuilder builder(old_island);
-  auto new_island = builder.create<IslandOp>(
-      old_island->getLoc(), result_types, operands, ArrayRef<NamedAttribute>{});
+  auto new_island =
+      builder.create<IslandOp>(old_island->getLoc(), result_types, operands);
   new_island.body().push_back(new Block);
   return new_island;
 }

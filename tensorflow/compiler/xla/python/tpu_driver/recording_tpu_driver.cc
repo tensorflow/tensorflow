@@ -127,8 +127,11 @@ class RecordingLoadedProgramHandle : public LoadedProgramHandle {
 class RecordingTpuDriver : public TpuDriver {
  public:
   explicit RecordingTpuDriver(std::unique_ptr<TpuDriver> driver,
-                              const std::string recording_path)
-      : driver_(std::move(driver)), recording_path_(recording_path) {
+                              const std::string recording_path,
+                              const bool flush)
+      : driver_(std::move(driver)),
+        recording_path_(recording_path),
+        flush_(flush) {
     auto file_status = tensorflow::Env::Default()->NewAppendableFile(
         recording_path_, &log_file_);
     if (!file_status.ok()) {
@@ -466,6 +469,7 @@ class RecordingTpuDriver : public TpuDriver {
  private:
   std::unique_ptr<TpuDriver> driver_;
   const std::string recording_path_;
+  const bool flush_;
 
   std::unique_ptr<tensorflow::WritableFile> log_file_;
 
@@ -499,6 +503,22 @@ class RecordingTpuDriver : public TpuDriver {
                         "corrupt. Error: "
                      << data_status.ToString();
       }
+
+      if (flush_) {
+        auto flush_status = log_file_->Flush();
+        if (!flush_status.ok()) {
+          LOG(WARNING) << "Unable to flush data to log file. File possibly "
+                          "corrupt. Error: "
+                       << flush_status.ToString();
+        }
+
+        auto sync_status = log_file_->Sync();
+        if (!sync_status.ok()) {
+          LOG(WARNING) << "Unable to sync log file. File possibly "
+                          "corrupt. Error: "
+                       << sync_status.ToString();
+        }
+      }
     }
   }
 
@@ -521,6 +541,7 @@ xla::StatusOr<std::unique_ptr<TpuDriver>> RegisterRecordingTpuDriver(
 
   std::string file;
   std::string worker;
+  bool flush = false;
 
   for (const auto& config : configs) {
     std::vector<std::string> kv =
@@ -530,6 +551,11 @@ xla::StatusOr<std::unique_ptr<TpuDriver>> RegisterRecordingTpuDriver(
     }
     if (kv[0] == "worker") {
       worker = kv[1];
+    }
+    if (kv[0] == "flush") {
+      if (kv[1] == "true" || kv[1] == "1") {
+        flush = true;
+      }
     }
   }
 
@@ -541,7 +567,7 @@ xla::StatusOr<std::unique_ptr<TpuDriver>> RegisterRecordingTpuDriver(
   auto driver = driver_status.ConsumeValueOrDie();
 
   return std::unique_ptr<TpuDriver>(
-      new RecordingTpuDriver(std::move(driver), file));
+      new RecordingTpuDriver(std::move(driver), file, flush));
 }
 
 // To record a sequence of operations, set the worker configuration string to

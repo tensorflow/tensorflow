@@ -108,6 +108,8 @@ cc_library(
         ":rocfft",
         ":hiprand",
         ":miopen",
+        ":hipsparse",
+        ":rocsolver",
     ],
 )
 
@@ -137,11 +139,22 @@ cc_library(
     ],
 )
 
-cc_import(
+cc_library(
     name = "hipsparse",
-    hdrs = glob(["rocm/include/hipsparse/**",]),
-    shared_library = "rocm/lib/%{hipsparse_lib}",
-    visibility = ["//visibility:public"],
+    data = ["rocm/lib/%{hipsparse_lib}"],
+)
+
+cc_library(
+    name = "rocsolver",
+    srcs = ["rocm/lib/%{rocsolver_lib}"],
+    data = ["rocm/lib/%{rocsolver_lib}"],
+)
+
+filegroup(
+    name = "rocm_root",
+    srcs = [
+        "rocm/bin/clang-offload-bundler",
+    ],
 )
 
 %{copy_rules}

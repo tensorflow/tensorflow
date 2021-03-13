@@ -65,7 +65,8 @@ Status CredentialsFactory::Get(absl::string_view protocol,
 }
 
 Status CredentialsFactory::CreateServerCredentials(
-    absl::string_view protocol, std::shared_ptr<grpc::ServerCredentials>* out) {
+    absl::string_view protocol,
+    std::shared_ptr<::grpc::ServerCredentials>* out) {
   CredentialsFactory* factory;
   TF_RETURN_IF_ERROR(CredentialsFactory::Get(protocol, &factory));
   TF_RETURN_IF_ERROR(factory->CreateServerCredentials(out));
@@ -74,11 +75,17 @@ Status CredentialsFactory::CreateServerCredentials(
 
 Status CredentialsFactory::CreateClientCredentials(
     absl::string_view protocol,
-    std::shared_ptr<grpc::ChannelCredentials>* out) {
+    std::shared_ptr<::grpc::ChannelCredentials>* out) {
   CredentialsFactory* factory;
   TF_RETURN_IF_ERROR(CredentialsFactory::Get(protocol, &factory));
   TF_RETURN_IF_ERROR(factory->CreateClientCredentials(out));
   return Status::OK();
+}
+
+bool CredentialsFactory::Exists(absl::string_view protocol) {
+  mutex_lock l(*get_lock());
+  return credentials_factories().find(std::string(protocol)) !=
+         credentials_factories().end();
 }
 
 class InsecureCredentialsFactory : public CredentialsFactory {
@@ -86,14 +93,14 @@ class InsecureCredentialsFactory : public CredentialsFactory {
   std::string Protocol() override { return "grpc"; }
 
   Status CreateServerCredentials(
-      std::shared_ptr<grpc::ServerCredentials>* out) override {
-    *out = grpc::InsecureServerCredentials();
+      std::shared_ptr<::grpc::ServerCredentials>* out) override {
+    *out = ::grpc::InsecureServerCredentials();
     return Status::OK();
   }
 
   Status CreateClientCredentials(
-      std::shared_ptr<grpc::ChannelCredentials>* out) override {
-    *out = grpc::InsecureChannelCredentials();
+      std::shared_ptr<::grpc::ChannelCredentials>* out) override {
+    *out = ::grpc::InsecureChannelCredentials();
     return Status::OK();
   }
 };

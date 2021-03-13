@@ -29,12 +29,26 @@ from tensorflow.lite.testing.zip_test_utils import register_make_test_function
 def make_arg_min_max_tests(options):
   """Make a set of tests to do arg_max."""
 
-  test_parameters = [{
-      "input_dtype": [tf.float32, tf.int32],
-      "input_shape": [[], [1, 1, 1, 3], [2, 3, 4, 5], [2, 3, 3], [5, 5], [10]],
-      "output_type": [tf.int32, tf.int64],
-      "is_arg_max": [True],
-  }]
+  test_parameters = [
+      {
+          "input_dtype": [tf.float32, tf.int32],
+          "input_shape": [[], [1, 1, 1, 3], [2, 3, 4, 5], [2, 3, 3], [5, 5],
+                          [10]],
+          "output_type": [tf.int32, tf.int64],
+          "is_arg_max": [True],
+          "is_last_axis": [False],
+          "dynamic_range_quantize": [False, True],
+      },
+      {
+          "input_dtype": [tf.float32, tf.int32],
+          "input_shape": [[1], [2], [3], [4], [5], [6], [7], [8], [9], [10],
+                          [2, 10], [3, 4, 50], [2, 3, 5, 100]],
+          "output_type": [tf.int32, tf.int64],
+          "is_arg_max": [False, True],
+          "is_last_axis": [True],
+          "dynamic_range_quantize": [False, True],
+      },
+  ]
 
   def build_graph(parameters):
     """Build the topk op testing graph."""
@@ -42,7 +56,10 @@ def make_arg_min_max_tests(options):
         dtype=parameters["input_dtype"],
         name="input",
         shape=parameters["input_shape"])
-    axis = random.randint(0, max(len(parameters["input_shape"]) - 1, 0))
+    if not parameters["is_last_axis"]:
+      axis = random.randint(0, max(len(parameters["input_shape"]) - 1, 0))
+    else:
+      axis = -1
     if parameters["is_arg_max"]:
       out = tf.math.argmax(
           input_value, axis, output_type=parameters["output_type"])
@@ -62,4 +79,4 @@ def make_arg_min_max_tests(options):
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_failures=4)
+      expected_tf_failures=8)

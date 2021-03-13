@@ -21,6 +21,8 @@ limitations under the License.
 
 namespace tflite {
 
+constexpr int kOnlinePlannedBuffer = -1;
+
 // A memory planner that uses a greedy algorithm to arrange buffers in memory
 // to minimize the overall arena size needed.
 //
@@ -59,6 +61,12 @@ class GreedyMemoryPlanner : public MemoryPlanner {
   TfLiteStatus AddBuffer(ErrorReporter* error_reporter, int size,
                          int first_time_used, int last_time_used) override;
 
+  // Record details of an offline planned buffer offset we want to place.
+  // offline_offset is the buffer offset from the start of the arena.
+  TfLiteStatus AddBuffer(ErrorReporter* error_reporter, int size,
+                         int first_time_used, int last_time_used,
+                         int offline_offset);
+
   // Returns the high-water mark of used memory. This is the minimum size of a
   // memory arena you'd need to allocate to hold these buffers.
   size_t GetMaximumMemorySize() override;
@@ -90,8 +98,8 @@ class GreedyMemoryPlanner : public MemoryPlanner {
   static size_t per_buffer_size() {
     const int per_buffer_size =
         sizeof(BufferRequirements) +  // requirements_
-        sizeof(int) +                 // buffer_sizes_sorted_by_size_
-        sizeof(int) +                 // buffer_ids_sorted_by_size_
+        sizeof(int) +                 // buffer_sizes_sorted_
+        sizeof(int) +                 // buffer_ids_sorted_
         sizeof(ListEntry) +           // buffers_sorted_by_offset_
         sizeof(int);                  // buffer_offsets_;
     return per_buffer_size;
@@ -121,16 +129,25 @@ class GreedyMemoryPlanner : public MemoryPlanner {
   // Records the client-provided information about each buffer.
   struct BufferRequirements {
     int size;
+    int offline_offset;
     int first_time_used;
     int last_time_used;
   };
 
   // Working arrays used during the layout algorithm.
   BufferRequirements* requirements_;
-  int* buffer_sizes_sorted_by_size_;
-  int* buffer_ids_sorted_by_size_;
+  // buffer_sizes_sorted_ and buffer_ids_sorted_ are sorted according to:
+  //   {
+  //     offline planned buffers,
+  //     online planned buffers sorted by size
+  //   }
+  int* buffer_sizes_sorted_;
+  int* buffer_ids_sorted_;
   ListEntry* buffers_sorted_by_offset_;
-  int next_free_entry_;
+  int next_free_entry_;    // Index of the next free entry of
+                           // buffers_sorted_by_offset_
+  int first_entry_index_;  // Index of the first entry (smallest offset) of
+                           // buffers_sorted_by_offset_
 
   // Stores the outcome of the plan, the location of each buffer in the arena.
   int* buffer_offsets_;

@@ -62,6 +62,13 @@ def main(unused_argv):
   shutil.copytree(SOURCE_PATH, merged_source / 'java')
 
   if FLAGS.gen_ops:
+    # `$ yes | configure`
+    yes = subprocess.Popen(['yes', ''], stdout=subprocess.PIPE)
+    configure = subprocess.Popen([TENSORFLOW_ROOT / 'configure'],
+                                 stdin=yes.stdout,
+                                 cwd=TENSORFLOW_ROOT)
+    configure.communicate()
+
     subprocess.check_call(
         ['bazel', 'build', '//tensorflow/java:java_op_gen_sources'],
         cwd=TENSORFLOW_ROOT)

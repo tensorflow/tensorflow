@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/PrettyStackTrace.h"
@@ -48,25 +49,36 @@ static bool OpQuantSpecWriter(raw_ostream &os, RecordKeeper &records) {
 
   OUT(0) << "static std::unique_ptr<quant::OpQuantSpec> "
             "GetOpQuantSpec(mlir::Operation *op) {\n";
+  // TODO(b/176258587): Move to OpTrait if this should be generalized.
+  // Add special handling for LSTM.
+  OUT(2) << "if (auto lstm_op = llvm::dyn_cast<TFL::LSTMOp>(op)) {\n";
+  OUT(4) << "return GetLstmOpQuantSpec<TFL::LSTMOp>(lstm_op);\n";
+  OUT(2) << "} else if (auto lstm_op = "
+            "llvm::dyn_cast<TFL::UnidirectionalSequenceLSTMOp>(op)) {\n";
+  OUT(4) << "return "
+            "GetLstmOpQuantSpec<TFL::UnidirectionalSequenceLSTMOp>(lstm_op);\n";
+  OUT(2) << "}\n";
+
   OUT(2) << "auto spec = absl::make_unique<quant::OpQuantSpec>();\n";
   llvm::SmallVector<llvm::StringRef, 3> matches;
   for (auto *def : defs) {
     Operator op(def);
     for (const auto t : op.getTraits()) {
       if (auto opTrait = llvm::dyn_cast<mlir::tblgen::NativeOpTrait>(&t)) {
-        auto trait = opTrait->getTrait();
-        if (!trait.consume_front("OpTrait::quant::")) continue;
+        auto trait_str = opTrait->getTrait();
+        if (!llvm::StringRef{trait_str}.consume_front(
+                "::mlir::OpTrait::quant::"))
+          continue;
 
         OUT(2) << "if (auto tfl = llvm::dyn_cast<" << op.getQualCppClassName()
                << ">(op)) {\n";
         // There is a "FixedResultUniformScale" trait, set the type for result.
-        auto trait_str = opTrait->getTrait().str();
         if (fixed_uniform_trait_regex.match(trait_str, &matches)) {
           OUT(4) << "for (int i = 0, e = op->getNumResults(); i != e; ++i)\n";
           OUT(6) << "spec->restricted_output_params[std::make_pair("
                  << matches[1] << ", " << matches[2]
-                 << ")].push_back(tfl.OpTrait::quant::" << trait << "<"
-                 << op.getQualCppClassName()
+                 << ")].push_back(tfl.::mlir::OpTrait::quant::" << trait_str
+                 << "<" << op.getQualCppClassName()
                  << ">::GetResultQuantizedType(i));\n";
           matches.clear();
         }

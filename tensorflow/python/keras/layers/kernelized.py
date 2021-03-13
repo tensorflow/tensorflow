@@ -30,6 +30,7 @@ from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.util.tf_export import keras_export
 
@@ -120,7 +121,7 @@ class RandomFourierFeatures(base_layer.Layer):
       ...)
   ```
 
-  Arguments:
+  Args:
     output_dim: Positive integer, the dimension of the layer's output, i.e., the
       number of random features used to approximate the kernel.
     kernel_initializer: Determines the distribution of the parameters of the
@@ -218,10 +219,10 @@ class RandomFourierFeatures(base_layer.Layer):
     super(RandomFourierFeatures, self).build(input_shape)
 
   def call(self, inputs):
-    inputs = ops.convert_to_tensor_v2(inputs, dtype=self.dtype)
-    inputs = gen_math_ops.cast(inputs, dtypes.float32)
+    inputs = ops.convert_to_tensor_v2_with_dispatch(inputs, dtype=self.dtype)
+    inputs = math_ops.cast(inputs, dtypes.float32)
     kernel = (1.0 / self.kernel_scale) * self.unscaled_kernel
-    outputs = gen_math_ops.mat_mul(inputs, kernel)
+    outputs = gen_math_ops.MatMul(a=inputs, b=kernel)
     outputs = nn.bias_add(outputs, self.bias)
     return gen_math_ops.cos(outputs)
 
@@ -236,8 +237,8 @@ class RandomFourierFeatures(base_layer.Layer):
 
   def get_config(self):
     kernel_initializer = self.kernel_initializer
-    if isinstance(self.kernel_initializer, init_ops.Initializer):
-      kernel_initializer = initializers.serialize(self.kernel_initializer)
+    if not isinstance(kernel_initializer, six.string_types):
+      kernel_initializer = initializers.serialize(kernel_initializer)
     config = {
         'output_dim': self.output_dim,
         'kernel_initializer': kernel_initializer,

@@ -39,6 +39,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
@@ -310,14 +311,14 @@ class Conv2DTest(test.TestCase):
           data_format, use_gpu)
       expected_results.append(expected)
       computed_results.append(computed)
-      tolerance = 1e-2 if use_gpu else 1e-5
-      expected_values = self.evaluate(expected_results)
-      computed_values = self.evaluate(computed_results)
-      for e_value, c_value in zip(expected_values, computed_values):
-        tf_logging.debug("expected = %s", e_value)
-        tf_logging.debug("actual = %s", c_value)
-        self.assertAllClose(
-            e_value.flatten(), c_value.flatten(), atol=tolerance, rtol=rtol)
+    tolerance = 1e-2 if use_gpu else 1e-5
+    expected_values = self.evaluate(expected_results)
+    computed_values = self.evaluate(computed_results)
+    for e_value, c_value in zip(expected_values, computed_values):
+      tf_logging.debug("expected = %s", e_value)
+      tf_logging.debug("actual = %s", c_value)
+      self.assertAllClose(
+          e_value.flatten(), c_value.flatten(), atol=tolerance, rtol=rtol)
 
   def _VerifyValues(self,
                     tensor_in_sizes,
@@ -2522,79 +2523,138 @@ class Conv2DTest(test.TestCase):
           padding=[0, 0, 0, 0])
 
   @test_util.deprecated_graph_mode_only
-  @test_util.disable_xla("b/123337890")  # Error messages differ
   def testOpEdgeCases(self):
     with self.cached_session() as sess:
       # Illegal strides.
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "strides in the batch and depth"):
+      with self.assertRaisesRegex(errors_impl.UnimplementedError,
+                                  "strides in the batch and depth"):
+        input_placeholder = array_ops.placeholder(dtypes.float32)
+        input_val = np.ones([10, 10])
+        filter_placeholder = array_ops.placeholder(dtypes.float32)
+        filter_val = np.ones([10, 10])
         sess.run(
             nn_ops.conv2d(
-                array_ops.placeholder(dtypes.float32),
-                array_ops.placeholder(dtypes.float32),
+                input_placeholder,
+                filter_placeholder,
                 strides=[2, 1, 1, 1],
-                padding="SAME"))
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "strides in the batch and depth"):
+                padding="SAME"),
+            feed_dict={
+                input_placeholder: input_val,
+                filter_placeholder: filter_val
+            })
+      with self.assertRaisesRegex(errors_impl.UnimplementedError,
+                                  "strides in the batch and depth"):
+        input_placeholder = array_ops.placeholder(dtypes.float32)
+        filter_placeholder = array_ops.placeholder(dtypes.float32)
+        input_val = np.ones([10, 10])
+        filter_val = np.ones([10, 10])
         sess.run(
             nn_ops.conv2d(
-                array_ops.placeholder(dtypes.float32),
-                array_ops.placeholder(dtypes.float32),
+                input_placeholder,
+                filter_placeholder,
                 strides=[1, 1, 1, 2],
-                padding="SAME"))
+                padding="SAME"),
+            feed_dict={
+                input_placeholder: input_val,
+                filter_placeholder: filter_val
+            })
 
       # Filter larger than input.
-      with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
+      with self.assertRaisesRegex(ValueError, "Negative dimension size"):
+        input_placeholder = array_ops.placeholder(
+            dtypes.float32, shape=[32, 20, 20, 3])
+        input_val = np.ones([32, 20, 20, 3])
+        filter_placeholder = array_ops.placeholder(
+            dtypes.float32, shape=[20, 21, 3, 2])
+        filter_val = np.ones([20, 21, 3, 2])
+
         sess.run(
             nn_ops.conv2d(
-                array_ops.placeholder(
-                    dtypes.float32, shape=[32, 20, 20, 3]),
-                array_ops.placeholder(
-                    dtypes.float32, shape=[20, 21, 3, 2]),
+                input_placeholder,
+                filter_placeholder,
                 strides=[1, 1, 1, 1],
-                padding="VALID"))
-      with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
+                padding="VALID"),
+            feed_dict={
+                input_placeholder: input_val,
+                filter_placeholder: filter_val
+            })
+      with self.assertRaisesRegex(ValueError, "Negative dimension size"):
+        input_placeholder = array_ops.placeholder(
+            dtypes.float32, shape=[32, 20, 20, 3])
+        input_val = np.ones([32, 20, 20, 3])
+        filter_placeholder = array_ops.placeholder(
+            dtypes.float32, shape=[21, 20, 3, 2])
+        filter_val = np.ones([21, 20, 3, 2])
         sess.run(
             nn_ops.conv2d(
-                array_ops.placeholder(
-                    dtypes.float32, shape=[32, 20, 20, 3]),
-                array_ops.placeholder(
-                    dtypes.float32, shape=[21, 20, 3, 2]),
+                input_placeholder,
+                filter_placeholder,
                 strides=[1, 1, 1, 1],
-                padding="VALID"))
+                padding="VALID"),
+            feed_dict={
+                input_placeholder: input_val,
+                filter_placeholder: filter_val
+            })
 
       # Filter larger than input + padding.
-      with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
+      with self.assertRaisesRegex(ValueError, "Negative dimension size"):
+        input_placeholder = array_ops.placeholder(
+            dtypes.float32, shape=[32, 20, 20, 3])
+        input_val = np.ones([32, 20, 20, 3])
+        filter_placeholder = array_ops.placeholder(
+            dtypes.float32, shape=[24, 25, 3, 2])
+        filter_val = np.ones([24, 25, 3, 2])
         sess.run(
             nn_ops.conv2d(
-                array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),
-                array_ops.placeholder(dtypes.float32, shape=[24, 25, 3, 2]),
+                input_placeholder,
+                filter_placeholder,
                 strides=[1, 1, 1, 1],
-                padding=[[0, 0], [2, 2], [2, 2], [0, 0]]))
+                padding=[[0, 0], [2, 2], [2, 2], [0, 0]]),
+            feed_dict={
+                input_placeholder: input_val,
+                filter_placeholder: filter_val
+            })
 
       # Negative padding during backprop.
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "nonnegative"):
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          "All elements of explicit_paddings must be nonnegative"):
+        filter_placeholder = array_ops.placeholder(
+            dtypes.float32, shape=[18, 18, 3, 2])
+        filter_val = np.ones([18, 18, 3, 2])
+        out_backprop = array_ops.placeholder(
+            dtypes.float32, shape=[32, 3, 2, 2])
+        out_backprop_val = np.ones([32, 3, 2, 2])
         sess.run(
             nn_ops.conv2d_backprop_input([32, 20, 20, 3],
-                                         array_ops.placeholder(
-                                             dtypes.float32,
-                                             shape=[18, 18, 3, 2]),
-                                         array_ops.placeholder(
-                                             dtypes.float32,
-                                             shape=[32, 3, 2, 2]),
+                                         filter_placeholder,
+                                         out_backprop,
                                          strides=[1, 1, 1, 1],
                                          padding=[[0, 0], [-1, 0], [0, 0],
-                                                  [0, 0]]))
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "nonnegative"):
+                                                  [0, 0]]),
+            feed_dict={
+                filter_placeholder: filter_val,
+                out_backprop: out_backprop_val
+            })
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          "All elements of explicit_paddings must be nonnegative"):
+        input_placeholder = array_ops.placeholder(
+            dtypes.float32, shape=[32, 20, 20, 3])
+        input_val = np.ones([32, 20, 20, 3])
+        out_backprop = array_ops.placeholder(
+            dtypes.float32, shape=[32, 3, 2, 2])
+        out_backprop_val = np.ones([32, 3, 2, 2])
         sess.run(
             nn_ops.conv2d_backprop_filter(
-                array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),
-                [18, 18, 3, 2],
-                array_ops.placeholder(dtypes.float32, shape=[32, 3, 2, 2]),
+                input_placeholder, [18, 18, 3, 2],
+                out_backprop,
                 strides=[1, 1, 1, 1],
-                padding=[[0, 0], [-1, 0], [0, 0], [0, 0]]))
+                padding=[[0, 0], [-1, 0], [0, 0], [0, 0]]),
+            feed_dict={
+                input_placeholder: input_val,
+                out_backprop: out_backprop_val
+            })
 
 
 class DepthwiseConv2DTest(test.TestCase):
@@ -2727,7 +2787,7 @@ class SeparableConv2DTest(test.TestCase):
       expected: An array containing the expected operation outputs.
       data_format: string data format for input tensor.
     """
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session():
       t1 = self._InitValues(tensor_in_sizes)
       f1 = self._InitValues(depthwise_filter_in_sizes)
       f1.set_shape(depthwise_filter_in_sizes)
@@ -2839,7 +2899,7 @@ class SeparableConv2DTest(test.TestCase):
     depthwise_filter_in_sizes = [2, 2, 2, 3]
     pointwise_filter_in_sizes = [1, 1, 6, 7]
     padding = [[0, 0], [1, 2], [3, 4], [0, 0]]
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       # Compute the 'expected' values by manually padding before calling
       # separable_conv2d
       t1 = self._InitValues(tensor_in_sizes)
@@ -2943,7 +3003,7 @@ class Conv2DBenchmark(test.Benchmark):
         x = convolutional.conv2d(x, num_outputs, [1, kernel_w])
       outputs = x
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       num_iterations = 4
       for iter_index in xrange(num_iterations):
         start = time.time()
@@ -2959,7 +3019,7 @@ class Conv2DBenchmark(test.Benchmark):
     config.graph_options.rewrite_options.dependency_optimization = (
         rewriter_config_pb2.RewriterConfig.OFF)
     with session_lib.Session(config=config) as session:
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.run_op_benchmark(
           session, op, burn_iters=burn_iters, min_iters=num_iters, name=name)
 
@@ -3205,6 +3265,173 @@ def GetInceptionBackFilterTest(input_size, filter_size, output_size, strides,
                             padding)
 
   return Test
+
+
+class FusedConv2DTest(test.TestCase):
+
+  def _CreateNumpyTensor(self, shape):
+    total_size = np.prod(shape)
+    return np.arange(1, total_size + 1, dtype=np.float32).reshape(shape)
+
+  def _CreateConv2D(self,
+                    input_values,
+                    filters,
+                    strides=[1, 1],
+                    padding="SAME"):
+    return nn_ops.convolution(
+        input_values, filters, strides=strides, padding=padding)
+
+  # Tests tensor forwarding of a fused Conv2D+BiasAdd+Add op when the input to
+  # Add has refcount 1.
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testAddWithRefCountOne(self):
+    expected_output = [
+        113377, 125570, 77305, 86738, 19433, 22226, 60681, 70722, 36291, 43718,
+        7143, 9206, 9785, 12098, 4783, 6366, 779, 1134
+    ]
+    tensor_in_sizes = [1, 3, 3, 2]
+    filter_in_sizes = [2, 2, 2, 2]
+    bias_in_sizes = [2]
+
+    x = self._CreateNumpyTensor(tensor_in_sizes)
+    filter_in = self._CreateNumpyTensor(filter_in_sizes)
+    bias_in = self._CreateNumpyTensor(bias_in_sizes)
+    # To get different weights for filter
+    offset = 1
+
+    conv1 = self._CreateConv2D(x, filter_in)
+    conv2 = self._CreateConv2D(conv1, filter_in + offset)
+
+    conv = self._CreateConv2D(conv1, filter_in - offset)
+    bias_add = nn_ops.bias_add(conv, bias_in)
+    add = math_ops.add_n([bias_add, conv2])
+
+    self.assertAllEqual(
+        np.rint(expected_output),
+        self.evaluate(add).reshape(-1))
+
+  # Tests tensor forwarding of a fused Conv2D+BiasAdd+Add op when the input to
+  # Add has a total refcount of 2, and Add is its last consumer.
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testAddWithRefCountTwoAndRunAddLast(self):
+    expected_output = [
+        1.907175e+06, 2.253505e+06, 7.809210e+05, 9.537180e+05, 1.184170e+05,
+        1.523070e+05, 5.367010e+05, 6.803700e+05, 1.867090e+05, 2.529460e+05,
+        2.362300e+04, 3.522600e+04, 5.121700e+04, 7.168300e+04, 1.494300e+04,
+        2.347400e+04, 1.558000e+03, 2.903000e+03
+    ]
+    tensor_in_sizes = [1, 3, 3, 2]
+    filter_in_sizes = [2, 2, 2, 2]
+    bias_in_sizes = [2]
+
+    x = self._CreateNumpyTensor(tensor_in_sizes)
+    filter_in = self._CreateNumpyTensor(filter_in_sizes)
+    bias_in = self._CreateNumpyTensor(bias_in_sizes)
+    # To get different weights for filter
+    offset = 1
+
+    conv1 = self._CreateConv2D(x, filter_in)
+    conv2 = self._CreateConv2D(conv1, filter_in + offset)
+
+    conv = self._CreateConv2D(conv2, filter_in - offset)
+    bias_add = nn_ops.bias_add(conv, bias_in)
+    add = math_ops.add_n([bias_add, conv1])
+
+    self.assertAllEqual(
+        np.rint(expected_output),
+        self.evaluate(add).reshape(-1))
+
+  # Tests tensor forwarding of a fused Conv2D+BiasAdd+Add op when the input to
+  # Add has refcount 2 and Add (in the fused Conv2D op) is its first consumer.
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testAddWithRefCountTwoAndRunAddFirst(self):
+    expected_output = [
+        176161, 194450, 120673, 134822, 30545, 34734, 96041, 111102, 58149,
+        69289, 11745, 14839, 15833, 19302, 7965, 10339, 1345, 1877
+    ]
+    tensor_in_sizes = [1, 3, 3, 2]
+    filter_in_sizes = [2, 2, 2, 2]
+    bias_in_sizes = [2]
+
+    x = self._CreateNumpyTensor(tensor_in_sizes)
+    filter_in = self._CreateNumpyTensor(filter_in_sizes)
+    bias_in = self._CreateNumpyTensor(bias_in_sizes)
+    # To get different weights for filter
+    offset = 1
+
+    conv1 = self._CreateConv2D(x, filter_in)
+    conv2 = self._CreateConv2D(conv1, filter_in + offset)
+
+    conv = self._CreateConv2D(conv1, filter_in - offset)
+    bias_add = nn_ops.bias_add(conv, bias_in)
+    add = math_ops.add_n([bias_add, conv2])
+
+    relu = nn_ops.relu(add)
+    output = math_ops.add_n([relu, conv2])
+
+    self.assertAllEqual(
+        np.rint(expected_output),
+        self.evaluate(output).reshape(-1))
+
+  # Tests tensor forwarding of a fused Conv2D+BiasAdd+Add op when the input to
+  # Add has refcount 2, and there is no dependency between its two consumers.
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testAddWithRefCountTwoAndNoDependence(self):
+    expected_output = [
+        176161, 194450, 120673, 134822, 30545, 34734, 96041, 111102, 58149,
+        69289, 11745, 14839, 15833, 19302, 7965, 10339, 1345, 1877
+    ]
+    tensor_in_sizes = [1, 3, 3, 2]
+    filter_in_sizes = [2, 2, 2, 2]
+    bias_in_sizes = [2]
+
+    x = self._CreateNumpyTensor(tensor_in_sizes)
+    filter_in = self._CreateNumpyTensor(filter_in_sizes)
+    bias_in = self._CreateNumpyTensor(bias_in_sizes)
+    # To get different weights for filter
+    offset = 1
+
+    conv1 = self._CreateConv2D(x, filter_in)
+    conv2 = self._CreateConv2D(conv1, filter_in + offset)
+
+    conv = self._CreateConv2D(conv1, filter_in - offset)
+    bias_add = nn_ops.bias_add(conv, bias_in)
+    add = math_ops.add_n([bias_add, conv2])
+
+    relu1 = nn_ops.relu(add)
+    relu2 = nn_ops.relu(conv2)
+    output = math_ops.add_n([relu1, relu2])
+
+    self.assertAllEqual(
+        np.rint(expected_output),
+        self.evaluate(output).reshape(-1))
+
+  # Tests tensor forwarding of a fused Conv2D+BiasAdd+Add op when the input to
+  # Add is the same as the input to the fused Conv2D op and needs a tensor
+  # buffer.
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testAddWithSameSrcAndAddTensorBuffer(self):
+    expected_output = [
+        57157, 63298, 39249, 44026, 9971, 11402, 31193, 36306, 19126, 22948,
+        3970, 5060, 5135, 6350, 2666, 3524, 461, 674
+    ]
+    tensor_in_sizes = [1, 3, 3, 2]
+    filter_in_sizes = [2, 2, 2, 2]
+    bias_in_sizes = [2]
+
+    x = self._CreateNumpyTensor(tensor_in_sizes)
+    filter_in = self._CreateNumpyTensor(filter_in_sizes)
+    bias_in = self._CreateNumpyTensor(bias_in_sizes)
+
+    conv1 = self._CreateConv2D(x, filter_in)
+
+    conv = self._CreateConv2D(conv1, filter_in)
+    bias_add = nn_ops.bias_add(conv, bias_in)
+    add = math_ops.add_n([bias_add, conv1])
+
+    self.assertAllEqual(
+        np.rint(expected_output),
+        self.evaluate(add).reshape(-1))
 
 
 if __name__ == "__main__":

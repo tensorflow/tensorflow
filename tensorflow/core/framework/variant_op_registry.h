@@ -44,10 +44,14 @@ enum VariantUnaryOp {
   CONJ_VARIANT_UNARY_OP = 2,
 };
 
+const char* VariantUnaryOpToString(VariantUnaryOp op);
+
 enum VariantBinaryOp {
   INVALID_VARIANT_BINARY_OP = 0,
   ADD_VARIANT_BINARY_OP = 1,
 };
+
+const char* VariantBinaryOpToString(VariantBinaryOp op);
 
 enum VariantDeviceCopyDirection {
   INVALID_DEVICE_COPY_DIRECTION = 0,
@@ -93,7 +97,7 @@ class UnaryVariantOpRegistry {
       AsyncVariantDeviceCopyFn;
 
   // Add a decode function to the registry.
-  void RegisterDecodeFn(const string& type_name,
+  void RegisterDecodeFn(const std::string& type_name,
                         const VariantDecodeFn& decode_fn);
 
   // Returns nullptr if no decode function was found for the given TypeName.
@@ -124,7 +128,7 @@ class UnaryVariantOpRegistry {
   }
 
   // Add a unary op function to the registry.
-  void RegisterUnaryOpFn(VariantUnaryOp op, const string& device,
+  void RegisterUnaryOpFn(VariantUnaryOp op, const std::string& device,
                          const TypeIndex& type_index,
                          const VariantUnaryOpFn& unary_op_fn) {
     VariantUnaryOpFn* existing = GetUnaryOpFn(op, device, type_index);
@@ -146,7 +150,7 @@ class UnaryVariantOpRegistry {
   }
 
   // Add a binary op function to the registry.
-  void RegisterBinaryOpFn(VariantBinaryOp op, const string& device,
+  void RegisterBinaryOpFn(VariantBinaryOp op, const std::string& device,
                           const TypeIndex& type_index,
                           const VariantBinaryOpFn& add_fn) {
     VariantBinaryOpFn* existing = GetBinaryOpFn(op, device, type_index);
@@ -252,7 +256,7 @@ class UnaryVariantOpRegistry {
   // Find or insert a string into a persistent string storage
   // container; return the StringPiece pointing to the permanent string
   // location.
-  static StringPiece GetPersistentStringPiece(const string& str) {
+  static StringPiece GetPersistentStringPiece(const std::string& str) {
     const auto string_storage = PersistentStringStorage();
     auto found = string_storage->find(str);
     if (found == string_storage->end()) {
@@ -307,13 +311,14 @@ Status VariantDeviceCopy(
 template <typename Device>
 Status UnaryOpVariant(OpKernelContext* ctx, VariantUnaryOp op, const Variant& v,
                       Variant* v_out) {
-  const string& device = DeviceName<Device>::value;
+  const std::string& device = DeviceName<Device>::value;
   UnaryVariantOpRegistry::VariantUnaryOpFn* unary_op_fn =
       UnaryVariantOpRegistry::Global()->GetUnaryOpFn(op, device, v.TypeId());
   if (unary_op_fn == nullptr) {
-    return errors::Internal(
-        "No unary variant unary_op function found for unary variant op enum: ",
-        op, " Variant type_name: ", v.TypeName(), " for device type: ", device);
+    return errors::Internal("No unary variant unary_op function found for op ",
+                            VariantUnaryOpToString(op),
+                            " Variant type_name: ", v.TypeName(),
+                            " for device type: ", device);
   }
   return (*unary_op_fn)(ctx, v, v_out);
 }
@@ -336,15 +341,14 @@ Status BinaryOpVariants(OpKernelContext* ctx, VariantBinaryOp op,
         "type ids.  Type names: '",
         a.TypeName(), "' vs. '", b.TypeName(), "'");
   }
-  const string& device = DeviceName<Device>::value;
+  const std::string& device = DeviceName<Device>::value;
   UnaryVariantOpRegistry::VariantBinaryOpFn* binary_op_fn =
       UnaryVariantOpRegistry::Global()->GetBinaryOpFn(op, device, a.TypeId());
   if (binary_op_fn == nullptr) {
-    return errors::Internal(
-        "No unary variant binary_op function found for binary variant op "
-        "enum: ",
-        op, " Variant type_name: '", a.TypeName(), "' for device type: ",
-        device);
+    return errors::Internal("No unary variant binary_op function found for op ",
+                            VariantBinaryOpToString(op),
+                            " Variant type_name: '", a.TypeName(),
+                            "' for device type: ", device);
   }
   return (*binary_op_fn)(ctx, a, b, out);
 }
@@ -354,7 +358,7 @@ namespace variant_op_registry_fn_registration {
 template <typename T>
 class UnaryVariantDecodeRegistration {
  public:
-  UnaryVariantDecodeRegistration(const string& type_name) {
+  UnaryVariantDecodeRegistration(const std::string& type_name) {
     // The Variant is passed by pointer because it should be
     // mutable: get below may Decode the variant, which
     // is a self-mutating behavior.  The variant is not modified in
@@ -386,7 +390,8 @@ class UnaryVariantDeviceCopyRegistration {
   UnaryVariantDeviceCopyRegistration(
       const VariantDeviceCopyDirection direction, const TypeIndex& type_index,
       const LocalVariantDeviceCopyFn& device_copy_fn) {
-    const string type_index_name = port::MaybeAbiDemangle(type_index.name());
+    const std::string type_index_name =
+        port::MaybeAbiDemangle(type_index.name());
     UnaryVariantOpRegistry::Global()->RegisterDeviceCopyFn(
         direction, type_index,
         [type_index_name, device_copy_fn](
@@ -413,10 +418,11 @@ class UnaryVariantUnaryOpRegistration {
       LocalVariantUnaryOpFn;
 
  public:
-  UnaryVariantUnaryOpRegistration(VariantUnaryOp op, const string& device,
+  UnaryVariantUnaryOpRegistration(VariantUnaryOp op, const std::string& device,
                                   const TypeIndex& type_index,
                                   const LocalVariantUnaryOpFn& unary_op_fn) {
-    const string type_index_name = port::MaybeAbiDemangle(type_index.name());
+    const std::string type_index_name =
+        port::MaybeAbiDemangle(type_index.name());
     UnaryVariantOpRegistry::Global()->RegisterUnaryOpFn(
         op, device, type_index,
         [type_index_name, unary_op_fn](OpKernelContext* ctx, const Variant& v,
@@ -442,10 +448,12 @@ class UnaryVariantBinaryOpRegistration {
       LocalVariantBinaryOpFn;
 
  public:
-  UnaryVariantBinaryOpRegistration(VariantBinaryOp op, const string& device,
+  UnaryVariantBinaryOpRegistration(VariantBinaryOp op,
+                                   const std::string& device,
                                    const TypeIndex& type_index,
                                    const LocalVariantBinaryOpFn& binary_op_fn) {
-    const string type_index_name = port::MaybeAbiDemangle(type_index.name());
+    const std::string type_index_name =
+        port::MaybeAbiDemangle(type_index.name());
     UnaryVariantOpRegistry::Global()->RegisterBinaryOpFn(
         op, device, type_index,
         [type_index_name, binary_op_fn](OpKernelContext* ctx, const Variant& a,
@@ -521,7 +529,7 @@ class UnaryVariantBinaryOpRegistration {
 #define INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION(T, direction,   \
                                                              device_copy_fn) \
   INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION_UNIQ_HELPER(          \
-      __COUNTER__, T, direction, MakeTypeIndex<T>(), device_copy_fn)
+      __COUNTER__, T, direction, TypeIndex::Make<T>(), device_copy_fn)
 
 #define INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION_UNIQ_HELPER( \
     ctr, T, direction, type_index, device_copy_fn)                        \
@@ -542,7 +550,7 @@ class UnaryVariantBinaryOpRegistration {
 #define REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(op, device, T,     \
                                                  unary_op_function) \
   REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION_UNIQ_HELPER(             \
-      __COUNTER__, op, device, T, MakeTypeIndex<T>(), unary_op_function)
+      __COUNTER__, op, device, T, TypeIndex::Make<T>(), unary_op_function)
 
 #define REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION_UNIQ_HELPER(       \
     ctr, op, device, T, type_index, unary_op_function)              \
@@ -563,7 +571,7 @@ class UnaryVariantBinaryOpRegistration {
 #define REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(op, device, T,      \
                                                   binary_op_function) \
   REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION_UNIQ_HELPER(              \
-      __COUNTER__, op, device, T, MakeTypeIndex<T>(), binary_op_function)
+      __COUNTER__, op, device, T, TypeIndex::Make<T>(), binary_op_function)
 
 #define REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION_UNIQ_HELPER( \
     ctr, op, device, T, type_index, binary_op_function)        \

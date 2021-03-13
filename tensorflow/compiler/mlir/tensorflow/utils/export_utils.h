@@ -50,12 +50,8 @@ Status AddTensorFlowOpPrefix(std::string);
 StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef);
 
 // Converts an MLIR operation to TensorFlow NodeDef with given node name. This
-// name should be unique to the graph it is being inserted into. `op_name_func`
-// is to map the op name of `inst` to its op name in TensorFlow. "name" and
-// "device" attributes are ignored by default. Use attrs_to_ignore to specify
-// any other attributes that should be ignored.
+// name should be unique to the graph it is being inserted into.
 StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
-    const absl::flat_hash_set<absl::string_view>& attrs_to_ignore,
     mlir::Operation* inst, llvm::StringRef name);
 
 // Converts MLIR attributes with values to their tensorflow equivalent.
@@ -64,22 +60,12 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
 Status ConvertAttributes(
     const llvm::ArrayRef<mlir::NamedAttribute> attrs,
     const absl::flat_hash_set<absl::string_view>& attrs_to_ignore,
-    AttrValueMap* values);
-
-// Sets type attribute with the given name. If the attribute already exists with
-// a different value, returns an error.
-Status SetTypeAttribute(absl::string_view name, mlir::Type type,
-                        AttrValueMap* values);
+    bool remove_ref_type, AttrValueMap* values);
 
 // Sets shape attribute with the given name. If the attribute already exists
 // with a different value, returns an error.
 Status SetShapeAttribute(absl::string_view name, mlir::ShapedType shape,
                          AttrValueMap* values);
-
-// Sets the given size_t value as an integer attribute with the given name.
-// If the attribute already exists with a different value, returns an error.
-Status SetSizeAttribute(absl::string_view name, size_t size,
-                        AttrValueMap* values);
 
 // Returns true if the given instruction is an mlir::TF::LegacyCallOp or the
 // result of such an operation transformed by the

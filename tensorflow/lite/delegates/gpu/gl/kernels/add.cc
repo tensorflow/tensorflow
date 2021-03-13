@@ -36,7 +36,8 @@ class Add : public NodeShader {
  public:
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
-    const auto& attr = absl::any_cast<const AddAttributes&>(ctx.op_attr);
+    const auto& attr =
+        absl::any_cast<const ElementwiseAttributes&>(ctx.op_attr);
     auto adds = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
     auto scalar = absl::get_if<float>(&attr.param);
 

@@ -53,14 +53,15 @@ Status CheckTableDataTypes(const LookupInterface& table, DataType key_dtype,
 
 Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
                                    char delimiter, int32 key_index,
-                                   int32 value_index, Env* env,
+                                   int32 value_index, int64 offset, Env* env,
                                    InitializableLookupTable* table);
 
 // Initializes `table` from `dataset` by iterating over it. Caller retains
 // ownership of `dataset`.
-Status InitializeTableFromDataset(OpKernelContext* ctx,
-                                  data::DatasetBase* dataset,
-                                  InitializableLookupTable* table);
+void InitializeTableFromDataset(OpKernelContext* ctx,
+                                data::DatasetBase* dataset,
+                                InitializableLookupTable* table,
+                                AsyncOpKernel::DoneCallback done);
 
 }  // namespace lookup
 }  // namespace tensorflow

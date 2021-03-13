@@ -67,6 +67,10 @@ class WindowDataset : public DatasetBase {
 
   string DebugString() const override { return kWindowDataset; }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override { return Status::OK(); }
 
  protected:

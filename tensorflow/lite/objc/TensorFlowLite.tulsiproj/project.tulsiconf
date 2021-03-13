@@ -1,0 +1,17 @@
+{
+  "configDefaults" : {
+    "optionSet" : {
+      "BazelBuildOptionsDebug" : {
+
+      },
+      "BazelBuildOptionsRelease" : {
+
+      },
+    }
+  },
+  "projectName" : "TensorFlowLite",
+  "packages" : [
+    "tensorflow/lite/objc"
+  ],
+  "workspaceRoot" : "../../../.."
+}

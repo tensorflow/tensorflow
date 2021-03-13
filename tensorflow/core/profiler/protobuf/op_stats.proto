@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package tensorflow.profiler;
 
+import "tensorflow/core/profiler/protobuf/diagnostics.proto";
 import "tensorflow/core/profiler/protobuf/kernel_stats.proto";
 import "tensorflow/core/profiler/protobuf/op_metrics.proto";
 import "tensorflow/core/profiler/protobuf/steps_db.proto";
@@ -89,6 +90,17 @@ message RunEnvironment {
   uint32 host_trace_level = 12;
 }
 
+// Next ID: 7
+message CoreDetails {
+  string hostname = 1;
+  uint32 device_ordinal = 2;  // unique within host, TPU core only
+  uint32 core_num = 3;        // unique within chip per core type
+  uint32 local_chip_id = 4;   // unique within host
+  uint32 global_chip_id = 5;  // unique within mesh
+  uint32 global_core_id = 6;  // unique within mesh, TPU core only
+}
+
+// Next ID: 12
 // Operator Statistics.
 message OpStats {
   // The database for the op metrics collected from the host over the entire
@@ -97,6 +109,8 @@ message OpStats {
   // The database for the op metrics collected from the device over the entire
   // profiling session including incomplete steps.
   OpMetricsDb device_op_metrics_db = 2;
+  // The result for the HLO-metric database over the complete steps only.
+  OpMetricsDb hlo_metrics_db_complete_steps_only = 10;
   // Performance environment of the op metrics collected.
   PerfEnv perf_env = 3;
   // The database of step sequences.
@@ -107,6 +121,9 @@ message OpStats {
   KernelStatsDb kernel_stats_db = 6;
   // Statistics for all tf-functions.
   TfFunctionDb tf_function_db = 8;
-  // Errors seen.
-  repeated string errors = 7;
+  // A map from core ID to details.
+  map<uint32, CoreDetails> core_id_to_details = 11;
+  // Error and warning messages for diagnosing profiling issues.
+  Diagnostics diagnostics = 9;
+  reserved 7;
 }

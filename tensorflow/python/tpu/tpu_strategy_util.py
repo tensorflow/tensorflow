@@ -24,6 +24,7 @@ from tensorflow.python.distribute.cluster_resolver.tpu_cluster_resolver import T
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import device
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import topology
@@ -44,11 +45,12 @@ def initialize_tpu_system(cluster_resolver=None):
     cluster_resolver: A tf.distribute.cluster_resolver.TPUClusterResolver,
         which provides information about the TPU cluster.
   Returns:
-    The tf.tpu.Topology object for the topology of the TPU cluster.
+    The tf.tpu.Topology object for the topology of the TPU cluster. If called
+    inside tf.function, it returns the serialized topology object instead.
 
   Raises:
-    RuntimeError: If no TPU devices found for eager execution or if run in a
-        tf.function.
+    RuntimeError: If running inside a tf.function.
+    NotFoundError: If no TPU devices found in eager mode.
   """
   job = None
   if cluster_resolver is None:
@@ -71,17 +73,17 @@ def initialize_tpu_system(cluster_resolver=None):
 
   logging.info("Initializing the TPU system: %s", tpu_name)
 
-  if context.executing_eagerly():
-    # This function looks as it is for the following non-intuitive reasons.
-    # tpu.initialize_system creates a dummy op whose sole purpose is to trigger
-    # DistributedTPURewritePass. This pass actually adds real ops that
-    # initialize the TPU system. Thus, we can't simply run tpu.initialize_system
-    # eagerly. We need to wrap it in defun and trigger the rewrite passes on it.
-    if tpu_name not in _LOCAL_MASTERS:
-      # Explicitly place the tpu.initialize_system in the first worker to
-      # avoid the output node match multiple devices error.
-      job = "{}/replica:0/task:0".format(cluster_resolver.get_job_name())
+  # This function looks as it is for the following non-intuitive reasons.
+  # tpu.initialize_system creates a dummy op whose sole purpose is to trigger
+  # DistributedTPURewritePass. This pass actually adds real ops that
+  # initialize the TPU system. Thus, we can't simply run tpu.initialize_system
+  # eagerly. We need to wrap it in defun and trigger the rewrite passes on it.
+  if tpu_name not in _LOCAL_MASTERS:
+    # Explicitly place the tpu.initialize_system in the first worker to
+    # avoid the output node match multiple devices error.
+    job = "{}/replica:0/task:0".format(cluster_resolver.get_job_name())
 
+  if context.executing_eagerly():
     @function.defun
     def _tpu_init_fn():
       # In TF1, we usually close chips when compilation fails to clear the data
@@ -93,18 +95,23 @@ def initialize_tpu_system(cluster_resolver=None):
     # The TPU_SYSTEM device must match the device used in tpu.initialize_system
     # exactly, otherwise you can get errors if there are multiple TPU_SYSTEM
     # devices available.
-    with ops.device(tpu._tpu_system_device_name(job)):  # pylint: disable=protected-access
-      output = _tpu_init_fn()
+    try:
+      with ops.device(tpu._tpu_system_device_name(job)):  # pylint: disable=protected-access
+        output = _tpu_init_fn()
+      context.async_wait()
+    except errors.InvalidArgumentError as e:
+      raise errors.NotFoundError(
+          None, None,
+          "TPUs not found in the cluster. Failed in initialization: "
+          + str(e))
 
     # Clear out the eager context caches since the memory is invalid now.
     logging.info("Clearing out eager caches")
     context.context()._clear_caches()  # pylint: disable=protected-access
+    context.context()._initialize_logical_devices()  # pylint: disable=protected-access
+    context.context().clear_kernel_cache()
 
     serialized_topology = output.numpy()
-
-    # TODO(b/134094971): Remove this when lazy tensor copy in multi-device
-    # function has been implemented.
-    context.context().mirroring_policy = context.MIRRORING_ALL
   elif not ops.executing_eagerly_outside_functions():
     master = cluster_resolver.master()
     cluster_spec = cluster_resolver.cluster_spec()
@@ -117,8 +124,13 @@ def initialize_tpu_system(cluster_resolver=None):
       with session_lib.Session(config=session_config, target=master) as sess:
         serialized_topology = sess.run(tpu.initialize_system())
   else:
-    raise RuntimeError("initialize_tpu_system is not supported within "
-                       "tf.functions.")
+    with ops.device(tpu._tpu_system_device_name(job)):  # pylint: disable=protected-access
+      serialized_topology = tpu.initialize_system(
+          job=job, compilation_failure_closes_chips=False)
+      # If initialize_tpu_system is called inside tf.function, we only return
+      # the serialized topology object as the tf.tpu.Topology object has to be
+      # constructed in eager mode.
+      return serialized_topology
 
   logging.info("Finished initializing TPU system.")
   tpu_topology = topology.Topology(serialized=serialized_topology)
@@ -186,6 +198,7 @@ def shutdown_tpu_system(cluster_resolver=None):
     # Clear out the eager context caches since the memory is invalid now.
     logging.info("Clearing out eager caches")
     context.context()._clear_caches()  # pylint: disable=protected-access
+    context.context().clear_kernel_cache()
   elif not ops.executing_eagerly_outside_functions():
     master = cluster_resolver.master()
     cluster_spec = cluster_resolver.cluster_spec()

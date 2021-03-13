@@ -25,6 +25,7 @@ import abc
 import six
 
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
@@ -81,10 +82,17 @@ def _deduplicate_indexed_slices(values, indices):
 
 
 def _var_key(var):
-  # TODO(ashankar): Consolidate handling for eager and graph
+  """Returns slot key for `var`."""
+  # pylint: disable=protected-access
+  if hasattr(var, "_distributed_container"):
+    var = var._distributed_container()
+  if (distribute_utils.is_distributed_variable(var) and
+      not ops.executing_eagerly_outside_functions()):
+    return (var.graph, var._shared_name)
   if hasattr(var, "op"):
     return (var.op.graph, var.op.name)
-  return var._unique_id  # pylint: disable=protected-access
+  return var._unique_id
+  # pylint: enable=protected-access
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -751,26 +759,16 @@ class Optimizer(
     Returns:
       The `Variable` for the slot if it was created, `None` otherwise.
     """
-    # pylint: disable=protected-access
     named_slots = self._slots.get(name, None)
     if not named_slots:
       return None
-
-    if hasattr(var, "_distributed_container"):
-      # NOTE: If this isn't patched, then there is no `handle` in
-      # `_resource_apply_dense`.
-      distributed_container = var._distributed_container
-      assert distributed_container is not None
-      if ops.executing_eagerly_outside_functions():
-        key = distributed_container._unique_id
-      else:
-        key = (distributed_container.graph, distributed_container._shared_name)
-      # pylint: enable=protected-access
-      mirrored_slot = named_slots.get(key, None)
-      if mirrored_slot is None: return None
-      return mirrored_slot._get_on_device_or_primary()  # pylint: disable=protected-access
-
-    return named_slots.get(_var_key(var), None)
+    slot = named_slots.get(_var_key(var), None)
+    if (distribute_utils.is_distributed_variable(slot) and
+        not distribute_utils.is_distributed_variable(var)):
+      # Make sure var and slot are either both DistributedVariable, or both
+      # per replica variables.
+      slot = slot._get_on_device_or_primary()  # pylint: disable=protected-access
+    return slot
 
   def get_slot_names(self):
     """Return a list of the names of slots created by the `Optimizer`.
@@ -824,7 +822,7 @@ class Optimizer(
       with distribution_strategy.extended.colocate_vars_with(colocate_with):
         if eager:
           restored_initial_value = self._preload_simple_restoration(
-              name=name, shape=None)
+              name=name)
           if restored_initial_value is not None:
             initial_value = restored_initial_value
         v = variable_scope.variable(
@@ -1155,7 +1153,8 @@ class Optimizer(
     """
     named_slots = self._slot_dict(slot_name)
     if _var_key(var) not in named_slots:
-      new_slot_variable = slot_creator.create_zeros_slot(var, op_name)
+      new_slot_variable = slot_creator.create_zeros_slot(
+          var, op_name, copy_xla_sharding=True)
       self._restore_slot_variable(
           slot_name=slot_name, variable=var,
           slot_variable=new_slot_variable)
@@ -1213,11 +1212,15 @@ class Optimizer(
         # (aside from double initialization), and makes variable creator scopes
         # behave the same way they do when graph building.
         and not ops.get_default_graph()._variable_creator_stack):  # pylint: disable=protected-access
-      initializer = trackable.CheckpointInitialValue(
+      initializer = trackable.CheckpointInitialValueCallable(
           checkpoint_position=slot_variable_position)
-      slot_variable = self._get_or_make_slot(
+      # CheckpointInitialValueCallable will ignore the shape and dtype
+      # parameters but they must be passed.
+      slot_variable = self._get_or_make_slot_with_initializer(
           var=variable,
-          val=initializer,
+          initializer=initializer,
+          shape=variable.shape,
+          dtype=variable.dtype,
           slot_name=slot_name,
           op_name=self._name)
       # Slot variables are not owned by any one object (because we don't want to

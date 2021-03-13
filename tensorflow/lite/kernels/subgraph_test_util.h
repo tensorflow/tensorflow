@@ -20,6 +20,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_SUBGRAPH_TEST_UTIL_H_
 #define TENSORFLOW_LITE_KERNELS_SUBGRAPH_TEST_UTIL_H_
 
+#include <stdint.h>
+
+#include <memory>
+#include <vector>
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/interpreter.h"
@@ -80,6 +85,34 @@ class SubgraphBuilder {
   // 2 inputs, 2 outputs.
   void BuildWhileSubgraph(Subgraph* subgraph);
 
+  // Build a subgraph that assigns a random value to a variable.
+  // No input/output.
+  void BuildAssignRandomValueToVariableSubgraph(Subgraph* graph);
+
+  // Build a subgraph with CallOnce op and ReadVariable op.
+  // No input and 1 output.
+  void BuildCallOnceAndReadVariableSubgraph(Subgraph* graph);
+
+  // Build a subgraph with a single Less op.
+  // The subgraph is used as the condition subgraph for testing `While` op.
+  // 3 inputs:
+  //   The 1st and 2nd inputs are string tensors, which will be ignored.
+  //   The 3rd input is an integner value as a counter in this subgraph.
+  // 1 output with `kTfLiteBool` type.
+  //   Equivalent to (int_val < rhs).
+  void BuildLessEqualCondSubgraphWithDynamicTensor(Subgraph* subgraph, int rhs);
+
+  // Build a subgraph with a single While op, which has 3 inputs and 3 outputs.
+  // This subgraph is used for creating/invoking dynamic allocated tensors based
+  // on string tensors.
+  //   Equivalent to (str1, str2, int_val) ->
+  //                 (str1, Fill(str1, int_val + 1), int_val + 1).
+  void BuildBodySubgraphWithDynamicTensor(Subgraph* subgraph);
+
+  // Build a subgraph with a single While op, that contains 3 inputs and 3
+  // outputs (str1, str2, int_val).
+  void BuildWhileSubgraphWithDynamicTensor(Subgraph* subgraph);
+
  private:
   void CreateConstantInt32Tensor(Subgraph* subgraph, int tensor_index,
                                  const std::vector<int>& shape,
@@ -109,6 +142,20 @@ class ControlFlowOpTest : public ::testing::Test {
 // * The element count of the tensor must be equal to the length or
 //   the vector.
 void FillIntTensor(TfLiteTensor* tensor, const std::vector<int32_t>& data);
+
+// Fill a `TfLiteTensor` with a string value.
+// Preconditions:
+// * The tensor must have `kTfLitString` type.
+void FillScalarStringTensor(TfLiteTensor* tensor, const std::string& data);
+
+// Check if the scalar string data of a tensor is as expected.
+void CheckScalarStringTensor(const TfLiteTensor* tensor,
+                             const std::string& data);
+
+// Check if the shape and string data of a tensor is as expected.
+void CheckStringTensor(const TfLiteTensor* tensor,
+                       const std::vector<int>& shape,
+                       const std::vector<std::string>& data);
 
 // Check if the shape and int32 data of a tensor is as expected.
 void CheckIntTensor(const TfLiteTensor* tensor, const std::vector<int>& shape,

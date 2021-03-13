@@ -29,7 +29,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
@@ -40,13 +40,13 @@ from tensorflow.python.platform import test
 class GPUBinaryOpsTest(test.TestCase):
 
   def _compareGPU(self, x, y, np_func, tf_func):
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session():
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = tf_func(inx, iny)
       tf_gpu = self.evaluate(out)
 
-    with self.cached_session(use_gpu=False) as sess:
+    with self.cached_session(use_gpu=False):
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = tf_func(inx, iny)
@@ -143,7 +143,7 @@ class MathBuiltinUnaryTest(test.TestCase):
 
     np_out = np.floor_divide(x, y + 0.1)
 
-    with self.session(use_gpu=True) as sess:
+    with self.session():
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y + 0.1)
       ofunc = inx / iny
@@ -156,10 +156,8 @@ class MathBuiltinUnaryTest(test.TestCase):
 class BroadcastSimpleTest(test.TestCase):
 
   def _GetGradientArgs(self, xs, ys):
-    with self.cached_session(use_gpu=True) as sess:
-      return sess.run(broadcast_gradient_args(xs, ys))
+    return self.evaluate(broadcast_gradient_args(xs, ys))
 
-  @test_util.run_deprecated_v1
   def testBroadcast(self):
     r0, r1 = self._GetGradientArgs([2, 3, 5], [1])
     self.assertAllEqual(r0, [])
@@ -167,51 +165,9 @@ class BroadcastSimpleTest(test.TestCase):
 
   _GRAD_TOL = {dtypes.float32: 1e-3}
 
-  def _compareGradientX(self,
-                        x,
-                        y,
-                        np_func,
-                        tf_func,
-                        numeric_gradient_type=None):
-    z = np_func(x, y)
-    zs = list(z.shape)
-    with self.cached_session():
-      inx = ops.convert_to_tensor(x)
-      iny = ops.convert_to_tensor(y)
-      if x.dtype in (np.float32, np.float64):
-        out = 1.1 * tf_func(inx, iny)
-      else:
-        out = tf_func(inx, iny)
-      xs = list(x.shape)
-      jacob_t, jacob_n = gradient_checker.compute_gradient(
-          inx, xs, out, zs, x_init_value=x)
-      tol = self._GRAD_TOL[dtypes.as_dtype(x.dtype)]
-      self.assertAllClose(jacob_t, jacob_n, rtol=tol, atol=tol)
-
-  def _compareGradientY(self,
-                        x,
-                        y,
-                        np_func,
-                        tf_func,
-                        numeric_gradient_type=None):
-    z = np_func(x, y)
-    zs = list(z.shape)
-    with self.cached_session():
-      inx = ops.convert_to_tensor(x)
-      iny = ops.convert_to_tensor(y)
-      if x.dtype in (np.float32, np.float64):
-        out = 1.1 * tf_func(inx, iny)
-      else:
-        out = tf_func(inx, iny)
-      ys = list(np.shape(y))
-      jacob_t, jacob_n = gradient_checker.compute_gradient(
-          iny, ys, out, zs, x_init_value=y)
-    tol = self._GRAD_TOL[dtypes.as_dtype(x.dtype)]
-    self.assertAllClose(jacob_t, jacob_n, rtol=tol, atol=tol)
-
   def _compareGpu(self, x, y, np_func, tf_func):
     np_ans = np_func(x, y)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = tf_func(inx, iny)
@@ -220,17 +176,29 @@ class BroadcastSimpleTest(test.TestCase):
     self.assertShapeEqual(np_ans, out)
     # TODO(zhifengc/ke): make gradient checker work on GPU.
 
-  @test_util.run_deprecated_v1
   def testGradient(self):
-    x = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape(
+    x1 = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape(
         [1, 3, 2])
-    y = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape(
+    x2 = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape(
         [1, 3, 2])
 
-    self._compareGradientX(x, y, np.true_divide, math_ops.truediv)
-    self._compareGradientY(x, y, np.true_divide, math_ops.truediv)
-    self._compareGpu(x, y, np.true_divide, math_ops.truediv)
-    self._compareGpu(x, y + 0.1, np.floor_divide, math_ops.floordiv)
+    def div_x1(x1):
+      return math_ops.truediv(x1, x2) * math_ops.cast(1.1, dtype=x1.dtype)
+
+    def div_x2(x2):
+      return math_ops.truediv(x1, x2) * math_ops.cast(1.1, dtype=x2.dtype)
+
+    with self.cached_session():
+      err = gradient_checker_v2.max_error(*gradient_checker_v2.compute_gradient(
+          div_x1, [x1]))
+      self.assertLess(err, self._GRAD_TOL[dtypes.as_dtype(x1.dtype)])
+
+      err = gradient_checker_v2.max_error(*gradient_checker_v2.compute_gradient(
+          div_x2, [x2]))
+      self.assertLess(err, self._GRAD_TOL[dtypes.as_dtype(x2.dtype)])
+
+    self._compareGpu(x1, x2, np.true_divide, math_ops.truediv)
+    self._compareGpu(x1, x2 + 0.1, np.floor_divide, math_ops.floordiv)
 
 
 class GpuMultiSessionMemoryTest(test_util.TensorFlowTestCase):

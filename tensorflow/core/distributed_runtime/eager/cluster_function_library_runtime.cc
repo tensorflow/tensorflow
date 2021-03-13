@@ -81,8 +81,8 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
   const FunctionLibraryDefinition& func_lib_def =
       options.lib_def ? *options.lib_def : lib_def;
 
-  EnqueueRequest* request = new EnqueueRequest;
-  EnqueueResponse* response = new EnqueueResponse;
+  auto request = std::make_shared<EnqueueRequest>();
+  auto response = std::make_shared<EnqueueResponse>();
 
   request->set_context_id(context_id_);
 
@@ -96,19 +96,19 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
           .ToProto();
   StripDefaultAttributesInRegisterFunctionOp(register_function);
 
+  const absl::optional<std::vector<int>>& ret_indices = options.ret_indices;
   eager_client->EnqueueAsync(
-      request, response,
+      /*call_opts=*/nullptr, request.get(), response.get(),
       [this, request, response, handle, released_op = released_op.release(),
-       target, eager_client = eager_client.get(), done](const Status& s) {
+       target, ret_indices, eager_client = eager_client.get(),
+       done](const Status& s) {
         {
           mutex_lock l(mu_);
           *handle = function_data_.size();
-          function_data_.emplace_back(target, eager_client,
+          function_data_.emplace_back(target, ret_indices, eager_client,
                                       absl::WrapUnique(released_op));
         }
         done(s);
-        delete request;
-        delete response;
       });
 }
 
@@ -120,13 +120,31 @@ void EagerClusterFunctionLibraryRuntime::Run(
   for (const auto& tensor : args) {
     function_args.push_back(tensor);
   }
-  Run(opts, handle, function_args, rets, std::move(done));
+  std::vector<FunctionRet>* function_rets = new std::vector<FunctionRet>;
+  Run(opts, handle, function_args, function_rets,
+      [rets, function_rets, done = std::move(done)](const Status& s) {
+        Status status = s;
+        if (status.ok()) {
+          for (const auto& t : *function_rets) {
+            if (t.index() == 0) {
+              rets->push_back(absl::get<Tensor>(t));
+            } else {
+              status.Update(
+                  errors::Internal("Expect a Tensor as a remote function "
+                                   "output but got a TensorShape."));
+              break;
+            }
+          }
+        }
+        delete function_rets;
+        done(status);
+      });
 }
 
 void EagerClusterFunctionLibraryRuntime::Run(
     const FunctionLibraryRuntime::Options& opts,
     FunctionLibraryRuntime::LocalHandle handle,
-    gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,
+    gtl::ArraySlice<FunctionArg> args, std::vector<FunctionRet>* rets,
     FunctionLibraryRuntime::DoneCallback done) {
   FunctionData* function_data = nullptr;
   {
@@ -141,15 +159,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
     return;
   }
 
-  Device* device;
-  Status s = ctx_->FindDeviceFromName(function_data->target.c_str(), &device);
-  if (!s.ok()) {
-    done(errors::Internal("Failed to get device"));
-    return;
-  }
-
   EagerOperation* op = function_data->op.get();
-
   if (!op->Inputs().empty()) {
     done(errors::Internal("Inputs should not be set during instantiation."));
     return;
@@ -159,6 +169,12 @@ void EagerClusterFunctionLibraryRuntime::Run(
   auto response = std::make_shared<RunComponentFunctionResponse>();
   request->set_context_id(context_id_);
   eager::Operation* remote_op = request->mutable_operation();
+
+  if (function_data->ret_indices.has_value()) {
+    for (const int ret_index : function_data->ret_indices.value()) {
+      request->add_output_num(ret_index);
+    }
+  }
 
   for (const auto& arg : args) {
     if (arg.index() == 0) {
@@ -214,6 +230,14 @@ void EagerClusterFunctionLibraryRuntime::Run(
           done(s);
           return;
         }
+        if (!response->shape().empty() && !response->tensor().empty()) {
+          done(errors::Internal(
+              "Both shape and tensor are specified in the same response"));
+          return;
+        }
+        for (const auto& shape : response->shape()) {
+          rets->push_back(shape);
+        }
         for (const auto& tensor_proto : response->tensor()) {
           Tensor t;
           if (t.FromProto(tensor_proto)) {
@@ -244,8 +268,8 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
     return;
   }
 
-  eager::EnqueueRequest* request = new eager::EnqueueRequest;
-  EnqueueResponse* response = new EnqueueResponse;
+  auto request = std::make_shared<EnqueueRequest>();
+  auto response = std::make_shared<EnqueueResponse>();
   request->set_context_id(context_id_);
   CleanupFunctionOp* cleanup_function =
       request->add_queue()->mutable_cleanup_function();
@@ -253,22 +277,15 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
   // StreamingEnqueueAsync could be blocking when streaming RPC is disabled.
   // CleanUp() needs to be non-blocking since it would be invoked inside the
   // enqueue done callback of Run(). So we don't use StreamingEnqueueAsync here.
-  eager_client->EnqueueAsync(request, response,
-                             [request, response, done](const Status& status) {
-                               done(status);
-                               delete request;
-                               delete response;
-                             });
+  eager_client->EnqueueAsync(
+      /*call_opts=*/nullptr, request.get(), response.get(),
+      [request, response, done](const Status& status) { done(status); });
 }
 
 DistributedFunctionLibraryRuntime* CreateClusterFLR(
     const uint64 context_id, EagerContext* ctx, WorkerSession* worker_session) {
-  if (ctx->LazyCopyFunctionRemoteInputs()) {
-    return new EagerClusterFunctionLibraryRuntime(
-        context_id, ctx, worker_session->remote_device_mgr());
-  } else {
-    return worker_session->cluster_flr();
-  }
+  return new EagerClusterFunctionLibraryRuntime(
+      context_id, ctx, worker_session->remote_device_mgr());
 }
 
 }  // namespace eager

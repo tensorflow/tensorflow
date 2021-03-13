@@ -15,7 +15,7 @@
 # pylint: disable=invalid-name
 """VGG16 model for Keras.
 
-Reference paper:
+Reference:
   - [Very Deep Convolutional Networks for Large-Scale Image Recognition]
     (https://arxiv.org/abs/1409.1556) (ICLR 2015)
 """
@@ -53,7 +53,7 @@ def VGG16(
     classifier_activation='softmax'):
   """Instantiates the VGG16 model.
 
-  Reference paper:
+  Reference:
   - [Very Deep Convolutional Networks for Large-Scale Image Recognition](
   https://arxiv.org/abs/1409.1556) (ICLR 2015)
 
@@ -66,10 +66,11 @@ def VGG16(
 
   The default input size for this model is 224x224.
 
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.vgg16.preprocess_input` for an example.
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For VGG16, call `tf.keras.applications.vgg16.preprocess_input` on your
+  inputs before passing them to the model.
 
-  Arguments:
+  Args:
       include_top: whether to include the 3 fully-connected
           layers at the top of the network.
       weights: one of `None` (random initialization),
@@ -113,7 +114,7 @@ def VGG16(
     ValueError: if `classifier_activation` is not `softmax` or `None` when
       using a pretrained top layer.
   """
-  if not (weights in {'imagenet', None} or file_io.file_exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '

@@ -16,65 +16,62 @@ limitations under the License.
 // This pass forms `tf_executor.island` per region of
 // `tf_device.parallel_execute`.
 //
-// For example:
+// For example, the following:
+//
+//  %0 = tf_executor.island {
+//    tf_executor.yield
+//  }
 //  %1:2 = tf_executor.island {
 //    %2 = "tf.opA"(%arg0) : (tensor<i1>) -> tensor<i1>
 //      tf_executor.yield %2 : tensor<i1>
 //  }
-//  tf_executor.island() {
-//    "tf_device.parallel_execute"() ({
-//      %3 = "tf.opB"() : () -> tensor<i1>
-//      tf_device.return %3 : tensor<i1>
-//    },
-//    {
+//  %3:2 = tf_executor.island(%0) {
+//    %4 = "tf_device.parallel_execute"() ( {
+//      %5 = "tf.opB"() : () -> tensor<i1>
+//      tf_device.return %5 : tensor<i1>
+//    }, {
 //      %5 = "tf.opC"(%1#0) : (tensor<i1>) -> tensor<i32>
 //      tf_device.return
 //    }) {} : () -> (tensor<i1>)
+//    tf_executor.yield %4 : tensor<i1>
+//  }
+//  tf_executor.fetch %3#0 : tensor<i1>
+//
+// gets lowered to:
+//
+//  %0 = tf_executor.island {
 //    tf_executor.yield
 //  }
-//  tf_executor.fetch
+//  %1:2 = tf_executor.island {
+//    %2 = "tf.opA"(%arg0) : (tensor<i1>) -> tensor<i1>
+//    tf_executor.yield %2 : tensor<i1>
+//  }
 //
-//  Would become:
-//    %1:2 = tf_executor.island {
-//      %2 = "tf.opA"(%arg0) : (tensor<i1>) -> tensor<i1>
-//      tf_executor.yield %2 : tensor<i1>
-//    }
+//  // Island for the first region of above parallel_execute.
+//  %3:2 = tf_executor.island(%0) {
+//    %4 = "tf.opB"() : () -> tensor<i1>
+//    tf_executor.yield %4 : tensor<i1>
+//  }
 //
-//    // Input barrier sink island that forwards all inputs.
-//    %output_0, %control_1 = tf_executor.island {
-//      tf_executor.yield %1#0: tensor<i1>
-//    }
+//  // Island for the second region of above parallel_execute.
+//  %5 = tf_executor.island(%0) {
+//    %6 = "tf.opC"(%1#0) : (tensor<i1>) -> tensor<i32>
+//    tf_executor.yield
+//  }
 //
-//    // Island for the first region of above parallel_execute.
-//    %output_2, %control_3 = tf_executor.island(%control_1) {
-//      %3 = "tf.opB"() : () -> tensor<i1>
-//      tf_executor.yield %3 : tensor<i1>
-//    }
-//
-//    // Island for the second region of above parallel_execute.
-//    %control_5 = tf_executor.island {
-//        %5 = "tf.opC"(%output_0) : (tensor<i1>) -> tensor<i32>
-//      tf_executor.yield
-//    }
-//
-//    // Output barrier sink island that forwards all outputs.
-//    %output_5, %control_6 = tf_executor.island(%control_5) {
-//      tf_executor.yield %output_2
-//    }
+//  tf_executor.fetch %3#0, %5 : tensor<i1>, !tf_executor.control
 //
 //  When tf_device.parallel_execute op is enclosed after tf_device.replicate,
 //  then this pass will run following `replicate-to-island` pass and
 //  `tf-executor-break-up-islands` pass.
 
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 
@@ -88,166 +85,117 @@ struct ParallelExecuteToIslandsPass
 };
 
 // Convert parallel_execute op to a set of islands where each region of
-// parallel_execute op becomes a separate island. This ensures that
-// regions of parallel_execute op gets executed concurrently.
-LogicalResult ExpandParallelExecuteToIslands(
-    tf_executor::IslandOp island_op, tf_executor::IslandOp input_sink_island,
+// parallel_execute op becomes a separate island. This ensures that the regions
+// of the parallel_execute op gets executed concurrently.
+void ExpandParallelExecuteToIslands(
+    tf_executor::IslandOp island_op,
     tf_device::ParallelExecuteOp parallel_execute_op, OpBuilder* builder,
-    llvm::SmallVector<tf_executor::IslandOp, 4>* islands) {
-  const int num_executions =
-      parallel_execute_op.getOperation()->getNumRegions();
-  llvm::SmallVector<tf_executor::IslandOp, 4> executions;
-  executions.reserve(num_executions);
-  builder->setInsertionPoint(island_op);
+    llvm::SmallVectorImpl<tf_executor::IslandOp>& executes) {
+  const int num_regions = parallel_execute_op.getOperation()->getNumRegions();
+  executes.reserve(num_regions);
 
-  auto control_type = tf_executor::ControlType::get(island_op.getContext());
-  for (int i : llvm::seq<int>(0, num_executions)) {
-    auto execute_region =
-        parallel_execute_op.GetRegionBlockWithIndex(i).getParent();
+  for (int i : llvm::seq<int>(0, num_regions)) {
+    Block& execute_block = parallel_execute_op.GetRegionBlockWithIndex(i);
 
-    // If region does not have any inputs, then add explicit control dependency
-    // from the input sink island. This guarantees that all inputs of
-    // parallel_execute op must be materialized before any of the islands are
-    // executed.
-    llvm::SetVector<Value> region_inputs;
-    getUsedValuesDefinedAbove(*execute_region, region_inputs);
-    llvm::SmallVector<Value, 8> execution_control_inputs;
-    if (region_inputs.empty())
-      execution_control_inputs.emplace_back(input_sink_island.control());
-
-    // Collect result types and operands.
-    Operation* terminator = execute_region->front().getTerminator();
-    llvm::SmallVector<Type, 8> output_types(terminator->getOperandTypes());
-
-    // Replace terminator with YieldOp as island op always ends with yield op.
+    // Replace terminator with tf_executor.YieldOp.
+    Operation* terminator = execute_block.getTerminator();
     builder->setInsertionPoint(terminator);
-    builder->create<tf_executor::YieldOp>(terminator->getLoc(),
-                                          terminator->getOperands());
+    auto yield = builder->create<tf_executor::YieldOp>(
+        terminator->getLoc(), terminator->getOperands());
     terminator->erase();
 
     // Create new island for each region.
     builder->setInsertionPoint(island_op);
-    auto execution_island = builder->create<tf_executor::IslandOp>(
-        island_op.getLoc(), output_types, control_type,
-        execution_control_inputs);
+    auto execute_island = builder->create<tf_executor::IslandOp>(
+        island_op.getLoc(), yield.getOperandTypes(),
+        island_op.control().getType(), island_op.controlInputs());
 
-    // Move over tf_device.parallel_execute body region into newly a
-    // created island.
-    execution_island.body().takeBody(*execute_region);
-    islands->push_back(execution_island);
+    // Move over tf_device.parallel_execute body region into newly the created
+    // island.
+    execute_island.body().takeBody(*execute_block.getParent());
+    executes.push_back(execute_island);
   }
-
-  return success();
 }
 
-// Creates an island that works as input sync point for islands. This guarantees
-// that all (implicitly captured) inputs of parallel_execute are materialized
-// before any of the islands are executed.
-tf_executor::IslandOp CreateInputBarrierIsland(
-    OpBuilder* builder, tf_executor::IslandOp island_op) {
-  builder->setInsertionPoint(island_op);
-
-  llvm::SetVector<Value> island_inputs;
-  getUsedValuesDefinedAbove(island_op.body(), island_inputs);
-
-  llvm::SmallVector<Type, 8> input_types;
-  input_types.reserve(island_inputs.size());
-  for (const auto& input_val : island_inputs)
-    input_types.emplace_back(input_val.getType());
-
-  // Create new island for that forwards all inputs.
-  auto control_type = tf_executor::ControlType::get(island_op.getContext());
-  auto input_sink_island = builder->create<tf_executor::IslandOp>(
-      island_op.getLoc(), input_types, control_type, island_op.controlInputs());
-  input_sink_island.body().push_back(new Block);
-
-  for (auto input_index_and_value : llvm::enumerate(island_inputs)) {
-    int index = input_index_and_value.index();
-    Value input_value = input_index_and_value.value();
-    replaceAllUsesInRegionWith(input_value, input_sink_island.getResult(index),
-                               island_op.body());
-  }
-
-  // Create YieldOp for the new input sink island.
-  builder->setInsertionPointToEnd(&input_sink_island.GetBody());
-  builder->create<tf_executor::YieldOp>(island_op.getLoc(),
-                                        llvm::to_vector<8>(island_inputs));
-  return input_sink_island;
-}
-
-// Creates an islands that works as output sync point. This guarantees that
-// execution of all islands must be completed before op following
-// parallel_execute runs.
-tf_executor::IslandOp CreateOutputBarrierIsland(
-    OpBuilder* builder, tf_executor::IslandOp island_op,
-    llvm::SmallVectorImpl<tf_executor::IslandOp>* islands) {
-  // Add control dependency to island operand if island output has no uses.
-  llvm::SmallVector<Value, 8> island_operands;
-  for (auto& island : *islands)
-    if (island.use_empty()) island_operands.push_back(island.control());
-
-  // Create single island forwarding all island results.
-  builder->setInsertionPoint(island_op);
-  auto island_output_sink = builder->create<tf_executor::IslandOp>(
-      island_op.getLoc(), llvm::to_vector<8>(island_op.getResultTypes()),
-      island_operands, llvm::ArrayRef<NamedAttribute>{});
-  island_output_sink.body().push_back(new Block);
-  return island_output_sink;
-}
-
-LogicalResult CreateIslandsFromParallelExecute(
+void CreateIslandsFromParallelExecute(
     tf_executor::IslandOp island_op,
     tf_device::ParallelExecuteOp parallel_execute_op) {
   OpBuilder builder(island_op);
-  auto input_sink_island = CreateInputBarrierIsland(&builder, island_op);
 
-  // Create N islands where N is the number of regions inside parallel_execute
-  // op.
-  llvm::SmallVector<tf_executor::IslandOp, 4> islands;
-  auto result = ExpandParallelExecuteToIslands(
-      island_op, input_sink_island, parallel_execute_op, &builder, &islands);
-  if (failed(result)) return result;
+  // Create islands for each region of the parallel_execute op.
+  llvm::SmallVector<tf_executor::IslandOp, 4> executes;
+  ExpandParallelExecuteToIslands(island_op, parallel_execute_op, &builder,
+                                 executes);
 
-  // Remap all results of parallel_execute op with outputs from newly
-  // created islands.
+  // Remap all results of parallel_execute op with outputs from newly created
+  // islands.
   llvm::SmallVector<Value, 8> parallel_execute_outputs;
   parallel_execute_outputs.reserve(
       parallel_execute_op.getOperation()->getNumResults());
 
-  for (auto island : islands)
-    for (auto output_value : island.outputs())
-      parallel_execute_outputs.emplace_back(output_value);
+  for (auto& execute : executes)
+    parallel_execute_outputs.append(execute.outputs().begin(),
+                                    execute.outputs().end());
 
-  parallel_execute_op.getOperation()->replaceAllUsesWith(
-      parallel_execute_outputs);
+  for (auto result : llvm::zip(island_op.outputs(), parallel_execute_outputs))
+    std::get<0>(result).replaceAllUsesWith(std::get<1>(result));
 
-  auto island_output_sink =
-      CreateOutputBarrierIsland(&builder, island_op, &islands);
+  // Add sink island to pin all islands as a control dependency if there is a
+  // control dependency leading from the parallel_execute originally.
+  if (!island_op.control().use_empty()) {
+    llvm::SmallVector<Value, 8> island_operands;
+    for (auto& execute : executes) island_operands.push_back(execute.control());
 
-  // Move island YieldOp over to new single island and remap island results.
-  island_op.GetYield().getOperation()->moveBefore(
-      &island_output_sink.GetBody(), island_output_sink.GetBody().begin());
-  island_op.replaceAllUsesWith(island_output_sink);
+    builder.setInsertionPoint(island_op);
+    auto island_sink = builder.create<tf_executor::IslandOp>(
+        island_op.getLoc(), llvm::ArrayRef<Type>{},
+        island_op.control().getType(), island_operands);
+    island_sink.body().push_back(new Block);
+    builder.setInsertionPointToEnd(&island_sink.GetBody());
+    builder.create<tf_executor::YieldOp>(island_op.getLoc(),
+                                         llvm::ArrayRef<Value>{});
+    island_op.control().replaceAllUsesWith(island_sink.control());
+  }
+
+  // Islands with no uses should be pinned to a graph fetch so they still
+  // execute.
+  llvm::SmallVector<Value, 8> unused_execute_controls;
+  for (auto& execute : executes)
+    if (execute.use_empty())
+      unused_execute_controls.push_back(execute.control());
+
+  if (!unused_execute_controls.empty()) {
+    auto graph_op = island_op->getParentOfType<tf_executor::GraphOp>();
+    tf_executor::FetchOp fetch = graph_op.GetFetch();
+    auto fetches = llvm::to_vector<8>(fetch.getOperands());
+    fetches.append(unused_execute_controls.begin(),
+                   unused_execute_controls.end());
+    builder.setInsertionPoint(fetch);
+    builder.create<tf_executor::FetchOp>(fetch.getLoc(), fetches);
+    fetch.erase();
+  }
+
   island_op.erase();
-
-  return success();
-}
-
-// Finds islands with a single `tf_device.parallel_execute` and create
-// individual islands per region of parallel_execute.
-void LowerSingleIslandParallelExecuteToIslands(
-    tf_executor::IslandOp island_op) {
-  if (!hasSingleElement(island_op.GetBody().without_terminator())) return;
-
-  if (auto parallel_execute_op = llvm::dyn_cast<tf_device::ParallelExecuteOp>(
-          &island_op.GetBody().front()))
-    CreateIslandsFromParallelExecute(island_op, parallel_execute_op);
 }
 
 void ParallelExecuteToIslandsPass::runOnFunction() {
-  getFunction().walk([&](tf_executor::IslandOp island_op) {
-    LowerSingleIslandParallelExecuteToIslands(island_op);
+  // Find islands with a single `tf_device.parallel_execute` and create
+  // individual islands per execute region of the parallel_execute.
+  llvm::SmallVector<tf_executor::IslandOp, 4> parallel_execute_op_islands;
+  getFunction().walk([&](tf_executor::GraphOp graph_op) {
+    for (auto island_op : graph_op.getOps<tf_executor::IslandOp>()) {
+      if (!island_op.WrapsSingleOp()) continue;
+
+      if (isa<tf_device::ParallelExecuteOp>(&island_op.GetBody().front()))
+        parallel_execute_op_islands.push_back(island_op);
+    }
   });
+
+  for (tf_executor::IslandOp island_op : parallel_execute_op_islands) {
+    auto parallel_execute_op =
+        cast<tf_device::ParallelExecuteOp>(island_op.GetBody().front());
+    CreateIslandsFromParallelExecute(island_op, parallel_execute_op);
+  }
 }
 }  // anonymous namespace
 

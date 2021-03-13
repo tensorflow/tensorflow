@@ -26,9 +26,9 @@ class InputSpecTest(test.TestCase):
 
   def test_axes_initialization(self):
     input_spec.InputSpec(shape=[1, None, 2, 3], axes={3: 5, '2': 2})
-    with self.assertRaisesRegexp(ValueError, 'Axis 4 is greater than'):
+    with self.assertRaisesRegex(ValueError, 'Axis 4 is greater than'):
       input_spec.InputSpec(shape=[1, None, 2, 3], axes={4: 5})
-    with self.assertRaisesRegexp(TypeError, 'keys in axes must be integers'):
+    with self.assertRaisesRegex(TypeError, 'keys in axes must be integers'):
       input_spec.InputSpec(shape=[1, None, 2, 3], axes={'string': 5})
 
 
@@ -54,11 +54,11 @@ class InputSpecToTensorShapeTest(test.TestCase):
 
   def test_undefined_shapes(self):
     spec = input_spec.InputSpec(max_ndim=5)
-    with self.assertRaisesRegexp(ValueError, 'unknown TensorShape'):
+    with self.assertRaisesRegex(ValueError, 'unknown TensorShape'):
       input_spec.to_tensor_shape(spec).as_list()
 
     spec = input_spec.InputSpec(min_ndim=5, max_ndim=5)
-    with self.assertRaisesRegexp(ValueError, 'unknown TensorShape'):
+    with self.assertRaisesRegex(ValueError, 'unknown TensorShape'):
       input_spec.to_tensor_shape(spec).as_list()
 
 

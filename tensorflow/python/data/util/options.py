@@ -18,6 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
+from absl import logging
+
 
 def _internal_attr_name(name):
   return "_" + name
@@ -33,6 +37,7 @@ class OptionsBase(object):
   def __init__(self):
     # NOTE: Cannot use `self._options` here as we override `__setattr__`
     object.__setattr__(self, "_options", {})
+    object.__setattr__(self, "_mutable", True)
 
   def __eq__(self, other):
     if not isinstance(other, self.__class__):
@@ -49,11 +54,34 @@ class OptionsBase(object):
       return NotImplemented
 
   def __setattr__(self, name, value):
+    if not self._mutable:
+      raise ValueError("Mutating `tf.data.Options()` returned by "
+                       "`tf.data.Dataset.options()` has no effect. Use "
+                       "`tf.data.Dataset.with_options(options)` to set or "
+                       "update dataset options.")
     if hasattr(self, name):
       object.__setattr__(self, name, value)
     else:
       raise AttributeError(
           "Cannot set the property %s on %s." % (name, type(self).__name__))
+
+  def _set_mutable(self, mutable):
+    """Change the mutability property to `mutable`."""
+    object.__setattr__(self, "_mutable", mutable)
+
+  def _to_proto(self):
+    """Convert options to protocol buffer."""
+    raise NotImplementedError("%s._to_proto()" % type(self).__name__)
+
+  def _from_proto(self, pb):
+    """Convert protocol buffer to options."""
+    raise NotImplementedError("%s._from_proto()" % type(self).__name__)
+
+
+# Creates a namedtuple with three keys for optimization graph rewrites settings.
+def graph_rewrites():
+  return collections.namedtuple("GraphRewrites",
+                                ["enabled", "disabled", "default"])
 
 
 def create_option(name, ty, docstring, default_factory=lambda: None):
@@ -90,23 +118,23 @@ def merge_options(*options_list):
   """Merges the given options, returning the result as a new options object.
 
   The input arguments are expected to have a matching type that derives from
-  `OptionsBase` (and thus each represent a set of options). The method outputs
-  an object of the same type created by merging the sets of options represented
-  by the input arguments.
+  `tf.data.OptionsBase` (and thus each represent a set of options). The method
+  outputs an object of the same type created by merging the sets of options
+  represented by the input arguments.
 
-  The sets of options can be merged as long as there does not exist an option
-  with different non-default values.
+  If an option is set to different values by different options objects, the
+  result will match the setting of the options object that appears in the input
+  list last.
 
-  If an option is an instance of `OptionsBase` itself, then this method is
-  applied recursively to the set of options represented by this option.
+  If an option is an instance of `tf.data.OptionsBase` itself, then this method
+  is applied recursively to the set of options represented by this option.
 
   Args:
     *options_list: options to merge
 
   Raises:
     TypeError: if the input arguments are incompatible or not derived from
-      `OptionsBase`
-    ValueError: if the given options cannot be merged
+      `tf.data.OptionsBase`
 
   Returns:
     A new options object which is the result of merging the given options.
@@ -126,7 +154,7 @@ def merge_options(*options_list):
   default_options = result_type()
   result = result_type()
   for options in options_list:
-    # Iterate over all set options and merge the into the result.
+    # Iterate over all set options and merge them into the result.
     for name in options._options:  # pylint: disable=protected-access
       this = getattr(result, name)
       that = getattr(options, name)
@@ -138,7 +166,7 @@ def merge_options(*options_list):
       elif isinstance(this, OptionsBase):
         setattr(result, name, merge_options(this, that))
       elif this != that:
-        raise ValueError(
-            "Cannot merge incompatible values (%r and %r) of option: %s" %
-            (this, that, name))
+        logging.warning("Changing the value of option %s from %r to %r.", name,
+                        this, that)
+        setattr(result, name, that)
   return result

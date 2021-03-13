@@ -153,6 +153,7 @@ XLA_MAKE_BINARY(Xlogy, XlogyImpl(lhs, rhs, broadcast_helper));
 
 xla::XlaOp Xlog1pyImpl(xla::XlaOp x, xla::XlaOp y,
                        const BCast& broadcast_helper) {
+  std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
   auto non_zero = xla::Mul(x, xla::Log1p(y));
   auto zero = xla::ZerosLike(non_zero);
   auto x_is_zero = xla::Eq(x, zero);
@@ -288,6 +289,21 @@ xla::XlaOp IgammacImpl(xla::XlaOp x, xla::XlaOp y,
 }
 
 XLA_MAKE_BINARY(Igammac, IgammacImpl(lhs, rhs, broadcast_helper));
+
+xla::XlaOp PolygammaImpl(xla::XlaOp n, xla::XlaOp x,
+                         const BCast& broadcast_helper) {
+  std::tie(n, x) = XlaBinaryOp::Broadcast(n, x, broadcast_helper);
+  return xla::Polygamma(n, x);
+}
+
+XLA_MAKE_BINARY(Polygamma, PolygammaImpl(lhs, rhs, broadcast_helper));
+
+xla::XlaOp ZetaImpl(xla::XlaOp x, xla::XlaOp q, const BCast& broadcast_helper) {
+  std::tie(x, q) = XlaBinaryOp::Broadcast(x, q, broadcast_helper);
+  return xla::Zeta(x, q);
+}
+
+XLA_MAKE_BINARY(Zeta, ZetaImpl(lhs, rhs, broadcast_helper));
 
 #undef XLA_MAKE_BINARY
 

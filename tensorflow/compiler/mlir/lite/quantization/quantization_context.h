@@ -20,7 +20,7 @@ limitations under the License.
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -61,7 +61,7 @@ struct RequantizeState {
   QuantParams params;
 };
 
-// This class manages all the intermedaite quantization states.
+// This class manages all the intermediate quantization states.
 class QuantizeContext {
  public:
   QuantizeContext(FuncOp func, const DeviceTarget &spec);
@@ -70,7 +70,7 @@ class QuantizeContext {
   std::vector<quant::QuantizeRegionOp> GetAllOps();
 
   // For each quant region op, propagates its quantization parameters according
-  // to the kernel specification and also returns the adjcent quant region ops
+  // to the kernel specification and also returns the adjacent quant region ops
   // which get the new quantization parameters propagated.
   LogicalResult Handle(quant::QuantizeRegionOp op,
                        llvm::SmallVectorImpl<Operation *> *new_items,
@@ -118,10 +118,10 @@ class QuantizeContext {
   //   - use the first one in the collection,
   // - use the single input if it is ready, or,
   // - use the single output if it is ready, or,
-  // - use use the first ready one in the collection.
+  // - use the first ready one in the collection.
   QuantParams GetQuantParamsForSameScaleConstraint(Operation *op);
 
-  // Propagate `params` to all the quantizable port of the `op`. The adjcent
+  // Propagate `params` to all the quantizable port of the `op`. The adjacent
   // ops, which have the parameters propagated to, are collected by `new_items`,
   // so they can be added to the working queue. `changed` is set to true if
   // there are any new elements being added to `new_items`.

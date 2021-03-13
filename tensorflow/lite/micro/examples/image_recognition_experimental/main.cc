@@ -20,12 +20,11 @@ limitations under the License.
 #include "tensorflow/lite/micro/examples/image_recognition_experimental/stm32f746_discovery/display_util.h"
 #include "tensorflow/lite/micro/examples/image_recognition_experimental/stm32f746_discovery/image_util.h"
 #include "tensorflow/lite/micro/examples/image_recognition_experimental/util.h"
-#include "tensorflow/lite/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
+#include "tensorflow/lite/micro/system_setup.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/version.h"
 
 #define NUM_OUT_CH 3
 #define CNN_IMG_SIZE 32
@@ -36,6 +35,7 @@ static const char* labels[] = {"Plane", "Car",  "Bird",  "Cat",  "Deer",
                                "Dog",   "Frog", "Horse", "Ship", "Truck"};
 
 int main(int argc, char** argv) {
+  tflite::InitializeTarget();
   init_lcd();
   wait_ms(100);
 
@@ -58,18 +58,14 @@ int main(int argc, char** argv) {
 
   tflite::MicroMutableOpResolver<4> micro_op_resolver;
 
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
-                               tflite::ops::micro::Register_CONV_2D());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_MAX_POOL_2D,
-                               tflite::ops::micro::Register_MAX_POOL_2D());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_FULLY_CONNECTED,
-                               tflite::ops::micro::Register_FULLY_CONNECTED());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
-                               tflite::ops::micro::Register_SOFTMAX());
+  micro_op_resolver.AddConv2D();
+  micro_op_resolver.AddFullyConnected();
+  micro_op_resolver.AddMaxPool2D();
+  micro_op_resolver.AddSoftmax();
 
   constexpr int tensor_arena_size = 50 * 1024;
   uint8_t tensor_arena[tensor_arena_size];
-  tflite::MicroInterpreter interpreter(model, resolver, tensor_arena,
+  tflite::MicroInterpreter interpreter(model, micro_op_resolver, tensor_arena,
                                        tensor_arena_size, error_reporter);
   interpreter.AllocateTensors();
 

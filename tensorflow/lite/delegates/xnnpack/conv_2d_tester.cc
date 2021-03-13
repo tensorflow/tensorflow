@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
@@ -39,12 +40,16 @@ void Conv2DTester::Test(TfLiteDelegate* delegate) const {
 
   std::unique_ptr<Interpreter> delegate_interpreter;
   ASSERT_EQ(
-      InterpreterBuilder(model, ::tflite::ops::builtin::BuiltinOpResolver())(
+      InterpreterBuilder(
+          model,
+          ::tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates())(
           &delegate_interpreter),
       kTfLiteOk);
   std::unique_ptr<Interpreter> default_interpreter;
   ASSERT_EQ(
-      InterpreterBuilder(model, ::tflite::ops::builtin::BuiltinOpResolver())(
+      InterpreterBuilder(
+          model,
+          ::tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates())(
           &default_interpreter),
       kTfLiteOk);
 
@@ -120,6 +125,20 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
   std::vector<flatbuffers::Offset<tflite::Buffer>> buffers{
       {CreateBuffer(builder, builder.CreateVector({}))}};
 
+  if (SparseWeights()) {
+    operator_codes.emplace_back(
+        CreateOperatorCode(builder, BuiltinOperator_DENSIFY));
+    const std::array<int32_t, 1> densify_filter_inputs{{0}};
+    const std::array<int32_t, 1> densify_filter_outputs{
+        {FP16Weights() ? 1 : 2}};
+    operators.emplace_back(CreateOperator(
+        builder, /*opcode_index=*/operator_codes.size() - 1,
+        builder.CreateVector<int32_t>(densify_filter_inputs.data(),
+                                      densify_filter_inputs.size()),
+        builder.CreateVector<int32_t>(densify_filter_outputs.data(),
+                                      densify_filter_outputs.size())));
+  }
+
   if (FP16Weights()) {
     operator_codes.emplace_back(
         CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE));
@@ -161,18 +180,22 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
         builder.CreateVector(reinterpret_cast<const uint8_t*>(bias_data.data()),
                              sizeof(uint16_t) * bias_data.size())));
 
-    const std::array<int32_t, 1> dequantize_filter_inputs{{0}};
-    const std::array<int32_t, 1> dequantize_filter_outputs{{3}};
+    const std::array<int32_t, 1> dequantize_filter_inputs{
+        {SparseWeights() ? 1 : 0}};
+    const std::array<int32_t, 1> dequantize_filter_outputs{
+        {SparseWeights() ? 4 : 3}};
     operators.emplace_back(CreateOperator(
-        builder, /*opcode_index=*/1,
+        builder, /*opcode_index=*/operator_codes.size() - 1,
         builder.CreateVector<int32_t>(dequantize_filter_inputs.data(),
                                       dequantize_filter_inputs.size()),
         builder.CreateVector<int32_t>(dequantize_filter_outputs.data(),
                                       dequantize_filter_outputs.size())));
-    const std::array<int32_t, 1> dequantize_bias_inputs{{1}};
-    const std::array<int32_t, 1> dequantize_bias_outputs{{4}};
+    const std::array<int32_t, 1> dequantize_bias_inputs{
+        {SparseWeights() ? 2 : 1}};
+    const std::array<int32_t, 1> dequantize_bias_outputs{
+        {SparseWeights() ? 5 : 4}};
     operators.emplace_back(CreateOperator(
-        builder, /*opcode_index=*/1,
+        builder, /*opcode_index=*/operator_codes.size() - 1,
         builder.CreateVector<int32_t>(dequantize_bias_inputs.data(),
                                       dequantize_bias_inputs.size()),
         builder.CreateVector<int32_t>(dequantize_bias_outputs.data(),
@@ -224,11 +247,36 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
   const std::array<int32_t, 1> bias_shape{{OutputChannels()}};
 
   std::vector<flatbuffers::Offset<tflite::Tensor>> tensors;
+  if (SparseWeights()) {
+    // Sparse tensor in TFLite can be in different formats. Here we choose the
+    // simplest configuration that
+    //   1. all dimensions are dense,
+    //   2. in-order traversal, and
+    //   3. no block configuration.
+    int dims_count = filter_shape.size();
+    std::vector<flatbuffers::Offset<DimensionMetadata>> dim_metadata(
+        dims_count);
+    std::vector<int> traversal_order(dims_count);
+    for (int i = 0; i < dims_count; i++) {
+      traversal_order[i] = i;
+      dim_metadata[i] = CreateDimensionMetadata(builder, DimensionType_DENSE,
+                                                filter_shape[i]);
+    }
+    flatbuffers::Offset<SparsityParameters> sparsity_param =
+        CreateSparsityParameters(builder, builder.CreateVector(traversal_order),
+                                 0, builder.CreateVector(dim_metadata));
+    tensors.emplace_back(CreateTensor(
+        builder,
+        builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
+        /*type=*/FP16Weights() ? TensorType_FLOAT16 : TensorType_FLOAT32,
+        /*buffer=*/1, /*name=*/0, /*quantization=*/0,
+        /*is_variable=*/false, /*sparsity=*/sparsity_param));
+  }
   if (FP16Weights()) {
     tensors.emplace_back(CreateTensor(
         builder,
         builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
-        TensorType_FLOAT16, /*buffer=*/1));
+        TensorType_FLOAT16, /*buffer=*/SparseWeights() ? 0 : 1));
     tensors.emplace_back(CreateTensor(
         builder,
         builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),
@@ -241,7 +289,7 @@ std::vector<char> Conv2DTester::CreateTfLiteModel() const {
   tensors.emplace_back(CreateTensor(
       builder,
       builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
-      TensorType_FLOAT32, /*buffer=*/FP16Weights() ? 0 : 1));
+      TensorType_FLOAT32, /*buffer=*/FP16Weights() || SparseWeights() ? 0 : 1));
   tensors.emplace_back(CreateTensor(
       builder,
       builder.CreateVector<int32_t>(bias_shape.data(), bias_shape.size()),

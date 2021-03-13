@@ -14,12 +14,13 @@ py_library(
     srcs = [
         "__init__.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":base_cluster_resolver_py",
         ":gce_cluster_resolver_py",
         ":kubernetes_cluster_resolver_py",
+        ":sagemaker_cluster_resolver_py",
         ":slurm_cluster_resolver_py",
         ":tfconfig_cluster_resolver_py",
         ":tpu_cluster_resolver_py",
@@ -30,7 +31,7 @@ py_library(
 py_library(
     name = "base_cluster_resolver_py",
     srcs = ["cluster_resolver.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:training_server_lib",
     ],
@@ -39,7 +40,7 @@ py_library(
 py_library(
     name = "gce_cluster_resolver_py",
     srcs = ["gce_cluster_resolver.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":base_cluster_resolver_py",
         "//tensorflow/python:training_server_lib",
@@ -49,7 +50,17 @@ py_library(
 py_library(
     name = "tfconfig_cluster_resolver_py",
     srcs = ["tfconfig_cluster_resolver.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
+    deps = [
+        ":base_cluster_resolver_py",
+        "//tensorflow/python:training_server_lib",
+    ],
+)
+
+py_library(
+    name = "sagemaker_cluster_resolver_py",
+    srcs = ["sagemaker_cluster_resolver.py"],
+    srcs_version = "PY3",
     deps = [
         ":base_cluster_resolver_py",
         "//tensorflow/python:training_server_lib",
@@ -59,14 +70,14 @@ py_library(
 py_library(
     name = "tpu_cluster_resolver_py",
     srcs = ["tpu_cluster_resolver.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = ["//tensorflow/python/distribute/cluster_resolver/tpu:tpu_cluster_resolver_py"],
 )
 
 py_library(
     name = "slurm_cluster_resolver_py",
     srcs = ["slurm_cluster_resolver.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":base_cluster_resolver_py",
         "//tensorflow/python:training_server_lib",
@@ -76,7 +87,7 @@ py_library(
 py_library(
     name = "kubernetes_cluster_resolver_py",
     srcs = ["kubernetes_cluster_resolver.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":base_cluster_resolver_py",
         "//tensorflow/python:training_server_lib",
@@ -129,6 +140,22 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "sagemaker_cluster_resolver_py_test",
+    size = "small",
+    srcs = ["sagemaker_cluster_resolver_test.py"],
+    grpc_enabled = True,
+    main = "sagemaker_cluster_resolver_test.py",
+    deps = [
+        ":sagemaker_cluster_resolver_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training_server_lib",
+    ],
+)
+
+tf_py_test(
     name = "slurm_cluster_resolver_py_test",
     size = "small",
     srcs = ["slurm_cluster_resolver_test.py"],
@@ -158,3 +185,21 @@ tf_py_test(
         "//tensorflow/python:training_server_lib",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# tf_py_test(
+#     name = "brain_jobs_cluster_resolver_test",
+#     size = "small",
+#     srcs = ["brain_jobs_cluster_resolver_test.py"],
+#     grpc_enabled = True,
+#     main = "brain_jobs_cluster_resolver_test.py",
+#     deps = [
+#         ":brain_jobs_cluster_resolver_py",
+#         "//tensorflow/python:client_testlib",
+#         "//tensorflow/python:framework_for_generated_wrappers",
+#         "//tensorflow/python:framework_test_lib",
+#         "//tensorflow/python:platform_test",
+#         "//tensorflow/python:training_server_lib",
+#     ],
+# )
+# copybara:uncomment_end

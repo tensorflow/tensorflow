@@ -117,11 +117,9 @@ TrackedDeviceBuffer::FromScopedShapedBuffer(
       /*on_delete_callback=*/nullptr);
 }
 
-ShapedBuffer TrackedDeviceBuffer::AsShapedBuffer(const Shape& on_host_shape,
-                                                 const Shape& on_device_shape,
-                                                 se::Platform* platform) const {
-  ShapedBuffer shaped_buffer(on_host_shape, on_device_shape, platform,
-                             device_ordinal_);
+ShapedBuffer TrackedDeviceBuffer::AsShapedBuffer(
+    const Shape& on_device_shape) const {
+  ShapedBuffer shaped_buffer(on_device_shape, device_ordinal_);
   ShapeTree<se::DeviceMemoryBase>::iterator iterator =
       shaped_buffer.buffers().begin();
   for (const se::DeviceMemoryBase& buf : device_memory_) {
@@ -162,13 +160,6 @@ void TrackedDeviceBuffer::AddToInputAsDonated(
   }
 }
 
-namespace {
-
-using MoveIterator =
-    absl::Span<const std::shared_ptr<BufferSequencingEvent>>::iterator;
-
-}  // namespace
-
 TrackedDeviceBuffer::TrackedDeviceBuffer(
     se::DeviceMemoryAllocator* allocator, int device_ordinal,
     absl::Span<se::DeviceMemoryBase const> device_memory,
@@ -177,9 +168,8 @@ TrackedDeviceBuffer::TrackedDeviceBuffer(
     : allocator_(allocator),
       device_ordinal_(device_ordinal),
       device_memory_(device_memory.begin(), device_memory.end()),
-      definition_events_(
-          std::move_iterator<MoveIterator>(definition_events.begin()),
-          std::move_iterator<MoveIterator>(definition_events.end())),
+      definition_events_(std::make_move_iterator(definition_events.begin()),
+                         std::make_move_iterator(definition_events.end())),
       in_use_(true),
       on_delete_callback_(std::move(on_delete_callback)) {}
 

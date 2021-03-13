@@ -387,7 +387,7 @@ void ProcessInputWithQuantizedModel(
 - (void)dealloc {
 #if TFLITE_USE_GPU_DELEGATE
   if (delegate) {
-    TFLGpuDelegateDelete(delegate);
+    DeleteGpuDelegate(delegate);
   }
 #endif
   [self teardownAVCapture];
@@ -416,10 +416,10 @@ void ProcessInputWithQuantizedModel(
   tflite::InterpreterBuilder(*model, resolver)(&interpreter);
 
 #if TFLITE_USE_GPU_DELEGATE
-  TFLGpuDelegateOptions options;
+  GpuDelegateOptions options;
   options.allow_precision_loss = true;
-  options.wait_type = TFLGpuDelegateWaitTypeActive;
-  delegate = TFLGpuDelegateCreate(&options);
+  options.wait_type = GpuDelegateOptions::WaitType::kActive;
+  delegate = NewGpuDelegate(&options);
   interpreter->ModifyGraphWithDelegate(delegate);
 #endif
 

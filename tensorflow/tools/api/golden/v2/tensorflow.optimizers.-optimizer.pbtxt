@@ -4,6 +4,18 @@ tf_class {
   is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
+    name: "clipnorm"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "clipvalue"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "global_clipnorm"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "iterations"
     mtype: "<type \'property\'>"
   }
@@ -13,11 +25,11 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=kwargs, defaults=None"
+    argspec: "args=[\'self\', \'name\', \'gradient_aggregator\', \'gradient_transformers\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "add_slot"
-    argspec: "args=[\'self\', \'var\', \'slot_name\', \'initializer\'], varargs=None, keywords=None, defaults=[\'zeros\'], "
+    argspec: "args=[\'self\', \'var\', \'slot_name\', \'initializer\', \'shape\'], varargs=None, keywords=None, defaults=[\'zeros\', \'None\'], "
   }
   member_method {
     name: "add_weight"
@@ -57,7 +69,7 @@ tf_class {
   }
   member_method {
     name: "minimize"
-    argspec: "args=[\'self\', \'loss\', \'var_list\', \'grad_loss\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'loss\', \'var_list\', \'grad_loss\', \'name\', \'tape\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "set_weights"

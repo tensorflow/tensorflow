@@ -35,6 +35,34 @@ struct TensorArray : ::mlir::SideEffects::Resource::Base<TensorArray> {
   StringRef getName() final { return "TensorArray"; }
 };
 
+struct Summary : ::mlir::SideEffects::Resource::Base<Summary> {
+  StringRef getName() final { return "Summary"; }
+};
+
+struct LookupTable : ::mlir::SideEffects::Resource::Base<LookupTable> {
+  StringRef getName() final { return "LookupTable"; }
+};
+
+struct DatasetSeedGenerator
+    : ::mlir::SideEffects::Resource::Base<DatasetSeedGenerator> {
+  StringRef getName() final { return "DatasetSeedGenerator"; }
+};
+
+struct DatasetMemoryCache
+    : ::mlir::SideEffects::Resource::Base<DatasetMemoryCache> {
+  StringRef getName() final { return "DatasetMemoryCache"; }
+};
+
+struct DatasetIterator : ::mlir::SideEffects::Resource::Base<DatasetIterator> {
+  StringRef getName() final { return "DatasetIterator"; }
+};
+
+// Special resource type to track TPU Embedding specific ops, which must execute
+// but do not have side effects with one another or with resource variable ops.
+struct TPUEmbedding : ::mlir::SideEffects::Resource::Base<TPUEmbedding> {
+  StringRef getName() final { return "TPUEmbedding"; }
+};
+
 }  // namespace ResourceEffects
 }  // namespace TF
 }  // namespace mlir

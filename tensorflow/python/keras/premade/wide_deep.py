@@ -85,7 +85,7 @@ class WideDeepModel(keras_training.Model):
         Allowed keyword arguments include `name`.
     """
     super(WideDeepModel, self).__init__(**kwargs)
-    base_layer._keras_model_gauge.get_cell('WideDeep').set(True)  # pylint: disable=protected-access
+    base_layer.keras_premade_model_gauge.get_cell('WideDeep').set(True)
     self.linear_model = linear_model
     self.dnn_model = dnn_model
     self.activation = activations.get(activation)

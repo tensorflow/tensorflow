@@ -55,8 +55,8 @@ bool EndsAt(const ArrayLifespan& lifespan, std::size_t op_index) {
 // Helper function for ComputeArrayLifespans: updates one ArrayLifespan for
 // one array for one op.
 void UpdateArrayLifespan(
-    const string& array_name, std::size_t op_index,
-    std::unordered_map<string, ArrayLifespan>* array_lifespans) {
+    const std::string& array_name, std::size_t op_index,
+    std::unordered_map<std::string, ArrayLifespan>* array_lifespans) {
   if (array_lifespans->count(array_name)) {
     auto& lifespan = array_lifespans->at(array_name);
     if (!lifespan.persistent) {
@@ -74,7 +74,7 @@ void UpdateArrayLifespan(
 // Computes the ArrayLifespan for each array.
 void ComputeArrayLifespans(
     const Model& model,
-    std::unordered_map<string, ArrayLifespan>* array_lifespans) {
+    std::unordered_map<std::string, ArrayLifespan>* array_lifespans) {
   CHECK(array_lifespans->empty());
   for (const auto& rnn_state : model.flags.rnn_states()) {
     ArrayLifespan lifespan;
@@ -159,7 +159,8 @@ class Allocator {
 
 // Returns the required transient allocation size (in bytes) for a given array,
 // or 0 if it's not a transient array.
-std::size_t TransientArraySize(const Model& model, const string& array_name,
+std::size_t TransientArraySize(const Model& model,
+                               const std::string& array_name,
                                std::size_t transient_data_alignment) {
   if (!IsAllocatableTransientArray(model, array_name)) {
     return 0;
@@ -191,7 +192,7 @@ std::size_t TransientArraySize(const Model& model, const string& array_name,
 
 // Allocates an array: call this for every array just before the first
 // op where it is used.
-void AllocateTransientArray(const Model& model, const string& array_name,
+void AllocateTransientArray(const Model& model, const std::string& array_name,
                             Allocator* allocator,
                             std::size_t transient_data_alignment) {
   if (!IsAllocatableTransientArray(model, array_name)) {
@@ -206,7 +207,7 @@ void AllocateTransientArray(const Model& model, const string& array_name,
 
 // Deallocates an array: call this for every array just after the last
 // op where it is used.
-void DeallocateTransientArray(const Model& model, const string& array_name,
+void DeallocateTransientArray(const Model& model, const std::string& array_name,
                               Allocator* allocator) {
   if (!IsAllocatableTransientArray(model, array_name)) {
     return;
@@ -216,7 +217,7 @@ void DeallocateTransientArray(const Model& model, const string& array_name,
   allocator->Deallocate(*array->alloc);
 }
 
-void PushBackIfNotFound(const string& s, std::vector<string>* v) {
+void PushBackIfNotFound(const std::string& s, std::vector<std::string>* v) {
   if (std::find(v->begin(), v->end(), s) == v->end()) {
     v->push_back(s);
   }
@@ -227,7 +228,7 @@ void PushBackIfNotFound(const string& s, std::vector<string>* v) {
 void AllocateTransientArrays(Model* model,
                              std::size_t transient_data_alignment) {
   // Precompute the lifespans for all arrays.
-  std::unordered_map<string, ArrayLifespan> array_lifespans;
+  std::unordered_map<std::string, ArrayLifespan> array_lifespans;
   ComputeArrayLifespans(*model, &array_lifespans);
 
   // In case of variable batch, our convention will be to compute the
@@ -250,7 +251,7 @@ void AllocateTransientArrays(Model* model,
 
   // Construct a sorted map of array names, so that other layout engines can
   // match exactly.
-  std::map<string, const Array*> ordered_arrays_map;
+  std::map<std::string, const Array*> ordered_arrays_map;
   for (const auto& pair : model->GetArrayMap()) {
     ordered_arrays_map[pair.first] = pair.second.get();
   }
@@ -258,7 +259,7 @@ void AllocateTransientArrays(Model* model,
   // Allocate persistent arrays (like RNN states). For them, 'transient'
   // is a misnormer, should read 'workspace'.
   for (const auto& array_pair : ordered_arrays_map) {
-    const string& array_name = array_pair.first;
+    const std::string& array_name = array_pair.first;
     auto it = array_lifespans.find(array_name);
     if (it != array_lifespans.end() && it->second.persistent) {
       AllocateTransientArray(*model, array_name, &allocator,
@@ -270,7 +271,7 @@ void AllocateTransientArrays(Model* model,
        op_index++) {
     const auto& op = model->operators[op_index];
     // Allocate those arrays whose lifespan starts exactly here.
-    std::vector<string> arrays_to_allocate;
+    std::vector<std::string> arrays_to_allocate;
     for (const auto& input : op->inputs) {
       if (StartsAt(array_lifespans[input], op_index)) {
         PushBackIfNotFound(input, &arrays_to_allocate);
@@ -281,13 +282,13 @@ void AllocateTransientArrays(Model* model,
         PushBackIfNotFound(output, &arrays_to_allocate);
       }
     }
-    for (const string& array : arrays_to_allocate) {
+    for (const std::string& array : arrays_to_allocate) {
       AllocateTransientArray(*model, array, &allocator,
                              transient_data_alignment);
     }
 
     // Deallocate those arrays whose lifespan ends exactly here.
-    std::vector<string> arrays_to_deallocate;
+    std::vector<std::string> arrays_to_deallocate;
     for (const auto& input : op->inputs) {
       if (EndsAt(array_lifespans[input], op_index)) {
         PushBackIfNotFound(input, &arrays_to_deallocate);
@@ -298,7 +299,7 @@ void AllocateTransientArrays(Model* model,
         PushBackIfNotFound(output, &arrays_to_deallocate);
       }
     }
-    for (const string& array : arrays_to_deallocate) {
+    for (const std::string& array : arrays_to_deallocate) {
       DeallocateTransientArray(*model, array, &allocator);
     }
   }
@@ -309,7 +310,7 @@ void AllocateTransientArrays(Model* model,
   std::size_t optimal_transient_alloc_size = 0;
   std::size_t persistent_alloc_size = 0;
   for (const auto& array_pair : ordered_arrays_map) {
-    const string& array_name = array_pair.first;
+    const std::string& array_name = array_pair.first;
     auto it = array_lifespans.find(array_name);
     if (it != array_lifespans.end() && it->second.persistent) {
       persistent_alloc_size +=
@@ -320,7 +321,7 @@ void AllocateTransientArrays(Model* model,
     // for each operator, compute the sum of the sizes of the array that must
     // be live during the execution of this operator, plus the size of
     // persistent arrays that must be live at all times.
-    std::vector<string> non_persistent_edges;
+    std::vector<std::string> non_persistent_edges;
     for (const auto& input : op->inputs) {
       if (!array_lifespans[input].persistent) {
         PushBackIfNotFound(input, &non_persistent_edges);
@@ -332,7 +333,7 @@ void AllocateTransientArrays(Model* model,
       }
     }
     std::size_t size = persistent_alloc_size;
-    for (const string& edge : non_persistent_edges) {
+    for (const std::string& edge : non_persistent_edges) {
       size += TransientArraySize(*model, edge, transient_data_alignment);
     }
     // The optimal total size is the maximum of all operator-specific sizes.

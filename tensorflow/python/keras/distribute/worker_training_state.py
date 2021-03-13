@@ -19,11 +19,11 @@ from __future__ import print_function
 
 import os
 
-from tensorflow.python.distribute import distributed_file_utils
-from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.distribute import distributed_file_utils
 from tensorflow.python.keras.utils import mode_keys
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
@@ -74,20 +74,22 @@ class WorkerTrainingState(object):
     # workers need to perform `save()`.
     # But all workers should restore from the same checkpoint_dir as passed in
     # read_checkpoint_manager.
-    self.write_checkpoint_dir = distributed_file_utils.write_dirpath(
+    self.read_checkpoint_manager = checkpoint_management.CheckpointManager(
+        checkpoint,
+        directory=os.path.join(checkpoint_dir, 'chief'),
+        max_to_keep=1)
+    write_checkpoint_dir = distributed_file_utils.write_dirpath(
         checkpoint_dir, self._model.distribute_strategy)
-    self.write_checkpoint_manager = checkpoint_management.CheckpointManager(
-        checkpoint, directory=self.write_checkpoint_dir, max_to_keep=1)
-    if self.write_checkpoint_dir == checkpoint_dir:
-      self.read_checkpoint_manager = self.write_checkpoint_manager
+    if self._model.distribute_strategy.extended.should_checkpoint:
+      self.write_checkpoint_manager = self.read_checkpoint_manager
     else:
-      self.read_checkpoint_manager = checkpoint_management.CheckpointManager(
-          checkpoint, directory=checkpoint_dir, max_to_keep=1)
+      self.write_checkpoint_manager = checkpoint_management.CheckpointManager(
+          checkpoint, directory=write_checkpoint_dir, max_to_keep=1)
 
   def back_up(self, epoch):
     """Back up the current state of training into a checkpoint file.
 
-    Arguments:
+    Args:
       epoch: The current epoch information to be saved.
     """
     K.set_value(self._ckpt_saved_epoch, epoch)
@@ -104,12 +106,6 @@ class WorkerTrainingState(object):
       True if the training state is successfully restored. False if the training
       state doesn't need to be restored, or error occurred so it can't.
     """
-    # For multi-worker training, it should not restore a model in certain
-    # worker setting (e.g. non-chief worker in ParameterServerStrategy).
-    # pylint: disable=protected-access
-    if self._model._in_multi_worker_mode(
-    ) and not multi_worker_util.should_load_checkpoint():
-      return
     self.read_checkpoint_manager.restore_or_initialize()
 
   def delete_backup(self):
@@ -118,13 +114,11 @@ class WorkerTrainingState(object):
     Delete the backup directories which should not exist after `fit()`
     successfully finishes.
     """
-    # pylint: disable=protected-access
-    for pathname in file_io.get_matching_files(
-        self.write_checkpoint_manager._prefix + '*'):
-      file_io.delete_recursively(pathname)
-    for pathname in file_io.get_matching_files(
-        os.path.join(self.write_checkpoint_manager.directory, 'checkpoint')):
-      file_io.delete_recursively(pathname)
+    if self.write_checkpoint_manager is self.read_checkpoint_manager:
+      try:
+        file_io.delete_recursively_v2(self.write_checkpoint_manager.directory)
+      except errors.NotFoundError:
+        pass
 
   def maybe_load_initial_epoch_from_ckpt(self, initial_epoch, mode):
     """Maybe load initial epoch from ckpt considering possible worker recovery.
@@ -135,7 +129,7 @@ class WorkerTrainingState(object):
     infer `initial_epoch` from `self._ckpt_saved_epoch` to continue previous
     unfinished training from certain epoch.
 
-    Arguments:
+    Args:
       initial_epoch: The original initial_epoch user passes in in `fit()`.
       mode: The mode for running `model.fit()`.
 

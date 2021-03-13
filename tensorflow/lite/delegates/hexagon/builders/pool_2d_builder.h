@@ -40,7 +40,7 @@ class Pool2dOpBuilder : public OpBuilder {
   TensorID node_output_;
   std::vector<int> stride_shape_;
   std::vector<int> filter_shape_;
-  float data_min_, data_max_, output_min_, output_max_;
+  float output_min_, output_max_;
 };
 
 }  // namespace hexagon

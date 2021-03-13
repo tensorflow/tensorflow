@@ -193,7 +193,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
       a_rt = sparse_csr_matrix_ops.csr_sparse_matrix_to_dense(
           v, type=dtypes.float32)
     v_reassign = state_ops.assign(v, v_id).op
-    with self.assertRaisesOpError("Error while reading resource variable sm"):
+    with self.assertRaisesOpError("uninitialized"):
       self.evaluate(a_rt)
     self.evaluate(v.initializer)
     a_rt_value = self.evaluate(a_rt)
@@ -534,7 +534,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
       c_value = self.evaluate(c)
 
       expected_c_value = self.evaluate(
-          math_ops.conj(math_ops.matmul(a_dense, b)))
+          math_ops.conj(test_util.matmul_without_tf32(a_dense, b)))
       self.assertAllClose(expected_c_value, c_value)
 
   @test_util.run_in_graph_and_eager_modes
@@ -576,7 +576,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
                 transpose_b=transpose_b,
                 adjoint_a=adjoint_a,
                 adjoint_b=adjoint_b)
-            c_dense_t = math_ops.matmul(
+            c_dense_t = test_util.matmul_without_tf32(
                 a_mats,
                 b_mats,
                 transpose_a=transpose_a,
@@ -587,7 +587,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
             c_t_value, c_dense_t_value = self.evaluate((c_t, c_dense_t))
 
             self.assertAllClose(
-                c_t_value, c_dense_t_value, rtol=1e-6, atol=1e-5)
+                c_t_value, c_dense_t_value, rtol=1e-6, atol=2e-5)
 
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchSparseMatrixMatMulTransposed(self):
@@ -640,7 +640,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
                 adjoint_b=adjoint_b)
 
             # Example: t(adj(a) . b) = t(b) . conj(a)
-            c_dense_t = math_ops.matmul(
+            c_dense_t = test_util.matmul_without_tf32(
                 math_ops.conj(b_mats) if adjoint_b else b_mats,
                 math_ops.conj(a_mats) if adjoint_a else a_mats,
                 transpose_a=not (transpose_b or adjoint_b),
@@ -650,7 +650,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
             self.assertAllEqual(c_t.shape, c_dense_t.shape)
             c_t_value, c_dense_t_value = self.evaluate((c_t, c_dense_t))
             self.assertAllClose(
-                c_t_value, c_dense_t_value, rtol=1e-6, atol=1e-5)
+                c_t_value, c_dense_t_value, rtol=1e-6, atol=2e-5)
 
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchSparseMatrixMatMulConjugate(self):
@@ -670,7 +670,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
     c_t = sparse_csr_matrix_ops.sparse_matrix_mat_mul(
         a_sm, b_mats, conjugate_output=True)
 
-    c_dense_t = math_ops.conj(math_ops.matmul(a_mats, b_mats))
+    c_dense_t = math_ops.conj(test_util.matmul_without_tf32(a_mats, b_mats))
     self.assertAllEqual(c_t.shape, c_dense_t.shape)
     c_t_value, c_dense_t_value = self.evaluate((c_t, c_dense_t))
 
@@ -772,7 +772,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
             adjoint_b=adjoint_b)
         c_sm_dense = sparse_csr_matrix_ops.csr_sparse_matrix_to_dense(
             c_sm, dtypes.float32)
-        c_dense_t = math_ops.matmul(
+        c_dense_t = test_util.matmul_without_tf32(
             a_mats,
             b_mats,
             transpose_a=transpose_a,
@@ -1143,7 +1143,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
         dense_cholesky = sparse_csr_matrix_ops.csr_sparse_matrix_to_dense(
             cholesky_sparse_matrices, dtype)
         # Compute L * Lh where L is the Sparse Cholesky factor.
-        verification = math_ops.matmul(
+        verification = test_util.matmul_without_tf32(
             dense_cholesky, array_ops.transpose(dense_cholesky, conjugate=True))
         verification = twist_matrix(verification, ordering_amd)
         # Assert that input matrix A satisfies A = L * Lh.
@@ -1197,7 +1197,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
           cholesky_sparse_matrix, dtype)
 
       # Compute L * Lh.
-      verification = math_ops.matmul(
+      verification = test_util.matmul_without_tf32(
           dense_cholesky,
           array_ops.transpose(dense_cholesky, perm=[0, 2, 1], conjugate=True))
       verification = twist_matrix(verification, ordering_amd)
@@ -1238,7 +1238,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
         cholesky_sparse_matrix, dtypes.float32)
 
     # Compute L * Lh.
-    verification = math_ops.matmul(
+    verification = test_util.matmul_without_tf32(
         dense_cholesky, array_ops.transpose(dense_cholesky, perm=[0, 2, 1]))
     verification = twist_matrix(verification, ordering_amd)
     verification_values = self.evaluate(verification)

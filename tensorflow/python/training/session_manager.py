@@ -47,6 +47,30 @@ def _maybe_name(obj):
     return "<no name for %s>" % type(obj)
 
 
+def _restore_checkpoint_and_maybe_run_saved_model_initializers(
+    sess, saver, path):
+  """Restores checkpoint values and SavedModel initializers if found."""
+  # NOTE: All references to SavedModel refer to SavedModels loaded from the
+  # load_v2 API (which does not require the `sess` argument).
+
+  # If the graph contains resources loaded from a SavedModel, they are not
+  # restored when calling `saver.restore`. Thus, the SavedModel initializer must
+  # be called with `saver.restore` to properly initialize the model.
+
+  # The SavedModel init is stored in the "saved_model_initializers" collection.
+  # This collection is part of the MetaGraph's default_init_op, so it is already
+  # called by MonitoredSession as long as the saver doesn't restore any
+  # checkpoints from the working dir.
+  saved_model_init_ops = ops.get_collection("saved_model_initializers")
+  if saved_model_init_ops:
+    sess.run(saved_model_init_ops)
+
+  # The saver must be called *after* the SavedModel init, because the SavedModel
+  # init will restore the variables from the SavedModel variables directory.
+  # Initializing/restoring twice is not ideal but there's no other way to do it.
+  saver.restore(sess, path)
+
+
 @tf_export(v1=["train.SessionManager"])
 class SessionManager(object):
   """Training helper that restores from checkpoint and creates session.
@@ -206,7 +230,8 @@ class SessionManager(object):
       return sess, False
 
     if checkpoint_filename_with_path:
-      saver.restore(sess, checkpoint_filename_with_path)
+      _restore_checkpoint_and_maybe_run_saved_model_initializers(
+          sess, saver, checkpoint_filename_with_path)
       return sess, True
 
     # Waits up until max_wait_secs for checkpoint to become available.
@@ -222,7 +247,8 @@ class SessionManager(object):
         return sess, False
 
     # Loads the checkpoint.
-    saver.restore(sess, ckpt.model_checkpoint_path)
+    _restore_checkpoint_and_maybe_run_saved_model_initializers(
+        sess, saver, ckpt.model_checkpoint_path)
     saver.recover_last_checkpoints(ckpt.all_model_checkpoint_paths)
     return sess, True
 
@@ -552,6 +578,8 @@ def _ready(op, sess, msg):
 
 
 class _CountDownTimer(object):
+
+  __slots__ = ["_start_time_secs", "_duration_secs"]
 
   def __init__(self, duration_secs):
     self._start_time_secs = time.time()

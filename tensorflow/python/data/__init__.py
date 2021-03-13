@@ -23,6 +23,7 @@ from __future__ import print_function
 
 # pylint: disable=unused-import
 from tensorflow.python.data import experimental
+from tensorflow.python.data.ops.dataset_ops import AUTOTUNE
 from tensorflow.python.data.ops.dataset_ops import Dataset
 from tensorflow.python.data.ops.dataset_ops import INFINITE as INFINITE_CARDINALITY
 from tensorflow.python.data.ops.dataset_ops import make_initializable_iterator

@@ -16,12 +16,20 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
+
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER8(UnaryOp, CPU, "Square", functor::square, float, Eigen::half, double,
           int32, int64, complex64, complex128, bfloat16);
+#else
+REGISTER(UnaryOp, CPU, "Square", functor::square, bfloat16);
+#endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER4(UnaryOp, GPU, "Square", functor::square, float, Eigen::half, double,
           int64);
+#endif
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -34,13 +42,4 @@ REGISTER_KERNEL_BUILDER(Name("Square")
                         UnaryOp<CPUDevice, functor::square<int32>>);
 #endif
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER3(UnaryOp, SYCL, "Square", functor::square, float, double, int64);
-REGISTER_KERNEL_BUILDER(Name("Square")
-                            .Device(DEVICE_SYCL)
-                            .HostMemory("x")
-                            .HostMemory("y")
-                            .TypeConstraint<int32>("T"),
-                        UnaryOp<CPUDevice, functor::square<int32>>);
-#endif  // TENSORFLOW_USE_SYC
 }  // namespace tensorflow

@@ -106,12 +106,12 @@ class FalsePositivesTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose([125., 42., 12.], self.evaluate(result))
 
   def test_threshold_limit(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r'Threshold values must be in \[0, 1\]. Invalid values: \[-1, 2\]'):
       metrics.FalsePositives(thresholds=[-1, 0.5, 2])
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r'Threshold values must be in \[0, 1\]. Invalid values: \[None\]'):
       metrics.FalsePositives(thresholds=[None])
@@ -817,12 +817,12 @@ class SensitivityAtSpecificityTest(test.TestCase, parameterized.TestCase):
     self.assertAlmostEqual(0.675, self.evaluate(result))
 
   def test_invalid_specificity(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r'`specificity` must be in the range \[0, 1\].'):
       metrics.SensitivityAtSpecificity(-1)
 
   def test_invalid_num_thresholds(self):
-    with self.assertRaisesRegexp(ValueError, '`num_thresholds` must be > 0.'):
+    with self.assertRaisesRegex(ValueError, '`num_thresholds` must be > 0.'):
       metrics.SensitivityAtSpecificity(0.4, num_thresholds=-1)
 
 
@@ -913,12 +913,12 @@ class SpecificityAtSensitivityTest(test.TestCase, parameterized.TestCase):
     self.assertAlmostEqual(0.4, self.evaluate(result))
 
   def test_invalid_sensitivity(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r'`sensitivity` must be in the range \[0, 1\].'):
       metrics.SpecificityAtSensitivity(-1)
 
   def test_invalid_num_thresholds(self):
-    with self.assertRaisesRegexp(ValueError, '`num_thresholds` must be > 0.'):
+    with self.assertRaisesRegex(ValueError, '`num_thresholds` must be > 0.'):
       metrics.SpecificityAtSensitivity(0.4, num_thresholds=-1)
 
 
@@ -1012,12 +1012,12 @@ class PrecisionAtRecallTest(test.TestCase, parameterized.TestCase):
     self.assertAlmostEqual(0.7, self.evaluate(result))
 
   def test_invalid_sensitivity(self):
-    with self.assertRaisesRegexp(
-        ValueError, r'`recall` must be in the range \[0, 1\].'):
+    with self.assertRaisesRegex(ValueError,
+                                r'`recall` must be in the range \[0, 1\].'):
       metrics.PrecisionAtRecall(-1)
 
   def test_invalid_num_thresholds(self):
-    with self.assertRaisesRegexp(ValueError, '`num_thresholds` must be > 0.'):
+    with self.assertRaisesRegex(ValueError, '`num_thresholds` must be > 0.'):
       metrics.PrecisionAtRecall(0.4, num_thresholds=-1)
 
 
@@ -1127,12 +1127,12 @@ class RecallAtPrecisionTest(test.TestCase, parameterized.TestCase):
     self.assertAlmostEqual(0, self.evaluate(result))
 
   def test_invalid_sensitivity(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 r'`precision` must be in the range \[0, 1\].'):
+    with self.assertRaisesRegex(ValueError,
+                                r'`precision` must be in the range \[0, 1\].'):
       metrics.RecallAtPrecision(-1)
 
   def test_invalid_num_thresholds(self):
-    with self.assertRaisesRegexp(ValueError, '`num_thresholds` must be > 0.'):
+    with self.assertRaisesRegex(ValueError, '`num_thresholds` must be > 0.'):
       metrics.RecallAtPrecision(0.4, num_thresholds=-1)
 
 
@@ -1142,6 +1142,8 @@ class AUCTest(test.TestCase, parameterized.TestCase):
   def setup(self):
     self.num_thresholds = 3
     self.y_pred = constant_op.constant([0, 0.5, 0.3, 0.9], dtype=dtypes.float32)
+    epsilon = 1e-12
+    self.y_pred_logits = -math_ops.log(1.0 / (self.y_pred + epsilon) - 1.0)
     self.y_true = constant_op.constant([0, 0, 1, 1])
     self.sample_weight = [1, 2, 3, 4]
 
@@ -1255,6 +1257,20 @@ class AUCTest(test.TestCase, parameterized.TestCase):
     auc_obj = metrics.AUC(num_thresholds=self.num_thresholds)
     self.evaluate(variables.variables_initializer(auc_obj.variables))
     result = auc_obj(self.y_true, self.y_pred)
+
+    # tp = [2, 1, 0], fp = [2, 0, 0], fn = [0, 1, 2], tn = [0, 2, 2]
+    # recall = [2/2, 1/(1+1), 0] = [1, 0.5, 0]
+    # fp_rate = [2/2, 0, 0] = [1, 0, 0]
+    # heights = [(1 + 0.5)/2, (0.5 + 0)/2] = [0.75, 0.25]
+    # widths = [(1 - 0), (0 - 0)] = [1, 0]
+    expected_result = (0.75 * 1 + 0.25 * 0)
+    self.assertAllClose(self.evaluate(result), expected_result, 1e-3)
+
+  def test_unweighted_from_logits(self):
+    self.setup()
+    auc_obj = metrics.AUC(num_thresholds=self.num_thresholds, from_logits=True)
+    self.evaluate(variables.variables_initializer(auc_obj.variables))
+    result = auc_obj(self.y_true, self.y_pred_logits)
 
     # tp = [2, 1, 0], fp = [2, 0, 0], fn = [0, 1, 2], tn = [0, 2, 2]
     # recall = [2/2, 1/(1+1), 0] = [1, 0.5, 0]
@@ -1381,19 +1397,19 @@ class AUCTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(self.evaluate(result), expected_result, 1e-3)
 
   def test_invalid_num_thresholds(self):
-    with self.assertRaisesRegexp(ValueError, '`num_thresholds` must be > 1.'):
+    with self.assertRaisesRegex(ValueError, '`num_thresholds` must be > 1.'):
       metrics.AUC(num_thresholds=-1)
 
-    with self.assertRaisesRegexp(ValueError, '`num_thresholds` must be > 1.'):
+    with self.assertRaisesRegex(ValueError, '`num_thresholds` must be > 1.'):
       metrics.AUC(num_thresholds=1)
 
   def test_invalid_curve(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'Invalid AUC curve value "Invalid".'):
+    with self.assertRaisesRegex(ValueError,
+                                'Invalid AUC curve value "Invalid".'):
       metrics.AUC(curve='Invalid')
 
   def test_invalid_summation_method(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Invalid AUC summation method value "Invalid".'):
       metrics.AUC(summation_method='Invalid')
 
@@ -1418,6 +1434,10 @@ class MultiAUCTest(test.TestCase, parameterized.TestCase):
     self.y_pred = constant_op.constant(
         np.array([[0, 0.5, 0.3, 0.9], [0.1, 0.2, 0.3, 0.4]]).T,
         dtype=dtypes.float32)
+
+    epsilon = 1e-12
+    self.y_pred_logits = -math_ops.log(1.0 / (self.y_pred + epsilon) - 1.0)
+
     self.y_true_good = constant_op.constant(
         np.array([[0, 0, 1, 1], [0, 0, 1, 1]]).T)
     self.y_true_bad = constant_op.constant(
@@ -1503,6 +1523,21 @@ class MultiAUCTest(test.TestCase, parameterized.TestCase):
       expected_result = (0.875 + 1.0) / 2.0
       self.assertAllClose(self.evaluate(result), expected_result, 1e-3)
 
+  def test_unweighted_from_logits(self):
+    with self.test_session():
+      self.setup()
+      auc_obj = metrics.AUC(
+          num_thresholds=self.num_thresholds,
+          multi_label=True,
+          from_logits=True)
+      self.evaluate(variables.variables_initializer(auc_obj.variables))
+      result = auc_obj(self.y_true_good, self.y_pred_logits)
+
+      # tpr = [[1, 1, 0.5, 0.5, 0], [1, 1, 0, 0, 0]]
+      # fpr = [[1, 0.5, 0, 0, 0], [1, 0, 0, 0, 0]]
+      expected_result = (0.875 + 1.0) / 2.0
+      self.assertAllClose(self.evaluate(result), expected_result, 1e-3)
+
   def test_sample_weight_flat(self):
     self.setup()
     auc_obj = metrics.AUC(num_thresholds=self.num_thresholds, multi_label=False)
@@ -1561,6 +1596,23 @@ class MultiAUCTest(test.TestCase, parameterized.TestCase):
     auc_obj = metrics.AUC(num_thresholds=self.num_thresholds, multi_label=False)
     self.evaluate(variables.variables_initializer(auc_obj.variables))
     result = auc_obj(self.y_true_good, self.y_pred)
+
+    # tp = [4, 4, 1, 1, 0]
+    # fp = [4, 1, 0, 0, 0]
+    # fn = [0, 0, 3, 3, 4]
+    # tn = [0, 3, 4, 4, 4]
+
+    # tpr = [1, 1, 0.25, 0.25, 0]
+    # fpr = [1, 0.25, 0, 0, 0]
+    expected_result = 1.0 - (3.0 / 32.0)
+    self.assertAllClose(self.evaluate(result), expected_result, 1e-3)
+
+  def test_unweighted_flat_from_logits(self):
+    self.setup()
+    auc_obj = metrics.AUC(
+        num_thresholds=self.num_thresholds, multi_label=False, from_logits=True)
+    self.evaluate(variables.variables_initializer(auc_obj.variables))
+    result = auc_obj(self.y_true_good, self.y_pred_logits)
 
     # tp = [4, 4, 1, 1, 0]
     # fp = [4, 1, 0, 0, 0]

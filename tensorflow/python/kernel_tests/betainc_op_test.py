@@ -97,7 +97,7 @@ class BetaincTest(test.TestCase):
             rtol=rtol,
             atol=atol)
 
-      with self.assertRaisesRegexp(ValueError, "must be equal"):
+      with self.assertRaisesRegex(ValueError, "must be equal"):
         math_ops.betainc(0.5, [0.5], [[0.5]])
 
       with self.cached_session():
@@ -135,6 +135,7 @@ class BetaincTest(test.TestCase):
     self._testBetaInc(a_s, b_s, x_s, dtypes.float64)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("b/178338235")
   def testBetaIncDoubleVerySmallValues(self):
     a_s = np.abs(np.random.randn(10, 10) * 1e-16)  # in (0, infty)
     b_s = np.abs(np.random.randn(10, 10) * 1e-16)  # in (0, infty)
@@ -142,6 +143,7 @@ class BetaincTest(test.TestCase):
     self._testBetaInc(a_s, b_s, x_s, dtypes.float64)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("b/178338235")
   def testBetaIncFloatVerySmallValues(self):
     a_s = np.abs(np.random.randn(10, 10) * 1e-8)  # in (0, infty)
     b_s = np.abs(np.random.randn(10, 10) * 1e-8)  # in (0, infty)

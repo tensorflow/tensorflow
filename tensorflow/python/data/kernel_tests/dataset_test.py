@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import warnings
 
 from absl.testing import parameterized
@@ -351,7 +352,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testSameGraphError(self):
     dataset = dataset_ops.Dataset.range(10)
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
+      with self.assertRaisesRegex(ValueError, "must be from the same graph"):
         dataset = dataset.batch(2)
 
   @combinations.generate(
@@ -359,7 +360,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testSameGraphErrorOneShot(self):
     dataset = dataset_ops.Dataset.range(10)
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "Please ensure that all datasets in the pipeline are "
           "created in the same graph as the iterator."):
         _ = dataset_ops.make_one_shot_iterator(dataset)
@@ -369,7 +370,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testSameGraphErrorInitializable(self):
     dataset = dataset_ops.Dataset.range(10)
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "Please ensure that all datasets in the pipeline are "
           "created in the same graph as the iterator."):
         _ = dataset_ops.make_initializable_iterator(dataset)
@@ -542,6 +543,29 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(
         10, output_type=dtypes.int32).map(lambda x: (x, None))
     self.assertEqual(self.evaluate(fn(dataset)), 45)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testIncorrectPythonStructure(self):
+    # Tests that an exception is raised (as opposed to a segfault) when the
+    # Python structure assigned to a dataset is incorrect.
+    dataset = dataset_ops.Dataset.range(10)
+    spec = tensor_spec.TensorSpec([], dtypes.int64)
+    new_structure = (spec, spec)
+    dataset = dataset_ops._RestructuredDataset(dataset, new_structure)
+    dataset = dataset.map(lambda x, y: y)
+
+    with self.assertRaisesOpError(""):
+      self.getDatasetOutput(dataset)
+
+  def testNamedTupleStructure(self):
+    Foo = collections.namedtuple("Foo", ["a", "b"])
+    x = Foo(a=3, b="test")
+    dataset = dataset_ops.Dataset.from_tensors(x)
+    dataset = dataset_ops.Dataset.from_tensor_slices([dataset, dataset])
+    self.assertEqual(
+        str(dataset.element_spec),
+        "DatasetSpec(Foo(a=TensorSpec(shape=(), dtype=tf.int32, name=None), "
+        "b=TensorSpec(shape=(), dtype=tf.string, name=None)), TensorShape([]))")
 
 
 if __name__ == "__main__":

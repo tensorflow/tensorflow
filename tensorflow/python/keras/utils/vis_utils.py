@@ -69,6 +69,7 @@ def add_edge(dot, src, dst):
 @keras_export('keras.utils.model_to_dot')
 def model_to_dot(model,
                  show_shapes=False,
+                 show_dtype=False,
                  show_layer_names=True,
                  rankdir='TB',
                  expand_nested=False,
@@ -76,9 +77,10 @@ def model_to_dot(model,
                  subgraph=False):
   """Convert a Keras model to dot format.
 
-  Arguments:
+  Args:
     model: A Keras model instance.
     show_shapes: whether to display shape information.
+    show_dtype: whether to display layer dtypes.
     show_layer_names: whether to display layer names.
     rankdir: `rankdir` argument passed to PyDot,
         a string specifying the format of the plot:
@@ -102,9 +104,10 @@ def model_to_dot(model,
 
   if not check_pydot():
     message = (
-        'Failed to import pydot. You must `pip install pydot` '
-        'and install graphviz (https://graphviz.gitlab.io/download/), ',
-        'for `pydotprint` to work.')
+        'You must install pydot (`pip install pydot`) '
+        'and install graphviz '
+        '(see instructions at https://graphviz.gitlab.io/download/) ',
+        'for plot_model/model_to_dot to work.')
     if 'IPython.core.magics.namespace' in sys.modules:
       # We don't raise an exception here in order to avoid crashing notebook
       # tests where graphviz is not available.
@@ -150,10 +153,14 @@ def model_to_dot(model,
     if isinstance(layer, wrappers.Wrapper):
       if expand_nested and isinstance(layer.layer,
                                       functional.Functional):
-        submodel_wrapper = model_to_dot(layer.layer, show_shapes,
-                                        show_layer_names, rankdir,
-                                        expand_nested,
-                                        subgraph=True)
+        submodel_wrapper = model_to_dot(
+            layer.layer,
+            show_shapes,
+            show_dtype,
+            show_layer_names,
+            rankdir,
+            expand_nested,
+            subgraph=True)
         # sub_w : submodel_wrapper
         sub_w_nodes = submodel_wrapper.get_nodes()
         sub_w_first_node[layer.layer.name] = sub_w_nodes[0]
@@ -165,10 +172,14 @@ def model_to_dot(model,
         class_name = '{}({})'.format(class_name, child_class_name)
 
     if expand_nested and isinstance(layer, functional.Functional):
-      submodel_not_wrapper = model_to_dot(layer, show_shapes,
-                                          show_layer_names, rankdir,
-                                          expand_nested,
-                                          subgraph=True)
+      submodel_not_wrapper = model_to_dot(
+          layer,
+          show_shapes,
+          show_dtype,
+          show_layer_names,
+          rankdir,
+          expand_nested,
+          subgraph=True)
       # sub_n : submodel_not_wrapper
       sub_n_nodes = submodel_not_wrapper.get_nodes()
       sub_n_first_node[layer.name] = sub_n_nodes[0]
@@ -181,11 +192,22 @@ def model_to_dot(model,
     else:
       label = class_name
 
+    # Rebuild the label as a table including the layer's dtype.
+    if show_dtype:
+
+      def format_dtype(dtype):
+        if dtype is None:
+          return '?'
+        else:
+          return str(dtype)
+
+      label = '%s|%s' % (label, format_dtype(layer.dtype))
+
     # Rebuild the label as a table including input/output shapes.
     if show_shapes:
 
       def format_shape(shape):
-        return str(shape).replace(str(None), '?')
+        return str(shape).replace(str(None), 'None')
 
       try:
         outputlabels = format_shape(layer.output_shape)
@@ -260,6 +282,7 @@ def model_to_dot(model,
 def plot_model(model,
                to_file='model.png',
                show_shapes=False,
+               show_dtype=False,
                show_layer_names=True,
                rankdir='TB',
                expand_nested=False,
@@ -282,10 +305,11 @@ def plot_model(model,
   tf.keras.utils.plot_model(model, to_file=dot_img_file, show_shapes=True)
   ```
 
-  Arguments:
+  Args:
     model: A Keras model instance
     to_file: File name of the plot image.
     show_shapes: whether to display shape information.
+    show_dtype: whether to display layer dtypes.
     show_layer_names: whether to display layer names.
     rankdir: `rankdir` argument passed to PyDot,
         a string specifying the format of the plot:
@@ -298,12 +322,14 @@ def plot_model(model,
     A Jupyter notebook Image object if Jupyter is installed.
     This enables in-line display of the model plots in notebooks.
   """
-  dot = model_to_dot(model,
-                     show_shapes=show_shapes,
-                     show_layer_names=show_layer_names,
-                     rankdir=rankdir,
-                     expand_nested=expand_nested,
-                     dpi=dpi)
+  dot = model_to_dot(
+      model,
+      show_shapes=show_shapes,
+      show_dtype=show_dtype,
+      show_layer_names=show_layer_names,
+      rankdir=rankdir,
+      expand_nested=expand_nested,
+      dpi=dpi)
   to_file = path_to_string(to_file)
   if dot is None:
     return

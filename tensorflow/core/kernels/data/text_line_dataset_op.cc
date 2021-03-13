@@ -70,6 +70,10 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override { return Status::OK(); }
 
  protected:
@@ -271,6 +275,7 @@ void TextLineDatasetOp::MakeDataset(OpKernelContext* ctx,
   filenames.reserve(filenames_tensor->NumElements());
   for (int i = 0; i < filenames_tensor->NumElements(); ++i) {
     filenames.push_back(filenames_tensor->flat<tstring>()(i));
+    metrics::RecordTFDataFilename(kDatasetType, filenames[i]);
   }
 
   *output = new Dataset(ctx, std::move(filenames), compression_type,

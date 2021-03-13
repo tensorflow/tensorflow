@@ -25,7 +25,7 @@
 # Required environment variable(s):
 #   CONTAINER_TYPE:      (CPU | GPU)
 #   OS_TYPE:             (UBUNTU | MACOS)
-#   TF_PYTHON_VERSION:   (python2 | python2.7 | python3.5 | python3.7)
+#   TF_PYTHON_VERSION:   ( python3.6 | python3.7 | python3.8 )
 #   TF_BUILD_FLAGS:      Bazel build flags.
 #                          e.g. TF_BUILD_FLAGS="--config=opt"
 #   TF_TEST_FLAGS:       Bazel test flags.
@@ -192,7 +192,7 @@ check_python_pip_version() {
   # Check if only the major version of python is provided by the user.
   MAJOR_VER_ONLY=0
   if [[ ${#PYTHON_VER} -lt 9 ]]; then
-    # User only provided major version (e.g. 'python2' instead of 'python2.7')
+    # User only provided major version (e.g. 'python3' instead of 'python3.7')
     MAJOR_VER_ONLY=1
   fi
 
@@ -260,7 +260,7 @@ PIP_WHL_DIR="${KOKORO_ARTIFACTS_DIR}/tensorflow/${PIP_TEST_ROOT}/whl"
 mkdir -p "${PIP_WHL_DIR}"
 PIP_WHL_DIR=$(realpath "${PIP_WHL_DIR}") # Get absolute path
 WHL_PATH=""
-# Determine the major.minor versions of python being used (e.g., 2.7).
+# Determine the major.minor versions of python being used (e.g., 3.7).
 # Useful for determining the directory of the local pip installation.
 PY_MAJOR_MINOR_VER=$(${PYTHON_BIN_PATH} -c "print(__import__('sys').version)" 2>&1 | awk '{ print $1 }' | head -n 1 | cut -c1-3)
 
@@ -289,7 +289,7 @@ fi
 check_global_vars
 
 # Check if in a virtualenv and exit if yes.
-IN_VENV=$(python -c 'import sys; print("1" if hasattr(sys, "real_prefix") else "0")')
+IN_VENV=$(python -c 'import sys; print("1" if sys.version_info.major == 3 and sys.prefix != sys.base_prefix else "0")')
 if [[ "$IN_VENV" == "1" ]]; then
   echo "It appears that we are already in a virtualenv. Deactivating..."
   deactivate || source deactivate || die "FAILED: Unable to deactivate from existing virtualenv."
@@ -415,6 +415,7 @@ create_activate_virtualenv() {
   # to create the virtualenv directory for testing. Use the -p flag to specify
   # the python version inside the to-be-created virtualenv directory.
   ${PYTHON_BIN_PATH_INIT} -m virtualenv -p ${PYTHON_BIN_PATH_INIT} ${VIRTUALENV_FLAGS} ${VIRTUALENV_DIR} || \
+    ${PYTHON_BIN_PATH_INIT} -m venv ${VIRTUALENV_DIR} || \
     die "FAILED: Unable to create virtualenv"
 
   source "${VIRTUALENV_DIR}/bin/activate" || \
@@ -448,11 +449,10 @@ install_tensorflow_pip() {
   # Check that requested python version matches configured one.
   check_python_pip_version
 
-  # Force upgrade of setuptools. This must happen before the pip install of the
-  # WHL_PATH, which pulls in absl-py, which uses install_requires notation
-  # introduced in setuptools >=20.5. The default version of setuptools is 5.5.1,
-  # which is too old for absl-py.
-  ${PIP_BIN_PATH} install --upgrade setuptools==39.1.0 || \
+  # Force upgrade of setuptools. We need it to install pips using
+  # `install_requires` notation introduced in setuptools >=20.5. The default
+  # version of setuptools is 5.5.1.
+  ${PIP_BIN_PATH} install --upgrade setuptools || \
     die "Error: setuptools install, upgrade FAILED"
 
   # Force tensorflow reinstallation. Otherwise it may not get installed from
@@ -462,13 +462,6 @@ install_tensorflow_pip() {
     die "pip install (forcing to reinstall tensorflow) FAILED"
   echo "Successfully installed pip package ${WHL_PATH}"
 
-  # Force downgrade of setuptools. This must happen after the pip install of the
-  # WHL_PATH, which ends up upgrading to the latest version of setuptools.
-  # Versions of setuptools >= 39.1.0 will cause tests to fail like this:
-  #   ImportError: cannot import name py31compat
-  ${PIP_BIN_PATH} install --upgrade setuptools==39.1.0 || \
-    die "Error: setuptools install, upgrade FAILED"
-
   # Install the future package in the virtualenv. Installing it in user system
   # packages does not appear to port it over when creating a virtualenv.
   #   ImportError: No module named builtins
@@ -477,7 +470,7 @@ install_tensorflow_pip() {
 
   # Install the gast package in the virtualenv. Installing it in user system
   # packages does not appear to port it over when creating a virtualenv.
-  ${PIP_BIN_PATH} install --upgrade "gast==0.3.3" || \
+  ${PIP_BIN_PATH} install --upgrade "gast==0.4.0" || \
     die "Error: gast install, upgrade FAILED"
 
 }
@@ -675,7 +668,7 @@ if [[ "$BUILD_BOTH_GPU_PACKAGES" -eq "1" ]] || [[ "$BUILD_BOTH_CPU_PACKAGES" -eq
         "\"${CONTAINER_TYPE}\" instead."
   fi
   if [[ "$PROJECT_NAME" == *_${PROJECT_SUFFIX} ]]; then
-    NEW_PROJECT_NAME=${PROJECT_NAME%"_${PROJECT_SUFFIX}"}
+    NEW_PROJECT_NAME=${PROJECT_NAME}"_${PROJECT_SUFFIX}"
   else
     NEW_PROJECT_NAME="${PROJECT_NAME}_${PROJECT_SUFFIX}"
   fi

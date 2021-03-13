@@ -52,7 +52,7 @@ def load_data(path='imdb.npz',
   As a convention, "0" does not stand for a specific word, but instead is used
   to encode any unknown word.
 
-  Arguments:
+  Args:
       path: where to cache the data (relative to `~/.keras/dataset`).
       num_words: integer or None. Words are
           ranked by how often they occur (in the training set) and only
@@ -113,31 +113,35 @@ def load_data(path='imdb.npz',
     x_train, labels_train = f['x_train'], f['y_train']
     x_test, labels_test = f['x_test'], f['y_test']
 
-  np.random.seed(seed)
+  rng = np.random.RandomState(seed)
   indices = np.arange(len(x_train))
-  np.random.shuffle(indices)
+  rng.shuffle(indices)
   x_train = x_train[indices]
   labels_train = labels_train[indices]
 
   indices = np.arange(len(x_test))
-  np.random.shuffle(indices)
+  rng.shuffle(indices)
   x_test = x_test[indices]
   labels_test = labels_test[indices]
+
+  if start_char is not None:
+    x_train = [[start_char] + [w + index_from for w in x] for x in x_train]
+    x_test = [[start_char] + [w + index_from for w in x] for x in x_test]
+  elif index_from:
+    x_train = [[w + index_from for w in x] for x in x_train]
+    x_test = [[w + index_from for w in x] for x in x_test]
+
+  if maxlen:
+    x_train, labels_train = _remove_long_seq(maxlen, x_train, labels_train)
+    x_test, labels_test = _remove_long_seq(maxlen, x_test, labels_test)
+    if not x_train or not x_test:
+      raise ValueError('After filtering for sequences shorter than maxlen=' +
+                       str(maxlen) + ', no sequence was kept. '
+                       'Increase maxlen.')
 
   xs = np.concatenate([x_train, x_test])
   labels = np.concatenate([labels_train, labels_test])
 
-  if start_char is not None:
-    xs = [[start_char] + [w + index_from for w in x] for x in xs]
-  elif index_from:
-    xs = [[w + index_from for w in x] for x in xs]
-
-  if maxlen:
-    xs, labels = _remove_long_seq(maxlen, xs, labels)
-    if not xs:
-      raise ValueError('After filtering for sequences shorter than maxlen=' +
-                       str(maxlen) + ', no sequence was kept. '
-                       'Increase maxlen.')
   if not num_words:
     num_words = max(max(x) for x in xs)
 
@@ -162,7 +166,7 @@ def load_data(path='imdb.npz',
 def get_word_index(path='imdb_word_index.json'):
   """Retrieves a dict mapping words to their index in the IMDB dataset.
 
-  Arguments:
+  Args:
       path: where to cache the data (relative to `~/.keras/dataset`).
 
   Returns:

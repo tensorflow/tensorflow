@@ -1,5 +1,8 @@
 # Utilities for building XLA computations.
 
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 package(
     default_visibility = ["//tensorflow/compiler/tf2xla:friends"],
     licenses = ["notice"],  # Apache 2.0
@@ -38,6 +41,7 @@ cc_library(
     hdrs = ["random.h"],
     deps = [
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:xla_builder",

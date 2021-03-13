@@ -22,6 +22,21 @@ cc_library(
     ],
 )
 
+cc_binary(
+    name = "dummy_external_delegate.so",
+    srcs = [
+        "external_delegate_adaptor.cc",
+    ],
+    linkshared = 1,
+    linkstatic = 1,
+    deps = [
+        ":dummy_delegate",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools:logging",
+    ],
+)
+
 #### The following are for using the dummy test delegate in TFLite tooling ####
 cc_library(
     name = "dummy_delegate_provider",

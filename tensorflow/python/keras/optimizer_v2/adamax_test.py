@@ -29,7 +29,6 @@ from tensorflow.python.keras import combinations
 from tensorflow.python.keras.optimizer_v2 import adamax
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -82,7 +81,7 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
   def testResourceSparse(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         # Initialize variables for numpy implementation.
         zero_slots = lambda: np.zeros((3), dtype=dtype.as_numpy_dtype)  # pylint: disable=cell-var-from-loop
         m0, v0, m1, v1 = zero_slots(), zero_slots(), zero_slots(), zero_slots()
@@ -91,8 +90,8 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
         var1_np = np.array([4.0, 5.0, 6.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
-        var0 = resource_variable_ops.ResourceVariable(var0_np)
-        var1 = resource_variable_ops.ResourceVariable(var1_np)
+        var0 = variables.Variable(var0_np)
+        var1 = variables.Variable(var1_np)
 
         grads0_np_indices = np.array([0, 1], dtype=np.int32)
         grads0 = ops.IndexedSlices(
@@ -104,17 +103,17 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
             constant_op.constant(grads1_np_indices), constant_op.constant([3]))
         opt = adamax.Adamax()
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0, 3.0], var0.eval())
-        self.assertAllClose([4.0, 5.0, 6.0], var1.eval())
+        self.assertAllClose([1.0, 2.0, 3.0], var0)
+        self.assertAllClose([4.0, 5.0, 6.0], var1)
 
         beta1_power = get_beta_accumulators(opt, dtype)
 
         # Run 3 steps of Adamax
         for t in range(3):
-          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power.eval())
+          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power)
           update.run()
 
           var0_np, m0, v0 = adamax_sparse_update_numpy(
@@ -123,8 +122,8 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
               var1_np, grads1_np_indices, grads1_np, t, m1, v1)
 
           # Validate updated params
-          self.assertAllCloseAccordingToType(var0_np, var0.eval())
-          self.assertAllCloseAccordingToType(var1_np, var1.eval())
+          self.assertAllCloseAccordingToType(var0_np, var0)
+          self.assertAllCloseAccordingToType(var1_np, var1)
 
   def testSparseDevicePlacement(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
@@ -138,7 +137,7 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
         g_sum = lambda: math_ops.reduce_sum(array_ops.gather(var, indices))  # pylint: disable=cell-var-from-loop
         optimizer = adamax.Adamax(3.0)
         minimize_op = optimizer.minimize(g_sum, var_list=[var])
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         minimize_op.run()
 
   def testSparseRepeatedIndices(self):
@@ -163,13 +162,13 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
             [(grad_repeated_index, repeated_index_update_var)])
         aggregated_update = adamax.Adamax().apply_gradients(
             [(grad_aggregated, aggregated_update_var)])
-        variables.global_variables_initializer().run()
-        self.assertAllClose(aggregated_update_var.eval(),
+        self.evaluate(variables.global_variables_initializer())
+        self.assertAllClose(aggregated_update_var,
                             repeated_index_update_var.eval())
         for _ in range(3):
           repeated_update.run()
           aggregated_update.run()
-          self.assertAllClose(aggregated_update_var.eval(),
+          self.assertAllClose(aggregated_update_var,
                               repeated_index_update_var.eval())
 
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
@@ -186,10 +185,8 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
-        var0 = resource_variable_ops.ResourceVariable(
-            var0_np, name="var0_%d" % i)
-        var1 = resource_variable_ops.ResourceVariable(
-            var1_np, name="var1_%d" % i)
+        var0 = variables.Variable(var0_np, name="var0_%d" % i)
+        var1 = variables.Variable(var1_np, name="var1_%d" % i)
 
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
@@ -234,10 +231,8 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
-        var0 = resource_variable_ops.ResourceVariable(
-            var0_np, name="var0_%d" % i)
-        var1 = resource_variable_ops.ResourceVariable(
-            var1_np, name="var1_%d" % i)
+        var0 = variables.Variable(var0_np, name="var0_%d" % i)
+        var1 = variables.Variable(var1_np, name="var1_%d" % i)
 
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
@@ -280,7 +275,7 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
   def testTensorLearningRate(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -294,30 +289,30 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
         grads1 = constant_op.constant(grads1_np)
         opt = adamax.Adamax(constant_op.constant(0.001))
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], var0)
+        self.assertAllClose([3.0, 4.0], var1)
 
         beta1_power = get_beta_accumulators(opt, dtype)
 
         # Run 3 steps of Adamax
         for t in range(3):
-          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power.eval())
+          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power)
           update.run()
 
           var0_np, m0, v0 = adamax_update_numpy(var0_np, grads0_np, t, m0, v0)
           var1_np, m1, v1 = adamax_update_numpy(var1_np, grads1_np, t, m1, v1)
 
           # Validate updated params
-          self.assertAllCloseAccordingToType(var0_np, var0.eval())
-          self.assertAllCloseAccordingToType(var1_np, var1.eval())
+          self.assertAllCloseAccordingToType(var0_np, var0)
+          self.assertAllCloseAccordingToType(var1_np, var1)
 
   def testSharing(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -332,17 +327,17 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
         opt = adamax.Adamax()
         update1 = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         update2 = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         beta1_power = get_beta_accumulators(opt, dtype)
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], var0)
+        self.assertAllClose([3.0, 4.0], var1)
 
         # Run 3 steps of intertwined Adamax1 and Adamax2.
         for t in range(3):
-          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power.eval())
+          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power)
           if t % 2 == 0:
             update1.run()
           else:
@@ -352,17 +347,17 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
           var1_np, m1, v1 = adamax_update_numpy(var1_np, grads1_np, t, m1, v1)
 
           # Validate updated params
-          self.assertAllCloseAccordingToType(var0_np, var0.eval())
-          self.assertAllCloseAccordingToType(var1_np, var1.eval())
+          self.assertAllCloseAccordingToType(var0_np, var0)
+          self.assertAllCloseAccordingToType(var1_np, var1)
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testSlotsUniqueEager(self):
-    with context.eager_mode():
-      v1 = resource_variable_ops.ResourceVariable(1.)
-      v2 = resource_variable_ops.ResourceVariable(1.)
-      opt = adamax.Adamax(1.)
-      opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
-      # There should be iteration, and two unique slot variables for v1 and v2.
-      self.assertEqual(5, len({id(v) for v in opt.variables()}))
+    v1 = variables.Variable(1.)
+    v2 = variables.Variable(1.)
+    opt = adamax.Adamax(1.)
+    opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
+    # There should be iteration, and two unique slot variables for v1 and v2.
+    self.assertLen({id(v) for v in opt.variables()}, 5)
 
   def testConstructAdamaxWithLR(self):
     opt = adamax.Adamax(lr=1.0)

@@ -26,7 +26,7 @@ from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.training import training_ops
+from tensorflow.python.training import gen_training_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -87,7 +87,8 @@ class Adagrad(optimizer_v2.OptimizerV2):
     super(Adagrad, self)._prepare_local(var_device, var_dtype, apply_state)
     apply_state[(var_device, var_dtype)].update(
         dict(
-            epsilon=ops.convert_to_tensor_v2(self.epsilon, var_dtype),
+            epsilon=ops.convert_to_tensor_v2_with_dispatch(
+                self.epsilon, var_dtype),
             neg_lr_t=-apply_state[(var_device, var_dtype)]['lr_t'],
             zero=array_ops.zeros((), dtype=dtypes.int64)))
 
@@ -108,7 +109,7 @@ class Adagrad(optimizer_v2.OptimizerV2):
     capable of instantiating the same optimizer from the config
     dictionary.
 
-    Arguments:
+    Args:
         config: A Python dictionary, typically the output of get_config.
         custom_objects: A Python dictionary mapping names to additional Python
           objects used to create this optimizer, such as a function used for a
@@ -129,12 +130,12 @@ class Adagrad(optimizer_v2.OptimizerV2):
                     or self._fallback_apply_state(var_device, var_dtype))
 
     acc = self.get_slot(var, 'accumulator')
-    return training_ops.resource_apply_adagrad_v2(
-        var.handle,
-        acc.handle,
-        coefficients['lr_t'],
-        coefficients['epsilon'],
-        grad,
+    return gen_training_ops.ResourceApplyAdagradV2(
+        var=var.handle,
+        accum=acc.handle,
+        lr=coefficients['lr_t'],
+        epsilon=coefficients['epsilon'],
+        grad=grad,
         use_locking=self._use_locking)
 
   def _resource_apply_sparse(self, grad, var, indices, apply_state=None):
@@ -143,20 +144,20 @@ class Adagrad(optimizer_v2.OptimizerV2):
                     or self._fallback_apply_state(var_device, var_dtype))
 
     acc = self.get_slot(var, 'accumulator')
-    return training_ops.resource_sparse_apply_adagrad_v2(
-        var.handle,
-        acc.handle,
-        coefficients['lr_t'],
-        coefficients['epsilon'],
-        grad,
-        indices,
+    return gen_training_ops.ResourceSparseApplyAdagradV2(
+        var=var.handle,
+        accum=acc.handle,
+        lr=coefficients['lr_t'],
+        epsilon=coefficients['epsilon'],
+        grad=grad,
+        indices=indices,
         use_locking=self._use_locking)
 
   def get_config(self):
     config = super(Adagrad, self).get_config()
     config.update({
         'learning_rate': self._serialize_hyperparameter('learning_rate'),
-        'decay': self._serialize_hyperparameter('decay'),
+        'decay': self._initial_decay,
         'initial_accumulator_value': self._initial_accumulator_value,
         'epsilon': self.epsilon,
     })

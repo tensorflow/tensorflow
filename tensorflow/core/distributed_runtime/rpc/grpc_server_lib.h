@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
 
 namespace tensorflow {
 
@@ -135,6 +136,9 @@ class GrpcServer : public ServerInterface {
   // This method may only be called after `this->Init()` returns successfully.
   int bound_port() const { return bound_port_; }
 
+  // Returns hostname.
+  const string& host_name() const { return host_name_; }
+
   const ServerDef& server_def() const { return server_def_; }
   GrpcWorker* worker_impl() const { return worker_impl_.get(); }
   GrpcWorkerEnv* grpc_worker_env() const { return grpc_worker_env_.get(); }
@@ -181,6 +185,9 @@ class GrpcServer : public ServerInterface {
   AsyncServiceInterface* eager_service_ = nullptr;
   std::unique_ptr<Thread> eager_thread_ TF_GUARDED_BY(mu_);
   std::shared_ptr<WorkerSession> worker_session_;
+
+  // TensorFlow profiler service implementation.
+  std::unique_ptr<grpc::ProfilerService::Service> profiler_service_ = nullptr;
 
   // The overall server configuration.
   ServerDef server_def_ TF_GUARDED_BY(mu_);

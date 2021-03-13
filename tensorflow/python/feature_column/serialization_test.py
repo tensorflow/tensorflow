@@ -32,11 +32,11 @@ class FeatureColumnSerializationTest(test.TestCase):
     class NotAFeatureColumn(object):
       pass
 
-    with self.assertRaisesRegexp(ValueError, 'is not a FeatureColumn'):
+    with self.assertRaisesRegex(ValueError, 'is not a FeatureColumn'):
       serialization.serialize_feature_column(NotAFeatureColumn())
 
   def test_deserialize_invalid_config(self):
-    with self.assertRaisesRegexp(ValueError, 'Improper config format: {}'):
+    with self.assertRaisesRegex(ValueError, 'Improper config format: {}'):
       serialization.deserialize_feature_column({})
 
   def test_deserialize_config_missing_key(self):
@@ -52,12 +52,12 @@ class FeatureColumnSerializationTest(test.TestCase):
         'class_name': 'NumericColumn'
     }
 
-    with self.assertRaisesRegexp(
-        ValueError, 'Invalid config:.*expected keys.*dtype'):
+    with self.assertRaisesRegex(ValueError,
+                                'Invalid config:.*expected keys.*dtype'):
       serialization.deserialize_feature_column(config_missing_key)
 
   def test_deserialize_invalid_class(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Unknown feature_column_v2: NotExistingFeatureColumnClass'):
       serialization.deserialize_feature_column({
           'class_name': 'NotExistingFeatureColumnClass',

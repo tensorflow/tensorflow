@@ -12,12 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stddef.h>
+#include <stdint.h>
+
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
-#include "tensorflow/lite/string_util.h"
 
 namespace tflite {
 namespace ops {
@@ -36,13 +38,15 @@ enum KernelType {
 
 struct OpData {
   bool requires_broadcast;
-  bool has_rank_one_input_condition;
+  // True if input condition is scalar or input condition has rank one and
+  // matches the first dimension of other inputs.
+  bool has_low_rank_input_condition;
 };
 
 void* SelectInit(TfLiteContext* context, const char* buffer, size_t length) {
   auto* data = new OpData;
   data->requires_broadcast = false;
-  data->has_rank_one_input_condition = false;
+  data->has_low_rank_input_condition = false;
   return data;
 }
 
@@ -57,15 +61,22 @@ TfLiteStatus SelectPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* input_condition =
-      GetInput(context, node, kInputTensorCondition);
-  const TfLiteTensor* input_x = GetInput(context, node, kInputTensorX);
-  const TfLiteTensor* input_y = GetInput(context, node, kInputTensorY);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input_condition;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensorCondition,
+                                          &input_condition));
+  const TfLiteTensor* input_x;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorX, &input_x));
+  const TfLiteTensor* input_y;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorY, &input_y));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   // Input must be bool.
-  TF_LITE_ENSURE(context, input_condition->type == kTfLiteBool);
-  TF_LITE_ENSURE_EQ(context, input_x->type, input_y->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input_condition->type, kTfLiteBool);
+  TF_LITE_ENSURE_TYPES_EQ(context, input_x->type, input_y->type);
   output->type = input_x->type;
 
   bool same_shape = HaveSameShapes(input_condition, input_x) &&
@@ -74,10 +85,13 @@ TfLiteStatus SelectPrepare(TfLiteContext* context, TfLiteNode* node) {
   if (!same_shape) {
     switch (kernel_type) {
       case kVersionOne: {
-        data->has_rank_one_input_condition =
+        bool is_input_condition_scalar = NumDimensions(input_condition) == 0;
+        bool has_rank_one_input_condition =
             NumDimensions(input_condition) == 1 &&
             SizeOfDimension(input_condition, 0) == SizeOfDimension(input_x, 0);
-        TF_LITE_ENSURE(context, data->has_rank_one_input_condition);
+        data->has_low_rank_input_condition =
+            is_input_condition_scalar || has_rank_one_input_condition;
+        TF_LITE_ENSURE(context, data->has_low_rank_input_condition);
 
         output_size = TfLiteIntArrayCopy(input_x->dims);
 
@@ -104,11 +118,18 @@ TfLiteStatus SelectPrepare(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteStatus SelectEval(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
-  const TfLiteTensor* input_condition =
-      GetInput(context, node, kInputTensorCondition);
-  const TfLiteTensor* input_x = GetInput(context, node, kInputTensorX);
-  const TfLiteTensor* input_y = GetInput(context, node, kInputTensorY);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input_condition;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensorCondition,
+                                          &input_condition));
+  const TfLiteTensor* input_x;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorX, &input_x));
+  const TfLiteTensor* input_y;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorY, &input_y));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
 #define TF_LITE_SELECT(type, op)                                           \
   reference_ops::op(GetTensorShape(input_condition),                       \
@@ -149,7 +170,7 @@ TfLiteStatus SelectEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteError;                                                     \
   }
 
-  if (data->has_rank_one_input_condition) {
+  if (data->has_low_rank_input_condition) {
     TF_LITE_SWITCH(input_x->type, RankOneSelect);
   } else if (data->requires_broadcast) {
     TF_LITE_SWITCH(input_x->type, BroadcastSelect4DSlow);
@@ -168,7 +189,8 @@ TfLiteStatus SelectEval(TfLiteContext* context, TfLiteNode* node) {
 // true or the value of 'y' if false. There are valid condition input sizes:
 //
 // 1. Either the same shape (in which case the select is elementwise), or
-// 2. condition must be Rank 1 and match over the first dimension.
+// 2. condition must be Rank 1 and match over the first dimension, or
+// 3. condition is scalar
 TfLiteRegistration* Register_SELECT() {
   static TfLiteRegistration r = {select::SelectInit, select::SelectFree,
                                  select::SelectPrepare<select::kVersionOne>,

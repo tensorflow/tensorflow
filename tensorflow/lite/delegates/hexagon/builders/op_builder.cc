@@ -18,10 +18,59 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/hexagon/builders/op_factory.h"
+#include <farmhash.h>
 
 namespace tflite {
 namespace delegates {
 namespace hexagon {
+namespace {
+// Farmhash Fingerprint
+inline uint64_t CombineFingerprints(uint64_t l, uint64_t h) {
+  // Murmur-inspired hashing.
+  const uint64_t kMul = 0x9ddfea08eb382d69ULL;
+  uint64_t a = (l ^ h) * kMul;
+  a ^= (a >> 47);
+  uint64_t b = (h ^ a) * kMul;
+  b ^= (b >> 44);
+  b *= kMul;
+  b ^= (b >> 41);
+  b *= kMul;
+  return b;
+}
+
+inline uint64_t ComputeHash(const int shape[], const char* data,
+                            const int data_len) {
+  return CombineFingerprints(
+      ::util::Fingerprint64(data, data_len),
+      ::util::Fingerprint64(reinterpret_cast<const char*>(shape),
+                              sizeof(shape[0]) * 4));
+}
+
+inline uint64_t ComputeHash(const TfLiteTensor& tensor, const int shape[],
+                            int int8_to_uint8) {
+  auto data_hash = ComputeHash(shape, tensor.data.raw_const, tensor.bytes);
+  auto int8_to_uint8_hash = ::util::Fingerprint64(
+      reinterpret_cast<char*>(&int8_to_uint8), sizeof(int8_to_uint8));
+  return CombineFingerprints(data_hash, int8_to_uint8_hash);
+}
+
+int GetElementSize(TfLiteType type) {
+  switch (type) {
+    case kTfLiteFloat32:
+      return sizeof(float);
+    case kTfLiteBool:
+      return sizeof(bool);
+    case kTfLiteInt32:
+      return sizeof(int32_t);
+    case kTfLiteInt8:
+      return sizeof(int8_t);
+    case kTfLiteUInt8:
+      return sizeof(uint8_t);
+    default:
+      return sizeof(int8_t);
+  }
+}
+}  // namespace
 
 OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type,
                                                      TfLiteNode* node) {
@@ -110,14 +159,30 @@ OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type,
       return CreatePackBuilder(this, OP_QuantizedPack_8);
     case kTfLiteBuiltinStridedSlice:
       return CreateStridedSliceBuilder(this, OP_QuantizedStridedSlice_8);
+    case kTfLiteBuiltinSquaredDifference:
+      return CreateSquaredDifferenceOpBuilder(this, OP_QuantizedSub_8p8to8);
+    case kTfLiteBuiltinRsqrt:
+      return CreateRSqrtOpBuilder(this, OP_QuantizedSqrt_8);
     default:
       context_->ReportError(context_, "Op not supported: %d", op_type);
       return nullptr;
   }
 }
 
+OpBuilder* GraphBuilder::LookupConstData(uint64_t cache_key) {
+  auto lookup_result = cache_.find(cache_key);
+  if (lookup_result != cache_.end()) return lookup_result->second;
+  return nullptr;
+}
+
+void GraphBuilder::AddToCache(uint64_t cache_key, OpBuilder* value) {
+  cache_[cache_key] = value;
+}
+
 OpBuilder* GraphBuilder::AddConstNodeWithData(const int shape[], char* data,
                                               int data_size) {
+  auto cache_key = ComputeHash(shape, data, data_size);
+  if (auto lookup_result = LookupConstData(cache_key)) return lookup_result;
   builders_.emplace_back(new OpBuilder(this, OP_Const));
   builders_.back()->SetConstNode();
   builders_.back()->SetNodeId(builders_.size());
@@ -125,22 +190,36 @@ OpBuilder* GraphBuilder::AddConstNodeWithData(const int shape[], char* data,
       graph_id_, builders_.size(), shape[0], shape[1], shape[2], shape[3],
       reinterpret_cast<const uint8_t*>(data), data_size);
   if (error != 0) {
-    context_->ReportError(context_, "Error adding const node with shape id: %d",
-                          (int)builders_.size());
+    TF_LITE_KERNEL_LOG(context_, "Error adding const node with shape id: %d",
+                       static_cast<int>(builders_.size()));
     return nullptr;
   }
+  AddToCache(cache_key, builders_.back().get());
   return builders_.back().get();
 }
 
 OpBuilder* GraphBuilder::AddConstNodeWithData(int tensor_id,
                                               const TfLiteTensor& tensor,
                                               bool int8_to_uint8) {
+  // Fetch shape of tensor and pad 1's so it is always 4D.
+  int batch_size, height_size, width_size, depth_size;
+  GetDims(&batch_size, &height_size, &width_size, &depth_size, tensor.dims);
+  const int shape[] = {batch_size, height_size, width_size, depth_size};
+
+  auto cache_key = ComputeHash(tensor, shape, int8_to_uint8 ? 1 : 0);
+  if (auto lookup_result = LookupConstData(cache_key)) {
+    // If tensor is cached but with no id, that can happen when the same
+    // data is added from a constant value (not tensor). We can cache the data
+    // and reuse it.
+    // We assign the tensor to this cached const node before returning.
+    if (!HasTensor(tensor_id))
+      AddTensorWithID(tensor_id, lookup_result->GetID(), 0);
+    return lookup_result;
+  }
   builders_.emplace_back(new OpBuilder(this, OP_Const));
   const int node_id = builders_.size();
   builders_.back()->SetConstNode();
   builders_.back()->SetNodeId(node_id);
-  int batch_size, height_size, width_size, depth_size;
-  GetDims(&batch_size, &height_size, &width_size, &depth_size, tensor.dims);
   int error = hexagon_nn_->hexagon_nn_append_const_node(
       graph_id_, node_id, batch_size, height_size, width_size, depth_size,
       reinterpret_cast<const uint8_t*>(tensor.data.raw), tensor.bytes);
@@ -150,19 +229,26 @@ OpBuilder* GraphBuilder::AddConstNodeWithData(int tensor_id,
     return nullptr;
   }
   AddTensorWithID(tensor_id, node_id, 0);
+  // We need to return the builder with result, so we can't rely
+  // on builders_.back() as it can change while casting, so we hold pointer
+  // and update with value from casting if needed.
+  OpBuilder* result_builder = builders_.back().get();
   // Cast int8 to uint8 if requested.
   // This will add cast op to uint8 and update tensor map to point
   // to the casted tensor.
   if (int8_to_uint8 && tensor.type == kTfLiteInt8) {
-    AddCastOp(context_, OP_Quantized_CastInt8ToUInt8, tensor_id);
+    AddCastOp(context_, OP_Quantized_CastInt8ToUInt8, tensor_id,
+              &result_builder);
   }
-  return builders_.back().get();
+  AddToCache(cache_key, result_builder);
+  return result_builder;
 }
 
 // TODO(b/154604279): Support these casting ops in Hexagon op profiling (which
 // seems to key tensors on a single op, which may not be the case now).
 TfLiteStatus GraphBuilder::AddCastOp(TfLiteContext* context, int op_type,
-                                     int tensor_id) {
+                                     int tensor_id,
+                                     OpBuilder** cast_op_builder) {
   // Create a new OpBuilder for casting the tensor.
   OpBuilder* cast_builder = CreateCastBuilder(this, op_type);
   builders_.emplace_back(cast_builder);
@@ -177,6 +263,7 @@ TfLiteStatus GraphBuilder::AddCastOp(TfLiteContext* context, int op_type,
   TF_LITE_ENSURE_STATUS(cast_builder->RegisterOutputs(tensor_data, context));
 
   TfLiteIntArrayFree(tensor_data);
+  if (cast_op_builder != nullptr) *cast_op_builder = cast_builder;
   return kTfLiteOk;
 }
 
@@ -192,12 +279,12 @@ TfLiteStatus GraphBuilder::AddInputTensors(const TfLiteIntArray* input_tensors,
     const int tensor_id = input_tensors->data[i];
     const auto& tensor = context->tensors[tensor_id];
     if (tensor.allocation_type == kTfLiteMmapRo) continue;
-    input_op->AddOutput(tensor.dims);
+    input_op->AddOutput(tensor.dims, GetElementSize(tensor.type));
     AddTensorWithID(tensor_id, input_op->GetID(), num_inputs);
     // If tensor is of type int8, add an op to cast it to uint8.
     if (tensor.type == kTfLiteInt8) {
-      TF_LITE_ENSURE_STATUS(
-          AddCastOp(context, OP_Quantized_CastInt8ToUInt8, tensor_id));
+      TF_LITE_ENSURE_STATUS(AddCastOp(context, OP_Quantized_CastInt8ToUInt8,
+                                      tensor_id, /*cast_op_builder=*/nullptr));
     }
     ++num_inputs;
   }
@@ -215,8 +302,8 @@ TfLiteStatus GraphBuilder::AddOutputTensors(
     const auto& tensor = context->tensors[tensor_id];
     // If tensor is of type int8, add an op to cast it to uint8.
     if (tensor.type == kTfLiteInt8) {
-      TF_LITE_ENSURE_STATUS(
-          AddCastOp(context, OP_Quantized_CastUInt8ToInt8, tensor_id));
+      TF_LITE_ENSURE_STATUS(AddCastOp(context, OP_Quantized_CastUInt8ToInt8,
+                                      tensor_id, /*cast_op_builder=*/nullptr));
     }
     hexagon_output_ids.push_back(GetHexagonTensorId(tensor_id));
   }
@@ -231,9 +318,10 @@ TfLiteStatus GraphBuilder::AddOutputTensors(
   return kTfLiteOk;
 }
 
-OpBuilder::TensorID OpBuilder::AddOutput(const TfLiteIntArray* dims) {
+OpBuilder::TensorID OpBuilder::AddOutput(const TfLiteIntArray* dims,
+                                         int element_size) {
   op_node_.outputs.push_back(hexagon_nn_output());
-  op_node_.outputs.back().elementsize = sizeof(uint8_t);
+  op_node_.outputs.back().elementsize = element_size;
   op_node_.outputs.back().rank = 4;
   // TODO(karimnosseir): What is a good to estimate the max size ?
   int batch_size, height_size, width_size, depth_size;
@@ -277,6 +365,21 @@ const OpNode* OpBuilder::Build() {
     op_node_.inputs.back().output_idx = id.second;
   }
   return &op_node_;
+}
+
+TfLiteStatus OpBuilder::ComputeAndAddMinAndMax(TfLiteContext* context,
+                                               const TfLiteTensor& tensor) {
+  float tensor_min, tensor_max;
+  TF_LITE_ENSURE_STATUS(
+      ComputeMinAndMaxQuantValues(tensor, &tensor_min, &tensor_max));
+  auto* min_const_node = graph_builder_->AddConstNodeWithData(
+      kScalarShape, reinterpret_cast<char*>(&tensor_min), sizeof(tensor_min));
+  auto* max_const_node = graph_builder_->AddConstNodeWithData(
+      kScalarShape, reinterpret_cast<char*>(&tensor_max), sizeof(tensor_max));
+  AddInput(TensorID(min_const_node->GetID(), 0));
+  AddInput(TensorID(max_const_node->GetID(), 0));
+
+  return kTfLiteOk;
 }
 
 // Static

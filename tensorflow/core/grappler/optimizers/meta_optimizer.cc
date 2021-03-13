@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -88,11 +89,8 @@ int NumIterations(const RewriterConfig& cfg) {
 // Check if optimizer is allowed to run only once.
 bool IsRunOnceOptimizer(const string& name) {
   return name == "layout" || name == "memory_optimizer" ||
-         name == "loop_optimizer" || name == "auto_mixed_precision";
-}
-
-bool IsTFDataFunction(const FunctionDef& func) {
-  return func.attr().contains(data::kTFDataFunction);
+         name == "loop_optimizer" || name == "auto_mixed_precision" ||
+         name == "auto_mixed_precision_mkl";
 }
 
 // Creates a function library stub from a real function library: copy only
@@ -172,23 +170,36 @@ bool MemoryOptimizerEnabled(
 #define MK_OPT(NAME, VALUE) \
   if (optimizer == NAME) return std::unique_ptr<GraphOptimizer>(VALUE)
 
-bool MetaOptimizer::IsSingleThreadedExecutor() const {
-  return config_proto_.experimental().executor_type() ==
-         "SINGLE_THREADED_EXECUTOR";
+bool MetaOptimizer::LowerControlFlow() const {
+  if (config_proto_.experimental().executor_type() ==
+      "SINGLE_THREADED_EXECUTOR")
+    return false;
+
+  if (config_proto_.experimental().use_tfrt()) return false;
+
+  return true;
 }
 
 std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
     const string& optimizer) const {
   MK_OPT("pruning", new ModelPruner());
-  MK_OPT("function", new FunctionOptimizer(
-                         cfg_.function_optimization(),
-                         /*lower_control_flow=*/!IsSingleThreadedExecutor()));
-  MK_OPT("constfold", new ConstantFolding(cpu_device_));
+  MK_OPT("function",
+         new FunctionOptimizer(cfg_.function_optimization(),
+                               /*lower_control_flow=*/LowerControlFlow()));
+  MK_OPT("constfold",
+         new ConstantFolding(
+             cpu_device_,
+             cfg_.experimental_disable_compressed_tensor_optimization(),
+             !cfg_.experimental_disable_folding_quantization_emulation()));
   MK_OPT("shape", new ShapeOptimizer());
   MK_OPT("remap", new Remapper(cfg_.remapping()));
-  MK_OPT("layout", new GenericLayoutOptimizer());
+  MK_OPT("layout", new GenericLayoutOptimizer(
+                       /*optimization level*/ cfg_.layout_optimizer(),
+                       /*CPU layout conversion*/ cfg_.cpu_layout_conversion()));
   MK_OPT("auto_mixed_precision",
-         new AutoMixedPrecision(cfg_.auto_mixed_precision()));
+         new AutoMixedPrecision(AutoMixedPrecisionMode::CUDA));
+  MK_OPT("auto_mixed_precision_mkl",
+         new AutoMixedPrecision(AutoMixedPrecisionMode::MKL));
   MK_OPT("memory", new MemoryOptimizer(RewriterConfig::MANUAL));
   MK_OPT("common_subgraph_elimination",
          new CommonSubgraphElimination(cfg_.common_subgraph_elimination()));
@@ -230,7 +241,7 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.function_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<FunctionOptimizer>(
         cfg_.function_optimization(),
-        /*lower_control_flow=*/!IsSingleThreadedExecutor()));
+        /*lower_control_flow=*/LowerControlFlow()));
   }
   if (cfg_.common_subgraph_elimination() != RewriterConfig::OFF &&
       cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
@@ -241,15 +252,21 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(MakeUnique<DebugStripper>());
   }
   if (cfg_.constant_folding() != RewriterConfig::OFF) {
-    optimizers->push_back(
-        MakeUnique<ConstantFolding>(cfg_.constant_folding(), cpu_device_));
+    optimizers->push_back(MakeUnique<ConstantFolding>(
+        cfg_.constant_folding(), cpu_device_,
+        cfg_.experimental_disable_compressed_tensor_optimization(),
+        !cfg_.experimental_disable_folding_quantization_emulation()));
   }
   if (cfg_.shape_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<ShapeOptimizer>());
   }
   if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision())) {
     optimizers->push_back(
-        MakeUnique<AutoMixedPrecision>(cfg_.auto_mixed_precision()));
+        MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::CUDA));
+  }
+  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_mkl())) {
+    optimizers->push_back(
+        MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::MKL));
   }
   if (cfg_.pin_to_host_optimization() == RewriterConfig::ON) {
     optimizers->push_back(MakeUnique<PinToHostOptimizer>());
@@ -259,7 +276,9 @@ Status MetaOptimizer::InitializeOptimizers(
         MakeUnique<ArithmeticOptimizer>(cfg_.arithmetic_optimization()));
   }
   if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<GenericLayoutOptimizer>());
+    optimizers->push_back(MakeUnique<GenericLayoutOptimizer>(
+        /*optimization level*/ cfg_.layout_optimizer(),
+        /*CPU layout conversion*/ cfg_.cpu_layout_conversion()));
   }
   if (cfg_.remapping() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
@@ -395,6 +414,8 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
     return Status::OK();
   }
 
+  const uint64 start_us = Env::Default()->NowMicros();
+
   std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
   if (cfg_.optimizers().empty()) {
     TF_RETURN_IF_ERROR(InitializeOptimizers(&optimizers));
@@ -524,6 +545,9 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
     DCHECK_EQ(optimized_graph->versions().producer(), original_producer);
   }
 
+  const uint64 end_us = Env::Default()->NowMicros();
+  metrics::UpdateGrapplerPassTime("OptimizeMainGraph", end_us - start_us);
+
   return Status::OK();
 }
 
@@ -594,8 +618,67 @@ Status MetaOptimizer::RunOptimizer(
   return Status::OK();
 }
 
+// Propagates `_tf_data_function` attributes from functions to their callees.
+void PropagateTFDataAttrs(const FunctionLibraryDefinition& flib,
+                          FunctionDefLibrary& fdef_lib) {
+  // Collect functions that need the attribute in this set.
+  absl::flat_hash_set<std::string> tf_data_functions;
+  std::function<void(const std::string&)> collect_tf_data_functions_dfs =
+      [&](const std::string& func_name) -> void {
+    const FunctionDef* func_def = flib.Find(func_name);
+    // Skip functions that are not reachable from the optimized graph.
+    if (func_def == nullptr) return;
+
+    // Return if we already found and added this function.
+    if (tf_data_functions.contains(func_name)) return;
+
+    // We only get here if the function is (directly or indirectly) called from
+    // a tf.data function, so add it to the set.
+    tf_data_functions.insert(func_name);
+
+    // Proceed with DFS for functions called from current function.
+    for (const NodeDef& node : func_def->node_def()) {
+      if (flib.Contains(node.op())) {
+        // This is a function call node.
+        collect_tf_data_functions_dfs(node.op());
+      }
+      // Check if there are functions in attributes.
+      for (const auto& attr : node.attr()) {
+        const AttrValue& attr_value = attr.second;
+        if (attr_value.has_func()) {
+          collect_tf_data_functions_dfs(attr_value.func().name());
+        }
+        if (attr_value.has_list()) {
+          for (const auto& func : attr_value.list().func()) {
+            collect_tf_data_functions_dfs(func.name());
+          }
+        }
+      }
+    }
+  };
+  // Perform DFS for all tf.data functions in `fdef_lib`.
+  for (const auto& func_def : fdef_lib.function()) {
+    const std::string& func_name = func_def.signature().name();
+    if (data::IsTFDataFunction(func_def))
+      collect_tf_data_functions_dfs(func_name);
+  }
+  // Set attribute for tf.data functions. We cannot do this in the DFS directly
+  // because `FunctionLibraryDefinition` does not seem to provide mutable access
+  // to a `FunctionDef`.
+  for (FunctionDef& func_def : *fdef_lib.mutable_function()) {
+    const std::string& func_name = func_def.signature().name();
+    if (tf_data_functions.contains(func_name) &&
+        !data::IsTFDataFunction(func_def)) {
+      VLOG(2) << "Marking " << func_name << " as tf.data function";
+      (*func_def.mutable_attr())[data::kTFDataFunction].set_b(true);
+    }
+  }
+}
+
 Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
                                           GraphDef* optimized_graph) {
+  const uint64 start_us = Env::Default()->NowMicros();
+
   VLOG(1) << "Starting optimization for grappler item: " << item.id;
   optimization_results_.clear();
 
@@ -613,13 +696,13 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
   // remove all the unreachable functions.
   // TODO(ezhulenev): Construct reachable function library definition directly
   // from the proto without constructing temporary FunctionLibraryDefinition.
+  int old_library_size = item.graph.library().function_size();
   *item.graph.mutable_library() = minimized_flib(item.graph).ToProto();
+  int new_library_size = item.graph.library().function_size();
 
   VLOG(1) << absl::Substitute(
       "Deleted $0 unreachable functions from the graph (library size = $1)",
-      item.graph.library().function_size() -
-          item.graph.library().function_size(),
-      item.graph.library().function_size());
+      old_library_size - new_library_size, new_library_size);
 
   // Save a few small fields from item before we move it.
   bool optimize_function_library =
@@ -655,18 +738,41 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
     find_differentiable_functions(function.node_def());
   }
 
-  // Find functions that are formed by XLA and will be compiled later. We do it
-  // by looking for a function attribute in XlaLaunch ops. Grappler rewrites
-  // potentially can add nodes that are not supported by XLA, so we choose to
-  // skip such functions when we optimize function library.
+  // Find functions that will be compiled by XLA later
+  // We do it by looking for XlaLaunch ops that call functions,
+  // then depth first search down those functions to find transitive functions.
+  // Grappler rewrites can potentially add nodes that are
+  // not supported by XLA, so we choose to skip such functions when we optimize
+  // the function library.
   absl::flat_hash_set<string> xla_compiled_functions;
+  std::function<void(const string&)> find_all_functions;
+  find_all_functions = [&](const string& func) -> void {
+    // Ignore call cycles in the graph
+    if (xla_compiled_functions.contains(func)) return;
+    // Find func in the flib
+    const FunctionDef* func_def = flib.Find(func);
+    CHECK(func_def) << "not found: " << func;
+    // Mark function to be ignored by grappler
+    xla_compiled_functions.insert(func);
+    // Depth first search through the func for transitively called funcs
+    for (const NodeDef& node : func_def->node_def()) {
+      for (const auto attr : node.attr()) {
+        const AttrValue& attr_value = attr.second;
+        if (attr_value.has_func()) {
+          find_all_functions(attr_value.func().name());
+        }
+      }
+    }
+  };
 
-  const auto find_xla_compiled_functions = [&](const NodeDefs& nodes) -> void {
+  auto find_xla_compiled_functions = [&](const NodeDefs& nodes) -> void {
     NameAttrList function;
     for (const NodeDef& node : nodes) {
+      // Look only for XlaLaunch nodes that call a function
       if (!IsXlaLaunch(node)) continue;
       if (!GetNodeAttr(node, "function", &function).ok()) continue;
-      xla_compiled_functions.insert(function.name());
+      // Find all transitively called functions
+      find_all_functions(function.name());
     }
   };
 
@@ -676,6 +782,8 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
   for (const FunctionDef& function : optimized_graph->library().function()) {
     find_xla_compiled_functions(function.node_def());
   }
+  // Propagate `_tf_data_function` attributes from functions to their callees.
+  PropagateTFDataAttrs(flib, *optimized_graph->mutable_library());
 
   // Optimize each function only once.
   absl::flat_hash_set<string> optimized_funcs;
@@ -701,8 +809,9 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
       // the function optimizer, before we can optimize function body.
       if (IsParametrized(func)) continue;
 
-      // Skip tf.data functions as they are optimized by tf.data meta optimizer.
-      if (IsTFDataFunction(func)) continue;
+      // Skip tf.data functions as they are optimized by tf.data meta optimizer
+      // and in function instantiation.
+      if (data::IsTFDataFunction(func)) continue;
 
       VLOG(3) << "Optimize function: function=" << func_name << " ["
               << function_idx++ << " of "
@@ -802,17 +911,28 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
                         reinterpret_cast<uintptr_t>(optimized_graph)),
         *optimized_graph);
   }
+
+  const uint64 end_us = Env::Default()->NowMicros();
+  metrics::UpdateGrapplerPassTime("*", end_us - start_us);
+
   return Status::OK();
 }
 
-void MetaOptimizer::PrintResult() {
+string MetaOptimizer::GetResultString() const {
+  std::string result_string;
   for (const GraphOptimizationResult& graph_result : optimization_results_) {
-    LOG(INFO) << "Optimization results for grappler item: " << graph_result.id;
+    absl::StrAppend(&result_string,
+                    "Optimization results for grappler item: ", graph_result.id,
+                    "\n");
     for (const OptimizerResult& result : graph_result.results) {
-      LOG(INFO) << "  " << result.optimizer_name << ": " << result.message;
+      absl::StrAppend(&result_string, "  ", result.optimizer_name, ": ",
+                      result.message, "\n");
     }
   }
+  return result_string;
 }
+
+void MetaOptimizer::PrintResult() { LOG(INFO) << GetResultString(); }
 
 bool MetaOptimizerEnabled(const ConfigProto& cfg) {
   const auto& rewrite_cfg = cfg.graph_options().rewrite_options();
@@ -835,6 +955,7 @@ bool MetaOptimizerEnabled(const ConfigProto& cfg) {
          rewrite_cfg.scoped_allocator_optimization() == RewriterConfig::ON ||
          rewrite_cfg.pin_to_host_optimization() == RewriterConfig::ON ||
          AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision()) ||
+         AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision_mkl()) ||
          !rewrite_cfg.optimizers().empty() ||
          !rewrite_cfg.custom_optimizers().empty();
 }
@@ -899,9 +1020,12 @@ Status OptimizeGraph(
     for (const FunctionDef& fdef : out_graph.library().function()) {
       const string& func_name = fdef.signature().name();
       if (flib->Contains(func_name)) {
-        TF_RETURN_IF_ERROR(flib->ReplaceFunction(func_name, fdef));
+        StackTracesMap stack_traces = flib->GetStackTraces(func_name);
+        TF_RETURN_IF_ERROR(
+            flib->ReplaceFunction(func_name, fdef, stack_traces));
       } else {
-        TF_RETURN_IF_ERROR(flib->AddFunctionDef(fdef));
+        TF_RETURN_IF_ERROR(
+            flib->AddFunctionDef(fdef, flib->GetStackTraces(func_name)));
       }
     }
   }

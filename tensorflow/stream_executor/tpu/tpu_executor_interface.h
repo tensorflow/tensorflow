@@ -16,14 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_EXECUTOR_INTERFACE_H_
 #define TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_EXECUTOR_INTERFACE_H_
 
-#include "tensorflow/core/platform/errors.h"
+#include <memory>
+
 #include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/event.h"
-#include "tensorflow/stream_executor/stream.h"
-#include "tensorflow/stream_executor/stream_executor.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
-#include "tensorflow/stream_executor/timer.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
+#include "tensorflow/stream_executor/tpu/tpu_topology.h"
 
 namespace tpu {
 class TpuCore;
@@ -33,11 +32,10 @@ namespace tensorflow {
 namespace tpu {
 
 class TpuExecutorInterface
-    : public ::stream_executor::internal::StreamExecutorInterface {
+    : public stream_executor::internal::StreamExecutorInterface {
  public:
-  using Status = ::stream_executor::port::Status;
   template <typename T>
-  using StatusOr = ::stream_executor::port::StatusOr<T>;
+  using StatusOr = stream_executor::port::StatusOr<T>;
 
   class TemporaryDeviceMemory {
    public:
@@ -56,6 +54,17 @@ class TpuExecutorInterface
   }
 
   virtual TpuPlatformInterface& platform() { LOG(FATAL) << "Unimplemented."; }
+
+  virtual TpuCoreLocationExternal GetCoreLocationExternal() const {
+    LOG(FATAL) << "Unimplemented.";
+  }
+
+  virtual Status UnloadAllPrograms() { LOG(FATAL) << "Unimplemented."; }
+
+  virtual Status EnqueueCompactionOnStreamForHbm(
+      stream_executor::Stream* compaction_stream) {
+    LOG(FATAL) << "Unimplemented.";
+  }
 };
 
 }  // namespace tpu

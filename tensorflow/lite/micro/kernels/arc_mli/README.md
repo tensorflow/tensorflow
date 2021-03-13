@@ -1,5 +1,12 @@
 # EmbARC MLI Library Based Optimizations of TensorFlow Lite Micro Kernels for ARC Platforms.
 
+## Maintainers
+
+*   [dzakhar](https://github.com/dzakhar)
+*   [JaccovG](https://github.com/JaccovG)
+
+## Introduction
+
 This folder contains kernel implementations which use optimized
 [embARC MLI Library](https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli).
 It allows acceleration of inference operations which use int8 (asymmetric
@@ -14,16 +21,16 @@ ARC specific target implies usage of embARC MLI.
 For example:
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile TARGET=arc_emsdp generate_person_detection_int8_make_project
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=arc_emsdp OPTIMIZED_KERNEL_DIR=arc_mli generate_person_detection_int8_make_project
 ```
 
 In case MLI implementation can’t be used, kernels in this folder fallback to
 TFLM reference implementations. For applications which may not benefit from MLI
 library, projects can be generated without these implementations by adding
-`TAGS=no_arc_mli` in the command line, which can reduce overall code size:
+`ARC_TAGS=no_arc_mli` in the command line, which can reduce overall code size:
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile TARGET=arc_emsdp TAGS=no_arc_mli generate_person_detection_int8_make_project
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=arc_emsdp OPTIMIZED_KERNEL_DIR=arc_mli ARC_TAGS=no_arc_mli generate_person_detection_int8_make_project
 ```
 
 For ARC EM SDP board, a pre-compiled MLI library is downloaded and used in the
@@ -32,7 +39,7 @@ and compiled during project generation phase. To build library from sources for
 ARC EM SDP platform, add `BUILD_ARC_MLI=true` option to make command:
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile TARGET=arc_emsdp BUILD_ARC_MLI=true generate_person_detection_int8_make_project
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=arc_emsdp OPTIMIZED_KERNEL_DIR=arc_mli BUILD_ARC_MLI=true generate_person_detection_int8_make_project
 ```
 
 If an application exclusively uses accelerated MLI kernel implementations, one
@@ -58,7 +65,7 @@ quantization only, `dilation_ratio==1` 3. Average Pooling 4. Max Pooling 5.
 Fully Connected
 
 Currently only
-[/tensorflow/lite/micro/examples/person_detection_experimental](/tensorflow/lite/micro/examples/person_detection_experimental)
+[/tensorflow/lite/micro/examples/person_detection](/tensorflow/lite/micro/examples/person_detection)
 is quantized using this specification. Other examples can be executed on
 ARC-based targets, but will only use reference kernels.
 

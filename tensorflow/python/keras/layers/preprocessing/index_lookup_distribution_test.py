@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for keras.layers.preprocessing.normalization."""
+"""Distribution tests for keras.layers.preprocessing.index_lookup."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,12 +22,13 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras.distribute.strategy_combinations import all_strategies
 from tensorflow.python.keras.layers.preprocessing import index_lookup
 from tensorflow.python.keras.layers.preprocessing import index_lookup_v1
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
@@ -41,10 +42,10 @@ def get_layer_class():
     return index_lookup_v1.IndexLookup
 
 
-@combinations.generate(
+@ds_combinations.generate(
     combinations.combine(
-        distribution=strategy_combinations.all_strategies,
-        mode=["eager", "graph"]))
+        distribution=all_strategies,
+        mode=["eager"]))  # Eager-only, no graph: b/158793009
 class IndexLookupDistributionTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
@@ -74,6 +75,7 @@ class IndexLookupDistributionTest(
       layer.adapt(vocab_dataset)
       int_data = layer(input_data)
       model = keras.Model(inputs=input_data, outputs=int_data)
+    model.compile(loss="mse")
     output_dataset = model.predict(input_dataset)
     self.assertAllEqual(expected_output, output_dataset)
 

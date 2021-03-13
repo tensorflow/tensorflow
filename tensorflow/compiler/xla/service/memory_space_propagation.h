@@ -31,12 +31,11 @@ class MemorySpacePropagation : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  // Given the caller shape (operand or output) and its corresponding
-  // insturction in the fused computation (parameter or root), propagates the
-  // memory space to all the subshapes in the callee side. Returns true if the
-  // module is modified.
-  bool PropagateSubshapes(const Shape& caller_shape,
-                          const HloInstruction* callee_instruction) const;
+  // Given the shape index (operand or output) and its corresponding instruction
+  // in the fused computation (parameter or root), propagates the memory space
+  // in the callee side. Returns true if the module is modified.
+  bool Propagate(ShapeIndexView index, const HloInstruction* callee_instruction,
+                 int64 memory_space) const;
 
   std::unique_ptr<HloDataflowAnalysis> dataflow_analysis_;
 };

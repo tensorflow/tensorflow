@@ -98,6 +98,7 @@ namespace xla {
   V(kIsFinite, "is-finite", 1)                                         \
   V(kLog, "log", 1)                                                    \
   V(kLog1p, "log-plus-one", 1)                                         \
+  V(kLogistic, "logistic", 1)                                          \
   V(kAnd, "and", 2)                                                    \
   V(kNot, "not", 1)                                                    \
   V(kOr, "or", 2)                                                      \
@@ -118,10 +119,11 @@ namespace xla {
   V(kRecvDone, "recv-done", 1)                                         \
   V(kReduce, "reduce", kHloOpcodeIsVariadic)                           \
   V(kReducePrecision, "reduce-precision", 1)                           \
-  V(kReduceWindow, "reduce-window", 2)                                 \
+  V(kReduceWindow, "reduce-window", kHloOpcodeIsVariadic)              \
   V(kRemainder, "remainder", 2)                                        \
   V(kReplicaId, "replica-id", 0)                                       \
   V(kReshape, "reshape", 1)                                            \
+  V(kDynamicReshape, "dynamic-reshape", kHloOpcodeIsVariadic)          \
   V(kReverse, "reverse", 1)                                            \
   V(kRng, "rng", kHloOpcodeIsVariadic)                                 \
   V(kRngGetAndUpdateState, "rng-get-and-update-state", 0)              \

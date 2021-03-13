@@ -53,16 +53,16 @@ cudaError_t GetSymbolNotFoundError() {
 // A bunch of new symbols were introduced in version 10
 #if CUDART_VERSION < 10000
 #include "tensorflow/stream_executor/cuda/cuda_runtime_9_0.inc"
-#elif CUDART_VERSION == 10000
+#elif CUDART_VERSION < 10010
 #include "tensorflow/stream_executor/cuda/cuda_runtime_10_0.inc"
-#elif CUDART_VERSION == 10010
+#elif CUDART_VERSION < 10020
 #include "tensorflow/stream_executor/cuda/cuda_runtime_10_1.inc"
-#elif CUDART_VERSION == 10020
+#elif CUDART_VERSION < 11000
 #include "tensorflow/stream_executor/cuda/cuda_runtime_10_2.inc"
-#elif CUDART_VERSION == 11000
+#elif CUDART_VERSION < 11020
 #include "tensorflow/stream_executor/cuda/cuda_runtime_11_0.inc"
 #else
-#error "We have no wrapper for this version."
+#include "tensorflow/stream_executor/cuda/cuda_runtime_11_2.inc"
 #endif
 #undef __dv
 #undef __CUDA_DEPRECATED

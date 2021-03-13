@@ -24,23 +24,26 @@ namespace tflite {
 
 // List of buckets currently recorded by this class. Each type keeps a list of
 // allocated information during model initialization.
+// TODO(b/169834511): Add tracking for scratch buffer allocations.
 enum class RecordedAllocationType {
-  kTfLiteTensorArray,
-  kTfLiteTensorArrayQuantizationData,
+  kTfLiteEvalTensorData,
+  kPersistentTfLiteTensorData,
+  kPersistentTfLiteTensorQuantizationData,
+  kPersistentBufferData,
+  kTfLiteTensorVariableBufferData,
   kNodeAndRegistrationArray,
-  kOpData
+  kOpData,
 };
 
 // Container for holding information about allocation recordings by a given
 // type. Each recording contains the number of bytes requested, the actual bytes
 // allocated (can defer from requested by alignment), and the number of items
 // allocated.
-typedef struct RecordedAllocation {
-  RecordedAllocation() : requested_bytes(0), used_bytes(0), count(0) {}
+struct RecordedAllocation {
   size_t requested_bytes;
   size_t used_bytes;
   size_t count;
-} RecordedAllocation;
+};
 
 // Utility subclass of MicroAllocator that records all allocations
 // inside the arena. A summary of allocations can be logged through the
@@ -65,22 +68,32 @@ class RecordingMicroAllocator : public MicroAllocator {
   // defined in RecordedAllocationType.
   void PrintAllocations() const;
 
+  void* AllocatePersistentBuffer(size_t bytes) override;
+
  protected:
-  TfLiteStatus AllocateTfLiteTensorArray(TfLiteContext* context,
-                                         const SubGraph* subgraph) override;
-  TfLiteStatus PopulateTfLiteTensorArrayFromFlatbuffer(
-      const Model* model, TfLiteContext* context,
-      const SubGraph* subgraph) override;
   TfLiteStatus AllocateNodeAndRegistrations(
-      const SubGraph* subgraph,
+      const Model* model,
       NodeAndRegistration** node_and_registrations) override;
   TfLiteStatus PrepareNodeAndRegistrationDataFromFlatbuffer(
-      const Model* model, const SubGraph* subgraph,
-      const MicroOpResolver& op_resolver,
+      const Model* model, const MicroOpResolver& op_resolver,
       NodeAndRegistration* node_and_registrations) override;
-
-  void SnapshotAllocationUsage(RecordedAllocation& recorded_allocation);
-  void RecordAllocationUsage(RecordedAllocation& recorded_allocation);
+  TfLiteStatus AllocateTfLiteEvalTensors(
+      const Model* model, TfLiteEvalTensor** eval_tensors) override;
+  TfLiteStatus AllocateVariables(const SubGraph* subgraph,
+                                 TfLiteEvalTensor* eval_tensors) override;
+  // TODO(b/162311891): Once all kernels have been updated to the new API drop
+  // this method. It is only used to record TfLiteTensor persistent allocations.
+  TfLiteTensor* AllocatePersistentTfLiteTensorInternal(
+      const Model* model, TfLiteEvalTensor* eval_tensors,
+      int tensor_index) override;
+  // TODO(b/162311891): Once all kernels have been updated to the new API drop
+  // this function since all allocations for quantized data will take place in
+  // the temp section.
+  TfLiteStatus PopulateTfLiteTensorFromFlatbuffer(const Model* model,
+                                                  const SubGraph* subgraph,
+                                                  TfLiteTensor* tensor,
+                                                  int tensor_index,
+                                                  bool allocate_temp) override;
 
  private:
   RecordingMicroAllocator(RecordingSimpleMemoryAllocator* memory_allocator,
@@ -90,12 +103,19 @@ class RecordingMicroAllocator : public MicroAllocator {
                                const char* allocation_name,
                                const char* allocation_description) const;
 
+  RecordedAllocation SnapshotAllocationUsage() const;
+  void RecordAllocationUsage(const RecordedAllocation& snapshotted_allocation,
+                             RecordedAllocation& recorded_allocation);
+
   const RecordingSimpleMemoryAllocator* recording_memory_allocator_;
 
-  RecordedAllocation recorded_tflite_tensor_array_data_;
-  RecordedAllocation recorded_tflite_tensor_array_quantization_data_;
-  RecordedAllocation recorded_node_and_registration_array_data_;
-  RecordedAllocation recorded_op_data_;
+  RecordedAllocation recorded_tflite_eval_tensor_data_ = {};
+  RecordedAllocation recorded_persistent_tflite_tensor_data_ = {};
+  RecordedAllocation recorded_persistent_tflite_tensor_quantization_data_ = {};
+  RecordedAllocation recorded_persistent_buffer_data_ = {};
+  RecordedAllocation recorded_tflite_tensor_variable_buffer_data_ = {};
+  RecordedAllocation recorded_node_and_registration_array_data_ = {};
+  RecordedAllocation recorded_op_data_ = {};
 
   TF_LITE_REMOVE_VIRTUAL_DELETE
 };

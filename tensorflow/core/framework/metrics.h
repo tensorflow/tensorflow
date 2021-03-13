@@ -56,7 +56,11 @@ monitoring::CounterCell* GetTFDataElementsCounter(const string& name);
 // Records the number of bytes fetched from tf.data.Dataset iterator.
 void RecordTFDataBytesFetched(int64 num_bytes);
 
-// Records the time spent in ItertatorResource::GetNext() in microseconds.
+// Records the number of times tf.data experiment is applied to input pipelines.
+void RecordTFDataExperiment(const string& name);
+
+// Records the time (in microseconds) spent in a single invocation of
+// `ItertatorResource::GetNext()`.
 void RecordTFDataGetNextDuration(uint64 duration_us);
 
 // Records the number of times each tf.data fingerprint is used
@@ -66,11 +70,27 @@ void RecordTFDataGetNextDuration(uint64 duration_us);
 // created using GraphHash().
 void RecordTFDataFingerprint(const string& name);
 
+// Records the time (in microseconds) during which `IteratorResource` was busy
+// processing at least one `GetNext()` request.
+void RecordTFDataIteratorBusy(uint64 duration_us);
+
+// Records the time (in microseconds) between `IteratorResource` receiving the
+// first `GetNext()` request and responding to the last `GetNext()` request.
+void RecordTFDataIteratorLifetime(uint64 duration_us);
+
 // Records the number of independent graph changes resulting from the
 // application of a tf.data optimization.
 //
 // The `name` argument identifies the optimization (e.g. "noop_elimination").
 void RecordTFDataOptimization(const string& name, int64 num_changes);
+
+// Records that a tf.data service worker has been created.
+void RecordTFDataServiceWorkerCreated();
+
+// Records the file name read by a tf.data Dataset.
+//
+// The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
+void RecordTFDataFilename(const string& name, const string& filename);
 
 // Records parsing of dense tensor features.
 void RecordParseDenseFeature(int64 num_features);
@@ -85,7 +105,11 @@ void RecordParseRaggedFeature(int64 num_features);
 void RecordGraphInputTensors(const size_t size);
 void RecordGraphOutputTensors(const size_t size);
 
+// Records the number of cores requested by graphs with XLA SPMD enabled.
+void RecordTPUXlaSpmdCoresPerReplica(int64 cores_per_replica);
+
 void UpdateGraphExecTime(const uint64 running_time_usecs);
+void UpdateGraphPendingQueueLength(uint64 len);
 
 // Records that one output of an op of type `op_name` was unused.
 void RecordUnusedOutput(const string& op_name);
@@ -113,6 +137,9 @@ void UpdateGrapplerPassTime(const string& pass_name,
 
 // Updates the metrics stored about time XLA spents compiling graphs.
 void UpdateXlaCompilationTime(const uint64 compilation_time_usecs);
+
+// Updates the metrics stored about time BFC allocator spents during delay.
+void UpdateBfcAllocatorDelayTime(const uint64 delay_usecs);
 
 // Increment the number of jobs that failed during import to mlir.
 void IncrementMLIRImportFailureCount();

@@ -1,12 +1,14 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_libtpu",
     "tf_cc_binary",
     "tf_cc_test",
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library_cc",
+    "tf_proto_library",
 )
 load(
     "//tensorflow/compiler/xla:xla.bzl",
@@ -18,12 +20,13 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "xla_service_proto",
     srcs = ["xla_service.proto"],
     has_services = 1,
     cc_api_version = 2,
     cc_grpc_version = 1,
+    create_service = True,
     protodeps = [
         "//tensorflow/compiler/xla:xla_proto",
     ],
@@ -49,13 +52,15 @@ cc_library(
     srcs = ["grpc_service_main.cc"],
     deps = [
         ":grpc_service",
-        "//tensorflow/compiler/xla/service:cpu_plugin",
+        "@com_google_absl//absl/strings:str_format",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/strings:str_format",
         tf_grpc_cc_dependency(),
-    ],
+    ] + if_libtpu(
+        if_false = ["//tensorflow/compiler/xla/service:cpu_plugin"],
+        if_true = [],
+    ),
 )
 
 tf_cc_binary(
@@ -98,3 +103,19 @@ cc_library(
         tf_grpc_cc_dependency(),
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "xla_py_pb2",
+#     has_services = True,
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":xla_service_proto"],
+# )
+#
+# xla_py_grpc_library(
+#     name = "xla_py_pb2_grpc",
+#     srcs = [":xla_service_proto"],
+#     deps = [":xla_py_pb2"],
+# )
+# copybara:uncomment_end

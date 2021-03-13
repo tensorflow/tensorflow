@@ -48,18 +48,26 @@ enum class GradientAccumulationSupport {
 // Returns the number of optimization parameter vectors used by the optimization
 // algorithm, excluding the weights themselves and assuming no gradient
 // accumulation.
-Status GetBaseAuxiliaryParameterCount(OptimizationAlgorithm alg, int *count);
+Status GetBaseAuxiliaryParameterCount(const OptimizationParameters &params,
+                                      int *count);
 
 // Returns whether (and how) an optimization algorithm supports gradient
 // accumulation.
-Status GetGradientAccumulationSupport(OptimizationAlgorithm alg,
+Status GetGradientAccumulationSupport(const OptimizationParameters &params,
                                       GradientAccumulationSupport *support);
+
+// Returns whether both the given set of optimization parameters has gradient
+// accumulation turned on and that the algorithm used supports it or should
+// ignore that setting. Returns an error if gradient accumulation is enabled and
+// the algorithm does not support it.
+Status UseGradientAccumulation(const OptimizationParameters &params,
+                               bool *use_gradient_accumulation);
 
 // Returns the parameter specifications for the optimization algorithm (the main
 // parameters first, followed by any auxiliary parameters such as Adagrad
 // accumulators).
 Status GetOptimizationAlgorithmStateVariables(
-    OptimizationAlgorithm alg, bool use_gradient_accumulation,
+    const OptimizationParameters &params,
     std::vector<StateVariableSpecification> *state_variables);
 
 // Maximum value of auxiliar_parameter_count for any optimization algorithm.
@@ -85,43 +93,18 @@ inline float GradientAccumulatorInitialValue() {
   return absl::bit_cast<float, uint32>(1);
 }
 
-// Returns whether an optimization algorithm is only supported internally.
-// Returns an error if the algorithm is not recognized at all.
-Status IsOptimizationAlgorithmInternal(OptimizationAlgorithm alg,
-                                       bool *internal);
-
 // Generic shape function for per-optimization-algorithm load ops.
 class LoadOpShapeFunction {
  public:
-  // Constructor.
-  LoadOpShapeFunction(OptimizationAlgorithm alg, bool is_debug_op);
-
   // Computes resulting shape and does parameter checking.
   Status operator()(shape_inference::InferenceContext *c) const;
-
- private:
-  // Optimization algorithm.
-  const OptimizationAlgorithm alg_;
-
-  // Whether this op has an extra parameter for the gradient accumulators.
-  const bool is_debug_op_;
 };
 
 // Generic shape function for per-optimization-algorithm retrieve ops.
 class RetrieveOpShapeFunction {
  public:
-  // Constructor.
-  RetrieveOpShapeFunction(OptimizationAlgorithm alg, bool is_debug_op);
-
   // Computes resulting shape and does parameter checking.
   Status operator()(shape_inference::InferenceContext *c) const;
-
- private:
-  // Optimization algorithm.
-  const OptimizationAlgorithm alg_;
-
-  // Whether this op has an extra parameter for the gradient accumulators.
-  const bool is_debug_op_;
 };
 
 }  // namespace tpu

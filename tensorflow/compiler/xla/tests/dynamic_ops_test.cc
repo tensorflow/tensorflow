@@ -750,9 +750,7 @@ XLA_TEST_F(HloTestBase, AddOfDUS) {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-void BM_DynamicSlice(int num_iters) {
-  tensorflow::testing::StopTiming();
-
+void BM_DynamicSlice(::testing::benchmark::State& state) {
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().ValueOrDie();
   auto executors = PlatformUtil::GetStreamExecutors(platform).ValueOrDie();
   se::StreamExecutorMemoryAllocator allocator(platform, executors);
@@ -817,8 +815,7 @@ void BM_DynamicSlice(int num_iters) {
   }
 
   // Run benchmark.
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i < num_iters; ++i) {
+  for (auto s : state) {
     auto result = executable->Run(shaped_buffer_ptrs, options);
     ASSERT_TRUE(result.ok());
   }

@@ -31,6 +31,8 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 
 namespace tensorflow {
 namespace data {
@@ -70,8 +72,8 @@ constexpr char kInterleaveIndices[] = "interleave_indices";
 constexpr char kStagingSize[] = "staging_size";
 constexpr char kStagingIndices[] = "staging_indices";
 constexpr char kWorkerThreadsRunning[] = "worker_threads_running";
-constexpr char kTFDataParallelInterleaveWorker[] =
-    "tf_data_parallel_interleave_worker";
+constexpr char kDataParallelInterleaveWorker[] =
+    "data_parallel_interleave_worker";
 constexpr char kWorker[] = "worker";
 constexpr char kInputSize[] = "input_size";
 constexpr char kInput[] = "input";
@@ -143,6 +145,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     name_utils::DatasetDebugStringParams params;
     params.op_version = op_version_;
     return name_utils::DatasetDebugString(kDatasetType, params);
+  }
+
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
   }
 
   Status CheckExternalState() const override {
@@ -272,13 +279,19 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           workers_(dataset()->num_threads()),
           worker_thread_states_(dataset()->num_threads()) {}
 
-    ~Iterator() override { CancelThreads(); }
+    ~Iterator() override {
+      CancelThreads();
+      if (deregister_fn_) deregister_fn_();
+    }
 
+    // TODO(jsimsa): Register cancellation callback once the implementation is
+    // refactored not to hold mu_ while calling `GetNext` on the input.
     Status Initialize(IteratorContext* ctx) override {
-      // TODO(jsimsa): Register cancellation callback once the implementation is
-      // refactored not to hold mu_ while calling `GetNext` on the input.
-      TF_RETURN_IF_ERROR(
-          dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
+      cancellation_manager_ = absl::make_unique<CancellationManager>();
+      IteratorContext::Params params(ctx);
+      params.cancellation_manager = cancellation_manager_.get();
+      TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
+          IteratorContext(params), this, prefix(), &input_impl_));
       return dataset()->captured_func_->Instantiate(
           ctx, &instantiated_captured_func_);
     }
@@ -323,6 +336,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             }
             *end_of_sequence = false;
             Status s = current_worker->outputs.front().status;
+            profiler::TraceMe traceme([&] {
+              return profiler::TraceMeEncode(
+                  "ParallelInterleaveConsume",
+                  {{"element_id", current_worker->outputs.front().id}});
+            });
             current_worker->outputs.front().output.swap(*out_tensors);
             current_worker->outputs.pop_front();
             current_worker->cond_var.notify_one();
@@ -544,7 +562,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         for (size_t i = 0; i < dataset()->num_threads(); ++i) {
           std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
           worker_threads_.emplace_back(ctx->StartThread(
-              strings::StrCat(kTFDataParallelInterleaveWorker, "_", i),
+              strings::StrCat(kDataParallelInterleaveWorker, "_", i),
               [this, new_ctx, i]() { WorkerThread(new_ctx, i); }));
         }
       }
@@ -564,8 +582,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       Status status;
       // The buffered data element.
       std::vector<Tensor> output;
+      int64 id = -1;
 
       explicit OutputElem(const Status& s) : status(s) {}
+      OutputElem(const Status& s, int64 id) : status(s), id(id) {}
     };
 
     // Worker threads operate on their relevant WorkerState structs.
@@ -633,6 +653,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     };
 
     void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {
+      cancellation_manager_->StartCancel();
       mutex_lock l(mu_);
       cancelled_ = true;
       for (auto& worker : workers_) {
@@ -655,7 +676,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           workers_[i].SetInputs(s, std::move(args));
           std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
           worker_threads_.push_back(ctx->StartThread(
-              strings::StrCat(kTFDataParallelInterleaveWorker, "_", i),
+              strings::StrCat(kDataParallelInterleaveWorker, "_", i),
               [this, new_ctx, i]() { WorkerThread(new_ctx, i); }));
           if (i < dataset()->cycle_length_) {
             interleave_indices_.push_back(i);
@@ -759,7 +780,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                 MakeIteratorFromInputElement(
                     ctx.get(), this, worker_thread_states_[thread_index].input,
                     thread_index, *instantiated_captured_func_, prefix(),
-                    &worker_thread_states_[thread_index].iterator);
+                    &worker_thread_states_[thread_index].iterator,
+                    model_node());
             iterator_creation_status =
                 worker_thread_states_[thread_index].iterator_creation_status;
             if (!iterator_creation_status.ok()) {
@@ -813,6 +835,14 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                   worker_thread_states_[thread_index]
                       .output_elem.output.empty() &&
                   !worker_thread_states_[thread_index].end_of_sequence) {
+                int64& id = worker_thread_states_[thread_index].output_elem.id;
+                profiler::TraceMe traceme(
+                    [&] {
+                      id = profiler::TraceMe::NewActivityId();
+                      return profiler::TraceMeEncode(
+                          "ParallelInterleaveProduce", {{"element_id", id}});
+                    },
+                    profiler::kInfo);
                 worker_thread_states_[thread_index].output_elem.status =
                     worker_thread_states_[thread_index].iterator->GetNext(
                         ctx.get(),
@@ -856,7 +886,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                 worker_thread_states_[thread_index].end_of_sequence = false;
               } else {
                 workers_[thread_index].outputs.emplace_back(
-                    worker_thread_states_[thread_index].output_elem.status);
+                    worker_thread_states_[thread_index].output_elem.status,
+                    worker_thread_states_[thread_index].output_elem.id);
                 workers_[thread_index].outputs.back().output.swap(
                     worker_thread_states_[thread_index].output_elem.output);
               }
@@ -988,9 +1019,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         state->iterator.reset();
       } else {
         std::unique_ptr<IteratorBase> iterator;
+        // NOTE: We intentionally ignore resource modeling outside GetNext().
         TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
             ctx, this, state->input, index, *instantiated_captured_func_,
-            prefix(), &iterator));
+            prefix(), &iterator, /*node=*/nullptr));
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, iterator));
         state->iterator.swap(iterator);
       }
@@ -1098,6 +1130,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // `ckpt_mu_` in either shared or exclusive modes.
     mutex ckpt_mu_;
 
+    // Controls cancellation of `input_impl_`. Must be ordered before
+    // `input_impl_` so that `input_impl_` is destroyed first.
+    std::unique_ptr<CancellationManager> cancellation_manager_;
+
     // The iterator producing elements which are converted to datasets by
     // the dataset()->captured_func_ then interleaved together.
     // input_impl_ is reset when we have exhausted its input.
@@ -1129,6 +1165,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // threads have exited before any other members are deallocated.
     // TODO(b/65178177): Avoid allocating additional threads.
     std::vector<std::unique_ptr<Thread>> worker_threads_ TF_GUARDED_BY(mu_);
+
+    // Method for deregistering the cancellation callback.
+    std::function<void()> deregister_fn_;
   };
 
   const DatasetBase* const input_;

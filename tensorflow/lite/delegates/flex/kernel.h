@@ -35,6 +35,11 @@ class DelegateKernel : public SimpleDelegateKernelInterface {
   TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override;
 
  private:
+  // Validate that the computed output tensor shape for the Flex node matches
+  // the existing output shape assigned to the output tensor.
+  TfLiteStatus ValidateOutputTensorShapeConsistency(
+      TfLiteContext* context) const;
+
   std::unique_ptr<OpData> op_data_;
 };
 

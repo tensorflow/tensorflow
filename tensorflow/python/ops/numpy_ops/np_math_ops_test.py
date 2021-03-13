@@ -124,6 +124,12 @@ class MathTest(test.TestCase, parameterized.TestCase):
       np_math_ops.matmul(
           np_array_ops.ones([2, 3], np.int32), np_array_ops.ones([], np.int32))
 
+  def testVDot(self):
+    operands = [([[1, 2], [3, 4]], [[3, 4], [6, 7]]),
+                ([[1, 2], [3, 4]], [3, 4, 6, 7])]
+    return self._testBinaryOp(
+        np_math_ops.vdot, np.vdot, 'vdot', operands=operands)
+
   def _testUnaryOp(self, math_fun, np_fun, name):
 
     def run_test(a):
@@ -154,7 +160,7 @@ class MathTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(
           actual.dtype, expected.dtype,
           'Dtype mismatch.\nActual: {}\nExpected: {}\n{}'.format(
-              actual.dtype, expected.dtype, msg))
+              actual.dtype.as_numpy_dtype, expected.dtype, msg))
     self.assertEqual(
         actual.shape, expected.shape,
         'Shape mismatch.\nActual: {}\nExpected: {}\n{}'.format(
@@ -344,4 +350,6 @@ class MathTest(test.TestCase, parameterized.TestCase):
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
+  ops.enable_numpy_style_type_promotion()
+  np_math_ops.enable_numpy_methods_on_tensor()
   test.main()

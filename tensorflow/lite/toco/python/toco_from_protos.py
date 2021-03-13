@@ -24,7 +24,7 @@ import sys
 # pylint: disable=invalid-import-order,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python import _pywrap_toco_api
-from tensorflow.python.platform import app
+from absl import app
 
 FLAGS = None
 
@@ -85,7 +85,7 @@ def main():
   parser.add_argument(
       "--enable_mlir_converter",
       action="store_true",
-      help=("Boolean indiciating whether to enable MLIR-based conversion "
+      help=("Boolean indicating whether to enable MLIR-based conversion "
             "instead of TOCO conversion. (default False)"))
 
   FLAGS, unparsed = parser.parse_known_args()

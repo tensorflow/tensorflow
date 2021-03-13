@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 
-#include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {
@@ -91,13 +90,23 @@ DelegateProviders::DelegateProviders()
   }
 }
 
-bool DelegateProviders::InitFromCmdlineArgs(int* argc, const char** argv) {
+std::vector<Flag> DelegateProviders::GetFlags() {
   std::vector<Flag> flags;
   for (const auto& one : delegates_list_) {
     auto one_flags = one->CreateFlags(&params_);
     flags.insert(flags.end(), one_flags.begin(), one_flags.end());
   }
-  return Flags::Parse(argc, argv, flags);
+  return flags;
+}
+
+bool DelegateProviders::InitFromCmdlineArgs(int* argc, const char** argv) {
+  std::vector<Flag> flags = GetFlags();
+  const bool parse_result = Flags::Parse(argc, argv, flags);
+  if (!parse_result) {
+    std::string usage = Flags::Usage(argv[0], flags);
+    TFLITE_LOG(ERROR) << usage;
+  }
+  return parse_result;
 }
 
 TfLiteDelegatePtr DelegateProviders::CreateDelegate(

@@ -26,6 +26,7 @@ from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.experimental.ops import readers
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.eager import context
@@ -74,29 +75,6 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         inputs, **kwargs)
     self.assertDatasetsEqual(dataset_actual, dataset_expected)
 
-  def _verify_output_or_err(self,
-                            dataset,
-                            expected_output=None,
-                            expected_err_re=None):
-    if expected_err_re is None:
-      # Verify that output is expected, without errors
-      nxt = self.getNext(dataset)
-      expected_output = [[
-          v.encode('utf-8') if isinstance(v, str) else v for v in op
-      ] for op in expected_output]
-      for value in expected_output:
-        op = self.evaluate(nxt())
-        self.assertAllEqual(op, value)
-      with self.assertRaises(errors.OutOfRangeError):
-        self.evaluate(nxt())
-    else:
-      nxt = self.getNext(dataset)
-      while True:
-        try:
-          self.evaluate(nxt())
-        except errors.OutOfRangeError:
-          break
-
   def _test_dataset(
       self,
       inputs,
@@ -113,10 +91,15 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       # Verify that OpError is produced as expected
       with self.assertRaisesOpError(expected_err_re):
         dataset = readers.CsvDataset(filenames, **kwargs)
-        self._verify_output_or_err(dataset, expected_output, expected_err_re)
+        self.getDatasetOutput(dataset)
     else:
       dataset = readers.CsvDataset(filenames, **kwargs)
-      self._verify_output_or_err(dataset, expected_output, expected_err_re)
+      expected_output = [
+          tuple(v.encode('utf-8') if isinstance(v, str) else v
+                for v in op)
+          for op in expected_output
+      ]
+      self.assertDatasetProduces(dataset, expected_output)
 
   @combinations.generate(test_base.default_test_combinations())
   def testCsvDataset_requiredFields(self):
@@ -176,7 +159,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     filenames = self._setup_files(inputs)
     dataset = readers.CsvDataset(filenames, record_defaults=record_defaults)
     dataset = dataset.apply(error_ops.ignore_errors())
-    self._verify_output_or_err(dataset, [['e', 'f', 'g']])
+    self.assertDatasetProduces(dataset, [(b'e', b'f', b'g')])
 
   @combinations.generate(test_base.default_test_combinations())
   def testCsvDataset_ignoreErrWithUnquotedQuotes(self):
@@ -185,7 +168,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     filenames = self._setup_files(inputs)
     dataset = readers.CsvDataset(filenames, record_defaults=record_defaults)
     dataset = dataset.apply(error_ops.ignore_errors())
-    self._verify_output_or_err(dataset, [['e', 'f', 'g']])
+    self.assertDatasetProduces(dataset, [(b'e', b'f', b'g')])
 
   @combinations.generate(test_base.default_test_combinations())
   def testCsvDataset_withNoQuoteDelimAndUnquotedQuotes(self):
@@ -414,6 +397,47 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         record_defaults=record_defaults,
         select_cols=[0])
 
+  @combinations.generate(test_base.v2_only_combinations())
+  def testCsvDataset_withExcludeCol(self):
+    record_defaults = [['']]
+    inputs = [['1,2,3', '5,6,7']]
+    self._test_dataset(
+        inputs,
+        expected_output=[['1'], ['5']],
+        record_defaults=record_defaults,
+        exclude_cols=[1, 2])
+
+  @combinations.generate(test_base.v2_only_combinations())
+  def testCsvDataset_withSelectandExcludeCol(self):
+    record_defaults = [['']]
+    inputs = [['1,2,3', '5,6,7']]
+    self._test_dataset(
+        inputs,
+        expected_err_re='Either select_cols or exclude_cols should be empty',
+        record_defaults=record_defaults,
+        select_cols=[0],
+        exclude_cols=[1, 2])
+
+  @combinations.generate(test_base.v2_only_combinations())
+  def testCsvDataset_withExcludeColandRecordDefaultsTooLow(self):
+    record_defaults = [['']]
+    inputs = [['1,2,3', '5,6,7']]
+    self._test_dataset(
+        inputs,
+        expected_err_re='Expect 1 fields but have more in record',
+        record_defaults=record_defaults,
+        exclude_cols=[0])
+
+  @combinations.generate(test_base.v2_only_combinations())
+  def testCsvDataset_withExcludeColandRecordDefaultsTooHigh(self):
+    record_defaults = [['']] * 3
+    inputs = [['1,2,3', '5,6,7']]
+    self._test_dataset(
+        inputs,
+        expected_err_re='Expect 3 fields but have 2 in record',
+        record_defaults=record_defaults,
+        exclude_cols=[0])
+
   @combinations.generate(test_base.default_test_combinations())
   def testCsvDataset_withMultipleNewLines(self):
     # In this case, we expect it to behave differently from
@@ -587,6 +611,51 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     _ = readers.make_csv_dataset(
         filenames, batch_size=1, select_columns=select_cols)
     self.assertAllEqual(select_cols, ['a', 'c'])
+
+
+class CsvDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                               parameterized.TestCase):
+
+  def setUp(self):
+    self._num_cols = 7
+    self._num_rows = 10
+    self._num_epochs = 14
+    self._num_outputs = self._num_rows * self._num_epochs
+
+    inputs = [
+        ','.join(str(self._num_cols * j + i)
+                 for i in range(self._num_cols))
+        for j in range(self._num_rows)
+    ]
+    contents = '\n'.join(inputs).encode('utf-8')
+
+    self._filename = os.path.join(self.get_temp_dir(), 'file.csv')
+    self._compressed = os.path.join(self.get_temp_dir(),
+                                    'comp.csv')  # GZip compressed
+
+    with open(self._filename, 'wb') as f:
+      f.write(contents)
+    with gzip.GzipFile(self._compressed, 'wb') as f:
+      f.write(contents)
+
+  def ds_func(self, **kwargs):
+    compression_type = kwargs.get('compression_type', None)
+    if compression_type == 'GZIP':
+      filename = self._compressed
+    elif compression_type is None:
+      filename = self._filename
+    else:
+      raise ValueError('Invalid compression type:', compression_type)
+
+    return readers.CsvDataset(filename, **kwargs).repeat(self._num_epochs)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSerializationCore(self):
+    defs = [[0]] * self._num_cols
+    self.run_core_tests(
+        lambda: self.ds_func(record_defaults=defs, buffer_size=2),
+        self._num_outputs)
+
 
 if __name__ == '__main__':
   test.main()

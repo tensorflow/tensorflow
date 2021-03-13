@@ -3,6 +3,7 @@ syntax = "proto3";
 package tensorflow.tpu;
 
 import "google/protobuf/wrappers.proto";
+import "tensorflow/compiler/xla/service/hlo.proto";
 
 message ClippingLimits {
   google.protobuf.FloatValue lower = 1;  // -inf if not set
@@ -54,10 +55,12 @@ message LearningRate {
 // Each optimizer's parameter proto has a link to its documentation and CPU
 // implementation (if available) for user reference.
 
-// https://www.tensorflow.org/api_docs/python/tf/train/AdagradOptimizer
-// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L151
+// https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/Adagrad
+// https://github.com/tensorflow/tensorflow/blob/6b6471f3ffb7f1fefe42d814aa5fb9ab7a535b58/tensorflow/core/kernels/training_ops.cc#L1634
 message AdagradParameters {
-  float initial_accumulator = 1;
+  // Old initial accumulator parameter.
+  reserved "initial_accumulator";
+  reserved 1;
 }
 
 // Algorithm in http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf.
@@ -74,28 +77,51 @@ message BoundedAdagradParameters {
   float max_accumulator = 3;
 }
 
-// https://www.tensorflow.org/api_docs/python/tf/train/GradientDescentOptimizer
-// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L423
+// https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/SGD
+// https://github.com/tensorflow/tensorflow/blob/6b6471f3ffb7f1fefe42d814aa5fb9ab7a535b58/tensorflow/core/kernels/training_ops.cc#L629
 message StochasticGradientDescentParameters {}
 
-// https://www.tensorflow.org/api_docs/python/tf/train/FtrlOptimizer
-// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L192
+// https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/Ftrl
+// https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/41159.pdf
+// https://github.com/tensorflow/tensorflow/blob/6b6471f3ffb7f1fefe42d814aa5fb9ab7a535b58/tensorflow/core/kernels/training_ops.cc#L2646
+//
+// The hyperparameters for FTRL are the same as for the Keras implementation,
+// with some additions. The "beta" parameter matches the behavior described in
+// the second link above; "beta" / (2 * learning rate) should be added to "l2"
+// to get equivalent behavior in the other TensorFlow implementations of this
+// optimizer. When the multiply_linear_by_lr field is set to true, a modified
+// formula is used for FTRL that treats the "linear" accumulator as being
+// pre-multiplied by the learning rate (i.e., the accumulator named "linear"
+// actually stores "linear * learning_rate"). Other than checkpoint
+// compatibility, this is mathematically equivalent for a static learning rate;
+// for a dynamic learning rate, it is nearly the same as long as the learning
+// rate does not change quickly. The benefit of setting multiply_linear_by_lr to
+// true is that the modified formula handles zero and near-zero learning rates
+// without producing NaNs, improving flexibility for learning rate ramp-up. The
+// allow_zero_accumulator parameter changes some internal formulas to allow zero
+// and near-zero accumulator values at the cost of some performance; this only
+// needs to be set if you are using an initial accumulator value of zero, which
+// is uncommon.
 message FtrlParameters {
   float l1 = 1;
   float l2 = 2;
   float lr_power = 3;
-  float initial_accum = 4;
-  float initial_linear = 5;
+  float beta = 7;
   bool multiply_linear_by_lr = 6;
+  bool allow_zero_accumulator = 8;
+
+  // Old initial accumulator parameters.
+  reserved "initial_accum", "initial_linear";
+  reserved 4, 5;
 }
 
-// The Adam optimizer does not implement hyper-parameter update; use the dynamic
-// learning rate feature instead, setting the learning rate to:
-// user learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
+// The Adam optimizer does not implement hyper-parameter update due to hardware
+// limitations; use the dynamic learning rate feature instead, setting the
+// learning rate to: user learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
 // Here, t is the current timestep.
 //
-// https://www.tensorflow.org/api_docs/python/tf/train/AdamOptimizer
-// https://github.com/tensorflow/tensorflow/blob/ab51450c817674c8ff08a7ae4f8ac50cdc4bed8b/tensorflow/python/training/adam.py#L54
+// https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/Adam
+// https://github.com/tensorflow/tensorflow/blob/ab51450c817674c8ff08a7ae4f8ac50cdc4bed8b/tensorflow/python/training/adam.py#L32
 //
 // Note that the code by default implements the lazy version of Adam
 // (https://www.tensorflow.org/api_docs/python/tf/contrib/opt/LazyAdamOptimizer)
@@ -113,39 +139,47 @@ message AdamParameters {
   float beta1 = 3;
   float beta2 = 4;
   float epsilon = 5;
-  float initial_m = 6;
-  float initial_v = 7;
   bool use_non_lazy_adam = 8;
   bool use_sum_inside_sqrt = 10;
+
+  // Old initial accumulator parameters.
+  reserved "initial_m", "initial_v";
+  reserved 6, 7;
 }
 
-// https://www.tensorflow.org/api_docs/python/tf/train/MomentumOptimizer
-// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L271
+// https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/SGD
+// https://github.com/tensorflow/tensorflow/blob/6b6471f3ffb7f1fefe42d814aa5fb9ab7a535b58/tensorflow/core/kernels/training_ops.cc#L3068
 message MomentumParameters {
   float momentum = 1;
   bool use_nesterov = 2;
-  float initial_accum = 3;
+
+  // Old initial accumulator parameter.
+  reserved "initial_accum";
+  reserved 3;
 }
 
-// https://www.tensorflow.org/api_docs/python/tf/train/RMSPropOptimizer
-// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L356
+// https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/RMSprop
+// https://github.com/tensorflow/tensorflow/blob/6b6471f3ffb7f1fefe42d814aa5fb9ab7a535b58/tensorflow/core/kernels/training_ops.cc#L4229
 message RmsPropParameters {
   float rho = 1;
   float momentum = 2;
   float epsilon = 3;
-  float initial_ms = 4;
-  float initial_mom = 5;
+
+  // Old initial accumulator parameters.
+  reserved "initial_ms", "initial_mom";
+  reserved 4, 5;
 }
 
-// https://www.tensorflow.org/api_docs/python/tf/train/RMSPropOptimizer
-// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L372
+// https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/RMSprop
+// https://github.com/tensorflow/tensorflow/blob/6b6471f3ffb7f1fefe42d814aa5fb9ab7a535b58/tensorflow/core/kernels/training_ops.cc#L4358
 message CenteredRmsPropParameters {
   float rho = 1;
   float momentum = 2;
   float epsilon = 3;
-  float initial_ms = 4;
-  float initial_mom = 5;
-  float initial_mg = 6;
+
+  // Old initial accumulator parameters.
+  reserved "initial_ms", "initial_mom", "initial_mg";
+  reserved 4, 5, 6;
 }
 
 // Variant of algorithm in http://proceedings.mlr.press/v44/shamir15.pdf
@@ -162,26 +196,32 @@ message MdlAdagradLightParameters {
   float mdl_hard_limit = 10;
   bool hard_limit_min_benefit = 11;
   bool mdl_regularize = 12;
-  float initial_accumulator = 13;
-  float initial_weight = 14;
-  float initial_benefit = 15;
+
+  // Old initial accumulator parameters.
+  reserved "initial_accumulator", "initial_weight", "initial_benefit";
+  reserved 13, 14, 15;
 }
 
-// https://www.tensorflow.org/api_docs/python/tf/train/AdadeltaOptimizer
-// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L68
+// https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/Adadelta
+// https://github.com/tensorflow/tensorflow/blob/6b6471f3ffb7f1fefe42d814aa5fb9ab7a535b58/tensorflow/core/kernels/training_ops.cc#L933
 message AdadeltaParameters {
   float rho = 1;
   float epsilon = 2;
-  float initial_accumulator = 3;
-  float initial_update = 4;
+
+  // Old initial accumulator parameters.
+  reserved "initial_accumulator", "initial_update";
+  reserved 3, 4;
 }
 
-// https://www.tensorflow.org/api_docs/python/tf/train/ProximalAdagradOptimizer
-// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L164
+// https://www.tensorflow.org/api_docs/python/tf/compat/v1/train/ProximalAdagradOptimizer
+// https://github.com/tensorflow/tensorflow/blob/6b6471f3ffb7f1fefe42d814aa5fb9ab7a535b58/tensorflow/core/kernels/training_ops.cc#L1961
 message ProximalAdagradParameters {
   float l1 = 1;
   float l2 = 2;
-  float initial_accumulator = 3;
+
+  // Old initial accumulator parameter.
+  reserved "initial_accumulator";
+  reserved 3;
 }
 
 // The online Yogi optimizer does not implement hyper-parameter update; use the
@@ -236,6 +276,74 @@ message ProximalYogiParameters {
   // Reserved ids corresponding to removed tanh activation.
   reserved 8;  // sign
   reserved 9;  // tanh
+}
+
+// Estimator for the frequency of updates to a lookup table. It maintains an
+// array (tf.Variable) D, where each element records the average number of
+// global steps between two consecutive batches that hit the corresponding
+// bucket. Once an item with bucket id i is sampled, D[i] is updated by:
+//   D[i] <- D[i] * (1 - tau) + delta[i] * tau,
+//
+// where tau is a learning rate between 0 and 1 (exclusive), and
+//   delta[i] = current global step - last step i is sampled.
+//
+// The estimated frequency (sampling rate in a batch) is thus 1 / D[i].
+//
+// Elements in D are initialized with a large value max_delta. delta[i] will
+// also be capped by this value.
+//
+// The exact sequence of operations used in the optimizer is shown below.
+// last_hit_step[i] is a tf.Variable that holds the last global step at which i
+// was sampled.
+//
+//   delta = global_step - last_hit_step[i]
+//   clipped_delta = min(delta, params.max_delta)
+//   is_outlier = (delta >= params.outlier_threshold * D[i])
+//   D[i] <- is_outlier ? clipped_delta
+//                      : D[i] * (1 - params.tau) + clipped_delta * params.tau
+//   last_hit_step[i] <- global_step
+message FrequencyEstimatorParameters {
+  // Learning rate between (0, 1) that is used to update the array D.
+  float tau = 1;
+
+  // Maximum value of delta: difference between the current global step and the
+  // last global step at which the row was sampled.
+  float max_delta = 2;
+
+  // Threshold used to determine whether the current update is an outlier.
+  float outlier_threshold = 3;
+
+  // The weight exponent used to transform the estimated delta into weights.
+  // The transformation function is: (delta / max_delta) ^ (weight_exponent)
+  float weight_exponent = 4;
+}
+
+// A user-defined optimizer.
+// The contained HLO program must take the following arguments in the following
+// order:
+// 1.  gradients
+// 2.  table weights
+// 3.  slot variables
+// 4.  an optional scalar input that is passed in via the dynamic learning
+//     rate mechanism.
+//
+// It must return/end in a tuple op that contains the following values in the
+// following order:
+// 1.  new table values
+// 2.  new slot variable value
+//
+// The program must have shape (1,1) with dtype float32 throughout and only use
+// HLO that operate elementwise (e.g., no reduce, no variables, no control flow
+// and no broadcasting outside of the single scalar input).
+// The HLO program should be written as if it were a dense update. It will be
+// called on each row that needs an update and will applied elementwise.
+message UserDefinedProgramParameters {
+  xla.HloModuleProto program = 1;
+  // Padding values for the parameter and the slots, see
+  // StateVariableSpecification.padding_initial_value below for more details on
+  // how this should be set. One value is needed for the weights and one for
+  // each slot.
+  repeated float padding_values = 2;
 }
 
 // Status of using gradient accumulation (doing two passes over the input
@@ -315,6 +423,8 @@ message OptimizationParameters {
     ProximalAdagradParameters proximal_adagrad = 14;
     OnlineYogiParameters online_yogi = 20;
     ProximalYogiParameters proximal_yogi = 21;
+    FrequencyEstimatorParameters frequency_estimator = 23;
+    UserDefinedProgramParameters user_defined_program = 24;
   }
 
   reserved 15;  // Old use_gradient_accumulation.

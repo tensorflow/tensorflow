@@ -17,12 +17,15 @@ limitations under the License.
 
 #include <numeric>
 
+#include "tensorflow/compiler/mlir/mlir_bridge_rollout_policy.h"
 #include "absl/base/call_once.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -97,7 +100,7 @@ bool XlaCompilationCache::Signature::operator==(const Signature& other) const {
   if (arg_shapes != other.arg_shapes) return false;
 
   if (arg_values.size() != other.arg_values.size()) return false;
-  for (int i = 0; i < arg_values.size(); ++i) {
+  for (int i = 0, end = arg_values.size(); i < end; ++i) {
     if (arg_values[i].dtype() != other.arg_values[i].dtype() ||
         arg_values[i].shape() != other.arg_values[i].shape() ||
         arg_values[i].tensor_data() != other.arg_values[i].tensor_data()) {
@@ -134,6 +137,7 @@ XlaCompilationCache::BuildSignature(
   for (const XlaCompiler::Argument& arg : args) {
     switch (arg.kind) {
       case XlaCompiler::Argument::kConstant:
+      case XlaCompiler::Argument::kConstantResource:
         signature.arg_values.push_back(arg.constant_value);
         break;
       case XlaCompiler::Argument::kParameter:
@@ -158,7 +162,7 @@ Status XlaCompilationCache::BuildExecutable(
 
   std::vector<const xla::Shape*> argument_layouts(
       result.xla_input_shapes.size());
-  for (int i = 0; i < result.xla_input_shapes.size(); ++i) {
+  for (int i = 0, end = result.xla_input_shapes.size(); i < end; ++i) {
     argument_layouts[i] = &result.xla_input_shapes[i];
   }
   xla::ExecutableBuildOptions build_options;
@@ -168,7 +172,8 @@ Status XlaCompilationCache::BuildExecutable(
   build_options.set_result_layout(result.xla_output_shape);
   build_options.set_device_allocator(options.device_allocator);
   build_options.set_alias_passthrough_params(options.alias_passthrough_params);
-
+  build_options.mutable_debug_options()->set_xla_detailed_logging(
+      options.detailed_logging);
   TF_ASSIGN_OR_RETURN(
       auto executables,
       client_->Compile(*result.computation, argument_layouts, build_options));
@@ -224,7 +229,7 @@ static xla::StatusOr<std::unique_ptr<Graph>> CreateGraph(
 
   // Create dummy _Arg nodes. Link these to `node` and also via a control
   // dependency edge to the _SOURCE node.
-  for (int64 i = 0; i < args.size(); ++i) {
+  for (int64 i = 0, end = args.size(); i < end; ++i) {
     Node* node;
     string arg_name = absl::StrCat("_arg", i);
     Status status =
@@ -240,7 +245,7 @@ static xla::StatusOr<std::unique_ptr<Graph>> CreateGraph(
   }
 
   // Similarly with return values, create dummy _Retval nodes fed by `node`.
-  for (int64 i = 0; i < result_types.size(); ++i) {
+  for (int64 i = 0, end = result_types.size(); i < end; ++i) {
     Node* node;
     string retval_name = absl::StrCat("_retval", i);
     Status status = NodeBuilder(retval_name, FunctionLibraryDefinition::kRetOp)
@@ -271,32 +276,37 @@ Status XlaCompilationCache::CompileSingleOp(
   auto compile_op = [&](XlaCompiler* compiler,
                         XlaCompiler::CompilationResult* result) {
     std::vector<DataType> result_dtypes(ctx->num_outputs());
-    for (int i = 0; i < result_dtypes.size(); ++i) {
+    for (int i = 0, end = result_dtypes.size(); i < end; ++i) {
       result_dtypes[i] = ctx->expected_output_dtype(i);
     }
 
     const NodeDef& node_def = ctx->op_kernel().def();
     TF_ASSIGN_OR_RETURN(auto graph, CreateGraph(node_def, args, result_dtypes));
 
-    bool are_args_supported =
-        absl::c_all_of(args, [](const XlaCompiler::Argument arg) {
-          return arg.kind == XlaCompiler::Argument::kConstant ||
-                 arg.kind == XlaCompiler::Argument::kParameter;
-        });
     const ConfigProto* config = ctx->function_library()->config_proto();
-    bool use_mlir = config && config->experimental().enable_mlir_bridge();
-    // TODO(b/155596779): Understand the source of other argument types and
-    // depending on the source either support those or avoid these codepath.
-    if (!use_mlir || !are_args_supported) {
+    // TODO(b/171039585): Support tf.VarIsInitializedOp using MLIR.
+    bool use_mlir = config &&
+                    GetMlirBridgeRolloutPolicy(
+                        *graph, /*function_library=*/nullptr,
+                        *config, /*uses_uninitialized_resource_args=*/
+                        AnyUninitializedResourceArg(args)) ==
+                        MlirBridgeRolloutPolicy::kEnabledByUser &&
+                    node_def.op() != "VarIsInitializedOp";
+    if (!use_mlir) {
       return compiler->CompileGraph(compile_options, node_def.name(),
                                     std::move(graph), args, result);
     }
 
+    VLOG(1) << "Using MLIR bridge";
     GraphDebugInfo debug_info;
+    std::vector<std::string> control_rets;
+    if (result_dtypes.empty()) {
+      control_rets.push_back(node_def.name());
+    }
     return CompileGraphToXlaHlo(
-        *graph, {args.data(), args.size()}, options.device_type.type_string(),
-        compile_options.use_tuple_arg, *options.flib_def, debug_info,
-        options.shape_representation_fn, result);
+        *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args), control_rets,
+        options.device_type.type_string(), compile_options.use_tuple_arg,
+        *options.flib_def, debug_info, options.shape_representation_fn, result);
   };
   return CompileImpl(options, name, args, compile_op,
                      /*compile_threshold=*/absl::nullopt,
@@ -325,12 +335,16 @@ Status XlaCompilationCache::CompileImpl(
     absl::optional<int64> compile_threshold,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
+  if (FailOnXlaCompilation()) {
+    return errors::Internal("XLA compilation disabled");
+  }
+
   DCHECK_NE(out_executable, nullptr);
   VLOG(2) << "XlaCompilationCache::Compile " << DebugString();
 
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "num_inputs=" << args.size();
-    for (int i = 0; i < args.size(); i++) {
+    for (int i = 0, end = args.size(); i < end; i++) {
       VLOG(3) << i << ": " << args[i].HumanString();
     }
   }

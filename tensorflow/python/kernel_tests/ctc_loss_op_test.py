@@ -90,7 +90,7 @@ class CTCLossTest(test.TestCase):
                    loss_truth,
                    grad_truth,
                    expected_err_re=None):
-    self.assertEquals(len(inputs), len(grad_truth))
+    self.assertEqual(len(inputs), len(grad_truth))
 
     inputs_t = constant_op.constant(inputs)
 
@@ -286,10 +286,9 @@ class CTCLossTest(test.TestCase):
     with self.session(use_gpu=False):
       loss = _ctc_loss_v2(
           inputs=inputs_t, labels=labels, sequence_length=seq_lens)
-      # Taking ths second gradient should fail, since it is not
+      # Taking this second gradient should fail, since it is not
       # yet supported.
-      with self.assertRaisesRegexp(LookupError,
-                                   "explicitly disabled"):
+      with self.assertRaisesRegex(LookupError, "explicitly disabled"):
         _ = gradients_impl._hessian_vector_product(loss, [inputs_t], v)
 
   @test_util.run_v1_only("b/120545219")
@@ -302,8 +301,8 @@ class CTCLossTest(test.TestCase):
         dense_shape=[5, 5])
 
     with self.session(use_gpu=False) as sess:
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "batch_size must not be 0"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "batch_size must not be 0"):
         sess.run(_ctc_loss_v2(labels, inputs, sequence_lengths))
 
 

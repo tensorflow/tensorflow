@@ -18,31 +18,31 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import warnings
 
 import six
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving import model_config
 from tensorflow.python.keras.saving import saving_utils
+from tensorflow.python.keras.saving import utils_v1 as model_utils
 from tensorflow.python.keras.utils import mode_keys
+from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import constants
-from tensorflow.python.saved_model import model_utils
 from tensorflow.python.saved_model import save as save_lib
-from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.tracking import graph_view
 from tensorflow.python.util import compat
-from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import keras_export
 
 # To avoid circular dependencies between keras/engine and keras/saving,
@@ -61,10 +61,10 @@ sequential = LazyLoader(
 # pylint:enable=g-inconsistent-quotes
 
 
-@deprecation.deprecated(
-    date=None,
-    instructions=('Please use `model.save(..., save_format="tf")` or '
-                  '`tf.keras.models.save_model(..., save_format="tf")`.'))
+# File name for json format of SavedModel.
+SAVED_MODEL_FILENAME_JSON = 'saved_model.json'
+
+
 @keras_export(v1=['keras.experimental.export_saved_model'])
 def export_saved_model(model,
                        saved_model_path,
@@ -130,6 +130,10 @@ def export_saved_model(model,
     ValueError: If the input signature cannot be inferred from the model.
     AssertionError: If the SavedModel directory already exists and isn't empty.
   """
+  warnings.warn('`tf.keras.experimental.export_saved_model` is deprecated'
+                'and will be removed in a future version. '
+                'Please use `model.save(..., save_format="tf")` or '
+                '`tf.keras.models.save_model(..., save_format="tf")`.')
   if serving_only:
     save_lib.save(
         model,
@@ -150,15 +154,16 @@ def _export_model_json(model, saved_model_path):
   """Saves model configuration as a json string under assets folder."""
   model_json = model.to_json()
   model_json_filepath = os.path.join(
-      saved_model_utils.get_or_create_assets_dir(saved_model_path),
-      compat.as_text(constants.SAVED_MODEL_FILENAME_JSON))
-  file_io.write_string_to_file(model_json_filepath, model_json)
+      _get_or_create_assets_dir(saved_model_path),
+      compat.as_text(SAVED_MODEL_FILENAME_JSON))
+  with gfile.Open(model_json_filepath, 'w') as f:
+    f.write(model_json)
 
 
 def _export_model_variables(model, saved_model_path):
   """Saves model weights in checkpoint format under variables folder."""
-  saved_model_utils.get_or_create_variables_dir(saved_model_path)
-  checkpoint_prefix = saved_model_utils.get_variables_path(saved_model_path)
+  _get_or_create_variables_dir(saved_model_path)
+  checkpoint_prefix = _get_variables_path(saved_model_path)
   model.save_weights(checkpoint_prefix, save_format='tf', overwrite=True)
   return checkpoint_prefix
 
@@ -205,7 +210,7 @@ def _save_v1_format(model, path, custom_objects, as_text, input_signature):
 
   has_saved_vars = False
   if model.optimizer:
-    if isinstance(model.optimizer, (optimizers.TFOptimizer,
+    if isinstance(model.optimizer, (optimizer_v1.TFOptimizer,
                                     optimizer_v2.OptimizerV2)):
       _export_mode(mode_keys.ModeKeys.TRAIN, has_saved_vars, **export_args)
       has_saved_vars = True
@@ -371,10 +376,6 @@ def _assert_same_non_optimizer_objects(model, model_graph, clone, clone_graph): 
   return True
 
 
-@deprecation.deprecated(
-    date=None,
-    instructions=('The experimental save and load functions have been  '
-                  'deprecated. Please switch to `tf.keras.models.load_model`.'))
 @keras_export(v1=['keras.experimental.load_from_saved_model'])
 def load_from_saved_model(saved_model_path, custom_objects=None):
   """Loads a keras Model from a SavedModel created by `export_saved_model()`.
@@ -412,12 +413,16 @@ def load_from_saved_model(saved_model_path, custom_objects=None):
   Returns:
     a keras.Model instance.
   """
+  warnings.warn('`tf.keras.experimental.load_from_saved_model` is deprecated'
+                'and will be removed in a future version. '
+                'Please switch to `tf.keras.models.load_model`.')
   # restore model topology from json string
   model_json_filepath = os.path.join(
       compat.as_bytes(saved_model_path),
       compat.as_bytes(constants.ASSETS_DIRECTORY),
-      compat.as_bytes(constants.SAVED_MODEL_FILENAME_JSON))
-  model_json = file_io.read_file_to_string(model_json_filepath)
+      compat.as_bytes(SAVED_MODEL_FILENAME_JSON))
+  with gfile.Open(model_json_filepath, 'r') as f:
+    model_json = f.read()
   model = model_config.model_from_json(
       model_json, custom_objects=custom_objects)
 
@@ -428,3 +433,46 @@ def load_from_saved_model(saved_model_path, custom_objects=None):
       compat.as_text(constants.VARIABLES_FILENAME))
   model.load_weights(checkpoint_prefix)
   return model
+
+
+#### Directory / path helpers
+
+
+def _get_or_create_variables_dir(export_dir):
+  """Return variables sub-directory, or create one if it doesn't exist."""
+  variables_dir = _get_variables_dir(export_dir)
+  if not file_io.file_exists(variables_dir):
+    file_io.recursive_create_dir(variables_dir)
+  return variables_dir
+
+
+def _get_variables_dir(export_dir):
+  """Return variables sub-directory in the SavedModel."""
+  return os.path.join(
+      compat.as_text(export_dir),
+      compat.as_text(constants.VARIABLES_DIRECTORY))
+
+
+def _get_variables_path(export_dir):
+  """Return the variables path, used as the prefix for checkpoint files."""
+  return os.path.join(
+      compat.as_text(_get_variables_dir(export_dir)),
+      compat.as_text(constants.VARIABLES_FILENAME))
+
+
+def _get_or_create_assets_dir(export_dir):
+  """Return assets sub-directory, or create one if it doesn't exist."""
+  assets_destination_dir = _get_assets_dir(export_dir)
+
+  if not file_io.file_exists(assets_destination_dir):
+    file_io.recursive_create_dir(assets_destination_dir)
+
+  return assets_destination_dir
+
+
+def _get_assets_dir(export_dir):
+  """Return path to asset directory in the SavedModel."""
+  return os.path.join(
+      compat.as_text(export_dir),
+      compat.as_text(constants.ASSETS_DIRECTORY))
+

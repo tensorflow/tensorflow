@@ -16,12 +16,17 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/experimental/data_service_ops.h"
 
 #include "tensorflow/core/data/service/data_service.h"
+#include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace data {
+
+namespace {
+const int64 kRetryTimeoutMicros = 1000LL * 1000 * 60 * 60;  // 60 minutes.
+}
 
 RegisterDatasetOp::RegisterDatasetOp(OpKernelConstruction* ctx)
     : OpKernel(ctx) {
@@ -53,9 +58,15 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(
       ctx, AsGraphDef(ctx, dataset, std::move(serialization_ctx), &graph_def));
 
-  DataServiceMasterClient client(address, protocol);
+  DataServiceDispatcherClient client(address, protocol);
   int64 dataset_id;
-  OP_REQUIRES_OK(ctx, client.RegisterDataset(graph_def, &dataset_id));
+  int64 deadline_micros = EnvTime::NowMicros() + kRetryTimeoutMicros;
+  OP_REQUIRES_OK(
+      ctx, grpc_util::Retry(
+               [&]() { return client.RegisterDataset(graph_def, dataset_id); },
+               /*description=*/
+               strings::StrCat("register dataset with dispatcher at ", address),
+               deadline_micros));
 
   Tensor* output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape{}, &output));

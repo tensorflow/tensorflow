@@ -20,6 +20,7 @@ tensorflow/lite/micro/examples/image_recognition_experimental/image_recognition_
 $(MAKEFILE_DIR)/downloads/image_recognition_model/image_recognition_model.cc
 
 IMAGE_RECOGNITION_TEST_HDRS := \
+tensorflow/lite/micro/examples/image_recognition_experimental/first_10_cifar_images.h \
 tensorflow/lite/micro/examples/image_recognition_experimental/image_recognition_model.h \
 tensorflow/lite/micro/examples/image_recognition_experimental/util.h
 
@@ -32,7 +33,7 @@ ifneq ($(filter disco_f746ng,$(ALL_TAGS)),)
 endif
 
 $(eval $(call microlite_test,image_recognition,\
-$(IMAGE_RECOGNITION_SRCS),$(IMAGE_RECOGNITION_HDRS)))
+$(IMAGE_RECOGNITION_SRCS),$(IMAGE_RECOGNITION_HDRS), exclude))
 
 $(eval $(call microlite_test,image_recognition_test,\
 $(IMAGE_RECOGNITION_TEST_SRCS),$(IMAGE_RECOGNITION_TEST_HDRS)))

@@ -25,8 +25,8 @@ from tensorflow.python import tf2
 from tensorflow.python.keras.initializers import initializers_v1
 from tensorflow.python.keras.initializers import initializers_v2
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils import tf_inspect as inspect
 from tensorflow.python.ops import init_ops
-from tensorflow.python.util import tf_inspect as inspect
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -156,6 +156,8 @@ def get(identifier):
     identifier = str(identifier)
     return deserialize(identifier)
   elif callable(identifier):
+    if inspect.isclass(identifier):
+      identifier = identifier()
     return identifier
   else:
     raise ValueError('Could not interpret initializer identifier: ' +

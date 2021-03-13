@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for keras.layers.preprocessing.normalization."""
+"""Tests for keras.layers.preprocessing.hashing."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,19 +22,20 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras.distribute.strategy_combinations import all_strategies
 from tensorflow.python.keras.layers.preprocessing import hashing
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.platform import test
 
 
-@combinations.generate(
+@ds_combinations.generate(
     combinations.combine(
-        distribution=strategy_combinations.all_strategies,
+        distribution=all_strategies,
         mode=["eager", "graph"]))
 class HashingDistributionTest(keras_parameterized.TestCase,
                               preprocessing_test_utils.PreprocessingLayerTest):

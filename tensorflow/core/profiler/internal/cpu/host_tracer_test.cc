@@ -16,7 +16,6 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
-#include <gmock/gmock.h>
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
@@ -25,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
@@ -150,10 +149,10 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
   ASSERT_EQ(space.planes_size(), 1);
   const auto& plane = space.planes(0);
   XPlaneVisitor xplane(&plane);
-  ASSERT_EQ(plane.name(), kHostThreads);
+  ASSERT_EQ(plane.name(), kHostThreadsPlaneName);
   ASSERT_EQ(plane.lines_size(), 1);
   ASSERT_EQ(plane.event_metadata_size(), 7);
-  ASSERT_EQ(plane.stat_metadata_size(), 2);
+  ASSERT_EQ(plane.stat_metadata_size(), 4);
   const auto& line = plane.lines(0);
   EXPECT_EQ(line.id(), thread_id);
   EXPECT_EQ(line.name(), thread_name);

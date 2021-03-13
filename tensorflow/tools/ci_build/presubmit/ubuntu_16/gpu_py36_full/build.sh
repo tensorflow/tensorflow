@@ -24,104 +24,27 @@ set +u
 # From this point on, logs can be publicly available
 set -x
 
-function run_build () {
-  # Build a unique cache silo string.
-  UBUNTU_VERSION=$(lsb_release -a | grep Release | awk '{print $2}')
-  IMAGE_VERSION=$(cat /VERSION)
-  CACHE_SILO_VAL="gpu-py3-ubuntu-16-${UBUNTU_VERSION}-${IMAGE_VERSION}"
-
-  # Run configure.
-  # Do not run configure.py when doing remote build & test:
-  # Most things we set with configure.py are not used in a remote build setting,
-  # as the build will be defined by pre-configured build files that are checked
-  # in.
-  # TODO(klimek): Allow using the right set of bazel flags without the need to
-  # run configure.py; currently we need to carefully copy them, which is brittle.
-  export LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
-  # TODO(klimek): Remove once we don't try to read it while setting up the remote
-  # config for cuda (we currently don't use it, as it's only used when compiling
-  # with clang, but we still require it to be set anyway).
-  export TF_CUDA_COMPUTE_CAPABILITIES=6.0
-  export ACTION_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-  export PYTHON_BIN_PATH="/usr/bin/python3"
-  export TF2_BEHAVIOR=1
-  # TODO(b/152356894):
-  # Remove -gpu_cupti once RBE supports cupti tests.
-  tag_filters="gpu,-no_gpu,-nogpu,-benchmark-test,-no_oss,-oss_serial,-no_gpu_presubmit,-gpu_cupti""$(maybe_skip_v1)"
-
-  # Get the default test targets for bazel.
-  source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
-
-  RBE_CONFIG="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0"
-  TF_CUDA_CONFIG_REPO="${RBE_CONFIG}_config_cuda"
-  TF_TENSORRT_CONFIG_REPO="${RBE_CONFIG}_config_tensorrt"
-  TF_PYTHON_CONFIG_REPO="${RBE_CONFIG}_config_python"
-  TF_NCCL_CONFIG_REPO="${RBE_CONFIG}_config_nccl"
-  TF_RBE_PLATFORM="${RBE_CONFIG}_config_platform//:platform"
-
-  # Run bazel test command. Double test timeouts to avoid flakes.
-  # //tensorflow/core/platform:setround_test is not supported. See b/64264700
-  # TODO(klimek): Re-enable tensorrt tests (with different runtime image) once
-  # we can build them.
-  # TODO(klimek): Stop using action_env for things that are only needed during
-  # setup - we're artificially poisoning the cache.
-  "${BAZEL_WRAPPER_PATH}" \
-    test \
-    --config=rbe \
-    --python_path="${PYTHON_BIN_PATH}" \
-    --action_env=PATH="${ACTION_PATH}" \
-    --action_env=PYTHON_BIN_PATH="${PYTHON_BIN_PATH}" \
-    --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
-    --action_env=REMOTE_GPU_TESTING=1 \
-    --action_env=TF_CUDA_COMPUTE_CAPABILITIES="${TF_CUDA_COMPUTE_CAPABILITIES}" \
-    --action_env=TF_CUDA_CONFIG_REPO="${TF_CUDA_CONFIG_REPO}" \
-    --action_env=TF_CUDA_VERSION=10 \
-    --action_env=TF_CUDNN_VERSION=7 \
-    --action_env=TF_NEED_TENSORRT=0 \
-    --action_env=TF_TENSORRT_CONFIG_REPO="${TF_TENSORRT_CONFIG_REPO}" \
-    --action_env=TF_NEED_CUDA=1 \
-    --action_env=TF_PYTHON_CONFIG_REPO="${TF_PYTHON_CONFIG_REPO}" \
-    --action_env=TF_NCCL_CONFIG_REPO="${TF_NCCL_CONFIG_REPO}" \
-    --test_env=LD_LIBRARY_PATH \
-    --test_tag_filters="${tag_filters}" \
-    --build_tag_filters="${tag_filters}" \
-    --test_lang_filters=cc,py \
-    --define=with_default_optimizations=true \
-    --define=framework_shared_object=true \
-    --define=with_xla_support=true \
-    --define=using_cuda_nvcc=true \
-    --define=use_fast_cpp_protos=true \
-    --define=allow_oversize_protos=true \
-    --define=grpc_no_ares=true \
-    -c opt \
-    --copt="-w" \
-    --copt=-mavx \
-    --linkopt=-lrt \
-    --linkopt=-lm \
-    --distinct_host_configuration=false \
-    --remote_default_exec_properties=build=${CACHE_SILO_VAL} \
-    --crosstool_top="${TF_CUDA_CONFIG_REPO}//crosstool:toolchain" \
-    --host_javabase=@bazel_toolchains//configs/ubuntu16_04_clang/1.1:jdk8 \
-    --javabase=@bazel_toolchains//configs/ubuntu16_04_clang/1.0:jdk8 \
-    --host_java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8 \
-    --java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8 \
-    --extra_toolchains="${TF_CUDA_CONFIG_REPO}//crosstool:toolchain-linux-x86_64" \
-    --extra_execution_platforms="${TF_RBE_PLATFORM}" \
-    --host_platform="${TF_RBE_PLATFORM}" \
-    --local_test_jobs=4 \
-    --remote_timeout=3600 \
-    --platforms="${TF_RBE_PLATFORM}" \
-    -- \
-    ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/...
-
-  # Copy log to output to be available to GitHub
-  ls -la "$(bazel info output_base)/java.log"
-  cp "$(bazel info output_base)/java.log" "${KOKORO_ARTIFACTS_DIR}/"
-}
-
 source tensorflow/tools/ci_build/release/common.sh
 install_bazelisk
 which bazel
 
-run_build
+tag_filters="gpu,-no_gpu,-nogpu,-benchmark-test,-no_oss,-oss_serial,-no_gpu_presubmit,-no_cuda11""$(maybe_skip_v1)"
+
+# Get the default test targets for bazel.
+source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
+
+# Run bazel test command.
+"${BAZEL_WRAPPER_PATH}" \
+  test \
+  --config=rbe_linux_cuda11.0_nvcc_py3.6 \
+  --config=tensorflow_testing_rbe_linux \
+  --test_tag_filters="${tag_filters}" \
+  --build_tag_filters="${tag_filters}" \
+  --test_lang_filters=cc,py \
+  -- \
+  ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/...
+
+# Copy log to output to be available to GitHub
+ls -la "$(bazel info output_base)/java.log"
+cp "$(bazel info output_base)/java.log" "${KOKORO_ARTIFACTS_DIR}/"
 

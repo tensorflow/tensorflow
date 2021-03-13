@@ -50,9 +50,25 @@ def make_reduce_tests(reduce_op,
             "input_dtype": [tf.float32, tf.int32, tf.int64],
             "input_shape": [[3, 3, 2, 4]],
             "axis": [
-                0, 1, 2, [0, 1], [0, 2], [1, 2], [0, 1, 2], [1, 0], [2, 0],
-                [2, 1], [2, 1, 0], [2, 0, 1], -1, -2, -3, [1, -1], [0, -1],
-                [-1, 0], [-1, -2, -3], [0, 0, 0], [2, 2, 0], [1, 0, -3, -3]
+                0,
+                1,
+                2,
+                [0, 1],
+                [0, 2],
+                [1, 2],
+                [0, 1, 2],
+                [1, 0],
+                [2, 0],
+                [2, 1],
+                [2, 1, 0],
+                [2, 0, 1],
+                -1,
+                -2,
+                -3,
+                [1, -1],
+                [0, -1],
+                [-1, 0],
+                [-1, -2, -3],
             ],
             "const_axis": [True, False],
             "keepdims": [True, False],
@@ -62,11 +78,28 @@ def make_reduce_tests(reduce_op,
             "input_dtype": [tf.float32],
             "input_shape": [[1, 8, 8, 3]],
             "axis": [
-                0, 1, 2, 3, [1, 2], [0, 3], [1, 2, 3], [0, 1, 2,
-                                                        3], [3, 2, 1, 0],
-                [3, 1, 0, 2], [2, 0], [3, 0], [3, 1], [1, 0], -1, -2, -3, -4,
-                [0, -2], [2, 3, -1, 0], [3, 1, 2, -3], [3, -4], [2, 2, 2],
-                [2, 2, 3], [-3, -3, -4], [-3, 2, 1]
+                0,
+                1,
+                2,
+                3,
+                [1, 2],
+                [0, 3],
+                [1, 2, 3],
+                [0, 1, 2, 3],
+                [3, 2, 1, 0],
+                [3, 1, 0, 2],
+                [2, 0],
+                [3, 0],
+                [3, 1],
+                [1, 0],
+                -1,
+                -2,
+                -3,
+                -4,
+                [0, -2],
+                [2, 3, 1, 0],
+                [3, 1, 2],
+                [3, -4],
             ],
             "const_axis": [True, False],
             "keepdims": [True, False],
@@ -92,9 +125,25 @@ def make_reduce_tests(reduce_op,
             "input_dtype": [tf.float32],
             "input_shape": [[3, 3, 2, 4]],
             "axis": [
-                0, 1, 2, [0, 1], [0, 2], [1, 2], [0, 1, 2], [1, 0], [2, 0],
-                [2, 1], [2, 1, 0], [2, 0, 1], -1, -2, -3, [1, -1], [0, -1],
-                [-1, 0], [-1, -2, -3], [0, 0, 0], [2, 2, 0], [1, 0, -3, -3]
+                0,
+                1,
+                2,
+                [0, 1],
+                [0, 2],
+                [1, 2],
+                [0, 1, 2],
+                [1, 0],
+                [2, 0],
+                [2, 1],
+                [2, 1, 0],
+                [2, 0, 1],
+                -1,
+                -2,
+                -3,
+                [1, -1],
+                [0, -1],
+                [-1, 0],
+                [-1, -2, -3],
             ],
             "const_axis": [True],
             "keepdims": [True, False],
@@ -110,6 +159,14 @@ def make_reduce_tests(reduce_op,
             "const_axis": [True],
             "keepdims": [True, False],
             "fully_quantize": [True],
+        },
+        {
+            "input_dtype": [tf.float32],
+            "input_shape": [[2, 0, 2]],
+            "axis": [0],
+            "const_axis": [True],
+            "keepdims": [True, False],
+            "fully_quantize": [False],
         },
     ]
     # test_parameters include fully_quantize option only when
@@ -200,13 +257,17 @@ def make_reduce_prod_tests(options):
 @register_make_test_function()
 def make_reduce_max_tests(options):
   """Make a set of tests to do max."""
-  return make_reduce_tests(tf.reduce_max)(options)
+  return make_reduce_tests(
+      tf.reduce_max, allow_fully_quantize=True, min_value=-1, max_value=1)(
+          options)
 
 
 @register_make_test_function()
 def make_reduce_min_tests(options):
   """Make a set of tests to do min."""
-  return make_reduce_tests(tf.reduce_min)(options)
+  return make_reduce_tests(
+      tf.reduce_min, allow_fully_quantize=True, min_value=-1, max_value=1)(
+          options)
 
 
 @register_make_test_function()

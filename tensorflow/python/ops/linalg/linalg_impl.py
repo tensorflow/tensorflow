@@ -234,7 +234,7 @@ def _matrix_exp_pade13(matrix):
 def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the matrix exponential of one or more square matrices.
 
-  exp(A) = \sum_{n=0}^\infty A^n/n!
+  $$exp(A) = \sum_{n=0}^\infty A^n/n!$$
 
   The exponential is computed using a combination of the scaling and squaring
   method and the Pade approximation. Details can be found in:
@@ -276,6 +276,7 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
             math_ops.abs(matrix),
             axis=array_ops.size(array_ops.shape(matrix)) - 2),
         axis=-1)[..., array_ops.newaxis, array_ops.newaxis]
+
     const = lambda x: constant_op.constant(x, l1_norm.dtype)
 
     def _nest_where(vals, cases):
@@ -320,13 +321,19 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
     else:
       raise ValueError('tf.linalg.expm does not support matrices of type %s' %
                        matrix.dtype)
-    numer = u + v
-    denom = -u + v
-    result = linalg_ops.matrix_solve(denom, numer)
-    max_squarings = math_ops.reduce_max(squarings)
 
+    is_finite = math_ops.is_finite(math_ops.reduce_max(l1_norm))
+    nan = constant_op.constant(np.nan, matrix.dtype)
+    result = control_flow_ops.cond(
+        is_finite, lambda: linalg_ops.matrix_solve(-u + v, u + v),
+        lambda: array_ops.fill(array_ops.shape(matrix), nan))
+    max_squarings = math_ops.reduce_max(squarings)
     i = const(0.0)
-    c = lambda i, r: math_ops.less(i, max_squarings)
+
+    def c(i, _):
+      return control_flow_ops.cond(is_finite,
+                                   lambda: math_ops.less(i, max_squarings),
+                                   lambda: constant_op.constant(False))
 
     def b(i, r):
       return i + 1, array_ops.where_v2(
@@ -338,6 +345,102 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
           result,
           array_ops.concat((batch_shape, array_ops.shape(result)[-2:]), axis=0))
     return array_ops.reshape(result, batch_shape.concatenate(result.shape[-2:]))
+
+
+@tf_export('linalg.banded_triangular_solve', v1=[])
+def banded_triangular_solve(
+    bands,
+    rhs,
+    lower=True,
+    adjoint=False,  # pylint: disable=redefined-outer-name
+    name=None):
+  r"""Solve triangular systems of equations with a banded solver.
+
+  `bands` is a tensor of shape `[..., K, M]`, where `K` represents the number
+  of bands stored. This corresponds to a batch of `M` by `M` matrices, whose
+  `K` subdiagonals (when `lower` is `True`) are stored.
+
+  This operator broadcasts the batch dimensions of `bands` and the batch
+  dimensions of `rhs`.
+
+
+  Examples:
+
+  Storing 2 bands of a 3x3 matrix.
+  Note that first element in the second row is ignored due to
+  the 'LEFT_RIGHT' padding.
+
+  >>> x = [[2., 3., 4.], [1., 2., 3.]]
+  >>> x2 = [[2., 3., 4.], [10000., 2., 3.]]
+  >>> y = tf.zeros([3, 3])
+  >>> z = tf.linalg.set_diag(y, x, align='LEFT_RIGHT', k=(-1, 0))
+  >>> z
+  <tf.Tensor: shape=(3, 3), dtype=float32, numpy=
+  array([[2., 0., 0.],
+         [2., 3., 0.],
+         [0., 3., 4.]], dtype=float32)>
+  >>> soln = tf.linalg.banded_triangular_solve(x, tf.ones([3, 1]))
+  >>> soln
+  <tf.Tensor: shape=(3, 1), dtype=float32, numpy=
+  array([[0.5 ],
+         [0.  ],
+         [0.25]], dtype=float32)>
+  >>> are_equal = soln == tf.linalg.banded_triangular_solve(x2, tf.ones([3, 1]))
+  >>> tf.reduce_all(are_equal).numpy()
+  True
+  >>> are_equal = soln == tf.linalg.triangular_solve(z, tf.ones([3, 1]))
+  >>> tf.reduce_all(are_equal).numpy()
+  True
+
+  Storing 2 superdiagonals of a 4x4 matrix. Because of the 'LEFT_RIGHT' padding
+  the last element of the first row is ignored.
+
+  >>> x = [[2., 3., 4., 5.], [-1., -2., -3., -4.]]
+  >>> y = tf.zeros([4, 4])
+  >>> z = tf.linalg.set_diag(y, x, align='LEFT_RIGHT', k=(0, 1))
+  >>> z
+  <tf.Tensor: shape=(4, 4), dtype=float32, numpy=
+  array([[-1.,  2.,  0.,  0.],
+         [ 0., -2.,  3.,  0.],
+         [ 0.,  0., -3.,  4.],
+         [ 0.,  0., -0., -4.]], dtype=float32)>
+  >>> soln = tf.linalg.banded_triangular_solve(x, tf.ones([4, 1]), lower=False)
+  >>> soln
+  <tf.Tensor: shape=(4, 1), dtype=float32, numpy=
+  array([[-4.       ],
+         [-1.5      ],
+         [-0.6666667],
+         [-0.25     ]], dtype=float32)>
+  >>> are_equal = (soln == tf.linalg.triangular_solve(
+  ...   z, tf.ones([4, 1]), lower=False))
+  >>> tf.reduce_all(are_equal).numpy()
+  True
+
+
+  Args:
+    bands: A `Tensor` describing the bands of the left hand side, with shape
+      `[..., K, M]`. The `K` rows correspond to the diagonal to the `K - 1`-th
+      diagonal (the diagonal is the top row) when `lower` is `True` and
+      otherwise the `K - 1`-th superdiagonal to the diagonal (the diagonal is
+      the bottom row) when `lower` is `False`. The bands are stored with
+      'LEFT_RIGHT' alignment, where the superdiagonals are padded on the right
+      and subdiagonals are padded on the left. This is the alignment cuSPARSE
+      uses.  See  `tf.linalg.set_diag` for more details.
+    rhs: A `Tensor` of shape [..., M] or [..., M, N] and with the same dtype as
+      `diagonals`. Note that if the shape of `rhs` and/or `diags` isn't known
+      statically, `rhs` will be treated as a matrix rather than a vector.
+    lower: An optional `bool`. Defaults to `True`. Boolean indicating whether
+      `bands` represents a lower or upper triangular matrix.
+    adjoint: An optional `bool`. Defaults to `False`. Boolean indicating whether
+      to solve with the matrix's block-wise adjoint.
+    name:  A name to give this `Op` (optional).
+
+  Returns:
+    A `Tensor` of shape [..., M] or [..., M, N] containing the solutions.
+  """
+  with ops.name_scope(name, 'banded_triangular_solve', [bands, rhs]):
+    return gen_linalg_ops.banded_triangular_solve(
+        bands, rhs, lower=lower, adjoint=adjoint)
 
 
 @tf_export('linalg.tridiagonal_solve')
@@ -645,7 +748,7 @@ def _maybe_validate_matrix(a, validate_args):
 def matrix_rank(a, tol=None, validate_args=False, name=None):
   """Compute the matrix rank of one or more matrices.
 
-  Arguments:
+  Args:
     a: (Batch of) `float`-like matrix-shaped `Tensor`(s) which are to be
       pseudo-inverted.
     tol: Threshold below which the singular value is counted as 'zero'.

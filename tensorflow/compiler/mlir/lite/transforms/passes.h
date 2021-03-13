@@ -37,18 +37,21 @@ std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFPass(
     bool run_tfl_runtime_verification);
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass();
+std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass(
+    bool enable_canonicalization);
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(
-    bool unfold_batch_matmul);
+    bool unfold_batch_matmul, bool allow_bf16_and_f16_type_legalization);
 
 // Creates an instance of the TensorFlow Lite dialect LowerStaticTensorList
 // pass.
-std::unique_ptr<OperationPass<ModuleOp>> CreateLowerStaticTensorListPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateLowerStaticTensorListPass(
+    bool allow_tensorlist_pass_through = false);
 
 // Creates an instance of the TensorFlow Lite dialect Quantize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass();
+std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
+    bool verify_numeric = false, bool legacy_float_scale = false);
 
 // Creates an instance of the TensorFlow Lite dialect PrepareQuantize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass(
@@ -61,7 +64,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizePass(
 // Creates an instance of the TensorFlow Lite dialect TrimFunctions
 // pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTrimFunctionsPass(
-    llvm::ArrayRef<std::string> trim_funcs_whitelist);
+    llvm::ArrayRef<std::string> trim_funcs_allowlist);
 
 // Creates an instance of the TensorFlow Lite dialect PrepareCompositeFunctions
 // pass.
@@ -91,6 +94,29 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateWhileOutlinePass();
 // Verifies runtime constraints.
 std::unique_ptr<OperationPass<FuncOp>> CreateRuntimeVerifyPass();
 
+// Creates raise custom ops pass, which legalize custom ops to TFL::CustomOp
+std::unique_ptr<OperationPass<FuncOp>> CreateRaiseCustomOpsPass();
+
+// Inserts an TFL::CallOnce op when the tf_saved_model's session initialzer is
+// given.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateInsertCallOnceOpFromSessionInitializerPass();
+
+// Creates a pass which is responsible for legalizing TensorFlow variables to
+// TensorFlow Lite variables.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeVariablesPass();
+
+// Creates a pass which is responsible for legalizing TensorFlow static hash
+// tables to TensorFlow Lite hash tables.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHashTablesPass();
+
+// Creates a pass which removes any unused bounded input arguments to functions
+// which corresponds to GlobalTensor.
+std::unique_ptr<OperationPass<ModuleOp>> CreateRemoveArgsAndGlobalTensors();
+
+// Creates a pass which is responsible for initializing Tensorflow variables
+// as Tensorflow Lite variables.
+std::unique_ptr<OperationPass<ModuleOp>> CreateInitializeVariablesPass();
 }  // namespace TFL
 
 }  // namespace mlir

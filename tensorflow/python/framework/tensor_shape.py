@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+import operator
 import six
 
 from tensorflow.core.framework import tensor_shape_pb2
@@ -116,7 +118,7 @@ def dimension_value(dimension):
   value = tensor_shape[i]  # Warning: this will return the dim value in V2!
   ```
 
-  Arguments:
+  Args:
     dimension: Either a `Dimension` instance, an integer, or None.
 
   Returns:
@@ -162,7 +164,7 @@ def dimension_at_index(shape, index):
   # instantiated on the fly.
   ```
 
-  Arguments:
+  Args:
     shape: A TensorShape instance.
     index: An integer index.
 
@@ -184,10 +186,14 @@ class Dimension(object):
 
   def __init__(self, value):
     """Creates a new Dimension with the given value."""
-    if value is None:
+    if isinstance(value, int):  # Most common case.
+      if value < 0:
+        raise ValueError("Dimension %d must be >= 0" % value)
+      self._value = value
+    elif value is None:
       self._value = None
     elif isinstance(value, Dimension):
-      self._value = value
+      self._value = value._value
     else:
       try:
         # int(...) compensates for the int/long dichotomy on Python 2.X.
@@ -227,6 +233,10 @@ class Dimension(object):
     if self._value is None or other.value is None:
       return None
     return self._value != other.value
+
+  def __bool__(self):
+    """Equivalent to `bool(self.value)`."""
+    return bool(self._value)
 
   def __int__(self):
     return self._value
@@ -748,7 +758,9 @@ class TensorShape(object):
     Raises:
       TypeError: If dims cannot be converted to a list of dimensions.
     """
-    if dims is None:
+    if isinstance(dims, (tuple, list)):  # Most common case.
+      self._dims = [Dimension(d) for d in dims]
+    elif dims is None:
       self._dims = None
     elif isinstance(dims, tensor_shape_pb2.TensorShapeProto):
       if dims.unknown_rank:
@@ -910,18 +922,35 @@ class TensorShape(object):
   def num_elements(self):
     """Returns the total number of elements, or none for incomplete shapes."""
     if self.is_fully_defined():
-      size = 1
-      for dim in self._dims:
-        size *= dim.value
-      return size
+      return functools.reduce(operator.mul, self.as_list(), 1)
     else:
       return None
 
   def merge_with(self, other):
     """Returns a `TensorShape` combining the information in `self` and `other`.
 
-    The dimensions in `self` and `other` are merged elementwise,
-    according to the rules defined for `Dimension.merge_with()`.
+    The dimensions in `self` and `other` are merged element-wise,
+    according to the rules below:
+
+    ```python
+    Dimension(n).merge_with(Dimension(None)) == Dimension(n)
+    Dimension(None).merge_with(Dimension(n)) == Dimension(n)
+    Dimension(None).merge_with(Dimension(None)) == Dimension(None)
+    # raises ValueError for n != m
+    Dimension(n).merge_with(Dimension(m))
+    ```
+    >> ts = tf.TensorShape([1,2])
+    >> ot1 = tf.TensorShape([1,2])
+    >> ts.merge_with(ot).as_list()
+    [1,2]
+
+    >> ot2 = tf.TensorShape([1,None])
+    >> ts.merge_with(ot2).as_list()
+    [1,2]
+
+    >> ot3 = tf.TensorShape([None, None])
+    >> ot3.merge_with(ot2).as_list()
+    [1, None]
 
     Args:
       other: Another `TensorShape`.
@@ -936,19 +965,20 @@ class TensorShape(object):
     other = as_shape(other)
     if self._dims is None:
       return other
+    if other.dims is None:
+      return self
     else:
       try:
         self.assert_same_rank(other)
-        new_dims = []
-        for i, dim in enumerate(self._dims):
-          new_dims.append(dim.merge_with(other[i]))
+        new_dims = [
+            dim.merge_with(other_dim)
+            for dim, other_dim in zip(self._dims, other.dims)
+        ]
         return TensorShape(new_dims)
       except ValueError:
         raise ValueError("Shapes %s and %s are not compatible" % (self, other))
 
   def __add__(self, other):
-    if not isinstance(other, TensorShape):
-      other = TensorShape(other)
     return self.concatenate(other)
 
   def __radd__(self, other):
@@ -1151,10 +1181,10 @@ class TensorShape(object):
     if self._dims is None or other.dims is None or self.rank != other.rank:
       return unknown_shape()
 
-    dims = [(Dimension(None))] * self.rank
-    for i, (d1, d2) in enumerate(zip(self._dims, other.dims)):
-      if d1 is not None and d2 is not None and d1 == d2:
-        dims[i] = d1
+    dims = [
+        d1 if d1 is not None and d2 is not None and d1 == d2 else None
+        for d1, d2 in zip(self._dims, other.dims)
+    ]
     return TensorShape(dims)
 
   def is_fully_defined(self):
@@ -1195,7 +1225,50 @@ class TensorShape(object):
       ])
 
   def __eq__(self, other):
-    """Returns True if `self` is equivalent to `other`."""
+    """Returns True if `self` is equivalent to `other`.
+
+    It first tries to convert `other` to `TensorShape`. `TypeError` is thrown
+    when the conversion fails. Otherwise, it compares each element in the
+    TensorShape dimensions.
+
+    * Two *Fully known* shapes, return True iff each element is equal.
+    >>> t_a = tf.TensorShape([1,2])
+    >>> a = [1, 2]
+    >>> t_b = tf.TensorShape([1,2])
+    >>> t_c = tf.TensorShape([1,2,3])
+    >>> t_a.__eq__(a)
+    True
+    >>> t_a.__eq__(t_b)
+    True
+    >>> t_a.__eq__(t_c)
+    False
+
+    * Two *Partially-known* shapes, return False.
+    >>> p_a = tf.TensorShape([1,None])
+    >>> p_b = tf.TensorShape([2,None])
+    >>> p_a.__eq__(p_b)
+    False
+    >>> t_a.__eq__(p_a)
+    False
+
+    * Two *Unknown shape*, return True.
+    >>> unk_a = tf.TensorShape(None)
+    >>> unk_b = tf.TensorShape(None)
+    >>> unk_a.__eq__(unk_b)
+    True
+    >>> unk_a.__eq__(t_a)
+    False
+
+    Args:
+      other: A `TensorShape` or type that can be converted to `TensorShape`.
+
+    Returns:
+      True if the dimensions are all equal.
+
+    Raises:
+      TypeError if `other` can not be converted to `TensorShape`.
+    """
+
     try:
       other = as_shape(other)
     except TypeError:

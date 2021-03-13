@@ -61,11 +61,11 @@ void TPUBridgeExecutorIslandInlining::runOnOperation() {
     LLVM_DEBUG(llvm::dbgs()
                << "Found call to inline: " << *call_op.getOperation() << "\n");
 
-    FuncOp called_func = dyn_cast_or_null<FuncOp>(
-        symbol_table.lookupSymbolIn(getOperation(), call_op.f()));
+    auto call_interface = cast<CallOpInterface>(call_op.getOperation());
+    auto called_func =
+        dyn_cast_or_null<FuncOp>(call_interface.resolveCallable());
 
-    if (failed(inlineCall(inliner,
-                          cast<CallOpInterface>(call_op.getOperation()),
+    if (failed(inlineCall(inliner, call_interface,
                           cast<CallableOpInterface>(called_func.getOperation()),
                           called_func.getCallableRegion(),
                           /* shouldCloneInlinedRegion = */ false))) {

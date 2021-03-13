@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/process_state.h"
 
+#include <atomic>
 #include <cstring>
 #include <vector>
 
@@ -42,7 +43,8 @@ namespace tensorflow {
   return instance;
 }
 
-ProcessState::ProcessState() : numa_enabled_(false) {}
+ProcessState::ProcessState()
+    : numa_enabled_(false), cpu_allocators_cached_(0) {}
 
 string ProcessState::MemDesc::DebugString() {
   return strings::StrCat((loc == CPU ? "CPU " : "GPU "), dev_index,
@@ -61,6 +63,12 @@ ProcessState::MemDesc ProcessState::PtrType(const void* ptr) {
 
 Allocator* ProcessState::GetCPUAllocator(int numa_node) {
   if (!numa_enabled_ || numa_node == port::kNUMANoAffinity) numa_node = 0;
+
+  // Check if allocator for the numa node is in lock-free cache.
+  if (numa_node < cpu_allocators_cached_.load(std::memory_order_acquire)) {
+    return cpu_allocators_cache_[numa_node];
+  }
+
   mutex_lock lock(mu_);
   while (cpu_allocators_.size() <= static_cast<size_t>(numa_node)) {
     // If visitors have been defined we need an Allocator built from
@@ -93,14 +101,14 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
       int64 cpu_mem_limit = cpu_mem_limit_in_mb * (1LL << 20);
       DCHECK(sub_allocator);
       allocator =
-          new BFCAllocator(sub_allocator, cpu_mem_limit, true /*allow_growth*/,
-                           "bfc_cpu_allocator_for_gpu" /*name*/);
+          new BFCAllocator(sub_allocator, cpu_mem_limit, /*allow_growth=*/true,
+                           /*name=*/"bfc_cpu_allocator_for_gpu");
       VLOG(2) << "Using BFCAllocator with memory limit of "
               << cpu_mem_limit_in_mb << " MB for ProcessState CPU allocator";
     } else if (sub_allocator) {
       DCHECK(sub_allocator);
       allocator =
-          new PoolAllocator(100 /*pool_size_limit*/, true /*auto_resize*/,
+          new PoolAllocator(/*pool_size_limit=*/100, /*auto_resize=*/true,
                             sub_allocator, new NoopRounder, "cpu_pool");
       VLOG(2) << "Using PoolAllocator for ProcessState CPU allocator "
               << "numa_enabled_=" << numa_enabled_
@@ -115,6 +123,10 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
       allocator = new TrackingAllocator(allocator, true);
     }
     cpu_allocators_.push_back(allocator);
+    if (cpu_allocators_.size() < cpu_allocators_cache_.max_size()) {
+      cpu_allocators_cache_[cpu_allocators_.size() - 1] = allocator;
+      cpu_allocators_cached_.fetch_add(1, std::memory_order_release);
+    }
     if (!sub_allocator) {
       DCHECK(cpu_alloc_visitors_.empty() && cpu_free_visitors_.empty());
     }

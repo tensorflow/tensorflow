@@ -21,6 +21,7 @@ from __future__ import print_function
 import contextlib
 import threading
 
+from tensorflow.python import tf2
 from tensorflow.python.framework import ops
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
@@ -272,12 +273,12 @@ def experimental_set_strategy(strategy):
 
 @contextlib.contextmanager
 def enter_or_assert_strategy(strategy):
-  if not has_strategy():
-    with strategy.scope():
-      yield
-  else:
+  if has_strategy():
     _assert_strategy(strategy)
     yield
+  else:
+    with strategy.scope():
+      yield
 
 
 # ------------------------------------------------------------------------------
@@ -318,7 +319,11 @@ def _get_default_strategy():
         # Make sure distribute_lib module is loaded by accessing some member.
         _ = distribute_lib._creating_default_strategy_singleton
         distribute_lib._creating_default_strategy_singleton = True
-        _defaults["strategy"] = distribute_lib._DefaultDistributionStrategy()
+        if tf2.enabled():
+          _defaults["strategy"] = distribute_lib._DefaultDistributionStrategy()
+        else:
+          _defaults["strategy"] = (
+              distribute_lib._DefaultDistributionStrategyV1())
         distribute_lib._creating_default_strategy_singleton = False
         # pylint: enable=protected-access
   return _defaults["strategy"]
@@ -329,8 +334,10 @@ def _get_default_replica_context():
     # Avoid race condition causing two defaults to be created
     with _default_replica_context_lock:
       if _defaults["replica_context"] is None:
-        _defaults["replica_context"] = distribute_lib.ReplicaContext(
+        # pylint: disable=protected-access
+        _defaults["replica_context"] = distribute_lib._DefaultReplicaContext(
             _get_default_strategy(), replica_id_in_sync_group=0)
+        # pylint: enable=protected-access
   return _defaults["replica_context"]
 
 

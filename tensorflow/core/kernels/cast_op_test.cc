@@ -121,108 +121,127 @@ TEST_ALL_CASTS_FROM(quint16)
 
 // TODO(wicke): check conversions from/to bool, and bfloat16
 
-static void BM_cpu_float_int64(int iters, int num) {
-  testing::ItemsProcessed(static_cast<int64>(iters) * num);
-  testing::BytesProcessed(static_cast<int64>(iters) * num *
+static void BM_cpu_float_int64(::testing::benchmark::State& state) {
+  const int num = state.range(0);
+  test::Benchmark("cpu", Cast<float, int64>(num), /*old_benchmark_api=*/false)
+      .Run(state);
+  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num);
+  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * num *
                           (sizeof(float) + sizeof(int64)));
-  testing::UseRealTime();
-  test::Benchmark("cpu", Cast<float, int64>(num)).Run(iters);
 }
-BENCHMARK(BM_cpu_float_int64)->Arg(64 << 10)->Arg(32 << 20);
+BENCHMARK(BM_cpu_float_int64)->UseRealTime()->Arg(64 << 10)->Arg(32 << 20);
 
-static void BM_gpu_float_int64(int iters, int num) {
-  testing::ItemsProcessed(static_cast<int64>(iters) * num);
-  testing::BytesProcessed(static_cast<int64>(iters) * num *
+static void BM_gpu_float_int64(::testing::benchmark::State& state) {
+  const int num = state.range(0);
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  test::Benchmark("gpu", Cast<float, int64>(num), /*old_benchmark_api=*/false)
+      .Run(state);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num);
+  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * num *
                           (sizeof(float) + sizeof(int64)));
-  testing::UseRealTime();
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  test::Benchmark("gpu", Cast<float, int64>(num)).Run(iters);
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#ifdef TENSORFLOW_USE_SYCL
-  test::Benchmark("sycl", Cast<float, int64>(num)).Run(iters);
-#endif  // TENSORFLOW_USE_SYCL
 }
-BENCHMARK(BM_gpu_float_int64)->Arg(64 << 10)->Arg(32 << 20);
+BENCHMARK(BM_gpu_float_int64)->UseRealTime()->Arg(64 << 10)->Arg(32 << 20);
 
-static void BM_cpu_bool_float(int iters, int num) {
-  testing::ItemsProcessed(static_cast<int64>(iters) * num);
-  testing::BytesProcessed(static_cast<int64>(iters) * num *
+static void BM_cpu_bool_float(::testing::benchmark::State& state) {
+  const int num = state.range(0);
+
+  test::Benchmark("cpu", Cast<bool, float>(num), /*old_benchmark_api=*/false)
+      .Run(state);
+  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num);
+  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * num *
                           (sizeof(bool) + sizeof(float)));
-  testing::UseRealTime();
-  test::Benchmark("cpu", Cast<bool, float>(num)).Run(iters);
 }
-BENCHMARK(BM_cpu_bool_float)->Arg(64 << 10)->Arg(32 << 20);
+BENCHMARK(BM_cpu_bool_float)->UseRealTime()->Arg(64 << 10)->Arg(32 << 20);
 
-static void BM_gpu_bool_float(int iters, int num) {
-  testing::ItemsProcessed(static_cast<int64>(iters) * num);
-  testing::BytesProcessed(static_cast<int64>(iters) * num *
+static void BM_gpu_bool_float(::testing::benchmark::State& state) {
+  const int num = state.range(0);
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  test::Benchmark("gpu", Cast<bool, float>(num), /*old_benchmark_api=*/false)
+      .Run(state);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num);
+  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * num *
                           (sizeof(bool) + sizeof(float)));
-  testing::UseRealTime();
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  test::Benchmark("gpu", Cast<bool, float>(num)).Run(iters);
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#ifdef TENSORFLOW_USE_SYCL
-  test::Benchmark("sycl", Cast<bool, float>(num)).Run(iters);
-#endif  // TENSORFLOW_USE_SYCL
 }
-BENCHMARK(BM_gpu_bool_float)->Arg(64 << 10)->Arg(32 << 20);
+BENCHMARK(BM_gpu_bool_float)->UseRealTime()->Arg(64 << 10)->Arg(32 << 20);
 
-static void BM_cpu_float_bfloat16(int iters, int num) {
-  testing::ItemsProcessed(static_cast<int64>(iters) * num);
-  testing::BytesProcessed(static_cast<int64>(iters) * num *
+static void BM_cpu_float_bfloat16(::testing::benchmark::State& state) {
+  const int num = state.range(0);
+  test::Benchmark("cpu", Cast<float, bfloat16>(num),
+                  /*old_benchmark_api=*/false)
+      .Run(state);
+  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num);
+  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * num *
                           (sizeof(float) + sizeof(bfloat16)));
-  testing::UseRealTime();
-  test::Benchmark("cpu", Cast<float, bfloat16>(num)).Run(iters);
 }
-BENCHMARK(BM_cpu_float_bfloat16)->Arg(64 << 10)->Arg(32 << 20);
+BENCHMARK(BM_cpu_float_bfloat16)->UseRealTime()->Arg(64 << 10)->Arg(32 << 20);
 
-static void BM_cpu_bfloat16_float(int iters, int num) {
-  testing::ItemsProcessed(static_cast<int64>(iters) * num);
-  testing::BytesProcessed(static_cast<int64>(iters) * num *
+static void BM_cpu_bfloat16_float(::testing::benchmark::State& state) {
+  const int num = state.range(0);
+  test::Benchmark("cpu", Cast<bfloat16, float>(num),
+                  /*old_benchmark_api=*/false)
+      .Run(state);
+
+  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num);
+  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * num *
                           (sizeof(float) + sizeof(bfloat16)));
-  testing::UseRealTime();
-  test::Benchmark("cpu", Cast<bfloat16, float>(num)).Run(iters);
 }
-BENCHMARK(BM_cpu_bfloat16_float)->Arg(64 << 10)->Arg(32 << 20);
+BENCHMARK(BM_cpu_bfloat16_float)->UseRealTime()->Arg(64 << 10)->Arg(32 << 20);
 
-static void BM_cpu_float_half(int iters, int num) {
-  testing::ItemsProcessed(static_cast<int64>(iters) * num);
-  testing::BytesProcessed(static_cast<int64>(iters) * num *
+static void BM_cpu_float_half(::testing::benchmark::State& state) {
+  const int num = state.range(0);
+
+  test::Benchmark("cpu", Cast<float, Eigen::half>(num),
+                  /*old_benchmark_api=*/false)
+      .Run(state);
+
+  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num);
+  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * num *
                           (sizeof(float) + sizeof(Eigen::half)));
-  testing::UseRealTime();
-  test::Benchmark("cpu", Cast<float, Eigen::half>(num)).Run(iters);
 }
-BENCHMARK(BM_cpu_float_half)->Arg(64 << 10)->Arg(32 << 20);
+BENCHMARK(BM_cpu_float_half)->UseRealTime()->Arg(64 << 10)->Arg(32 << 20);
 
-static void BM_cpu_half_float(int iters, int num) {
-  testing::ItemsProcessed(static_cast<int64>(iters) * num);
-  testing::BytesProcessed(static_cast<int64>(iters) * num *
+static void BM_cpu_half_float(::testing::benchmark::State& state) {
+  const int num = state.range(0);
+
+  test::Benchmark("cpu", Cast<Eigen::half, float>(num),
+                  /*old_benchmark_api=*/false)
+      .Run(state);
+  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num);
+  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * num *
                           (sizeof(float) + sizeof(Eigen::half)));
-  testing::UseRealTime();
-  test::Benchmark("cpu", Cast<Eigen::half, float>(num)).Run(iters);
 }
-BENCHMARK(BM_cpu_half_float)->Arg(64 << 10)->Arg(32 << 20);
+BENCHMARK(BM_cpu_half_float)->UseRealTime()->Arg(64 << 10)->Arg(32 << 20);
 
-static void BM_gpu_float_half(int iters, int num) {
-  testing::ItemsProcessed(static_cast<int64>(iters) * num);
-  testing::BytesProcessed(static_cast<int64>(iters) * num *
-                          (sizeof(float) + sizeof(Eigen::half)));
-  testing::UseRealTime();
+static void BM_gpu_float_half(::testing::benchmark::State& state) {
+  const int num = state.range(0);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  test::Benchmark("gpu", Cast<float, Eigen::half>(num)).Run(iters);
+  test::Benchmark("gpu", Cast<float, Eigen::half>(num),
+                  /*old_benchmark_api=*/false)
+      .Run(state);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-}
-BENCHMARK(BM_gpu_float_half)->Arg(64 << 10)->Arg(32 << 20);
 
-static void BM_gpu_half_float(int iters, int num) {
-  testing::ItemsProcessed(static_cast<int64>(iters) * num);
-  testing::BytesProcessed(static_cast<int64>(iters) * num *
+  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num);
+  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * num *
                           (sizeof(float) + sizeof(Eigen::half)));
-  testing::UseRealTime();
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  test::Benchmark("gpu", Cast<Eigen::half, float>(num)).Run(iters);
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
-BENCHMARK(BM_gpu_half_float)->Arg(64 << 10)->Arg(32 << 20);
+BENCHMARK(BM_gpu_float_half)->UseRealTime()->Arg(64 << 10)->Arg(32 << 20);
+
+static void BM_gpu_half_float(::testing::benchmark::State& state) {
+  const int num = state.range(0);
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  test::Benchmark("gpu", Cast<Eigen::half, float>(num),
+                  /*old_benchmark_api=*/false)
+      .Run(state);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * num);
+  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * num *
+                          (sizeof(float) + sizeof(Eigen::half)));
+}
+BENCHMARK(BM_gpu_half_float)->UseRealTime()->Arg(64 << 10)->Arg(32 << 20);
 
 }  // end namespace tensorflow

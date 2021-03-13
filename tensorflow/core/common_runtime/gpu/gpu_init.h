@@ -38,7 +38,7 @@ stream_executor::Platform* GPUMachineManager();
 // Returns the string describing the name of the GPU platform in use.
 // This value is "CUDA" by default, and
 // "ROCM" when TF is built with `--config==rocm`
-string GpuPlatformName();
+std::string GpuPlatformName();
 
 }  // namespace tensorflow
 

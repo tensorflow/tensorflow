@@ -7,6 +7,14 @@ tf_class {
     name: "environment"
     mtype: "<type \'property\'>"
   }
+  member {
+    name: "task_id"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "task_type"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'tpu\', \'zone\', \'project\', \'job_name\', \'coordinator_name\', \'coordinator_address\', \'credentials\', \'service\', \'discovery_url\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'worker\', \'None\', \'None\', \'default\', \'None\', \'None\'], "
@@ -14,6 +22,10 @@ tf_class {
   member_method {
     name: "cluster_spec"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "connect"
+    argspec: "args=[\'tpu\', \'zone\', \'project\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "get_job_name"

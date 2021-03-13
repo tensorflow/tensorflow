@@ -24,6 +24,10 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+// Constant used for indicating that the argument of tf.data.Dataset.shard
+// should be supplied by the auto-sharding rewrite.
+constexpr int kShardHint = -1;
+
 // Creates a resource handle with a unique name for the given resource.
 template <typename T>
 Status CreateHandle(OpKernelContext* ctx, T* resource,
@@ -35,7 +39,7 @@ Status CreateHandle(OpKernelContext* ctx, T* resource,
   TF_RETURN_IF_ERROR(mgr->Create<T>(container_name, unique_name, resource));
 
   *handle = MakeResourceHandle(container_name, unique_name, *ctx->device(),
-                               MakeTypeIndex<T>());
+                               TypeIndex::Make<T>());
   return Status::OK();
 }
 
@@ -83,12 +87,6 @@ class AnonymousResourceOp : public OpKernel {
   bool create_deleter_ = true;
 };
 
-// Registers the given cancellation callback, returning a function that can be
-// used to deregister the callback.
-Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
-                                    std::function<void()> register_fn,
-                                    std::function<void()>* deregister_fn);
-
 // Returns Status::OK() if `expected` and `received` types match,
 // errors::InvalidArgument otherwise.
 Status VerifyTypesMatch(const DataTypeVector& expected,
@@ -105,25 +103,18 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
                               const std::vector<Tensor>& received);
 
-// Returns a stable hash of the subgraph rooted at the given node.
-//
-// NOTE: There is currently no guarantee that the hash of a subgraph will stay
-// the same between TensorFlow builds.
-Status HashNode(const GraphDef& graph, const NodeDef& node, uint64* hash);
-Status HashNode(const GraphDef& graph, const NodeDef& node,
-                const FunctionLibraryDefinition& flib_def, uint64* hash);
+// Writes dataset elements to the checkpoint writer using the given key prefix.
+// The elements can be read back by passing the same key prefix to
+// ReadElementsFromCheckpoint. Only one list of elements can be written under
+// the same key_prefix.
+Status WriteElementsToCheckpoint(
+    IteratorStateWriter* writer, StringPiece key_prefix,
+    const std::vector<std::vector<Tensor>>& elements);
 
-// Returns a stable hash of the given tensor.
-//
-// NOTE: There is currently no guarantee that the hash of a subgraph will stay
-// the same between TensorFlow builds.
-Status HashTensor(const Tensor& tensor, uint64* hash);
-
-// Returns a stable hash of the given graph.
-//
-// NOTE: There is currently no guarantee that the hash of a subgraph will stay
-// the same between TensorFlow builds.
-Status HashGraph(const GraphDef& graph, uint64* hash);
+// Reads dataset elements from the checkpoint reader using the given key prefix.
+Status ReadElementsFromCheckpoint(IteratorStateReader* reader,
+                                  StringPiece key_prefix,
+                                  std::vector<std::vector<Tensor>>* elements);
 
 // Dataset op level determinism policy.
 class DeterminismPolicy {
@@ -178,24 +169,28 @@ class VariantTensorDataReader : public IteratorStateReader {
   explicit VariantTensorDataReader(
       const std::vector<const VariantTensorData*>& data);
 
-  Status ReadScalar(StringPiece key, int64* val) override;
-  Status ReadScalar(StringPiece key, tstring* val) override;
-  Status ReadTensor(StringPiece key, Tensor* val) override;
-  bool Contains(StringPiece key) override;
+  Status ReadScalar(StringPiece key, int64* val) const override;
+  Status ReadScalar(StringPiece key, tstring* val) const override;
+  Status ReadTensor(StringPiece key, Tensor* val) const override;
+  bool Contains(StringPiece key) const override;
 
-  Status ReadScalar(StringPiece name, StringPiece key, int64* val) override;
-  Status ReadScalar(StringPiece name, StringPiece key, tstring* val) override;
-  Status ReadTensor(StringPiece name, StringPiece key, Tensor* val) override;
-  bool Contains(StringPiece name, StringPiece key) override;
+  Status ReadScalar(StringPiece name, StringPiece key,
+                    int64* val) const override;
+  Status ReadScalar(StringPiece name, StringPiece key,
+                    tstring* val) const override;
+  Status ReadTensor(StringPiece name, StringPiece key,
+                    Tensor* val) const override;
+  bool Contains(StringPiece name, StringPiece key) const override;
 
  private:
   template <typename T>
-  Status ReadScalarInternal(StringPiece key, T* val);
-  Status ReadTensorInternal(StringPiece key, Tensor* val);
+  Status ReadScalarInternal(StringPiece key, T* val) const;
+  Status ReadTensorInternal(StringPiece key, Tensor* val) const;
 
   template <typename T>
-  Status ReadScalarInternal(StringPiece name, StringPiece key, T* val);
-  Status ReadTensorInternal(StringPiece name, StringPiece key, Tensor* val);
+  Status ReadScalarInternal(StringPiece name, StringPiece key, T* val) const;
+  Status ReadTensorInternal(StringPiece name, StringPiece key,
+                            Tensor* val) const;
 
   std::map<string, std::map<string, size_t>> map_;
   std::map<string, const VariantTensorData*> data_;  // Not owned.
@@ -282,6 +277,62 @@ class DummyResourceOp : public OpKernel {
         ctx, /*container=*/"", /*name=*/"dummy_resource");
   }
 };
+
+// Given an op prefix and an op to match, returns whether the op to match
+// is a match for any version of the op prefix. For example,
+// MatchesAnyVersion("BatchDataset", "BatchDataset") == true
+// MatchesAnyVersion("BatchDataset", "BatchDatasetV2") == true
+// MatchesAnyVersion("BatchDataset", "BatchDatasetV3") == true
+// MatchesAnyVersion("PaddedBatchDataset", "BatchDataset") == false
+bool MatchesAnyVersion(StringPiece op_prefix, StringPiece op_to_match);
+
+// Based on `job_name`, `optimizations_enabled`, `optimizations_disabled` and
+// `optimizations_default`, returns the list of optimizations that will be
+// applied.
+std::vector<tstring> SelectOptimizations(
+    const string& job_name,
+    const absl::flat_hash_map<string, uint64>& live_experiments,
+    const std::vector<tstring>& optimizations_enabled,
+    const std::vector<tstring>& optimizations_disabled,
+    const std::vector<tstring>& optimizations_default,
+    std::function<uint64(const string&)> hash_func);
+
+// Removes device placements from the ops of all functions in `library`.
+void StripDevicePlacement(FunctionDefLibrary* library);
+
+// Copies partial of the batch output.
+Status CopyPartialBatch(int64 num_elements, const Tensor& value,
+                        Tensor* output);
+
+// Reads a batch when restoring the iterator.
+Status ReadBatch(int64 batch_size, const string& iterator_prefix,
+                 const string& batch_prefix, IteratorContext* ctx,
+                 IteratorStateReader* reader, std::vector<Tensor>* batch);
+
+// Writes a batch when saving the iterator.
+Status WriteBatch(int64 batch_size, int64 num_elements,
+                  const string& iterator_prefix, const string& batch_prefix,
+                  IteratorStateWriter* writer, std::vector<Tensor>* batch);
+
+// Reads a status when restoring the iterator.
+Status ReadStatus(const string& iterator_prefix, const string& prefix,
+                  IteratorStateReader* reader, Status* status);
+
+// Writes a status when saving the iterator.
+Status WriteStatus(const string& iterator_prefix, const string& prefix,
+                   const Status& status, IteratorStateWriter* writer);
+
+// Processes a batch to output. In the case a partial batch is encountered, copy
+// only partial of the batch.
+Status ProcessBatch(int64 batch_size, int64 num_elements, bool drop_remainder,
+                    const Status& status, IteratorContext* ctx,
+                    std::vector<Tensor>* output, bool* end_of_sequence,
+                    std::vector<Tensor>* batch);
+
+// Copies the input elements to a batch.
+Status CopyBatch(bool parallel_copy, IteratorContext* ctx,
+                 std::vector<Tensor>* out_tensors,
+                 std::vector<std::vector<Tensor>>* batch_elements);
 
 }  // namespace data
 }  // namespace tensorflow

@@ -16,90 +16,390 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_GPU_INFO_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_GPU_INFO_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
+
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 
 namespace tflite {
 namespace gpu {
 
 // The VendorID returned by the GPU driver.
-enum class GpuType {
-  UNKNOWN,
-  APPLE,
-  MALI,
-  ADRENO,
-  POWERVR,
-  INTEL,
-  AMD,
-  NVIDIA,
-};
-enum class GpuModel {
-  UNKNOWN,
-  // Adreno 6xx series
-  ADRENO640,
-  ADRENO630,
-  ADRENO616,
-  ADRENO615,
-  ADRENO612,
-  ADRENO605,
-  // Adreno 5xx series
-  ADRENO540,
-  ADRENO530,
-  ADRENO512,
-  ADRENO510,
-  ADRENO509,
-  ADRENO508,
-  ADRENO506,
-  ADRENO505,
-  ADRENO504,
-  // Adreno 4xx series
-  ADRENO430,
-  ADRENO420,
-  ADRENO418,
-  ADRENO405,
-  // Adreno 3xx series
-  ADRENO330,
-  ADRENO320,
-  ADRENO308,
-  ADRENO306,
-  ADRENO305,
-  ADRENO304,
-  // Adreno 2xx series
-  ADRENO225,
-  ADRENO220,
-  ADRENO205,
-  ADRENO203,
-  ADRENO200,
-  // Adreno 1xx series
-  ADRENO130,
+enum class GpuVendor {
+  kApple,
+  kQualcomm,
+  kMali,
+  kPowerVR,
+  kNvidia,
+  kAMD,
+  kIntel,
+  kUnknown
 };
 
-struct GpuInfo {
-  GpuType type = GpuType::UNKNOWN;
+enum class GpuApi {
+  kUnknown,
+  kOpenCl,
+  kMetal,
+  kVulkan,
+  kOpenGl,
+};
+
+enum class AdrenoGpu {
+  // Adreno 6xx series
+  kAdreno685,
+  kAdreno680,
+  kAdreno675,
+  kAdreno650,
+  kAdreno640,
+  kAdreno630,
+  kAdreno620,
+  kAdreno618,
+  kAdreno616,
+  kAdreno615,
+  kAdreno612,
+  kAdreno610,
+  kAdreno605,
+  // Adreno 5xx series
+  kAdreno540,
+  kAdreno530,
+  kAdreno512,
+  kAdreno510,
+  kAdreno509,
+  kAdreno508,
+  kAdreno506,
+  kAdreno505,
+  kAdreno504,
+  // Adreno 4xx series
+  kAdreno430,
+  kAdreno420,
+  kAdreno418,
+  kAdreno405,
+  // Adreno 3xx series
+  kAdreno330,
+  kAdreno320,
+  kAdreno308,
+  kAdreno306,
+  kAdreno305,
+  kAdreno304,
+  // Adreno 2xx series
+  kAdreno225,
+  kAdreno220,
+  kAdreno205,
+  kAdreno203,
+  kAdreno200,
+  // Adreno 1xx series
+  kAdreno130,
+  kAdreno120,
+  kUnknown
+};
+
+struct AdrenoInfo {
+  AdrenoInfo() = default;
+  explicit AdrenoInfo(const std::string& device_version);
+
+  AdrenoGpu adreno_gpu;
+
+  bool IsAdreno1xx() const;
+  bool IsAdreno2xx() const;
+  bool IsAdreno3xx() const;
+  bool IsAdreno4xx() const;
+  bool IsAdreno5xx() const;
+  bool IsAdreno6xx() const;
+  bool IsAdreno6xxOrHigher() const;
+
+  // This function returns some not very documented physical parameter of
+  // Adreno6xx GPU.
+  // We obtained it using Snapdragon Profiler.
+  int GetMaximumWavesCount() const;
+
+  // returns amount of register memory per CU(Compute Unit) in bytes.
+  int GetRegisterMemorySizePerComputeUnit() const;
+
+  // returns maximum possible amount of waves based on register usage.
+  int GetMaximumWavesCount(int register_footprint_per_tread,
+                           bool full_wave = true) const;
+
+  int GetWaveSize(bool full_wave) const;
+
+  // Not supported on some Adreno devices with specific driver version.
+  // b/131099086
+  bool support_one_layer_texture_array = true;
+
+  bool compiler_bugs_in_a6xx = false;
+};
+
+enum class AppleGpu {
+  kUnknown,
+  kA7,
+  kA8,
+  kA8X,
+  kA9,
+  kA9X,
+  kA10,
+  kA10X,
+  kA11,
+  kA12,
+  kA12X,
+  kA12Z,
+  kA13,
+  kA14,
+};
+
+struct AppleInfo {
+  AppleInfo() = default;
+  explicit AppleInfo(const std::string& gpu_description);
+  AppleGpu gpu_type;
+
+  bool IsLocalMemoryPreferredOverGlobal() const;
+
+  bool IsBionic() const;
+
+  // floating point rounding mode
+  bool IsRoundToNearestSupported() const;
+
+  int GetComputeUnitsCount() const;
+};
+
+enum class MaliGpu {
+  kUnknown,
+  kT604,
+  kT622,
+  kT624,
+  kT628,
+  kT658,
+  kT678,
+  kT720,
+  kT760,
+  kT820,
+  kT830,
+  kT860,
+  kT880,
+  kG31,
+  kG51,
+  kG71,
+  kG52,
+  kG72,
+  kG76,
+  kG57,
+  kG77,
+  kG68,
+  kG78,
+};
+
+struct MaliInfo {
+  MaliInfo() = default;
+  explicit MaliInfo(const std::string& gpu_description);
+  MaliGpu gpu_version;
+
+  bool IsMaliT6xx() const;
+  bool IsMaliT7xx() const;
+  bool IsMaliT8xx() const;
+  bool IsMidgard() const;
+  bool IsBifrostGen1() const;
+  bool IsBifrostGen2() const;
+  bool IsBifrostGen3() const;
+  bool IsBifrost() const;
+  bool IsValhall() const;
+};
+
+struct OpenGlInfo {
   std::string renderer_name;
   std::string vendor_name;
   std::string version;
-  GpuModel gpu_model;
   int major_version = -1;
   int minor_version = -1;
-  std::vector<std::string> extensions;
+
+  int max_image_units = 0;
   int max_ssbo_bindings = 0;
   int max_image_bindings = 0;
-  std::vector<int> max_work_group_size;
-  int max_work_group_invocations;
+  int max_work_group_invocations = 0;
   int max_texture_size = 0;
-  int max_image_units = 0;
   int max_array_texture_layers = 0;
+  int max_fragment_image_units = 0;
+  int max_fragment_uniform_vec4_count = 0;
+  int max_color_atttachments = 0;
+
+  std::vector<std::string> extensions;
+  int max_compute_work_group_size_x;
+  int max_compute_work_group_size_y;
+  int max_compute_work_group_size_z;
 };
 
-inline bool IsOpenGl31OrAbove(const GpuInfo& gpu_info) {
-  return (gpu_info.major_version == 3 && gpu_info.minor_version >= 1) ||
-         gpu_info.major_version > 3;
-}
+struct VulkanInfo {
+  std::string vendor_name;
+  uint32_t api_version = -1;
+  uint32_t api_version_major = -1;
+  uint32_t api_version_minor = -1;
+  uint32_t api_version_patch = -1;
 
-// Analyzes `renderer` and returns matching `GpuType` and `GpuModel`.
-void GetGpuModelAndType(const std::string& renderer, GpuModel* gpu_model,
-                        GpuType* gpu_type);
+  int max_per_stage_descriptor_sampled_images = 0;
+  uint32_t max_compute_work_group_invocations;
+  uint32_t max_image_dimension_2d;
+  uint32_t max_image_array_layers;
+
+  uint32_t subgroup_size = 0;
+  bool supports_subgroup_arithmetic = false;
+
+  std::vector<std::string> extensions;
+  int max_compute_work_group_size_x;
+  int max_compute_work_group_size_y;
+  int max_compute_work_group_size_z;
+};
+
+enum class OpenClVersion {
+  kCl1_0,
+  kCl1_1,
+  kCl1_2,
+  kCl2_0,
+  kCl2_1,
+  kCl2_2,
+  kCl3_0,
+  kUnknown,
+};
+std::string OpenClVersionToString(OpenClVersion version);
+
+struct OpenClInfo {
+  OpenClVersion cl_version;
+
+  std::vector<std::string> extensions;
+  bool supports_fp16;
+  bool supports_image3d_writes;
+  bool supports_images;
+  int compute_units_count;
+  uint64_t buffer_max_size;
+  uint64_t max_allocation_size;
+  uint64_t image2d_max_width;
+  uint64_t image2d_max_height;
+  uint64_t image_buffer_max_size;
+  uint64_t image_array_max_layers;
+  uint64_t image3d_max_width;
+  uint64_t image3d_max_height;
+  uint64_t image3d_max_depth;
+  int max_work_group_size_x;
+  int max_work_group_size_y;
+  int max_work_group_size_z;
+  int max_work_group_total_size;
+
+  // rtn is ROUND_TO_NEAREST
+  // with rtn precision is much better then with rtz (ROUND_TO_ZERO)
+  // Adreno 3xx supports only rtz, Adreno 4xx and more support rtn
+  // Mali from T6xx supports rtn
+  // PowerVR supports only rtz
+  bool supports_fp32_rtn;
+  bool supports_fp16_rtn;
+
+  bool supports_r_f16_tex2d = false;
+  bool supports_rg_f16_tex2d = false;
+  bool supports_rgb_f16_tex2d = false;
+  bool supports_rgba_f16_tex2d = false;
+
+  bool supports_r_f32_tex2d = false;
+  bool supports_rg_f32_tex2d = false;
+  bool supports_rgb_f32_tex2d = false;
+  bool supports_rgba_f32_tex2d = false;
+};
+
+enum class MetalLanguageVersion {
+  kMetal1_0,
+  kMetal1_1,
+  kMetal1_2,
+  kMetal2_0,
+  kMetal2_1,
+  kMetal2_2,
+  kMetal2_3,
+  kUnknown,
+};
+
+struct MetalInfo {
+  MetalLanguageVersion language_version;
+
+  int max_work_group_size_x;
+  int max_work_group_size_y;
+  int max_work_group_size_z;
+
+  uint64_t buffer_max_size;
+};
+
+struct GpuInfo {
+  bool IsAdreno() const;
+  bool IsApple() const;
+  bool IsMali() const;
+  bool IsPowerVR() const;
+  bool IsNvidia() const;
+  bool IsAMD() const;
+  bool IsIntel() const;
+
+  // floating point rounding mode
+  bool IsRoundToNearestSupported() const;
+
+  bool SupportsFP16() const;
+
+  bool SupportsImages() const;
+  bool SupportsTextureArray() const;
+  bool SupportsImageBuffer() const;
+  bool SupportsImage3D() const;
+
+  // returns true if device have fixed wave size equal to 32
+  bool IsWaveSizeEqualTo32() const;
+  bool SupportsSubGroupWithSize(int sub_group_size) const;
+
+  bool SupportsFloatImage2D(DataType data_type, int channels) const;
+  bool SupportsExtension(const std::string& extension) const;
+
+  int GetComputeUnitsCount() const;
+
+  int GetMaxImageArguments() const;
+
+  int GetMaxWorkGroupSizeForX() const;
+  int GetMaxWorkGroupSizeForY() const;
+  int GetMaxWorkGroupSizeForZ() const;
+  int GetMaxWorkGroupTotalSize() const;
+
+  uint64_t GetMaxImage2DWidth() const;
+  uint64_t GetMaxImage2DHeight() const;
+  uint64_t GetMaxImage2DArrayLayers() const;
+  uint64_t GetMaxImage3DWidth() const;
+  uint64_t GetMaxImage3DHeight() const;
+  uint64_t GetMaxImage3DDepth() const;
+  uint64_t GetMaxBufferSize() const;
+  uint64_t GetMaxMemoryAllocationSize() const;
+  uint64_t GetMaxImageBufferWidth() const;
+
+  GpuVendor vendor = GpuVendor::kUnknown;
+  GpuApi gpu_api = GpuApi::kUnknown;
+
+  std::vector<int> supported_subgroup_sizes;
+
+  AdrenoInfo adreno_info;
+  AppleInfo apple_info;
+  MaliInfo mali_info;
+
+  // OpenGL specific, gpu_api should be kOpenGl
+  OpenGlInfo opengl_info;
+  bool IsApiOpenGl() const;
+  bool IsApiOpenGl31OrAbove() const;
+
+  // Vulkan specific, gpu_api should be kVulkan
+  VulkanInfo vulkan_info;
+  bool IsApiVulkan() const;
+
+  MetalInfo metal_info;
+  bool IsApiMetal() const;
+
+  OpenClInfo opencl_info;
+  bool IsApiOpenCl() const;
+  bool IsCL20OrHigher() const;
+  bool IsCL30OrHigher() const;
+};
+
+// Currently it initializes:
+// vendor
+// AdrenoInfo if vendor is kQualcomm
+// AppleInfo if vendor is kApple
+// MaliInfo if vendor is kMali
+void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
+                                     GpuApi gpu_api, GpuInfo* gpu_info);
 
 }  // namespace gpu
 }  // namespace tflite

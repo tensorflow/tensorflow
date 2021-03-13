@@ -132,6 +132,59 @@ TEST(TfOpUtilsTest, JaxOpTest) {
   EXPECT_EQ(TfOpEventName(kName), "op_type");
 }
 
+TEST(TfOpUtilsTest, JaxOpNameTest) {
+  const absl::string_view kOpName = "namescope/add";
+  const absl::string_view kOpType = "add";
+  EXPECT_TRUE(IsJaxOpNameAndType(kOpName, kOpType));
+}
+
+TEST(TfOpUtilsTest, JaxOpNameWithMetadataTest) {
+  const absl::string_view kOpName =
+      "pmap(<unnamed wrapped function>)/gather[ "
+      "dimension_numbers=GatherDimensionNumbers(offset_dims=(2,), "
+      "collapsed_slice_dims=(0, 1), start_index_map=(0, 1))\n                  "
+      "                       slice_sizes=(1, 1, 81) ]:gather";
+  const absl::string_view kOpType = "gather";
+  EXPECT_TRUE(IsJaxOpNameAndType(kOpName, kOpType));
+}
+
+TEST(TfOpUtilsTest, OtherXlaOpTest) {
+  const absl::string_view kName =
+      "namescope.1/namespace__opname2d:namespace__opname2d";
+  TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kJax);
+  EXPECT_EQ(tf_op.name, "namescope.1/namespace__opname2d");
+  EXPECT_EQ(tf_op.type, "namespace__opname2d");
+  EXPECT_EQ(TfOpEventName(kName), "namespace__opname2d");
+}
+
+TEST(TfOpUtilsTest, OtherXlaOpNameTest) {
+  const absl::string_view kOpName = "namescope.1/namespace__opname2d";
+  const absl::string_view kOpType = "namespace__opname2d";
+  EXPECT_TRUE(IsJaxOpNameAndType(kOpName, kOpType));
+}
+
+TEST(TfOpUtilsTest, OpWithoutTypeTest) {
+  const absl::string_view kName = "OpName:";  // with trailing ':'
+  TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kUnknown);
+  EXPECT_EQ(tf_op.name, "OpName");
+  EXPECT_EQ(tf_op.type, kUnknownOp);
+  EXPECT_EQ(TfOpEventName(kName), "OpName");  // without trailing ':'
+}
+
+TEST(TfOpUtilsTest, NameScopeTest) {
+  const absl::string_view kName = "scope-1/scope2/OpName:OpType";
+  TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kTensorFlow);
+  EXPECT_EQ(tf_op.name, "scope-1/scope2/OpName");
+  EXPECT_EQ(tf_op.type, "OpType");
+  std::vector<absl::string_view> name_scopes = ParseTfNameScopes(tf_op);
+  EXPECT_EQ(name_scopes.size(), 2);
+  EXPECT_EQ(name_scopes[0], "scope-1");
+  EXPECT_EQ(name_scopes[1], "scope2");
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tensorflow

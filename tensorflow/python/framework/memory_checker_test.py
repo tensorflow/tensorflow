@@ -108,6 +108,18 @@ class MemoryCheckerTest(test.TestCase):
     with self.assertRaises(AssertionError):
       memory_checker.assert_no_leak_if_all_possibly_except_one()
 
+  def testLeak4(self):
+    helper = _memory_checker_test_helper.MemoryCheckerTestHelper()
+
+    with MemoryChecker() as memory_checker:
+      for i in range(10):
+        helper.list_push_back(i)
+        memory_checker.record_snapshot()
+
+    memory_checker.report()
+    with self.assertRaises(AssertionError):
+      memory_checker.assert_no_leak_if_all_possibly_except_one()
+
   def testNoNewPythonObjectsEmpty(self):
     self.skipTest('TODO(b/150324603): Flaky test.')
     with MemoryChecker() as memory_checker:
@@ -125,7 +137,7 @@ class MemoryCheckerTest(test.TestCase):
       x = constant_op.constant(1)  # pylint: disable=unused-variable
       memory_checker.record_snapshot()
 
-    with self.assertRaisesRegexp(AssertionError, 'New Python objects'):
+    with self.assertRaisesRegex(AssertionError, 'New Python objects'):
       memory_checker.assert_no_new_python_objects()
 
   def testNewPythonObjectBelowThreshold(self):

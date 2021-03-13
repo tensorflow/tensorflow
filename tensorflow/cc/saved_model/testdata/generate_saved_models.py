@@ -29,9 +29,13 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.module import module
+from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import saved_model
+from tensorflow.python.training.tracking import tracking
 
 
 class VarsAndArithmeticObjectGraph(module.Module):
@@ -68,9 +72,42 @@ class CyclicModule(module.Module):
     self.child = ReferencesParent(self)
 
 
+class AssetModule(module.Module):
+
+  def __init__(self):
+    self.asset = tracking.Asset(
+        test.test_src_dir_path("cc/saved_model/testdata/test_asset.txt"))
+
+  @def_function.function(input_signature=[])
+  def read_file(self):
+    return io_ops.read_file(self.asset)
+
+
+class StaticHashTableModule(module.Module):
+  """A module with an Asset, StaticHashTable, and a lookup function."""
+
+  def __init__(self):
+    self.asset = tracking.Asset(
+        test.test_src_dir_path(
+            "cc/saved_model/testdata/static_hashtable_asset.txt"))
+    self.table = lookup_ops.StaticHashTable(
+        lookup_ops.TextFileInitializer(self.asset, dtypes.string,
+                                       lookup_ops.TextFileIndex.WHOLE_LINE,
+                                       dtypes.int64,
+                                       lookup_ops.TextFileIndex.LINE_NUMBER),
+        -1)
+
+  @def_function.function(
+      input_signature=[tensor_spec.TensorSpec(shape=None, dtype=dtypes.string)])
+  def lookup(self, word):
+    return self.table.lookup(word)
+
+
 MODULE_CTORS = {
     "VarsAndArithmeticObjectGraph": VarsAndArithmeticObjectGraph,
     "CyclicModule": CyclicModule,
+    "AssetModule": AssetModule,
+    "StaticHashTableModule": StaticHashTableModule,
 }
 
 

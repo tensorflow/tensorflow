@@ -20,6 +20,7 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_DNN_H_
 
 #include "absl/synchronization/mutex.h"
+#include "rocm/include/miopen/miopen.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/lib/status.h"
@@ -37,6 +38,39 @@ class MIOpenCTCLossDescriptor;
 
 // Opaque and unique identifier for the MIOpen plugin.
 extern const PluginId kMIOpenPlugin;
+
+struct PoolingWorkspaceDescriptor {
+  std::vector<int64> input_dims;
+  std::vector<int64> output_dims;
+  dnn::PoolingDescriptor op;
+  int dtype;
+  uint64_t timestamp;
+  std::unique_ptr<TemporaryDeviceMemory<uint8>> workspace;
+  size_t workspace_size;
+  bool IsSame(const dnn::BatchDescriptor& input_dimensions,
+              const dnn::BatchDescriptor& output_dimensions,
+              const dnn::PoolingDescriptor& pooling_dimensions, int _type);
+};
+
+struct PoolingWorkspaceCache {
+  std::map<const void*, PoolingWorkspaceDescriptor> cache;
+  const int trim_size = 1000;
+  const uint64_t memory_budget = 2e7;
+  uint64_t timestamp = 0;
+  uint64_t memory_used = 0;
+  bool find(const void* p, const dnn::BatchDescriptor& input_dimensions,
+            const dnn::BatchDescriptor& output_dimensions,
+            const dnn::PoolingDescriptor& pooling_dimensions, int _type,
+            PoolingWorkspaceDescriptor*& pdesc);
+  void insert(const void* p, const dnn::BatchDescriptor& input_dimensions,
+              const dnn::BatchDescriptor& output_dimensions,
+              const dnn::PoolingDescriptor& pooling_dimensions, int _type,
+              std::unique_ptr<TemporaryDeviceMemory<uint8>>& workspace,
+              size_t wsp_size, hipStream_t hip_stream);
+
+ private:
+  void trim(hipStream_t hip_stream);
+};
 
 // miopen-library based DNN support. For details on overridden interface
 // functions, see dnn.h.
@@ -67,6 +101,7 @@ class MIOpenSupport : public dnn::DnnSupport {
   bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                     const dnn::RnnSequenceTensorDescriptor& input_desc,
                     const DeviceMemory<Eigen::half>& input_data,
+                    const DeviceMemory<int>& seq_lengths_data,
                     const dnn::RnnStateTensorDescriptor& input_h_desc,
                     const DeviceMemory<Eigen::half>& input_h_data,
                     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -85,6 +120,7 @@ class MIOpenSupport : public dnn::DnnSupport {
   bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                     const dnn::RnnSequenceTensorDescriptor& input_desc,
                     const DeviceMemory<float>& input_data,
+                    const DeviceMemory<int>& seq_lengths_data,
                     const dnn::RnnStateTensorDescriptor& input_h_desc,
                     const DeviceMemory<float>& input_h_data,
                     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -103,6 +139,7 @@ class MIOpenSupport : public dnn::DnnSupport {
   bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                     const dnn::RnnSequenceTensorDescriptor& input_desc,
                     const DeviceMemory<double>& input_data,
+                    const DeviceMemory<int>& seq_lengths_data,
                     const dnn::RnnStateTensorDescriptor& input_h_desc,
                     const DeviceMemory<double>& input_h_data,
                     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -121,6 +158,7 @@ class MIOpenSupport : public dnn::DnnSupport {
   bool DoRnnBackward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                      const dnn::RnnSequenceTensorDescriptor& input_desc,
                      const DeviceMemory<Eigen::half>& input_data,
+                     const DeviceMemory<int>& seq_lengths_data,
                      const dnn::RnnStateTensorDescriptor& input_h_desc,
                      const DeviceMemory<Eigen::half>& input_h_data,
                      const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -146,6 +184,7 @@ class MIOpenSupport : public dnn::DnnSupport {
   bool DoRnnBackward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                      const dnn::RnnSequenceTensorDescriptor& input_desc,
                      const DeviceMemory<float>& input_data,
+                     const DeviceMemory<int>& seq_lengths_data,
                      const dnn::RnnStateTensorDescriptor& input_h_desc,
                      const DeviceMemory<float>& input_h_data,
                      const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -171,6 +210,7 @@ class MIOpenSupport : public dnn::DnnSupport {
   bool DoRnnBackward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                      const dnn::RnnSequenceTensorDescriptor& input_desc,
                      const DeviceMemory<double>& input_data,
+                     const DeviceMemory<int>& seq_lengths_data,
                      const dnn::RnnStateTensorDescriptor& input_h_desc,
                      const DeviceMemory<double>& input_h_data,
                      const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -281,7 +321,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
       dnn::ProfileResult* output_profile_result) override;
 
-  bool DoFusedConvolve(
+  port::Status DoFusedConvolve(
       Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
       const DeviceMemory<double>& conv_input_data, double conv_input_scale,
       const dnn::FilterDescriptor& filter_descriptor,
@@ -295,7 +335,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       const dnn::AlgorithmConfig& algorithm_config,
       dnn::ProfileResult* output_profile_result) override;
 
-  bool DoFusedConvolve(
+  port::Status DoFusedConvolve(
       Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
       const DeviceMemory<float>& conv_input_data, float conv_input_scale,
       const dnn::FilterDescriptor& filter_descriptor,
@@ -309,25 +349,23 @@ class MIOpenSupport : public dnn::DnnSupport {
       const dnn::AlgorithmConfig& algorithm_config,
       dnn::ProfileResult* output_profile_result) override;
 
-  bool DoFusedConvolve(Stream* stream,
-                       const dnn::BatchDescriptor& conv_input_descriptor,
-                       const DeviceMemory<Eigen::half>& conv_input_data,
-                       float conv_input_scale,
-                       const dnn::FilterDescriptor& filter_descriptor,
-                       const DeviceMemory<Eigen::half>& filter_data,
-                       const dnn::ConvolutionDescriptor& convolution_descriptor,
-                       const DeviceMemory<Eigen::half>& side_input_data,
-                       float side_input_scale,
-                       const dnn::BatchDescriptor& bias_descriptor,
-                       const DeviceMemory<Eigen::half>& biases,
-                       dnn::ActivationMode activation_mode,
-                       const dnn::BatchDescriptor& output_descriptor,
-                       DeviceMemory<Eigen::half>* output_data,
-                       ScratchAllocator* scratch_allocator,
-                       const dnn::AlgorithmConfig& algorithm_config,
-                       dnn::ProfileResult* output_profile_result) override;
+  port::Status DoFusedConvolve(
+      Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
+      const DeviceMemory<Eigen::half>& conv_input_data, float conv_input_scale,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<Eigen::half>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const DeviceMemory<Eigen::half>& side_input_data, float side_input_scale,
+      const dnn::BatchDescriptor& bias_descriptor,
+      const DeviceMemory<Eigen::half>& biases,
+      dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<Eigen::half>* output_data,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      dnn::ProfileResult* output_profile_result) override;
 
-  bool DoFusedConvolve(
+  port::Status DoFusedConvolve(
       Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
       const DeviceMemory<int8>& conv_input_data, float conv_input_scale,
       const dnn::FilterDescriptor& filter_descriptor,
@@ -664,6 +702,10 @@ class MIOpenSupport : public dnn::DnnSupport {
   // Provide access to the MIOpen handle.
   std::unique_ptr<class MIOpenAccess> miopen_;
 
+  PoolingWorkspaceCache m_pooling_cache;
+  bool m_pooling_cache_allowed = false;
+  bool m_pooling_cache_enabled = false;
+
   template <class T, class U>
   bool DoBatchNormalizationForwardImpl(
       Stream* stream, dnn::DataType input_data_type,
@@ -846,6 +888,17 @@ class MIOpenSupport : public dnn::DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       ScratchAllocator* scratch_allocator,
       std::vector<dnn::ProfileResult>* out_algorithms);
+
+  template <class T>
+  bool DoPoolBackwardImpl(Stream* stream,
+                          const dnn::PoolingDescriptor& pooling_dimensions,
+                          const dnn::BatchDescriptor& input_dimensions,
+                          const DeviceMemory<T>& input_data,
+                          const dnn::BatchDescriptor& output_dimensions,
+                          const DeviceMemory<T>& output_data,
+                          const DeviceMemory<T>& input_diff_data,
+                          DeviceMemory<T>* output_diff_data,
+                          ScratchAllocator* workspace_allocator = nullptr);
 
   SE_DISALLOW_COPY_AND_ASSIGN(MIOpenSupport);
 };

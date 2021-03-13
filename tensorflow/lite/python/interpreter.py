@@ -21,11 +21,14 @@ from __future__ import print_function
 import ctypes
 import platform
 import sys
+import os
 
+import enum
 import numpy as np
 
 # pylint: disable=g-import-not-at-top
-if not __file__.endswith('tflite_runtime/interpreter.py'):
+if not os.path.splitext(__file__)[0].endswith(
+    os.path.join('tflite_runtime', 'interpreter')):
   # This file is part of tensorflow package.
   from tensorflow.lite.python.interpreter_wrapper import _pywrap_tensorflow_interpreter_wrapper as _interpreter_wrapper
   from tensorflow.python.util.tf_export import tf_export as _tf_export
@@ -36,6 +39,13 @@ else:
   def _tf_export(*x, **kwargs):
     del x, kwargs
     return lambda x: x
+
+
+try:
+  from tensorflow.lite.python import metrics_portable as metrics
+except ImportError:
+  from tensorflow.lite.python import metrics_nonportable as metrics
+# pylint: enable=g-import-not-at-top
 
 
 class Delegate(object):
@@ -154,6 +164,125 @@ def load_delegate(library, options=None):
   return delegate
 
 
+class SignatureRunner(object):
+  """SignatureRunner class for running TFLite models using SignatureDef.
+
+  This class should be instantiated through TFLite Interpreter only using
+  get_signature_runner method on Interpreter.
+  Example,
+  signature = interpreter.get_signature_runner("my_signature")
+  result = signature(input_1=my_input_1, input_2=my_input_2)
+  print(result["my_output"])
+  print(result["my_second_output"])
+  All names used are this specific SignatureDef names.
+
+  Notes:
+    No other function on this object or on the interpreter provided should be
+    called while this object call has not finished.
+  """
+
+  def __init__(self, interpreter=None, signature_def_name=None):
+    """Constructor.
+
+    Args:
+      interpreter: Interpreter object that is already initialized with the
+        requested model.
+      signature_def_name: SignatureDef names to be used.
+    """
+    if not interpreter:
+      raise ValueError('None interpreter provided.')
+    if not signature_def_name:
+      raise ValueError('None signature_def_name provided.')
+    self._interpreter = interpreter
+    self._signature_def_name = signature_def_name
+    signature_defs = interpreter._get_full_signature_list()
+    if signature_def_name not in signature_defs:
+      raise ValueError('Invalid signature_def_name provided.')
+    self._signature_def = signature_defs[signature_def_name]
+    self._outputs = self._signature_def['outputs'].items()
+    self._inputs = self._signature_def['inputs']
+
+  def __call__(self, **kwargs):
+    """Runs the SignatureDef given the provided inputs in arguments.
+
+    Args:
+      **kwargs: key,value for inputs to the model. Key is the SignatureDef input
+        name. Value is numpy array with the value.
+
+    Returns:
+      dictionary of the results from the model invoke.
+      Key in the dictionary is SignatureDef output name.
+      Value is the result Tensor.
+    """
+
+    if len(kwargs) != len(self._inputs):
+      raise ValueError(
+          'Invalid number of inputs provided for running a SignatureDef, '
+          'expected %s vs provided %s' % (len(kwargs), len(self._inputs)))
+    # Resize input tensors
+    for input_name, value in kwargs.items():
+      if input_name not in self._inputs:
+        raise ValueError('Invalid Input name (%s) for SignatureDef' %
+                         input_name)
+      self._interpreter.resize_tensor_input(self._inputs[input_name],
+                                            value.shape)
+    # Allocate tensors.
+    self._interpreter.allocate_tensors()
+    # Set the input values.
+    for input_name, value in kwargs.items():
+      self._interpreter._set_input_tensor(
+          input_name, value=value, method_name=self._signature_def_name)
+    self._interpreter.invoke()
+    result = {}
+    for output_name, output_index in self._outputs:
+      result[output_name] = self._interpreter.get_tensor(output_index)
+    return result
+
+
+@_tf_export('lite.experimental.OpResolver')
+@enum.unique
+class OpResolver(enum.Enum):
+  """Different types of op resolvers for Tensorflow Lite.
+
+  * `AUTO`: Indicates the op resolver that is chosen by default in TfLite
+     Python, which is the "BUILTIN" as described below.
+  * `BUILTIN`: Indicates the op resolver for built-in ops with optimized kernel
+    implementation.
+  * `BUILTIN_REF`: Indicates the op resolver for built-in ops with reference
+    kernel implementation. It's generally used for testing and debugging.
+  * `BUILTIN_WITHOUT_DEFAULT_DELEGATES`: Indicates the op resolver for
+    built-in ops with optimized kernel implementation, but it will disable
+    the application of default TfLite delegates (like the XNNPACK delegate) to
+    the model graph. Generally this should not be used unless there are issues
+    with the default configuration.
+  """
+  # Corresponds to an op resolver chosen by default in TfLite Python.
+  AUTO = 0
+
+  # Corresponds to tflite::ops::builtin::BuiltinOpResolver in C++.
+  BUILTIN = 1
+
+  # Corresponds to tflite::ops::builtin::BuiltinRefOpResolver in C++.
+  BUILTIN_REF = 2
+
+  # Corresponds to
+  # tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates in C++.
+  BUILTIN_WITHOUT_DEFAULT_DELEGATES = 3
+
+
+def _get_op_resolver_id(op_resolver=OpResolver.AUTO):
+  """Get a integer identifier for the op resolver."""
+
+  # Note: the integer identifier value needs to be same w/ op resolver ids
+  # defined in interpreter_wrapper/interpreter_wrapper.cc.
+  return {
+      OpResolver.AUTO: 1,  # Note the identifier is same with that of BUILTIN
+      OpResolver.BUILTIN: 1,
+      OpResolver.BUILTIN_REF: 2,
+      OpResolver.BUILTIN_WITHOUT_DEFAULT_DELEGATES: 3
+  }.get(op_resolver, None)
+
+
 @_tf_export('lite.Interpreter')
 class Interpreter(object):
   """Interpreter interface for TensorFlow Lite Models.
@@ -172,7 +301,9 @@ class Interpreter(object):
   def __init__(self,
                model_path=None,
                model_content=None,
-               experimental_delegates=None):
+               experimental_delegates=None,
+               num_threads=None,
+               experimental_op_resolver=OpResolver.AUTO):
     """Constructor.
 
     Args:
@@ -181,30 +312,65 @@ class Interpreter(object):
       experimental_delegates: Experimental. Subject to change. List of
         [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates)
           objects returned by lite.load_delegate().
+      num_threads: Sets the number of threads used by the interpreter and
+        available to CPU kernels. If not set, the interpreter will use an
+        implementation-dependent default number of threads. Currently, only a
+        subset of kernels, such as conv, support multi-threading.
+      experimental_op_resolver: The op resolver used by the interpreter. It must
+        be an instance of OpResolver. By default, we use the built-in op
+        resolver which corresponds to tflite::ops::builtin::BuiltinOpResolver
+        in C++.
 
     Raises:
       ValueError: If the interpreter was unable to create.
     """
     if not hasattr(self, '_custom_op_registerers'):
       self._custom_op_registerers = []
+
+    op_resolver_id = _get_op_resolver_id(experimental_op_resolver)
+    if op_resolver_id is None:
+      raise ValueError('Unrecognized passed in op resolver: {}'.format(
+          experimental_op_resolver))
+
     if model_path and not model_content:
+      custom_op_registerers_by_name = [
+          x for x in self._custom_op_registerers if isinstance(x, str)
+      ]
+      custom_op_registerers_by_func = [
+          x for x in self._custom_op_registerers if not isinstance(x, str)
+      ]
       self._interpreter = (
           _interpreter_wrapper.CreateWrapperFromFile(
-              model_path, self._custom_op_registerers))
+              model_path, op_resolver_id, custom_op_registerers_by_name,
+              custom_op_registerers_by_func))
       if not self._interpreter:
         raise ValueError('Failed to open {}'.format(model_path))
     elif model_content and not model_path:
+      custom_op_registerers_by_name = [
+          x for x in self._custom_op_registerers if isinstance(x, str)
+      ]
+      custom_op_registerers_by_func = [
+          x for x in self._custom_op_registerers if not isinstance(x, str)
+      ]
       # Take a reference, so the pointer remains valid.
       # Since python strings are immutable then PyString_XX functions
       # will always return the same pointer.
       self._model_content = model_content
       self._interpreter = (
           _interpreter_wrapper.CreateWrapperFromBuffer(
-              model_content, self._custom_op_registerers))
+              model_content, op_resolver_id, custom_op_registerers_by_name,
+              custom_op_registerers_by_func))
     elif not model_content and not model_path:
       raise ValueError('`model_path` or `model_content` must be specified.')
     else:
       raise ValueError('Can\'t both provide `model_path` and `model_content`')
+
+    if num_threads is not None:
+      if not isinstance(num_threads, int):
+        raise ValueError('type of num_threads should be int')
+      if num_threads < 1:
+        raise ValueError('num_threads should >= 1')
+      self._interpreter.SetNumThreads(num_threads)
 
     # Each delegate is a wrapper that owns the delegates that have been loaded
     # as plugins. The interpreter wrapper will be using them, but we need to
@@ -216,6 +382,10 @@ class Interpreter(object):
       for delegate in self._delegates:
         self._interpreter.ModifyGraphWithDelegate(
             delegate._get_native_delegate_pointer())  # pylint: disable=protected-access
+    self._signature_defs = self.get_signature_list()
+
+    self._metrics = metrics.TFLiteMetrics()
+    self._metrics.increase_counter_interpreter_creation()
 
   def __del__(self):
     # Must make sure the interpreter is destroyed before things that
@@ -317,7 +487,7 @@ class Interpreter(object):
     tensor_sparsity_params = self._interpreter.TensorSparsityParameters(
         tensor_index)
 
-    if not tensor_name or not tensor_type:
+    if not tensor_type:
       raise ValueError('Could not get tensor details')
 
     details = {
@@ -397,13 +567,6 @@ class Interpreter(object):
   def resize_tensor_input(self, input_index, tensor_size, strict=False):
     """Resizes an input tensor.
 
-    ```
-    interpreter = Interpreter(model_content=tflite_model)
-    interpreter.resize_tensor_input(0, [1, 224, 224, 3], strict=True)
-    interpreter.allocate_tensors()
-    interpreter.invoke()
-    ```
-
     Args:
       input_index: Tensor index of input to set. This value can be gotten from
         the 'index' field in get_input_details.
@@ -414,6 +577,15 @@ class Interpreter(object):
 
     Raises:
       ValueError: If the interpreter could not resize the input tensor.
+
+    Usage:
+    ```
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.resize_tensor_input(0, [num_test_images, 224, 224, 3])
+    interpreter.allocate_tensors()
+    interpreter.set_tensor(0, test_images)
+    interpreter.invoke()
+    ```
     """
     self._ensure_safe()
     # `ResizeInputTensor` now only accepts int32 numpy array as `tensor_size
@@ -431,8 +603,150 @@ class Interpreter(object):
         self._get_tensor_details(i) for i in self._interpreter.OutputIndices()
     ]
 
+  def get_signature_list(self):
+    """Gets list of SignatureDefs in the model.
+
+    Example,
+    ```
+    signatures = interpreter.get_signature_list()
+    print(signatures)
+
+    # {
+    #   'add': {'inputs': ['x', 'y'], 'outputs': ['output_0']}
+    # }
+
+    Then using the names in the signature list you can get a callable from
+    get_signature_runner().
+    ```
+
+    Returns:
+      A list of SignatureDef details in a dictionary structure.
+      It is keyed on the SignatureDef method name, and the value holds
+      dictionary of inputs and outputs.
+    """
+    full_signature_defs = self._interpreter.GetSignatureDefs()
+    for _, signature_def in full_signature_defs.items():
+      signature_def['inputs'] = list(signature_def['inputs'].keys())
+      signature_def['outputs'] = list(signature_def['outputs'].keys())
+    return full_signature_defs
+
+  def _get_full_signature_list(self):
+    """Gets list of SignatureDefs in the model.
+
+    Example,
+    ```
+    signatures = interpreter._get_full_signature_list()
+    print(signatures)
+
+    # {
+    #   'add': {'inputs': {'x': 1, 'y': 0}, 'outputs': {'output_0': 4}}
+    # }
+
+    Then using the names in the signature list you can get a callable from
+    get_signature_runner().
+    ```
+
+    Returns:
+      A list of SignatureDef details in a dictionary structure.
+      It is keyed on the SignatureDef method name, and the value holds
+      dictionary of inputs and outputs.
+    """
+    return self._interpreter.GetSignatureDefs()
+
+  def _set_input_tensor(self, input_name, value, method_name=None):
+    """Sets the value of the input tensor.
+
+    Input tensor is identified by `input_name` in the SignatureDef identified
+    by `method_name`.
+    If the model has a single SignatureDef then you can pass None as
+    `method_name`.
+
+    Note this copies data in `value`.
+
+    Example,
+    ```
+    input_data = np.array([1.2, 1.4], np.float32)
+    signatures = interpreter.get_signature_list()
+    print(signatures)
+    # {
+    #   'add': {'inputs': {'x': 1, 'y': 0}, 'outputs': {'output_0': 4}}
+    # }
+    interpreter._set_input_tensor(input_name='x', value=input_data,
+    method_name='add_fn')
+    ```
+
+    Args:
+      input_name: Name of the output tensor in the SignatureDef.
+      value: Value of tensor to set as a numpy array.
+      method_name: The exported method name for the SignatureDef, it can be None
+        if and only if the model has a single SignatureDef. Default value is
+        None.
+
+    Raises:
+      ValueError: If the interpreter could not set the tensor. Or
+      if `method_name` is None and model doesn't have a single
+      Signature.
+    """
+    if method_name is None:
+      if len(self._signature_defs) != 1:
+        raise ValueError(
+            'SignatureDef method_name is None and model has {0} Signatures. '
+            'None is only allowed when the model has 1 SignatureDef'.format(
+                len(self._signature_defs)))
+      else:
+        method_name = next(iter(self._signature_defs))
+    self._interpreter.SetInputTensorFromSignatureDefName(
+        input_name, method_name, value)
+
+  def get_signature_runner(self, method_name=None):
+    """Gets callable for inference of specific SignatureDef.
+
+    Example usage,
+    ```
+    interpreter = tf.lite.Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+    fn = interpreter.get_signature_runner('div_with_remainder')
+    output = fn(x=np.array([3]), y=np.array([2]))
+    print(output)
+    # {
+    #   'quotient': array([1.], dtype=float32)
+    #   'remainder': array([1.], dtype=float32)
+    # }
+    ```
+
+    None can be passed for method_name if the model has a single Signature only.
+
+    All names used are this specific SignatureDef names.
+
+
+    Args:
+      method_name: The exported method name for the SignatureDef, it can be None
+        if and only if the model has a single SignatureDef. Default value is
+        None.
+
+    Returns:
+      This returns a callable that can run inference for SignatureDef defined
+      by argument 'method_name'.
+      The callable will take key arguments corresponding to the arguments of the
+      SignatureDef, that should have numpy values.
+      The callable will returns dictionary that maps from output names to numpy
+      values of the computed results.
+
+    Raises:
+      ValueError: If passed method_name is invalid.
+    """
+    if method_name is None:
+      if len(self._signature_defs) != 1:
+        raise ValueError(
+            'SignatureDef method_name is None and model has {0} Signatures. '
+            'None is only allowed when the model has 1 SignatureDef'.format(
+                len(self._signature_defs)))
+      else:
+        method_name = next(iter(self._signature_defs))
+    return SignatureRunner(interpreter=self, signature_def_name=method_name)
+
   def get_tensor(self, tensor_index):
-    """Gets the value of the input tensor (get a copy).
+    """Gets the value of the output tensor (get a copy).
 
     If you wish to avoid the copy, use `tensor()`. This function cannot be used
     to read intermediate results.
@@ -514,6 +828,28 @@ class Interpreter(object):
   def reset_all_variables(self):
     return self._interpreter.ResetVariableTensors()
 
+  # Experimental and subject to change.
+  def _native_handle(self):
+    """Returns a pointer to the underlying tflite::Interpreter instance.
+
+    This allows extending tflite.Interpreter's functionality in a custom C++
+    function. Consider how that may work in a custom pybind wrapper:
+
+      m.def("SomeNewFeature", ([](py::object handle) {
+        auto* interpreter =
+          reinterpret_cast<tflite::Interpreter*>(handle.cast<intptr_t>());
+        ...
+      }))
+
+    and corresponding Python call:
+
+      SomeNewFeature(interpreter.native_handle())
+
+    Note: This approach is fragile. Users must guarantee the C++ extension build
+    is consistent with the tflite.Interpreter's underlying C++ build.
+    """
+    return self._interpreter.interpreter()
+
 
 class InterpreterWithCustomOps(Interpreter):
   """Interpreter interface for TensorFlow Lite Models that accepts custom ops.
@@ -539,13 +875,15 @@ class InterpreterWithCustomOps(Interpreter):
       experimental_delegates: Experimental. Subject to change. List of
         [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates)
           objects returned by lite.load_delegate().
-      custom_op_registerers: List of str, symbol names of functions that take a
-        pointer to a MutableOpResolver and register a custom op.
+      custom_op_registerers: List of str (symbol names) or functions that take a
+        pointer to a MutableOpResolver and register a custom op. When passing
+        functions, use a pybind function that takes a uintptr_t that can be
+        recast as a pointer to a MutableOpResolver.
 
     Raises:
       ValueError: If the interpreter was unable to create.
     """
-    self._custom_op_registerers = custom_op_registerers
+    self._custom_op_registerers = custom_op_registerers or []
     super(InterpreterWithCustomOps, self).__init__(
         model_path=model_path,
         model_content=model_content,

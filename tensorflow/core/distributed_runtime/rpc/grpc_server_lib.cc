@@ -47,10 +47,12 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/nccl/collective_communicator.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -132,9 +134,9 @@ Status GrpcServer::GetHostAndPort(const ServerDef& server_def,
     if (job.name() == server_def.job_name()) {
       auto iter = job.tasks().find(server_def.task_index());
       if (iter == job.tasks().end()) {
-        return errors::InvalidArgument("Task ", server_def.task_index(),
-                                       " was not defined in job \"",
-                                       server_def.job_name(), "\"");
+        return errors::Internal("Task ", server_def.task_index(),
+                                " was not defined in job \"",
+                                server_def.job_name(), "\"");
       }
 
       if (server_def.port() != 0) {
@@ -248,6 +250,9 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
                         .release();
   eager_service_ = new eager::GrpcEagerServiceImpl(&worker_env_, &builder);
 
+  profiler_service_ = profiler::CreateProfilerService();
+  builder.RegisterService(profiler_service_.get());
+
   // extra service:
   if (opts.service_func != nullptr) {
     opts.service_func(&worker_env_, &builder);
@@ -267,23 +272,23 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   CHECK_NE(nullptr, worker_cache);
 
   if (opts.collective_mgr_func) {
-    worker_env_.collective_executor_mgr =
-        opts.collective_mgr_func(config, &worker_env_, worker_cache);
-    if (!worker_env_.collective_executor_mgr) {
+    worker_env_.collective_executor_mgr.reset(
+        opts.collective_mgr_func(config, &worker_env_, worker_cache));
+    if (worker_env_.collective_executor_mgr == nullptr) {
       return errors::Internal(
           "collective_mgr_func did not return CollectiveExecutorMgr");
     }
   } else {
     std::unique_ptr<DeviceResolverDistributed> dev_resolver(
-        new DeviceResolverDistributed(worker_env_.device_mgr, worker_cache,
-                                      default_worker_name));
+        new DeviceResolverDistributed(worker_env_.device_mgr));
     std::unique_ptr<CollectiveParamResolverDistributed> param_resolver(
         new CollectiveParamResolverDistributed(config, worker_env_.device_mgr,
                                                dev_resolver.get(), worker_cache,
                                                default_worker_name));
-    worker_env_.collective_executor_mgr = new RpcCollectiveExecutorMgr(
+    worker_env_.collective_executor_mgr.reset(new RpcCollectiveExecutorMgr(
         config, worker_env_.device_mgr, std::move(dev_resolver),
-        std::move(param_resolver), worker_cache, default_worker_name);
+        std::move(param_resolver), MaybeCreateNcclCommunicator(), worker_cache,
+        default_worker_name));
   }
 
   // Set up worker environment.
@@ -299,7 +304,8 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   // Finish setting up master environment.
   master_env_.ops = OpRegistry::Global();
   master_env_.worker_cache = worker_cache;
-  master_env_.collective_executor_mgr = worker_env_.collective_executor_mgr;
+  master_env_.collective_executor_mgr =
+      worker_env_.collective_executor_mgr.get();
   StatsPublisherFactory stats_factory = opts.stats_factory;
   master_env_.master_session_factory =
       [config, stats_factory](
@@ -433,6 +439,8 @@ Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
     return errors::InvalidArgument(
         "Failed to build worker cache with the provided server def.");
   }
+  // Transfer ownership of worker_cache to worker_env_.session_mgr.
+  worker_env_.session_mgr->ResetDefaultWorkerCache(worker_cache);
 
   string default_worker_name;
   string unused;
@@ -441,19 +449,19 @@ Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
     return errors::Internal("Could not parse worker name.");
   }
   std::unique_ptr<DeviceResolverDistributed> dev_resolver(
-      new DeviceResolverDistributed(worker_env_.device_mgr, worker_cache,
-                                    default_worker_name));
+      new DeviceResolverDistributed(worker_env_.device_mgr));
   std::unique_ptr<CollectiveParamResolverDistributed> param_resolver(
       new CollectiveParamResolverDistributed(
           server_def_.default_session_config(), worker_env_.device_mgr,
           dev_resolver.get(), worker_cache, default_worker_name));
-  worker_env_.collective_executor_mgr = new RpcCollectiveExecutorMgr(
+  worker_env_.collective_executor_mgr.reset(new RpcCollectiveExecutorMgr(
       server_def_.default_session_config(), worker_env_.device_mgr,
-      std::move(dev_resolver), std::move(param_resolver), worker_cache,
-      default_worker_name);
+      std::move(dev_resolver), std::move(param_resolver),
+      MaybeCreateNcclCommunicator(), worker_cache, default_worker_name));
 
   master_env_.worker_cache = worker_cache;
-  master_env_.collective_executor_mgr = worker_env_.collective_executor_mgr;
+  master_env_.collective_executor_mgr =
+      worker_env_.collective_executor_mgr.get();
   return Status::OK();
 }
 

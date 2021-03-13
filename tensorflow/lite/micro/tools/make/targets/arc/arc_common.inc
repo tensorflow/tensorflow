@@ -19,9 +19,10 @@ ifeq ($(TARGET_ARCH), arc)
 
   DLR := $$$$
 
-  # List of folders to search project files for copy with path changing
-  # For instance, TCF and LCF files are copied into the root of generated project
-  ARC_TARGET_FILES_DIRS ?=
+  # List of pairs <dst>!<src>. Each of pairs declares destination file in generated project tree,
+  # and source file in user environment. Destination and source are separated by '!' symbol 
+  # likewise to "add_third_party_download" define in helper_functions.inc
+  ARC_TARGET_COPY_FILES ?=
 
   # For the following variables see arc_app_makefile.tpl for usage
 
@@ -59,11 +60,11 @@ endef
 
 # Copy rule generator to do file copies with changing paths in generated project
 # Arguments are:
-# 1 - Path files in generated project.
-# 2 - Path files in the source repo
+# 1 - Path to file in generated project (destination).
+# 2 - Path to files in the source repo (source).
 # Used in helper_functions.inc for arc projects to copy files
 define path_changing_copy_file
-$(1)/%: $(2)/%
+$(1) : $(2) third_party_downloads
 	@mkdir -p $$(dir $$@)
 	@cp $$< $$@
 endef
@@ -97,7 +98,7 @@ ifeq ($(ARC_TOOLCHAIN), mwdt)
 # the configuration bundled with MWDT (usually without .tcf extension) and that doesn't require copying.
 ifneq (,$(findstring .tcf,$(TCF_FILE)))
   TCF_FILE_NAME = $(notdir $(TCF_FILE))
-  ARC_TARGET_FILES_DIRS = $(dir $(TCF_FILE))
+  ARC_TARGET_COPY_FILES += $(notdir $(TCF_FILE))!$(TCF_FILE)
   MAKE_PROJECT_FILES += $(TCF_FILE_NAME)
 else
   TCF_FILE_NAME = $(TCF_FILE)
@@ -112,27 +113,29 @@ endif
   
   PLATFORM_LDFLAGS = -tcf=$(TCF_FILE_NAME) 
   
-  PLATFORM_LDFLAGS += -Hnocopyr -m -Hldopt=-Coutput=memory.map -Hheap=2K 
+  PLATFORM_LDFLAGS += -Hnocopyr -m -Hldopt=-Coutput=memory.map -Hheap=24K 
 
 ifneq ($(LCF_FILE), )
   PLATFORM_LDFLAGS += $(notdir $(LCF_FILE))
+  ARC_TARGET_COPY_FILES += $(notdir $(LCF_FILE))!$(LCF_FILE)
   MAKE_PROJECT_FILES += $(notdir $(LCF_FILE))
-ifeq ($(filter $(ARC_TARGET_FILES_DIRS), $(dir $(LCF_FILE))),)
-  ARC_TARGET_FILES_DIRS += $(dir $(LCF_FILE))
-endif
 endif
 
   CXXFLAGS := $(filter-out -std=c++11,$(CXXFLAGS))
   CCFLAGS := $(filter-out -std=c11,$(CCFLAGS))
+
+  ldflags_to_remove = -Wl,--fatal-warnings -Wl,--gc-sections
+  LDFLAGS := $(filter-out $(ldflags_to_remove),$(LDFLAGS))
+  
   MICROLITE_LIBS := $(filter-out -lm,$(MICROLITE_LIBS))
 
   CXXFLAGS += $(PLATFORM_FLAGS)
   CCFLAGS += $(PLATFORM_FLAGS)
   LDFLAGS += $(PLATFORM_LDFLAGS)
 
-
-
-
 endif # ARC_TOOLCHAIN
-endif  # TARGET_ARCH
 
+else
+  $(error "Only ARC target architecture supported (TARGET_ARCH=arc)")
+
+endif  # TARGET_ARCH

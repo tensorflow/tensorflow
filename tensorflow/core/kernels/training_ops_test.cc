@@ -103,14 +103,18 @@ static void SGD(int32 n, Graph** init_g, Graph** train_g) {
   }
 }
 
-static void BM_SGD(int iters, int params) {
-  const int64 tot = static_cast<int64>(iters) * params;
-  testing::ItemsProcessed(tot);
-  testing::BytesProcessed(tot * sizeof(float));
+static void BM_SGD(::testing::benchmark::State& state) {
+  const int params = state.range(0);
+
   Graph* init;
   Graph* train;
   SGD(params, &init, &train);
-  test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
+  test::Benchmark("cpu", train, GetOptions(), init, nullptr, "",
+                  /*old_benchmark_api*/ false)
+      .Run(state);
+  const int64 tot = static_cast<int64>(state.iterations()) * params;
+  state.SetItemsProcessed(tot);
+  state.SetBytesProcessed(tot * sizeof(float));
 }
 BENCHMARK(BM_SGD)->Arg(128 << 10)->Arg(256 << 10);
 
@@ -135,14 +139,18 @@ static void Adagrad(int32 n, Graph** init_g, Graph** train_g) {
   }
 }
 
-static void BM_Adagrad(int iters, int params) {
-  const int64 tot = static_cast<int64>(iters) * params;
-  testing::ItemsProcessed(tot);
-  testing::BytesProcessed(tot * sizeof(float));
+static void BM_Adagrad(::testing::benchmark::State& state) {
+  const int params = state.range(0);
+
   Graph* init;
   Graph* train;
   Adagrad(params, &init, &train);
-  test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
+  test::Benchmark("cpu", train, GetOptions(), init, nullptr, "",
+                  /*old_benchmark_api*/ false)
+      .Run(state);
+  const int64 tot = static_cast<int64>(state.iterations()) * params;
+  state.SetItemsProcessed(tot);
+  state.SetBytesProcessed(tot * sizeof(float));
 }
 BENCHMARK(BM_Adagrad)->Arg(128 << 10)->Arg(256 << 10);
 
@@ -168,17 +176,22 @@ static void SparseAdagrad(int32 m, int32 n, Graph** init_g, Graph** train_g) {
     *train_g = g;
   }
 }
-static void BM_SparseAdagrad(int iters, int m, int n) {
-  const int64 tot = static_cast<int64>(iters) * m * n;
-  testing::UseRealTime();
-  testing::ItemsProcessed(tot);
-  testing::BytesProcessed(tot * sizeof(float));
+static void BM_SparseAdagrad(::testing::benchmark::State& state) {
+  const int m = state.range(0);
+  const int n = state.range(1);
+
   Graph* init;
   Graph* train;
   SparseAdagrad(m, n, &init, &train);
-  test::Benchmark("cpu", train, GetMultiThreadedOptions(), init).Run(iters);
+  test::Benchmark("cpu", train, GetMultiThreadedOptions(), init, nullptr, "",
+                  /*old_benchmark_api*/ false)
+      .Run(state);
+  const int64 tot = static_cast<int64>(state.iterations()) * m * n;
+  state.SetItemsProcessed(tot);
+  state.SetBytesProcessed(tot * sizeof(float));
 }
 BENCHMARK(BM_SparseAdagrad)
+    ->UseRealTime()
     ->ArgPair(128, 1 << 10)
     ->ArgPair(128, 4 << 10)
     ->ArgPair(128, 8 << 10)
@@ -208,14 +221,18 @@ static void Momentum(int32 n, Graph** init_g, Graph** train_g) {
   }
 }
 
-static void BM_Momentum(int iters, int params) {
-  const int64 tot = static_cast<int64>(iters) * params;
-  testing::ItemsProcessed(tot);
-  testing::BytesProcessed(tot * sizeof(float));
+static void BM_Momentum(::testing::benchmark::State& state) {
+  const int params = state.range(0);
+
   Graph* init;
   Graph* train;
   Momentum(params, &init, &train);
-  test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
+  test::Benchmark("cpu", train, GetOptions(), init, nullptr, "",
+                  /*old_benchmark_api*/ false)
+      .Run(state);
+  const int64 tot = static_cast<int64>(state.iterations()) * params;
+  state.SetItemsProcessed(tot);
+  state.SetBytesProcessed(tot * sizeof(float));
 }
 BENCHMARK(BM_Momentum)->Arg(128 << 10)->Arg(256 << 10);
 
@@ -251,19 +268,26 @@ static void Adam(int32 n, Graph** init_g, Graph** train_g) {
   }
 }
 
-static void BM_Adam(int iters, int params, int is_multi_threaded) {
-  const int64 tot = static_cast<int64>(iters) * params;
-  testing::ItemsProcessed(tot);
-  testing::BytesProcessed(tot * sizeof(float));
+static void BM_Adam(::testing::benchmark::State& state) {
+  const int params = state.range(0);
+  const int is_multi_threaded = state.range(1);
+
   Graph* init;
   Graph* train;
   Adam(params, &init, &train);
   if (is_multi_threaded) {
     // Use max thread number if test performance.
-    test::Benchmark("cpu", train, nullptr, init).Run(iters);
+    test::Benchmark("cpu", train, nullptr, init, nullptr, "",
+                    /*old_benchmark_api*/ false)
+        .Run(state);
   } else {
-    test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
+    test::Benchmark("cpu", train, GetOptions(), init, nullptr, "",
+                    /*old_benchmark_api*/ false)
+        .Run(state);
   }
+  const int64 tot = static_cast<int64>(state.iterations()) * params;
+  state.SetItemsProcessed(tot);
+  state.SetBytesProcessed(tot * sizeof(float));
 }
 BENCHMARK(BM_Adam)->ArgPair(128 << 10, 0)->ArgPair(256 << 10, 0);
 BENCHMARK(BM_Adam)->ArgPair(256 << 5, 1)->ArgPair(256 << 16, 1);
@@ -297,14 +321,18 @@ static void RMSProp(int32 n, Graph** init_g, Graph** train_g) {
   }
 }
 
-static void BM_RMSProp(int iters, int params) {
-  const int64 tot = static_cast<int64>(iters) * params;
-  testing::ItemsProcessed(tot);
-  testing::BytesProcessed(tot * sizeof(float));
+static void BM_RMSProp(::testing::benchmark::State& state) {
+  const int params = state.range(0);
+
   Graph* init;
   Graph* train;
   RMSProp(params, &init, &train);
-  test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
+  test::Benchmark("cpu", train, GetOptions(), init, nullptr, "",
+                  /*old_benhcmark_api*/ false)
+      .Run(state);
+  const int64 tot = static_cast<int64>(state.iterations()) * params;
+  state.SetItemsProcessed(tot);
+  state.SetBytesProcessed(tot * sizeof(float));
 }
 BENCHMARK(BM_RMSProp)->Arg(128 << 10)->Arg(256 << 10);
 
@@ -334,14 +362,18 @@ static void AddSign(int32 n, Graph** init_g, Graph** train_g) {
   }
 }
 
-static void BM_AddSign(int iters, int params) {
-  const int64 tot = static_cast<int64>(iters) * params;
-  testing::ItemsProcessed(tot);
-  testing::BytesProcessed(tot * sizeof(float));
+static void BM_AddSign(::testing::benchmark::State& state) {
+  const int params = state.range(0);
+
   Graph* init;
   Graph* train;
   AddSign(params, &init, &train);
-  test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
+  test::Benchmark("cpu", train, GetOptions(), init, nullptr, "",
+                  /*old_benhcmark_api*/ false)
+      .Run(state);
+  const int64 tot = static_cast<int64>(state.iterations()) * params;
+  state.SetItemsProcessed(tot);
+  state.SetBytesProcessed(tot * sizeof(float));
 }
 BENCHMARK(BM_AddSign)->Arg(128 << 10)->Arg(256 << 10);
 
@@ -371,14 +403,19 @@ static void PowerSign(int32 n, Graph** init_g, Graph** train_g) {
   }
 }
 
-static void BM_PowerSign(int iters, int params) {
-  const int64 tot = static_cast<int64>(iters) * params;
-  testing::ItemsProcessed(tot);
-  testing::BytesProcessed(tot * sizeof(float));
+static void BM_PowerSign(::testing::benchmark::State& state) {
+  const int params = state.range(0);
+
   Graph* init;
   Graph* train;
   PowerSign(params, &init, &train);
-  test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
+  test::Benchmark("cpu", train, GetOptions(), init, nullptr, "",
+                  /*old_benhcmark_api*/ false)
+      .Run(state);
+
+  const int64 tot = static_cast<int64>(state.iterations()) * params;
+  state.SetItemsProcessed(tot);
+  state.SetBytesProcessed(tot * sizeof(float));
 }
 BENCHMARK(BM_PowerSign)->Arg(128 << 10)->Arg(256 << 10);
 

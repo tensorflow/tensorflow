@@ -38,16 +38,13 @@ std::ostream& operator<<(std::ostream& os, const DeviceType& d) {
 const char* const DEVICE_DEFAULT = "DEFAULT";
 const char* const DEVICE_CPU = "CPU";
 const char* const DEVICE_GPU = "GPU";
-const char* const DEVICE_SYCL = "SYCL";
+const char* const DEVICE_TPU_SYSTEM = "TPU_SYSTEM";
 
 const std::string DeviceName<Eigen::ThreadPoolDevice>::value = DEVICE_CPU;
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 const std::string DeviceName<Eigen::GpuDevice>::value = DEVICE_GPU;
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#ifdef TENSORFLOW_USE_SYCL
-const std::string DeviceName<Eigen::SyclDevice>::value = DEVICE_SYCL;
-#endif  // TENSORFLOW_USE_SYCL
 
 namespace {
 string DataTypeStringInternal(DataType dtype) {
@@ -238,11 +235,6 @@ int DataTypeSize(DataType dt) {
     TF_CALL_qint16(CASE);
     TF_CALL_quint16(CASE);
 
-    // uint32 and uint64 aren't included in TF_CALL_POD_TYPES because we
-    // don't want to define kernels for them at this stage to avoid binary
-    // bloat.
-    TF_CALL_uint32(CASE);
-    TF_CALL_uint64(CASE);
     default:
       return 0;
   }

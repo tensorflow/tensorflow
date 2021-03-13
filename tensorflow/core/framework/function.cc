@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
@@ -993,6 +994,31 @@ class AttrKeyAndValue {
 };
 }  // namespace
 
+string GetFunctionResourceInputDevice(
+    const Tensor& input, const int arg_index, const FunctionDef& function_def,
+    absl::flat_hash_map<string, std::vector<string>>* composite_devices) {
+  const auto& handles = input.flat<ResourceHandle>();
+  const ResourceHandle& handle0 = handles(0);
+  string composite_device;
+  auto iter = function_def.arg_attr().find(arg_index);
+  if (iter != function_def.arg_attr().end()) {
+    auto arg_attr = iter->second.attr().find("_composite_device");
+    if (arg_attr != iter->second.attr().end()) {
+      composite_device = arg_attr->second.s();
+    }
+  }
+  if (!composite_device.empty()) {
+    if (composite_devices->find(composite_device) == composite_devices->end()) {
+      for (int i = 0; i < handles.size(); ++i) {
+        (*composite_devices)[composite_device].push_back(handles(i).device());
+      }
+    }
+    return composite_device;
+  } else {
+    return handle0.device();
+  }
+}
+
 string Canonicalize(const string& funcname, AttrSlice attrs,
                     const FunctionLibraryRuntime::InstantiateOptions& options) {
   absl::InlinedVector<AttrKeyAndValue, 8> entries;
@@ -1038,7 +1064,8 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
   }
   if (options.config_proto.ByteSize() > 0) {
     string config_proto_serialized;
-    options.config_proto.SerializeToString(&config_proto_serialized);
+    SerializeToStringDeterministic(options.config_proto,
+                                   &config_proto_serialized);
     entries.push_back(AttrKeyAndValue("_config_proto", -1,
                                       config_proto_serialized,
                                       AttrKeyAndValue::kCEscape));
@@ -1148,12 +1175,14 @@ Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
 }
 
 FunctionLibraryDefinition::FunctionDefAndOpRegistration::
-    FunctionDefAndOpRegistration(const FunctionDef& fdef_in)
+    FunctionDefAndOpRegistration(const FunctionDef& fdef_in,
+                                 const StackTracesMap& stack_traces)
     : fdef(fdef_in),
       // Exact shape inference for functions is handled by ShapeRefiner.
       // Here we pass a dummy shape inference function for legacy code paths.
       op_registration_data(fdef.signature(), shape_inference::UnknownShape,
-                           true /* is_function */) {}
+                           true /* is_function */),
+      stack_traces(stack_traces) {}
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
     const FunctionLibraryDefinition& other)
@@ -1205,14 +1234,15 @@ FunctionLibraryDefinition::FindHelper(const string& func) const {
   }
 }
 
-Status FunctionLibraryDefinition::AddFunctionDef(const FunctionDef& fdef) {
+Status FunctionLibraryDefinition::AddFunctionDef(
+    const FunctionDef& fdef, const StackTracesMap& stack_traces) {
   mutex_lock l(mu_);
   bool added;
-  return AddFunctionDefHelper(fdef, &added);
+  return AddFunctionDefHelper(fdef, stack_traces, &added);
 }
 
-Status FunctionLibraryDefinition::AddFunctionDefHelper(const FunctionDef& fdef,
-                                                       bool* added) {
+Status FunctionLibraryDefinition::AddFunctionDefHelper(
+    const FunctionDef& fdef, const StackTracesMap& stack_traces, bool* added) {
   *added = false;
   std::shared_ptr<FunctionDefAndOpRegistration>& entry =
       function_defs_[fdef.signature().name()];
@@ -1232,7 +1262,7 @@ Status FunctionLibraryDefinition::AddFunctionDefHelper(const FunctionDef& fdef,
         "Cannot add function '", fdef.signature().name(),
         "' because an op with the same name already exists.");
   }
-  entry = std::make_shared<FunctionDefAndOpRegistration>(fdef);
+  entry = std::make_shared<FunctionDefAndOpRegistration>(fdef, stack_traces);
   *added = true;
   return Status::OK();
 }
@@ -1374,7 +1404,7 @@ Status FunctionLibraryDefinition::AddLibrary(
   Status s;
   bool added;
   for (const FunctionDef& fdef : lib_def.function()) {
-    s = AddFunctionDefHelper(fdef, &added);
+    s = AddFunctionDefHelper(fdef, /*stack_traces=*/{}, &added);
     if (!s.ok()) {
       Remove(funcs, funcs_with_grads);
       return s;
@@ -1396,12 +1426,13 @@ Status FunctionLibraryDefinition::AddLibrary(
   return Status::OK();
 }
 
-Status FunctionLibraryDefinition::ReplaceFunction(const string& func,
-                                                  const FunctionDef& fdef) {
+Status FunctionLibraryDefinition::ReplaceFunction(
+    const string& func, const FunctionDef& fdef,
+    const StackTracesMap& stack_traces) {
   mutex_lock l(mu_);
   bool added;
   TF_RETURN_IF_ERROR(RemoveFunctionHelper(func));
-  TF_RETURN_IF_ERROR(AddFunctionDefHelper(fdef, &added));
+  TF_RETURN_IF_ERROR(AddFunctionDefHelper(fdef, stack_traces, &added));
   return Status::OK();
 }
 
@@ -1427,6 +1458,12 @@ Status FunctionLibraryDefinition::RemoveFunctionHelper(const string& func) {
   }
   function_defs_.erase(i);
   return Status::OK();
+}
+
+void FunctionLibraryDefinition::Clear() {
+  mutex_lock l(mu_);
+  function_defs_.clear();
+  func_grad_.clear();
 }
 
 Status FunctionLibraryDefinition::RemoveGradient(const string& func) {

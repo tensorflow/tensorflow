@@ -15,6 +15,7 @@ limitations under the License.
 
 // XLA-specific Shape Ops.
 
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/tf2xla/kernels/shape_util.h"
 #include "tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -24,6 +25,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -64,6 +67,80 @@ class ShapeOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("Shape").CompilationOnly().IsMetadataOp(), ShapeOp);
+
+class XlaSetBoundOp : public XlaOpKernel {
+ public:
+  explicit XlaSetBoundOp(OpKernelConstruction* context)
+      : XlaOpKernel(context) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    const TensorShape input_shape = ctx->InputShape("input");
+    const TensorShape bound_shape = ctx->InputShape("bound");
+
+    OP_REQUIRES(
+        ctx,
+        ctx->InputType("bound") == DT_INT32 &&
+            ctx->InputType("input") == DT_INT32,
+        errors::InvalidArgument(
+            "XlaSetBound can only set bound for int32 scalar value: got",
+            input_shape.DebugString()));
+
+    OP_REQUIRES(
+        ctx, input_shape.dims() == 0,
+        errors::InvalidArgument("XlaSetBound should only be used to set a "
+                                "bound to the an int32 scalar value: got",
+                                input_shape.DebugString()));
+
+    OP_REQUIRES(
+        ctx, bound_shape.dims() == 0,
+        errors::InvalidArgument("XlaSetBound should only be used to set a "
+                                "bound to the an int32 scalar value: got",
+                                bound_shape.DebugString()));
+    int64 bound;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar("bound", &bound));
+    xla::Literal bound_literal = xla::LiteralUtil::CreateR0<int32>(bound);
+    xla::XlaOp result =
+        xla::CustomCall(ctx->builder(), "SetBound", {ctx->Input("input")},
+                        ctx->InputXlaShape("input").ValueOrDie(), "", false, {},
+                        &bound_literal);
+    ctx->SetOutput(0, result);
+  }
+};
+
+REGISTER_XLA_OP(Name("XlaSetBound").CompileTimeConstantInput("bound"),
+                XlaSetBoundOp);
+
+class XlaSetDynamicDimensionSizeOp : public XlaOpKernel {
+ public:
+  explicit XlaSetDynamicDimensionSizeOp(OpKernelConstruction* context)
+      : XlaOpKernel(context) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    const TensorShape dim_index_shape = ctx->InputShape("dim_index");
+    const TensorShape size_shape = ctx->InputShape("size");
+
+    OP_REQUIRES(ctx,
+                ctx->InputType("dim_index") == DT_INT32 &&
+                    ctx->InputType("size") == DT_INT32,
+                errors::InvalidArgument("dim_index and size has to be int32 for"
+                                        "XlaSetDynamicDimensionSizeOp"));
+
+    OP_REQUIRES(
+        ctx, dim_index_shape.dims() == 0,
+        errors::InvalidArgument("XlaSetDynamicDimensionSizeOp's dim_index and "
+                                "size has to be int32 scalar value"));
+    int64 dim_index;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar("dim_index", &dim_index));
+
+    xla::XlaOp result =
+        xla::SetDimensionSize(ctx->Input(0), ctx->Input("size"), dim_index);
+    ctx->SetOutput(0, result);
+  }
+};
+
+REGISTER_XLA_OP(
+    Name("XlaSetDynamicDimensionSize").CompileTimeConstantInput("dim_index"),
+    XlaSetDynamicDimensionSizeOp);
 
 class ShapeNOp : public XlaOpKernel {
  public:

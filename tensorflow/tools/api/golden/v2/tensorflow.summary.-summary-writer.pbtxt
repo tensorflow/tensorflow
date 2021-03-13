@@ -7,7 +7,7 @@ tf_class {
   }
   member_method {
     name: "as_default"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'step\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "close"
@@ -23,6 +23,6 @@ tf_class {
   }
   member_method {
     name: "set_as_default"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'step\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
 }

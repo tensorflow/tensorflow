@@ -33,7 +33,6 @@ namespace grappler {
 
 namespace {
 
-constexpr char kRetValOp[] = "_Retval";
 constexpr char kPrefetchDatasetOp[] = "PrefetchDataset";
 
 template <std::size_t SIZE>
@@ -101,10 +100,9 @@ Status Slack::RecursivelyHandleOp(const MutableGraphView& graph,
     return Status::OK();
   }
 
-  return errors::InvalidArgument(
-      "Encountered unsupported op \"", dataset_node->op(),
-      "\" when rewriting the input pipeline graph to use slack in its "
-      "final prefetch transformation.");
+  LOG(WARNING) << "Could not find a final `prefetch` in the input pipeline to "
+                  "which to introduce slack.";
+  return Status::OK();
 }
 
 Status Slack::OptimizeAndCollectStats(Cluster* cluster,
@@ -117,17 +115,13 @@ Status Slack::OptimizeAndCollectStats(Cluster* cluster,
 
   *output = item.graph;
   MutableGraphView graph(output);
-  for (const auto& fetch_name : item.fetch) {
-    // If the GrapplerItem is derived from a FunctionDef, we don't optimize it,
-    // because we only want to add slack to the prefetch on the main dataset
-    // pipeline.
-    auto fetch = graph.GetNode(fetch_name);
-    if (fetch == nullptr || fetch->op() == kRetValOp) {
-      // Heuristic: If the fetch nodes are Retval ops, this item is from a
-      // function.
-      return Status::OK();
-    }
-  }
+
+  // If the GrapplerItem is derived from a FunctionDef, we don't optimize it,
+  // because we only want to add slack to the prefetch on the main dataset
+  // pipeline.
+  if (graph_utils::IsItemDerivedFromFunctionDef(item, graph))
+    return Status::OK();
+
   if (item.fetch.size() != 1) {
     return errors::InvalidArgument(
         "Expected only one fetch node but there were ", item.fetch.size(), ": ",

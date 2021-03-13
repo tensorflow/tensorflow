@@ -58,6 +58,7 @@ class XlaWhileOp : public XlaOpKernel {
   NameAttrList body_name_attr_;
   bool has_token_input_output_;
   std::vector<string> token_input_nodes_;
+  string original_node_name_;
   // Whether to propagate compile time consts into the loop body.
   // This is not supported by default now since it may cause HBM memory
   // overheads.

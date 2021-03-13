@@ -15,7 +15,8 @@ py_binary(
     deps = [
         ":modify_model_interface_constants",
         ":modify_model_interface_lib",
-        "//tensorflow/python:platform",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -36,9 +37,6 @@ py_test(
     srcs = ["modify_model_interface_lib_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = [
-        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
-    ],
     deps = [
         ":modify_model_interface_lib",
         "//tensorflow:tensorflow_py",
@@ -52,7 +50,7 @@ py_library(
     name = "modify_model_interface_constants",
     srcs = ["modify_model_interface_constants.py"],
     srcs_version = "PY3",
-    deps = ["//tensorflow/lite/python:lite_constants"],
+    deps = ["//tensorflow/python:dtypes"],
 )
 
 pybind_extension(

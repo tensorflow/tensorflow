@@ -3,7 +3,16 @@
 # learning applications.
 
 load("@bazel_skylib//lib:selects.bzl", "selects")
-load("//tensorflow:tensorflow.bzl", "VERSION", "tf_cc_shared_object", "tf_custom_op_library_additional_deps_impl", "tf_native_cc_binary")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "VERSION",
+    "if_google",
+    "if_oss",
+    "tf_cc_shared_object",
+    "tf_custom_op_library_additional_deps_impl",
+    "tf_native_cc_binary",
+)
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_binary_deps",
@@ -21,10 +30,6 @@ load(
 load(
     "//tensorflow/python/tools/api/generator:api_init_files_v1.bzl",
     "TENSORFLOW_API_INIT_FILES_V1",  # @unused
-)
-load(
-    "//third_party/ngraph:build_defs.bzl",
-    "if_ngraph",
 )
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -71,47 +76,110 @@ TENSORFLOW_API_INIT_FILES_V1 = (
 # which requires restricted licenses to be avoided.
 config_setting(
     name = "no_lgpl_deps",
-    values = {"define": "__TENSORFLOW_NO_LGPL_DEPS__=1"},
+    define_values = {"__TENSORFLOW_NO_LGPL_DEPS__": "1"},
+    visibility = ["//visibility:public"],
+)
+
+# Config setting that disables the default logger, only logging
+# to registered TFLogSinks
+config_setting(
+    name = "no_default_logger",
+    define_values = {"no_default_logger": "true"},
     visibility = ["//visibility:public"],
 )
 
 # Config setting for determining if we are building for Android.
 config_setting(
     name = "android",
-    values = {"crosstool_top": "//external:android/crosstool"},
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "android"},
+        {},
+    ),
+    values = if_oss(
+        {"crosstool_top": "//external:android/crosstool"},
+        {},
+    ),
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "android_x86",
-    values = {
-        "crosstool_top": "//external:android/crosstool",
-        "cpu": "x86",
-    },
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "android"},
+        {},
+    ),
+    values = dict(
+        if_oss(
+            {"crosstool_top": "//external:android/crosstool"},
+        ),
+        cpu = "x86",
+    ),
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "android_x86_64",
-    values = {
-        "crosstool_top": "//external:android/crosstool",
-        "cpu": "x86_64",
-    },
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "android"},
+        {},
+    ),
+    values = dict(
+        if_oss(
+            {"crosstool_top": "//external:android/crosstool"},
+        ),
+        cpu = "x86_64",
+    ),
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "android_armeabi",
-    values = {
-        "crosstool_top": "//external:android/crosstool",
-        "cpu": "armeabi",
-    },
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "android"},
+        {},
+    ),
+    values = dict(
+        if_oss(
+            {"crosstool_top": "//external:android/crosstool"},
+        ),
+        cpu = "armeabi",
+    ),
     visibility = ["//visibility:public"],
 )
 
+# copybara:uncomment_begin(google-only)
+# config_setting(
+#     name = "chromiumos_x86_64",
+#     flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
+#     values = {"cpu": "k8"},
+#     visibility = ["//visibility:public"],
+# )
+#
+# config_setting(
+#     name = "chromiumos_arm64",
+#     flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
+#     values = {"cpu": "arm"},
+#     visibility = ["//visibility:public"],
+# )
+#
+# config_setting(
+#     name = "chromiumos_armv7",
+#     flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
+#     values = {"cpu": "armeabi-v7a"},
+#     visibility = ["//visibility:public"],
+# )
+# copybara:uncomment_end
+
 config_setting(
     name = "emscripten",
-    values = {"crosstool_top": "//external:android/emscripten"},
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "emscripten"},
+        {},
+    ),
+    values = if_oss(
+        {"crosstool_top": "//external:android/emscripten"},
+        {},
+    ),
     visibility = ["//visibility:public"],
 )
 
@@ -126,19 +194,31 @@ config_setting(
 
 config_setting(
     name = "android_arm",
-    values = {
-        "crosstool_top": "//external:android/crosstool",
-        "cpu": "armeabi-v7a",
-    },
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "android"},
+        {},
+    ),
+    values = dict(
+        if_oss(
+            {"crosstool_top": "//external:android/crosstool"},
+        ),
+        cpu = "armeabi-v7a",
+    ),
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "android_arm64",
-    values = {
-        "crosstool_top": "//external:android/crosstool",
-        "cpu": "arm64-v8a",
-    },
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "android"},
+        {},
+    ),
+    values = dict(
+        if_oss(
+            {"crosstool_top": "//external:android/crosstool"},
+        ),
+        cpu = "arm64-v8a",
+    ),
     visibility = ["//visibility:public"],
 )
 
@@ -162,7 +242,25 @@ config_setting(
 
 config_setting(
     name = "windows",
-    values = {"cpu": "x64_windows"},
+    # Internal builds query the target OS.
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "windows"},
+        {},
+    ),
+    # OSS builds query the CPU type.
+    values = if_oss(
+        {"cpu": "x64_windows"},
+        {},
+    ),
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "msvc_cl_debug",
+    values = {
+        "compiler": "msvc-cl",
+        "compilation_mode": "dbg",
+    },
     visibility = ["//visibility:public"],
 )
 
@@ -173,38 +271,92 @@ config_setting(
 )
 
 config_setting(
-    name = "macos",
+    name = "macos_x86_64",
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "apple"},
+        {},
+    ),
     values = {
         "apple_platform_type": "macos",
-        "cpu": "darwin",
+        "cpu": if_google("darwin_x86_64", "darwin"),
     },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "macos_arm64",
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "apple"},
+        {},
+    ),
+    values = {
+        "apple_platform_type": "macos",
+        "cpu": "darwin_arm64",
+    },
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "macos",
+    match_any = [
+        ":macos_x86_64",
+        ":macos_arm64",
+    ],
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "ios",
-    values = {"apple_platform_type": "ios"},
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "apple"},
+        {},
+    ),
+    values = if_oss(
+        {"apple_platform_type": "ios"},
+        {},
+    ),
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "fuchsia",
-    values = {"cpu": "fuchsia"},
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "fuchsia"},
+        {},
+    ),
+    values = if_oss(
+        # TODO(b/149248802) When we have a Fuchsia Bazel SDK update to use the values it sets.
+        {"cpu": "fuchsia"},
+        {},
+    ),
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "ios_x86_64",
-    values = {
-        "crosstool_top": "//tools/osx/crosstool:crosstool",
-        "cpu": "ios_x86_64",
-    },
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "apple"},
+        {},
+    ),
+    values = dict(
+        if_oss(
+            {"crosstool_top": "//tools/osx/crosstool:crosstool"},
+        ),
+        cpu = "ios_x86_64",
+    ),
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "chromiumos",
-    values = {"crosstool_top": "//external:android/chromiumos"},
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "chromiumos"},
+        {},
+    ),
+    values = if_oss(
+        {"crosstool_top": "//external:android/chromiumos"},
+        {},
+    ),
     visibility = ["//visibility:public"],
 )
 
@@ -239,6 +391,18 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_mips64",
+    values = {"cpu": "mips64"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "linux_riscv64",
+    values = {"cpu": "riscv64"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "debug",
     values = {
         "compilation_mode": "dbg",
@@ -261,14 +425,38 @@ config_setting(
 )
 
 config_setting(
-    name = "freebsd",
-    values = {"cpu": "freebsd"},
+    name = "armeabi",
+    values = {"cpu": "armeabi"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
-    name = "with_default_optimizations",
-    define_values = {"with_default_optimizations": "true"},
+    name = "armeabi-v7a",
+    values = {"cpu": "armeabi-v7a"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "arm64-v8a",
+    values = {"cpu": "arm64-v8a"},
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "arm_any",
+    match_any = [
+        ":arm",
+        ":armeabi",
+        ":armeabi-v7a",
+        ":arm64-v8a",
+        ":linux_aarch64",
+        ":linux_armhf",
+    ],
+)
+
+config_setting(
+    name = "freebsd",
+    values = {"cpu": "freebsd"},
     visibility = ["//visibility:public"],
 )
 
@@ -298,12 +486,10 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# Crosses between platforms and file system libraries not supported on those
-# platforms due to limitations in nested select() statements.
+# Experimental features
 config_setting(
-    name = "with_cuda_support_windows_override",
-    define_values = {"using_cuda_nvcc": "true"},
-    values = {"cpu": "x64_windows"},
+    name = "stackdriver_support",
+    define_values = {"stackdriver_support": "true"},
     visibility = ["//visibility:public"],
 )
 
@@ -332,14 +518,12 @@ config_setting(
 # due to limitations in nested select() statements.
 config_setting(
     name = "framework_shared_object",
-    define_values = {
-        "framework_shared_object": "true",
-    },
+    define_values = {"framework_shared_object": "true"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
-    name = "macos_with_framework_shared_object",
+    name = "macos_x86_64_with_framework_shared_object",
     define_values = {
         "framework_shared_object": "true",
     },
@@ -351,35 +535,89 @@ config_setting(
 )
 
 config_setting(
-    name = "using_cuda_clang",
+    name = "macos_arm64_with_framework_shared_object",
     define_values = {
-        "using_cuda_clang": "true",
+        "framework_shared_object": "true",
     },
-)
-
-# Flag to indicate open source build, .bazelrc always has it set to be true
-config_setting(
-    name = "oss",
-    define_values = {
-        "open_source_build": "true",
+    values = {
+        "apple_platform_type": "macos",
+        "cpu": "darwin_arm64",
     },
     visibility = ["//visibility:public"],
 )
 
-config_setting(
-    name = "using_cuda_clang_with_dynamic_build",
-    define_values = {
-        "using_cuda_clang": "true",
-        "framework_shared_object": "true",
-    },
+selects.config_setting_group(
+    name = "macos_with_framework_shared_object",
+    match_any = [
+        ":macos_x86_64_with_framework_shared_object",
+        ":macos_arm64_with_framework_shared_object",
+    ],
 )
 
+# Config setting that is satisfied when TensorFlow is being built with CUDA
+# support through e.g. `--config=cuda` (or `--config=cuda_clang` in OSS).
+alias(
+    name = "is_cuda_enabled",
+    actual = if_oss(
+        "@local_config_cuda//:is_cuda_enabled",
+        "@local_config_cuda//cuda:using_clang",
+    ),
+)
+
+# Config setting that is satisfied when CUDA device code should be compiled
+# with clang. It does not imply that CUDA support has been enabled.
+alias(
+    name = "is_cuda_compiler_clang",
+    actual = if_oss(
+        "@local_config_cuda//:is_cuda_compiler_clang",
+        "@local_config_cuda//cuda:TRUE",
+    ),
+)
+
+# Config setting that is satisfied when CUDA device code should be compiled
+# with nvcc. It does not imply that CUDA support has been enabled.
+alias(
+    name = "is_cuda_compiler_nvcc",
+    actual = if_oss(
+        "@local_config_cuda//:is_cuda_compiler_nvcc",
+        "@local_config_cuda//cuda:FALSE",
+    ),
+)
+
+# Config setting that is satisfied when building with --config=cuda in OSS.
+selects.config_setting_group(
+    name = "is_cuda_enabled_and_oss",
+    match_all = [
+        ":is_cuda_enabled",
+        ":oss",
+    ],
+)
+
+# Config setting that is satisfied when building with --config=cuda for Windows
+selects.config_setting_group(
+    name = "is_cuda_enabled_and_windows",
+    match_all = [
+        ":is_cuda_enabled",
+        ":windows",
+    ],
+)
+
+# Config setting to use in select()s to distinguish open source build from
+# google internal build on configurable attributes.
+#
+# For non-configurable distinction between OSS and Google builds, see
+# `if_oss()` and `if_google()` macros in tensorflow.bzl.
 config_setting(
-    name = "build_oss_using_cuda_clang",
-    define_values = {
-        "using_cuda_clang": "true",
-        "open_source_build": "true",
-    },
+    name = "oss",
+    flag_values = {":oss_setting": "True"},
+    visibility = ["//visibility:public"],
+)
+
+# Non-configurable setting to indicate open source build.
+bool_setting(
+    name = "oss_setting",
+    build_setting_default = if_oss(True, False),
+    visibility = ["//visibility:private"],
 )
 
 # Setting to use when loading kernels dynamically
@@ -393,46 +631,13 @@ config_setting(
 )
 
 config_setting(
-    name = "using_cuda_nvcc",
-    define_values = {
-        "using_cuda_nvcc": "true",
-    },
-)
-
-config_setting(
-    name = "using_cuda_nvcc_with_dynamic_build",
-    define_values = {
-        "using_cuda_nvcc": "true",
-        "framework_shared_object": "true",
-    },
-)
-
-config_setting(
-    name = "build_oss_using_cuda_nvcc",
-    define_values = {
-        "using_cuda_nvcc": "true",
-        "open_source_build": "true",
-    },
-)
-
-config_setting(
     name = "using_rocm_hipcc",
-    define_values = {
-        "using_rocm_hipcc": "true",
-    },
+    define_values = {"using_rocm_hipcc": "true"},
 )
 
 config_setting(
     name = "override_eigen_strong_inline",
-    values = {"define": "override_eigen_strong_inline=true"},
-    visibility = ["//visibility:public"],
-)
-
-# This flag is set from the configure step when the user selects with nGraph option.
-# By default it should be false
-config_setting(
-    name = "with_ngraph_support",
-    values = {"define": "with_ngraph_support=true"},
+    define_values = {"override_eigen_strong_inline": "true"},
     visibility = ["//visibility:public"],
 )
 
@@ -444,19 +649,31 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# This flag is defined for select statements that match both
-# on 'windows' and 'api_version_2'. In this case, bazel requires
-# having a flag which is a superset of these two.
-config_setting(
-    name = "windows_and_api_version_2",
-    define_values = {"tf_api_version": "2"},
-    values = {"cpu": "x64_windows"},
-)
-
 # This flag enables experimental MLIR support.
 config_setting(
     name = "with_mlir_support",
-    values = {"define": "with_mlir_support=true"},
+    define_values = {"with_mlir_support": "true"},
+    visibility = ["//visibility:public"],
+)
+
+# This flag forcibly enables experimental MLIR bridge support.
+config_setting(
+    name = "enable_mlir_bridge",
+    define_values = {"enable_mlir_bridge": "true"},
+    visibility = ["//visibility:public"],
+)
+
+# This flag forcibly disables experimental MLIR bridge support.
+config_setting(
+    name = "disable_mlir_bridge",
+    define_values = {"enable_mlir_bridge": "false"},
+    visibility = ["//visibility:public"],
+)
+
+# This flag enables experimental TPU support
+config_setting(
+    name = "with_tpu_support",
+    define_values = {"with_tpu_support": "true"},
     visibility = ["//visibility:public"],
 )
 
@@ -472,15 +689,34 @@ selects.config_setting_group(
     ],
 )
 
+# This flag disables all google production dependencies, intended for
+# applications run with non-prod environment.
+# TODO(timshen): Currently this option only disables some dependencies.
+# See b/122528503.
+# copybara:uncomment_begin(google-only)
+# config_setting(
+#     name = "no_prod_deps",
+#     define_values = {"tf_no_prod_deps": "1"},
+# )
+#
+# config_setting(
+#     name = "no_prod_deps_cuda",
+#     define_values = {
+#         "tf_no_prod_deps": "1",
+#         "GOOGLE_CUDA_COMPILER": "clang",
+#     },
+# )
+# copybara:uncomment_end
+
 config_setting(
     name = "lite_protos_legacy",
-    values = {"define": "TENSORFLOW_PROTOS=lite"},
+    define_values = {"TENSORFLOW_PROTOS": "lite"},
     visibility = ["//visibility:private"],
 )
 
 config_setting(
     name = "full_protos",
-    values = {"define": "TENSORFLOW_PROTOS=full"},
+    define_values = {"TENSORFLOW_PROTOS": "full"},
     visibility = ["//visibility:public"],
 )
 
@@ -505,40 +741,68 @@ selects.config_setting_group(
     ],
 )
 
+# copybara:uncomment_begin(google-only)
+# config_setting(
+#     name = "portable_proto_force_third_party",
+#     define_values = {"PORTABLE_PROTO_TRANSITION_MODE": "third_party"},
+#     visibility = ["//visibility:public"],
+# )
+# copybara:uncomment_end
+
+# 'enable_registration_v2' opts-in to a different implementation of op and
+# kernel registration - REGISTER_OP, REGISTER_KERNEL_BUILDER, etc.
+#
+# This setting is currently experimental. The 'v2' implementation does _not_
+# correspond to a particular, finalized design; rather, it relates to
+# developing one.
+#
+# The current aim of the 'v2' implementation is to allow 'unused' ops and
+# kernels to be discarded by the linker (to the benefit of binary size).
+bool_flag(
+    name = "enable_registration_v2",
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "registration_v1",
+    flag_values = {":enable_registration_v2": "False"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "registration_v2",
+    flag_values = {":enable_registration_v2": "True"},
+    visibility = ["//visibility:public"],
+)
+
 # DO NOT ADD ANY NEW EXCEPTIONS TO THIS LIST!
 # Instead, please use public APIs or public build rules TF provides.
 # If you need functionality that is not exposed, we will work with you to expand our public APIs.
+# TODO(b/173549186): Move Google-internal TF code out of learning/brain
 package_group(
     name = "internal",
     packages = [
-        # To pass open source testing in the pip Kokoros.
-        "//bazel_pip/tensorflow/...",
-        "//learning/brain/swift/x10/...",
-        "//perftools/accelerators/xprof/api/...",
-        "//third_party/py/autograph/...",
-        "//third_party/swift/tensorflow/x10/...",
-        "//third_party/swift/tensorflow_apis/...",
+        "//learning/brain/keras/...",
+        "//learning/brain/mlir/...",
+        "//learning/lib/ami/simple_ml/...",
         "//tensorflow/...",
-        "//tensorflow_estimator/python/estimator/...",
-        "//tensorflow_models/official/...",
+        "//tensorflow_decision_forests/...",
+        "//third_party/cloud_tpu/inference_converter/...",
     ],
 )
 
-package_group(
-    name = "ndarray_tensor_allow_list",
-    packages = ["//learning/pathways/..."],
-)
-
-# Packages that use composite tensors or dispatch.
-# TODO(b/154762408) Remove this package group once it's no longer needed.
-package_group(name = "composite_tensor_whitelist")
+package_group(name = "ndarray_tensor_allow_list")
 
 # Packages that use private types symbols, until they are exported.
 # TODO(b/154650521) Remove.
-package_group(
-    name = "types_whitelist",
-    packages = ["//learning/deepmind/tensorflow/replicator/..."],
-)
+# If this is modified, then copy.bara.sky must also be modified.
+package_group(name = "types_whitelist")
+
+# Packages that use StructuredTensors.
+# TODO(b/159007891) Remove this package once StructuredTensor is exported.
+# If this is modified, then copy.bara.sky must also be modified.
+package_group(name = "structured_tensor_whitelist")
 
 filegroup(
     name = "intel_binary_blob",
@@ -559,7 +823,8 @@ bzl_library(
         "//tensorflow/core/platform/default:cuda_build_defs_bzl",
         "//third_party/mkl:build_defs_bzl",
         "//third_party/mkl_dnn:build_defs_bzl",
-        "//third_party/ngraph:build_defs_bzl",
+        "@bazel_skylib//lib:new_sets",
+        "@bazel_skylib//rules:common_settings",
         "@local_config_cuda//cuda:build_defs_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
@@ -644,7 +909,9 @@ tf_cc_shared_object(
     name = "tensorflow_framework",
     framework_so = [],
     linkopts = select({
-        "//tensorflow:macos": [],
+        "//tensorflow:macos": [
+            "-Wl,-rename_section,__TEXT,text_env,__TEXT,__text",
+        ],
         "//tensorflow:windows": [],
         "//tensorflow:freebsd": [
             "-Wl,--version-script,$(location //tensorflow:tf_framework_version_script.lds)",
@@ -659,8 +926,14 @@ tf_cc_shared_object(
     soversion = VERSION,
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/c/experimental/filesystem:filesystem_interface",
+        "//tensorflow/c/experimental/stream_executor:stream_executor",
+        "//tensorflow/c:env",
+        "//tensorflow/c:kernels",
+        "//tensorflow/c:logging",
+        "//tensorflow/c:ops_hdrs",
         "//tensorflow/cc/saved_model:loader_lite_impl",
-        "//tensorflow/core:core_cpu_impl",
+        "//tensorflow/core/common_runtime:core_cpu_impl",
         "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
@@ -713,12 +986,12 @@ tf_cc_shared_object(
     per_os_targets = True,
     soversion = VERSION,
     visibility = ["//visibility:public"],
-    # add win_def_file for tensorflow
+    # copybara:comment_begin(OSS Windows only: DEF file for exported symbols)
     win_def_file = select({
-        # We need this DEF file to properly export symbols on Windows
         "//tensorflow:windows": ":tensorflow_filtered_def_file",
         "//conditions:default": None,
     }),
+    # copybara:comment_end
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
@@ -742,16 +1015,21 @@ tf_cc_shared_object(
             "-z defs",
             "-Wl,--version-script,$(location //tensorflow:tf_version_script.lds)",
         ],
+    }) + select({
+        "//tensorflow:msvc_cl_debug": [
+            "/DEBUG:FASTLINK",
+        ],
+        "//conditions:default": [],
     }),
     per_os_targets = True,
     soversion = VERSION,
     visibility = ["//visibility:public"],
-    # add win_def_file for tensorflow_cc
+    # copybara:comment_begin(OSS Windows only: DEF file for exported symbols)
     win_def_file = select({
-        # We need this DEF file to properly export symbols on Windows
         "//tensorflow:windows": ":tensorflow_filtered_def_file",
         "//conditions:default": None,
     }),
+    # copybara:comment_end
     deps = [
         "//tensorflow:tf_exported_symbols.lds",
         "//tensorflow:tf_version_script.lds",
@@ -760,9 +1038,8 @@ tf_cc_shared_object(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:scope",
-        "//tensorflow/cc/profiler",
         "//tensorflow/core:tensorflow",
-    ] + if_ngraph(["@ngraph_tf//:ngraph_tf"]),
+    ],
 )
 
 # ** Targets for Windows build (start) **
@@ -968,7 +1245,7 @@ gen_api_init_files(
 
 py_library(
     name = "tensorflow_py",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = select({
         "api_version_2": [],
@@ -990,7 +1267,7 @@ py_library(
         "//tensorflow/python/keras/api:keras_python_api_gen_compat_v1",
         "//tensorflow/python/keras/api:keras_python_api_gen_compat_v2",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python:no_contrib"],
 )

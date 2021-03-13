@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 
 namespace xla {
 namespace {
@@ -57,6 +58,44 @@ XLA_TEST_F(CholeskyTest, NonPSDInput) {
   });
 
   ComputeAndCompareR2<float>(&builder, expected, {a_data.get()},
+                             ErrorSpec(1e-4, 1e-4));
+}
+
+XLA_TEST_F(CholeskyTest, NonPSDBatched) {
+  XlaBuilder builder(TestName());
+
+  Array3D<float> a_vals({
+      {
+          {10, 0, 0},
+          {1, 20, 0},
+          {1, 1, 30},
+      },
+      {
+          {1, 1, 1},
+          {1, 1, 1},
+          {1, 1, 1},
+      },
+  });
+
+  XlaOp a;
+  auto a_data = CreateR3Parameter<float>(a_vals, 0, "a", &builder, &a);
+  Cholesky(a, /*lower=*/true);
+
+  float nan = std::numeric_limits<float>::quiet_NaN();
+  Array3D<float> expected({
+      {
+          {3.16227766, 0., 0.},
+          {0.31622777, 4.4609416, 0.},
+          {0.31622777, 0.20175113, 5.46436606},
+      },
+      {
+          {nan, nan, nan},
+          {nan, nan, nan},
+          {nan, nan, nan},
+      },
+  });
+
+  ComputeAndCompareR3<float>(&builder, expected, {a_data.get()},
                              ErrorSpec(1e-4, 1e-4));
 }
 
@@ -180,7 +219,9 @@ class RandomCholeskyTest
     : public ClientLibraryTestBase,
       public ::testing::WithParamInterface<CholeskyTestCase> {};
 
-XLA_TEST_P(RandomCholeskyTest, Random) {
+XLA_TEST_P(RandomCholeskyTest, Real) {
+  // Test fails with TensorFloat-32 enabled
+  tensorflow::enable_tensor_float_32_execution(false);
   XlaBuilder builder(TestName());
 
   auto test_params = GetParam();
@@ -217,14 +258,65 @@ XLA_TEST_P(RandomCholeskyTest, Random) {
                              ErrorSpec(1e-4, 1e-4));
 }
 
+XLA_TEST_P(RandomCholeskyTest, Complex) {
+  // Test fails with TensorFloat-32 enabled
+  tensorflow::enable_tensor_float_32_execution(false);
+  XlaBuilder builder(TestName());
+
+  auto test_params = GetParam();
+  std::vector<int64> dimensions = {std::get<0>(test_params),
+                                   std::get<1>(test_params),
+                                   std::get<1>(test_params)};
+  bool lower = std::get<2>(test_params);
+  Shape shape = ShapeUtil::MakeShape(F32, dimensions);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto literal_real,
+      LiteralUtil::CreateRandomLiteral<F32>(shape, 0.0, 1.0));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto literal_imag,
+      LiteralUtil::CreateRandomLiteral<F32>(shape, 0.0, 1.0));
+
+  auto input_real = Parameter(&builder, 0, shape, "input_real");
+  auto input_imag = Parameter(&builder, 1, shape, "input_imag");
+  auto input = Complex(input_real, input_imag);
+  // Form a random positive definite matrix.
+  auto matrix = BatchDot(input, TransposeInMinorDims(Conj(input)),
+                         PrecisionConfig::HIGHEST);
+
+  auto cholesky = Triangle(Cholesky(matrix, lower), lower);
+
+  // Verify that ||matrix - cholesky * cholesky_t||_2 ~= 0
+  XlaOp verification;
+  if (lower) {
+    verification = BatchDot(cholesky, TransposeInMinorDims(Conj(cholesky)),
+                            PrecisionConfig::HIGHEST);
+  } else {
+    verification = BatchDot(TransposeInMinorDims(Conj(cholesky)), cholesky,
+                            PrecisionConfig::HIGHEST);
+  }
+  auto delta = matrix - verification;
+  Reduce(Abs(delta * Conj(delta)), ConstantR0<float>(&builder, 0.0),
+         CreateScalarAddComputation(F32, &builder), {0, 1, 2});
+
+  TF_ASSERT_OK_AND_ASSIGN(auto input_data_real,
+                          client_->TransferToServer(literal_real));
+  TF_ASSERT_OK_AND_ASSIGN(auto input_data_imag,
+                          client_->TransferToServer(literal_imag));
+  ComputeAndCompareR0<float>(&builder, 0.0,
+                             {input_data_real.get(), input_data_imag.get()},
+                             ErrorSpec(1e-4, 1e-4));
+}
+
 INSTANTIATE_TEST_SUITE_P(RandomCholeskyTestInstance, RandomCholeskyTest,
                          ::testing::Values(CholeskyTestCase{1, 1, true},
                                            CholeskyTestCase{1, 2, true},
                                            CholeskyTestCase{1, 50, true},
                                            CholeskyTestCase{1, 50, false},
+                                           CholeskyTestCase{1, 255, false},
                                            CholeskyTestCase{10, 5, true},
                                            CholeskyTestCase{5, 10, false},
-                                           CholeskyTestCase{2, 20, true}));
+                                           CholeskyTestCase{2, 20, true},
+                                           CholeskyTestCase{2, 129, true}));
 
 }  // namespace
 }  // namespace xla

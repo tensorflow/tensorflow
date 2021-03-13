@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/fill_functor.h"
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
+#include "tensorflow/core/platform/bfloat16.h"
 
 namespace tensorflow {
 
@@ -133,14 +133,13 @@ class SparseTensorDenseMatMulOp : public OpKernel {
       return;
     }
 
-#define MAYBE_ADJOINT(ADJ_A, ADJ_B)                                        \
-  if (adjoint_a_ == ADJ_A && adjoint_b_ == ADJ_B) {                        \
-    Status functor_status = functor::SparseTensorDenseMatMulFunctor<       \
-        Device, T, Tindices, ADJ_A,                                        \
-        ADJ_B>::Compute(ctx->eigen_device<Device>(), out->matrix<T>(),     \
-                        a_indices->matrix<Tindices>(), a_values->vec<T>(), \
-                        b->matrix<T>());                                   \
-    OP_REQUIRES_OK(ctx, functor_status);                                   \
+#define MAYBE_ADJOINT(ADJ_A, ADJ_B)                                           \
+  if (adjoint_a_ == ADJ_A && adjoint_b_ == ADJ_B) {                           \
+    Status functor_status = functor::SparseTensorDenseMatMulFunctor<          \
+        Device, T, Tindices, ADJ_A,                                           \
+        ADJ_B>::Compute(ctx, out->matrix<T>(), a_indices->matrix<Tindices>(), \
+                        a_values->vec<T>(), b->matrix<T>());                  \
+    OP_REQUIRES_OK(ctx, functor_status);                                      \
   }
 
     MAYBE_ADJOINT(false, false);
@@ -169,6 +168,7 @@ class SparseTensorDenseMatMulOp : public OpKernel {
   REGISTER_CPU(T, int64);       \
   REGISTER_CPU(T, int32)
 
+REGISTER_KERNELS_CPU(Eigen::half);
 REGISTER_KERNELS_CPU(float);
 REGISTER_KERNELS_CPU(double);
 REGISTER_KERNELS_CPU(int32);
@@ -179,15 +179,15 @@ REGISTER_KERNELS_CPU(bfloat16);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace functor {
-#define DECLARE_GPU_SPEC(T, Tindices, ADJ_A, ADJ_B)                       \
-  template <>                                                             \
-  Status SparseTensorDenseMatMulFunctor<                                  \
-      GPUDevice, T, Tindices, ADJ_A,                                      \
-      ADJ_B>::Compute(const GPUDevice& d, typename TTypes<T>::Matrix out, \
-                      TTypes<Tindices>::ConstMatrix a_indices,            \
-                      typename TTypes<T>::ConstVec a_values,              \
-                      typename TTypes<T>::ConstMatrix b);                 \
-  extern template struct SparseTensorDenseMatMulFunctor<                  \
+#define DECLARE_GPU_SPEC(T, Tindices, ADJ_A, ADJ_B)                         \
+  template <>                                                               \
+  Status SparseTensorDenseMatMulFunctor<                                    \
+      GPUDevice, T, Tindices, ADJ_A,                                        \
+      ADJ_B>::Compute(OpKernelContext* ctx, typename TTypes<T>::Matrix out, \
+                      TTypes<Tindices>::ConstMatrix a_indices,              \
+                      typename TTypes<T>::ConstVec a_values,                \
+                      typename TTypes<T>::ConstMatrix b);                   \
+  extern template struct SparseTensorDenseMatMulFunctor<                    \
       GPUDevice, T, Tindices, ADJ_A, ADJ_B>;
 
 #define REGISTER_GPU_SPEC(T, ADJ_A, ADJ_B)  \
@@ -200,7 +200,16 @@ namespace functor {
   REGISTER_GPU_SPEC(T, true, false)  \
   REGISTER_GPU_SPEC(T, true, true)
 
+DECLARE_ADJOINT_GPU_SPEC(Eigen::half);
 DECLARE_ADJOINT_GPU_SPEC(float);
+DECLARE_ADJOINT_GPU_SPEC(double);
+
+// ROCm's GpuAtomicAdd doesn't support std::complex yet.
+#ifndef TENSORFLOW_USE_ROCM
+DECLARE_ADJOINT_GPU_SPEC(complex64);
+DECLARE_ADJOINT_GPU_SPEC(complex128);
+#endif
+
 #undef DECLARE_ADJOINT_GPU_SPEC
 #undef DECLARE_GPU_SPEC
 #undef REGISTER_GPU_SPEC
@@ -220,7 +229,16 @@ DECLARE_ADJOINT_GPU_SPEC(float);
   REGISTER_GPU(T, int64);       \
   REGISTER_GPU(T, int32)
 
+REGISTER_KERNELS_GPU(Eigen::half);
 REGISTER_KERNELS_GPU(float);
+REGISTER_KERNELS_GPU(double);
+
+// ROCm's GpuAtomicAdd doesn't support std::complex yet.
+#ifndef TENSORFLOW_USE_ROCM
+REGISTER_KERNELS_GPU(complex64);
+REGISTER_KERNELS_GPU(complex128);
+#endif
+
 #undef REGISTER_GPU
 #undef REGISTER_KERNELS_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -239,51 +257,47 @@ Status MOutOfBoundsError(int64 m, std::size_t i, int lhs_index_a,
   return errors::InvalidArgument("m (", m, ") from index[", i, ",", lhs_index_a,
                                  "] out of bounds (>=", out_dim0, ")");
 }
-}  // namespace
 
-template <typename T, typename Tindices, bool ADJ_A, bool ADJ_B>
-struct SparseTensorDenseMatMulFunctor<CPUDevice, T, Tindices, ADJ_A, ADJ_B> {
+template <typename T, typename Tsum, typename Tindices, bool ADJ_A, bool ADJ_B>
+Status SparseTensorDenseMatMulImpl(
+    typename TTypes<Tsum>::Matrix out,
+    typename TTypes<Tindices>::ConstMatrix a_indices,
+    typename TTypes<T>::ConstVec a_values, typename TTypes<T>::ConstMatrix b) {
   // Vectorize certain operations above this size.
   static constexpr std::size_t kNumVectorize = 32;
 
-  static Status Compute(const CPUDevice& d, typename TTypes<T>::Matrix out,
-                        typename TTypes<Tindices>::ConstMatrix a_indices,
-                        typename TTypes<T>::ConstVec a_values,
-                        typename TTypes<T>::ConstMatrix b) {
-    const std::size_t nnz = a_values.size();
-    const std::size_t rhs_right = (ADJ_B ? b.dimension(0) : b.dimension(1));
-    const std::size_t lhs_right = (ADJ_B ? b.dimension(1) : b.dimension(0));
-    const int lhs_index_a = ADJ_A ? 1 : 0;
-    const int rhs_index_a = ADJ_A ? 0 : 1;
+  const std::size_t nnz = a_values.size();
+  const std::size_t rhs_right = (ADJ_B ? b.dimension(0) : b.dimension(1));
+  const std::size_t lhs_right = (ADJ_B ? b.dimension(1) : b.dimension(0));
+  const int lhs_index_a = ADJ_A ? 1 : 0;
+  const int rhs_index_a = ADJ_A ? 0 : 1;
 
-    out.setZero();
+  // TODO(ebrevdo): After many failed experiments, can't find a multi-threaded
+  // approach that achieves the performance of the single threaded
+  // one.  Perhaps Eigen threadpool implementation is just too slow?
 
-    // TODO(ebrevdo): After many failed experiments, can't find a multi-threaded
-    // approach that achieves the performance of the single threaded
-    // one.  Perhaps Eigen threadpool implementation is just too slow?
+  if (rhs_right < kNumVectorize) {
+    // Disable vectorization if the RHS of output is too small
+    auto maybe_adjoint_b = MaybeAdjoint<decltype(b), ADJ_B>(b);
 
-    if (rhs_right < kNumVectorize) {
-      // Disable vectorization if the RHS of output is too small
-      auto maybe_adjoint_b = MaybeAdjoint<decltype(b), ADJ_B>(b);
-
-      for (std::size_t i = 0; i < nnz; ++i) {
-        const Tindices m = internal::SubtleMustCopy(a_indices(i, lhs_index_a));
-        const Tindices k = internal::SubtleMustCopy(a_indices(i, rhs_index_a));
-        if (!FastBoundsCheck(k, lhs_right)) {
-          return KOutOfBoundsError(k, i, rhs_index_a, lhs_right);
-        }
-        if (!FastBoundsCheck(m, out.dimension(0))) {
-          return MOutOfBoundsError(m, i, lhs_index_a, out.dimension(0));
-        }
-        const T a_value = ADJ_A ? MaybeConj(a_values(i)) : a_values(i);
-        for (std::size_t n = 0; n < rhs_right; ++n) {
-          const T b_value = maybe_adjoint_b(k, n);
-          out(m, n) += a_value * b_value;
-        }
+    for (std::size_t i = 0; i < nnz; ++i) {
+      const Tindices m = internal::SubtleMustCopy(a_indices(i, lhs_index_a));
+      const Tindices k = internal::SubtleMustCopy(a_indices(i, rhs_index_a));
+      if (!FastBoundsCheck(k, lhs_right)) {
+        return KOutOfBoundsError(k, i, rhs_index_a, lhs_right);
       }
-    } else {
-      // Vectorization via Eigen.
-      const int b_chip_index = ADJ_B ? 1 : 0;
+      if (!FastBoundsCheck(m, out.dimension(0))) {
+        return MOutOfBoundsError(m, i, lhs_index_a, out.dimension(0));
+      }
+      const T a_value = ADJ_A ? MaybeConj(a_values(i)) : a_values(i);
+      for (std::size_t n = 0; n < rhs_right; ++n) {
+        const T b_value = maybe_adjoint_b(k, n);
+        out(m, n) += static_cast<Tsum>(a_value) * static_cast<Tsum>(b_value);
+      }
+    }
+  } else {
+    // Vectorization via Eigen.
+    const int b_chip_index = ADJ_B ? 1 : 0;
 
 #define LOOP_NNZ(b_passed)                                                  \
   for (std::size_t i = 0; i < nnz; ++i) {                                   \
@@ -297,20 +311,53 @@ struct SparseTensorDenseMatMulFunctor<CPUDevice, T, Tindices, ADJ_A, ADJ_B> {
       return MOutOfBoundsError(m, i, lhs_index_a, out.dimension(0));        \
     }                                                                       \
     out.template chip<0>(m) +=                                              \
-        b_passed.template chip<b_chip_index>(k) * a_value;                  \
+        b_passed.template chip<b_chip_index>(k).template cast<Tsum>() *     \
+        static_cast<Tsum>(a_value);                                         \
   }
 
-      if (ADJ_B) {
-        // Perform transpose and conjugation on B once, since we chip out B's
-        // columns in the nnz loop.
-        Eigen::array<int, 2> shuffle(1, 0);  // preserve dimension order
-        Eigen::Tensor<T, 2, Eigen::ColMajor> col_major_conj_b =
-            b.swap_layout().shuffle(shuffle).conjugate();
-        LOOP_NNZ(col_major_conj_b);
-      } else {
-        LOOP_NNZ(b);
-      }
+    if (ADJ_B) {
+      // Perform transpose and conjugation on B once, since we chip out B's
+      // columns in the nnz loop.
+      Eigen::array<int, 2> shuffle(1, 0);  // preserve dimension order
+      Eigen::Tensor<T, 2, Eigen::ColMajor> col_major_conj_b =
+          b.swap_layout().shuffle(shuffle).conjugate();
+      LOOP_NNZ(col_major_conj_b);
+    } else {
+      LOOP_NNZ(b);
+    }
 #undef LOOP_NNZ
+  }
+  return Status::OK();
+}
+}  // namespace
+
+template <typename T, typename Tindices, bool ADJ_A, bool ADJ_B>
+struct SparseTensorDenseMatMulFunctor<CPUDevice, T, Tindices, ADJ_A, ADJ_B> {
+  static Status Compute(OpKernelContext* ctx, typename TTypes<T>::Matrix out,
+                        typename TTypes<Tindices>::ConstMatrix a_indices,
+                        typename TTypes<T>::ConstVec a_values,
+                        typename TTypes<T>::ConstMatrix b) {
+    using Tsum = typename SumType<T>::type;
+    Tensor temp_out_t;
+    if (!std::is_same<T, Tsum>::value) {
+      TF_RETURN_IF_ERROR(ctx->allocate_temp(
+          DataTypeToEnum<Tsum>::value,
+          TensorShape({out.dimension(0), out.dimension(1)}), &temp_out_t));
+      auto temp_out = temp_out_t.matrix<Tsum>();
+      temp_out.setZero();
+      TF_RETURN_IF_ERROR(
+          SparseTensorDenseMatMulImpl<T, Tsum, Tindices, ADJ_A, ADJ_B>(
+              temp_out, a_indices, a_values, b));
+      out = temp_out.template cast<T>();
+    } else {
+      out.setZero();
+      // This reinterpret_cast is just to avoid a compilation error. The result
+      // is only used if Tsum == T.
+      auto out_workaround =
+          *reinterpret_cast<typename TTypes<Tsum>::Matrix*>(&out);
+      TF_RETURN_IF_ERROR(
+          SparseTensorDenseMatMulImpl<T, Tsum, Tindices, ADJ_A, ADJ_B>(
+              out_workaround, a_indices, a_values, b));
     }
     return Status::OK();
   }

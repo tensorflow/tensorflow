@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/math/math_util.h"
@@ -180,7 +181,7 @@ Status CompileImpl(
   }
   xla::Literal alg_literal;
   TF_RETURN_IF_ERROR(ctx->ConstantInput(alg_input_idx, &alg_literal));
-  auto alg = alg_literal.Get<Algorithm>({});
+  Algorithm alg = Algorithm(alg_literal.Get<int64>({}));
   if (!(alg == RNG_ALG_THREEFRY || alg == RNG_ALG_PHILOX)) {
     return errors::InvalidArgument("Unsupported algorithm id: ", alg);
   }
@@ -406,6 +407,81 @@ REGISTER_XLA_OP(Name("StatefulUniformFullInt")
                     .TypeConstraint("dtype",
                                     {DT_INT32, DT_UINT32, DT_INT64, DT_UINT64}),
                 StatefulUniformFullIntOp);
+
+xla::XlaOp IncreaseCounter(Algorithm const& alg, xla::XlaOp counter,
+                           xla::XlaOp delta) {
+  // Multiplying 256 to be consistent with the CPU/GPU kernels
+  delta = delta * ConstantR0WithType(delta.builder(), xla::U64, 256);
+  if (alg == RNG_ALG_PHILOX) {
+    return xla::PhiloxIncreaseCounter(counter, delta);
+  } else {
+    return counter + delta;
+  }
+}
+
+xla::XlaOp PadRight(xla::XlaOp a, int n) {
+  return xla::Pad(a, xla::ScalarLike(a, 0),
+                  xla::MakeEdgePaddingConfig({{0, n}}));
+}
+
+template <typename AlgEnumType = int64, bool read_old_value = false>
+class RngSkipOp : public XlaOpKernel {
+ public:
+  explicit RngSkipOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    const int state_input_idx = 0;
+    const int alg_input_idx = 1;
+    const int delta_input_idx = 2;
+    xla::XlaOp var;
+    TensorShape var_shape;
+    OP_REQUIRES_OK(ctx,
+                   ctx->ReadVariableInput(state_input_idx, STATE_ELEMENT_DTYPE,
+                                          &var_shape, &var));
+    xla::Literal alg_literal;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInput(alg_input_idx, &alg_literal));
+    Algorithm alg = Algorithm(alg_literal.Get<AlgEnumType>({}));
+    OP_REQUIRES(ctx, alg == RNG_ALG_THREEFRY || alg == RNG_ALG_PHILOX,
+                errors::InvalidArgument("Unsupported algorithm id: ", alg));
+    OP_REQUIRES_OK(ctx, CheckStateShape(alg, var_shape));
+    if (read_old_value) {
+      auto counter_size = GetCounterSize(alg);
+      xla::XlaOp output = var;
+      if (RNG_MAX_COUNTER_SIZE > counter_size) {
+        // Because the size of `var` depends on the algorithm while we want the
+        // output to have a fixed size (to help shape inference), we fix the
+        // output size to be the maximal state size among algorithms, and right-
+        // pad it with zeros if var's size is smaller than that.
+        output = PadRight(output, RNG_MAX_COUNTER_SIZE - counter_size);
+      }
+      ctx->SetOutput(0, output);
+    }
+    xla::XlaOp counter;
+    xla::XlaOp key;
+    std::tie(counter, key) = StateAndKeyFromVariable(alg, var);
+    xla::XlaOp delta = ctx->Input(delta_input_idx);
+    delta = BitcastConvertType(delta, xla::U64);
+    auto new_counter = IncreaseCounter(alg, counter, delta);
+    var = StateAndKeyToVariable(alg, new_counter, key);
+    xla::PrimitiveType state_element_type;
+    OP_REQUIRES_OK(
+        ctx, DataTypeToPrimitiveType(STATE_ELEMENT_DTYPE, &state_element_type));
+    var = BitcastConvertType(var, state_element_type);
+    OP_REQUIRES_OK(
+        ctx, ctx->AssignVariable(state_input_idx, STATE_ELEMENT_DTYPE, var));
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(RngSkipOp);
+};
+
+REGISTER_XLA_OP(Name("RngSkip").CompileTimeConstantInput("algorithm"),
+                RngSkipOp<>);
+
+using RngReadAndSkipOp = RngSkipOp<int32, true>;
+
+REGISTER_XLA_OP(Name("RngReadAndSkip").CompileTimeConstantInput("alg"),
+                RngReadAndSkipOp);
 
 }  // namespace
 }  // namespace tensorflow

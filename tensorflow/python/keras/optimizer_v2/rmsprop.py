@@ -27,7 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.training import training_ops
+from tensorflow.python.training import gen_training_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -49,7 +49,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
     learning_rate: A `Tensor`, floating point value, or a schedule that is a
       `tf.keras.optimizers.schedules.LearningRateSchedule`, or a callable
       that takes no arguments and returns the actual value to use. The
-      learning rate. Defeaults to 0.001.
+      learning rate. Defaults to 0.001.
     rho: Discounting factor for the history/coming gradient. Defaults to 0.9.
     momentum: A scalar or a scalar `Tensor`. Defaults to 0.0.
     epsilon: A small constant for numerical stability. This epsilon is
@@ -109,7 +109,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
       learning_rate: A `Tensor`, floating point value, or a schedule that is a
         `tf.keras.optimizers.schedules.LearningRateSchedule`, or a callable
         that takes no arguments and returns the actual value to use. The
-        learning rate. Defeaults to 0.001.
+        learning rate. Defaults to 0.001.
       rho: Discounting factor for the history/coming gradient. Defaults to 0.9.
       momentum: A scalar or a scalar `Tensor`. Defaults to 0.0.
       epsilon: A small constant for numerical stability. This epsilon is
@@ -167,7 +167,8 @@ class RMSprop(optimizer_v2.OptimizerV2):
     apply_state[(var_device, var_dtype)].update(
         dict(
             neg_lr_t=-apply_state[(var_device, var_dtype)]["lr_t"],
-            epsilon=ops.convert_to_tensor_v2(self.epsilon, var_dtype),
+            epsilon=ops.convert_to_tensor_v2_with_dispatch(
+                self.epsilon, var_dtype),
             rho=rho,
             momentum=array_ops.identity(self._get_hyper("momentum", var_dtype)),
             one_minus_rho=1. - rho))
@@ -182,27 +183,27 @@ class RMSprop(optimizer_v2.OptimizerV2):
       mom = self.get_slot(var, "momentum")
       if self.centered:
         mg = self.get_slot(var, "mg")
-        return training_ops.resource_apply_centered_rms_prop(
-            var.handle,
-            mg.handle,
-            rms.handle,
-            mom.handle,
-            coefficients["lr_t"],
-            coefficients["rho"],
-            coefficients["momentum"],
-            coefficients["epsilon"],
-            grad,
+        return gen_training_ops.ResourceApplyCenteredRMSProp(
+            var=var.handle,
+            mg=mg.handle,
+            ms=rms.handle,
+            mom=mom.handle,
+            lr=coefficients["lr_t"],
+            rho=coefficients["rho"],
+            momentum=coefficients["momentum"],
+            epsilon=coefficients["epsilon"],
+            grad=grad,
             use_locking=self._use_locking)
       else:
-        return training_ops.resource_apply_rms_prop(
-            var.handle,
-            rms.handle,
-            mom.handle,
-            coefficients["lr_t"],
-            coefficients["rho"],
-            coefficients["momentum"],
-            coefficients["epsilon"],
-            grad,
+        return gen_training_ops.ResourceApplyRMSProp(
+            var=var.handle,
+            ms=rms.handle,
+            mom=mom.handle,
+            lr=coefficients["lr_t"],
+            rho=coefficients["rho"],
+            momentum=coefficients["momentum"],
+            epsilon=coefficients["epsilon"],
+            grad=grad,
             use_locking=self._use_locking)
     else:
       rms_t = (coefficients["rho"] * rms +
@@ -228,29 +229,29 @@ class RMSprop(optimizer_v2.OptimizerV2):
       mom = self.get_slot(var, "momentum")
       if self.centered:
         mg = self.get_slot(var, "mg")
-        return training_ops.resource_sparse_apply_centered_rms_prop(
-            var.handle,
-            mg.handle,
-            rms.handle,
-            mom.handle,
-            coefficients["lr_t"],
-            coefficients["rho"],
-            coefficients["momentum"],
-            coefficients["epsilon"],
-            grad,
-            indices,
+        return gen_training_ops.ResourceSparseApplyCenteredRMSProp(
+            var=var.handle,
+            mg=mg.handle,
+            ms=rms.handle,
+            mom=mom.handle,
+            lr=coefficients["lr_t"],
+            rho=coefficients["rho"],
+            momentum=coefficients["momentum"],
+            epsilon=coefficients["epsilon"],
+            grad=grad,
+            indices=indices,
             use_locking=self._use_locking)
       else:
-        return training_ops.resource_sparse_apply_rms_prop(
-            var.handle,
-            rms.handle,
-            mom.handle,
-            coefficients["lr_t"],
-            coefficients["rho"],
-            coefficients["momentum"],
-            coefficients["epsilon"],
-            grad,
-            indices,
+        return gen_training_ops.ResourceSparseApplyRMSProp(
+            var=var.handle,
+            ms=rms.handle,
+            mom=mom.handle,
+            lr=coefficients["lr_t"],
+            rho=coefficients["rho"],
+            momentum=coefficients["momentum"],
+            epsilon=coefficients["epsilon"],
+            grad=grad,
+            indices=indices,
             use_locking=self._use_locking)
     else:
       rms_scaled_g_values = (grad * grad) * coefficients["one_minus_rho"]
@@ -289,7 +290,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
     config = super(RMSprop, self).get_config()
     config.update({
         "learning_rate": self._serialize_hyperparameter("learning_rate"),
-        "decay": self._serialize_hyperparameter("decay"),
+        "decay": self._initial_decay,
         "rho": self._serialize_hyperparameter("rho"),
         "momentum": self._serialize_hyperparameter("momentum"),
         "epsilon": self.epsilon,

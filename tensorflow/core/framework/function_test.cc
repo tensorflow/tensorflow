@@ -406,7 +406,7 @@ XTimesTwo[T:{float, double, int32, int64}](x:T) -> (y:T) {
 TEST(TFunc, WXPlusB) {
   auto expect = R"P(
 WXPlusB[T:{float, double}](w:T, x:T, b:T) -> (y:T) {
-  mm = MatMul[T=$T, _kernel="eigen", transpose_a=false, transpose_b=false](w, x)
+  mm = MatMul[T=$T, transpose_a=false, transpose_b=false](w, x)
   y = Add[T=$T](mm:product:0, b)
   return y = y:z:0
 }
@@ -1068,6 +1068,16 @@ TEST(FunctionLibraryDefinitionTest, RemoveFunction) {
   EXPECT_FALSE(lib_def.Contains("XTimesTwo"));
 }
 
+TEST(FunctionLibraryDefinitionTest, Clear) {
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
+  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XAddX()));
+
+  lib_def.Clear();
+  EXPECT_FALSE(lib_def.Contains("XTimesTwo"));
+  EXPECT_FALSE(lib_def.Contains("XAddX"));
+}
+
 TEST(FunctionLibraryDefinitionTest, AddLibrary) {
   // Create lib def with single function
   FunctionDefLibrary proto;
@@ -1527,6 +1537,66 @@ TEST(InstantiateFunctionTest, ArgAttrs) {
     EXPECT_EQ(shape_attr.dim(3).size(), 8);
   }
   EXPECT_TRUE(found);
+}
+
+TEST(InstantiateFunctionTest, ResourceInputDevice) {
+  FunctionDef fdef = FDH::Create(
+      // Name
+      "Func",
+      // Args
+      {{"x0: resource"}, {"x1: resource"}},
+      // Return values
+      {"y: float"},
+      // Attr def
+      {},
+      // Nodes
+      {
+          {{"read0"},
+           "ReadVariableOp",
+           {"x0"},
+           {{"dtype", DT_FLOAT}},
+           {},
+           "/device:CPU:1"},
+          {{"read1"},
+           "ReadVariableOp",
+           {"x1"},
+           {{"dtype", DT_FLOAT}},
+           {},
+           "/device:CPU:0"},
+          {{"add"},
+           "Add",
+           {"read0:value:0", "read1:value:0"},
+           {{"T", DT_FLOAT}},
+           {},
+           "/device:CPU:0"},
+      },
+      {{"y", "add:z:0"}});
+  FunctionDef::ArgAttrs arg_attrs;
+  *(*arg_attrs.mutable_attr())["_composite_device"].mutable_s() =
+      "/device:COMPOSITE:0";
+  (*fdef.mutable_arg_attr())[0] = arg_attrs;
+  absl::flat_hash_map<string, std::vector<string>> composite_devices;
+
+  Tensor arg0(DT_RESOURCE, TensorShape({2}));
+  ResourceHandle resource_handle0;
+  resource_handle0.set_device("/device:CPU:0");
+  ResourceHandle resource_handle1;
+  resource_handle1.set_device("/device:CPU:1");
+  arg0.flat<ResourceHandle>()(0) = resource_handle0;
+  arg0.flat<ResourceHandle>()(1) = resource_handle1;
+
+  Tensor arg1(DT_RESOURCE, TensorShape({}));
+  arg1.scalar<ResourceHandle>()() = resource_handle0;
+
+  const string device0 = GetFunctionResourceInputDevice(
+      arg0, /*arg_index=*/0, fdef, &composite_devices);
+  const string device1 = GetFunctionResourceInputDevice(
+      arg1, /*arg_index=*/1, fdef, &composite_devices);
+
+  EXPECT_EQ(device0, "/device:COMPOSITE:0");
+  EXPECT_EQ(device1, "/device:CPU:0");
+  EXPECT_EQ(composite_devices.size(), 1);
+  EXPECT_EQ(composite_devices.at("/device:COMPOSITE:0").size(), 2);
 }
 
 }  // end namespace

@@ -22,11 +22,16 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/stringprintf.h"
-#include "tensorflow/core/protobuf/data/experimental/snapshot.pb.h"
+#include "tensorflow/core/protobuf/snapshot.pb.h"
 
 namespace tensorflow {
 namespace data {
 namespace experimental {
+
+/* static */ constexpr const int SaveDatasetOp::kFileFormatVersion;
+/* static */ constexpr const char* const LoadDatasetOp::kCompression;
+/* static */ constexpr const char* const LoadDatasetOp::kReaderFunc;
+/* static */ constexpr const char* const LoadDatasetOp::kReaderFuncTarguments;
 
 SaveDatasetOp::SaveDatasetOp(OpKernelConstruction* ctx)
     : HybridAsyncOpKernel(ctx, "tf_data_save_dataset") {
@@ -69,9 +74,6 @@ Status SaveDatasetOp::WriteData(OpKernelContext* ctx, DatasetBase* dataset,
                                 const std::string& run_dir,
                                 uint64* num_elements) {
   IteratorContext::Params params(ctx);
-  auto function_handle_cache =
-      absl::make_unique<FunctionHandleCache>(params.flr);
-  params.function_handle_cache = function_handle_cache.get();
   ResourceMgr resource_mgr;
   params.resource_mgr = &resource_mgr;
   CancellationManager cancellation_manager(ctx->cancellation_manager());
@@ -142,8 +144,8 @@ Status SaveDatasetOp::GetShardIndex(IteratorContext* ctx,
     return Status::OK();
   }
   std::vector<Tensor> output_tensors;
-  TF_RETURN_IF_ERROR(
-      function->RunWithBorrowedArgs(ctx, element, &output_tensors));
+  TF_RETURN_IF_ERROR(function->RunWithBorrowedArgs(
+      ctx, element, &output_tensors, /*node=*/nullptr));
 
   if (output_tensors.size() != 1 || output_tensors[0].dtype() != DT_INT64 ||
       output_tensors[0].NumElements() != 1) {
@@ -159,7 +161,8 @@ Status SaveDatasetOp::WriteMetadataFile(Env* env, const std::string& path,
                                         uint64 num_elements, bool finalized) {
   SnapshotMetadataRecord metadata;
   metadata.set_creation_timestamp(EnvTime::NowMicros());
-  metadata.set_run_id(strings::Printf("%llu", run_id));
+  metadata.set_run_id(
+      strings::Printf("%llu", static_cast<unsigned long long>(run_id)));
   metadata.set_version(kFileFormatVersion);
   for (const auto& output_dtype : output_dtypes) {
     metadata.add_dtype(output_dtype);
@@ -309,8 +312,9 @@ class LoadDatasetOp::Dataset : public DatasetBase {
       std::vector<Tensor> reader_output;
       reader_input.push_back(std::move(input_dataset_tensor));
 
+      // NOTE: We intentionally ignore resource modeling outside GetNext().
       TF_RETURN_IF_ERROR(instantiated_captured_func_->Run(
-          ctx, std::move(reader_input), &reader_output));
+          ctx, std::move(reader_input), &reader_output, /*node=*/nullptr));
       if (reader_output.size() != 1) {
         return errors::InvalidArgument(
             "reader_func returns more than one argument.");

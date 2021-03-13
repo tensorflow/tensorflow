@@ -2673,6 +2673,7 @@ class FeatureContribsOpsTest(test_util.TensorFlowTestCase):
       # Expected logits are computed by traversing the logit path and
       # subtracting child logits from parent logits.
       bias = 1.72 * 0.1  # Root node of tree_0.
+      expected_leaf_ids = ((0,), (0,))
       expected_feature_ids = ((), ())
       expected_logits_paths = ((bias,), (bias,))
 
@@ -2688,14 +2689,17 @@ class FeatureContribsOpsTest(test_util.TensorFlowTestCase):
       serialized_examples_debug_outputs = session.run(debug_op)
       feature_ids = []
       logits_paths = []
+      leaf_ids = []
       for example in serialized_examples_debug_outputs:
         example_debug_outputs = boosted_trees_pb2.DebugOutput()
         example_debug_outputs.ParseFromString(example)
         feature_ids.append(example_debug_outputs.feature_ids)
         logits_paths.append(example_debug_outputs.logits_path)
+        leaf_ids.append(example_debug_outputs.leaf_node_ids)
 
       self.assertAllClose(feature_ids, expected_feature_ids)
       self.assertAllClose(logits_paths, expected_logits_paths)
+      self.assertAllClose(expected_leaf_ids, leaf_ids)
 
   @test_util.run_deprecated_v1
   def testContribsForOnlyABiasNodeMultiDimensionFeature(self):
@@ -2734,6 +2738,7 @@ class FeatureContribsOpsTest(test_util.TensorFlowTestCase):
       # Expected logits are computed by traversing the logit path and
       # subtracting child logits from parent logits.
       bias = 1.72 * 0.1  # Root node of tree_0.
+      expected_leaf_ids = ((0,), (0,))
       expected_feature_ids = ((), ())
       expected_logits_paths = ((bias,), (bias,))
 
@@ -2749,14 +2754,17 @@ class FeatureContribsOpsTest(test_util.TensorFlowTestCase):
       serialized_examples_debug_outputs = session.run(debug_op)
       feature_ids = []
       logits_paths = []
+      leaf_ids = []
       for example in serialized_examples_debug_outputs:
         example_debug_outputs = boosted_trees_pb2.DebugOutput()
         example_debug_outputs.ParseFromString(example)
         feature_ids.append(example_debug_outputs.feature_ids)
         logits_paths.append(example_debug_outputs.logits_path)
+        leaf_ids.append(example_debug_outputs.leaf_node_ids)
 
       self.assertAllClose(feature_ids, expected_feature_ids)
       self.assertAllClose(logits_paths, expected_logits_paths)
+      self.assertAllClose(leaf_ids, expected_leaf_ids)
 
   @test_util.run_deprecated_v1
   def testContribsMultipleTreeWhenFirstTreeIsABiasNode(self):
@@ -2834,6 +2842,7 @@ class FeatureContribsOpsTest(test_util.TensorFlowTestCase):
       # example_0 :  (bias, 0.1 * 5.5 + bias, 0.1 * 5. + bias)
       # example_1 :  (bias, 0.1 * 7. + bias )
       expected_logits_paths = ((1.72, 2.27, 2.22), (1.72, 2.42))
+      expected_leaf_ids = ((0, 3), (0, 2))
 
       bucketized_features = [
           feature_0_values, feature_1_values, feature_2_values
@@ -2847,14 +2856,18 @@ class FeatureContribsOpsTest(test_util.TensorFlowTestCase):
       serialized_examples_debug_outputs = session.run(debug_op)
       feature_ids = []
       logits_paths = []
+      leaf_ids = []
+
       for example in serialized_examples_debug_outputs:
         example_debug_outputs = boosted_trees_pb2.DebugOutput()
         example_debug_outputs.ParseFromString(example)
         feature_ids.append(example_debug_outputs.feature_ids)
         logits_paths.append(example_debug_outputs.logits_path)
+        leaf_ids.append(example_debug_outputs.leaf_node_ids)
 
       self.assertAllClose(feature_ids, expected_feature_ids)
       self.assertAllClose(logits_paths, expected_logits_paths)
+      self.assertAllClose(leaf_ids, expected_leaf_ids)
 
   @test_util.run_deprecated_v1
   def testContribsMultipleTreeWhenFirstTreeIsABiasNodeMultiDimFeature(self):
@@ -2933,6 +2946,7 @@ class FeatureContribsOpsTest(test_util.TensorFlowTestCase):
       # example_0 :  (bias, 0.1 * 5.5 + bias, 0.1 * 5. + bias)
       # example_1 :  (bias, 0.1 * 7. + bias )
       expected_logits_paths = ((1.72, 2.27, 2.22), (1.72, 2.42))
+      expected_leaf_ids = ((0, 3), (0, 2))
 
       bucketized_features = [
           feature_0_values, feature_1_values, feature_2_values
@@ -2946,14 +2960,17 @@ class FeatureContribsOpsTest(test_util.TensorFlowTestCase):
       serialized_examples_debug_outputs = session.run(debug_op)
       feature_ids = []
       logits_paths = []
+      leaf_ids = []
       for example in serialized_examples_debug_outputs:
         example_debug_outputs = boosted_trees_pb2.DebugOutput()
         example_debug_outputs.ParseFromString(example)
         feature_ids.append(example_debug_outputs.feature_ids)
         logits_paths.append(example_debug_outputs.logits_path)
+        leaf_ids.append(example_debug_outputs.leaf_node_ids)
 
       self.assertAllClose(feature_ids, expected_feature_ids)
       self.assertAllClose(logits_paths, expected_logits_paths)
+      self.assertAllClose(leaf_ids, expected_leaf_ids)
 
   @test_util.run_deprecated_v1
   def testContribsMultipleTree(self):
@@ -3075,6 +3092,7 @@ class FeatureContribsOpsTest(test_util.TensorFlowTestCase):
       # 1.0 * -7. + 0.2 * 7 + .114)
       expected_logits_paths = ((bias, 0.114, 1.214, 1.114, 6.114),
                                (bias, 0.114, 1.514, -5.486))
+      expected_leaf_ids = ((1, 3, 2), (1, 2, 1))
 
       bucketized_features = [
           feature_0_values, feature_1_values, feature_2_values
@@ -3088,14 +3106,17 @@ class FeatureContribsOpsTest(test_util.TensorFlowTestCase):
       serialized_examples_debug_outputs = session.run(debug_op)
       feature_ids = []
       logits_paths = []
+      leaf_ids = []
       for example in serialized_examples_debug_outputs:
         example_debug_outputs = boosted_trees_pb2.DebugOutput()
         example_debug_outputs.ParseFromString(example)
         feature_ids.append(example_debug_outputs.feature_ids)
         logits_paths.append(example_debug_outputs.logits_path)
+        leaf_ids.append(example_debug_outputs.leaf_node_ids)
 
       self.assertAllClose(feature_ids, expected_feature_ids)
       self.assertAllClose(logits_paths, expected_logits_paths)
+      self.assertAllClose(expected_leaf_ids, leaf_ids)
 
 
 if __name__ == '__main__':

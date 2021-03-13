@@ -25,7 +25,6 @@ import gast
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import qual_names
-from tensorflow.python.util import tf_inspect
 
 
 class CleanCopier(object):
@@ -275,7 +274,7 @@ def apply_to_single_assignments(targets, values, apply_fn):
           value_el = values.elts[i]
         else:
           idx = parser.parse_expression(str(i))
-          value_el = gast.Subscript(values, gast.Index(idx), ctx=gast.Load())
+          value_el = gast.Subscript(values, idx, ctx=gast.Load())
         apply_to_single_assignments(target_el, value_el, apply_fn)
     else:
       apply_fn(target, values)
@@ -347,54 +346,3 @@ def parallel_walk(node, other):
         raise ValueError(
             'inconsistent values for field {}: {} and {}'.format(
                 f, n_child, o_child))
-
-
-class LambdaDefinitionMatcher(gast.NodeVisitor):
-  """Finds lambda nodes that match a given lambda's signature."""
-
-  def __init__(self, fn):
-    self.fn = fn
-    self.matching_nodes = []
-
-  def _arg_name(self, node):
-    if node is None:
-      return None
-    if isinstance(node, gast.Name):
-      return node.id
-    assert isinstance(node, str)
-    return node
-
-  def _argspec_matches(self, node):
-    arg_spec = tf_inspect.getfullargspec(self.fn)
-
-    node_args = tuple(self._arg_name(arg) for arg in node.args.args)
-    if node_args != tuple(arg_spec.args):
-      return False
-
-    if arg_spec.varargs != self._arg_name(node.args.vararg):
-      return False
-
-    if arg_spec.varkw != self._arg_name(node.args.kwarg):
-      return False
-
-    node_kwonlyargs = tuple(self._arg_name(arg) for arg in node.args.kwonlyargs)
-    if node_kwonlyargs != tuple(arg_spec.kwonlyargs):
-      return False
-
-    return True
-
-  def visit_Lambda(self, node):
-    self.generic_visit(node)
-
-    if self.fn.__name__ != '<lambda>':
-      return
-    if not self._argspec_matches(node):
-      return
-
-    self.matching_nodes.append(node)
-
-
-def find_matching_definitions(node, f):
-  matcher = LambdaDefinitionMatcher(f)
-  matcher.visit(node)
-  return tuple(matcher.matching_nodes)

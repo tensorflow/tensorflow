@@ -149,6 +149,25 @@ TEST_F(LiteralUtilTest, R2ToString) {
   EXPECT_EQ(expected, literal.ToString());
 }
 
+TEST_F(LiteralUtilTest, R2DynamicToString) {
+  auto literal = LiteralUtil::CreateR2({{1, 2}, {3, 4}, {5, 6}});
+  literal.SetDynamicSize(0, {}, 2);
+  const string expected = R"(s32[<=3,2](2,2) {
+  { 1, 2 },
+  { 3, 4 }
+})";
+  EXPECT_EQ(expected, literal.ToString());
+
+  // A Less trivial case where the memory layout is not consecutive.
+  auto literal2 = LiteralUtil::CreateR2({{1, 2, 3}, {4, 5, 6}});
+  literal2.SetDynamicSize(1, {}, 2);
+  const string expected2 = R"(s32[2,<=3](2,2) {
+  { 1, 2 },
+  { 4, 5 }
+})";
+  EXPECT_EQ(expected2, literal2.ToString());
+}
+
 TEST_F(LiteralUtilTest, R3ToString) {
   const auto literal =
       LiteralUtil::CreateR3({{{1}, {2}}, {{3}, {4}}, {{5}, {6}}});
@@ -419,6 +438,28 @@ TEST_F(LiteralUtilTest, TupleEquality) {
   auto scalar_42 = LiteralUtil::CreateR0<float>(42.0);
   auto different_tuple = LiteralUtil::MakeTuple({&scalar_42, &matrix});
   EXPECT_NE(tuple1, different_tuple);
+}
+
+TEST_F(LiteralUtilTest, DynamicShapeEquality) {
+  // Test equality with tuples.
+  auto r1 = LiteralUtil::CreateR1<float>({1.0, 2.0});
+  r1.SetDynamicSize(0, {}, 1);
+  auto r2 = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  r2.SetDynamicSize(0, {}, 1);
+  auto tuple1 = LiteralUtil::MakeTuple({&r1, &r2});
+
+  // Tuple with the same elements. One element is shared with the original
+  // tuple, the other is a clone of the element in the original tuple.
+  auto r1_clone = LiteralUtil::CreateR1<float>({1.0, 3.0});
+  r1_clone.SetDynamicSize(0, {}, 1);
+  auto tuple2 = LiteralUtil::MakeTuple({&r1_clone, &r2});
+  EXPECT_EQ(tuple1, tuple2);
+
+  // Tuple with different dynamic sizes.
+  auto r2_clone = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  r2_clone.SetDynamicSize(0, {}, 2);
+  auto tuple_3 = LiteralUtil::MakeTuple({&r1_clone, &r2_clone});
+  EXPECT_NE(tuple1, tuple_3);
 }
 
 TEST_F(LiteralUtilTest, C64Equality) {
@@ -692,6 +733,47 @@ TEST_F(LiteralUtilTest, TransposeR4) {
   });
 }
 
+TEST_F(LiteralUtilTest, TransposeDynamicR2) {
+  // F32[2, <=3] (2, 1)
+  auto original = LiteralUtil::CreateR2<float>({{1, 2, 3}, {4, 5, 6}});
+  original.SetDynamicSize(1, 1);
+  // F32[<=3, 2] (1, 2)
+  auto reshape = original.Transpose(/*permutation=*/{1, 0});
+
+  reshape.EachCell<float>([&](absl::Span<const int64> indices, float value) {
+    EXPECT_EQ(value, original.Get<float>({indices[1], indices[0]}));
+  });
+}
+
+TEST_F(LiteralUtilTest, ToStaticR2) {
+  // F32[2, <=3] (2, 1)
+  auto original = LiteralUtil::CreateR2<float>({{1, 2, 3}, {4, 5, 6}});
+  original.SetDynamicSize(1, 1);
+  // F32[2, 1]
+  auto static_literal = original.ToStatic();
+  EXPECT_EQ(static_literal.shape(), ShapeUtil::MakeShape(F32, {2, 1}));
+  EXPECT_TRUE(static_literal.shape().is_static());
+
+  static_literal.EachCell<float>(
+      [&](absl::Span<const int64> indices, float value) {
+        EXPECT_EQ(value, original.Get<float>({indices[0], indices[1]}));
+      });
+}
+
+TEST_F(LiteralUtilTest, ToBoundedDynamicR2) {
+  // F32[2, 1]
+  auto original = LiteralUtil::CreateR2<float>({{1}, {4}});
+  // F32[2, <=3] (2, 1)
+  auto dynamic_shape = ShapeUtil::MakeShape(F32, {2, 3}, {false, true});
+  auto dynamic_literal = original.ToBoundedDynamic(dynamic_shape);
+  EXPECT_EQ(dynamic_literal.shape(), dynamic_shape);
+
+  dynamic_literal.EachCell<float>(
+      [&](absl::Span<const int64> indices, float value) {
+        EXPECT_EQ(value, original.Get<float>({indices[0], indices[1]}));
+      });
+}
+
 TEST_F(LiteralUtilTest, TestR4RelayoutEquivalence) {
   // Tests that using Relayout on an array is equivalent to creating it in the
   // target layout in the first place.
@@ -795,6 +877,38 @@ TEST_F(LiteralUtilTest, SliceR3U32Full) {
       {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 10}, {11, 12}}});
   auto result = input_2x3x2.Slice({0, 0, 0}, {2, 3, 2});
   EXPECT_EQ(input_2x3x2, result);
+}
+
+TEST_F(LiteralUtilTest, SliceR2Dynamic) {
+  auto input_3x4 = LiteralUtil::CreateR2<uint32>(
+      {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}});
+  input_3x4.SetDynamicSize(1, 3);
+  // slice second dim from dynamic size 3 to dynamic size 1.
+  auto result = input_3x4.Slice({0, 1}, {2, 2});
+  auto expected = LiteralUtil::CreateR2<uint32>({{2}, {6}});
+  EXPECT_EQ(expected, result);
+  EXPECT_EQ(result.GetDynamicSize(1), 1);
+}
+
+TEST_F(LiteralUtilTest, SliceR2DynamicInBound) {
+  auto input_3x4 = LiteralUtil::CreateR2<uint32>(
+      {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}});
+  input_3x4.SetDynamicSize(1, 1);
+  auto result = input_3x4.Slice({0, 0}, {2, 2});
+  auto expected = LiteralUtil::CreateR2<uint32>({{1}, {5}});
+  EXPECT_EQ(expected, result);
+  EXPECT_EQ(result.GetDynamicSize(1), 1);
+}
+
+TEST_F(LiteralUtilTest, SliceR2DynamicOutOfBound) {
+  auto input_3x4 = LiteralUtil::CreateR2<uint32>(
+      {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}});
+  input_3x4.SetDynamicSize(1, 1);
+  auto result = input_3x4.Slice({0, 1}, {2, 3});
+  auto expected = LiteralUtil::CreateR2<uint32>({{}, {}});
+  EXPECT_EQ(expected, result);
+  // Out of bound access clamps into 0 sized dimension.
+  EXPECT_EQ(result.GetDynamicSize(1), 0);
 }
 
 TEST_F(LiteralUtilTest, PopulateR1S64) {
@@ -1510,7 +1624,7 @@ TEST_F(LiteralUtilTest, CopyFromProto_u16) {
   EXPECT_EQ(u1, r[3]);
 }
 
-TEST_F(LiteralUtilTest, LiteralSliceTest) {
+TEST_F(LiteralUtilTest, LiteralDynamicSliceTest) {
   auto scalar = LiteralUtil::CreateR0<float>(1.0);
   auto matrix = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto tuple = LiteralUtil::MakeTuple({&scalar, &matrix});
@@ -1971,6 +2085,17 @@ TEST_F(LiteralUtilTest, BroadcastScalarToMatrix) {
                         /*dimensions=*/{}));
   EXPECT_EQ(broadcasted_literal,
             LiteralUtil::CreateR2<int32>({{9, 9}, {9, 9}}));
+}
+
+TEST_F(LiteralUtilTest, DynamicBroadcast) {
+  Literal literal = LiteralUtil::CreateR1<int64>({1, 2});
+  literal.SetDynamicSize(0, 1);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal broadcasted_literal,
+      literal.Broadcast(/*result_shape=*/ShapeUtil::MakeShape(S64, {2, 2}),
+                        /*dimensions=*/{1}));
+  EXPECT_EQ(broadcasted_literal, LiteralUtil::CreateR2<int64>({{1}, {1}}));
+  EXPECT_EQ(broadcasted_literal.GetDynamicSize(1), 1);
 }
 
 TEST_F(LiteralUtilTest, GetAsComplex128) {

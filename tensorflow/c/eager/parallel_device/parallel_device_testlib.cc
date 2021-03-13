@@ -28,6 +28,8 @@ limitations under the License.
 // correspond fairly well to the implementation, but testing the C++ directly is
 // another option.
 
+namespace tensorflow {
+namespace parallel_device {
 
 Variable* Variable::Create(TFE_Context* context, TF_DataType type,
                            const int64_t* dims, const int num_dims,
@@ -279,30 +281,7 @@ void BasicTestsForTwoDevices(TFE_Context* context, const char* first_device,
         TFE_TensorHandleBackingDeviceName(components[1].get(), status.get());
     ASSERT_EQ(underlying_devices[1], second_device);
   }
-  // Compute the device ID twice and verify the result
-  for (int i = 0; i < 2; ++i) {
-    std::unique_ptr<TFE_Op, decltype(&TFE_DeleteOp)> op(
-        TFE_NewOp(context, "DeviceID", status.get()), TFE_DeleteOp);
-    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
-    TFE_OpSetDevice(op.get(), device_name, status.get());
-    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
-
-    TFE_TensorHandle* result_handle;
-    int num_retvals = 1;
-    TFE_Execute(op.get(), &result_handle, &num_retvals, status.get());
-    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
-    std::array<TensorHandlePtr, 2> components;
-    ExtractPerDeviceValues(context, result_handle, &components, status.get());
-    TFE_DeleteTensorHandle(result_handle);
-    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
-
-    ExpectScalarEq<int64_t>(components[0].get(), 0);
-    ExpectScalarEq<int64_t>(components[1].get(), 1);
-    std::string first_device =
-        TFE_TensorHandleBackingDeviceName(components[0].get(), status.get());
-    ASSERT_EQ(underlying_devices[0], first_device);
-    std::string second_device =
-        TFE_TensorHandleBackingDeviceName(components[1].get(), status.get());
-    ASSERT_EQ(underlying_devices[1], second_device);
-  }
 }
+
+}  // namespace parallel_device
+}  // namespace tensorflow

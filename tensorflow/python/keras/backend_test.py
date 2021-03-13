@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gc
+import warnings
 
 from absl.testing import parameterized
 import numpy as np
@@ -26,21 +27,23 @@ import scipy.sparse
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager.context import get_config
 from tensorflow.python.framework import config
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.layers import advanced_activations
 from tensorflow.python.keras.layers import normalization
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.util import tf_inspect
 
 
 def compare_single_input_op_to_numpy(keras_op,
@@ -90,8 +93,8 @@ def compare_two_inputs_op_to_numpy(keras_op,
       backend.variable(input_a, dtype=dtype),
       backend.variable(input_b, dtype=dtype), *keras_args, **keras_kwargs)
   keras_output = backend.eval(keras_output)
-  np_output = np_op(input_a.astype(dtype), input_b.astype(dtype),
-                    *np_args, **np_kwargs)
+  np_output = np_op(
+      input_a.astype(dtype), input_b.astype(dtype), *np_args, **np_kwargs)
   try:
     np.testing.assert_allclose(keras_output, np_output, atol=1e-4)
   except AssertionError:
@@ -106,7 +109,7 @@ class BackendResetTest(test.TestCase, parameterized.TestCase):
     # User defined jit setting
     config.set_optimizer_jit(False)
     sess = backend.get_session()
-    default_config = context.context().config
+    default_config = get_config()
     self.assertEqual(
         sess._config.graph_options.optimizer_options.global_jit_level,
         default_config.graph_options.optimizer_options.global_jit_level)
@@ -114,7 +117,7 @@ class BackendResetTest(test.TestCase, parameterized.TestCase):
 
     # New session has the same jit setting
     sess = backend.get_session()
-    default_config = context.context().config
+    default_config = get_config()
     self.assertEqual(
         sess._config.graph_options.optimizer_options.global_jit_level,
         default_config.graph_options.optimizer_options.global_jit_level)
@@ -123,7 +126,7 @@ class BackendResetTest(test.TestCase, parameterized.TestCase):
     # Change respected
     config.set_optimizer_jit(True)
     sess = backend.get_session()
-    default_config = context.context().config
+    default_config = get_config()
     self.assertEqual(
         sess._config.graph_options.optimizer_options.global_jit_level,
         default_config.graph_options.optimizer_options.global_jit_level)
@@ -169,7 +172,7 @@ class BackendUtilsTest(test.TestCase):
           sess.run(y, feed_dict={x: np.random.random((2, 3))})
 
   def test_learning_phase_name(self):
-    with ops.name_scope('test_scope'):
+    with backend.name_scope('test_scope'):
       # Test that outer name scopes do not affect the learning phase's name.
       lp = backend.symbolic_learning_phase()
     self.assertEqual(lp.name, 'keras_learning_phase:0')
@@ -422,19 +425,31 @@ class BackendLinearAlgebraTest(test.TestCase, parameterized.TestCase):
         (backend.argmax, np.argmax),
     ]
     for keras_op, np_op in ops_to_test:
-      compare_single_input_op_to_numpy(keras_op, np_op, input_shape=(4, 7, 5),
-                                       keras_kwargs={'axis': 1},
-                                       np_kwargs={'axis': 1})
-      compare_single_input_op_to_numpy(keras_op, np_op, input_shape=(4, 7, 5),
-                                       keras_kwargs={'axis': -1},
-                                       np_kwargs={'axis': -1})
+      compare_single_input_op_to_numpy(
+          keras_op,
+          np_op,
+          input_shape=(4, 7, 5),
+          keras_kwargs={'axis': 1},
+          np_kwargs={'axis': 1})
+      compare_single_input_op_to_numpy(
+          keras_op,
+          np_op,
+          input_shape=(4, 7, 5),
+          keras_kwargs={'axis': -1},
+          np_kwargs={'axis': -1})
       if 'keepdims' in tf_inspect.getargspec(keras_op).args:
-        compare_single_input_op_to_numpy(keras_op, np_op,
-                                         input_shape=(4, 7, 5),
-                                         keras_kwargs={'axis': 1,
-                                                       'keepdims': True},
-                                         np_kwargs={'axis': 1,
-                                                    'keepdims': True})
+        compare_single_input_op_to_numpy(
+            keras_op,
+            np_op,
+            input_shape=(4, 7, 5),
+            keras_kwargs={
+                'axis': 1,
+                'keepdims': True
+            },
+            np_kwargs={
+                'axis': 1,
+                'keepdims': True
+            })
 
   def test_elementwise_ops(self):
     ops_to_test = [
@@ -454,9 +469,8 @@ class BackendLinearAlgebraTest(test.TestCase, parameterized.TestCase):
         (backend.log, np.log),
     ]
     for keras_op, np_op in ops_to_test:
-      compare_single_input_op_to_numpy(keras_op, np_op,
-                                       input_shape=(4, 7),
-                                       negative_values=False)
+      compare_single_input_op_to_numpy(
+          keras_op, np_op, input_shape=(4, 7), negative_values=False)
 
     compare_single_input_op_to_numpy(
         backend.clip,
@@ -486,12 +500,11 @@ class BackendLinearAlgebraTest(test.TestCase, parameterized.TestCase):
         (backend.minimum, np.minimum),
     ]
     for keras_op, np_op in ops_to_test:
-      compare_two_inputs_op_to_numpy(keras_op, np_op,
-                                     input_shape_a=(4, 7),
-                                     input_shape_b=(4, 7))
+      compare_two_inputs_op_to_numpy(
+          keras_op, np_op, input_shape_a=(4, 7), input_shape_b=(4, 7))
 
   def test_relu(self):
-    x = ops.convert_to_tensor_v2([[-4, 0], [2, 7]], 'float32')
+    x = ops.convert_to_tensor_v2_with_dispatch([[-4, 0], [2, 7]], 'float32')
 
     # standard relu
     relu_op = backend.relu(x)
@@ -595,6 +608,12 @@ class BackendShapeOpsTest(test.TestCase):
     x = backend.variable(np.ones((1, 3, 2, 2)))
     y = backend.resize_images(x, height_factor, width_factor, data_format)
     self.assertEqual(y.shape.as_list(), [1, 3, 4, 4])
+
+    # Use with a dynamic axis:
+    if not context.executing_eagerly():
+      x = backend.placeholder(shape=(1, 3, None, None))
+      y = backend.resize_images(x, height_factor, width_factor, data_format)
+      self.assertEqual(y.shape.as_list(), [1, 3, None, None])
 
     # Invalid use:
     with self.assertRaises(ValueError):
@@ -710,19 +729,14 @@ class BackendShapeOpsTest(test.TestCase):
         shape[2] += padding[1][0] + padding[1][1]
         shape[3] += padding[2][0] + padding[2][1]
         y = np.zeros(tuple(shape))
-        y[:,
-          padding[0][0]:-padding[0][1],
-          padding[1][0]:-padding[1][1],
-          padding[2][0]:-padding[2][1],
-          :] = x
+        y[:, padding[0][0]:-padding[0][1], padding[1][0]:-padding[1][1],
+          padding[2][0]:-padding[2][1], :] = x
       else:
         shape[2] += padding[0][0] + padding[0][1]
         shape[3] += padding[1][0] + padding[1][1]
         shape[4] += padding[2][0] + padding[2][1]
         y = np.zeros(tuple(shape))
-        y[:, :,
-          padding[0][0]:-padding[0][1],
-          padding[1][0]:-padding[1][1],
+        y[:, :, padding[0][0]:-padding[0][1], padding[1][0]:-padding[1][1],
           padding[2][0]:-padding[2][1]] = x
       return y
 
@@ -750,18 +764,14 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
   def test_bias_add(self):
     keras_op = backend.bias_add
     np_op = np.add
-    compare_two_inputs_op_to_numpy(keras_op, np_op,
-                                   input_shape_a=(4, 7),
-                                   input_shape_b=(7,))
-    compare_two_inputs_op_to_numpy(keras_op, np_op,
-                                   input_shape_a=(4, 3, 7),
-                                   input_shape_b=(7,))
-    compare_two_inputs_op_to_numpy(keras_op, np_op,
-                                   input_shape_a=(4, 3, 5, 7),
-                                   input_shape_b=(7,))
-    compare_two_inputs_op_to_numpy(keras_op, np_op,
-                                   input_shape_a=(4, 3, 5, 2, 7),
-                                   input_shape_b=(7,))
+    compare_two_inputs_op_to_numpy(
+        keras_op, np_op, input_shape_a=(4, 7), input_shape_b=(7,))
+    compare_two_inputs_op_to_numpy(
+        keras_op, np_op, input_shape_a=(4, 3, 7), input_shape_b=(7,))
+    compare_two_inputs_op_to_numpy(
+        keras_op, np_op, input_shape_a=(4, 3, 5, 7), input_shape_b=(7,))
+    compare_two_inputs_op_to_numpy(
+        keras_op, np_op, input_shape_a=(4, 3, 5, 2, 7), input_shape_b=(7,))
 
     with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
       x = backend.variable((3, 4))
@@ -784,12 +794,10 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
         b = b.reshape((1, b.shape[0], 1, 1))
       return x + b
 
-    compare_two_inputs_op_to_numpy(keras_op, np_op,
-                                   input_shape_a=(4, 3, 7),
-                                   input_shape_b=(3,))
-    compare_two_inputs_op_to_numpy(keras_op, np_op,
-                                   input_shape_a=(4, 3, 5, 7),
-                                   input_shape_b=(3,))
+    compare_two_inputs_op_to_numpy(
+        keras_op, np_op, input_shape_a=(4, 3, 7), input_shape_b=(3,))
+    compare_two_inputs_op_to_numpy(
+        keras_op, np_op, input_shape_a=(4, 3, 5, 7), input_shape_b=(3,))
 
   def test_pool2d(self):
     val = np.random.random((10, 3, 10, 10))
@@ -844,8 +852,6 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
       y = backend.pool2d(x, (2, 2), strides=(2, 2), pool_mode='other')
 
   def test_pool3d(self):
-    if test.is_built_with_rocm():
-      self.skipTest('Pooling with 3D tensors is not supported in ROCm')
     val = np.random.random((10, 3, 10, 10, 10))
     x = backend.variable(val)
     y = backend.pool3d(
@@ -935,18 +941,16 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
           kernel_sizes = (kernel_size,) * dim
           strides = (stride,) * dim
 
-          output_shape = tuple([(i - kernel_size + stride) // stride
-                                for i in input_spatial_shape])
+          output_shape = tuple([
+              (i - kernel_size + stride) // stride for i in input_spatial_shape
+          ])
 
           kernel_shape = (np.prod(output_shape),
-                          np.prod(kernel_sizes) * channels_in,
-                          filters)
+                          np.prod(kernel_sizes) * channels_in, filters)
 
           kernel = np.random.normal(
-              0,
-              1,
-              output_shape + (channels_in, np.prod(kernel_sizes), filters)
-          )
+              0, 1,
+              output_shape + (channels_in, np.prod(kernel_sizes), filters))
 
           kernel_cf = np.reshape(kernel, kernel_shape)
           kernel_cf = backend.variable(kernel_cf)
@@ -954,14 +958,14 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
           conv_cf = backend.local_conv(inputs_cf, kernel_cf, kernel_sizes,
                                        strides, output_shape, 'channels_first')
 
-          inputs_cl = np.transpose(inputs, [0, 2] + list(range(3, dim + 2)) +
-                                   [1])
+          inputs_cl = np.transpose(inputs,
+                                   [0, 2] + list(range(3, dim + 2)) + [1])
           inputs_cl = backend.variable(inputs_cl)
 
           kernel_cl = np.reshape(
-              np.transpose(kernel, list(range(dim)) + [dim + 1, dim, dim + 2]),
-              kernel_shape
-          )
+              np.transpose(kernel,
+                           list(range(dim)) + [dim + 1, dim, dim + 2]),
+              kernel_shape)
           kernel_cl = backend.variable(kernel_cl)
 
           conv_cl = backend.local_conv(inputs_cl, kernel_cl, kernel_sizes,
@@ -972,18 +976,13 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
 
           self.assertAllCloseAccordingToType(
               conv_cf,
-              np.transpose(conv_cl,
-                           [0, dim + 1] + list(range(1, dim + 1))),
-              atol=1e-5
-          )
+              np.transpose(conv_cl, [0, dim + 1] + list(range(1, dim + 1))),
+              atol=1e-5)
 
   @parameterized.named_parameters(
       ('local_conv1d', (5, 6), (3,), (1,), (3,)),
       ('local_conv2d', (4, 5, 6), (3, 3), (1, 1), (2, 3)))
-  def test_local_conv_1d_and_2d(self,
-                                input_shape,
-                                kernel_sizes,
-                                strides,
+  def test_local_conv_1d_and_2d(self, input_shape, kernel_sizes, strides,
                                 output_shape):
     filters = 3
     batch_size = 2
@@ -991,9 +990,9 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     inputs = np.random.normal(0, 1, (batch_size,) + input_shape)
     inputs = backend.variable(inputs)
 
-    kernel = np.random.normal(0, 1, (np.prod(output_shape),
-                                     np.prod(kernel_sizes) * input_shape[-1],
-                                     filters))
+    kernel = np.random.normal(0, 1,
+                              (np.prod(output_shape), np.prod(kernel_sizes) *
+                               input_shape[-1], filters))
     kernel = backend.variable(kernel)
 
     local_conv = backend.local_conv(inputs, kernel, kernel_sizes, strides,
@@ -1222,12 +1221,33 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     mask = backend.variable(np_mask)
 
     kwargs_list = [
-        {'go_backwards': False, 'mask': None},
-        {'go_backwards': False, 'mask': None, 'unroll': True},
-        {'go_backwards': True, 'mask': None},
-        {'go_backwards': True, 'mask': None, 'unroll': True},
-        {'go_backwards': False, 'mask': mask},
-        {'go_backwards': False, 'mask': mask, 'unroll': True},
+        {
+            'go_backwards': False,
+            'mask': None
+        },
+        {
+            'go_backwards': False,
+            'mask': None,
+            'unroll': True
+        },
+        {
+            'go_backwards': True,
+            'mask': None
+        },
+        {
+            'go_backwards': True,
+            'mask': None,
+            'unroll': True
+        },
+        {
+            'go_backwards': False,
+            'mask': mask
+        },
+        {
+            'go_backwards': False,
+            'mask': mask,
+            'unroll': True
+        },
     ]
     for i, kwargs in enumerate(kwargs_list):
       last_output, outputs, new_states = backend.rnn(rnn_fn, inputs,
@@ -1310,18 +1330,39 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     inputs = backend.variable(input_val)
     initial_states = [
         backend.variable(init_state_val),
-        ops.convert_to_tensor_v2(
+        ops.convert_to_tensor_v2_with_dispatch(
             np.concatenate([init_state_val, init_state_val], axis=-1))
     ]
     mask = backend.variable(np_mask)
 
     kwargs_list = [
-        {'go_backwards': False, 'mask': None},
-        {'go_backwards': False, 'mask': None, 'unroll': True},
-        {'go_backwards': True, 'mask': None},
-        {'go_backwards': True, 'mask': None, 'unroll': True},
-        {'go_backwards': False, 'mask': mask},
-        {'go_backwards': False, 'mask': mask, 'unroll': True},
+        {
+            'go_backwards': False,
+            'mask': None
+        },
+        {
+            'go_backwards': False,
+            'mask': None,
+            'unroll': True
+        },
+        {
+            'go_backwards': True,
+            'mask': None
+        },
+        {
+            'go_backwards': True,
+            'mask': None,
+            'unroll': True
+        },
+        {
+            'go_backwards': False,
+            'mask': mask
+        },
+        {
+            'go_backwards': False,
+            'mask': mask,
+            'unroll': True
+        },
     ]
     for i, kwargs in enumerate(kwargs_list):
       last_output, outputs, new_states = backend.rnn(rnn_fn, inputs,
@@ -1391,8 +1432,8 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     def step_function(inputs, states):
       return inputs, [s + 1 for s in states]
 
-    inputs_vals = np.random.random((num_samples, num_timesteps,
-                                    state_and_io_size))
+    inputs_vals = np.random.random(
+        (num_samples, num_timesteps, state_and_io_size))
     initial_state_vals = np.random.random((num_samples, state_and_io_size))
     # masking of two last timesteps for second sample only
     mask_vals = np.ones((num_samples, num_timesteps))
@@ -1617,9 +1658,11 @@ class BackendCrossEntropyLossesTest(test.TestCase, parameterized.TestCase):
     p = backend.placeholder()
     o = backend.categorical_crossentropy(t, p)
 
-    t_val = ops.convert_to_tensor_v2([[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]])
-    p_val = ops.convert_to_tensor_v2([[.9, .05, .05], [.05, .89, .06],
-                                      [.05, .01, .94]])
+    t_val = ops.convert_to_tensor_v2_with_dispatch([[1., 0., 0.], [0., 1., 0.],
+                                                    [0., 0., 1.]])
+    p_val = ops.convert_to_tensor_v2_with_dispatch([[.9, .05, .05],
+                                                    [.05, .89, .06],
+                                                    [.05, .01, .94]])
     f = backend.function([t, p], o)
 
     result = f([t_val, p_val])
@@ -1633,7 +1676,8 @@ class BackendCrossEntropyLossesTest(test.TestCase, parameterized.TestCase):
     self.assertArrayNear(result, [.105, .065, .111], 1e-3)
 
     # from logits
-    p_val = ops.convert_to_tensor_v2([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    p_val = ops.convert_to_tensor_v2_with_dispatch([[8., 1., 1.], [0., 9., 1.],
+                                                    [2., 3., 5.]])
     o = backend.categorical_crossentropy(t, p, from_logits=True)
     f = backend.function([t, p], o)
 
@@ -1685,9 +1729,10 @@ class BackendCrossEntropyLossesTest(test.TestCase, parameterized.TestCase):
     p = backend.placeholder()
     o = backend.sparse_categorical_crossentropy(t, p)
 
-    t_val = ops.convert_to_tensor_v2([0, 1, 2])
-    p_val = ops.convert_to_tensor_v2([[.9, .05, .05], [.05, .89, .06],
-                                      [.05, .01, .94]])
+    t_val = ops.convert_to_tensor_v2_with_dispatch([0, 1, 2])
+    p_val = ops.convert_to_tensor_v2_with_dispatch([[.9, .05, .05],
+                                                    [.05, .89, .06],
+                                                    [.05, .01, .94]])
     f = backend.function([t, p], o)
 
     result = f([t_val, p_val])
@@ -1703,7 +1748,8 @@ class BackendCrossEntropyLossesTest(test.TestCase, parameterized.TestCase):
       _ = f([t_val, p_val])
 
     # from logits
-    p_val = ops.convert_to_tensor_v2([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    p_val = ops.convert_to_tensor_v2_with_dispatch([[8., 1., 1.], [0., 9., 1.],
+                                                    [2., 3., 5.]])
     o = backend.sparse_categorical_crossentropy(t, p, from_logits=True)
     f = backend.function([t, p], o)
 
@@ -1729,6 +1775,45 @@ class BackendCrossEntropyLossesTest(test.TestCase, parameterized.TestCase):
     result = self.evaluate(backend.sparse_categorical_crossentropy(t, p))
     self.assertArrayNear(result, [0.002, 0.0005, 0.17], 1e-3)
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_binary_crossentropy_from_logits_no_warnings(self):
+    t = backend.constant([[0, 1, 0]])
+    logits = backend.constant([[8., 1., 1.]])
+    with warnings.catch_warnings(record=True) as w:
+      self.evaluate(backend.binary_crossentropy(t, logits, from_logits=True))
+      self.assertEmpty(w)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_binary_crossentropy_from_logits_with_sigmoid(self):
+    t = backend.constant([[0, 1, 0]])
+    logits = backend.constant([[8., 1., 1.]])
+    p = activations.sigmoid(logits)
+    with warnings.catch_warnings(record=True) as w:
+      self.evaluate(backend.binary_crossentropy(t, p, from_logits=True))
+      self.assertLen(w, 1)
+      self.assertIn('received `from_logits=True`', str(w[0].message))
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_categorical_crossentropy_from_logits_with_softmax(self):
+    t = backend.constant([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+    logits = backend.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    p = activations.softmax(logits)
+    with warnings.catch_warnings(record=True) as w:
+      self.evaluate(backend.categorical_crossentropy(t, p, from_logits=True))
+      self.assertLen(w, 1)
+      self.assertIn('received `from_logits=True`', str(w[0].message))
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_sparse_categorical_crossentropy_from_logits_with_softmax(self):
+    t = backend.constant([0, 1, 2])
+    logits = backend.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    p = activations.softmax(logits)
+    with warnings.catch_warnings(record=True) as w:
+      self.evaluate(
+          backend.sparse_categorical_crossentropy(t, p, from_logits=True))
+      self.assertLen(w, 1)
+      self.assertIn('received `from_logits=True`', str(w[0].message))
+
 
 @test_util.with_control_flow_v2
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -1738,29 +1823,34 @@ class TestCTC(test.TestCase):
     depth = 6
     seq_len_0 = 5
     input_prob_matrix_0 = np.asarray(
-        [[0.30999, 0.309938, 0.0679938, 0.0673362, 0.0708352, 0.173908],
-         [0.215136, 0.439699, 0.0370931, 0.0393967, 0.0381581, 0.230517],
-         [0.199959, 0.489485, 0.0233221, 0.0251417, 0.0233289, 0.238763],
-         [0.279611, 0.452966, 0.0204795, 0.0209126, 0.0194803, 0.20655],
-         [0.51286, 0.288951, 0.0243026, 0.0220788, 0.0219297, 0.129878],
-         # Random entry added in at time=5
-         [0.155251, 0.164444, 0.173517, 0.176138, 0.169979, 0.160671]],
+        [
+            [0.30999, 0.309938, 0.0679938, 0.0673362, 0.0708352, 0.173908],
+            [0.215136, 0.439699, 0.0370931, 0.0393967, 0.0381581, 0.230517],
+            [0.199959, 0.489485, 0.0233221, 0.0251417, 0.0233289, 0.238763],
+            [0.279611, 0.452966, 0.0204795, 0.0209126, 0.0194803, 0.20655],
+            [0.51286, 0.288951, 0.0243026, 0.0220788, 0.0219297, 0.129878],
+            # Random entry added in at time=5
+            [0.155251, 0.164444, 0.173517, 0.176138, 0.169979, 0.160671]
+        ],
         dtype=np.float32)
 
     # len max_time_steps array of batch_size x depth matrices
-    inputs = ([input_prob_matrix_0[t, :][np.newaxis, :]
-               for t in range(seq_len_0)] +  # Pad to max_time_steps = 8
-              2 * [np.zeros((1, depth), dtype=np.float32)])
+    inputs = (
+        [input_prob_matrix_0[t, :][np.newaxis, :] for t in range(seq_len_0)
+        ] +  # Pad to max_time_steps = 8
+        2 * [np.zeros((1, depth), dtype=np.float32)])
 
     inputs = backend.variable(np.asarray(inputs).transpose((1, 0, 2)))
 
     # batch_size length vector of sequence_lengths
     input_length = backend.variable(np.array([seq_len_0], dtype=np.int32))
     # batch_size length vector of negative log probabilities
-    log_prob_truth = np.array([
-        -3.5821197,  # output beam 0
-        -3.777835    # output beam 1
-    ], np.float32)[np.newaxis, :]
+    log_prob_truth = np.array(
+        [
+            -3.5821197,  # output beam 0
+            -3.777835  # output beam 1
+        ],
+        np.float32)[np.newaxis, :]
 
     decode_truth = [
         np.array([1, 0, -1, -1, -1, -1, -1]),
@@ -1819,9 +1909,9 @@ class TestCTC(test.TestCase):
 
       labels = np.asarray([[0, 1, 2, 1, 0]])
       inputs = np.asarray(
-          [[[0.633766, 0.221185, 0.0917319, 0.0129757, 0.0142857, 0.0260553], [
-              0.111121, 0.588392, 0.278779, 0.0055756, 0.00569609, 0.010436
-          ], [0.0357786, 0.633813, 0.321418, 0.00249248, 0.00272882, 0.0037688],
+          [[[0.633766, 0.221185, 0.0917319, 0.0129757, 0.0142857, 0.0260553],
+            [0.111121, 0.588392, 0.278779, 0.0055756, 0.00569609, 0.010436],
+            [0.0357786, 0.633813, 0.321418, 0.00249248, 0.00272882, 0.0037688],
             [0.0663296, 0.643849, 0.280111, 0.00283995, 0.0035545, 0.00331533],
             [0.458235, 0.396634, 0.123377, 0.00648837, 0.00903441, 0.00623107]]
           ],
@@ -1928,12 +2018,12 @@ class FunctionTest(test.TestCase):
 
     x_ph = backend.placeholder(ndim=2)
     v = backend.variable(np.ones((4, 2)))
-    output = x_ph ** 2 + v
+    output = x_ph**2 + v
     new_v = v + x_ph
     f = backend.function(x_ph, output, updates=[(v, new_v)])
     input_val = np.random.random((4, 2))
     result = f(input_val)
-    self.assertAllClose(result, input_val ** 2 + 1)
+    self.assertAllClose(result, input_val**2 + 1)
     self.assertAllClose(backend.get_value(v), np.ones((4, 2)) + input_val)
 
 
@@ -2124,9 +2214,10 @@ class ControlOpsTests(test.TestCase):
     self.assertEqual(backend.eval(tensor), [9.0])
 
   def test_unequal_rank(self):
-    x = ops.convert_to_tensor_v2(
+    x = ops.convert_to_tensor_v2_with_dispatch(
         np.array([[1, 2, 3], [4, 5, 6]]), dtype='float32')
-    y = ops.convert_to_tensor_v2(np.array([1, 2, 3]), dtype='float32')
+    y = ops.convert_to_tensor_v2_with_dispatch(
+        np.array([1, 2, 3]), dtype='float32')
 
     def true_func():
       return x
@@ -2134,8 +2225,8 @@ class ControlOpsTests(test.TestCase):
     def false_func():
       return y
 
-    with self.assertRaisesRegexp(ValueError,
-                                 'Rank of `condition` should be less than'):
+    with self.assertRaisesRegex(ValueError,
+                                'Rank of `condition` should be less than'):
       backend.switch(backend.equal(x, x), false_func, true_func)
 
 

@@ -1,4 +1,8 @@
 op {
   graph_op_name: "WriteGraphSummary"
   visibility: HIDDEN
+  summary: "Writes a graph summary."
+  description: <<END
+Writes TensorFlow graph `tensor` at `step` using summary `writer`.
+END
 }

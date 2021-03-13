@@ -40,23 +40,23 @@ class NthElementOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     // The second args is N, which must be a positive scalar.
     const auto& n_in = context->input(1);
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(n_in.shape()),
-                errors::InvalidArgument("N must be scalar, got shape ",
-                                        n_in.shape().DebugString()));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(n_in.shape()),
+        errors::InvalidArgument("N must be scalar but has rank ", n_in.dims()));
     int n = n_in.scalar<int32>()();
     OP_REQUIRES(context, n >= 0,
-                errors::InvalidArgument("Need n >= 0, got ", n));
+                errors::InvalidArgument("n must be non-negative but is ", n));
 
     // The first args is input tensor, which must have 1 dimension at least.
     const Tensor& input_in = context->input(0);
     const int num_dims = input_in.dims();
     OP_REQUIRES(context, num_dims >= 1,
-                errors::InvalidArgument("Input must be >= 1-D, got shape ",
-                                        input_in.shape().DebugString()));
+                errors::InvalidArgument(
+                    "Input must be at least rank 1 but is rank ", num_dims));
     // The last dimension of input tensor must be greater than N.
     OP_REQUIRES(
         context, input_in.dim_size(num_dims - 1) > n,
-        errors::InvalidArgument("Input must have at least n+1 columns"));
+        errors::InvalidArgument("Input must have last dimension > n = ", n));
 
     // std::nth_element only support the nth-smallest selection.
     if (reverse_) {
@@ -95,7 +95,8 @@ struct NthElementFunctor<CPUDevice, T> {
     const int last_dim = input_tensor.dim_size(input_tensor.dims() - 1);
 
     // Allocate each row to different shard.
-    auto SubNthElement = [&, input, output, last_dim, n](int start, int limit) {
+    auto SubNthElement = [&, input, output, last_dim, n](int64 start,
+                                                         int64 limit) {
       // std::nth_element would rearrange the array, so we need a new buffer.
       std::vector<T> buf(last_dim);
 

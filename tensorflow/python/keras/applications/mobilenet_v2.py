@@ -69,9 +69,9 @@ MACs stands for Multiply Adds
 | [mobilenet_v2_0.35_128] | 20  | 1.66 |          50.8 | 75.0 |
 | [mobilenet_v2_0.35_96]  | 11  | 1.66 |          45.5 | 70.4 |
 
-  Reference paper:
-  - [MobileNetV2: Inverted Residuals and Linear Bottlenecks]
-  (https://arxiv.org/abs/1801.04381) (CVPR 2018)
+  Reference:
+  - [MobileNetV2: Inverted Residuals and Linear Bottlenecks](
+      https://arxiv.org/abs/1801.04381) (CVPR 2018)
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -111,10 +111,11 @@ def MobileNetV2(input_shape=None,
 
   Optionally loads weights pre-trained on ImageNet.
 
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.mobilenet_v2.preprocess_input` for an example.
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For MobileNetV2, call `tf.keras.applications.mobilenet_v2.preprocess_input`
+  on your inputs before passing them to the model.
 
-  Arguments:
+  Args:
     input_shape: Optional shape tuple, to be specified if you would
       like to use a model with an input image resolution that is not
       (224, 224, 3).
@@ -180,7 +181,7 @@ def MobileNetV2(input_shape=None,
     layers = VersionAwareLayers()
   if kwargs:
     raise ValueError('Unknown argument(s): %s' % (kwargs,))
-  if not (weights in {'imagenet', None} or file_io.file_exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
@@ -203,7 +204,7 @@ def MobileNetV2(input_shape=None,
         raise ValueError('input_tensor: ', input_tensor,
                          'is not type input_tensor')
     if is_input_t_tensor:
-      if backend.image_data_format == 'channels_first':
+      if backend.image_data_format() == 'channels_first':
         if backend.int_shape(input_tensor)[1] != input_shape[1]:
           raise ValueError('input_shape: ', input_shape, 'and input_tensor: ',
                            input_tensor,
@@ -298,17 +299,13 @@ def MobileNetV2(input_shape=None,
   channel_axis = 1 if backend.image_data_format() == 'channels_first' else -1
 
   first_block_filters = _make_divisible(32 * alpha, 8)
-  x = layers.ZeroPadding2D(
-      padding=imagenet_utils.correct_pad(img_input, 3),
-      name='Conv1_pad')(img_input)
   x = layers.Conv2D(
       first_block_filters,
       kernel_size=3,
       strides=(2, 2),
-      padding='valid',
+      padding='same',
       use_bias=False,
-      name='Conv1')(
-          x)
+      name='Conv1')(img_input)
   x = layers.BatchNormalization(
       axis=channel_axis, epsilon=1e-3, momentum=0.999, name='bn_Conv1')(
           x)

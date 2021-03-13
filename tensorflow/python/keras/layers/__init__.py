@@ -44,9 +44,6 @@ from tensorflow.python.keras.layers.preprocessing.image_preprocessing import Res
 
 # Preprocessing layers.
 if tf2.enabled():
-  from tensorflow.python.keras.layers.preprocessing.category_encoding import CategoryEncoding
-  from tensorflow.python.keras.layers.preprocessing.category_encoding_v1 import CategoryEncoding as CategoryEncodingV1
-  CategoryEncodingV2 = CategoryEncoding
   from tensorflow.python.keras.layers.preprocessing.integer_lookup import IntegerLookup
   from tensorflow.python.keras.layers.preprocessing.integer_lookup_v1 import IntegerLookup as IntegerLookupV1
   IntegerLookupV2 = IntegerLookup
@@ -63,9 +60,6 @@ else:
   from tensorflow.python.keras.layers.preprocessing.integer_lookup_v1 import IntegerLookup
   from tensorflow.python.keras.layers.preprocessing.integer_lookup import IntegerLookup as IntegerLookupV2
   IntegerLookupV1 = IntegerLookup
-  from tensorflow.python.keras.layers.preprocessing.category_encoding_v1 import CategoryEncoding
-  from tensorflow.python.keras.layers.preprocessing.category_encoding import CategoryEncoding as CategoryEncodingV2
-  CategoryEncodingV1 = CategoryEncoding
   from tensorflow.python.keras.layers.preprocessing.normalization_v1 import Normalization
   from tensorflow.python.keras.layers.preprocessing.normalization import Normalization as NormalizationV2
   NormalizationV1 = Normalization
@@ -76,6 +70,7 @@ else:
   from tensorflow.python.keras.layers.preprocessing.text_vectorization import TextVectorization as TextVectorizationV2
   TextVectorizationV1 = TextVectorization
 from tensorflow.python.keras.layers.preprocessing.category_crossing import CategoryCrossing
+from tensorflow.python.keras.layers.preprocessing.category_encoding import CategoryEncoding
 from tensorflow.python.keras.layers.preprocessing.discretization import Discretization
 from tensorflow.python.keras.layers.preprocessing.hashing import Hashing
 
@@ -142,6 +137,9 @@ from tensorflow.python.keras.layers.embeddings import Embedding
 
 # Einsum-based dense layer/
 from tensorflow.python.keras.layers.einsum_dense import EinsumDense
+
+# Multi-head Attention layer.
+from tensorflow.python.keras.layers.multi_head_attention import MultiHeadAttention
 
 # Locally-connected layers.
 from tensorflow.python.keras.layers.local import LocallyConnected1D

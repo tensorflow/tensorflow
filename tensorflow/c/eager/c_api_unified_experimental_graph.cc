@@ -18,77 +18,295 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/types.h"
 
+using tensorflow::dyn_cast;
 using tensorflow::string;
+using tensorflow::gtl::ArraySlice;
 
 namespace tensorflow {
-namespace internal {
+namespace tracing {
+namespace graph {
 
 class GraphContext;
+class GraphOperation;
+class GraphTensor;
+
+auto& kUnknownDim = shape_inference::InferenceContext::kUnknownDim;
+auto& kUnknownRank = shape_inference::InferenceContext::kUnknownRank;
 
 // GraphTensor wraps a `TF_Output`, i.e. a pointer to TF_Operation and the index
 // into the list of outputs for the operation.
-struct GraphTensor : public AbstractTensor {
-  TF_Output output{};
-  GraphContext* ctx = nullptr;
-  GraphTensor() : AbstractTensor(kKind) {}
-  GraphTensor(TF_Output output, GraphContext* ctx)
-      : AbstractTensor(kKind), output(output), ctx(ctx) {}
-  static constexpr AbstractTensorKind kKind = kGraphTensor;
+class GraphTensor : public TracingTensorHandle {
+ public:
+  explicit GraphTensor(TF_Output output, TF_Graph* graph)
+      : TracingTensorHandle(kGraph), output_(output), graph_(graph) {}
+
+  tensorflow::DataType DataType() const override {
+    return static_cast<tensorflow::DataType>(TF_OperationOutputType(output_));
+  }
+
+  tensorflow::Status Shape(
+      tensorflow::PartialTensorShape* shape) const override {
+    DCHECK(shape != nullptr);
+    TF_Status status;
+    int num_dims = TF_GraphGetTensorNumDims(graph_, output_, &status);
+    DCHECK_GE(num_dims, -1);
+    TF_RETURN_IF_ERROR(StatusFromTF_Status(&status));
+    if (num_dims == kUnknownRank) {
+      return Status::OK();
+    }
+
+    std::vector<int64> dims(num_dims, kUnknownDim);
+    TF_GraphGetTensorShape(graph_, output_,
+                           reinterpret_cast<int64_t*>(dims.data()), num_dims,
+                           &status);
+    TF_RETURN_IF_ERROR(StatusFromTF_Status(&status));
+    TF_RETURN_IF_ERROR(tensorflow::TensorShapeUtils::MakeShape(dims, shape));
+
+    return Status::OK();
+  }
+
+  TF_Output output_;
+
+  // For LLVM style RTTI.
+  static bool classof(const AbstractTensorHandle* ptr) {
+    return ptr->getKind() == kGraph;
+  }
+
+ private:
+  TF_Graph* graph_;  // For shape inference.
 };
 
-// GraphOp wraps and populate a TF_OperationDescription.
-class GraphOp : public AbstractOp {
+// GraphOperation wraps and populates a TF_OperationDescription.
+class GraphOperation : public TracingOperation {
  public:
-  explicit GraphOp(TF_Graph* g) : AbstractOp(kKind), g_(g) {}
-  void SetOpType(const char* const op_type, TF_Status* s) override {
+  explicit GraphOperation(TF_Graph* g) : TracingOperation(kGraph), g_(g) {}
+  void Release() override { delete this; }
+  Status Reset(const char* op, const char* raw_device_name) override {
     if (op_) {
-      TF_SetStatus(
-          s, TF_FAILED_PRECONDITION,
-          strings::StrCat("SetOpType called on already built op.").c_str());
-      return;
+      return errors::FailedPrecondition("Reset called on already built op.");
     }
-    if (op_name_ != nullptr) {
-      op_.reset(TF_NewOperation(g_, op_type, op_name_));
-      op_name_ = nullptr;
-    } else {
-      op_type_ = op_type;
+    if (raw_device_name) {
+      device_name_ = raw_device_name;
     }
+    op_type_ = op;
+    return Status::OK();
   }
-  void SetOpName(const char* const op_name, TF_Status* s) override {
+  Status SetOpName(const char* const op_name) override {
     if (op_) {
-      TF_SetStatus(
-          s, TF_FAILED_PRECONDITION,
-          strings::StrCat("SetOpName called on already built op.").c_str());
-      return;
+      return errors::FailedPrecondition(
+          "SetOpName called on already built op.");
     }
-    if (op_type_ != nullptr) {
-      op_.reset(TF_NewOperation(g_, op_type_, op_name));
-      op_type_ = nullptr;
-    } else {
-      op_name_ = op_name;
+    if (op_type_.empty()) {
+      return errors::FailedPrecondition(
+          "GraphOperation::Reset must be called before calling SetOpName.");
     }
+    // TODO(b/145674566): We use Graph::NewName to get a unique name here but
+    // this may not be consistent with python's naming policy.
+    mutex_lock l(g_->mu);
+    op_.reset(new TF_OperationDescription(g_, op_type_.c_str(),
+                                          g_->graph.NewName(op_name).c_str()));
+    return Status::OK();
   }
-  void SetAttrType(const char* const attr_name, TF_DataType value,
-                   TF_Status* s) override {
-    if (!op_) {
-      TF_SetStatus(
-          s, TF_FAILED_PRECONDITION,
-          "op_type and op_name must be specified before specifying attrs.");
-      return;
-    }
-    TF_SetAttrType(op_.get(), attr_name, value);
-  }
-  ~GraphOp() override {}
+  const string& Name() const override { return op_type_; }
+  const string& DeviceName() const override { return device_name_; }
 
-  static constexpr AbstractOpKind kKind = kGraphOp;
+  Status SetDeviceName(const char* name) override {
+    // TODO(srbs): Implement this.
+    device_name_ = name;
+    return Status::OK();
+  }
+
+  Status AddInput(AbstractTensorHandle* input) override {
+    GraphTensor* t = dyn_cast<GraphTensor>(input);
+    if (!t) {
+      return tensorflow::errors::InvalidArgument(
+          "Unable to cast input to GraphTensor");
+    }
+    TF_AddInput(op_.get(), t->output_);
+    return Status::OK();
+  }
+  Status AddInputList(absl::Span<AbstractTensorHandle* const> inputs) override {
+    std::vector<TF_Output> tf_outputs(inputs.size());
+    for (int i = 0; i < inputs.size(); i++) {
+      GraphTensor* t = dyn_cast<GraphTensor>(inputs[i]);
+      if (!t) {
+        return tensorflow::errors::InvalidArgument(
+            "Unable to cast input to GraphTensor");
+      }
+      tf_outputs[i] = t->output_;
+    }
+    TF_AddInputList(op_.get(), tf_outputs.data(), tf_outputs.size());
+    return Status::OK();
+  }
+  Status Execute(absl::Span<AbstractTensorHandle*> retvals,
+                 int* num_retvals) override {
+    auto* tf_opdesc = op_.release();
+    if (tf_opdesc == nullptr) {
+      return errors::InvalidArgument("AbstractOp is incomplete.");
+    }
+    TF_Status* s = TF_NewStatus();
+    auto* operation = TF_FinishOperation(tf_opdesc, s);
+    TF_RETURN_IF_ERROR(StatusFromTF_Status(s));
+    TF_DeleteStatus(s);
+    *num_retvals = TF_OperationNumOutputs(operation);
+    for (int i = 0; i < *num_retvals; ++i) {
+      retvals[i] = new GraphTensor({operation, i}, g_);
+    }
+    return Status::OK();
+  }
+
+  Status SetAttrString(const char* attr_name, const char* data,
+                       size_t length) override {
+    tensorflow::StringPiece s(data, length);
+    op_->node_builder.Attr(attr_name, s);
+    return Status::OK();
+  }
+  Status SetAttrInt(const char* attr_name, int64_t value) override {
+    static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+                  "64-bit int types should match in size");
+    op_->node_builder.Attr(attr_name, static_cast<tensorflow::int64>(value));
+    return Status::OK();
+  }
+  Status SetAttrFloat(const char* attr_name, float value) override {
+    op_->node_builder.Attr(attr_name, value);
+    return Status::OK();
+  }
+  Status SetAttrBool(const char* attr_name, bool value) override {
+    op_->node_builder.Attr(attr_name, value);
+    return Status::OK();
+  }
+  Status SetAttrType(const char* const attr_name, DataType value) override {
+    if (!op_) {
+      return Status(
+          error::Code::FAILED_PRECONDITION,
+          "op_type and op_name must be specified before specifying attrs.");
+    }
+    op_->node_builder.Attr(attr_name, value);
+    return Status::OK();
+  }
+  Status SetAttrShape(const char* attr_name, const int64_t* dims,
+                      const int num_dims) override {
+    PartialTensorShape shape;
+    if (num_dims >= 0) {
+      static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+                    "64-bit int types should match in size");
+      shape = PartialTensorShape(ArraySlice<tensorflow::int64>(
+          reinterpret_cast<const tensorflow::int64*>(dims), num_dims));
+    }
+    op_->node_builder.Attr(attr_name, shape);
+    return Status::OK();
+  }
+  Status SetAttrFunction(const char* attr_name,
+                         const AbstractOperation* value) override {
+    return tensorflow::errors::Unimplemented(
+        "SetAttrFunction has not been implemented yet.");
+  }
+  Status SetAttrFunctionName(const char* attr_name, const char* value,
+                             size_t length) override {
+    tensorflow::NameAttrList func_name;
+    func_name.set_name(string(value, value + length));
+    op_->node_builder.Attr(attr_name, func_name);
+    return Status::OK();
+  }
+  Status SetAttrTensor(const char* attr_name,
+                       AbstractTensorInterface* tensor) override {
+    return tensorflow::errors::Unimplemented(
+        "SetAttrTensor has not been implemented yet.");
+  }
+  Status SetAttrStringList(const char* attr_name, const void* const* values,
+                           const size_t* lengths, int num_values) override {
+    if (strcmp(attr_name, tensorflow::kColocationAttrName) == 0) {
+      op_->colocation_constraints.clear();
+      for (int i = 0; i < num_values; ++i) {
+        op_->colocation_constraints.emplace(static_cast<const char*>(values[i]),
+                                            lengths[i]);
+      }
+    } else {
+      std::vector<tensorflow::StringPiece> v;
+      v.reserve(num_values);
+      for (int i = 0; i < num_values; ++i) {
+        v.emplace_back(static_cast<const char*>(values[i]), lengths[i]);
+      }
+      op_->node_builder.Attr(attr_name, v);
+    }
+    return Status::OK();
+  }
+  Status SetAttrFloatList(const char* attr_name, const float* values,
+                          int num_values) override {
+    op_->node_builder.Attr(attr_name,
+                           ArraySlice<const float>(values, num_values));
+    return Status::OK();
+  }
+  Status SetAttrIntList(const char* attr_name, const int64_t* values,
+                        int num_values) override {
+    static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+                  "64-bit int types should match in size");
+    op_->node_builder.Attr(
+        attr_name,
+        ArraySlice<const tensorflow::int64>(
+            reinterpret_cast<const tensorflow::int64*>(values), num_values));
+    return Status::OK();
+  }
+  Status SetAttrTypeList(const char* attr_name, const DataType* values,
+                         int num_values) override {
+    op_->node_builder.Attr(attr_name,
+                           ArraySlice<const DataType>(values, num_values));
+    return Status::OK();
+  }
+  Status SetAttrBoolList(const char* attr_name, const unsigned char* values,
+                         int num_values) override {
+    std::unique_ptr<bool[]> b(new bool[num_values]);
+    for (int i = 0; i < num_values; ++i) {
+      b[i] = values[i];
+    }
+    op_->node_builder.Attr(attr_name,
+                           ArraySlice<const bool>(b.get(), num_values));
+
+    return Status::OK();
+  }
+  Status SetAttrShapeList(const char* attr_name, const int64_t** dims,
+                          const int* num_dims, int num_values) override {
+    std::vector<PartialTensorShape> shapes;
+    shapes.reserve(num_values);
+    for (int i = 0; i < num_values; ++i) {
+      if (num_dims[i] < 0) {
+        shapes.emplace_back();
+      } else {
+        static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+                      "64-bit int types should match in size");
+        shapes.emplace_back(ArraySlice<tensorflow::int64>(
+            reinterpret_cast<const tensorflow::int64*>(dims[i]), num_dims[i]));
+      }
+    }
+    op_->node_builder.Attr(attr_name, shapes);
+    return Status::OK();
+  }
+  Status SetAttrFunctionList(
+      const char* attr_name,
+      absl::Span<const AbstractOperation*> values) override {
+    return tensorflow::errors::Unimplemented(
+        "SetAttrFunctionList has not been implemented yet.");
+  }
+  // For LLVM style RTTI.
+  static bool classof(const AbstractOperation* ptr) {
+    return ptr->getKind() == kGraph;
+  }
+  ~GraphOperation() override {}
 
  private:
   friend class GraphContext;  // For access to op_.
@@ -96,140 +314,134 @@ class GraphOp : public AbstractOp {
   std::unique_ptr<TF_OperationDescription> op_;
   // Hold `op_type` and `op_name` till both are available since we need both
   // to build a graph operation.
-  const char* op_type_ = nullptr;
+  string op_type_;
   const char* op_name_ = nullptr;
+  // TODO(srbs): Use this.
+  string device_name_;
 };
 
 // GraphFunction is a thin wrapper over a TF_Function.
 struct GraphFunction : public AbstractFunction {
   TF_Function* func = nullptr;
-  GraphFunction() : AbstractFunction(kKind) {}
+  GraphFunction() : AbstractFunction(kGraph) {}
   explicit GraphFunction(TF_Function* func)
-      : AbstractFunction(kKind), func(func) {}
+      : AbstractFunction(kGraph), func(func) {}
   ~GraphFunction() override {
     if (func) TF_DeleteFunction(func);
   }
 
-  TF_Function* GetTfFunction(TF_Status* s) override { return func; }
+  Status GetFunctionDef(FunctionDef** fdef) override {
+    *fdef = &func->fdef;
+    return Status::OK();
+  }
 
-  static constexpr AbstractFunctionKind kKind = kGraphFunc;
+  // For LLVM style RTTI.
+  static bool classof(const AbstractFunction* ptr) {
+    return ptr->getKind() == kGraph;
+  }
 };
 
 // GraphContext wraps a TF_Graph modeling a single function and manages the
 // "execution" of operation, i.e. adding them to the function.
-class GraphContext : public ExecutionContext {
+class GraphContext : public TracingContext {
  public:
   explicit GraphContext(const char* name)
-      : ExecutionContext(kKind),
+      : TracingContext(kGraph),
         graph_(new TF_Graph(), TF_DeleteGraph),
         name_(name) {}
 
-  AbstractOp* CreateOperation() override {
-    // TODO(srbs): Should the lifetime of this op be tied to the context.
-    return new GraphOp(graph_.get());
+  void Release() override { delete this; }
+
+  TracingOperation* CreateOperation() override {
+    return new GraphOperation(graph_.get());
   }
 
-  void ExecuteOperation(AbstractOp* op, int num_inputs,
-                        AbstractTensor* const* inputs, OutputList* o,
-                        TF_Status* s) override {
-    auto* graph_op = dyncast<GraphOp>(op);
-    if (graph_op == nullptr) {
-      TF_SetStatus(s, TF_INVALID_ARGUMENT,
-                   "Unable to cast AbstractOp to TF_GraphOp.");
-      return;
+  Status AddParameter(DataType dtype, const PartialTensorShape& shape,
+                      TracingTensorHandle** output) override {
+    TracingOperationPtr operation(CreateOperation());
+    TF_RETURN_IF_ERROR(operation->Reset("Placeholder", nullptr));
+    TF_RETURN_IF_ERROR(
+        operation->SetOpName(absl::StrCat("_input_", inputs_.size()).c_str()));
+    TF_RETURN_IF_ERROR(operation->SetAttrType("dtype", dtype));
+    if (!shape.unknown_rank()) {
+      TF_RETURN_IF_ERROR(operation->SetAttrShape(
+          "shape", reinterpret_cast<int64_t*>(shape.dim_sizes().data()),
+          shape.dims()));
     }
-    auto* tf_opdesc = graph_op->op_.release();
-    if (tf_opdesc == nullptr) {
-      TF_SetStatus(s, TF_INVALID_ARGUMENT, "AbstractOp is incomplete.");
-      return;
+    int num_outputs = 1;
+    std::vector<AbstractTensorHandle*> outputs(num_outputs);
+    TF_RETURN_IF_ERROR(operation->Execute(
+        absl::Span<AbstractTensorHandle*>(outputs), &num_outputs));
+
+    if (num_outputs != 1) {
+      return errors::Internal("Expected 1 output but found ", num_outputs);
     }
-    for (int i = 0; i < num_inputs; ++i) {
-      auto* graph_tensor = dyncast<GraphTensor>(inputs[i]);
-      if (!graph_tensor) {
-        TF_SetStatus(s, TF_INVALID_ARGUMENT,
-                     "Capturing eager tensors is not supported yet.");
-        return;
-      } else {
-        if (graph_tensor->ctx != this) {
-          TF_SetStatus(
-              s, TF_INVALID_ARGUMENT,
-              "Capturing tensors from other graphs is not supported yet.");
-          return;
-        }
-        TF_AddInput(tf_opdesc, graph_tensor->output);
-      }
+    auto* t = dyn_cast<GraphTensor>(outputs[0]);
+    if (!t) {
+      return tensorflow::errors::InvalidArgument(
+          "Unable to cast input to GraphTensor");
     }
-    auto* operation = TF_FinishOperation(tf_opdesc, s);
-    // TF_FinishOperation deletes `tf_opdesc` so clear its reference.
-    graph_op->op_ = nullptr;
-    if (TF_GetCode(s) != TF_OK) return;
-    int num_outputs = TF_OperationNumOutputs(operation);
-    o->outputs.clear();
-    o->outputs.reserve(num_outputs);
-    for (int i = 0; i < num_outputs; ++i) {
-      o->outputs.push_back(new GraphTensor({operation, i}, this));
-    }
+    inputs_.push_back(t->output_);
+    *output = tensorflow::down_cast<TracingTensorHandle*>(outputs[0]);
+    return Status::OK();
   }
 
-  AbstractTensor* AddParameter(TF_DataType dtype, TF_Status* s) override {
-    TF_OperationDescription* opdesc =
-        TF_NewOperation(graph_.get(), "Placeholder",
-                        absl::StrCat("_input_", inputs_.size()).c_str());
-    TF_SetAttrType(opdesc, "dtype", dtype);
-    auto* operation = TF_FinishOperation(opdesc, s);
-    if (!s->status.ok()) return nullptr;
-
-    inputs_.push_back(TF_Output{operation, 0});
-    return new GraphTensor(inputs_.back(), this);
-  }
-
-  AbstractFunction* Finalize(OutputList* outputs, TF_Status* s) override {
+  Status Finalize(OutputList* outputs, AbstractFunction** f) override {
     std::unique_ptr<GraphFunction> func(new GraphFunction);
     std::vector<TF_Output> graph_outputs;
     graph_outputs.reserve(outputs->outputs.size());
-    for (AbstractTensor* abstract_output : outputs->outputs) {
-      GraphTensor* output = dyncast<GraphTensor>(abstract_output);
+    for (auto* abstract_output : outputs->outputs) {
+      GraphTensor* output = dyn_cast<GraphTensor>(abstract_output);
       if (!output) {
-        TF_SetStatus(s, TF_UNIMPLEMENTED,
-                     "Returning a non-graph tensor from a function has not "
-                     "been implemented yet.");
-        return nullptr;
+        return errors::Unimplemented(
+            "Returning a non-graph tensor from a function has not "
+            "been implemented yet.");
       }
-      graph_outputs.push_back(output->output);
+      graph_outputs.push_back(output->output_);
     }
 
-    func->func = TF_GraphToFunction(
-        graph_.get(), name_, 0, -1, nullptr, inputs_.size(), inputs_.data(),
-        graph_outputs.size(), graph_outputs.data(), nullptr, nullptr, name_, s);
-    if (TF_GetCode(s) != TF_OK) return nullptr;
-    return func.release();
+    auto s = TF_NewStatus();
+    func->func = TF_GraphToFunction(graph_.get(), name_.data(), 0, -1, nullptr,
+                                    inputs_.size(), inputs_.data(),
+                                    graph_outputs.size(), graph_outputs.data(),
+                                    nullptr, nullptr, name_.data(), s);
+    TF_RETURN_IF_ERROR(StatusFromTF_Status(s));
+    TF_DeleteStatus(s);
+    *f = func.release();
+    return Status::OK();
   }
 
-  void RegisterFunction(AbstractFunction* func, TF_Status* s) override {
-    TF_SetStatus(s, TF_UNIMPLEMENTED,
-                 "Registering graph functions has not been implemented yet.");
+  Status RegisterFunction(AbstractFunction* func) override {
+    return errors::Unimplemented(
+        "Registering graph functions has not been implemented yet.");
   }
 
-  ~GraphContext() override {}
-
-  static constexpr ExecutionContextKind kKind = kGraphContext;
+  Status RemoveFunction(const string& func) override {
+    return errors::Unimplemented(
+        "GraphContext::RemoveFunction has not been implemented yet.");
+  }
+  // For LLVM style RTTI.
+  static bool classof(const AbstractContext* ptr) {
+    return ptr->getKind() == kGraph;
+  }
 
  private:
   std::unique_ptr<TF_Graph, decltype(&TF_DeleteGraph)> graph_;
   std::vector<TF_Output> inputs_;
-  const char* name_;
+  string name_;
 };
 
-static ExecutionContext* GraphTracingFactory(const char* name, TF_Status* s) {
+static TracingContext* GraphTracingFactory(const char* name, TF_Status* s) {
   return new GraphContext(name);
 }
 
 // Register the tracing implemented in this file as the default tracing engine.
 static bool register_tracing = [] {
   RegisterTracingEngineFactory("graphdef", GraphTracingFactory);
-  SetDefaultTracingEngine("graphdef");
+  SetDefaultTracingEngine("graphdef").IgnoreError();
   return true;
 }();
 
-}  // namespace internal
+}  // namespace graph
+}  // namespace tracing
 }  // namespace tensorflow

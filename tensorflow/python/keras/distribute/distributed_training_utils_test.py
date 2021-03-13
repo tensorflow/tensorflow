@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.keras import callbacks
-from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.keras.distribute import distributed_training_utils_v1
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam as v1_adam
@@ -39,7 +39,7 @@ class DistributedTrainingUtilsTest(test.TestCase):
         callbacks.RemoteMonitor()
     ]
 
-    distributed_training_utils.validate_callbacks(
+    distributed_training_utils_v1.validate_callbacks(
         supported_predefined_callbacks, adam.Adam())
 
     unsupported_predefined_callbacks = [
@@ -48,10 +48,10 @@ class DistributedTrainingUtilsTest(test.TestCase):
     ]
 
     for callback in unsupported_predefined_callbacks:
-      with self.assertRaisesRegexp(
-          ValueError, 'You must specify a Keras Optimizer V2'):
-        distributed_training_utils.validate_callbacks([callback],
-                                                      v1_adam.AdamOptimizer())
+      with self.assertRaisesRegex(ValueError,
+                                  'You must specify a Keras Optimizer V2'):
+        distributed_training_utils_v1.validate_callbacks(
+            [callback], v1_adam.AdamOptimizer())
 
 
 if __name__ == '__main__':

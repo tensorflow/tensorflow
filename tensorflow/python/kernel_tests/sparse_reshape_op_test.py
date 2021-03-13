@@ -71,14 +71,14 @@ class SparseReshapeTest(test.TestCase):
   def testRaisesIfMoreThanOneInferredDim(self):
     sp_input = sparse_tensor.SparseTensor.from_value(
         self._SparseTensorValue_2x3x4())
-    with self.assertRaisesRegexp(ValueError, "At most one dimension can"):
+    with self.assertRaisesRegex(ValueError, "At most one dimension can"):
       sparse_ops.sparse_reshape(sp_input, shape=(-1, 2, -1))
 
   @test_util.run_deprecated_v1
   def testRaisesIfInferredShapeNotPossible(self):
     sp_input = sparse_tensor.SparseTensor.from_value(
         self._SparseTensorValue_2x3x4())
-    with self.assertRaisesRegexp(ValueError, "Cannot reshape"):
+    with self.assertRaisesRegex(ValueError, "Cannot reshape"):
       sparse_ops.sparse_reshape(sp_input, shape=(-1, 7))
 
   @test_util.run_deprecated_v1
@@ -94,7 +94,7 @@ class SparseReshapeTest(test.TestCase):
     self.assertAllEqual((2, 3 * 4), sp_output.shape)
 
   def testSameShape(self):
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(input_val, [5, 6])
 
@@ -105,7 +105,7 @@ class SparseReshapeTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testFeedSameShape(self):
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(sp_input, [5, 6])
@@ -117,7 +117,7 @@ class SparseReshapeTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testWorksWellWithTfShape(self):
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6()
       shape = array_ops.shape(sp_input)  # tf.shape generates int32 output
@@ -130,7 +130,7 @@ class SparseReshapeTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testFeedSameShapeWithInferredDim(self):
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(sp_input, [-1, 6])
@@ -142,7 +142,7 @@ class SparseReshapeTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testFeedNewShapeSameRank(self):
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(sp_input, [3, 10])
@@ -156,7 +156,7 @@ class SparseReshapeTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testFeedNewShapeSameRankWithInferredDim(self):
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(sp_input, [3, -1])
@@ -169,7 +169,7 @@ class SparseReshapeTest(test.TestCase):
       self.assertAllEqual(output_val.dense_shape, [3, 10])
 
   def testUpRank(self):
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(input_val, [2, 3, 5])
 
@@ -182,7 +182,7 @@ class SparseReshapeTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testFeedUpRank(self):
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(sp_input, [2, 3, 5])
@@ -196,7 +196,7 @@ class SparseReshapeTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testFeedUpRankWithInferredDim(self):
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(sp_input, [2, -1, 5])
@@ -210,7 +210,7 @@ class SparseReshapeTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testFeedDownRank(self):
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_2x3x4()
       sp_output = sparse_ops.sparse_reshape(sp_input, [6, 4])
@@ -224,7 +224,7 @@ class SparseReshapeTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testFeedDownRankWithInferredDim(self):
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_2x3x4()
       sp_output = sparse_ops.sparse_reshape(sp_input, [6, -1])
@@ -238,7 +238,7 @@ class SparseReshapeTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testFeedMultipleInferredDims(self):
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(sp_input, [4, -1, -1])
@@ -249,12 +249,12 @@ class SparseReshapeTest(test.TestCase):
   def testProvideStaticallyMismatchedSizes(self):
     input_val = self._SparseTensorValue_5x6()
     sp_input = sparse_tensor.SparseTensor.from_value(input_val)
-    with self.assertRaisesRegexp(ValueError, "Cannot reshape"):
+    with self.assertRaisesRegex(ValueError, "Cannot reshape"):
       sparse_ops.sparse_reshape(sp_input, [4, 7])
 
   @test_util.run_deprecated_v1
   def testFeedMismatchedSizes(self):
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(sp_input, [4, 7])
@@ -264,7 +264,7 @@ class SparseReshapeTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testFeedMismatchedSizesWithInferredDim(self):
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(sp_input, [4, -1])
@@ -273,7 +273,7 @@ class SparseReshapeTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testFeedPartialShapes(self):
-    with self.session(use_gpu=False):
+    with self.session():
       # Incorporate new rank into shape information if known
       sp_input = self._SparseTensorPlaceholder()
       sp_output = sparse_ops.sparse_reshape(sp_input, [2, 3, 5])
@@ -299,7 +299,7 @@ class SparseReshapeTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testFeedDenseReshapeSemantics(self):
-    with self.session(use_gpu=False) as sess:
+    with self.session() as sess:
       # Compute a random rank-5 initial shape and new shape, randomly sparsify
       # it, and check that the output of SparseReshape has the same semantics
       # as a dense reshape.

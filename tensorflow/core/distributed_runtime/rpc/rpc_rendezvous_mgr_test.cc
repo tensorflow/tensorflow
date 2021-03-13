@@ -331,8 +331,10 @@ TEST_F(RpcRendezvousMgrTest, RemoteRecvAsyncMany) {
           [&mu_, &status, &counter](const Status& s, const Rendezvous::Args&,
                                     const Rendezvous::Args&, const Tensor&,
                                     const bool) {
-            mutex_lock l(mu_);
-            status.Update(s);
+            {
+              mutex_lock l(mu_);
+              status.Update(s);
+            }
             counter.DecrementCount();
           });
     }

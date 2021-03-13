@@ -33,14 +33,7 @@ TfLiteStatus Pool2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   int tensor_id = inputs->data[0];
   const auto& data_tensor = context->tensors[tensor_id];
   AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
-  TF_LITE_ENSURE_STATUS(
-      ComputeMinAndMaxQuantValues(data_tensor, &data_min_, &data_max_));
-  auto* data_min_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, (char*)&data_min_, sizeof(data_min_));
-  auto* data_max_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, (char*)&data_max_, sizeof(data_max_));
-  AddInput(TensorID(data_min_const->GetID(), 0));
-  AddInput(TensorID(data_max_const->GetID(), 0));
+  TF_LITE_ENSURE_STATUS(ComputeAndAddMinAndMax(context, data_tensor));
 
   const TfLitePoolParams* pool_params =
       reinterpret_cast<const TfLitePoolParams*>(builtin_data_);

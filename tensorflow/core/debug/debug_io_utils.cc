@@ -378,9 +378,9 @@ Status DebugIO::PublishDebugMetadata(
       // Determine the path (if any) in the grpc:// URL, and add it as a field
       // of the JSON string.
       const string address = url.substr(strlen(DebugIO::kFileURLScheme));
-      const string path = address.find("/") == string::npos
+      const string path = address.find('/') == string::npos
                               ? ""
-                              : address.substr(address.find("/"));
+                              : address.substr(address.find('/'));
       grpc_event.set_wall_time(event.wall_time());
       LogMessage* log_message_grpc = grpc_event.mutable_log_message();
       log_message_grpc->set_message(

@@ -22,15 +22,16 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -134,7 +135,7 @@ Value SliceRankedTensor(OpBuilder* builder, Value input,
   // the input tensor's dimensions, return 0-valued tensor of the requested
   // shape.
   ArrayRef<int64_t> input_shape = GetRankedTensorShape(input);
-  for (int i = 0; i < input_shape.size(); i++) {
+  for (int i = 0, end = input_shape.size(); i < end; i++) {
     if (begin_values[i] < 0 ||
         (begin_values[i] + size_values[i] > input_shape[i])) {
       return CreateF32SplatConst(builder, size_shape, 0, location);
@@ -382,8 +383,8 @@ void ConvertLSTMCellSimpleToFusedLSTM::UpdateFuncSignature() {
   auto input_types = fused_func_op_.getType().getInputs();
   auto output_type = mlir::RankedTensorType::get(
       output_shape, input_.getType().cast<RankedTensorType>().getElementType());
-  fused_func_op_.setType(mlir::FunctionType::get(input_types, output_type,
-                                                 fused_func_op_.getContext()));
+  fused_func_op_.setType(mlir::FunctionType::get(fused_func_op_.getContext(),
+                                                 input_types, output_type));
 }
 
 LogicalResult ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
@@ -430,15 +431,15 @@ LogicalResult ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
       func_output_shape,
       input_.getType().cast<RankedTensorType>().getElementType());
 
-  auto tensor_cast = builder_.create<mlir::TensorCastOp>(
-      fused_func_op_.getLoc(), lstm_.getResult(), func_result_type);
+  auto tensor_cast = builder_.create<mlir::tensor::CastOp>(
+      fused_func_op_.getLoc(), func_result_type, lstm_.getResult());
   builder_.create<mlir::ReturnOp>(fused_func_op_.getLoc(),
                                   tensor_cast.getResult());
   return success();
 }
 
 LogicalResult ConvertLSTMCellSimpleToFusedLSTM::InitializeFromFuncAttributes() {
-  auto attr = fused_func_op_.getAttrOfType<StringAttr>(kTFImplements);
+  auto attr = fused_func_op_->getAttrOfType<StringAttr>(kTFImplements);
   if (!attr) {
     return fused_func_op_.emitError()
            << "Invalid function attribute, expected " << kTFImplements
@@ -639,7 +640,7 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
 
   // TFL lstm only supports time-majored inputs, so if it's not time-majored,
   // we will transpose the inputs and outputs.
-  auto time_major_attr = func_op.getAttrOfType<BoolAttr>("tf.time_major");
+  auto time_major_attr = func_op->getAttrOfType<BoolAttr>("tf.time_major");
   if (time_major_attr == nullptr) return failure();
 
   bool time_majored = time_major_attr.getValue();
@@ -654,7 +655,7 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
 
   // Handle go_backwards:
   // LSTM in Keras semantic will reverse the input sequence if it's go_backwards
-  auto go_backwards_attr = func_op.getAttrOfType<BoolAttr>("tf.go_backwards");
+  auto go_backwards_attr = func_op->getAttrOfType<BoolAttr>("tf.go_backwards");
 
   if (go_backwards_attr != nullptr && go_backwards_attr.getValue()) {
     int time_dim = time_majored ? 0 : 1;
@@ -744,7 +745,12 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
       /*cell_layer_norm_coefficients=*/none,
       /*output_layer_norm_coefficients=*/none, builder->getStringAttr("TANH"),
       builder->getF32FloatAttr(10.0), builder->getF32FloatAttr(0.0),
-      builder->getBoolAttr(time_majored));
+      builder->getBoolAttr(time_majored),
+      /*input_to_input_intermediate=*/mlir::TypeAttr(),
+      /*input_to_forget_intermediate=*/mlir::TypeAttr(),
+      /*input_to_cell_intermediate=*/mlir::TypeAttr(),
+      /*input_to_output_intermediate=*/mlir::TypeAttr(),
+      /*effective_hidden_scale_intermediate=*/mlir::TypeAttr());
 
   auto final_output_full_sequences = lstm.getResult();
 
@@ -815,8 +821,8 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
   }
 
   // Update function signatures.
-  func_op.setType(mlir::FunctionType::get(func_op.getType().getInputs(),
-                                          output_types, func_op.getContext()));
+  func_op.setType(mlir::FunctionType::get(
+      func_op.getContext(), func_op.getType().getInputs(), output_types));
 
   builder->create<mlir::ReturnOp>(func_op.getLoc(), outputs);
   return success();

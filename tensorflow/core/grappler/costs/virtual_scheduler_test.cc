@@ -205,6 +205,26 @@ TEST_F(ReadyNodeManagerTest, AddAndRemoveMultipleLIFOManager) {
   EXPECT_TRUE(manager.Empty());
 }
 
+TEST_F(ReadyNodeManagerTest, MergeOrderInLIFOManager) {
+  LIFOManager manager = LIFOManager();
+  node3_.set_op("Merge");
+  manager.AddNode(&node1_);
+  manager.AddNode(&node2_);
+  manager.AddNode(&node3_);
+  manager.AddNode(&node4_);
+
+  // Merge node (node3) will be scheduled at the end (even though it's added
+  // after nodde2).
+  EXPECT_EQ(manager.GetCurrNode()->name(), "Node4");
+  manager.RemoveCurrNode();
+  EXPECT_EQ(manager.GetCurrNode()->name(), "Node2");
+  manager.RemoveCurrNode();
+  EXPECT_EQ(manager.GetCurrNode()->name(), "Node1");
+  manager.RemoveCurrNode();
+  EXPECT_EQ(manager.GetCurrNode()->name(), "Node3");
+  manager.RemoveCurrNode();
+}
+
 TEST_F(ReadyNodeManagerTest, GetSingleNodeFirstReadyManager) {
   FirstReadyManager manager;
   TF_EXPECT_OK(manager.Init(&node_states_));
@@ -755,14 +775,15 @@ class VirtualSchedulerTest : public ::testing::Test {
     auto z = ops::RandomUniform(s.WithOpName("z"), {10, 10, 10, 10}, DT_FLOAT);
     auto w = ops::RandomUniform(s.WithOpName("w"), {10, 10, 10, 10}, DT_FLOAT);
     OutputList input_tensors = {x, y, z, w};
-    auto out = ops::AddN(s.WithOpName("out"), input_tensors);
+    auto add = ops::AddN(s.WithOpName("add"), input_tensors);
+    auto out = ops::Identity(s.WithOpName("out"), add);
 
     grappler_item_ = absl::make_unique<GrapplerItem>();
     TF_CHECK_OK(s.ToGraphDef(&grappler_item_->graph));
     grappler_item_->id = "test_addn_graph";
     grappler_item_->fetch = {"out"};
 
-    dependency_["out"] = {"x", "y", "z", "w"};
+    dependency_["out"] = {"x", "y", "z", "w", "add"};
   }
 
   // Graph with some placeholder feed nodes that are not in the fetch fan-in.
@@ -906,11 +927,29 @@ node {
     }
   }
   attr {
+    key: "_output_shapes"
+    value {
+      list { shape {
+        dim { size: 128 }
+        dim { size: 32 }
+      }}}
+  }
+  attr {
+    key: "shape"
+    value {
+      list { shape {
+        dim { size: 128 }
+        dim { size: 32 }
+      }}}
+  }
+  attr {
     key: "value"
     value {
       tensor {
         dtype: DT_FLOAT
         tensor_shape {
+          dim { size: 128 }
+          dim { size: 32 }
         }
         float_val: 3.1415
       }
@@ -927,6 +966,22 @@ node {
     value {
       type: DT_FLOAT
     }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list { shape {
+        dim { size: 128 }
+        dim { size: 32 }
+      }}}
+  }
+  attr {
+    key: "shape"
+    value {
+      list { shape {
+        dim { size: 128 }
+        dim { size: 32 }
+      }}}
   }
   attr {
     key: "client_terminated"
@@ -968,6 +1023,22 @@ node {
     value {
       b: false
     }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list { shape {
+        dim { size: 128 }
+        dim { size: 32 }
+      }}}
+  }
+  attr {
+    key: "shape"
+    value {
+      list { shape {
+        dim { size: 128 }
+        dim { size: 32 }
+      }}}
   }
   attr {
     key: "recv_device"
@@ -2452,17 +2523,68 @@ TEST_F(VirtualSchedulerTest, MemoryUsage) {
   // out node adds 4 tensors, each with 10x10x10x10, so the peak memory usage
   // is 4 x the input tensor size while executing the out node.
   int64 one_input_node_size = 4 * 10 * 10 * 10 * 10;
-  const std::vector<string> expected_names = {"x", "y", "z", "w"};
+  const std::vector<string> expected_names = {"x", "y", "z", "w", "add"};
   EXPECT_EQ(expected_names.size() * one_input_node_size,
             cpu_state.max_memory_usage);
   ValidateMemoryUsageSnapshot(expected_names, 0 /* port_num_expected */,
                               cpu_state.mem_usage_snapshot_at_peak);
+
+  // Total 10 nodes: Four const, x, y, z, w, add, out.
+  ASSERT_EQ(cpu_state.temporary_memory_usage_trace.size(), 10);
+  const std::pair<std::string, int64_t>& x_usage =
+      cpu_state.temporary_memory_usage_trace.at(4);
+  EXPECT_EQ(x_usage.first, "x");
+  EXPECT_EQ(x_usage.second, one_input_node_size);
+  const std::pair<std::string, int64_t>& add_usage =
+      cpu_state.temporary_memory_usage_trace.at(8);
+  EXPECT_EQ(add_usage.first, "add");
+  EXPECT_EQ(add_usage.second, 5 * one_input_node_size);
+  const std::pair<std::string, int64_t>& out_usage =
+      cpu_state.temporary_memory_usage_trace.at(9);
+  EXPECT_EQ(out_usage.first, "out");
+  EXPECT_EQ(out_usage.second, one_input_node_size);
   ExpectUnorderedMapEq(
       {std::make_pair("/job:localhost/replica:0/task:0/cpu:0", 64)},
       scheduler_->GetPersistentMemoryUsage());
   ExpectUnorderedMapEq(
-      {std::make_pair("/job:localhost/replica:0/task:0/cpu:0", 160000)},
+      {std::make_pair("/job:localhost/replica:0/task:0/cpu:0", 200000)},
       scheduler_->GetPeakMemoryUsage());
+}
+
+TEST_F(VirtualSchedulerTest, MemoryUsageForStreamingOps) {
+  // Init.
+  CreateGrapplerItemWithAddN();
+  auto& graph = grappler_item_->graph;
+  // Nodes add and out are placed on CPU1.
+  // Nodes x, y are allocate in memory, while Nodes z and w are streaming nodes.
+  for (auto& node : *graph.mutable_node()) {
+    if (node.name() == "out" || node.name() == "add") {
+      node.set_device(kCPU1);
+    }
+    if (node.name() == "z" || node.name() == "w")
+      (*node.mutable_attr())[kStreaming].mutable_list()->add_b(true);
+  }
+
+  InitScheduler();
+
+  // Run the scheduler.
+  auto ops_executed = RunScheduler("");
+
+  const auto* device_states = scheduler_->GetDeviceStates();
+  const auto& cpu_state_0 = device_states->at(kCPU0);
+  const auto& cpu_state_1 = device_states->at(kCPU1);
+  // All tensors are of the same size, 10 x 10 x 10 x 10.
+  int64 one_input_node_size = 4 * 10 * 10 * 10 * 10;
+  const std::vector<string> cpu_0_expected_tensors = {"x", "y"};
+  const std::vector<string> cpu_1_expected_tensors = {"x", "y", "add"};
+  EXPECT_EQ(cpu_0_expected_tensors.size() * one_input_node_size,
+            cpu_state_0.max_memory_usage);
+  EXPECT_EQ(cpu_1_expected_tensors.size() * one_input_node_size,
+            cpu_state_1.max_memory_usage);
+  // After the graph is executed, at the end, memory usage for the device
+  // should be zero.
+  EXPECT_EQ(cpu_state_0.memory_usage, 0);
+  EXPECT_EQ(cpu_state_1.memory_usage, 0);
 }
 
 TEST_F(VirtualSchedulerTest, UnnecessaryFeedNodes) {
@@ -2875,9 +2997,10 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
   // Same number of _Send and _Recv.
   EXPECT_EQ(op_count.at(kSend), op_count.at(kRecv));
 
-  // Expect 4 Send and Recvs each: port 0, 1, and, 2, and control dependency.
-  EXPECT_EQ(op_count.at(kRecv), 4);
-  EXPECT_EQ(op_count.at(kSend), 4);
+  // Expect 3 Send and Recvs each: port 0, 1, and, 2.
+  // Control dependency bypasses the channel.
+  EXPECT_EQ(op_count.at(kRecv), 3);
+  EXPECT_EQ(op_count.at(kSend), 3);
 
   // Helper lambda for extracting output Tensor size.
   auto get_output_size = [this, ops_executed](const string& name) -> int64 {
@@ -2899,9 +3022,6 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
   EXPECT_EQ(get_output_size(send_op_names[1]), 4 * depth_in_);
   EXPECT_EQ(get_output_size(recv_op_names[2]), 4 * depth_in_);
   EXPECT_EQ(get_output_size(send_op_names[2]), 4 * depth_in_);
-  // Control dependency size is 4B.
-  EXPECT_EQ(get_output_size(recv_op_names[-1]), 4);
-  EXPECT_EQ(get_output_size(send_op_names[-1]), 4);
 }
 
 TEST_F(VirtualSchedulerTest, GraphWithSendRecv) {
@@ -2988,7 +3108,7 @@ TEST_F(VirtualSchedulerTest, AddMergeSwitch) {
   // Run the scheduler. The current VirtualScheduler, w/o annotation, triggers
   // both outputs of Switch; then Merge (as long as one input is ready, it's z
   // is ready, if we just use num_inputs_ready counter, the final Add becomes
-  // ready. possible to skipt scheduling z. (Need to use CompositeNodeManager
+  // ready. possible to skip scheduling z. (Need to use CompositeNodeManager
   // to test this case).
   auto ops_executed = RunScheduler("");
 

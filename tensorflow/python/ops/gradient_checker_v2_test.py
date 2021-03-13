@@ -234,7 +234,7 @@ class GradientCheckerTest(test.TestCase):
     x = constant_op.constant(
         np.random.random_sample((0, 3)), dtype=dtypes.float32)
     bad = r"Empty gradient has wrong shape: expected \(0, 3\), got \(3, 0\)"
-    with self.assertRaisesRegexp(ValueError, bad):
+    with self.assertRaisesRegex(ValueError, bad):
       gradient_checker.compute_gradient(f, [x])
 
   def testNaNGradFails(self):
@@ -259,7 +259,7 @@ class GradientCheckerTest(test.TestCase):
         *gradient_checker.compute_gradient(f, [x]))
     # Typical test would assert error < max_err, so assert this test would
     # raise AssertionError, since NaN is not < 1.0.
-    with self.assertRaisesRegexp(AssertionError, "nan not less than 1.0"):
+    with self.assertRaisesRegex(AssertionError, "nan not less than 1.0"):
       self.assertLess(error, 1.0)
 
   def testGradGrad(self):

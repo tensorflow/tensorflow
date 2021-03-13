@@ -251,14 +251,14 @@ class PyFuncTest(PyFuncTestBase):
       y, = script_ops.py_func(read_object_array, [],
                               [dtypes.string])
       z, = script_ops.py_func(read_and_return_strings, [x, y], [dtypes.string])
-      self.assertListEqual(list(z.eval()), [b"hello there", b"hi ya"])
+      self.assertListEqual(list(self.evaluate(z)), [b"hello there", b"hi ya"])
 
   @test_util.run_v1_only("b/120545219")
   def testStringPadding(self):
     correct = [b"this", b"is", b"a", b"test"]
     with self.cached_session():
       s, = script_ops.py_func(lambda: [correct], [], [dtypes.string])
-      self.assertAllEqual(s.eval(), correct)
+      self.assertAllEqual(s, correct)
 
   @test_util.run_v1_only("b/120545219")
   def testStringPaddingAreConvertedToBytes(self):
@@ -266,7 +266,7 @@ class PyFuncTest(PyFuncTestBase):
     correct = [b"this", b"is", b"a", b"test"]
     with self.cached_session():
       s, = script_ops.py_func(lambda: [inp], [], [dtypes.string])
-      self.assertAllEqual(s.eval(), correct)
+      self.assertAllEqual(s, correct)
 
   @test_util.run_v1_only("b/120545219")
   def testNulTerminatedStrings(self):
@@ -274,7 +274,7 @@ class PyFuncTest(PyFuncTestBase):
     correct = [b"this", b"is", b"a", b"test"]
     with self.cached_session():
       s, = script_ops.py_func(lambda: [inp], [], [dtypes.string])
-      self.assertAllEqual(s.eval(), correct)
+      self.assertAllEqual(s, correct)
 
   @test_util.run_v1_only("b/120545219")
   def testLarge(self):
@@ -308,7 +308,7 @@ class PyFuncTest(PyFuncTestBase):
         return correct
 
       z, = script_ops.py_func(unicode_string, [], [dtypes.string])
-      self.assertEqual(z.eval(), correct.encode("utf8"))
+      self.assertEqual(self.evaluate(z), correct.encode("utf8"))
 
   @test_util.run_v1_only("b/120545219")
   def testBadNumpyReturnType(self):
@@ -320,8 +320,8 @@ class PyFuncTest(PyFuncTestBase):
 
       y, = script_ops.py_func(bad, [], [dtypes.float32])
 
-      with self.assertRaisesRegexp(errors.InternalError,
-                                   "Unsupported numpy data type"):
+      with self.assertRaisesRegex(errors.InternalError,
+                                  "Unsupported numpy data type"):
         self.evaluate(y)
 
   @test_util.run_v1_only("b/120545219")
@@ -334,8 +334,8 @@ class PyFuncTest(PyFuncTestBase):
 
       z, = script_ops.py_func(bad, [], [dtypes.int64])
 
-      with self.assertRaisesRegexp(errors.InternalError,
-                                   "Unsupported object type"):
+      with self.assertRaisesRegex(errors.InternalError,
+                                  "Unsupported object type"):
         self.evaluate(z)
 
   @test_util.run_v1_only("b/120545219")
@@ -597,6 +597,7 @@ class EagerPyFuncTest(PyFuncTestBase):
         self.assertIsNone(ret)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_tfrt("b/180469928")
   def testEagerPyFuncInDefun(self):
     with test_util.device(use_gpu=True):
       def wrapper():
@@ -634,8 +635,8 @@ class EagerPyFuncTest(PyFuncTestBase):
     def return_variable():
       return resource_variable_ops.ResourceVariable(0.0)
 
-    with self.assertRaisesRegexp(errors.UnknownError,
-                                 "Attempting to return a variable"):
+    with self.assertRaisesRegex(errors.UnknownError,
+                                "Attempting to return a variable"):
       output = script_ops.eager_py_func(
           return_variable, inp=[], Tout=dtypes.float32)
       self.evaluate(output)
@@ -755,7 +756,7 @@ class EagerPyFuncTest(PyFuncTestBase):
       y = script_ops.eager_py_func(func=f, inp=[x], Tout=dtypes.float32)
       z = script_ops.eager_py_func(func=g, inp=[y], Tout=dtypes.float32)
 
-    with self.session(use_gpu=True) as sess:
+    with self.session() as sess:
       output = sess.run(z, feed_dict={x: 3.0})
       self.assertEqual(output, 18.0)
 
@@ -773,7 +774,7 @@ class EagerPyFuncTest(PyFuncTestBase):
   def testEagerPyFuncNotACallable(self):
     x = constant_op.constant("x", dtype=dtypes.string)
 
-    with self.assertRaisesRegexp(ValueError, "callable"):
+    with self.assertRaisesRegex(ValueError, "callable"):
       _ = script_ops.eager_py_func(x, inp=[x], Tout=dtypes.string)
 
 

@@ -72,6 +72,7 @@ patch_am_sdk() {
 patch_kissfft() {
   sed -i -E $'s@#ifdef FIXED_POINT@// Patched automatically by download_dependencies.sh so default is 16 bit.\\\n#ifndef FIXED_POINT\\\n#define FIXED_POINT (16)\\\n#endif\\\n// End patch.\\\n\\\n#ifdef FIXED_POINT@g' tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h
 
+  sed -i -E '/^#include <sys\/types.h>/d' tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h
   # Fix for https://github.com/mborgerding/kissfft/issues/20
   sed -i -E $'s@#ifdef FIXED_POINT@#ifdef FIXED_POINT\\\n#include <stdint.h> /* Patched. */@g' tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h
 
@@ -115,7 +116,12 @@ download_and_extract() {
   local tempdir=$(mktemp -d)
   local tempdir2=$(mktemp -d)
   local tempfile=${tempdir}/temp_file
-  local curl_retries=3
+  local curl_retries=5
+
+  # Destionation already downloaded.
+  if [ -d ${dir} ]; then
+      exit 0
+  fi
 
   command -v curl >/dev/null 2>&1 || {
     echo >&2 "The required 'curl' tool isn't installed. Try 'apt-get install curl'."; exit 1;
@@ -125,16 +131,21 @@ download_and_extract() {
   mkdir -p "${dir}"
   # We've been seeing occasional 56 errors from valid URLs, so set up a retry
   # loop to attempt to recover from them.
-  for (( i=1; i<=$curl_retries; ++i ))
-  do
-    curl -Ls --fail --retry 5 "${url}" > ${tempfile}
+  for (( i=1; i<=$curl_retries; ++i )); do
+    # We have to use this approach because we normally halt the script when
+    # there's an error, and instead we want to catch errors so we can retry.
+    set +ex
+    curl -LsS --fail --retry 5 "${url}" > ${tempfile}
     CURL_RESULT=$?
-    if [[ $CURL_RESULT -eq 0 ]]
-    then
+    set -ex
+
+    # Was the command successful? If so, continue.
+    if [[ $CURL_RESULT -eq 0 ]]; then
       break
     fi
-    if [[ ( $CURL_RESULT -ne 56 ) || ( $i -eq $curl_retries ) ]]
-    then
+
+    # Keep trying if we see the '56' error code.
+    if [[ ( $CURL_RESULT -ne 56 ) || ( $i -eq $curl_retries ) ]]; then
       echo "Error $CURL_RESULT downloading '${url}'"
       exit 1
     fi
@@ -171,6 +182,7 @@ download_and_extract() {
     fi
   else
     echo "Error unsupported archive type. Failed to extract tool after download."
+    exit 1
   fi
   rm -rf ${tempdir2} ${tempdir}
 

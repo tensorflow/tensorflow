@@ -1,0 +1,75 @@
+path: "tensorflow.__internal__.distribute.combinations"
+tf_module {
+  member {
+    name: "central_storage_strategy_with_gpu_and_cpu"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
+    name: "central_storage_strategy_with_two_gpus"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
+    name: "cloud_tpu_strategy"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
+    name: "default_strategy"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
+    name: "mirrored_strategy_with_cpu_1_and_2"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
+    name: "mirrored_strategy_with_gpu_and_cpu"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
+    name: "mirrored_strategy_with_one_cpu"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
+    name: "mirrored_strategy_with_one_gpu"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
+    name: "mirrored_strategy_with_two_gpus"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
+    name: "multi_worker_mirrored_2x1_cpu"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
+    name: "multi_worker_mirrored_2x1_gpu"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
+    name: "multi_worker_mirrored_2x2_gpu"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
+    name: "one_device_strategy"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
+    name: "one_device_strategy_gpu"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
+    name: "tpu_strategy"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
+    name: "tpu_strategy_one_core"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member {
+    name: "tpu_strategy_packed_var"
+    mtype: "<class \'tensorflow.python.distribute.combinations.NamedDistribution\'>"
+  }
+  member_method {
+    name: "generate"
+    argspec: "args=[\'combinations\', \'test_combinations\'], varargs=None, keywords=None, defaults=[\'()\'], "
+  }
+}

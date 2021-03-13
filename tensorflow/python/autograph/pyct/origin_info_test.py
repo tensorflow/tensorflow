@@ -146,6 +146,19 @@ class OriginInfoTest(test.TestCase):
     self.assertEqual(ret_origin.source_code_line, '  return x  # comment')
     self.assertEqual(ret_origin.comment, 'comment')
 
+  def test_resolve_with_trailing_garbage(self):
+    # This comment will be missed because the tokenizer fails to reach it.
+    source = '   lambda: foo([], bar=1)), baz=2)()'
+    clean_source = 'lambda: foo([], bar=1)'
+    node = parser.parse(clean_source).value
+    origin_info.resolve(node, source, 'test_file', 10, 10)
+
+    def_origin = anno.getanno(node, anno.Basic.ORIGIN)
+    self.assertEqual(def_origin.loc.lineno, 10)
+    self.assertEqual(def_origin.loc.col_offset, 10)
+    self.assertEqual(def_origin.source_code_line, source)
+    self.assertIsNone(def_origin.comment)
+
   def test_resolve_entity(self):
     test_fn = basic_definitions.simple_function
     node, source = parser.parse_entity(

@@ -51,6 +51,21 @@ def graph_only_combinations():
   return combinations.combine(tf_api_version=[1, 2], mode="graph")
 
 
+def v1_only_combinations():
+  """Returns the default test combinations for v1 only tf.data tests."""
+  return combinations.combine(tf_api_version=1, mode=["eager", "graph"])
+
+
+def v2_only_combinations():
+  """Returns the default test combinations for v2 only tf.data tests."""
+  return combinations.combine(tf_api_version=2, mode=["eager", "graph"])
+
+
+def v2_eager_only_combinations():
+  """Returns the default test combinations for v2 eager only tf.data tests."""
+  return combinations.combine(tf_api_version=2, mode="eager")
+
+
 class DatasetTestBase(test.TestCase):
   """Base class for dataset tests."""
 
@@ -133,6 +148,10 @@ class DatasetTestBase(test.TestCase):
   def getDatasetOutput(self, dataset, requires_initialization=False):
     get_next = self.getNext(
         dataset, requires_initialization=requires_initialization)
+    return self.getIteratorOutput(get_next)
+
+  def getIteratorOutput(self, get_next):
+    """Evaluates `get_next` until end of input, returning the results."""
     results = []
     while True:
       try:
@@ -325,6 +344,7 @@ class DatasetTestBase(test.TestCase):
       dataset = dataset_fn(delay_ms)
       actual = self.getDatasetOutput(dataset)
       self.assertCountEqual(expected_elements, actual)
-      if actual[0] != expected_elements[0]:
-        return
+      for i in range(len(actual)):
+        if actual[i] != expected_elements[i]:
+          return
     self.fail("Failed to observe nondeterministic ordering")

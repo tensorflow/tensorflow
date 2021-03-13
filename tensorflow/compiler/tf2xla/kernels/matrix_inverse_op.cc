@@ -42,15 +42,15 @@ class MatrixInverseOp : public XlaOpKernel {
     xla::XlaOp input = xla::MaybeTransposeInMinorDims(ctx->Input(0), adjoint_);
 
     // TODO(b/111271662): Using LU decomposition instead of QR should be faster.
-    auto qr = xla::QRDecomposition(input, /*full_matrices=*/false);
-    OP_REQUIRES_OK(ctx, qr.status());
+    xla::XlaOp q, r;
+    QrExplicit(input, /*full_matrices=*/false, q, r);
 
-    xla::XlaOp output = xla::TriangularSolve(
-        qr.ValueOrDie().r, xla::TransposeInMinorDims(qr.ValueOrDie().q),
-        /*left_side=*/true,
-        /*lower=*/false, /*unit_diagonal=*/false,
-        /*transpose_a=*/
-        xla::TriangularSolveOptions::NO_TRANSPOSE);
+    xla::XlaOp output =
+        xla::TriangularSolve(r, xla::TransposeInMinorDims(q),
+                             /*left_side=*/true,
+                             /*lower=*/false, /*unit_diagonal=*/false,
+                             /*transpose_a=*/
+                             xla::TriangularSolveOptions::NO_TRANSPOSE);
     ctx->SetOutput(0, output);
   }
 

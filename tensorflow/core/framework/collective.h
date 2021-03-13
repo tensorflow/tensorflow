@@ -36,6 +36,7 @@ class Device;
 class DeviceMgr;
 class GetStepSequenceRequest;
 class GetStepSequenceResponse;
+class NcclManager;
 class Tensor;
 
 // Types of supported collective operations.
@@ -43,6 +44,7 @@ enum CollectiveType {
   REDUCTION_COLLECTIVE = 0,
   BROADCAST_COLLECTIVE,
   GATHER_COLLECTIVE,
+  PERMUTE_COLLECTIVE,
   UNDEFINED_COLLECTIVE,
 };
 
@@ -61,6 +63,17 @@ struct CollGroupParams {
   int32 group_key;
   int32 group_size;
   DeviceType device_type;
+  // Fully qualified name of device for each member, in default rank order.
+  std::vector<string> device_names;
+  // Task name prefix of corresponding device name.
+  std::vector<string> task_names;
+  // True if every task has the same number of devices.
+  bool same_num_devices_per_task = false;
+  // Task -> number of devices on that task.
+  std::unordered_map<string, int32> num_devices_per_task;
+  // If passed in to GPUOptions in ConfigProto, defines a good ring order for
+  // GPUs.  Assumes same GPU configuration at each worker.
+  string gpu_ring_order = "";
   int32 num_tasks;  // number of distinct tasks in group
   CollGroupRuntimeDetails runtime_details;
   string ToString() const;
@@ -89,26 +102,26 @@ struct CollImplDetails {
 };
 
 // Data common to all members of a collective instance.
+// TODO(b/163171014) Refactor this struct to not be a union of all fields.
 struct CollInstanceParams {
   // Identifies all participating graph nodes.
   int32 instance_key = -1;
   CollectiveType type = UNDEFINED_COLLECTIVE;
   DataType data_type = DT_FLOAT;
   TensorShape shape = {0};
-  // Fully qualified name of device for each member, in default rank order.
-  std::vector<string> device_names;
-  // Task name prefix of corresponding device name.
-  std::vector<string> task_names;
-  // True if every task has the same number of devices.
-  bool same_num_devices_per_task = false;
-  // Task -> number of devices on that task.
-  std::unordered_map<string, int32> num_devices_per_task;
-  // If passed in to GPUOptions in ConfigProto, defines a good ring order for
-  // GPUs.  Assumes same GPU configuration at each worker.
-  string gpu_ring_order = "";
   CollImplDetails impl_details;
   string ToString() const;
   CollInstanceParams& operator=(const struct CollInstanceParams& other);
+  std::vector<string> devices;  // permuter only
+
+  // For permuter only
+  // Each rank in the permutation is a receiver.
+  // Indices of each rank means a sender to that rank.
+  // Example: permutation = {2,0,1} means
+  //   rank 0 sends to rank 2
+  //   rank 1 sends to rank 0
+  //   rank 2 sends to rank 1
+  std::vector<int> permutation;
 };
 
 // Data common to all instance members in the same task.
@@ -119,7 +132,7 @@ struct CollTaskParams {
 };
 
 // Unique to a single CollectiveOp node.
-struct CollectiveParams {
+struct CollectiveParams : public core::RefCounted {
   CollGroupParams group;
   CollInstanceParams instance;
   CollTaskParams task;
@@ -130,8 +143,8 @@ struct CollectiveParams {
   int source_rank = -1;    // broadcast only
   // Rank of this device in each subdivision permutation.
   std::vector<int> subdiv_rank;
-  std::unique_ptr<OpKernel> merge_op;  // reduction only
-  std::unique_ptr<OpKernel> final_op;  // reduction only
+  OpKernel* merge_op = nullptr;  // reduction only
+  OpKernel* final_op = nullptr;  // reduction only
   string ToString() const;
 };
 
@@ -142,25 +155,18 @@ class DeviceResolverInterface {
  public:
   virtual ~DeviceResolverInterface() {}
 
-  // Collects DeviceAttributes protobufs from all of the devices identified
-  // in 'col_params'.
-  virtual void GetAllDeviceAttributesAsync(
-      const std::vector<string>& devices, const std::vector<string>& tasks,
-      std::vector<DeviceAttributes>* attributes,
-      const StatusCallback& done) = 0;
+  // Populates *attributes with the DeviceAttributes of the specified device.
+  virtual Status GetDeviceAttributes(const string& device,
+                                     DeviceAttributes* attributes) = 0;
 
-  // Populate *attributes with the DeviceAttributes of the specified
-  // device.
-  virtual void GetDeviceAttributesAsync(const string& device,
-                                        const string& task,
-                                        DeviceAttributes* attributes,
-                                        const StatusCallback& done) = 0;
+  // Returns all device attributes of a task.
+  virtual Status GetAllDeviceAttributes(
+      const string& task, std::vector<DeviceAttributes>* attributes) = 0;
 
-  // Clear the cache of device data belonging to the specified task.
-  virtual void ClearTask(const string& task) = 0;
-
-  // Clear the cache of all device data.
-  virtual void ClearCache() = 0;
+  // Updates device attributes. It returns error if any device already
+  // exists in the DeviceResolver and has a different incarnation.
+  virtual Status UpdateDeviceAttributes(
+      const std::vector<DeviceAttributes>& attributes) = 0;
 };
 
 // Interface that provides resolution of shared CollectiveParams fields.
@@ -171,7 +177,8 @@ class ParamResolverInterface {
   // Called by each collective op at first execution in order to fill out
   // the CollectiveParams structure with data gathered from the full
   // (maybe distributed) collection of peer nodes.
-  virtual void CompleteParamsAsync(const string& device, CollectiveParams* cp,
+  virtual void CompleteParamsAsync(const DeviceAttributes& device,
+                                   CollectiveParams* cp,
                                    CancellationManager* cancel_mgr,
                                    const StatusCallback& done) = 0;
 
@@ -188,6 +195,9 @@ class ParamResolverInterface {
                                      CompleteInstanceResponse* response,
                                      CancellationManager* cancel_mgr,
                                      const StatusCallback& done) = 0;
+
+  // Aborts the resolver. After abortion the resolver can no longer be used.
+  virtual void StartAbort(const Status& s) = 0;
 };
 
 // Graphs which utilize Collective Ops in a common instance must
@@ -220,6 +230,8 @@ class StepSequenceInterface {
   virtual void RetireStepId(int64 graph_key, int64 step_id) = 0;
 };
 
+class NcclCommunicatorInterface;
+
 // Interface that provides access to per-step CollectiveExecutor
 // instances and various distributed resolution capabilities.
 class CollectiveExecutorMgrInterface : public StepSequenceInterface {
@@ -237,15 +249,17 @@ class CollectiveExecutorMgrInterface : public StepSequenceInterface {
   virtual ParamResolverInterface* GetParamResolver() const = 0;
 
   virtual DeviceResolverInterface* GetDeviceResolver() const = 0;
+
+  virtual NcclCommunicatorInterface* GetNcclCommunicator() const = 0;
 };
 
 // Interface that a Collective Op implementation uses to exchange data
 // with peers.  Note that data exchange is currently limited to types
 // for which DMAHelper::CanUseDMA() returns true, i.e.  dense numeric
 // types.
-class PeerAccessInterface {
+class CollectiveRemoteAccess {
  public:
-  virtual ~PeerAccessInterface() {}
+  virtual ~CollectiveRemoteAccess() {}
 
   virtual void RecvFromPeer(const string& peer_device, const string& peer_task,
                             bool peer_is_local, const string& key,
@@ -254,6 +268,7 @@ class PeerAccessInterface {
                             Tensor* to_tensor,
                             const DeviceLocality& client_locality,
                             int dev_to_dev_stream_index,
+                            CancellationManager* cancellation_manager,
                             const StatusCallback& done) = 0;
 
   virtual void PostToPeer(const string& peer_device, const string& peer_task,
@@ -262,29 +277,36 @@ class PeerAccessInterface {
                           const AllocatorAttributes& from_alloc_attr,
                           const Tensor* from_tensor,
                           const DeviceLocality& client_locality,
+                          CancellationManager* cancellation_manager,
                           const StatusCallback& done) = 0;
 
-  // Runs the potentially-blocking closure/expensive callback.
-  virtual void RunClosure(std::function<void()> closure) = 0;
-};
+  // Checks the health of a collective peer. It probes the peer to see if it is
+  // alive. Note that if a peer has restarted, it's considered a different one,
+  // so CheckPeerHealth fails.
+  virtual void CheckPeerHealth(const string& peer_task, int64 timeout_in_ms,
+                               const StatusCallback& done) = 0;
 
-class PerStepCollectiveRemoteAccess;
+  virtual BufRendezvous* buf_rendezvous() = 0;
+
+  virtual void StartAbort(const Status& s) = 0;
+};
 
 // A step-specific object that can execute a collective operation completely
 // described by a CollectiveParams object.
-class CollectiveExecutor : public PeerAccessInterface, public core::RefCounted {
+class CollectiveExecutor : public core::RefCounted {
  public:
   virtual void StartAbort(const Status& s) {}
 
   virtual void ExecuteAsync(OpKernelContext* ctx,
-                            const CollectiveParams& col_params,
+                            const CollectiveParams* col_params,
                             const string& exec_key, StatusCallback done) {
     done(errors::Internal(
         "A collective Op has been called in a context in which "
         "a CollectiveExecutor has not been provided."));
   }
 
-  virtual void CompleteParamsAsync(const string& device, CollectiveParams* cp,
+  virtual void CompleteParamsAsync(const DeviceAttributes& device,
+                                   CollectiveParams* cp,
                                    CancellationManager* cancel_mgr,
                                    StatusCallback done) {
     done(errors::Internal(
@@ -292,7 +314,10 @@ class CollectiveExecutor : public PeerAccessInterface, public core::RefCounted {
         "a CollectiveExecutor has not been provided."));
   }
 
-  virtual PerStepCollectiveRemoteAccess* remote_access() { return nullptr; }
+  // Runs the potentially-blocking closure/expensive callback.
+  virtual void RunClosure(std::function<void()> closure) = 0;
+
+  virtual CollectiveRemoteAccess* remote_access() { return nullptr; }
 
   // `WaitForDependencies` and `Launched` are used for fine-grained control of
   // execution order between collective instances.  These functions are intended
@@ -336,38 +361,13 @@ class CollectiveExecutor : public PeerAccessInterface, public core::RefCounted {
   TF_DISALLOW_COPY_AND_ASSIGN(CollectiveExecutor);
 };
 
-// Interface of a helper object that provides a CollectiveExecutor with
-// all of the remote access it needs.
-class CollectiveRemoteAccess : public PeerAccessInterface,
-                               public DeviceResolverInterface {
- public:
-  virtual ~CollectiveRemoteAccess() {}
-
-  virtual BufRendezvous* buf_rendezvous() = 0;
-};
-
-// A per-step version of CollectiveRemoteAccess that cleans up outstanding
-// communications in case step execution is abandoned.
-class PerStepCollectiveRemoteAccess : public CollectiveRemoteAccess {
- public:
-  virtual ~PerStepCollectiveRemoteAccess() {}
-  virtual void StartAbort(const Status& s) = 0;
-};
-
-class CollectiveContext {
- public:
-  CollectiveContext(CollectiveExecutor* col_exec, const DeviceMgr* dev_mgr,
-                    OpKernelContext* ctx, OpKernelContext::Params* op_params,
-                    const CollectiveParams& col_params, const string& exec_key,
-                    int64 step_id, const Tensor* input, Tensor* output);
-
-  virtual ~CollectiveContext() = default;
-
-  CollectiveExecutor* col_exec;        // Not owned
-  const DeviceMgr* dev_mgr;            // Not owned
-  OpKernelContext* op_ctx;             // Not owned
-  OpKernelContext::Params* op_params;  // Not owned
-  const CollectiveParams& col_params;
+struct CollectiveContext {
+  CollectiveExecutor* col_exec;                  // Not owned
+  NcclCommunicatorInterface* nccl_communicator;  // Not owned
+  const DeviceMgr* dev_mgr;                      // Not owned
+  OpKernelContext* op_ctx;                       // Not owned
+  OpKernelContext::Params* op_params;            // Not owned
+  const CollectiveParams* col_params;            // Not owned
   const string exec_key;
   const int64 step_id;
   const Tensor* input;  // Not owned
@@ -375,13 +375,30 @@ class CollectiveContext {
   Device* device;       // The device for which this instance labors
   const string device_name;
   DeviceLocality device_locality;
+
+  CollectiveContext(CollectiveExecutor* col_exec,
+                    NcclCommunicatorInterface* nccl_communicator,
+                    const DeviceMgr* dev_mgr, OpKernelContext* ctx,
+                    OpKernelContext::Params* op_params,
+                    const CollectiveParams* col_params, const string& exec_key,
+                    int64 step_id, const Tensor* input, Tensor* output);
+};
+
+class NcclCommunicatorInterface {
+ public:
+  virtual ~NcclCommunicatorInterface() = default;
+
+  virtual void Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
+                       StatusCallback done) = 0;
+
+  virtual void StartAbort(const Status& s) = 0;
 };
 
 // Interface of a Collective Op implementation.  Each specific CollectiveOp will
 // implement this interface and register the implementation via the
 // CollectiveRegistry detailed below.  See common_runtime/ring_reducer and
 // common_runtime/hierarchical_tree_broadcaster for examples.
-class CollectiveImplementationInterface {
+class CollectiveImplementationInterface : public core::RefCounted {
  public:
   virtual ~CollectiveImplementationInterface() = default;
 
@@ -399,7 +416,8 @@ class CollectiveImplementationInterface {
   // Called from CollectiveExecutor right before calling Run().  The
   // CollectiveContext passed in must outlive the CollectiveImplementation
   // object.
-  virtual Status InitializeCollectiveContext(CollectiveContext* col_ctx) = 0;
+  virtual Status InitializeCollectiveContext(
+      std::shared_ptr<CollectiveContext> col_ctx) = 0;
 
   // Performs collective implementation specific group initialization.  The
   // intention is to do group-specific initialization of runtime details for the

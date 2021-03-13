@@ -27,6 +27,7 @@ from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.platform import test
@@ -109,63 +110,63 @@ class KerasOptimizersTest(keras_parameterized.TestCase):
 
   def test_sgd(self):
     with self.cached_session():
-      self._test_optimizer(keras.optimizers.SGD())
+      self._test_optimizer(optimizer_v1.SGD())
 
   def test_momentum(self):
     with self.cached_session():
       self._test_optimizer(
-          keras.optimizers.SGD(lr=0.01, momentum=0.9, nesterov=True))
+          optimizer_v1.SGD(lr=0.01, momentum=0.9, nesterov=True))
 
   def test_rmsprop(self):
     with self.cached_session():
-      self._test_optimizer(keras.optimizers.RMSprop())
-      self._test_optimizer(keras.optimizers.RMSprop(decay=1e-3))
+      self._test_optimizer(optimizer_v1.RMSprop())
+      self._test_optimizer(optimizer_v1.RMSprop(decay=1e-3))
 
   def test_adagrad(self):
     with self.cached_session():
-      self._test_optimizer(keras.optimizers.Adagrad())
-      self._test_optimizer(keras.optimizers.Adagrad(decay=1e-3))
+      self._test_optimizer(optimizer_v1.Adagrad())
+      self._test_optimizer(optimizer_v1.Adagrad(decay=1e-3))
 
   def test_adadelta(self):
     with self.cached_session():
-      self._test_optimizer(keras.optimizers.Adadelta(), target=0.6)
+      self._test_optimizer(optimizer_v1.Adadelta(), target=0.6)
       # Accuracy seems dependent on the initialization. Even adding
       # tf.compat.v1.Print nodes in the graph seemed to affect the
       # initialization seed, and hence the accuracy.
-      self._test_optimizer(keras.optimizers.Adadelta(decay=1e-3), target=0.4)
+      self._test_optimizer(optimizer_v1.Adadelta(decay=1e-3), target=0.4)
 
   def test_adam(self):
     with self.cached_session():
-      self._test_optimizer(keras.optimizers.Adam())
+      self._test_optimizer(optimizer_v1.Adam())
       # Accuracy seems dependent on the seed initialization.
       # TODO(b/121051441): fix test flakiness.
-      self._test_optimizer(keras.optimizers.Adam(decay=1e-3), target=0.73)
-      self._test_optimizer(keras.optimizers.Adam(amsgrad=True))
+      self._test_optimizer(optimizer_v1.Adam(decay=1e-3), target=0.73)
+      self._test_optimizer(optimizer_v1.Adam(amsgrad=True))
 
   def test_adamax(self):
     with self.cached_session():
-      self._test_optimizer(keras.optimizers.Adamax())
-      self._test_optimizer(keras.optimizers.Adamax(decay=1e-3))
+      self._test_optimizer(optimizer_v1.Adamax())
+      self._test_optimizer(optimizer_v1.Adamax(decay=1e-3))
 
   def test_nadam(self):
     with self.cached_session():
-      self._test_optimizer(keras.optimizers.Nadam())
+      self._test_optimizer(optimizer_v1.Nadam())
 
   def test_clipnorm(self):
     with self.cached_session():
       self._test_optimizer(
-          keras.optimizers.SGD(lr=0.01, momentum=0.9, clipnorm=0.5))
+          optimizer_v1.SGD(lr=0.01, momentum=0.9, clipnorm=0.5))
 
   def test_clipvalue(self):
     with self.cached_session():
       self._test_optimizer(
-          keras.optimizers.SGD(lr=0.01, momentum=0.9, clipvalue=0.5))
+          optimizer_v1.SGD(lr=0.01, momentum=0.9, clipvalue=0.5))
 
   def test_tf_optimizer(self):
     if context.executing_eagerly():
       self.skipTest(
           'v1 optimizer does not run in eager mode')
-    optimizer = keras.optimizers.TFOptimizer(AdamOptimizer(0.01))
+    optimizer = optimizer_v1.TFOptimizer(AdamOptimizer(0.01))
     model = keras.models.Sequential()
     model.add(keras.layers.Dense(
         2, input_shape=(3,), kernel_constraint=keras.constraints.MaxNorm(1)))
@@ -194,7 +195,7 @@ class KerasOptimizersTest(keras_parameterized.TestCase):
           'v1 optimizer does not run in eager mode')
     graph = ops.Graph()
     with graph.as_default():
-      optimizer = keras.optimizers.TFOptimizer(AdamOptimizer(0.01))
+      optimizer = optimizer_v1.TFOptimizer(AdamOptimizer(0.01))
       keras.backend.track_tf_optimizer(optimizer)
       optimizer_weak = weakref.ref(optimizer)
     graph_weak = weakref.ref(graph)
@@ -209,7 +210,7 @@ class KerasOptimizersTest(keras_parameterized.TestCase):
       self.skipTest(
           'v1 optimizer does not run in eager mode')
     with self.cached_session():
-      optimizer = keras.optimizers.TFOptimizer(AdamOptimizer(0.01))
+      optimizer = optimizer_v1.TFOptimizer(AdamOptimizer(0.01))
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(
           2, input_shape=(3,), kernel_constraint=keras.constraints.MaxNorm(1)))
@@ -229,9 +230,9 @@ class KerasOptimizersTest(keras_parameterized.TestCase):
 
   def test_negative_clipvalue_or_clipnorm(self):
     with self.assertRaises(ValueError):
-      _ = keras.optimizers.SGD(lr=0.01, clipvalue=-0.5)
+      _ = optimizer_v1.SGD(lr=0.01, clipvalue=-0.5)
     with self.assertRaises(ValueError):
-      _ = keras.optimizers.Adam(clipnorm=-2.0)
+      _ = optimizer_v1.Adam(clipnorm=-2.0)
 
   def test_mixed_precision_loss_scale_optimizer(self):
     if context.executing_eagerly():

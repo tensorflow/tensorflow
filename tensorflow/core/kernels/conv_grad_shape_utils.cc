@@ -53,7 +53,7 @@ namespace {
 Status ConvBackpropExtractAndVerifyDimension(
     StringPiece label, const TensorShape& input_shape,
     const TensorShape& filter_shape, const TensorShape& output_shape,
-    const gtl::ArraySlice<int32>& dilations, const std::vector<int32>& strides,
+    const gtl::ArraySlice<int32> dilations, const std::vector<int32>& strides,
     Padding padding, int64 padding_before, int64 padding_after, int spatial_dim,
     int filter_spatial_dim, ConvBackpropSpatialDimension* dim) {
   dim->input_size = input_shape.dim_size(spatial_dim);
@@ -115,10 +115,10 @@ Status ConvBackpropComputeDimensionsV2(
   dims->batch_size = input_shape.dim_size(batch_dim);
   if (dims->batch_size != out_backprop_shape.dim_size(batch_dim)) {
     return errors::InvalidArgument(
-        label, ": input and out_backprop must have the same batch size",
-        "input batch: ", dims->batch_size,
-        "outbackprop batch: ", out_backprop_shape.dim_size(batch_dim),
-        " batch_dim: ", batch_dim);
+        label, ": input and out_backprop must have the same batch size.",
+        " Input batch: ", dims->batch_size,
+        ", outbackprop batch: ", out_backprop_shape.dim_size(batch_dim),
+        ", batch_dim: ", batch_dim);
   }
 
   int feature_dim = GetTensorFeatureDimIndex(num_dims, data_format);

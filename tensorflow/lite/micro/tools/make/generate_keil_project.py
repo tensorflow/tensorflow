@@ -27,7 +27,7 @@ import six
 
 
 def sanitize_xml(unsanitized):
-  """Uses a whitelist to avoid generating bad XML."""
+  """Uses a allowlist to avoid generating bad XML."""
   return re.sub(r'[^a-zA-Z0-9+_\-/\\.]', '', six.ensure_str(unsanitized))
 
 

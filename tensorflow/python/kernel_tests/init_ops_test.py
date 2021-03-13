@@ -102,7 +102,7 @@ def _init_sampler(tc, init, num):
   """
 
   def func():
-    with tc.test_session(use_gpu=True):
+    with tc.test_session():
       return init([num]).eval()
 
   return func
@@ -112,71 +112,71 @@ class ConstantInitializersTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testZerosInitializer(self):
-    with self.session(use_gpu=True):
+    with self.session():
       shape = [2, 3]
       x = variable_scope.get_variable(
           "x", shape=shape, initializer=init_ops.zeros_initializer())
-      x.initializer.run()
-      self.assertAllEqual(x.eval(), np.zeros(shape))
+      self.evaluate(x.initializer)
+      self.assertAllEqual(x, np.zeros(shape))
 
   @test_util.run_deprecated_v1
   def testOnesInitializer(self):
-    with self.session(use_gpu=True):
+    with self.session():
       shape = [2, 3]
       x = variable_scope.get_variable(
           "x", shape=shape, initializer=init_ops.ones_initializer())
-      x.initializer.run()
-      self.assertAllEqual(x.eval(), np.ones(shape))
+      self.evaluate(x.initializer)
+      self.assertAllEqual(x, np.ones(shape))
 
   @test_util.run_deprecated_v1
   def testConstantZeroInitializer(self):
-    with self.session(use_gpu=True):
+    with self.session():
       shape = [2, 3]
       x = variable_scope.get_variable(
           "x", shape=shape, initializer=init_ops.constant_initializer(0.0))
-      x.initializer.run()
-      self.assertAllEqual(x.eval(), np.zeros(shape))
+      self.evaluate(x.initializer)
+      self.assertAllEqual(x, np.zeros(shape))
 
   @test_util.run_deprecated_v1
   def testConstantOneInitializer(self):
-    with self.session(use_gpu=True):
+    with self.session():
       shape = [2, 3]
       x = variable_scope.get_variable(
           "x", shape=shape, initializer=init_ops.constant_initializer(1.0))
-      x.initializer.run()
-      self.assertAllEqual(x.eval(), np.ones(shape))
+      self.evaluate(x.initializer)
+      self.assertAllEqual(x, np.ones(shape))
 
   @test_util.run_deprecated_v1
   def testConstantIntInitializer(self):
-    with self.session(use_gpu=True):
+    with self.session():
       shape = [2, 3]
       x = variable_scope.get_variable(
           "x",
           shape=shape,
           dtype=dtypes.int32,
           initializer=init_ops.constant_initializer(7))
-      x.initializer.run()
+      self.evaluate(x.initializer)
       self.assertEqual(x.dtype.base_dtype, dtypes.int32)
-      self.assertAllEqual(x.eval(), 7 * np.ones(shape, dtype=np.int32))
+      self.assertAllEqual(x, 7 * np.ones(shape, dtype=np.int32))
 
   @test_util.run_deprecated_v1
   def testConstantTupleInitializer(self):
-    with self.session(use_gpu=True):
+    with self.session():
       shape = [3]
       x = variable_scope.get_variable(
           "x",
           shape=shape,
           dtype=dtypes.int32,
           initializer=init_ops.constant_initializer((10, 20, 30)))
-      x.initializer.run()
+      self.evaluate(x.initializer)
       self.assertEqual(x.dtype.base_dtype, dtypes.int32)
-      self.assertAllEqual(x.eval(), [10, 20, 30])
+      self.assertAllEqual(x, [10, 20, 30])
 
   def _testNDimConstantInitializer(self, name, value, shape, expected):
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       init = init_ops.constant_initializer(value, dtype=dtypes.int32)
       x = variable_scope.get_variable(name, shape=shape, initializer=init)
-      x.initializer.run()
+      self.evaluate(x.initializer)
 
       actual = array_ops.reshape(x, [-1]).eval()
       self.assertEqual(len(actual), len(expected))
@@ -198,10 +198,10 @@ class ConstantInitializersTest(test.TestCase):
 
   def _testNDimConstantInitializerLessValues(self, name, value, shape,
                                              expected):
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       init = init_ops.constant_initializer(value, dtype=dtypes.int32)
       x = variable_scope.get_variable(name, shape=shape, initializer=init)
-      x.initializer.run()
+      self.evaluate(x.initializer)
 
       actual = array_ops.reshape(x, [-1]).eval()
       self.assertGreater(len(actual), len(expected))
@@ -225,7 +225,7 @@ class ConstantInitializersTest(test.TestCase):
 
   def _testNDimConstantInitializerMoreValues(self, value, shape):
     ops.reset_default_graph()
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       init = init_ops.constant_initializer(value, dtype=dtypes.int32)
       self.assertRaises(
           ValueError,
@@ -245,11 +245,11 @@ class ConstantInitializersTest(test.TestCase):
 
   def testInvalidValueTypeForConstantInitializerCausesTypeError(self):
     c = constant_op.constant([1.0, 2.0, 3.0])
-    with self.assertRaisesRegexp(TypeError,
-                                 r"Invalid type for initial value: .*Tensor.*"):
+    with self.assertRaisesRegex(TypeError,
+                                r"Invalid type for initial value: .*Tensor.*"):
       init_ops.constant_initializer(c, dtype=dtypes.float32)
     v = variables.Variable([3.0, 2.0, 1.0])
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, r"Invalid type for initial value: .*Variable.*"):
       init_ops.constant_initializer(v, dtype=dtypes.float32)
 
@@ -373,7 +373,7 @@ class UniformUnitScalingInitializationTest(test.TestCase):
           "x",
           shape=shape,
           initializer=init_ops.uniform_unit_scaling_initializer())
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllEqual(shape, self.evaluate(x).shape)
 
   @test_util.run_deprecated_v1
@@ -398,7 +398,7 @@ class VarianceScalingInitializationTest(test.TestCase):
     init = init_ops.variance_scaling_initializer(
         distribution="truncated_normal")
 
-    with self.session(use_gpu=True), \
+    with self.session(), \
       test.mock.patch.object(
           random_ops, "truncated_normal", wraps=random_ops.truncated_normal) \
           as mock_truncated_normal:
@@ -415,7 +415,7 @@ class VarianceScalingInitializationTest(test.TestCase):
     expect_var = 1. / shape[0]
     init = init_ops.variance_scaling_initializer(distribution="normal")
 
-    with self.session(use_gpu=True), \
+    with self.session(), \
       test.mock.patch.object(
           random_ops, "truncated_normal", wraps=random_ops.truncated_normal) \
           as mock_truncated_normal:
@@ -433,7 +433,7 @@ class VarianceScalingInitializationTest(test.TestCase):
     init = init_ops.variance_scaling_initializer(
         distribution="untruncated_normal")
 
-    with self.session(use_gpu=True), \
+    with self.session(), \
       test.mock.patch.object(
           random_ops, "random_normal", wraps=random_ops.random_normal) \
           as mock_random_normal:
@@ -450,7 +450,7 @@ class VarianceScalingInitializationTest(test.TestCase):
     expect_var = 1. / shape[0]
     init = init_ops.variance_scaling_initializer(distribution="uniform")
 
-    with self.session(use_gpu=True):
+    with self.session():
       x = init(shape).eval()
 
     self.assertNear(np.mean(x), expect_mean, err=1e-2)
@@ -461,7 +461,7 @@ class VarianceScalingInitializationTest(test.TestCase):
 class RangeTest(test.TestCase):
 
   def _Range(self, start, limit, delta):
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       tf_ans = math_ops.range(start, limit, delta, name="range")
       self.assertEqual([len(np.arange(start, limit, delta))],
                        tf_ans.get_shape())
@@ -481,8 +481,8 @@ class RangeTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testLimitOnly(self):
-    with self.session(use_gpu=True):
-      self.assertAllEqual(np.arange(5), math_ops.range(5).eval())
+    with self.session():
+      self.assertAllEqual(np.arange(5), math_ops.range(5))
 
   def testEmpty(self):
     for start in 0, 5:
@@ -910,7 +910,7 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
         outputs_2norm = linalg_ops.norm(outputs)
         ratio = outputs_2norm / inputs_2norm
         my_ops = variables.global_variables_initializer()
-        with self.session(use_gpu=True) as sess:
+        with self.session():
           self.evaluate(my_ops)
           # Check the shape of the outputs
           t = self.evaluate(outputs)
@@ -925,13 +925,13 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
     shape = [3, 3, 10, 10]
     count = 70
     tol = 1e-5
-    with self.session(use_gpu=True):
+    with self.session():
       for i in range(count):
         x = variable_scope.get_variable(
             "{}".format(i),
             shape=shape,
             initializer=init_ops.convolutional_delta_orthogonal)
-        x.initializer.run()
+        self.evaluate(x.initializer)
         y = self.evaluate(x)[1, 1, :, :]
         determinant = np.linalg.det(y)
         value += determinant
@@ -945,6 +945,8 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
       self.assertAllClose(abs_value, count, rtol=tol, atol=tol)
 
 
+@test_util.run_all_without_tensor_float_32(
+    "Tests convolutional_orthogonal_1d, which calls matmul")
 class ConvolutionOrthogonal1dInitializerTest(test.TestCase):
 
   @test_util.run_deprecated_v1
@@ -994,14 +996,14 @@ class ConvolutionOrthogonal1dInitializerTest(test.TestCase):
     shape = [3, 10, 10]
     count = 70
     tol = 1e-5
-    with self.session(use_gpu=True):
+    with self.session():
       for i in range(count):
         x = variable_scope.get_variable(
             "{}".format(i),
             shape=shape,
             initializer=init_ops.convolutional_orthogonal_1d)
-        x.initializer.run()
-        y = np.sum(x.eval(), axis=0)
+        self.evaluate(x.initializer)
+        y = np.sum(self.evaluate(x), axis=0)
         determinant = np.linalg.det(y)
         value += determinant
         abs_value += np.abs(determinant)
@@ -1061,7 +1063,7 @@ class ConvolutionOrthogonal1dInitializerTest(test.TestCase):
       outputs_2norm = linalg_ops.norm(outputs)
       ratio = outputs_2norm / inputs_2norm
       my_ops = variables.global_variables_initializer()
-      with self.session(use_gpu=True) as sess:
+      with self.session():
         self.evaluate(my_ops)
         # Check the shape of the outputs
         t = self.evaluate(outputs)
@@ -1165,7 +1167,7 @@ class ConvolutionOrthogonal2dInitializerTest(test.TestCase):
       outputs_2norm = linalg_ops.norm(outputs)
       ratio = outputs_2norm / inputs_2norm
       my_ops = variables.global_variables_initializer()
-      with self.session(use_gpu=True) as sess:
+      with self.session():
         self.evaluate(my_ops)
         # Check the shape of the outputs
         t = self.evaluate(outputs)
@@ -1174,6 +1176,8 @@ class ConvolutionOrthogonal2dInitializerTest(test.TestCase):
         self.assertAllClose(self.evaluate(ratio), gain, rtol=tol, atol=tol)
 
 
+@test_util.run_all_without_tensor_float_32(
+    "Tests convolutional_orthogonal_3d, which calls matmul")
 class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
 
   @test_util.run_deprecated_v1
@@ -1223,14 +1227,14 @@ class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
     shape = [3, 3, 3, 5, 5]
     count = 20
     tol = 1e-5
-    with self.session(use_gpu=True):
+    with self.session():
       for i in range(count):
         x = variable_scope.get_variable(
             "{}".format(i),
             shape=shape,
             initializer=init_ops.convolutional_orthogonal_3d)
-        x.initializer.run()
-        y = np.sum(x.eval(), axis=(0, 1, 2))
+        self.evaluate(x.initializer)
+        y = np.sum(self.evaluate(x), axis=(0, 1, 2))
         determinant = np.linalg.det(y)
         value += determinant
         abs_value += np.abs(determinant)
@@ -1298,7 +1302,7 @@ class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
       outputs_2norm = linalg_ops.norm(outputs)
       ratio = outputs_2norm / inputs_2norm
       my_ops = variables.global_variables_initializer()
-      with self.cached_session(use_gpu=True) as sess:
+      with self.cached_session():
         self.evaluate(my_ops)
         # Check the shape of the outputs
         t = self.evaluate(outputs)
@@ -1325,7 +1329,7 @@ class IdentityInitializerTest(test.TestCase):
     init = init_ops.identity_initializer()
     shape = (10, 5)
     with self.session(graph=ops.Graph(), use_gpu=True):
-      self.assertAllClose(init(shape).eval(), np.eye(*shape))
+      self.assertAllClose(init(shape), np.eye(*shape))
 
   @test_util.run_deprecated_v1
   def testGain(self):
@@ -1334,9 +1338,9 @@ class IdentityInitializerTest(test.TestCase):
       init_default = init_ops.identity_initializer(dtype=dtype)
       init_custom = init_ops.identity_initializer(gain=0.9, dtype=dtype)
       with self.session(graph=ops.Graph(), use_gpu=True):
-        self.assertAllClose(init_default(shape).eval(), np.eye(*shape))
+        self.assertAllClose(init_default(shape), np.eye(*shape))
       with self.session(graph=ops.Graph(), use_gpu=True):
-        self.assertAllClose(init_custom(shape).eval(), np.eye(*shape) * 0.9)
+        self.assertAllClose(init_custom(shape), np.eye(*shape) * 0.9)
 
   @test_util.run_deprecated_v1
   def testPartitions(self):
@@ -1347,8 +1351,8 @@ class IdentityInitializerTest(test.TestCase):
       with variable_scope.variable_scope(
           "foo", partitioner=partitioner, initializer=init):
         v = array_ops.identity(variable_scope.get_variable("bar", shape=shape))
-      variables.global_variables_initializer().run()
-      self.assertAllClose(v.eval(), np.eye(*shape))
+      self.evaluate(variables.global_variables_initializer())
+      self.assertAllClose(v, np.eye(*shape))
 
 
 if __name__ == "__main__":

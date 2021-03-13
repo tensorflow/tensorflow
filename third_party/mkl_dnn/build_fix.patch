@@ -1,0 +1,66 @@
+diff --git a/src/common/utils.hpp b/src/common/utils.hpp
+index b2d554ea3..155a6da0a 100644
+--- a/src/common/utils.hpp
++++ b/src/common/utils.hpp
+@@ -17,7 +17,17 @@
+ #ifndef COMMON_UTILS_HPP
+ #define COMMON_UTILS_HPP
+ 
++#if (__GNUC__ == 7)
++#pragma GCC push_options
++#pragma GCC optimize("O0")
++#endif
++
+ #include <atomic>
++
++#if (__GNUC__ == 7)
++#pragma GCC pop_options
++#endif
++
+ #include <cassert>
+ #include <cstddef>
+ #include <cstdint>
+diff -u a/src/cpu/x64/jit_avx512_core_amx_convolution.cpp b/src/cpu/x64/jit_avx512_core_amx_convolution.cpp
+--- a/src/cpu/x64/jit_avx512_core_amx_convolution.cpp
++++ b/src/cpu/x64/jit_avx512_core_amx_convolution.cpp
+@@ -38,10 +38,14 @@
+     (pd()->with_groups() ? (d).blk_off((g), __VA_ARGS__) \
+                          : (d).blk_off(__VA_ARGS__))
+
+-#define mem_blk_off(md, ndims, n, c, d, h, w) \
+-    (ndims) == 3 ? (md).blk_off((n), (c), (w)) \
+-                 : (ndims) == 4 ? (md).blk_off((n), (c), (h), (w)) \
+-                                : (md).blk_off((n), (c), (d), (h), (w))
++inline int mem_blk_off(const memory_desc_wrapper& md, int ndims, int n, int c,
++                       int d, int h, int w) {
++  switch (ndims) {
++    case 3: return md.blk_off((n), (c), (w));
++    case 4: return md.blk_off((n), (c), (h), (w));
++    default: return md.blk_off((n), (c), (d), (h), (w));
++  }
++}
+
+ template <data_type_t src_type, data_type_t wei_type, data_type_t dst_type>
+ void jit_avx512_core_amx_convolution_fwd_t<src_type, wei_type,
+diff -u a/src/cpu/x64/jit_avx512_core_amx_1x1_convolution.cpp b/src/cpu/x64/jit_avx512_core_amx_1x1_convolution.cpp
+--- a/src/cpu/x64/jit_avx512_core_amx_1x1_convolution.cpp
++++ b/src/cpu/x64/jit_avx512_core_amx_1x1_convolution.cpp
+@@ -38,10 +38,14 @@
+     (pd()->with_groups() ? (d).blk_off((g), __VA_ARGS__) \
+                          : (d).blk_off(__VA_ARGS__))
+
+-#define md_blk_off(md, ndims, n, c, d, h, w) \
+-    (ndims) == 3 ? (md).blk_off((n), (c), (w)) \
+-                 : (ndims) == 4 ? (md).blk_off((n), (c), (h), (w)) \
+-                                : (md).blk_off((n), (c), (d), (h), (w));
++inline int md_blk_off(const memory_desc_wrapper& md, int ndims, int n, int c,
++                       int d, int h, int w) {
++  switch (ndims) {
++    case 3: return md.blk_off((n), (c), (w));
++    case 4: return md.blk_off((n), (c), (h), (w));
++    default: return md.blk_off((n), (c), (d), (h), (w));
++  }
++}
+
+ template <data_type_t src_type, data_type_t wei_type, data_type_t dst_type>
+ void jit_avx512_core_amx_1x1_convolution_fwd_t<src_type, wei_type,

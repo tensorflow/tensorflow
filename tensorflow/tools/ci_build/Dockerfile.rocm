@@ -1,10 +1,12 @@
 # This Dockerfile provides a starting point for a ROCm installation of
 # MIOpen and tensorflow.
-FROM ubuntu:xenial
+FROM ubuntu:bionic
 MAINTAINER Jeff Poznanovic <jeffrey.poznanovic@amd.com>
 
-ARG DEB_ROCM_REPO=http://repo.radeon.com/rocm/apt/3.3/
-ARG ROCM_PATH=/opt/rocm-3.3.0
+ARG ROCM_DEB_REPO=http://repo.radeon.com/rocm/apt/4.0.1/
+ARG ROCM_BUILD_NAME=xenial
+ARG ROCM_BUILD_NUM=main
+ARG ROCM_PATH=/opt/rocm-4.0.1
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV TF_NEED_ROCM 1
@@ -13,15 +15,20 @@ RUN apt update && apt install -y wget software-properties-common
 
 # Add rocm repository
 RUN apt-get clean all
-RUN wget -qO - $DEB_ROCM_REPO/rocm.gpg.key | apt-key add -
-RUN sh -c  "echo deb [arch=amd64] $DEB_ROCM_REPO xenial main > /etc/apt/sources.list.d/rocm.list"
+RUN bin/bash -c 'if [[ $ROCM_DEB_REPO == http://repo.radeon.com/rocm/*  ]] ; then \
+      wget -qO - $ROCM_DEB_REPO/rocm.gpg.key | apt-key add -; \
+      echo "deb [arch=amd64] $ROCM_DEB_REPO $ROCM_BUILD_NAME $ROCM_BUILD_NUM" > /etc/apt/sources.list.d/rocm.list; \
+    else \
+      echo "deb [arch=amd64 trusted=yes] $ROCM_DEB_REPO $ROCM_BUILD_NAME $ROCM_BUILD_NUM" > /etc/apt/sources.list.d/rocm.list ; \
+    fi'
 
 # Install misc pkgs
 RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteractive apt-get install -y \
   build-essential \
-  clang-3.8 \
-  clang-format-3.8 \
-  clang-tidy-3.8 \
+  bsdmainutils \
+  clang-6.0 \
+  clang-format-6.0 \
+  clang-tidy-6.0 \
   cmake \
   cmake-qt-gui \
   ssh \
@@ -71,7 +78,7 @@ ENV PATH="$ROCM_PATH/bin:${PATH}"
 ENV PATH="$OPENCL_ROOT/bin:${PATH}"
 
 # Add target file to help determine which device(s) to build for
-RUN bash -c 'echo -e "gfx803\ngfx900\ngfx906" >> ${ROCM_PATH}/bin/target.lst'
+RUN bash -c 'echo -e "gfx803\ngfx900\ngfx906\ngfx908" >> ${ROCM_PATH}/bin/target.lst'
 
 # Need to explicitly create the $ROCM_PATH/.info/version file to workaround what seems to be a bazel bug
 # The env vars being set via --action_env in .bazelrc and .tf_configure.bazelrc files are sometimes
@@ -91,8 +98,6 @@ RUN touch ${ROCM_PATH}/.info/version
 COPY install/*.sh /install/
 ARG DEBIAN_FRONTEND=noninteractive
 RUN /install/install_bootstrap_deb_packages.sh
-RUN add-apt-repository -y ppa:openjdk-r/ppa && \
-    add-apt-repository -y ppa:george-edison55/cmake-3.x
 RUN /install/install_deb_packages.sh
 RUN /install/install_pip_packages.sh
 RUN /install/install_bazel.sh

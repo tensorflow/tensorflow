@@ -45,7 +45,7 @@ class ScopedAllocator {
   // instance.  It must be large enough to back all of the specified
   // (offset, byte) ranges of the fields.
   ScopedAllocator(const Tensor& backing_tensor, int32 scope_id,
-                  const string& name, const gtl::ArraySlice<Field> fields,
+                  const std::string& name, const gtl::ArraySlice<Field> fields,
                   int32 expected_call_count,
                   ScopedAllocatorContainer* container);
 
@@ -60,7 +60,7 @@ class ScopedAllocator {
 
   const Tensor& tensor() const { return backing_tensor_; }
 
-  const string& name() const { return name_; }
+  const std::string& name() const { return name_; }
 
  private:
   friend class ScopedAllocatorInstance;
@@ -71,7 +71,7 @@ class ScopedAllocator {
   Tensor backing_tensor_;
   TensorBuffer* tbuf_;
   int32 id_;
-  string name_;
+  std::string name_;
   ScopedAllocatorContainer* container_;
   std::vector<Field> fields_;
   mutex mu_;
@@ -111,7 +111,7 @@ class ScopedAllocatorInstance : public Allocator {
   size_t AllocatedSize(const void* ptr) const override { return 0; }
   int64 AllocationId(const void* ptr) const override { return 0; }
   size_t AllocatedSizeSlow(const void* ptr) const override { return 0; }
-  string Name() override;
+  std::string Name() override;
 
  private:
   mutex mu_;

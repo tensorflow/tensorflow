@@ -28,14 +28,15 @@ source tensorflow/lite/micro/tools/ci_build/helper_functions.sh
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
 
 TARGET=arduino
+OPTIMIZED_KERNEL_DIR=cmsis_nn
 
 # TODO(b/143715361): parallel builds do not work with generated files right now.
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile \
   TARGET=${TARGET} \
-  TAGS="portable_optimized" \
+  OPTIMIZED_KERNEL_DIR=${OPTIMIZED_KERNEL_DIR} \
   generate_arduino_zip
 
 readable_run tensorflow/lite/micro/tools/ci_build/install_arduino_cli.sh
 
 readable_run tensorflow/lite/micro/tools/ci_build/test_arduino_library.sh \
-  tensorflow/lite/micro/tools/make/gen/arduino_x86_64/prj/tensorflow_lite.zip
+  tensorflow/lite/micro/tools/make/gen/arduino_x86_64_default/prj/tensorflow_lite.zip

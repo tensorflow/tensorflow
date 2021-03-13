@@ -23,6 +23,9 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -236,6 +239,16 @@ StatusOr<TPUDeviceAssignment> GetTPUCompilationAndExecutionDevices(
 // Virtual device is used for evice assignment for executing ops on a specified
 // logical core.
 std::string GetDeviceAliasForLogicalCore(int core_index);
+
+// Parses TPU compilation and execution devices from a TPU cluster and returns
+// the host device for the head and tail computations. If the TPU computation is
+// replicated, kTPUReplicatedHost is returned instead.
+mlir::LogicalResult GetHostDeviceOutsideComputation(
+    mlir::TF::RuntimeDevices devices, mlir::tf_device::ClusterOp cluster,
+    std::string* host_device);
+
+// Checks if a device string is a TPU device.
+bool IsTPUDevice(llvm::StringRef device);
 
 }  // namespace tensorflow
 

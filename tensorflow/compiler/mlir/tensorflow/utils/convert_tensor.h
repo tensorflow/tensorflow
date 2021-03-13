@@ -48,6 +48,10 @@ PartialTensorShape ConvertTypeToTensorShape(const mlir::Type& type);
 // Converts an MLIR shaped type to a TensorFlow shape attribute.
 mlir::TF::ShapeAttr ConvertTypeToTensorShapeAttr(const mlir::Type& type);
 
+// Converts a TensorFlow shape attribute to an MLIR shape attribute.
+StatusOr<mlir::Attribute> ConvertTensorShapeProto(const TensorShapeProto& shape,
+                                                  mlir::MLIRContext* context);
+
 // Converts an MLIR elements attribute to a TensorFlow tensor proto.
 Status ConvertToTensorProto(mlir::ElementsAttr attr,
                             TensorProto* output_tensor);

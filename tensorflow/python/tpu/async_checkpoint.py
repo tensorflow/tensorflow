@@ -25,14 +25,18 @@ from __future__ import print_function
 import os
 import threading
 import time
+from typing import Any, List, Optional, Text
 
 from tensorflow.core.util import event_pb2
+from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import basic_session_run_hooks
+from tensorflow.python.training import monitored_session
+from tensorflow.python.training import saver as saver_lib
+from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
-from tensorflow.python.training.session_run_hook import SessionRunArgs
 from tensorflow.python.training.summary_io import SummaryWriterCache
 
 
@@ -40,13 +44,14 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
   """Saves checkpoints every N steps or seconds."""
 
   def __init__(self,
-               checkpoint_dir,
-               save_secs=None,
-               save_steps=None,
-               saver=None,
-               checkpoint_basename="model.ckpt",
-               scaffold=None,
-               listeners=None):
+               checkpoint_dir: Text,
+               save_secs: Optional[int] = None,
+               save_steps: Optional[int] = None,
+               saver: Optional[saver_lib.Saver] = None,
+               checkpoint_basename: Text = "model.ckpt",
+               scaffold: Optional[monitored_session.Scaffold] = None,
+               listeners: Optional[List[
+                   basic_session_run_hooks.CheckpointSaverListener]] = None):
     """Initializes a `CheckpointSaverHook`.
 
     Args:
@@ -98,7 +103,7 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
     for l in self._listeners:
       l.begin()
 
-  def after_create_session(self, session, coord):
+  def after_create_session(self, session: session_lib.Session, coord: Any):
     global_step = session.run(self._global_step_tensor)
 
     # We do write graph and saver_def at the first call of before_run.
@@ -122,10 +127,11 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
     self._save(session, global_step)
     self._timer.update_last_triggered_step(global_step)
 
-  def before_run(self, run_context):  # pylint: disable=unused-argument
-    return SessionRunArgs(self._global_step_tensor)
+  def before_run(self, run_context: Any):  # pylint: disable=unused-argument
+    return session_run_hook.SessionRunArgs(self._global_step_tensor)
 
-  def after_run(self, run_context, run_values):
+  def after_run(self, run_context: session_run_hook.SessionRunContext,
+                run_values: Any):
     global_step = run_context.session.run(self._global_step_tensor)
     if self._timer.should_trigger_for_step(global_step):
       self._timer.update_last_triggered_step(global_step)
@@ -133,7 +139,7 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
       if self._save(run_context.session, global_step):
         run_context.request_stop()
 
-  def end(self, session):
+  def end(self, session: session_lib.Session):
     if self._save_thread:
       logging.info("Waiting for any pending checkpoints to finish.")
       self._save_thread.join()

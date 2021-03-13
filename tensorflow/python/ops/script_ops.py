@@ -28,13 +28,13 @@ import weakref
 import numpy as np
 import six
 
-from tensorflow.python import _pywrap_py_func
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.lib.core import _pywrap_py_func
 from tensorflow.python.ops import gen_script_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat
@@ -71,7 +71,7 @@ def _maybe_copy_to_context_device(tensor, device_name):
 class EagerFunc(object):
   """A wrapper for a function owned by an EagerPyFunc."""
 
-  def __init__(self, func, Tout, is_grad_func):
+  def __init__(self, func, Tout, is_grad_func, use_tape_cache=True):
     """Constructs an EagerFunc.
 
     Args:
@@ -80,10 +80,14 @@ class EagerFunc(object):
         None.
       is_grad_func: Whether this EagerFunc is the gradient of another
         EagerPyFunc.
+      use_tape_cache: (Optional.) Whether to cache `func` in the `tape_cache`.
+        For additional information, see description of `_eager_py_func`.
+        This parameter should be removed once the #35084 issue is fixed.
     """
     self._func = func
     self._out_dtypes = Tout
     self._is_grad_func = is_grad_func
+    self._use_tape_cache = use_tape_cache
 
   def _convert(self, value, dtype):
     """Converts `value` to a tensor of type `dtype`, with error checking.
@@ -147,7 +151,8 @@ class EagerFunc(object):
         else:
           outputs = _maybe_copy_to_context_device(
               self._convert(ret, dtype=self._out_dtypes[0]), device_name)
-    tape_cache[compat.as_bytes(token)] = (tape, args, outputs)
+    if self._use_tape_cache:
+      tape_cache[compat.as_bytes(token)] = (tape, args, outputs)
     return outputs
 
 
@@ -277,7 +282,8 @@ def _internal_py_func(func,
                       stateful=None,
                       eager=False,
                       is_grad_func=False,
-                      name=None):
+                      name=None,
+                      use_tape_cache=True):
   """See documentation for py_func and eager_py_func."""
   if not callable(func):
     raise ValueError("Expected func to be callable, got func of type {}".format(
@@ -293,7 +299,7 @@ def _internal_py_func(func,
     Tout = [Tout]
 
   if eager:
-    func = EagerFunc(func, Tout, is_grad_func)
+    func = EagerFunc(func, Tout, is_grad_func, use_tape_cache=use_tape_cache)
 
   # Tying the registered function's lifetime with the current default graph is
   # not reliable. For example, Estimator-based binaries may switch graphs in
@@ -368,6 +374,58 @@ def _EagerPyFuncGrad(op, *dy):
         Tout=[tensor.dtype for tensor in op.inputs],
         eager=True,
         is_grad_func=True)
+
+
+def _eager_py_func(func, inp, Tout, name=None, use_tape_cache=True):
+  """Wraps a python function into a TensorFlow op that executes it eagerly.
+
+  This function is the internal implementation for `eager_py_func`, see the
+  `eager_py_func` docstring for the full description.
+
+  Note: this function as a layer of indirection was added with one
+  specific purpose: as a workaround for github issue #35084.
+  It does all the same as `eager_py_func` used to do with one difference:
+  it can be used to instruct underlying EagerFunc not to use `tape_cache`
+  to avoid memory leak. When the issue #35084 is fixed - this function should
+  be removed, its body should be moved back to become the body of
+  `eager_py_func` and all the call sites should be reverted to
+  using `eager_py_func` without `use_tape_cache` argument of any value.
+
+  Args:
+    func: A Python function which accepts a list of `Tensor` objects having
+      element types that match the corresponding `tf.Tensor` objects in `inp`
+      and returns a list of `Tensor` objects (or a single `Tensor`, or `None`)
+      having element types that match the corresponding values in `Tout`.
+    inp: A list of `Tensor` objects.
+    Tout: A list or tuple of tensorflow data types or a single tensorflow data
+      type if there is only one, indicating what `func` returns; an empty list
+      if no value is returned (i.e., if the return value is `None`).
+    name: A name for the operation (optional).
+    use_tape_cache: (Optional.) Whether to cache `func` in the `tape_cache`.
+      For additional information, see description of `_eager_py_func`.
+      This parameter should be removed once the #35084 issue is fixed.
+
+  Returns:
+    A list of `Tensor` or a single `Tensor` which `func` computes; an empty list
+    if `func` returns None.
+  """
+  if ops.executing_eagerly_outside_functions():
+    with ops.device(context.context().host_address_space()):
+      return _internal_py_func(
+          func=func,
+          inp=inp,
+          Tout=Tout,
+          eager=True,
+          name=name,
+          use_tape_cache=use_tape_cache)
+
+  return _internal_py_func(
+      func=func,
+      inp=inp,
+      Tout=Tout,
+      eager=True,
+      name=name,
+      use_tape_cache=use_tape_cache)
 
 
 @tf_export("py_function")
@@ -451,12 +509,8 @@ def eager_py_func(func, inp, Tout, name=None):
     A list of `Tensor` or a single `Tensor` which `func` computes; an empty list
     if `func` returns None.
   """
-  if ops.executing_eagerly_outside_functions():
-    with ops.device(context.context().host_address_space()):
-      return _internal_py_func(
-          func=func, inp=inp, Tout=Tout, eager=True, name=name)
-
-  return _internal_py_func(func=func, inp=inp, Tout=Tout, eager=True, name=name)
+  return _eager_py_func(
+      func=func, inp=inp, Tout=Tout, name=name, use_tape_cache=True)
 
 
 def py_func_common(func, inp, Tout, stateful=True, name=None):
@@ -491,7 +545,31 @@ def py_func_common(func, inp, Tout, stateful=True, name=None):
     `tf.compat.v1.py_func()` and you must pin the created operation to a device
     in that
     server (e.g. using `with tf.device():`).
+    
+  Note: It produces tensors of unknown shape and rank as shape inference 
+    does not work on arbitrary Python code.
+    If you need the shape, you need to set it based on statically 
+    available information.
+    
+    E.g.
+    ```python
+    import tensorflow as tf
+    import numpy as np
 
+    def make_synthetic_data(i):
+        return np.cast[np.uint8](i) * np.ones([20,256,256,3],
+                dtype=np.float32) / 10.
+
+    def preprocess_fn(i):
+        ones = tf.py_function(make_synthetic_data,[i],tf.float32)
+        ones.set_shape(tf.TensorShape([None, None, None, None]))
+        ones = tf.image.resize(ones, [224,224])
+        return ones
+
+    ds = tf.data.Dataset.range(10)
+    ds = ds.map(preprocess_fn)
+    ```
+    
   Args:
     func: A Python function, which accepts `ndarray` objects as arguments and
       returns a list of `ndarray` objects (or a single `ndarray`). This function

@@ -30,7 +30,6 @@ from tensorflow.python.keras import combinations
 from tensorflow.python.keras.optimizer_v2 import adadelta
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -50,10 +49,8 @@ class AdadeltaOptimizerTest(test.TestCase, parameterized.TestCase):
           var0_init = [1.0, 2.0]
           var1_init = [3.0, 4.0]
           if use_resource:
-            var0 = resource_variable_ops.ResourceVariable(
-                var0_init, dtype=dtype)
-            var1 = resource_variable_ops.ResourceVariable(
-                var1_init, dtype=dtype)
+            var0 = variables.Variable(var0_init, dtype=dtype)
+            var1 = variables.Variable(var1_init, dtype=dtype)
           else:
             var0 = variables.Variable(var0_init, dtype=dtype)
             var1 = variables.Variable(var1_init, dtype=dtype)
@@ -151,15 +148,15 @@ class AdadeltaOptimizerTest(test.TestCase, parameterized.TestCase):
   def testResourceBasic(self):
     self.doTestBasic(use_resource=True)
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testBasicCallableParams(self):
-    with context.eager_mode():
-      self.doTestBasic(use_resource=True, use_callable_params=True)
+    self.doTestBasic(use_resource=True, use_callable_params=True)
 
   def testMinimizeSparseResourceVariable(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     with ops.Graph().as_default():
       for dtype in _DATA_TYPES:
-        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+        var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
 
         def loss():

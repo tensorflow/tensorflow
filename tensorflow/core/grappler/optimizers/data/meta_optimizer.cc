@@ -35,8 +35,10 @@ using ConfigMap =
     std::map<string, tensorflow::RewriterConfig_CustomGraphOptimizer>;
 
 // tf.data optimizations, in the order we want to perform them.
-constexpr std::array<const char*, 15> kTFDataOptimizations = {
+constexpr std::array<const char*, 21> kTFDataOptimizations = {
     "noop_elimination",
+    "disable_intra_op_parallelism",
+    "use_private_thread_pool",
     "shuffle_and_repeat_fusion",
     "map_fusion",
     "filter_fusion",
@@ -46,11 +48,15 @@ constexpr std::array<const char*, 15> kTFDataOptimizations = {
     "map_parallelization",
     "map_and_batch_fusion",
     "map_vectorization",
+    "batch_parallelization",
     "latency_all_edges",
     "make_sloppy",
     "parallel_batch",
+    "reorder_data_discarding_ops",
     "slack",
-    "inject_prefetch"};
+    "autotune_buffer_sizes",
+    "disable_prefetch_legacy_autotune",
+    "enable_gradient_descent"};
 
 // Parses a list of string optimizer configurations into a map from
 // optimizer name -> rewriter config for that optimizer.
@@ -114,7 +120,7 @@ Status TFDataMetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   for (const auto& name : flib.ListFunctionNames()) {
     auto* func = flib.Find(name);
     // Skip non tf.data functions.
-    if (!func->attr().contains(data::kTFDataFunction)) continue;
+    if (!data::IsTFDataFunction(*func)) continue;
     VLOG(3) << "Optimize function: function=" << func->signature().name();
     optimized_functions = true;
 

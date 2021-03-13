@@ -105,7 +105,6 @@ class CPUEmbeddingTest(test.TestCase):
     optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
     return tpu_embedding_v2.TPUEmbedding(
         feature_config=self.feature_config,
-        batch_size=self.batch_size,
         optimizer=optimizer)
 
   def _get_dense_tensors(self, dtype=dtypes.int32):
@@ -278,23 +277,80 @@ class CPUEmbeddingTest(test.TestCase):
           tables=mid_level.embedding_tables,
           feature_config=self.feature_config)
 
-  def test_cpu_sequence_lookup(self):
+  def _numpy_sequence_lookup(
+      self, table, indices, values, batch_size, max_sequence_length, dim):
+    # First we gather the values
+    lookup = table[values]
+    # Then we scatter them into the result array.
+    scatter_result = np.zeros([batch_size, max_sequence_length, dim])
+    for i, index in enumerate(indices):
+      scatter_result[index[0], index[1], :] = lookup[i]
+    return scatter_result
+
+  def test_cpu_sequence_lookup_sparse(self):
     feature_config = (
         tpu_embedding_v2_utils.FeatureConfig(
             table=self.table_video, name='watched', max_sequence_length=2),)
     optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
     mid_level = tpu_embedding_v2.TPUEmbedding(
         feature_config=feature_config,
-        batch_size=self.batch_size,
         optimizer=optimizer)
-    features = tuple(self._get_sparse_tensors()[:1])
-    with self.assertRaisesRegex(
-        ValueError, 'Sequence features unsupported at this time.'):
-      tpu_embedding_v2.cpu_embedding_lookup(
-          features,
-          weights=None,
-          tables=mid_level.embedding_tables,
-          feature_config=feature_config)
+    features = self._get_sparse_tensors()[:1]
+    result = tpu_embedding_v2.cpu_embedding_lookup(
+        features,
+        weights=None,
+        tables=mid_level.embedding_tables,
+        feature_config=feature_config)
+
+    golden = self._numpy_sequence_lookup(
+        mid_level.embedding_tables[self.table_video].numpy(),
+        features[0].indices.numpy(),
+        features[0].values.numpy(),
+        self.data_batch_size,
+        feature_config[0].max_sequence_length,
+        self.table_video.dim)
+
+    self.assertAllClose(result[0], golden)
+
+  def test_cpu_sequence_lookup_ragged(self):
+    feature_config = (
+        tpu_embedding_v2_utils.FeatureConfig(
+            table=self.table_video, name='watched', max_sequence_length=2),)
+    optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
+    mid_level = tpu_embedding_v2.TPUEmbedding(
+        feature_config=feature_config,
+        optimizer=optimizer)
+    features = self._get_ragged_tensors()[:1]
+    result = tpu_embedding_v2.cpu_embedding_lookup(
+        features,
+        weights=None,
+        tables=mid_level.embedding_tables,
+        feature_config=feature_config)
+
+    sparse_ver = features[0].to_sparse()
+    golden = self._numpy_sequence_lookup(
+        mid_level.embedding_tables[self.table_video].numpy(),
+        sparse_ver.indices.numpy(),
+        sparse_ver.values.numpy(),
+        self.data_batch_size,
+        feature_config[0].max_sequence_length,
+        self.table_video.dim)
+
+    self.assertAllClose(result[0], golden)
+
+  def test_cpu_no_optimizer(self):
+    feature_config = (
+        tpu_embedding_v2_utils.FeatureConfig(
+            table=self.table_video, name='watched', max_sequence_length=2),)
+    mid_level = tpu_embedding_v2.TPUEmbedding(
+        feature_config=feature_config,
+        optimizer=None)
+    # Build the layer manually to create the variables. Normally calling enqueue
+    # would do this.
+    mid_level.build()
+    self.assertEqual(
+        list(mid_level._variables[self.table_video.name].keys()),
+        ['parameters'])
 
 
 if __name__ == '__main__':

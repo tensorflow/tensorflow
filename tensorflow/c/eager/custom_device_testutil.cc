@@ -33,6 +33,9 @@ struct LoggingDevice {
   bool* arrived_flag;
   // Set to true whenever an operation is executed
   bool* executed_flag;
+  // If true, only explicit op placements are accepted. If false, uses
+  // type-based dispatch.
+  bool strict_scope_placement;
 };
 
 struct LoggedTensor {
@@ -42,23 +45,31 @@ struct LoggedTensor {
   ~LoggedTensor() { TFE_DeleteTensorHandle(tensor); }
 };
 
-void LoggedTensorDeallocator(void* data, size_t len, void* arg) {
+int64_t LoggedTensorDim(void* data, int dim_index, TF_Status* status) {
+  return TFE_TensorHandleDim(reinterpret_cast<LoggedTensor*>(data)->tensor,
+                             dim_index, status);
+}
+
+int LoggedTensorNumDims(void* data, TF_Status* status) {
+  return TFE_TensorHandleNumDims(reinterpret_cast<LoggedTensor*>(data)->tensor,
+                                 status);
+}
+
+void LoggedTensorDeallocator(void* data) {
   delete reinterpret_cast<LoggedTensor*>(data);
 }
 
 TFE_TensorHandle* MakeLoggedTensorHandle(
     TFE_Context* context, const tensorflow::string& logging_device_name,
     std::unique_ptr<LoggedTensor> t, TF_Status* status) {
-  std::vector<int64_t> shape(TFE_TensorHandleNumDims(t->tensor, status));
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-  for (int i = 0; i < shape.size(); ++i) {
-    shape[i] = TFE_TensorHandleDim(t->tensor, i, status);
-    if (TF_GetCode(status) != TF_OK) return nullptr;
-  }
   auto dtype = TFE_TensorHandleDataType(t->tensor);
-  return TFE_NewTensorHandleFromDeviceMemory(
-      context, logging_device_name.c_str(), dtype, shape.data(), shape.size(),
-      t.release(), 1, &LoggedTensorDeallocator, nullptr, status);
+  TFE_CustomDeviceTensorHandleMethods handle_methods;
+  handle_methods.num_dims = &LoggedTensorNumDims;
+  handle_methods.dim = &LoggedTensorDim;
+  handle_methods.deallocator = &LoggedTensorDeallocator;
+  return TFE_NewCustomDeviceTensorHandle(context, logging_device_name.c_str(),
+                                         dtype, t.release(), handle_methods,
+                                         status);
 }
 
 TFE_TensorHandle* CopyToLoggingDevice(TFE_Context* context,
@@ -84,18 +95,35 @@ TFE_TensorHandle* CopyTensorFromLoggingDevice(TFE_Context* context,
   return nullptr;
 }
 
-void LoggingDeviceExecute(TFE_Context* context, int num_inputs,
-                          TFE_TensorHandle** inputs, const char* operation_name,
-                          const TFE_OpAttrs* attributes, int* num_outputs,
+void LoggingDeviceExecute(const TFE_Op* original_op, int* num_outputs,
                           TFE_TensorHandle** outputs, TF_Status* s,
                           void* device_info) {
+  const char* requested_placement = TFE_OpGetDevice(original_op, s);
+  if (TF_GetCode(s) != TF_OK) return;
+
   LoggingDevice* dev = reinterpret_cast<LoggingDevice*>(device_info);
+  if (dev->strict_scope_placement && *requested_placement == '\0') {
+    TF_SetStatus(s, TF_INTERNAL,
+                 "Ops must be placed on the device explicitly, or their inputs "
+                 "first copied to other devices.");
+    return;
+  }
+  TFE_Context* context = TFE_OpGetContext(original_op, s);
+  if (TF_GetCode(s) != TF_OK) return;
+  const char* operation_name = TFE_OpGetName(original_op, s);
+  if (TF_GetCode(s) != TF_OK) return;
+  const TFE_OpAttrs* attributes = TFE_OpGetAttrs(original_op);
+
   TFE_Op* op(TFE_NewOp(context, operation_name, s));
   if (TF_GetCode(s) != TF_OK) return;
   TFE_OpAddAttrs(op, attributes);
   TFE_OpSetDevice(op, dev->underlying_device.c_str(), s);
+  if (TF_GetCode(s) != TF_OK) return;
+  int num_inputs = TFE_OpGetFlatInputCount(original_op, s);
+  if (TF_GetCode(s) != TF_OK) return;
   for (int j = 0; j < num_inputs; ++j) {
-    TFE_TensorHandle* input = inputs[j];
+    TFE_TensorHandle* input = TFE_OpGetFlatInput(original_op, j, s);
+    if (TF_GetCode(s) != TF_OK) return;
     const char* input_device = TFE_TensorHandleDeviceName(input, s);
     if (TF_GetCode(s) != TF_OK) return;
     if (dev->device_name == input_device) {
@@ -113,6 +141,7 @@ void LoggingDeviceExecute(TFE_Context* context, int num_inputs,
   TFE_DeleteOp(op);
   if (TF_GetCode(s) != TF_OK) return;
   std::vector<TFE_TensorHandle*> unwrapped_outputs;
+  unwrapped_outputs.reserve(op_outputs.size());
   for (auto* handle : op_outputs) {
     unwrapped_outputs.push_back(handle);
   }
@@ -131,8 +160,8 @@ void DeleteLoggingDevice(void* device_info) {
 }  // namespace
 
 void RegisterLoggingDevice(TFE_Context* context, const char* name,
-                           bool* arrived_flag, bool* executed_flag,
-                           TF_Status* status) {
+                           bool strict_scope_placement, bool* arrived_flag,
+                           bool* executed_flag, TF_Status* status) {
   TFE_CustomDevice custom_device;
   custom_device.copy_tensor_to_device = &CopyToLoggingDevice;
   custom_device.copy_tensor_from_device = &CopyTensorFromLoggingDevice;
@@ -143,6 +172,7 @@ void RegisterLoggingDevice(TFE_Context* context, const char* name,
   device->executed_flag = executed_flag;
   device->device_name = name;
   device->underlying_device = "/job:localhost/replica:0/task:0/device:CPU:0";
+  device->strict_scope_placement = strict_scope_placement;
   TFE_RegisterCustomDevice(context, custom_device, name, device, status);
 }
 
@@ -168,5 +198,6 @@ void AllocateLoggingDevice(const char* name, bool* arrived_flag,
   logging_device->device_name = name;
   logging_device->underlying_device =
       "/job:localhost/replica:0/task:0/device:CPU:0";
+  logging_device->strict_scope_placement = true;
   *device_info = reinterpret_cast<void*>(logging_device);
 }

@@ -35,7 +35,13 @@ from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import layer_utils
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.compat import collections_abc
+from tensorflow.python.util.tf_export import tf_export
+
+
+module = lazy_loader.LazyLoader(
+    "module", globals(), "tensorflow.python.module.module")
 
 
 class NoDependency(object):
@@ -59,6 +65,8 @@ class NoDependency(object):
   variables will appear in `Model.variables`).
   """
 
+  __slots__ = ["value"]
+
   def __init__(self, value):
     self.value = value
 
@@ -77,8 +85,23 @@ def _should_wrap_tuple(t):
   return False
 
 
+@tf_export("__internal__.tracking.wrap", v1=[])
 def wrap_or_unwrap(value):
-  """Wraps basic data structures, unwraps NoDependency objects."""
+  """Wraps input value into trackable data structures.
+
+  This is mostly useful for containers like list, dict, etc, which could contain
+  trackable objects in it. Wrapped data structure will be tracked when
+  associated with a `tf.Module`, so that save model/checkpoint can properly
+  track the dependency.
+
+  It will also unwrap NoDependency objects.
+
+  Args:
+    value: the input object to be wrapped.
+
+  Returns:
+    Wrapped trackable data structure.
+  """
   # pylint: disable=unidiomatic-typecheck
   # Exact type checking to avoid mucking up custom logic in list/dict
   # subclasses, e.g. collections.Counter.
@@ -146,6 +169,7 @@ class _UntrackableError(ValueError):
              "Trackable.") % (self._value,))
 
 
+@tf_export("__internal__.tracking.TrackableDataStructure", v1=[])
 class TrackableDataStructure(base.Trackable):
   """Base class for data structures which contain trackable objects."""
 
@@ -211,17 +235,45 @@ class TrackableDataStructure(base.Trackable):
 
   @property
   def trainable_weights(self):
-    return layer_utils.gather_trainable_weights(
-        trainable=self.trainable,
-        sub_layers=self._layers,
-        extra_variables=self._self_extra_variables)
+    if not self._self_trainable:
+      return []
+    trainable_variables = []
+    for obj in self._values:
+      if isinstance(obj, (TrackableDataStructure, module.Module)):
+        trainable_variables += obj.trainable_variables
+    trainable_extra_variables = [
+        v for v in self._self_extra_variables if v.trainable
+    ]
+    return trainable_variables + trainable_extra_variables
 
   @property
   def non_trainable_weights(self):
-    return layer_utils.gather_non_trainable_weights(
-        trainable=self.trainable,
-        sub_layers=self._layers,
-        extra_variables=self._self_extra_variables)
+    trainable_extra_variables = [
+        v for v in self._self_extra_variables if v.trainable
+    ]
+    non_trainable_extra_variables = [
+        v for v in self._self_extra_variables if not v.trainable
+    ]
+    non_trainable_variables = []
+    for obj in self._values:
+      if isinstance(obj, (TrackableDataStructure, module.Module)):
+        non_trainable_variables += obj.non_trainable_variables
+
+    if not self._self_trainable:
+      # Return order is all trainable vars, then all non-trainable vars.
+      trainable_variables = []
+      for obj in self._values:
+        if isinstance(obj, (TrackableDataStructure, module.Module)):
+          trainable_variables += obj.trainable_variables
+
+      non_trainable_variables = (
+          trainable_variables + trainable_extra_variables +
+          non_trainable_variables + non_trainable_extra_variables)
+    else:
+      non_trainable_variables = (
+          non_trainable_variables + non_trainable_extra_variables)
+
+    return non_trainable_variables
 
   @property
   def weights(self):
@@ -736,7 +788,7 @@ class _DictWrapper(TrackableDataStructure, wrapt.ObjectProxy):
     if wrapped_dict is None:
       # Allow zero-argument construction, e.g. from session.run's re-wrapping.
       wrapped_dict = {}
-    if not isinstance(wrapped_dict, collections.Mapping):
+    if not isinstance(wrapped_dict, collections_abc.Mapping):
       # Allow construction from a sequence, e.g. from nest.pack_sequence_as.
       wrapped_dict = dict(wrapped_dict)
     wrapt.ObjectProxy.__init__(self, wrapped_dict)

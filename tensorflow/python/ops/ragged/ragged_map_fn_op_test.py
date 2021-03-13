@@ -150,6 +150,21 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase,
           result_dtype=ragged_tensor.RaggedTensorType(
               dtype=dtypes.int64, ragged_rank=4),
       ),
+      # [d1] -> [d1, (d2), (d3)]
+      dict(
+          fn=ragged_math_ops.range,
+          elems=np.array([1, 2, 3], np.int64),
+          expected_output=[[[0]], [[0, 1]], [[0, 1, 2]]],
+          result_dtype=ragged_tensor.RaggedTensorType(
+              dtype=dtypes.int64, ragged_rank=2)),
+      # [0] -> [0, (d2), (d3)]  (github issue #36232)
+      dict(
+          fn=ragged_math_ops.range,
+          elems=np.zeros([0], np.int64),
+          expected_output=[],
+          expected_ragged_rank=2,
+          result_dtype=ragged_tensor.RaggedTensorType(
+              dtype=dtypes.int64, ragged_rank=2)),
   ])
 
   def testRaggedMap(
@@ -263,7 +278,7 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase,
   def testMismatchRaggedRank(self):
     elems = ragged_factory_ops.constant([[[1, 2, 3]], [[4, 5], [6, 7]]])
     fn = lambda x: ragged_math_ops.reduce_sum(x, axis=0)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r'(?s)Expected `fn` to return.*But it returned.*'):
       _ = ragged_map_ops.map_fn(
           fn,
@@ -274,7 +289,7 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase,
   def testMismatchRaggedRank2(self):
     elems = ragged_factory_ops.constant([[1, 2, 3], [4, 5], [6, 7]])
     fn = lambda x: ragged_tensor.RaggedTensor.from_row_starts(x, [0])
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r'(?s)Expected `fn` to return.*But it returned.*'):
       _ = ragged_map_ops.map_fn(
           fn,

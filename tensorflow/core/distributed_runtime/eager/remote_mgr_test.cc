@@ -54,9 +54,7 @@ class RemoteMgrTest : public ::testing::Test {
     ctx_ = new tensorflow::EagerContext(
         SessionOptions(),
         tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-        tensorflow::ContextMirroringPolicy::MIRRORING_NONE, /*async=*/false,
-        /*lazy_copy_function_remote_inputs=*/false, device_mgr.release(), true,
-        rendezvous, GetDefaultCustomKernelCreator(), nullptr);
+        /*async=*/false, device_mgr.release(), true, rendezvous, nullptr);
   }
 
   ~RemoteMgrTest() override { ctx_->Unref(); }
@@ -95,7 +93,7 @@ TEST_F(RemoteMgrTest, SerializeRemoteTensorHandle) {
   const uint64 op_id = 3;
   const int output_num = 1;
   TensorHandle* handle = TensorHandle::CreateLazyRemoteHandle(
-      op_id, output_num, DT_FLOAT, remote_device_, ctx_);
+      op_id, output_num, DT_FLOAT, remote_device_, /*is_ready=*/true, ctx_);
   RemoteTensorHandle remote_handle;
   TF_ASSERT_OK(remote_mgr.SerializeRemoteTensorHandle(
       handle, /*wait_until_ready=*/true, &remote_handle, remote_device_,

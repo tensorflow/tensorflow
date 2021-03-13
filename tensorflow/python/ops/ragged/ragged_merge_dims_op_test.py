@@ -164,6 +164,20 @@ class RaggedMergeDimsOpTest(test_util.TensorFlowTestCase,
           'inner_axis': 3,
           'expected': [[[1, 2], [3, 4], [5, 6], [7, 8]], [[9, 10], [11, 12]]],
       },
+      {
+          'testcase_name': 'OuterEqualsInner',
+          'rt': [[1], [2], [3, 4]],
+          'outer_axis': 0,
+          'inner_axis': 0,
+          'expected': [[1], [2], [3, 4]],
+      },
+      {
+          'testcase_name': 'OuterEqualsInnerWithNegativeAxis',
+          'rt': [[1], [2], [3, 4]],
+          'outer_axis': 1,
+          'inner_axis': -1,
+          'expected': [[1], [2], [3, 4]],
+      },
   ])  # pyformat: disable
   def testRaggedMergeDims(self,
                           rt,
@@ -229,31 +243,17 @@ class RaggedMergeDimsOpTest(test_util.TensorFlowTestCase,
       },
       {
           'rt': [[1]],
-          'outer_axis': 0,
-          'inner_axis': 0,
-          'exception': ValueError,
-          'message': 'Expected outer_axis .* to be less than inner_axis .*',
-      },
-      {
-          'rt': [[1]],
           'outer_axis': 1,
           'inner_axis': 0,
           'exception': ValueError,
-          'message': 'Expected outer_axis .* to be less than inner_axis .*',
+          'message': 'Expected outer_axis .* to be less than or equal to .*',
       },
       {
           'rt': [[1]],
           'outer_axis': -1,
           'inner_axis': -2,
           'exception': ValueError,
-          'message': 'Expected outer_axis .* to be less than inner_axis .*',
-      },
-      {
-          'rt': [[1]],
-          'outer_axis': 1,
-          'inner_axis': -1,
-          'exception': ValueError,
-          'message': 'Expected outer_axis .* to be less than inner_axis .*',
+          'message': 'Expected outer_axis .* to be less than or equal to .*',
       },
   ])  # pyformat: disable
   def testRaggedMergeDimsError(self,
@@ -264,7 +264,7 @@ class RaggedMergeDimsOpTest(test_util.TensorFlowTestCase,
                                message=None,
                                ragged_rank=None):
     x = ragged_factory_ops.constant(rt, ragged_rank=ragged_rank)
-    with self.assertRaisesRegexp(exception, message):
+    with self.assertRaisesRegex(exception, message):
       self.evaluate(x.merge_dims(outer_axis, inner_axis))
 
 

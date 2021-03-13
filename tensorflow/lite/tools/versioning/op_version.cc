@@ -24,6 +24,8 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 
 namespace tflite {
 namespace {
@@ -69,10 +71,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 3;
       }
       // If the op is a signed int8 hybrid operation, we need to return
-      // version 2.
+      // version 2 or 5 if per channel.
       if (op_sig.input_types.at(0) == TensorType_FLOAT32 &&
           op_sig.input_types.at(1) == TensorType_INT8 &&
           op_sig.output_types.at(0) == TensorType_FLOAT32) {
+        if (op_sig.options.conv_2d.is_per_channel_quantized) {
+          return 5;
+        }
         return 2;
       }
       return 1;
@@ -86,10 +91,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
 
       // If the op is a signed int8 hybrid operation, we need to return
-      // version 4.
+      // version 4 or 6 if per-channel.
       if (op_sig.input_types.at(0) == TensorType_FLOAT32 &&
           op_sig.input_types.at(1) == TensorType_INT8 &&
           op_sig.output_types.at(0) == TensorType_FLOAT32) {
+        if (op_sig.options.depthwise_conv_2d.is_per_channel_quantized) {
+          return 6;
+        }
         return 4;
       }
       // If the op has signed int8 op_sig.inputs and op_sig.outputs, its
@@ -153,10 +161,14 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.input_types.at(0) == TensorType_FLOAT32 &&
           op_sig.input_types.at(1) == TensorType_INT8 &&
           op_sig.output_types.at(0) == TensorType_FLOAT32) {
+        if (op_sig.options.fully_connected.asymmetric_quantize_inputs) {
+          // This is to use the updated quantization scheme.
+          return 9;
+        }
         return 3;
       }
       // For float and uint8 fixed point kernels, if the weight is
-      // Shuffled4x16Int8, is is version 2.
+      // Shuffled4x16Int8, it is version 2.
       if (op_sig.options.fully_connected.weights_format ==
           FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8) {
         return 2;
@@ -165,6 +177,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_GATHER:
+      if (op_sig.options.gather.batch_dims != 0) {
+        return 5;
+      }
+
+      if (op_sig.input_types.at(0) == TensorType_INT16) {
+        return 4;
+      }
       // If the op takes bool input, it is version 3.
       if (op_sig.input_types.at(0) == TensorType_BOOL) {
         return 3;
@@ -184,6 +203,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.input_types.at(0) == TensorType_FLOAT32 &&
           op_sig.input_types.at(1) == TensorType_INT8 &&
           op_sig.output_types.at(0) == TensorType_FLOAT32) {
+        // This is to use the updated quantization scheme
+        if (op_sig.options.input_quantization.asymmetric_quantize_inputs) {
+          return 4;
+        }
         return 2;
       }
       return 1;
@@ -219,6 +242,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_TRANSPOSE:
+      if (op_sig.input_types.at(0) == TensorType_INT16) {
+        return 5;
+      }
       if (op_sig.options.single_input_op.num_dims > 4) {
         return 4;
       }
@@ -250,6 +276,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
           op_sig.input_types.at(0) == TensorType_FLOAT32 &&
           op_sig.input_types.at(2) == TensorType_INT8 &&
           op_sig.output_types.at(0) == TensorType_FLOAT32) {
+        if (op_sig.options.lstm.asymmetric_quantize_inputs) {
+          return 4;
+        }
         return 3;
       }
       // KERNEL_BASIC was added in version 2.
@@ -264,6 +293,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.input_types.at(0) == TensorType_FLOAT32 &&
           op_sig.input_types.at(2) == TensorType_INT8 &&
           op_sig.output_types.at(0) == TensorType_FLOAT32) {
+        if (op_sig.options.lstm.asymmetric_quantize_inputs) {
+          return 3;
+        }
         return 2;
       }
       return 1;
@@ -296,6 +328,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_SLICE:
+      if (op_sig.options.single_input_op.num_dims > 4) {
+        return 5;
+      }
+      if (op_sig.input_types.at(0) == TensorType_INT16) {
+        return 4;
+      }
       // Version 3 supports string input types.
       if (op_sig.input_types.at(0) == TensorType_STRING) {
         return 3;
@@ -344,13 +382,21 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_ABS:
     case BuiltinOperator_RELU:
+      if (op_sig.input_types.at(0) == TensorType_INT16) {
+        return 3;
+      }
       if (op_sig.input_types.at(0) == TensorType_INT8 ||
           op_sig.input_types.at(0) == TensorType_UINT8) {
         return 2;
       }
       return 1;
+
     case BuiltinOperator_STRIDED_SLICE:
+      if (op_sig.input_types.at(0) == TensorType_STRING) {
+        return 5;
+      }
       if (op_sig.options.single_input_op.num_dims > 4) {
         return 4;
       }
@@ -363,20 +409,27 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
     case BuiltinOperator_REVERSE_V2:
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 3;
+      }
       if (op_sig.input_types.at(0) == TensorType_BOOL) {
         return 2;
       }
       return 1;
     case BuiltinOperator_RESIZE_BILINEAR:
-      if (op_sig.options.resize.half_pixel_centers) {
+      if (op_sig.input_types.at(0) == TensorType_INT16) {
+        return 4;
+      } else if (op_sig.options.resize.half_pixel_centers) {
         return 3;
       } else if (op_sig.input_types.at(0) == TensorType_INT8) {
         return 2;
       }
       return 1;
     case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR:
-      if (op_sig.options.resize.half_pixel_centers ||
-          op_sig.options.resize.align_corners) {
+      if (op_sig.input_types.at(0) == TensorType_INT16) {
+        return 4;
+      } else if (op_sig.options.resize.half_pixel_centers ||
+                 op_sig.options.resize.align_corners) {
         return 3;
       } else if (op_sig.input_types.at(0) == TensorType_INT8) {
         return 2;
@@ -413,7 +466,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.input_types.at(0) == TensorType_STRING) {
         return 2;
       }
+      return 1;
 
+    case BuiltinOperator_SQUEEZE:
+      if (op_sig.input_types.at(0) == TensorType_STRING) {
+        return 2;
+      }
       return 1;
 
     case BuiltinOperator_SPACE_TO_BATCH_ND:
@@ -426,9 +484,31 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_ADD:
+      if (op_sig.input_types.at(0) == TensorType_INT16 &&
+          op_sig.output_types.at(0) == TensorType_INT16) {
+        if (!op_sig.options.addsub.pot_scale_int16) {
+          return 3;
+        }
+      }
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_SUB:
-      if (op_sig.options.broadcast.need_broadcast &&
-          op_sig.options.broadcast.num_dims > 4) {
+      if (op_sig.input_types.at(0) == TensorType_INT16 &&
+          op_sig.output_types.at(0) == TensorType_INT16) {
+        if (!op_sig.options.addsub.pot_scale_int16) {
+          return 5;
+        }
+      }
+      if (!op_sig.input_types.empty() &&
+          op_sig.input_types.at(0) == TensorType_INT64) {
+        return 4;
+      }
+      if (op_sig.options.addsub.need_broadcast &&
+          op_sig.options.addsub.num_dims > 4) {
         return 3;
       }
       if (op_sig.input_types.at(0) == TensorType_INT8) {
@@ -437,6 +517,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_GATHER_ND:
+      if (!op_sig.input_types.empty() &&
+          (op_sig.input_types.at(0) == TensorType_INT16)) {
+        return 3;
+      }
       if (!op_sig.input_types.empty() &&
           op_sig.input_types.at(0) == TensorType_STRING) {
         return 2;
@@ -449,7 +533,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 2;
       }
       return 1;
-
     case BuiltinOperator_TANH:
     case BuiltinOperator_LOGISTIC:
       if (op_sig.input_types.at(0) == TensorType_INT16 &&
@@ -463,10 +546,14 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_FILL:
-      if (op_sig.input_types.size() >= 2 &&
-          (op_sig.input_types.at(1) == TensorType_BOOL ||
-           op_sig.input_types.at(1) == TensorType_STRING)) {
-        return 2;
+      if (op_sig.input_types.size() >= 2) {
+        if (op_sig.input_types.at(1) == TensorType_INT8 ||
+            op_sig.input_types.at(1) == TensorType_INT16) {
+          return 3;
+        } else if ((op_sig.input_types.at(1) == TensorType_BOOL ||
+                    op_sig.input_types.at(1) == TensorType_STRING)) {
+          return 2;
+        }
       }
       return 1;
 
@@ -488,8 +575,32 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_BATCH_MATMUL:
+      // In case of int16 inputs, the version is 3.
+      if (op_sig.input_types.at(0) == TensorType_INT16) {
+        return 3;
+      }
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+      if (op_sig.input_types.at(0) == TensorType_FLOAT32 &&
+          op_sig.input_types.at(1) == TensorType_INT8 &&
+          op_sig.output_types.at(0) == TensorType_FLOAT32) {
+        if (op_sig.options.input_quantization.asymmetric_quantize_inputs) {
+          // This is to use the updated quantization scheme.
+          return 4;
+        }
+      }
+      return 1;
+
     case BuiltinOperator_CONCATENATION:
     case BuiltinOperator_SOFTMAX:
+    case BuiltinOperator_MEAN:
+    case BuiltinOperator_PAD:
+    case BuiltinOperator_PADV2:
+    case BuiltinOperator_REDUCE_MAX:
+    case BuiltinOperator_REDUCE_MIN:
+    case BuiltinOperator_RELU6:
       // In case of int16 inputs, the version is 3.
       if (op_sig.input_types.at(0) == TensorType_INT16) {
         return 3;
@@ -499,16 +610,23 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
-    case BuiltinOperator_ADD:
-    case BuiltinOperator_PAD:
-    case BuiltinOperator_PADV2:
+    case BuiltinOperator_RNN:
+    case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN:
+    case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN:
+    case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM:
+      if (op_sig.input_types.at(1) == TensorType_INT8 &&
+          op_sig.output_types.at(0) == TensorType_FLOAT32) {
+        if (op_sig.options.input_quantization.asymmetric_quantize_inputs) {
+          return 3;
+        } else {
+          return 2;
+        }
+      }
+      return 1;
+
     case BuiltinOperator_SPACE_TO_DEPTH:
     case BuiltinOperator_SPLIT_V:
-    case BuiltinOperator_MEAN:
     case BuiltinOperator_SUM:
-    case BuiltinOperator_REDUCE_MAX:
-    case BuiltinOperator_REDUCE_MIN:
-    case BuiltinOperator_RELU6:
     case BuiltinOperator_LOG_SOFTMAX:
     case BuiltinOperator_TOPK_V2:
     case BuiltinOperator_ARG_MAX:
@@ -518,15 +636,24 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_LESS:
     case BuiltinOperator_LESS_EQUAL:
     case BuiltinOperator_SELECT:
-      if (op_sig.input_types.at(0) == TensorType_INT8) {
-        return 2;
-      }
-      return 1;
+    case BuiltinOperator_RSQRT:
+    case BuiltinOperator_SQUARED_DIFFERENCE:
+    case BuiltinOperator_DEPTH_TO_SPACE:
     case BuiltinOperator_MIRROR_PAD:
       if (op_sig.input_types.at(0) == TensorType_INT8) {
         return 2;
       }
       return 1;
+    // The version one of broadcast to op won't be not supported since the
+    // version one was rollbacked and the builtin op code number has been
+    // changed because of builtin op code shortage problem.
+    // Quantized broadcast_to is version 3
+    case BuiltinOperator_BROADCAST_TO:
+      if (op_sig.input_types.at(0) == TensorType_INT8 ||
+          op_sig.input_types.at(0) == TensorType_INT16) {
+        return 3;
+      }
+      return 2;
     default:
       return 1;
   }
@@ -553,9 +680,10 @@ TensorType GetTensorType(int32_t idx, const SubGraph* subgraph) {
 // options to decide op version.
 OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
                            const SubGraph* subgraph) {
-  OpSignature op_sig = {op_code->builtin_code()};
+  auto builtin_code = GetBuiltinCode(op_code);
+  OpSignature op_sig = {builtin_code};
 
-  switch (op_code->builtin_code()) {
+  switch (builtin_code) {
     case BuiltinOperator_DEPTHWISE_CONV_2D: {
       auto conv_option = op->builtin_options_as_DepthwiseConv2DOptions();
       if (conv_option) {
@@ -563,6 +691,16 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
             conv_option->dilation_w_factor();
         op_sig.options.depthwise_conv_2d.dilation_h_factor =
             conv_option->dilation_h_factor();
+      }
+      const Tensor* filter_tensor =
+          subgraph->tensors()->Get(op->inputs()->Get(1));
+      const QuantizationParameters* filter_quant =
+          filter_tensor->quantization();
+      int num_channels = filter_tensor->shape()->Get(3);
+      if (filter_quant && filter_quant->scale() &&
+          filter_quant->scale()->Length() &&
+          filter_quant->scale()->Length() == num_channels) {
+        op_sig.options.depthwise_conv_2d.is_per_channel_quantized = true;
       }
     } break;
 
@@ -582,6 +720,8 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
             fully_connected_option->keep_num_dims();
         op_sig.options.fully_connected.weights_format =
             fully_connected_option->weights_format();
+        op_sig.options.fully_connected.asymmetric_quantize_inputs =
+            fully_connected_option->asymmetric_quantize_inputs();
       }
 
       const Tensor* weight_tensor =
@@ -616,6 +756,26 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       }
     } break;
 
+    case BuiltinOperator_ADD: {
+      auto add_option = op->builtin_options_as_AddOptions();
+      op_sig.options.addsub.pot_scale_int16 = true;
+      if (add_option) {
+        op_sig.options.addsub.pot_scale_int16 = add_option->pot_scale_int16();
+      }
+    } break;
+
+    case BuiltinOperator_SUB: {
+      auto sub_option = op->builtin_options_as_SubOptions();
+      op_sig.options.addsub.need_broadcast =
+          !HaveSameShapes(subgraph, op, 0, 1);
+      op_sig.options.addsub.num_dims =
+          std::max(GetNumDims(subgraph, op, 0), GetNumDims(subgraph, op, 1));
+      op_sig.options.addsub.pot_scale_int16 = true;
+      if (sub_option) {
+        op_sig.options.addsub.pot_scale_int16 = sub_option->pot_scale_int16();
+      }
+    } break;
+
     case BuiltinOperator_LSTM: {
       auto lstm_option = op->builtin_options_as_LSTMOptions();
       if (lstm_option) {
@@ -642,15 +802,27 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
         op_sig.options.resize.align_corners = resize_nn_option->align_corners();
       }
     } break;
+    case BuiltinOperator_CONV_2D: {
+      const Tensor* filter_tensor =
+          subgraph->tensors()->Get(op->inputs()->Get(1));
+      const QuantizationParameters* filter_quant =
+          filter_tensor->quantization();
+      int num_channels = filter_tensor->shape()->Get(0);
+      if (filter_quant && filter_quant->scale() &&
+          filter_quant->scale()->Length() &&
+          filter_quant->scale()->Length() == num_channels) {
+        op_sig.options.conv_2d.is_per_channel_quantized = true;
+      }
+    } break;
     // TODO(b/150176627): Add tests for GetOpSignature.
     case BuiltinOperator_STRIDED_SLICE:
+    case BuiltinOperator_SLICE:
     case BuiltinOperator_SPACE_TO_BATCH_ND:
     case BuiltinOperator_BATCH_TO_SPACE_ND:
     case BuiltinOperator_TRANSPOSE: {
       op_sig.options.single_input_op.num_dims = GetNumDims(subgraph, op, 0);
     } break;
 
-    case BuiltinOperator_SUB:
     case BuiltinOperator_DIV:
     case BuiltinOperator_MAXIMUM:
     case BuiltinOperator_MINIMUM: {
@@ -658,6 +830,17 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
           !HaveSameShapes(subgraph, op, 0, 1);
       op_sig.options.broadcast.num_dims =
           std::max(GetNumDims(subgraph, op, 0), GetNumDims(subgraph, op, 1));
+    } break;
+
+    case BuiltinOperator_BATCH_MATMUL: {
+      auto batch_matmul_option = op->builtin_options_as_BatchMatMulOptions();
+      op_sig.options.input_quantization.asymmetric_quantize_inputs =
+          batch_matmul_option->asymmetric_quantize_inputs();
+    } break;
+
+    case BuiltinOperator_GATHER: {
+      auto gather_option = op->builtin_options_as_GatherOptions();
+      op_sig.options.gather.batch_dims = gather_option->batch_dims();
     } break;
 
     default:
@@ -686,14 +869,15 @@ void UpdateOpVersion(uint8_t* model_buffer_pointer) {
       OperatorCode* op_code =
           model->mutable_operator_codes()->GetMutableObject(op->opcode_index());
 
-      if (op_code->builtin_code() != BuiltinOperator_CUSTOM) {
+      auto builtin_code = GetBuiltinCode(op_code);
+      if (builtin_code != BuiltinOperator_CUSTOM) {
         OpSignature op_sig = GetOpSignature(op_code, op, subgraph);
         // Update builtin operator version.
         int32_t op_ver = GetBuiltinOperatorVersion(op_sig);
         if (!op_code->mutate_version(op_ver)) {
           LOG(ERROR) << "Can't set operator "
-                     << EnumNameBuiltinOperator(op_code->builtin_code())
-                     << " to version " << op_ver;
+                     << EnumNameBuiltinOperator(builtin_code) << " to version "
+                     << op_ver;
         }
       }
     }

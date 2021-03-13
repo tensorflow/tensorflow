@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_data_optimization.h"
 
 namespace mlir {
@@ -28,7 +29,7 @@ struct TFDataOptimization
     OwningRewritePatternList patterns;
     mlir::TF::PopulateTFDataOptimizationPatterns(&getContext(), &patterns);
 
-    applyPatternsAndFoldGreedily(getFunction(), patterns);
+    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
   }
 };
 

@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -160,6 +159,15 @@ class DatasetParams {
   // type usually needs to match the constant called `kDatasetType` defined in
   // the dataset kernel.
   virtual string dataset_type() const = 0;
+
+  // Returns the dataset op name. By default, it returns the Op::kDatasetType
+  // concatenated with "Dataset". For ops that do not have "Dataset" suffix,
+  // this method can be overriden to return a different name.
+  virtual string op_name() const {
+    name_utils::OpNameParams params;
+    params.op_version = op_version();
+    return name_utils::OpName(dataset_type(), params);
+  }
 
   virtual int op_version() const { return op_version_; }
 
@@ -368,6 +376,33 @@ class ConcatenateDatasetParams : public DatasetParams {
   string dataset_type() const override;
 };
 
+// `OptionsDatasetParams` is a common dataset parameter type that is used in
+// testing.
+class OptionsDatasetParams : public DatasetParams {
+ public:
+  template <typename T>
+  OptionsDatasetParams(T input_dataset_params, const string& serialized_options,
+                       DataTypeVector output_dtypes,
+                       std::vector<PartialTensorShape> output_shapes,
+                       string node_name)
+      : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
+                      std::move(node_name)),
+        serialized_options_(serialized_options) {
+    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+  }
+
+  std::vector<Tensor> GetInputTensors() const override;
+
+  Status GetInputNames(std::vector<string>* input_names) const override;
+
+  Status GetAttributes(AttributeVector* attr_vector) const override;
+
+  string dataset_type() const override;
+
+ private:
+  string serialized_options_;
+};
+
 template <typename T>
 struct GetNextTestCase {
   GetNextTestCase(T dataset_params, std::vector<Tensor> expected_outputs,
@@ -377,6 +412,26 @@ struct GetNextTestCase {
         compare_order(compare_order) {}
 
   T dataset_params;
+  std::vector<Tensor> expected_outputs;
+  bool compare_order;
+};
+
+template <typename T>
+struct SkipTestCase {
+  SkipTestCase(T dataset_params, int num_to_skip, int expected_num_skipped,
+               bool get_next = false, std::vector<Tensor> expected_outputs = {},
+               bool compare_order = true)
+      : dataset_params(std::move(dataset_params)),
+        num_to_skip(num_to_skip),
+        expected_num_skipped(expected_num_skipped),
+        get_next(get_next),
+        expected_outputs(std::move(expected_outputs)),
+        compare_order(compare_order) {}
+
+  T dataset_params;
+  int num_to_skip;
+  int expected_num_skipped;
+  bool get_next;
   std::vector<Tensor> expected_outputs;
   bool compare_order;
 };
@@ -517,6 +572,12 @@ class DatasetOpsTestBase : public ::testing::Test {
   Status MakeDataset(const DatasetParams& dataset_params,
                      std::unique_ptr<TestDataset>* dataset);
 
+  // Creates an iterator for the given dataset, using the specified split
+  // provider.
+  Status MakeIterator(const DatasetParams& dataset_params,
+                      const TestDataset& dataset,
+                      std::unique_ptr<SplitProvider> split_provider,
+                      std::unique_ptr<TestIterator>* iterator);
   // Creates an iterator for the given dataset.
   Status MakeIterator(const DatasetParams& dataset_params,
                       const TestDataset& dataset,
@@ -556,6 +617,24 @@ class DatasetOpsTestBase : public ::testing::Test {
                               const std::vector<Tensor>& expected_outputs,
                               bool compare_order);
 
+  // Checks `IteratorBase::Skip()`
+  Status CheckIteratorSkip(int num_to_skip, int expected_num_skipped,
+                           bool get_next,
+                           const std::vector<Tensor>& expected_outputs,
+                           bool compare_order);
+
+  // Checks that iterating through the dataset using a split provider produces
+  // the expected outputs.
+  Status CheckSplitProviderFullIteration(
+      const DatasetParams& params, const std::vector<Tensor>& expected_outputs);
+
+  // Checks that iterating through the dataset using a sharded split provider
+  // with the given `num_shards` and `shard_index` produces the expected
+  // outputs.
+  Status CheckSplitProviderShardedIteration(
+      const DatasetParams& params, int64 num_shards, int64 shard_index,
+      const std::vector<Tensor>& expected_outputs);
+
   // Checks `DatasetBase::node_name()`.
   Status CheckDatasetNodeName(const string& expected_dataset_node_name);
 
@@ -572,6 +651,9 @@ class DatasetOpsTestBase : public ::testing::Test {
   // Checks `DatasetBase::Cardinality()`.
   Status CheckDatasetCardinality(int expected_cardinality);
 
+  // Checks `DatasetBase::options()`.
+  Status CheckDatasetOptions(const Options& expected_options);
+
   // Checks `IteratorBase::output_dtypes()`.
   Status CheckIteratorOutputDtypes(
       const DataTypeVector& expected_output_dtypes);
@@ -583,9 +665,14 @@ class DatasetOpsTestBase : public ::testing::Test {
   // Checks `IteratorBase::prefix()`.
   Status CheckIteratorPrefix(const string& expected_iterator_prefix);
 
-  // Checks `IteratorBase::GetNext()`.
   Status CheckIteratorSaveAndRestore(
-      const string& iterator_prefix,
+      DatasetBase* dataset, IteratorContext* iterator_ctx,
+      const std::string& iterator_prefix,
+      const std::vector<Tensor>& expected_outputs,
+      const std::vector<int>& breakpoints, bool compare_order);
+
+  Status CheckIteratorSaveAndRestore(
+      const std::string& iterator_prefix,
       const std::vector<Tensor>& expected_outputs,
       const std::vector<int>& breakpoints, bool compare_order);
 
@@ -660,10 +747,15 @@ class DatasetOpsTestBase : public ::testing::Test {
       OpKernelContext* const op_context,
       std::unique_ptr<IteratorContext>* iterator_context);
 
+  // Creates a new iterator context for iterating the dataset.
   // Creates a new serialization context for serializing the dataset and
   // iterator.
   Status CreateSerializationContext(
       std::unique_ptr<SerializationContext>* context);
+
+  // Creates the dataset op kernel.
+  Status MakeGetOptionsOpKernel(const DatasetParams& dataset_params,
+                                std::unique_ptr<OpKernel>* op_kernel);
 
  private:
   // Runs the dataset operation according to the predefined dataset params and
@@ -712,7 +804,6 @@ class DatasetOpsTestBase : public ::testing::Test {
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
   FunctionLibraryRuntime* flr_;  // Owned by `pflr_`.
-  std::unique_ptr<FunctionHandleCache> function_handle_cache_;
   std::function<void(std::function<void()>)> runner_;
   std::unique_ptr<FunctionLibraryDefinition> lib_def_;
   std::unique_ptr<ResourceMgr> resource_mgr_;
@@ -752,6 +843,26 @@ class DatasetOpsTestBase : public ::testing::Test {
       dataset_op_test_class, ParameterizedGetNextTest,                        \
       ::testing::ValuesIn(                                                    \
           std::vector<GetNextTestCase<dataset_params_class>>(test_cases)));
+
+#define ITERATOR_SKIP_TEST_P(dataset_op_test_class, dataset_params_class,   \
+                             test_cases)                                    \
+  class ParameterizedSkipTest : public dataset_op_test_class,               \
+                                public ::testing::WithParamInterface<       \
+                                    SkipTestCase<dataset_params_class>> {}; \
+                                                                            \
+  TEST_P(ParameterizedSkipTest, GetNext) {                                  \
+    auto test_case = GetParam();                                            \
+    TF_ASSERT_OK(Initialize(test_case.dataset_params));                     \
+    TF_ASSERT_OK(CheckIteratorSkip(                                         \
+        test_case.num_to_skip, test_case.expected_num_skipped,              \
+        test_case.get_next, test_case.expected_outputs,                     \
+        /*compare_order=*/test_case.compare_order));                        \
+  }                                                                         \
+                                                                            \
+  INSTANTIATE_TEST_SUITE_P(                                                 \
+      dataset_op_test_class, ParameterizedSkipTest,                         \
+      ::testing::ValuesIn(                                                  \
+          std::vector<SkipTestCase<dataset_params_class>>(test_cases)));
 
 #define DATASET_NODE_NAME_TEST_P(dataset_op_test_class, dataset_params_class, \
                                  test_cases)                                  \

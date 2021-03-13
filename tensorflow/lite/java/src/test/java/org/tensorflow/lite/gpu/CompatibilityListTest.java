@@ -27,8 +27,8 @@ public final class CompatibilityListTest {
 
   @Test
   public void testBasic() throws Exception {
-    try (CompatibilityList whitelist = new CompatibilityList()) {
-      assertThat(whitelist.isDelegateSupportedOnThisDevice()).isTrue();
+    try (CompatibilityList allowlist = new CompatibilityList()) {
+      assertThat(allowlist.isDelegateSupportedOnThisDevice()).isTrue();
     }
   }
 }
