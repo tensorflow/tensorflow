@@ -243,70 +243,58 @@ bool RequireCudnnDeterminism() {
   return require_cudnn_determinism;
 }
 
-Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
-                              se::dnn::AlgorithmConfig* algo) {
-  std::vector<AutotuneResult> filtered_results;
-  absl::c_copy_if(
-      results, std::back_inserter(filtered_results),
-      [](const AutotuneResult& result) { return !result.has_failure(); });
-  if (filtered_results.empty()) {
-    return errors::NotFound("No algorithm worked!");
-  }
-  std::vector<AutotuneResult> filtered_results_no_scratch;
-  absl::c_copy_if(
-      filtered_results, std::back_inserter(filtered_results_no_scratch),
-      [](const AutotuneResult& result) { return result.scratch_bytes() == 0; });
-
-  auto selected_result = filtered_results.begin();
-  auto selected_result_no_scratch = filtered_results_no_scratch.begin();
-  if (!RequireCudnnDeterminism()) {
-    auto compare_run_times = [](const AutotuneResult& lhs,
-                                const AutotuneResult& rhs) {
-      return proto_utils::FromDurationProto(lhs.run_time()) <
-             proto_utils::FromDurationProto(rhs.run_time());
-    };
-    selected_result = absl::c_min_element(filtered_results, compare_run_times);
-    selected_result_no_scratch =
-        absl::c_min_element(filtered_results_no_scratch, compare_run_times);
-  }
-
-  algo->set_algorithm({selected_result->conv().algorithm(),
-                       selected_result->conv().tensor_ops_enabled()});
-  algo->set_scratch_size(selected_result->scratch_bytes());
-  if (selected_result_no_scratch != filtered_results_no_scratch.end()) {
-    algo->set_algorithm_no_scratch(
-        {selected_result_no_scratch->conv().algorithm(),
-         selected_result_no_scratch->conv().tensor_ops_enabled()});
-  }
-
-  return Status::OK();
-}
-
-Status BestCudnnConvExecutionPlan(
-           absl::Span<const AutotuneResult> results,
-           int* idx, int* idx_no_scratch) {
-  *idx = -1;
-  *idx_no_scratch = -1;
+Status BestCudnnConvAlgorithm(
+    absl::Span<const AutotuneResult> results, 
+    std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>>* plans,
+    se::dnn::AlgorithmConfig* algo, int* fastest_idx,
+    int* fastest_idx_no_scratch) {
+  auto compare_run_times = [](const AutotuneResult& lhs,
+                              const AutotuneResult& rhs) {
+    return proto_utils::FromDurationProto(lhs.run_time()) <
+           proto_utils::FromDurationProto(rhs.run_time());
+  };
+  int idx = -1;
+  int idx_no_scratch = -1;
   for (int i = 0; i < results.size(); i++) {
     if (!results[i].has_failure()) {
-      if (*idx == -1 or
-          proto_utils::FromDurationProto(results[i].run_time()) <
-          proto_utils::FromDurationProto(results[*idx].run_time())) {
-        *idx = i;
+      if (idx == -1 || compare_run_times(results[i], results[idx])) {
+        idx = i;
       }
-      if (results[i].scratch_bytes() == 0 and (*idx_no_scratch == -1 or
-          proto_utils::FromDurationProto(results[i].run_time()) <
-          proto_utils::FromDurationProto(
-              results[*idx_no_scratch].run_time()))) {
-        *idx_no_scratch = i;
+      if (results[i].scratch_bytes() == 0 && (idx_no_scratch == -1 ||
+              compare_run_times(results[i], results[idx_no_scratch]))) {
+        idx_no_scratch = i;
       }
     }
   }
 
-  if (*idx == -1 and *idx_no_scratch == -1) {
-    return errors::NotFound("No execution plan worked!");
+  if (idx == -1) {
+    return errors::NotFound("No algorithm worked!");
   }
 
+  if (fastest_idx == nullptr && fastest_idx_no_scratch == nullptr) {
+    algo->set_algorithm({results[idx].conv().algorithm(),
+                         results[idx].conv().tensor_ops_enabled()});
+    algo->set_scratch_size(results[idx].scratch_bytes());
+    if (idx_no_scratch != -1) {
+      algo->set_algorithm_no_scratch(
+          {results[idx_no_scratch].conv().algorithm(),
+           results[idx_no_scratch].conv().tensor_ops_enabled()});
+    }
+  } else if (fastest_idx != nullptr && fastest_idx_no_scratch != nullptr) {
+    algo->set_algorithm({(*plans)[idx]->getTag(),
+                         (*plans)[idx]->get_raw_desc()});
+    algo->set_scratch_size((*plans)[idx]->getWorkspaceSize());
+    *fastest_idx = idx;
+    if (idx_no_scratch != -1) {
+      algo->set_algorithm_no_scratch(
+          {(*plans)[idx_no_scratch]->getTag(),
+           (*plans)[idx_no_scratch]->get_raw_desc()});
+      *fastest_idx_no_scratch = idx_no_scratch;
+    }
+  } else {
+    return errors::InvalidArgument("fastest_idx and fastest_idx_no_scratch "
+                                   "must both be null or both be non-null.");
+  }
   return Status::OK();
 }
 

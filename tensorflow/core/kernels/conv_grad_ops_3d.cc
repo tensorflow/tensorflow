@@ -1590,18 +1590,8 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
                              stream->parent(), results);
       if (CudnnUseFrontend()) {
         int idx, idx_no_scratch;
-        OP_REQUIRES_OK(context,
-            BestCudnnConvExecutionPlan(results, &idx, &idx_no_scratch));
-
-        algorithm_config.set_algorithm(
-            AlgorithmDesc(plans[idx]->getTag(), plans[idx]->get_raw_desc()));
-        algorithm_config.set_scratch_size(plans[idx]->getWorkspaceSize());
-
-        if (idx_no_scratch != -1) {
-          algorithm_config.set_algorithm_no_scratch(
-              AlgorithmDesc(plans[idx_no_scratch]->getTag(),
-                            plans[idx_no_scratch]->get_raw_desc()));
-        }
+        OP_REQUIRES_OK(context, BestCudnnConvAlgorithm(
+            results, &plans, &algorithm_config, &idx, &idx_no_scratch));
 
         cached_plans.push_back(std::move(plans[idx]));
         if (idx_no_scratch != idx and idx_no_scratch != -1) {
@@ -1611,8 +1601,8 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         AutoTuneConv3dBwdDataExecutionPlan::GetInstance()->Insert(
             conv_parameters, cached_plans);
       } else {
-        OP_REQUIRES_OK(context,
-                       BestCudnnConvAlgorithm(results, &algorithm_config));
+        OP_REQUIRES_OK(context, BestCudnnConvAlgorithm(
+            results, nullptr, &algorithm_config, nullptr, nullptr));
         AutoTuneConv3dBwdData::GetInstance()->Insert(conv_parameters,
                                                      algorithm_config);
       }
@@ -2182,18 +2172,8 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
                              stream->parent(), results);
       if (CudnnUseFrontend()) {
         int idx, idx_no_scratch;
-        OP_REQUIRES_OK(context,
-            BestCudnnConvExecutionPlan(results, &idx, &idx_no_scratch));
-
-        algorithm_config.set_algorithm(
-            AlgorithmDesc(plans[idx]->getTag(), plans[idx]->get_raw_desc()));
-        algorithm_config.set_scratch_size(plans[idx]->getWorkspaceSize());
-
-        if (idx_no_scratch != -1) {
-          algorithm_config.set_algorithm_no_scratch(
-              AlgorithmDesc(plans[idx_no_scratch]->getTag(),
-                            plans[idx_no_scratch]->get_raw_desc()));
-        }
+        OP_REQUIRES_OK(context, BestCudnnConvAlgorithm(
+            results, &plans, &algorithm_config, &idx, &idx_no_scratch));
 
         cached_plans.push_back(std::move(plans[idx]));
         if (idx_no_scratch != idx and idx_no_scratch != -1) {
@@ -2203,7 +2183,8 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         AutoTuneConv3dBwdFilterExecutionPlan::GetInstance()->Insert(
             conv_parameters, cached_plans);
       } else {
-        Status s = BestCudnnConvAlgorithm(results, &algorithm_config);
+        Status s = BestCudnnConvAlgorithm(
+            results, nullptr, &algorithm_config, nullptr, nullptr);
 #if GOOGLE_CUDA
         if (s.code() == error::NOT_FOUND) {
           size_t version = cudnnGetVersion();

@@ -584,17 +584,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
         output_desc, conv_desc, stream->parent(), results);
     if (CudnnUseFrontend()) {
       int idx, idx_no_scratch;
-      OP_REQUIRES_OK(ctx,
-          BestCudnnConvExecutionPlan(results, &idx, &idx_no_scratch));
-      algorithm_config.set_algorithm(
-          AlgorithmDesc(plans[idx]->getTag(), plans[idx]->get_raw_desc()));
-      algorithm_config.set_scratch_size(plans[idx]->getWorkspaceSize());
-
-      if (idx_no_scratch != -1) {
-        algorithm_config.set_algorithm_no_scratch(
-            AlgorithmDesc(plans[idx_no_scratch]->getTag(),
-                          plans[idx_no_scratch]->get_raw_desc()));
-      }
+      OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(
+          results, &plans, &algorithm_config, &idx, &idx_no_scratch));
 
       cached_plans.push_back(std::move(plans[idx]));
       if (idx_no_scratch != idx and idx_no_scratch != -1) {
@@ -604,7 +595,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       AutoTuneConvBwdDataExecutionPlan::GetInstance()->Insert(conv_parameters,
                                                               cached_plans);
     } else {
-      OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
+      OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(
+          results, nullptr, &algorithm_config, nullptr, nullptr));
       AutoTuneConvBwdData::GetInstance()->Insert(conv_parameters,
                                                  algorithm_config);
     }
