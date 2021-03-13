@@ -26,10 +26,8 @@ import sys
 import threading
 import time
 
-from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribution_strategy_context
-from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
@@ -42,7 +40,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
@@ -450,7 +447,7 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
   @classmethod
   def setUpClass(cls):
     super(ClusterCoordinatorTest, cls).setUpClass()
-    cls.coordinator = make_coordinator(num_workers=5, num_ps=2)
+    cls.coordinator = make_coordinator(num_workers=3, num_ps=2)
     cls.strategy = cls.coordinator.strategy
 
   def testFnReturnNestedValues(self):
@@ -499,13 +496,11 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
     result = self.coordinator.schedule(
         worker_fn, args=(iter(distributed_dataset),))
     result = self.coordinator.fetch(result)
-
     self.assertEqual(result, (1,))
-    self.assertAlmostEqual(v.read_value(), 2, delta=1e-6)
+
+    self.assertAlmostEqual(v.read_value().numpy(), 2, delta=1e-6)
 
   def testAsyncScheduleAndJoin(self):
-    if test_util.is_xla_enabled():
-      self.skipTest('Assign_add is not deterministic across threads in XLA')
 
     def input_fn():
       return dataset_ops.DatasetV2.from_tensor_slices([2] * 10)
@@ -546,7 +541,7 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
     self.assertTrue(self.coordinator.done())
 
     # Likewise, it's now 20.
-    self.assertEqual(v.read_value().numpy(), 20.)
+    self.assertEqual(v.read_value().numpy(), 20)
 
   def testInputFunctionWithMap(self):
     self._map_fn_tracing_count = 0
@@ -585,26 +580,21 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
     random_seed.set_random_seed(None)
 
     def input_fn():
-      dataset = dataset_ops.DatasetV2.range(0, 100).shuffle(100).batch(1)
-      return self.strategy.experimental_distribute_dataset(dataset)
+      return dataset_ops.DatasetV2.range(0, 100).shuffle(100)
 
     distributed_dataset = self.coordinator.create_per_worker_dataset(input_fn)
     distributed_iterator = iter(distributed_dataset)
+
     # Get elements from the first two iterators.
     iterator_1 = distributed_iterator._values[0]
     iterator_1._rebuild_on(self.coordinator._cluster.workers[0])
     iterator_1 = iterator_1.fetch()
-    elements_in_iterator_1 = [
-        self.strategy.experimental_local_results(e)
-        for e in iterator_1
-    ]
+    elements_in_iterator_1 = [e.numpy() for e in iterator_1]
+
     iterator_2 = distributed_iterator._values[1]
     iterator_2._rebuild_on(self.coordinator._cluster.workers[1])
     iterator_2 = iterator_2.fetch()
-    elements_in_iterator_2 = [
-        self.strategy.experimental_local_results(e)
-        for e in iterator_2
-    ]
+    elements_in_iterator_2 = [e.numpy() for e in iterator_2]
 
     self.assertNotAllEqual(elements_in_iterator_1, elements_in_iterator_2)
 
@@ -688,6 +678,47 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
         'error message is Failed copying input tensor from'):
       self.coordinator.join()
 
+  def testRunNotUsedWithClusterCoordinatorSchedule(self):
+
+    @def_function.function
+    def input_fn():
+      return dataset_ops.DatasetV2.range(1, 10)
+
+    with self.strategy.scope():
+      v = variables.Variable(initial_value=1, dtype=dtypes.int64)
+
+      def replica_fn(input_tensor):
+        return input_tensor + v, input_tensor - v
+
+      @def_function.function
+      def worker_fn(iterator):
+        return self.strategy.run(replica_fn, args=(next(iterator),))
+
+    per_worker_dataset = self.coordinator.create_per_worker_dataset(input_fn)
+
+    @contextlib.contextmanager
+    def _assert_raises_usage_error():
+      with self.assertRaisesRegexp(
+          NotImplementedError,
+          "`tf.distribute.experimental.ParameterServerStrategy`'s `run` or "
+          '`reduce` must be used within a function passed to '
+          '`tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`'
+          '.'):
+        yield
+
+    with _assert_raises_usage_error():
+      # Invoking `run` without `coordinator.schedule` should error.
+      self.strategy.run(replica_fn, args=(next(iter(input_fn())),))
+
+    # A proper `schedule` should succeed.
+    rv = self.coordinator.schedule(worker_fn, args=(iter(per_worker_dataset),))
+
+    with _assert_raises_usage_error():
+      # Invoking `run` without `coordinator.schedule` again should error.
+      self.strategy.run(replica_fn, args=(next(iter(input_fn())),))
+
+    self.assertEqual((2, 0), rv.fetch())
+
 
 class LimitedClosureQueueSizeBasicTest(ClusterCoordinatorTest):
   """Test basic functionality works with explicit maximum closure queue size.
@@ -704,7 +735,7 @@ class LimitedClosureQueueSizeBasicTest(ClusterCoordinatorTest):
   def setUpClass(cls):
     super(LimitedClosureQueueSizeBasicTest, cls).setUpClass()
     coordinator_lib._CLOSURE_QUEUE_MAX_SIZE = 2
-    cls.coordinator = make_coordinator(num_workers=5, num_ps=2)
+    cls.coordinator = make_coordinator(num_workers=3, num_ps=2)
     cls.strategy = cls.coordinator.strategy
 
 
@@ -870,59 +901,6 @@ class StrategyIntegrationTest(test.TestCase):
     cls.coordinator = make_coordinator(num_workers=1, num_ps=1)
     cls.strategy = cls.coordinator.strategy
 
-  def testRunNotUsedWithClusterCoordinatorSchedule(self):
-
-    @def_function.function
-    def input_fn():
-      return dataset_ops.DatasetV2.range(1, 3)
-
-    with self.strategy.scope():
-      v = variables.Variable(initial_value=1, dtype=dtypes.int64)
-
-      def replica_fn(input_tensor):
-        return input_tensor + v, input_tensor - v
-
-      @def_function.function
-      def worker_fn(iterator):
-        return self.strategy.run(replica_fn, args=(next(iterator),))
-
-    per_worker_dataset = self.coordinator.create_per_worker_dataset(input_fn)
-
-    @contextlib.contextmanager
-    def _assert_raises_usage_error():
-      with self.assertRaisesRegexp(
-          NotImplementedError,
-          "`tf.distribute.experimental.ParameterServerStrategy`'s `run` or "
-          '`reduce` must be used within a function passed to '
-          '`tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`'
-          '.'):
-        yield
-
-    with _assert_raises_usage_error():
-      # Invoking `run` without `coordinator.schedule` should error.
-      # Don't pass input_fn args to account for failure to copy created dataset
-      # on GPU.
-      # Failure: "No unary variant device copy function found for direction .."
-      # For the purpose of this test, input args do not affect the assertion
-      # outcome.
-      self.strategy.run(replica_fn)
-
-    # A proper `schedule` should succeed.
-    rv = self.coordinator.schedule(worker_fn, args=(iter(per_worker_dataset),))
-
-    with _assert_raises_usage_error():
-      # Invoking `run` without `coordinator.schedule` again should error.
-      self.strategy.run(replica_fn)
-
-    all_results = [(2, 0), (2, 0)]
-    expected_result = []
-    for i in range(self.strategy.num_replicas_in_sync):
-      expected_result.append(all_results[i])
-
-    self.assertAllEqual(
-        tuple(expected_result),
-        self.strategy.experimental_local_results(rv.fetch()))
-
   def testBasicVariableAssignment(self):
     self.strategy.extended._variable_count = 0
     with self.strategy.scope():
@@ -947,10 +925,7 @@ class StrategyIntegrationTest(test.TestCase):
     self.assertFalse(distribution_strategy_context.in_cross_replica_context())
     with self.strategy.scope():
       self.assertTrue(distribution_strategy_context.in_cross_replica_context())
-      v = variables.Variable(initial_value=1.)
-
-      expected_result = (4. * self.strategy.num_replicas_in_sync,
-                         2. * self.strategy.num_replicas_in_sync)
+      v = variables.Variable(initial_value=1)
 
       @def_function.function
       def worker_fn(input_tensor):
@@ -963,194 +938,63 @@ class StrategyIntegrationTest(test.TestCase):
 
         run_result = self.strategy.run(replica_fn, args=(input_tensor,))
         reduced_result = self.strategy.reduce('SUM', run_result, axis=None)
-        check_ops.assert_equal_v2(reduced_result, expected_result)
+        check_ops.assert_equal_v2(run_result, (4, 2))
+        check_ops.assert_equal_v2(reduced_result, (4, 2))
         return reduced_result
 
       # Asserting scheduling in scope has the expected behavior.
       result = self.coordinator.schedule(
-          worker_fn, args=(constant_op.constant(3.),))
+          worker_fn, args=(constant_op.constant(3),))
       self.assertIsInstance(result, coordinator_lib.RemoteValue)
-      self.assertEqual(result.fetch(), expected_result)
+      self.assertEqual(result.fetch(), (4, 2))
 
     # Asserting scheduling out of scope has the expected behavior.
     result = self.coordinator.schedule(
-        worker_fn, args=(constant_op.constant(3.),))
-    self.assertEqual(result.fetch(), expected_result)
-
-  def testRunAndReduceWithAssignAdd(self):
-    if self.strategy.num_replicas_in_sync > 1:
-      self.skipTest(
-          'Skipping test since assign_add performed multiple times per replica.'
-          'It should assign_add variable only once.'
-      )
-
-    self.assertFalse(distribution_strategy_context.in_cross_replica_context())
-    with self.strategy.scope():
-      self.assertTrue(distribution_strategy_context.in_cross_replica_context())
-      v = variables.Variable(initial_value=1.)
-      v1 = variables.Variable(initial_value=0.)
-
-      expected_result = (4. * self.strategy.num_replicas_in_sync,
-                         2. * self.strategy.num_replicas_in_sync)
-
-      @def_function.function
-      def worker_fn(input_tensor):
-
-        def replica_fn(input_tensor):
-          # Within `replica_fn`, it has to be in a replica context.
-          self.assertFalse(
-              distribution_strategy_context.in_cross_replica_context())
-
-          v1.assign_add(input_tensor)
-          return input_tensor + v, input_tensor - v
-
-        run_result = self.strategy.run(replica_fn, args=(input_tensor,))
-        reduced_result = self.strategy.reduce('SUM', run_result, axis=None)
-        check_ops.assert_equal_v2(reduced_result, expected_result)
-        return reduced_result
-
-      # Asserting scheduling in scope has the expected behavior.
-      result = self.coordinator.schedule(
-          worker_fn, args=(constant_op.constant(3.),))
-      self.assertIsInstance(result, coordinator_lib.RemoteValue)
-      self.assertEqual(result.fetch(), expected_result)
-
-    # Asserting scheduling out of scope has the expected behavior.
-    result = self.coordinator.schedule(
-        worker_fn, args=(constant_op.constant(3.),))
-    self.assertEqual(result.fetch(), expected_result)
-    self.assertEqual(v1, 6.)
+        worker_fn, args=(constant_op.constant(3),))
+    self.assertEqual(result.fetch(), (4, 2))
 
   def testDistributeDataset(self):
 
     def per_worker_dataset_fn():
-      dataset = dataset_ops.DatasetV2.range(1, 11).batch(4)
-      return self.strategy.experimental_distribute_dataset(dataset)
-
-    @def_function.function
-    def worker_fn(iterator):
-      return self.strategy.experimental_local_results(next(iterator))
-
-    distributed_dataset = self.coordinator.create_per_worker_dataset(
-        per_worker_dataset_fn)
-    result = self.coordinator.schedule(
-        worker_fn, args=(iter(distributed_dataset),))
-    result = result.fetch()
-    expected_result = array_ops.split(
-        math_ops.range(1., 5.),
-        num_or_size_splits=self.strategy.num_replicas_in_sync,
-        axis=0)
-
-    self.assertAllEqual(result, (expected_result))
-
-  def testDistributeDatasetsFromFunction(self):
-
-    def per_worker_dataset_fn():
-      return self.strategy.distribute_datasets_from_function(
-          lambda _: dataset_ops.DatasetV2.range(1, 11).batch(1))
-
-    @def_function.function
-    def worker_fn(iterator):
-      result = self.strategy.experimental_local_results(next(iterator))
-      return result
-
-    distributed_dataset = self.coordinator.create_per_worker_dataset(
-        per_worker_dataset_fn)
-    result = self.coordinator.schedule(
-        worker_fn, args=(iter(distributed_dataset),))
-    result = result.fetch()
-    expected_result = []
-    for i in range(self.strategy.num_replicas_in_sync):
-      expected_result.append([1 + i])
-    self.assertAllEqual(result, expected_result)
-
-  def testAsyncScheduleWithDistributedDataset(self):
-
-    def input_fn():
-      dataset = dataset_ops.DatasetV2.from_tensor_slices([2.] * 24).batch(
-          self.strategy.num_replicas_in_sync)
-      return self.strategy.experimental_distribute_dataset(dataset)
-
-    with self.strategy.scope():
-      v = variables.Variable(initial_value=[0], dtype=dtypes.float32)
-
-    # TODO(yuefengz): the following tf.function has a return value which is None
-    # in its structured_outputs.
-    @def_function.function
-    def worker_fn(iterator):
-      x = next(iterator)
-      # Reduce to convert PerReplica values to single value
-      reduced_value = self.strategy.reduce('MEAN', x, axis=None)
-      v.assign_add(reduced_value)
-
-    distributed_dataset = self.coordinator.create_per_worker_dataset(input_fn)
-
-    iterator = iter(distributed_dataset)
-
-    # Verifying joining without any scheduling doesn't hang.
-    self.coordinator.join()
-    self.assertAllEqual(v.read_value(), (0,))
-
-    for _ in range(5):
-      self.coordinator.schedule(worker_fn, args=(iterator,))
-    self.coordinator.join()
-
-    # With 5 addition it should be 2*5 = 10.
-    self.assertAllEqual(
-        self.strategy.experimental_local_results(v.read_value()), ([[10]]))
-
-    for _ in range(5):
-      self.coordinator.schedule(worker_fn, args=(iterator,))
-
-    # Verifying multiple join is fine.
-    self.coordinator.join()
-    self.coordinator.join()
-    self.coordinator.join()
-
-    self.assertTrue(self.coordinator.done())
-
-    # Likewise, it's now 20.
-    self.assertAllEqual(
-        self.strategy.experimental_local_results(v.read_value()), ([[20]]))
-
-  def testInputFunctionWithMapWithDistributedDataset(self):
-    self._map_fn_tracing_count = 0
-
-    def input_fn():
-
-      def map_fn(x):
-        self._map_fn_tracing_count += 1
-        return x + 10
-
-      dataset = dataset_ops.DatasetV2.range(0, 10).batch(2).map(map_fn)
+      dataset = dataset_ops.DatasetV2.range(1, 2)
       return self.strategy.experimental_distribute_dataset(dataset)
 
     @def_function.function
     def worker_fn(iterator):
       return next(iterator)
 
-    distributed_dataset = self.coordinator.create_per_worker_dataset(input_fn)
+    distributed_dataset = self.coordinator.create_per_worker_dataset(
+        per_worker_dataset_fn)
     result = self.coordinator.schedule(
         worker_fn, args=(iter(distributed_dataset),))
+    result = result.fetch()
+    self.assertEqual(result, (1,))
 
-    expected_result = array_ops.split(
-        math_ops.range(10., 12.),
-        num_or_size_splits=self.strategy.num_replicas_in_sync,
-        axis=0)
+  def testDistributeDatasetsFromFunction(self):
 
-    self.assertAllEqual(
-        self.strategy.experimental_local_results(result.fetch()),
-        tuple(expected_result))
-    self.assertEqual(self._map_fn_tracing_count, 1)
+    def per_worker_dataset_fn():
+      return self.strategy.distribute_datasets_from_function(
+          lambda _: dataset_ops.DatasetV2.range(1, 2))
+
+    @def_function.function
+    def worker_fn(iterator):
+      return next(iterator)
+
+    distributed_dataset = self.coordinator.create_per_worker_dataset(
+        per_worker_dataset_fn)
+    result = self.coordinator.schedule(
+        worker_fn, args=(iter(distributed_dataset),))
+    result = result.fetch()
+    self.assertEqual(result, (1,))
 
   def testCallingDistributeDatasetOutside(self):
     with self.assertRaises(ValueError):
-      dataset = dataset_ops.DatasetV2.range(1, 2).batch(10)
+      dataset = dataset_ops.DatasetV2.range(1, 2)
       self.strategy.experimental_distribute_dataset(dataset)
 
     with self.assertRaises(ValueError):
       self.strategy.distribute_datasets_from_function(
-          lambda _: dataset_ops.DatasetV2.range(1, 2).batch(2))
+          lambda _: dataset_ops.DatasetV2.range(1, 2))
 
   def testPerWorkerDistributeDatasetsElementSpec(self):
 
@@ -1162,13 +1006,9 @@ class StrategyIntegrationTest(test.TestCase):
     per_worker_distribute_dataset = self.coordinator.create_per_worker_dataset(
         per_worker_dataset_fn)
 
-    self.assertAllEqual(
-        # Converts to PerReplicaSpec when num_replicas_in_sync are > 1
-        input_lib._create_distributed_tensor_spec(self.strategy,
-                                                  dataset.element_spec),
-        per_worker_distribute_dataset.element_spec)
+    self.assertAllEqual(dataset.element_spec,
+                        per_worker_distribute_dataset.element_spec)
 
 
 if __name__ == '__main__':
-  v2_compat.enable_v2_behavior()
   test.main()

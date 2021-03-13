@@ -24,24 +24,19 @@ from __future__ import print_function
 
 import os
 
-from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
-from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import input_lib
-from tensorflow.python.distribute import mirrored_run
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import sharded_variable
-from tensorflow.python.distribute import values
 from tensorflow.python.eager import remote
-from tensorflow.python.framework import config
-from tensorflow.python.framework import device as tf_device
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
@@ -437,7 +432,8 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
     """
     # pyformat: enable
     self._cluster_resolver = cluster_resolver
-
+    self._extended = ParameterServerStrategyV2Extended(self, cluster_resolver,
+                                                       variable_partitioner)
     self._verify_args_and_config(cluster_resolver)
     self._cluster_coordinator = None
     logging.info(
@@ -446,14 +442,10 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
 
     # TODO(b/167894802): Make coordinator, worker, and ps names customizable.
     self._connect_to_cluster(coordinator_name="chief")
-    self._extended = ParameterServerStrategyV2Extended(self, cluster_resolver,
-                                                       variable_partitioner)
     super(ParameterServerStrategyV2, self).__init__(self._extended)
     distribute_lib.distribution_strategy_gauge.get_cell("V2").set(
         "ParameterServerStrategy")
     self._should_use_with_coordinator = True
-    # Used while constructing distributed iterators.
-    self._canonicalize_devices = False
 
   def _connect_to_cluster(self, coordinator_name):
     if coordinator_name in ["worker", "ps"]:
@@ -494,6 +486,9 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
     if not cluster_resolver.cluster_spec():
       raise ValueError("Cluster spec must be non-empty in "
                        "`tf.distribute.cluster_resolver.ClusterResolver`.")
+    if self.extended._num_gpus_per_worker > 1:  # pylint: disable=protected-access
+      raise NotImplementedError("Multi-gpu is not supported yet.")
+
     cluster_spec = cluster_resolver.cluster_spec()
 
     # The following checks if the task types are allowed (chief, ps, worker).
@@ -521,47 +516,13 @@ class ParameterServerStrategyV2Extended(
     """Initialization of ParameterServerStrategyV2Extended."""
     super(ParameterServerStrategyV2Extended, self).__init__(container_strategy)
     self._num_ps = len(cluster_resolver.cluster_spec().as_dict().get("ps", []))
-    self._num_workers = len(cluster_resolver.cluster_spec().as_dict().get(
-        "worker", []))
     self._variable_count = 0
-
     self._variable_partitioner = variable_partitioner
+
     # The following two attrs are to verify that `ParameterServerStrategy`
     # methods are properly used with a `ClusterCoordinator`.
     self._used_with_coordinator = False
     self._being_scheduled = False
-    self._set_num_gpus()
-
-    # Don't canonicalize the devices here since this code is executed on Chief,
-    # but we want the reduce evaluation to be done on each worker. Placer will
-    # automatically choose the right device based on current context.
-    # TODO(ishark): Use select_cross_device_ops instead.
-    self._cross_device_ops = cross_device_ops_lib.ReductionToOneDevice(
-        reduce_to_device="/device:CPU:0")
-    self._cross_device_ops._canonicalize_devices = False  # pylint: disable=protected-access
-
-  def _set_num_gpus(self):
-    devices = config.list_logical_devices("GPU")
-    per_worker_gpus = {}
-    for d in devices:
-      d_spec = tf_device.DeviceSpec.from_string(d.name)
-      if d_spec.device_type == "GPU" and d_spec.job == "worker":
-        # TODO(b/167894802): update if worker name is customizable
-        job_spec = d_spec.replace(device_type=None, device_index=None)
-        per_worker_gpus[job_spec] = per_worker_gpus.get(job_spec, 0) + 1
-
-    num_gpus = 0
-    for _, count in per_worker_gpus.items():
-      if num_gpus > 0 and count != num_gpus:
-        raise ValueError("Mismatched number of GPUs per worker")
-      num_gpus = count
-
-    self._num_gpus_per_worker = num_gpus
-    logging.info(f"Number of GPUs on workers: {self._num_gpus_per_worker}")
-
-  @property
-  def _num_replicas_in_sync(self):
-    return self._num_gpus_per_worker or 1
 
   def _create_variable(self, next_creator, **kwargs):
     """Implements StrategyExtendedV2._create_variable.
@@ -713,14 +674,11 @@ class ParameterServerStrategyV2Extended(
     # Clear the colocation scope to avoid possible conflicts between device
     # scope and colocation scope.
     with ops.colocate_with(None, ignore_existing=True):
-      # Explicitly set CPU:0 device for PS in case create variable is called
-      # inside replica_fn and worker has with GPU:0 scope.
-      with ops.device("/job:ps/task:%d/device:CPU:0" %
+      with ops.device("/job:ps/task:%d" %
                       (self._variable_count % self._num_ps)):
         var = next_creator(**kwargs)
         logging.debug(
-            "Creating variable (name:%s, shape:%r) on "
-            "/job:ps/task:%d/device:CPU:0",
+            "Creating variable (name:%s, shape:%r) on /job:ps/task:%d",
             var.name, var.shape, (self._variable_count % self._num_ps))
         self._variable_count += 1
         return var
@@ -739,14 +697,6 @@ class ParameterServerStrategyV2Extended(
           "tf.distribute.experimental.coordinator.ClusterCoordinator.schedule"
           "`.")
 
-  # options is not used right now. But we may want to support options while
-  # creating InputWorkers in future, similar to MirroredStrategy.
-  def _input_workers_with_options(self, options=None):
-    input_workers_devices = (
-        ("/device:CPU:0", self.worker_devices),)
-    return input_lib.InputWorkers(
-        input_workers_devices, canonicalize_devices=False)
-
   def _experimental_distribute_dataset(self, dataset, options):
     self._assert_used_with_cluster_coordinator()
     if not ops.get_default_graph().building_function:
@@ -754,15 +704,7 @@ class ParameterServerStrategyV2Extended(
           "The `experimental_distribute_dataset` method must be called inside "
           "a `tf.function` passed to `create_per_worker_dataset` of "
           "`tf.distribute.experimental.coordinator.ClusterCoordinator`")
-
-    input_workers_devices = self._input_workers_with_options()
-
-    return input_lib.get_distributed_dataset(
-        dataset,
-        input_workers_devices,
-        self._container_strategy(),
-        num_replicas_in_sync=self._num_replicas_in_sync,
-        options=options)
+    return dataset
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
     self._assert_used_with_cluster_coordinator()
@@ -771,57 +713,21 @@ class ParameterServerStrategyV2Extended(
           "The `distribute_datasets_from_function` method must be called "
           "inside a `tf.function` passed to `create_per_worker_dataset` of "
           "`tf.distribute.experimental.coordinator.ClusterCoordinator`")
-
-    # There is no synchronization beyond a worker and thus, the number of
-    # input pipelines in sync is only 1 per worker.
-    input_pipeline_id_in_sync = 0
-    num_input_pipelines_in_sync = 1
-
-    input_context = distribute_lib.InputContext(
-        num_input_pipelines=num_input_pipelines_in_sync,
-        input_pipeline_id=input_pipeline_id_in_sync,
-        num_replicas_in_sync=self._num_replicas_in_sync)
-
-    return input_lib.get_distributed_datasets_from_function(
-        dataset_fn,
-        self._input_workers_with_options(options),
-        [input_context],
-        self._container_strategy(),
-        options=options)
-
-  @property
-  def worker_devices(self):
-    num_gpus = self._num_gpus_per_worker
-    if num_gpus > 0:
-      compute_devices = tuple("/device:GPU:%d" % (i,) for i in range(num_gpus))
-    else:
-      compute_devices = ("/device:CPU:0",)
-    return compute_devices
+    return dataset_fn(distribute_lib.InputContext())
 
   def _call_for_each_replica(self, fn, args, kwargs):
     self._assert_being_scheduled_by_cluster_coordinator()
-
-    return mirrored_run.call_for_each_replica(self._container_strategy(), fn,
-                                              args, kwargs)
+    with distribute_lib.ReplicaContext(
+        self._container_strategy(),
+        replica_id_in_sync_group=constant_op.constant(0, dtypes.int32)):
+      # TODO(rchao): Support multi-replica per worker or sync-group.
+      return distribute_utils.regroup((fn(*args, **kwargs),))
 
   def _reduce(self, reduce_op, value):
     self._assert_being_scheduled_by_cluster_coordinator()
-    dst = device_util.current() or self._default_device or "/device:CPU:0"
-    destinations = device_util.canonicalize_without_job_and_task(dst)
-    result = self._local_results(
-        self.reduce_to(reduce_op, value, destinations))[0]
-    return result
-
-  def _reduce_to(self, reduce_op, value, destinations, options):
-    self._assert_being_scheduled_by_cluster_coordinator()
-
-    def get_values(x):
-      if isinstance(x, values.DistributedValues):
-        return self._cross_device_ops.reduce(
-            reduce_op, x, destinations=destinations)  # pylint: disable=protected-access
-      return x
-
-    return nest.map_structure(get_values, value)
+    # TODO(rchao): Provide implementation for multi-replica. Also look into why
+    # the default implementation is not working.
+    return value
 
 
 # The warning that will be logged if the way we initialize sharded variables

@@ -32,6 +32,7 @@ import time
 import weakref
 from six.moves import queue
 
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.coordinator import metric_utils
@@ -1248,9 +1249,9 @@ class ClusterCoordinator(object):
       a `tf.distribute.experimental.coordinator.PerWorkerValues` of the
       iterators (that are on the workers).
     """
-    input_workers = input_lib.InputWorkers(
-        [(w.device_name, [w.device_name]) for w in self._cluster.workers],
-        False)
+    input_workers = input_lib.InputWorkers([
+        (w.device_name, [w.device_name]) for w in self._cluster.workers
+    ])
 
     return _PerWorkerDistributedDataset(dataset_fn, input_workers, self)
 
@@ -1382,10 +1383,9 @@ class _PerWorkerDistributedDataset(object):
     # Setting type_spec of each RemoteValue so that functions taking these
     # RemoteValues as inputs can be traced.
     for iterator_remote_value in per_worker_iterator._values:
-      iterator_remote_value._type_spec = (
-          input_lib.get_iterator_spec_from_dataset(
-              self._coordinator.strategy, self._dataset_fn.structured_outputs))
-
+      iterator_remote_value._type_spec = (  # pylint: disable=protected-access
+          iterator_ops.IteratorSpec(
+              self._dataset_fn.structured_outputs.element_spec))
     return _PerWorkerDistributedIterator(per_worker_iterator._values)
 
   @property
