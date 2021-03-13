@@ -17,7 +17,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 
 #include <cstdint>
-#include <cstdio>
 #include <initializer_list>
 #include <vector>
 
@@ -32,9 +31,9 @@ namespace builtin {
 namespace {
 
 template <typename T>
-class CumsumOpModel {
+class CumSumOpModel {
  public:
-  CumsumOpModel(const TensorData& input, const TensorData& output,
+  CumSumOpModel(const TensorData& input, const TensorData& output,
                 bool exclusive, bool reverse)
       : exclusive_(exclusive), reverse_(reverse) {
     input_shape_.assign(input.shape.begin(), input.shape.end());
@@ -49,8 +48,6 @@ class CumsumOpModel {
     return RuntimeShape(input_shape_.size(), input_shape_.data());
   }
 
-  void ShowTensor(int index, char* name) {}
-
   template <typename Ttype>
   void PopulateTensor(std::vector<Ttype>* v,
                       const std::initializer_list<Ttype>& il) {
@@ -58,7 +55,7 @@ class CumsumOpModel {
   }
 
   void Invoke() {
-    tflite::reference_ops::Cumsum(GetInput()->data(), GetInputShape(),
+    tflite::reference_ops::CumSum(GetInput()->data(), GetInputShape(),
                                   GetAxis()->at(0), exclusive(), reverse(),
                                   GetOutput().data());
   }
@@ -75,8 +72,8 @@ class CumsumOpModel {
   bool exclusive_;
 };
 
-TEST(CumsumOpTest, SimpleIntTest) {
-  CumsumOpModel<int32_t> m({TensorType_INT32, {2, 4}}, {TensorType_INT32, {}},
+TEST(CumSumOpTest, SimpleIntTest) {
+  CumSumOpModel<int32_t> m({TensorType_INT32, {2, 4}}, {TensorType_INT32, {}},
                            false, false);
 
   m.PopulateTensor<int32_t>(m.GetInput(), {1, 2, 3, 4, 5, 6, 7, 8});
@@ -88,8 +85,8 @@ TEST(CumsumOpTest, SimpleIntTest) {
               testing::ElementsAreArray({1, 3, 6, 10, 5, 11, 18, 26}));
 }
 
-TEST(CumsumOpTest, SimpleInt64Test) {
-  CumsumOpModel<int64_t> m({TensorType_INT64, {2, 4}}, {TensorType_INT64, {}},
+TEST(CumSumOpTest, SimpleInt64Test) {
+  CumSumOpModel<int64_t> m({TensorType_INT64, {2, 4}}, {TensorType_INT64, {}},
                            false, false);
 
   m.PopulateTensor<int64_t>(
@@ -106,8 +103,8 @@ TEST(CumsumOpTest, SimpleInt64Test) {
                                   300000000018l, 400000000026l}));
 }
 
-TEST(CumsumOpTest, SimpleIntAxis0Test) {
-  CumsumOpModel<int32_t> m({TensorType_INT32, {2, 4}}, {TensorType_INT32, {}},
+TEST(CumSumOpTest, SimpleIntAxis0Test) {
+  CumSumOpModel<int32_t> m({TensorType_INT32, {2, 4}}, {TensorType_INT32, {}},
                            false, false);
 
   m.PopulateTensor<int32_t>(m.GetInput(), {1, 2, 3, 4, 5, 6, 7, 8});
@@ -119,8 +116,8 @@ TEST(CumsumOpTest, SimpleIntAxis0Test) {
               testing::ElementsAreArray({1, 2, 3, 4, 6, 8, 10, 12}));
 }
 
-TEST(CumsumOpTest, Simple1DIntTest) {
-  CumsumOpModel<int32_t> m({TensorType_INT32, {8}}, {TensorType_INT32, {}},
+TEST(CumSumOpTest, Simple1DIntTest) {
+  CumSumOpModel<int32_t> m({TensorType_INT32, {8}}, {TensorType_INT32, {}},
                            false, false);
 
   m.PopulateTensor<int32_t>(m.GetInput(), {1, 2, 3, 4, 5, 6, 7, 8});
@@ -132,8 +129,8 @@ TEST(CumsumOpTest, Simple1DIntTest) {
               testing::ElementsAreArray({1, 3, 6, 10, 15, 21, 28, 36}));
 }
 
-TEST(CumsumOpTest, SimpleIntReverseTest) {
-  CumsumOpModel<int32_t> m({TensorType_INT32, {2, 4}}, {TensorType_INT32, {}},
+TEST(CumSumOpTest, SimpleIntReverseTest) {
+  CumSumOpModel<int32_t> m({TensorType_INT32, {2, 4}}, {TensorType_INT32, {}},
                            false, true);
 
   m.PopulateTensor<int32_t>(m.GetInput(), {1, 2, 3, 4, 5, 6, 7, 8});
@@ -145,8 +142,8 @@ TEST(CumsumOpTest, SimpleIntReverseTest) {
               testing::ElementsAreArray({10, 9, 7, 4, 26, 21, 15, 8}));
 }
 
-TEST(CumsumOpTest, SimpleIntExclusiveTest) {
-  CumsumOpModel<int32_t> m({TensorType_INT32, {2, 4}}, {TensorType_INT32, {}},
+TEST(CumSumOpTest, SimpleIntExclusiveTest) {
+  CumSumOpModel<int32_t> m({TensorType_INT32, {2, 4}}, {TensorType_INT32, {}},
                            true, false);
 
   m.PopulateTensor<int32_t>(m.GetInput(), {1, 2, 3, 4, 5, 6, 7, 8});
@@ -158,8 +155,8 @@ TEST(CumsumOpTest, SimpleIntExclusiveTest) {
               testing::ElementsAreArray({0, 1, 3, 6, 0, 5, 11, 18}));
 }
 
-TEST(CumsumOpTest, SimpleFloatTest) {
-  CumsumOpModel<float> m({TensorType_FLOAT32, {2, 4}}, {TensorType_FLOAT32, {}},
+TEST(CumSumOpTest, SimpleFloatTest) {
+  CumSumOpModel<float> m({TensorType_FLOAT32, {2, 4}}, {TensorType_FLOAT32, {}},
                          false, false);
 
   m.PopulateTensor<float>(m.GetInput(), {1, 2, 3, 4, 5, 6, 7, 8});
