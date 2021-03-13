@@ -288,7 +288,7 @@ class EmbeddingLookupTest(test.TestCase):
       norms = math_ops.sqrt(
           math_ops.reduce_sum(embeddings * embeddings, axis=1))
       normalized = embeddings / array_ops.stack([norms, norms], axis=1)
-      self.assertAllEqual(embedding, 2 * self.evaluate(normalized))
+      self.assertAllClose(embedding, 2 * self.evaluate(normalized))
 
   @test_util.run_deprecated_v1
   def testSimpleShardedPartitionedVariable(self):

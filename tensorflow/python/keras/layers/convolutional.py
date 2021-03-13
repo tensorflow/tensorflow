@@ -179,6 +179,10 @@ class Conv(Layer):
       raise ValueError('The argument `kernel_size` cannot contain 0(s). '
                        'Received: %s' % (self.kernel_size,))
 
+    if not all(self.strides):
+      raise ValueError('The argument `strides` cannot contains 0(s). '
+                       'Received: %s' % (self.strides,))
+
     if (self.padding == 'causal' and not isinstance(self,
                                                     (Conv1D, SeparableConv1D))):
       raise ValueError('Causal padding is only supported for `Conv1D`'
@@ -534,7 +538,8 @@ class Conv2D(Conv):
   provide the keyword argument `input_shape`
   (tuple of integers or `None`, does not include the sample axis),
   e.g. `input_shape=(128, 128, 3)` for 128x128 RGB pictures
-  in `data_format="channels_last"`.
+  in `data_format="channels_last"`. You can use `None` when
+  a dimension has variable size.
 
   Examples:
 

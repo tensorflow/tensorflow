@@ -375,6 +375,17 @@ typedef struct TfLiteCustomAllocation {
   size_t bytes;
 } TfLiteCustomAllocation;
 
+// The flags used in `Interpreter::SetCustomAllocationForTensor`.
+// Note that this is a bitmask, so the values should be 1, 2, 4, 8, ...etc.
+typedef enum TfLiteCustomAllocationFlags {
+  kTfLiteCustomAllocationFlagsNone = 0,
+  // Skips checking whether allocation.data points to an aligned buffer as
+  // expected by the TFLite runtime.
+  // NOTE: Setting this flag can cause crashes when calling Invoke().
+  // Use with caution.
+  kTfLiteCustomAllocationFlagsSkipAlignCheck = 1,
+} TfLiteCustomAllocationFlags;
+
 // A tensor in the interpreter system which is a wrapper around a buffer of
 // data including a dimensionality (or NULL if not currently defined).
 #ifndef TF_LITE_STATIC_MEMORY

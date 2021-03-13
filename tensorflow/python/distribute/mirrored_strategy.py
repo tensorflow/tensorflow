@@ -26,12 +26,14 @@ from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import mirrored_run
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
+from tensorflow.python.distribute import values_util
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
@@ -453,7 +455,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
                   for d in self._devices))
       return input_lib.InputWorkers(self._input_workers_devices)
     else:
-      if not options.experimental_prefetch_to_device:
+      if not options.experimental_fetch_to_device:
         return input_lib.InputWorkers([
             (host_device, (host_device,) * len(compute_devices))
             for host_device, compute_devices in self._input_workers_devices
@@ -722,24 +724,27 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         reduce_op == reduce_util.ReduceOp.MEAN):
       return value
     assert not distribute_utils.is_mirrored(value)
-    if not isinstance(value, values.DistributedValues):
-      # This function handles reducing values that are not PerReplica or
-      # Mirrored values. For example, the same value could be present on all
-      # replicas in which case `value` would be a single value or value could
-      # be 0.
-      return cross_device_ops_lib.reduce_non_distributed_value(
-          reduce_op, value, destinations, self._num_replicas_in_sync)
-    if self._collective_ops_in_use and (
-        (not cross_device_ops_lib._devices_match(value, destinations) or  # pylint: disable=protected-access
-         any("cpu" in d.lower()
-             for d in cross_device_ops_lib.get_devices_from(destinations)))):
-      return cross_device_ops_lib.ReductionToOneDevice().reduce(
-          reduce_op, value, destinations)
-    return self._get_cross_device_ops(value).reduce(
-        reduce_op,
-        value,
-        destinations=destinations,
-        options=self._communication_options.merge(options))
+    def get_values(value):
+      if not isinstance(value, values.DistributedValues):
+        # This function handles reducing values that are not PerReplica or
+        # Mirrored values. For example, the same value could be present on all
+        # replicas in which case `value` would be a single value or value could
+        # be 0.
+        return cross_device_ops_lib.reduce_non_distributed_value(
+            reduce_op, value, destinations, self._num_replicas_in_sync)
+      if self._collective_ops_in_use and (
+          (not cross_device_ops_lib._devices_match(value, destinations) or  # pylint: disable=protected-access
+           any("cpu" in d.lower()
+               for d in cross_device_ops_lib.get_devices_from(destinations)))):
+        return cross_device_ops_lib.ReductionToOneDevice().reduce(
+            reduce_op, value, destinations)
+      return self._get_cross_device_ops(value).reduce(
+          reduce_op,
+          value,
+          destinations=destinations,
+          options=self._communication_options.merge(options))
+
+    return nest.map_structure(get_values, value)
 
   def _batch_reduce_to(self, reduce_op, value_destination_pairs, options):
     cross_device_ops = None
@@ -772,6 +777,19 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
             fn(v, *distribute_utils.select_replica(i, args),
                **distribute_utils.select_replica(i, kwargs)))
     return distribute_utils.update_regroup(self, updates, group)
+
+  def _replica_ctx_update(self, var, fn, args, kwargs):
+    replica_context = distribution_strategy_context.get_replica_context()
+    assert replica_context
+    replica_id = values_util.get_current_replica_id_as_int()
+    name = "update_%d" % replica_id
+
+    if isinstance(var, values.DistributedVariable):
+      var = var._get_replica(replica_id)  # pylint: disable=protected-access
+
+    with ops.device(var.device), ops.name_scope(name):
+      result = fn(var, *args, **kwargs)
+    return result
 
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     assert isinstance(colocate_with, tuple)

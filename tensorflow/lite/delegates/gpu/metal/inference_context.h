@@ -128,9 +128,10 @@ class InferenceContext {
   absl::Status Compile(const GraphFloat32& graph, const GpuInfo& gpu_info,
                        ModelHints hints);
 
-  void ReserveGraphTensors(const CreateInferenceInfo& create_info,
-                           const GpuInfo& gpu_info, const GraphFloat32& graph,
-                           const std::set<ValueId>& preallocated_ids);
+  absl::Status ReserveGraphTensors(const CreateInferenceInfo& create_info,
+                                   const GpuInfo& gpu_info,
+                                   const GraphFloat32& graph,
+                                   const std::set<ValueId>& preallocated_ids);
 
   absl::Status CompileOperations(MetalDevice* device);
 

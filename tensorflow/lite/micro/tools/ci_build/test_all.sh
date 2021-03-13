@@ -55,6 +55,18 @@ if [[ ${1} == "GITHUB_PRESUBMIT" ]]; then
   # http://b/177672856 for more context.
   echo "Running bazel tests at `date`"
   tensorflow/lite/micro/tools/ci_build/test_bazel.sh
+
+  # Enabling FVP for github CI only. This is because it currently adds ~4mins to each
+  # Kokoro run and is only relevant for external changes. Given all the other TFLM CI
+  # coverage, it is unlikely that an internal change would break only the corstone build.
+  echo "Running cortex_m_corstone_300 tests at `date`"
+  tensorflow/lite/micro/tools/ci_build/test_cortex_m_corstone_300.sh
+
+  # Only running project generation v2 prototype as part of the github CI while
+  # it is under development. See
+  # https://github.com/tensorflow/tensorflow/issues/47413 for more context.
+  echo "Running project_generation test at `date`"
+  tensorflow/lite/micro/tools/ci_build/test_project_generation.sh
 fi
 
 echo "Running x86 tests at `date`"

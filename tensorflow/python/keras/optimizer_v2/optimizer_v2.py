@@ -22,6 +22,7 @@ from __future__ import print_function
 import abc
 import contextlib
 import functools
+import warnings
 
 import six
 
@@ -376,6 +377,9 @@ class OptimizerV2(trackable.Trackable):
       # checks that all keyword arguments are non-negative.
       if kwargs[k] is not None and kwargs[k] < 0:
         raise ValueError("Expected {} >= 0, received: {}".format(k, kwargs[k]))
+      if k == "lr":
+        warnings.warn(
+            "The `lr` argument is deprecated, use `learning_rate` instead.")
 
     self._use_locking = True
     self._init_set_name(name)

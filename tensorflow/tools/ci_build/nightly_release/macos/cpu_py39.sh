@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-# Warning: as of Jan 20, 2020, MacOS(_EXTERNAL) images do not support Python3.9.
 set -e
 set -x
 
@@ -25,8 +23,12 @@ install_bazelisk
 export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
 sudo xcode-select -s "${DEVELOPER_DIR}"
 
+# Set up py39 via pyenv and check it worked
+export PYENV_VERSION=3.9.1
+setup_python_from_pyenv_macos "${PYENV_VERSION}"
+
 # Set up and install MacOS pip dependencies.
-setup_venv_macos python3.9
+install_macos_pip_deps
 
 # For python3 path on Mac
 export PATH=$PATH:/usr/local/bin
@@ -35,11 +37,17 @@ export PATH=$PATH:/usr/local/bin
 
 # Run configure.
 export CC_OPT_FLAGS='-mavx'
-export PYTHON_BIN_PATH=$(which python3.9)
+export PYTHON_BIN_PATH=$(which python)
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Build the pip package
-bazel build --config=release_cpu_macos tensorflow/tools/pip_package:build_pip_package
+# Pass PYENV_VERSION since we're using pyenv. See b/182399580
+bazel build \
+  --action_env PYENV_VERSION="$PYENV_VERSION" \
+  --config=release_cpu_macos \
+  -- \
+  tensorflow/tools/pip_package:build_pip_package
+
 mkdir pip_pkg
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --cpu --nightly_flag
 

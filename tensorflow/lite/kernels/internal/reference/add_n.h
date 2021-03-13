@@ -23,13 +23,13 @@ namespace reference_ops {
 // T is expected to be either float or int.
 template <typename T>
 inline void AddN(const RuntimeShape& input_shape, const size_t num_inputs,
-                 T* const* input_data, T* output_data) {
+                 const T* const* input_data, T* output_data) {
   // All inputs and output should have the same shape, this is checked during
   // Prepare stage.
   const size_t size = input_shape.FlatSize();
-  for (int i = 0; i < size; ++i) {
+  for (size_t i = 0; i < size; ++i) {
     T x = 0;
-    for (int j = 0; j < num_inputs; ++j) {
+    for (size_t j = 0; j < num_inputs; ++j) {
       x += input_data[j][i];
     }
     output_data[i] = x;

@@ -163,7 +163,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     get_next = self.getNext(ds, requires_initialization=True)
     results = []
     zeros_seen = 0
-    for _ in range(50):
+    for _ in range(25):
       results.append(self.evaluate(get_next()))
       if results[-1] == 0:
         zeros_seen += 1
@@ -175,7 +175,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
       if results[-1] == 0:
         zeros_seen += 1
     # Read some more.
-    for _ in range(100):
+    for _ in range(25):
       results.append(self.evaluate(get_next()))
 
     self.checkRoundRobinGroups(results, num_consumers)
@@ -195,15 +195,15 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     get_next = self.getNext(ds, requires_initialization=True)
     results = []
 
-    self.read(get_next, results, 100)
+    self.read(get_next, results, 20)
     cluster.workers[1].stop()
     # Check that we can continue to read even with a worker stopped.
-    self.read(get_next, results, 100)
+    self.read(get_next, results, 20)
     cluster.workers[1].restart()
     # Read until we get results from the restarted worker, then read some more.
     while results[-1] != 0:
       results.append(self.evaluate(get_next()))
-    self.read(get_next, results, 100)
+    self.read(get_next, results, 20)
 
     self.checkRoundRobinGroups(results, num_consumers)
 
@@ -222,18 +222,18 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     get_next = self.getNext(ds, requires_initialization=True)
     results = []
 
-    self.read(get_next, results, 100)
+    self.read(get_next, results, 20)
     for i in range(num_workers):
       cluster.workers[i].stop()
-      self.read(get_next, results, 100)
+      self.read(get_next, results, 20)
       cluster.workers[i].restart()
-      self.read(get_next, results, 100)
+      self.read(get_next, results, 20)
 
     cluster.add_worker()
     cluster.restart_dispatcher()
     for i in range(num_workers):
       cluster.workers[i].stop()
-    self.read(get_next, results, 100)
+    self.read(get_next, results, 20)
 
     self.checkRoundRobinGroups(results, num_consumers)
 
@@ -350,7 +350,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     ds = range_dataset.apply(
         data_service_ops.distribute(
             processing_mode="parallel_epochs",
-            service=cluster.target,
+            service=cluster.dispatcher_address(),
             job_name="test"))
     iterator = iter(ds)
     for i in range(num_elements // 2):
@@ -359,7 +359,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     ds = range_dataset.apply(
         data_service_ops.distribute(
             processing_mode="distributed_epoch",
-            service=cluster.target,
+            service=cluster.dispatcher_address(),
             job_name="test"))
     with self.assertRaisesOpError("already an existing job with that name "
                                   "using processing mode <parallel_epochs>"):

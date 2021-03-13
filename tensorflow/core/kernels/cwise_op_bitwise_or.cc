@@ -21,8 +21,7 @@ REGISTER8(BinaryOp, CPU, "BitwiseOr", functor::bitwise_or, int8, int16, int32,
 
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER8(BinaryOp, GPU, "BitwiseOr", functor::bitwise_or, int8, int16, int32,
           int64, uint8, uint16, uint32, uint64);
 #else

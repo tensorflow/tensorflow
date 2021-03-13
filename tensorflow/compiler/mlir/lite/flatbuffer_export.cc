@@ -1587,7 +1587,7 @@ std::vector<SignatureDefData> BuildSignaturedef(
 
   // If no defined saved model signature, then return empty list.
   // This can happen when we are converting model not from SavedModel.
-  if (sig_def_inputs.empty() || sig_def_outputs.empty()) return {};
+  if (sig_def_inputs.empty() && sig_def_outputs.empty()) return {};
 
   // Fetch function inputs and outputs tensor names.
   auto dict_attr =

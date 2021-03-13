@@ -34,11 +34,28 @@ inline void Gather(const tflite::GatherParams& op_params,
   }
   TFLITE_DCHECK_GE(axis, 0);
   TFLITE_DCHECK_LT(axis, input_shape.DimensionsCount());
+
+  int batch_dims = op_params.batch_dims;
+  if (batch_dims < 0) {
+    batch_dims += coords_shape.DimensionsCount();
+  }
+  TFLITE_DCHECK_GE(batch_dims, 0);
+  TFLITE_DCHECK_LT(batch_dims, input_shape.DimensionsCount());
+  TFLITE_DCHECK_LE(batch_dims, coords_shape.DimensionsCount());
+  TFLITE_DCHECK_GE(axis, batch_dims);
+  for (int i = 0; i < batch_dims; ++i) {
+    TFLITE_DCHECK_EQ(input_shape.Dims(i), coords_shape.Dims(i));
+  }
+
   const int axis_size = input_shape.Dims(axis);
-  const int coords_count = coords_shape.FlatSize();
+
+  int batch_size = 1;
+  for (int i = 0; i < batch_dims; ++i) {
+    batch_size *= input_shape.Dims(i);
+  }
 
   int outer_size = 1;
-  for (int i = 0; i < axis; ++i) {
+  for (int i = batch_dims; i < axis; ++i) {
     outer_size *= input_shape.Dims(i);
   }
 
@@ -47,15 +64,25 @@ inline void Gather(const tflite::GatherParams& op_params,
     inner_size *= input_shape.Dims(i);
   }
 
-  for (int outer = 0; outer < outer_size; ++outer) {
-    for (int i = 0; i < coords_count; ++i) {
-      TFLITE_DCHECK_GE(coords_data[i], 0);
-      TFLITE_DCHECK_LT(coords_data[i], axis_size);
-      // TODO(rsun): replace memcpy with a for loop
-      std::memcpy(
-          output_data + (outer * coords_count + i) * inner_size,
-          input_data + (outer * axis_size + coords_data[i]) * inner_size,
-          sizeof(T) * inner_size);
+  int coord_size = 1;
+  for (int i = batch_dims; i < coords_shape.DimensionsCount(); ++i) {
+    coord_size *= coords_shape.Dims(i);
+  }
+
+  for (int batch = 0; batch < batch_size; ++batch) {
+    for (int outer = 0; outer < outer_size; ++outer) {
+      for (int i = 0; i < coord_size; ++i) {
+        TFLITE_DCHECK_GE(coords_data[i], 0);
+        TFLITE_DCHECK_LT(coords_data[i], axis_size);
+        // TODO(rsun): replace memcpy with a for loop
+        std::memcpy(
+            output_data +
+                (((batch * outer_size) + outer) * coord_size + i) * inner_size,
+            input_data + (((batch * outer_size) + outer) * axis_size +
+                          coords_data[batch * coord_size + i]) *
+                             inner_size,
+            sizeof(T) * inner_size);
+      }
     }
   }
 }

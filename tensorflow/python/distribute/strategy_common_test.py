@@ -240,6 +240,51 @@ class ReduceTest(test.TestCase, parameterized.TestCase):
 @combinations.generate(
     combinations.combine(
         strategy=[
+            strategy_combinations.default_strategy,
+            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+            strategy_combinations.tpu_strategy,
+            strategy_combinations.tpu_strategy_packed_var,
+            strategy_combinations.multi_worker_mirrored_2x1_cpu,
+            strategy_combinations.multi_worker_mirrored_2x2_gpu,
+        ],
+        update_fn=['assign', 'assign_add', 'assign_sub'],
+        tf_function=[True, False],
+        mode=['eager']))
+class ReplicaCtxUpdateTest(test.TestCase, parameterized.TestCase):
+
+  def testDenseUpdate(self, strategy, tf_function, update_fn):
+    if isinstance(strategy, tpu_strategy.TPUStrategy) and (not tf_function):
+      self.skipTest('Skip TPUStrategy + eager combination.')
+    with strategy.scope():
+      distributed_variable1 = variables.Variable(5.0)
+
+    def replica_fn():
+      value = array_ops.constant(2.)
+      python_literal = 1.
+      replica_context = ds_context.get_replica_context()
+      fn_sets = {
+          'assign': lambda var, value: var.assign(value),
+          'assign_add': lambda var, value: var.assign_add(value),
+          'assign_sub': lambda var, value: var.assign_sub(value),
+      }
+      replica_context._update(
+          distributed_variable1, fn_sets[update_fn], args=(value,))
+      replica_context._update(
+          distributed_variable1, fn_sets[update_fn], args=(python_literal,))
+
+    if tf_function:
+      replica_fn = def_function.function(replica_fn)
+    strategy.run(replica_fn)
+
+    expected_result = {'assign': 1., 'assign_add': 8., 'assign_sub': 2.}
+    self.assertAllEqual(
+        strategy.experimental_local_results(distributed_variable1),
+        [expected_result[update_fn]] * _get_num_replicas_per_client(strategy))
+
+
+@combinations.generate(
+    combinations.combine(
+        strategy=[
             strategy_combinations.multi_worker_mirrored_2x1_cpu,
             strategy_combinations.multi_worker_mirrored_2x1_gpu,
             strategy_combinations.multi_worker_mirrored_2x2_gpu,
@@ -295,9 +340,6 @@ class ReplicaCtxAllReduceTest(test.TestCase, parameterized.TestCase):
         ops.convert_to_tensor(got), ops.convert_to_tensor(expect))
 
   def testNestedInput(self, strategy, tf_function):
-    # TODO(b/122840926): enable this test once cl/356664949 is submitted.
-    self.skipTest('Enable after cl/353109164 is submitted.')
-
     if tf_function is combinations.no_tf_function:
       self.skipTest('Skip IndexedSlices + eager combination.')
 
@@ -334,7 +376,8 @@ class ReplicaCtxAllReduceTest(test.TestCase, parameterized.TestCase):
                       [[2.0 * strategy.num_replicas_in_sync]]),
                   indices=array_ops.identity([1]),
                   dense_shape=array_ops.identity([5, 1])))
-    self.assertAllEqual(
+
+    self.assertAllClose(
         nest.map_structure(ops.convert_to_tensor, got),
         nest.map_structure(ops.convert_to_tensor, expect))
 

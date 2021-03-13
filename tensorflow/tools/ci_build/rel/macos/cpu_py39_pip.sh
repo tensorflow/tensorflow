@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-# Warning: as of Jan 20, 2020, MacOS(_EXTERNAL) images do not support Python3.9.
 set -e
 set -x
 
@@ -25,8 +23,12 @@ install_bazelisk
 export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
 sudo xcode-select -s "${DEVELOPER_DIR}"
 
+# Set up py39 via pyenv and check it worked
+export PYENV_VERSION=3.9.1
+setup_python_from_pyenv_macos "${PYENV_VERSION}"
+
 # Set up and install MacOS pip dependencies.
-install_macos_pip_deps_no_venv python3.9
+install_macos_pip_deps
 
 # Export required variables for running pip_new.sh
 export OS_TYPE="MACOS"
@@ -35,11 +37,12 @@ export TF_PYTHON_VERSION='python3.9'
 export TF_BUILD_BOTH_CPU_PACKAGES=1
 
 # Run configure.
-export PYTHON_BIN_PATH=$(which ${TF_PYTHON_VERSION})
+export PYTHON_BIN_PATH=$(which python)
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Export optional variables for running pip.sh
-export TF_BUILD_FLAGS="--config=release_cpu_macos"
+# Pass PYENV_VERSION since we're using pyenv. See b/182399580
+export TF_BUILD_FLAGS="--config=release_cpu_macos --action_env PYENV_VERSION=${PYENV_VERSION}"
 export TF_TEST_FLAGS="--define=no_tensorflow_py_deps=true --test_lang_filters=py --test_output=errors --verbose_failures=true --keep_going --test_env=TF2_BEHAVIOR=1"
 export TF_TEST_TARGETS="//tensorflow/python/..."
 export TF_PIP_TESTS="test_pip_virtualenv_non_clean test_pip_virtualenv_clean"

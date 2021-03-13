@@ -64,17 +64,20 @@ void HostStream::WorkLoop() {
   tensorflow::port::ScopedFlushDenormal flush;
   tensorflow::port::ScopedSetRound round(FE_TONEAREST);
   while (true) {
-    std::function<void()> fn;
+    std::queue<std::function<void()>> queue;
     {
       absl::MutexLock lock(&mu_);
       mu_.Await(absl::Condition(this, &HostStream::WorkAvailable));
-      fn = std::move(work_queue_.front());
-      work_queue_.pop();
+      std::swap(queue, work_queue_);
     }
-    if (!fn) {
-      return;
+    while (!queue.empty()) {
+      std::function<void()>& fn = queue.front();
+      if (!fn) {
+        return;
+      }
+      fn();
+      queue.pop();
     }
-    fn();
   }
 }
 

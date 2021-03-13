@@ -13,6 +13,7 @@ py_library(
     deps = [
         "//tensorflow/lite/python:wrap_toco",
         "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

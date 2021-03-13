@@ -155,7 +155,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
       True, the output will have its feature axis padded to `max_tokens` even if
       the number of unique tokens in the vocabulary is less than max_tokens,
       resulting in a tensor of shape [batch_size, max_tokens] regardless of
-      vocabulary size. Defaults to True.
+      vocabulary size. Defaults to False.
     vocabulary: An optional list of vocabulary terms, or a path to a text file
       containing a vocabulary to load into this layer. The file should contain
       one token per line. If the list or file contains the same token multiple
@@ -250,7 +250,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
                ngrams=None,
                output_mode=INT,
                output_sequence_length=None,
-               pad_to_max_tokens=True,
+               pad_to_max_tokens=False,
                vocabulary=None,
                **kwargs):
 
@@ -307,18 +307,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
       raise ValueError("`output_sequence_length` must not be set if "
                        "`output_mode` is not 'int'.")
 
-    # If max_tokens is set, the value must be greater than 1 - otherwise we
-    # are creating a 0-element vocab, which doesn't make sense.
-    if max_tokens is not None and max_tokens < 1:
-      raise ValueError("max_tokens must be > 1.")
-
     self._max_tokens = max_tokens
-
-    # In INT mode, the zero value is reserved for padding (per Keras standard
-    # padding approaches). In non-INT modes, there is no padding so we can set
-    # the OOV value to zero instead of one.
-    self._oov_value = 1 if output_mode == INT else 0
-
     self._standardize = standardize
     self._split = split
     self._ngrams_arg = ngrams
@@ -329,8 +318,13 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
 
     self._output_mode = output_mode
     self._output_sequence_length = output_sequence_length
-    self._pad_to_max = pad_to_max_tokens
-    self._vocab_size = 0
+    vocab_size = 0
+    # IndexLookup needs to keep track the current vocab size outside of its
+    # layer weights. We persist it as a hidden part of the config during
+    # serialization.
+    if "vocab_size" in kwargs:
+      vocab_size = kwargs["vocab_size"]
+      del kwargs["vocab_size"]
 
     super(TextVectorization, self).__init__(
         combiner=None,
@@ -338,13 +332,12 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     base_preprocessing_layer.keras_kpl_gauge.get_cell(
         "TextVectorization").set(True)
 
-    mask_token = "" if output_mode in [None, INT] else None
     self._index_lookup_layer = self._get_index_lookup_class()(
         max_tokens=max_tokens,
-        mask_token=mask_token,
         vocabulary=vocabulary,
         pad_to_max_tokens=pad_to_max_tokens,
-        output_mode=output_mode if output_mode is not None else INT)
+        output_mode=output_mode if output_mode is not None else INT,
+        vocab_size=vocab_size)
 
   def _get_index_lookup_class(self):
     return string_lookup.StringLookup
@@ -438,7 +431,8 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
         "ngrams": self._ngrams_arg,
         "output_mode": self._output_mode,
         "output_sequence_length": self._output_sequence_length,
-        "pad_to_max_tokens": self._pad_to_max,
+        "pad_to_max_tokens": self._index_lookup_layer.pad_to_max_tokens,
+        "vocab_size": self._index_lookup_layer.vocab_size(),
     }
     base_config = super(TextVectorization, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))

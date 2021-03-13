@@ -749,7 +749,10 @@ class MemorySpaceAssignment {
 
     AllocationValue(const HloValue* value, const HloPosition& position,
                     int64 size)
-        : value_(value), defining_position_(position), size_(size) {}
+        : value_(value),
+          defining_position_(position),
+          size_(size),
+          requires_contiguous_allocation_(false) {}
 
     const HloPosition& defining_position() const { return defining_position_; }
     const HloInstruction* defining_instruction() const {
@@ -764,6 +767,16 @@ class MemorySpaceAssignment {
     }
     AllocationSequence* allocation_sequence() { return &allocation_sequence_; }
 
+    // Sets/gets whether this AllocationValue requires allocating it
+    // contiguously throughout its live range (without any copies).
+    bool requires_contiguous_allocation() const {
+      return requires_contiguous_allocation_;
+    }
+    void set_requires_contiguous_allocation(
+        bool requires_contiguous_allocation) {
+      requires_contiguous_allocation_ = requires_contiguous_allocation;
+    }
+
     void AddUse(const HloUse& use, int64 use_time) {
       uses_.push_back({use, use_time, {}});
     }
@@ -775,6 +788,9 @@ class MemorySpaceAssignment {
     const HloValue* value_;
     HloPosition defining_position_;
     int64 size_;
+    // If true, there must be a contiguous allocation for this buffer without
+    // any copies.
+    bool requires_contiguous_allocation_;
     std::vector<Use> uses_;
     AllocationSequence allocation_sequence_;
   };
@@ -1045,6 +1061,7 @@ class AlternateMemoryBestFitHeap
     AliasedOffset* preferred_offset;
     const MemorySpaceAssignment::AllocationValue::Use* use;
     MemorySpaceAssignment::AllocationValue* allocation_value;
+    absl::Span<const int64_t> all_use_times;
   };
 
   // This struct contains mandatory memory assignments at a given time. E.g., an

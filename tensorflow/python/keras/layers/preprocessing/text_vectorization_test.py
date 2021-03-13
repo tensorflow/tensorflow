@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
 import os
 
 from absl.testing import parameterized
@@ -1081,6 +1082,42 @@ class TextVectorizationOutputTest(
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
+  def test_bag_output_hard_maximum_multiple_adapts(self):
+    input_array = np.array([["earth", "wind", "and", "earth"],
+                            ["ohio", "and", "earth", "michigan"]])
+    adapt_data = ["earth", "earth", "earth", "earth", "wind", "wind", "wind"]
+    first_expected_output = [
+        [1, 1, 1, 0, 0],
+        [1, 1, 0, 0, 0],
+    ]
+    second_adapt_data = [
+        "earth", "earth", "earth", "earth", "wind", "wind", "wind", "and",
+        "and", "fire"
+    ]
+    second_expected_output = [
+        [0, 1, 1, 1, 0],
+        [1, 1, 0, 1, 0],
+    ]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=5,
+        standardize=None,
+        split=None,
+        output_mode=text_vectorization.BINARY,
+        pad_to_max_tokens=True)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+
+    # Test the first adapt
+    layer.adapt(adapt_data)
+    first_output = model.predict(input_array)
+    # Test the second adapt
+    layer.adapt(second_adapt_data)
+    second_output = model.predict(input_array)
+    self.assertAllEqual(first_expected_output, first_output)
+    self.assertAllEqual(second_expected_output, second_output)
+
   def test_bag_output_soft_maximum_set_state_after_build(self):
     vocab_data = ["earth", "wind", "and", "fire"]
     input_array = np.array([["earth", "wind", "and", "earth"],
@@ -1158,7 +1195,8 @@ class TextVectorizationOutputTest(
         max_tokens=6,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.COUNT)
+        output_mode=text_vectorization.COUNT,
+        pad_to_max_tokens=True)
     layer.set_vocabulary(vocab_data)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
@@ -1518,6 +1556,11 @@ def custom_split_fn(x):
 class TextVectorizationSavingTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
+
+  def tearDown(self):
+    keras.backend.clear_session()
+    gc.collect()
+    super(TextVectorizationSavingTest, self).tearDown()
 
   def test_saving(self):
     vocab_data = ["earth", "wind", "and", "fire"]

@@ -51,10 +51,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, NumDimensions(output) <= kInputOutputMaxDimensionNum);
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
-  // Padding can result in a larger output than input.
-  TF_LITE_ENSURE(context,
-                 ElementCount(*output->dims) >= ElementCount(*input->dims));
-
   return kTfLiteOk;
 }
 

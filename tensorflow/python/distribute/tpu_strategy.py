@@ -532,10 +532,10 @@ class TPUStrategyV2(distribute_lib.Strategy):
 
       split_size = partition_dimensions[dim_index]
       if dim_size % split_size != 0:
-        raise ValueError("Tensor shape at dimension ({}) must be "
+        raise ValueError("Tensor shape at dimension {} ({}) must be "
                          "divisible by corresponding value specified "
                          "by `partition_dimensions` ({}).".format(
-                             dim_index, split_size))
+                             dim_index, dim_size, split_size))
 
     if num_partition_splits != num_logical_devices_per_replica:
       raise ValueError("Number of logical devices ({}) does not match the "
@@ -909,7 +909,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         session)
 
   def _get_input_workers(self, options):
-    if not options or options.experimental_prefetch_to_device:
+    if not options or options.experimental_fetch_to_device:
       return input_lib.InputWorkers(
           tuple(self._device_input_worker_devices.items()))
     else:
@@ -928,7 +928,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
             "distributed datasets with device prefetch when using sparse or "
             "ragged tensors. If you intend to use sparse or ragged tensors, "
             "please pass a tf.distribute.InputOptions object with "
-            "experimental_prefetch_to_device set to False to your dataset "
+            "experimental_fetch_to_device set to False to your dataset "
             "distribution function.".format(path, type(spec)))
 
   def _experimental_distribute_dataset(self, dataset, options):
@@ -939,7 +939,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           "is only supported in "
           "`experimental_distribute_datasets_from_function`."
       )
-    if options is None or options.experimental_prefetch_to_device:
+    if options is None or options.experimental_fetch_to_device:
       self._check_spec(dataset.element_spec)
 
     return input_lib.get_distributed_dataset(
@@ -974,7 +974,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         options=options)
 
     # We can only check after the dataset_fn is called.
-    if options is None or options.experimental_prefetch_to_device:
+    if options is None or options.experimental_fetch_to_device:
       self._check_spec(distributed_dataset.element_spec)
     return distributed_dataset
 

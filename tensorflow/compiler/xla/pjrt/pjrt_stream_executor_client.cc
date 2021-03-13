@@ -187,19 +187,6 @@ class CpuAllocator : public tensorflow::Allocator {
   }
 };
 
-static int DefaultThreadPoolSize() {
-  // Google's CI system exposes an environment variable NPROC that describes
-  // a CPU reservation for tests.
-  // TODO(phawkins): expose a better thought-out set of knobs to control
-  // parallelism.
-  const char* nproc_str = std::getenv("NPROC");
-  int nproc = 0;
-  if (nproc_str && absl::SimpleAtoi(nproc_str, &nproc)) {
-    return std::max(0, nproc);
-  }
-  return tensorflow::port::MaxParallelism();
-}
-
 PjRtStreamExecutorClient::PjRtStreamExecutorClient(
     std::string platform_name, LocalClient* client,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices, int task_id,
@@ -576,6 +563,45 @@ void PjRtStreamExecutorBuffer::ScopedHold::AddToInput(
 
 bool PjRtStreamExecutorBuffer::IsOnCpu() const {
   return client()->platform_id() == kCpuId;
+}
+
+StatusOr<Shape> PjRtStreamExecutorBuffer::logical_on_device_shape() {
+  if (IsOnCpu() && on_device_shape().is_dynamic()) {
+    // TODO(b/182468546): TransferManager may return corrupted dynamic_shape on
+    // CPU non-deterministically.
+    return Unimplemented(
+        "Gathering DynamicShape is not implemented properly on CPU yet.");
+  }
+  if (on_device_shape_.is_static()) {
+    return on_device_shape_;
+  }
+  auto* local_device = device_->local_device_state();
+  auto* stream = local_device->GetDeviceToHostStream();
+  ScopedHold device_buffer(this, ScopedHold::kUsage);
+  {
+    absl::MutexLock lock(&mu_);
+    // We can't perform any other action while a donation hold is in progress.
+    WaitForOutstandingDonationHold();
+    if (device_buffer_ == nullptr) {
+      return InvalidArgument(
+          "logical_on_device_shape() called on deleted or donated buffer");
+    }
+    AcquireHoldLocked(&device_buffer);
+  }
+
+  WaitForBufferDefinitionEventsOnStream(*device_buffer, stream);
+  ShapedBuffer shaped_buffer = device_buffer->AsShapedBuffer(on_device_shape_);
+  StatusOr<EventPool::Handle> event_or =
+      local_device->event_pool().AllocateEvent(stream->parent());
+  if (!event_or.ok()) {
+    return event_or.status();
+  }
+  Shape ret_shape = on_device_shape_;
+  TransferManager* transfer_manager =
+      client_->client()->backend().transfer_manager();
+  TF_RETURN_IF_ERROR(
+      transfer_manager->ReadDynamicShapes(stream, &shaped_buffer, &ret_shape));
+  return ret_shape;
 }
 
 namespace {
@@ -1340,7 +1366,7 @@ PjRtStreamExecutorBuffer::CopyToDeviceHelper(
       // have completed.
       tensorflow::down_cast<PjRtStreamExecutorDevice*>(device_)
           ->local_device_state()
-          ->ThenRelease(transfer_stream, src_device_buffer);
+          ->ThenRelease(transfer_stream, std::move(src_device_buffer));
     }
     return copy_event_or.status();
   }
@@ -1689,8 +1715,8 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
                            ->device_ordinal();
   LocalDeviceState* device_state = &(client_->device_state(device_ordinal));
   tensorflow::profiler::TraceMeConsumer activity(
-      "LocalExecutable::Execute", tensorflow::profiler::ContextType::kPjRt,
-      run_id.ToInt());
+      "PjRtStreamExecutorExecutable::EnqueueExecution",
+      tensorflow::profiler::ContextType::kPjRt, run_id.ToInt());
   VLOG(3) << "Replica " << replica << ", partition " << partition
           << " mapped to device ordinal for execution: " << device_ordinal;
 
@@ -1877,7 +1903,8 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
   int device_ordinal = tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                            ->local_device_state()
                            ->device_ordinal();
-  tensorflow::profiler::TraceMe traceme("LocalExecutable::Execute");
+  tensorflow::profiler::TraceMe traceme(
+      "PjRtStreamExecutorExecutable::ExecuteHelper");
   VLOG(3) << "Replica " << replica << ", partition " << partition
           << " mapped to device ordinal for execution: " << device_ordinal;
 

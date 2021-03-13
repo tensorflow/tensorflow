@@ -55,6 +55,8 @@ py_test(
     tags = [
         "no_oss",
         "no_pip",
+        # Coverage test is extremely slow.
+        "nozapfhahn",
     ],
     deps = [
         ":input_data",
@@ -78,6 +80,8 @@ py_test(
     tags = [
         "no_oss",
         "no_pip",
+        # Coverage test is extremely slow.
+        "nozapfhahn",
     ],
     deps = [
         ":input_data",
@@ -101,6 +105,8 @@ py_test(
     tags = [
         "no_oss",
         "no_pip",
+        # Coverage test is extremely slow.
+        "nozapfhahn",
     ],
     deps = [
         ":input_data",
@@ -124,6 +130,8 @@ py_test(
     tags = [
         "no_oss",
         "no_pip",
+        # Coverage test is extremely slow.
+        "nozapfhahn",
     ],
     deps = [
         ":input_data",

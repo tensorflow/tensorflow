@@ -92,13 +92,13 @@ def has_deprecation_decorator(symbol):
 class TFModuleWrapper(FastModuleType):
   """Wrapper for TF modules to support deprecation messages and lazyloading."""
 
-  def __init__(  # pylint: disable=super-on-old-class
+  def __init__(
       self,
       wrapped,
       module_name,
       public_apis=None,
       deprecation=True,
-      has_lite=False):  # pylint: enable=super-on-old-class
+      has_lite=False):
     super(TFModuleWrapper, self).__init__(wrapped.__name__)
     FastModuleType.set_getattr_callback(self, TFModuleWrapper._getattr)
     FastModuleType.set_getattribute_callback(self,
@@ -234,7 +234,7 @@ class TFModuleWrapper(FastModuleType):
       self._tfmw_add_deprecation_warning(name, attr)
     return attr
 
-  def __setattr__(self, arg, val):  # pylint: disable=super-on-old-class
+  def __setattr__(self, arg, val):
     if not arg.startswith('_tfmw_'):
       setattr(self._tfmw_wrapped_module, arg, val)
       self.__dict__[arg] = val
@@ -256,7 +256,7 @@ class TFModuleWrapper(FastModuleType):
     else:
       return dir(self._tfmw_wrapped_module)
 
-  def __delattr__(self, name):  # pylint: disable=super-on-old-class
+  def __delattr__(self, name):
     if name.startswith('_tfmw_'):
       super(TFModuleWrapper, self).__delattr__(name)
     else:

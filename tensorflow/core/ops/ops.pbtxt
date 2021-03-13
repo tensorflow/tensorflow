@@ -16650,6 +16650,36 @@ op {
   }
 }
 op {
+  name: "FinalizeDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "has_captured_ref"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
   name: "Fingerprint"
   input_arg {
     name: "data"
@@ -18427,6 +18457,17 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "GetOptions"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "serialized_options"
+    type: DT_STRING
+  }
 }
 op {
   name: "GetSessionHandle"
@@ -27001,6 +27042,33 @@ op {
   output_arg {
     name: "optional"
     type: DT_VARIANT
+  }
+}
+op {
+  name: "OptionsDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "serialized_options"
+    type: "string"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
   }
 }
 op {
@@ -55336,108 +55404,6 @@ op {
   is_stateful: true
 }
 op {
-  name: "TensorForestCreateTreeVariable"
-  input_arg {
-    name: "tree_handle"
-    type: DT_RESOURCE
-  }
-  input_arg {
-    name: "tree_config"
-    type: DT_STRING
-  }
-  is_stateful: true
-}
-op {
-  name: "TensorForestTreeDeserialize"
-  input_arg {
-    name: "tree_handle"
-    type: DT_RESOURCE
-  }
-  input_arg {
-    name: "tree_config"
-    type: DT_STRING
-  }
-  is_stateful: true
-}
-op {
-  name: "TensorForestTreeIsInitializedOp"
-  input_arg {
-    name: "tree_handle"
-    type: DT_RESOURCE
-  }
-  output_arg {
-    name: "is_initialized"
-    type: DT_BOOL
-  }
-  is_stateful: true
-}
-op {
-  name: "TensorForestTreePredict"
-  input_arg {
-    name: "tree_handle"
-    type: DT_RESOURCE
-  }
-  input_arg {
-    name: "dense_features"
-    type: DT_FLOAT
-  }
-  output_arg {
-    name: "logits"
-    type: DT_FLOAT
-  }
-  attr {
-    name: "logits_dimension"
-    type: "int"
-  }
-  is_stateful: true
-}
-op {
-  name: "TensorForestTreeResourceHandleOp"
-  output_arg {
-    name: "resource"
-    type: DT_RESOURCE
-  }
-  attr {
-    name: "container"
-    type: "string"
-    default_value {
-      s: ""
-    }
-  }
-  attr {
-    name: "shared_name"
-    type: "string"
-    default_value {
-      s: ""
-    }
-  }
-  is_stateful: true
-}
-op {
-  name: "TensorForestTreeSerialize"
-  input_arg {
-    name: "tree_handle"
-    type: DT_RESOURCE
-  }
-  output_arg {
-    name: "tree_config"
-    type: DT_STRING
-  }
-  is_stateful: true
-}
-op {
-  name: "TensorForestTreeSize"
-  input_arg {
-    name: "tree_handle"
-    type: DT_RESOURCE
-  }
-  output_arg {
-    name: "tree_size"
-    type: DT_INT32
-  }
-  is_stateful: true
-}
-op {
   name: "TensorListConcat"
   input_arg {
     name: "input_handle"
@@ -58683,6 +58649,20 @@ op {
   attr {
     name: "key"
     type: "string"
+  }
+  attr {
+    name: "send_key"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "recv_key"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   attr {
     name: "cost_estimate_ns"

@@ -66,6 +66,14 @@ struct TFInlinerInterface : public DialectInlinerInterface {
                        bool wouldBeCloned) const final {
     return true;
   }
+
+  // Returns if its legal to inline 'src' region into the 'dest' region
+  // attached to a TF Device operation.
+  bool isLegalToInline(Region* dest, Region* src, bool wouldBeCloned,
+                       BlockAndValueMapping& valueMapping) const final {
+    return true;
+  }
+
   // Defines the legality of inlining TF Device operations.
   bool isLegalToInline(Operation*, Region*, bool,
                        BlockAndValueMapping&) const final {
@@ -171,8 +179,7 @@ LogicalResult Verify(ParallelExecuteOp op) {
 
 // static
 void ParallelExecuteOp::build(OpBuilder& builder, OperationState& state,
-                              int num_regions,
-                              llvm::ArrayRef<Type> output_types) {
+                              int num_regions, TypeRange output_types) {
   DCHECK_GE(num_regions, 2);
   for (int i = 0; i < num_regions; ++i) {
     Region* region = state.addRegion();
@@ -195,10 +202,7 @@ Operation::result_range ParallelExecuteOp::GetRegionOutputs(
     return_value_offset +=
         GetRegionBlockWithIndex(region_id).getTerminator()->getNumOperands();
 
-  Operation::result_range region_results(getOperation(),
-                                         /*startIndex=*/return_value_offset,
-                                         /*count=*/num_region_results);
-  return region_results;
+  return getResults().slice(return_value_offset, num_region_results);
 }
 
 bool ParallelExecuteOp::RegionWrapsSingleOp(unsigned index) {
@@ -405,7 +409,7 @@ void Print(ReplicateOp op, OpAsmPrinter* p) {
   // Skip derived `operand_segment_sizes` attribute as custom print format of
   // operands holds enough information to calculate these variadic operand list
   // lengths.
-  p->printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/ArrayRef<StringRef>{
+  p->printOptionalAttrDict(op->getAttrs(), /*elidedAttrs=*/ArrayRef<StringRef>{
                                kOperandSegmentSizesAttr});
   p->printRegion(op.body(), /*printEntryBlockArgs=*/false);
 }

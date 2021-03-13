@@ -25,9 +25,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
+from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
-from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import functional
 from tensorflow.python.keras.engine import input_layer as input_layer_lib
 from tensorflow.python.keras.layers import core
@@ -162,15 +162,14 @@ class InputLayerTest(keras_parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testInputTensorArg(self):
-    with testing_utils.use_keras_tensors_scope(True):
-      # Create a Keras Input
-      x = input_layer_lib.Input(tensor=array_ops.zeros((7, 32)))
-      self.assertAllEqual(x.shape.as_list(), [7, 32])
+    # Create a Keras Input
+    x = input_layer_lib.Input(tensor=array_ops.zeros((7, 32)))
+    self.assertAllEqual(x.shape.as_list(), [7, 32])
 
-      # Verify you can construct and use a model w/ this input
-      model = functional.Functional(x, x * 2.0)
-      self.assertAllEqual(model(array_ops.ones(x.shape)),
-                          array_ops.ones(x.shape) * 2.0)
+    # Verify you can construct and use a model w/ this input
+    model = functional.Functional(x, x * 2.0)
+    self.assertAllEqual(model(array_ops.ones(x.shape)),
+                        array_ops.ones(x.shape) * 2.0)
 
   @combinations.generate(combinations.combine(mode=['eager']))
   def testInputTensorArgInTFFunction(self):
@@ -369,6 +368,12 @@ class InputLayerTest(keras_parameterized.TestCase):
       self.assertAllEqual(model(two_tensors), lambda_fn(two_tensors))
       model = model_config.model_from_json(model.to_json())
       self.assertAllEqual(model(two_tensors), lambda_fn(two_tensors))
+
+  def test_serialize_with_unknown_rank(self):
+    inp = K.placeholder(shape=None, dtype=dtypes.string)
+    x = input_layer_lib.InputLayer(input_tensor=inp, dtype=dtypes.string)
+    loaded = input_layer_lib.InputLayer.from_config(x.get_config())
+    self.assertIsNone(loaded._batch_input_shape)
 
 
 if __name__ == '__main__':

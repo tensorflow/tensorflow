@@ -78,9 +78,11 @@ class HloPrintOptions {
   // compact operands, no indentation.
   HloPrintOptions()
       : print_large_constants_(false),
+        print_only_essential_constants_(false),
         print_subcomputation_mode_(PrintSubcomputationMode::kNameOnly),
         print_metadata_(true),
         print_backend_config_(true),
+        print_infeed_outfeed_config_(true),
         compact_operands_(false),
         include_layout_in_shapes_(true),
         print_result_shape_(true),
@@ -130,6 +132,8 @@ class HloPrintOptions {
         .set_print_subcomputation_mode(PrintSubcomputationMode::kFullBodies)
         .set_print_metadata(false)
         .set_print_backend_config(false)
+        .set_print_infeed_outfeed_config(false)
+        .set_print_only_essential_constants(true)
         .set_compact_operands(true)
         .set_print_operand_names(false)
         .set_print_operand_shape(true)
@@ -144,6 +148,12 @@ class HloPrintOptions {
   // If true, large constants will be printed out.
   HloPrintOptions& set_print_large_constants(bool value) {
     print_large_constants_ = value;
+    return *this;
+  }
+
+  // If true, only integer, all-zero, are all-one constants will be printed out.
+  HloPrintOptions& set_print_only_essential_constants(bool value) {
+    print_only_essential_constants_ = value;
     return *this;
   }
 
@@ -162,6 +172,12 @@ class HloPrintOptions {
   // If true, backend_config will be printed.
   HloPrintOptions& set_print_backend_config(bool value) {
     print_backend_config_ = value;
+    return *this;
+  }
+
+  // If true, infeed_config and outfeed_config will be printed.
+  HloPrintOptions& set_print_infeed_outfeed_config(bool value) {
+    print_infeed_outfeed_config_ = value;
     return *this;
   }
 
@@ -293,11 +309,17 @@ class HloPrintOptions {
   }
 
   bool print_large_constants() const { return print_large_constants_; }
+  bool print_only_essential_constants() const {
+    return print_only_essential_constants_;
+  }
   PrintSubcomputationMode print_subcomputation_mode() const {
     return print_subcomputation_mode_;
   }
   bool print_metadata() const { return print_metadata_; }
   bool print_backend_config() const { return print_backend_config_; }
+  bool print_infeed_outfeed_config() const {
+    return print_infeed_outfeed_config_;
+  }
   bool compact_operands() const { return compact_operands_; }
   bool include_layout_in_shapes() const { return include_layout_in_shapes_; }
   bool print_result_shape() const { return print_result_shape_; }
@@ -333,9 +355,11 @@ class HloPrintOptions {
 
  private:
   bool print_large_constants_;
+  bool print_only_essential_constants_;
   PrintSubcomputationMode print_subcomputation_mode_;
   bool print_metadata_;
   bool print_backend_config_;
+  bool print_infeed_outfeed_config_;
   bool compact_operands_;
   bool include_layout_in_shapes_;
   bool print_result_shape_;
@@ -497,7 +521,7 @@ class HloInstruction {
   static StatusOr<std::unique_ptr<HloInstruction>> CreateFromProto(
       const HloInstructionProto& proto,
       const absl::flat_hash_map<int64, HloInstruction*>& instruction_map,
-      const absl::flat_hash_map<int64, HloComputation*>& computation_map,
+      const absl::flat_hash_map<int64, HloComputation*>& computation_map = {},
       bool prohibit_empty_literal = true);
 
   // Creates a parameter-retrieving instruction.
@@ -1043,6 +1067,7 @@ class HloInstruction {
 
   // Returns the opcode for this instruction.
   HloOpcode opcode() const { return opcode_; }
+  HloOpcode* mutable_opcode() { return &opcode_; }
 
   // Returns true if this instruction has a side effect, irrespective of whether
   // any called computations may contain an instruction with side effects.

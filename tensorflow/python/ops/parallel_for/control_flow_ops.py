@@ -537,7 +537,7 @@ def vectorized_map(fn, elems, fallback_to_while_loop=True):
       return None
     return x.shape.as_list()[0]
   static_first_dims = [_get_shape(elem) for elem in flat_elems]
-  if any([s is None for s in static_first_dims]):
+  if any(s is None for s in static_first_dims):
     batch_size = math_ops.reduce_max(
         [array_ops.shape(elem)[0] for elem in flat_elems])
   else:

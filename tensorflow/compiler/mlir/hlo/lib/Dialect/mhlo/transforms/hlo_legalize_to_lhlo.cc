@@ -424,7 +424,7 @@ struct HloToLhloReduceOpConverter : public BaseOpConversion<mhlo::ReduceOp> {
       buffer_args.push_back(InsertAlloc(loc, result, &rewriter));
     }
     auto new_op = rewriter.create<lmhlo::ReduceOp>(loc, llvm::None, buffer_args,
-                                                   op.getAttrs());
+                                                   op->getAttrs());
 
     // Copy over the operations inside the region.
     rewriter.inlineRegionBefore(op.body(), new_op.body(), new_op.body().end());
@@ -577,6 +577,7 @@ struct HloLegalizeToLhlo
     ConversionTarget target(context);
     target.addLegalDialect<lmhlo::LmhloDialect>();
     target.addLegalDialect<StandardOpsDialect>();
+    target.addLegalDialect<shape::ShapeDialect>();
     target.addLegalDialect<tensor::TensorDialect>();
     target.addIllegalDialect<mhlo::MhloDialect>();
     // Declare tensor_load and tensor_store illegal.
@@ -607,8 +608,9 @@ struct HloLegalizeToLhlo
     populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
     populateFuncOpTypeConversionPattern(patterns, &context, converter);
     populateCallOpTypeConversionPattern(patterns, &context, converter);
-    populateBranchOpInterfaceAndReturnOpTypeConversionPattern(
-        patterns, &context, converter);
+    populateBranchOpInterfaceTypeConversionPattern(patterns, &context,
+                                                   converter);
+    populateReturnOpTypeConversionPattern(patterns, &context, converter);
     populateEliminateBufferizeMaterializationsPatterns(&context, converter,
                                                        patterns);
 

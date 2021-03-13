@@ -19,8 +19,11 @@ load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", 
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_cuda_tests_tags")
 
 package(
-    default_visibility = [":internal"],
-    licenses = ["notice"],  # Apache 2.0
+    default_visibility = [
+        ":internal",
+        "//third_party/cloud_tpu/inference_converter:__pkg__",
+    ],
+    licenses = ["notice"],
 )
 
 package_group(
@@ -265,10 +268,12 @@ XLA_DEVICE_DEPS = [
     "//tensorflow/core/kernels:resource_variable_ops",
     "//tensorflow/core/kernels:shape_ops",
     "//tensorflow/core/kernels:variable_ops",
+    "//tensorflow/core/kernels/data:finalize_dataset_op",
     "//tensorflow/core/kernels/data:generator_dataset_op",
     "//tensorflow/core/kernels/data:iterator_ops",
     "//tensorflow/core/kernels/data:optional_ops",
     "//tensorflow/core/kernels/data:prefetch_dataset_op",
+    "//tensorflow/core/kernels/data:options_dataset_op",
     "//tensorflow/core/profiler/lib:traceme",
     "//tensorflow/stream_executor:tf_allocator_adapter",
     "//tensorflow/stream_executor/platform",
@@ -294,6 +299,7 @@ cc_library(
     # Public visibility is needed for external TF/XLA backends.
     visibility = ["//visibility:public"],
     deps = XLA_DEVICE_DEPS + [":xla_compilation_cache"],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -339,6 +345,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -352,7 +359,9 @@ cc_library(
         "//tensorflow/compiler/xla:parse_flags_from_env",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -479,7 +488,6 @@ cc_library(
     hdrs = ["get_compiler_ir.h"],
     visibility = [
         ":internal",
-        "//learning/brain/contrib/tpu_modeling/exp/tpu_inference_converter:__pkg__",
         "//tensorflow/core/common_runtime/eager:__pkg__",
     ],
     deps = [
@@ -510,7 +518,6 @@ cc_library(
     textual_hdrs = ["get_compiler_ir.h"],
     visibility = [
         ":internal",
-        "//learning/brain/contrib/tpu_modeling/exp/tpu_inference_converter:__pkg__",
         "//tensorflow/core/common_runtime/eager:__pkg__",
     ],
     deps = [
@@ -550,7 +557,6 @@ cc_library(
     ],
     visibility = [
         ":internal",
-        "//learning/brain/contrib/tpu_modeling/exp/tpu_inference_converter:__pkg__",
         "//tensorflow/core/common_runtime/eager:__pkg__",
     ],
     deps = [

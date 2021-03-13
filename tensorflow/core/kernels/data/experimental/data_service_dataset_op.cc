@@ -289,10 +289,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       VLOG(3) << "Calling GetNext in data service dataset op";
       mutex_lock l(mu_);
       if (!task_thread_manager_ && !cancelled_) {
+        auto new_ctx = std::make_shared<IteratorContext>(*ctx);
         task_thread_manager_ =
-            ctx->StartThread("task-thread-manager", [this, ctx]() {
-              TaskThreadManager(absl::make_unique<IteratorContext>(*ctx));
-            });
+            ctx->StartThread("task-thread-manager",
+                             [this, new_ctx]() { TaskThreadManager(new_ctx); });
       }
 
       bool skip = true;
@@ -367,11 +367,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         num_tasks = tasks_.size() - finished_tasks_;
         mu_.unlock();
       }
-      std::string num_tasks_string =
-          (num_tasks == -1)
-              ? "unavailable"
-              : strings::Printf("%lld", static_cast<long long>(num_tasks));
-      result.push_back(std::make_pair("num_tasks", num_tasks_string));
+      result.push_back(std::make_pair(
+          "num_tasks",
+          num_tasks == -1
+              ? kTraceInfoUnavailable
+              : strings::Printf("%lld", static_cast<long long>(num_tasks))));
       result.push_back(std::make_pair("job_name", dataset()->job_name_));
       result.push_back(std::make_pair(
           "max_outstanding_requests",
@@ -419,7 +419,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // Maintain one thread fetching elements for each task.
     // TODO(aaudibert): Instead of polling, have dispatcher send updates when
     // the list of tasks changes.
-    void TaskThreadManager(std::unique_ptr<IteratorContext> ctx) {
+    void TaskThreadManager(std::shared_ptr<IteratorContext> ctx) {
       auto cleanup =
           gtl::MakeCleanup([] { VLOG(1) << "Task thread manager exiting"; });
       VLOG(1) << "Starting task thread manager";
@@ -602,7 +602,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     // Searches for a task to process, returning nullptr if none is found.
-    std::shared_ptr<Task> GetTaskToProcess() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    std::shared_ptr<Task> GetTaskToProcess() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       VLOG(4) << "Searching for task to process";
       for (int i = 0; i < tasks_.size(); ++i) {
         std::shared_ptr<Task>& task = tasks_[next_task_index_];

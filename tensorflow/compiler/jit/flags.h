@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/command_line_flags.h"
@@ -155,6 +156,11 @@ const IntroduceFloatingPointJitterPassFlags&
 GetIntroduceFloatingPointJitterPassFlags();
 
 MlirCommonFlags* GetMlirCommonFlags();
+
+// Returns the effective MLIR bridge rollout state based on the flags and the
+// optional configuration.
+ConfigProto::Experimental::MlirBridgeRollout GetMlirBridgeRolloutState(
+    absl::optional<const ConfigProto> config_proto);
 
 // Appends the flag definitions associated with
 // MarkForCompilationPassFlags/DumpGraphFlags to `flag_list`.

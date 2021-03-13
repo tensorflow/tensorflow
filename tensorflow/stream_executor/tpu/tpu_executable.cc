@@ -73,7 +73,7 @@ Status TpuExecutable::LoadProgramAndEnqueueToStream(
 
   auto platform = tensorflow::down_cast<tensorflow::tpu::TpuPlatform*>(
       tensorflow::tpu::TpuPlatformInterface::GetRegisteredPlatform());
-  auto stream = platform->stream_map()->at(
+  auto stream = platform->LookupStream(
       run_options.run_options().stream()->implementation());
   StatusHelper status;
 

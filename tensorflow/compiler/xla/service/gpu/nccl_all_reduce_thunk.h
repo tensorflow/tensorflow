@@ -46,8 +46,8 @@ class NcclAllReduceThunk : public NcclCollectiveThunk {
 
   static bool IsDegenerate(mlir::lmhlo::AllReduceOp op, int64 replica_count,
                            int64 partition_count) {
-    return GetNcclAllReduceConfig(op).config.IsDegenerate(replica_count,
-                                                          partition_count);
+    return GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids())
+        .IsDegenerate(replica_count, partition_count);
   }
 
   static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::AllReduceOp op) {

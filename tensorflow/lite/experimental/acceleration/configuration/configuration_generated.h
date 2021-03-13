@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -72,6 +72,41 @@ struct BenchmarkErrorT;
 
 struct BenchmarkEvent;
 struct BenchmarkEventT;
+
+bool operator==(const ComputeSettingsT &lhs, const ComputeSettingsT &rhs);
+bool operator!=(const ComputeSettingsT &lhs, const ComputeSettingsT &rhs);
+bool operator==(const NNAPISettingsT &lhs, const NNAPISettingsT &rhs);
+bool operator!=(const NNAPISettingsT &lhs, const NNAPISettingsT &rhs);
+bool operator==(const GPUSettingsT &lhs, const GPUSettingsT &rhs);
+bool operator!=(const GPUSettingsT &lhs, const GPUSettingsT &rhs);
+bool operator==(const HexagonSettingsT &lhs, const HexagonSettingsT &rhs);
+bool operator!=(const HexagonSettingsT &lhs, const HexagonSettingsT &rhs);
+bool operator==(const XNNPackSettingsT &lhs, const XNNPackSettingsT &rhs);
+bool operator!=(const XNNPackSettingsT &lhs, const XNNPackSettingsT &rhs);
+bool operator==(const EdgeTpuDeviceSpecT &lhs, const EdgeTpuDeviceSpecT &rhs);
+bool operator!=(const EdgeTpuDeviceSpecT &lhs, const EdgeTpuDeviceSpecT &rhs);
+bool operator==(const EdgeTpuInactivePowerConfigT &lhs, const EdgeTpuInactivePowerConfigT &rhs);
+bool operator!=(const EdgeTpuInactivePowerConfigT &lhs, const EdgeTpuInactivePowerConfigT &rhs);
+bool operator==(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs);
+bool operator!=(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs);
+bool operator==(const CoralSettingsT &lhs, const CoralSettingsT &rhs);
+bool operator!=(const CoralSettingsT &lhs, const CoralSettingsT &rhs);
+bool operator==(const CPUSettingsT &lhs, const CPUSettingsT &rhs);
+bool operator!=(const CPUSettingsT &lhs, const CPUSettingsT &rhs);
+bool operator==(const TFLiteSettingsT &lhs, const TFLiteSettingsT &rhs);
+bool operator!=(const TFLiteSettingsT &lhs, const TFLiteSettingsT &rhs);
+bool operator==(const FallbackSettingsT &lhs, const FallbackSettingsT &rhs);
+bool operator!=(const FallbackSettingsT &lhs, const FallbackSettingsT &rhs);
+bool operator==(const BenchmarkMetricT &lhs, const BenchmarkMetricT &rhs);
+bool operator!=(const BenchmarkMetricT &lhs, const BenchmarkMetricT &rhs);
+bool operator==(const BenchmarkResultT &lhs, const BenchmarkResultT &rhs);
+bool operator!=(const BenchmarkResultT &lhs, const BenchmarkResultT &rhs);
+bool operator==(const ErrorCodeT &lhs, const ErrorCodeT &rhs);
+bool operator!=(const ErrorCodeT &lhs, const ErrorCodeT &rhs);
+bool operator==(const BenchmarkErrorT &lhs, const BenchmarkErrorT &rhs);
+bool operator!=(const BenchmarkErrorT &lhs, const BenchmarkErrorT &rhs);
+bool operator==(const BenchmarkEventT &lhs, const BenchmarkEventT &rhs);
+bool operator!=(const BenchmarkEventT &lhs, const BenchmarkEventT &rhs);
 
 enum ExecutionPreference {
   ExecutionPreference_ANY = 0,
@@ -1159,6 +1194,7 @@ struct EdgeTpuSettingsT : public flatbuffers::NativeTable {
   std::vector<std::unique_ptr<tflite::EdgeTpuInactivePowerConfigT>> inactive_power_configs;
   int32_t inference_priority;
   std::unique_ptr<tflite::EdgeTpuDeviceSpecT> edgetpu_device_spec;
+  std::string model_token;
   EdgeTpuSettingsT()
       : inference_power_state(tflite::EdgeTpuPowerState_UNDEFINED_POWERSTATE),
         inference_priority(-1) {
@@ -1171,7 +1207,8 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_INFERENCE_POWER_STATE = 4,
     VT_INACTIVE_POWER_CONFIGS = 6,
     VT_INFERENCE_PRIORITY = 8,
-    VT_EDGETPU_DEVICE_SPEC = 10
+    VT_EDGETPU_DEVICE_SPEC = 10,
+    VT_MODEL_TOKEN = 12
   };
   tflite::EdgeTpuPowerState inference_power_state() const {
     return static_cast<tflite::EdgeTpuPowerState>(GetField<int32_t>(VT_INFERENCE_POWER_STATE, 0));
@@ -1185,6 +1222,9 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const tflite::EdgeTpuDeviceSpec *edgetpu_device_spec() const {
     return GetPointer<const tflite::EdgeTpuDeviceSpec *>(VT_EDGETPU_DEVICE_SPEC);
   }
+  const flatbuffers::String *model_token() const {
+    return GetPointer<const flatbuffers::String *>(VT_MODEL_TOKEN);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_INFERENCE_POWER_STATE) &&
@@ -1194,6 +1234,8 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<int32_t>(verifier, VT_INFERENCE_PRIORITY) &&
            VerifyOffset(verifier, VT_EDGETPU_DEVICE_SPEC) &&
            verifier.VerifyTable(edgetpu_device_spec()) &&
+           VerifyOffset(verifier, VT_MODEL_TOKEN) &&
+           verifier.VerifyString(model_token()) &&
            verifier.EndTable();
   }
   EdgeTpuSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -1216,6 +1258,9 @@ struct EdgeTpuSettingsBuilder {
   void add_edgetpu_device_spec(flatbuffers::Offset<tflite::EdgeTpuDeviceSpec> edgetpu_device_spec) {
     fbb_.AddOffset(EdgeTpuSettings::VT_EDGETPU_DEVICE_SPEC, edgetpu_device_spec);
   }
+  void add_model_token(flatbuffers::Offset<flatbuffers::String> model_token) {
+    fbb_.AddOffset(EdgeTpuSettings::VT_MODEL_TOKEN, model_token);
+  }
   explicit EdgeTpuSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1233,8 +1278,10 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(
     tflite::EdgeTpuPowerState inference_power_state = tflite::EdgeTpuPowerState_UNDEFINED_POWERSTATE,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>>> inactive_power_configs = 0,
     int32_t inference_priority = -1,
-    flatbuffers::Offset<tflite::EdgeTpuDeviceSpec> edgetpu_device_spec = 0) {
+    flatbuffers::Offset<tflite::EdgeTpuDeviceSpec> edgetpu_device_spec = 0,
+    flatbuffers::Offset<flatbuffers::String> model_token = 0) {
   EdgeTpuSettingsBuilder builder_(_fbb);
+  builder_.add_model_token(model_token);
   builder_.add_edgetpu_device_spec(edgetpu_device_spec);
   builder_.add_inference_priority(inference_priority);
   builder_.add_inactive_power_configs(inactive_power_configs);
@@ -1247,14 +1294,17 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettingsDirect(
     tflite::EdgeTpuPowerState inference_power_state = tflite::EdgeTpuPowerState_UNDEFINED_POWERSTATE,
     const std::vector<flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>> *inactive_power_configs = nullptr,
     int32_t inference_priority = -1,
-    flatbuffers::Offset<tflite::EdgeTpuDeviceSpec> edgetpu_device_spec = 0) {
+    flatbuffers::Offset<tflite::EdgeTpuDeviceSpec> edgetpu_device_spec = 0,
+    const char *model_token = nullptr) {
   auto inactive_power_configs__ = inactive_power_configs ? _fbb.CreateVector<flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>>(*inactive_power_configs) : 0;
+  auto model_token__ = model_token ? _fbb.CreateString(model_token) : 0;
   return tflite::CreateEdgeTpuSettings(
       _fbb,
       inference_power_state,
       inactive_power_configs__,
       inference_priority,
-      edgetpu_device_spec);
+      edgetpu_device_spec,
+      model_token__);
 }
 
 flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -2036,8 +2086,12 @@ struct BenchmarkEventT : public flatbuffers::NativeTable {
   tflite::BenchmarkEventType event_type;
   std::unique_ptr<tflite::BenchmarkResultT> result;
   std::unique_ptr<tflite::BenchmarkErrorT> error;
+  int64_t boottime_us;
+  int64_t wallclock_us;
   BenchmarkEventT()
-      : event_type(tflite::BenchmarkEventType_UNDEFINED_BENCHMARK_EVENT_TYPE) {
+      : event_type(tflite::BenchmarkEventType_UNDEFINED_BENCHMARK_EVENT_TYPE),
+        boottime_us(0),
+        wallclock_us(0) {
   }
 };
 
@@ -2047,7 +2101,9 @@ struct BenchmarkEvent FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_TFLITE_SETTINGS = 4,
     VT_EVENT_TYPE = 6,
     VT_RESULT = 8,
-    VT_ERROR = 10
+    VT_ERROR = 10,
+    VT_BOOTTIME_US = 12,
+    VT_WALLCLOCK_US = 14
   };
   const tflite::TFLiteSettings *tflite_settings() const {
     return GetPointer<const tflite::TFLiteSettings *>(VT_TFLITE_SETTINGS);
@@ -2061,6 +2117,12 @@ struct BenchmarkEvent FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const tflite::BenchmarkError *error() const {
     return GetPointer<const tflite::BenchmarkError *>(VT_ERROR);
   }
+  int64_t boottime_us() const {
+    return GetField<int64_t>(VT_BOOTTIME_US, 0);
+  }
+  int64_t wallclock_us() const {
+    return GetField<int64_t>(VT_WALLCLOCK_US, 0);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_TFLITE_SETTINGS) &&
@@ -2070,6 +2132,8 @@ struct BenchmarkEvent FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyTable(result()) &&
            VerifyOffset(verifier, VT_ERROR) &&
            verifier.VerifyTable(error()) &&
+           VerifyField<int64_t>(verifier, VT_BOOTTIME_US) &&
+           VerifyField<int64_t>(verifier, VT_WALLCLOCK_US) &&
            verifier.EndTable();
   }
   BenchmarkEventT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -2092,6 +2156,12 @@ struct BenchmarkEventBuilder {
   void add_error(flatbuffers::Offset<tflite::BenchmarkError> error) {
     fbb_.AddOffset(BenchmarkEvent::VT_ERROR, error);
   }
+  void add_boottime_us(int64_t boottime_us) {
+    fbb_.AddElement<int64_t>(BenchmarkEvent::VT_BOOTTIME_US, boottime_us, 0);
+  }
+  void add_wallclock_us(int64_t wallclock_us) {
+    fbb_.AddElement<int64_t>(BenchmarkEvent::VT_WALLCLOCK_US, wallclock_us, 0);
+  }
   explicit BenchmarkEventBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2109,8 +2179,12 @@ inline flatbuffers::Offset<BenchmarkEvent> CreateBenchmarkEvent(
     flatbuffers::Offset<tflite::TFLiteSettings> tflite_settings = 0,
     tflite::BenchmarkEventType event_type = tflite::BenchmarkEventType_UNDEFINED_BENCHMARK_EVENT_TYPE,
     flatbuffers::Offset<tflite::BenchmarkResult> result = 0,
-    flatbuffers::Offset<tflite::BenchmarkError> error = 0) {
+    flatbuffers::Offset<tflite::BenchmarkError> error = 0,
+    int64_t boottime_us = 0,
+    int64_t wallclock_us = 0) {
   BenchmarkEventBuilder builder_(_fbb);
+  builder_.add_wallclock_us(wallclock_us);
+  builder_.add_boottime_us(boottime_us);
   builder_.add_error(error);
   builder_.add_result(result);
   builder_.add_event_type(event_type);
@@ -2119,6 +2193,20 @@ inline flatbuffers::Offset<BenchmarkEvent> CreateBenchmarkEvent(
 }
 
 flatbuffers::Offset<BenchmarkEvent> CreateBenchmarkEvent(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkEventT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+
+inline bool operator==(const ComputeSettingsT &lhs, const ComputeSettingsT &rhs) {
+  return
+      (lhs.preference == rhs.preference) &&
+      ((!lhs.tflite_settings && !rhs.tflite_settings) || (lhs.tflite_settings && rhs.tflite_settings && *lhs.tflite_settings == *rhs.tflite_settings) || (lhs.tflite_settings && !rhs.tflite_settings && *lhs.tflite_settings == decltype(lhs.tflite_settings)::element_type()) || (rhs.tflite_settings && !lhs.tflite_settings && *rhs.tflite_settings == decltype(rhs.tflite_settings)::element_type())) &&
+      (lhs.model_namespace_for_statistics == rhs.model_namespace_for_statistics) &&
+      (lhs.model_identifier_for_statistics == rhs.model_identifier_for_statistics);
+}
+
+inline bool operator!=(const ComputeSettingsT &lhs, const ComputeSettingsT &rhs) {
+    return !(lhs == rhs);
+}
+
 
 inline ComputeSettingsT *ComputeSettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new ComputeSettingsT();
@@ -2154,6 +2242,26 @@ inline flatbuffers::Offset<ComputeSettings> CreateComputeSettings(flatbuffers::F
       _model_namespace_for_statistics,
       _model_identifier_for_statistics);
 }
+
+
+inline bool operator==(const NNAPISettingsT &lhs, const NNAPISettingsT &rhs) {
+  return
+      (lhs.accelerator_name == rhs.accelerator_name) &&
+      (lhs.cache_directory == rhs.cache_directory) &&
+      (lhs.model_token == rhs.model_token) &&
+      (lhs.execution_preference == rhs.execution_preference) &&
+      (lhs.no_of_nnapi_instances_to_cache == rhs.no_of_nnapi_instances_to_cache) &&
+      ((!lhs.fallback_settings && !rhs.fallback_settings) || (lhs.fallback_settings && rhs.fallback_settings && *lhs.fallback_settings == *rhs.fallback_settings) || (lhs.fallback_settings && !rhs.fallback_settings && *lhs.fallback_settings == decltype(lhs.fallback_settings)::element_type()) || (rhs.fallback_settings && !lhs.fallback_settings && *rhs.fallback_settings == decltype(rhs.fallback_settings)::element_type())) &&
+      (lhs.allow_nnapi_cpu_on_android_10_plus == rhs.allow_nnapi_cpu_on_android_10_plus) &&
+      (lhs.execution_priority == rhs.execution_priority) &&
+      (lhs.allow_dynamic_dimensions == rhs.allow_dynamic_dimensions) &&
+      (lhs.allow_fp16_precision_for_fp32 == rhs.allow_fp16_precision_for_fp32);
+}
+
+inline bool operator!=(const NNAPISettingsT &lhs, const NNAPISettingsT &rhs) {
+    return !(lhs == rhs);
+}
+
 
 inline NNAPISettingsT *NNAPISettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new NNAPISettingsT();
@@ -2208,6 +2316,19 @@ inline flatbuffers::Offset<NNAPISettings> CreateNNAPISettings(flatbuffers::FlatB
       _allow_fp16_precision_for_fp32);
 }
 
+
+inline bool operator==(const GPUSettingsT &lhs, const GPUSettingsT &rhs) {
+  return
+      (lhs.is_precision_loss_allowed == rhs.is_precision_loss_allowed) &&
+      (lhs.enable_quantized_inference == rhs.enable_quantized_inference) &&
+      (lhs.force_backend == rhs.force_backend);
+}
+
+inline bool operator!=(const GPUSettingsT &lhs, const GPUSettingsT &rhs) {
+    return !(lhs == rhs);
+}
+
+
 inline GPUSettingsT *GPUSettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new GPUSettingsT();
   UnPackTo(_o, _resolver);
@@ -2239,6 +2360,20 @@ inline flatbuffers::Offset<GPUSettings> CreateGPUSettings(flatbuffers::FlatBuffe
       _enable_quantized_inference,
       _force_backend);
 }
+
+
+inline bool operator==(const HexagonSettingsT &lhs, const HexagonSettingsT &rhs) {
+  return
+      (lhs.debug_level == rhs.debug_level) &&
+      (lhs.powersave_level == rhs.powersave_level) &&
+      (lhs.print_graph_profile == rhs.print_graph_profile) &&
+      (lhs.print_graph_debug == rhs.print_graph_debug);
+}
+
+inline bool operator!=(const HexagonSettingsT &lhs, const HexagonSettingsT &rhs) {
+    return !(lhs == rhs);
+}
+
 
 inline HexagonSettingsT *HexagonSettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new HexagonSettingsT();
@@ -2275,6 +2410,17 @@ inline flatbuffers::Offset<HexagonSettings> CreateHexagonSettings(flatbuffers::F
       _print_graph_debug);
 }
 
+
+inline bool operator==(const XNNPackSettingsT &lhs, const XNNPackSettingsT &rhs) {
+  return
+      (lhs.num_threads == rhs.num_threads);
+}
+
+inline bool operator!=(const XNNPackSettingsT &lhs, const XNNPackSettingsT &rhs) {
+    return !(lhs == rhs);
+}
+
+
 inline XNNPackSettingsT *XNNPackSettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new XNNPackSettingsT();
   UnPackTo(_o, _resolver);
@@ -2300,6 +2446,20 @@ inline flatbuffers::Offset<XNNPackSettings> CreateXNNPackSettings(flatbuffers::F
       _fbb,
       _num_threads);
 }
+
+
+inline bool operator==(const EdgeTpuDeviceSpecT &lhs, const EdgeTpuDeviceSpecT &rhs) {
+  return
+      (lhs.platform_type == rhs.platform_type) &&
+      (lhs.num_chips == rhs.num_chips) &&
+      (lhs.device_paths == rhs.device_paths) &&
+      (lhs.chip_family == rhs.chip_family);
+}
+
+inline bool operator!=(const EdgeTpuDeviceSpecT &lhs, const EdgeTpuDeviceSpecT &rhs) {
+    return !(lhs == rhs);
+}
+
 
 inline EdgeTpuDeviceSpecT *EdgeTpuDeviceSpec::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new EdgeTpuDeviceSpecT();
@@ -2336,6 +2496,18 @@ inline flatbuffers::Offset<EdgeTpuDeviceSpec> CreateEdgeTpuDeviceSpec(flatbuffer
       _chip_family);
 }
 
+
+inline bool operator==(const EdgeTpuInactivePowerConfigT &lhs, const EdgeTpuInactivePowerConfigT &rhs) {
+  return
+      (lhs.inactive_power_state == rhs.inactive_power_state) &&
+      (lhs.inactive_timeout_us == rhs.inactive_timeout_us);
+}
+
+inline bool operator!=(const EdgeTpuInactivePowerConfigT &lhs, const EdgeTpuInactivePowerConfigT &rhs) {
+    return !(lhs == rhs);
+}
+
+
 inline EdgeTpuInactivePowerConfigT *EdgeTpuInactivePowerConfig::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new EdgeTpuInactivePowerConfigT();
   UnPackTo(_o, _resolver);
@@ -2365,6 +2537,21 @@ inline flatbuffers::Offset<EdgeTpuInactivePowerConfig> CreateEdgeTpuInactivePowe
       _inactive_timeout_us);
 }
 
+
+inline bool operator==(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs) {
+  return
+      (lhs.inference_power_state == rhs.inference_power_state) &&
+      (lhs.inactive_power_configs == rhs.inactive_power_configs) &&
+      (lhs.inference_priority == rhs.inference_priority) &&
+      ((!lhs.edgetpu_device_spec && !rhs.edgetpu_device_spec) || (lhs.edgetpu_device_spec && rhs.edgetpu_device_spec && *lhs.edgetpu_device_spec == *rhs.edgetpu_device_spec) || (lhs.edgetpu_device_spec && !rhs.edgetpu_device_spec && *lhs.edgetpu_device_spec == decltype(lhs.edgetpu_device_spec)::element_type()) || (rhs.edgetpu_device_spec && !lhs.edgetpu_device_spec && *rhs.edgetpu_device_spec == decltype(rhs.edgetpu_device_spec)::element_type())) &&
+      (lhs.model_token == rhs.model_token);
+}
+
+inline bool operator!=(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs) {
+    return !(lhs == rhs);
+}
+
+
 inline EdgeTpuSettingsT *EdgeTpuSettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new EdgeTpuSettingsT();
   UnPackTo(_o, _resolver);
@@ -2378,6 +2565,7 @@ inline void EdgeTpuSettings::UnPackTo(EdgeTpuSettingsT *_o, const flatbuffers::r
   { auto _e = inactive_power_configs(); if (_e) { _o->inactive_power_configs.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->inactive_power_configs[_i] = std::unique_ptr<tflite::EdgeTpuInactivePowerConfigT>(_e->Get(_i)->UnPack(_resolver)); } } }
   { auto _e = inference_priority(); _o->inference_priority = _e; }
   { auto _e = edgetpu_device_spec(); if (_e) _o->edgetpu_device_spec = std::unique_ptr<tflite::EdgeTpuDeviceSpecT>(_e->UnPack(_resolver)); }
+  { auto _e = model_token(); if (_e) _o->model_token = _e->str(); }
 }
 
 inline flatbuffers::Offset<EdgeTpuSettings> EdgeTpuSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -2392,13 +2580,29 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(flatbuffers::F
   auto _inactive_power_configs = _o->inactive_power_configs.size() ? _fbb.CreateVector<flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>> (_o->inactive_power_configs.size(), [](size_t i, _VectorArgs *__va) { return CreateEdgeTpuInactivePowerConfig(*__va->__fbb, __va->__o->inactive_power_configs[i].get(), __va->__rehasher); }, &_va ) : 0;
   auto _inference_priority = _o->inference_priority;
   auto _edgetpu_device_spec = _o->edgetpu_device_spec ? CreateEdgeTpuDeviceSpec(_fbb, _o->edgetpu_device_spec.get(), _rehasher) : 0;
+  auto _model_token = _o->model_token.empty() ? 0 : _fbb.CreateString(_o->model_token);
   return tflite::CreateEdgeTpuSettings(
       _fbb,
       _inference_power_state,
       _inactive_power_configs,
       _inference_priority,
-      _edgetpu_device_spec);
+      _edgetpu_device_spec,
+      _model_token);
 }
+
+
+inline bool operator==(const CoralSettingsT &lhs, const CoralSettingsT &rhs) {
+  return
+      (lhs.device == rhs.device) &&
+      (lhs.performance == rhs.performance) &&
+      (lhs.usb_always_dfu == rhs.usb_always_dfu) &&
+      (lhs.usb_max_bulk_in_queue_length == rhs.usb_max_bulk_in_queue_length);
+}
+
+inline bool operator!=(const CoralSettingsT &lhs, const CoralSettingsT &rhs) {
+    return !(lhs == rhs);
+}
+
 
 inline CoralSettingsT *CoralSettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new CoralSettingsT();
@@ -2435,6 +2639,17 @@ inline flatbuffers::Offset<CoralSettings> CreateCoralSettings(flatbuffers::FlatB
       _usb_max_bulk_in_queue_length);
 }
 
+
+inline bool operator==(const CPUSettingsT &lhs, const CPUSettingsT &rhs) {
+  return
+      (lhs.num_threads == rhs.num_threads);
+}
+
+inline bool operator!=(const CPUSettingsT &lhs, const CPUSettingsT &rhs) {
+    return !(lhs == rhs);
+}
+
+
 inline CPUSettingsT *CPUSettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new CPUSettingsT();
   UnPackTo(_o, _resolver);
@@ -2460,6 +2675,26 @@ inline flatbuffers::Offset<CPUSettings> CreateCPUSettings(flatbuffers::FlatBuffe
       _fbb,
       _num_threads);
 }
+
+
+inline bool operator==(const TFLiteSettingsT &lhs, const TFLiteSettingsT &rhs) {
+  return
+      (lhs.delegate == rhs.delegate) &&
+      ((!lhs.nnapi_settings && !rhs.nnapi_settings) || (lhs.nnapi_settings && rhs.nnapi_settings && *lhs.nnapi_settings == *rhs.nnapi_settings) || (lhs.nnapi_settings && !rhs.nnapi_settings && *lhs.nnapi_settings == decltype(lhs.nnapi_settings)::element_type()) || (rhs.nnapi_settings && !lhs.nnapi_settings && *rhs.nnapi_settings == decltype(rhs.nnapi_settings)::element_type())) &&
+      ((!lhs.gpu_settings && !rhs.gpu_settings) || (lhs.gpu_settings && rhs.gpu_settings && *lhs.gpu_settings == *rhs.gpu_settings) || (lhs.gpu_settings && !rhs.gpu_settings && *lhs.gpu_settings == decltype(lhs.gpu_settings)::element_type()) || (rhs.gpu_settings && !lhs.gpu_settings && *rhs.gpu_settings == decltype(rhs.gpu_settings)::element_type())) &&
+      ((!lhs.hexagon_settings && !rhs.hexagon_settings) || (lhs.hexagon_settings && rhs.hexagon_settings && *lhs.hexagon_settings == *rhs.hexagon_settings) || (lhs.hexagon_settings && !rhs.hexagon_settings && *lhs.hexagon_settings == decltype(lhs.hexagon_settings)::element_type()) || (rhs.hexagon_settings && !lhs.hexagon_settings && *rhs.hexagon_settings == decltype(rhs.hexagon_settings)::element_type())) &&
+      ((!lhs.xnnpack_settings && !rhs.xnnpack_settings) || (lhs.xnnpack_settings && rhs.xnnpack_settings && *lhs.xnnpack_settings == *rhs.xnnpack_settings) || (lhs.xnnpack_settings && !rhs.xnnpack_settings && *lhs.xnnpack_settings == decltype(lhs.xnnpack_settings)::element_type()) || (rhs.xnnpack_settings && !lhs.xnnpack_settings && *rhs.xnnpack_settings == decltype(rhs.xnnpack_settings)::element_type())) &&
+      ((!lhs.cpu_settings && !rhs.cpu_settings) || (lhs.cpu_settings && rhs.cpu_settings && *lhs.cpu_settings == *rhs.cpu_settings) || (lhs.cpu_settings && !rhs.cpu_settings && *lhs.cpu_settings == decltype(lhs.cpu_settings)::element_type()) || (rhs.cpu_settings && !lhs.cpu_settings && *rhs.cpu_settings == decltype(rhs.cpu_settings)::element_type())) &&
+      (lhs.max_delegated_partitions == rhs.max_delegated_partitions) &&
+      ((!lhs.edgetpu_settings && !rhs.edgetpu_settings) || (lhs.edgetpu_settings && rhs.edgetpu_settings && *lhs.edgetpu_settings == *rhs.edgetpu_settings) || (lhs.edgetpu_settings && !rhs.edgetpu_settings && *lhs.edgetpu_settings == decltype(lhs.edgetpu_settings)::element_type()) || (rhs.edgetpu_settings && !lhs.edgetpu_settings && *rhs.edgetpu_settings == decltype(rhs.edgetpu_settings)::element_type())) &&
+      ((!lhs.coral_settings && !rhs.coral_settings) || (lhs.coral_settings && rhs.coral_settings && *lhs.coral_settings == *rhs.coral_settings) || (lhs.coral_settings && !rhs.coral_settings && *lhs.coral_settings == decltype(lhs.coral_settings)::element_type()) || (rhs.coral_settings && !lhs.coral_settings && *rhs.coral_settings == decltype(rhs.coral_settings)::element_type())) &&
+      ((!lhs.fallback_settings && !rhs.fallback_settings) || (lhs.fallback_settings && rhs.fallback_settings && *lhs.fallback_settings == *rhs.fallback_settings) || (lhs.fallback_settings && !rhs.fallback_settings && *lhs.fallback_settings == decltype(lhs.fallback_settings)::element_type()) || (rhs.fallback_settings && !lhs.fallback_settings && *rhs.fallback_settings == decltype(rhs.fallback_settings)::element_type()));
+}
+
+inline bool operator!=(const TFLiteSettingsT &lhs, const TFLiteSettingsT &rhs) {
+    return !(lhs == rhs);
+}
+
 
 inline TFLiteSettingsT *TFLiteSettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new TFLiteSettingsT();
@@ -2514,6 +2749,18 @@ inline flatbuffers::Offset<TFLiteSettings> CreateTFLiteSettings(flatbuffers::Fla
       _fallback_settings);
 }
 
+
+inline bool operator==(const FallbackSettingsT &lhs, const FallbackSettingsT &rhs) {
+  return
+      (lhs.allow_automatic_fallback_on_compilation_error == rhs.allow_automatic_fallback_on_compilation_error) &&
+      (lhs.allow_automatic_fallback_on_execution_error == rhs.allow_automatic_fallback_on_execution_error);
+}
+
+inline bool operator!=(const FallbackSettingsT &lhs, const FallbackSettingsT &rhs) {
+    return !(lhs == rhs);
+}
+
+
 inline FallbackSettingsT *FallbackSettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new FallbackSettingsT();
   UnPackTo(_o, _resolver);
@@ -2543,6 +2790,18 @@ inline flatbuffers::Offset<FallbackSettings> CreateFallbackSettings(flatbuffers:
       _allow_automatic_fallback_on_execution_error);
 }
 
+
+inline bool operator==(const BenchmarkMetricT &lhs, const BenchmarkMetricT &rhs) {
+  return
+      (lhs.name == rhs.name) &&
+      (lhs.values == rhs.values);
+}
+
+inline bool operator!=(const BenchmarkMetricT &lhs, const BenchmarkMetricT &rhs) {
+    return !(lhs == rhs);
+}
+
+
 inline BenchmarkMetricT *BenchmarkMetric::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new BenchmarkMetricT();
   UnPackTo(_o, _resolver);
@@ -2571,6 +2830,21 @@ inline flatbuffers::Offset<BenchmarkMetric> CreateBenchmarkMetric(flatbuffers::F
       _name,
       _values);
 }
+
+
+inline bool operator==(const BenchmarkResultT &lhs, const BenchmarkResultT &rhs) {
+  return
+      (lhs.initialization_time_us == rhs.initialization_time_us) &&
+      (lhs.inference_time_us == rhs.inference_time_us) &&
+      (lhs.max_memory_kb == rhs.max_memory_kb) &&
+      (lhs.ok == rhs.ok) &&
+      (lhs.metrics == rhs.metrics);
+}
+
+inline bool operator!=(const BenchmarkResultT &lhs, const BenchmarkResultT &rhs) {
+    return !(lhs == rhs);
+}
+
 
 inline BenchmarkResultT *BenchmarkResult::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new BenchmarkResultT();
@@ -2610,6 +2884,19 @@ inline flatbuffers::Offset<BenchmarkResult> CreateBenchmarkResult(flatbuffers::F
       _metrics);
 }
 
+
+inline bool operator==(const ErrorCodeT &lhs, const ErrorCodeT &rhs) {
+  return
+      (lhs.source == rhs.source) &&
+      (lhs.tflite_error == rhs.tflite_error) &&
+      (lhs.underlying_api_error == rhs.underlying_api_error);
+}
+
+inline bool operator!=(const ErrorCodeT &lhs, const ErrorCodeT &rhs) {
+    return !(lhs == rhs);
+}
+
+
 inline ErrorCodeT *ErrorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new ErrorCodeT();
   UnPackTo(_o, _resolver);
@@ -2641,6 +2928,20 @@ inline flatbuffers::Offset<ErrorCode> CreateErrorCode(flatbuffers::FlatBufferBui
       _tflite_error,
       _underlying_api_error);
 }
+
+
+inline bool operator==(const BenchmarkErrorT &lhs, const BenchmarkErrorT &rhs) {
+  return
+      (lhs.stage == rhs.stage) &&
+      (lhs.exit_code == rhs.exit_code) &&
+      (lhs.signal == rhs.signal) &&
+      (lhs.error_code == rhs.error_code);
+}
+
+inline bool operator!=(const BenchmarkErrorT &lhs, const BenchmarkErrorT &rhs) {
+    return !(lhs == rhs);
+}
+
 
 inline BenchmarkErrorT *BenchmarkError::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new BenchmarkErrorT();
@@ -2677,6 +2978,22 @@ inline flatbuffers::Offset<BenchmarkError> CreateBenchmarkError(flatbuffers::Fla
       _error_code);
 }
 
+
+inline bool operator==(const BenchmarkEventT &lhs, const BenchmarkEventT &rhs) {
+  return
+      ((!lhs.tflite_settings && !rhs.tflite_settings) || (lhs.tflite_settings && rhs.tflite_settings && *lhs.tflite_settings == *rhs.tflite_settings) || (lhs.tflite_settings && !rhs.tflite_settings && *lhs.tflite_settings == decltype(lhs.tflite_settings)::element_type()) || (rhs.tflite_settings && !lhs.tflite_settings && *rhs.tflite_settings == decltype(rhs.tflite_settings)::element_type())) &&
+      (lhs.event_type == rhs.event_type) &&
+      ((!lhs.result && !rhs.result) || (lhs.result && rhs.result && *lhs.result == *rhs.result) || (lhs.result && !rhs.result && *lhs.result == decltype(lhs.result)::element_type()) || (rhs.result && !lhs.result && *rhs.result == decltype(rhs.result)::element_type())) &&
+      ((!lhs.error && !rhs.error) || (lhs.error && rhs.error && *lhs.error == *rhs.error) || (lhs.error && !rhs.error && *lhs.error == decltype(lhs.error)::element_type()) || (rhs.error && !lhs.error && *rhs.error == decltype(rhs.error)::element_type())) &&
+      (lhs.boottime_us == rhs.boottime_us) &&
+      (lhs.wallclock_us == rhs.wallclock_us);
+}
+
+inline bool operator!=(const BenchmarkEventT &lhs, const BenchmarkEventT &rhs) {
+    return !(lhs == rhs);
+}
+
+
 inline BenchmarkEventT *BenchmarkEvent::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new BenchmarkEventT();
   UnPackTo(_o, _resolver);
@@ -2690,6 +3007,8 @@ inline void BenchmarkEvent::UnPackTo(BenchmarkEventT *_o, const flatbuffers::res
   { auto _e = event_type(); _o->event_type = _e; }
   { auto _e = result(); if (_e) _o->result = std::unique_ptr<tflite::BenchmarkResultT>(_e->UnPack(_resolver)); }
   { auto _e = error(); if (_e) _o->error = std::unique_ptr<tflite::BenchmarkErrorT>(_e->UnPack(_resolver)); }
+  { auto _e = boottime_us(); _o->boottime_us = _e; }
+  { auto _e = wallclock_us(); _o->wallclock_us = _e; }
 }
 
 inline flatbuffers::Offset<BenchmarkEvent> BenchmarkEvent::Pack(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkEventT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -2704,12 +3023,16 @@ inline flatbuffers::Offset<BenchmarkEvent> CreateBenchmarkEvent(flatbuffers::Fla
   auto _event_type = _o->event_type;
   auto _result = _o->result ? CreateBenchmarkResult(_fbb, _o->result.get(), _rehasher) : 0;
   auto _error = _o->error ? CreateBenchmarkError(_fbb, _o->error.get(), _rehasher) : 0;
+  auto _boottime_us = _o->boottime_us;
+  auto _wallclock_us = _o->wallclock_us;
   return tflite::CreateBenchmarkEvent(
       _fbb,
       _tflite_settings,
       _event_type,
       _result,
-      _error);
+      _error,
+      _boottime_us,
+      _wallclock_us);
 }
 
 }  // namespace tflite

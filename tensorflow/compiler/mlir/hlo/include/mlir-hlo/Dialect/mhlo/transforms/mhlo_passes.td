@@ -105,11 +105,17 @@ def TestInferShapedTypeMethodsPass : Pass<"mhlo-test-infer-shaped-type-methods",
 }
 
 
-def TransformUnrankedHloPass : Pass<"transform-unranked-hlo", "FuncOp"> {
+def TransformUnrankedHloPass : Pass<"mhlo-transform-unranked-hlo", "FuncOp"> {
   let summary = "Realize element-wise operations on ranked tensors where possible.";
   let constructor = "createTransformUnrankedHloPass()";
 }
 
+def MoveUpDynamicBroadcastsForFusionPass :
+    Pass<"mhlo-move-up-dynamic-broadcasts-for-fusion", "FuncOp"> {
+  let summary = "Move up dynamic broadcasts and shape computations to allow "
+      "for fusion across broadcasts.";
+  let constructor = "createMoveUpDynamicBroadcastsForFusionPass()";
+}
 
 def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "FuncOp"> {
   let summary = "Test pass for materializing 'broadcast_dimensions' attributes.";

@@ -51,8 +51,9 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
 
   xla::StatusOr<mlir::Operation*> EmitOp(const xla::HloInstruction* instr);
 
-  xla::StatusOr<mhlo::ScatterDimensionNumbers> GetScatterDimensionNumbers(
-      const xla::HloInstruction* instr);
+  static xla::StatusOr<mhlo::ScatterDimensionNumbers>
+  GetScatterDimensionNumbers(const xla::HloInstruction* instr,
+                             mlir::MLIRContext* context);
 
  private:
   xla::StatusOr<lmhlo::SortOp> EmitSortOp(const xla::HloInstruction* instr);
@@ -128,6 +129,14 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   xla::StatusOr<lmhlo::FftOp> EmitFftOp(const xla::HloInstruction* instr);
   xla::StatusOr<lmhlo::TriangularSolveOp> EmitTriangularSolveOp(
       const xla::HloInstruction* instr);
+  xla::StatusOr<Operation*> EmitBitcast(const xla::HloInstruction* instr);
+
+  xla::StatusOr<lmhlo::CaseOp> EmitCaseOp(const xla::HloInstruction* instr);
+
+  xla::StatusOr<lmhlo::WhileOp> EmitWhileOp(const xla::HloInstruction* instr);
+
+  xla::Status ImportAsLmhloRegion(xla::HloComputation* computation,
+                                  mlir::Region* region);
 
   // Since LMHLO dialect does not define token types, this enum controls how
   // token operand/results from XLA:HLO are lowered to MLIR.
@@ -227,8 +236,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
 
   // Return an MLIR location for an HLO instruction.
   Location getLocation(const xla::HloInstruction* inst) {
-    return NameLoc::get(builder_.getIdentifier(inst->name()),
-                        builder_.getContext());
+    return NameLoc::get(builder_.getIdentifier(inst->name()));
   }
 
   // This map provides access to MLIR buffers for each HLO buffer allocation.

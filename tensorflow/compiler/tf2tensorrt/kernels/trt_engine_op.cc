@@ -119,7 +119,8 @@ class TRTEngineOp : public AsyncOpKernel {
   // Executes the tensorrt engine. Returns whether we need to retry by running
   // the native segment.
   Status ExecuteTrtEngine(OpKernelContext* ctx, EngineContext* engine_context,
-                          int trt_context_idx);
+                          int trt_context_idx,
+                          const TrtShapeOptimizationProfile& profiles);
 
   // Allocates necessary resources for calibration.
   Status AllocateCalibrationResources(OpKernelContext* ctx,
@@ -671,14 +672,18 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
     return;
   }
 
-  if (!use_implicit_batch_ && has_dynamic_shape_input_) {
+  if (!use_implicit_batch_ &&
+      (has_dynamic_shape_input_ || cache_res->profiles_.HasShapeTensor())) {
+    OP_REQUIRES_OK_ASYNC(ctx, cache_res->profiles_.CollectShapeValues(ctx),
+                         *helper);
     if (profile_generation_mode_) {
       // Collecting new shapes for profiles can be only done once. After the
       // shapes are converted to TRT profiles, no shapes can be collected
       // anymore.
-      OP_REQUIRES(ctx, cache_res->profiles_.GetNumProfiles() == 0,
-                  errors::Unimplemented("Cannot collect new shapes when "
-                                        "profiles are already created."));
+      OP_REQUIRES_ASYNC(ctx, cache_res->profiles_.GetNumProfiles() == 0,
+                        errors::Unimplemented("Cannot collect new shapes when "
+                                              "profiles are already created."),
+                        *helper);
       // Just collect the input shape info and return. The shapes are used to
       // generate optimization profiles during engine creation.
       cache_res->profiles_.AddShape(input_concrete_shapes);
@@ -718,7 +723,8 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
     }
     return;
   }
-  Status stat = ExecuteTrtEngine(ctx, engine_context, trt_context_idx);
+  Status stat = ExecuteTrtEngine(ctx, engine_context, trt_context_idx,
+                                 cache_res->profiles_);
   if (!stat.ok()) {
     LOG_FIRST_FEW_WARNING_WITH_PREFIX << "Failed to execute engine: " << stat
                                       << " Retrying with native segment for "
@@ -738,9 +744,9 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   }
 }
 
-Status TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
-                                     EngineContext* engine_context,
-                                     int trt_context_idx) {
+Status TRTEngineOp::ExecuteTrtEngine(
+    OpKernelContext* ctx, EngineContext* engine_context, int trt_context_idx,
+    const TrtShapeOptimizationProfile& profiles) {
   tensorflow::profiler::TraceMe activity(
       "TRTEngineOp::ExecuteTrtEngine",
       tensorflow::profiler::TraceMeLevel::kInfo);
@@ -781,9 +787,9 @@ Status TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   const int num_batch =
       use_implicit_batch_ ? ctx->input(0).shape().dim_size(0) : 0;
 
-  TF_RETURN_IF_ERROR(SetTrtEngineInputs(cuda_engine.get(), execution_context,
-                                        trt_context_idx, buffers,
-                                        use_implicit_batch_, num_batch, ctx));
+  TF_RETURN_IF_ERROR(SetTrtEngineInputs(
+      cuda_engine.get(), execution_context, trt_context_idx, buffers,
+      use_implicit_batch_, num_batch, profiles, ctx));
 
   TF_RETURN_IF_ERROR(SetTrtEngineOutputs(cuda_engine.get(), execution_context,
                                          trt_context_idx, buffers,
@@ -1044,25 +1050,25 @@ Status TRTEngineOp::AllocateCalibrationResources(
   }
   cres->calibrator_.reset(
       new TRTInt8Calibrator(cres->device_buffers_, batch_size, name()));
-  const int platform_gpu_id =
+  const int platform_device_id =
       ctx->device()->tensorflow_gpu_device_info()->gpu_id;
-  if (platform_gpu_id < 0) {
+  if (platform_device_id < 0) {
     LOG(ERROR) << "Can't get gpu_device_info from context->device()";
     return errors::InvalidArgument(
         "Context->device doesn't contain device info!");
   }
 
   cache_res->Ref();
-  cres->thr_.reset(new std::thread([this, cres, shapes, platform_gpu_id,
+  cres->thr_.reset(new std::thread([this, cres, shapes, platform_device_id,
                                     cache_res]() {
     core::ScopedUnref sc(cache_res);
 
-    VLOG(1) << "Starting calibration thread on device " << platform_gpu_id
+    VLOG(1) << "Starting calibration thread on device " << platform_device_id
             << ", Calibration Resource @ " << cres;
-    auto err = cudaSetDevice(platform_gpu_id);
+    auto err = cudaSetDevice(platform_device_id);
     if (err != cudaSuccess) {
       // TODO(aaroey): should return error here.
-      LOG(ERROR) << "Couldn't set cuda device to " << platform_gpu_id
+      LOG(ERROR) << "Couldn't set cuda device to " << platform_device_id
                  << " in calibration thread";
     }
     std::vector<PartialTensorShape> partial_shapes(shapes.begin(),

@@ -148,6 +148,7 @@ Status GetOutputInfo(
 
   outputs->clear();
   outputs->reserve(func_type.getNumResults());
+  resource_updates->clear();
   resource_updates->reserve(func_type.getNumResults());
 
   std::vector<xla::Shape> shapes;
@@ -279,7 +280,10 @@ void CreateConvertMlirToXlaHloPipeline(
     mlir::OpPassManager& pm, llvm::StringRef device_type,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes) {
+  // Note that the region-based control-flow produced here still contains
+  // function call ops which get inlined by the subsequent inliner pass.
   pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
+  pm.addPass(mlir::createInlinerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateDropWhileShapeInvariantPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   // The SCCP pass performs constant propagation across the IR, which, for
@@ -317,6 +321,7 @@ void CreateConvertMlirToXlaHloPipeline(
   // inside PromoteResourcesToArgs.
   pm.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
 
+  pm.addPass(mlir::mhlo::CreateLegalizeTfTypesPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/true, /*legalize_chlo=*/true,
       /*tf2xla_fallback_device_type=*/device_type));
@@ -372,7 +377,7 @@ Status LegalizeToHlo(mlir::ModuleOp module_op, llvm::StringRef device_type,
 
   if (failed(tf2xla.run(module_op))) {
     return error_handler.Combine(
-        errors::InvalidArgument("TF to XLA legalization failed"));
+        errors::InvalidArgument("TF to XLA legalization failed: "));
   }
 
   if (VLOG_IS_ON(1))

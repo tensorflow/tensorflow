@@ -68,7 +68,6 @@ load(
     "if_ios",
     "if_libtpu",
     "if_mobile",
-    "if_not_windows",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -422,7 +421,6 @@ tf_cuda_library(
         "//tensorflow/core/framework:device_base.h",
         "//tensorflow/core/framework:device_factory.h",
         "//tensorflow/core/framework:function.h",
-        "//tensorflow/core/framework:function_handle_cache.h",
         "//tensorflow/core/framework:graph_def_util.h",
         "//tensorflow/core/framework:graph_to_functiondef.h",
         "//tensorflow/core/framework:kernel_def_builder.h",
@@ -602,7 +600,6 @@ cc_library(
         "//tensorflow/core/kernels:batch_kernels",
         "//tensorflow/core/kernels:bincount_op",
         "//tensorflow/core/kernels:boosted_trees_ops",
-        "//tensorflow/core/kernels:tensor_forest_ops",
         "//tensorflow/core/kernels:candidate_sampler_ops",
         "//tensorflow/core/kernels:checkpoint_ops",
         "//tensorflow/core/kernels:clustering_ops",
@@ -658,9 +655,7 @@ cc_library(
         "//tensorflow/core/kernels/linalg:linalg",
         "//tensorflow/core/kernels/image:image",
         "//tensorflow/core/kernels/sparse:kernels",
-    ] + if_not_windows([
-        "//tensorflow/core/kernels/neon:neon_depthwise_conv_op",
-    ]) + if_mkl([
+    ] + if_mkl([
         "//tensorflow/core/kernels/mkl:mkl_aggregate_ops",
         "//tensorflow/core/kernels/mkl:mkl_concat_op",
         "//tensorflow/core/kernels/mkl:mkl_dequantize_op",
@@ -994,7 +989,6 @@ filegroup(
         "stateless_random_ops_v2_op_lib",
         "string_ops_op_lib",
         "summary_ops_op_lib",
-        "tensor_forest_ops_op_lib",
         "tpu_configuration_ops_op_lib",
         "tpu_cross_replica_ops_op_lib",
         "tpu_embedding_ops_op_lib",

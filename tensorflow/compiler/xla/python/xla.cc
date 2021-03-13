@@ -163,8 +163,6 @@ PYBIND11_MODULE(xla_extension, m) {
 
   py::class_<PjRtTpuDevice, PjRtDevice, ClientAndPtr<PjRtTpuDevice>>(
       m, "TpuDevice")
-      .def_property_readonly("host_id", &PjRtTpuDevice::task_id)
-      .def_property_readonly("task_id", &PjRtTpuDevice::task_id)
       .def_property_readonly(
           "coords",
           [](const PjRtTpuDevice& device) -> pybind11::tuple {
@@ -202,6 +200,7 @@ PYBIND11_MODULE(xla_extension, m) {
 
   py::class_<PyClient, std::shared_ptr<PyClient>> py_local_client(m, "Client");
   py_local_client.def_property_readonly("platform", &PyClient::platform_name)
+      .def_property_readonly("platform_version", &PyClient::platform_version)
       .def("device_count", &PyClient::device_count)
       .def("local_device_count", &PyClient::addressable_device_count)
       .def("devices", &PyClient::Devices)
@@ -225,7 +224,9 @@ PYBIND11_MODULE(xla_extension, m) {
                PjRtClient::HostBufferSemantics::kZeroCopy)
       .def("compile", &PyClient::Compile, py::arg("computation"),
            py::arg("compile_options") = CompileOptions())
-      .def("heap_profile", &PyClient::HeapProfile);
+      .def("heap_profile", &PyClient::HeapProfile)
+      // TODO(zhangqiaorjc): Experimental.
+      .def("defragment", &PyClient::Defragment);
 
   m.def(
       "get_cpu_client",
@@ -321,6 +322,7 @@ PYBIND11_MODULE(xla_extension, m) {
              return buffer->AsNumPyArray(buffer_obj);
            })
       .def("xla_shape", &PyBuffer::shape)
+      .def("xla_dynamic_shape", &PyBuffer::xla_dynamic_shape)
       .def_property_readonly("client", &PyBuffer::client)
       .def("device", &PyBuffer::device)
       .def("platform", &PyBuffer::platform_name)
@@ -328,7 +330,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("unsafe_buffer_pointer", &PyBuffer::UnsafeBufferPointer)
       .def_property_readonly("__cuda_array_interface__",
                              &PyBuffer::CudaArrayInterface)
-      .def_property_readonly("traceback", &PyBuffer::traceback);
+      .def_property_readonly("traceback", &PyBuffer::traceback)
+      .def("clone", &PyBuffer::Clone);
 
   // pybind11's implementation of the buffer protocol doesn't allow for correct
   // error handling. We bypass it and implement the buffer protocol ourselves.

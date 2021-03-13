@@ -30,9 +30,9 @@ class GPUDevice : public BaseGPUDevice {
  public:
   GPUDevice(const SessionOptions& options, const string& name,
             Bytes memory_limit, const DeviceLocality& locality,
-            TfGpuId tf_gpu_id, const string& physical_device_desc,
+            TfDeviceId tf_device_id, const string& physical_device_desc,
             Allocator* gpu_allocator, Allocator* cpu_allocator)
-      : BaseGPUDevice(options, name, memory_limit, locality, tf_gpu_id,
+      : BaseGPUDevice(options, name, memory_limit, locality, tf_device_id,
                       physical_device_desc, gpu_allocator, cpu_allocator,
                       false /* sync every op */) {
     if (options.config.has_gpu_options()) {
@@ -63,11 +63,11 @@ class GPUDeviceFactory : public BaseGPUDeviceFactory {
  private:
   std::unique_ptr<BaseGPUDevice> CreateGPUDevice(
       const SessionOptions& options, const string& name, Bytes memory_limit,
-      const DeviceLocality& locality, TfGpuId tf_gpu_id,
+      const DeviceLocality& locality, TfDeviceId tf_device_id,
       const string& physical_device_desc, Allocator* gpu_allocator,
       Allocator* cpu_allocator) override {
     return absl::make_unique<GPUDevice>(options, name, memory_limit, locality,
-                                        tf_gpu_id, physical_device_desc,
+                                        tf_device_id, physical_device_desc,
                                         gpu_allocator, cpu_allocator);
   }
 };

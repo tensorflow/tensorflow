@@ -92,8 +92,7 @@ class AutoTrackable(base.Trackable):
     super(AutoTrackable, self).__setattr__(name, value)
 
   def __delattr__(self, name):
-    self._maybe_initialize_trackable()
-    delete_tracking(self, name)
+    self._delete_tracking(name)
     super(AutoTrackable, self).__delattr__(name)
 
   def _no_dependency(self, value):
@@ -125,18 +124,16 @@ class AutoTrackable(base.Trackable):
         functions[attribute_name] = attribute_value
     return functions
 
-
-def delete_tracking(obj, name):
-  """Removes the tracking of name from object."""
-  # pylint: disable=protected-access
-  if name in obj._unconditional_dependency_names:
-    del obj._unconditional_dependency_names[name]
-    for index, (dep_name, _) in enumerate(
-        obj._unconditional_checkpoint_dependencies):
-      if dep_name == name:
-        del obj._unconditional_checkpoint_dependencies[index]
-        break
-  # pylint: enable=protected-access
+  def _delete_tracking(self, name):
+    """Removes the tracking of name."""
+    self._maybe_initialize_trackable()
+    if name in self._unconditional_dependency_names:
+      del self._unconditional_dependency_names[name]
+      for index, (dep_name, _) in enumerate(
+          self._unconditional_checkpoint_dependencies):
+        if dep_name == name:
+          del self._unconditional_checkpoint_dependencies[index]
+          break
 
 
 class ResourceTracker(object):
@@ -184,40 +181,6 @@ def resource_tracker_scope(resource_tracker):
     _RESOURCE_TRACKER_STACK = old
 
 
-class CapturableResourceDeleter(object):
-  """Deleter to destroy CapturableResource without overriding its __del__()."""
-
-  __slots__ = ["_destruction_context", "_destroy_resource"]
-
-  def __init__(self, destroy_resource_fn=None):
-    if destroy_resource_fn:
-      self._destroy_resource = destroy_resource_fn
-      self._destruction_context = (
-          context.eager_mode if context.executing_eagerly()
-          else ops.get_default_graph().as_default)
-    else:
-      self._destroy_resource = None
-
-  def destroy_resource(self):
-    if self._destroy_resource:
-      return self._destroy_resource()
-
-  def __del__(self):
-    if self._destroy_resource:
-      with self._destruction_context():
-        try:
-          self._destroy_resource()
-
-        # There is a race condition between this and `ScopedTFFunction`
-        # whereby if an entire garbage collection chain containing both
-        # objects is moved to unreachable during the same garbage collection
-        # cycle, the __del__ for `ScopedTFFunction` can be collected before
-        # this method is called. In that case, we can't do much but
-        # continue.
-        except defun.FunctionAlreadyGarbageCollectedError:
-          pass
-
-
 class CapturableResource(base.Trackable):
   """Holds a Tensor which a tf.function can capture.
 
@@ -228,7 +191,7 @@ class CapturableResource(base.Trackable):
   `CapturableResource` directly.
   """
 
-  def __init__(self, device="", deleter=None):
+  def __init__(self, device=""):
     """Initialize the `CapturableResource`.
 
     Args:
@@ -236,12 +199,12 @@ class CapturableResource(base.Trackable):
         e.g. "CPU" if this resource must be created on a CPU device. A blank
         device allows the user to place resource creation, so generally this
         should be blank unless the resource only makes sense on one device.
-      deleter: A CapturableResourceDeleter that will destroy the created
-        resource during destruction.
     """
     self._resource_handle = None
     self._resource_device = device
-    self._resource_deleter = deleter or CapturableResourceDeleter()
+    self._destruction_context = (
+        context.eager_mode if context.executing_eagerly()
+        else ops.get_default_graph().as_default)
 
   def _create_resource(self):
     """A function that creates a resource handle."""
@@ -250,6 +213,10 @@ class CapturableResource(base.Trackable):
 
   def _initialize(self):
     """A function that initializes the resource. Optional."""
+    pass
+
+  def _destroy_resource(self):
+    """A function that destroys the resource. Optional."""
     pass
 
   @property
@@ -285,7 +252,7 @@ class CapturableResource(base.Trackable):
 
     @def_function.function(input_signature=[], autograph=False)
     def _destroyer():
-      self._resource_deleter.destroy_resource()
+      self._destroy_resource()
       return 1  # Dummy return
 
     return {
@@ -294,11 +261,31 @@ class CapturableResource(base.Trackable):
         "_destroy_resource": _destroyer,
     }
 
+  def __del__(self):
+    try:
+      # Outer race condition: on program exit, the destruction context may be
+      # deleted before this __del__ is called. At this point we can safely
+      # exit without calling _destroy_resource() and let Python handle things.
+      with self._destruction_context():
+        # Inner race condition: possible between this and `ScopedTFFunction`
+        # whereby if an entire garbage collection chain containing both
+        # objects is moved to unreachable during the same garbage collection
+        # cycle, the __del__ for `ScopedTFFunction` can be collected before
+        # this method is called. In that case, we can't do much but
+        # continue.
+        try:
+          self._destroy_resource()
+
+        except defun.FunctionAlreadyGarbageCollectedError:
+          pass
+    except TypeError:
+      pass
+
 
 class TrackableResource(CapturableResource):
   """Adds scope tracking to CapturableResource."""
 
-  def __init__(self, device="", deleter=None):
+  def __init__(self, device=""):
     """Initialize the `TrackableResource`.
 
     Args:
@@ -306,13 +293,11 @@ class TrackableResource(CapturableResource):
         e.g. "CPU" if this resource must be created on a CPU device. A blank
         device allows the user to place resource creation, so generally this
         should be blank unless the resource only makes sense on one device.
-      deleter: A CapturableResourceDeleter that will destroy the created
-        resource during destruction.
     """
     global _RESOURCE_TRACKER_STACK
     for resource_tracker in _RESOURCE_TRACKER_STACK:
       resource_tracker.add_resource(self)
-    super(TrackableResource, self).__init__(device=device, deleter=deleter)
+    super(TrackableResource, self).__init__(device=device)
 
 
 @tf_export("saved_model.Asset")

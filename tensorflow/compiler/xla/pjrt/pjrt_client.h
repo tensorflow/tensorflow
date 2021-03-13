@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/casts.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -173,6 +174,8 @@ class PjRtClient {
   // Returns a string that identifies the platform (CPU/GPU/TPU).
   virtual absl::string_view platform_name() const = 0;
 
+  virtual absl::string_view platform_version() const = 0;
+
   // Return a device-specific default device assignment, e.g., GPU and TPU may
   // be different.
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
@@ -245,6 +248,10 @@ class PjRtClient {
       void* device_ptr, const Shape& shape, PjRtDevice* device,
       std::function<void()> on_delete_callback) = 0;
 
+  // Returns platform-dependent address for the given buffer that is often but
+  // not guaranteed to be the physical/device address.
+  virtual StatusOr<std::uintptr_t> UnsafeBufferPointer(PjRtBuffer* buffer);
+
   // Asynchronously makes a vector of PjRtBuffers that can be used to receive
   // cross host transfers using `client` on `device'. `shapes` must be the exact
   // shapes, with identical layouts, corresponding to the buffers that will be
@@ -262,6 +269,11 @@ class PjRtClient {
   virtual StatusOr<ChannelHandle> CreateChannelHandle() = 0;
   virtual StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() = 0;
   virtual StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() = 0;
+
+  // TODO(zhangqiaorjc): Experimental API to be removed.
+  // Defragment device memory.
+  virtual Status Defragment(absl::Span<PjRtBuffer* const> buffers,
+                            absl::Span<PjRtExecutable* const> executables) = 0;
 };
 
 // Holds a reference from Python to a tuple of device buffers. A PjRtBuffer
@@ -276,6 +288,15 @@ class PjRtBuffer {
   virtual ~PjRtBuffer() = default;
 
   virtual const Shape& on_device_shape() const = 0;
+
+  // Same as on_device_shape when the shape is static. When the shape is
+  // dynamic, it gathers the metadata from the device and returns a static shape
+  // representing the logical shape of the data. This approach is identical to
+  // how tensorflow and xrt setup the output buffer in the graph.
+  //
+  // Since this method actually acquires locks and communicate with the device,
+  // it does not have the const qualifier, similar to what ToLiteral does.
+  virtual StatusOr<Shape> logical_on_device_shape() = 0;
   virtual PjRtDevice* device() const = 0;
   virtual PjRtClient* client() const = 0;
 
@@ -457,6 +478,7 @@ class PjRtExecutable {
   // Executes on devices addressable by the client. Requires executable has a
   // device_assignment and all devices in the device_assignment are addressable
   // by the client.
+  // `argument_handles` is `[num_devices, num_args]`.
   virtual StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
   Execute(absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
           const ExecuteOptions& options) = 0;

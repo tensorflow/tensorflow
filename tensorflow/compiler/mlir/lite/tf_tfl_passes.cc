@@ -63,6 +63,7 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
 }
 
 void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
+                                const toco::TocoFlags& toco_flags,
                                 const mlir::TFL::PassConfig& pass_config,
                                 mlir::OpPassManager* pass_manager,
                                 llvm::Optional<tensorflow::Session*> session) {
@@ -132,7 +133,9 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
 
   if (pass_config.lower_tensor_list_ops) {
     // TODO(haoliang): Add this pass by default.
-    pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass());
+    pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass(
+        /*allow_tensorlist_pass_through=*/toco_flags.force_select_tf_ops() ||
+        toco_flags.enable_select_tf_ops()));
   }
 
   // This pass does resource analysis of saved model global tensors and marks
@@ -227,6 +230,7 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
       pass_manager->addPass(mlir::TFL::CreateLegalizeVariablesPass());
       pass_manager->addPass(mlir::TFL::CreateRemoveArgsAndGlobalTensors());
     }
+    pass_manager->addPass(mlir::TFL::CreateLegalizeHashTablesPass());
     pass_manager->addNestedPass<mlir::FuncOp>(
         mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true));
     // This pass operates on TensorFlow ops but is triggered after legalization
@@ -266,7 +270,9 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
                                 mlir::OpPassManager* pass_manager,
                                 llvm::Optional<tensorflow::Session*> session) {
   const toco::ModelFlags model_flags;
-  AddTFToTFLConversionPasses(model_flags, pass_config, pass_manager, session);
+  const toco::TocoFlags toco_flags;
+  AddTFToTFLConversionPasses(model_flags, toco_flags, pass_config, pass_manager,
+                             session);
 }
 
 }  // namespace tensorflow
@@ -294,7 +300,8 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
   mlir::TF::CreateTFStandardPipeline(func_pm, standard_pipeline_options);
 
   // This is needed for control flow support with TF TensorList.
-  pm.addPass(mlir::TFL::CreateLowerStaticTensorListPass());
+  pm.addPass(mlir::TFL::CreateLowerStaticTensorListPass(
+      /*allow_tensorlist_pass_through=*/false));
 
   // Saved model pass to mark global tensors immutable.
   pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
@@ -322,6 +329,7 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm.addPass(
       mlir::TFL::CreateLegalizeTFPass(/*run_tfl_runtime_verification=*/true));
+  pm.addPass(mlir::TFL::CreateLegalizeHashTablesPass());
   pm.addPass(mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true));
   pm.addPass(mlir::TFL::CreateOptimizeFunctionalOpsPass());
   pm.addPass(mlir::createSymbolDCEPass());

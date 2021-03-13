@@ -39,21 +39,8 @@ void EnableLogging(PassManager *pm) {
 }  // namespace
 
 namespace TFTPU {
+
 namespace {
-void AddGraphExportLoweringPasses(OpPassManager &pm) {
-  auto add_pass = [&](std::unique_ptr<Pass> pass) {
-    pm.addNestedPass<FuncOp>(std::move(pass));
-    pm.addPass(CreateBreakUpIslandsPass());
-  };
-
-  add_pass(CreateFunctionalToExecutorDialectConversionPass());
-  add_pass(TFDevice::CreateReplicateToIslandPass());
-  add_pass(TFDevice::CreateParallelExecuteToIslandsPass());
-  add_pass(TFDevice::CreateLaunchToDeviceAttributePass());
-  pm.addNestedPass<FuncOp>(CreateTPUDevicePropagationPass());
-  pm.addPass(createSymbolDCEPass());
-}
-
 tensorflow::Status RunTPUBridge(
     ModuleOp module, bool enable_logging,
     llvm::function_ref<void(OpPassManager &pm)> pipeline_builder) {
@@ -68,7 +55,7 @@ tensorflow::Status RunTPUBridge(
   pipeline_builder(bridge);
 
   // Add set of passes to lower back to graph (from tf_executor).
-  AddGraphExportLoweringPasses(bridge);
+  TF::AddGraphExportLoweringPasses(bridge);
 
   // Run the bridge on the module, in case of failure, the `diag_handler`
   // converts MLIR errors emitted to the MLIRContext into a tensorflow::Status.
@@ -102,6 +89,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   // later on.
   {
     pm.addPass(CreateTPUClusterFormationPass());
+    pm.addNestedPass<FuncOp>(TFDevice::CreateDeviceAttributeToLaunchPass());
     OpPassManager &func_pm = pm.nest<FuncOp>();
     // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass
     // because DecomposeResourceOpsPass uses pattern rewriter which hoists
@@ -110,11 +98,25 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
     func_pm.addPass(CreateTPUHostComputationExpansionPass());
     func_pm.addPass(CreateTPUUpdateEmbeddingEnqueueOpInputsPass());
   }
-  // Run another shape inference pass because resource decomposition might have
-  // created new partial types.
-  pm.addPass(TF::CreateTFShapeInferencePass());
+  // TODO(b/173622615): Once OutsideCompilation is represented by launch op and
+  // the remaining passes including Inliner support it, remove this
+  // LaunchToDeviceAttributePass. This LaunchToDeviceAttribute pass needs to
+  // come before TPUClusterCleanupAttributes pass or else the device attribute
+  // will be removed from launch causing an error.
+  pm.addNestedPass<FuncOp>(TFDevice::CreateLaunchToDeviceAttributePass());
+
+  // Note that the region-based control-flow produced here still contains
+  // function call ops which get inlined by the subsequent inliner pass.
   pm.addPass(TF::CreateTFFunctionalControlFlowToRegions());
   pm.addPass(mlir::createInlinerPass());
+  pm.addNestedPass<FuncOp>(
+      TF::CreateDropWhileShapeInvariantInDeviceClusterPass());
+  // Run another shape inference pass because resource decomposition might have
+  // created new partial types. Also, after dropping `shape_invariant` attribute
+  // from While/WhileRegion ops within cluster would lead to more precise
+  // shapes.
+  pm.addPass(TF::CreateTFShapeInferencePass());
+  pm.addNestedPass<FuncOp>(createCanonicalizerPass());
   pm.addPass(CreateTPUClusterCleanupAttributesPass());
   pm.addPass(TFDevice::CreateResourceOpLiftingPass());
   pm.addNestedPass<FuncOp>(createCSEPass());
@@ -163,6 +165,21 @@ tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool enable_logging) {
 }  // namespace TFTPU
 
 namespace TF {
+
+void AddGraphExportLoweringPasses(OpPassManager &pm) {
+  auto add_pass = [&](std::unique_ptr<Pass> pass) {
+    pm.addNestedPass<FuncOp>(std::move(pass));
+    pm.addPass(CreateBreakUpIslandsPass());
+  };
+
+  add_pass(CreateFunctionalToExecutorDialectConversionPass());
+  add_pass(TFDevice::CreateReplicateToIslandPass());
+  add_pass(TFDevice::CreateParallelExecuteToIslandsPass());
+  add_pass(TFDevice::CreateLaunchToDeviceAttributePass());
+  pm.addNestedPass<FuncOp>(TFTPU::CreateTPUDevicePropagationPass());
+  pm.addPass(createSymbolDCEPass());
+  pm.addPass(CreateVerifySuitableForExportPass());
+}
 
 tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
                                                  bool enable_logging,

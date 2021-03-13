@@ -210,6 +210,50 @@ bool CanOptimizeIdentityGatherNdOrScatterNdOp(Value params,
   return true;
 }
 
+// Returns true if we can eliminate the SliceOp. When the values of `begin` are
+// all 0s and `size[i]` is equal to either -1 or `input.shape[i]`
+// for each dim i, the output tensor is identical to `input`.
+bool CanOptimizeIdentitySliceOp(Value input, Attribute begin, Attribute size) {
+  // Checks if `begin` and `size` are i32 or i64.
+  auto begin_attr = begin.dyn_cast<DenseIntElementsAttr>();
+  auto size_attr = size.dyn_cast<DenseIntElementsAttr>();
+  if (!begin_attr || !size_attr) {
+    return false;
+  }
+
+  auto begin_elem_ty = begin_attr.getType().getElementType();
+  if (!begin_elem_ty.isInteger(32) && !begin_elem_ty.isInteger(64)) {
+    return false;
+  }
+  auto size_elem_ty = size_attr.getType().getElementType();
+  if (!size_elem_ty.isInteger(32) && !size_elem_ty.isInteger(64)) {
+    return false;
+  }
+
+  // Checks if `input` is ranked and its rank is equal to number of elements in
+  // `begin` and `size`.
+  auto input_ty = input.getType().cast<ShapedType>();
+  if (!input_ty.hasRank()) {
+    return false;
+  }
+
+  int64_t rank = input_ty.getRank();
+  if (rank != begin_attr.getNumElements() ||
+      rank != size_attr.getNumElements()) {
+    return false;
+  }
+
+  // Checks if `begin` is all 0s, and `size[i]` is equal to either -1 or
+  // `input.shape[i]`.
+  for (uint64_t i = 0; i < rank; ++i) {
+    if (begin_attr.getValue<APInt>({i}).getSExtValue() != 0) return false;
+    int64_t si = size_attr.getValue<APInt>({i}).getSExtValue();
+    if (si != -1 && si != input_ty.getDimSize(i)) return false;
+  }
+
+  return true;
+}
+
 // Expand Attribute 'a' to 4D with all 1s except 1 dimension.
 // Which dimension depends on 'is_depthwise' is true or false.
 ElementsAttr ExpandTo4DForConvImpl(Attribute a, bool is_depthwise) {
@@ -397,7 +441,7 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
     }
 
     auto fc = rewriter.create<TFL::FullyConnectedOp>(
-        FusedLoc::get({fc_op.getLoc(), add_op.getLoc()}, fc_op.getContext()),
+        FusedLoc::get(fc_op.getContext(), {fc_op.getLoc(), add_op.getLoc()}),
         add_op.getType(),
         /*input=*/fc_op.input(),
         /*filter=*/filter,
@@ -457,7 +501,7 @@ struct FuseAddAndFullyConnected
 
     // Create the updated FC.
     auto new_fc = rewriter.create<TFL::FullyConnectedOp>(
-        FusedLoc::get({add_op.getLoc(), fc_op.getLoc()}, add_op.getContext()),
+        FusedLoc::get(add_op.getContext(), {add_op.getLoc(), fc_op.getLoc()}),
         fc_op.output().getTypes(),
         /*input=*/add_op.lhs(),
         /*filter=*/fc_op.filter(),
@@ -491,8 +535,8 @@ struct FuseFullyConnectedAndReluX : public OpRewritePattern<ReluXOp> {
     auto new_keep_num_dims =
         rewriter.getBoolAttr(fully_connected_op.keep_num_dims());
     auto fc = rewriter.create<FullyConnectedOp>(
-        FusedLoc::get({fully_connected_op.getLoc(), relu_op.getLoc()},
-                      relu_op.getContext()),
+        FusedLoc::get(relu_op.getContext(),
+                      {fully_connected_op.getLoc(), relu_op.getLoc()}),
         relu_op.getType(), fully_connected_op.input(),
         fully_connected_op.filter(), fully_connected_op.bias(),
         new_activation_func, new_weights_format, new_keep_num_dims);
@@ -565,7 +609,7 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
     }
 
     auto fc = rewriter.create<TFL::FullyConnectedOp>(
-        FusedLoc::get({fc_op.getLoc(), mul_op.getLoc()}, fc_op.getContext()),
+        FusedLoc::get(fc_op.getContext(), {fc_op.getLoc(), mul_op.getLoc()}),
         mul_op.getType(),
         /*input=*/fc_op.input(),
         /*filter=*/new_filter,

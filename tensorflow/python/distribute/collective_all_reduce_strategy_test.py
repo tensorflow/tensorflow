@@ -292,7 +292,7 @@ class DistributedCollectiveAllReduceStrategyTest(
       input_options = None
     else:
       input_options = distribute_lib.InputOptions(
-          experimental_prefetch_to_device=prefetch_to_device)
+          experimental_fetch_to_device=prefetch_to_device)
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.batch(distribution.num_replicas_in_sync)
     dataset = distribution.experimental_distribute_dataset(
@@ -313,7 +313,7 @@ class DistributedCollectiveAllReduceStrategyTest(
         task_id=0,
         num_gpus=2)
     input_options = distribute_lib.InputOptions(
-        experimental_prefetch_to_device=False)
+        experimental_fetch_to_device=False)
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.batch(distribution.num_replicas_in_sync)
     dataset = distribution.experimental_distribute_dataset(

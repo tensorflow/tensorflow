@@ -60,16 +60,6 @@ struct MlirBufferSlice : public BufferSlice {
 struct MlirEmitterInput {
   mlir::Operation* op;
   Thunk::ThunkInfo thunk_info;
-
-  // A field to allow plumbing extra information that BufferAssignment has, but
-  // LMHLO/MLIR representation does not have. Specifically, this is for passing
-  // the allocated buffer for tuple outputs (an array of pointers to tuple
-  // elements).
-  //
-  // TODO(timshen): We need a corresponding construct in LMHLO to represent
-  // this, aka an array of pointers to different memrefs. Once we have that, we
-  // can merge this information back to LMHLO graph and remove this field.
-  absl::optional<MlirBufferSlice> extra_slice;
 };
 
 // Convenience struct that contains useful data structures in MLIR emitter.
@@ -148,7 +138,6 @@ class IrEmitterUnnested : public IrEmitter,
 
   static StatusOr<std::unique_ptr<IrEmitterUnnested>> Create(
       const HloModuleConfig& hlo_module_config,
-      const HloComputation* hlo_computation,
       IrEmitterContext* ir_emitter_context);
 
   // Transfers the ownship of thunk_sequence_ out.
@@ -167,9 +156,10 @@ class IrEmitterUnnested : public IrEmitter,
   Status EmitConstant(MlirEmitterInput mlir_input);
 
   Status HandleCopy(HloInstruction* copy) override;
-  Status EmitCopyForMlir(MlirEmitterInput input);
+  Status EmitCopyFromMlir(MlirEmitterInput input);
 
   Status HandleConditional(HloInstruction* conditional) override;
+  Status EmitConditionalFromMlir(MlirEmitterInput mlir_input);
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
   Status EmitCustomCallFromMlir(MlirEmitterInput input);
@@ -183,9 +173,9 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleFft(HloInstruction* fft) override;
   Status EmitFftThunkFromMlir(MlirEmitterInput input);
   Status HandleFusion(HloInstruction* fusion) override;
+  Status EmitFusionFromMlir(MlirEmitterInput mlir_input);
   Status EmitLoopFusionFromMlir(
-      MlirEmitterInput input, const Shape& output_shape,
-      absl::optional<int> unroll_factor_override = {});
+      MlirEmitterInput input, absl::optional<int> unroll_factor_override = {});
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleReduce(HloInstruction* reduce) override;
   Status EmitReduceFromMlir(MlirEmitterInput mlir_input);
@@ -193,8 +183,11 @@ class IrEmitterUnnested : public IrEmitter,
   Status EmitSelectAndScatterFromMlir(MlirEmitterInput mlir_input);
   Status HandleTuple(HloInstruction* tuple) override;
   Status HandleWhile(HloInstruction* xla_while) override;
+  Status EmitWhileFromMlir(MlirEmitterInput mlir_input);
   Status HandleInfeed(HloInstruction* xla_infeed) override;
+  Status EmitInfeedFromMlir(MlirEmitterInput input);
   Status HandleOutfeed(HloInstruction* outfeed) override;
+  Status EmitOutfeedFromMlir(MlirEmitterInput input);
   Status HandleRng(HloInstruction* random) override;
   Status HandleRngGetAndUpdateState(HloInstruction* rng_state) override;
   Status EmitRngGetAndUpdateState(MlirEmitterInput mlir_input);
@@ -222,6 +215,7 @@ class IrEmitterUnnested : public IrEmitter,
   Status EmitCollectivePermuteFromMlir(MlirEmitterInput input);
 
   Status EmitOp(MlirEmitterInput mlir_input);
+  Status EmitLmhloRegion(mlir::Region* region);
 
   Status EmitTargetElementLoop(
       const HloInstruction& hlo,
@@ -238,7 +232,6 @@ class IrEmitterUnnested : public IrEmitter,
 
  private:
   IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
-                    const HloComputation* hlo_computation,
                     IrEmitterContext* ir_emitter_context);
 
   // Add a owning Thunk object to the thunk sequence.
@@ -659,12 +652,10 @@ class IrEmitterUnnested : public IrEmitter,
 
   StatusOr<std::unique_ptr<KernelThunk>> BuildKernelThunkForMlir(
       mlir::Operation* op, mlir::ValueRange operands,
-      Thunk::ThunkInfo thunk_info, absl::optional<MlirBufferSlice> extra_slice,
-      std::vector<llvm_ir::IrArray>* ir_arrays);
+      Thunk::ThunkInfo thunk_info, std::vector<llvm_ir::IrArray>* ir_arrays);
 
   StatusOr<std::unique_ptr<KernelThunk>> BuildKernelThunkForMlir(
       mlir::Operation* op, Thunk::ThunkInfo thunk_info,
-      absl::optional<MlirBufferSlice> extra_slice,
       std::vector<llvm_ir::IrArray>* ir_arrays);
 
   // Returns a thunk that, given a reduce or select-and-scatter op,
@@ -684,18 +675,20 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction 'hlo'.
-  StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(const HloInstruction* hlo);
+  StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(
+      mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info);
 
   // Returns a ForThunk which executes 'loop_limit' invocations of a thunk
   // sequence from the 'body' sub-computation of the while instruction 'hlo'.
-  StatusOr<std::unique_ptr<Thunk>> BuildForThunk(const HloInstruction* hlo,
-                                                 const int64 loop_limit);
+  StatusOr<std::unique_ptr<Thunk>> BuildForThunk(
+      mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info,
+      const int64 loop_limit);
 
   // Returns a ConditionalThunk which executes the thunk sequence for the
   // 'branch_computation' corresponding to the predicate/branch_index of the
   // given conditional instruction.
   StatusOr<std::unique_ptr<Thunk>> BuildConditionalThunk(
-      const HloInstruction* hlo);
+      const HloInstruction* conditional);
 
   // Emits current thread id with the given type.
   //
