@@ -179,6 +179,10 @@ class Conv(Layer):
       raise ValueError('The argument `kernel_size` cannot contain 0(s). '
                        'Received: %s' % (self.kernel_size,))
 
+    if not all(self.strides):
+      raise ValueError('The argument `strides` cannot contains 0(s). '
+                       'Received: %s' % (self.strides,))
+
     if (self.padding == 'causal' and not isinstance(self,
                                                     (Conv1D, SeparableConv1D))):
       raise ValueError('Causal padding is only supported for `Conv1D`'

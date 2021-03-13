@@ -72,6 +72,7 @@ tf_cc_test(
     srcs = ["spmd_partitioner_test.cc"],
     deps = [
         ":spmd_partitioner",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",

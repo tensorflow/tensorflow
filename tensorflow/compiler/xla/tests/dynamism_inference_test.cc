@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/match.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
@@ -151,6 +152,20 @@ TEST_F(DynamismInferenceTest, ReduceUsedTwice) {
   auto pred = Eq(c, reduce);
   auto result = Select(pred, reduce, c);
   EXPECT_EQ(ComputeDynamismScalar(result, &b, {}).ValueOrDie(), true);
+}
+
+TEST_F(DynamismInferenceTest, DynamicSelectorWithMixedValues) {
+  XlaBuilder b(TestName());
+  auto constant_pred = ConstantR1<bool>(&b, {true});
+  auto dynamic_pred = Parameter(&b, 0, ShapeUtil::MakeShape(PRED, {1}), "p0");
+  auto concat = ConcatInDim(&b, {constant_pred, dynamic_pred}, 0);
+  auto constant_values = ConstantR1<bool>(&b, {true, true});
+  auto result = Select(concat, constant_values, constant_values);
+  // First result is static (selector is constant, both values are constant).
+  // Iota is not dynamic.
+  EXPECT_FALSE(ComputeDynamismLiteral(result, &b).ValueOrDie().Get<bool>({0}));
+  // Second result is dynamic (selector is dynamic).
+  EXPECT_TRUE(ComputeDynamismLiteral(result, &b).ValueOrDie().Get<bool>({1}));
 }
 
 TEST_F(DynamismInferenceTest, ConcatSliceReshapeKeepsDynamism) {

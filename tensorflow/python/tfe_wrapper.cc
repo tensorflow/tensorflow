@@ -753,13 +753,19 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_ContextSyncExecutors", [](py::handle& ctx) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
+    // NOTE: release Python GIL for pending PyFunc ops to be executed properly.
+    Py_BEGIN_ALLOW_THREADS;
     TFE_ContextAsyncWait(tensorflow::InputTFE_Context(ctx), status.get());
+    Py_END_ALLOW_THREADS;
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
   m.def("TFE_ContextClearExecutors", [](py::handle& ctx) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
+    // NOTE: release Python GIL for pending PyFunc ops to be executed properly.
+    Py_BEGIN_ALLOW_THREADS;
     TFE_ContextAsyncWait(tensorflow::InputTFE_Context(ctx), status.get());
+    Py_END_ALLOW_THREADS;
     // NOTE: different from TFE_ContextSyncExecutors that raises potential
     // errors, deliberately ignore executor statuses in cleanup.
   });

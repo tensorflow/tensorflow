@@ -26,6 +26,12 @@ inline double SafeDivide(double dividend, double divisor) {
   return dividend / divisor;
 }
 
+// Calculates GiB/s.
+inline double GibibytesPerSecond(double bytes, double ns) {
+  constexpr double kGigaToGibi = 0.93132257461;  // 10^9/2^30
+  return kGigaToGibi * SafeDivide(bytes, ns);
+}
+
 }  // namespace profiler
 }  // namespace tensorflow
 

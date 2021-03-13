@@ -746,9 +746,10 @@ Status EagerContextDistributedManager::CheckRemoteAlive(
 
   if (remote_status.ok()) {
     *is_alive = true;
+  } else {
+    LOG(INFO) << "Remote worker " << remote_task_name
+              << " is not alive: " << remote_status.error_message();
   }
-  LOG(INFO) << "Remote worker " << remote_task_name
-            << " is not alive: " << remote_status.error_message();
   return Status::OK();
 }
 #endif  // !IS_MOBILE_PLATFORM

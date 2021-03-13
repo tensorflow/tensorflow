@@ -242,7 +242,10 @@ void AllocateAndParseFlags() {
   mlir_flags = new MlirCommonFlags;
   if (!enable_mlir_bridge_is_explicit) {
     mlir_flags->tf_mlir_enable_mlir_bridge =
-        ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
+        (mlir_bridge_safe_mode)
+            ? ConfigProto::Experimental::
+                  MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED
+            : ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
   } else if (enable_mlir_bridge) {
     mlir_flags->tf_mlir_enable_mlir_bridge =
         (mlir_bridge_safe_mode)

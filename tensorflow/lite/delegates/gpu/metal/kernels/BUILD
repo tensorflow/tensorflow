@@ -68,6 +68,8 @@ objc_library(
     sdk_frameworks = ["XCTest"],
     deps = [
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_buffer_1x1_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_constants_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_powervr_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd",
@@ -508,14 +510,39 @@ ios_unit_test(
 )
 
 objc_library(
+    name = "split_test_lib",
+    testonly = 1,
+    srcs = ["split_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:split_test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "split_test",
+    testonly = 1,
+    minimum_os_version = "11.4",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
+    tags = tf_gpu_tests_tags() + [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":split_test_lib"],
+)
+
+objc_library(
     name = "transpose_conv_test_lib",
     testonly = 1,
     srcs = ["transpose_conv_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_3x3_thin_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_4x4_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_thin_test_util",
     ],
 )
 
@@ -638,6 +665,7 @@ objc_library(
         "slice_test.mm",
         "softmax_test.mm",
         "space_to_depth_test.mm",
+        "split_test.mm",
         "transpose_conv_test.mm",
         "transpose_test.mm",
         "winograd_test.mm",
@@ -654,11 +682,15 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/tasks:add_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_buffer_1x1_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_constants_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_powervr_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_weights_converter_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_3x3_thin_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_4x4_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_thin_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_stride_h2_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_test_util",
@@ -677,6 +709,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:resize_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:softmax_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:split_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:transpose_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd",

@@ -386,6 +386,7 @@ cc_library(
 
 cc_library(
     name = "immediate_execution_tensor_handle",
+    srcs = ["immediate_execution_tensor_handle.cc"],
     hdrs = ["immediate_execution_tensor_handle.h"],
     visibility = [
         "//tensorflow:internal",

@@ -43,6 +43,16 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
   static constexpr const char* const kOptimizeDatasetV1 = "OptimizeDataset";
   static constexpr const char* const kOptimizeDatasetV2 = "OptimizeDatasetV2";
 
+  // Creates and returns a OptimizeDatasetOp::Dataset in output, given the
+  // default optimizations and those that are enabled, disabled. This method is
+  // used to create the dataset without explicitly using the OptimizeDatasetOp.
+  static void MakeDatasetFromOptions(
+      OpKernelContext* ctx, DatasetBase* input,
+      const std::vector<tstring>& optimizations_enabled,
+      const std::vector<tstring>& optimizations_disabled,
+      const std::vector<tstring>& optimizations_default,
+      const std::vector<string>& optimization_configs, DatasetBase** output);
+
   explicit OptimizeDatasetOp(OpKernelConstruction* ctx);
 
  protected:
@@ -50,9 +60,6 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
                    DatasetBase** output) override;
 
  private:
-  static RewriterConfig CreateConfig(std::vector<tstring> optimizations,
-                                     std::vector<string> optimizations_configs);
-
   std::vector<string> optimization_configs_;
   int op_version_ = 0;
 };
@@ -67,6 +74,17 @@ namespace data {
 
 class OptimizeDatasetOp : public UnaryDatasetOpKernel {
  public:
+  // Creates and returns a OptimizeDatasetOp::Dataset in output, given the
+  // default optimizations and those that are enabled, disabled. This method is
+  // used to create the dataset without explicitly using the
+  // OptimizeDatasetOp.
+  static void MakeDatasetFromOptions(
+      OpKernelContext* ctx, DatasetBase* input,
+      const std::vector<tstring>& optimizations_enabled,
+      const std::vector<tstring>& optimizations_disabled,
+      const std::vector<tstring>& optimizations_default,
+      const std::vector<string>& optimization_configs, DatasetBase** output);
+
   explicit OptimizeDatasetOp(OpKernelConstruction* ctx);
 
  protected:

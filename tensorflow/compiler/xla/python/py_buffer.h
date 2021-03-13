@@ -52,7 +52,7 @@ class DeviceArrayBase {
 // `DeviceArray` object, at the condition there is no associated LazyExpr.
 class PyBuffer : public DeviceArrayBase {
  public:
-  PyBuffer(std::shared_ptr<PyClient> client, std::unique_ptr<PjRtBuffer> buffer,
+  PyBuffer(std::shared_ptr<PyClient> client, std::shared_ptr<PjRtBuffer> buffer,
            std::shared_ptr<Traceback> traceback);
   ~PyBuffer();
 
@@ -75,6 +75,11 @@ class PyBuffer : public DeviceArrayBase {
     host_value_ = nullptr;
   }
 
+  // Makes a copy of this PyBuffer object that shares the underlying PjRtBuffer.
+  // This is useful because we may wish to change JAX metadata (e.g., the sticky
+  // device) without copying the buffer.
+  std::unique_ptr<PyBuffer> Clone() const;
+
   // Returns xla::InvalidArgument if the buffer has been deleted.
   Status BlockHostUntilReady();
   Status CopyToHostAsync();
@@ -85,7 +90,7 @@ class PyBuffer : public DeviceArrayBase {
 
   // Implementation of the CUDA array interface for sharing GPU buffers with
   // other Python libraries.
-  StatusOr<pybind11::dict> CudaArrayInterface() const;
+  StatusOr<pybind11::dict> CudaArrayInterface();
 
   // PEP 3118 Python buffer protocol implementation.
   static PyBufferProcs* BufferProtocol();
@@ -93,13 +98,16 @@ class PyBuffer : public DeviceArrayBase {
   Traceback* traceback() { return traceback_.get(); }
 
   // Returns the size (i.e. number of elements) of the (host) numpy array.
-  int64 size() { return ShapeUtil::ElementsIn(buffer()->on_device_shape()); }
+  StatusOr<int64> size();
 
   // Returns the number of dimensions of the (host) numpy array.
   int ndim() const { return buffer()->on_device_shape().dimensions_size(); }
 
   pybind11::tuple python_shape() const;
   pybind11::dtype python_dtype() const;
+
+  // Representing the logical view of the underlying dynamic shapes.
+  StatusOr<Shape> xla_dynamic_shape();
 
   void SetStickyDevice(pybind11::object sticky_device);
   pybind11::object GetStickyDevice() const { return sticky_device_.value(); }
@@ -118,7 +126,7 @@ class PyBuffer : public DeviceArrayBase {
     std::shared_ptr<xla::Literal> value;
   };
   std::shared_ptr<PyClient> client_;
-  std::unique_ptr<PjRtBuffer> buffer_;
+  std::shared_ptr<PjRtBuffer> buffer_;
   std::shared_ptr<Traceback> traceback_;
   std::shared_ptr<HostValue> host_value_;  // Protected by the GIL.
 
@@ -126,8 +134,10 @@ class PyBuffer : public DeviceArrayBase {
   // TODO(jblespiau): It's currently there for convenience but maybe we can do
   // without it (adding `weak_type` instead).
   absl::optional<pybind11::object> aval_ = absl::nullopt;
-  // Doubly-linked list of all buffers known to the client. Protected by the
-  // GIL.
+  absl::optional<Shape> dynamic_shape_ = absl::nullopt;
+  // Doubly-linked list of all PyBuffers known to the client. Protected by the
+  // GIL. Since multiple PyBuffers may share the same PjRtBuffer, there may be
+  // duplicate PjRtBuffers in this list.
   PyBuffer* next_;
   PyBuffer* prev_;
 };

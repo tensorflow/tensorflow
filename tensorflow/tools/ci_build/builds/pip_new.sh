@@ -415,6 +415,7 @@ create_activate_virtualenv() {
   # to create the virtualenv directory for testing. Use the -p flag to specify
   # the python version inside the to-be-created virtualenv directory.
   ${PYTHON_BIN_PATH_INIT} -m virtualenv -p ${PYTHON_BIN_PATH_INIT} ${VIRTUALENV_FLAGS} ${VIRTUALENV_DIR} || \
+    ${PYTHON_BIN_PATH_INIT} -m venv ${VIRTUALENV_DIR} || \
     die "FAILED: Unable to create virtualenv"
 
   source "${VIRTUALENV_DIR}/bin/activate" || \

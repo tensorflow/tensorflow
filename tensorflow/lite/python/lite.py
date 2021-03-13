@@ -434,7 +434,7 @@ class TFLiteConverterBase(object):
     self.target_spec = TargetSpec()
     self.allow_custom_ops = False
     self.experimental_new_converter = True
-    self.experimental_new_quantizer = False
+    self.experimental_new_quantizer = True
     self._experimental_new_quantizer = None
     self._experimental_calibrate_only = False
     self._experimental_sparsify_model = False
@@ -1029,7 +1029,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       MLIR-based conversion instead of TOCO conversion. (default True)
     experimental_new_quantizer: Experimental flag, subject to change. Enables
       MLIR-based quantization conversion instead of Flatbuffer-based conversion.
-      (default False)
+      (default True)
 
   Example usage:
 
@@ -1751,7 +1751,7 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
       MLIR-based conversion instead of TOCO conversion. (default True)
     experimental_new_quantizer: Experimental flag, subject to change. Enables
       MLIR-based quantization conversion instead of Flatbuffer-based conversion.
-      (default False)
+      (default True)
 
   Example usage:
 
