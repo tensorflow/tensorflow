@@ -698,13 +698,16 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
       int partition, int executable_idx, const RunId& run_id,
       const ExecuteOptions& options, PjRtDevice* device,
       std::vector<PjRtStreamExecutorBuffer::ScopedHold>* device_buffers,
-      std::shared_ptr<DeviceAssignment> device_assignment) const;
+      std::shared_ptr<DeviceAssignment> device_assignment,
+      std::vector<std::function<void()>>& compute_callbacks) const;
 
   virtual std::vector<std::unique_ptr<PjRtBuffer>> MakeOutputBuffers(
       int device_ordinal, const ExecuteOptions& options,
       ScopedShapedBuffer result_buffer,
       std::shared_ptr<BufferSequencingEvent> definition_event,
-      PjRtDevice* device) const;
+      PjRtDevice* device, std::vector<std::function<void()>>& compute_callbacks,
+      std::vector<std::shared_ptr<TrackedDeviceBuffer>>& buffers_to_release)
+      const;
 
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,

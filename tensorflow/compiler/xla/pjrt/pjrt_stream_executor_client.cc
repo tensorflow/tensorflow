@@ -316,7 +316,10 @@ void RecordUsage(PjRtStreamExecutorBuffer::ScopedHold device_buffer,
                  LocalDeviceState* buffer_local_device,
                  LocalDeviceState* stream_local_device,
                  std::shared_ptr<BufferSequencingEvent> event,
-                 se::Stream* usage_stream, bool prefer_to_retain_reference) {
+                 se::Stream* usage_stream, bool prefer_to_retain_reference,
+                 std::vector<std::shared_ptr<TrackedDeviceBuffer>>*
+                     buffers_to_release = nullptr) {
+  tensorflow::profiler::TraceMe traceme("RecordUsage");
   bool retain_buffer_until_completion =
       // If the buffer wasn't allocated on the same device as the stream, always
       // retain a reference.
@@ -329,7 +332,11 @@ void RecordUsage(PjRtStreamExecutorBuffer::ScopedHold device_buffer,
            LocalDeviceState::kComputeSynchronized &&
        prefer_to_retain_reference);
   if (retain_buffer_until_completion) {
-    buffer_local_device->ThenRelease(usage_stream, device_buffer.buffer());
+    if (buffers_to_release) {
+      buffers_to_release->push_back(device_buffer.buffer());
+    } else {
+      buffer_local_device->ThenRelease(usage_stream, device_buffer.buffer());
+    }
   }
   device_buffer.ConvertUsageHold(usage_stream, event,
                                  retain_buffer_until_completion);
@@ -1576,7 +1583,8 @@ StatusOr<TupleHandle> MakeTupleHelper(
 std::unique_ptr<PjRtBuffer> OutputBufferHelper(
     ScopedShapedBuffer* result_buffer,
     std::shared_ptr<BufferSequencingEvent> definition_event, PjRtClient* client,
-    PjRtDevice* device, LocalDeviceState* local_device) {
+    PjRtDevice* device, LocalDeviceState* local_device,
+    std::vector<std::shared_ptr<TrackedDeviceBuffer>>& buffers_to_release) {
   std::shared_ptr<TrackedDeviceBuffer> out_buffer =
       TrackedDeviceBuffer::FromScopedShapedBuffer(result_buffer,
                                                   {definition_event});
@@ -1584,7 +1592,7 @@ std::unique_ptr<PjRtBuffer> OutputBufferHelper(
       result_buffer->on_device_shape(), std::move(out_buffer), client, device);
   RecordUsage(pjrt_buffer->GetBufferWithUsageHold(), local_device, local_device,
               definition_event, local_device->compute_stream(),
-              /*prefer_to_retain_reference=*/false);
+              /*prefer_to_retain_reference=*/false, &buffers_to_release);
   return std::unique_ptr<PjRtBuffer>(std::move(pjrt_buffer));
 }
 }  // namespace
@@ -1709,7 +1717,8 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
     int executable_idx, const RunId& run_id, const ExecuteOptions& options,
     PjRtDevice* device,
     std::vector<PjRtStreamExecutorBuffer::ScopedHold>* device_buffers,
-    std::shared_ptr<DeviceAssignment> device_assignment) const {
+    std::shared_ptr<DeviceAssignment> device_assignment,
+    std::vector<std::function<void()>>& compute_callbacks) const {
   int device_ordinal = tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                            ->local_device_state()
                            ->device_ordinal();
@@ -1822,8 +1831,7 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
       // Release the owning memory so we can pass it to the closure.
       donated_ptrs.push_back(owning.Release());
     }
-    device_state->ThenExecuteOnCallbackThread(
-        device_state->compute_stream(),
+    compute_callbacks.push_back(
         [references{std::make_tuple(executables_[executable_idx],
                                     compute_reservation, device_assignment)},
          donated_ptrs{std::move(donated_ptrs)}, allocator{client_->allocator()},
@@ -1835,10 +1843,10 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
   } else {
     // Any donated memory returned by the ExecutionOutput can be immediately
     // freed.
-    device_state->ThenRelease(
-        device_state->compute_stream(),
-        std::make_tuple(executables_[executable_idx], compute_reservation,
-                        device_assignment));
+    compute_callbacks.push_back(
+        [to_release{std::make_tuple(executables_[executable_idx],
+                                    compute_reservation,
+                                    device_assignment)}]() {});
   }
 
   return result_buffer_or_status.ConsumeValueOrDie().ConsumeResult();
@@ -1848,8 +1856,11 @@ std::vector<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorExecutable::MakeOutputBuffers(
     int device_ordinal, const ExecuteOptions& options,
     ScopedShapedBuffer result_buffer,
-    std::shared_ptr<BufferSequencingEvent> definition_event,
-    PjRtDevice* device) const {
+    std::shared_ptr<BufferSequencingEvent> definition_event, PjRtDevice* device,
+    std::vector<std::function<void()>>& compute_callbacks,
+    std::vector<std::shared_ptr<TrackedDeviceBuffer>>& buffers_to_release)
+    const {
+  tensorflow::profiler::TraceMe traceme("MakeOutputBuffers");
   std::vector<std::unique_ptr<PjRtBuffer>> outputs;
   LocalDeviceState* device_state = &(client_->device_state(device_ordinal));
   if (options.untuple_result && result_buffer.on_device_shape().IsTuple()) {
@@ -1860,21 +1871,22 @@ PjRtStreamExecutorExecutable::MakeOutputBuffers(
     for (int i = 0; i < tuple_count; ++i) {
       ScopedShapedBuffer tuple_buffer = result_buffer.TakeSubTree({i});
       outputs.push_back(OutputBufferHelper(&tuple_buffer, definition_event,
-                                           client_, device, device_state));
+                                           client_, device, device_state,
+                                           buffers_to_release));
     }
     if (device_state->allocation_model() == LocalDeviceState::kSynchronous) {
       // Don't release the root buffer until after execution completes.
       ShapedBuffer root_buffer_holder = result_buffer.release();
       se::DeviceMemoryBase root_buffer = root_buffer_holder.root_buffer();
-      device_state->ThenExecuteOnCallbackThread(
-          device_state->compute_stream(),
+      compute_callbacks.push_back(
           [root_buffer, allocator{client_->allocator()}, device_ordinal]() {
             TF_CHECK_OK(allocator->Deallocate(device_ordinal, root_buffer));
           });
     }
   } else {
     outputs.push_back(OutputBufferHelper(&result_buffer, definition_event,
-                                         client_, device, device_state));
+                                         client_, device, device_state,
+                                         buffers_to_release));
   }
   return outputs;
 }
@@ -1911,11 +1923,12 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
   // SPMD sharding produces a single executable for multiple partitions.
   int executable_idx = executables_.size() > 1 ? partition : 0;
 
+  std::vector<std::function<void()>> compute_callbacks;
   std::vector<PjRtStreamExecutorBuffer::ScopedHold> device_buffers;
   device_buffers.reserve(argument_handles.size());
   StatusOr<ScopedShapedBuffer> result_buffer_or_status = EnqueueExecution(
       argument_handles, replica, partition, executable_idx, run_id, options,
-      device, &device_buffers, std::move(device_assignment));
+      device, &device_buffers, std::move(device_assignment), compute_callbacks);
 
   if (!result_buffer_or_status.ok()) {
     LOG(ERROR) << "Execution of replica " << replica
@@ -1943,9 +1956,10 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
   }
   auto definition_event = std::make_shared<BufferSequencingEvent>();
   definition_event->SetSequencingEvent(event_or.ConsumeValueOrDie(), stream);
-  std::vector<std::unique_ptr<PjRtBuffer>> outputs =
-      MakeOutputBuffers(device_ordinal, options, std::move(result_buffer),
-                        definition_event, device);
+  std::vector<std::shared_ptr<TrackedDeviceBuffer>> buffers_to_release;
+  std::vector<std::unique_ptr<PjRtBuffer>> outputs = MakeOutputBuffers(
+      device_ordinal, options, std::move(result_buffer), definition_event,
+      device, compute_callbacks, buffers_to_release);
 
   for (PjRtStreamExecutorBuffer::ScopedHold& b : device_buffers) {
     // prefer_to_retain_reference=false because when using the
@@ -1955,13 +1969,24 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
     if (b.type() == PjRtStreamExecutorBuffer::ScopedHold::kUsage) {
       RecordUsage(std::move(b), device_state, device_state, definition_event,
                   stream,
-                  /*prefer_to_retain_reference=*/false);
+                  /*prefer_to_retain_reference=*/false, &buffers_to_release);
     } else {
       CHECK(b.type() == PjRtStreamExecutorBuffer::ScopedHold::kDonation);
       b.ConfirmDonation();
     }
   }
 
+  if (!compute_callbacks.empty()) {
+    device_state->callback_stream()->ThenWaitFor(stream);
+    device_state->ThenExecuteOnCallbackThread(
+        device_state->callback_stream(),
+        [callbacks{std::move(compute_callbacks)},
+         buffers_to_release{std::move(buffers_to_release)}]() {
+          for (auto& fn : callbacks) {
+            fn();
+          }
+        });
+  }
   return outputs;
 }
 
