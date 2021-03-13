@@ -36,6 +36,21 @@ TEST_F(OpenCLOperationTest, SplitChannelsX4) {
   ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
+TEST_F(OpenCLOperationTest, SplitWidth) {
+  auto status = SplitWidthTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
+TEST_F(OpenCLOperationTest, SplitHeight) {
+  auto status = SplitHeightTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
+TEST_F(OpenCLOperationTest, SplitBatch) {
+  auto status = SplitBatchTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

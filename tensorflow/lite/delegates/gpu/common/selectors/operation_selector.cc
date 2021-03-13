@@ -543,7 +543,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     }
     case OperationType::SPLIT: {
       auto attr = absl::any_cast<SplitAttributes>(node.operation.attributes);
-      RETURN_IF_ERROR(SelectSplit(attr, op_def, gpu_op));
+      SelectSplit(attr, op_def, gpu_op);
       return absl::OkStatus();
     }
     case OperationType::TRANSPOSE: {
