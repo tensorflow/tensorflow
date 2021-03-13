@@ -50,7 +50,7 @@ from tensorflow.tools.docs import doc_controls
 
 
 @keras_export('keras.losses.Loss')
-class Loss(object):
+class Loss:
   """Loss base class.
 
   To be implemented by subclasses:
