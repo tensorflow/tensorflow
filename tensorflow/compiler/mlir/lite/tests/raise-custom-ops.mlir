@@ -13,9 +13,8 @@ func @custom_op(%arg0: tensor<4xf32>) -> tensor<4xf32> {
 // CHECK-NEXT: %[[CST:.*]] = constant dense<1.000000e+00>
 // CHECK-NEXT: %[[MUL:.*]] = tfl.mul %arg0, %[[CST]] {fused_activation_function = "NONE"} : tensor<4xf32>
 // CHECK-NEXT: %[[CUSTOM:.*]] = "tfl.custom_tf"(%[[MUL]], %[[CST]]) ( {
-// CHECK-NEXT: ^bb0(%arg1: tensor<4xf32>, %arg2: tensor<4xf32>): // no predecessors
-// CHECK-NEXT:   %[[MY_CUSTOM:.*]] = "tf.MyCustomOp"(%arg1, %arg2) {fused_activation_function = "RELU", int_attr = 2 : i32} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+// CHECK-NEXT:   %[[MY_CUSTOM:.*]] = "tf.MyCustomOp"(%[[MUL]], %[[CST]]) {fused_activation_function = "RELU", int_attr = 2 : i32} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
 // CHECK-NEXT:   "tfl.yield"(%[[MY_CUSTOM]]) : (tensor<4xf32>) -> ()
-// CHECK-NEXT: }) {fused_activation_function = "RELU", int_attr = 2 : i32} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+// CHECK-NEXT: }) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
 // CHECK-NEXT: return %[[CUSTOM]] : tensor<4xf32>
 }

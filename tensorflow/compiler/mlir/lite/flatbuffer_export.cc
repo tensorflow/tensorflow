@@ -37,7 +37,6 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -1459,10 +1458,6 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
       // region, if it exists, otherwise just use params for custom op.
       if (!custom_op.body().empty()) {
         real_inst = &custom_op.body().front().front();
-        // Use the inputs of the wrapper to reset the inputs.
-        for (auto idx_op : llvm::enumerate(custom_op->getOperands())) {
-          real_inst->setOperand(idx_op.index(), idx_op.value());
-        }
       } else {
         module_.emitError(
             "Invalid CustomTfOp: Custom TF Op have empty region.");
