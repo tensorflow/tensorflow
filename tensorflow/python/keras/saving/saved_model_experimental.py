@@ -61,6 +61,10 @@ sequential = LazyLoader(
 # pylint:enable=g-inconsistent-quotes
 
 
+# File name for json format of SavedModel.
+SAVED_MODEL_FILENAME_JSON = 'saved_model.json'
+
+
 @keras_export(v1=['keras.experimental.export_saved_model'])
 def export_saved_model(model,
                        saved_model_path,
@@ -151,7 +155,7 @@ def _export_model_json(model, saved_model_path):
   model_json = model.to_json()
   model_json_filepath = os.path.join(
       _get_or_create_assets_dir(saved_model_path),
-      compat.as_text(constants.SAVED_MODEL_FILENAME_JSON))
+      compat.as_text(SAVED_MODEL_FILENAME_JSON))
   with gfile.Open(model_json_filepath, 'w') as f:
     f.write(model_json)
 
@@ -416,7 +420,7 @@ def load_from_saved_model(saved_model_path, custom_objects=None):
   model_json_filepath = os.path.join(
       compat.as_bytes(saved_model_path),
       compat.as_bytes(constants.ASSETS_DIRECTORY),
-      compat.as_bytes(constants.SAVED_MODEL_FILENAME_JSON))
+      compat.as_bytes(SAVED_MODEL_FILENAME_JSON))
   with gfile.Open(model_json_filepath, 'r') as f:
     model_json = f.read()
   model = model_config.model_from_json(
