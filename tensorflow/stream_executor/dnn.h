@@ -766,7 +766,7 @@ class AlgorithmDesc {
     proto_.set_exec_plan_id(a);
     exec_plan_desc_ = b;
   }
-  bool IsExecutionPlan() const { return exec_plan_id() == ""; }
+  bool IsExecutionPlan() const { return exec_plan_id() != ""; }
   bool tensor_ops_enabled() const {
     return proto_.math_type() == AlgorithmProto::TENSOR_OP_MATH;
   }

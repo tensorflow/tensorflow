@@ -1096,10 +1096,6 @@ struct Conv3dBackwardDataAutoTuneGroup {
   static string name() { return "Conv3dBwdData"; }
 };
 
-typedef AutoTuneExecutionPlanSingleton<Conv3dBackwardDataAutoTuneGroup,
-                                       ConvParameters>
-    AutoTuneConv3dBwdDataExecutionPlan;
-
 typedef AutoTuneSingleton<Conv3dBackwardDataAutoTuneGroup, ConvParameters,
                           se::dnn::AlgorithmConfig>
 
@@ -1427,16 +1423,6 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     cudnn_use_autotune_ = true;
 #endif
     AlgorithmConfig algorithm_config;
-    bool do_autotune;
-    if (CudnnUseFrontend()) {
-      do_autotune = cudnn_use_autotune_ &&
-          !AutoTuneConv3dBwdDataExecutionPlan::GetInstance()->Find(
-              conv_parameters, &algorithm_config);
-    } else {
-      do_autotune = cudnn_use_autotune_ &&
-          !AutoTuneConv3dBwdData::GetInstance()->Find(
-              conv_parameters, &algorithm_config);
-    }
 
 #if GOOGLE_CUDA
     // The "cached_plans" is used to store the selected execution plans from
@@ -1444,7 +1430,8 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> cached_plans;
 #endif
 
-    if (do_autotune) {
+    if (cudnn_use_autotune_ && !AutoTuneConv3dBwdData::GetInstance()->Find(
+                                   conv_parameters, &algorithm_config)) {
 #if GOOGLE_CUDA
       std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
       std::vector<AlgorithmDesc> algorithms;
@@ -1597,15 +1584,12 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         if (idx_no_scratch != idx and idx_no_scratch != -1) {
           cached_plans.push_back(std::move(plans[idx_no_scratch]));
         }
-
-        AutoTuneConv3dBwdDataExecutionPlan::GetInstance()->Insert(
-            conv_parameters, cached_plans);
       } else {
         OP_REQUIRES_OK(context, BestCudnnConvAlgorithm(
             results, nullptr, &algorithm_config, nullptr, nullptr));
-        AutoTuneConv3dBwdData::GetInstance()->Insert(conv_parameters,
-                                                     algorithm_config);
       }
+      AutoTuneConv3dBwdData::GetInstance()->Insert(
+          conv_parameters, algorithm_config, cached_plans);
     }
 
     Status cudnn_launch_status;
@@ -1680,10 +1664,6 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
 struct Conv3dBackwardFilterAutoTuneGroup {
   static string name() { return "Conv3dBwdFilter"; }
 };
-
-typedef AutoTuneExecutionPlanSingleton<Conv3dBackwardFilterAutoTuneGroup,
-                                       ConvParameters>
-    AutoTuneConv3dBwdFilterExecutionPlan;
 
 typedef AutoTuneSingleton<Conv3dBackwardFilterAutoTuneGroup, ConvParameters,
                           se::dnn::AlgorithmConfig>
@@ -2028,25 +2008,13 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     cudnn_use_autotune_ = true;
 #endif
 
-    bool do_autotune;
     AlgorithmConfig algorithm_config;
-    if (CudnnUseFrontend()) {
-      do_autotune = cudnn_use_autotune_ &&
-          !AutoTuneConv3dBwdFilterExecutionPlan::GetInstance()->Find(
-              conv_parameters, &algorithm_config);
-    } else {
-      do_autotune = cudnn_use_autotune_ &&
-          !AutoTuneConv3dBwdFilter::GetInstance()->Find(
-              conv_parameters, &algorithm_config);
-    }
-
-#if GOOGLE_CUDA
     // The "cached_plans" is used to store the selected execution plans from
     // autotuning to make them live long enough to the end of this op.
     std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> cached_plans;
-#endif
 
-    if (do_autotune) {
+    if (cudnn_use_autotune_ && !AutoTuneConv3dBwdFilter::GetInstance()->Find(
+                                   conv_parameters, &algorithm_config)) {
 #if GOOGLE_CUDA
       std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
       std::vector<AlgorithmDesc> algorithms;
@@ -2179,9 +2147,6 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         if (idx_no_scratch != idx and idx_no_scratch != -1) {
           cached_plans.push_back(std::move(plans[idx_no_scratch]));
         }
-
-        AutoTuneConv3dBwdFilterExecutionPlan::GetInstance()->Insert(
-            conv_parameters, cached_plans);
       } else {
         Status s = BestCudnnConvAlgorithm(
             results, nullptr, &algorithm_config, nullptr, nullptr);
@@ -2202,9 +2167,9 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         }
 #endif
         OP_REQUIRES_OK(context, s);
-        AutoTuneConv3dBwdFilter::GetInstance()->Insert(conv_parameters,
-                                                       algorithm_config);
       }
+      AutoTuneConv3dBwdFilter::GetInstance()->Insert(
+          conv_parameters, algorithm_config, cached_plans);
     }
 
     Status cudnn_launch_status;

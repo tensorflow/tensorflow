@@ -43,10 +43,6 @@ struct ConvBackwardDataAutoTuneGroup {
   static string name() { return "ConvBwdData"; }
 };
 
-typedef AutoTuneExecutionPlanSingleton<ConvBackwardDataAutoTuneGroup,
-                                       ConvParameters>
-    AutoTuneConvBwdDataExecutionPlan;
-
 typedef AutoTuneSingleton<ConvBackwardDataAutoTuneGroup, ConvParameters,
                           se::dnn::AlgorithmConfig>
     AutoTuneConvBwdData;
@@ -404,24 +400,13 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   cudnn_use_autotune = true;
 #endif
   AlgorithmConfig algorithm_config;
-  bool do_autotune;
-  if (CudnnUseFrontend()) {
-    do_autotune = cudnn_use_autotune &&
-        !AutoTuneConvBwdDataExecutionPlan::GetInstance()->Find(
-            conv_parameters, &algorithm_config);
-  } else {
-    do_autotune = cudnn_use_autotune &&
-        !AutoTuneConvBwdData::GetInstance()->Find(conv_parameters,
-                                                  &algorithm_config);
-  }
 
-#if GOOGLE_CUDA
   // The "cached_plans" is used to store the selected execution plans from
   // autotuning to make them live long enough to the end of this op.
   std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> cached_plans;
-#endif
   
-  if (do_autotune) {
+  if (cudnn_use_autotune && !AutoTuneConvBwdData::GetInstance()->Find(
+                                conv_parameters, &algorithm_config)) {
 #if GOOGLE_CUDA
     std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plans;
     std::vector<AlgorithmDesc> algorithms;
@@ -591,15 +576,12 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       if (idx_no_scratch != idx and idx_no_scratch != -1) {
         cached_plans.push_back(std::move(plans[idx_no_scratch]));
       }
-
-      AutoTuneConvBwdDataExecutionPlan::GetInstance()->Insert(conv_parameters,
-                                                              cached_plans);
     } else {
       OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(
           results, nullptr, &algorithm_config, nullptr, nullptr));
-      AutoTuneConvBwdData::GetInstance()->Insert(conv_parameters,
-                                                 algorithm_config);
     }
+    AutoTuneConvBwdData::GetInstance()->Insert(
+        conv_parameters, algorithm_config, cached_plans);
   }
 
   Status cudnn_launch_status;
