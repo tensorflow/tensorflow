@@ -952,7 +952,7 @@ class DatasetBase : public core::RefCounted {
 
   void set_options(const Options& options) { options_ = options; }
 
- public:
+ private:
   const string type_string_;
   const string node_name_;
   Options options_;
