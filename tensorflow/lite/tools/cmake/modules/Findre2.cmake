@@ -13,17 +13,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-if(re2_POPULATED)
+if(TARGET re2 OR re2_POPULATED)
   return()
 endif()
 
-include(FetchContent)
+include(OverridableFetchContent)
 
-FetchContent_Declare(
+OverridableFetchContent_Declare(
   re2
   GIT_REPOSITORY https://github.com/google/re2.git
   GIT_TAG 2021-02-02
+  GIT_SHALLOW TRUE
+  GIT_PROGRESS TRUE
+  SOURCE_DIR "${CMAKE_BINARY_DIR}/re2"
 )
+OverridableFetchContent_GetProperties(re2)
+if(NOT re2_POPULATED)
+  OverridableFetchContent_Populate(re2)
+endif()
 
 option(RE2_BUILD_TESTING OFF)
-FetchContent_MakeAvailable(re2)
+
+add_subdirectory(
+  "${re2_SOURCE_DIR}"
+  "${re2_BINARY_DIR}"
+  EXCLUDE_FROM_ALL
+)

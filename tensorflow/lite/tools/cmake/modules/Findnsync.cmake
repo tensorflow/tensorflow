@@ -13,19 +13,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-if(nsync_POPULATED)
+if(TARGET nsync OR nsync_POPULATED)
   return()
 endif()
 
-include(FetchContent)
+include(OverridableFetchContent)
 
-FetchContent_Declare(
+OverridableFetchContent_Declare(
   nsync
   GIT_REPOSITORY https://github.com/google/nsync.git
   GIT_TAG 1.22.0
+  GIT_SHALLOW TRUE
+  GIT_PROGRESS TRUE
+  SOURCE_DIR "${CMAKE_BINARY_DIR}/nsync"
 )
+OverridableFetchContent_GetProperties(nsync)
+if(NOT nsync_POPULATED)
+  OverridableFetchContent_Populate(nsync)
+endif()
 
 option(NSYNC_ENABLE_TESTS OFF)
-FetchContent_MakeAvailable(nsync)
+
+add_subdirectory(
+  "${nsync_SOURCE_DIR}"
+  "${nsync_BINARY_DIR}"
+  EXCLUDE_FROM_ALL
+)
 
 target_include_directories(nsync_cpp PUBLIC ${nsync_SOURCE_DIR}/public)
