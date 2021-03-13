@@ -409,3 +409,13 @@ def LowerXlog1pyOp : BinaryXopyPat<
 def LowerXlogyOp : BinaryXopyPat<
   (TF_XlogyOp $x, $y),
   (TF_MulOp $x, (TF_LogOp $y))>;
+
+//===----------------------------------------------------------------------===//
+// IsFinite op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerIsFiniteOp : Pat<(TF_IsFiniteOp $x),
+                       (TF_EqualOp
+                          (TF_SubOp $x, $x),
+                          (TF_ConstOp (GetScalarOfType<0> $x)),
+                          /*incompatible_shape_error*/ConstBoolAttrTrue)>;
