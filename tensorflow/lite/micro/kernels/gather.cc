@@ -82,7 +82,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
-
   switch (positions->type) {
     case kTfLiteInt64:
     case kTfLiteInt32:

@@ -77,6 +77,7 @@ void TestGather(const int* input_dims, const InType* input_data,
 
 TF_LITE_MICRO_TESTS_BEGIN
 
+// For all test functions below, dims[0] is the dimension count.
 TF_LITE_MICRO_TEST(GatherOpTestShuffle) {
   float output_data[4];
   const int input_dims[] = {2, 2, 2};
