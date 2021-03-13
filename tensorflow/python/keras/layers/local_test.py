@@ -288,8 +288,10 @@ class LocallyConnectedImplementationModeTest(test.TestCase,
 
       np.random.seed(1)
       tf_test_util.random_seed.set_seed(1)
-      targets = np.random.randint(0, num_classes, (num_samples,))
-
+      sparse_targets = np.random.randint(0, num_classes, (num_samples,)) 
+      targets =  np.zeros((sparse_targets.size, sparse_targets.max()+1))
+      targets[np.arange(sparse_targets.size),sparse_targets] = 1
+        
       height = 7
       filters = 2
       inputs = get_inputs(data_format, filters, height, num_samples, width)
