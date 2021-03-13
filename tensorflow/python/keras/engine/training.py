@@ -2086,8 +2086,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   def __reduce__(self):
     return pack_model(self)
 
-  def __deepcopy__(self):
-    return super().__deepcopy__()
+  def __deepcopy__(self, memo):
+    return super().__deepcopy__(memo)
 
   def save_weights(self,
                    filepath,
