@@ -122,6 +122,8 @@ void TestRequantize(const int* input_dims_data, const float* input_data,
 TF_LITE_MICRO_TESTS_BEGIN
 
 #if !defined(XTENSA)
+#if !defined(CEVA_BX1) && !defined(CEVA_SP500)
+// No uint8 support in CEVA's optimized kernels
 TF_LITE_MICRO_TEST(QuantizeOpTestUint8) {
   const int length = 10;
   const int dims[] = {2, 2, 5};
@@ -173,7 +175,7 @@ TF_LITE_MICRO_TEST(QuantizeOpTestInt8NoScale) {
   tflite::testing::TestQuantizeFloat(
       dims, values, dims, values, values_quantized, scale, zero_point, output);
 }
-
+#endif  // CEVA
 TF_LITE_MICRO_TEST(QuantizeOpTestInt16) {
   const int length = 10;
   const int dims[] = {2, 2, 5};
