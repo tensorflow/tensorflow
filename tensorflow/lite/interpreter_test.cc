@@ -1605,6 +1605,19 @@ TEST_F(TestCustomAllocation, InvalidAlignment) {
   VerifyInvoke();
 }
 
+TEST_F(TestCustomAllocation, InvalidAlignment_SkipCheck) {
+  const TfLiteTensor* input_tensor =
+      interpreter_->tensor(interpreter_->inputs()[0]);
+  const int required_alignment = kDefaultTensorAlignment - 1;
+  auto tensor_alloc = NewCustomAlloc(input_tensor->bytes, required_alignment);
+  ASSERT_EQ(interpreter_->SetCustomAllocationForTensor(
+                interpreter_->inputs()[0], tensor_alloc,
+                /**flags**/ kTfLiteCustomAllocationFlagsSkipAlignCheck),
+            kTfLiteOk);
+
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+}
+
 TEST_F(TestCustomAllocation, InsufficientBytes) {
   auto input_alloc = NewCustomAlloc(4, kDefaultTensorAlignment);
 

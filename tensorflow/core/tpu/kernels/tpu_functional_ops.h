@@ -106,7 +106,17 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
 
  private:
-  typedef std::pair<std::string, FHandle> DeviceAndFHandle;
+  struct DeviceAndFHandle {
+    std::string device;
+    FHandle handle;
+
+    // The FLD passed to `library_runtime_` as an overlay function library for
+    // instantiation of function `handle`. This is a snapshot of the currrent
+    // `flib_def_`. Since `flib_def_` can be changed concurrently by another
+    // graph rewrite when executing `handle`, we need to make sure each
+    // `handle` uses a different FLD to avoid races. See b/181149591.
+    std::unique_ptr<FunctionLibraryDefinition> flib_def;
+  };
 
   Status GetTpuCoreOrdinal(OpKernelContext* ctx, uint64 input_hash,
                            int64_t* ordinal_selector_req_id,
@@ -190,8 +200,12 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
 
   // Adds and instantiates a function backed by `graph` with name
   // `function_name` on device `target_device`, storing the handle in `handle`.
-  Status InstantiatePartition(const Graph& graph, const string& function_name,
-                              const string& target_device, FHandle* handle)
+  // If `out_flib_def` is not null, it will be set to a copy of `flib_def_` and
+  // used for instantiation.
+  Status InstantiatePartition(
+      const Graph& graph, const string& function_name,
+      const string& target_device, FHandle* handle,
+      std::unique_ptr<FunctionLibraryDefinition>* out_flib_def)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Adds and instantiates functions for each subgraph in `subgraphs` after
   // rewriting nodes' `device_ordinal` attributes to match `replica_id` when
@@ -281,9 +295,9 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   std::vector<bool> replaced_input_indices_;
 
   absl::Mutex mu_;
-  // Function shards are added to the `flib_def_`, and `flib_def` later on
-  // passed to `library_runtime_` as an overlay function library for
-  // instantiation.
+  // Function shards are added to the `flib_def_`, and later on it'll create
+  // a copy of `flib_def_` to pass to `library_runtime_` as an overlay function
+  // library for instantiation.
   std::unique_ptr<FunctionLibraryDefinition> flib_def_;
   FunctionLibraryRuntime* library_runtime_;
 

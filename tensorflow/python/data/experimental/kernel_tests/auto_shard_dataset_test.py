@@ -565,6 +565,30 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     files = [elem["file"] for elem in output]
     self.assertEqual(files, [0] * records_per_file)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testHintShardingValidPattern(self):
+    options = dataset_ops.Options()
+    options.experimental_distribute.auto_shard_policy = (
+        distribute_options.AutoShardPolicy.HINT)
+
+    dataset = dataset_ops.Dataset.range(100).shard(distribute.SHARD_HINT, 0)
+    dataset = dataset.with_options(options)
+    dataset = distribute._AutoShardDataset(dataset, 10, 0)
+
+    self.assertDatasetProduces(dataset, list(range(0, 100, 10)))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testHintShardingInvalidPattern(self):
+    options = dataset_ops.Options()
+    options.experimental_distribute.auto_shard_policy = (
+        distribute_options.AutoShardPolicy.HINT)
+
+    dataset = dataset_ops.Dataset.range(100).shard(1, 0)
+    dataset = dataset.with_options(options)
+    dataset = distribute._AutoShardDataset(dataset, 10, 0)
+
+    self.assertDatasetProduces(dataset, list(range(100)))
+
 
 class AutoShardTextLineDatasetTest(
     reader_dataset_ops_test_base.TextLineDatasetTestBase,

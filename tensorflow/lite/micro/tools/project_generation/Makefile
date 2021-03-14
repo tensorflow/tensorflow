@@ -17,13 +17,15 @@
 #
 # Execute the following command after copying this Makefile to the root of the
 # TFLM tree created with the project generation script:
-# make -j8 libtflm
+# make -j8 examples
 
 CXX := clang++
 CXXFLAGS := \
-	-std=c++11
+  -std=c++11
 
 CC := clang
+CCFLAGS := \
+  -std=c11
 
 INCLUDES := \
   -I. \
@@ -36,6 +38,7 @@ ARFLAGS := -r
 
 GENDIR := gen
 OBJDIR := $(GENDIR)/obj
+BINDIR := $(GENDIR)/bin
 LIB := $(GENDIR)/libtflm.a
 
 TFLM_CC_SRCS := $(shell find tensorflow -name "*.cc" -o -name "*.c")
@@ -47,7 +50,7 @@ $(OBJDIR)/%.o: %.cc
 
 $(OBJDIR)/%.o: %.c
 	@mkdir -p $(dir $@)
-	$(CC) $(INCLUDES) -c $< -o $@
+	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
 
 $(LIB): $(OBJS)
 	@mkdir -p $(dir $@)
@@ -58,3 +61,8 @@ clean:
 
 libtflm: $(LIB)
 
+hello_world: libtflm
+	@mkdir -p $(BINDIR)
+	$(CXX) $(CXXFLAGS) $(wildcard examples/hello_world/*.cc) $(INCLUDES) $(LIB) -o $(BINDIR)/$@
+
+examples: hello_world

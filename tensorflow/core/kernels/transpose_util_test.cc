@@ -23,9 +23,9 @@ namespace tensorflow {
 class TransposeUtilTest : public ::testing::Test {
  protected:
   void TestDimensionReduction(const TensorShape& shape,
-                              const gtl::ArraySlice<int32>& perm,
-                              const gtl::ArraySlice<int32>& expected_perm,
-                              const gtl::ArraySlice<int64>& expected_dims) {
+                              const gtl::ArraySlice<int32> perm,
+                              const gtl::ArraySlice<int32> expected_perm,
+                              const gtl::ArraySlice<int64> expected_dims) {
     internal::TransposePermsVec new_perm;
     internal::TransposeDimsVec new_dims;
     internal::ReduceTransposeDimensions(shape, perm, &new_perm, &new_dims);

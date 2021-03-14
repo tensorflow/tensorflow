@@ -145,7 +145,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
   To create a dataset of all files matching a pattern, use
   `tf.data.Dataset.list_files`:
 
-  >>> dataset = tf.data.Dataset.list_files("/path/*.txt")  # doctest: +SKIP
+  ```python
+  dataset = tf.data.Dataset.list_files("/path/*.txt")
+  ```
 
   See `tf.data.FixedLengthRecordDataset` and `tf.data.Dataset.from_generator`
   for more ways to create datasets.
@@ -179,13 +181,15 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
   representable by `tf.TypeSpec`, including `tf.Tensor`, `tf.data.Dataset`,
   `tf.sparse.SparseTensor`, `tf.RaggedTensor`, and `tf.TensorArray`.
 
-  >>> a = 1 # Integer element
-  >>> b = 2.0 # Float element
-  >>> c = (1, 2) # Tuple element with 2 components
-  >>> d = {"a": (2, 2), "b": 3} # Dict element with 3 components
-  >>> Point = collections.namedtuple("Point", ["x", "y"]) # doctest: +SKIP
-  >>> e = Point(1, 2) # Named tuple # doctest: +SKIP
-  >>> f = tf.data.Dataset.range(10) # Dataset element
+  ```python
+  a = 1 # Integer element
+  b = 2.0 # Float element
+  c = (1, 2) # Tuple element with 2 components
+  d = {"a": (2, 2), "b": 3} # Dict element with 3 components
+  Point = collections.namedtuple("Point", ["x", "y"])
+  e = Point(1, 2) # Named tuple
+  f = tf.data.Dataset.range(10) # Dataset element
+  ```
 
   For more information,
   read [this guide](https://www.tensorflow.org/guide/data).
@@ -1320,32 +1324,38 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     different for each epoch. In TF 1.X, the idiomatic way to create epochs
     was through the `repeat` transformation:
 
-    >>> dataset = tf.data.Dataset.range(3)
-    >>> dataset = dataset.shuffle(3, reshuffle_each_iteration=True)
-    >>> dataset = dataset.repeat(2)  # doctest: +SKIP
-    [1, 0, 2, 1, 2, 0]
+    ```python
+    dataset = tf.data.Dataset.range(3)
+    dataset = dataset.shuffle(3, reshuffle_each_iteration=True)
+    dataset = dataset.repeat(2)
+    # [1, 0, 2, 1, 2, 0]
 
-    >>> dataset = tf.data.Dataset.range(3)
-    >>> dataset = dataset.shuffle(3, reshuffle_each_iteration=False)
-    >>> dataset = dataset.repeat(2)  # doctest: +SKIP
-    [1, 0, 2, 1, 0, 2]
+    dataset = tf.data.Dataset.range(3)
+    dataset = dataset.shuffle(3, reshuffle_each_iteration=False)
+    dataset = dataset.repeat(2)
+    # [1, 0, 2, 1, 0, 2]
+    ```
 
     In TF 2.0, `tf.data.Dataset` objects are Python iterables which makes it
     possible to also create epochs through Python iteration:
 
-    >>> dataset = tf.data.Dataset.range(3)
-    >>> dataset = dataset.shuffle(3, reshuffle_each_iteration=True)
-    >>> list(dataset.as_numpy_iterator())  # doctest: +SKIP
-    [1, 0, 2]
-    >>> list(dataset.as_numpy_iterator())  # doctest: +SKIP
-    [1, 2, 0]
+    ```python
+    dataset = tf.data.Dataset.range(3)
+    dataset = dataset.shuffle(3, reshuffle_each_iteration=True)
+    list(dataset.as_numpy_iterator())
+    # [1, 0, 2]
+    list(dataset.as_numpy_iterator())
+    # [1, 2, 0]
+    ```
 
-    >>> dataset = tf.data.Dataset.range(3)
-    >>> dataset = dataset.shuffle(3, reshuffle_each_iteration=False)
-    >>> list(dataset.as_numpy_iterator())  # doctest: +SKIP
-    [1, 0, 2]
-    >>> list(dataset.as_numpy_iterator())  # doctest: +SKIP
-    [1, 0, 2]
+    ```python
+    dataset = tf.data.Dataset.range(3)
+    dataset = dataset.shuffle(3, reshuffle_each_iteration=False)
+    list(dataset.as_numpy_iterator())
+    # [1, 0, 2]
+    list(dataset.as_numpy_iterator())
+    # [1, 0, 2]
+    ```
 
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
@@ -1389,14 +1399,16 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     the input pipeline before the call to `.cache()` will have no effect until
     the cache file is removed or the filename is changed.
 
-    >>> dataset = tf.data.Dataset.range(5)
-    >>> dataset = dataset.cache("/path/to/file")  # doctest: +SKIP
-    >>> list(dataset.as_numpy_iterator())  # doctest: +SKIP
-    [0, 1, 2, 3, 4]
-    >>> dataset = tf.data.Dataset.range(10)
-    >>> dataset = dataset.cache("/path/to/file")  # Same file! # doctest: +SKIP
-    >>> list(dataset.as_numpy_iterator())  # doctest: +SKIP
-    [0, 1, 2, 3, 4]
+    ```python
+    dataset = tf.data.Dataset.range(5)
+    dataset = dataset.cache("/path/to/file")
+    list(dataset.as_numpy_iterator())
+    # [0, 1, 2, 3, 4]
+    dataset = tf.data.Dataset.range(10)
+    dataset = dataset.cache("/path/to/file")  # Same file!
+    list(dataset.as_numpy_iterator())
+    # [0, 1, 2, 3, 4]
+    ```
 
     Note: `cache` will produce exactly the same elements during each iteration
     through the dataset. If you wish to randomize the iteration order, make sure

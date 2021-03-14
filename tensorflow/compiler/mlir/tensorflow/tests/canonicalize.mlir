@@ -646,29 +646,6 @@ func @testPackShapeComputation(%arg0: tensor<?x1xf32>, %arg1: tensor<?x1x2xf32>,
   return %5, %9, %15, %17, %20 : tensor<2xi32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>, tensor<*xi32>
 }
 
-// CHECK-LABEL: testSelectScalarPred
-func @testSelectScalarPred(%arg0: tensor<i1>, %arg1: tensor<4x2xf16>, %arg2: tensor<4x2xf16>) -> tensor<4x2xf16> {
-  // CHECK-NEXT: "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<4x2xf16>, tensor<4x2xf16>) -> tensor<4x2xf16>
-  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<4x2xf16>, tensor<4x2xf16>) -> tensor<4x2xf16>
-  return %0: tensor<4x2xf16>
-}
-
-// CHECK-LABEL: testSelectVectorPred
-func @testSelectVectorPred(%arg0: tensor<2xi1>, %arg1: tensor<2x3xf16>, %arg2: tensor<2x3xf16>) -> tensor<2x3xf16> {
-  // CHECK-NEXT: %[[SHAPE:.*]] = "tf.Const"
-  // CHECK-NEXT: %[[PRED:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) : (tensor<2xi1>, tensor<2xi64>) -> tensor<2x1xi1>
-  // CHECK-NEXT: "tf.SelectV2"(%[[PRED]], %arg1, %arg2) : (tensor<2x1xi1>, tensor<2x3xf16>, tensor<2x3xf16>) -> tensor<2x3xf16>
-  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<2xi1>, tensor<2x3xf16>, tensor<2x3xf16>) -> tensor<2x3xf16>
-  return %0: tensor<2x3xf16>
-}
-
-// CHECK-LABEL: testSelectAllSameShape
-func @testSelectAllSameShape(%arg0: tensor<2x3xi1>, %arg1: tensor<2x3xf16>, %arg2: tensor<2x3xf16>) -> tensor<2x3xf16> {
-  // CHECK-NEXT: "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<2x3xi1>, tensor<2x3xf16>, tensor<2x3xf16>) -> tensor<2x3xf16>
-  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<2x3xi1>, tensor<2x3xf16>, tensor<2x3xf16>) -> tensor<2x3xf16>
-  return %0: tensor<2x3xf16>
-}
-
 // CHECK-LABEL: testSelectV2TransDistr
 func @testSelectV2TransDistr(%arg0: tensor<8x4x8xi1>, %arg1: tensor<8x4x8xi1>, %arg2: tensor<8x4x8xi1>) -> tensor<*xi1> {
   %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -684,36 +661,6 @@ func @testSelectV2TransDistr(%arg0: tensor<8x4x8xi1>, %arg1: tensor<8x4x8xi1>, %
 // CHECK: %1 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<8x4x8xi1>, tensor<8x4x8xi1>) -> tensor<8x4x8xi1>
 // CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xi1>, tensor<3xi32>) -> tensor<*xi1>
 // CHECK: return %2
-}
-
-// If we don't have guarantees on input shapes, we can't support canonicalizing
-// to SelectV2. Test these cases.
-// CHECK-LABEL: testSelectInvalid
-func @testSelectInvalid(%arg0: tensor<?xi1>, %arg1: tensor<2x3xf16>, %arg2: tensor<2x3xf16>) -> tensor<2x3xf16> {
-  // CHECK-NEXT: tf.Select
-  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<?xi1>, tensor<2x3xf16>, tensor<2x3xf16>) -> tensor<2x3xf16>
-  return %0: tensor<2x3xf16>
-}
-
-// CHECK-LABEL: testSelectInvalidUnranked
-func @testSelectInvalidUnranked(%arg0: tensor<6x7xi1>, %arg1: tensor<*xf16>, %arg2: tensor<*xf16>) -> tensor<*xf16> {
-  // CHECK-NEXT: tf.Select
-  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<6x7xi1>, tensor<*xf16>, tensor<*xf16>) -> tensor<*xf16>
-  return %0: tensor<*xf16>
-}
-
-// CHECK-LABEL: testSelectThenUnranked
-func @testSelectThenUnranked(%arg0: tensor<3xi1>, %arg1: tensor<*xf16>, %arg2: tensor<3x2xf16>) -> tensor<*xf16> {
-  // CHECK-NEXT: tf.Select
-  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<*xf16>, tensor<3x2xf16>) -> tensor<*xf16>
-  return %0: tensor<*xf16>
-}
-
-// CHECK-LABEL: testSelectElseUnranked
-func @testSelectElseUnranked(%arg0: tensor<3xi1>, %arg1: tensor<3x2xf16>, %arg2: tensor<*xf16>) -> tensor<*xf16> {
-  // CHECK-NEXT: tf.Select
-  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<3x2xf16>, tensor<*xf16>) -> tensor<*xf16>
-  return %0: tensor<*xf16>
 }
 
 // CHECK-LABEL: testTileMultiplesAllOnes

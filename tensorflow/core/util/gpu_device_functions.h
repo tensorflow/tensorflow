@@ -741,8 +741,7 @@ __device__ inline double GpuAtomicAdd(double* ptr, double value) {
 // components individually. The operation as a whole is not atomic, but we can
 // safely treat the components independently for the purpose of accumulating.
 
-// ROCM TODO support GpuAtomicAdd for std::complex<>
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 __device__ inline std::complex<float> GpuAtomicAdd(std::complex<float>* ptr,
                                                    std::complex<float> value) {
   auto ptr_scalar = reinterpret_cast<float*>(ptr);

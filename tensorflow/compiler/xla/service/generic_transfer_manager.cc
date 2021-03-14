@@ -157,7 +157,11 @@ Status GenericTransferManager::ResetDevices(
 }
 
 int64 GenericTransferManager::GetByteSizeRequirement(const Shape& shape) const {
-  return ShapeUtil::ByteSizeOf(shape, pointer_size_);
+  if (shape.is_static() || shape.IsTuple()) {
+    return ShapeUtil::ByteSizeOf(shape, pointer_size_);
+  }
+  int64 metadata_size = sizeof(int32) * shape.dimensions_size();
+  return ShapeUtil::ByteSizeOf(shape, pointer_size_) + metadata_size;
 }
 
 }  // namespace xla

@@ -191,6 +191,8 @@ _gen_kernel_bin_rule = rule(
     fragments = ["cpp"],
     outputs = {"kernel": "%{name}_kernel.o"},
     implementation = _gen_kernel_bin_impl,
+    incompatible_use_toolchain_transition = True,
+    toolchains = ["@bazel_tools//tools/cpp:toolchain_type"],
 )
 
 def _gen_kernel_library(
@@ -229,6 +231,11 @@ def _gen_kernel_library(
 
     if cuda_gpu_architectures() or rocm_gpu_architectures() or enable_cpu:
         for (type, output_type) in zip(types, output_types):
+            # Disable unrolling for integer types while LLVM does not vectorize these.
+            # See b/182343395 for context.
+            filtered_unroll_factors = ""
+            if type not in ["i1", "i8", "i16", "i32", "i64"]:
+                filtered_unroll_factors = unroll_factors
             _gen_mlir_op(
                 op = op,
                 platform = platform,
@@ -252,7 +259,7 @@ def _gen_kernel_library(
                 gpu_archs = gpu_archs,
                 cpu_codegen = enable_cpu,
                 tile_size = tile_size,
-                unroll_factors = unroll_factors,
+                unroll_factors = filtered_unroll_factors,
                 extra_args = extra_args,
                 compatible_with = get_compatible_with_cloud(),
             )

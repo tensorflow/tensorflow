@@ -501,16 +501,3 @@ def LegalizeComplexAbs : Pat<(TF_ComplexAbsOp $arg), (TFL_ComplexAbsOp $arg)>;
 def LegalizeReal : Pat<(TF_RealOp $arg), (TFL_RealOp $arg)>;
 
 def LegalizeImag : Pat<(TF_ImagOp $arg), (TFL_ImagOp $arg)>;
-
-// Patterns for Lookup ops.
-def LegalizeLookupTableFindV2 : Pat<
-  (TF_LookupTableFindV2Op $hash_table, $input, $default_value),
-  (TFL_HashtableFindOp $hash_table, $input, $default_value)>;
-
-def LegalizeLookupTableImportV2 : Pat<
-  (TF_LookupTableImportV2Op $hash_table, $keys, $values),
-  (TFL_HashtableImportOp $hash_table, $keys, $values)>;
-
-def LegalizeLookupTableSizeV2 : Pat<
-  (TF_LookupTableSizeV2Op $hash_table),
-  (TFL_HashtableSizeOp $hash_table)>;

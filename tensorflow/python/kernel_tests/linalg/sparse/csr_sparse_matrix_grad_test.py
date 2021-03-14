@@ -34,7 +34,7 @@ from tensorflow.python.platform import tf_logging
 
 def dense_to_csr_sparse_matrix(dense):
   dense_t = ops.convert_to_tensor(dense)
-  locs = array_ops.stop_gradient(array_ops.where(math_ops.abs(dense_t) > 0))
+  locs = array_ops.where(math_ops.abs(dense_t) > 0)
   return sparse_csr_matrix_ops.dense_to_csr_sparse_matrix(dense_t, locs)
 
 
@@ -77,7 +77,11 @@ class CSRSparseMatrixGradTest(test.TestCase):
         grad_out_value = sess.run(grad_out)
         tf_logging.info("testLargeBatchConversionGrad: Testing shape %s" %
                         dense_shape)
-        self.assertAllEqual(grad_vals, grad_out_value)
+        nonzero_indices = abs(mats_val) > 0.0
+        self.assertAllEqual(grad_out_value[nonzero_indices],
+                            grad_vals[nonzero_indices])
+        self.assertTrue(
+            np.all(grad_out_value[np.logical_not(nonzero_indices)] == 0.0))
 
   @test_util.run_deprecated_v1
   def testLargeBatchSparseConversionGrad(self):
@@ -120,6 +124,8 @@ class CSRSparseMatrixGradTest(test.TestCase):
       grad_vals = np.random.randn(*dense_shape).astype(np.float32)
       expected_a_grad = alpha * grad_vals
       expected_b_grad = beta * grad_vals
+      expected_a_grad[abs(a_mats_val) == 0.0] = 0.0
+      expected_b_grad[abs(b_mats_val) == 0.0] = 0.0
       with self.test_session() as sess:
         a_mats = math_ops.cast(a_mats_val, dtype=dtypes.float32)
         b_mats = math_ops.cast(b_mats_val, dtype=dtypes.float32)

@@ -39,6 +39,8 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:reference_ops",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",

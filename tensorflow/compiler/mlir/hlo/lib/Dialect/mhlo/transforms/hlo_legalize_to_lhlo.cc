@@ -577,6 +577,7 @@ struct HloLegalizeToLhlo
     ConversionTarget target(context);
     target.addLegalDialect<lmhlo::LmhloDialect>();
     target.addLegalDialect<StandardOpsDialect>();
+    target.addLegalDialect<shape::ShapeDialect>();
     target.addLegalDialect<tensor::TensorDialect>();
     target.addIllegalDialect<mhlo::MhloDialect>();
     // Declare tensor_load and tensor_store illegal.

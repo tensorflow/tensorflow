@@ -432,9 +432,11 @@ class CheckpointTestBase(test.TestCase):
     return np.linspace(0, num_outputs, num_samples, dtype=int)
 
   def _build_graph(self, ds_fn, sparse_tensors=False):
-    iterator = dataset_ops.make_initializable_iterator(ds_fn())
-
-    saveable = contrib_iterator_ops.make_saveable_from_iterator(iterator)
+    dataset = ds_fn()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
+    external_state_policy = dataset.options().experimental_external_state_policy
+    saveable = contrib_iterator_ops.make_saveable_from_iterator(
+        iterator, external_state_policy=external_state_policy)
     ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
     init_op = iterator.initializer
     if sparse_tensors:

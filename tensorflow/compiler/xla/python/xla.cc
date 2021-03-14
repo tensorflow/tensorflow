@@ -322,6 +322,7 @@ PYBIND11_MODULE(xla_extension, m) {
              return buffer->AsNumPyArray(buffer_obj);
            })
       .def("xla_shape", &PyBuffer::shape)
+      .def("xla_dynamic_shape", &PyBuffer::xla_dynamic_shape)
       .def_property_readonly("client", &PyBuffer::client)
       .def("device", &PyBuffer::device)
       .def("platform", &PyBuffer::platform_name)
@@ -329,7 +330,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("unsafe_buffer_pointer", &PyBuffer::UnsafeBufferPointer)
       .def_property_readonly("__cuda_array_interface__",
                              &PyBuffer::CudaArrayInterface)
-      .def_property_readonly("traceback", &PyBuffer::traceback);
+      .def_property_readonly("traceback", &PyBuffer::traceback)
+      .def("clone", &PyBuffer::Clone);
 
   // pybind11's implementation of the buffer protocol doesn't allow for correct
   // error handling. We bypass it and implement the buffer protocol ourselves.

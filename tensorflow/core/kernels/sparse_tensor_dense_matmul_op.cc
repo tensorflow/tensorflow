@@ -203,8 +203,13 @@ namespace functor {
 DECLARE_ADJOINT_GPU_SPEC(Eigen::half);
 DECLARE_ADJOINT_GPU_SPEC(float);
 DECLARE_ADJOINT_GPU_SPEC(double);
+
+// ROCm's GpuAtomicAdd doesn't support std::complex yet.
+#ifndef TENSORFLOW_USE_ROCM
 DECLARE_ADJOINT_GPU_SPEC(complex64);
 DECLARE_ADJOINT_GPU_SPEC(complex128);
+#endif
+
 #undef DECLARE_ADJOINT_GPU_SPEC
 #undef DECLARE_GPU_SPEC
 #undef REGISTER_GPU_SPEC
@@ -227,8 +232,13 @@ DECLARE_ADJOINT_GPU_SPEC(complex128);
 REGISTER_KERNELS_GPU(Eigen::half);
 REGISTER_KERNELS_GPU(float);
 REGISTER_KERNELS_GPU(double);
+
+// ROCm's GpuAtomicAdd doesn't support std::complex yet.
+#ifndef TENSORFLOW_USE_ROCM
 REGISTER_KERNELS_GPU(complex64);
 REGISTER_KERNELS_GPU(complex128);
+#endif
+
 #undef REGISTER_GPU
 #undef REGISTER_KERNELS_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

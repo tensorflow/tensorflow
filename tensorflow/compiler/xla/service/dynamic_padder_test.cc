@@ -458,6 +458,47 @@ ENTRY main {
   EXPECT_EQ(padded, not_padded);
 }
 
+XLA_TEST_F(ExecutionTest, ScatterUpdateWindowDim) {
+  const string hlo_text = R"(
+HloModule ScatterUpdateWindowDim
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[1,2,3] parameter(0)
+  indices = s32[1] parameter(1)
+  updates = s32[2,3,1] parameter(2)
+  dynamic_size = s32[] constant(1)
+  operand_dynamic = s32[1, <=2, 3] set-dimension-size(operand, dynamic_size),
+      dimensions={1}
+  updates_dynamic = s32[<=2, 3, 1] set-dimension-size(updates, dynamic_size),
+      dimensions={0}
+  ROOT scatter = s32[1, <=2, 3] scatter(operand_dynamic, indices, updates_dynamic),
+      to_apply=update_s32,
+      update_window_dims={0, 1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+
+}
+)";
+  auto hlo_module = GetHloModule(hlo_text);
+
+  Literal operand = LiteralUtil::CreateR3<int32>({{{0, 0, 0}, {0, 0, 0}}});
+  Literal scatter_indices = LiteralUtil::CreateR1<int32>({0});
+  Literal updates =
+      LiteralUtil::CreateR3<int32>({{{10}, {20}, {30}}, {{70}, {80}, {90}}});
+
+  Literal padded = PadAndExecute(std::move(hlo_module),
+                                 {&operand, &scatter_indices, &updates}, false);
+  Literal expected =
+      LiteralUtil::CreateR3<int32>({{{10, 20, 30}, {70, 80, 90}}});
+  EXPECT_EQ(padded, expected);
+}
+
 XLA_TEST_F(ExecutionTest, ScatterUpdateF32) {
   // Test that scattering on indices=[2] is same as scattering on indices=[4]
   // and dynamic dimension = 2
