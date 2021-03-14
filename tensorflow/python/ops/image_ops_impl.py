@@ -4285,9 +4285,9 @@ def ssim(img1,
 
   Args:
     img1: First image batch. 4-D Tensor of shape `[batch, height, width,
-      channels]`.
+      channels]` with only Positive Pixel Values.
     img2: Second image batch. 4-D Tensor of shape `[batch, height, width,
-      channels]`.
+      channels]` with only Positive Pixel Values.
     max_val: The dynamic range of the images (i.e., the difference between the
       maximum the and minimum allowed values).
     filter_size: Default value 11 (size of gaussian filter).
@@ -4350,8 +4350,9 @@ def ssim_multiscale(img1,
   Computers, 2004.
 
   Args:
-    img1: First image batch.
-    img2: Second image batch. Must have the same rank as img1.
+    img1: First image batch with only Positive Pixel Values.
+    img2: Second image batch with only Positive Pixel Values. Must have the
+    same rank as img1.
     max_val: The dynamic range of the images (i.e., the difference between the
       maximum the and minimum allowed values).
     power_factors: Iterable of weights for each of the scales. The number of
