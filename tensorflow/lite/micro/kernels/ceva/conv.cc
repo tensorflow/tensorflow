@@ -125,7 +125,7 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   if (sizeof_scr > CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL) {
     TF_LITE_KERNEL_LOG(context, "Scratch size (%d) less that required (%d)",
                        CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL, sizeof_scr);
-    return kTfLiteError;
+    
   }
 
 #ifdef MCPS_MEASUREMENT
@@ -274,7 +274,7 @@ TfLiteStatus EvalCEVA(TfLiteContext* context, TfLiteNode* node) {
   }
   return kTfLiteOk;
 }
-TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus ConvEval(TfLiteContext* context, TfLiteNode* node) {
 #if defined(CEVA_BX1) || defined(CEVA_SP500)
   return EvalCEVA(context, node);
 #else
@@ -287,7 +287,7 @@ TfLiteRegistration Register_CONV_2D() {
   return {/*init=*/Init,
           /*free=*/nullptr,
           /*prepare=*/ConvPrepare,
-          /*invoke=*/Eval,
+          /*invoke=*/ConvEval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,
           /*custom_name=*/nullptr,
