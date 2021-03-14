@@ -37,7 +37,7 @@ tf_py_test(
     ],
     deps = [
         "//tensorflow/python:client_testlib",
-         "//tensorflow/python:constant_op",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:math_ops",
