@@ -2038,15 +2038,12 @@ def get(identifier):
   """
   if identifier is None:
     return None
-  if isinstance(identifier, str):
+  if isinstance(identifier, str) or isinstance(identifier, dict):
     return deserialize(identifier)
-  if isinstance(identifier, dict):
-    return deserialize(identifier)
-  elif callable(identifier):
+  if callable(identifier):
     return identifier
-  else:
-    raise ValueError(
-        'Could not interpret loss function identifier: {}'.format(identifier))
+  raise ValueError(
+    'Could not interpret loss function identifier: {}'.format(identifier))
 
 
 LABEL_DTYPES_FOR_LOSSES = {
