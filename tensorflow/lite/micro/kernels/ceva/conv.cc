@@ -125,7 +125,6 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   if (sizeof_scr > CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL) {
     TF_LITE_KERNEL_LOG(context, "Scratch size (%d) less that required (%d)",
                        CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL, sizeof_scr);
-    
   }
 
 #ifdef MCPS_MEASUREMENT
