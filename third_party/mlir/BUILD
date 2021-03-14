@@ -3,7 +3,7 @@
 
 load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl", "td_library")
 load("@org_tensorflow//third_party/mlir:linalggen.bzl", "genlinalg")
-load("@org_tensorflow//third_party/mlir:build_defs.bzl", "cc_headers_only")
+load("@org_tensorflow//third_party/mlir:build_defs.bzl", "cc_headers_only", "if_cuda_available")
 
 package(
     default_visibility = [":friends"],
@@ -1311,6 +1311,18 @@ cc_library(
 )
 
 cc_library(
+    name = "DataLayoutInterfaces",
+    srcs = ["lib/Interfaces/DataLayoutInterfaces.cpp"],
+    hdrs = ["include/mlir/Interfaces/DataLayoutInterfaces.h"],
+    includes = ["include"],
+    deps = [
+        ":DataLayoutInterfacesIncGen",
+        ":IR",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "LoopLikeInterface",
     srcs = ["lib/Interfaces/LoopLikeInterface.cpp"],
     hdrs = ["include/mlir/Interfaces/LoopLikeInterface.h"],
@@ -1885,6 +1897,7 @@ cc_library(
         "include/mlir/Dialect/GPU/Passes.h",
         "include/mlir/Dialect/GPU/Utils.h",
     ],
+    defines = if_cuda_available(["MLIR_GPU_TO_CUBIN_PASS_ENABLE"]),
     includes = ["include"],
     deps = [
         ":Async",
@@ -1898,10 +1911,19 @@ cc_library(
         ":StandardOps",
         ":Support",
         ":Transforms",
+        ":ToLLVMIRTranslation",
+        ":LLVMToLLVMIRTranslation",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
-    ],
+    ] + if_cuda_available([
+        # Dependencies for SerializeToCubin.cpp with
+        # -DMLIR_GPU_TO_CUBIN_PASS_ENABLE
+        ":NVVMToLLVMIRTranslation",
+        "@llvm-project//llvm:NVPTXCodeGen",
+        "//third_party/gpus/cuda:cuda_headers",
+        "//third_party/gpus/cuda:libcuda",
+    ]),
 )
 
 td_library(
@@ -2204,8 +2226,19 @@ cc_library(
         ":StandardToLLVM",
         ":Support",
         ":Transforms",
+        ":ToLLVMIRTranslation",
+        ":LLVMToLLVMIRTranslation",
+        "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
-    ],
+        "@llvm-project//llvm:Target",
+    ] + if_cuda_available([
+        # Dependencies for SerializeToCubin.cpp with
+        # -DMLIR_GPU_TO_CUBIN_PASS_ENABLE
+        ":NVVMToLLVMIRTranslation",
+        "@llvm-project//llvm:NVPTXCodeGen",
+        "//third_party/gpus/cuda:cuda_headers",
+        "//third_party/gpus/cuda:libcuda",
+    ]),
 )
 
 gentbl(
@@ -3063,6 +3096,39 @@ cc_library(
 )
 
 gentbl(
+    name = "DataLayoutInterfacesIncGen",
+    tbl_outs = [
+        (
+            "-gen-attr-interface-decls",
+            "include/mlir/Interfaces/DataLayoutAttrInterface.h.inc",
+        ),
+        (
+            "-gen-attr-interface-defs",
+            "include/mlir/Interfaces/DataLayoutAttrInterface.cpp.inc",
+        ),
+        (
+            "-gen-op-interface-decls",
+            "include/mlir/Interfaces/DataLayoutOpInterface.h.inc",
+        ),
+        (
+            "-gen-op-interface-defs",
+            "include/mlir/Interfaces/DataLayoutOpInterface.cpp.inc",
+        ),
+        (
+            "-gen-type-interface-decls",
+            "include/mlir/Interfaces/DataLayoutTypeInterface.h.inc",
+        ),
+        (
+            "-gen-type-interface-defs",
+            "include/mlir/Interfaces/DataLayoutTypeInterface.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Interfaces/DataLayoutInterfaces.td",
+    td_srcs = [":OpBaseTdFiles"],
+)
+
+gentbl(
     name = "LoopLikeInterfaceIncGen",
     strip_include_prefix = "include",
     tbl_outs = [
@@ -3877,6 +3943,7 @@ cc_library(
         ":ComplexDialect",
         ":ComplexToLLVM",
         ":ConversionPasses",
+        ":DLTIDialect",
         ":GPUDialect",
         ":GPUPassIncGen",
         ":GPUToGPURuntimeTransforms",
@@ -3949,7 +4016,7 @@ cc_library(
 cc_binary(
     name = "mlir-opt",
     srcs = ["tools/mlir-opt/mlir-opt.cpp"],
-    copts = ["-DMLIR_INCLUDE_TESTS"],
+    local_defines = ["MLIR_INCLUDE_TESTS"],
     deps = [
         ":AllPassesAndDialectsNoRegistration",
         ":Analysis",
@@ -4108,42 +4175,6 @@ cc_binary(
     linkshared = True,
     deps = [
         ":VulkanRuntime",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-cc_binary(
-    name = "mlir-cuda-runner",
-    srcs = ["tools/mlir-cuda-runner/mlir-cuda-runner.cpp"],
-    # Avoid duplicate definitions that prevent the ThreadPoolExecutor d'tor to
-    # join all threads. The details are unclear. This is a temporary solution
-    # because we will replace the mlir-cuda-runner with cuda-opt, mlir-opt, and
-    # mlir-cpu-runner.
-    linkstatic = False,
-    deps = [
-        ":Async",
-        ":AsyncTransforms",
-        ":ConversionPasses",
-        ":ExecutionEngineUtils",
-        ":GPUDialect",
-        ":GPUToGPURuntimeTransforms",
-        ":GPUToNVVMTransforms",
-        ":GPUTransforms",
-        ":IR",
-        ":LLVMDialect",
-        ":LLVMToLLVMIRTranslation",
-        ":MlirJitRunner",
-        ":NVVMDialect",
-        ":NVVMToLLVMIRTranslation",
-        ":Pass",
-        ":StandardOps",
-        ":StandardToLLVM",
-        ":ToLLVMIRTranslation",
-        ":Transforms",
-        "//third_party/gpus/cuda:cuda_headers",
-        "//third_party/gpus/cuda:cuda_runtime",
-        "//third_party/gpus/cuda:libcuda",
-        "@llvm-project//llvm:NVPTXCodeGen",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -5310,12 +5341,14 @@ exports_files(
         "include/mlir/Interfaces/ControlFlowInterfaces.h",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
         "include/mlir/Interfaces/CopyOpInterface.td",
+        "include/mlir/Interfaces/DataLayoutInterfaces.td",
         "include/mlir/Interfaces/InferTypeOpInterface.td",
         "include/mlir/Interfaces/LoopLikeInterface.td",
         "include/mlir/Interfaces/SideEffectInterfaceBase.td",
         "include/mlir/Interfaces/SideEffectInterfaces.td",
         "include/mlir/Interfaces/VectorInterfaces.td",
         "include/mlir/Interfaces/ViewLikeInterface.td",
+        "include/mlir/Dialect/DLTI/DLTIBase.td",
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/Dialect/StandardOps/IR/Ops.td",
         "include/mlir/Dialect/Shape/IR/ShapeOps.td",
@@ -5443,6 +5476,35 @@ cc_library(
         ":Support",
         ":Transforms",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+gentbl(
+    name = "DLTIBaseIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-dialect-decls -dialect=dlti",
+            "include/mlir/Dialect/DLTI/DLTIDialect.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/DLTI/DLTIBase.td",
+    td_srcs = [
+        ":OpBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "DLTIDialect",
+    srcs = glob(["lib/Dialect/DLTI/*.cpp"]),
+    hdrs = glob(["include/mlir/Dialect/DLTI/*.h"]),
+    includes = ["include"],
+    deps = [
+        ":DLTIBaseIncGen",
+        ":DataLayoutInterfaces",
+        ":IR",
         "@llvm-project//llvm:Support",
     ],
 )

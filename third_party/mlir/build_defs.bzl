@@ -1,3 +1,11 @@
+"""Rules and macros for MLIR"""
+
+def if_cuda_available(if_true, if_false = []):
+    return select({
+        "//tools/cc_target_os:linux-google": if_true,
+        "//conditions:default": if_false,
+    })
+
 def _cc_headers_only_impl(ctx):
     return CcInfo(compilation_context = ctx.attr.src[CcInfo].compilation_context)
 
