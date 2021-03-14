@@ -2043,7 +2043,7 @@ def get(identifier):
   if callable(identifier):
     return identifier
   raise ValueError(
-    'Could not interpret loss function identifier: {}'.format(identifier))
+      f'Could not interpret loss function identifier: {identifier}')
 
 
 LABEL_DTYPES_FOR_LOSSES = {
