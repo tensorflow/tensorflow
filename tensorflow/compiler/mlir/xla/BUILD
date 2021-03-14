@@ -127,6 +127,7 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:chlo_legalize_to_hlo",
         "//tensorflow/compiler/mlir/hlo:convert_op_folder",
+        "//tensorflow/compiler/mlir/hlo:hlo_ops_base_structs",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",

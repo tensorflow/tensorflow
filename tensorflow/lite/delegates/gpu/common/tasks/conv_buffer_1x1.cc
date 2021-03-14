@@ -33,9 +33,50 @@ namespace {
 // 4 - is FLT16
 // This function generates code for arithmetic part of convolution
 std::string GetComputationPart(const int3& block_size, int element_size,
-                               CalculationsPrecision precision) {
-  const std::string hexes[16] = {"0", "1", "2", "3", "4", "5", "6", "7",
-                                 "8", "9", "a", "b", "c", "d", "e", "f"};
+                               CalculationsPrecision precision,
+                               const GpuInfo& gpu_info) {
+  std::string hexes[16];
+  if (gpu_info.IsApiOpenCl()) {
+    hexes[0] = ".s0";
+    hexes[1] = ".s1";
+    hexes[2] = ".s2";
+    hexes[3] = ".s3";
+    hexes[4] = ".s4";
+    hexes[5] = ".s5";
+    hexes[6] = ".s6";
+    hexes[7] = ".s7";
+    hexes[8] = ".s8";
+    hexes[9] = ".s9";
+    hexes[10] = ".sa";
+    hexes[11] = ".sb";
+    hexes[12] = ".sc";
+    hexes[13] = ".sd";
+    hexes[14] = ".se";
+    hexes[15] = ".sf";
+  } else if (gpu_info.IsApiMetal()) {
+    hexes[0] = "[0].x";
+    hexes[1] = "[0].y";
+    hexes[2] = "[0].z";
+    hexes[3] = "[0].w";
+    hexes[4] = "[1].x";
+    hexes[5] = "[1].y";
+    hexes[6] = "[1].z";
+    hexes[7] = "[1].w";
+    hexes[8] = "[2].x";
+    hexes[9] = "[2].y";
+    hexes[10] = "[2].z";
+    hexes[11] = "[2].w";
+    hexes[12] = "[3].x";
+    hexes[13] = "[3].y";
+    hexes[14] = "[3].z";
+    hexes[15] = "[3].w";
+    if (element_size == 1) {
+      hexes[0] = ".x";
+      hexes[1] = ".y";
+      hexes[2] = ".z";
+      hexes[3] = ".w";
+    }
+  }
   std::string c;
   for (int z = 0; z < block_size.z; ++z) {
     const std::string z_s = std::to_string(z);
@@ -46,28 +87,28 @@ std::string GetComputationPart(const int3& block_size, int element_size,
         for (int e = 0; e < element_size; ++e) {
           std::string r_index =
               z_s + std::to_string(y) + std::to_string(x * element_size + e);
-          const std::string f0 = "W" + z_s + ".s0123";
-          const std::string f1 = "W" + z_s + ".s4567";
-          const std::string f2 = "W" + z_s + ".s89ab";
-          const std::string f3 = "W" + z_s + ".scdef";
+          const std::string f0 = "FLT16_0123(W" + z_s + ")";
+          const std::string f1 = "FLT16_4567(W" + z_s + ")";
+          const std::string f2 = "FLT16_89ab(W" + z_s + ")";
+          const std::string f3 = "FLT16_cdef(W" + z_s + ")";
           switch (precision) {
             case CalculationsPrecision::F32:
             case CalculationsPrecision::F16:
-              c += "    r" + r_index + " += " + f0 + " * s" + s_index + ".s" +
+              c += "    r" + r_index + " += " + f0 + " * s" + s_index +
                    hexes[e * 4 + 0] + ";\n";
-              c += "    r" + r_index + " += " + f1 + " * s" + s_index + ".s" +
+              c += "    r" + r_index + " += " + f1 + " * s" + s_index +
                    hexes[e * 4 + 1] + ";\n";
-              c += "    r" + r_index + " += " + f2 + " * s" + s_index + ".s" +
+              c += "    r" + r_index + " += " + f2 + " * s" + s_index +
                    hexes[e * 4 + 2] + ";\n";
-              c += "    r" + r_index + " += " + f3 + " * s" + s_index + ".s" +
+              c += "    r" + r_index + " += " + f3 + " * s" + s_index +
                    hexes[e * 4 + 3] + ";\n";
               break;
             case CalculationsPrecision::F32_F16:
-              c += "    r" + r_index + " += convert_float4(" + f0 + " * s" +
-                   s_index + ".s" + hexes[e * 4 + 0] + " + " + f1 + " * s" +
-                   s_index + ".s" + hexes[e * 4 + 1] + " + " + f2 + " * s" +
-                   s_index + ".s" + hexes[e * 4 + 2] + " + " + f3 + " * s" +
-                   s_index + ".s" + hexes[e * 4 + 3] + ");\n";
+              c += "    r" + r_index + " += TO_ACCUM_TYPE(" + f0 + " * s" +
+                   s_index + hexes[e * 4 + 0] + " + " + f1 + " * s" + s_index +
+                   hexes[e * 4 + 1] + " + " + f2 + " * s" + s_index +
+                   hexes[e * 4 + 2] + " + " + f3 + " * s" + s_index +
+                   hexes[e * 4 + 3] + ");\n";
               break;
           }
         }
@@ -146,9 +187,10 @@ ConvBuffer1x1::ConvParams GetBestParams(const GpuInfo& gpu_info,
 }  // namespace
 
 ConvBuffer1x1::ConvBuffer1x1(const OperationDef& definition,
-                             const ConvParams& conv_params)
+                             const ConvParams& conv_params,
+                             const GpuInfo& gpu_info)
     : GPUOperation(definition), conv_params_(conv_params) {
-  code_ = GenerateConvBuffer1x1(definition_, conv_params_, &args_);
+  code_ = GenerateConvBuffer1x1(definition_, conv_params_, gpu_info, &args_);
   work_group_size_ = int3(2, 4, 1);
 }
 
@@ -166,7 +208,7 @@ ConvBuffer1x1& ConvBuffer1x1::operator=(ConvBuffer1x1&& operation) {
 
 std::string ConvBuffer1x1::GenerateConvBuffer1x1(
     const OperationDef& op_def, const ConvBuffer1x1::ConvParams& conv_params,
-    Arguments* args) {
+    const GpuInfo& gpu_info, Arguments* args) {
   auto src_desc = op_def.src_tensors[0];
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
@@ -208,14 +250,12 @@ std::string ConvBuffer1x1::GenerateConvBuffer1x1(
   const int3 block_size = conv_params.block_size;
   const int element_size = conv_params.element_size / 4;
 
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
-  c += "  int X = get_global_id(0) * " +
+  c += "MAIN_FUNCTION($0) {\n";
+  c += "  int X = GLOBAL_ID_0 * " +
        std::to_string(block_size.x * element_size) + ";\n";
-  c += "  int X_SRC = get_global_id(0) * " + std::to_string(block_size.x) +
-       ";\n";
-  c += "  int Y = get_global_id(1) * " + std::to_string(block_size.y) + ";\n";
-  c += "  int Z = get_global_id(2) * " + std::to_string(block_size.z) + ";\n";
+  c += "  int X_SRC = GLOBAL_ID_0 * " + std::to_string(block_size.x) + ";\n";
+  c += "  int Y = GLOBAL_ID_1 * " + std::to_string(block_size.y) + ";\n";
+  c += "  int Z = GLOBAL_ID_2 * " + std::to_string(block_size.z) + ";\n";
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
        "Z >= args.dst_tensor.Slices()) return;\n";
   if (conv_params.different_weights_for_height) {
@@ -269,7 +309,7 @@ std::string ConvBuffer1x1::GenerateConvBuffer1x1(
            " = args.src_tensor.Read(src_addr_" + i_s + ");\n";
     }
   }
-  c += GetComputationPart(block_size, element_size, op_def.precision);
+  c += GetComputationPart(block_size, element_size, op_def.precision, gpu_info);
   for (int i = 0; i < block_size.x * block_size.y; ++i) {
     std::string i_s = std::to_string(i);
     c += "    src_addr_" + i_s + " += args.src_tensor.SliceStride();\n";
@@ -354,7 +394,7 @@ ConvBuffer1x1 CreateConvBuffer1x1(const GpuInfo& gpu_info,
   } else {
     conv_params = GetBestParams(gpu_info, definition, src_depth, dst_depth);
   }
-  ConvBuffer1x1 result(definition, conv_params);
+  ConvBuffer1x1 result(definition, conv_params, gpu_info);
   result.UploadData(attr.weights, attr.bias);
   return result;
 }
@@ -374,7 +414,7 @@ ConvBuffer1x1 CreateConvBuffer1x1(const GpuInfo& gpu_info,
   }
   conv_params.block_size.x *= conv_params.block_size.y;
   conv_params.block_size.y = 1;
-  ConvBuffer1x1 result(definition, conv_params);
+  ConvBuffer1x1 result(definition, conv_params, gpu_info);
   result.UploadData(attr.weights, attr.bias);
   return result;
 }
@@ -394,7 +434,7 @@ ConvBuffer1x1 CreateConvBuffer1x1Wino4x4To6x6(
   conv_params.block_size.x *= conv_params.block_size.y;
   conv_params.block_size.y = 1;
   conv_params.different_weights_for_height = true;
-  ConvBuffer1x1 result(definition, conv_params);
+  ConvBuffer1x1 result(definition, conv_params, gpu_info);
   result.UploadDataForWinograd4x4To6x6(attr.weights);
   return result;
 }
@@ -412,7 +452,7 @@ ConvBuffer1x1 CreateConvBuffer1x1DynamicWeights(
   } else {
     conv_params = GetBestParams(gpu_info, definition, src_depth, dst_depth);
   }
-  ConvBuffer1x1 result(definition, conv_params);
+  ConvBuffer1x1 result(definition, conv_params, gpu_info);
   result.UploadBiases(attr.bias);
   return result;
 }

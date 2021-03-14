@@ -5,10 +5,7 @@
 // CHECK-SAME: (%[[PRED:.*]]: tensor<2x?xi1>,
 func @select(%pred : tensor<2x?xi1>, %a : tensor<2x?xf32>, %b : tensor<2x?xf32>)
     -> tensor<2xindex> {
-  // CHECK: %[[C2:.*]] = constant 2 : index
-  // CHECK: %[[C1:.*]] = constant 1 : index
-  // CHECK: %[[DIM:.*]] = dim %[[PRED]], %[[C1]] : tensor<2x?xi1>
-  // CHECK: %[[SHAPE:.*]] = tensor.from_elements %[[C2]], %[[DIM]] : tensor<2xindex>
+  // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[PRED]] : tensor<2x?xi1> -> tensor<2xindex>
   // CHECK: return %[[SHAPE]] : tensor<2xindex>
   %0 = "mhlo.select"(%pred, %a, %b)
       : (tensor<2x?xi1>, tensor<2x?xf32>, tensor<2x?xf32>) -> tensor<2x?xf32>
@@ -21,10 +18,7 @@ func @select(%pred : tensor<2x?xi1>, %a : tensor<2x?xf32>, %b : tensor<2x?xf32>)
 // CHECK-LABEL: @compare
 // CHECK-SAME: (%[[A:.*]]: tensor<2x?xf32>,
 func @compare(%a : tensor<2x?xf32>, %b : tensor<2x?xf32>) -> tensor<2xindex> {
-  // CHECK: %[[C2:.*]] = constant 2 : index
-  // CHECK: %[[C1:.*]] = constant 1 : index
-  // CHECK: %[[DIM:.*]] = dim %[[A]], %[[C1]] : tensor<2x?xf32>
-  // CHECK: %[[SHAPE:.*]] = tensor.from_elements %[[C2]], %[[DIM]] : tensor<2xindex>
+  // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[A]] : tensor<2x?xf32> -> tensor<2xindex>
   // CHECK: return %[[SHAPE]] : tensor<2xindex>
   %0 = "mhlo.compare"(%a, %b) {comparison_direction = "NE"}
       : (tensor<2x?xf32>, tensor<2x?xf32>) -> tensor<2x?xi1>

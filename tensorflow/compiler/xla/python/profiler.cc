@@ -16,6 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/profiler.h"
 
 #include "pybind11/pybind11.h"
+#include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/profiler/lib/profiler_session.h"
+#include "tensorflow/core/profiler/rpc/client/capture_profile.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
 #include "tensorflow/python/profiler/internal/traceme_wrapper.h"
 
@@ -46,6 +52,24 @@ void BuildProfilerSubmodule(py::module* m) {
         return server;
       },
       py::arg("port"));
+
+  py::class_<tensorflow::ProfilerSession> profiler_session_class(
+      profiler, "ProfilerSession");
+  profiler_session_class
+      .def(py::init([]() {
+        return tensorflow::ProfilerSession::Create(
+            tensorflow::ProfilerSession::DefaultOptions());
+      }))
+      .def("stop_and_export",
+           [](tensorflow::ProfilerSession* sess,
+              const std::string& tensorboard_dir) -> xla::Status {
+             tensorflow::profiler::XSpace xspace;
+             // Disables the ProfilerSession
+             TF_RETURN_IF_ERROR(sess->CollectData(&xspace));
+             xspace.add_hostnames(tensorflow::port::Hostname());
+             return tensorflow::profiler::ExportToTensorBoard(xspace,
+                                                              tensorboard_dir);
+           });
 
   py::class_<TraceMeWrapper> traceme_class(profiler, "TraceMe",
                                            py::module_local());

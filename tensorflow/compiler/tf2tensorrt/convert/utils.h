@@ -138,15 +138,25 @@ inline bool IsTrtShapeTensorCompatible(const Tensor& tensor) {
 }
 
 template <typename TensorShapeType>
-inline nvinfer1::Dims TensorShapeToTrtDims(const TensorShapeType& shape,
-                                           bool ignore_first_dim) {
-  nvinfer1::Dims trt_dims;
-  const int offset = (ignore_first_dim ? 1 : 0);
-  for (int i = offset; i < shape.dims(); i++) {
-    trt_dims.d[i - offset] = shape.dim_size(i);
+Status TensorShapeToTrtDims(const TensorShapeType& shape, bool ignore_first_dim,
+                            nvinfer1::Dims* trt_dims) {
+  if (shape.dims() == -1) {
+    trt_dims->nbDims = -1;
+  } else if (shape.dims() == 0) {
+    // scalar
+    if (ignore_first_dim) {
+      return errors::Internal(
+          "Scalars cannot be represented in implicit batch mode");
+    }
+    *trt_dims = {0, {1}};
+  } else {
+    const int offset = (ignore_first_dim ? 1 : 0);
+    for (int i = offset; i < shape.dims(); i++) {
+      trt_dims->d[i - offset] = shape.dim_size(i);
+    }
+    trt_dims->nbDims = shape.dims() - offset;
   }
-  trt_dims.nbDims = shape.dims() - offset;
-  return trt_dims;
+  return Status::OK();
 }
 
 Status GetNetworkInputShapes(const nvinfer1::INetworkDefinition* network,

@@ -827,6 +827,7 @@ cc_library(
     name = "reference_ops",
     srcs = ["register_ref.cc"],
     hdrs = ["register_ref.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite:framework",
@@ -1094,7 +1095,6 @@ cc_test(
         "//tensorflow/lite:testdata/conv_huge_im2col.bin",
     ],
     tags = [
-        "notsan",  # b/182184675
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
         "tflite_smoke_test",

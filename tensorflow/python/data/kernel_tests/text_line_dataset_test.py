@@ -24,6 +24,8 @@ import zlib
 
 from absl.testing import parameterized
 
+from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
@@ -178,6 +180,33 @@ class TextLineDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     ds = readers.TextLineDataset(files)
     self.assertDatasetProduces(
         ds, expected_output=expected_output, assert_items_equal=True)
+
+
+class TextLineDatasetCheckpointTest(
+    reader_dataset_ops_test_base.TextLineDatasetTestBase,
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
+
+  def _build_iterator_graph(self, test_filenames, compression_type=None):
+    return readers.TextLineDataset(
+        test_filenames, compression_type=compression_type, buffer_size=10)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testTextLineCore(self):
+    compression_types = [None, "GZIP", "ZLIB"]
+    num_files = 5
+    lines_per_file = 5
+    num_outputs = num_files * lines_per_file
+    for compression_type in compression_types:
+      test_filenames = self._createFiles(
+          num_files,
+          lines_per_file,
+          crlf=True,
+          compression_type=compression_type)
+      # pylint: disable=cell-var-from-loop
+      self.run_core_tests(
+          lambda: self._build_iterator_graph(test_filenames, compression_type),
+          num_outputs)
+      # pylint: enable=cell-var-from-loop
 
 
 if __name__ == "__main__":

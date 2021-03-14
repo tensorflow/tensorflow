@@ -312,6 +312,10 @@ CreateMarkOpsForOutsideCompilationPass();
 // Creates a pass that merges control flow with similar predicates.
 std::unique_ptr<OperationPass<ModuleOp>> CreateMergeControlFlowPass();
 
+// Creates a pass that wraps each TensorFlow dialect with `device` attribute
+// in a `tf_device.launch` op with the same `device` attribute.
+std::unique_ptr<OperationPass<FuncOp>> CreateDeviceAttributeToLaunchPass();
+
 // Creates a pass that hoists a `tf_device.launch` body and assigns a `device`
 // attribute to each TensorFlow dialect op in the body based on the `device`
 // attribute on the `tf_device.launch`.

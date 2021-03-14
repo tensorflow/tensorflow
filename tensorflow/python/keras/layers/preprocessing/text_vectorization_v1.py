@@ -83,7 +83,7 @@ class TextVectorization(text_vectorization.TextVectorization,
                ngrams=None,
                output_mode=text_vectorization.INT,
                output_sequence_length=None,
-               pad_to_max_tokens=True,
+               pad_to_max_tokens=False,
                **kwargs):
     super(TextVectorization,
           self).__init__(max_tokens, standardize, split, ngrams, output_mode,

@@ -25,7 +25,8 @@ export MACOSX_DEPLOYMENT_TARGET=10.10
 sudo xcode-select -s "${DEVELOPER_DIR}"
 
 # Set up py39 via pyenv and check it worked
-setup_python_from_pyenv_macos
+PY_VERSION=3.9.1
+setup_python_from_pyenv_macos "${PY_VERSION}"
 
 # Set up and install MacOS pip dependencies.
 install_macos_pip_deps
@@ -43,7 +44,9 @@ tag_filters="-no_oss,-oss_serial,-nomac,-no_mac$(maybe_skip_v1),-gpu,-tpu,-bench
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
 # Run tests
+# Pass PYENV_VERSION since we're using pyenv. See b/182399580
 bazel test --test_output=errors --config=opt \
+  --action_env PYENV_VERSION="${PY_VERSION}" \
   --copt=-DGRPC_BAZEL_BUILD \
   --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
   --build_tag_filters="${tag_filters}" \

@@ -42,7 +42,6 @@ py_library(
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/keras:activations",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:callbacks",
         "//tensorflow/python/keras:callbacks_v1",
@@ -51,9 +50,7 @@ py_library(
         "//tensorflow/python/keras:losses",
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
-        "//tensorflow/python/keras/mixed_precision:autocast_variable",
         "//tensorflow/python/keras/mixed_precision:policy",
-        "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:mode_keys",
         "//tensorflow/python/training/tracking:data_structures",
@@ -372,6 +369,7 @@ distribute_py_test(
     shard_count = 20,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # TODO(b/182391774)
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
         "noguitar",  # TODO(b/172354344)
@@ -896,7 +894,6 @@ tf_py_test(
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/training:server_lib",
-        "@absl_py//absl/logging",
         "@absl_py//absl/testing:parameterized",
     ],
 )

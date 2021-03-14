@@ -30,6 +30,7 @@ we get further along in our prototyping. See this github issue for more details:
 """
 
 import argparse
+import fileinput
 import os
 import shutil
 import subprocess
@@ -97,6 +98,49 @@ def _create_tflm_tree(prefix_dir, makefile_options):
   _add_third_party_code(prefix_dir, makefile_options)
 
 
+# For examples, we are explicitly making a deicision to not have any source
+# specialization based on the TARGET and OPTIMIZED_KERNEL_DIR. The thinking
+# here is that any target-specific sources should not be part of the TFLM
+# tree. Rather, this function will return an examples directory structure for
+# x86 and it will be the responsibility of the target-specific examples
+# repository to provide all the additional sources (and remove the unnecessary
+# sources) for the examples to run on that specific target.
+def _create_examples_tree(prefix_dir, examples_list):
+  files = []
+  for e in examples_list:
+    files.extend(_get_file_list("list_%s_example_sources" % (e), ""))
+    files.extend(_get_file_list("list_%s_example_headers" % (e), ""))
+
+  # The get_file_list gives path relative to the root of the git repo (where the
+  # examples are in tensorflow/lite/micro/examples). However, in the output
+  # tree, we would like for the examples to be under prefix_dir/examples.
+  tflm_examples_path = "tensorflow/lite/micro/examples"
+
+  dest_file_list = [
+      os.path.join(prefix_dir, "examples",
+                   os.path.relpath(f, tflm_examples_path)) for f in files
+  ]
+
+  for dest_file, filepath in zip(dest_file_list, files):
+    dest_dir = os.path.dirname(dest_file)
+    os.makedirs(dest_dir, exist_ok=True)
+    shutil.copy(filepath, dest_dir)
+
+  # Since we are changing the directory structure for the examples, we will also
+  # need to modify the paths in the code.
+  for filepath in dest_file_list:
+    # We need a trailing forward slash because what we care about is replacing
+    # the include paths.
+    text_to_replace = os.path.join(
+        tflm_examples_path, os.path.basename(os.path.dirname(filepath))) + "/"
+
+    with fileinput.FileInput(filepath, inplace=True) as f:
+      for line in f:
+        # end="" prevents an extra newline from getting added as part of the
+        # in-place find and replace.
+        print(line.replace(text_to_replace, ""), end="")
+
+
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(
       description="Starting script for TFLM project generation")
@@ -109,6 +153,15 @@ if __name__ == "__main__":
       "--makefile_options=\"TARGET=<target> "
       "OPTIMIZED_KERNEL_DIR=<optimized_kernel_dir> "
       "TARGET_ARCH=corex-m4\"")
+  parser.add_argument(
+      "--examples",
+      "-e",
+      action="append",
+      help="Examples to add to the output tree. For example: "
+      "-e hello_world -e micro_speech")
   args = parser.parse_args()
 
   _create_tflm_tree(args.output_dir, args.makefile_options)
+
+  if args.examples is not None:
+    _create_examples_tree(args.output_dir, args.examples)

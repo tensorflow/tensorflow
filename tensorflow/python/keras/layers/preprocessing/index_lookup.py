@@ -54,55 +54,45 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
   basis layer for both IntegerLookup and StringLookup; it holds the common
   logic but is not intended to be exported as part of the Keras API.
 
-  If desired, the user can call this layer's `adapt()` method on a data set,
-  which will analyze the data set, determine the frequency of individual
-  hashable values, and create a vocabulary from them. This vocabulary can have
-  unlimited size or be capped, depending on the configuration options for this
-  layer; if there are more unique values in the input than the maximum
-  vocabulary size, the most frequent terms will be used to create the
-  vocabulary.
-
   Args:
     max_tokens: The maximum size of the vocabulary for this layer. If None,
-      there is no cap on the size of the vocabulary. Note that this vocabulary
-      includes the OOV and mask tokens, so the effective number of tokens is
-      (max_tokens - num_oov_indices - (1 if mask_token else 0))
+      there is no cap on the size of the vocabulary. Note that this size
+      includes the OOV and mask tokens.
     num_oov_indices: The number of out-of-vocabulary tokens to use. If this
-      value is more than 1, OOV inputs are hashed to determine their OOV value;
-      if this value is 0, passing an OOV input will result in a '-1' being
-      returned for that value in the output tensor. (Note that, because the
-      value is -1 and not 0, this will allow you to effectively drop OOV values
-      from categorical encodings.)
-    mask_token: A token that represents masked values, and which is mapped to
-      index 0. If set to None, no mask term will be added and the OOV tokens, if
-      any, will be indexed from (0...num_oov_indices) instead of
-      (1...num_oov_indices+1).
-    oov_token: The token representing an out-of-vocabulary value. This token is
-      only used when performing an inverse lookup.
+      value is more than 1, OOV inputs are hashed to determine their OOV value.
+      If this value is 0, OOV inputs will map to -1 when `output_mode` is "int"
+      and are dropped otherwise.
+    mask_token: A token that represents masked inputs. When `output_mode` is
+      "int", the token is included in vocabulary and mapped to index 0. In other
+      output modes, the token will not appear in the vocabulary and instances
+      of the mask token in the input will be dropped. If set to None, no mask
+      term will be added.
+    oov_token: Only used when `invert` is True. The token to return for OOV
+      indices.
     vocabulary: An optional list of vocabulary terms. If the list contains the
       same token multiple times, an error will be thrown.
-    invert: If true, this layer will map indices to vocabulary items instead
-      of mapping vocabulary items to indices.
-    output_mode: Specification for the output of the layer. Only applicable
-      when `invert` is False.
-      Defaults to "int". Values can
-      be "int", "binary", or "count", configuring the layer as follows:
-        "int": Return the raw integer indices of the input values.
-        "binary": Outputs a single int array per batch, of either vocab_size or
+    invert: Only valid when `output_mode` is "int". If True, this layer will map
+      indices to vocabulary items instead of mapping vocabulary items to
+      indices. Default to False.
+    output_mode: Specification for the output of the layer. Defaults to "int".
+      Values can be "int", "binary", "count", or "tf-idf" configuring the layer
+      as follows:
+        "int": Return the raw integer indices of the input tokens.
+        "binary": Outputs a single int array per sample, of either vocab_size or
           max_tokens size, containing 1s in all elements where the token mapped
-          to that index exists at least once in the batch item.
+          to that index exists at least once in the sample.
         "count": Like "binary", but the int array contains a count of the number
-          of times the token at that index appeared in the batch item.
+          of times the token at that index appeared in the sample.
         "tf-idf": As "binary", but the TF-IDF algorithm is applied to find the
           value in each token slot.
-    pad_to_max_tokens: Only valid in  "binary", "count", and "tf-idf" modes. If
-      True, the output will have its feature axis padded to `max_tokens` even if
-      the number of unique tokens in the vocabulary is less than max_tokens,
-      resulting in a tensor of shape [batch_size, max_tokens] regardless of
-      vocabulary size. Defaults to False.
+    pad_to_max_tokens: Only valid when `output_mode` is "binary", "count", or
+      "tf-idf". If True, the output will have its feature axis padded to
+      `max_tokens` even if the number of unique tokens in the vocabulary is less
+      than max_tokens, resulting in a tensor of shape [batch_size, max_tokens]
+      regardless of vocabulary size. Defaults to False.
     sparse: Boolean. Only applicable to "binary" and "count" output modes.
-      If true, returns a `SparseTensor` instead of a dense `Tensor`.
-      Defaults to `False`.
+      If True, returns a `SparseTensor` instead of a dense `Tensor`.
+      Defaults to False.
   """
 
   def __init__(self,
@@ -147,9 +137,6 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     self.sparse = sparse
     self.pad_to_max_tokens = pad_to_max_tokens
     self._called = False
-    self._num_special_tokens = self.num_oov_indices
-    if self.mask_token is not None:
-      self._num_special_tokens += 1
     self._vocab_size = 0
     # We need to keep track our current vocab size outside of our layer weights
     # to support a static output shape when `output_mode != INT`. The bincount
@@ -160,19 +147,8 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       self._vocab_size = kwargs["vocab_size"]
       del kwargs["vocab_size"]
 
-    # If there is only one OOV bucket, we can determine the OOV value (either 0
-    # or 1 depending on whether 0 is reserved) and set that as the default
-    # value of the index_lookup table. If we hav multiple OOV values, we need to
-    # do a further hashing step; to make this easier, we set the OOV value to
-    # -1. (This lets us do a vectorized add and cast to boolean to determine
-    # locations where we need to do extra hashing.)
-    if self.num_oov_indices == 1:
-      self._oov_value = 0 if mask_token is None else 1
-    else:
-      self._oov_value = -1
-
     if max_tokens is not None:
-      available_vocab_size = max_tokens - self._num_special_tokens
+      available_vocab_size = max_tokens - self._token_start_index()
     else:
       available_vocab_size = None
 
@@ -189,23 +165,42 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     if invert:
       self._key_dtype = dtypes.int64
       self._value_dtype = self.dtype
-      oov_value = self.oov_token
+      self._mask_key = 0
+      self._mask_value = mask_token
+      default_value = self.oov_token
       oov_indices = None
     else:
       self._key_dtype = self.dtype
       self._value_dtype = dtypes.int64
-      oov_value = self._oov_value
-      if self.num_oov_indices <= 1:
+      self._mask_key = mask_token
+      # Masks should map to 0 for int output and be dropped otherwise. Max ints
+      # will be dropped from the bincount op.
+      self._mask_value = 0 if self.output_mode == INT else dtypes.int64.max
+      oov_start = self._oov_start_index()
+      token_start = self._token_start_index()
+      if self.num_oov_indices == 0:
+        # If there are no OOV indices, we map OOV tokens to -1 for int output
+        # and drop them from bagged output. Max ints will be dropped from the
+        # bincount op.
+        default_value = -1 if self.output_mode == INT else dtypes.int64.max
+        oov_indices = None
+      elif self.num_oov_indices == 1:
+        # If there is only one OOV index, we can set that index as the default
+        # value of the index_lookup table.
+        default_value = oov_start
         oov_indices = None
       else:
-        oov_start = 1 if mask_token is not None else 0
-        oov_end = oov_start + num_oov_indices
-        oov_indices = list(range(oov_start, oov_end))
+        # If we hav multiple OOV values, we need to do a further hashing step;
+        # to make this easier, we set the OOV value to -1. (This lets us do a
+        # vectorized add and cast to boolean to determine locations where we
+        # need to do extra hashing.)
+        default_value = -1
+        oov_indices = list(range(oov_start, token_start))
 
     if vocabulary is not None and isinstance(vocabulary,
                                              lookup_ops.TextFileInitializer):
       self._table = self._static_table_class()(
-          vocabulary, default_value=oov_value)
+          vocabulary, default_value=default_value)
       self._table_handler = table_utils.TableHandler(
           table=self._table,
           mask_token=mask_token,
@@ -218,7 +213,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       self._table = lookup_ops.MutableHashTable(
           key_dtype=self._key_dtype,
           value_dtype=self._value_dtype,
-          default_value=oov_value,
+          default_value=default_value,
           name=(self._name + "_index_table"))
       self._table_handler = table_utils.TableHandler(
           table=self._table,
@@ -287,23 +282,18 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     super(IndexLookup, self).adapt(data, reset_state)
 
   def get_vocabulary(self):
-    if self.vocab_size() == 0:
+    if self._vocab_size == 0:
       return []
 
+    # The MutableHashTable data will not be sorted, so we will create a inverted
+    # lookup here, and use that to lookup a range of indices [0, vocab_size).
     keys, values = self._table_handler.data()
-    # This is required because the MutableHashTable doesn't preserve insertion
-    # order, but we rely on the order of the array to assign indices.
     if self.invert:
-      # If we are inverting, the vocabulary is in the values instead of keys.
-      tokens = [x for _, x in sorted(zip(keys, values))]
+      index_to_token = zip(keys, values)
     else:
-      tokens = [x for _, x in sorted(zip(values, keys))]
-    # OOV values are not actually in the vocab, we need to add them in manually.
-    if self.num_oov_indices > 0:
-      oov_start_index = 1 if self.mask_token is not None else 0
-      oov_values = [self.oov_token] * self.num_oov_indices
-      tokens[oov_start_index:oov_start_index] = oov_values
-    return tokens
+      index_to_token = zip(values, keys)
+    lookup = collections.defaultdict(lambda: self.oov_token, index_to_token)
+    return [lookup[x] for x in range(self._vocab_size)]
 
   def vocab_size(self):
     return self._vocab_size
@@ -361,21 +351,19 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
                          "False, the vocabulary cannot be changed after the "
                          "layer is called.".format(self.output_mode))
 
-    should_have_mask = self.mask_token is not None
-    has_mask = vocab[0] == self.mask_token
-    oov_start = 1 if should_have_mask else 0
+    oov_start = self._oov_start_index()
+    token_start = self._token_start_index()
+    should_have_mask = (oov_start > 0)
+    has_mask = should_have_mask and vocab[0] == self.mask_token
 
     should_have_oov = (self.num_oov_indices > 0)
-    if should_have_oov:
-      oov_end = oov_start + self.num_oov_indices
-      expected_oov = [self.oov_token] * self.num_oov_indices
-      has_oov = vocab[oov_start:oov_end] == expected_oov
-      # If we get a numpy array, then has_oov may end up being a numpy array
-      # instead of a bool. Fix this by collapsing the variable if it's not bool.
-      if not isinstance(has_oov, bool):
-        has_oov = any(has_oov)
-    else:
-      has_oov = False
+    expected_oov = [self.oov_token] * self.num_oov_indices
+    found_oov = vocab[oov_start:token_start]
+    has_oov = should_have_oov and found_oov == expected_oov
+    # If we get a numpy array, then has_oov may end up being a numpy array
+    # instead of a bool. Fix this by collapsing the variable if it's not bool.
+    if not isinstance(has_oov, bool):
+      has_oov = any(has_oov)
 
     if all([should_have_mask, has_mask, should_have_oov]) and not has_oov:
       raise ValueError(
@@ -389,8 +377,8 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
               mask=self.mask_token,
               oov=self.oov_token,
               start=oov_start,
-              end=oov_end,
-              found=vocab[oov_start:oov_end]))
+              end=token_start,
+              found=found_oov))
 
     if all([should_have_oov, has_oov, should_have_mask]) and not has_mask:
       raise ValueError(
@@ -404,13 +392,12 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
               mask=self.mask_token,
               oov=self.oov_token,
               start=oov_start,
-              end=oov_end,
+              end=token_start,
               found=vocab[0]))
 
     found_special_tokens = has_oov or has_mask
-
     if found_special_tokens:
-      tokens = vocab[self._num_special_tokens:]
+      tokens = vocab[token_start:]
     else:
       tokens = vocab
 
@@ -433,7 +420,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
                        "OOV token for this layer.".format(
                            self.oov_token, tokens.index(self.oov_token)))
 
-    self._vocab_size = len(tokens) + self._num_special_tokens
+    self._vocab_size = token_start + len(tokens)
     if self.max_tokens is not None and self._vocab_size > self.max_tokens:
       raise ValueError(
           "Attempted to set a vocabulary larger than the maximum vocab size. "
@@ -457,16 +444,13 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     # hash table. OOV tokens are handled with the hash table default value and
     # not added directly.
     self._table_handler.clear()
-    start_index = self._num_special_tokens
-    indices = np.arange(start_index, len(tokens) + start_index, dtype=np.int64)
+    indices = np.arange(token_start, len(tokens) + token_start, dtype=np.int64)
     if self.invert:
       self._table_handler.insert(indices, tokens)
-      if self.mask_token is not None:
-        self._table_handler.insert([0], [self.mask_token])
     else:
       self._table_handler.insert(tokens, indices)
-      if self.mask_token is not None:
-        self._table_handler.insert([self.mask_token], [0])
+    if self.mask_token is not None:
+      self._table_handler.insert([self._mask_key], [self._mask_value])
 
     if self.output_mode == TFIDF:
       # If the passed vocabulary has no special tokens, we need to pad the front
@@ -477,7 +461,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
         front_padding = 0
         front_padding_value = 0
       else:
-        front_padding = self._num_special_tokens
+        front_padding = token_start
         front_padding_value = np.average(idf_weights)
       # If pad_to_max_tokens is true, and max_tokens is greater than our total
       # vocab size, we need to pad the back of idf_weights with zeros as well.
@@ -536,6 +520,12 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
 
   def _static_table_class(self):
     return lookup_ops.StaticHashTable
+
+  def _oov_start_index(self):
+    return 1 if self.mask_token is not None and self.output_mode == INT else 0
+
+  def _token_start_index(self):
+    return self._oov_start_index() + self.num_oov_indices
 
 
 class _IndexLookupAccumulator(

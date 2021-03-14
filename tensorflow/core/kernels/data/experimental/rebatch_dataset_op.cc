@@ -91,6 +91,12 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
       return name_utils::DatasetDebugString(kDatasetTypeV1, params);
     }
 
+    Status InputDatasets(
+        std::vector<const DatasetBase*>* inputs) const override {
+      inputs->push_back(input_);
+      return Status::OK();
+    }
+
     Status CheckExternalState() const override {
       return input_->CheckExternalState();
     }
@@ -344,6 +350,12 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
 
     string DebugString() const override {
       return name_utils::DatasetDebugString(kDatasetTypeV2);
+    }
+
+    Status InputDatasets(
+        std::vector<const DatasetBase*>* inputs) const override {
+      inputs->push_back(input_);
+      return Status::OK();
     }
 
     Status CheckExternalState() const override {

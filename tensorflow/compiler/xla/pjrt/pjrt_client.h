@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/casts.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -287,6 +288,15 @@ class PjRtBuffer {
   virtual ~PjRtBuffer() = default;
 
   virtual const Shape& on_device_shape() const = 0;
+
+  // Same as on_device_shape when the shape is static. When the shape is
+  // dynamic, it gathers the metadata from the device and returns a static shape
+  // representing the logical shape of the data. This approach is identical to
+  // how tensorflow and xrt setup the output buffer in the graph.
+  //
+  // Since this method actually acquires locks and communicate with the device,
+  // it does not have the const qualifier, similar to what ToLiteral does.
+  virtual StatusOr<Shape> logical_on_device_shape() = 0;
   virtual PjRtDevice* device() const = 0;
   virtual PjRtClient* client() const = 0;
 

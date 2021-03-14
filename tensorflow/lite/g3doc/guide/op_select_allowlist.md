@@ -207,6 +207,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.GetSessionTensor`
 *   `raw_ops.Greater`
 *   `raw_ops.GreaterEqual`
+*   `raw_ops.HSVToRGB`
 *   `raw_ops.HashTable`
 *   `raw_ops.HashTableV2`
 *   `raw_ops.HistogramSummary`
@@ -379,6 +380,10 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.QueueIsClosedV2`
 *   `raw_ops.QueueSize`
 *   `raw_ops.QueueSizeV2`
+*   `raw_ops.RFFT`
+*   `raw_ops.RFFT2D`
+*   `raw_ops.RFFT3D`
+*   `raw_ops.RGBToHSV`
 *   `raw_ops.RaggedBincount`
 *   `raw_ops.RaggedGather`
 *   `raw_ops.RaggedRange`
@@ -474,9 +479,6 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.Reverse`
 *   `raw_ops.ReverseSequence`
 *   `raw_ops.ReverseV2`
-*   `raw_ops.RFFT`
-*   `raw_ops.RFFT2D`
-*   `raw_ops.RFFT3D`
 *   `raw_ops.RightShift`
 *   `raw_ops.Roll`
 *   `raw_ops.Round`
