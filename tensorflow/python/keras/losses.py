@@ -17,8 +17,6 @@
 import abc
 import functools
 
-import six
-
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribution_strategy_context
@@ -260,7 +258,7 @@ class LossFunctionWrapper(Loss):
 
   def get_config(self):
     config = {}
-    for k, v in six.iteritems(self._fn_kwargs):
+    for k, v in self._fn_kwargs.items():
       config[k] = K.eval(v) if tf_utils.is_tensor_or_variable(v) else v
     base_config = super().get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -2040,8 +2038,7 @@ def get(identifier):
   """
   if identifier is None:
     return None
-  if isinstance(identifier, six.string_types):
-    identifier = str(identifier)
+  if isinstance(identifier, str):
     return deserialize(identifier)
   if isinstance(identifier, dict):
     return deserialize(identifier)
