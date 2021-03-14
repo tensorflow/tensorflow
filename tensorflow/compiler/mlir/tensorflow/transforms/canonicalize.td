@@ -70,11 +70,14 @@ def AddV2TransDistr : Pat<(TF_AddV2Op (TF_TransposeOp $tensor0, $perm0),
 // ApproximateEqualOp op patterns.
 //===----------------------------------------------------------------------===//
 
-def ApproximateEqualTransDistr : Pat<(TF_ApproximateEqualOp (TF_TransposeOp $tensor0, $perm0),
-                                      (TF_ApproximateEqualOp $tensor1, $perm1)),
-                          (TF_TransposeOp (TF_ApproximateEqualOp $tensor0, $tensor1),
+def ApproximateEqualTransDistr : Pat<(TF_ApproximateEqualOp 
+                                      (TF_TransposeOp $tensor0, $perm0),
+                                      (TF_TransposeOp $tensor1, $perm1),
+                                      (TF_TransposeOp $tolerance, $perm2)),
+                          (TF_TransposeOp (TF_ApproximateEqualOp $tensor0, $tensor1, $tolerance),
                                           $perm0),
-                          [(PermutationsAreEqual $perm0, $perm1)]>;
+                          [(PermutationsAreEqual $perm0, $perm1),
+                           (PermutationsAreEqual $perm1, $perm2)]>;
 
 //===----------------------------------------------------------------------===//
 // BatchMatMul op patterns.
@@ -368,9 +371,10 @@ def ReshapeToSelfShape : Pat<(TF_ReshapeOp:$op $x, (TF_ShapeOp $x)),
 def SelectV2TransDistr : Pat<(TF_SelectV2Op (TF_TransposeOp $cond, $perm0), 
                                             (TF_TransposeOp $tensor0, $perm1),
                                             (TF_TransposeOp $tensor1, $perm2)),
-                          (TF_TransposeOp (TF_SelectV2 $cond, $tensor0, $tensor1),
+                          (TF_TransposeOp (TF_SelectV2Op $cond, $tensor0, $tensor1),
                                           $perm0),
-                          [(PermutationsAreEqual $perm0, $perm1)]>;
+                          [(PermutationsAreEqual $perm0, $perm1),
+                           (PermutationsAreEqual $perm1, $perm2)]>;
 
 //===----------------------------------------------------------------------===//
 
