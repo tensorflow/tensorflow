@@ -3859,6 +3859,7 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplit) {
   EnableOnlyHoistCWiseUnaryChains(&optimizer);
   OptimizeTwiceAndPrune(&optimizer, &item, &output);
 
+  const string p = "ArithmeticOptimizer/HoistCWiseUnaryChainsStage_";
   int found = 0;
   for (const NodeDef& node : output.node()) {
     // The following 6 nodes should be pruned.
@@ -3872,10 +3873,10 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplit) {
     if (node.name() == "split1") {
       ASSERT_EQ(node.input_size(), 2);
       EXPECT_EQ(node.input(0), "axis");
-      EXPECT_EQ(node.input(1), "ArithmeticOptimizer/_sin_a_split1");
+      EXPECT_EQ(node.input(1), absl::StrCat(p, "sin_a_split1"));
       found++;
     }
-    if (node.name() == "ArithmeticOptimizer/_sin_a_split1") {
+    if (node.name() == absl::StrCat(p, "sin_a_split1")) {
       EXPECT_EQ(node.op(), "Sin");
       ASSERT_EQ(node.input_size(), 1);
       EXPECT_EQ(node.input(0), "x");
@@ -3896,21 +3897,21 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplit) {
       EXPECT_EQ(node.input(0), "exp_b");
       found++;
     }
-    if (node.name() == "ArithmeticOptimizer/_exp_a2_split2") {
+    if (node.name() == absl::StrCat(p, "exp_a2_split2")) {
       EXPECT_EQ(node.op(), "Exp");
       ASSERT_EQ(node.input_size(), 1);
       EXPECT_EQ(node.input(0), "x");
       found++;
     }
-    if (node.name() == "ArithmeticOptimizer/_cos_exp_a2_split2") {
+    if (node.name() == absl::StrCat(p, "cos_exp_a2_split2")) {
       EXPECT_EQ(node.op(), "Cos");
       ASSERT_EQ(node.input_size(), 1);
-      EXPECT_EQ(node.input(0), "ArithmeticOptimizer/_exp_a2_split2");
+      EXPECT_EQ(node.input(0), absl::StrCat(p, "exp_a2_split2"));
       found++;
     }
     if (node.name() == "split2") {
       ASSERT_EQ(node.input_size(), 3);
-      EXPECT_EQ(node.input(0), "ArithmeticOptimizer/_cos_exp_a2_split2");
+      EXPECT_EQ(node.input(0), absl::StrCat(p, "cos_exp_a2_split2"));
       EXPECT_EQ(node.input(1), "size_splits2");
       EXPECT_EQ(node.input(2), "axis");
       found++;
@@ -3939,7 +3940,7 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplit) {
 TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryFromConcatWithReshape) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output a = ops::Const(s.WithOpName("a"), 3.14f, {32});
-  Output b = ops::Const(s.WithOpName("b"), 1.0f, {32});
+  Output b = ops::Const(s.WithOpName("b"), 1.0f, {4, 8});
   Output c = ops::Const(s.WithOpName("c"), 42.0f, {4, 8});
   Output axis = ops::Const(s.WithOpName("axis"), 0, {});
   Output ctrl1 = ops::Placeholder(
@@ -3956,15 +3957,20 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryFromConcatWithReshape) {
   Output temp_shape = ops::Const(s.WithOpName("temp_shape"), {8, 2, 2}, {3});
   // Test case with chains of length 1.
   // Rewrites
-  //       Concat({Exp(a), Exp(b), Reshape(Exp(c))})
+  //       Concat({Exp(a), Exp(Reshape(b)), Reshape(Exp(c))})
   // into
-  //       Exp(Concat({a, b, Reshape(c)})).
+  //       Exp(Concat({a, Reshape(b), Reshape(c)})).
+
+  Output reshape_b = ops::Reshape(
+      s.WithOpName("reshape_b").WithControlDependencies(ctrl4),
+      b,
+      new_shape);
 
   Output sin_a =
       ops::Sin(s.WithOpName("sin_a").WithControlDependencies(ctrl3), a);
   Output exp_a =
       ops::Exp(s.WithOpName("exp_a").WithControlDependencies(ctrl1), sin_a);
-  Output exp_b = ops::Exp(s.WithOpName("exp_b"), b);
+  Output exp_b = ops::Exp(s.WithOpName("exp_b"), reshape_b);
   Output exp_c =
       ops::Exp(s.WithOpName("exp_c").WithControlDependencies(ctrl2), c);
 
@@ -3984,7 +3990,7 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryFromConcatWithReshape) {
   //       Cos(Exp(Concat({a, b, Reshape1(c)}))).
   Output exp_a2 =
       ops::Exp(s.WithOpName("exp_a2").WithControlDependencies(ctrl1), sin_a);
-  Output exp_b2 = ops::Exp(s.WithOpName("exp_b2"), b);
+  Output exp_b2 = ops::Exp(s.WithOpName("exp_b2"), reshape_b);
   Output exp_c2 =
       ops::Exp(s.WithOpName("exp_c2").WithControlDependencies(ctrl2), c);
 
@@ -4023,6 +4029,12 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryFromConcatWithReshape) {
   for (const NodeDef& node : output.node()) {
     // The following node should be pruned.
     EXPECT_NE(node.name(), "reshape_temp");
+    if (node.name() == "reshape_b") {
+      ASSERT_EQ(node.input_size(), 3);
+      EXPECT_EQ(node.input(0), "b");
+      EXPECT_EQ(node.input(1), "new_shape");
+      found++;
+    }
     if (node.name() == "reshape_c") {
       ASSERT_EQ(node.input_size(), 3);
       EXPECT_EQ(node.input(0), "c");
@@ -4033,7 +4045,7 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryFromConcatWithReshape) {
     if (node.name() == "concat") {
       ASSERT_EQ(node.input_size(), 7);
       EXPECT_EQ(node.input(0), "reshape_c");
-      EXPECT_EQ(node.input(1), "b");
+      EXPECT_EQ(node.input(1), "reshape_b");
       EXPECT_EQ(node.input(2), "sin_a");
       EXPECT_EQ(node.input(3), "axis");
       EXPECT_EQ(node.input(4), "^ctrl1");
@@ -4063,7 +4075,7 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryFromConcatWithReshape) {
     if (node.name() == "concat2") {
       ASSERT_EQ(node.input_size(), 9);
       EXPECT_EQ(node.input(0), "sin_a");
-      EXPECT_EQ(node.input(1), "b");
+      EXPECT_EQ(node.input(1), "reshape_b");
       EXPECT_EQ(node.input(2), "reshape_c2");
       EXPECT_EQ(node.input(3), "axis");
       EXPECT_EQ(node.input(4), "^ctrl1");
@@ -4091,7 +4103,7 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryFromConcatWithReshape) {
       found++;
     }
   }
-  EXPECT_EQ(found, 9);
+  EXPECT_EQ(found, 10);
 
   auto tensors = EvaluateNodes(output, item.fetch);
   ASSERT_EQ(tensors.size(), tensors_expected.size());
@@ -4164,9 +4176,10 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplitWithReshape) {
 
   Output id_a2 = ops::Identity(s.WithOpName("id_a2"), cos_exp_a2);
   Output id_b2 = ops::Identity(s.WithOpName("id_b2"), reshape_b2);
+  Output id_c2 = ops::Identity(s.WithOpName("id_c2"), reshape_b2);
 
   GrapplerItem item;
-  item.fetch = {"id_a", "id_b", "id_a2", "id_b2"};
+  item.fetch = {"id_a", "id_b", "id_a2", "id_b2", "id_c2"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
@@ -4176,6 +4189,7 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplitWithReshape) {
   EnableOnlyHoistCWiseUnaryChains(&optimizer);
   OptimizeTwiceAndPrune(&optimizer, &item, &output);
 
+  const string p = "ArithmeticOptimizer/HoistCWiseUnaryChainsStage_";
   int found = 0;
   for (const NodeDef& node : output.node()) {
     // The following 7 nodes should be pruned.
@@ -4185,15 +4199,14 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplitWithReshape) {
     EXPECT_NE(node.name(), "exp_b2");
     EXPECT_NE(node.name(), "cos_exp_a2");
     EXPECT_NE(node.name(), "cos_exp_b2");
-    EXPECT_NE(node.name(), "reshape_temp");
 
     if (node.name() == "split1") {
       ASSERT_EQ(node.input_size(), 2);
       EXPECT_EQ(node.input(0), "axis");
-      EXPECT_EQ(node.input(1), "ArithmeticOptimizer/_sin_b_split1");
+      EXPECT_EQ(node.input(1), absl::StrCat(p, "sin_b_split1"));
       found++;
     }
-    if (node.name() == "ArithmeticOptimizer/_sin_b_split1") {
+    if (node.name() == absl::StrCat(p, "sin_b_split1")) {
       EXPECT_EQ(node.op(), "Sin");
       ASSERT_EQ(node.input_size(), 3);
       EXPECT_EQ(node.input(0), "x");
@@ -4223,26 +4236,25 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplitWithReshape) {
       EXPECT_EQ(node.input(0), "exp_b");
       found++;
     }
-    if (node.name() == "ArithmeticOptimizer/_exp_a2_split2") {
+    if (node.name() == absl::StrCat(p, "exp_a2_split2")) {
       EXPECT_EQ(node.op(), "Exp");
-      ASSERT_EQ(node.input_size(), 6);
+      ASSERT_EQ(node.input_size(), 5);
       EXPECT_EQ(node.input(0), "x");
       EXPECT_EQ(node.input(1), "^ctrl1");
       EXPECT_EQ(node.input(2), "^ctrl2");
       EXPECT_EQ(node.input(3), "^ctrl3");
       EXPECT_EQ(node.input(4), "^ctrl4");
-      EXPECT_EQ(node.input(5), "^ctrl5");
       found++;
     }
-    if (node.name() == "ArithmeticOptimizer/_cos_exp_a2_split2") {
+    if (node.name() == absl::StrCat(p, "cos_exp_a2_split2")) {
       EXPECT_EQ(node.op(), "Cos");
       ASSERT_EQ(node.input_size(), 1);
-      EXPECT_EQ(node.input(0), "ArithmeticOptimizer/_exp_a2_split2");
+      EXPECT_EQ(node.input(0), absl::StrCat(p, "exp_a2_split2"));
       found++;
     }
     if (node.name() == "split2") {
       ASSERT_EQ(node.input_size(), 3);
-      EXPECT_EQ(node.input(0), "ArithmeticOptimizer/_cos_exp_a2_split2");
+      EXPECT_EQ(node.input(0), absl::StrCat(p, "cos_exp_a2_split2"));
       EXPECT_EQ(node.input(1), "size_splits2");
       EXPECT_EQ(node.input(2), "axis");
       found++;
@@ -4252,9 +4264,16 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplitWithReshape) {
       EXPECT_EQ(node.input(0), "split2");
       found++;
     }
-    if (node.name() == "reshape_b2") {
+    if (node.name() == "reshape_temp") {
       ASSERT_EQ(node.input_size(), 3);
       EXPECT_EQ(node.input(0), "split2:1");
+      EXPECT_EQ(node.input(1), "temp_shape");
+      EXPECT_EQ(node.input(2), "^ctrl4");
+      found++;
+    }
+    if (node.name() == "reshape_b2") {
+      ASSERT_EQ(node.input_size(), 3);
+      EXPECT_EQ(node.input(0), "reshape_temp");
       EXPECT_EQ(node.input(1), "new_shape");
       EXPECT_EQ(node.input(2), "^ctrl5");
       found++;
@@ -4264,8 +4283,13 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplitWithReshape) {
       EXPECT_EQ(node.input(0), "reshape_b2");
       found++;
     }
+    if (node.name() == "id_c2") {
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "reshape_b2");
+      found++;
+    }
   }
-  EXPECT_EQ(found, 12);
+  EXPECT_EQ(found, 14);
 
   auto tensors = EvaluateNodes(output, item.fetch);
   ASSERT_EQ(tensors.size(), tensors_expected.size());

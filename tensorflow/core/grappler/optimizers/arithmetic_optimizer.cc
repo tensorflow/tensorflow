@@ -1480,7 +1480,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
  public:
   explicit HoistCWiseUnaryChainsStage(const GraphOptimizerContext& ctx,
                                       const ArithmeticOptimizerContext& ctx_ext)
-      : ArithmeticOptimizerStage("", ctx, ctx_ext) {}
+      : ArithmeticOptimizerStage("HoistCWiseUnaryChainsStage", ctx, ctx_ext) {}
 
   ~HoistCWiseUnaryChainsStage() override = default;
 
@@ -1761,8 +1761,8 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
 
   // Hoist first chain of concat's input to its output, and skip reshapes in
   // the chain.
-  Status HoistFirstChainForConcat (string concat_name, string tail_input,
-                                   string concat_input) {
+  Status HoistFirstChainForConcat(string concat_name, string tail_input,
+                                  string concat_input) {
     NodeDef* concat_replace = ctx().node_map->GetNode(concat_input);
     NodeDef* input_node = ctx().node_map->GetNode(tail_input);
     while (concat_replace != input_node) {
@@ -1955,7 +1955,9 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     }
 
     // Record the last reshape node.
-    reshapes->insert_or_assign(port, wrap);
+    if (wrap != nullptr) {
+      reshapes->insert_or_assign(port, wrap);
+    }
     *return_node = unwrapped_node;
     return Status::OK();
   }
@@ -1981,6 +1983,11 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     const int offset = concate_node->op() == "Concat" ? 1 : 0;
     port += offset;
     const string concate_input = concate_node->input(port);
+
+    if (reshape->name() == NodeName(concate_input)) {
+      return Status::OK();
+    }
+
     concate_node->set_input(port, reshape->name());
     ctx().node_map->UpdateInput(
         concate_node->name(), concate_input, reshape->name());
