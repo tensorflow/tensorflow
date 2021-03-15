@@ -1182,11 +1182,7 @@ Status IrEmitterUnnested::EmitConvolutionThunkFromMlir(MlirEmitterInput input) {
     descriptor.result_shape = apply_layout(TypeToShape(conv_result.getType()),
                                            op.backend_config().result_layout());
     descriptor.dnums = ConvertConvDimensionNumbers(op.dimension_numbers());
-<<<<<<< HEAD
-    descriptor.scratch_size = input.extra_slice->shape.tuple_shapes(1).dimensions(0);
-=======
     descriptor.scratch_size = scratch_slice.size();
->>>>>>> google_upstream/master
     mlir::DenseIntElementsAttr window_strides = op.window_strides().getValue();
     mlir::DenseIntElementsAttr padding = op.padding().getValue();
     mlir::DenseIntElementsAttr lhs_dilation = op.lhs_dilation().getValue();
@@ -5862,7 +5858,7 @@ Status IrEmitterUnnested::EmitOp(MlirEmitterInput mlir_input) {
     return EmitBatchNormThunkFromMlir(mlir_input);
   }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (mlir::isa<mlir::lmhlo_gpu::CholeskyOp>(mlir_input.op)) {
     return EmitCholeskyThunkFromMlir(mlir_input);
   }

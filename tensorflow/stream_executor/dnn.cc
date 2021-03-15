@@ -275,42 +275,6 @@ ConvDimIndices GetDimIndices(const FilterLayout& layout, const int data_dims) {
   return dim_indices;
 }
 
-std::tuple<int, int, int> GetDimIndices(const FilterLayout& layout,
-                                        const int data_dims) {
-  int output_idx, input_idx, spatial_idx;
-  switch (layout) {
-    case FilterLayout::kOutputInputYX:
-    case FilterLayout::kOutputInputYX4:
-      input_idx = 1;
-      output_idx = 0;
-      spatial_idx = 2;
-      break;
-
-    case FilterLayout::kOutputYXInput:
-      input_idx = data_dims - 1;
-      output_idx = 0;
-      spatial_idx = 1;
-      break;
-
-    case FilterLayout::kInputYXOutput:
-      input_idx = 0;
-      output_idx = data_dims - 1;
-      spatial_idx = 1;
-      break;
-
-    case FilterLayout::kYXInputOutput:
-      input_idx = data_dims - 2;
-      output_idx = data_dims - 1;
-      spatial_idx = 0;
-      break;
-
-    default:
-      LOG(FATAL) << "Unknown layout " << layout;
-  }
-
-  return std::make_tuple(output_idx, input_idx, spatial_idx);
-}
-
 std::vector<int64> ReorderDims(const std::vector<int64>& input,
                                const DataLayout& from, const DataLayout& to) {
   if (from == to) return input;
@@ -347,31 +311,6 @@ std::vector<int64> ReorderDims(const std::vector<int64>& input,
 
   int spatial_idx_from = from_indices.filter.spatial_idx;
   int spatial_idx_to = to_indices.filter.spatial_idx;
-  for (size_t i = 0; i < input.size() - 2;
-       i++, spatial_idx_from++, spatial_idx_to++) {
-    reordered[spatial_idx_to] = input[spatial_idx_from];
-  }
-
-  return reordered;
-}
-
-std::vector<int64> ReorderDims(const std::vector<int64>& input,
-                               const FilterLayout& from,
-                               const FilterLayout& to) {
-  if (from == to) return input;
-
-  int d_idx_from, b_idx_from, spatial_idx_from;
-  int d_idx_to, b_idx_to, spatial_idx_to;
-
-  std::tie(d_idx_from, b_idx_from, spatial_idx_from) =
-      GetDimIndices(from, input.size());
-  std::tie(d_idx_to, b_idx_to, spatial_idx_to) =
-      GetDimIndices(to, input.size());
-
-  std::vector<int64> reordered(input.size());
-  reordered[b_idx_to] = input[b_idx_from];
-  reordered[d_idx_to] = input[d_idx_from];
-
   for (size_t i = 0; i < input.size() - 2;
        i++, spatial_idx_from++, spatial_idx_to++) {
     reordered[spatial_idx_to] = input[spatial_idx_from];
