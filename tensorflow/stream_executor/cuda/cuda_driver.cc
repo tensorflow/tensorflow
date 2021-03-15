@@ -82,19 +82,6 @@ bool UseCudaMallocAsyncAllocator() {
       std::strcmp(debug_allocator_str, "cuda_malloc_async") == 0;
 }
 
-// Formats CUresult to output prettified values into a log stream.
-std::string ToString(CUresult result) {
-  const char* error_name;
-  if (cuGetErrorName(result, &error_name)) {
-    return absl::StrCat("UNKNOWN ERROR (", static_cast<int>(result), ")");
-  }
-  const char* error_string;
-  if (cuGetErrorString(result, &error_string)) {
-    return error_name;
-  }
-  return absl::StrCat(error_name, ": ", error_string);
-}
-
 // Returns the current context and checks that it is in the set of CUDA contexts
 // created by StreamExecutor (to ensure that the CUDA runtime didn't create a
 // context behind our backs).

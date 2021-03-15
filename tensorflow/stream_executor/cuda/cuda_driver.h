@@ -19,11 +19,25 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_DRIVER_H_
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
 
 namespace stream_executor {
 namespace gpu {
+// Formats CUresult to output prettified values into a log stream.
+static std::string ToString(CUresult result) {
+  const char* error_name;
+  if (cuGetErrorName(result, &error_name)) {
+    return absl::StrCat("UNKNOWN ERROR (", static_cast<int>(result), ")");
+  }
+  const char* error_string;
+  if (cuGetErrorString(result, &error_string)) {
+    return error_name;
+  }
+  return absl::StrCat(error_name, ": ", error_string);
+}
+
 // CUDAContext wraps a cuda CUcontext handle, and includes a unique id. The
 // unique id is positive, and ids are not repeated within the process.
 class GpuContext {
@@ -103,7 +117,8 @@ class CreatedContexts {
                               CU_POINTER_ATTRIBUTE_DEVICE_ORDINAL,
                               (CUdeviceptr) ptr);
     if (result != CUDA_SUCCESS) {
-      LOG(FATAL) << "Not able to get the device_ordinal for ptr: " << ptr;
+      LOG(FATAL) << "Not able to get the device_ordinal for ptr: " << ptr
+                 << ". Error: " << ToString(result);
     }
     CHECK(LiveOrdinal()->count(device_ordinal) == 1);
     CHECK(LiveOrdinal()->at(device_ordinal).size() >= 1)
