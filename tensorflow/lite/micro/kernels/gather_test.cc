@@ -143,8 +143,8 @@ TF_LITE_MICRO_TEST(GatherOpTest2DIndexWith2DResult) {
   const int golden_dims[] = {1, 2};
   int output_dims[] = {2, 0, 0};
   tflite::testing::TestGather<float, int32_t>(
-              input_dims, input_data, positions_dims, positions_data,
-              output_dims, output_data, golden_dims, golden_data);
+      input_dims, input_data, positions_dims, positions_data, output_dims,
+      output_data, golden_dims, golden_data);
 }
 
 TF_LITE_MICRO_TEST(FloatGatherOpTestDuplicate) {
