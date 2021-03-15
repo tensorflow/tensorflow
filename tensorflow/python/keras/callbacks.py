@@ -1125,11 +1125,6 @@ class History(Callback):
 
   def __init__(self):
     super(History, self).__init__()
-    # Only support TF logs on eager mode. In graph mode, BaseLogger will be
-    # added to the Callback list which consumes the numpy logs and modify them
-    # to add some metrics into the logs as `loss`. For that reason, disable TF
-    # logs in graph mode.
-    self._supports_tf_logs = context.executing_eagerly()
     self.history = {}
 
   def on_train_begin(self, logs=None):
@@ -1137,8 +1132,6 @@ class History(Callback):
 
   def on_epoch_end(self, epoch, logs=None):
     logs = logs or {}
-    if self._supports_tf_logs:
-      logs = tf_utils.to_numpy_or_python_type(logs)
     self.epoch.append(epoch)
     for k, v in logs.items():
       self.history.setdefault(k, []).append(v)
