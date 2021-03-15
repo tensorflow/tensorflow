@@ -1173,7 +1173,9 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
                                                    CUstream stream) {
   ScopedActivateContext activation(context);
   CUresult result;
-  if(!UseCudaMallocAsyncAllocator()){
+  // CreatedContexts::GetAnyContext() doesn't works when ptr == 0.
+  // This hpapens when the size is 0.
+  if(!UseCudaMallocAsyncAllocator() || gpu_dst == 0 || gpu_src == 0){
     result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
   } else {
     // Any context work here.
