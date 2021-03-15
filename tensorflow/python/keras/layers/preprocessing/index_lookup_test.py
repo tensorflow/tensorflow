@@ -1147,7 +1147,7 @@ class IndexLookupVocabularyTest(keras_parameterized.TestCase,
     layer.set_vocabulary(vocab_data)
     returned_vocab = layer.get_vocabulary()
     self.assertAllEqual(vocab_data, returned_vocab)
-    self.assertAllEqual(layer.vocab_size(), 5)
+    self.assertAllEqual(layer.vocabulary_size(), 5)
 
   def test_int_vocab_with_max_cap(self):
     vocab_data = [0, -1, 42, 1276, 1138]
@@ -1160,7 +1160,7 @@ class IndexLookupVocabularyTest(keras_parameterized.TestCase,
     layer.set_vocabulary(vocab_data)
     returned_vocab = layer.get_vocabulary()
     self.assertAllEqual(vocab_data, returned_vocab)
-    self.assertAllEqual(layer.vocab_size(), 5)
+    self.assertAllEqual(layer.vocabulary_size(), 5)
 
   def test_vocab_with_multiple_oov_indices(self):
     vocab_data = ["", "[OOV]", "[OOV]", "[OOV]", "wind"]
