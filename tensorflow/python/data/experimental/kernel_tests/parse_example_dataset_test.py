@@ -26,7 +26,9 @@ import numpy as np
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.data.experimental.ops import parsing_ops as contrib_parsing_ops
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.kernel_tests import tf_record_test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
@@ -1146,6 +1148,29 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
       self.assertAllEqual(expected, actual)
     else:
       self.assertCountEqual(expected, actual)
+
+
+class ParseExampleDatasetCheckpointTest(tf_record_test_base.FeaturesTestBase,
+                                        checkpoint_test_base.CheckpointTestBase,
+                                        parameterized.TestCase):
+
+  def _parse_example_dataset(self, num_repeat, batch_size):
+    return self.make_batch_feature(
+        filenames=self._filenames,
+        num_epochs=num_repeat,
+        batch_size=batch_size,
+        reader_num_threads=5,
+        parser_num_threads=10)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCheckpointCore(self):
+    num_repeat = 5
+    batch_size = 2
+    num_outputs = self._num_records * self._num_files * num_repeat // batch_size
+    # pylint: disable=g-long-lambda
+    self.run_core_tests(
+        lambda: self._parse_example_dataset(
+            num_repeat=num_repeat, batch_size=batch_size), num_outputs)
 
 
 if __name__ == "__main__":

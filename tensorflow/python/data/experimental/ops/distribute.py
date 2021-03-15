@@ -29,6 +29,11 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
+from tensorflow.python.util.tf_export import tf_export
+
+SHARD_HINT = -1
+tf_export("data.experimental.SHARD_HINT").export_constant(
+    __name__, "SHARD_HINT")
 
 
 class _AutoShardDataset(dataset_ops.UnaryDataset):
@@ -53,7 +58,7 @@ class _AutoShardDataset(dataset_ops.UnaryDataset):
 
   If the AutoShardPolicy is set to OFF, it does nothing.
 
-  Args:
+  Attributes:
     num_workers: Total number of workers to shard this dataset across.
     index: The current worker index (out of the total number of workers) this
       dataset is for.

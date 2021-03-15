@@ -42,7 +42,6 @@ py_library(
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/keras:activations",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:callbacks",
         "//tensorflow/python/keras:callbacks_v1",
@@ -51,9 +50,7 @@ py_library(
         "//tensorflow/python/keras:losses",
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
-        "//tensorflow/python/keras/mixed_precision:autocast_variable",
         "//tensorflow/python/keras/mixed_precision:policy",
-        "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:mode_keys",
         "//tensorflow/python/training/tracking:data_structures",
@@ -372,9 +369,9 @@ distribute_py_test(
     shard_count = 20,
     tags = [
         "multi_and_single_gpu",
+        "no_cuda_asan",  # TODO(b/182391774)
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
-        "noasan",  # TODO(b/170902997)
         "noguitar",  # TODO(b/172354344)
         "notsan",
     ],
@@ -867,10 +864,14 @@ tf_py_test(
         "no_tfrt",  # TODO(b/180537361): Reenable TFRT after the issue is resolved.
     ],
     deps = [
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:init_ops_v2",
-        "//tensorflow/python:training_server_lib",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:tensor_spec",
         "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -882,9 +883,18 @@ tf_py_test(
         "//tensorflow/python/distribute/coordinator:cluster_coordinator",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/eager:test",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:callbacks",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/engine:base_layer",
+        "//tensorflow/python/keras/layers:core",
+        "//tensorflow/python/keras/layers/preprocessing:string_lookup",
+        "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/utils:dataset_creator",
+        "//tensorflow/python/keras/utils:engine_utils",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/training:server_lib",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -936,22 +946,6 @@ tf_py_test(
         ":sidecar_evaluator",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/keras",
-    ],
-)
-
-tf_py_test(
-    name = "sharded_variable_test",
-    size = "small",
-    srcs = ["sharded_variable_test.py"],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:extra_py_tests_deps",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/compat:v2_compat",
-        "//tensorflow/python/distribute:sharded_variable",
-        "//tensorflow/python/keras:metrics",
-        "//tensorflow/python/keras/engine:base_layer",
     ],
 )
 

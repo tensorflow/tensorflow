@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/dataset_stateful_op_allowlist.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -56,6 +57,15 @@ class GraphDefBuilder;
 class Node;
 
 namespace data {
+
+namespace internal {
+// Merges Options from source to destination. If there is a conflict on a field,
+// the field value from the source takes precedence.
+void MergeOptions(const protobuf::Message& source,
+                  protobuf::Message* destination);
+void MergeOptions(const protobuf::MessageLite& source,
+                  protobuf::MessageLite* destination);
+}  // namespace internal
 
 using TraceMeMetadata = std::vector<std::pair<StringPiece, string>>;
 
@@ -292,7 +302,6 @@ class GraphDefBuilderWrapper {
 };
 
 class StatsAggregator;
-class FunctionHandleCache;
 
 // A utility class for running a function and ensuring that there is always a
 // `tensorflow::data` symbol on the stack.
@@ -344,7 +353,6 @@ class IteratorContext {
           cancellation_manager(ctx->cancellation_manager()),
           env(ctx->env()),
           flr(ctx->flr()),
-          function_handle_cache(ctx->function_handle_cache()),
           resource_mgr(ctx->resource_mgr()),
           model(ctx->model()),
           runner(*(ctx->runner())),
@@ -401,9 +409,6 @@ class IteratorContext {
     // The FunctionLibraryRuntime object to be used to make function calls.
     FunctionLibraryRuntime* flr = nullptr;
 
-    // A FunctionHandleCache that owns all the function handles. Not owned.
-    FunctionHandleCache* function_handle_cache = nullptr;
-
     // A resource manager for storing dataset-related state, e.g. random
     // seeds or cached tensors. Not owned.
     ResourceMgr* resource_mgr = nullptr;
@@ -451,10 +456,6 @@ class IteratorContext {
   Env* env() const { return params_.env; }
 
   FunctionLibraryRuntime* flr() { return params_.flr; }
-
-  FunctionHandleCache* function_handle_cache() {
-    return params_.function_handle_cache;
-  }
 
   ResourceMgr* resource_mgr() { return params_.resource_mgr; }
 
@@ -821,6 +822,14 @@ class DatasetBase : public core::RefCounted {
   // the graph.
   const string& node_name() const { return node_name_; }
 
+  // Merges options from inputs to this dataset. If there is a conflict in a
+  // field value, the options set on this dataset takes precedence over those in
+  // the inputs. The order of precedence on the inputs is in the same order as
+  // how they appear for this dataset.
+  Status MergeOptionsFromInputs();
+
+  const Options& options() const { return options_; }
+
   // Returns a new iterator for iterating over the range of elements in
   // this dataset.
   //
@@ -941,9 +950,12 @@ class DatasetBase : public core::RefCounted {
   virtual std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const = 0;
 
+  void set_options(const Options& options) { options_ = options; }
+
  private:
   const string type_string_;
   const string node_name_;
+  Options options_;
 };
 
 // Represents an iterator that is associated with a particular dataset.

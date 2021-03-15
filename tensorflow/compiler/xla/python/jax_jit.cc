@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace jax {
 
@@ -228,6 +229,7 @@ H AbslHashValue(H h, const CallSignature& s) {
 xla::Status ParseArguments(const py::args& args, const py::kwargs& py_kwargs,
                            absl::Span<int const> static_argnums,
                            ParsedArgumentsAsBuffers& arguments) {
+  tensorflow::profiler::TraceMe traceme("ParseArguments");
   if (static_argnums.size() > args.size()) {
     return xla::InvalidArgument(
         "%s", "[jaxjit] Error with static argnums, executing the Python path.");
@@ -487,7 +489,7 @@ struct CacheEntry {
   // The processing done in `AddCacheEntry` ensures that LazyExpr are stored as
   // `py::none()`.
   std::vector<py::object> out_lazy_exprs;
-  py::object sticky_device;
+  xla::PjRtDevice* sticky_device;
 
   // Ensures a single thread performs the compilation for a given executable.
   //
@@ -516,7 +518,7 @@ class CompiledFunction {
   // (c) call the executable
   // (d) construct `DeviceArray` objects from the outputs
   // (e) reconstruct the `PyTree`.
-  py::object Call(py::args args, py::kwargs kwargs);
+  xla::StatusOr<py::object> Call(py::args args, py::kwargs kwargs);
 
   // This allows `inspect.signature(cpp_jitted_f)` from Python.
   py::object PythonSignature() {
@@ -590,6 +592,7 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
                                  xla::PjRtDevice* default_device,
                                  bool is_committed,
                                  ParsedArgumentsAsBuffers& arguments) {
+  tensorflow::profiler::TraceMe traceme("ConvertArgsToBuffers");
   std::vector<xla::PjRtBuffer*>& arg_buffers = arguments.arg_buffers;
   auto& keep_alive = arguments.keep_alive;
 
@@ -599,8 +602,8 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
 
   static const auto* xla_module =
       new py::module(py::module::import("jax.interpreters.xla"));
-  const auto& device_array = xla_module->attr("_DeviceArray");
-
+  static const auto* device_array =
+      new py::object(xla_module->attr("_DeviceArray"));
   // When the jitted function is not committed, we first check whether any
   // sticky `DeviceArray` is present and on which device they live. See also:
   // https://github.com/google/jax/pull/1884
@@ -614,15 +617,22 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
     for (py::handle arg : arguments.flat_dynamic_args) {
       // We specically only deal with DeviceArray (not ShardedDeviceArray).
       // (Can happen in jit(pmap), e.g. "test_jit_nested_donate_ignored").
-      if (py::isinstance<xla::PyBuffer>(arg) ||
-          arg.get_type().is(device_array)) {
-        xla::PyBuffer* buffer;
+      xla::PjRtDevice* device = nullptr;
+      if (arg.get_type().ptr() == py::type::handle_of<xla::PyBuffer>().ptr()) {
+        xla::PyBuffer* buffer = py::cast<xla::PyBuffer*>(arg);
+        if (!buffer->sticky_device()) {
+          continue;
+        }
+        device = buffer->sticky_device();
+      } else if (arg.get_type().is(*device_array)) {
         if (arg.attr("_device").is_none()) {  // Skip non-sticky devices.
           continue;
         }
         try {
-          // This can fail, e.g. when device_buffer is a `DeviceConstant`.
-          buffer = py::cast<xla::PyBuffer*>(arg.attr("device_buffer"));
+          // This can fail, e.g. for cloud TPU 2VM buffers.
+          xla::PyBuffer* buffer =
+              py::cast<xla::PyBuffer*>(arg.attr("device_buffer"));
+          device = buffer->buffer()->device();
         } catch (const py::cast_error& e) {
           return xla::InvalidArgument(
               "%s",
@@ -634,7 +644,8 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
 
                            ));
         }
-        xla::PjRtDevice* device = buffer->buffer()->device();
+      }
+      if (device) {
         if (data_device && (device != data_device)) {
           throw std::invalid_argument(absl::StrCat(
               "primitive arguments must be colocated on the same device ("
@@ -738,7 +749,7 @@ CacheEntry* CompiledFunction::AddCacheEntry(const py::args& args,
   cache_entry->out_pytree_def = std::move(out_tree);
 
   cache_entry->sticky_device =
-      py::cast<py::object>(executable_handlers_out_tree[2]);
+      py::cast<xla::PjRtDevice*>(executable_handlers_out_tree[2]);
   auto avals = py::cast<py::list>(executable_handlers_out_tree[3]);
   auto lazy_exprs = py::cast<py::list>(executable_handlers_out_tree[4]);
   CHECK_EQ(avals.size(), lazy_exprs.size());
@@ -757,12 +768,13 @@ CacheEntry* CompiledFunction::AddCacheEntry(const py::args& args,
   return cache_entry;
 }
 
-py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
+xla::StatusOr<py::object> CompiledFunction::Call(py::args args,
+                                                 py::kwargs kwargs) {
   if (JitIsDisabled()) {
     return fun_(*args, **kwargs);
   }
   if (always_fallback_to_python_) {
-    return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
+    return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
   }
   // Delayed values are retrieved on the first call to `Call`.
   if (!default_device_) {
@@ -781,13 +793,15 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
         } catch (const py::cast_error& e) {
           // Pathways and Cloud TPU 2VM runtime.
           always_fallback_to_python_ = true;
-          return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
+          return py::object(
+              py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
         }
         default_pyclient_ = default_pydevice_.client;
         default_device_ = default_pydevice_.contents;
         if (!default_device_) {  // UPTC
           always_fallback_to_python_ = true;
-          return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
+          return py::object(
+              py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
         }
         is_committed_ =
             py::cast<bool>(device_and_is_committed.attr("committed_to_device"));
@@ -798,7 +812,7 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
 
   ParsedArgumentsAsBuffers arguments;
   if (!ParseArguments(args, kwargs, static_argnums_, arguments).ok()) {
-    return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
+    return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
   }
 
   bool jax_enable_x64 = GetEnableX64();
@@ -808,7 +822,7 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
   if (!ConvertArgsToBuffers(jax_enable_x64, *default_pyclient_, default_device_,
                             is_committed_, arguments)
            .ok()) {
-    return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
+    return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
   }
 
   CacheEntry* cache_entry = GetCacheEntryIfPresent(arguments.signature);
@@ -822,39 +836,40 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
     }
     CHECK(cache_entry);
     if (cache_entry->fall_back_to_python) {
-      return py::cast<py::tuple>(out_and_fastpath_data)[0];
+      return py::object(py::cast<py::tuple>(out_and_fastpath_data)[0]);
     }
     // As we have already computed the results, we can return it.
     // It's even *required* e.g. if there are donated arguments, because
     // otherwise the buffer which has been donated already will be invalid.
-    return py::cast<py::tuple>(out_and_fastpath_data)[0];
+    return py::object(py::cast<py::tuple>(out_and_fastpath_data)[0]);
   }
   CHECK(cache_entry);
   if (cache_entry->fall_back_to_python) {
-    return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
+    return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
   }
   std::vector<std::unique_ptr<xla::PyBuffer>> outputs =
       ValueOrThrow(cache_entry->executable->PjRtExecute(arguments.arg_buffers));
 
   const std::vector<py::object>& out_avals = cache_entry->out_avals;
   const std::vector<py::object>& out_lazy_exprs = cache_entry->out_lazy_exprs;
-  const py::object& sticky_device = cache_entry->sticky_device;
+  xla::PjRtDevice* sticky_device = cache_entry->sticky_device;
 
   py::list flat_device_arrays;
   for (int i = 0; i < outputs.size(); ++i) {
     auto& buffer = outputs[i];
     if (out_lazy_exprs[i].is_none()) {  // No LazyExpr.
       buffer->SetAval(out_avals[i]);
-      buffer->SetStickyDevice(sticky_device);
+      TF_RETURN_IF_ERROR(buffer->set_sticky_device(sticky_device));
       flat_device_arrays.append(py::cast(std::move(outputs[i])));
     } else {
       static const auto* xla_module =
           new py::module(py::module::import("jax.interpreters.xla"));
       static const auto* device_array =
           new py::handle(xla_module->attr("_DeviceArray"));
-      flat_device_arrays.append(
-          (*device_array)(out_avals[i], sticky_device, out_lazy_exprs[i],
-                          py::cast(std::move(outputs[i]))));
+      flat_device_arrays.append((*device_array)(
+          out_avals[i],
+          py::cast(WrapWithClient(default_pyclient_, sticky_device)),
+          out_lazy_exprs[i], py::cast(std::move(outputs[i]))));
     }
   }
   return cache_entry->out_pytree_def.Unflatten(flat_device_arrays);
@@ -895,39 +910,43 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
             std::move(static_argnums));
       });
 
-  // This function is yet a full replacement for the Python one, because:
+  // This function is not yet a full replacement for the Python one, because:
   // (a) it does not support abstract types,
   // (b) it does not set the device stickiness yet.
   // TODO(jblespiau): Finish the replacement of the Python feature.
-  jitlib.def("device_put", [](py::handle obj, bool jax_enable_x64,
-                              xla::ClientAndPtr<xla::PjRtDevice> to_device) {
-    std::shared_ptr<xla::PyClient>& pyclient = to_device.client;
-    xla::DevicePutOptions options;
-    options.squash_64bit_types = !jax_enable_x64;
-    options.force_lazy_arrays = true;
-    options.allow_zero_copy = true;
-    xla::StatusOr<xla::DevicePutResult> results =
-        DevicePut(obj, to_device.contents, options);
-    if (!results.ok()) {
-      throw std::runtime_error(results.status().error_message());
-    }
-    if (results->owned_buffer) {
-      auto buffer = std::make_unique<xla::PyBuffer>(
-          pyclient, std::move(results->owned_buffer), xla::Traceback::Get());
+  jitlib.def("device_put",
+             [](py::handle obj, bool jax_enable_x64,
+                xla::ClientAndPtr<xla::PjRtDevice> to_device)
+                 -> xla::StatusOr<py::object> {
+               std::shared_ptr<xla::PyClient>& pyclient = to_device.client;
+               xla::DevicePutOptions options;
+               options.squash_64bit_types = !jax_enable_x64;
+               options.force_lazy_arrays = true;
+               options.allow_zero_copy = true;
+               xla::StatusOr<xla::DevicePutResult> results =
+                   DevicePut(obj, to_device.contents, options);
+               if (!results.ok()) {
+                 throw std::runtime_error(results.status().error_message());
+               }
+               if (results->owned_buffer) {
+                 auto buffer = std::make_unique<xla::PyBuffer>(
+                     pyclient, std::move(results->owned_buffer),
+                     xla::Traceback::Get());
 
-      static const auto* jax_core =
-          new py::module(py::module::import("jax.core"));
-      static const auto* shaped_array =
-          new py::handle(jax_core->attr("ShapedArray"));
-      buffer->SetAval((*shaped_array)(
-          buffer->python_shape(), buffer->python_dtype(), results->weak_type));
-      buffer->SetStickyDevice(py::none());
+                 static const auto* jax_core =
+                     new py::module(py::module::import("jax.core"));
+                 static const auto* shaped_array =
+                     new py::handle(jax_core->attr("ShapedArray"));
+                 buffer->SetAval((*shaped_array)(buffer->python_shape(),
+                                                 buffer->python_dtype(),
+                                                 results->weak_type));
+                 TF_RETURN_IF_ERROR(buffer->set_sticky_device(nullptr));
 
-      return py::cast(std::move(buffer));
-    } else {
-      return py::cast<py::object>(obj);
-    }
-  });
+                 return py::cast(std::move(buffer));
+               } else {
+                 return py::cast<py::object>(obj);
+               }
+             });
 
   py::class_<ArgSignature> arg_signature(jitlib, "ArgSignature");
   arg_signature

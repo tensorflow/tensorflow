@@ -32,7 +32,7 @@ class LazyLoader(types.ModuleType):
   """
 
   # The lint error here is incorrect.
-  def __init__(self, local_name, parent_module_globals, name, warning=None):  # pylint: disable=super-on-old-class
+  def __init__(self, local_name, parent_module_globals, name, warning=None):
     self._local_name = local_name
     self._parent_module_globals = parent_module_globals
     self._warning = warning

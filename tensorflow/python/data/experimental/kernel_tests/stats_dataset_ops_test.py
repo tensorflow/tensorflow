@@ -20,12 +20,13 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.kernel_tests import stats_dataset_test_base
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.experimental.ops import stats_ops
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.kernel_tests import tf_record_test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
@@ -396,10 +397,9 @@ class ThreadUtilizationStatsTest(stats_dataset_test_base.StatsDatasetTestBase,
         function_processing_time=True)
 
 
-class FeatureStatsDatasetTest(
-    stats_dataset_test_base.StatsDatasetTestBase,
-    reader_dataset_ops_test_base.MakeBatchedFeaturesDatasetTestBase,
-    parameterized.TestCase):
+class FeatureStatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase,
+                              tf_record_test_base.FeaturesTestBase,
+                              parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testFeaturesStats(self):
@@ -409,7 +409,7 @@ class FeatureStatsDatasetTest(
 
     def dataset_fn():
       return self.make_batch_feature(
-          filenames=self.test_filenames[0],
+          filenames=self._filenames[0],
           num_epochs=num_epochs,
           batch_size=batch_size,
           shuffle=True,
@@ -454,6 +454,81 @@ class FeatureStatsDatasetTest(
         self.regexForNodeName("record_stats::ParseExampleDatasetV2",
                               "feature_values_count"),
         self._sum_keywords(1) * num_epochs + 3 * total_records)
+
+
+# TODO(b/116814321): Can not checkpoint input_pipeline with the
+# transformation `stats_ops.set_stats_aggregator`, since we don't support
+# saving/restoring resources (StatsAggregator in this case) yet.
+class StatsDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                 parameterized.TestCase):
+
+  def _build_dataset_bytes_stats(self, num_elements):
+    return dataset_ops.Dataset.range(num_elements).map(
+        lambda x: array_ops.tile([x], ops.convert_to_tensor([x]))).apply(
+            stats_ops.bytes_produced_stats("bytes_produced"))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def test_bytes_produced_stats_invalid_tag_shape(self):
+    with self.assertRaisesRegex(ValueError,
+                                "Shape must be rank 0 but is rank 1"):
+      # pylint: disable=g-long-lambda
+      self.run_core_tests(
+          lambda: dataset_ops.Dataset.range(100).apply(
+              stats_ops.bytes_produced_stats(["bytes_produced"])), 100)
+      # pylint: enable=g-long-lambda
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testBytesStatsDatasetSaveableCore(self):
+    num_outputs = 100
+    self.run_core_tests(lambda: self._build_dataset_bytes_stats(num_outputs),
+                        num_outputs)
+
+  def _build_dataset_latency_stats(self, num_elements, tag="record_latency"):
+    return dataset_ops.Dataset.range(num_elements).apply(
+        stats_ops.latency_stats(tag))
+
+  def _build_dataset_multiple_tags(self,
+                                   num_elements,
+                                   tag1="record_latency",
+                                   tag2="record_latency_2"):
+    return dataset_ops.Dataset.range(num_elements).apply(
+        stats_ops.latency_stats(tag1)).apply(stats_ops.latency_stats(tag2))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def test_latency_stats_invalid_tag_shape(self):
+    with self.assertRaisesRegex(ValueError,
+                                "Shape must be rank 0 but is rank 1"):
+      # pylint: disable=g-long-lambda
+      self.run_core_tests(
+          lambda: dataset_ops.Dataset.range(100).apply(
+              stats_ops.latency_stats(["record_latency", "record_latency_2"])),
+          100)
+      # pylint: enable=g-long-lambda
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testLatencyStatsDatasetSaveableCore(self):
+    num_outputs = 100
+
+    self.run_core_tests(lambda: self._build_dataset_latency_stats(num_outputs),
+                        num_outputs)
+
+    self.run_core_tests(lambda: self._build_dataset_multiple_tags(num_outputs),
+                        num_outputs)
+
+    tag1 = "record_latency"
+    tag2 = "record_latency"
+    self.run_core_tests(
+        lambda: self._build_dataset_multiple_tags(num_outputs, tag1, tag2),
+        num_outputs)
+
+  def _build_dataset_stats_aggregator(self):
+    aggregator = stats_aggregator.StatsAggregator()
+    return dataset_ops.Dataset.range(10).apply(
+        stats_ops.set_stats_aggregator(aggregator))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def test_set_stats_aggregator_not_support_checkpointing(self):
+    self.run_core_tests(self._build_dataset_stats_aggregator, 10)
 
 
 if __name__ == "__main__":

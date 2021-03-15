@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/python/lib/core/numpy.h"
 
 namespace py = pybind11;
@@ -205,6 +206,7 @@ StatusOr<DevicePutResult> HandleDeviceArray(py::handle obj,
 
 StatusOr<DevicePutResult> DevicePut(pybind11::handle arg, PjRtDevice* to_device,
                                     const DevicePutOptions& options) {
+  tensorflow::profiler::TraceMe traceme("DevicePut");
   static const absl::flat_hash_map<PyObject*, DevicePutFunc>* const handlers =
       [] {
         auto p = new absl::flat_hash_map<PyObject*, DevicePutFunc>();

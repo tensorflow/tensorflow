@@ -55,7 +55,7 @@ class DiscretizationTest(keras_parameterized.TestCase,
     expected_output_shape = [None, 4]
 
     input_data = keras.Input(shape=(4,))
-    layer = discretization.Discretization(bins=[0., 1., 2.])
+    layer = get_layer_class()(bin_boundaries=[0., 1., 2.])
     bucket_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, bucket_data.shape.as_list())
 
@@ -70,7 +70,7 @@ class DiscretizationTest(keras_parameterized.TestCase,
     expected_output_shape = [None, 4]
 
     input_data = keras.Input(shape=(4,), dtype=dtypes.int64)
-    layer = discretization.Discretization(bins=[-.5, 0.5, 1.5])
+    layer = get_layer_class()(bin_boundaries=[-.5, 0.5, 1.5])
     bucket_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, bucket_data.shape.as_list())
 
@@ -84,7 +84,7 @@ class DiscretizationTest(keras_parameterized.TestCase,
         indices=indices, values=[-1.5, 1.0, 3.4], dense_shape=[2, 3])
     expected_output = [0, 2, 3]
     input_data = keras.Input(shape=(3,), dtype=dtypes.float32, sparse=True)
-    layer = discretization.Discretization(bins=[-.5, 0.5, 1.5])
+    layer = get_layer_class()(bin_boundaries=[-.5, 0.5, 1.5])
     bucket_data = layer(input_data)
 
     model = keras.Model(inputs=input_data, outputs=bucket_data)
@@ -100,7 +100,7 @@ class DiscretizationTest(keras_parameterized.TestCase,
     expected_output_shape = [None, None]
 
     input_data = keras.Input(shape=(None,), ragged=True)
-    layer = discretization.Discretization(bins=[0., 1., 2.])
+    layer = get_layer_class()(bin_boundaries=[0., 1., 2.])
     bucket_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, bucket_data.shape.as_list())
 
@@ -116,7 +116,7 @@ class DiscretizationTest(keras_parameterized.TestCase,
     expected_output_shape = [None, None]
 
     input_data = keras.Input(shape=(None,), ragged=True, dtype=dtypes.int64)
-    layer = discretization.Discretization(bins=[-.5, 0.5, 1.5])
+    layer = get_layer_class()(bin_boundaries=[-.5, 0.5, 1.5])
     bucket_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, bucket_data.shape.as_list())
     model = keras.Model(inputs=input_data, outputs=bucket_data)
@@ -129,13 +129,23 @@ class DiscretizationTest(keras_parameterized.TestCase,
         indices=indices, values=[-1, 1, 3], dense_shape=[2, 3])
     expected_output = [0, 2, 3]
     input_data = keras.Input(shape=(3,), dtype=dtypes.int32, sparse=True)
-    layer = discretization.Discretization(bins=[-.5, 0.5, 1.5])
+    layer = get_layer_class()(bin_boundaries=[-.5, 0.5, 1.5])
     bucket_data = layer(input_data)
 
     model = keras.Model(inputs=input_data, outputs=bucket_data)
     output_dataset = model.predict(input_array, steps=1)
     self.assertAllEqual(indices, output_dataset.indices)
     self.assertAllEqual(expected_output, output_dataset.values)
+
+  def test_num_bins_negative_fails(self):
+    with self.assertRaisesRegex(ValueError, "`num_bins` must be.*num_bins=-7"):
+      _ = get_layer_class()(num_bins=-7)
+
+  def test_num_bins_and_bins_set_fails(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        r"`num_bins` and `bin_boundaries` should not be set.*5.*\[1, 2\]"):
+      _ = get_layer_class()(num_bins=5, bins=[1, 2])
 
   @parameterized.named_parameters([
       {
@@ -203,7 +213,7 @@ class DiscretizationTest(keras_parameterized.TestCase,
           test_data.shape[0] // 2)
 
     cls = get_layer_class()
-    layer = cls(epsilon=epsilon, bins=num_bins)
+    layer = cls(epsilon=epsilon, num_bins=num_bins)
     layer.adapt(adapt_data)
 
     input_data = keras.Input(shape=input_shape)

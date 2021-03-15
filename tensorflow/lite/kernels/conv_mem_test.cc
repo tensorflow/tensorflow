@@ -37,6 +37,10 @@ TEST(ConvMemUsage, HugeIm2ColData) {
 
   const auto mem_before = profiling::memory::GetMemoryUsage();
   std::unique_ptr<Interpreter> interpreter;
+
+  // Note that we explicitly set 1 thread here to avoid extra memory footprint
+  // caused by multithreading, which will make the memory usage threshold check
+  // later more reliable.
   ASSERT_EQ(InterpreterBuilder(*model, ops::builtin::BuiltinOpResolver())(
                 &interpreter, /*num_threads*/ 1),
             kTfLiteOk);
@@ -46,7 +50,11 @@ TEST(ConvMemUsage, HugeIm2ColData) {
   const auto mem_after = profiling::memory::GetMemoryUsage();
   TFLITE_LOG(INFO) << "HugeIm2ColData Memory usage info: "
                    << mem_after - mem_before;
-  EXPECT_LE((mem_after - mem_before).max_rss_kb, 2 * 1024 * 1024);
+
+  // The "3GB" threshold but still < 3.5GB is chosen to suit different testing
+  // configurations, such as MSan/TSan related tests where extra system-level
+  // memory footprint usage might be counted as well.
+  EXPECT_LE((mem_after - mem_before).max_rss_kb, 3 * 1024 * 1024);
 }
 
 }  // namespace tflite

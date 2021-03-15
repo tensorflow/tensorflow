@@ -81,6 +81,8 @@ class PyExecutable {
 
   const PjRtExecutable& pjrt_executable() const { return *executable_; }
 
+  PjRtExecutable* mutable_pjrt_executable() const { return executable_.get(); }
+
  private:
   friend class PyClient;
 

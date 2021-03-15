@@ -85,6 +85,24 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "central_storage_strategy_test",
+    srcs = ["central_storage_strategy_test.py"],
+    python_version = "PY3",
+    tags = [
+        "multi_and_single_gpu",
+        "no_tfrt",  # TODO(b/179839466): Reenable TFRT after the issue is resolved.
+        "no_windows_gpu",  # TODO(b/130551176)
+    ],
+    deps = [
+        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/keras/utils:kpl_test_utils",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 tpu_py_test(
     name = "tpu_strategy_test",
     srcs = ["tpu_strategy_test.py"],
@@ -106,6 +124,7 @@ tf_py_test(
     tags = [
         "no_tfrt",  # TODO(b/171765113)
         "noasan",  # TODO(b/156029134)
+        "nomac",  # TODO(b/182567880)
         "nomsan",  # TODO(b/156029134)
         "notsan",  # TODO(b/156029134)
     ],

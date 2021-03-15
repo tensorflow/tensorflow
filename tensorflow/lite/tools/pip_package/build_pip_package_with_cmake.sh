@@ -158,7 +158,7 @@ case "${TENSORFLOW_TARGET}" in
 esac
 
 echo "Output can be found here:"
-find "${BUILD_DIR}"
+find "${BUILD_DIR}/dist"
 
 # Build debian package.
 if [[ "${BUILD_DEB}" != "y" ]]; then

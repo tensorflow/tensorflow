@@ -213,14 +213,18 @@ void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
   // First, find out all fusion instructions. We will filter out
   // unsupported/non-profitable cases below.
   absl::flat_hash_set<HloInstruction*> fusion_instrs;
+  std::vector<HloInstruction*> fusion_instrs_ordered;
   for (auto opnd : consumer->operands()) {
     auto predecessor = opnd->LatestNonGteAncestor();
     if (predecessor->opcode() == HloOpcode::kFusion) {
-      fusion_instrs.insert(predecessor);
+      if (fusion_instrs.insert(predecessor).second) {
+        // Add unseen fusion to ordered list.
+        fusion_instrs_ordered.push_back(predecessor);
+      }
     }
   }
 
-  for (auto instr : fusion_instrs) {
+  for (auto instr : fusion_instrs_ordered) {
     if (!IsFusionSupported(*instr)) {
       VLOG(2) << "Reject unsupported fusion instr " << instr->ToString();
       continue;

@@ -230,6 +230,7 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
       pass_manager->addPass(mlir::TFL::CreateLegalizeVariablesPass());
       pass_manager->addPass(mlir::TFL::CreateRemoveArgsAndGlobalTensors());
     }
+    pass_manager->addPass(mlir::TFL::CreateLegalizeHashTablesPass());
     pass_manager->addNestedPass<mlir::FuncOp>(
         mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true));
     // This pass operates on TensorFlow ops but is triggered after legalization
@@ -328,6 +329,7 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm.addPass(
       mlir::TFL::CreateLegalizeTFPass(/*run_tfl_runtime_verification=*/true));
+  pm.addPass(mlir::TFL::CreateLegalizeHashTablesPass());
   pm.addPass(mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true));
   pm.addPass(mlir::TFL::CreateOptimizeFunctionalOpsPass());
   pm.addPass(mlir::createSymbolDCEPass());

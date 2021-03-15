@@ -33,48 +33,50 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
   // when bytes are provided the wrapper will be confused which
   // constructor to call.
   m.def("CreateWrapperFromFile",
-        [](const std::string& model_path,
+        [](const std::string& model_path, int op_resolver_id,
            const std::vector<std::string>& registerers) {
           std::string error;
           auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromFile(
-              model_path.c_str(), registerers, &error);
+              model_path.c_str(), op_resolver_id, registerers, &error);
           if (!wrapper) {
             throw std::invalid_argument(error);
           }
           return wrapper;
         });
   m.def("CreateWrapperFromFile",
-        [](const std::string& model_path,
+        [](const std::string& model_path, int op_resolver_id,
            const std::vector<std::string>& registerers_by_name,
            const std::vector<std::function<void(uintptr_t)>>&
                registerers_by_func) {
           std::string error;
           auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromFile(
-              model_path.c_str(), registerers_by_name, registerers_by_func,
-              &error);
+              model_path.c_str(), op_resolver_id, registerers_by_name,
+              registerers_by_func, &error);
           if (!wrapper) {
             throw std::invalid_argument(error);
           }
           return wrapper;
         });
   m.def("CreateWrapperFromBuffer",
-        [](const py::bytes& data, const std::vector<std::string>& registerers) {
+        [](const py::bytes& data, int op_resolver_id,
+           const std::vector<std::string>& registerers) {
           std::string error;
           auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromBuffer(
-              data.ptr(), registerers, &error);
+              data.ptr(), op_resolver_id, registerers, &error);
           if (!wrapper) {
             throw std::invalid_argument(error);
           }
           return wrapper;
         });
   m.def("CreateWrapperFromBuffer",
-        [](const py::bytes& data,
+        [](const py::bytes& data, int op_resolver_id,
            const std::vector<std::string>& registerers_by_name,
            const std::vector<std::function<void(uintptr_t)>>&
                registerers_by_func) {
           std::string error;
           auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromBuffer(
-              data.ptr(), registerers_by_name, registerers_by_func, &error);
+              data.ptr(), op_resolver_id, registerers_by_name,
+              registerers_by_func, &error);
           if (!wrapper) {
             throw std::invalid_argument(error);
           }

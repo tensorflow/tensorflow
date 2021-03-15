@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -82,7 +81,6 @@ class IteratorResource : public ResourceBase {
         : flib_def_(std::move(flib_def)),
           flr_(flr),
           pflr_(std::move(pflr)),
-          function_handle_cache_(absl::make_unique<FunctionHandleCache>(flr)),
           iterator_(std::move(iterator)) {}
 
     ~State() { cancellation_manager_.StartCancel(); }
@@ -99,10 +97,6 @@ class IteratorResource : public ResourceBase {
 
     std::shared_ptr<ProcessFunctionLibraryRuntime> pflr() { return pflr_; }
 
-    FunctionHandleCache* function_handle_cache() {
-      return function_handle_cache_.get();
-    }
-
     ResourceMgr* resource_mgr() { return &resource_mgr_; }
 
     CancellationManager* cancellation_manager() {
@@ -115,7 +109,6 @@ class IteratorResource : public ResourceBase {
     std::shared_ptr<FunctionLibraryDefinition> flib_def_;
     FunctionLibraryRuntime* flr_ = nullptr;  // not owned
     std::shared_ptr<ProcessFunctionLibraryRuntime> pflr_;
-    std::unique_ptr<FunctionHandleCache> function_handle_cache_;
     ResourceMgr resource_mgr_;
     CancellationManager cancellation_manager_;
     std::unique_ptr<DatasetBaseIterator> iterator_;

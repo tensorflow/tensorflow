@@ -2686,6 +2686,9 @@ cuda_py_test(
     name = "sparse_tensor_dense_matmul_grad_test",
     size = "small",
     srcs = ["sparse_tensor_dense_matmul_grad_test.py"],
+    xla_tags = [
+        "no_cuda_asan",  # b/182392418 times out
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
@@ -3238,7 +3241,10 @@ cuda_py_test(
     size = "medium",
     srcs = ["extract_image_patches_grad_test.py"],
     shard_count = 15,
-    tags = ["notap"],  # http://b/31080670
+    tags = [
+        "nomac",  # b/181799478
+        "notap",  # b/31080670
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
