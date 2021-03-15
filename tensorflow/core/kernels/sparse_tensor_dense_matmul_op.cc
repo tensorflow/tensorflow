@@ -31,13 +31,6 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-template <typename T>
-EIGEN_ALWAYS_INLINE EIGEN_DEVICE_FUNC bool DeterminismTypesCheck() {
-  return TF_PREDICT_TRUE(
-      std::is_integral<T>::value ||
-      (!std::is_same<T, double>::value && !std::is_same<T, complex128>::value));
-}
-
 template <typename Device, typename T, typename Tindices>
 class SparseTensorDenseMatMulOp : public OpKernel {
  public:
@@ -120,18 +113,6 @@ class SparseTensorDenseMatMulOp : public OpKernel {
       OP_REQUIRES(ctx, FastBoundsCheck(nnz * outer_right, int32max),
                   errors::InvalidArgument(
                       "Cannot use GPU when output.shape[1] * nnz(a) > 2^31"));
-      bool deterministic_ops = false;
-      TF_CHECK_OK(ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
-                                     /*default_val=*/false,
-                                     &deterministic_ops));
-      if (deterministic_ops) {
-        OP_REQUIRES(
-            ctx, DeterminismTypesCheck<T>(),
-            errors::Unimplemented(
-                "No deterministic GPU implementation of "
-                "float64 or complex128 for sparse_dense_matmul"));
-      }
-
     }
 
     TensorShape out_shape({outer_left, outer_right});

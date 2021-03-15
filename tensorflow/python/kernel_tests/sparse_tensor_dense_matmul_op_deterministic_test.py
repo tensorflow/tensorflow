@@ -78,7 +78,9 @@ class SparseTensorDenseMatmulDeterministicTest(
       with self.session(force_gpu=True):
 
         if data_type in unimplemented_types:
-          with self.assertRaises(errors.UnimplementedError):
+          with self.assertRaisesRegex(
+              errors.UnimplementedError,
+              "No deterministic GPU implementation of *"):
             result_ = sparse_ops.sparse_tensor_dense_matmul(
                 sparse_input, dense_input)
             self.evaluate(result_)
@@ -98,4 +100,3 @@ if __name__ == "__main__":
   # and then two more test files to be created.
   os.environ['TF_DETERMINISTIC_OPS'] = '1'
   test.main()
-

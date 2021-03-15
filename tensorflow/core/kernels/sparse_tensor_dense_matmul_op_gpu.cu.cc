@@ -137,6 +137,13 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
     GpuLaunchConfig config = GetGpuLaunchConfig(p * nnz, d);
 
     if (RequireDeterminism()) {
+      if (std::is_same<T, double>::value ||
+          std::is_same<T, complex128>::value) {
+        return errors::Unimplemented(
+            "No deterministic GPU implementation of "
+            "float64 or complex128 for sparse_dense_matmul");
+      }
+
        Tupcast* maybe_temp_out_data = nullptr;
 
        TF_RETURN_IF_ERROR(ctx->allocate_temp(
