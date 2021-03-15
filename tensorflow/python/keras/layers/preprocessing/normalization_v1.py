@@ -63,7 +63,7 @@ class Normalization(CombinerPreprocessingLayer):
 
   Attributes:
       axis: Integer or tuple of integers, the axis or axes that should be
-        "kept". These axes are not be summed over when calculating the
+        "kept". These axes are not to be summed over when calculating the
         normalization statistics. By default the last axis, the `features` axis
         is kept and any `space` or `time` axes are summed. Each element in the
         the axes that are kept is normalized independently. If `axis` is set to
