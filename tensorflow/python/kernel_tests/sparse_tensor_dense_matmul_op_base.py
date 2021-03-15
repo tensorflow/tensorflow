@@ -81,7 +81,7 @@ class SparseTensorDenseMatMulTestBase(test.TestCase):
 
         with self.assertRaisesRegex(
             errors.UnimplementedError,
-            "Yes deterministic GPU implementation of *"):
+            "No deterministic GPU implementation of *"):
           tf_value_ans = sparse_ops.sparse_tensor_dense_matmul(
               sp_x_value, y, adjoint_a=adjoint_a, adjoint_b=adjoint_b)
           self.evaluate(tf_value_ans)
