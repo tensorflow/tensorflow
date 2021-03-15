@@ -30,31 +30,47 @@ from tensorflow.python.util.tf_export import keras_export
 class Ftrl(optimizer_v2.OptimizerV2):
   r"""Optimizer that implements the FTRL algorithm.
 
-  See Algorithm 1 of this
-  [paper](https://research.google.com/pubs/archive/41159.pdf).
-  This version has support for both online L2 (the L2 penalty given in the paper
-  above) and shrinkage-type L2 (which is the addition of an L2 penalty to the
-  loss function).
+  "Follow The Regularized Leader" (FTRL) is an optimization algorithm developed
+  at Google for click-through rate prediction in the early 2010s. It is most
+  suitable for shallow models with large and sparse feature spaces.
+  The algorithm is described in
+  [this paper](https://research.google.com/pubs/archive/41159.pdf).
+  The Keras version has support for both online L2 regularization
+  (the L2 regularization described in the paper
+  above) and shrinkage-type L2 regularization
+  (which is the addition of an L2 penalty to the loss function).
 
   Initialization:
-  $$t = 0$$
-  $$n_{0} = 0$$
-  $$\sigma_{0} = 0$$
-  $$z_{0} = 0$$
 
-  Update ($$i$$ is variable index, $$\alpha$$ is the learning rate):
-  $$t = t + 1$$
-  $$n_{t,i} = n_{t-1,i} + g_{t,i}^{2}$$
-  $$\sigma_{t,i} = (\sqrt{n_{t,i}} - \sqrt{n_{t-1,i}}) / \alpha$$
-  $$z_{t,i} = z_{t-1,i} + g_{t,i} - \sigma_{t,i} * w_{t,i}$$
-  $$w_{t,i} =\begin{cases} 0 & | z_{i}| \leqslant \lambda _{1} ,\\
-              \ -\left(\frac{\beta +\sqrt{n_{t,i}}}{\alpha } 
-              +\lambda _{2}\right)^{-1}( z_{i} -sgn(z_{i} )
-              *\lambda _{1}) & otherwise.\end{cases}$$
+  ```python
+  n = 0
+  sigma = 0
+  z = 0
+  ```
 
-  Check the documentation for the l2_shrinkage_regularization_strength
+  Update rule for one variable `w`:
+
+  ```python
+  prev_n = n
+  n = n + g ** 2
+  sigma = (sqrt(n) - sqrt(prev_n)) / lr
+  z = z + g - sigma * w
+  if abs(z) < lambda_1:
+    w = 0
+  else:
+    w = (sgn(z) * lambda_1 - z) / ((beta + sqrt(n)) / alpha + lambda_2)
+  ```
+
+  Notation:
+
+  - `lr` is the learning rate
+  - `g` is the gradient for the variable
+  - `lambda_1` is the L1 regularization strength
+  - `lambda_2` is the L2 regularization strength
+
+  Check the documentation for the `l2_shrinkage_regularization_strength`
   parameter for more details when shrinkage is enabled, in which case gradient
-  is replaced with gradient_with_shrinkage.
+  is replaced with a gradient with shrinkage.
 
   Args:
     learning_rate: A `Tensor`, floating point value, or a schedule that is a
@@ -82,7 +98,7 @@ class Ftrl(optimizer_v2.OptimizerV2):
       gradients by value.
 
   Reference:
-    - [paper](
+    - [Original paper](
       https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf)
   """
 

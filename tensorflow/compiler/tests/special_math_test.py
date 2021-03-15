@@ -184,12 +184,33 @@ class ZetaTest(xla_test.XLATestCase, parameterized.TestCase):
 
     with self.session() as sess:
       with self.test_scope():
-        y = _zeta([1., 1.1], [-1.1, -1.])
+        y = _zeta([1.1, 1.2, 2.1, 2.2, 3.1], [-2.0, -1.1, -1.0, -0.5, -0.1])
       actual = sess.run(y)
+    # For q <= 0, x must be an integer.
+    self.assertTrue(np.all(np.isnan(actual)))
 
-    # When q is negative, zeta is not defined
-    # if q is an integer or x is not an integer.
+    with self.session() as sess:
+      with self.test_scope():
+        y = _zeta([2.0, 4.0, 6.0], [0.0, -1.0, -2.0])
+      actual = sess.run(y)
+    # For integer q <= 0, zeta has poles with a defined limit of +inf where x is
+    # an even integer.
     self.assertTrue(np.all(np.isinf(actual)))
+
+    with self.session() as sess:
+      with self.test_scope():
+        y = _zeta([3.0, 5.0, 7.0], [0.0, -1.0, -2.0])
+      actual = sess.run(y)
+    # For non-positive integer q, zeta has poles with an undefined limit where x
+    # is an odd integer.
+    self.assertTrue(np.all(np.isnan(actual)))
+
+    with self.session() as sess:
+      with self.test_scope():
+        y = _zeta([1.1, 2.2, 3.3], [-1.1, -1.0, 0.0])
+      actual = sess.run(y)
+    # For non-positive q, zeta is not defined if x is not an integer.
+    self.assertTrue(np.all(np.isnan(actual)))
 
   @parameterized.parameters((np.float32, 1e-2, 1e-11),
                             (np.float64, 1e-4, 1e-30))

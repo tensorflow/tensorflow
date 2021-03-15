@@ -20,7 +20,7 @@ def tflite_ios_per_kernel_test(**kwargs):
     _ignore = [kwargs]
     pass
 
-def ios_visibility_whitelist():
+def ios_visibility_allowlist():
     """This is a no-op outside of Google."""
     pass
 
@@ -44,7 +44,7 @@ def if_nnapi(supported, not_supported = [], supported_android = None):
     if supported_android == None:
         supported_android = supported
 
-    # We use a blacklist rather than a whitelist for known unsupported platforms.
+    # We use a denylist rather than a allowlist for known unsupported platforms.
     return select({
         clean_dep("//tensorflow:emscripten"): not_supported,
         clean_dep("//tensorflow:ios"): not_supported,

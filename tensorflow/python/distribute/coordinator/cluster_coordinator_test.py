@@ -996,6 +996,19 @@ class StrategyIntegrationTest(test.TestCase):
       self.strategy.distribute_datasets_from_function(
           lambda _: dataset_ops.DatasetV2.range(1, 2))
 
+  def testPerWorkerDistributeDatasetsElementSpec(self):
+
+    def per_worker_dataset_fn():
+      return self.strategy.distribute_datasets_from_function(
+          lambda _: dataset_ops.DatasetV2.from_tensor_slices([1, 2]))
+
+    dataset = dataset_ops.DatasetV2.from_tensor_slices([1, 2])
+    per_worker_distribute_dataset = self.coordinator.create_per_worker_dataset(
+        per_worker_dataset_fn)
+
+    self.assertAllEqual(dataset.element_spec,
+                        per_worker_distribute_dataset.element_spec)
+
 
 if __name__ == '__main__':
   test.main()

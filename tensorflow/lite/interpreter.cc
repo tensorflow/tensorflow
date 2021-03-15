@@ -161,9 +161,9 @@ void Interpreter::SetExternalContext(TfLiteExternalContextType type,
 }
 
 TfLiteStatus Interpreter::SetCustomAllocationForTensor(
-    int tensor_index, const TfLiteCustomAllocation& allocation) {
+    int tensor_index, const TfLiteCustomAllocation& allocation, int64_t flags) {
   return primary_subgraph().SetCustomAllocationForTensor(tensor_index,
-                                                         allocation);
+                                                         allocation, flags);
 }
 
 TfLiteStatus Interpreter::SetInputs(std::vector<int> inputs) {

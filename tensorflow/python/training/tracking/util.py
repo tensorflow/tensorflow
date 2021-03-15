@@ -66,6 +66,7 @@ from tensorflow.python.util.tf_export import tf_export
 _SESSION_PROVIDER = None
 
 
+@tf_export("__internal__.tracking.register_session_provider", v1=[])
 def register_session_provider(session_provider):
   global _SESSION_PROVIDER
   if _SESSION_PROVIDER is None:

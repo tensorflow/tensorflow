@@ -467,11 +467,20 @@ py_library(
 )
 
 pytype_strict_library(
+    name = "metrics_interface",
+    srcs = ["metrics_interface.py"],
+    compatible_with = get_compatible_with_portable(),
+    srcs_version = "PY3",
+    visibility = ["//visibility:private"],
+)
+
+pytype_strict_library(
     name = "metrics_nonportable",
     srcs = ["metrics_nonportable.py"],
     srcs_version = "PY3",
     visibility = ["//visibility:private"],
     deps = [
+        ":metrics_interface",
         "//tensorflow/python/eager:monitoring",
     ],
 )
@@ -494,7 +503,9 @@ pytype_strict_library(
     compatible_with = get_compatible_with_portable(),
     srcs_version = "PY3",
     visibility = ["//visibility:private"],
-    deps = [],
+    deps = [
+        ":metrics_interface",
+    ],
 )
 
 py_test(

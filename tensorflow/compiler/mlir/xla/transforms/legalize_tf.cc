@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -48,6 +49,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
@@ -1081,6 +1083,32 @@ GatherDimensionNumbers GetGatherDimNumsAttr(StringAttr attr, Builder *builder) {
   ::xla::GatherDimensionNumbers dims;
   if (!dims.ParseFromString(attr.getValue().str())) return {};
   return ::xla::ConvertGatherDimensionNumbers(dims, builder);
+}
+
+//===----------------------------------------------------------------------===//
+// XlaDot op utilities.
+//===----------------------------------------------------------------------===//
+
+bool HasValidDotDims(StringAttr attr) {
+  ::xla::DotDimensionNumbers dims;
+  return dims.ParseFromString(attr.getValue().str());
+}
+
+DotDimensionNumbers GetDotDimNumsAttr(StringAttr attr, Builder *builder) {
+  ::xla::DotDimensionNumbers dims;
+  if (!dims.ParseFromString(attr.getValue().str())) return {};
+  return ::xla::ConvertDotDimensionNumbers(dims, builder);
+}
+
+bool HasValidPrecisionConfig(StringAttr attr) {
+  ::xla::PrecisionConfig precision;
+  return precision.ParseFromString(attr.getValue().str());
+}
+
+mlir::ArrayAttr GetPrecisionConfigAttr(StringAttr attr, Builder *builder) {
+  ::xla::PrecisionConfig precision;
+  if (!precision.ParseFromString(attr.getValue().str())) return {};
+  return ::xla::ConvertPrecisionConfig(&precision, builder);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2625,6 +2653,72 @@ class ConvertMaxPoolOp : public OpRewritePattern<OpTy> {
 using ConvertMaxPool2DOp = ConvertMaxPoolOp<TF::MaxPoolOp, /*num_dims=*/4>;
 using ConvertMaxPool3DOp = ConvertMaxPoolOp<TF::MaxPool3DOp, /*num_dims=*/5>;
 
+// Converts tf.Select (SelectV1) to mhlo.select. It has optional broadcasting on
+// the condition only.
+class ConvertSelectOp : public OpRewritePattern<TF::SelectOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::SelectOp op,
+                                PatternRewriter &rewriter) const override {
+    // This lowering only works on ranked types.
+    auto cond_type = op.condition().getType().dyn_cast<RankedTensorType>();
+    auto then_type = op.t().getType().dyn_cast<RankedTensorType>();
+    auto else_type = op.e().getType().dyn_cast<RankedTensorType>();
+    if (!cond_type || !then_type || !else_type) {
+      return failure();
+    }
+
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    Value cond_shape = b.createOrFold<shape::ShapeOfOp>(op.condition());
+    Value then_shape = b.createOrFold<shape::ShapeOfOp>(op.t());
+    Value else_shape = b.createOrFold<shape::ShapeOfOp>(op.e());
+
+    // First check that the `then` and `else` shapes are the equal.
+    Value assumption =
+        b.createOrFold<shape::CstrEqOp>(ValueRange{then_shape, else_shape});
+    // For a vector cond we also verify that the majormost dim of `then` matches
+    // the vector size. To do that split off the first dim of `then`.
+    bool needs_broadcast = cond_type.getRank() == 1 && then_type.getRank() != 1;
+    Value then_shape_split = then_shape;
+    if (needs_broadcast) {
+      Value const_one = b.create<ConstantIndexOp>(1);
+      Type extents = shape::getExtentTensorType(b.getContext());
+      SmallVector<Value, 2> then_split;
+      b.createOrFold<shape::SplitAtOp>(then_split, TypeRange{extents, extents},
+                                       then_shape, const_one);
+      then_shape_split = then_split[0];
+    }
+    // If the condition is not a scalar, check that it matches the other shapes.
+    if (cond_type.getRank() > 0) {
+      Value eq_cstr = b.createOrFold<shape::CstrEqOp>(
+          ValueRange{cond_shape, then_shape_split});
+      auto witness = shape::WitnessType::get(b.getContext());
+      assumption = b.createOrFold<shape::AssumingAllOp>(
+          witness, ValueRange{assumption, eq_cstr});
+    }
+    auto result_type = op.getResult().getType().cast<TensorType>();
+    auto assuming_op =
+        b.create<shape::AssumingOp>(ArrayRef<Type>{result_type}, assumption);
+
+    OpBuilder::InsertionGuard guard(b);
+    b.createBlock(&assuming_op.doRegion());
+
+    // Broadcast the cond if necessary.
+    Value cond = op.condition();
+    if (needs_broadcast) {
+      Value result_extents = b.create<shape::ToExtentTensorOp>(
+          GetExtentsTensorTypeFor(result_type), then_shape);
+      cond = b.create<mhlo::DynamicBroadcastInDimOp>(
+          RankedTensorType::get(result_type.getShape(), b.getI1Type()), cond,
+          result_extents, GetI64ElementsAttrForSeq(0, cond_type.getRank(), &b));
+    }
+    Value select = b.create<mhlo::SelectOp>(result_type, cond, op.t(), op.e());
+    b.create<shape::AssumingYieldOp>(select);
+    rewriter.replaceOp(op, {assuming_op.getResult(0)});
+    return success();
+  }
+};
 
 // Converts Sigmoid op to HLO ops computing sigmoid with the following formula:
 //
@@ -6227,34 +6321,83 @@ LogicalResult legalizeTF(
 void PopulateLegalizeTfPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
   populateWithGenerated(context, *patterns);
+  // clang-format off
   patterns->insert<
-      ConvertAllOp, ConvertAnyOp, ConvertArgMaxOp, ConvertBatchMatMulV2Op,
-      ConvertBiasAddOp, ConvertBroadcastToOp, ConvertBF16FloorDivOp,
-      ConvertClipByValueOp, ConvertConv2DOp, ConvertConv3DOp,
-      ConvertDepthConv2DOp, ConvertConv2DBackpropFilterOp,
-      ConvertConv3DBackpropFilterOp, ConvertConv2DBackpropInputOp,
-      ConvertConv3DBackpropInputOp, ConvertCumprodOp, ConvertCumsumOp,
-      ConvertDiagPartOp, ConvertDynamicExpandDimsOp, ConvertDynamicReshapeOp,
-      ConvertEinsumOp, ConvertRFFTOp, ConvertIRFFTOp,
-      ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
-      ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV2Op,
-      ConvertFusedBatchNormV3Op, ConvertInfeedDequeueTupleOp,
-      ConvertIdentityNOp, ConvertInplaceUpdateOp, ConvertLinSpaceOp,
-      ConvertMaxOp, ConvertMinOp, ConvertAvgPool2DOp, ConvertAvgPool3DOp,
-      ConvertAvgPool2DGradOp, ConvertAvgPool3DGradOp, ConvertMaxPool2DOp,
-      ConvertMaxPool3DOp, ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp,
-      ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
-      ConvertProdOp, ConvertQrOp, ConvertDynamicRangeOp,
-      ConvertMatrixDiagPartV3Op, ConvertRangeOp, ConvertSigmoidOp,
-      ConvertShapeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
-      ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
-      ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
-      ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,
-      ConvertUnpackOp, ConvertUnsortedSegmentMaxOp, ConvertUnsortedSegmentMinOp,
-      ConvertUnsortedSegmentProdOp, ConvertUnsortedSegmentSumOp,
-      ConvertRandomShuffleOp, ConvertXlaShardingOp,
-      ConvertXlaDynamicUpdateSliceOp, ConvertXlaAllReduceOp, ConvertLeakyReluOp,
-      ConvertLeakyReluGradOp>(context);
+    ConvertAllOp,
+    ConvertAnyOp,
+    ConvertArgMaxOp,
+    ConvertBatchMatMulV2Op,
+    ConvertBiasAddOp,
+    ConvertBroadcastToOp,
+    ConvertBF16FloorDivOp,
+    ConvertClipByValueOp,
+    ConvertConv2DOp,
+    ConvertConv3DOp,
+    ConvertDepthConv2DOp,
+    ConvertConv2DBackpropFilterOp,
+    ConvertConv3DBackpropFilterOp,
+    ConvertConv2DBackpropInputOp,
+    ConvertConv3DBackpropInputOp,
+    ConvertCumprodOp,
+    ConvertCumsumOp,
+    ConvertDiagPartOp,
+    ConvertDynamicExpandDimsOp,
+    ConvertDynamicReshapeOp,
+    ConvertEinsumOp,
+    ConvertRFFTOp,
+    ConvertIRFFTOp,
+    ConvertFusedBatchNormGradOp,
+    ConvertFusedBatchNormGradV2Op,
+    ConvertFusedBatchNormGradV3Op,
+    ConvertFusedBatchNormV2Op,
+    ConvertFusedBatchNormV3Op,
+    ConvertInfeedDequeueTupleOp,
+    ConvertIdentityNOp,
+    ConvertInplaceUpdateOp,
+    ConvertLinSpaceOp,
+    ConvertMaxOp,
+    ConvertMinOp,
+    ConvertAvgPool2DOp,
+    ConvertAvgPool3DOp,
+    ConvertAvgPool2DGradOp,
+    ConvertAvgPool3DGradOp,
+    ConvertMaxPool2DOp,
+    ConvertMaxPool3DOp,
+    ConvertMaxPool2DGradOp,
+    ConvertMaxPool3DGradOp,
+    ConvertMeanOp,
+    ConvertOneHotOp,
+    ConvertOutfeedEnqueueTupleOp,
+    ConvertProdOp,
+    ConvertQrOp,
+    ConvertDynamicRangeOp,
+    ConvertMatrixDiagPartV3Op,
+    ConvertRangeOp,
+    ConvertSelectOp,
+    ConvertSigmoidOp,
+    ConvertShapeOp,
+    ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
+    ConvertSoftmaxOp<TF::SoftmaxOp, false>,
+    ConvertSplitOp,
+    ConvertSplitVOp,
+    ConvertStridedSliceOp,
+    ConvertStridedSliceGradOp,
+    ConvertSumOp,
+    ConvertTensorScatterUpdateOp,
+    ConvertTileOp,
+    ConvertTopKV2Op,
+    ConvertUnpackOp,
+    ConvertUnsortedSegmentMaxOp,
+    ConvertUnsortedSegmentMinOp,
+    ConvertUnsortedSegmentProdOp,
+    ConvertUnsortedSegmentSumOp,
+    ConvertRandomShuffleOp,
+    ConvertXlaShardingOp,
+    ConvertXlaDynamicUpdateSliceOp,
+    ConvertXlaAllReduceOp,
+    ConvertLeakyReluOp,
+    ConvertLeakyReluGradOp>(context);
+  // clang-format on
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(

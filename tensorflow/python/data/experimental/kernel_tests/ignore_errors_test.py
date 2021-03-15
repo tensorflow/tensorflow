@@ -23,6 +23,7 @@ import sys
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
@@ -131,7 +132,7 @@ class IgnoreErrorsTest(test_base.DatasetTestBase, parameterized.TestCase):
       fn = os.path.join(self.get_temp_dir(), "tf_record.%d.txt" % i)
       filenames.append(fn)
       writer = python_io.TFRecordWriter(fn)
-      for j in range(10):
+      for _ in range(10):
         writer.write(b"record")
       writer.close()
       # Append corrupted data
@@ -143,8 +144,8 @@ class IgnoreErrorsTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = self.getNext(dataset)
 
     # All of the files are present.
-    for filename in filenames:
-      for j in range(10):
+    for _ in filenames:
+      for _ in range(10):
         self.assertEqual(b"record", self.evaluate(get_next()))
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
@@ -172,9 +173,15 @@ class IgnoreErrorsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                  parameterized.TestCase):
 
   def _build_ds(self):
-    return dataset_ops.Dataset.range(5).map(
-        array_ops.ones).map(lambda x: array_ops.gather(x, [0])).apply(
-            error_ops.ignore_errors())
+    components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
+
+    dataset = dataset_ops.Dataset.from_tensor_slices(components)
+    dataset = dataset.map(lambda x: array_ops.check_numerics(x, "message"))
+    dataset = dataset.apply(error_ops.ignore_errors())
+    options = dataset_ops.Options()
+    options.experimental_external_state_policy = (
+        distribute_options.ExternalStatePolicy.IGNORE)
+    return dataset.with_options(options)
 
   @combinations.generate(test_base.default_test_combinations())
   def testIgnoreErrorsCore(self):

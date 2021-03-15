@@ -35,6 +35,11 @@ class MetricsNonportableTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       metrics.TFLiteMetrics(model_path='/path/to/model')
 
+  def test_debugger_creation_counter_increase_success(self):
+    stub = metrics.TFLiteMetrics()
+    stub.increase_counter_debugger_creation()
+    self.assertEqual(stub._counter_debugger_creation.get_cell().value(), 1)
+
   def test_interpreter_creation_counter_increase_success(self):
     stub = metrics.TFLiteMetrics()
     stub.increase_counter_interpreter_creation()

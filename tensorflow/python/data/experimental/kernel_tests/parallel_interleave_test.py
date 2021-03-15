@@ -766,7 +766,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.checkDeterminism(dataset_fn, expect_determinism, elements)
 
 
-class ParallelInterleaveDatasetCheckpointTest(
+class ParallelInterleaveCheckpointTest(
     checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
 
   def setUp(self):

@@ -48,10 +48,13 @@ struct ClusterOpsByPolicyPass
     : public TF::ClusterOpsByPolicyPassBase<ClusterOpsByPolicyPass> {
  public:
   ClusterOpsByPolicyPass() = default;
-  ClusterOpsByPolicyPass(ArrayRef<std::string> op_list,
-                         const std::string &policy) {
-    oplist = op_list;
-    policy_name = policy;
+  ClusterOpsByPolicyPass(ArrayRef<std::string> cluster_oplist,
+                         int cluster_min_size, StringRef cluster_algorithm,
+                         StringRef cluster_policy) {
+    oplist = cluster_oplist;
+    min_cluster_size = cluster_min_size;
+    algorithm = cluster_algorithm.str();
+    policy_name = cluster_policy.str();
   }
   void runOnFunction() override;
 };
@@ -415,9 +418,10 @@ std::unique_ptr<FunctionPass> CreateClusterOpsByPolicyPass() {
 }
 
 std::unique_ptr<FunctionPass> CreateClusterOpsByPolicyPass(
-    ArrayRef<std::string> oplist, const std::string &policy_name) {
-  return std::make_unique<TFDevice::ClusterOpsByPolicyPass>(oplist,
-                                                            policy_name);
+    ArrayRef<std::string> oplist, int min_cluster_size, StringRef algorithm,
+    StringRef policy_name) {
+  return std::make_unique<TFDevice::ClusterOpsByPolicyPass>(
+      oplist, min_cluster_size, algorithm, policy_name);
 }
 
 }  // namespace TFDevice

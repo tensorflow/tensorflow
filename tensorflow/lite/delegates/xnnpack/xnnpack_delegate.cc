@@ -3324,7 +3324,7 @@ TfLiteDelegate* TfLiteXNNPackDelegateCreate(
 }
 
 void* TfLiteXNNPackDelegateGetThreadPool(TfLiteDelegate* delegate) {
-  if (delegate != nullptr) {
+  if (delegate == nullptr) {
     return nullptr;
   }
 

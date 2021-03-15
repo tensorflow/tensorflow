@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <algorithm>
 #include <utility>
 #include <vector>
 
@@ -63,9 +62,10 @@ Status UnbatchRaggedZerothDim(
           Tensor(DataTypeToEnum<VALUE_TYPE>::value, values_shape));
       auto ragged_component_values_flat =
           (*ragged_components)[i].mutable_values()->flat<VALUE_TYPE>();
-      std::copy_n(&batched_flat(start * num_inner_elems),
-                  num_values * num_inner_elems,
-                  ragged_component_values_flat.data());
+      for (int j = 0; j < num_values * num_inner_elems; j++) {
+        ragged_component_values_flat(j) =
+            batched_flat(j + start * num_inner_elems);
+      }
     }
     return Status::OK();
   }
@@ -116,9 +116,9 @@ Status UnbatchRaggedZerothDim(
         Tensor(DataTypeToEnum<VALUE_TYPE>::value, values_shape));
     auto ragged_component_values_flat =
         (*ragged_components)[i].mutable_values()->flat<VALUE_TYPE>();
-    std::copy_n(&batched_flat(value_index), num_values * num_inner_elems,
-                ragged_component_values_flat.data());
-    value_index += num_values * num_inner_elems;
+    for (int j = 0; j < num_values * num_inner_elems; j++, value_index++) {
+      ragged_component_values_flat(j) = batched_flat(value_index);
+    }
   }
 
   return Status::OK();

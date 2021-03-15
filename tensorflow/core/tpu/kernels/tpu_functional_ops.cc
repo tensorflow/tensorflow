@@ -51,8 +51,11 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
+#include "tensorflow/core/tpu/kernels/tpu_fingerprint_lookup.h"
+#include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_util.h"
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
+#include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/dump_graph.h"
 
@@ -402,10 +405,10 @@ Status ConvertEdgeShapesToTensorShapes(
 }
 
 // Get the TF fingerprint with the information from the TPUCompileOp.
-Status MaybeGetFingerprint(
+Status MaybeRegisterFingerprint(
     Graph* graph,
     const std::map<std::string, std::vector<int>>& named_input_shapes,
-    uint64_t* fingerprint, bool& fingerprint_success) {
+    uint64 input_hash) {
   // Find the compiler metadata.
   tpu::TPUCompileMetadataProto metadata_proto;
   std::map<std::string, std::vector<int>> inputs_to_keep;
@@ -464,8 +467,14 @@ Status MaybeGetFingerprint(
   uint64 tf_fingerprint = tpu::CreateFingerprintWithNameAndShapes(
       metadata_proto.function_library_fingerprint(), arg_shapes);
   VLOG(2) << "TF fingerprint: " << tf_fingerprint;
-  *fingerprint = tf_fingerprint;
-  fingerprint_success = true;
+
+  ResourceMgr* rm = GetTPUConfigResourceMgr();
+  tpu::TpuFingerprintLookup* fingerprint_lookup;
+  TF_RETURN_IF_ERROR(rm->Lookup<tpu::TpuFingerprintLookup>(
+      rm->default_container(), tpu::kFingerprintLookupResourceName,
+      &fingerprint_lookup));
+  fingerprint_lookup->RegisterKeyAndIntermediatePair(input_hash,
+                                                     tf_fingerprint);
   return Status::OK();
 }
 }  // end namespace
@@ -991,8 +1000,6 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
   uint64 cache_hash = Hash64Combine(input_hash, device_ordinal);
 
   const std::vector<DeviceAndFHandle>* functions;
-  uint64 fingerprint_hash;
-  bool fingerprint_success = false;
 
   bool cache_miss = !partition_cache_.count(cache_hash);
   if (cache_miss) {
@@ -1069,8 +1076,7 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
     if (!enable_spmd_xla_partitioning || num_cores_per_replica == 1) {
       OP_REQUIRES_OK_ASYNC(
           ctx,
-          MaybeGetFingerprint(graph.get(), named_input_shapes,
-                              &fingerprint_hash, fingerprint_success),
+          MaybeRegisterFingerprint(graph.get(), named_input_shapes, input_hash),
           done);
     }
     // `subgraphs` maps from device names to functions.
@@ -1095,17 +1101,6 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
 
   ExecuteFunctions(*functions, ctx, device_ordinal, ordinal_selector_req_id,
                    std::move(done));
-
-  // Register fingerprint when the functions are successfully executed.
-  if (cache_miss) {
-    absl::ReleasableMutexLock lock(&mu_);
-    if (fingerprint_success) {
-      VLOG(2) << "(input_hash, TF Fingerprint): (" << input_hash << ", "
-              << fingerprint_hash << ")";
-      inputs_to_fingerprint_.try_emplace(input_hash, fingerprint_hash);
-    }
-    lock.Release();
-  }
 }
 
 Status TPUPartitionedCallOp::GetTpuCoreOrdinal(OpKernelContext* ctx,
@@ -1117,13 +1112,8 @@ Status TPUPartitionedCallOp::GetTpuCoreOrdinal(OpKernelContext* ctx,
   TF_RETURN_IF_ERROR(ctx->input(kDeviceOrdinalAttr, &device_ordinal_t));
   int device_ordinal = device_ordinal_t->scalar<int>()();
   if (device_ordinal == tpu::kDeferredCoreSelectionReserved) {
-    auto it = inputs_to_fingerprint_.find(input_hash);
-    absl::optional<uint64> key;
-    if (it != inputs_to_fingerprint_.end()) {
-      key = it->second;
-    }
     device_ordinal =
-        ordinal_selector_->GetOrdinal(key, ordinal_selector_req_id);
+        ordinal_selector_->GetOrdinal(input_hash, ordinal_selector_req_id);
   }
   *core_ordinal = device_ordinal;
   return Status::OK();
@@ -1169,7 +1159,7 @@ Status TPUPartitionedCallOp::InitializeVarOnTPU(
       strings::StrCat(ndef->name(), "_init_ord_", device_ordinal);
 
   TF_RETURN_IF_ERROR(
-      InstantiatePartition(*init_graph, fname, device, &fhandle));
+      InstantiatePartition(*init_graph, fname, device, &fhandle, nullptr));
 
   FunctionLibraryRuntime::Options opts;
   opts.step_container = ctx->step_container();
@@ -1330,9 +1320,9 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
         strings::StrCat(func_.name(), "_hash_", pair.first));
     function_names.push_back(function_name);
     FHandle handle;
-    TF_RETURN_IF_ERROR(
-        InstantiatePartition(*subgraph, function_name, target, &handle));
-    functions.push_back(DeviceAndFHandle(target, handle));
+    TF_RETURN_IF_ERROR(InstantiatePartition(*subgraph, function_name, target,
+                                            &handle, nullptr));
+    functions.push_back(DeviceAndFHandle{.device = target, .handle = handle});
   }
 
   FunctionLibraryRuntime::Options opts;
@@ -1357,9 +1347,9 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
   opts.rendezvous = rendez;
 
   BlockingCounter bcount(functions.size());
-  for (const DeviceAndFHandle& pair : functions) {
-    const string& target_device = pair.first;
-    FHandle handle = pair.second;
+  for (const DeviceAndFHandle& entry : functions) {
+    const string& target_device = entry.device;
+    FHandle handle = entry.handle;
 
     TF_RETURN_IF_ERROR(
         ShouldUseRemoteExecutionForFn(target_device, &(opts.remote_execution)));
@@ -1381,7 +1371,7 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
 
   for (int i = 0; i < functions.size(); i++) {
     TF_RETURN_IF_ERROR(flib_def_->RemoveFunction(function_names[i]));
-    TF_RETURN_IF_ERROR(library_runtime_->ReleaseHandle(functions[i].second));
+    TF_RETURN_IF_ERROR(library_runtime_->ReleaseHandle(functions[i].handle));
   }
   return Status::OK();
 }
@@ -1972,16 +1962,21 @@ Status TPUPartitionedCallOp::PartitionHelper(
   return Status::OK();
 }
 
-Status TPUPartitionedCallOp::InstantiatePartition(const Graph& graph,
-                                                  const string& function_name,
-                                                  const string& target_device,
-                                                  FHandle* handle) {
+Status TPUPartitionedCallOp::InstantiatePartition(
+    const Graph& graph, const string& function_name,
+    const string& target_device, FHandle* handle,
+    std::unique_ptr<FunctionLibraryDefinition>* out_flib_def) {
   FunctionDef shard;
   TF_RETURN_IF_ERROR(GraphToFunctionDef(graph, function_name, &shard));
   TF_RETURN_IF_ERROR(flib_def_->AddFunctionDef(shard));
   FunctionLibraryRuntime::InstantiateOptions opts;
   opts.target = target_device;
-  opts.lib_def = flib_def_.get();
+  if (out_flib_def) {
+    *out_flib_def = std::make_unique<FunctionLibraryDefinition>(*flib_def_);
+    opts.lib_def = out_flib_def->get();
+  } else {
+    opts.lib_def = flib_def_.get();
+  }
   return library_runtime_->Instantiate(function_name, AttrSlice(&shard.attr()),
                                        opts, handle);
 }
@@ -2107,10 +2102,16 @@ Status TPUPartitionedCallOp::InstantiateFunctionsFromSubgraphs(
     TF_RETURN_IF_ERROR(
         UpdateTPUDeviceOrdinal(device_ordinal, &target, &rewritten));
     FHandle handle;
-    TF_RETURN_IF_ERROR(
-        InstantiatePartition(*subgraph, function_name, target, &handle));
+    // Use a copy of the current `flib_def_` to instantiate the function to
+    // avoid races.
+    std::unique_ptr<FunctionLibraryDefinition> sub_flib_def;
+    TF_RETURN_IF_ERROR(InstantiatePartition(*subgraph, function_name, target,
+                                            &handle, &sub_flib_def));
     // Add handle to the cache entry.
-    entry.first->second.push_back(DeviceAndFHandle(target, handle));
+    entry.first->second.push_back(
+        DeviceAndFHandle{.device = target,
+                         .handle = handle,
+                         .flib_def = std::move(sub_flib_def)});
   }
 
   if (!rewritten) {
@@ -2214,9 +2215,9 @@ void TPUPartitionedCallOp::ExecuteFunctions(
   for (int i = 1; i < functions.size(); ++i) {
     refcounted_done->Ref();
   }
-  for (const DeviceAndFHandle& pair : functions) {
-    const string& target_device = pair.first;
-    FHandle handle = pair.second;
+  for (const DeviceAndFHandle& entry : functions) {
+    const string& target_device = entry.device;
+    FHandle handle = entry.handle;
     VLOG(3) << "Running function shard on device " << target_device
             << " with local device name " << local_device_name_;
     if (target_device == local_device_name_) {

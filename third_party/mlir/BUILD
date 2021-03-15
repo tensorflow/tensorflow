@@ -3,7 +3,7 @@
 
 load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl", "td_library")
 load("@org_tensorflow//third_party/mlir:linalggen.bzl", "genlinalg")
-load("@org_tensorflow//third_party/mlir:build_defs.bzl", "cc_headers_only")
+load("@org_tensorflow//third_party/mlir:build_defs.bzl", "cc_headers_only", "if_cuda_available")
 
 package(
     default_visibility = [":friends"],
@@ -100,6 +100,28 @@ gentbl(
 )
 
 gentbl(
+    name = "BuiltinLocationAttributesIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "--gen-attrdef-decls",
+            "include/mlir/IR/BuiltinLocationAttributes.h.inc",
+        ),
+        (
+            "--gen-attrdef-defs",
+            "include/mlir/IR/BuiltinLocationAttributes.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/IR/BuiltinLocationAttributes.td",
+    td_srcs = [
+        "include/mlir/IR/BuiltinLocationAttributes.td",
+        "include/mlir/IR/BuiltinDialect.td",
+        ":OpBaseTdFiles",
+    ],
+)
+
+gentbl(
     name = "BuiltinOpsIncGen",
     strip_include_prefix = "include",
     tbl_outs = [
@@ -154,6 +176,7 @@ cc_library(
     deps = [
         ":BuiltinAttributesIncGen",
         ":BuiltinDialectIncGen",
+        ":BuiltinLocationAttributesIncGen",
         ":BuiltinOpsIncGen",
         ":BuiltinTypesIncGen",
         ":CallOpInterfacesIncGen",
@@ -754,7 +777,10 @@ td_library(
     name = "AVX512TdFiles",
     srcs = ["include/mlir/Dialect/AVX512/AVX512.td"],
     includes = ["include"],
-    deps = [":SideEffectInterfacesTdFiles"],
+    deps = [
+        ":LLVMOpsTdFiles",
+        ":SideEffectInterfacesTdFiles",
+    ],
 )
 
 gentbl(
@@ -791,96 +817,41 @@ cc_library(
     deps = [
         ":AVX512IncGen",
         ":IR",
+        ":LLVMDialect",
         ":SideEffectInterfaces",
-        ":VectorOps",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
     ],
 )
 
 cc_library(
-    name = "AVX512ToLLVM",
-    srcs = glob([
-        "lib/Conversion/AVX512ToLLVM/*.cpp",
-    ]),
-    hdrs = ["include/mlir/Conversion/AVX512ToLLVM/ConvertAVX512ToLLVM.h"],
+    name = "AVX512Transforms",
+    srcs = glob(["lib/Dialect/AVX512/Transforms/*.cpp"]),
+    hdrs = ["include/mlir/Dialect/AVX512/Transforms.h"],
     includes = ["include"],
     deps = [
         ":AVX512",
-        ":ConversionPassIncGen",
-        ":EDSC",
         ":IR",
-        ":LLVMAVX512",
         ":LLVMDialect",
         ":StandardOps",
         ":StandardToLLVM",
-        ":Support",
-        ":Transforms",
-        ":VectorOps",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-td_library(
-    name = "LLVMAVX512TdFiles",
-    srcs = ["include/mlir/Dialect/LLVMIR/LLVMAVX512.td"],
-    includes = ["include"],
-    deps = [":LLVMOpsTdFiles"],
-)
-
-gentbl(
-    name = "LLVMAVX512IncGen",
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            "-gen-dialect-decls -dialect=llvm_avx512",
-            "include/mlir/Dialect/LLVMIR/LLVMAVX512Dialect.h.inc",
-        ),
-        (
-            "-gen-op-decls",
-            "include/mlir/Dialect/LLVMIR/LLVMAVX512.h.inc",
-        ),
-        (
-            "-gen-op-defs",
-            "include/mlir/Dialect/LLVMIR/LLVMAVX512.cpp.inc",
-        ),
-        (
-            "-gen-op-doc",
-            "g3doc/Dialects/LLVMIR/LLVMAVX512.md",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/LLVMIR/LLVMAVX512.td",
-    deps = [":LLVMAVX512TdFiles"],
-)
-
-cc_library(
-    name = "LLVMAVX512",
-    srcs = ["lib/Dialect/LLVMIR/IR/LLVMAVX512Dialect.cpp"],
-    hdrs = ["include/mlir/Dialect/LLVMIR/LLVMAVX512Dialect.h"],
-    includes = ["include"],
-    deps = [
-        ":IR",
-        ":LLVMAVX512IncGen",
-        ":LLVMDialect",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
     ],
 )
 
 gentbl(
-    name = "LLVMAVX512ConversionIncGen",
+    name = "AVX512ConversionIncGen",
     strip_include_prefix = "include",
     tbl_outs = [
         (
             "-gen-llvmir-conversions",
-            "include/mlir/Dialect/LLVMIR/LLVMAVX512Conversions.inc",
+            "include/mlir/Dialect/AVX512/AVX512Conversions.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/LLVMIR/LLVMAVX512.td",
-    deps = [":LLVMAVX512TdFiles"],
+    td_file = "include/mlir/Dialect/AVX512/AVX512.td",
+    deps = [":AVX512TdFiles"],
 )
 
 ##---------------------------------------------------------------------------##
@@ -1192,7 +1163,6 @@ cc_library(
     hdrs = ["include/mlir/Conversion/Passes.h"],
     includes = ["include"],
     deps = [
-        ":AVX512ToLLVM",
         ":AffineToStandard",
         ":AsyncToLLVM",
         ":ComplexToLLVM",
@@ -1336,6 +1306,18 @@ cc_library(
         ":LinalgInterfacesIncGen",
         ":LinalgStructuredOpsIncGen",
         ":ViewLikeInterface",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "DataLayoutInterfaces",
+    srcs = ["lib/Interfaces/DataLayoutInterfaces.cpp"],
+    hdrs = ["include/mlir/Interfaces/DataLayoutInterfaces.h"],
+    includes = ["include"],
+    deps = [
+        ":DataLayoutInterfacesIncGen",
+        ":IR",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -1691,6 +1673,24 @@ gentbl(
     deps = [":LLVMOpsTdFiles"],
 )
 
+gentbl(
+    name = "LLVMDialectAttributesIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "--gen-attrdef-decls",
+            "include/mlir/Dialect/LLVMIR/LLVMOpsAttrDefs.h.inc",
+        ),
+        (
+            "--gen-attrdef-defs",
+            "include/mlir/Dialect/LLVMIR/LLVMOpsAttrDefs.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/LLVMIR/LLVMAttrDefs.td",
+    deps = [":LLVMOpsTdFiles"],
+)
+
 cc_library(
     name = "LLVMDialect",
     srcs = glob(
@@ -1722,6 +1722,7 @@ cc_library(
     deps = [
         ":ControlFlowInterfaces",
         ":IR",
+        ":LLVMDialectAttributesIncGen",
         ":LLVMDialectInterfaceIncGen",
         ":LLVMOpsIncGen",
         ":SideEffectInterfaces",
@@ -1896,6 +1897,7 @@ cc_library(
         "include/mlir/Dialect/GPU/Passes.h",
         "include/mlir/Dialect/GPU/Utils.h",
     ],
+    defines = if_cuda_available(["MLIR_GPU_TO_CUBIN_PASS_ENABLE"]),
     includes = ["include"],
     deps = [
         ":Async",
@@ -1909,8 +1911,19 @@ cc_library(
         ":StandardOps",
         ":Support",
         ":Transforms",
+        ":ToLLVMIRTranslation",
+        ":LLVMToLLVMIRTranslation",
+        "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
-    ],
+        "@llvm-project//llvm:Target",
+    ] + if_cuda_available([
+        # Dependencies for SerializeToCubin.cpp with
+        # -DMLIR_GPU_TO_CUBIN_PASS_ENABLE
+        ":NVVMToLLVMIRTranslation",
+        "@llvm-project//llvm:NVPTXCodeGen",
+        "//third_party/gpus/cuda:cuda_headers",
+        "//third_party/gpus/cuda:libcuda",
+    ]),
 )
 
 td_library(
@@ -2113,16 +2126,14 @@ cc_library(
         ":AsyncToLLVM",
         ":ConversionPassIncGen",
         ":GPUDialect",
+        ":GPUTransforms",
         ":IR",
         ":LLVMDialect",
         ":NVVMToLLVMIRTranslation",
         ":Pass",
         ":StandardToLLVM",
         ":Support",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:NVPTXCodeGen",
         "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:Target",
     ],
 )
 
@@ -3074,6 +3085,39 @@ cc_library(
 )
 
 gentbl(
+    name = "DataLayoutInterfacesIncGen",
+    tbl_outs = [
+        (
+            "-gen-attr-interface-decls",
+            "include/mlir/Interfaces/DataLayoutAttrInterface.h.inc",
+        ),
+        (
+            "-gen-attr-interface-defs",
+            "include/mlir/Interfaces/DataLayoutAttrInterface.cpp.inc",
+        ),
+        (
+            "-gen-op-interface-decls",
+            "include/mlir/Interfaces/DataLayoutOpInterface.h.inc",
+        ),
+        (
+            "-gen-op-interface-defs",
+            "include/mlir/Interfaces/DataLayoutOpInterface.cpp.inc",
+        ),
+        (
+            "-gen-type-interface-decls",
+            "include/mlir/Interfaces/DataLayoutTypeInterface.h.inc",
+        ),
+        (
+            "-gen-type-interface-defs",
+            "include/mlir/Interfaces/DataLayoutTypeInterface.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Interfaces/DataLayoutInterfaces.td",
+    td_srcs = [":OpBaseTdFiles"],
+)
+
+gentbl(
     name = "LoopLikeInterfaceIncGen",
     strip_include_prefix = "include",
     tbl_outs = [
@@ -3601,14 +3645,14 @@ cc_library(
 )
 
 cc_library(
-    name = "LLVMAVX512ToLLVMIRTranslation",
-    srcs = glob(["lib/Target/LLVMIR/Dialect/LLVMAVX512/*.cpp"]),
-    hdrs = glob(["include/mlir/Target/LLVMIR/Dialect/LLVMAVX512/*.h"]),
+    name = "AVX512ToLLVMIRTranslation",
+    srcs = glob(["lib/Target/LLVMIR/Dialect/AVX512/*.cpp"]),
+    hdrs = glob(["include/mlir/Target/LLVMIR/Dialect/AVX512/*.h"]),
     includes = ["include"],
     deps = [
+        ":AVX512",
+        ":AVX512ConversionIncGen",
         ":IR",
-        ":LLVMAVX512",
-        ":LLVMAVX512ConversionIncGen",
         ":Support",
         ":ToLLVMIRTranslation",
         "@llvm-project//llvm:Core",
@@ -3718,8 +3762,8 @@ cc_library(
     hdrs = ["include/mlir/Target/LLVMIR/Dialect/All.h"],
     includes = ["include"],
     deps = [
+        ":AVX512ToLLVMIRTranslation",
         ":ArmNeonToLLVMIRTranslation",
-        ":LLVMAVX512ToLLVMIRTranslation",
         ":LLVMArmSVEToLLVMIRTranslation",
         ":LLVMToLLVMIRTranslation",
         ":NVVMToLLVMIRTranslation",
@@ -3747,7 +3791,7 @@ cc_library(
     srcs = [
         "lib/Target/LLVMIR/ConvertFromLLVMIR.cpp",
     ],
-    hdrs = ["include/mlir/Target/LLVMIR.h"],
+    hdrs = ["include/mlir/Target/LLVMIR/Import.h"],
     includes = ["include"],
     deps = [
         ":IR",
@@ -3871,10 +3915,9 @@ cc_library(
         "include/mlir/InitAllDialects.h",
         "include/mlir/InitAllPasses.h",
     ],
-    defines = ["MLIR_CUDA_CONVERSIONS_ENABLED"],
     deps = [
         ":AVX512",
-        ":AVX512ToLLVM",
+        ":AVX512Transforms",
         ":Affine",
         ":AffinePassIncGen",
         ":AffineToStandard",
@@ -3889,6 +3932,7 @@ cc_library(
         ":ComplexDialect",
         ":ComplexToLLVM",
         ":ConversionPasses",
+        ":DLTIDialect",
         ":GPUDialect",
         ":GPUPassIncGen",
         ":GPUToGPURuntimeTransforms",
@@ -3898,7 +3942,6 @@ cc_library(
         ":GPUToVulkanTransforms",
         ":GPUTransforms",
         ":IR",
-        ":LLVMAVX512",
         ":LLVMArmSVE",
         ":LLVMDialect",
         ":LLVMIRTransforms",
@@ -3962,7 +4005,7 @@ cc_library(
 cc_binary(
     name = "mlir-opt",
     srcs = ["tools/mlir-opt/mlir-opt.cpp"],
-    copts = ["-DMLIR_INCLUDE_TESTS"],
+    local_defines = ["MLIR_INCLUDE_TESTS"],
     deps = [
         ":AllPassesAndDialectsNoRegistration",
         ":Analysis",
@@ -4121,41 +4164,6 @@ cc_binary(
     linkshared = True,
     deps = [
         ":VulkanRuntime",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-cc_binary(
-    name = "mlir-cuda-runner",
-    srcs = ["tools/mlir-cuda-runner/mlir-cuda-runner.cpp"],
-    # Avoid duplicate definitions that prevent the ThreadPoolExecutor d'tor to
-    # join all threads. The details are unclear. This is a temporary solution
-    # because we will replace the mlir-cuda-runner with cuda-opt, mlir-opt, and
-    # mlir-cpu-runner.
-    linkstatic = False,
-    deps = [
-        ":Async",
-        ":AsyncTransforms",
-        ":ConversionPasses",
-        ":ExecutionEngineUtils",
-        ":GPUDialect",
-        ":GPUToGPURuntimeTransforms",
-        ":GPUToNVVMTransforms",
-        ":GPUTransforms",
-        ":IR",
-        ":LLVMDialect",
-        ":LLVMToLLVMIRTranslation",
-        ":MlirJitRunner",
-        ":NVVMDialect",
-        ":NVVMToLLVMIRTranslation",
-        ":Pass",
-        ":StandardOps",
-        ":StandardToLLVM",
-        ":ToLLVMIRTranslation",
-        ":Transforms",
-        "//third_party/gpus/cuda:cuda_headers",
-        "//third_party/gpus/cuda:cuda_runtime",
-        "//third_party/gpus/cuda:libcuda",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -4993,7 +5001,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":AVX512",
-        ":AVX512ToLLVM",
+        ":AVX512Transforms",
         ":ArmNeon",
         ":ArmSVE",
         ":ArmSVEToLLVM",
@@ -5001,7 +5009,6 @@ cc_library(
         ":DialectUtils",
         ":EDSC",
         ":IR",
-        ":LLVMAVX512",
         ":LLVMArmSVE",
         ":LLVMDialect",
         ":Pass",
@@ -5323,12 +5330,14 @@ exports_files(
         "include/mlir/Interfaces/ControlFlowInterfaces.h",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
         "include/mlir/Interfaces/CopyOpInterface.td",
+        "include/mlir/Interfaces/DataLayoutInterfaces.td",
         "include/mlir/Interfaces/InferTypeOpInterface.td",
         "include/mlir/Interfaces/LoopLikeInterface.td",
         "include/mlir/Interfaces/SideEffectInterfaceBase.td",
         "include/mlir/Interfaces/SideEffectInterfaces.td",
         "include/mlir/Interfaces/VectorInterfaces.td",
         "include/mlir/Interfaces/ViewLikeInterface.td",
+        "include/mlir/Dialect/DLTI/DLTIBase.td",
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/Dialect/StandardOps/IR/Ops.td",
         "include/mlir/Dialect/Shape/IR/ShapeOps.td",
@@ -5456,6 +5465,35 @@ cc_library(
         ":Support",
         ":Transforms",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+gentbl(
+    name = "DLTIBaseIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-dialect-decls -dialect=dlti",
+            "include/mlir/Dialect/DLTI/DLTIDialect.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/DLTI/DLTIBase.td",
+    td_srcs = [
+        ":OpBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "DLTIDialect",
+    srcs = glob(["lib/Dialect/DLTI/*.cpp"]),
+    hdrs = glob(["include/mlir/Dialect/DLTI/*.h"]),
+    includes = ["include"],
+    deps = [
+        ":DLTIBaseIncGen",
+        ":DataLayoutInterfaces",
+        ":IR",
         "@llvm-project//llvm:Support",
     ],
 )

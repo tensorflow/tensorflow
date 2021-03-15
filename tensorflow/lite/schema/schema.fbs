@@ -770,6 +770,8 @@ table EmbeddingLookupSparseOptions {
 
 table GatherOptions {
   axis: int;
+  // Parameters for Gather version 5 or above.
+  batch_dims: int = 0;
 }
 
 table TransposeOptions {

@@ -959,13 +959,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             noise and dropout.
             `validation_data` will override `validation_split`.
             `validation_data` could be:
-              - tuple `(x_val, y_val)` of Numpy arrays or tensors
-              - tuple `(x_val, y_val, val_sample_weights)` of Numpy arrays
-              - dataset
-            For the first two cases, `batch_size` must be provided.
-            For the last case, `validation_steps` could be provided.
-            Note that `validation_data` does not support all the data types that
-            are supported in `x`, eg, dict, generator or `keras.utils.Sequence`.
+              - A tuple `(x_val, y_val)` of Numpy arrays or tensors.
+              - A tuple `(x_val, y_val, val_sample_weights)` of NumPy arrays.
+              - A `tf.data.Dataset`.
+              - A Python generator or `keras.utils.Sequence` returning
+              `(inputs, targets)` or `(inputs, targets, sample_weights)`.
         shuffle: Boolean (whether to shuffle the training data
             before each epoch) or str (for 'batch'). This argument is ignored
             when `x` is a generator or an object of tf.data.Dataset.
@@ -2316,11 +2314,20 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
   @classmethod
   def from_config(cls, config, custom_objects=None):
-    # Since only FunctionalModel produces config, the model can only
-    # be constructed for FunctionalModel
+    # `from_config` assumes `cls` is either `Functional` or a child class of
+    # `Functional`. In the case that `cls` is meant to behave like a child class
+    # of `Functional` but only inherits from the `Model` class, we have to call
+    # `cls(...)` instead of `Functional.from_config`.
     from tensorflow.python.keras.engine import functional  # pylint: disable=g-import-not-at-top
-    return functional.Functional.from_config(
-        config, custom_objects=custom_objects)
+    with generic_utils.SharedObjectLoadingScope():
+      input_tensors, output_tensors, created_layers = (
+          functional.reconstruct_from_config(config, custom_objects))
+      # Initialize a model belonging to `cls`, which can be user-defined or
+      # `Functional`.
+      model = cls(inputs=input_tensors, outputs=output_tensors,
+                  name=config.get('name'))
+      functional.connect_ancillary_layers(model, created_layers)
+      return model
 
   def to_json(self, **kwargs):
     """Returns a JSON string containing the network configuration.
