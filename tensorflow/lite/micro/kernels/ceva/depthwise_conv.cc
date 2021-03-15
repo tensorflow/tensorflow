@@ -197,7 +197,7 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
 #endif
 }
 
-TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus EvalCEVA(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
   TFLITE_DCHECK(node->builtin_data != nullptr);
 
@@ -234,13 +234,21 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
+TfLiteStatus DepthWiseConvEval(TfLiteContext* context, TfLiteNode* node) {
+#if defined(CEVA_BX1) || defined(CEVA_SP500)
+  return EvalCEVA(context, node);
+#else
+  return Eval(context, node);  // reference fallback
+#endif
+}
+
 }  // namespace
 
 TfLiteRegistration Register_DEPTHWISE_CONV_2D() {
   return {/*init=*/Init,
           /*free=*/nullptr,
           /*prepare=*/DepthwiseConvPrepare,
-          /*invoke=*/Eval,
+          /*invoke=*/DepthWiseConvEval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,
           /*custom_name=*/nullptr,
