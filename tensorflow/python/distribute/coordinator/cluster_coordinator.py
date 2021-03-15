@@ -673,7 +673,7 @@ class WorkerPreemptionHandler(object):
         return
 
       self._validate_preemption_failure(e)
-      logging.error("Worker %s failed with error: %s", worker_device_name, e)
+      logging.error("Worker %s failed with %r:%s", worker_device_name, e, e)
       if on_failure_fn:
         on_failure_fn()
 
@@ -727,10 +727,10 @@ class WorkerPreemptionHandler(object):
         except Exception as e:  # pylint: disable=broad-except
           try:
             self._validate_preemption_failure(e)
-          except Exception as e:  # pylint: disable=broad-except
+          except Exception as ps_e:  # pylint: disable=broad-except
             # In this case, a parameter server fails. So we raise this error to
             # the caller of `wait_on_failure`.
-            self._error_from_recovery = e
+            self._error_from_recovery = ps_e
             self._worker_up_cond.notify_all()
             if self._should_preemption_thread_run:
               self._cluster_due_for_update_or_finish.clear()
