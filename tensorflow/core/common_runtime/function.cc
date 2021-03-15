@@ -432,7 +432,6 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   const SessionMetadata* const session_metadata_;
   Executor::Args::Runner default_runner_;
   const string device_name_;
-  std::unique_ptr<FunctionHandleCache> function_handle_cache_;
 
   std::function<Status(const string&, const OpDef**)> get_func_sig_;
   std::function<Status(const std::shared_ptr<const NodeProperties>&,
@@ -460,8 +459,9 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
       delete this->overlay_flr;
     }
   };
-  std::unique_ptr<std::unordered_map<Handle, std::unique_ptr<Item>>> items_
+  std::unique_ptr<absl::flat_hash_map<Handle, std::unique_ptr<Item>>> items_
       TF_GUARDED_BY(mu_);
+  std::unique_ptr<FunctionHandleCache> function_handle_cache_;
 
   ProcessFunctionLibraryRuntime* parent_ = nullptr;  // not owned.
 
@@ -516,10 +516,11 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
                        ? ProcessFunctionLibraryRuntime::kDefaultFLRDevice
                        : device_->name()),
       // TODO(jsimsa): Make cache capacity configurable.
+      next_handle_(0),
+      items_(absl::make_unique<
+             absl::flat_hash_map<Handle, std::unique_ptr<Item>>>()),
       function_handle_cache_(
           absl::make_unique<FunctionHandleCache>(this, /*capacity=*/1000)),
-      next_handle_(0),
-      items_(new std::unordered_map<Handle, std::unique_ptr<Item>>),
       parent_(parent) {
   get_func_sig_ = [this](const string& op, const OpDef** sig) {
     return base_lib_def_->LookUpOpDef(op, sig);
@@ -968,7 +969,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   }
   const FunctionLibraryDefinition* lib_def =
       flr->GetFunctionLibraryDefinition();
-  std::unique_ptr<Graph> g(new Graph(lib_def));
+  auto g = absl::make_unique<Graph>(lib_def);
   CopyGraph(*fbody->graph, g.get());
 
   PruneFunctionBody(fbody->fdef, g.get());
