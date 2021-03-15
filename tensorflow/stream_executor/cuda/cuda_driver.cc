@@ -1103,8 +1103,38 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
                                                           CUdeviceptr gpu_src,
                                                           uint64 size) {
   ScopedActivateContext activation(context);
+
+  CUresult result;
+  // CreatedContexts::GetAnyContext() doesn't works when ptr == 0.
+  // This hpapens when the size is 0.
+  if(!UseCudaMallocAsyncAllocator() || gpu_dst == 0 || gpu_src == 0){
+    result = cuMemcpyDtoD(gpu_dst, gpu_src, size);
+  } else {
+    // Any context work here.
+    CUcontext dstContext = CreatedContexts::GetAnyContext(
+        absl::bit_cast<void*>(gpu_dst));
+    CUcontext srcContext = CreatedContexts::GetAnyContext(
+        absl::bit_cast<void*>(gpu_src));
+
+    if ((void*)dstContext == nullptr) {
+      port::StatusOr<GpuContext*> context = GetPointerContext(gpu_dst);
+      if (context.ok()) {
+        dstContext = context.ValueOrDie()->context();
+      }
+    }
+
+    if ((void*)srcContext == nullptr) {
+      port::StatusOr<GpuContext*> context = GetPointerContext(gpu_src);
+      if (context.ok()) {
+        srcContext = context.ValueOrDie()->context();
+      }
+    }
+
+    result = cuMemcpyPeer(gpu_dst, dstContext, gpu_src, srcContext, size);
+  }
+
   RETURN_IF_CUDA_RES_ERROR(
-      cuMemcpyDtoD(gpu_dst, gpu_src, size),
+      result,
       absl::StrFormat(
           "failed to synchronous memcpy from host to device: GPU dst: %p; "
           "GPU src: %p; size: %u=0x%x",
