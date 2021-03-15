@@ -214,14 +214,18 @@ XlaComputationLaunchContext::XlaComputationLaunchContext(
 // Fills in `execution_input` with `buffer` for `index`.
 static void PopulateExecutionInputBuffer(xla::ExecutionInput& execution_input,
                                          xla::ShapeIndex index,
-                                         se::DeviceMemoryBase& buffer,
+                                         se::DeviceMemoryBase buffer,
                                          bool donate_buffer, int device_ordinal,
                                          se::DeviceMemoryAllocator* allocator) {
   xla::MaybeOwningDeviceMemory* in_buffer =
       execution_input.MutableBuffer(index);
   if (donate_buffer) {
+    // Here we pass ownership of the buffer to execution_input without releasing
+    // ownership from the caller of PopulateExecutionInputBuffer. If execution
+    // succeeds, we'll take back that duplicate ownership in
+    // GetOrCreateTensorForOutput. If execution fails, the ExecutionInput will
+    // release that duplicate ownership automatically.
     *in_buffer = se::OwningDeviceMemory(buffer, device_ordinal, allocator);
-    buffer = se::DeviceMemoryBase();
   } else {
     *in_buffer = buffer;
   }
@@ -308,48 +312,6 @@ static Tensor MakeTensor(DataType dtype, const TensorShape& shape,
   return t;
 }
 
-// Get aliased tensor, or make a new one for the corresponding output operation.
-static Tensor GetOrCreateTensorForOutput(
-    int output_num, OpKernelContext* ctx, int missing_ctx_input_prefix,
-    const xla::HloInputOutputAliasConfig& input_output_alias,
-    absl::Span<const int> input_mapping,
-    const std::map<int, const Tensor*>& resource_vars_snapshots,
-    DataType output_dtype, const TensorShape& output_shape,
-    se::DeviceMemoryBase output_buffer, Allocator* output_allocator) {
-  xla::ShapeIndex output_index = input_output_alias.shape().IsTuple()
-                                     ? xla::ShapeIndex({output_num})
-                                     : xla::ShapeIndex({});
-
-  CHECK(input_output_alias.shape().IsTuple() || output_num == 0);
-  if (absl::optional<xla::HloInputOutputAliasConfig::Alias> alias =
-          input_output_alias.GetAliasedParameter(output_index)) {
-    VLOG(3) << "Found alias: " << alias->ToString();
-    int tf_param =
-        input_mapping[alias->parameter_number] - missing_ctx_input_prefix;
-    const Tensor input_tensor =
-        ctx->input(tf_param).dtype() != DT_RESOURCE
-            ? ctx->input(tf_param)
-            : *resource_vars_snapshots.at(missing_ctx_input_prefix + tf_param);
-    if (output_buffer.opaque() == input_tensor.data()) {
-      return input_tensor;
-    }
-  }
-  return MakeTensor(output_dtype, output_shape, output_buffer,
-                    output_allocator);
-}
-
-static void PopulateXlaTensor(Tensor* output_tensor,
-                              xla::ScopedShapedBuffer* output, int output_num,
-                              se::Stream* stream, bool use_multiple_streams,
-                              std::shared_ptr<se::Event> definition_event) {
-  XlaTensor* xla_tensor = XlaTensor::FromTensor(output_tensor);
-  CHECK(xla_tensor);
-  xla_tensor->set_shaped_buffer(output->TakeSubTree({output_num}));
-  if (use_multiple_streams) {
-    xla_tensor->ResetDefinitionEvent(definition_event, stream);
-  }
-}
-
 // Get aliased tensor from output, or make a new one for the corresponding
 // output operation. Transfers ownership of the buffer from output to the
 // returned tensor.
@@ -362,21 +324,50 @@ static xla::StatusOr<Tensor> GetOrCreateTensorForOutput(
     DataType output_dtype, const TensorShape& output_shape,
     Allocator* output_allocator, bool allocate_xla_tensors, se::Stream* stream,
     bool use_multiple_streams, std::shared_ptr<se::Event> definition_event) {
-  Tensor output_tensor;
+  xla::ShapeIndex output_index = input_output_alias.shape().IsTuple()
+                                     ? xla::ShapeIndex({output_num})
+                                     : xla::ShapeIndex({});
+  CHECK(input_output_alias.shape().IsTuple() || output_num == 0);
+  if (absl::optional<xla::HloInputOutputAliasConfig::Alias> alias =
+          input_output_alias.GetAliasedParameter(output_index)) {
+    VLOG(3) << "Found alias: " << alias->ToString();
+    int tf_param =
+        input_mapping[alias->parameter_number] - missing_ctx_input_prefix;
+    const Tensor input_tensor =
+        ctx->input(tf_param).dtype() != DT_RESOURCE
+            ? ctx->input(tf_param)
+            : *resource_vars_snapshots.at(missing_ctx_input_prefix + tf_param);
+    se::DeviceMemoryBase input_buffer =
+        XlaTensor::DeviceMemoryFromTensor(input_tensor);
+    se::DeviceMemoryBase output_buffer = output.buffer({output_num});
+    if (input_buffer.opaque() == output_buffer.opaque()) {
+      // In the case of a donated buffer, both input_tensor and output think
+      // they have ownership of the buffer (see comment in
+      // PopulateExecutionInputBuffer). Release ownership from output to avoid
+      // double free.
+      output.set_buffer(se::OwningDeviceMemory(), {output_num});
+      return input_tensor;
+    }
+  }
+
   if (allocate_xla_tensors) {
+    Tensor output_tensor;
     TF_RETURN_IF_ERROR(
         ctx->allocate_temp(output_dtype, output_shape, &output_tensor));
     if (output_tensor.TotalBytes() > 0) {
-      PopulateXlaTensor(&output_tensor, &output, output_num, stream,
-                        use_multiple_streams, definition_event);
+      XlaTensor* xla_tensor = XlaTensor::FromTensor(&output_tensor);
+      TF_RET_CHECK(xla_tensor);
+      xla_tensor->set_shaped_buffer(output.TakeSubTree({output_num}));
+      if (use_multiple_streams) {
+        xla_tensor->ResetDefinitionEvent(definition_event, stream);
+      }
     }
-  } else {
-    se::DeviceMemoryBase buffer = output.buffer({output_num});
-    output_tensor = GetOrCreateTensorForOutput(
-        output_num, ctx, missing_ctx_input_prefix, input_output_alias,
-        input_mapping, resource_vars_snapshots, output_dtype, output_shape,
-        buffer, output_allocator);
+    return output_tensor;
   }
+
+  se::DeviceMemoryBase output_buffer = output.buffer({output_num});
+  Tensor output_tensor =
+      MakeTensor(output_dtype, output_shape, output_buffer, output_allocator);
   output.set_buffer(se::OwningDeviceMemory(), {output_num});
   return output_tensor;
 }
