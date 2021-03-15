@@ -18,9 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gzip
 import os
-import zlib
 
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
@@ -33,41 +31,14 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.util import compat
 
 
-class FixedLengthRecordDatasetTestBase(test_base.DatasetTestBase):
-  """Base class for setting up and testing FixedLengthRecordDataset."""
+class FeaturesTestBase(test_base.DatasetTestBase):
+  """Base class for testing TFRecord-based features."""
 
   def setUp(self):
-    super(FixedLengthRecordDatasetTestBase, self).setUp()
+    super(FeaturesTestBase, self).setUp()
     self._num_files = 2
     self._num_records = 7
-    self._header_bytes = 5
-    self._record_bytes = 3
-    self._footer_bytes = 2
-
-  def _record(self, f, r):
-    return compat.as_bytes(str(f * 2 + r) * self._record_bytes)
-
-  def _createFiles(self):
-    filenames = []
-    for i in range(self._num_files):
-      fn = os.path.join(self.get_temp_dir(), "fixed_length_record.%d.txt" % i)
-      filenames.append(fn)
-      with open(fn, "wb") as f:
-        f.write(b"H" * self._header_bytes)
-        for j in range(self._num_records):
-          f.write(self._record(i, j))
-        f.write(b"F" * self._footer_bytes)
-    return filenames
-
-
-class MakeBatchedFeaturesDatasetTestBase(test_base.DatasetTestBase):
-  """Base class for setting up and testing `make_batched_features_dataset`."""
-
-  def setUp(self):
-    super(MakeBatchedFeaturesDatasetTestBase, self).setUp()
-    self._num_files = 2
-    self._num_records = 7
-    self.test_filenames = self._createFiles()
+    self._filenames = self._createFiles()
 
   def make_batch_feature(self,
                          filenames,
@@ -246,12 +217,12 @@ class MakeBatchedFeaturesDatasetTestBase(test_base.DatasetTestBase):
           [len(file_batch), keywords_batch_max_len], record_batch, label_batch
       ]
 
-  def verify_records(self,
-                     batch_size,
-                     file_index=None,
-                     num_epochs=1,
-                     label_key_provided=False,
-                     interleave_cycle_length=1):
+  def _verify_records(self,
+                      batch_size,
+                      file_index=None,
+                      num_epochs=1,
+                      label_key_provided=False,
+                      interleave_cycle_length=1):
     if file_index is not None:
       file_indices = [file_index]
     else:
@@ -268,48 +239,14 @@ class MakeBatchedFeaturesDatasetTestBase(test_base.DatasetTestBase):
         self.assertAllEqual(expected_batch[i], actual_batch[i])
 
 
-class TextLineDatasetTestBase(test_base.DatasetTestBase):
-  """Base class for setting up and testing TextLineDataset."""
+class TFRecordTestBase(test_base.DatasetTestBase):
+  """Base class for TFRecord-based tests."""
 
-  def _lineText(self, f, l):
-    return compat.as_bytes("%d: %d" % (f, l))
-
-  def _createFiles(self,
-                   num_files,
-                   num_lines,
-                   crlf=False,
-                   compression_type=None):
-    filenames = []
-    for i in range(num_files):
-      fn = os.path.join(self.get_temp_dir(), "text_line.%d.txt" % i)
-      filenames.append(fn)
-      contents = []
-      for j in range(num_lines):
-        contents.append(self._lineText(i, j))
-        # Always include a newline after the record unless it is
-        # at the end of the file, in which case we include it
-        if j + 1 != num_lines or i == 0:
-          contents.append(b"\r\n" if crlf else b"\n")
-      contents = b"".join(contents)
-
-      if not compression_type:
-        with open(fn, "wb") as f:
-          f.write(contents)
-      elif compression_type == "GZIP":
-        with gzip.GzipFile(fn, "wb") as f:
-          f.write(contents)
-      elif compression_type == "ZLIB":
-        contents = zlib.compress(contents)
-        with open(fn, "wb") as f:
-          f.write(contents)
-      else:
-        raise ValueError("Unsupported compression_type", compression_type)
-
-    return filenames
-
-
-class TFRecordDatasetTestBase(test_base.DatasetTestBase):
-  """Base class for setting up and testing TFRecordDataset."""
+  def setUp(self):
+    super(TFRecordTestBase, self).setUp()
+    self._num_files = 2
+    self._num_records = 7
+    self._filenames = self._createFiles()
 
   def _interleave(self, iterators, cycle_length):
     pending_iterators = iterators
@@ -380,13 +317,6 @@ class TFRecordDatasetTestBase(test_base.DatasetTestBase):
         drop_final_batch, use_parser_fn):
       actual_batch = self.evaluate(outputs())
       self.assertAllEqual(expected_batch, actual_batch)
-
-  def setUp(self):
-    super(TFRecordDatasetTestBase, self).setUp()
-    self._num_files = 2
-    self._num_records = 7
-
-    self.test_filenames = self._createFiles()
 
   def _record(self, f, r):
     return compat.as_bytes("Record %d of file %d" % (r, f))

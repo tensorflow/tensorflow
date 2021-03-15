@@ -20,13 +20,13 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.kernel_tests import stats_dataset_test_base
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.experimental.ops import stats_ops
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.kernel_tests import tf_record_test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
@@ -397,10 +397,9 @@ class ThreadUtilizationStatsTest(stats_dataset_test_base.StatsDatasetTestBase,
         function_processing_time=True)
 
 
-class FeatureStatsDatasetTest(
-    stats_dataset_test_base.StatsDatasetTestBase,
-    reader_dataset_ops_test_base.MakeBatchedFeaturesDatasetTestBase,
-    parameterized.TestCase):
+class FeatureStatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase,
+                              tf_record_test_base.FeaturesTestBase,
+                              parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testFeaturesStats(self):
@@ -410,7 +409,7 @@ class FeatureStatsDatasetTest(
 
     def dataset_fn():
       return self.make_batch_feature(
-          filenames=self.test_filenames[0],
+          filenames=self._filenames[0],
           num_epochs=num_epochs,
           batch_size=batch_size,
           shuffle=True,

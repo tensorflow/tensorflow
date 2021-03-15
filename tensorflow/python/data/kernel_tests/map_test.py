@@ -1402,8 +1402,8 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     manager.save()
 
 
-class MapDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                               parameterized.TestCase):
+class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                        parameterized.TestCase):
 
   def setUp(self):
     self._tensor_slice_len = 7

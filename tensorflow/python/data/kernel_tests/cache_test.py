@@ -421,8 +421,8 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
     manager.save()
 
 
-class CacheDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                                 parameterized.TestCase):
+class CacheCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                          parameterized.TestCase):
 
   def setUp(self):
     self.range_size = 10
