@@ -114,11 +114,7 @@ gentbl(
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/IR/BuiltinLocationAttributes.td",
-    td_srcs = [
-        "include/mlir/IR/BuiltinLocationAttributes.td",
-        "include/mlir/IR/BuiltinDialect.td",
-        ":OpBaseTdFiles",
-    ],
+    deps = [":BuiltinDialectTdFiles"],
 )
 
 gentbl(
@@ -3114,7 +3110,7 @@ gentbl(
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Interfaces/DataLayoutInterfaces.td",
-    td_srcs = [":OpBaseTdFiles"],
+    deps = [":OpBaseTdFiles"],
 )
 
 gentbl(
@@ -5480,9 +5476,7 @@ gentbl(
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/DLTI/DLTIBase.td",
-    td_srcs = [
-        ":OpBaseTdFiles",
-    ],
+    deps = [":OpBaseTdFiles"],
 )
 
 cc_library(
