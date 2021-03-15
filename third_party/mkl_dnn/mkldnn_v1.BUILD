@@ -73,21 +73,15 @@ cc_library(
     srcs = glob(
         [
             "src/common/*.cpp",
-            "src/common/*.hpp",
             "src/cpu/*.cpp",
-            "src/cpu/*.hpp",
             "src/cpu/**/*.cpp",
-            "src/cpu/**/*.hpp",
-            "src/cpu/x64/xbyak/*.h",
             "src/cpu/x64/jit_utils/jitprofiling/*.c",
-            "src/cpu/x64/jit_utils/jitprofiling/*.h",
         ],
         exclude = ["src/cpu/aarch64/**"],
     ) + [
         ":dnnl_config_h",
         ":dnnl_version_h",
     ],
-    hdrs = glob(["include/*"]),
     copts = select({
         "@org_tensorflow//tensorflow:windows": [],
         "//conditions:default": ["-fexceptions"],
@@ -104,6 +98,14 @@ cc_library(
         "src/cpu/gemm",
         "src/cpu/x64/xbyak",
     ],
+    textual_hdrs = glob([
+        "include/**/*",
+        "src/common/*.hpp",
+        "src/cpu/*.hpp",
+        "src/cpu/**/*.hpp",
+        "src/cpu/x64/jit_utils/jitprofiling/*.h",
+        "src/cpu/x64/xbyak/*.h",
+    ]),
     visibility = ["//visibility:public"],
     deps = if_mkl_ml(
         ["@org_tensorflow//third_party/mkl:intel_binary_blob"],
