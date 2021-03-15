@@ -1322,6 +1322,9 @@ string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
     const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
   if (options.print_only_essential_constants()) {
+    if (!literal_.has_value()) {
+      return "{...}";
+    }
     if (literal().IsAll(0)) {
       return "0";
     }
