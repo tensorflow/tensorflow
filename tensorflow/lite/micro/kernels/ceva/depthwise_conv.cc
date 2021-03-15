@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/depthwise_conv.h"
+
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -23,9 +24,9 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
-#include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/ceva/ceva_tflm_lib.h"
 #include "tensorflow/lite/micro/kernels/depthwise_conv.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 #ifdef MCPS_MEASUREMENT
 #include "tensorflow/lite/micro/kernels/ceva/mcps_macros.h"
 #endif
@@ -33,11 +34,10 @@ limitations under the License.
 #if defined(CEVA_BX1) || defined(CEVA_SP500)
 extern int32_t* CEVA_TFLM_KERNELS_SCRATCH;
 extern int32_t CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL;
-#endif 
+#endif
 
 namespace tflite {
 namespace {
-
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
@@ -52,8 +52,8 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
 
-  tflite::DepthwiseParams op_params = DepthwiseConvParamsFloat(*params,data);
-  
+  tflite::DepthwiseParams op_params = DepthwiseConvParamsFloat(*params, data);
+
   const float *input_data, *filter_data, *bias_data;
   float* output_data;
   input_data = tflite::micro::GetTensorData<float>(input);
@@ -71,11 +71,9 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
   const int input_width = input_shape.Dims(2);
   const int input_depth = input_shape.Dims(3);
 
-  
   const int filter_height = filter_shape.Dims(1);
   const int filter_width = filter_shape.Dims(2);
   const int filter_depth = filter_shape.Dims(3);
-
 
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
@@ -87,58 +85,50 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
   const int pad_height = data.padding.height;
   const int depth_multiplier = params->depth_multiplier;
 
-
   const int dilation_width_factor = params->dilation_width_factor;
   const int dilation_height_factor = params->dilation_height_factor;
 
 #ifdef MCPS_MEASUREMENT
   MCPS_START_ONE;
 #endif
-  for (int k = 0; k < batches; k++)
-  {
-	  CEVA_TFLM_DepthwiseConv_Float32(
-		  //1,
-		  stride_width, stride_height, pad_width, pad_height,
-		  depth_multiplier,
-		  input_height, input_width, input_depth,
-		  &input_data[k* input_height * input_width * input_depth],
-		  filter_height, filter_width, filter_depth,
-		  filter_data,
-		  bias_data,
-		  output_height, output_width, output_depth,
-		  &output_data[k* output_height * output_width * output_depth]
-		  , dilation_width_factor, dilation_height_factor, output_activation_min, output_activation_max
+  for (int k = 0; k < batches; k++) {
+    CEVA_TFLM_DepthwiseConv_Float32(
+        // 1,
+        stride_width, stride_height, pad_width, pad_height, depth_multiplier,
+        input_height, input_width, input_depth,
+        &input_data[k * input_height * input_width * input_depth],
+        filter_height, filter_width, filter_depth, filter_data, bias_data,
+        output_height, output_width, output_depth,
+        &output_data[k * output_height * output_width * output_depth],
+        dilation_width_factor, dilation_height_factor, output_activation_min,
+        output_activation_max
 
-	  );
+    );
   }
 #ifdef MCPS_MEASUREMENT
-  MCPS_STOP_ONE("Test params:Call CEVA_TFLM_DepthwiseConv_Float32 %d times, inetrnal loop = %dx%dx%dx%dx%dx%d",
-	  batches,
-	  output_height,
-	  output_width,
-	  filter_height,
-	  filter_width,
-	  output_depth,
-	  input_depth);
+  MCPS_STOP_ONE(
+      "Test params:Call CEVA_TFLM_DepthwiseConv_Float32 %d times, inetrnal "
+      "loop = %dx%dx%dx%dx%dx%d",
+      batches, output_height, output_width, filter_height, filter_width,
+      output_depth, input_depth);
 #endif
-
 }
 
 void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
                              TfLiteDepthwiseConvParams* params,
-                             const OpDataConv& data, const TfLiteEvalTensor* input,
+                             const OpDataConv& data,
+                             const TfLiteEvalTensor* input,
                              const TfLiteEvalTensor* filter,
                              const TfLiteEvalTensor* bias,
                              TfLiteEvalTensor* output) {
   DepthwiseParams op_params = DepthwiseConvParamsQuantized(*params, data);
- 
 
   op_params.quantized_activation_min = std::numeric_limits<int8_t>::min();
   op_params.quantized_activation_max = std::numeric_limits<int8_t>::max();
-  const int8_t *input_data;
-  const int8_t *filter_data;
-  const int32_t *bias_data;
-  int8_t *output_data;
+  const int8_t* input_data;
+  const int8_t* filter_data;
+  const int32_t* bias_data;
+  int8_t* output_data;
   const int32_t input_offset = op_params.input_offset;
   const int32_t output_offset = op_params.output_offset;
 
@@ -157,12 +147,10 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   const int input_width = input_shape.Dims(2);
   const int input_depth = input_shape.Dims(3);
 
-  
   const int filter_height = filter_shape.Dims(1);
   const int filter_width = filter_shape.Dims(2);
   const int filter_depth = filter_shape.Dims(3);
 
-  
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
   const int output_depth = output_shape.Dims(3);
@@ -173,50 +161,40 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   const int pad_height = data.padding.height;
   const int depth_multiplier = params->depth_multiplier;
 
-
   const int dilation_width_factor = params->dilation_width_factor;
   const int dilation_height_factor = params->dilation_height_factor;
 
-
   if ((input_depth * 4) > CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL) {
-	  TF_LITE_KERNEL_LOG(context, "Scratch size (%d) less that required (%d)",
-		  CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL, (input_depth * 4));
-
+    TF_LITE_KERNEL_LOG(context, "Scratch size (%d) less that required (%d)",
+                       CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL, (input_depth * 4));
   }
 
 #ifdef MCPS_MEASUREMENT
   MCPS_START_ONE;
 #endif
-  for (int k = 0; k < batches; k++)
-  {
-	  CEVA_TFLM_DepthwiseConvPerChannel_int8(
-		  //1,
-		  stride_width, stride_height, pad_width, pad_height,
-		  depth_multiplier,
-		  input_offset, output_offset, data.per_channel_output_multiplier, data.per_channel_output_shift,
-		  input_height, input_width, input_depth,
-		  &input_data[k* input_height * input_width * input_depth],
-		  filter_height, filter_width, filter_depth,
-		  filter_data,
-		  bias_data,
-		  output_height, output_width, output_depth,
-		  &output_data[k* output_height * output_width * output_depth],
-		  CEVA_TFLM_KERNELS_SCRATCH
-		  , dilation_width_factor, dilation_height_factor, op_params.quantized_activation_min, op_params.quantized_activation_max
+  for (int k = 0; k < batches; k++) {
+    CEVA_TFLM_DepthwiseConvPerChannel_int8(
+        // 1,
+        stride_width, stride_height, pad_width, pad_height, depth_multiplier,
+        input_offset, output_offset, data.per_channel_output_multiplier,
+        data.per_channel_output_shift, input_height, input_width, input_depth,
+        &input_data[k * input_height * input_width * input_depth],
+        filter_height, filter_width, filter_depth, filter_data, bias_data,
+        output_height, output_width, output_depth,
+        &output_data[k * output_height * output_width * output_depth],
+        CEVA_TFLM_KERNELS_SCRATCH, dilation_width_factor,
+        dilation_height_factor, op_params.quantized_activation_min,
+        op_params.quantized_activation_max
 
-	  );
+    );
   }
 #ifdef MCPS_MEASUREMENT
-  MCPS_STOP_ONE("Test params:Call CEVA_TFLM_DepthwiseConvPerChannel_int8 %d times, inetrnal loop = %dx%dx%dx%dx%dx%d",
-	  batches,
-	  output_height,
-	  output_width,
-	  filter_height,
-	  filter_width,
-	  output_depth,
-	  input_depth);
+  MCPS_STOP_ONE(
+      "Test params:Call CEVA_TFLM_DepthwiseConvPerChannel_int8 %d times, "
+      "inetrnal loop = %dx%dx%dx%dx%dx%d",
+      batches, output_height, output_width, filter_height, filter_width,
+      output_depth, input_depth);
 #endif
-
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
@@ -256,7 +234,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-}  // namespace 
+}  // namespace
 
 TfLiteRegistration Register_DEPTHWISE_CONV_2D() {
   return {/*init=*/Init,
@@ -268,6 +246,5 @@ TfLiteRegistration Register_DEPTHWISE_CONV_2D() {
           /*custom_name=*/nullptr,
           /*version=*/0};
 }
-
 
 }  // namespace tflite

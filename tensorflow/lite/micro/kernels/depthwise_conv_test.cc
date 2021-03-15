@@ -264,7 +264,8 @@ TF_LITE_MICRO_TEST(SimpleTest) {
       input_shape, input_values, filter_shape, filter_values, bias_shape,
       bias_values, golden, output_shape, &conv_params, output_data);
 }
-
+#if !defined(CEVA_BX1) && !defined(CEVA_SP500)
+// No uint8 support in CEVA's optimized kernels
 TF_LITE_MICRO_TEST(SimpleTestQuantized) {
   const int input_elements = 12;
   const int input_shape[] = {4, 1, 3, 2, 2};
@@ -461,7 +462,7 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedOptimizedFilterWidth) {
       golden_quantized, output_shape, output_data, output_scale,
       output_zero_point, &conv_params);
 }
-
+#endif  // CEVA_BX1 && SP500
 TF_LITE_MICRO_TEST(SimpleTestQuantizedPerChannel) {
   const int input_elements = 12;
   const int input_shape[] = {4, 1, 3, 2, 2};
