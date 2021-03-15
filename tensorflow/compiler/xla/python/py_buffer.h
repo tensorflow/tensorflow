@@ -117,6 +117,9 @@ class PyBuffer : public DeviceArrayBase {
   }
   PjRtDevice* sticky_device() const { return sticky_device_; }
 
+  void set_weak_type(absl::optional<bool> weak_type) { weak_type_ = weak_type; }
+  absl::optional<bool> weak_type() const { return weak_type_; }
+
   StatusOr<pybind11::object> AsNumPyArray(pybind11::handle this_obj);
 
   void SetAval(pybind11::object aval) { aval_ = aval; }
@@ -138,9 +141,18 @@ class PyBuffer : public DeviceArrayBase {
   // JAX uses this field to record whether a buffer is committed to a particular
   // device by the user (https://github.com/google/jax/pull/1916).
   PjRtDevice* sticky_device_ = nullptr;
-  // TODO(jblespiau): It's currently there for convenience but maybe we can do
-  // without it (adding `weak_type` instead).
+
+  // TODO(phawkins): consider not keeping an explicit aval on C++ buffer
+  // objects.
   pybind11::object aval_ = pybind11::none();
+
+  // An optional weak type. If absent, the JAX jit code computes the weak_type
+  // from the aval_.weak_type attribute. This is a backwards compatibility
+  // measure for older Python code that does not set weak_type explicitly.
+  // TODO(phawkins): drop support for older jax Python versions and make
+  // weak_type mandatory.
+  absl::optional<bool> weak_type_ = absl::nullopt;
+
   absl::optional<Shape> dynamic_shape_ = absl::nullopt;
   // Doubly-linked list of all PyBuffers known to the client. Protected by the
   // GIL. Since multiple PyBuffers may share the same PjRtBuffer, there may be

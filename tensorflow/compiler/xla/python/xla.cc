@@ -283,6 +283,7 @@ PYBIND11_MODULE(xla_extension, m) {
           },
           &PyBuffer::set_sticky_device)
       .def_property("aval", &PyBuffer::GetAval, &PyBuffer::SetAval)
+      .def_property("weak_type", &PyBuffer::weak_type, &PyBuffer::set_weak_type)
       .def_property_readonly("_lazy_expr",
                              [](py::object buffer) { return py::none(); })
       .def_property_readonly("device_buffer",

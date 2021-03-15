@@ -361,7 +361,9 @@ xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
     ToArgSignatureHandler buffer_handler =
         [](py::handle h, bool jax_enable_x64) -> xla::StatusOr<ArgSignature> {
       xla::PyBuffer* buffer = py::cast<xla::PyBuffer*>(h);
-      bool weak_type = py::cast<py::bool_>(h.attr("aval").attr("weak_type"));
+      bool weak_type = buffer->weak_type().has_value()
+                           ? *buffer->weak_type()
+                           : py::cast<bool>(h.attr("aval").attr("weak_type"));
       return ArgSignature(buffer->buffer()->on_device_shape().element_type(),
                           buffer->buffer()->on_device_shape().dimensions(),
                           weak_type);
@@ -486,6 +488,8 @@ struct CacheEntry {
   // returning to Python. No need to convert back and forth.
   // We need py::object to maintain the objects alive.
   std::vector<py::object> out_avals;
+  std::vector<bool> out_weak_types;
+
   // The processing done in `AddCacheEntry` ensures that LazyExpr are stored as
   // `py::none()`.
   std::vector<py::object> out_lazy_exprs;
@@ -755,12 +759,15 @@ CacheEntry* CompiledFunction::AddCacheEntry(const py::args& args,
   CHECK_EQ(avals.size(), lazy_exprs.size());
 
   cache_entry->out_avals.reserve(avals.size());
+  cache_entry->out_weak_types.reserve(avals.size());
   cache_entry->out_lazy_exprs.reserve(avals.size());
   for (int i = 0; i < avals.size(); ++i) {
     py::object shaped_array = py::reinterpret_borrow<py::object>(avals[i]);
     py::object lazy_expr = py::reinterpret_borrow<py::object>(lazy_exprs[i]);
 
     cache_entry->out_avals.push_back(shaped_array);
+    cache_entry->out_weak_types.push_back(
+        py::cast<bool>(shaped_array.attr("weak_type")));
     cache_entry->out_lazy_exprs.push_back(lazy_expr);
   }
 
@@ -850,7 +857,6 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::args args,
   std::vector<std::unique_ptr<xla::PyBuffer>> outputs =
       ValueOrThrow(cache_entry->executable->PjRtExecute(arguments.arg_buffers));
 
-  const std::vector<py::object>& out_avals = cache_entry->out_avals;
   const std::vector<py::object>& out_lazy_exprs = cache_entry->out_lazy_exprs;
   xla::PjRtDevice* sticky_device = cache_entry->sticky_device;
 
@@ -858,7 +864,8 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::args args,
   for (int i = 0; i < outputs.size(); ++i) {
     auto& buffer = outputs[i];
     if (out_lazy_exprs[i].is_none()) {  // No LazyExpr.
-      buffer->SetAval(out_avals[i]);
+      buffer->SetAval(cache_entry->out_avals[i]);
+      buffer->set_weak_type(cache_entry->out_weak_types[i]);
       TF_RETURN_IF_ERROR(buffer->set_sticky_device(sticky_device));
       flat_device_arrays.append(py::cast(std::move(outputs[i])));
     } else {
@@ -867,7 +874,7 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::args args,
       static const auto* device_array =
           new py::handle(xla_module->attr("_DeviceArray"));
       flat_device_arrays.append((*device_array)(
-          out_avals[i],
+          cache_entry->out_avals[i],
           py::cast(WrapWithClient(default_pyclient_, sticky_device)),
           out_lazy_exprs[i], py::cast(std::move(outputs[i]))));
     }

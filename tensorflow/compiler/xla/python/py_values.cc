@@ -154,7 +154,9 @@ StatusOr<DevicePutResult> HandleNumpyArray(py::handle h, PjRtDevice* to_device,
 StatusOr<DevicePutResult> PyBufferHelper(py::handle obj, py::handle py_buffer,
                                          PjRtDevice* to_device) {
   PyBuffer* buffer = py::cast<PyBuffer*>(py_buffer);
-  bool weak_type = py::cast<bool>(obj.attr("aval").attr("weak_type"));
+  bool weak_type = buffer->weak_type()
+                       ? *buffer->weak_type()
+                       : py::cast<bool>(obj.attr("aval").attr("weak_type"));
   if (buffer->buffer()->device() == to_device) {
     return DevicePutResult(
         buffer->buffer(), weak_type,
