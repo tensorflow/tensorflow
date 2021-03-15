@@ -21,6 +21,10 @@ tf_module {
     argspec: "args=[\'session_provider\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "sticky_attribute_assignment"
+    argspec: "args=[\'trackable\', \'name\', \'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "streaming_restore"
     argspec: "args=[\'status\', \'session\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
