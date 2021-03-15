@@ -101,10 +101,14 @@ Value GetElement(Value index, Value buffer, OpBuilder builder, Location loc,
 Value SetElement(Value index, Value buffer, Value element, OpBuilder builder,
                  Location loc) {
   auto buffer_type = buffer.getType().cast<RankedTensorType>();
-  // Reshape the element to add a leading dimension of size 1 if th element does
-  // not have that dimension, then perform a dynamic update slice.
-  auto slice_shape = llvm::to_vector<8>(buffer_type.getShape());
-  slice_shape[0] = 1;
+  auto element_type = element.getType().cast<RankedTensorType>();
+  // Reshape the element to add a leading dimension of size 1 if the element
+  // does not have that dimension, then perform a dynamic update slice.
+  SmallVector<long, 2> slice_shape;
+  unsigned dimensionDifference = buffer_type.getRank() - element_type.getRank();
+  while (dimensionDifference--) slice_shape.push_back(1);
+  for (auto x : element_type.getShape()) slice_shape.push_back(x);
+
   auto slice_type =
       RankedTensorType::get(slice_shape, buffer_type.getElementType());
   auto update_slice = element;

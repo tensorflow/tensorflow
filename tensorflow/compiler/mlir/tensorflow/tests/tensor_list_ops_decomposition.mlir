@@ -87,6 +87,70 @@ func @main(%arg0: tensor<i32>) -> (tensor<f32>, tensor<10xf32>, tensor<i32>) {
 
 // -----
 
+// Test handling of tf.variant and tf.variant<tf.variant> in EmptyTensorList.
+
+func @main() {
+    %0 = "tf.Const"() {value = dense<125> : tensor<i32>} : () -> tensor<i32>
+    %1 = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+    %2 = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
+    %3 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+    %4 = "tf.Const"() {value = dense<51> : tensor<i32>} : () -> tensor<i32>
+    %44 = "tf.Const"() {value = dense<50> : tensor<i32>} : () -> tensor<i32>
+    %5 = "tf.Const"() {value = dense<[1, 1024]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %6 = "tf.TensorListReserve"(%5, %4) {device = ""} : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<1x1024xf16>>>
+    %66 = "tf.TensorListReserve"(%5, %44) {device = ""} : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<1x1024xf16>>>
+    %7 = "tf.EmptyTensorList"(%1, %2) {device = ""} : (tensor<0xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<!tf.variant>>>
+    %8 = "tf.EmptyTensorList"(%1, %2) {device = ""} : (tensor<0xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<i32>>>
+    %9:6 = "tf.While"(%3, %0, %8, %7, %7, %6) {_lower_using_switch_merge = true, _num_original_outputs = 6 : i64, _read_only_resource_inputs = [], body = @while_body_func, cond = @while_cond_func, device = "", is_stateless = false, output_shapes = [#tf.shape<>, #tf.shape<>], parallel_iterations = 32 : i64} : (tensor<i32>, tensor<i32>, tensor<!tf.variant<tensor<i32>>>, tensor<!tf.variant<tensor<!tf.variant>>>, tensor<!tf.variant<tensor<!tf.variant>>>, tensor<!tf.variant<tensor<1x1024xf16>>>) -> (tensor<i32>, tensor<i32>, tensor<!tf.variant<tensor<i32>>>, tensor<!tf.variant<tensor<!tf.variant>>>, tensor<!tf.variant<tensor<!tf.variant>>>, tensor<!tf.variant<tensor<1x1024xf16>>>)
+    %10:6 = "tf.While"(%3, %0, %8, %7, %7, %66) {_lower_using_switch_merge = true, _num_original_outputs = 6 : i64, _read_only_resource_inputs = [], body = @while_body_func_2, cond = @while_cond_func_2, device = "", is_stateless = false, output_shapes = [#tf.shape<>, #tf.shape<>], parallel_iterations = 32 : i64} : (tensor<i32>, tensor<i32>, tensor<!tf.variant<tensor<i32>>>, tensor<!tf.variant<tensor<!tf.variant>>>, tensor<!tf.variant<tensor<!tf.variant>>>, tensor<!tf.variant<tensor<1x1024xf16>>>) -> (tensor<i32>, tensor<i32>, tensor<!tf.variant<tensor<i32>>>, tensor<!tf.variant<tensor<!tf.variant>>>, tensor<!tf.variant<tensor<!tf.variant>>>, tensor<!tf.variant<tensor<1x1024xf16>>>)
+    return
+  }
+
+// CHECK-LABEL: func @main
+// CHECK:  %[[TENSOR_LIST_RESERVE_1:.*]] = "tf.BroadcastTo"(%{{.*}}, %{{.*}}) : (tensor<f16>, tensor<3xi32>) -> tensor<51x1x1024xf16>
+// CHECK:  %[[TENSOR_LIST_RESERVE_2:.*]] = "tf.BroadcastTo"(%{{.*}}, %{{.*}}) : (tensor<f16>, tensor<3xi32>) -> tensor<50x1x1024xf16>
+// CHECK:  %[[VARIANT_OF_VARIANT:.*]] = "tf.BroadcastTo"(%{{.*}}, %{{.*}}) : (tensor<f16>, tensor<4xi32>) -> tensor<125x51x1x1024xf16>
+// CHECK:  %[[VARIANT:.*]] = "tf.BroadcastTo"(%{{.*}}, %{{.*}}) : (tensor<i32>, tensor<1xi32>) -> tensor<125xi32>
+// CHECK:  "tf.While"(%{{.*}}, %{{.*}}, %[[VARIANT]], %[[VARIANT_OF_VARIANT]], %[[VARIANT_OF_VARIANT]], %[[TENSOR_LIST_RESERVE_1]], %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {_lower_using_switch_merge = true, _num_original_outputs = 6 : i64, _read_only_resource_inputs = [], body = @while_body_func, cond = @while_cond_func, device = "", is_stateless = false, output_shapes = [#tf.shape<>, #tf.shape<>], parallel_iterations = 32 : i64} : (tensor<i32>, tensor<i32>, tensor<125xi32>, tensor<125x51x1x1024xf16>, tensor<125x51x1x1024xf16>, tensor<51x1x1024xf16>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> (tensor<i32>, tensor<i32>, tensor<125xi32>, tensor<125x51x1x1024xf16>, tensor<125x51x1x1024xf16>, tensor<51x1x1024xf16>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>)
+// CHECK:  "tf.While"(%{{.*}}, %{{.*}}, %[[VARIANT]], %[[VARIANT_OF_VARIANT]], %[[VARIANT_OF_VARIANT]], %[[TENSOR_LIST_RESERVE_2]], %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) {_lower_using_switch_merge = true, _num_original_outputs = 6 : i64, _read_only_resource_inputs = [], body = @while_body_func_2, cond = @while_cond_func_2, device = "", is_stateless = false, output_shapes = [#tf.shape<>, #tf.shape<>], parallel_iterations = 32 : i64} : (tensor<i32>, tensor<i32>, tensor<125xi32>, tensor<125x51x1x1024xf16>, tensor<125x51x1x1024xf16>, tensor<50x1x1024xf16>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> (tensor<i32>, tensor<i32>, tensor<125xi32>, tensor<125x51x1x1024xf16>, tensor<125x51x1x1024xf16>, tensor<50x1x1024xf16>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>)
+// CHECK:  return
+
+  func @while_body_func(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<!tf.variant<tensor<i32>>>, %arg3: tensor<!tf.variant<tensor<!tf.variant>>>, %arg4: tensor<!tf.variant<tensor<!tf.variant>>>, %arg5: tensor<!tf.variant<tensor<1x1024xf16>>>) -> (tensor<i32>, tensor<i32>, tensor<!tf.variant<tensor<i32>>>, tensor<!tf.variant<tensor<!tf.variant>>>, tensor<!tf.variant<tensor<!tf.variant>>>, tensor<!tf.variant<tensor<1x1024xf16>>>) attributes {tf._input_shapes = [#tf.shape<>, #tf.shape<>, #tf.shape<>, #tf.shape<>], tf.signature.is_stateful} {
+    %0 = "tf.Const"() {value = dense<[1, 1001]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %2 = "tf.AddV2"(%arg0, %1) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    %3 = "tf.Const"() {value = dense<0.000000e+00> : tensor<1x1024xf16>} : () -> tensor<1x1024xf16>
+    %4 = "tf.TensorListSetItem"(%arg5, %arg0, %3) {device = ""} : (tensor<!tf.variant<tensor<1x1024xf16>>>, tensor<i32>, tensor<1x1024xf16>) -> tensor<!tf.variant<tensor<1x1024xf16>>>
+    %5 = "tf.TensorListPushBack"(%arg2, %2) {device = ""} : (tensor<!tf.variant<tensor<i32>>>, tensor<i32>) -> tensor<!tf.variant<tensor<i32>>>
+    %6 = "tf.TensorListPushBack"(%arg3, %arg5) {device = ""} : (tensor<!tf.variant<tensor<!tf.variant>>>, tensor<!tf.variant<tensor<1x1024xf16>>>) -> tensor<!tf.variant<tensor<!tf.variant>>>
+    %7 = "tf.TensorListPushBack"(%arg4, %4) {device = ""} : (tensor<!tf.variant<tensor<!tf.variant>>>, tensor<!tf.variant<tensor<1x1024xf16>>>) -> tensor<!tf.variant<tensor<!tf.variant>>>
+    return %2, %arg1, %5, %6, %7, %4 : tensor<i32>, tensor<i32>, tensor<!tf.variant<tensor<i32>>>, tensor<!tf.variant<tensor<!tf.variant>>>, tensor<!tf.variant<tensor<!tf.variant>>>, tensor<!tf.variant<tensor<1x1024xf16>>>
+  }
+
+  func @while_cond_func(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<!tf.variant<tensor<i32>>>, %arg3: tensor<!tf.variant<tensor<!tf.variant>>>, %arg4: tensor<!tf.variant<tensor<!tf.variant>>>, %arg5: tensor<!tf.variant<tensor<1x1024xf16>>>) -> tensor<i1> attributes {tf._input_shapes = [#tf.shape<>, #tf.shape<>, #tf.shape<>, #tf.shape<>]} {
+    %0 = "tf.Less"(%arg0, %arg1) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    return %0 : tensor<i1>
+  }
+
+  func @while_body_func_2(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<!tf.variant<tensor<i32>>>, %arg3: tensor<!tf.variant<tensor<!tf.variant>>>, %arg4: tensor<!tf.variant<tensor<!tf.variant>>>, %arg5: tensor<!tf.variant<tensor<1x1024xf16>>>) -> (tensor<i32>, tensor<i32>, tensor<!tf.variant<tensor<i32>>>, tensor<!tf.variant<tensor<!tf.variant>>>, tensor<!tf.variant<tensor<!tf.variant>>>, tensor<!tf.variant<tensor<1x1024xf16>>>) attributes {tf._input_shapes = [#tf.shape<>, #tf.shape<>, #tf.shape<>, #tf.shape<>], tf.signature.is_stateful} {
+    %0 = "tf.Const"() {value = dense<[1, 1001]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %2 = "tf.AddV2"(%arg0, %1) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    %3 = "tf.Const"() {value = dense<0.000000e+00> : tensor<1x1024xf16>} : () -> tensor<1x1024xf16>
+    %4 = "tf.TensorListSetItem"(%arg5, %arg0, %3) {device = ""} : (tensor<!tf.variant<tensor<1x1024xf16>>>, tensor<i32>, tensor<1x1024xf16>) -> tensor<!tf.variant<tensor<1x1024xf16>>>
+    %5 = "tf.TensorListPushBack"(%arg2, %2) {device = ""} : (tensor<!tf.variant<tensor<i32>>>, tensor<i32>) -> tensor<!tf.variant<tensor<i32>>>
+    %6 = "tf.TensorListPushBack"(%arg3, %arg5) {device = ""} : (tensor<!tf.variant<tensor<!tf.variant>>>, tensor<!tf.variant<tensor<1x1024xf16>>>) -> tensor<!tf.variant<tensor<!tf.variant>>>
+    %7 = "tf.TensorListPushBack"(%arg4, %4) {device = ""} : (tensor<!tf.variant<tensor<!tf.variant>>>, tensor<!tf.variant<tensor<1x1024xf16>>>) -> tensor<!tf.variant<tensor<!tf.variant>>>
+    return %2, %arg1, %5, %6, %7, %4 : tensor<i32>, tensor<i32>, tensor<!tf.variant<tensor<i32>>>, tensor<!tf.variant<tensor<!tf.variant>>>, tensor<!tf.variant<tensor<!tf.variant>>>, tensor<!tf.variant<tensor<1x1024xf16>>>
+  }
+
+  func @while_cond_func_2(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<!tf.variant<tensor<i32>>>, %arg3: tensor<!tf.variant<tensor<!tf.variant>>>, %arg4: tensor<!tf.variant<tensor<!tf.variant>>>, %arg5: tensor<!tf.variant<tensor<1x1024xf16>>>) -> tensor<i1> attributes {tf._input_shapes = [#tf.shape<>, #tf.shape<>, #tf.shape<>, #tf.shape<>]} {
+    %0 = "tf.Less"(%arg0, %arg1) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    return %0 : tensor<i1>
+  }
+
+// -----
+
 // Test get on a tensor list created from a tensor.
 
 // CHECK-LABEL: func @main

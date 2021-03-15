@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -559,6 +560,299 @@ LogicalResult GetElementShapeFromResultType(
   return success();
 }
 
+/// Given the element_shape and size of the tensorList, returns the shape of
+/// the tensor equivalent. Returns empty shape when element_shape and list_size
+/// are not constant tensors.
+static void getTensorShape(Value element_shape, Value list_size,
+                           SmallVectorImpl<int64_t>& shape) {
+  shape.clear();
+  auto eltShape = element_shape.getDefiningOp<TF::ConstOp>();
+  auto listSize = list_size.getDefiningOp<TF::ConstOp>();
+  if (!eltShape || !listSize) return;
+
+  ElementsAttr eltShapeAttr = eltShape.value();
+  ElementsAttr listSizeAttr = listSize.value();
+
+  // Shape of the tensor is listSize followed by element_shape.
+  shape.push_back(
+      listSizeAttr.getValue(llvm::None).cast<IntegerAttr>().getInt());
+  for (unsigned i = 0, m = eltShapeAttr.getNumElements(); i < m; i++) {
+    shape.push_back(eltShapeAttr.getValue({i}).cast<IntegerAttr>().getInt());
+  }
+}
+
+/// Find unique while op users of the result of EmptyTensorListOp.
+static void findUserWhileOps(Value result, DenseSet<Operation*>& whileOpUsers) {
+  for (Operation* useOp : result.getUsers()) {
+    if (isa<TF::WhileOp>(useOp)) whileOpUsers.insert(useOp);
+  }
+}
+
+/// Returns true if EmptyTensorListOp within WhileOp's body has exactly one
+/// PushBack use.
+/// TODO: Relax the constraint to allow any number of pushes on the list and
+///       take into account other ops like TensorListPushBackBatch, etc.
+static bool checkExactlyOnePushbackUse(TF::EmptyTensorListOp op,
+                                       TF::WhileOp useOp, FuncOp body_branch) {
+  Block& body_block = body_branch.front();
+  Value emptyTensor = op.getResult();
+  SmallVector<unsigned, 2> indicesUsed;
+  for (unsigned i = 0, n = useOp.getNumOperands(); i < n; i++) {
+    if (useOp.getOperand(i) == emptyTensor) indicesUsed.push_back(i);
+  }
+
+  // Traverse through all the indices in WhileOp's operand where
+  // EmptyTensorListOp is used and check the uses of EmptyTensorListOp.
+  for (unsigned index : indicesUsed) {
+    auto argumentUsers = body_block.getArgument(index).getUsers();
+    unsigned countPushBackOps = 0;
+    for (Operation* user : argumentUsers) {
+      if (isa<TF::TensorListPushBackOp>(user)) countPushBackOps++;
+      // We bail out on rewrite if there are any other users of 'op'.
+      // TODO: Extend this for other TensorList ops like :-
+      //  TensorListPushBackBatch, TensorListConcatV2, etc.
+      else
+        return false;
+    }
+    if (countPushBackOps != 1) return false;
+  }
+
+  return true;
+}
+
+/// Utility function that returns true if argUsers contains a Sub/Add Op with
+/// 1 as an operand.
+static bool isLoopIVWithStrideOne(Value::user_range argUsers) {
+  for (Operation* use : argUsers) {
+    if (isa<TF::AddV2Op, TF::SubOp>(use)) {
+      Value stride = use->getOperand(1);
+      auto constOp = stride.getDefiningOp<TF::ConstOp>();
+      ElementsAttr constAttr = constOp.value();
+      // We handle cases where the loopIV is changed by +-1.
+      if (constAttr.getValue(llvm::None).cast<IntegerAttr>().getInt() == 1)
+        return true;
+    }
+  }
+  return false;
+}
+
+/// Returns the maximum number of tensor elements that'll be pushed in the
+/// EmptyTensorList. In case more than one push_back operation is applied on
+/// the EmptyTensorList within the same WhileOp body, we return None and thus
+/// the rewriter fails in those cases.
+static Optional<unsigned> findDynamicShape(TF::EmptyTensorListOp op,
+                                           ModuleOp moduleOp) {
+  DenseSet<Operation*> whileOpUsers;
+  findUserWhileOps(op.getResult(), whileOpUsers);
+
+  // maxSize will contain the maximum number of elements that will be pushed
+  // into the EmptyTensorList.
+  unsigned maxSize = 0;
+  // Traverse each whileOp users of the empty tensor list and find the maximum
+  // time a loop will run.
+  for (Operation* useOp : whileOpUsers) {
+    auto whileOp = cast<TF::WhileOp>(useOp);
+    FuncOp cond_func = moduleOp.lookupSymbol<mlir::FuncOp>(whileOp.cond());
+    FuncOp body_func = moduleOp.lookupSymbol<mlir::FuncOp>(whileOp.body());
+    Block& body_block = body_func.front();
+    if (!checkExactlyOnePushbackUse(op, whileOp, body_func)) return llvm::None;
+    // We handle only those cases where the WhileOp users of EmptyTensorList
+    // have conditional block made of two operations :-
+    // 1. Less/GreaterOp
+    // 2. ReturnOp
+    // We bail out rewrite in any other cases.
+    if (cond_func.front().getOperations().size() != 2) return llvm::None;
+    bool foundLessGreaterOp = false;
+    // Traverse through the condition block operations.
+    for (Operation& blockOp : cond_func.front()) {
+      if (!(isa<TF::LessOp, TF::GreaterOp>(blockOp))) continue;
+      foundLessGreaterOp = true;
+      // We first fetch the argument number of the two Values being used in
+      // LessOp/GreaterOp.
+      unsigned firstNum =
+          blockOp.getOperand(0).cast<BlockArgument>().getArgNumber();
+      unsigned secondNum =
+          blockOp.getOperand(1).cast<BlockArgument>().getArgNumber();
+
+      bool loopIV = false;
+      auto firstArgUsers = body_block.getArgument(firstNum).getUsers();
+      loopIV = isLoopIVWithStrideOne(firstArgUsers);
+      if (!loopIV) {
+        auto secondArgUsers = body_block.getArgument(secondNum).getUsers();
+        loopIV = isLoopIVWithStrideOne(secondArgUsers);
+      }
+      if (!loopIV) return llvm::None;
+      // With the argument number fetched, we now find the defining op for the
+      // corresponding operands of WhileOp.
+      auto firstArgOp =
+          useOp->getOperand(firstNum).getDefiningOp<TF::ConstOp>();
+      auto secondArgOp =
+          useOp->getOperand(secondNum).getDefiningOp<TF::ConstOp>();
+      if (!firstArgOp || !secondArgOp) return llvm::None;
+
+      // Fetch the values of both the arguments.
+      ElementsAttr firstAttr = firstArgOp.value();
+      int64_t num1 = firstAttr.getValue({}).cast<IntegerAttr>().getInt();
+      ElementsAttr secondAttr = secondArgOp.value();
+      int64_t num2 =
+          secondAttr.getValue(llvm::None).cast<IntegerAttr>().getInt();
+      // Compute the loop limit.
+      unsigned loopLimit = abs(num1 - num2);
+      maxSize = std::max(loopLimit, maxSize);
+    }
+    if (!foundLessGreaterOp) return llvm::None;
+  }
+
+  if (maxSize != 0) return maxSize;
+  return llvm::None;
+}
+
+/// Holds info for the nested tf.variant types to handle cases where a tensor
+/// list is being pushed into another tensor list.
+struct VariantInfo {
+  // The result of the ConstOp that defines the element shape of the variant.
+  Value elem_shape;
+  // The element type of the tensor values.
+  Type elem_type;
+};
+
+/// Utility function to build variant info with the finalShape and elemType. It
+/// is called by getVariantInfo towards the end after processing the inner
+/// variant in variant<variant> type.
+static void buildVariantInfo(TF::EmptyTensorListOp op,
+                             SmallVector<int64_t, 4>& finalShape,
+                             int64_t maxDimension, Type elemType,
+                             VariantInfo& variantInfo) {
+  OpBuilder builder(op);
+  SmallVector<Attribute, 4> values;
+  Type elType = builder.getI32Type();
+  auto intAttr = builder.getIntegerAttr(elType, maxDimension);
+  values.push_back(intAttr);
+  for (unsigned i = 1, n = finalShape.size(); i < n; i++) {
+    intAttr = builder.getIntegerAttr(elType, finalShape[i]);
+    values.push_back(intAttr);
+  }
+
+  // 'tensorShape' contains the dimension of 'shape' or 'values' array.
+  SmallVector<int64_t, 2> tensorShape;
+  tensorShape.push_back(values.size());
+  auto tensorType = RankedTensorType::get(tensorShape, elType);
+  auto denseElemAttr = DenseElementsAttr::get(tensorType, values);
+  Value elem_shape = builder.create<TF::ConstOp>(op.getLoc(), denseElemAttr);
+  variantInfo.elem_shape = elem_shape;
+  variantInfo.elem_type = elemType;
+}
+
+/// Finds the element_shape and max size of the nested tf.variant type. We
+/// traverse through the uses of EmptyTensorList within WhileOp and determine
+/// the element_shape and max size of the nested tf.variant type through the
+/// TensorListReserveOp/BroadCastToOp that is pushed back into the
+/// EmptyTensorListOp.
+static LogicalResult getVariantInfo(TF::EmptyTensorListOp op, ModuleOp moduleOp,
+                                    VariantInfo& variantInfo) {
+  DenseSet<Operation*> whileOpUsers;
+  Value emptyTensor = op.getResult();
+  findUserWhileOps(emptyTensor, whileOpUsers);
+
+  // Since we might have more than one TensorListReserveOp being pushed back
+  // into the EmptyTensorListOp, we take the maximum variant size amongst them
+  // all into 'maxDimension'. 'shape' and 'elemType' contains the shape and the
+  // element type of the second tensor list.
+  int64_t maxDimension = -1;
+  SmallVector<int64_t, 4> finalShape;
+  Type elemType;
+  for (Operation* useOp : whileOpUsers) {
+    auto whileOp = cast<TF::WhileOp>(useOp);
+    SmallVector<int64_t, 4> shape;
+    // We fetch and store the argument indices with emptyTensor as the operand.
+    SmallVector<unsigned, 4> indicesUsed;
+    for (unsigned i = 0, n = useOp->getNumOperands(); i < n; i++) {
+      if (useOp->getOperand(i) == emptyTensor) indicesUsed.push_back(i);
+    }
+    FuncOp body_branch = moduleOp.lookupSymbol<mlir::FuncOp>(whileOp.body());
+    Block& body_block = body_branch.front();
+    // argNum stores the argument number of the value being pushed into the
+    // empty tensor list.
+    Optional<unsigned> argNum;
+    // Assumption : Within the body branch of the WhileOp, elements are pushed
+    // into EmptyTensorList. The element thus being pushed can either be a
+    // block argument or an SSA computed within the body branch using a block
+    // argument.
+    Operation* user = nullptr;
+    for (Operation* useOp : body_block.getArgument(indicesUsed[0]).getUsers()) {
+      if (isa<TF::TensorListPushBackOp>(useOp)) {
+        user = useOp;
+        break;
+      }
+    }
+    if (!user) {
+      llvm::dbgs() << "TensorListPushBackOp on EmptyTensorList not found\n";
+      return failure();
+    }
+    Value valuePushed = user->getOperand(1);
+    if (Operation* defOp =
+            valuePushed.getDefiningOp<TF::TensorListSetItemOp>()) {
+      BlockArgument blockArg = defOp->getOperand(0).dyn_cast<BlockArgument>();
+      if (!blockArg) {
+        llvm::dbgs() << "Value being pushed is not a block argument\n";
+        return failure();
+      }
+      argNum = blockArg.getArgNumber();
+    } else {
+      BlockArgument blockArg = valuePushed.dyn_cast<BlockArgument>();
+      if (!blockArg) {
+        llvm::dbgs() << "Value being pushed is not a block argument\n";
+        return failure();
+      }
+      argNum = blockArg.getArgNumber();
+    }
+    if (!argNum.hasValue()) return failure();
+    Operation* argDefOp = useOp->getOperand(argNum.getValue()).getDefiningOp();
+    if (argDefOp) {
+      if (auto valArg = dyn_cast<TF::TensorListReserveOp>(argDefOp)) {
+        Value element_shape = valArg.element_shape();
+        Value list_size = valArg.num_elements();
+        getTensorShape(element_shape, list_size, shape);
+        elemType =
+            valArg.getResult().getType().cast<TensorType>().getElementType();
+        if (TF::VariantType variantType =
+                elemType.dyn_cast<TF::VariantType>()) {
+          for (auto tensorType : variantType.getSubtypes()) {
+            elemType = tensorType.getElementType();
+          }
+        }
+      } else if (auto valArg1 = dyn_cast<TF::BroadcastToOp>(argDefOp)) {
+        TensorType resultType =
+            valArg1.getResult().getType().cast<TensorType>();
+        auto loweredTensorShape = resultType.getShape();
+        shape.append(loweredTensorShape.begin(), loweredTensorShape.end());
+        elemType = resultType.getElementType();
+      } else {
+        llvm::dbgs() << "Defining op for the value being pushed into "
+                        "EmptyTensorList not found\n";
+        return failure();
+      }
+    } else {
+      // The defining op is lowered to a constant so we pick the shape from
+      // the resulting type.
+      auto loweredTensorShape =
+          argDefOp->getResult(0).getType().cast<TensorType>().getShape();
+      shape.append(loweredTensorShape.begin(), loweredTensorShape.end());
+      elemType =
+          argDefOp->getResult(0).getType().cast<TensorType>().getElementType();
+    }
+    if (shape.empty()) {
+      llvm::dbgs() << "Shape of the variant type cannot be determined\n";
+      return failure();
+    }
+    maxDimension = std::max(maxDimension, shape[0]);
+    finalShape = shape;
+  }
+
+  buildVariantInfo(op, finalShape, maxDimension, elemType, variantInfo);
+  return success();
+}
+
 LogicalResult HandleEmptyTensorListOp(
     TF::EmptyTensorListOp list,
     llvm::SmallDenseMap<Value, SizeInfo>* buffer_to_size) {
@@ -574,9 +868,38 @@ LogicalResult HandleEmptyTensorListOp(
       return list.emitOpError("unknown tensor list element shape");
     }
   }
-  if (failed(cutil::CreateInitBufferValue(
-          element_shape, list.max_num_elements(), list, list.element_dtype(),
-          builder, &buffer))) {
+  Value list_size = list.max_num_elements();
+  auto list_size_op = list_size.getDefiningOp<TF::ConstOp>();
+  if (!list_size_op) return list.emitOpError("unknown max element count");
+  ElementsAttr listSizeAttr = list_size_op.value();
+  auto moduleOp = list->getParentOfType<ModuleOp>();
+  // If the max_num_elements of EmptyTensorListOp is initialized with -1, we
+  // find the max number of elements that'll be pushed into the list.
+  if (listSizeAttr.getValue(llvm::None).cast<IntegerAttr>().getInt() == -1) {
+    Optional<unsigned> maxSize = findDynamicShape(list, moduleOp);
+    if (!maxSize.hasValue()) return failure();
+    auto tensorType = listSizeAttr.getType().cast<TensorType>();
+    Type elemType = tensorType.getElementType();
+    auto intAttr = builder.getIntegerAttr(elemType, maxSize.getValue());
+    auto denseElemAttr = DenseElementsAttr::get(tensorType, intAttr);
+    list_size = builder.create<TF::ConstOp>(list.getLoc(), denseElemAttr);
+  }
+  // Fetching element type of the final constantOp tensor.
+  auto eltType = list.element_dtype();
+  // Checking if the element type being pushed into the empty tensor list is
+  // not an int/index/float.
+  if (!eltType.isIntOrIndexOrFloat()) {
+    VariantInfo variantInfo;
+    if (failed(getVariantInfo(list, moduleOp, variantInfo))) return failure();
+    ElementsAttr elemAttr =
+        variantInfo.elem_shape.getDefiningOp<TF::ConstOp>().value();
+    for (unsigned i = 0, n = elemAttr.getNumElements(); i < n; i++)
+      element_shape.push_back(
+          elemAttr.getValue(i).cast<IntegerAttr>().getInt());
+    eltType = variantInfo.elem_type;
+  }
+  if (failed(cutil::CreateInitBufferValue(element_shape, list_size, list,
+                                          eltType, builder, &buffer))) {
     return failure();
   }
   Value size = cutil::GetR1Const({0LL}, builder, list.getLoc());
