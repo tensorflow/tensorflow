@@ -994,6 +994,7 @@ cuda_py_test(
     name = "segment_reduction_ops_deterministic_test",
     size = "small",
     srcs = ["segment_reduction_ops_deterministic_test.py"],
+    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python:framework",
