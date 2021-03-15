@@ -56,7 +56,10 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   // WAR an CUDA 11.2 driver bug for multiple-GPU. It currently
   // request that the context on GPU 0 is initialized. Which isn't the
   // case for TF+horovod.
-  if (platform_device_id.value() > 0) {
+  int driverVersion;
+  cuDriverGetVersion(&driverVersion);
+  VLOG(2) << "DRIVER VERSION: " << driverVersion;
+  if (platform_gpu_id.value() > 0 && driverVersion < 11030) {
     CUcontext pctx;  // We loose track of it. But this is fine.
     if (auto result = cuDevicePrimaryCtxRetain(&pctx, 0))
       LOG(FATAL)  // Crash OK.
