@@ -595,9 +595,6 @@ glob_lit_tests(
     ],
     driver = "@llvm-project//mlir:run_lit.sh",
     tags_override = {
-        "reduction_vectorization_sm50.hlo": ["no_rocm"],
-        "reduction_vectorization_sm60.hlo": ["no_rocm"],
-        "reduction_vectorization_sm70.hlo": ["no_rocm"],
         "reduction_vectorization_sm_all.hlo": ["no_rocm"],
     },
     test_file_exts = [
