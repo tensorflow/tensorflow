@@ -75,6 +75,14 @@ GENERATE_DEFAULT_TEST(Rsqrt, DT_FLOAT, DT_FLOAT, Eigen::numext::rsqrt,
 GENERATE_DEFAULT_TEST(Rsqrt, DT_DOUBLE, DT_DOUBLE, Eigen::numext::rsqrt,
                       test::OpsTestConfig().NoBufferReuse())
 
+/// Test `tf.Sin`.
+GENERATE_DEFAULT_TEST(Sin, DT_HALF, DT_HALF, Eigen::numext::sin,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Sin, DT_FLOAT, DT_FLOAT, Eigen::numext::sin,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Sin, DT_DOUBLE, DT_DOUBLE, Eigen::numext::sin,
+                      test::OpsTestConfig().NoBufferReuse())
+
 /// Test `tf.Sqrt`.
 GENERATE_DEFAULT_TEST(Sqrt, DT_HALF, DT_HALF, Eigen::numext::sqrt,
                       test::OpsTestConfig().NoBufferReuse())

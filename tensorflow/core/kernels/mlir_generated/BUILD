@@ -247,6 +247,7 @@ tf_kernel_library(
     srcs = [
         "cpu_op_abs.cc",
         "cpu_op_rsqrt.cc",
+        "cpu_op_sin.cc",
         "cpu_op_sqrt.cc",
         "cpu_op_square.cc",
     ],
@@ -260,6 +261,7 @@ tf_kernel_library(
         ":base_cpu_op",
         ":cpu_abs_kernels",
         ":cpu_rsqrt_kernels",
+        ":cpu_sin_kernels",
         ":cpu_sqrt_kernels",
         ":cpu_square_kernels",
         "//third_party/eigen3",
@@ -1096,6 +1098,18 @@ cpu_kernel_library(
 cpu_kernel_library(
     name = "cpu_rsqrt_lib",
     op = "rsqrt",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+cpu_kernel_library(
+    name = "cpu_sin_lib",
+    op = "sin",
     tile_size = "256",
     types = [
         "f16",
