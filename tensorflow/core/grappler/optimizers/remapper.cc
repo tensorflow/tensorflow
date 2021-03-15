@@ -1816,7 +1816,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         continue;
       }
     }
-#endif  //! INTEL_MKL
+#endif  // INTEL_MKL
 
     // Infer properties lazily in case they are not needed.
     if (!ctx.inferred_graph_properties && RequiresInferredShapes(ctx, i)) {
@@ -1865,9 +1865,6 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       continue;
     }
 
-// TODO(intel-tf):
-// Remove this once TF-MKL supports _FusedConv2D with these operations.
-#ifndef INTEL_MKL
     // Remap Conv2D+FusedBatchNorm into the _FusedConv2D;
     ContractionWithBatchNorm contract_with_batch_norm;
     if (allow_non_differentiable_rewrites &&
@@ -1889,7 +1886,6 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
                              &invalidated_nodes, &nodes_to_delete));
       continue;
     }
-#endif  // !INTEL_MKL
 
     // Remap FusedBatchNorm+<SideInput>+<Activation> into the _FusedBatchNormEx.
     FusedBatchNormEx fused_batch_norm_ex;
