@@ -215,7 +215,7 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddExpandDims() {
-    return AddBuiltin(BuiltinOperator_EXPAND_DIMS, Register_EXP(),
+    return AddBuiltin(BuiltinOperator_EXPAND_DIMS, Register_EXPAND_DIMS(),
                       ParseExpandDims);
   }
 
