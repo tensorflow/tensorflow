@@ -34,7 +34,7 @@ void TestGather(const int* input_dims, const InType* input_data,
   TfLiteIntArray* in_dims = IntArrayFromInts(input_dims);
   TfLiteIntArray* pos_dims = IntArrayFromInts(positions_dims);
   TfLiteIntArray* out_dims = IntArrayFromInts(output_dims);
-  TfLiteGatherParams params = {axis};
+  TfLiteGatherParams params = {axis, 0};
   const int out_len = ElementCount(*out_dims);
 
   constexpr int inputs_size = 2;
