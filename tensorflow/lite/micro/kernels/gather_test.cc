@@ -264,20 +264,6 @@ TF_LITE_MICRO_TEST(GatherOpTestFloat32Int32) {
       output_data, golden_dims, golden_data);
 }
 
-TF_LITE_MICRO_TEST(GatherOpTestFloat32Int64) {
-  float output_data[4];
-  const int input_dims[] = {2, 2, 2};
-  const float input_data[] = {13.3, -13.4, -1.4, 1.5};
-  const float golden_data[] = {-1.4, 1.5, 13.3, -13.4};
-  const int positions_dims[] = {1, 2};
-  const int64_t positions_data[] = {1, 0};
-  const int* golden_dims = nullptr;
-  int output_dims[] = {2, 0, 0};
-  tflite::testing::TestGather<float, int64_t>(
-      input_dims, input_data, positions_dims, positions_data, output_dims,
-      output_data, golden_dims, golden_data);
-}
-
 TF_LITE_MICRO_TEST(GatherOpTestInt8Int32) {
   int8_t output_data[4];
   const int input_dims[] = {2, 2, 2};
@@ -288,20 +274,6 @@ TF_LITE_MICRO_TEST(GatherOpTestInt8Int32) {
   const int* golden_dims = nullptr;
   int output_dims[] = {2, 0, 0};
   tflite::testing::TestGather<int8_t, int32_t>(
-      input_dims, input_data, positions_dims, positions_data, output_dims,
-      output_data, golden_dims, golden_data);
-}
-
-TF_LITE_MICRO_TEST(GatherOpTestInt8Int64) {
-  int8_t output_data[4];
-  const int input_dims[] = {2, 2, 2};
-  const int8_t input_data[] = {-13, -120, 14, 15};
-  const int8_t golden_data[] = {14, 15, -13, -120};
-  const int positions_dims[] = {1, 2};
-  const int64_t positions_data[] = {1, 0};
-  const int* golden_dims = nullptr;
-  int output_dims[] = {2, 0, 0};
-  tflite::testing::TestGather<int8_t, int64_t>(
       input_dims, input_data, positions_dims, positions_data, output_dims,
       output_data, golden_dims, golden_data);
 }

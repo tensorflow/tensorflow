@@ -150,18 +150,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         return kTfLiteError;
     }
   }
-  if (positions->type == kTfLiteInt64) {
-    switch (input->type) {
-      case kTfLiteFloat32:
-        return Gather<float, int64_t>(params, input, positions, output);
-      case kTfLiteInt8:
-        return Gather<int8_t, int64_t>(params, input, positions, output);
-      default:
-        TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by gather.",
-                           TfLiteTypeGetName(input->type));
-        return kTfLiteError;
-    }
-  }
   return kTfLiteOk;
 }
 }  // namespace
