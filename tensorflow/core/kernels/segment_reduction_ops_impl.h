@@ -77,6 +77,14 @@ extern bool UnsortedSegmentReductionDoValidation(OpKernel* op_kernel,
                                                  const Tensor& data,
                                                  const Tensor& segment_ids,
                                                  const Tensor& num_segments);
+extern void SparseSegmentReductionValidationHelper(
+    OpKernelContext* context, const Tensor& input, const Tensor& indices,
+    const Tensor& segment_ids, bool has_num_segments,
+    AsyncOpKernel::DoneCallback done);
+extern bool SparseSegmentReductionDoValidation(
+    OpKernelContext* context, const Tensor& input, const Tensor& indices,
+    const Tensor& segment_ids, bool has_num_segments,
+    AsyncOpKernel::DoneCallback done = nullptr);
 }  // namespace internal
 
 // This operator handles reducing segments along the first dimension.
@@ -465,28 +473,19 @@ class SparseSegmentReductionOpBase : public OpKernel {
     const Tensor& indices = context->input(1);
     const Tensor& segment_ids = context->input(2);
 
+    if (!internal::SparseSegmentReductionDoValidation(
+            context, input, indices, segment_ids, has_num_segments_)) {
+      return;
+    }
+
     Index output_rows = -1;
     if (has_num_segments_) {
       const Tensor& num_segments = context->input(3);
-
-      OP_REQUIRES(
-          context, num_segments.shape().dims() == 0,
-          errors::InvalidArgument("num_segments should be a scalar, not shape ",
-                                  num_segments.shape().DebugString()));
+      // Note that there is a Tnumsegments parameter on the op, but it is not
+      // plumbed through to here and so always takes its default value of int32.
       output_rows = internal::SubtleMustCopy(num_segments.scalar<int32>()());
-      OP_REQUIRES(context, output_rows >= 0,
-                  errors::InvalidArgument("segment ids must be >= 0"));
     }
-
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(indices.shape()),
-                errors::InvalidArgument("indices should be a vector."));
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(segment_ids.shape()),
-                errors::InvalidArgument("segment_ids should be a vector."));
-
     const int64 num_indices = indices.NumElements();
-    OP_REQUIRES(context, num_indices == segment_ids.NumElements(),
-                errors::InvalidArgument(
-                    "segment_ids and indices should have same size."));
 
     auto input_flat = input.flat_outer_dims<T>();
     const int64 num_col = input_flat.dimension(1);
@@ -774,6 +773,102 @@ class SparseSegmentReductionOpBase : public OpKernel {
 #undef INDEX
   }
 
+  const bool is_mean_;
+  const bool is_sqrtn_;
+  const bool has_num_segments_;
+  const T default_value_;
+};
+
+// Specialization for GPU. Must be Async because may need to wait for a host to
+// device memcpy before allocating output.
+template <class T, typename Index, typename SegmentId>
+class SparseSegmentReductionOpBase<GPUDevice, T, Index, SegmentId>
+    : public AsyncOpKernel {
+ public:
+  explicit SparseSegmentReductionOpBase(OpKernelConstruction* context,
+                                        bool is_mean, bool is_sqrtn,
+                                        bool has_num_segments, T default_value)
+      : AsyncOpKernel(context),
+        is_mean_(is_mean),
+        is_sqrtn_(is_sqrtn),
+        has_num_segments_(has_num_segments),
+        default_value_(default_value) {}
+
+  void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
+    const Tensor& input = context->input(0);
+    const Tensor& indices = context->input(1);
+    const Tensor& segment_ids = context->input(2);
+
+    if (!internal::SparseSegmentReductionDoValidation(
+            context, input, indices, segment_ids, has_num_segments_, done)) {
+      return;
+    }
+
+    ScratchSpace<SegmentId> output_rows_host(context, 1, /*on_host=*/true);
+
+    auto create_and_check_output = [this, context, input, indices, segment_ids,
+                                    output_rows_host, done]() {
+      // Ensure that within the callback, the proper GPU settings are
+      // configured.
+      auto stream = context->op_device_context()->stream();
+      ScopedActivateExecutorContext scoped_activation{stream->parent()};
+
+      SegmentId output_rows = *output_rows_host.data();
+      output_rows++;
+      OP_REQUIRES_ASYNC(context, output_rows > 0,
+                        errors::InvalidArgument("segment ids must be >= 0"),
+                        done);
+
+      TensorShape output_shape = input.shape();
+      output_shape.set_dim(0, output_rows);
+
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK_ASYNC(
+          context, context->allocate_output(0, output_shape, &output), done);
+
+      auto input_flat = input.flat_outer_dims<T>();
+      const auto indices_vec = indices.vec<Index>();
+      const auto segment_ids_vec = segment_ids.vec<SegmentId>();
+      auto output_flat = output->flat_outer_dims<T>();
+
+      functor::SparseSegmentReductionFunctor<T, Index, SegmentId> functor;
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          functor(context, is_mean_, is_sqrtn_, default_value_, input_flat,
+                  indices_vec, segment_ids_vec, output_flat),
+          done);
+      done();
+    };
+
+    if (has_num_segments_) {
+      // No need to do any device to host memcpy, just compute synchronously.
+      const Tensor& num_segments = context->input(3);
+      *output_rows_host.mutable_data() =
+          internal::SubtleMustCopy(num_segments.scalar<int32>()()) - 1;
+      create_and_check_output();
+    } else {
+      const int64 num_indices = indices.NumElements();
+      // Need to copy last element of segment_ids from device to host, and then
+      // asynchronously allocate the output and finish the computation.
+      se::DeviceMemoryBase output_rows_device(
+          const_cast<Tensor&>(segment_ids).template flat<SegmentId>().data() +
+          (num_indices - 1));
+      auto stream = context->op_device_context()->stream();
+      OP_REQUIRES_ASYNC(
+          context,
+          stream
+              ->ThenMemcpy(output_rows_host.mutable_data(), output_rows_device,
+                           sizeof(SegmentId))
+              .ok(),
+          errors::Internal(type_string() +
+                           ": failed to copy output_rows from device"),
+          done);
+      context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+          stream, create_and_check_output);
+    }
+  }
+
+ private:
   const bool is_mean_;
   const bool is_sqrtn_;
   const bool has_num_segments_;
