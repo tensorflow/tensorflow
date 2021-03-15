@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/quantize.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #ifdef MCPS_MEASUREMENT
-#include ""tensorflow/lite/micro/kernels/ceva/mcps_macros.h"
+#include "" tensorflow / lite / micro / kernels / ceva / mcps_macros.h "
 #endif
 
 namespace tflite {
