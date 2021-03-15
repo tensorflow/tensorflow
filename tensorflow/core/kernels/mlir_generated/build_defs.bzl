@@ -191,6 +191,8 @@ _gen_kernel_bin_rule = rule(
     fragments = ["cpp"],
     outputs = {"kernel": "%{name}_kernel.o"},
     implementation = _gen_kernel_bin_impl,
+    incompatible_use_toolchain_transition = True,
+    toolchains = ["@bazel_tools//tools/cpp:toolchain_type"],
 )
 
 def _gen_kernel_library(

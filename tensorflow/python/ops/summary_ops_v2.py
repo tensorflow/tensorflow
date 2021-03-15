@@ -54,10 +54,6 @@ from tensorflow.python.util.tf_export import tf_export
 # as a legacy API for tf.contrib.summary in TF 1.x.
 _SUMMARY_WRITER_INIT_COLLECTION_NAME = "_SUMMARY_WRITER_V2"
 
-_EXPERIMENT_NAME_PATTERNS = re.compile(r"^[^\x00-\x1F<>]{0,256}$")
-_RUN_NAME_PATTERNS = re.compile(r"^[^\x00-\x1F<>]{0,512}$")
-_USER_NAME_PATTERNS = re.compile(r"^[a-z]([-a-z0-9]{0,29}[a-z0-9])?$", re.I)
-
 
 class _SummaryState(threading.local):
 

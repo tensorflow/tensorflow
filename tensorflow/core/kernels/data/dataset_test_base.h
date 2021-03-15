@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -805,7 +804,6 @@ class DatasetOpsTestBase : public ::testing::Test {
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
   FunctionLibraryRuntime* flr_;  // Owned by `pflr_`.
-  std::unique_ptr<FunctionHandleCache> function_handle_cache_;
   std::function<void(std::function<void()>)> runner_;
   std::unique_ptr<FunctionLibraryDefinition> lib_def_;
   std::unique_ptr<ResourceMgr> resource_mgr_;

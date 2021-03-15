@@ -532,10 +532,10 @@ class TPUStrategyV2(distribute_lib.Strategy):
 
       split_size = partition_dimensions[dim_index]
       if dim_size % split_size != 0:
-        raise ValueError("Tensor shape at dimension ({}) must be "
+        raise ValueError("Tensor shape at dimension {} ({}) must be "
                          "divisible by corresponding value specified "
                          "by `partition_dimensions` ({}).".format(
-                             dim_index, split_size))
+                             dim_index, dim_size, split_size))
 
     if num_partition_splits != num_logical_devices_per_replica:
       raise ValueError("Number of logical devices ({}) does not match the "

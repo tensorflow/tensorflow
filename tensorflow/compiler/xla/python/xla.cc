@@ -322,6 +322,7 @@ PYBIND11_MODULE(xla_extension, m) {
              return buffer->AsNumPyArray(buffer_obj);
            })
       .def("xla_shape", &PyBuffer::shape)
+      .def("xla_dynamic_shape", &PyBuffer::xla_dynamic_shape)
       .def_property_readonly("client", &PyBuffer::client)
       .def("device", &PyBuffer::device)
       .def("platform", &PyBuffer::platform_name)

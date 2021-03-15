@@ -90,7 +90,7 @@ class PyBuffer : public DeviceArrayBase {
 
   // Implementation of the CUDA array interface for sharing GPU buffers with
   // other Python libraries.
-  StatusOr<pybind11::dict> CudaArrayInterface() const;
+  StatusOr<pybind11::dict> CudaArrayInterface();
 
   // PEP 3118 Python buffer protocol implementation.
   static PyBufferProcs* BufferProtocol();
@@ -98,13 +98,16 @@ class PyBuffer : public DeviceArrayBase {
   Traceback* traceback() { return traceback_.get(); }
 
   // Returns the size (i.e. number of elements) of the (host) numpy array.
-  int64 size() { return ShapeUtil::ElementsIn(buffer()->on_device_shape()); }
+  StatusOr<int64> size();
 
   // Returns the number of dimensions of the (host) numpy array.
   int ndim() const { return buffer()->on_device_shape().dimensions_size(); }
 
   pybind11::tuple python_shape() const;
   pybind11::dtype python_dtype() const;
+
+  // Representing the logical view of the underlying dynamic shapes.
+  StatusOr<Shape> xla_dynamic_shape();
 
   void SetStickyDevice(pybind11::object sticky_device);
   pybind11::object GetStickyDevice() const { return sticky_device_.value(); }
@@ -131,6 +134,7 @@ class PyBuffer : public DeviceArrayBase {
   // TODO(jblespiau): It's currently there for convenience but maybe we can do
   // without it (adding `weak_type` instead).
   absl::optional<pybind11::object> aval_ = absl::nullopt;
+  absl::optional<Shape> dynamic_shape_ = absl::nullopt;
   // Doubly-linked list of all PyBuffers known to the client. Protected by the
   // GIL. Since multiple PyBuffers may share the same PjRtBuffer, there may be
   // duplicate PjRtBuffers in this list.

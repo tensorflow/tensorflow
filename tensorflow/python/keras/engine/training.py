@@ -959,13 +959,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             noise and dropout.
             `validation_data` will override `validation_split`.
             `validation_data` could be:
-              - tuple `(x_val, y_val)` of Numpy arrays or tensors
-              - tuple `(x_val, y_val, val_sample_weights)` of Numpy arrays
-              - dataset
-            For the first two cases, `batch_size` must be provided.
-            For the last case, `validation_steps` could be provided.
-            Note that `validation_data` does not support all the data types that
-            are supported in `x`, eg, dict, generator or `keras.utils.Sequence`.
+              - A tuple `(x_val, y_val)` of Numpy arrays or tensors.
+              - A tuple `(x_val, y_val, val_sample_weights)` of NumPy arrays.
+              - A `tf.data.Dataset`.
+              - A Python generator or `keras.utils.Sequence` returning
+              `(inputs, targets)` or `(inputs, targets, sample_weights)`.
         shuffle: Boolean (whether to shuffle the training data
             before each epoch) or str (for 'batch'). This argument is ignored
             when `x` is a generator or an object of tf.data.Dataset.

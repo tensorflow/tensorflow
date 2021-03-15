@@ -28,7 +28,6 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
-from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import functional
 from tensorflow.python.keras.engine import input_layer as input_layer_lib
 from tensorflow.python.keras.layers import core
@@ -163,15 +162,14 @@ class InputLayerTest(keras_parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testInputTensorArg(self):
-    with testing_utils.use_keras_tensors_scope(True):
-      # Create a Keras Input
-      x = input_layer_lib.Input(tensor=array_ops.zeros((7, 32)))
-      self.assertAllEqual(x.shape.as_list(), [7, 32])
+    # Create a Keras Input
+    x = input_layer_lib.Input(tensor=array_ops.zeros((7, 32)))
+    self.assertAllEqual(x.shape.as_list(), [7, 32])
 
-      # Verify you can construct and use a model w/ this input
-      model = functional.Functional(x, x * 2.0)
-      self.assertAllEqual(model(array_ops.ones(x.shape)),
-                          array_ops.ones(x.shape) * 2.0)
+    # Verify you can construct and use a model w/ this input
+    model = functional.Functional(x, x * 2.0)
+    self.assertAllEqual(model(array_ops.ones(x.shape)),
+                        array_ops.ones(x.shape) * 2.0)
 
   @combinations.generate(combinations.combine(mode=['eager']))
   def testInputTensorArgInTFFunction(self):

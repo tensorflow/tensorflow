@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/conv_buffer_1x1_test_util.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/conv_constants_test_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/conv_powervr_test_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -358,6 +360,26 @@ absl::Status Winograd4x4To6x6Test(TestExecutionEnvironment* env) {
 
 - (void)testConvPowerVR {
   const auto status = ConvPowerVRTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testConvConstantsSimpleWeights {
+  const auto status = ConvConstantsSimpleWeightsTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testConvConstants {
+  const auto status = ConvConstantsTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testConvBuffer1x1SimpleWeights {
+  const auto status = ConvBuffer1x1SimpleWeightsTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testConvBuffer1x1 {
+  const auto status = ConvBuffer1x1Test(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

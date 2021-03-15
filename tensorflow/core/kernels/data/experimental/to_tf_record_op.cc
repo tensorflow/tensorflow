@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
@@ -75,8 +74,6 @@ class ToTFRecordOp : public AsyncOpKernel {
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
 
     IteratorContext::Params params(ctx);
-    FunctionHandleCache function_handle_cache(params.flr);
-    params.function_handle_cache = &function_handle_cache;
     ResourceMgr resource_mgr;
     params.resource_mgr = &resource_mgr;
     CancellationManager cancellation_manager(ctx->cancellation_manager());

@@ -176,6 +176,11 @@
         `tf.config.experimental.mlir_bridge_rollout` to enable a \"safe\" mode.
         This runs the MLIR bridge only when an analysis of the graph only when
         an analysis of the graph determines that it is safe to run.
+    *   Add new enum value 'MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED' to
+        `tf.config.experimental.mlir_bridge_rollout` to enable a fallback for
+        the MLIR bridge in a \"safe\" mode. This runs the MLIR bridge in a
+        FallbackEnabled mode when an analysis of the graph determines
+        that the graph does not have unsupported features.
 
 * Other
     *   Adding show_debug_info to mlir.convert_graph_def and

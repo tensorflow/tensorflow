@@ -63,7 +63,8 @@ std::vector<tstring> SelectOptimizationsHelper(
   // of the Borg jobs, the experiments will be randomly turned on.
   // clang-format off
   absl::flat_hash_map<string, uint64> live_experiments = {
-    {"enable_gradient_descent", 0}
+    {"enable_gradient_descent", 0},
+    {"use_private_thread_pool", 1}
   };
   // clang-format on
   auto hash_func = [](const string& str) { return Hash64(str); };

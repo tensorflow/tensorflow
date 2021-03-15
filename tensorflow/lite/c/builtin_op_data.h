@@ -365,6 +365,7 @@ typedef struct {
 
 typedef struct {
   int axis;
+  int batch_dims;
 } TfLiteGatherParams;
 
 typedef struct {
