@@ -30,16 +30,13 @@ from tensorflow.python import keras
 from tensorflow.python import tf2
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers.preprocessing import index_lookup
-from tensorflow.python.keras.layers.preprocessing import index_lookup_v1
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
-from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -48,10 +45,7 @@ from tensorflow.python.platform import test
 
 
 def get_layer_class():
-  if context.executing_eagerly():
-    return index_lookup.IndexLookup
-  else:
-    return index_lookup_v1.IndexLookup
+  return index_lookup.IndexLookup
 
 
 def _get_end_to_end_test_cases():
@@ -309,7 +303,7 @@ def _get_end_to_end_test_cases():
   return crossed_test_cases
 
 
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class IndexLookupLayerTest(keras_parameterized.TestCase,
                            preprocessing_test_utils.PreprocessingLayerTest):
 
@@ -361,7 +355,7 @@ class IndexLookupLayerTest(keras_parameterized.TestCase,
       self.assertAllClose(expected_output, output_data)
 
 
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class CategoricalEncodingInputTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
@@ -476,7 +470,7 @@ class CategoricalEncodingInputTest(
     self.assertAllEqual(expected_output, output_dataset)
 
 
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class CategoricalEncodingMultiOOVTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
@@ -572,7 +566,7 @@ class CategoricalEncodingMultiOOVTest(
     self.assertAllEqual(expected_output, output_dataset)
 
 
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class CategoricalEncodingAdaptTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
@@ -693,7 +687,7 @@ class CategoricalEncodingAdaptTest(
     layer.adapt(batched_ds)
 
 
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class IndexLookupOutputTest(keras_parameterized.TestCase,
                             preprocessing_test_utils.PreprocessingLayerTest):
 
@@ -1099,7 +1093,7 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
     self.assertAllEqual(expected_output, output_dataset)
 
 
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class IndexLookupVocabularyTest(keras_parameterized.TestCase,
                                 preprocessing_test_utils.PreprocessingLayerTest
                                ):
@@ -1404,7 +1398,7 @@ class IndexLookupVocabularyTest(keras_parameterized.TestCase,
       layer.set_vocabulary(vocab_data)
 
 
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class IndexLookupInverseVocabularyTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
@@ -1527,49 +1521,7 @@ class IndexLookupInverseVocabularyTest(
       layer.set_vocabulary(vocab_data)
 
 
-@keras_parameterized.run_all_keras_modes(always_skip_eager=True)
-class IndexLookupSaveableTest(keras_parameterized.TestCase,
-                              preprocessing_test_utils.PreprocessingLayerTest):
-
-  def test_ops_are_not_added_with_multiple_get_set_weights(self):
-    vocab_data = ["earth", "wind", "and", "fire"]
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
-        max_tokens=10,
-        num_oov_indices=1,
-        mask_token="",
-        oov_token="[OOV]",
-        dtype=dtypes.string)
-    layer.set_vocabulary(vocab_data)
-    int_data = layer(input_data)
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    weights = model.get_weights()
-    model.set_weights(weights)
-    keras.backend.get_session().graph.finalize()
-    weights = model.get_weights()
-    model.set_weights(weights)
-
-  def test_layer_saving_with_h5(self):
-    vocab_data = ["earth", "wind", "and", "fire"]
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
-        max_tokens=10,
-        num_oov_indices=1,
-        mask_token="",
-        oov_token="[OOV]",
-        dtype=dtypes.string)
-    layer.set_vocabulary(vocab_data)
-    int_data = layer(input_data)
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    path = os.path.join(self.get_temp_dir(), "model")
-    with self.assertRaisesRegex(NotImplementedError,
-                                "Save or restore weights that is not.*"):
-      save.save_model(model, path, save_format="h5")
-
-
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class IndexLookupErrorTest(keras_parameterized.TestCase,
                            preprocessing_test_utils.PreprocessingLayerTest):
 
@@ -1596,7 +1548,7 @@ class IndexLookupErrorTest(keras_parameterized.TestCase,
           dtype=dtypes.string)
 
 
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class IndexLookupSavingTest(keras_parameterized.TestCase,
                             preprocessing_test_utils.PreprocessingLayerTest):
 
@@ -1641,7 +1593,7 @@ class IndexLookupSavingTest(keras_parameterized.TestCase,
     self.assertAllEqual(new_output_dataset, expected_output)
 
 
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class IndexLookupStringCombinerTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
@@ -1778,7 +1730,7 @@ class IndexLookupStringCombinerTest(
     self.validate_accumulator_extract(combiner, data, expected_extract_output)
 
 
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class IndexLookupIntCombinerTest(keras_parameterized.TestCase,
                                  preprocessing_test_utils.PreprocessingLayerTest
                                 ):

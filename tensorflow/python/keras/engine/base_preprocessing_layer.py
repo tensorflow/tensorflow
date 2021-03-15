@@ -33,6 +33,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import data_adapter
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
@@ -209,6 +210,8 @@ class PreprocessingLayer(Layer):
           throw if 'reset_state' is set to False.
     """
     _disallow_inside_tf_function('adapt')
+    if not version_utils.should_use_v2():
+      raise RuntimeError('`adapt` is only supported in tensorflow v2.')  # pylint: disable=g-doc-exception
     if not self.stateful:
       return
     if not self.streaming and self._is_adapted and not reset_state:
