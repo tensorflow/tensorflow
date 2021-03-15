@@ -864,7 +864,45 @@ tf_py_test(
         "no_tfrt",  # TODO(b/180537361): Reenable TFRT after the issue is resolved.
     ],
     deps = [
+        ":multi_worker_testing_utils",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:init_ops_v2",
+        "//tensorflow/python:training_server_lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:parameter_server_strategy_v2",
+        "//tensorflow/python/distribute:sharded_variable",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/distribute/coordinator:cluster_coordinator",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras/utils:dataset_creator",
+        "@absl_py//absl/logging",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "dataset_creator_model_fit_test",
+    srcs = ["dataset_creator_model_fit_test.py"],
+    disable_mlir_bridge = True,  # TODO(b/170352626)
+    full_precision = True,
+    main = "dataset_creator_model_fit_test.py",
+    shard_count = 50,
+    tags = [
+        "multi_gpu",
+        "no_tfrt",  # TODO(b/180537361): Reenable TFRT after the issue is resolved.
+    ],
+    deps = [
+        ":multi_worker_testing_utils",
+        ":strategy_combinations",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:extra_py_tests_deps",
@@ -894,7 +932,6 @@ tf_py_test(
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/training:server_lib",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 
