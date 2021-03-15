@@ -29,8 +29,12 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/util/cuda_solvers.h"  // For ScratchSpace
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/util/rocm_solvers.h"
+#include "tensorflow/stream_executor/rocm/rocm_activation.h"
+using stream_executor::rocm::ScopedActivateExecutorContext;
 #endif
 
 namespace tensorflow {
@@ -396,6 +400,11 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
          input_row_ends, empty_row_indicator_t, empty_row_indicator,
          done]() -> void {
       CHECK(done);  // Crash OK
+
+      // Ensure that within the callback, the proper GPU settings are
+      // configured.
+      auto stream = context->op_device_context()->stream();
+      ScopedActivateExecutorContext scoped_activation{stream->parent()};
 
       int first_invalid_index = *first_invalid_index_host.data();
       OP_REQUIRES_ASYNC(context, first_invalid_index == kAllIndicesValid,
