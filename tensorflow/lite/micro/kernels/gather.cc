@@ -60,9 +60,9 @@ TfLiteStatus Gather(const TfLiteGatherParams* params,
       TFLITE_DCHECK_GE(coord_data[inner_i], 0);
       TFLITE_DCHECK_LT(coord_data[inner_i], axis_size);
       std::memcpy(
-        output_data + (outer_j * coord_count + inner_i) * inner_size,
-        input_data + (outer_j * axis_size + coord_data[inner_i]) * inner_size,
-        sizeof(InputT) * inner_size);
+          output_data + (outer_j * coord_count + inner_i) * inner_size,
+          input_data + (outer_j * axis_size + coord_data[inner_i]) * inner_size,
+          sizeof(InputT) * inner_size);
     }
   }
   return kTfLiteOk;

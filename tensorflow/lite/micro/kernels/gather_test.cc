@@ -29,8 +29,7 @@ void TestGather(const int* input_dims, const InType* input_data,
                 const int* positions_dims, const PosType* positions_data,
                 int* output_dims, InType* output_data,
                 const int* expected_output_dims,
-                const InType* expected_output_data,
-                const int axis = 0) {
+                const InType* expected_output_data, const int axis = 0) {
   TfLiteIntArray* in_dims = IntArrayFromInts(input_dims);
   TfLiteIntArray* pos_dims = IntArrayFromInts(positions_dims);
   TfLiteIntArray* out_dims = IntArrayFromInts(output_dims);
@@ -88,8 +87,8 @@ TF_LITE_MICRO_TEST(GatherOpTestShuffle) {
   const int* golden_dims = nullptr;
   int output_dims[] = {2, 2, 2};
   tflite::testing::TestGather<float, int32_t>(
-              input_dims, input_data, positions_dims, positions_data,
-              output_dims, output_data, golden_dims, golden_data);
+      input_dims, input_data, positions_dims, positions_data, output_dims,
+      output_data, golden_dims, golden_data);
 }
 
 TF_LITE_MICRO_TEST(GatherOpTest0DIndex) {
@@ -102,8 +101,8 @@ TF_LITE_MICRO_TEST(GatherOpTest0DIndex) {
   const int golden_dims[] = {2};
   int output_dims[] = {1, 0};
   tflite::testing::TestGather<float, int32_t>(
-              input_dims, input_data, positions_dims, positions_data,
-              output_dims, output_data, golden_dims, golden_data);
+      input_dims, input_data, positions_dims, positions_data, output_dims,
+      output_data, golden_dims, golden_data);
 }
 
 TF_LITE_MICRO_TEST(GatherOpTest0DIndexWith0DResult) {
@@ -116,8 +115,8 @@ TF_LITE_MICRO_TEST(GatherOpTest0DIndexWith0DResult) {
   const int golden_dims[] = {0};
   int output_dims[] = {1, 0};
   tflite::testing::TestGather<float, int32_t>(
-              input_dims, input_data, positions_dims, positions_data,
-              output_dims, output_data, golden_dims, golden_data);
+      input_dims, input_data, positions_dims, positions_data, output_dims,
+      output_data, golden_dims, golden_data);
 }
 
 TF_LITE_MICRO_TEST(GatherOpTest1DInput1DIndex) {
@@ -130,8 +129,8 @@ TF_LITE_MICRO_TEST(GatherOpTest1DInput1DIndex) {
   const int golden_dims[] = {1};
   int output_dims[] = {1, 0};
   tflite::testing::TestGather<float, int32_t>(
-              input_dims, input_data, positions_dims, positions_data,
-              output_dims, output_data, golden_dims, golden_data);
+      input_dims, input_data, positions_dims, positions_data, output_dims,
+      output_data, golden_dims, golden_data);
 }
 
 TF_LITE_MICRO_TEST(GatherOpTest2DIndexWith2DResult) {
@@ -158,8 +157,8 @@ TF_LITE_MICRO_TEST(FloatGatherOpTestDuplicate) {
   const int* golden_dims = nullptr;
   int output_dims[] = {3, 0, 0, 0};
   tflite::testing::TestGather<float, int32_t>(
-              input_dims, input_data, positions_dims, positions_data,
-              output_dims, output_data, golden_dims, golden_data);
+      input_dims, input_data, positions_dims, positions_data, output_dims,
+      output_data, golden_dims, golden_data);
 }
 
 TF_LITE_MICRO_TEST(FloatGatherOpTestSlice) {
@@ -172,8 +171,8 @@ TF_LITE_MICRO_TEST(FloatGatherOpTestSlice) {
   const int* golden_dims = nullptr;
   int output_dims[] = {2, 0, 0};
   tflite::testing::TestGather<float, int32_t>(
-              input_dims, input_data, positions_dims, positions_data,
-              output_dims, output_data, golden_dims, golden_data);
+      input_dims, input_data, positions_dims, positions_data, output_dims,
+      output_data, golden_dims, golden_data);
 }
 
 TF_LITE_MICRO_TEST(FloatGatherOpTestAxis1) {
@@ -187,8 +186,8 @@ TF_LITE_MICRO_TEST(FloatGatherOpTestAxis1) {
   const int golden_dims[] = {1, 2, 3};
   int output_dims[] = {3, 0, 0, 0};
   tflite::testing::TestGather<float, int32_t>(
-              input_dims, input_data, positions_dims, positions_data,
-              output_dims, output_data, golden_dims, golden_data, axis);
+      input_dims, input_data, positions_dims, positions_data, output_dims,
+      output_data, golden_dims, golden_data, axis);
 }
 
 TF_LITE_MICRO_TEST(FloatGatherOpTestAxis10DIndex) {
@@ -202,8 +201,8 @@ TF_LITE_MICRO_TEST(FloatGatherOpTestAxis10DIndex) {
   const int golden_dims[] = {1, 2};
   int output_dims[] = {2, 0, 0};
   tflite::testing::TestGather<float, int32_t>(
-              input_dims, input_data, positions_dims, positions_data,
-              output_dims, output_data, golden_dims, golden_data, axis);
+      input_dims, input_data, positions_dims, positions_data, output_dims,
+      output_data, golden_dims, golden_data, axis);
 }
 
 TF_LITE_MICRO_TEST(FloatGatherOpTestAxis1Slice) {
@@ -217,8 +216,8 @@ TF_LITE_MICRO_TEST(FloatGatherOpTestAxis1Slice) {
   const int golden_dims[] = {1, 2, 2};
   int output_dims[] = {3, 0, 0, 0};
   tflite::testing::TestGather<float, int32_t>(
-              input_dims, input_data, positions_dims, positions_data,
-              output_dims, output_data, golden_dims, golden_data, axis);
+      input_dims, input_data, positions_dims, positions_data, output_dims,
+      output_data, golden_dims, golden_data, axis);
 }
 
 TF_LITE_MICRO_TEST(FloatGatherOpTestLastAxis) {
@@ -232,8 +231,8 @@ TF_LITE_MICRO_TEST(FloatGatherOpTestLastAxis) {
   const int golden_dims[] = {1, 2, 2};
   int output_dims[] = {3, 0, 0, 0};
   tflite::testing::TestGather<float, int32_t>(
-              input_dims, input_data, positions_dims, positions_data,
-              output_dims, output_data, golden_dims, golden_data, axis);
+      input_dims, input_data, positions_dims, positions_data, output_dims,
+      output_data, golden_dims, golden_data, axis);
 }
 
 TF_LITE_MICRO_TEST(FloatGatherOpTestLastAxis0DIndex) {
@@ -247,8 +246,8 @@ TF_LITE_MICRO_TEST(FloatGatherOpTestLastAxis0DIndex) {
   const int golden_dims[] = {1, 2};
   int output_dims[] = {2, 0, 0};
   tflite::testing::TestGather<float, int32_t>(
-              input_dims, input_data, positions_dims, positions_data,
-              output_dims, output_data, golden_dims, golden_data, axis);
+      input_dims, input_data, positions_dims, positions_data, output_dims,
+      output_data, golden_dims, golden_data, axis);
 }
 
 TF_LITE_MICRO_TEST(GatherOpTestFloat32Int32) {
@@ -261,8 +260,8 @@ TF_LITE_MICRO_TEST(GatherOpTestFloat32Int32) {
   const int* golden_dims = nullptr;
   int output_dims[] = {2, 0, 0};
   tflite::testing::TestGather<float, int32_t>(
-              input_dims, input_data, positions_dims, positions_data,
-              output_dims, output_data, golden_dims, golden_data);
+      input_dims, input_data, positions_dims, positions_data, output_dims,
+      output_data, golden_dims, golden_data);
 }
 
 TF_LITE_MICRO_TEST(GatherOpTestFloat32Int64) {
@@ -275,8 +274,8 @@ TF_LITE_MICRO_TEST(GatherOpTestFloat32Int64) {
   const int* golden_dims = nullptr;
   int output_dims[] = {2, 0, 0};
   tflite::testing::TestGather<float, int64_t>(
-              input_dims, input_data, positions_dims, positions_data,
-              output_dims, output_data, golden_dims, golden_data);
+      input_dims, input_data, positions_dims, positions_data, output_dims,
+      output_data, golden_dims, golden_data);
 }
 
 TF_LITE_MICRO_TEST(GatherOpTestInt8Int32) {
@@ -289,8 +288,8 @@ TF_LITE_MICRO_TEST(GatherOpTestInt8Int32) {
   const int* golden_dims = nullptr;
   int output_dims[] = {2, 0, 0};
   tflite::testing::TestGather<int8_t, int32_t>(
-              input_dims, input_data, positions_dims, positions_data,
-              output_dims, output_data, golden_dims, golden_data);
+      input_dims, input_data, positions_dims, positions_data, output_dims,
+      output_data, golden_dims, golden_data);
 }
 
 TF_LITE_MICRO_TEST(GatherOpTestInt8Int64) {
@@ -303,8 +302,8 @@ TF_LITE_MICRO_TEST(GatherOpTestInt8Int64) {
   const int* golden_dims = nullptr;
   int output_dims[] = {2, 0, 0};
   tflite::testing::TestGather<int8_t, int64_t>(
-              input_dims, input_data, positions_dims, positions_data,
-              output_dims, output_data, golden_dims, golden_data);
+      input_dims, input_data, positions_dims, positions_data, output_dims,
+      output_data, golden_dims, golden_data);
 }
 
 TF_LITE_MICRO_TESTS_END
