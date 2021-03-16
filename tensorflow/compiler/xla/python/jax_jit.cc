@@ -860,20 +860,21 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::args args,
   const std::vector<py::object>& out_lazy_exprs = cache_entry->out_lazy_exprs;
   xla::PjRtDevice* sticky_device = cache_entry->sticky_device;
 
-  py::list flat_device_arrays;
+  std::vector<py::object> flat_device_arrays;
+  flat_device_arrays.reserve(outputs.size());
   for (int i = 0; i < outputs.size(); ++i) {
     auto& buffer = outputs[i];
     if (out_lazy_exprs[i].is_none()) {  // No LazyExpr.
       buffer->SetAval(cache_entry->out_avals[i]);
       buffer->set_weak_type(cache_entry->out_weak_types[i]);
       TF_RETURN_IF_ERROR(buffer->set_sticky_device(sticky_device));
-      flat_device_arrays.append(py::cast(std::move(outputs[i])));
+      flat_device_arrays.push_back(py::cast(std::move(outputs[i])));
     } else {
       static const auto* xla_module =
           new py::module(py::module::import("jax.interpreters.xla"));
       static const auto* device_array =
           new py::handle(xla_module->attr("_DeviceArray"));
-      flat_device_arrays.append((*device_array)(
+      flat_device_arrays.push_back((*device_array)(
           cache_entry->out_avals[i],
           py::cast(WrapWithClient(default_pyclient_, sticky_device)),
           out_lazy_exprs[i], py::cast(std::move(outputs[i]))));
