@@ -57,6 +57,8 @@ struct SegmentReductionFunctor {
                   typename TTypes<Index>::ConstFlat segment_ids,
                   const Index data_size, const T* data,
                   typename TTypes<T, 2>::Tensor output);
+  static constexpr bool atomic_reduction_is_associative =
+      AtomicReductionF::is_associative;
 };
 
 #endif
@@ -79,7 +81,7 @@ struct AtomicSumOpGpu {
                                                         const T& value) {
     GpuAtomicAdd(dest, value);
   }
-  const bool deterministic_for_float = false;
+  static constexpr bool is_associative = std::is_integral<T>::value;
 };
 
 template <typename T>
@@ -88,7 +90,7 @@ struct AtomicProdOpGpu {
                                                         const T& value) {
     GpuAtomicMul(dest, value);
   }
-  const bool deterministic_for_float = false;
+  static constexpr bool is_associative = std::is_integral<T>::value;
 };
 
 template <typename T>
@@ -97,7 +99,7 @@ struct AtomicMaxOpGpu {
                                                         const T& value) {
     GpuAtomicMax(dest, value);
   }
-  const bool deterministic_for_float = true;
+  static constexpr bool is_associative = true;
 };
 
 template <typename T>
@@ -106,7 +108,7 @@ struct AtomicMinOpGpu {
                                                         const T& value) {
     GpuAtomicMin(dest, value);
   }
-  const bool deterministic_for_float = true;
+  static constexpr bool is_associative = true;
 };
 
 // Non-atomic reduction functors for the gpu.

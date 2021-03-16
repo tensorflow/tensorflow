@@ -127,6 +127,7 @@ __global__ void UnsortedSegmentCustomKernel(
   }
 }
 
+// TODO(duncanriach): move this into a utility and share it
 bool RequireDeterminism() {
   static bool require_determinism = [] {
     bool deterministic_ops = false;
@@ -165,6 +166,7 @@ void SegmentReductionFunctor<
   if (output.size() == 0) {
     return;
   }
+
   // Set 'output' to initial value.
   GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
   const T InitialValue = InitialValueF()();
@@ -213,11 +215,10 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
       return;
     }
 
-    bool determinism_requirement_met = (
-        std::is_same<T, int32>::value ||
-        ReductionF().deterministic_for_float ||
+    bool determinism_requirement_met =
+        ReductionF::is_associative ||
         !RequireDeterminism() ||
-        DisableSegmentReductionOpDeterminismExceptions());
+        DisableSegmentReductionOpDeterminismExceptions();
     OP_REQUIRES(ctx, determinism_requirement_met, errors::Unimplemented(
         "Deterministic GPU implementation of unsorted segment reduction op"
         " not available."));

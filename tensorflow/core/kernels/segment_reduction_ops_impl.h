@@ -223,8 +223,7 @@ class SegmentReductionOp : public OpKernel {
 //     small. When to use the tiled version or the untiled version depends on
 //     many factors including data alignments, ratio of calculation to memory
 //     traffic and obviously, the problem sizes.
-template <class T, class Index, class SegmentReductionFunctor,
-          bool deterministic_for_float>
+template <class T, class Index, class SegmentReductionFunctor>
 class SegmentReductionGPUOp : public AsyncOpKernel {
  public:
   explicit SegmentReductionGPUOp(OpKernelConstruction* context)
@@ -233,15 +232,6 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
     const Tensor& input = context->input(0);
     const Tensor& segment_ids = context->input(1);
-
-    OP_REQUIRES_ASYNC(
-        context,
-        (deterministic_for_float || !RequireDeterminism() ||
-         DisableSegmentReductionOpDeterminismExceptions()),
-        errors::Unimplemented(
-            "Deterministic GPU implementation of sorted segment reduction op"
-            " not available."),
-        done);
 
     OP_REQUIRES_ASYNC(
         context, TensorShapeUtils::IsVector(segment_ids.shape()),
@@ -302,6 +292,19 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
       Tensor* output = nullptr;
       OP_REQUIRES_OK_ASYNC(
           context, context->allocate_output(0, output_shape, &output), done);
+
+      // The determinism check is here, rather than inside the functor (as it is
+      // for the unsorted segment reduction ops) because the done callback
+      // (required for OP_REQUIRES_ASYNC) is not available inside the functor.
+      bool determinism_requirement_met =
+          SegmentReductionFunctor::atomic_reduction_is_associative ||
+          !RequireDeterminism() ||
+          DisableSegmentReductionOpDeterminismExceptions();
+      OP_REQUIRES_ASYNC(
+          context, determinism_requirement_met, errors::Unimplemented(
+              "Deterministic GPU implementation of sorted segment reduction op"
+              " not available."),
+          done);
 
       auto output_flat = output->flat_outer_dims<T>();
       auto data_ptr = input.template flat<T>().data();
