@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
+#include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -691,6 +692,7 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
   virtual StatusOr<std::vector<ExecutionInput>>
   MakeExecutionInputsAndWaitForEvents(
       int device_ordinal, const ExecuteOptions& options,
+      absl::Span<const Shape> executable_parameter_shapes,
       absl::Span<PjRtBuffer* const> argument_handles,
       absl::Span<const PjRtStreamExecutorBuffer::ScopedHold> device_buffers,
       absl::flat_hash_set<BufferSequencingEvent*>& events) const;
@@ -722,6 +724,8 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
   PjRtStreamExecutorClient* const client_;
   // One executable per partition.
   std::vector<std::shared_ptr<LocalExecutable>> executables_;
+  // On device shapes of the executable parameters.
+  std::vector<std::vector<Shape>> on_device_executable_parameter_shapes_;
   // Per-executable set of parameters that have any aliased buffers and thus
   // must be donated when executing the computation.
   std::vector<absl::flat_hash_set<int>> parameters_that_must_be_donated_;
