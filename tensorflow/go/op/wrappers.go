@@ -6917,12 +6917,12 @@ func GetSessionHandle(scope *Scope, value tf.Output) (handle tf.Output) {
 // #                [-2, -1,  0, 1]
 // #                [-3, -2, -1, 0]],
 //
-// tf.matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
+// tf.linalg.band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
 //                                        [-1,  0,  1, 2]
 //                                        [ 0, -1,  0, 1]
 //                                        [ 0,  0, -1, 0]],
 //
-// tf.matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
+// tf.linalg.band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
 //                                       [-1,  0,  1, 0]
 //                                       [-2, -1,  0, 1]
 //                                       [ 0, -2, -1, 0]]
@@ -6931,9 +6931,9 @@ func GetSessionHandle(scope *Scope, value tf.Output) (handle tf.Output) {
 // Useful special cases:
 //
 // ```
-//  tf.matrix_band_part(input, 0, -1) ==> Upper triangular part.
-//  tf.matrix_band_part(input, -1, 0) ==> Lower triangular part.
-//  tf.matrix_band_part(input, 0, 0) ==> Diagonal.
+//  tf.linalg.band_part(input, 0, -1) ==> Upper triangular part.
+//  tf.linalg.band_part(input, -1, 0) ==> Lower triangular part.
+//  tf.linalg.band_part(input, 0, 0) ==> Diagonal.
 // ```
 //
 // Arguments:
