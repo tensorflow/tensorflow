@@ -42,6 +42,10 @@ struct TTypes {
                            Eigen::Aligned>
       Tensor32Bit;
 
+  typedef Eigen::TensorMap<Eigen::Tensor<T, NDIMS, Eigen::RowMajor, int64_t>,
+                           Eigen::Aligned>
+      Tensor64Bit;
+
   // Scalar tensor (implemented as a rank-0 tensor) of scalar type T.
   typedef Eigen::TensorMap<
       Eigen::TensorFixedSize<T, Eigen::Sizes<>, Eigen::RowMajor, IndexType>,
@@ -119,6 +123,15 @@ typename TTypes<typename TensorType::Scalar,
 To32Bit(TensorType in) {
   typedef typename TTypes<typename TensorType::Scalar,
                           TensorType::NumIndices>::Tensor32Bit RetType;
+  return RetType(in.data(), To32BitDims(in.dimensions()));
+}
+
+template <typename TensorType>
+typename TTypes<typename TensorType::Scalar,
+                TensorType::NumIndices>::Tensor64Bit
+To64Bit(TensorType in) {
+  typedef typename TTypes<typename TensorType::Scalar,
+                          TensorType::NumIndices>::Tensor64Bit RetType;
   return RetType(in.data(), To32BitDims(in.dimensions()));
 }
 

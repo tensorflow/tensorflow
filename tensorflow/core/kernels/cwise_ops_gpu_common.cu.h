@@ -41,7 +41,7 @@ template <typename Functor>
 struct UnaryFunctor<GPUDevice, Functor> {
   void operator()(const GPUDevice& d, typename Functor::tout_type out,
                   typename Functor::tin_type in) {
-    To32Bit(out).device(d) = To32Bit(in).unaryExpr(typename Functor::func());
+    To64Bit(out).device(d) = To64Bit(in).unaryExpr(typename Functor::func());
   }
 };
 
@@ -51,8 +51,8 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS, has_errors> {
   void operator()(const GPUDevice& d, typename Functor::tout_type out,
                   typename Functor::tin_type in0,
                   typename Functor::tin_type in1, bool* error) {
-    To32Bit(out).device(d) =
-        To32Bit(in0).binaryExpr(in1, typename Functor::func());
+    To64Bit(out).device(d) =
+        To64Bit(in0).binaryExpr(in1, typename Functor::func());
   }
 
   void Left(const GPUDevice& d, typename Functor::tout_type out,
@@ -62,7 +62,7 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS, has_errors> {
     typedef typename Functor::in_type Tin;
     typedef typename Functor::func Binary;
     typedef typename Eigen::internal::scalar_left<Tout, Tin, Binary> Unary;
-    To32Bit(out).device(d) = To32Bit(in).unaryExpr(Unary(scalar.data()));
+    To64Bit(out).device(d) = To64Bit(in).unaryExpr(Unary(scalar.data()));
   }
 
   void Right(const GPUDevice& d, typename Functor::tout_type out,
@@ -72,7 +72,7 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS, has_errors> {
     typedef typename Functor::in_type Tin;
     typedef typename Functor::func Binary;
     typedef typename Eigen::internal::scalar_right<Tout, Tin, Binary> Unary;
-    To32Bit(out).device(d) = To32Bit(in).unaryExpr(Unary(scalar.data()));
+    To64Bit(out).device(d) = To64Bit(in).unaryExpr(Unary(scalar.data()));
   }
 
   void BCast(const GPUDevice& d,
@@ -89,18 +89,18 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS, has_errors> {
       const bool bcast0_all_one = AllOne<NDIMS>(bcast0);
       const bool bcast1_all_one = AllOne<NDIMS>(bcast1);
       if (bcast0_all_one && !bcast1_all_one) {
-        To32Bit(out).device(d) =
-            To32Bit(in0).binaryExpr(To32Bit(in1).broadcast(bcast1), func);
+        To64Bit(out).device(d) =
+            To64Bit(in0).binaryExpr(To64Bit(in1).broadcast(bcast1), func);
         return;
       }
       if (!bcast0_all_one && bcast1_all_one) {
-        To32Bit(out).device(d) =
-            To32Bit(in0).broadcast(bcast0).binaryExpr(To32Bit(in1), func);
+        To64Bit(out).device(d) =
+            To64Bit(in0).broadcast(bcast0).binaryExpr(To64Bit(in1), func);
         return;
       }
     }
-    To32Bit(out).device(d) = To32Bit(in0).broadcast(bcast0).binaryExpr(
-        To32Bit(in1).broadcast(bcast1), func);
+    To64Bit(out).device(d) = To64Bit(in0).broadcast(bcast0).binaryExpr(
+        To64Bit(in1).broadcast(bcast1), func);
   }
 };
 
