@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import functools
 import os
+import warnings
 
 from absl.testing import parameterized
 import numpy as np
@@ -393,14 +394,29 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     variable = variable_scope.get_variable(
         "v", initializer=0, use_resource=False)
     assign_op = variable.assign_add(1)
-    unoptimized_dataset = dataset_fn(variable)
 
-    options = dataset_ops.Options()
-    options.experimental_optimization.apply_default_optimizations = False
-    options.experimental_optimization.noop_elimination = True
-    options.experimental_optimization.map_and_batch_fusion = True
-    optimized_dataset = unoptimized_dataset.with_options(options)
-    optimized_it = dataset_ops.make_initializable_iterator(optimized_dataset)
+    # Check that warning is logged.
+    warnings.simplefilter("always")
+    with warnings.catch_warnings(record=True) as w:
+      unoptimized_dataset = dataset_fn(variable)
+
+      options = dataset_ops.Options()
+      options.experimental_optimization.apply_default_optimizations = False
+      options.experimental_optimization.noop_elimination = True
+      options.experimental_optimization.map_and_batch_fusion = True
+      optimized_dataset = unoptimized_dataset.with_options(options)
+      optimized_it = dataset_ops.make_initializable_iterator(optimized_dataset)
+
+    self.assertGreaterEqual(len(w), 1)
+    graph_rewrites = options._graph_rewrites()
+    expected = (
+        "tf.data graph rewrites are not compatible with "
+        "tf.Variable. The following rewrites will be disabled: %s."
+        " To enable rewrites, use resource variables instead by "
+        "calling `tf.enable_resource_variables()` at the start of the "
+        "program." %
+        (", ".join(graph_rewrites.enabled + graph_rewrites.default)))
+    self.assertTrue(any(expected in str(warning) for warning in w))
 
     # Check that outputs are the same in the optimized and unoptimized cases,
     # when the variable value is changing.
