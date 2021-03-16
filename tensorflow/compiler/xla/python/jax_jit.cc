@@ -604,10 +604,18 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
   arg_buffers.reserve(num_flat_dynamic_args);
   arguments.signature.dynamic_args_signatures.reserve(num_flat_dynamic_args);
 
-  static const auto* xla_module =
-      new py::module(py::module::import("jax.interpreters.xla"));
-  static const auto* device_array =
-      new py::object(xla_module->attr("_DeviceArray"));
+  struct PythonTypes {
+    py::object device_array;
+    py::object py_buffer_type;
+  };
+  static const auto& types = *[]() -> PythonTypes* {
+    py::module xla_module(py::module::import("jax.interpreters.xla"));
+    py::object device_array(xla_module.attr("_DeviceArray"));
+    py::object py_buffer_type = py::reinterpret_borrow<py::object>(
+        py::type::handle_of<xla::PyBuffer>());
+
+    return new PythonTypes{device_array, py_buffer_type};
+  }();
   // When the jitted function is not committed, we first check whether any
   // sticky `DeviceArray` is present and on which device they live. See also:
   // https://github.com/google/jax/pull/1884
@@ -622,13 +630,13 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
       // We specically only deal with DeviceArray (not ShardedDeviceArray).
       // (Can happen in jit(pmap), e.g. "test_jit_nested_donate_ignored").
       xla::PjRtDevice* device = nullptr;
-      if (arg.get_type().ptr() == py::type::handle_of<xla::PyBuffer>().ptr()) {
+      if (arg.get_type().ptr() == types.py_buffer_type.ptr()) {
         xla::PyBuffer* buffer = py::cast<xla::PyBuffer*>(arg);
         if (!buffer->sticky_device()) {
           continue;
         }
         device = buffer->sticky_device();
-      } else if (arg.get_type().is(*device_array)) {
+      } else if (arg.get_type().ptr() == types.device_array.ptr()) {
         if (arg.attr("_device").is_none()) {  // Skip non-sticky devices.
           continue;
         }
