@@ -744,40 +744,58 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
            type_spec=structured_tensor.StructuredTensorSpec(
                shape=[1],
                field_specs={"b": tensor_spec.TensorSpec([], dtypes.int32)}),
-           msg="Value does not match typespec"),
+           msg=r"Value at \(\) does not match typespec"),
       dict(testcase_name="TypeSpecMismatch_ListDictKey",
            pyval=[{"a": 1}],
            type_spec=structured_tensor.StructuredTensorSpec(
                shape=[1],
                field_specs={"b": tensor_spec.TensorSpec([], dtypes.int32)}),
-           msg="Value does not match typespec"),
+           msg=r"Value at \(\) does not match typespec"),
       dict(testcase_name="TypeSpecMismatch_RankMismatch",
            pyval=[{"a": 1}],
            type_spec=structured_tensor.StructuredTensorSpec(
                shape=[],
                field_specs={"a": tensor_spec.TensorSpec([], dtypes.int32)}),
-           msg=r"Value does not match typespec \(rank mismatch\)"),
+           msg=r"Value at \(\) does not match typespec \(rank mismatch\)"),
       dict(testcase_name="TypeSpecMismatch_Scalar",
            pyval=0,
            type_spec=structured_tensor.StructuredTensorSpec(
                shape=[], field_specs={}),
-           msg="Value does not match typespec"),
+           msg=r"Value at \(\) does not match typespec"),
       dict(testcase_name="TypeSpecMismatch_ListTensor",
            pyval={"a": [[1]]},
            type_spec=structured_tensor.StructuredTensorSpec(
                shape=[],
                field_specs={"a": tensor_spec.TensorSpec([], dtypes.int32)}),
-           msg="Value does not match typespec"),
+           msg=r"Value at \('a',\) does not match typespec"),
+      dict(testcase_name="TypeSpecMismatch_ListTensorDeep",
+           pyval={"a": {"b": [[1]]}},
+           type_spec=structured_tensor.StructuredTensorSpec(
+               shape=[],
+               field_specs={"a": structured_tensor.StructuredTensorSpec(
+                   shape=[],
+                   field_specs={"b": tensor_spec.TensorSpec([],
+                                                            dtypes.int32)})}),
+           msg=r"Value at \('a', 'b'\) does not match typespec"),
+      dict(testcase_name="TypeSpecMismatch_ListTensorDeep_infer",
+           pyval={"a": [{"b": [[1]]}, {"b": [["c"]]}]},
+           type_spec=None,
+           msg=r"Error parsing path \('a', 'b'\)"),
+      dict(testcase_name="TypeSpecMismatch_ListTensorDeep_infer2",
+           pyval=[{"a": 1}, {"a": "c"}],
+           type_spec=None,
+           msg=r"Error parsing path \('a',\)"),
+
       dict(testcase_name="TypeSpecMismatch_ListSparse",
            pyval=[1, 2],
            type_spec=sparse_tensor.SparseTensorSpec([None], dtypes.int32),
-           msg="Value does not match typespec"),
+           msg=r"Value at \(\) does not match typespec"),
       dict(testcase_name="TypeSpecMismatch_ListStruct",
            pyval=[[1]],
            type_spec=structured_tensor.StructuredTensorSpec(
                shape=[1, 1],
                field_specs={"a": tensor_spec.TensorSpec([], dtypes.int32)}),
-           msg="Value does not match typespec"),
+           msg=r"Value at \(\) does not match typespec"),
       dict(testcase_name="InconsistentDictionaryDepth",
            pyval=[{}, [{}]],
            msg="Inconsistent depth of dictionaries"),
@@ -1467,6 +1485,27 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     self.assertEqual(updated_st.rank, 0)
     self.assertFalse(updated_st.row_partitions)
     self.assertIsNone(updated_st.nrows())
+
+  def test_from_pyval_deep_row_partitions(self):
+    """See b/179195750."""
+    st = structured_tensor.StructuredTensor.from_pyval([{
+        "foo": [{
+            "bar": [{
+                "baz": [b"FW"]
+            }]
+        }]
+    }])
+    st2 = st.field_value(("foo", "bar"))
+    self.assertLen(st2.row_partitions, st2.rank - 1)
+
+  def test_from_fields_deep_row_partitions(self):
+    """Test a field with its own row_partition. See b/179195750."""
+    st = structured_tensor.StructuredTensor.from_pyval([[[{"baz": [b"FW"]}]]])
+    self.assertLen(st.row_partitions, st.rank - 1)
+    st2 = structured_tensor.StructuredTensor.from_fields(
+        fields={"bar": st}, shape=(None, None), validate=False)
+    st3 = st2.field_value("bar")
+    self.assertLen(st3.row_partitions, st3.rank - 1)
 
 
 if __name__ == "__main__":

@@ -50,7 +50,7 @@ class BaseDenseAttention(Layer):
     dropout: Float between 0 and 1. Fraction of the units to drop for the
       attention scores.
 
-  Call Arguments:
+  Call Args:
 
     inputs: List of the following tensors:
       * query: Query `Tensor` of shape `[batch_size, Tq, dim]`.
@@ -126,7 +126,11 @@ class BaseDenseAttention(Layer):
     if scores_mask is not None:
       padding_mask = math_ops.logical_not(scores_mask)
       # Bias so padding positions do not contribute to attention distribution.
-      scores -= 1.e9 * math_ops.cast(padding_mask, dtype=K.floatx())
+      # Note 65504. is the max float16 value.
+      if scores.dtype is dtypes.float16:
+        scores -= 65504. * math_ops.cast(padding_mask, dtype=scores.dtype)
+      else:
+        scores -= 1.e9 * math_ops.cast(padding_mask, dtype=scores.dtype)
     if training is None:
       training = K.learning_phase()
     weights = nn.softmax(scores)
@@ -242,7 +246,7 @@ class Attention(BaseDenseAttention):
     dropout: Float between 0 and 1. Fraction of the units to drop for the
       attention scores.
 
-  Call Arguments:
+  Call Args:
 
     inputs: List of the following tensors:
       * query: Query `Tensor` of shape `[batch_size, Tq, dim]`.
@@ -381,7 +385,7 @@ class AdditiveAttention(BaseDenseAttention):
     dropout: Float between 0 and 1. Fraction of the units to drop for the
       attention scores.
 
-  Call Arguments:
+  Call Args:
 
     inputs: List of the following tensors:
       * query: Query `Tensor` of shape `[batch_size, Tq, dim]`.

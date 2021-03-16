@@ -1,6 +1,7 @@
 path: "tensorflow.keras.preprocessing.text.Tokenizer"
 tf_class {
   is_instance: "<class \'keras_preprocessing.text.Tokenizer\'>"
+  is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'num_words\', \'filters\', \'lower\', \'split\', \'char_level\', \'oov_token\', \'document_count\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'!\"#$%&()*+,-./:;<=>?@[\\\\]^_`{|}~\\t\\n\', \'True\', \' \', \'False\', \'None\', \'0\'], "

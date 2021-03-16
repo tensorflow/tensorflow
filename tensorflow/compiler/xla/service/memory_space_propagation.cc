@@ -19,8 +19,13 @@ namespace xla {
 
 StatusOr<bool> MemorySpacePropagation::Run(HloModule* module) {
   bool modified = false;
+  // Configure bitcasts to define values. Otherwise, if there is only a bitcast
+  // between a fusion input and output and these two values are in different
+  // memory spaces, we can get inconsistent memory spaces between the parameter
+  // and fusion operand or root and fusion output.
   TF_ASSIGN_OR_RETURN(auto dataflow_analysis,
-                      HloDataflowAnalysis::Run(*module));
+                      HloDataflowAnalysis::Run(*module, /*ssa_form=*/false,
+                                               /*bitcast_defines_value=*/true));
   dataflow_analysis_ = std::move(dataflow_analysis);
 
   for (HloComputation* computation : module->MakeNonfusionComputations()) {

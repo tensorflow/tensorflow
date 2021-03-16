@@ -202,7 +202,6 @@ static Status CompileToLocalExecutable(
   // rather than a one-element tuple.
   compile_options.always_return_tuple = false;
   compile_options.alias_resource_update = !has_ref_vars &&
-                                          !platform_info.is_on_xla_device() &&
                                           may_alias_resource_update;
 
   xla::StatusOr<std::vector<XlaCompiler::Argument>> args =

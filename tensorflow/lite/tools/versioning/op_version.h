@@ -74,6 +74,9 @@ typedef struct {
     struct {
       bool asymmetric_quantize_inputs;
     } input_quantization;
+    struct {
+      int32_t batch_dims;
+    } gather;
   } options;
 } OpSignature;
 

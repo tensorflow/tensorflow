@@ -220,7 +220,11 @@ xla::StatusOr<std::unique_ptr<InputBuffers>> BuildComputationInputs(
         return errors::InvalidArgument(
             "Run-time shape mismatch for TPUExecute argument[", i, "] (",
             context->op_kernel().requested_input(i), "). Expected ",
-            expected.DebugString(), "; got empty tensor");
+            expected.DebugString(),
+            "; got empty tensor. If you are running "
+            "with TF2 TPU, make sure you set `drop_remainder=False` when "
+            "calling `dataset.batch` on the `tf.data.Dataset` so dynamic batch "
+            "size can be handled");
       }
     } else {
       // Compare host shapes, easier than getting the expected device shape.

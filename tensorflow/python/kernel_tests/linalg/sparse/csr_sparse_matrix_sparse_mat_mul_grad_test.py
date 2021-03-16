@@ -33,10 +33,11 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
 
-def dense_to_csr_sparse_matrix(dense):
-  dense_t = ops.convert_to_tensor(dense)
-  locs = array_ops.stop_gradient(array_ops.where(math_ops.abs(dense_t) > 0))
-  return sparse_csr_matrix_ops.dense_to_csr_sparse_matrix(dense_t, locs)
+def dense_and_sparse_from_vals(vals, datatype):
+  locs = array_ops.where(math_ops.abs(vals) > 0)
+  dense_t = ops.convert_to_tensor(vals, dtype=datatype)
+  return (dense_t,
+          sparse_csr_matrix_ops.dense_to_csr_sparse_matrix(dense_t, locs))
 
 
 def _add_test(test, op_name, testcase_name, fn):  # pylint: disable=redefined-outer-name
@@ -79,11 +80,9 @@ class CSRSparseMatrixGradTest(test.TestCase):
       b_mats_val = np.transpose(b_mats_val, (0, 2, 1))
     if adjoint_b:
       b_mats_val = np.conj(b_mats_val)
-    with self.test_session(use_gpu=True):
-      a_mats = ops.convert_to_tensor(a_mats_val, dtype=datatype)
-      b_mats = ops.convert_to_tensor(b_mats_val, dtype=datatype)
-      a_sm = dense_to_csr_sparse_matrix(a_mats)
-      b_sm = dense_to_csr_sparse_matrix(b_mats)
+    with self.test_session():
+      a_mats, a_sm = dense_and_sparse_from_vals(a_mats_val, datatype)
+      b_mats, b_sm = dense_and_sparse_from_vals(b_mats_val, datatype)
       c_sm = sparse_csr_matrix_ops.sparse_matrix_sparse_mat_mul(
           a_sm,
           b_sm,

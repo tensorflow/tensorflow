@@ -10,6 +10,7 @@ exports_files(["LICENSE"])
 py_library(
     name = "module",
     srcs = ["module.py"],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:tf2",

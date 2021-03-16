@@ -52,8 +52,8 @@ struct CLNode {
 
   CLNode() = default;
 
-  CLNode(CLNode&& node);
-  CLNode& operator=(CLNode&& node);
+  CLNode(CLNode&& node) = default;
+  CLNode& operator=(CLNode&& node) = default;
   CLNode(const CLNode&) = delete;
   CLNode& operator=(const CLNode&) = delete;
 };
@@ -114,8 +114,9 @@ class InferenceContext {
   absl::Status ConvertOperations(const GpuInfo& gpu_info,
                                  const GraphFloat32& graph, ModelHints hints);
   void CreateLinks();
-  void ReserveGraphTensors(const CreateInferenceInfo& create_info,
-                           const GpuInfo& gpu_info, const GraphFloat32& graph);
+  absl::Status ReserveGraphTensors(const CreateInferenceInfo& create_info,
+                                   const GpuInfo& gpu_info,
+                                   const GraphFloat32& graph);
   absl::Status Merge();
   absl::Status AllocateMemory(CLContext* context);
 

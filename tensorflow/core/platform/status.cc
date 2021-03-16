@@ -200,6 +200,41 @@ void Status::IgnoreError() const {
   // no-op
 }
 
+void Status::SetPayload(tensorflow::StringPiece type_url,
+                        tensorflow::StringPiece payload) {
+  if (ok()) return;
+  state_->payloads[std::string(type_url)] = std::string(payload);
+}
+
+tensorflow::StringPiece Status::GetPayload(
+    tensorflow::StringPiece type_url) const {
+  if (ok()) return tensorflow::StringPiece();
+  auto payload_iter = state_->payloads.find(std::string(type_url));
+  if (payload_iter == state_->payloads.end()) return tensorflow::StringPiece();
+  return tensorflow::StringPiece(payload_iter->second);
+}
+
+bool Status::ErasePayload(tensorflow::StringPiece type_url) {
+  if (ok()) return false;
+  auto payload_iter = state_->payloads.find(std::string(type_url));
+  if (payload_iter == state_->payloads.end()) return false;
+  state_->payloads.erase(payload_iter);
+  return true;
+}
+
+const std::unordered_map<std::string, std::string> Status::GetAllPayloads()
+    const {
+  if (ok()) return {};
+  return state_->payloads;
+}
+
+void Status::ReplaceAllPayloads(
+    const std::unordered_map<std::string, std::string>& payloads) {
+  if (ok() || payloads.empty()) return;
+  if (state_ == nullptr) state_ = std::make_unique<State>();
+  state_->payloads = payloads;
+}
+
 std::ostream& operator<<(std::ostream& os, const Status& x) {
   os << x.ToString();
   return os;

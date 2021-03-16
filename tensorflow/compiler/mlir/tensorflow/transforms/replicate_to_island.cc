@@ -121,7 +121,7 @@ LogicalResult UpdateRegionReplicateVariantOps(
     // Map aliased devices to explicit devices based on replica.
     if (auto launch = dyn_cast<tf_device::LaunchOp>(op))
       if (auto device_by_replica = devices.getValue().get(launch.device()))
-        launch.setAttr(
+        launch->setAttr(
             kDeviceAttr,
             device_by_replica.cast<ArrayAttr>()[replica_id].cast<StringAttr>());
 
@@ -316,7 +316,7 @@ void ReplicateToIslandPass::runOnFunction() {
   });
 
   for (tf_executor::IslandOp island_op : replicate_op_islands) {
-    auto graph_op = island_op.getParentOfType<tf_executor::GraphOp>();
+    auto graph_op = island_op->getParentOfType<tf_executor::GraphOp>();
     auto replicate_op =
         cast<tf_device::ReplicateOp>(island_op.GetBody().front());
     if (failed(CreateIslandsFromReplicate(tf_dialect, graph_op, island_op,

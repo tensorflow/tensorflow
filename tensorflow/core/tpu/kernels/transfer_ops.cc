@@ -80,8 +80,8 @@ Status TpuTransferAsyncOpKernelBase::RunTransferWithOrdinal(
     TF_RETURN_IF_ERROR(XlaDevice::GetMetadata(ctx, &metadata));
     real_device_ordinal = metadata->device_ordinal();
   }
-  stream_executor::StreamExecutor* stream_executor =
-      tpu_platform->ExecutorForDevice(real_device_ordinal).ValueOrDie();
+  TF_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
+                      tpu_platform->ExecutorForDevice(real_device_ordinal));
 
   profiler::TraceMe activity(
       [real_device_ordinal] {

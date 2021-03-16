@@ -178,6 +178,14 @@ class CustomNetworkWithConfigName(CustomNetworkWithConfig):
     self._config_dict['name'] = self.name
 
 
+class UnregisteredCustomSequentialModel(keras.Sequential):
+  # This class is *not* registered in the CustomObjectScope.
+
+  def __init__(self, **kwargs):
+    super(UnregisteredCustomSequentialModel, self).__init__(**kwargs)
+    self.add(keras.layers.InputLayer(input_shape=(2, 3)))
+
+
 class ReviveTestBase(keras_parameterized.TestCase):
 
   def setUp(self):
@@ -321,6 +329,14 @@ class TestModelRevive(ReviveTestBase):
     revived = keras_load.load(self.path)
     self._assert_revived_correctness(model, revived)
 
+  def test_revive_unregistered_sequential(self):
+    model = UnregisteredCustomSequentialModel()
+    x = np.random.random((2, 2, 3)).astype(np.float32)
+    model(x)
+    model.save(self.path, save_format='tf')
+    revived = keras_load.load(self.path)
+    self._assert_revived_correctness(model, revived)
+
   def test_revive_sequential_inputs(self):
     model = keras.models.Sequential([
         keras.Input((None,), dtype=dtypes.string),
@@ -364,6 +380,15 @@ class TestModelRevive(ReviveTestBase):
     revived = keras_load.load(self.path, compile=True)
     self.assertAllClose(model.test_on_batch(x, y_true),
                         revived.test_on_batch(x, y_true))
+
+  def test_revived_model_has_save_spec(self):
+    model = SubclassedModelWithConfig(2, 3)
+    model.predict(np.random.random((5, 10)).astype(np.float32))
+    model.save(self.path, save_format='tf')
+    revived = keras_load.load(self.path, compile=True)
+    self.assertAllEqual(
+        model._get_save_spec(dynamic_batch=False),
+        revived._get_save_spec(dynamic_batch=False))
 
 
 if __name__ == '__main__':

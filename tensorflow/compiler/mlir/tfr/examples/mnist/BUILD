@@ -31,7 +31,7 @@ tf_py_test(
     srcs = ["mnist_ops_test.py"],
     data = [":mnist_ops_mlir"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_pip",
         "no_windows",  # TODO(b/170752141)
@@ -49,6 +49,7 @@ py_library(
     name = "mnist_train",
     srcs = ["mnist_train.py"],
     data = [":mnist_ops_mlir"],
+    srcs_version = "PY3",
     deps = [
         ":mnist_ops",
         ":mnist_ops_py",
@@ -63,19 +64,24 @@ distribute_py_test(
     size = "medium",
     srcs = ["mnist_train_test.py"],
     data = [":mnist_ops_mlir"],
-    disable_mlir_bridge = False,
+    disable_v3 = True,  # Not needed. Save some resources and test time.
     python_version = "PY3",
     tags = [
-        "no_cuda_asan",  # b/173431253
-        "no_oss",
-        "notap",  # b/173661843
-        "notsan",  # b/173246447
+        "no_cuda_asan",  # Not needed, and there were issues with timeouts.
+        "no_oss",  # Avoid downloading mnist data set in oss.
+        "nomultivm",  # Not needed. Save some resources and test time.
+        "notap",  # The test is too long to run as part of llvm presubmits (b/173661843).
+        "notsan",  # Not needed, and there were issues with timeouts.
     ],
-    xla_enable_strict_auto_jit = False,  # b/173254861
+
+    # TODO(b/175056184): Re-enable xla_enable_strict_auto_jit once the issues
+    # with GPU and the MLIR bridge are worked out.
+    xla_enable_strict_auto_jit = False,
     deps = [
         ":mnist_train",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:is_mlir_bridge_test_true",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:test_util",

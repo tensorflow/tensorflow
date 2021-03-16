@@ -76,6 +76,7 @@ tf_kernel_library(
         "qr_op.cc",
         "quantize_and_dequantize_op.cc",
         "random_ops.cc",
+        "random_ops_util.cc",
         "random_ops_util.h",
         "reduce_window_op.cc",
         "reduction_ops.cc",
@@ -120,6 +121,7 @@ tf_kernel_library(
         "tridiagonal_ops.cc",
         "unary_ops.cc",
         "unary_ops_composition.cc",
+        "unique_op.cc",
         "unpack_op.cc",
         "variable_ops.cc",
         "where_op.cc",
@@ -273,8 +275,10 @@ cc_library(
     srcs = ["if_while_utils.cc"],
     hdrs = ["if_while_utils.h"],
     deps = [
+        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/core:lib",
     ],
 )

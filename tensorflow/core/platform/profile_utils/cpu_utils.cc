@@ -98,6 +98,8 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
     freq_factor = 1.0;
 #elif defined(__s390x__)
     retval = sscanf(line.c_str(), "bogomips per cpu: %lf", &cpu_freq);
+#elif defined(__aarch64__)
+    retval = sscanf(line.c_str(), "BogoMIPS : %lf", &cpu_freq);
 #else
     retval = sscanf(line.c_str(), "bogomips : %lf", &cpu_freq);
 #endif

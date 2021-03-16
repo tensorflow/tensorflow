@@ -60,7 +60,7 @@ void DumpToFileInDirOrStdout(const HloModule& module,
 void DumpExecutionOptions(const ExecutionOptions& execution_options,
                           const DebugOptions& debug_options);
 
-// Dumps the given HLO module if dumping is enabled for the module.  Exactly
+// Dumps the given HLO module if dumping is enabled for the module. Exactly
 // where and in what formats it's dumped is determined by the module's config.
 //
 // If you pass an HloExecutionProfile, note that currently only DOT-based output

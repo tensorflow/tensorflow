@@ -15,6 +15,9 @@ or
 **Note:** This page only covers 32-bit builds. If you're looking for 64-bit
 builds, check [Build for ARM64](build_arm64.md) page.
 
+**Note:** Cross-compile ARM with CMake is available. Please check
+[this](https://www.tensorflow.org/lite/guide/build_cmake_arm).
+
 ## Cross-compile for Raspberry Pi with Make
 
 The following instructions have been tested on Ubuntu 16.04.3 64-bit PC (AMD64)

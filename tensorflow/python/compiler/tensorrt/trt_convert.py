@@ -30,6 +30,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.compiler.tensorrt import utils as trt_utils
 from tensorflow.python.eager import context
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import convert_to_constants
@@ -112,6 +113,19 @@ class TrtPrecisionMode(object):
 # Use a large enough number as the default max_workspace_size for TRT engines,
 # so it can produce reasonable performance results with the default.
 DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = 1 << 30
+
+PROFILE_STRATEGY_RANGE = "Range"
+PROFILE_STRATEGY_OPTIMAL = "Optimal"
+PROFILE_STRATEGY_RANGE_OPTIMAL = "Range+Optimal"
+PROFILE_STRATEGY_IMPLICIT_BATCH_MODE_COMPATIBLE = "ImplicitBatchModeCompatible"
+
+
+def supported_profile_strategies():
+  return [
+      PROFILE_STRATEGY_RANGE, PROFILE_STRATEGY_OPTIMAL,
+      PROFILE_STRATEGY_RANGE_OPTIMAL,
+      PROFILE_STRATEGY_IMPLICIT_BATCH_MODE_COMPATIBLE
+  ]
 
 
 @tf_export("experimental.tensorrt.ConversionParams", v1=[])
@@ -233,7 +247,8 @@ def _get_tensorrt_rewriter_config(conversion_params,
                                   max_batch_size=None,
                                   is_v2=False,
                                   disable_non_trt_optimizers=False,
-                                  use_implicit_batch=True):
+                                  use_implicit_batch=True,
+                                  profile_strategy=PROFILE_STRATEGY_RANGE):
   """Returns a RewriterConfig proto for TRT transformation.
 
   Args:
@@ -243,6 +258,7 @@ def _get_tensorrt_rewriter_config(conversion_params,
     is_v2: whether we're getting a RewriterConfig for TF 2.0.
     disable_non_trt_optimizers: Turn off all default Grappler optimizers.
     use_implicit_batch: Whether to use implicit batch or explicit batch.
+    profile_strategy: dynamic shape optimization profile strategy.
 
   Returns:
     A RewriterConfig proto which sets a TensorRTOptimizer to run Grappler.
@@ -265,17 +281,23 @@ def _get_tensorrt_rewriter_config(conversion_params,
     raise ValueError(
         "max_batch_size has to be an integer for is_dynamic_op==False in TF1")
   rewriter_config_with_trt = rewriter_config_pb2.RewriterConfig()
+  # Disable Grappler Remapper to avoid that fused OPs that may not be
+  # beneficial to TF-TRT and are not supported by TF-TRT.
+  rewriter_config_with_trt.remapping = False
 
   if not disable_non_trt_optimizers:
     # Layout optimizer may add Const nodes followed by Reshape nodes, thus we
     # need to run constant folding again.
     rewriter_config_with_trt.optimizers.extend(
         ["constfold", "layout", "constfold"])
+
   rewriter_config_with_trt.meta_optimizer_iterations = (
       rewriter_config_pb2.RewriterConfig.ONE)
   optimizer = rewriter_config_with_trt.custom_optimizers.add()
-  # Add a constfold optimizer to cleanup the unused Const nodes.
-  rewriter_config_with_trt.custom_optimizers.add().name = "constfold"
+
+  if not disable_non_trt_optimizers:
+    # Add a constfold optimizer to cleanup the unused Const nodes.
+    rewriter_config_with_trt.custom_optimizers.add().name = "constfold"
 
   optimizer.name = "TensorRTOptimizer"
   optimizer.parameter_map[
@@ -294,26 +316,17 @@ def _get_tensorrt_rewriter_config(conversion_params,
   if max_batch_size is not None:
     optimizer.parameter_map["max_batch_size"].i = max_batch_size
   optimizer.parameter_map["use_implicit_batch"].b = use_implicit_batch
+  # While we accept case insensitive strings from the users, we only pass the
+  # strings in lower cases to TF-TRT converter.
+  if not use_implicit_batch:
+    optimizer.parameter_map["profile_strategy"].s = _to_bytes(
+        profile_strategy.lower())
 
-  # Disabling optimizers should happen after CopyFrom the template
+  # Disabling optimizers should happen after defining the TF-TRT grappler pass
   # otherwise the template can overwrite the disablement.
   if disable_non_trt_optimizers:
-    off = rewriter_config_pb2.RewriterConfig.OFF
-    rewriter_config_with_trt.layout_optimizer = off
-    rewriter_config_with_trt.constant_folding = off
-    rewriter_config_with_trt.shape_optimization = off
-    rewriter_config_with_trt.remapping = off
-    rewriter_config_with_trt.arithmetic_optimization = off
-    rewriter_config_with_trt.dependency_optimization = off
-    rewriter_config_with_trt.loop_optimization = off
-    rewriter_config_with_trt.function_optimization = off
-    rewriter_config_with_trt.debug_stripper = off
-    rewriter_config_with_trt.disable_model_pruning = True
-    rewriter_config_with_trt.scoped_allocator_optimization = off
-    rewriter_config_with_trt.memory_optimization = (
-        rewriter_config_pb2.RewriterConfig.NO_MEM_OPT)
-    rewriter_config_with_trt.pin_to_host_optimization = off
-    rewriter_config_with_trt.auto_parallel.enable = False
+    trt_utils.disable_non_trt_optimizers_in_rewriter_config(
+        rewriter_config_with_trt)
 
   return rewriter_config_with_trt
 
@@ -652,10 +665,19 @@ class TrtGraphConverter(object):
           return_elements=fetch_names,
           name="")
 
+    calibrate_rewriter_cfg = rewriter_config_pb2.RewriterConfig()
+    if self._test_only_disable_non_trt_optimizers:
+      trt_utils.disable_non_trt_optimizers_in_rewriter_config(
+          calibrate_rewriter_cfg)
+
     # Set allow_soft_placement=True to run the graph for calibration so that
     # OPs supported by TensorRT but don't have a GPU implementation are allowed
     # to execute on CPU.
-    calibrate_config = config_pb2.ConfigProto(allow_soft_placement=True)
+    calibrate_config = config_pb2.ConfigProto(
+        allow_soft_placement=True,
+        graph_options=config_pb2.GraphOptions(
+            rewrite_options=calibrate_rewriter_cfg))
+
     with session.Session(
         graph=self._calibration_graph,
         config=calibrate_config) as calibration_sess:
@@ -787,21 +809,6 @@ def _get_resource_handle(name, device):
     return gen_trt_ops.create_trt_resource_handle(resource_name=name)
 
 
-class _TRTEngineResourceDeleter(tracking.CapturableResourceDeleter):
-  """Resource deleter for destroying TRT engine cache resource."""
-
-  def __init__(self, resource_name, device):
-    super(_TRTEngineResourceDeleter, self).__init__()
-    self._resource_name = resource_name
-    self._device = device
-
-  def destroy_resource(self):
-    handle = _get_resource_handle(self._resource_name, self._device)
-    with ops.device(self._device):
-      gen_resource_variable_ops.destroy_resource_op(
-          handle, ignore_lookup_error=True)
-
-
 class _TRTEngineResource(tracking.TrackableResource):
   """Class to track the serialized engines resource."""
 
@@ -810,8 +817,7 @@ class _TRTEngineResource(tracking.TrackableResource):
                filename,
                maximum_cached_engines,
                device="GPU"):
-    super(_TRTEngineResource, self).__init__(
-        device=device, deleter=_TRTEngineResourceDeleter(resource_name, device))
+    super(_TRTEngineResource, self).__init__(device=device)
     self._resource_name = resource_name
     # Track the serialized engine file in the SavedModel.
     self._filename = self._track_trackable(
@@ -826,6 +832,12 @@ class _TRTEngineResource(tracking.TrackableResource):
         self.resource_handle,
         self._filename,
         max_cached_engines_count=self._maximum_cached_engines)
+
+  def _destroy_resource(self):
+    handle = _get_resource_handle(self._resource_name, self._resource_device)
+    with ops.device(self._resource_device):
+      gen_resource_variable_ops.destroy_resource_op(
+          handle, ignore_lookup_error=True)
 
 
 @tf_export("experimental.tensorrt.Converter", v1=[])
@@ -919,12 +931,35 @@ class TrtGraphConverterV2(object):
      # Save the TRT engine and the engines.
      converter.save(output_saved_model_dir)
      ```
+  4. To use dynamic shape, we need to call the build method with an input
+     function to generate profiles. This step is similar to the INT8 calibration
+     step described above. The converter also needs to be created with
+     use_dynamic_shape=True and one of the following profile_strategies for
+     creating profiles based on the inputs produced by the input function:
+     * `Range`: create one profile that works for inputs with dimension values
+       in the range of [min_dims, max_dims] where min_dims and max_dims are
+       derived from the provided inputs.
+     * `Optimal`: create one profile for each input. The profile only works for
+       inputs with the same dimensions as the input it is created for. The GPU
+       engine will be run with optimal performance with such inputs.
+     * `Range+Optimal`: create the profiles for both `Range` and `Optimal`.
+     * `ImplicitBatchModeCompatible`: create the profiles that will produce the
+       same GPU engines as the implicit_batch_mode would produce.
   """
+
+  def _verify_profile_strategy(self, strategy):
+    supported_strategies = [s.lower() for s in supported_profile_strategies()]
+    if strategy.lower() not in supported_strategies:
+      raise ValueError(
+          ("profile_strategy '{}' is not supported. It should be one of {}"
+          ).format(strategy, supported_profile_strategies()))
 
   def __init__(self,
                input_saved_model_dir=None,
                input_saved_model_tags=None,
                input_saved_model_signature_key=None,
+               use_dynamic_shape=None,
+               dynamic_shape_profile_strategy=None,
                conversion_params=None):
     """Initialize the converter.
 
@@ -934,6 +969,11 @@ class TrtGraphConverterV2(object):
       input_saved_model_tags: list of tags to load the SavedModel.
       input_saved_model_signature_key: the key of the signature to optimize the
         graph for.
+      use_dynamic_shape: whether to enable dynamic shape support. None is
+        equivalent to False in the current implementation.
+      dynamic_shape_profile_strategy: one of the strings in
+        supported_profile_strategies(). None is equivalent to Range in the
+        current implementation.
       conversion_params: a TrtConversionParams instance.
 
     Raises:
@@ -961,12 +1001,24 @@ class TrtGraphConverterV2(object):
     self._converted = False
     self._build_called_once = False
 
+    if use_dynamic_shape is None:
+      self._use_dynamic_shape = False
+    else:
+      self._use_dynamic_shape = use_dynamic_shape
+
+    self._profile_strategy = "Unknown"
+    if self._use_dynamic_shape:
+      if dynamic_shape_profile_strategy is None:
+        self._profile_strategy = PROFILE_STRATEGY_RANGE
+      else:
+        self._verify_profile_strategy(dynamic_shape_profile_strategy)
+        self._profile_strategy = dynamic_shape_profile_strategy
+
     # Fields to support TF-TRT testing and shouldn't be used for other purpose.
     self._test_only_disable_non_trt_optimizers = False
-    self._test_only_use_implicit_batch = True
 
   def _need_trt_profiles(self):
-    return not self._test_only_use_implicit_batch
+    return self._use_dynamic_shape
 
   def _run_conversion(self, meta_graph_def):
     """Run Grappler's OptimizeGraph() tool to convert the graph.
@@ -983,7 +1035,8 @@ class TrtGraphConverterV2(object):
         is_dynamic_op=True,
         max_batch_size=None,
         disable_non_trt_optimizers=self._test_only_disable_non_trt_optimizers,
-        use_implicit_batch=self._test_only_use_implicit_batch)
+        use_implicit_batch=not self._use_dynamic_shape,
+        profile_strategy=self._profile_strategy)
     grappler_session_config.graph_options.rewrite_options.CopyFrom(
         custom_rewriter_config)
     return tf_optimizer.OptimizeGraph(

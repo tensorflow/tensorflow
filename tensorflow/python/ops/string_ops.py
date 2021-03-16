@@ -161,7 +161,7 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
   """
   # If there is only one tensor to format, we will automatically wrap it in a
   # list to simplify the user experience
-  if tensor_util.is_tensor(inputs):
+  if tensor_util.is_tf_type(inputs):
     inputs = [inputs]
   if template.count(placeholder) != len(inputs):
     raise ValueError("%s placeholder(s) in template does not match %s tensor(s)"
@@ -337,6 +337,8 @@ def reduce_join_v2(  # pylint: disable=missing-docstring
     separator="",
     name=None):
   """Joins all strings into a single string, or joins along an axis.
+
+  This is the reduction operation for the elementwise `tf.strings.join` op.
 
   >>> tf.strings.reduce_join([['abc','123'],
   ...                         ['def','456']]).numpy()
@@ -558,6 +560,9 @@ def string_join(inputs, separator="", name=None):
   ...                  ['def','456']],
   ...                  separator=" ").numpy()
   array([b'abc def', b'123 456'], dtype=object)
+
+  The reduction version of this elementwise operation is
+  `tf.strings.reduce_join`
 
   Args:
     inputs: A list of `tf.Tensor` objects of same size and `tf.string` dtype.

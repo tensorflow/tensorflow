@@ -1,5 +1,6 @@
+load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable", "if_portable")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -19,11 +20,13 @@ py_library(
         "interpreter.py",
     ],
     compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        ":metrics",
         "//tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper",
         "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
 )
@@ -37,9 +40,8 @@ py_test(
         "//tensorflow/lite/python/testdata:test_delegate.so",
     ],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
-        "no_windows",
         "noasan",  # TODO(b/137568139): enable after this is fixed.
         "nomsan",  # TODO(b/137568139): enable after this is fixed.
     ],
@@ -58,10 +60,12 @@ py_binary(
     name = "tflite_convert",
     srcs = ["tflite_convert.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":tflite_convert_main_lib",
+        "//tensorflow:tensorflow_py",
+        "@absl_py//absl:app",
         "@six_archive//:six",
     ],
 )
@@ -69,10 +73,12 @@ py_binary(
 py_library(
     name = "tflite_convert_main_lib",
     srcs = ["tflite_convert.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":tflite_convert_lib",
+        "//tensorflow:tensorflow_py",
+        "@absl_py//absl:app",
         "@six_archive//:six",
     ],
 )
@@ -80,22 +86,22 @@ py_library(
 py_library(
     name = "tflite_convert_lib",
     srcs = ["tflite_convert.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":lite",
         "//tensorflow/lite/toco/logging:gen_html",
         "//tensorflow/lite/toco/logging:toco_conversion_log_proto_py",
         "//tensorflow/python:util",
+        "@absl_py//absl:app",
         "@six_archive//:six",
     ],
 )
 
 py_library(
     name = "test_util",
-    testonly = 1,
     srcs = ["test_util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":lite",
         ":schema_util",
@@ -127,7 +133,7 @@ py_test(
     python_version = "PY3",
     # Increased thread count for reducing timeout failures.
     shard_count = 10,
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_oss",
         "no_pip",
@@ -163,7 +169,7 @@ py_test(
 py_library(
     name = "lite",
     srcs = ["lite.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":convert",
@@ -186,10 +192,13 @@ py_library(
 py_test(
     name = "lite_test",
     srcs = ["lite_test.py"],
-    data = ["@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb"],
+    data = [
+        "//tensorflow/lite/python/testdata:control_flow_v1.pbtxt",
+        "@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb",
+    ],
     python_version = "PY3",
     shard_count = 4,
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_windows",
     ],
@@ -205,18 +214,19 @@ py_test(
 py_test(
     name = "lite_v2_test",
     srcs = ["lite_v2_test.py"],
+    data = [
+        "//tensorflow/lite/python/testdata/control_flow_v1_saved_model:saved_model.pb",
+    ],
     python_version = "PY3",
     shard_count = 12,
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
-        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
         "no_windows",
     ],
     deps = [
         ":lite",
         ":lite_v2_test_util",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/lite/kernels/hashtable:hashtable_op_kernels",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "@six_archive//:six",
@@ -227,7 +237,7 @@ py_library(
     name = "lite_v2_test_util",
     testonly = 1,
     srcs = ["lite_v2_test_util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_windows",
     ],
@@ -243,7 +253,7 @@ py_test(
     name = "lite_flex_test",
     srcs = ["lite_flex_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":lite",
         ":test_util",
@@ -256,7 +266,7 @@ py_test(
 py_library(
     name = "util",
     srcs = ["util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [
         "//tensorflow/lite:__subpackages__",
     ],
@@ -283,13 +293,11 @@ py_test(
     name = "util_test",
     srcs = ["util_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
-        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
         "no_windows",
     ],
     deps = [
-        ":lite_constants",
         ":util",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:array_ops",
@@ -312,7 +320,7 @@ py_library(
     srcs = [
         "tflite_keras_util.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/eager:def_function",
@@ -324,7 +332,7 @@ py_library(
     srcs = [
         "wrap_toco.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:_pywrap_toco_api",
         "//tensorflow/python:pywrap_tensorflow",
@@ -335,7 +343,7 @@ py_library(
 py_library(
     name = "lite_constants",
     srcs = ["lite_constants.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/lite/toco:toco_flags_proto_py",
         "//tensorflow/python:dtypes",
@@ -345,7 +353,7 @@ py_library(
 py_library(
     name = "convert",
     srcs = ["convert.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":lite_constants",
@@ -356,6 +364,9 @@ py_library(
         "//tensorflow/lite/toco/python:toco_from_protos",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:platform",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )
@@ -363,7 +374,7 @@ py_library(
 py_library(
     name = "op_hint",
     srcs = ["op_hint.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -377,7 +388,7 @@ py_test(
     name = "convert_test",
     srcs = ["convert_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":convert",
         ":interpreter",
@@ -393,7 +404,7 @@ py_test(
 py_library(
     name = "convert_saved_model",
     srcs = ["convert_saved_model.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [
         "//tensorflow/lite:__subpackages__",
     ],
@@ -409,7 +420,7 @@ py_test(
     name = "convert_saved_model_test",
     srcs = ["convert_saved_model_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_windows",
     ],
@@ -430,12 +441,12 @@ py_binary(
     name = "convert_file_to_c_source",
     srcs = ["convert_file_to_c_source.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        ":lite",
         ":util",
-        "@six_archive//:six",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -448,9 +459,74 @@ sh_test(
 py_library(
     name = "schema_util",
     srcs = ["schema_util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow/lite/schema:utils_friends"],
     deps = [
         "//tensorflow/python:util",
     ],
+)
+
+pytype_strict_library(
+    name = "metrics_interface",
+    srcs = ["metrics_interface.py"],
+    compatible_with = get_compatible_with_portable(),
+    srcs_version = "PY3",
+    visibility = ["//visibility:private"],
+)
+
+pytype_strict_library(
+    name = "metrics_nonportable",
+    srcs = ["metrics_nonportable.py"],
+    srcs_version = "PY3",
+    visibility = ["//visibility:private"],
+    deps = [
+        ":metrics_interface",
+        "//tensorflow/python/eager:monitoring",
+    ],
+)
+
+py_test(
+    name = "metrics_nonportable_test",
+    srcs = ["metrics_nonportable_test.py"],
+    python_version = "PY3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":metrics_nonportable",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+pytype_strict_library(
+    name = "metrics_portable",
+    srcs = ["metrics_portable.py"],
+    compatible_with = get_compatible_with_portable(),
+    srcs_version = "PY3",
+    visibility = ["//visibility:private"],
+    deps = [
+        ":metrics_interface",
+    ],
+)
+
+py_test(
+    name = "metrics_portable_test",
+    srcs = ["metrics_portable_test.py"],
+    python_version = "PY3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":metrics_portable",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+pytype_strict_library(
+    name = "metrics",
+    compatible_with = get_compatible_with_portable(),
+    srcs_version = "PY3",
+    visibility = ["//tensorflow/lite:__subpackages__"],
+    deps = if_portable(
+        if_false = [":metrics_nonportable"],
+        if_true = [":metrics_portable"],
+    ),
 )

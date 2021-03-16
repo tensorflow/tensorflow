@@ -177,6 +177,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_GATHER:
+      if (op_sig.options.gather.batch_dims != 0) {
+        return 5;
+      }
+
       if (op_sig.input_types.at(0) == TensorType_INT16) {
         return 4;
       }
@@ -324,6 +328,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_SLICE:
+      if (op_sig.options.single_input_op.num_dims > 4) {
+        return 5;
+      }
       if (op_sig.input_types.at(0) == TensorType_INT16) {
         return 4;
       }
@@ -402,6 +409,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
     case BuiltinOperator_REVERSE_V2:
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 3;
+      }
       if (op_sig.input_types.at(0) == TensorType_BOOL) {
         return 2;
       }
@@ -508,6 +518,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_GATHER_ND:
       if (!op_sig.input_types.empty() &&
+          (op_sig.input_types.at(0) == TensorType_INT16)) {
+        return 3;
+      }
+      if (!op_sig.input_types.empty() &&
           op_sig.input_types.at(0) == TensorType_STRING) {
         return 2;
       }
@@ -532,10 +546,14 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_FILL:
-      if (op_sig.input_types.size() >= 2 &&
-          (op_sig.input_types.at(1) == TensorType_BOOL ||
-           op_sig.input_types.at(1) == TensorType_STRING)) {
-        return 2;
+      if (op_sig.input_types.size() >= 2) {
+        if (op_sig.input_types.at(1) == TensorType_INT8 ||
+            op_sig.input_types.at(1) == TensorType_INT16) {
+          return 3;
+        } else if ((op_sig.input_types.at(1) == TensorType_BOOL ||
+                    op_sig.input_types.at(1) == TensorType_STRING)) {
+          return 2;
+        }
       }
       return 1;
 
@@ -618,10 +636,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_LESS:
     case BuiltinOperator_LESS_EQUAL:
     case BuiltinOperator_SELECT:
-      if (op_sig.input_types.at(0) == TensorType_INT8) {
-        return 2;
-      }
-      return 1;
+    case BuiltinOperator_RSQRT:
+    case BuiltinOperator_SQUARED_DIFFERENCE:
+    case BuiltinOperator_DEPTH_TO_SPACE:
     case BuiltinOperator_MIRROR_PAD:
       if (op_sig.input_types.at(0) == TensorType_INT8) {
         return 2;
@@ -630,7 +647,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     // The version one of broadcast to op won't be not supported since the
     // version one was rollbacked and the builtin op code number has been
     // changed because of builtin op code shortage problem.
+    // Quantized broadcast_to is version 3
     case BuiltinOperator_BROADCAST_TO:
+      if (op_sig.input_types.at(0) == TensorType_INT8 ||
+          op_sig.input_types.at(0) == TensorType_INT16) {
+        return 3;
+      }
       return 2;
     default:
       return 1;
@@ -794,6 +816,7 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
     } break;
     // TODO(b/150176627): Add tests for GetOpSignature.
     case BuiltinOperator_STRIDED_SLICE:
+    case BuiltinOperator_SLICE:
     case BuiltinOperator_SPACE_TO_BATCH_ND:
     case BuiltinOperator_BATCH_TO_SPACE_ND:
     case BuiltinOperator_TRANSPOSE: {
@@ -813,6 +836,11 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       auto batch_matmul_option = op->builtin_options_as_BatchMatMulOptions();
       op_sig.options.input_quantization.asymmetric_quantize_inputs =
           batch_matmul_option->asymmetric_quantize_inputs();
+    } break;
+
+    case BuiltinOperator_GATHER: {
+      auto gather_option = op->builtin_options_as_GatherOptions();
+      op_sig.options.gather.batch_dims = gather_option->batch_dims();
     } break;
 
     default:

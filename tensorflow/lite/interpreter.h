@@ -18,6 +18,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_INTERPRETER_H_
 #define TENSORFLOW_LITE_INTERPRETER_H_
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
@@ -25,6 +28,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
@@ -35,15 +39,21 @@ limitations under the License.
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/memory_planner.h"
+#include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/stderr_reporter.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 
 namespace tflite {
 
-class InterpreterTest;
-class TestDelegate;
+class InterpreterTest;  // Class for friend declarations.
+
 namespace delegates {
 class InterpreterUtils;  // Class for friend declarations.
+
+namespace test_utils {
+class TestDelegate;  // Class for friend declarations.
+}  // namespace test_utils
 }  // namespace delegates
 
 /// An interpreter for a graph of nodes that input and output from tensors.
@@ -467,7 +477,8 @@ class Interpreter {
   /// Returns one of the following four status codes:
   /// 1. kTfLiteOk: Success.
   /// 2. kTfLiteDelegateError: Delegation failed due to an error in the
-  /// delegate. The Interpreter has been restored to its pre-delegation state.
+  /// delegate, or the delegate parameter was null. The Interpreter has been
+  /// restored to its pre-delegation state.
   /// NOTE: This undoes all delegates previously applied to the Interpreter.
   /// 3. kTfLiteApplicationError : Delegation failed to be applied due to the
   /// incompatibility with the TfLite runtime, e.g., the model graph is already
@@ -588,13 +599,12 @@ class Interpreter {
                           TfLiteExternalContext* ctx);
 
   // Assigns (or reassigns) a custom memory allocation for the given tensor.
-  // If AllocateTensors() is called after this, the runtime does not consider
-  // the tensor during internal memory planning and will continue using the
-  // provided allocation for the tensor (assuming it satisfies the expected
-  // tensor byte length).
+  // `flags` is a bitmask, see TfLiteCustomAllocationFlags.
   // The runtime does NOT take ownership of the underlying memory.
-  // Note that while this function can be called again to set a new allocation
-  // for the tensor, it can no longer be reset to the TFLite arena memory.
+  //
+  // NOTE: User needs to call AllocateTensors() after this. In case of input
+  // resizing, buffers will be checked for required data size during
+  // AllocateTensors().
   //
   // Parameters should satisfy the following conditions:
   // 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
@@ -605,10 +615,13 @@ class Interpreter {
   //    This condition is checked again if any tensors are resized.
   // 4. allocation->data should be aligned to kDefaultTensorAlignment
   //    defined in lite/util.h. (Currently 64 bytes)
+  //    This check is skipped if kTfLiteCustomAllocationFlagsSkipAlignCheck is
+  //    set through `flags`.
   //
   // WARNING: This is an experimental interface that is subject to change.
   TfLiteStatus SetCustomAllocationForTensor(
-      int tensor_index, const TfLiteCustomAllocation& allocation);
+      int tensor_index, const TfLiteCustomAllocation& allocation,
+      int64_t flags = kTfLiteCustomAllocationFlagsNone);
 
 #ifndef DOXYGEN_SKIP
   /// Adds `subgraphs_to_add` subgraphs, preserving pre-existing Subgraph
@@ -662,15 +675,15 @@ class Interpreter {
   };
   friend class InterpreterBuilder;
   friend class tflite::InterpreterTest;
-  friend class tflite::TestDelegate;
   friend class tflite::delegates::InterpreterUtils;
+  friend class tflite::delegates::test_utils::TestDelegate;
 
   /// Set the value of an external context.
   static void SetExternalContext(struct TfLiteContext* context,
                                  TfLiteExternalContextType type,
                                  TfLiteExternalContext* ctx);
 
-  // Helper method that return the tensot index that corresponds to
+  // Helper method that return the tensor index that corresponds to
   // a name in a SignatureDef. Defined by 'signature_method_name', and
   // 'signature_tensor_name'.
   // If 'is_input' is true then the tensor is checked in input tensors,

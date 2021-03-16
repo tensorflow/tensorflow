@@ -152,7 +152,7 @@ void CollectTfActivities(const XLineVisitor& line,
               event.GetStat(StatType::kIsEager)) {
         is_eager = stat->IntValue();
       }
-      Timespan span(event.TimestampPs(), event.DurationPs());
+      Timespan span = event.GetTimespan();
       tf_activities->push_back(
           {span.begin_ps(), tf_op_id, kTfOpBegin, *tf_op, is_eager});
       tf_activities->push_back(

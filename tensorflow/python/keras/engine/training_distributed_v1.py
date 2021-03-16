@@ -31,7 +31,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
-from tensorflow.python.keras.distribute import distributed_training_utils as dist_utils_v2
 from tensorflow.python.keras.distribute import distributed_training_utils_v1 as dist_utils
 from tensorflow.python.keras.engine import partial_batch_padding_handler as padding_util
 from tensorflow.python.keras.engine import training_arrays_v1
@@ -61,7 +60,7 @@ def _build_model(strategy, model, mode, inputs, targets=None):
 def _make_train_step_fn(model, mode, strategy, output_labels):
   """Create step fn.
 
-  Arguments:
+  Args:
     model: a Keras Model instance.
     mode: One of ModeKeys.TRAIN/ModeKeys.TEST/ModeKeys.PREDICT.
     strategy: a `tf.distribute.Strategy` instance.
@@ -133,7 +132,7 @@ def experimental_tpu_fit_loop(model,
                               validation_freq=1):
   """Fit loop for training with TPU tf.distribute.Strategy.
 
-  Arguments:
+  Args:
       model: Keras Model instance.
       dataset: Dataset that returns inputs and targets
       epochs: Number of times to iterate over the data
@@ -298,7 +297,7 @@ def experimental_tpu_test_loop(model,
                                callbacks=None):
   """Test loop for evaluating with TPU tf.distribute.Strategy.
 
-  Arguments:
+  Args:
       model: Keras Model instance.
       dataset: Dataset for input data.
       verbose: Integer, Verbosity mode 0 or 1.
@@ -429,7 +428,7 @@ def experimental_tpu_predict_loop(model,
                                   callbacks=None):
   """Predict loop for predicting with TPU tf.distribute.Strategy.
 
-  Arguments:
+  Args:
       model: Keras Model instance.
       dataset: Dataset for input data.
       verbose: Integer, Verbosity mode 0 or 1.
@@ -651,7 +650,7 @@ class DistributionSingleWorkerTrainingLoop(training_utils_v1.TrainingLoop):
       raise ValueError('validation_split argument is not supported with '
                        'distribution strategies.')
 
-    if dist_utils_v2.is_tpu_strategy(model._distribution_strategy):
+    if K.is_tpu_strategy(model._distribution_strategy):
       steps_per_epoch = training_utils_v1.infer_steps_for_dataset(
           model, dataset, steps_per_epoch, epochs, steps_name='steps_per_epoch')
       if steps_per_epoch is None:
@@ -708,7 +707,7 @@ class DistributionSingleWorkerTrainingLoop(training_utils_v1.TrainingLoop):
         batch_size=batch_size,
         allow_partial_batch=True)
 
-    if dist_utils_v2.is_tpu_strategy(model._distribution_strategy):
+    if K.is_tpu_strategy(model._distribution_strategy):
       steps = training_utils_v1.infer_steps_for_dataset(
           model, dataset, steps, steps_name='steps')
       if steps is None:
@@ -745,7 +744,7 @@ class DistributionSingleWorkerTrainingLoop(training_utils_v1.TrainingLoop):
         x,
         batch_size=batch_size,
         allow_partial_batch=True)
-    if dist_utils_v2.is_tpu_strategy(model._distribution_strategy):
+    if K.is_tpu_strategy(model._distribution_strategy):
       steps = training_utils_v1.infer_steps_for_dataset(
           model, dataset, steps, steps_name='steps')
       if steps is None:

@@ -15,17 +15,14 @@ limitations under the License.
 
 #include "tensorflow/lite/allocation.h"
 
+#include <stddef.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include <cassert>
-#include <cstdarg>
 #include <cstdint>
 #include <cstdio>
-#include <cstring>
-#include <utility>
+#include <memory>
 
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 
 namespace tflite {

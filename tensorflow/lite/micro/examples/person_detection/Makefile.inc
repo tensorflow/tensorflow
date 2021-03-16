@@ -1,6 +1,6 @@
 person_detection_MODEL_SRCS := \
 tensorflow/lite/micro/examples/person_detection/model_settings.cc \
-$(MAKEFILE_DIR)/downloads/person_model_grayscale/person_detect_model_data.cc
+$(MAKEFILE_DIR)/downloads/person_model_int8/person_detect_model_data.cc
 
 person_detection_MODEL_HDRS := \
 tensorflow/lite/micro/examples/person_detection/model_settings.h \
@@ -8,8 +8,8 @@ tensorflow/lite/micro/examples/person_detection/person_detect_model_data.h
 
 person_detection_TEST_SRCS := \
 tensorflow/lite/micro/examples/person_detection/person_detection_test.cc \
-$(MAKEFILE_DIR)/downloads/person_model_grayscale/no_person_image_data.cc \
-$(MAKEFILE_DIR)/downloads/person_model_grayscale/person_image_data.cc \
+$(MAKEFILE_DIR)/downloads/person_model_int8/no_person_image_data.cc \
+$(MAKEFILE_DIR)/downloads/person_model_int8/person_image_data.cc \
 $(person_detection_MODEL_SRCS)
 
 person_detection_TEST_HDRS := \
@@ -50,7 +50,7 @@ $(person_detection_MODEL_HDRS)
 include $(wildcard tensorflow/lite/micro/examples/person_detection/*/Makefile.inc)
 
 # Tests loading and running a vision model.
-$(eval $(call microlite_test,person_detection_test,\
+$(eval $(call microlite_test,person_detection_test_int8,\
 $(person_detection_TEST_SRCS),$(person_detection_TEST_HDRS)))
 
 # Three conflicting issues here:
@@ -68,14 +68,14 @@ $(person_detection_TEST_SRCS),$(person_detection_TEST_HDRS)))
 # basically equivalent).
 ifneq ($(TARGET),sparkfun_edge)
 # Tests the image provider module.
-$(eval $(call microlite_test,image_provider_test,\
+$(eval $(call microlite_test,image_provider_test_int8,\
 $(IMAGE_PROVIDER_TEST_SRCS),$(IMAGE_PROVIDER_TEST_HDRS)))
 endif
 
 # Tests the detection responder module.
-$(eval $(call microlite_test,detection_responder_test,\
+$(eval $(call microlite_test,detection_responder_test_int8,\
 $(DETECTION_RESPONDER_TEST_SRCS),$(DETECTION_RESPONDER_TEST_HDRS)))
 
 # Builds a standalone object recognition binary.
-$(eval $(call microlite_test,person_detection,\
+$(eval $(call microlite_test,person_detection_int8,\
 $(person_detection_SRCS),$(person_detection_HDRS)))

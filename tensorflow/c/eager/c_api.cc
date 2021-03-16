@@ -40,9 +40,13 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/eager/custom_device.h"
+#include "tensorflow/core/common_runtime/eager/custom_device_op_handler.h"
 #include "tensorflow/core/common_runtime/eager/execute.h"
+#include "tensorflow/core/common_runtime/eager/placement_utils.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -61,7 +65,7 @@ limitations under the License.
 // PLATFORM_GOOGLE, IS_MOBILE_PLATFORM, etc.
 #if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
 #include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
-#include "tensorflow/core/tfrt/eager/c_api_tfrt_distributed.h"
+#include "tensorflow/core/tfrt/eager/c_api_tfrt_distributed_impl.h"
 #endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -74,6 +78,15 @@ namespace {
 
 string DeviceName(const tensorflow::Device* d) {
   return (d == nullptr) ? "cpu:0" : d->name();
+}
+
+// Annotate eager runtime construction context to the given `function_def` as
+// an attribute.
+void AnnotateEagerRuntimeConstructionContext(
+    tensorflow::FunctionDef& function_def) {
+  tensorflow::AttrValue value;
+  SetAttrValue("kEagerRuntime", &value);
+  (*function_def.mutable_attr())["_construction_context"] = value;
 }
 
 }  // namespace
@@ -109,7 +122,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
         opts->async);
 #if !defined(IS_MOBILE_PLATFORM)
     tfrt_context->SetDistributedManager(
-        std::make_unique<tfrt::tf::DistributedManagerContextInterface>(
+        tfrt::tf::CreateDistributedManagerContext(
             tfrt_context->GetCoreRuntime()->GetHostContext()));
 #endif  // !IS_MOBILE_PLATFORM
     return tensorflow::wrap(tfrt_context);
@@ -132,7 +145,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
       opts->session_options.options,
       static_cast<tensorflow::ContextDevicePlacementPolicy>(
           opts->device_placement_policy),
-      opts->async, opts->lazy_remote_inputs_copy, device_mgr.release(),
+      opts->async, device_mgr.release(),
       /*device_mgr_owned*/ true, r);
 #if !defined(IS_MOBILE_PLATFORM)
   eager_context->SetDistributedManager(
@@ -353,13 +366,21 @@ void* TFE_TensorHandleDevicePointer(TFE_TensorHandle* h, TF_Status* status) {
     status->status = tensorflow::errors::InvalidArgument("Invalid handle");
     return nullptr;
   }
-  tensorflow::TensorHandle* handle =
-      tensorflow::TensorHandleFromInterface(tensorflow::unwrap(h));
-  if (VariantDeviceIsCustom(handle->device())) {
-    const tensorflow::Tensor* t;
-    status->status = handle->Tensor(&t);
-    return t->data();
+  tensorflow::ImmediateExecutionTensorHandle* unwrapped_handle =
+      tensorflow::unwrap(h);
+  // TODO(b/175427838): It would be nice to be able to use tensorflow::isa here.
+  if (tensorflow::CustomDeviceTensorHandle::classof(unwrapped_handle)) {
+    return tensorflow::down_cast<tensorflow::CustomDeviceTensorHandle*>(
+               unwrapped_handle)
+        ->DevicePointer();
   }
+  // TODO(b/175427838): It would be nice to be able to use tensorflow::isa here.
+  if (!tensorflow::TensorHandle::classof(unwrapped_handle)) {
+    status->status = tensorflow::errors::InvalidArgument("Invalid handle");
+    return nullptr;
+  }
+  tensorflow::TensorHandle* handle =
+      tensorflow::TensorHandleFromInterface(unwrapped_handle);
 
   if (handle->Type() != tensorflow::TensorHandle::LOCAL) {
     status->status = tensorflow::errors::InvalidArgument(
@@ -367,7 +388,7 @@ void* TFE_TensorHandleDevicePointer(TFE_TensorHandle* h, TF_Status* status) {
         handle->TypeString(), " tensor handle.");
     return nullptr;
   }
-  tensorflow::Device* device(absl::get<tensorflow::Device*>(handle->device()));
+  tensorflow::Device* device(handle->device());
   if (device != nullptr) {
     status->status = device->Sync();
     if (!status->status.ok()) {
@@ -383,6 +404,154 @@ void* TFE_TensorHandleDevicePointer(TFE_TensorHandle* h, TF_Status* status) {
       static_cast<const void*>(tensor->tensor_data().data()));
 }
 
+namespace tensorflow {
+namespace {
+class CustomDeviceAPI : public tensorflow::CustomDevice {
+ public:
+  CustomDeviceAPI(TFE_Context* context, TFE_CustomDevice device, void* info,
+                  string name)
+      : context_(context), device_(device), info_(info), name_(name) {}
+
+  ~CustomDeviceAPI() override { device_.delete_device(info_); }
+
+  const string& name() override { return name_; }
+
+  tensorflow::Status CopyTensorToDevice(
+      ImmediateExecutionTensorHandle* handle,
+      ImmediateExecutionTensorHandle** result) override {
+    handle->Ref();
+    TF_Status status;
+    TFE_TensorHandle* result_handle = device_.copy_tensor_to_device(
+        context_, tensorflow::wrap(handle), &status, info_);
+    handle->Release();
+    if (!status.status.ok()) return status.status;
+    *result = tensorflow::unwrap(result_handle);
+    (*result)->Ref();
+    TFE_DeleteTensorHandle(result_handle);
+    return status.status;
+  }
+
+  tensorflow::Status CopyTensorFromDevice(
+      ImmediateExecutionTensorHandle* handle,
+      const tensorflow::string& target_device_name,
+      ImmediateExecutionTensorHandle** result) override {
+    TF_Status status;
+    handle->Ref();
+    TFE_TensorHandle* result_handle = device_.copy_tensor_from_device(
+        context_, tensorflow::wrap(handle), target_device_name.c_str(), &status,
+        info_);
+    handle->Release();
+    if (!status.status.ok()) return status.status;
+    *result = tensorflow::unwrap(result_handle);
+    (*result)->Ref();
+    TFE_DeleteTensorHandle(result_handle);
+    return status.status;
+  }
+
+  tensorflow::Status Execute(const ImmediateExecutionOperation* op,
+                             ImmediateExecutionTensorHandle** retvals,
+                             int* num_retvals) override {
+    std::vector<TFE_TensorHandle*> outputs(*num_retvals);
+    TF_Status status;
+    device_.execute(tensorflow::wrap(op), num_retvals, outputs.data(), &status,
+                    info_);
+    if (status.status.ok()) {
+      for (int i = 0; i < *num_retvals; ++i) {
+        retvals[i] = tensorflow::unwrap(outputs[i]);
+        retvals[i]->Ref();
+        TFE_DeleteTensorHandle(outputs[i]);
+      }
+    }
+    return status.status;
+  }
+
+  tensorflow::Status Pack(absl::Span<ImmediateExecutionTensorHandle*> handles,
+                          ImmediateExecutionTensorHandle** result) override {
+    TF_Status status;
+    *result = tensorflow::unwrap(device_.pack(context_,
+                                              tensorflow::wrap(handles.data()),
+                                              handles.size(), &status, info_));
+    return status.status;
+  }
+
+ private:
+  TFE_Context* context_;
+  TFE_CustomDevice device_;
+  void* info_;
+  string name_;
+};
+
+// An adapter which wraps the shape/data produced by C custom devices and uses
+// it to implement custom device methods.
+class CAPICustomDeviceTensorHandle
+    : public tensorflow::CustomDeviceTensorHandle {
+ public:
+  CAPICustomDeviceTensorHandle(tensorflow::ImmediateExecutionContext* context,
+                               tensorflow::CustomDevice* device,
+                               tensorflow::DataType dtype, void* data,
+                               TFE_CustomDeviceTensorHandleMethods methods)
+      : tensorflow::CustomDeviceTensorHandle(context, device, dtype),
+        data_(data),
+        methods_(methods) {}
+
+  ~CAPICustomDeviceTensorHandle() override { methods_.deallocator(data_); }
+  void* DevicePointer() const override { return data_; }
+  Status NumDims(int* num_dims) const override {
+    TF_Status s;
+    *num_dims = methods_.num_dims(data_, &s);
+    return s.status;
+  }
+  Status Dim(int dim_index, int64* dim) const override {
+    TF_Status s;
+    *dim = methods_.dim(data_, dim_index, &s);
+    return s.status;
+  }
+
+  bool HasCustomSummarizer() const override {
+    return methods_.summarize != nullptr;
+  }
+
+  Status SummarizeValue(std::string& summary) const override {
+    if (methods_.summarize == nullptr) {
+      return tensorflow::CustomDeviceTensorHandle::SummarizeValue(summary);
+    }
+    TF_Status c_status;
+    std::unique_ptr<TF_Buffer, decltype(&TF_DeleteBuffer)> summary_buffer(
+        methods_.summarize(data_, &c_status), TF_DeleteBuffer);
+    if (!c_status.status.ok()) {
+      return c_status.status;
+    }
+    summary = std::string(reinterpret_cast<const char*>(summary_buffer->data),
+                          summary_buffer->length);
+    return Status::OK();
+  }
+
+ private:
+  void* const data_;
+  const TFE_CustomDeviceTensorHandleMethods methods_;
+};
+
+}  // namespace
+}  // namespace tensorflow
+
+TFE_TensorHandle* TFE_NewCustomDeviceTensorHandle(
+    TFE_Context* ctx, const char* device_name, TF_DataType dtype, void* data,
+    TFE_CustomDeviceTensorHandleMethods methods, TF_Status* status) {
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
+  tensorflow::CustomDevice* device = nullptr;
+  if (!context->GetCustomDeviceOpHandler().FindCustomDeviceFromName(device_name,
+                                                                    &device)) {
+    methods.deallocator(data);
+    status->status =
+        tensorflow::errors::InvalidArgument(device_name, " unknown device.");
+    return nullptr;
+  }
+  return tensorflow::wrap(new tensorflow::CAPICustomDeviceTensorHandle(
+      context, device, *reinterpret_cast<tensorflow::DataType*>(&dtype), data,
+      methods));
+}
+
 TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
     TFE_Context* ctx, const char* device_name, TF_DataType dtype,
     const int64_t* dims, int num_dims, void* data, size_t len,
@@ -392,16 +561,11 @@ TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
   tensorflow::EagerContext* context =
       tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   status->status = context->FindDeviceFromName(device_name, &device);
-  tensorflow::CustomDevice* custom_device = nullptr;
   if (!status->status.ok()) {
-    if (!context->FindCustomDeviceFromName(device_name, &custom_device)) {
-      deallocator(data, len, deallocator_arg);
-      status->status =
-          tensorflow::errors::InvalidArgument(device_name, " unknown device.");
-      return nullptr;
-    } else {
-      status->status = tensorflow::Status::OK();
-    }
+    deallocator(data, len, deallocator_arg);
+    status->status =
+        tensorflow::errors::InvalidArgument(device_name, " unknown device.");
+    return nullptr;
   }
   std::vector<tensorflow::int64> dimvec(num_dims);
   for (int i = 0; i < num_dims; ++i) {
@@ -417,13 +581,8 @@ TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
   tensorflow::Tensor t(static_cast<tensorflow::DataType>(dtype),
                        tensorflow::TensorShape(dimvec), buf);
   buf->Unref();
-  if (custom_device == nullptr) {
-    return tensorflow::wrap(tensorflow::TensorHandle::CreateLocalHandle(
-        std::move(t), device, device, context));
-  } else {
-    return tensorflow::wrap(tensorflow::TensorHandle::CreateLocalHandle(
-        std::move(t), custom_device, context));
-  }
+  return tensorflow::wrap(tensorflow::TensorHandle::CreateLocalHandle(
+      std::move(t), device, device, context));
 }
 
 // This function will block till the operation that produces `h` has
@@ -476,8 +635,7 @@ const char* TFE_OpGetName(const TFE_Op* op, TF_Status* status) {
 }
 
 TFE_Context* TFE_OpGetContext(const TFE_Op* op, TF_Status* status) {
-  return tensorflow::wrap(
-      &(OperationFromInterface(tensorflow::unwrap(op))->EagerContext()));
+  return tensorflow::wrap(tensorflow::unwrap(op)->GetContext());
 }
 
 void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
@@ -711,11 +869,15 @@ TF_CAPI_EXPORT extern int TFE_OpGetOutputLength(TFE_Op* op,
 
 void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
                  TF_Status* status) {
-  status->status = tensorflow::unwrap(op)->Execute(
-      absl::MakeSpan(reinterpret_cast<tensorflow::AbstractTensorHandle**>(
-                         tensorflow::unwrap(retvals)),
-                     *num_retvals),
-      num_retvals);
+  tensorflow::ImmediateExecutionOperation* unwrapped_op =
+      tensorflow::unwrap(op);
+
+  status->status =
+      unwrapped_op->GetContext()->GetCustomDeviceOpHandler().Execute(
+          unwrapped_op,
+          reinterpret_cast<tensorflow::ImmediateExecutionTensorHandle**>(
+              retvals),
+          num_retvals);
 }
 
 TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
@@ -727,8 +889,13 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
     return nullptr;
   }
 
-  auto* result = tensorflow::unwrap(ctx)->CopyTensorHandleToDevice(
-      tensorflow::unwrap(h), device_name, &status->status);
+  tensorflow::ImmediateExecutionContext* unwrapped_ctx =
+      tensorflow::unwrap(ctx);
+
+  auto* result =
+      unwrapped_ctx->GetCustomDeviceOpHandler().CopyTensorHandleToDevice(
+          unwrapped_ctx, tensorflow::unwrap(h), device_name, &status->status);
+
   if (status->status.ok()) {
     return tensorflow::wrap(result);
   }
@@ -744,12 +911,16 @@ void TFE_ContextAddFunctionDef(TFE_Context* ctx,
         tensorflow::errors::InvalidArgument("Invalid FunctionDef proto");
     return;
   }
+
+  AnnotateEagerRuntimeConstructionContext(function_def);
   status->status = tensorflow::unwrap(ctx)->AddFunctionDef(function_def);
 }
 
 void TFE_ContextAddFunction(TFE_Context* ctx, TF_Function* function,
                             TF_Status* status) {
-  status->status = tensorflow::unwrap(ctx)->AddFunctionDef(function->fdef);
+  AnnotateEagerRuntimeConstructionContext(function->fdef);
+  status->status = tensorflow::unwrap(ctx)->AddFunctionDefWithStackTraces(
+      function->fdef, function->stack_traces);
 }
 
 void TFE_ContextRemoveFunction(TFE_Context* ctx, const char* name,
@@ -807,22 +978,17 @@ void TFE_ContextEndStep(TFE_Context* ctx) {
 }
 
 const TFE_OpAttrs* TFE_OpGetAttrs(const TFE_Op* op) {
-  return tensorflow::wrap(
-      &OperationFromInterface(tensorflow::unwrap(op))->Attrs());
+  return tensorflow::wrap(tensorflow::unwrap(op)->GetOpAttrs());
 }
 
 void TFE_OpAddAttrs(TFE_Op* op, const TFE_OpAttrs* attrs) {
-  tensorflow::EagerOperation* operation =
-      OperationFromInterface(tensorflow::unwrap(op));
-  tensorflow::AttrBuilder* destination = operation->MutableAttrs();
-  destination->CopyAttributes(*tensorflow::unwrap(attrs));
+  tensorflow::unwrap(op)->AddAttrs(tensorflow::unwrap(attrs));
 }
 
 void TFE_OpAttrsSerialize(const TFE_OpAttrs* attrs, TF_Buffer* buf,
                           TF_Status* status) {
   tensorflow::NameAttrList name_and_attrs;
-  tensorflow::unwrap(attrs)->FillAttrValueMap(name_and_attrs.mutable_attr());
-  name_and_attrs.set_name(tensorflow::unwrap(attrs)->op_name());
+  tensorflow::unwrap(attrs)->GetNameAttrList(&name_and_attrs);
   status->status = MessageToBuffer(name_and_attrs, buf);
 }
 
@@ -947,74 +1113,14 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
 }  // namespace tensorflow
 
 namespace {
-class CustomDeviceAPI : public tensorflow::CustomDevice {
- public:
-  CustomDeviceAPI(TFE_Context* context, TFE_CustomDevice device, void* info,
-                  string name)
-      : context_(context), device_(device), info_(info), name_(name) {}
-
-  ~CustomDeviceAPI() override { device_.delete_device(info_); }
-
-  const string& name() override { return name_; }
-
-  tensorflow::Status CopyTensorToDevice(
-      tensorflow::TensorHandle* handle,
-      tensorflow::TensorHandle** result) override {
-    handle->Ref();
-    TF_Status status;
-    TFE_TensorHandle* result_handle = device_.copy_tensor_to_device(
-        context_, tensorflow::wrap(handle), &status, info_);
-    handle->Release();
-    if (!status.status.ok()) return status.status;
-    *result = tensorflow::TensorHandleFromInterface(
-        tensorflow::unwrap(result_handle));
-    (*result)->Ref();
-    TFE_DeleteTensorHandle(result_handle);
-    return status.status;
-  }
-
-  tensorflow::Status CopyTensorFromDevice(
-      tensorflow::TensorHandle* handle,
-      const tensorflow::string& target_device_name,
-      tensorflow::TensorHandle** result) override {
-    TF_Status status;
-    handle->Ref();
-    TFE_TensorHandle* result_handle = device_.copy_tensor_from_device(
-        context_, tensorflow::wrap(handle), target_device_name.c_str(), &status,
-        info_);
-    handle->Release();
-    if (!status.status.ok()) return status.status;
-    *result = tensorflow::TensorHandleFromInterface(
-        tensorflow::unwrap(result_handle));
-    (*result)->Ref();
-    TFE_DeleteTensorHandle(result_handle);
-    return status.status;
-  }
-
-  tensorflow::Status Execute(const tensorflow::EagerOperation* op,
-                             tensorflow::TensorHandle** retvals,
-                             int* num_retvals) override {
-    std::vector<TFE_TensorHandle*> outputs(*num_retvals);
-    TF_Status status;
-    device_.execute(tensorflow::wrap(op), num_retvals, outputs.data(), &status,
-                    info_);
-    if (status.status.ok()) {
-      for (int i = 0; i < *num_retvals; ++i) {
-        retvals[i] = tensorflow::TensorHandleFromInterface(
-            tensorflow::unwrap(outputs[i]));
-        retvals[i]->Ref();
-        TFE_DeleteTensorHandle(outputs[i]);
-      }
-    }
-    return status.status;
-  }
-
- private:
-  TFE_Context* context_;
-  TFE_CustomDevice device_;
-  void* info_;
-  string name_;
-};
+TFE_TensorHandle* DefaultCustomDevicePack(TFE_Context* context,
+                                          TFE_TensorHandle** handles,
+                                          int num_handles, TF_Status* status,
+                                          void* device_info) {
+  TF_SetStatus(status, TF_UNIMPLEMENTED,
+               "This custom device does not support packing tensors.");
+  return nullptr;
+}
 }  // namespace
 
 extern "C" {
@@ -1022,12 +1128,14 @@ extern "C" {
 void TFE_RegisterCustomDevice(TFE_Context* ctx, TFE_CustomDevice device,
                               const char* device_name, void* device_info,
                               TF_Status* status) {
-  auto custom_device =
-      std::make_unique<CustomDeviceAPI>(ctx, device, device_info, device_name);
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  status->status =
-      context->RegisterCustomDevice(device_name, std::move(custom_device));
+  // Fill in default values for optional functionality.
+  if (device.pack == nullptr) {
+    device.pack = &DefaultCustomDevicePack;
+  }
+  auto custom_device = std::make_unique<tensorflow::CustomDeviceAPI>(
+      ctx, device, device_info, device_name);
+  status->status = tensorflow::unwrap(ctx)->RegisterCustomDevice(
+      device_name, std::move(custom_device));
 }
 
 }  // extern "C"

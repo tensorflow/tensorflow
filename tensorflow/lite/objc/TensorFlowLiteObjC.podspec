@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'TensorFlowLiteObjC'
-  s.version          = '2.3.0'
+  s.version          = '2.4.0'
   s.authors          = 'Google Inc.'
   s.license          = { :type => 'Apache' }
   s.homepage         = 'https://github.com/tensorflow/tensorflow'
@@ -21,15 +21,7 @@ Pod::Spec.new do |s|
 
   tfl_dir = 'tensorflow/lite/'
   objc_dir = tfl_dir + 'experimental/objc/'
-  s.public_header_files = objc_dir + 'apis/*.h'
-  s.source_files = [
-    objc_dir + '{apis,sources}/*.{h,m,mm}',
-    tfl_dir + 'c/c_api.h',
-    tfl_dir + 'c/common.h',
-    tfl_dir + 'delegates/xnnpack/xnnpack_delegate.h',
-  ]
-  s.module_map = objc_dir + 'apis/framework.modulemap'
-  s.dependency 'TensorFlowLiteC', "#{s.version}"
+
   s.pod_target_xcconfig = {
     'HEADER_SEARCH_PATHS' =>
       '"${PODS_TARGET_SRCROOT}" ' +
@@ -37,11 +29,60 @@ Pod::Spec.new do |s|
     'VALID_ARCHS' => 'i386 x86_64 armv7 arm64',
   }
 
-  s.test_spec 'Tests' do |ts|
-    ts.source_files = objc_dir + 'tests/*.m'
-    ts.resources = [
-      tfl_dir + 'testdata/add.bin',
-      tfl_dir + 'testdata/add_quantized.bin',
+  s.default_subspec = 'Core'
+
+  s.subspec 'Core' do |core|
+    core.public_header_files = objc_dir + 'apis/*.h'
+    core.source_files = [
+      objc_dir + '{apis,sources}/*.{h,m,mm}',
+      tfl_dir + 'c/c_api.h',
+      tfl_dir + 'c/c_api_types.h',
+      tfl_dir + 'c/common.h',
+      tfl_dir + 'delegates/xnnpack/xnnpack_delegate.h',
     ]
+    core.exclude_files = [
+      objc_dir + '{apis,sources}/TFL{Metal,CoreML}Delegate.{h,m}',
+    ]
+    core.dependency 'TensorFlowLiteC', "#{s.version}"
+
+    core.test_spec 'Tests' do |ts|
+      ts.source_files = objc_dir + 'tests/*.m'
+      ts.exclude_files = objc_dir + 'tests/TFL{Metal,CoreML}DelegateTests.m'
+      ts.resources = [
+        tfl_dir + 'testdata/add.bin',
+        tfl_dir + 'testdata/add_quantized.bin',
+      ]
+    end
+  end
+
+  s.subspec 'CoreML' do |coreml|
+    coreml.source_files = [
+      objc_dir + '{apis,sources}/TFLCoreMLDelegate.{h,m}',
+    ]
+    coreml.ios.deployment_target = '12.0'
+    coreml.dependency 'TensorFlowLiteC/CoreML', "#{s.version}"
+    coreml.dependency 'TensorFlowLiteObjC/Core', "#{s.version}"
+
+    coreml.test_spec 'Tests' do |ts|
+      ts.source_files = objc_dir + 'tests/TFLCoreMLDelegateTests.m'
+      ts.resources = [
+        tfl_dir + 'testdata/add.bin',
+      ]
+    end
+  end
+
+  s.subspec 'Metal' do |metal|
+    metal.source_files = [
+      objc_dir + '{apis,sources}/TFLMetalDelegate.{h,m}',
+    ]
+    metal.dependency 'TensorFlowLiteC/Metal', "#{s.version}"
+    metal.dependency 'TensorFlowLiteObjC/Core', "#{s.version}"
+
+    metal.test_spec 'Tests' do |ts|
+      ts.source_files = objc_dir + 'tests/TFLMetalDelegateTests.m'
+      ts.resources = [
+        tfl_dir + 'testdata/multi_add.bin',
+      ]
+    end
   end
 end

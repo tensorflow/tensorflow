@@ -37,6 +37,12 @@ TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault();
 TfLiteDelegate* TfLiteXNNPackDelegateCreate(
     const TfLiteXNNPackDelegateOptions* options);
 
+// Returns the pthreadpool_t object used for parallelization in XNNPACK.
+// Can return NULL if the XNNPack delegate is single-threaded.
+//
+// WARNING: This API is experimental and subject to change.
+void* TfLiteXNNPackDelegateGetThreadPool(TfLiteDelegate* delegate);
+
 // Destroys a delegate created with `TfLiteXNNPackDelegateCreate` call.
 void TfLiteXNNPackDelegateDelete(TfLiteDelegate* delegate);
 

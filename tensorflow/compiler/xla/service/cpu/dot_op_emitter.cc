@@ -28,7 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/EDSC/Intrinsics.h"  // from @llvm-project
 #include "mlir/EDSC/Builders.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -312,8 +312,7 @@ Status DotOpEmitter::EmitLinalgMatmul() {
         mlir::edsc::makeGenericLinalgOp(
             /*iteratorTypes=*/iteratorTypes,
             /*inputs=*/{s_b(b_exprs), s_c(c_exprs)},
-            /*outputBuffers=*/{s_a(parallel_exprs)},
-            /*initTensors=*/{},
+            /*outputs=*/{s_a(parallel_exprs)},
             /*resultTensorTypes=*/{}, mlir::edsc::ops::macRegionBuilder);
         mlir::edsc::intrinsics::std_ret();
 
@@ -652,6 +651,9 @@ void DotOpEmitter::EmitNaiveLlvmIrGemm() {
   } else if (ShapeUtil::ElementIsIntegral(lhs_shape)) {
     llvm::Value* product = b_->CreateMul(lhs_element, rhs_element);
     updated_accum = b_->CreateAdd(accum, product);
+  } else if (lhs_shape.element_type() == PRED) {
+    llvm::Value* product = b_->CreateAnd(lhs_element, rhs_element);
+    updated_accum = b_->CreateOr(accum, product);
   } else {
     llvm::Value* product = b_->CreateFMul(lhs_element, rhs_element);
     updated_accum = b_->CreateFAdd(accum, product);
@@ -1026,7 +1028,7 @@ DotImplementationStrategy GetDotImplementationStrategy(
 
   if (IsAlignedGemm(dot_info, target_machine_features)) {
     if (CanEmitTiledLlvmIrGemm(config, dot_info, target_machine_features)) {
-      return DotImplementationStrategy::kLinalgMatmul;
+      return DotImplementationStrategy::kTiledLlvmIrGemm;
     }
     return DotImplementationStrategy::kEigen;
   }
@@ -1042,7 +1044,9 @@ Status EmitNonBatchDotOperation(
     mlir::MLIRContext* mlir_context, const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features) {
   PrimitiveType type = target_array.GetShape().element_type();
-  TF_RET_CHECK(S32 == type || F16 == type || F32 == type || F64 == type ||
+  TF_RET_CHECK(PRED == type || S8 == type || U8 == type || S16 == type ||
+               U16 == type || S32 == type || U32 == type || S64 == type ||
+               U64 == type || F16 == type || F32 == type || F64 == type ||
                C64 == type || C128 == type);
   DotOpEmitter dot_emitter(std::move(dot_info), std::move(hlo_name),
                            target_array, lhs_array, rhs_array, addend_array,

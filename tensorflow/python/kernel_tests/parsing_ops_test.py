@@ -2284,7 +2284,7 @@ class ParseSequenceExampleTest(test.TestCase):
             # Message for batch=false in graph mode:
             "|.* do not form a valid RaggedTensor"
             # Message for batch=false in eager mode:
-            "|Incompatible shapes"))
+            "|Incompatible shapes|required broadcastable shapes"))
 
 
 @test_util.run_all_in_graph_and_eager_modes

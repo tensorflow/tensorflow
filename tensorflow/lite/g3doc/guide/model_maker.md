@@ -29,7 +29,7 @@ data = ImageClassifierDataLoader.from_folder('flower_photos/')
 train_data, test_data = data.split(0.9)
 
 # Customize the TensorFlow model.
-model = image_classifier.create(data)
+model = image_classifier.create(train_data)
 
 # Evaluate the model.
 loss, accuracy = model.evaluate(test_data)

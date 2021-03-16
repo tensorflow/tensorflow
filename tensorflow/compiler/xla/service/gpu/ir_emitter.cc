@@ -91,7 +91,8 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
   ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
   for (const HloInstruction* operand : hlo->operands()) {
     operand_to_generator[operand] = [=](const llvm_ir::IrArray::Index& index) {
-      return GetIrArray(*operand, *hlo).EmitReadArrayElement(index, &b_);
+      return GetIrArray(*operand, *hlo)
+          .EmitReadArrayElement(index, &b_, operand->name());
     };
   }
   return EmitTargetElementLoop(
@@ -145,7 +146,11 @@ Status IrEmitter::EmitConstants(const HloComputation& computation,
 
     GpuExecutable::ConstantInfo info;
     info.symbol_name = global_name;
-    info.content = literal.Clone();
+
+    if (!should_emit_initializer) {
+      auto base = static_cast<const uint8*>(literal.untyped_data());
+      info.content.assign(base, base + literal.size_bytes());
+    }
     if (lookup_indices) {
       auto maybe_slice =
           ir_emitter_context_->buffer_assignment().GetUniqueSlice(instr, {});
@@ -159,18 +164,6 @@ Status IrEmitter::EmitConstants(const HloComputation& computation,
 }
 
 Status IrEmitter::HandleConstant(HloInstruction* constant) {
-  return Status::OK();
-}
-
-Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
-  VLOG(2) << "HandleBitcast: " << bitcast->ToString();
-  const HloInstruction* operand = bitcast->operand(0);
-  // Bitcast is a no-op, but we still want to bind it to an llvm::Value
-  // sometimes, e.g., when it's operand is a constant or a bitcast of a
-  // constant.
-  if (bindings_.BoundToIrValue(*operand)) {
-    bindings_.BindHloToIrValue(*bitcast, GetBasePointer(*operand));
-  }
   return Status::OK();
 }
 
@@ -306,6 +299,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
           (f64_atomic_add_supported && element_type == F64);
       if (atomic_add_supported) {
         AtomicRMW(llvm::AtomicRMWInst::FAdd, output_address, source,
+                  llvm::MaybeAlign(),
                   llvm::AtomicOrdering::SequentiallyConsistent);
         return true;
       }
@@ -314,6 +308,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
     if (is_atomic_integral) {
       // integral + integral
       AtomicRMW(llvm::AtomicRMWInst::Add, output_address, source,
+                llvm::MaybeAlign(),
                 llvm::AtomicOrdering::SequentiallyConsistent);
       return true;
     }
@@ -325,7 +320,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
     auto opcode = primitive_util::IsSignedIntegralType(element_type)
                       ? llvm::AtomicRMWInst::Max
                       : llvm::AtomicRMWInst::UMax;
-    AtomicRMW(opcode, output_address, source,
+    AtomicRMW(opcode, output_address, source, llvm::MaybeAlign(),
               llvm::AtomicOrdering::SequentiallyConsistent);
     return true;
   }
@@ -335,7 +330,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
     auto opcode = primitive_util::IsSignedIntegralType(element_type)
                       ? llvm::AtomicRMWInst::Min
                       : llvm::AtomicRMWInst::UMin;
-    AtomicRMW(opcode, output_address, source,
+    AtomicRMW(opcode, output_address, source, llvm::MaybeAlign(),
               llvm::AtomicOrdering::SequentiallyConsistent);
     return true;
   }
@@ -483,10 +478,10 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
   // Emit code to perform the atomicCAS operation
   // (cas_old_output, success) = atomicCAS(memory_address, cas_old_output,
   //                                       cas_new_output);
-  llvm::Value* ret_value =
-      AtomicCmpXchg(atomic_memory_address, cas_old_output, cas_new_output,
-                    llvm::AtomicOrdering::SequentiallyConsistent,
-                    llvm::AtomicOrdering::SequentiallyConsistent);
+  llvm::Value* ret_value = AtomicCmpXchg(
+      atomic_memory_address, cas_old_output, cas_new_output, llvm::MaybeAlign(),
+      llvm::AtomicOrdering::SequentiallyConsistent,
+      llvm::AtomicOrdering::SequentiallyConsistent);
 
   // Extract the memory value returned from atomicCAS and store it as
   // cas_old_output.
@@ -519,15 +514,6 @@ Status IrEmitter::EmitAtomicOperationForNestedComputation(
 
   return EmitAtomicOperationUsingCAS(computation, output_address,
                                      source_address);
-}
-
-Status IrEmitter::HandleSelect(HloInstruction* select) {
-  auto pred = select->operand(0);
-  TF_RET_CHECK(pred->shape().element_type() == PRED);
-  // We must not call the subclass `DefaultAction` method, lest its
-  // `HandleSelect` call `IrEmitter::HandleSelect` and its `DefaultAction`
-  // assume no handler has already been called.
-  return IrEmitter::DefaultAction(select);
 }
 
 Status IrEmitter::HandleTupleSelect(HloInstruction* tuple_select) {
@@ -705,7 +691,8 @@ void IrEmitter::BindFusionArguments(const HloInstruction* fusion,
     fused_emitter->BindGenerator(
         fusion->fused_parameter(i),
         [this, operand, fusion](llvm_ir::IrArray::Index index) {
-          return GetIrArray(*operand, *fusion).EmitReadArrayElement(index, &b_);
+          return GetIrArray(*operand, *fusion)
+              .EmitReadArrayElement(index, &b_, operand->name());
         });
   }
 }

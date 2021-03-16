@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -104,6 +103,8 @@ class Dataset {
 
   // Creates a split provider for this dataset.
   Status MakeSplitProvider(std::unique_ptr<SplitProvider>* result);
+  // Returns a pointer to the underlying dataset.
+  const DatasetBase* Get() const;
 
  private:
   Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,
@@ -115,7 +116,6 @@ class Dataset {
   std::unique_ptr<FunctionLibraryDefinition> flib_def_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
   std::unique_ptr<thread::ThreadPool> pool_;
-  std::unique_ptr<FunctionHandleCache> function_handle_cache_;
   std::function<void(std::function<void()>)> runner_;
   ResourceMgr resource_mgr_;
   CancellationManager cancellation_manager_;

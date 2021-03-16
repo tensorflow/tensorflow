@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_ARITHMETIC_OPTIMIZER_H_
 
 #include <unordered_set>
+
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
@@ -77,14 +78,17 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool remove_redundant_cast = true;
     bool remove_redundant_reshape = true;
     bool reorder_cast_like_and_value_preserving = true;
+    bool reorder_reshape_around_unary = true;
+    bool replace_mul_with_tile = true;
     bool replace_mul_with_square = true;
-    bool simplify_aggregation = true;
+    bool replace_pack_with_tile_reshape = true;
     bool convert_pow = true;
     bool convert_log1p = true;
     bool convert_log_softmax = true;
     bool convert_expm1 = true;
     bool unary_ops_composition = true;
     bool remove_stack_slice_same_axis = true;
+    bool simplify_aggregation = true;
     bool simplify_embedding_lookup = true;
     bool remove_cast_into_segment_reduction = true;
 

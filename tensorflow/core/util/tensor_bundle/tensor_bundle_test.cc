@@ -768,9 +768,12 @@ TEST(TensorBundleTest, StringTensors) {
     EXPECT_EQ(DT_STRING, dtype);
     EXPECT_EQ(TensorShape({1}), shape);
 
-    // Zero-out the string so that we can be sure the new one is read in.
+    // Fill the string differently so that we can be sure the new one is read
+    // in. Because fragmentation in tc-malloc and we have such a big tensor
+    // of 4GB, therefore it is not ideal to free the buffer right now.
+    // The rationale is to make allocation/free close to each other.
     tstring* backing_string = long_string_tensor.flat<tstring>().data();
-    backing_string->assign("");
+    std::char_traits<char>::assign(backing_string->data(), kLongLength, 'e');
 
     // Read long_scalar and check it contains kLongLength 'd's.
     TF_ASSERT_OK(reader.Lookup("long_scalar", &long_string_tensor));
@@ -1109,9 +1112,10 @@ TEST_F(TensorBundleAlignmentTest, AlignmentTest) {
   }
 }
 
-static void BM_BundleAlignmentByteOff(::testing::benchmark::State& state,
-                                      int alignment, int tensor_size) {
+static void BM_BundleAlignment(::testing::benchmark::State& state) {
   {
+    const int alignment = state.range(0);
+    const int tensor_size = state.range(1);
     BundleWriter::Options opts;
     opts.data_alignment = alignment;
     BundleWriter writer(Env::Default(), Prefix("foo"), opts);
@@ -1127,18 +1131,36 @@ static void BM_BundleAlignmentByteOff(::testing::benchmark::State& state,
   }
 }
 
-#define BM_BundleAlignment(ALIGN, SIZE)            \
-  static void BM_BundleAlignment_##ALIGN##_##SIZE( \
-      ::testing::benchmark::State& state) {        \
-    BM_BundleAlignmentByteOff(state, ALIGN, SIZE); \
-  }                                                \
-  BENCHMARK(BM_BundleAlignment_##ALIGN##_##SIZE)
+BENCHMARK(BM_BundleAlignment)->ArgPair(1, 512);
+BENCHMARK(BM_BundleAlignment)->ArgPair(1, 4096);
+BENCHMARK(BM_BundleAlignment)->ArgPair(1, 1048576);
+BENCHMARK(BM_BundleAlignment)->ArgPair(4096, 512);
+BENCHMARK(BM_BundleAlignment)->ArgPair(4096, 4096);
+BENCHMARK(BM_BundleAlignment)->ArgPair(4096, 1048576);
 
-BM_BundleAlignment(1, 512);
-BM_BundleAlignment(1, 4096);
-BM_BundleAlignment(1, 1048576);
-BM_BundleAlignment(4096, 512);
-BM_BundleAlignment(4096, 4096);
-BM_BundleAlignment(4096, 1048576);
+static void BM_BundleWriterSmallTensor(::testing::benchmark::State& state) {
+  const int64 bytes = state.range(0);
+  Tensor t = Constant(static_cast<int8>('a'), TensorShape{bytes});
+  BundleWriter writer(Env::Default(), Prefix("foo"));
+  int suffix = 0;
+  for (auto s : state) {
+    TF_CHECK_OK(writer.Add(strings::StrCat("small", suffix++), t));
+  }
+}
+
+BENCHMARK(BM_BundleWriterSmallTensor)->Range(1, 1 << 20);
+
+static void BM_BundleWriterLargeTensor(::testing::benchmark::State& state) {
+  const int mb = state.range(0);
+  const int64 bytes = static_cast<int64>(mb) * (1 << 20);
+  Tensor t = Constant(static_cast<int8>('a'), TensorShape{bytes});
+  for (auto s : state) {
+    BundleWriter writer(Env::Default(), Prefix("foo"));
+    TF_CHECK_OK(writer.Add("big", t));
+  }
+}
+
+BENCHMARK(BM_BundleWriterLargeTensor)->Arg(1 << 10);
+BENCHMARK(BM_BundleWriterLargeTensor)->Arg(4 << 10);
 
 }  // namespace tensorflow

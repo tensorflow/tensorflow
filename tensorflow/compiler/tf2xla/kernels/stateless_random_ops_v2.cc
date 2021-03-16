@@ -478,9 +478,7 @@ class GetKeyCounterAlgOp : public XlaOpKernel {
     xla::XlaBuilder* builder = seed.builder();
     xla::XlaOp seed0 = xla::Reshape(xla::Slice(seed, {0}, {1}, {1}), {});
     xla::XlaOp seed1 = xla::Reshape(xla::Slice(seed, {1}, {2}, {1}), {});
-    xla::XlaOp key = ConvertElementType(seed0, xla::U64) |
-                     ShiftLeft(ConvertElementType(seed1, xla::U64),
-                               ConstantR0WithType(builder, xla::U64, 32));
+    xla::XlaOp key = GetU64FromS32Seeds(seed0, seed1);
     auto key_counter = GetKeyCounter(device_type_string_, key);
     key = std::get<0>(key_counter);
     auto counter = std::get<1>(key_counter);
@@ -497,6 +495,7 @@ class GetKeyCounterAlgOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(GetKeyCounterAlgOp);
 };
 
+// TODO(hinsu): Dis-allow unsupported int64 seed types.
 REGISTER_XLA_OP(Name("StatelessRandomGetKeyCounterAlg"), GetKeyCounterAlgOp);
 
 class GetKeyCounterOp : public XlaOpKernel {
@@ -512,12 +511,9 @@ class GetKeyCounterOp : public XlaOpKernel {
                                         seed_shape.DebugString()));
     xla::XlaOp seed = ctx->Input(0);
 
-    xla::XlaBuilder* builder = seed.builder();
     xla::XlaOp seed0 = xla::Reshape(xla::Slice(seed, {0}, {1}, {1}), {});
     xla::XlaOp seed1 = xla::Reshape(xla::Slice(seed, {1}, {2}, {1}), {});
-    xla::XlaOp key = ConvertElementType(seed0, xla::U64) |
-                     ShiftLeft(ConvertElementType(seed1, xla::U64),
-                               ConstantR0WithType(builder, xla::U64, 32));
+    xla::XlaOp key = GetU64FromS32Seeds(seed0, seed1);
     auto key_counter = GetKeyCounter(device_type_string_, key);
     key = std::get<0>(key_counter);
     auto counter = std::get<1>(key_counter);
@@ -532,6 +528,7 @@ class GetKeyCounterOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(GetKeyCounterOp);
 };
 
+// TODO(hinsu): Dis-allow unsupported int64 seed types.
 REGISTER_XLA_OP(Name("StatelessRandomGetKeyCounter"), GetKeyCounterOp);
 
 class GetAlgOp : public XlaOpKernel {

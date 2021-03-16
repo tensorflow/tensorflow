@@ -908,6 +908,19 @@ class OptimizerWithFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose([0., 1.], fn(), atol=1e-4)
     self.assertAllClose([-1, 0.], fn(), atol=1e-4)
 
+  def testBasicWithConstantDecay(self):
+    var = variables.Variable([1.0, 2.0], dtype=dtypes.float32)
+    loss = lambda: 3 * var
+    opt = adam.Adam(learning_rate=1.0)
+
+    @def_function.function
+    def fn():
+      opt.minimize(loss, [var])
+      return var
+
+    self.assertAllClose([0., 1.], fn(), atol=1e-4)
+    self.assertAllClose([-1, 0.], fn(), atol=1e-4)
+
   def testVarKeyWithVarCreatedInEager(self):
     a = variables.Variable([1., 2.], name='var')
     b = variables.Variable([1.], name='var')
