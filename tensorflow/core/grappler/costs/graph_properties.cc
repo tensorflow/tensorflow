@@ -54,6 +54,10 @@ using TensorVector = gtl::InlinedVector<TensorValue, 4>;
 // e.g., shape input to Reshape op.
 const int64 kUnknownDimFromConst = INT64_MAX;
 
+// Skip const value instantiation if the number of elements in a const tensor
+// is greater than this threshold.
+const int kThresholdToSkipConstTensorInstantiation = 128;
+
 template <typename Handle>
 struct HashHandle {
   std::size_t operator()(const Handle& h) const { return h.Handle(); }
@@ -437,6 +441,53 @@ NodeDef MakeConstNodeDefFromShape(InferenceContext* ic,
       ic, MakeTensorProtoFromShape(ic, shape, tensor_as_shape, dtype), dtype);
 }
 
+bool IsNumericType(const DataType dtype) {
+  static const gtl::FlatSet<DataType>* const kRealNumberTypes =
+      CHECK_NOTNULL((new gtl::FlatSet<DataType>{
+          // Floating point.
+          DT_BFLOAT16,
+          DT_HALF,
+          DT_FLOAT,
+          DT_DOUBLE,
+          // Int / UInt.
+          DT_INT8,
+          DT_INT16,
+          DT_INT32,
+          DT_INT64,
+          DT_UINT8,
+          DT_UINT16,
+          DT_UINT32,
+          DT_UINT64,
+          // Quantized Int.
+          DT_QINT8,
+          DT_QUINT8,
+          DT_QINT16,
+          DT_QUINT16,
+          DT_QINT32,
+          // Bool.
+          DT_BOOL,
+      }));
+  return kRealNumberTypes->find(dtype) != kRealNumberTypes->end();
+}
+
+// Returns the number of elements in the input (const) tensor.
+// -1 if the tensor has no shape or unknown rank.
+uint64 NumElementsFromTensorProto(const TensorProto& tensor_proto) {
+  if (!tensor_proto.has_tensor_shape()) {
+    return -1;
+  }
+  const auto& tensor_shape_proto = tensor_proto.tensor_shape();
+  if (tensor_shape_proto.unknown_rank()) {
+    return -1;
+  }
+  int64 num_elements = 1;
+  for (const auto& dim : tensor_shape_proto.dim()) {
+    // Note that in some cases, dim.size() can be zero (e.g., empty vector).
+    num_elements *= dim.size();
+  }
+  return num_elements;
+}
+
 }  // namespace
 
 // Note that tensor_as_shape input should not include kUnknownDimFromConst.
@@ -513,34 +564,6 @@ class TopoQueue {
   std::set<NodeAndId, OrderByIdAscending> queue_;
 };
 
-bool IsNumericType(const DataType dtype) {
-  static const gtl::FlatSet<DataType>* const kRealNumberTypes =
-      CHECK_NOTNULL((new gtl::FlatSet<DataType>{
-          // Floating point.
-          DT_BFLOAT16,
-          DT_HALF,
-          DT_FLOAT,
-          DT_DOUBLE,
-          // Int / UInt.
-          DT_INT8,
-          DT_INT16,
-          DT_INT32,
-          DT_INT64,
-          DT_UINT8,
-          DT_UINT16,
-          DT_UINT32,
-          DT_UINT64,
-          // Quantized Int.
-          DT_QINT8,
-          DT_QUINT8,
-          DT_QINT16,
-          DT_QUINT16,
-          DT_QINT32,
-          // Bool.
-          DT_BOOL,
-      }));
-  return kRealNumberTypes->find(dtype) != kRealNumberTypes->end();
-}
 
 bool IsAllowListedOpTypeForEvaluateNode(const string& op_type) {
   static const gtl::FlatSet<string>* const kOpTpeAllowlist =
@@ -1087,6 +1110,9 @@ class SymbolicShapeRefiner {
     for (int dst_input = 0; dst_input < ic->num_inputs(); ++dst_input) {
       const TensorProto* tensor_proto = ctx->input_tensor_protos[dst_input];
       if (tensor_proto != nullptr &&
+          // Skip if the const tensor is too large.
+          NumElementsFromTensorProto(*tensor_proto) <=
+              kThresholdToSkipConstTensorInstantiation &&
           const_values[dst_input].FromProto(*tensor_proto)) {
         input_tensors[dst_input] = &const_values[dst_input];
       }
@@ -1672,8 +1698,8 @@ class SymbolicShapeRefiner {
     InferenceContext* ic = c->inference_context.get();
     if (!is_fed) {
       if (IsConstant(node)) {
-        c->output_tensor_protos.resize(1);
         const TensorProto& tensor_proto = node.attr().at("value").tensor();
+        c->output_tensor_protos.resize(1);
         c->output_tensor_protos[0] = &tensor_proto;
         c->output_tensors_as_shapes.resize(1);
         MaybeTensorProtoToShape(ic, tensor_proto,
@@ -1942,6 +1968,11 @@ class SymbolicShapeRefiner {
                                ShapeHandle* tensors_as_shapes) {
     // Skip if dtype is not integer.
     if (tensor_proto.dtype() != DT_INT32 && tensor_proto.dtype() != DT_INT64) {
+      return false;
+    }
+    // Skip if the const tensor is too large.
+    if (NumElementsFromTensorProto(tensor_proto) >
+        kThresholdToSkipConstTensorInstantiation) {
       return false;
     }
     // Skip if shape is neither scalar nor vector.
