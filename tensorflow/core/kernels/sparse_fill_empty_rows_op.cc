@@ -193,6 +193,8 @@ namespace {
 template <typename Device, typename T, typename Tindex>
 void SparseFillEmptyRowsOpImpl(
     OpKernelContext* context, AsyncOpKernel::DoneCallback done = nullptr) {
+  // Note that setting this empty lambda as the default parameter value directly
+  // can cause strange compiler/linker errors, so we do it like this instead.
   if (!done) {
     done = [] {};
   }
