@@ -569,7 +569,7 @@ build:release_gpu_linux --action_env=GCC_HOST_COMPILER_PATH="/usr/bin/gcc-5"
 build:release_gpu_linux --crosstool_top=@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda11.2:toolchain
 
 build:release_cpu_windows --config=release_base
-build:release_base        --config=avx_win
+build:release_cpu_windows --config=avx_win
 build:release_cpu_windows --define=no_tensorflow_py_deps=true
 # First available in VS 16.4. Speeds Windows compile times by a lot. See
 # https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
