@@ -290,6 +290,40 @@ TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt8) {
 }
 #endif  // defined(XTENSA)
 
+TF_LITE_MICRO_TEST(QuantizeOpTestUInt8toInt8) {
+  const int length = 10;
+  const int dims[] = {2, 2, 5};
+  const float values[] = {64, 66, 68, 70, 72, 182, 184, 186, 188, 190};
+  const float input_scale = 2.f;
+  const int input_zero_point = 0;
+  const float output_scale = 0.5;
+  const int output_zero_point = 32;
+  int8_t output_quantized[length];
+  int8_t values_quantized[length];
+  uint8_t input_quantized[length];
+  tflite::testing::TestRequantize(dims, values, input_quantized, input_scale,
+                                  input_zero_point, dims, values,
+                                  values_quantized, output_scale,
+                                  output_zero_point, output_quantized);
+}
+
+TF_LITE_MICRO_TEST(QuantizeOpTestUInt8toInt8NoZeroPoint) {
+  const int length = 10;
+  const int dims[] = {2, 2, 5};
+  const float values[] = {96, 97, 98, 99, 100, 155, 156, 157, 158, 159};
+  const float input_scale = 1.f;
+  const int input_zero_point = 0;
+  const float output_scale = 0.5;
+  const int output_zero_point = 0;
+  int8_t output_quantized[length];
+  int8_t values_quantized[length];
+  uint8_t input_quantized[length];
+  tflite::testing::TestRequantize(dims, values, input_quantized, input_scale,
+                                  input_zero_point, dims, values,
+                                  values_quantized, output_scale,
+                                  output_zero_point, output_quantized);
+}
+
 TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt32) {
   const int length = 10;
   const int dims[] = {2, 2, 5};
