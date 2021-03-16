@@ -1033,8 +1033,7 @@ PjRtStreamExecutorBuffer::PjRtStreamExecutorBuffer(
     : client_(tensorflow::down_cast<PjRtStreamExecutorClient*>(client)),
       on_device_shape_(std::move(on_device_shape)),
       device_(tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)),
-      device_buffer_(std::move(device_buffer)),
-      donation_semaphore_(/*capacity=*/1) {
+      device_buffer_(std::move(device_buffer)) {
   for (int i = 0; i < ScopedHold::Type::kMaxValue; ++i) {
     holds_[i] = 0;
   }
@@ -1159,6 +1158,8 @@ bool PjRtStreamExecutorBuffer::IsDeleted() {
 
 StatusOr<std::shared_ptr<TrackedDeviceBuffer>>
 PjRtStreamExecutorBuffer::GetBufferForHoldLocked(ScopedHold::Type type) {
+  // All callers should have called WaitForOutstandingDonationHold().
+  CHECK_EQ(holds_[ScopedHold::kDonation], 0);
   if (type == ScopedHold::kDonation) {
     if (device_buffer_ == nullptr) {
       return InvalidArgument("Donation requested for invalid buffer");
@@ -1167,9 +1168,6 @@ PjRtStreamExecutorBuffer::GetBufferForHoldLocked(ScopedHold::Type type) {
       return InvalidArgument(
           "Donation requested for buffer with external reference");
     }
-    // donation_semaphore_ was acquired in GetBufferWithHold so that only one
-    // thread at a time can attempt to get a donation hold.
-    CHECK_EQ(holds_[type], 0);
     // First add the donation hold.
     ++holds_[type];
     // Then wait for any usage holds to be dropped or converted. No new usage
@@ -1180,9 +1178,6 @@ PjRtStreamExecutorBuffer::GetBufferForHoldLocked(ScopedHold::Type type) {
     // we were waiting.
     CHECK(device_buffer_ != nullptr);
   } else {
-    // If there is a donation hold in progress we have to wait before
-    // acquiring any other kind of hold.
-    WaitForOutstandingDonationHold();
     if (device_buffer_ == nullptr) {
       return InvalidArgument("Hold requested on deleted or donated buffer");
     } else {
@@ -1224,8 +1219,6 @@ void PjRtStreamExecutorBuffer::ConfirmDonation(
     // Release or GetBufferWithHold will see an invalid buffer and return.
     device_buffer_.reset();
   }
-  // Unblock another thread, if any, trying to get a donation hold.
-  donation_semaphore_.Release(1);
 }
 
 void PjRtStreamExecutorBuffer::DropHold(ScopedHold::Type type,
@@ -1238,7 +1231,6 @@ void PjRtStreamExecutorBuffer::DropHold(ScopedHold::Type type,
     CHECK_EQ(holds_[ScopedHold::kDonation], 0);
     CHECK_EQ(holds_[ScopedHold::kUsage], 0);
     CHECK_EQ(holds_[ScopedHold::kExternalReference], 0);
-    donation_semaphore_.Release(1);
   }
 }
 
@@ -1308,16 +1300,11 @@ StatusOr<ShapedBuffer> PjRtStreamExecutorBuffer::AsShapedBuffer() const {
 
 PjRtStreamExecutorBuffer::ScopedHold
 PjRtStreamExecutorBuffer::GetBufferWithHold(ScopedHold::Type type) {
-  if (type == ScopedHold::kDonation) {
-    // Ensure that at most one donation hold can be in progress at a time.
-    donation_semaphore_.Acquire(1);
-  }
   absl::MutexLock lock(&mu_);
+  // Ensure that at most one donation hold can be in progress at a time.
+  WaitForOutstandingDonationHold();
   ScopedHold hold(this, type);
   AcquireHoldLocked(&hold);
-  if (type == ScopedHold::kDonation && !hold.ok()) {
-    donation_semaphore_.Release(1);
-  }
   return hold;
 }
 

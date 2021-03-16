@@ -561,12 +561,16 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   // Adds a hold of 'type' and returns device_buffer_. Returns an error if
   // device_buffer_ is null, or if a donation hold was requested when there is
   // an outstanding external hold.
+  // Requires holds_[kDonation] == 0 (i.e., WaitForOutstandingDonationHolds()
+  // must be called first.)
   StatusOr<std::shared_ptr<TrackedDeviceBuffer>> GetBufferForHoldLocked(
       ScopedHold::Type type) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Adds a hold of hold->type() and initializes `hold` with device_buffer_.
   // Initializes hold with an error if device_buffer_ is null, or if a donation
   // hold was requested when there is an outstanding external hold.
+  // Requires holds_[kDonation] == 0 (i.e., WaitForOutstandingDonationHolds()
+  // must be called first.)
   void AcquireHoldLocked(ScopedHold* hold) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Drops a usage hold and calls device_buffer_->AddUsageEvent. Does a sanity
@@ -600,8 +604,6 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   std::shared_ptr<TrackedDeviceBuffer> device_buffer_ TF_GUARDED_BY(mu_);
   // Count of holds on the buffer.
   std::array<int, ScopedHold::Type::kMaxValue> holds_ TF_GUARDED_BY(mu_);
-  // Semaphore used to ensure there is only one outstanding donation hold.
-  Semaphore donation_semaphore_;
 };
 
 // Wraps one or more XLA LocalExecutables (one per partition, as specified by
