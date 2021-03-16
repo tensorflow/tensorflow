@@ -194,14 +194,17 @@ def canonicalize_signatures(signatures):
 
 
 def _normalize_outputs(outputs, function_name, signature_key):
-  """Construct an output dictionary from unnormalized function outputs."""
+  """Normalize outputs if necessary and check that they are tensors."""
   # Convert `outputs` to a dictionary (if it's not one already).
   if not isinstance(outputs, collections_abc.Mapping):
-    if not isinstance(outputs, collections_abc.Sequence):
-      outputs = [outputs]
-    outputs = {("output_{}".format(output_index)): output
-               for output_index, output
-               in enumerate(outputs)}
+    # Check if `outputs` is a namedtuple.
+    if hasattr(outputs, "_asdict"):
+      outputs = outputs._asdict()
+    else:
+      if not isinstance(outputs, collections_abc.Sequence):
+        outputs = [outputs]
+      outputs = {("output_{}".format(output_index)): output
+                 for output_index, output in enumerate(outputs)}
 
   # Check that the keys of `outputs` are strings and the values are Tensors.
   for key, value in outputs.items():
@@ -212,7 +215,7 @@ def _normalize_outputs(outputs, function_name, signature_key):
           .format(key, compat.as_str_any(function_name), signature_key))
     if not isinstance(value, ops.Tensor):
       raise ValueError(
-          ("Got a non-Tensor value {!r} for key {!r} in the output of the "
+          ("Got a non-Tensor value `{!r}` for key {!r} in the output of the "
            "function {} used to generate the SavedModel signature {!r}. "
            "Outputs for functions used as signatures must be a single Tensor, "
            "a sequence of Tensors, or a dictionary from string to Tensor.")
