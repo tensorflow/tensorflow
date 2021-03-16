@@ -570,6 +570,7 @@ tf_py_test(
         ":test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/ops:optimization_options",
+        "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/experimental/ops:threading_options",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
