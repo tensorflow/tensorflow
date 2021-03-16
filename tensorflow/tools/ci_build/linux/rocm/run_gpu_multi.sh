@@ -51,6 +51,7 @@ bazel test \
       --test_sharding_strategy=disabled \
       --test_size_filters=small,medium,large \
       --cache_test_results=no \
+      --test_env=TF_PER_DEVICE_MEMORY_LIMIT_MB=2048 \
       -- \
 //tensorflow/core/common_runtime/gpu:gpu_device_unified_memory_test_2gpu \
 //tensorflow/core/kernels:collective_nccl_test_2gpu \
