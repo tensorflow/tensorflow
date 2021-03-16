@@ -549,7 +549,7 @@ build:release_base --action_env TF_CONFIGURE_IOS="0"
 build:release_cpu_linux --config=release_base
 build:release_cpu_linux --config=avx_linux
 build:release_cpu_linux --config=native_arch_linux
-build:release_cpu_linux --crosstool_top=@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/ubuntu16.04-py3-gcc7_manylinux2010:toolchain
+build:release_cpu_linux --crosstool_top=@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda11.2:toolchain
 
 build:release_cpu_macos --config=release_base
 build:release_cpu_macos --config=avx_linux
