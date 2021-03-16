@@ -55,6 +55,7 @@ td_library(
     name = "BuiltinDialectTdFiles",
     srcs = [
         "include/mlir/IR/BuiltinDialect.td",
+        "include/mlir/IR/BuiltinLocationAttributes.td",
         "include/mlir/IR/BuiltinOps.td",
         "include/mlir/IR/BuiltinTypes.td",
     ],
