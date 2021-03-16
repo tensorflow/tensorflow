@@ -3659,6 +3659,35 @@ TEST_P(OpConverter_FP32_Test, ConvertExpandDims) {
   }
 }
 
+TEST_P(OpConverter_FP32_FP16_Test, ConvertSoftmax) {
+  // Get the NodeDef for SoftMax.
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("logits"), tf_type_);
+  auto softmax = ops::Softmax(s.WithOpName("my_softmax"), input);
+  const NodeDef& node_def = softmax.operation.node()->def();
+
+  struct TestParams {
+    std::vector<int> input_dims;
+    std::vector<float> expected_values;
+  };
+  std::vector<TestParams> test_params = {
+      TestParams{{2, 3},
+                 {0.09003057, 0.24472848, 0.66524094, 0.09003057, 0.24472848,
+                  0.66524094}},
+      TestParams{{6, 1}, {1, 1, 1, 1, 1, 1}},  // works with std input
+      TestParams{{1, 6},  // this works with arange(1,7) input
+                 {0.00426978, 0.01160646, 0.03154963, 0.08576079, 0.23312202,
+                  0.6336913}},
+  };
+  std::vector<float> input_values{1, 2, 3, 4, 5, 6};
+  for (auto p : test_params) {
+    Reset();
+    AddTestTensor("logits", p.input_dims, input_values);
+    TestOpConverter("my_softmax", node_def, p.input_dims, Status::OK(),
+                    Status::OK(), ArrayFloatNear(p.expected_values, 1e-3));
+  }
+}
+
 TEST_P(OpConverter_FP32_Test, ConvertSqueeze) {
   const bool use_implicit_batch = (trt_mode_ == TrtTestMode::kImplicitBatch);
   // Get the NodeDef for Squeeze.

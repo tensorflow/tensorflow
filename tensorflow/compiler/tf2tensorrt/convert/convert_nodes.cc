@@ -5889,7 +5889,7 @@ Status ConvertSoftmax(OpConverterParams* params) {
   nvinfer1::ITensor* tensor = inputs.at(0).tensor();
 
   const int num_trt_dims = tensor->getDimensions().nbDims;
-  if (num_trt_dims == 0) {
+  if (num_trt_dims == 0 && params->use_implicit_batch) {
     return errors::InvalidArgument(
         "TensorRT Softmax cannot apply on batch dimension, at",
         node_def.name());
