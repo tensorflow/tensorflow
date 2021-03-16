@@ -31,13 +31,18 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-std::vector<TensorShape> DimVecToShapeVec(std::vector<nvinfer1::Dims3> dimvec) {
+std::vector<TensorShape> DimVecToShapeVec(
+    std::vector<nvinfer1::Dims3> dimvec,
+    bool expand_with_empty_shape_values = false) {
   std::vector<TensorShape> shapevec(dimvec.size());
   for (int i = 0; i < dimvec.size(); i++) {
     TensorShape shape;
     TF_CHECK_OK(
         TensorShapeUtils::MakeShape(dimvec[i].d, dimvec[i].nbDims, &shape));
     shapevec[i] = shape;
+  }
+  if (expand_with_empty_shape_values) {
+    shapevec.resize(2 * dimvec.size());  // Append empty shape values
   }
   return shapevec;
 }
@@ -143,7 +148,7 @@ TEST_F(TrtShapeOptimizationProfileTest, Static) {
   EXPECT_NE(nullptr, engine);
   TF_CHECK_OK(
       profile.CreateExecutionContexts(engine.get(), exec_context_, nullptr));
-  // A single execution context should be created for a graph with static input
+  // A single execution context should be created for a graph with static input.
   ASSERT_EQ(exec_context_.size(), 1);
   EXPECT_NE(nullptr, exec_context_[0]);
 
@@ -167,7 +172,7 @@ TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
 
   // Simulate a profile collection phase.
   for (auto dim_vec : input_profiles) {
-    std::vector<TensorShape> shape_vec = DimVecToShapeVec(dim_vec);
+    std::vector<TensorShape> shape_vec = DimVecToShapeVec(dim_vec, true);
     profile.AddShape(shape_vec);
   }
   std::vector<PartialTensorShape> input_partial_shapes;
@@ -187,10 +192,15 @@ TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
   // Each profile has an associated execution context.
   EXPECT_EQ(exec_context_.size(), input_profiles.size());
 
+  profile.SetShapeTensorMask(network_.get());
+
+  EXPECT_EQ(profile.HasShapeTensor(), false);
+
   // Check if the profiles are assigned correctly.
   for (auto dimvec : input_profiles) {
     std::vector<TensorShape> shape_vec = DimVecToShapeVec(dimvec);
     int idx = profile.GetProfileNumber(shape_vec);
+    ASSERT_GE(idx, 0);
     int prof_idx =
         exec_context_[idx].GetIExecutionContext()->getOptimizationProfile();
     ASSERT_GE(prof_idx, 0);

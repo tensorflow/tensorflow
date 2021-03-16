@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
@@ -64,6 +65,23 @@ std::vector<ClientAndPtr<PyBuffer>> PyClient::LiveBuffers() {
     }
   }
   return buffers;
+}
+
+Status PyClient::Defragment() {
+  CHECK(PyGILState_Check());
+  absl::flat_hash_set<PjRtBuffer*> buffer_set;
+  for (PyBuffer* buffer = buffers_; buffer; buffer = buffer->next_) {
+    if (!buffer->is_deleted()) {
+      buffer_set.insert(buffer->buffer());
+    }
+  }
+  std::vector<PjRtBuffer*> buffers(buffer_set.begin(), buffer_set.end());
+
+  std::vector<PjRtExecutable*> execs;
+  for (PyExecutable* exec = executables_; exec; exec = exec->next_) {
+    execs.push_back(exec->mutable_pjrt_executable());
+  }
+  return pjrt_client_->Defragment(buffers, execs);
 }
 
 StatusOr<std::vector<std::vector<ClientAndPtr<PjRtDevice>>>>
@@ -249,12 +267,17 @@ H AbslHashValue(H h, const HeapProfileKey& key) {
 
 py::bytes PyClient::HeapProfile() {
   CHECK(PyGILState_Check());
+  absl::flat_hash_set<PjRtBuffer*> buffer_set;
   absl::flat_hash_map<HeapProfileKey, int64> entries;
   for (PyBuffer* buffer = buffers_; buffer; buffer = buffer->next_) {
-    HeapProfileKey key{buffer->traceback(),
-                       buffer->buffer()->OnDeviceSizeInBytes(),
-                       buffer->buffer()->device()};
-    ++entries[key];
+    // We only wish to count each PjRtBuffer once, even though they may be
+    // shared by multiple PyBuffers.
+    if (buffer_set.insert(buffer->buffer()).second) {
+      HeapProfileKey key{buffer->traceback(),
+                         buffer->buffer()->OnDeviceSizeInBytes(),
+                         buffer->buffer()->device()};
+      ++entries[key];
+    }
   }
 
   for (PyExecutable* executable = executables_; executable;

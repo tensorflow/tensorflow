@@ -1321,19 +1321,30 @@ HloConstantInstruction::CloneWithNewOperandsImpl(
 string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
     const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
-  string operands;
+  if (options.print_only_essential_constants()) {
+    if (literal().IsAll(0)) {
+      return "0";
+    }
+    if (literal().IsAll(1)) {
+      return "1";
+    }
+    if (shape().IsInteger()) {
+      return literal_->ToStringWithoutShapeOneline();
+    }
+    return "{...}";
+  }
+
   // For constants, show the actual value in place of an empty operand list.
   if (literal_.has_value() &&
       ((shape().IsArray() && ShapeUtil::ElementsIn(shape()) <= 10) ||
        options.print_large_constants())) {
     // Literal::ToString emits multidimensional arrays over multiple
     // lines. Compact this into one line by stripping out white space.
-    operands = literal_->ToStringWithoutShapeOneline();
+    return literal_->ToStringWithoutShapeOneline();
   } else {
     // Do not show large constants or tuples.
-    operands = "{...}";
+    return "{...}";
   }
-  return operands;
 }
 
 HloTraceInstruction::HloTraceInstruction(const string& tag,
@@ -2062,7 +2073,7 @@ HloInstructionProto HloInfeedInstruction::ToProto() const {
 
 std::vector<string> HloInfeedInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  if (infeed_config_.empty()) {
+  if (!options.print_infeed_outfeed_config() || infeed_config_.empty()) {
     return {};
   }
   return {StrCat("infeed_config=\"", CEscape(infeed_config_), "\"")};
@@ -2107,7 +2118,7 @@ std::vector<string> HloOutfeedInstruction::ExtraAttributesToStringImpl(
   std::vector<string> extra;
   extra.push_back(StrCat("outfeed_shape=",
                          ShapeUtil::HumanStringWithLayout(outfeed_shape_)));
-  if (!outfeed_config_.empty()) {
+  if (options.print_infeed_outfeed_config() && !outfeed_config_.empty()) {
     extra.push_back(
         StrCat("outfeed_config=\"", CEscape(outfeed_config_), "\""));
   }

@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "rocm/include/miopen/miopen.h"
@@ -761,12 +762,12 @@ class ScopedFilterDescriptor {
             filter_descriptor.full_dims(dnn::FilterLayout::kOutputInputYX);
 
         // MIOpen requires arrays of ints.
-        std::vector<int> strides(nd);
-        std::vector<int> dims(nd);
-        std::transform(strides64.cbegin(), strides64.cend(), strides.begin(),
-                       &CheckedNarrowing<int64, int>);
-        std::transform(dims64.cbegin(), dims64.cend(), dims.begin(),
-                       &CheckedNarrowing<int64, int>);
+        std::vector<int> strides;
+        std::vector<int> dims;
+        absl::c_transform(strides64, std::back_inserter(strides),
+                          &CheckedNarrowing<int64, int>);
+        absl::c_transform(dims64, std::back_inserter(dims),
+                          &CheckedNarrowing<int64, int>);
         status = wrap::miopenSetTensorDescriptor(handle_, elem_type, nd,
                                                  dims.data(), strides.data());
 

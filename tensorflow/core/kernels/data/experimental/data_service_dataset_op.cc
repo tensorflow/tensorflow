@@ -289,10 +289,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       VLOG(3) << "Calling GetNext in data service dataset op";
       mutex_lock l(mu_);
       if (!task_thread_manager_ && !cancelled_) {
+        auto new_ctx = std::make_shared<IteratorContext>(*ctx);
         task_thread_manager_ =
-            ctx->StartThread("task-thread-manager", [this, ctx]() {
-              TaskThreadManager(absl::make_unique<IteratorContext>(*ctx));
-            });
+            ctx->StartThread("task-thread-manager",
+                             [this, new_ctx]() { TaskThreadManager(new_ctx); });
       }
 
       bool skip = true;
@@ -419,7 +419,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // Maintain one thread fetching elements for each task.
     // TODO(aaudibert): Instead of polling, have dispatcher send updates when
     // the list of tasks changes.
-    void TaskThreadManager(std::unique_ptr<IteratorContext> ctx) {
+    void TaskThreadManager(std::shared_ptr<IteratorContext> ctx) {
       auto cleanup =
           gtl::MakeCleanup([] { VLOG(1) << "Task thread manager exiting"; });
       VLOG(1) << "Starting task thread manager";

@@ -1348,11 +1348,6 @@ def main():
   if (environ_cp.get('TF_NEED_ROCM') == '1' and environ_cp.get('HIP_PLATFORM')):
     write_action_env_to_bazelrc('HIP_PLATFORM', environ_cp.get('HIP_PLATFORM'))
 
-  if ((environ_cp.get('TF_NEED_ROCM') == '1') and
-      (environ_cp.get('TF_ENABLE_MLIR_GENERATED_GPU_KERNELS') == '1')):
-    write_to_bazelrc(
-        'build:rocm --define tensorflow_enable_mlir_generated_gpu_kernels=1')
-
   environ_cp['TF_NEED_CUDA'] = str(
       int(get_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)))
   if (environ_cp.get('TF_NEED_CUDA') == '1' and

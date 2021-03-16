@@ -526,7 +526,7 @@ Attribute ComputeOutputComponent(const ValuePort& value_port,
 // TF Graph version, constant values computed, etc.)
 class ShapeInference {
  public:
-  ShapeInference(int64_t graph_version, MLIRContext* context,
+  ShapeInference(int64_t graph_version, ModuleOp module,
                  bool propagate_caller_callee_constants);
 
   LogicalResult ComputeInputsRequiredForOutput(ValuePort value_port,
@@ -717,7 +717,8 @@ class ShapeInference {
   ValuePortResultMap results_;
 
   // Map from a function to the callers of that function.
-  llvm::DenseMap<FuncOp, SmallVector<Operation*, 4>> callers_of_func_;
+  SymbolTableCollection symbol_table_;
+  SymbolUserMap symbol_users_;
 
   // Queue of functions being processed.
   llvm::DenseSet<FuncOp> queue_set_;
@@ -730,25 +731,15 @@ class ShapeInference {
   bool propagate_caller_callee_constants_;
 };
 
-ShapeInference::ShapeInference(int64_t graph_version, MLIRContext* context,
+ShapeInference::ShapeInference(int64_t graph_version, ModuleOp module,
                                bool propagate_caller_callee_constants)
-    : tf_dialect_(context->getLoadedDialect<TensorFlowDialect>()),
+    : tf_dialect_(module->getContext()->getLoadedDialect<TensorFlowDialect>()),
+      symbol_users_(symbol_table_, module),
       graph_version_(graph_version),
       propagate_caller_callee_constants_(propagate_caller_callee_constants) {}
 
 ArrayRef<Operation*> ShapeInference::GetCallers(FuncOp fn) {
-  auto pair = callers_of_func_.try_emplace(fn);
-  if (pair.second) {
-    ModuleOp module = fn->getParentOfType<ModuleOp>();
-    auto uses = mlir::SymbolTable::getSymbolUses(fn.getOperation(), module);
-    if (uses) {
-      pair.first->second.reserve(pair.first->second.size());
-      for (auto use : *uses) {
-        pair.first->second.push_back(use.getUser());
-      }
-    }
-  }
-  return pair.first->second;
+  return symbol_users_.getUsers(fn);
 }
 
 void ShapeInference::EnqueueCallers(FuncOp fn) {
@@ -1717,7 +1708,7 @@ LogicalResult InferShapeForFunction(FuncOp func,
                                     ArrayRef<ArrayRef<int64_t>> arg_shapes,
                                     int64_t graph_version,
                                     int64_t max_iterations) {
-  ShapeInference context(graph_version, func.getContext(),
+  ShapeInference context(graph_version, func->getParentOfType<ModuleOp>(),
                          /*propagate_caller_callee_constants=*/true);
   if (arg_shapes.empty()) {
     return InferShapeForFunction(context, func, max_iterations);
@@ -1778,7 +1769,7 @@ LogicalResult InferModuleShape(ModuleOp module, int64_t max_iterations) {
   int64_t producer = producer_or.ValueOrDie();
   // TODO(jpienaar): Clean up propagate_NextIterationSinkOp_callee_constants if
   // it is no longer needed.
-  ShapeInference context(producer, module.getContext(),
+  ShapeInference context(producer, module,
                          /*propagate_caller_callee_constants=*/false);
   if (auto main = module.lookupSymbol<mlir::FuncOp>("main"))
     context.enqueue(main);

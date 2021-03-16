@@ -113,7 +113,6 @@ Status Dataset::MakeIterator(std::unique_ptr<SplitProvider> split_provider,
     op_params.runner = &runner_;
     OpKernelContext op_ctx(&op_params, 0);
     IteratorContext::Params params(&op_ctx);
-    params.function_handle_cache = function_handle_cache_.get();
     params.resource_mgr = &resource_mgr_;
     params.cancellation_manager = &cancellation_manager_;
     params.split_provider = std::move(split_provider);
@@ -150,8 +149,6 @@ Dataset::Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,
       pflr_(pflr),
       pool_(pool) {
   runner_ = [this](std::function<void()> c) { pool_->Schedule(std::move(c)); };
-  function_handle_cache_ =
-      absl::make_unique<FunctionHandleCache>(pflr_->GetFLR("/device:CPU:0"));
 }
 
 Dataset::~Dataset() { dataset_->Unref(); }

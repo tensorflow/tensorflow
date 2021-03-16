@@ -815,6 +815,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:ops_testutil",
         "//third_party/eigen3",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

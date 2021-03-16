@@ -32,6 +32,7 @@ from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_v2_test_util
 from tensorflow.lite.python.convert import mlir_quantize
 from tensorflow.lite.python.interpreter import Interpreter
+from tensorflow.lite.python.interpreter import OpResolver
 from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -695,7 +696,9 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
         np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32))
 
     def examine_tflite_model(tflite_content, input_data):
-      interpreter = Interpreter(model_content=tflite_content)
+      interpreter = Interpreter(
+          model_content=tflite_content,
+          experimental_op_resolver=OpResolver.BUILTIN_WITHOUT_DEFAULT_DELEGATES)
       interpreter.allocate_tensors()
       input_details = interpreter.get_input_details()
       interpreter.set_tensor(input_details[0]['index'], input_data.numpy())
@@ -732,9 +735,8 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       if 'NumericVerify' in output_tensor_name:
         pos_end_prefix = len('NumericVerify/')
         pos_colon = output_tensor_name.rfind(':')
-        self.assertEqual('NumericVerify/',
-                         output_tensor_name[:pos_end_prefix])
-        tensor_id = int(output_tensor_name[pos_colon+1:])
+        self.assertEqual('NumericVerify/', output_tensor_name[:pos_end_prefix])
+        tensor_id = int(output_tensor_name[pos_colon + 1:])
         original_tensor_name = output_tensor_name[pos_end_prefix:pos_colon]
         self.assertEqual(original_tensor_name,
                          debug_tensor_details[tensor_id]['name'])
@@ -871,7 +873,6 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
-    converter.allow_custom_ops = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -898,6 +899,80 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     interpreter.invoke()
     actual_value = interpreter.get_tensor(output_details[0]['index'])
     self.assertEqual([1, 2, 3, -1], list(actual_value))
+
+  def _createV1ModelWithMutableHashTable(self):
+    # Create a v1 saved model with mutable hash table.
+    tf.compat.v1.disable_eager_execution()
+    saved_model_dir = os.path.join(self.get_temp_dir(),
+                                   'savedmodel_with_mutable_hashtable')
+
+    table = tf.raw_ops.MutableHashTableV2(
+        key_dtype=tf.string, value_dtype=tf.int64)
+    x = tf.compat.v1.placeholder(tf.string, shape=(), name='input')
+    keys = tf.constant(['a', 'b'], tf.string)
+    values = tf.constant([1, 5], tf.int64)
+    default_value = tf.constant(-1, tf.int64)
+    insert_call = tf.raw_ops.LookupTableInsertV2(
+        table_handle=table, keys=keys, values=values)
+    with tf.control_dependencies([insert_call]):
+      y = tf.raw_ops.LookupTableFindV2(
+          table_handle=table, keys=x, default_value=default_value)
+
+    tensor_info_x = tf.compat.v1.saved_model.utils.build_tensor_info(x)
+    tensor_info_y = tf.compat.v1.saved_model.utils.build_tensor_info(y)
+
+    signature_def_map, init_op, assets_collection = {
+        'serving_default':
+            (tf.compat.v1.saved_model.signature_def_utils.build_signature_def(
+                inputs={'x': tensor_info_x},
+                outputs={'y': tensor_info_y},
+                method_name='some_function'))
+    }, tf.compat.v1.tables_initializer(), None
+
+    sess = tf.compat.v1.Session()
+
+    builder = tf.compat.v1.saved_model.builder.SavedModelBuilder(
+        saved_model_dir)
+    builder.add_meta_graph_and_variables(
+        sess, [tf.compat.v1.saved_model.tag_constants.SERVING],
+        signature_def_map,
+        main_op=init_op,
+        assets_collection=assets_collection,
+        strip_default_attrs=True)
+    builder.save()
+
+    # Restore TF v2 behavior.
+    tf.compat.v1.reset_default_graph()
+    tf.compat.v1.enable_eager_execution()
+    return saved_model_dir
+
+  @test_util.run_v2_only
+  def testModelWithMutableHashTable(self):
+    """Test a model with saved_model's session initializer for hash tables."""
+    saved_model_dir = self._createV1ModelWithMutableHashTable()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+    ]
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    input_data = np.array(['a', 'b', 'c'], dtype=np.string_)
+    interpreter.resize_tensor_input(
+        input_details[0]['index'], [3], strict=False)
+    interpreter.allocate_tensors()
+
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual([1, 5, -1], list(actual_value))
 
   @test_util.run_v2_only
   def testConstModel(self):

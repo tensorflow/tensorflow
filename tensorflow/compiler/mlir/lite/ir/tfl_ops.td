@@ -4498,6 +4498,7 @@ def TFL_CustomTfOp : Op<TFL_Dialect, "custom_tf", [
   // TODO(karimnosseir): Revisit if this needs updating.
   NoSideEffect,
   NoQuantizableResult,
+  IsolatedFromAbove,
   SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = "Wrapper Op for TF custom ops.";
 

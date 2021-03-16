@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for Wrapping / Unwrapping dataset variants."""
+"""Tests for wrapping / unwrapping dataset variants."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -28,7 +28,7 @@ from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.platform import test
 
 
-class WrapDatasetVariantTest(test_base.DatasetTestBase, parameterized.TestCase):
+class WrapUnwrapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testBasic(self):

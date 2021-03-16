@@ -39,7 +39,7 @@ namespace tensorflow {
 class ScopedAllocatorOpTest : public OpsTestBase {
  protected:
   void MakeOp(const TensorShape& shape,
-              const gtl::ArraySlice<TensorShape>& shapes, DataType dtype,
+              const gtl::ArraySlice<TensorShape> shapes, DataType dtype,
               const string& name, int32 id, int32 expected_call_count) {
     TF_EXPECT_OK(NodeDefBuilder("scoped_allocator_op", "_ScopedAllocator")
                      .Attr("T", dtype)
