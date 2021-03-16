@@ -32,19 +32,19 @@ if not os.path.splitext(__file__)[0].endswith(
   # This file is part of tensorflow package.
   from tensorflow.lite.python.interpreter_wrapper import _pywrap_tensorflow_interpreter_wrapper as _interpreter_wrapper
   from tensorflow.python.util.tf_export import tf_export as _tf_export
+  try:
+    from tensorflow.lite.python import metrics_portable as metrics
+  except ImportError:
+    from tensorflow.lite.python import metrics_nonportable as metrics
 else:
   # This file is part of tflite_runtime package.
   from tflite_runtime import _pywrap_tensorflow_interpreter_wrapper as _interpreter_wrapper
+  from tflite_runtime import metrics_portable as metrics
 
   def _tf_export(*x, **kwargs):
     del x, kwargs
     return lambda x: x
 
-
-try:
-  from tensorflow.lite.python import metrics_portable as metrics
-except ImportError:
-  from tensorflow.lite.python import metrics_nonportable as metrics
 # pylint: enable=g-import-not-at-top
 
 
