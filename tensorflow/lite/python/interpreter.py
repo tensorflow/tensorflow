@@ -239,9 +239,9 @@ class SignatureRunner(object):
     return result
 
 
-@_tf_export('lite.experimental.OpResolver')
+@_tf_export('lite.experimental.OpResolverType')
 @enum.unique
-class OpResolver(enum.Enum):
+class OpResolverType(enum.Enum):
   """Different types of op resolvers for Tensorflow Lite.
 
   * `AUTO`: Indicates the op resolver that is chosen by default in TfLite
@@ -270,17 +270,18 @@ class OpResolver(enum.Enum):
   BUILTIN_WITHOUT_DEFAULT_DELEGATES = 3
 
 
-def _get_op_resolver_id(op_resolver=OpResolver.AUTO):
+def _get_op_resolver_id(op_resolver_type=OpResolverType.AUTO):
   """Get a integer identifier for the op resolver."""
 
   # Note: the integer identifier value needs to be same w/ op resolver ids
   # defined in interpreter_wrapper/interpreter_wrapper.cc.
   return {
-      OpResolver.AUTO: 1,  # Note the identifier is same with that of BUILTIN
-      OpResolver.BUILTIN: 1,
-      OpResolver.BUILTIN_REF: 2,
-      OpResolver.BUILTIN_WITHOUT_DEFAULT_DELEGATES: 3
-  }.get(op_resolver, None)
+      # Note AUTO and BUILTIN currently share the same identifier.
+      OpResolverType.AUTO: 1,
+      OpResolverType.BUILTIN: 1,
+      OpResolverType.BUILTIN_REF: 2,
+      OpResolverType.BUILTIN_WITHOUT_DEFAULT_DELEGATES: 3
+  }.get(op_resolver_type, None)
 
 
 @_tf_export('lite.Interpreter')
@@ -303,7 +304,7 @@ class Interpreter(object):
                model_content=None,
                experimental_delegates=None,
                num_threads=None,
-               experimental_op_resolver=OpResolver.AUTO):
+               experimental_op_resolver_type=OpResolverType.AUTO):
     """Constructor.
 
     Args:
@@ -316,9 +317,9 @@ class Interpreter(object):
         available to CPU kernels. If not set, the interpreter will use an
         implementation-dependent default number of threads. Currently, only a
         subset of kernels, such as conv, support multi-threading.
-      experimental_op_resolver: The op resolver used by the interpreter. It must
-        be an instance of OpResolver. By default, we use the built-in op
-        resolver which corresponds to tflite::ops::builtin::BuiltinOpResolver
+      experimental_op_resolver_type: The op resolver used by the interpreter. It
+        must be an instance of OpResolverType. By default, we use the built-in
+        op resolver which corresponds to tflite::ops::builtin::BuiltinOpResolver
         in C++.
 
     Raises:
@@ -327,10 +328,10 @@ class Interpreter(object):
     if not hasattr(self, '_custom_op_registerers'):
       self._custom_op_registerers = []
 
-    op_resolver_id = _get_op_resolver_id(experimental_op_resolver)
+    op_resolver_id = _get_op_resolver_id(experimental_op_resolver_type)
     if op_resolver_id is None:
-      raise ValueError('Unrecognized passed in op resolver: {}'.format(
-          experimental_op_resolver))
+      raise ValueError('Unrecognized passed in op resolver type: {}'.format(
+          experimental_op_resolver_type))
 
     if model_path and not model_content:
       custom_op_registerers_by_name = [
