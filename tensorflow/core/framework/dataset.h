@@ -680,7 +680,7 @@ class IteratorBase {
       IteratorContext* ctx, model::Node::Args args) const = 0;
 
   // Restores the state of this iterator.
-  Status Restore(IteratorContext* ctx, IteratorStateReader* reader) {
+  virtual Status Restore(IteratorContext* ctx, IteratorStateReader* reader) {
     int64 start_us = EnvTime::NowMicros();
     TF_RETURN_IF_ERROR(RestoreInternal(ctx, reader));
     VLOG(1) << "Restored " << prefix() << " in "
@@ -693,7 +693,7 @@ class IteratorBase {
   Status SaveInput(SerializationContext* ctx, IteratorStateWriter* writer,
                    const std::unique_ptr<IteratorBase>& input) {
     int64 start_us = EnvTime::NowMicros();
-    TF_RETURN_IF_ERROR(input->SaveInternal(ctx, writer));
+    TF_RETURN_IF_ERROR(input->Save(ctx, writer));
     VLOG(2) << "Saved " << input->prefix() << " in "
             << (EnvTime::NowMicros() - start_us) << "us";
     return Status::OK();
@@ -704,7 +704,7 @@ class IteratorBase {
   Status RestoreInput(IteratorContext* ctx, IteratorStateReader* reader,
                       const std::unique_ptr<IteratorBase>& input) {
     int64 start_us = EnvTime::NowMicros();
-    TF_RETURN_IF_ERROR(input->RestoreInternal(ctx, reader));
+    TF_RETURN_IF_ERROR(input->Restore(ctx, reader));
     VLOG(2) << "Restored " << input->prefix() << " in "
             << (EnvTime::NowMicros() - start_us) << "us";
     return Status::OK();
@@ -1003,10 +1003,18 @@ class DatasetBaseIterator : public IteratorBase {
               int* num_skipped) final;
 
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer) final {
+    VLOG(2) << "Attempting to save checkpoints on iterator (prefix: "
+            << prefix() << ") from " << dataset()->DebugString();
     return IteratorBase::Save(ctx, writer);
   }
 
  protected:
+  Status Restore(IteratorContext* ctx, IteratorStateReader* reader) final {
+    VLOG(2) << "Attempting to restore checkpoints on iterator (prefix: "
+            << prefix() << ") from " << dataset()->DebugString();
+    return IteratorBase::Restore(ctx, reader);
+  }
+
   // Internal implementation of GetNext that is wrapped in tracing logic.
   virtual Status GetNextInternal(IteratorContext* ctx,
                                  std::vector<Tensor>* out_tensors,
