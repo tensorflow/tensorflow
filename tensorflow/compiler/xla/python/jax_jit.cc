@@ -604,6 +604,9 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
   arg_buffers.reserve(num_flat_dynamic_args);
   arguments.signature.dynamic_args_signatures.reserve(num_flat_dynamic_args);
 
+  absl::InlinedVector<xla::PyBuffer*, 4> py_buffers;
+  py_buffers.resize(num_flat_dynamic_args, nullptr);
+
   struct PythonTypes {
     py::object device_array;
     py::object py_buffer_type;
@@ -626,12 +629,14 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
   if (is_committed) {
     data_device = default_device;
   } else {
-    for (py::handle arg : arguments.flat_dynamic_args) {
+    for (int i = 0; i < num_flat_dynamic_args; ++i) {
+      py::handle arg = arguments.flat_dynamic_args[i];
       // We specically only deal with DeviceArray (not ShardedDeviceArray).
       // (Can happen in jit(pmap), e.g. "test_jit_nested_donate_ignored").
       xla::PjRtDevice* device = nullptr;
       if (arg.get_type().ptr() == types.py_buffer_type.ptr()) {
         xla::PyBuffer* buffer = py::cast<xla::PyBuffer*>(arg);
+        py_buffers[i] = buffer;
         if (!buffer->sticky_device()) {
           continue;
         }
@@ -681,9 +686,10 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
   // TODO(phawkins): consider allowing forces here.
   options.force_lazy_arrays = false;
   options.allow_zero_copy = true;
-  for (py::handle arg : arguments.flat_dynamic_args) {
+  for (int i = 0; i < num_flat_dynamic_args; ++i) {
+    py::handle arg = arguments.flat_dynamic_args[i];
     TF_ASSIGN_OR_RETURN(xla::DevicePutResult on_device,
-                        DevicePut(arg, data_device, options));
+                        DevicePut(arg, data_device, options, py_buffers[i]));
 
     xla::PjRtBuffer* buffer = on_device.buffer;
     arg_buffers.push_back(buffer);

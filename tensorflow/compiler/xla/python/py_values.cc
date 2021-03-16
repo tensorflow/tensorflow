@@ -152,8 +152,8 @@ StatusOr<DevicePutResult> HandleNumpyArray(py::handle h, PjRtDevice* to_device,
 }
 
 StatusOr<DevicePutResult> PyBufferHelper(py::handle obj, py::handle py_buffer,
+                                         PyBuffer* buffer,
                                          PjRtDevice* to_device) {
-  PyBuffer* buffer = py::cast<PyBuffer*>(py_buffer);
   bool weak_type = buffer->weak_type()
                        ? *buffer->weak_type()
                        : py::cast<bool>(obj.attr("aval").attr("weak_type"));
@@ -170,7 +170,7 @@ StatusOr<DevicePutResult> PyBufferHelper(py::handle obj, py::handle py_buffer,
 
 StatusOr<DevicePutResult> HandlePyBuffer(py::handle obj, PjRtDevice* to_device,
                                          const DevicePutOptions& options) {
-  return PyBufferHelper(obj, obj, to_device);
+  return PyBufferHelper(obj, obj, py::cast<PyBuffer*>(obj), to_device);
 }
 
 StatusOr<DevicePutResult> HandleDeviceArray(py::handle obj,
@@ -201,14 +201,18 @@ StatusOr<DevicePutResult> HandleDeviceArray(py::handle obj,
     obj = forced;
   }
 
-  return PyBufferHelper(obj, buffer, to_device);
+  return PyBufferHelper(obj, buffer, py::cast<PyBuffer*>(buffer), to_device);
 }
 
 }  // namespace
 
 StatusOr<DevicePutResult> DevicePut(pybind11::handle arg, PjRtDevice* to_device,
-                                    const DevicePutOptions& options) {
+                                    const DevicePutOptions& options,
+                                    PyBuffer* py_buffer) {
   tensorflow::profiler::TraceMe traceme("DevicePut");
+  if (py_buffer) {
+    return PyBufferHelper(arg, arg, py_buffer, to_device);
+  }
   static const absl::flat_hash_map<PyObject*, DevicePutFunc>* const handlers =
       [] {
         auto p = new absl::flat_hash_map<PyObject*, DevicePutFunc>();
