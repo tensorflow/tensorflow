@@ -377,20 +377,21 @@ LogicalResult CanonicalizeWhileRegion(TF::WhileRegionOp op) {
   for (OpResult result : llvm::reverse(op.getResults())) {
     if (!IsResource(result)) continue;
     int result_idx = result.getResultNumber();
-    auto body_arg = body.front()
-                        .getTerminator()
-                        ->getOperand(result_idx)
-                        .dyn_cast<BlockArgument>();
-    if (!body_arg || body_arg.getArgNumber() != result_idx) {
+    Operation *yield_op = body.front().getTerminator();
+    Value yield_operand = yield_op->getOperand(result_idx);
+    Value while_operand = op.getOperand(result_idx);
+    Value body_arg = body.getArgument(result_idx);
+    Value cond_arg = cond.getArgument(result_idx);
+    if (yield_operand != body_arg && yield_operand != while_operand) {
       return op.emitOpError("Result #") << result_idx << " is not tied to arg #"
                                         << result_idx << " of the body";
     }
-    body.getArgument(result_idx).replaceAllUsesWith(op.getOperand(result_idx));
-    cond.getArgument(result_idx).replaceAllUsesWith(op.getOperand(result_idx));
+    body_arg.replaceAllUsesWith(while_operand);
+    cond_arg.replaceAllUsesWith(while_operand);
+    result.replaceAllUsesWith(while_operand);
     body.front().getTerminator()->eraseOperand(result_idx);
     body.eraseArgument(result_idx);
     cond.eraseArgument(result_idx);
-    result.replaceAllUsesWith(op.getOperand(result_idx));
     op.getOperation()->eraseOperand(result_idx);
     can_eliminate.set(result_idx);
   }
