@@ -173,5 +173,140 @@ void EvalIntegerSvdfReference(TfLiteContext* context, TfLiteNode* node,
     }
   }
 }
+static inline void ApplyTimeWeightsBiasAndActivation(
+    int batch_size, int memory_size, int num_filters, int num_units, int rank,
+    const float* const __restrict__ weights_time_ptr,
+    const float* const __restrict__ bias_ptr, TfLiteFusedActivation activation,
+    float* const __restrict__ state_ptr, float* const __restrict__ scratch_ptr,
+    float* const __restrict__ output_ptr) {
+  // Compute matmul(activation_state, weights_time).
+  for (int b = 0; b < batch_size; ++b) {
+    // Perform batched vector dot product:
+    float* scratch_ptr_batch = scratch_ptr + b * num_filters;
+    const float* vector1_ptr = weights_time_ptr;
+    const float* vector2_ptr = state_ptr + b * memory_size * num_filters;
+    for (int i = 0; i < num_filters; ++i) {
+      *scratch_ptr_batch = 0.f;
+      for (int j = 0; j < memory_size; ++j) {
+        *scratch_ptr_batch += *vector1_ptr++ * *vector2_ptr++;
+      }
+      scratch_ptr_batch++;
+    }
+  }
+
+  // Initialize output with bias if provided.
+  if (bias_ptr) {
+    // VectorBatchVectorAssign
+    for (int i = 0; i < batch_size; ++i) {
+      float* output_data = output_ptr + i * num_units;
+      const float* bias_data = bias_ptr;
+      for (int j = 0; j < num_units; ++j) {
+        *output_data++ = *bias_data++;
+      }
+    }
+  } else {
+    float* output_data = output_ptr;
+    for (int i = 0; i < batch_size * num_units; ++i) {
+      *output_data++ = 0.0f;
+    }
+  }
+
+  // Reduction sum.
+  for (int b = 0; b < batch_size; ++b) {
+    float* output_ptr_batch = output_ptr + b * num_units;
+    float* scratch_ptr_batch = scratch_ptr + b * num_filters;
+
+    // Reduction sum vector
+    for (int i = 0; i < num_units; ++i) {
+      for (int j = 0; j < rank; j++) {
+        output_ptr_batch[i] += *scratch_ptr_batch++;
+      }
+    }
+  }
+
+  // Apply activation.
+  for (int b = 0; b < batch_size; ++b) {
+    float* output_ptr_batch = output_ptr + b * num_units;
+    for (int i = 0; i < num_units; ++i) {
+      *output_ptr_batch =
+          tflite::ops::micro::ActivationValFloat(activation, *output_ptr_batch);
+      ++output_ptr_batch;
+    }
+  }
+}
+
+void EvalFloatSVDF(
+    TfLiteContext* context, TfLiteNode* node, const TfLiteEvalTensor* input,
+    const TfLiteEvalTensor* weights_feature,
+    const TfLiteEvalTensor* weights_time, const TfLiteEvalTensor* bias,
+    const TfLiteSVDFParams* params, int scratch_tensor_index,
+    TfLiteEvalTensor* activation_state, TfLiteEvalTensor* output) {
+  const int rank = params->rank;
+  const int batch_size = input->dims->data[0];
+  const int input_size = input->dims->data[1];
+  const int num_filters = weights_feature->dims->data[0];
+  const int num_units = num_filters / rank;
+  const int memory_size = weights_time->dims->data[1];
+
+  const float* weights_feature_ptr =
+      tflite::micro::GetTensorData<float>(weights_feature);
+  const float* weights_time_ptr =
+      tflite::micro::GetTensorData<float>(weights_time);
+  const float* bias_ptr = tflite::micro::GetTensorData<float>(bias);
+  const float* input_ptr = tflite::micro::GetTensorData<float>(input);
+
+  float* state_ptr = tflite::micro::GetTensorData<float>(activation_state);
+
+  TFLITE_DCHECK(context != nullptr);
+  TFLITE_DCHECK(context->GetScratchBuffer != nullptr);
+
+  float* scratch_ptr = static_cast<float*>(
+      context->GetScratchBuffer(context, scratch_tensor_index));
+
+  float* output_ptr = tflite::micro::GetTensorData<float>(output);
+
+  // Left shift the activation_state.
+  {
+    float* new_state_start = state_ptr;
+    const float* old_state_start = state_ptr + 1;
+    const float* old_state_end =
+        state_ptr + batch_size * num_filters * memory_size;
+    while (old_state_start != old_state_end) {
+      *new_state_start++ = *old_state_start++;
+    }
+  }
+
+  // Note: no need to clear the latest activation, matmul is not accumulative.
+
+  // Compute conv1d(inputs, weights_feature).
+  // The activation_state's rightmost column is used to save current cycle
+  // activation. This is achieved by starting at state_ptr[memory_size - 1] and
+  // having the stride equal to memory_size.
+
+  // Perform batched matrix vector multiply operation:
+  {
+    const float* matrix = weights_feature_ptr;
+    const float* vector = input_ptr;
+    float* result = &state_ptr[memory_size - 1];
+    float* result_in_batch = result;
+    for (int i = 0; i < batch_size; ++i) {
+      const float* matrix_ptr = matrix;
+      for (int j = 0; j < num_filters; ++j) {
+        float dot_prod = 0.0f;
+        const float* vector_in_batch = vector + i * input_size;
+        for (int k = 0; k < input_size; ++k) {
+          dot_prod += *matrix_ptr++ * *vector_in_batch++;
+        }
+        *result_in_batch = dot_prod;
+        result_in_batch += memory_size;
+      }
+    }
+  }
+
+  ApplyTimeWeightsBiasAndActivation(
+      batch_size, memory_size, num_filters, num_units, rank, weights_time_ptr,
+      bias_ptr, params->activation, state_ptr, scratch_ptr, output_ptr);
+}
+
 
 }  // namespace tflite

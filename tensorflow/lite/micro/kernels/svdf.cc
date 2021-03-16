@@ -52,6 +52,7 @@ constexpr int kOutputTensor = 0;
  * and resizes the output tensor. Micro runtime does not support tensor
  * resizing.
  */
+#if 0
 static inline void ApplyTimeWeightsBiasAndActivation(
     int batch_size, int memory_size, int num_filters, int num_units, int rank,
     const float* const __restrict__ weights_time_ptr,
@@ -186,7 +187,7 @@ inline void EvalFloatSVDF(
       batch_size, memory_size, num_filters, num_units, rank, weights_time_ptr,
       bias_ptr, params->activation, state_ptr, scratch_ptr, output_ptr);
 }
-
+#endif
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
   return context->AllocatePersistentBuffer(context, sizeof(OpData));
