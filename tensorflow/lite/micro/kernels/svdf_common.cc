@@ -235,12 +235,13 @@ static inline void ApplyTimeWeightsBiasAndActivation(
   }
 }
 
-void EvalFloatSVDF(
-    TfLiteContext* context, TfLiteNode* node, const TfLiteEvalTensor* input,
-    const TfLiteEvalTensor* weights_feature,
-    const TfLiteEvalTensor* weights_time, const TfLiteEvalTensor* bias,
-    const TfLiteSVDFParams* params, int scratch_tensor_index,
-    TfLiteEvalTensor* activation_state, TfLiteEvalTensor* output) {
+void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
+                   const TfLiteEvalTensor* input,
+                   const TfLiteEvalTensor* weights_feature,
+                   const TfLiteEvalTensor* weights_time,
+                   const TfLiteEvalTensor* bias, const TfLiteSVDFParams* params,
+                   int scratch_tensor_index, TfLiteEvalTensor* activation_state,
+                   TfLiteEvalTensor* output) {
   const int rank = params->rank;
   const int batch_size = input->dims->data[0];
   const int input_size = input->dims->data[1];
@@ -307,6 +308,5 @@ void EvalFloatSVDF(
       batch_size, memory_size, num_filters, num_units, rank, weights_time_ptr,
       bias_ptr, params->activation, state_ptr, scratch_ptr, output_ptr);
 }
-
 
 }  // namespace tflite

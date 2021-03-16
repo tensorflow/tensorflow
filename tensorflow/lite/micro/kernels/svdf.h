@@ -45,14 +45,14 @@ void EvalIntegerSvdfReference(TfLiteContext* context, TfLiteNode* node,
                               TfLiteEvalTensor* activation_state_tensor,
                               TfLiteEvalTensor* output_tensor,
                               const OpData& data);
-							  
-void EvalFloatSVDF(
-    TfLiteContext* context, TfLiteNode* node, const TfLiteEvalTensor* input,
-    const TfLiteEvalTensor* weights_feature,
-    const TfLiteEvalTensor* weights_time, const TfLiteEvalTensor* bias,
-    const TfLiteSVDFParams* params, int scratch_tensor_index,
-    TfLiteEvalTensor* activation_state, TfLiteEvalTensor* output);							  
-							  
+
+void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
+                   const TfLiteEvalTensor* input,
+                   const TfLiteEvalTensor* weights_feature,
+                   const TfLiteEvalTensor* weights_time,
+                   const TfLiteEvalTensor* bias, const TfLiteSVDFParams* params,
+                   int scratch_tensor_index, TfLiteEvalTensor* activation_state,
+                   TfLiteEvalTensor* output);
 
 }  // namespace tflite
 
