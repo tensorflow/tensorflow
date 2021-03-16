@@ -246,8 +246,7 @@ bool RequireCudnnDeterminism() {
 Status BestCudnnConvAlgorithm(
     absl::Span<const AutotuneResult> results, 
     std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>>* plans,
-    se::dnn::AlgorithmConfig* algo, int* fastest_idx,
-    int* fastest_idx_no_scratch) {
+    se::dnn::AlgorithmConfig* algo) {
   auto compare_run_times = [](const AutotuneResult& lhs,
                               const AutotuneResult& rhs) {
     return proto_utils::FromDurationProto(lhs.run_time()) <
@@ -271,7 +270,7 @@ Status BestCudnnConvAlgorithm(
     return errors::NotFound("No algorithm worked!");
   }
 
-  if (fastest_idx == nullptr && fastest_idx_no_scratch == nullptr) {
+  if (plans == nullptr) {
     algo->set_algorithm({results[idx].conv().algorithm(),
                          results[idx].conv().tensor_ops_enabled()});
     algo->set_scratch_size(results[idx].scratch_bytes());
@@ -280,20 +279,19 @@ Status BestCudnnConvAlgorithm(
           {results[idx_no_scratch].conv().algorithm(),
            results[idx_no_scratch].conv().tensor_ops_enabled()});
     }
-  } else if (fastest_idx != nullptr && fastest_idx_no_scratch != nullptr) {
+  } else {
     algo->set_algorithm({(*plans)[idx]->getTag(),
                          (*plans)[idx]->get_raw_desc()});
     algo->set_scratch_size((*plans)[idx]->getWorkspaceSize());
-    *fastest_idx = idx;
     if (idx_no_scratch != -1) {
       algo->set_algorithm_no_scratch(
           {(*plans)[idx_no_scratch]->getTag(),
            (*plans)[idx_no_scratch]->get_raw_desc()});
-      *fastest_idx_no_scratch = idx_no_scratch;
     }
-  } else {
-    return errors::InvalidArgument("fastest_idx and fastest_idx_no_scratch "
-                                   "must both be null or both be non-null.");
+    algo->set_plan((*plans)[idx]);
+    if (idx_no_scratch != -1 && idx_no_scratch != idx) {
+      algo->set_plan_no_scratch((*plans)[idx_no_scratch]);
+    }
   }
   return Status::OK();
 }

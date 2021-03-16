@@ -29,10 +29,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
 
-#if GOOGLE_CUDA
-#include "third_party/gpus/cudnn/cudnn.h"
-#endif // GOOGLE_CUDA
-
 namespace stream_executor {
 class RedzoneAllocator;
 }  // namespace stream_executor
@@ -80,7 +76,6 @@ inline se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
 // back and forth randomly, the expected number of experiments before autotune
 // settles is O(threshold ^ 2). So we recommend that number of warmup runs
 // for any benchmarks.
-using se::dnn::ConvolveExecutionPlan;
 template <typename Parameters, typename Config>
 class AutoTuneMap {
  public:
@@ -96,19 +91,15 @@ class AutoTuneMap {
     return true;
   }
   void Insert(const Parameters& params, const Config& config) {
-    std::vector<std::unique_ptr<ConvolveExecutionPlan>> plans;
-    Insert(params, config, plans);
-  }
-  void Insert(const Parameters& params, const Config& config,
-              std::vector<std::unique_ptr<ConvolveExecutionPlan>>& plans) {
     mutex_lock lock(mu_);
     auto iter = params_config_map_.find(params);
     int new_score = 0;
     if (iter == params_config_map_.end()) {
       // Create a new entry if params is new.
       VLOG(1) << GetActionSummary("creates", params, config);
+      params_config_map_.insert(
+          std::make_pair(params, ValueType{config, 1, 1}));
       new_score = 1;
-      UpdateMap(params, config, plans, new_score, 1);
     } else if (iter->second.score < min_score_threshold_ &&
                iter->second.count <= max_autotune_count_) {
       DCHECK_GT(iter->second.score, 0);
@@ -140,7 +131,8 @@ class AutoTuneMap {
         for (int i = 0; i < min_score_threshold_; ++i) {
           VLOG(1) << GetActionSummary("promotes", params, config);
         }
-        UpdateMap(params, config, plans, min_score_threshold_, 1);
+        params_config_map_.insert(
+            std::make_pair(params, ValueType{config, min_score_threshold_, 1}));
       } else {
         int promotes_times = min_score_threshold_ - winner->second.score;
         for (int i = 0; i < promotes_times; ++i) {
@@ -174,26 +166,6 @@ class AutoTuneMap {
     autotune_global_count_ = 0;
   }
 
-  void UpdateMap(const Parameters& params, const Config& config,
-                 std::vector<std::unique_ptr<ConvolveExecutionPlan>>& plans,
-                 int score, int count) {
-    if (plans.empty()) {
-      params_config_map_.insert(
-          std::make_pair(params, ValueType{config, {}, {}, score, count}));
-      return;
-    }
-    // Use cudnn plans.
-    if (plans.size() == 1) {
-      params_config_map_.insert(
-          std::make_pair(params, ValueType{config, std::move(plans[0]), {},
-                                           score, count}));
-    } else {
-      params_config_map_.insert(
-          std::make_pair(params, ValueType{config, std::move(plans[0]),
-                                           std::move(plans[1]), score, count}));
-    }
-  }
-
   template <class Group, class Params, class Cfg>
   friend class AutoTuneSingleton;
 
@@ -213,9 +185,6 @@ class AutoTuneMap {
   mutable mutex mu_;
   struct ValueType {
     Config config;
-    absl::optional<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> plan;
-    absl::optional<std::unique_ptr<se::dnn::ConvolveExecutionPlan>>
-        plan_no_scratch;
     int32 score;
     int32 count;
   };
@@ -271,13 +240,12 @@ void LogFusedConvForwardAutotuneResults(
 
 // Returns the best algorithms for the config, one is the fastest, the other is
 // other is fastest with 0 scratch space. Unsuccessful autotuning results are
-// allowed and ignored. The plans, fastest_idx, fastest_idx_no_scratch can be
-// null when Cudnn frontend APIs are not used.
+// allowed and ignored. The "plans" can be null when Cudnn frontend APIs are not
+// used.
 Status BestCudnnConvAlgorithm(
     absl::Span<const AutotuneResult> results, 
     std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>>* plans,
-    se::dnn::AlgorithmConfig* algo, int* fastest_idx,
-    int* fastest_idx_no_scratch);
+    se::dnn::AlgorithmConfig* algo);
 
 }  // namespace tensorflow
 

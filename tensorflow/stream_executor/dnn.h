@@ -869,11 +869,19 @@ class AlgorithmConfig {
     return !(*this == other);
   }
   std::string ToString() const;
+  void set_plan(std::unique_ptr<dnn::ConvolveExecutionPlan>& plan) {
+    plan_ = std::move(plan);
+  }
+  void set_plan_no_scratch(std::unique_ptr<dnn::ConvolveExecutionPlan>& plan) {
+    plan_no_scratch_ = std::move(plan);
+  }
 
  private:
   absl::optional<AlgorithmDesc> algorithm_;
   absl::optional<AlgorithmDesc> algorithm_no_scratch_;
   absl::optional<size_t> scratch_size_;
+  std::shared_ptr<const dnn::ConvolveExecutionPlan> plan_;
+  std::shared_ptr<const dnn::ConvolveExecutionPlan> plan_no_scratch_;
 };
 
 // Describes a local response normalization (LRN). LRN is used e.g. in

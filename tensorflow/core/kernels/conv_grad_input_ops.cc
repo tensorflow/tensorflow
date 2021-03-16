@@ -401,10 +401,6 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
 #endif
   AlgorithmConfig algorithm_config;
 
-  // The "cached_plans" is used to store the selected execution plans from
-  // autotuning to make them live long enough to the end of this op.
-  std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> cached_plans;
-  
   if (cudnn_use_autotune && !AutoTuneConvBwdData::GetInstance()->Find(
                                 conv_parameters, &algorithm_config)) {
 #if GOOGLE_CUDA
@@ -568,20 +564,15 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
         in_backprop_ptr, filter_ptr, out_backprop_ptr, input_desc, filter_desc,
         output_desc, conv_desc, stream->parent(), results);
     if (CudnnUseFrontend()) {
-      int idx, idx_no_scratch;
       OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(
-          results, &plans, &algorithm_config, &idx, &idx_no_scratch));
+          results, &plans, &algorithm_config));
 
-      cached_plans.push_back(std::move(plans[idx]));
-      if (idx_no_scratch != idx and idx_no_scratch != -1) {
-        cached_plans.push_back(std::move(plans[idx_no_scratch]));
-      }
     } else {
       OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(
-          results, nullptr, &algorithm_config, nullptr, nullptr));
+          results, nullptr, &algorithm_config));
     }
     AutoTuneConvBwdData::GetInstance()->Insert(
-        conv_parameters, algorithm_config, cached_plans);
+        conv_parameters, algorithm_config);
   }
 
   Status cudnn_launch_status;
