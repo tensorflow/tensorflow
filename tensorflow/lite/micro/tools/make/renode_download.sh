@@ -60,6 +60,26 @@ else
 
   # Get link to requested version
   RELEASES_JSON=`curl https://api.github.com/repos/renode/renode/releases 2>/dev/null`
+
+  # Make sure API rate limit is not exceeded and if so retry
+  RATE_LIMIT="API rate limit exceeded"
+  if [[ $RELEASES_JSON == *"${RATE_LIMIT}"* ]]; then
+      retries=10
+      until [ $retries -eq 1 ]; do
+          sleep 1
+          echo >&2 "${RATE_LIMIT} .. retrying"
+          RELEASES_JSON=`curl https://api.github.com/repos/renode/renode/releases 2>/dev/null`
+          if [[ $RELEASES_JSON != *"${RATE_LIMIT}"* ]]; then
+              break
+          fi
+          let retries-=1
+      done
+      if [[ $RELEASES_JSON == *"${RATE_LIMIT}"* ]]; then
+          echo >&2 "${RATE_LIMIT} .. please try later"
+          exit 1
+      fi
+  fi
+
   LINUX_PORTABLE_URL=`echo "${RELEASES_JSON}" |grep 'browser_download_url'|\
       grep --extended-regexp --only-matching "https://.*${RENODE_VERSION}.*linux-portable.*tar.gz"`
   if [ -z "${LINUX_PORTABLE_URL}" ]; then
