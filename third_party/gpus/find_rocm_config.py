@@ -311,8 +311,8 @@ def find_rocm_config():
   result.update(_find_rocblas_config(rocm_install_path))
   result.update(_find_rocrand_config(rocm_install_path))
   result.update(_find_rocfft_config(rocm_install_path))
-  # if result["rocm_version_number"] >= 40100:
-  #   result.update(_find_hipfft_config(rocm_install_path))
+  if result["rocm_version_number"] >= 40100:
+    result.update(_find_hipfft_config(rocm_install_path))
   result.update(_find_roctracer_config(rocm_install_path))
   result.update(_find_hipsparse_config(rocm_install_path))
   result.update(_find_rocsolver_config(rocm_install_path))
