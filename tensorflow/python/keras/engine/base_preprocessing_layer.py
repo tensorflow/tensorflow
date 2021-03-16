@@ -294,6 +294,7 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
   def reset_state(self):
     self._adapt_accumulator = None
 
+  @trackable.no_automatic_dependency_tracking
   def update_state(self, data):
     if self._adapt_accumulator is None:
       self._adapt_accumulator = self._get_accumulator()
