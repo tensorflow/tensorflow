@@ -2824,6 +2824,12 @@ class MeanIoU(Metric):
 
   When passing `y_pred` as a logits tensor:
 
+  >>> # cm = [[0., 0., 1.],
+  >>> #       [0., 2., 0.],
+  >>> #       [0., 0., 1.]]
+  >>> # sum_row = [1, 2, 1], sum_col = [0, 2, 2], true_positives = [0, 2, 1]
+  >>> # iou = true_positives / (sum_row + sum_col - true_positives))
+  >>> # expected_result = (0 / (1 + 0 - 0) + 2 / (2 + 2 - 2) + 1 / (1 + 2 - 1)) / 3
   >>> m = tf.keras.metrics.MeanIoU(num_classes=3)
   >>> y_true = [2, 0, 1, 1]
   >>> y_pred = [[2.5, 0.2, 2.7], [-1.4, 0.7, 1.2], [2., 3., 1.4], [2.2, 2.4, 1.5]]
