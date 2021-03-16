@@ -16,9 +16,9 @@ func @tanh(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK-NOT: tensor_load
   // CHECK: scf.for
   // CHECK-NOT: tensor.from_elements
-  // CHECK: memref_reshape
+  // CHECK: memref.reshape
   // CHECK: linalg.generic
-  // CHECK: memref_reshape
+  // CHECK: memref.reshape
   %0 = "tf.Tanh"(%arg0) { } : (tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }

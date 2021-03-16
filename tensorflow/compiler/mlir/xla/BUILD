@@ -229,6 +229,7 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Translation",

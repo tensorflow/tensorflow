@@ -263,7 +263,8 @@ bool MayPreventVectorization(mlir::Operation* op) {
   if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
     for (mlir::Operation& instr : fusion.region().front()) {
       if (mlir::isa<mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp,
-                    mlir::TensorLoadOp, mlir::TensorStoreOp>(&instr)) {
+                    mlir::memref::TensorLoadOp, mlir::memref::TensorStoreOp>(
+              &instr)) {
         continue;
       }
       CHECK(instr.getDialect() == instr.getContext()->getLoadedDialect("mhlo"))
@@ -629,7 +630,7 @@ Status IrEmitterUnnested::EmitUsingElementalIrEmitter(MlirEmitterInput input) {
   const auto load_memrefs = [loc, &b](mlir::ValueRange range) {
     std::vector<mlir::Value> operands;
     for (mlir::Value memref : range) {
-      auto load = b.create<mlir::TensorLoadOp>(loc, memref);
+      auto load = b.create<mlir::memref::TensorLoadOp>(loc, memref);
       HloFunctionImporter::SetLayoutForMlir(load,
                                             TypeToShape(memref.getType()));
       operands.push_back(load);
@@ -638,13 +639,13 @@ Status IrEmitterUnnested::EmitUsingElementalIrEmitter(MlirEmitterInput input) {
   };
 
   if (auto copy = mlir::dyn_cast<mlir::lmhlo::CopyOp>(input.op)) {
-    auto operand = b.create<mlir::TensorLoadOp>(loc, copy.operand());
+    auto operand = b.create<mlir::memref::TensorLoadOp>(loc, copy.operand());
     HloFunctionImporter::SetLayoutForMlir(
         operand, TypeToShape(copy.operand().getType()));
     auto fused_copy = b.create<mlir::mhlo::CopyOp>(loc, operand);
     output_shape = TypeToShape(copy.output().getType());
     HloFunctionImporter::SetLayoutForMlir(fused_copy, output_shape);
-    b.create<mlir::TensorStoreOp>(loc, fused_copy, copy.output());
+    b.create<mlir::memref::TensorStoreOp>(loc, fused_copy, copy.output());
   } else if (auto reduce = mlir::dyn_cast<mlir::lmhlo::ReduceOp>(input.op)) {
     std::vector<mlir::Value> operands = load_memrefs(reduce.operands());
     std::vector<mlir::Value> init_values = load_memrefs(reduce.init_values());
@@ -654,8 +655,8 @@ Status IrEmitterUnnested::EmitUsingElementalIrEmitter(MlirEmitterInput input) {
     CHECK_EQ(fused_reduce.getNumResults(), reduce.out().size());
     std::vector<Shape> output_shapes;
     for (int i = 0; i < reduce.out().size(); i++) {
-      b.create<mlir::TensorStoreOp>(loc, fused_reduce.getResult(i),
-                                    reduce.out()[i]);
+      b.create<mlir::memref::TensorStoreOp>(loc, fused_reduce.getResult(i),
+                                            reduce.out()[i]);
       auto shape = TypeToShape(reduce.out()[i].getType());
       if (i == 0) {
         HloFunctionImporter::SetLayoutForMlir(fused_reduce, shape);
@@ -705,7 +706,8 @@ Status IrEmitterUnnested::EmitUsingElementalIrEmitter(MlirEmitterInput input) {
     TF_RET_CHECK(mlir::succeeded(mlir::verify(new_op)));
     output_shape = TypeToShape(outputs[0].getType());
     HloFunctionImporter::SetLayoutForMlir(new_op, output_shape);
-    b.create<mlir::TensorStoreOp>(loc, new_op->getResult(0), outputs[0]);
+    b.create<mlir::memref::TensorStoreOp>(loc, new_op->getResult(0),
+                                          outputs[0]);
   }
   int unroll_factor = 1;
   if (!MayPreventVectorization(input.op)) {
@@ -722,10 +724,10 @@ Status IrEmitterUnnested::HandleConstant(HloInstruction* constant) {
 }
 
 Status IrEmitterUnnested::EmitConstant(MlirEmitterInput mlir_input) {
-  auto get_global = mlir::cast<mlir::GetGlobalMemrefOp>(mlir_input.op);
+  auto get_global = mlir::cast<mlir::memref::GetGlobalOp>(mlir_input.op);
   auto module = get_global->getParentOfType<mlir::ModuleOp>();
-  auto global =
-      mlir::cast<mlir::GlobalMemrefOp>(module.lookupSymbol(get_global.name()));
+  auto global = mlir::cast<mlir::memref::GlobalOp>(
+      module.lookupSymbol(get_global.name()));
 
   auto literal = global.initial_value()->dyn_cast<mlir::DenseElementsAttr>();
   TF_RET_CHECK(literal);
@@ -1746,16 +1748,16 @@ Status IrEmitterUnnested::EmitTriangularSolveFromMlir(MlirEmitterInput input) {
 static Status ProcessFusionForConversion(mlir::Region* region,
                                          std::vector<Shape>* operand_shapes,
                                          std::vector<Shape>* output_shapes) {
-  std::vector<mlir::TensorLoadOp> loads;
-  std::vector<mlir::TensorStoreOp> stores;
+  std::vector<mlir::memref::TensorLoadOp> loads;
+  std::vector<mlir::memref::TensorStoreOp> stores;
 
-  region->walk([&](mlir::TensorLoadOp load) {
+  region->walk([&](mlir::memref::TensorLoadOp load) {
     if (load.memref().getParentRegion() != region) {
       loads.push_back(load);
     }
   });
 
-  region->walk([&](mlir::TensorStoreOp store) {
+  region->walk([&](mlir::memref::TensorStoreOp store) {
     if (store.memref().getParentRegion() != region) {
       stores.push_back(store);
     }
@@ -1867,7 +1869,7 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
 
   bool few_waves = [fusion]() mutable {
     for (mlir::Operation& op : fusion.region().front()) {
-      if (mlir::isa<mlir::TensorLoadOp, mlir::TensorStoreOp,
+      if (mlir::isa<mlir::memref::TensorLoadOp, mlir::memref::TensorStoreOp,
                     mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp>(op)) {
         continue;
       }
@@ -3700,10 +3702,11 @@ StatusOr<std::unique_ptr<Thunk>>
 IrEmitterUnnested::TryBuildConstantInitializerThunk(mlir::Value init_value,
                                                     mlir::Value dest) {
   mlir::DenseElementsAttr const_init;
-  if (auto get_global_memref = mlir::dyn_cast_or_null<mlir::GetGlobalMemrefOp>(
-          init_value.getDefiningOp())) {
+  if (auto get_global_memref =
+          mlir::dyn_cast_or_null<mlir::memref::GetGlobalOp>(
+              init_value.getDefiningOp())) {
     auto global_memref =
-        mlir::SymbolTable::lookupNearestSymbolFrom<mlir::GlobalMemrefOp>(
+        mlir::SymbolTable::lookupNearestSymbolFrom<mlir::memref::GlobalOp>(
             get_global_memref, get_global_memref.name());
     if (global_memref.constant() && global_memref.initial_value()) {
       // If the initial value happens to be a constant, generate a specialized
@@ -4988,12 +4991,12 @@ namespace {
 // to the result of such a use-chain, which provides the input to the reduce
 // operation.
 bool IsInstructionSafeForShmemTranspose(mlir::Operation* op) {
-  if (mlir::isa<mlir::TensorStoreOp>(op)) {
+  if (mlir::isa<mlir::memref::TensorStoreOp>(op)) {
     return true;
   }
 
   HloOpcode opcode;
-  if (mlir::isa<mlir::TensorLoadOp>(op)) {
+  if (mlir::isa<mlir::memref::TensorLoadOp>(op)) {
     opcode = HloOpcode::kParameter;
   } else {
     opcode = *MhloToHloOpcode(op);
@@ -5819,12 +5822,13 @@ Thunk::ThunkInfo IrEmitterUnnested::GetThunkInfo(
 }
 
 Status IrEmitterUnnested::EmitOp(MlirEmitterInput mlir_input) {
-  if (mlir::isa<mlir::ConstantOp, mlir::ViewOp, mlir::MemRefReinterpretCastOp,
-                mlir::ReturnOp, mlir::lmhlo::TerminatorOp>(mlir_input.op)) {
+  if (mlir::isa<mlir::ConstantOp, mlir::memref::ViewOp,
+                mlir::memref::ReinterpretCastOp, mlir::ReturnOp,
+                mlir::lmhlo::TerminatorOp>(mlir_input.op)) {
     return Status::OK();
   }
 
-  if (mlir::isa<mlir::GetGlobalMemrefOp>(mlir_input.op)) {
+  if (mlir::isa<mlir::memref::GetGlobalOp>(mlir_input.op)) {
     return EmitConstant(mlir_input);
   }
 
