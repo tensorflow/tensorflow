@@ -59,7 +59,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   int driverVersion;
   cuDriverGetVersion(&driverVersion);
   VLOG(2) << "DRIVER VERSION: " << driverVersion;
-  if (platform_gpu_id.value() > 0 && driverVersion < 11030) {
+  if (platform_device_id.value() > 0 && driverVersion < 11030) {
     CUcontext pctx;  // We loose track of it. But this is fine.
     if (auto result = cuDevicePrimaryCtxRetain(&pctx, 0))
       LOG(FATAL)  // Crash OK.
@@ -118,7 +118,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
 
   // Set read/write access to all GPUs.
   static auto* all_pools_ = new std::vector<CUmemoryPool*>();
-  static auto* all_ids_ = new std::vector<PlatformGpuId>();
+  static auto* all_ids_ = new std::vector<PlatformDeviceId>();
   DCHECK(all_pools_->size() == all_ids_->size());
   for(int i = 0; i < all_pools_->size(); ++i) {
     // Set the current pool access to the previous GPUs.
@@ -130,7 +130,9 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
     VLOG(2) << "Setting access of the current pool to "
             << " location id: " << map.location.id;
     int canAccessPeer;
-    if (auto status = cuDeviceCanAccessPeer(&canAccessPeer, platform_gpu_id.value(), map.location.id)) {
+    if (auto status = cuDeviceCanAccessPeer(&canAccessPeer,
+                                            platform_device_id.value(),
+                                            map.location.id)) {
       pool_ = nullptr;
       LOG(FATAL)  // Crash OK.
           << "cuDeviceCanAccessPeer failed: "
@@ -147,11 +149,12 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
     }
 
     // Set the previous pools access to the current GPU.
-    map.location.id = platform_gpu_id.value();
+    map.location.id = platform_device_id.value();
 
     VLOG(2) << "Set access to the pool id: " << i
             << " location id: " << map.location.id;
-    if (auto status = cuDeviceCanAccessPeer(&canAccessPeer, i, platform_gpu_id.value())) {
+    if (auto status = cuDeviceCanAccessPeer(&canAccessPeer, i,
+                                            platform_device_id.value())) {
       pool_ = nullptr;
       LOG(FATAL)  // Crash OK.
           << "cuDeviceCanAccessPeer failed: "
@@ -168,7 +171,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
     }
   }
   all_pools_->push_back(&pool_);
-  all_ids_->push_back(platform_gpu_id);
+  all_ids_->push_back(platform_device_id);
 
   VLOG(2) << Name() << " GpuCudaMallocAsyncAllocator PoolSize " << pool_size;
   int64 prealloc_size = 0;
