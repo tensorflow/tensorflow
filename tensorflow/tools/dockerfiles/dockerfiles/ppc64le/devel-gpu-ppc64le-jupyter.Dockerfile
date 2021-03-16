@@ -22,16 +22,16 @@
 ARG UBUNTU_VERSION=18.04
 
 ARG ARCH=
-ARG CUDA=11.0
+ARG CUDA=11.2
 FROM nvidia/cuda${ARCH:+-$ARCH}:${CUDA}-base-ubuntu${UBUNTU_VERSION} as base
 # ARCH and CUDA are specified again because the FROM directive resets ARGs
 # (but their default value is retained if set previously)
 ARG ARCH
 ARG CUDA
-ARG CUDNN=8.0.4.30-1
+ARG CUDNN=8.1.0.77-1
 ARG CUDNN_MAJOR_VERSION=8
 ARG LIB_DIR_PREFIX=x86_64
-ARG LIBNVINFER=7.1.3-1
+ARG LIBNVINFER=7.2.2-1
 ARG LIBNVINFER_MAJOR_VERSION=7
 
 # Needed for string substitution
@@ -68,11 +68,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libcudnn_static_v8.a
 
 # Install TensorRT if not building for PowerPC
+# NOTE: libnvinfer uses cuda11.1 versions
 RUN [[ "${ARCH}" = "ppc64le" ]] || { apt-get update && \
-        apt-get install -y --no-install-recommends libnvinfer${LIBNVINFER_MAJOR_VERSION}=${LIBNVINFER}+cuda${CUDA} \
-        libnvinfer-dev=${LIBNVINFER}+cuda${CUDA} \
-        libnvinfer-plugin-dev=${LIBNVINFER}+cuda${CUDA} \
-        libnvinfer-plugin${LIBNVINFER_MAJOR_VERSION}=${LIBNVINFER}+cuda${CUDA} \
+        apt-get install -y --no-install-recommends libnvinfer${LIBNVINFER_MAJOR_VERSION}=${LIBNVINFER}+cuda11.1 \
+        libnvinfer-dev=${LIBNVINFER}+cuda11.1 \
+        libnvinfer-plugin-dev=${LIBNVINFER}+cuda11.1 \
+        libnvinfer-plugin${LIBNVINFER_MAJOR_VERSION}=${LIBNVINFER}+cuda11.1 \
         && apt-get clean \
         && rm -rf /var/lib/apt/lists/*; }
 

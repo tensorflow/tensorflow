@@ -117,6 +117,7 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
   }
   IteratorContext::Params params(ctx);
   params.flr = captured_state->flr();
+  params.function_handle_cache = captured_state->function_handle_cache();
   params.resource_mgr = captured_state->resource_mgr();
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
@@ -204,6 +205,7 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
   core::ScopedUnref scoped_unref(dataset);
   IteratorContext::Params params(ctx);
   params.flr = new_state->flr();
+  params.function_handle_cache = new_state->function_handle_cache();
   params.resource_mgr = new_state->resource_mgr();
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
@@ -238,6 +240,7 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   std::unique_ptr<IteratorBase> iterator;
   IteratorContext::Params params(ctx);
   params.flr = new_state->flr();
+  params.function_handle_cache = new_state->function_handle_cache();
   params.resource_mgr = new_state->resource_mgr();
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
@@ -648,6 +651,8 @@ class ToSingleElementOp : public AsyncOpKernel {
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
 
     IteratorContext::Params params(ctx);
+    FunctionHandleCache function_handle_cache(params.flr);
+    params.function_handle_cache = &function_handle_cache;
     ResourceMgr resource_mgr;
     params.resource_mgr = &resource_mgr;
     CancellationManager cancellation_manager(ctx->cancellation_manager());
@@ -723,6 +728,9 @@ class ReduceDatasetOp : public HybridAsyncOpKernel {
         ctx, func_metadata_, "other_arguments", &captured_func));
 
     IteratorContext::Params params(ctx);
+    auto function_handle_cache =
+        absl::make_unique<FunctionHandleCache>(params.flr);
+    params.function_handle_cache = function_handle_cache.get();
     ResourceMgr resource_mgr;
     params.resource_mgr = &resource_mgr;
     CancellationManager cancellation_manager(ctx->cancellation_manager());

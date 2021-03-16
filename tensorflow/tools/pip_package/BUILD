@@ -118,13 +118,13 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python:meta_graph_testdata",
     "//tensorflow/python/data/benchmarks:benchmark_base",
     "//tensorflow/python/data/experimental/kernel_tests:data_service_test_base",
-    "//tensorflow/python/data/experimental/kernel_tests:reader_dataset_ops_test_base",
     "//tensorflow/python/data/experimental/kernel_tests:stats_dataset_test_base",
     "//tensorflow/python/data/experimental/ops:testing",
     "//tensorflow/python/data/experimental/service:server_lib",
     "//tensorflow/python/ops/ragged:ragged_tensor_test_ops",
     "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
     "//tensorflow/python/data/kernel_tests:test_base",
+    "//tensorflow/python/data/kernel_tests:tf_record_test_base",
     "//tensorflow/python/debug:debug_pip",
     "//tensorflow/python/distribute:combinations",
     "//tensorflow/python/distribute:multi_process_runner",
@@ -315,7 +315,7 @@ genrule(
     outs = ["win_pip_package_marker_file"],
     cmd = select({
         "//conditions:default": "touch $@",
-        "//tensorflow:windows": "md5sum $(locations :build_pip_package) $(locations :simple_console_for_windows) > $@",
+        "//tensorflow:windows": "sha1sum $(locations :build_pip_package) $(locations :simple_console_for_windows) > $@",
     }),
     visibility = ["//visibility:public"],
 )

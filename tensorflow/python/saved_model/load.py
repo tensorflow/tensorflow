@@ -859,7 +859,7 @@ def load(export_dir, tags=None, options=None):
 
   Returns:
     A trackable object with a `signatures` attribute mapping from signature
-    keys to functions. If the SavedModel was exported by `tf.saved_model.load`,
+    keys to functions. If the SavedModel was exported by `tf.saved_model.save`,
     it also points to trackable objects, functions, debug info which it has been
     saved.
 

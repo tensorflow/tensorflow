@@ -209,6 +209,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/python/lib/core:numpy_lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
@@ -270,6 +271,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/profiler/lib:traceme",
         "//third_party/python_runtime:headers",  # build_cleaner: keep
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",

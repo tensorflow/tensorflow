@@ -47,6 +47,17 @@ and the following optional parameters:
     `stdout` if option is not set. Requires `enable_op_profiling` to be `true`
     and the path to include the name of the output CSV; otherwise results are
     printed to `stdout`.
+*  `print_preinvoke_state`: `bool` (default=false) \
+    Whether to print out the TfLite interpreter internals just before calling
+    tflite::Interpreter::Invoke. The internals will include allocated memory
+    size of each tensor etc. Enabling this could help understand TfLite graph
+    and memory usage.
+*  `print_postinvoke_state`: `bool` (default=false) \
+    Whether to print out the TfLite interpreter internals just before benchmark
+    completes (i.e. after all repeated Invoke calls complete). The internals
+    will include allocated memory size of each tensor etc. Enabling this could
+    help understand TfLite graph and memory usage, particularly when there are
+    dynamic-shaped tensors in the graph.
 *  `verbose`: `bool` (default=false) \
     Whether to log parameters whose values are not set. By default, only log
     those parameters that are set by parsing their values from the commandline

@@ -88,6 +88,7 @@ class HloPrintOptions {
         print_result_shape_(true),
         print_operand_shape_(true),
         print_operand_names_(true),
+        print_operand_index_annotation_interval_(5),
         print_program_shape_(true),
         print_percent_(true),
         print_control_dependencies_(true),
@@ -105,6 +106,7 @@ class HloPrintOptions {
         .set_print_metadata(false)
         .set_print_backend_config(false)
         .set_print_operand_shape(false)
+        .set_print_operand_index_annotation_interval(0)
         .set_print_program_shape(false)
         .set_print_percent(false)
         .set_print_control_dependencies(false);
@@ -120,6 +122,7 @@ class HloPrintOptions {
         .set_compact_operands(false)
         .set_print_operand_names(false)
         .set_print_operand_shape(true)
+        .set_print_operand_index_annotation_interval(0)
         .set_print_program_shape(false)
         .set_print_percent(false)
         .set_print_control_dependencies(false)
@@ -137,6 +140,7 @@ class HloPrintOptions {
         .set_compact_operands(true)
         .set_print_operand_names(false)
         .set_print_operand_shape(true)
+        .set_print_operand_index_annotation_interval(0)
         .set_print_program_shape(false)
         .set_print_percent(false)
         .set_print_control_dependencies(false)
@@ -190,6 +194,12 @@ class HloPrintOptions {
   // If true, operands' shapes will be printed.
   HloPrintOptions& set_print_operand_shape(bool value) {
     print_operand_shape_ = value;
+    return *this;
+  }
+
+  // If true, operands' shapes will be printed.
+  HloPrintOptions& set_print_operand_index_annotation_interval(int64 value) {
+    print_operand_index_annotation_interval_ = value;
     return *this;
   }
 
@@ -325,6 +335,9 @@ class HloPrintOptions {
   bool print_result_shape() const { return print_result_shape_; }
   bool print_operand_shape() const { return print_operand_shape_; }
   bool print_operand_names() const { return print_operand_names_; }
+  int64 print_operand_index_annotation_interval() const {
+    return print_operand_index_annotation_interval_;
+  }
   bool print_ids() const { return print_ids_; }
   bool print_program_shape() const { return print_program_shape_; }
   bool print_percent() const { return print_percent_; }
@@ -365,6 +378,9 @@ class HloPrintOptions {
   bool print_result_shape_;
   bool print_operand_shape_;
   bool print_operand_names_;
+  // The interval between the /*index=*/ annotated operands. 0 means never print
+  // the annotation, 1 means print annotation for every operand.
+  int64 print_operand_index_annotation_interval_;
   bool print_program_shape_;
   bool print_percent_;
   bool print_control_dependencies_;

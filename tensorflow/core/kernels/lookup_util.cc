@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/lookup_util.h"
 
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -407,6 +408,9 @@ class DatasetIterator : public InitializableLookupTable::InitTableIterator {
 
   Status Init(OpKernelContext* ctx) {
     data::IteratorContext::Params params(ctx);
+    function_handle_cache_ =
+        absl::make_unique<data::FunctionHandleCache>(params.flr);
+    params.function_handle_cache = function_handle_cache_.get();
     params.resource_mgr = &resource_mgr_;
     cancellation_manager_ =
         absl::make_unique<CancellationManager>(ctx->cancellation_manager());
@@ -446,6 +450,7 @@ class DatasetIterator : public InitializableLookupTable::InitTableIterator {
  private:
   data::DatasetBase* dataset_;  // not owned.
   std::unique_ptr<data::IteratorContext> iterator_ctx_;
+  std::unique_ptr<data::FunctionHandleCache> function_handle_cache_;
   ResourceMgr resource_mgr_;
   std::unique_ptr<CancellationManager> cancellation_manager_;
   std::unique_ptr<data::IteratorBase> iterator_;

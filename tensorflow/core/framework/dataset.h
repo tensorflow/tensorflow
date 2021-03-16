@@ -302,6 +302,7 @@ class GraphDefBuilderWrapper {
 };
 
 class StatsAggregator;
+class FunctionHandleCache;
 
 // A utility class for running a function and ensuring that there is always a
 // `tensorflow::data` symbol on the stack.
@@ -353,6 +354,7 @@ class IteratorContext {
           cancellation_manager(ctx->cancellation_manager()),
           env(ctx->env()),
           flr(ctx->flr()),
+          function_handle_cache(ctx->function_handle_cache()),
           resource_mgr(ctx->resource_mgr()),
           model(ctx->model()),
           runner(*(ctx->runner())),
@@ -409,6 +411,9 @@ class IteratorContext {
     // The FunctionLibraryRuntime object to be used to make function calls.
     FunctionLibraryRuntime* flr = nullptr;
 
+    // A FunctionHandleCache that owns all the function handles. Not owned.
+    FunctionHandleCache* function_handle_cache = nullptr;
+
     // A resource manager for storing dataset-related state, e.g. random
     // seeds or cached tensors. Not owned.
     ResourceMgr* resource_mgr = nullptr;
@@ -456,6 +461,10 @@ class IteratorContext {
   Env* env() const { return params_.env; }
 
   FunctionLibraryRuntime* flr() { return params_.flr; }
+
+  FunctionHandleCache* function_handle_cache() {
+    return params_.function_handle_cache;
+  }
 
   ResourceMgr* resource_mgr() { return params_.resource_mgr; }
 
@@ -680,7 +689,7 @@ class IteratorBase {
       IteratorContext* ctx, model::Node::Args args) const = 0;
 
   // Restores the state of this iterator.
-  Status Restore(IteratorContext* ctx, IteratorStateReader* reader) {
+  virtual Status Restore(IteratorContext* ctx, IteratorStateReader* reader) {
     int64 start_us = EnvTime::NowMicros();
     TF_RETURN_IF_ERROR(RestoreInternal(ctx, reader));
     VLOG(1) << "Restored " << prefix() << " in "
@@ -693,7 +702,7 @@ class IteratorBase {
   Status SaveInput(SerializationContext* ctx, IteratorStateWriter* writer,
                    const std::unique_ptr<IteratorBase>& input) {
     int64 start_us = EnvTime::NowMicros();
-    TF_RETURN_IF_ERROR(input->SaveInternal(ctx, writer));
+    TF_RETURN_IF_ERROR(input->Save(ctx, writer));
     VLOG(2) << "Saved " << input->prefix() << " in "
             << (EnvTime::NowMicros() - start_us) << "us";
     return Status::OK();
@@ -704,7 +713,7 @@ class IteratorBase {
   Status RestoreInput(IteratorContext* ctx, IteratorStateReader* reader,
                       const std::unique_ptr<IteratorBase>& input) {
     int64 start_us = EnvTime::NowMicros();
-    TF_RETURN_IF_ERROR(input->RestoreInternal(ctx, reader));
+    TF_RETURN_IF_ERROR(input->Restore(ctx, reader));
     VLOG(2) << "Restored " << input->prefix() << " in "
             << (EnvTime::NowMicros() - start_us) << "us";
     return Status::OK();
@@ -1003,10 +1012,18 @@ class DatasetBaseIterator : public IteratorBase {
               int* num_skipped) final;
 
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer) final {
+    VLOG(2) << "Attempting to save checkpoints on iterator (prefix: "
+            << prefix() << ") from " << dataset()->DebugString();
     return IteratorBase::Save(ctx, writer);
   }
 
  protected:
+  Status Restore(IteratorContext* ctx, IteratorStateReader* reader) final {
+    VLOG(2) << "Attempting to restore checkpoints on iterator (prefix: "
+            << prefix() << ") from " << dataset()->DebugString();
+    return IteratorBase::Restore(ctx, reader);
+  }
+
   // Internal implementation of GetNext that is wrapped in tracing logic.
   virtual Status GetNextInternal(IteratorContext* ctx,
                                  std::vector<Tensor>* out_tensors,

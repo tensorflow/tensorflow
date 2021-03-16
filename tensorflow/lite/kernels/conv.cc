@@ -68,7 +68,7 @@ enum KernelType {
 
 const int kTensorNotAllocated = -1;
 
-static constexpr size_t kMaxIm2colBufferSize = 1024 * 1024 * 1024;  // 1GB
+static constexpr size_t kMaxIm2colBufferSizeMobile = 1024 * 1024 * 1024;  // 1GB
 
 struct OpData {
   // IDs are the arbitrary identifiers used by TF Lite to identify and access
@@ -255,8 +255,10 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(
   // require im2col operation. Therefore, we have to skip checking the hybrid
   // case (but not the hybrid-per-channel one) where there's no such a fallback
   // execution path.
-  if (!(is_hybrid && !is_per_channel) && data->need_im2col &&
-      im2col_bytes >= kMaxIm2colBufferSize) {
+  // TODO(b/178743262): Consider making this check conditioned on the available
+  // memory of the system, rather than coupling to the mobile platform check.
+  if (IsMobilePlatform() && !(is_hybrid && !is_per_channel) &&
+      data->need_im2col && im2col_bytes >= kMaxIm2colBufferSizeMobile) {
     data->need_im2col = false;
     data->im2col_oversized = true;
   }

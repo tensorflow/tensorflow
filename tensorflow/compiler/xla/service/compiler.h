@@ -298,6 +298,10 @@ class Compiler {
     };
   }
 
+  virtual Shape DeviceShapeRepresentation(const Shape& shape) const {
+    return shape;
+  }
+
  private:
   // Mutex that guards the platform-compiler map.
   static tensorflow::mutex platform_compiler_mutex_;

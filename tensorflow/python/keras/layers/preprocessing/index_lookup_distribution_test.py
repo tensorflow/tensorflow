@@ -23,23 +23,14 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations as ds_combinations
-from tensorflow.python.eager import context
 from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.distribute.strategy_combinations import all_strategies
 from tensorflow.python.keras.layers.preprocessing import index_lookup
-from tensorflow.python.keras.layers.preprocessing import index_lookup_v1
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.platform import test
-
-
-def get_layer_class():
-  if context.executing_eagerly():
-    return index_lookup.IndexLookup
-  else:
-    return index_lookup_v1.IndexLookup
 
 
 @ds_combinations.generate(
@@ -66,7 +57,7 @@ class IndexLookupDistributionTest(
 
     with distribution.scope():
       input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-      layer = get_layer_class()(
+      layer = index_lookup.IndexLookup(
           max_tokens=None,
           num_oov_indices=1,
           mask_token="",

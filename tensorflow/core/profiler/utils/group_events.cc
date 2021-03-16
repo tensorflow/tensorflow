@@ -577,19 +577,6 @@ void EventForest::ConnectInterThread(
   }
 }
 
-void EventForest::ProcessUserDefinedRootEvents(
-    const std::vector<int64 /*EventType*/>& user_defined_root_event_types) {
-  for (int64 user_defined_root_event_type : user_defined_root_event_types) {
-    if (auto root_events =
-            gtl::FindOrNull(event_node_map_, user_defined_root_event_type)) {
-      for (const auto& root_event : *root_events) {
-        root_event->SetIsRoot(true);
-        root_events_.push_back(root_event.get());
-      }
-    }
-  }
-}
-
 void EventForest::CreateEventGroups() {
   // Handle inference batching profiles.
   if (event_node_map_.contains(HostEventType::kProcessBatch)) {
@@ -863,11 +850,9 @@ void EventForest::ConnectTfDataEvents() {
   VLOG(1) << num_matched << " consumer iterators matched.";
 }
 
-void EventForest::GroupEvents(
-    const std::vector<int64>& user_defined_root_event_types) {
+void EventForest::GroupEvents() {
   ProcessTensorFlowLoop();
   ProcessWorker();
-  ProcessUserDefinedRootEvents(user_defined_root_event_types);
   CreateEventGroups();
   MarkEagerlyExecutedGpuKernels();
   MarkEagerlyExecutedCpuTfOps();
