@@ -315,7 +315,7 @@ genrule(
     outs = ["win_pip_package_marker_file"],
     cmd = select({
         "//conditions:default": "touch $@",
-        "//tensorflow:windows": "md5sum $(locations :build_pip_package) $(locations :simple_console_for_windows) > $@",
+        "//tensorflow:windows": "sha1sum $(locations :build_pip_package) $(locations :simple_console_for_windows) > $@",
     }),
     visibility = ["//visibility:public"],
 )
