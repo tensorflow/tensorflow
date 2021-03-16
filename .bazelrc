@@ -570,13 +570,13 @@ build:release_cpu_macos --config=avx_linux
 
 build:release_gpu_base --config=release_base
 build:release_gpu_base --config=cuda
-build:release_gpu_base --config=tensorrt
 build:release_gpu_base --action_env=TF_CUDA_VERSION="11"
 build:release_gpu_base --action_env=TF_CUDNN_VERSION="8"
 build:release_gpu_base --repo_env=TF_CUDA_COMPUTE_CAPABILITIES="sm_35,sm_50,sm_60,sm_70,sm_75,compute_80"
 
 build:release_gpu_linux --config=release_cpu_linux
 build:release_gpu_linux --config=release_gpu_base
+build:release_gpu_linux --config=tensorrt
 build:release_gpu_linux --action_env=CUDA_TOOLKIT_PATH="/usr/local/cuda-11.2"
 build:release_gpu_linux --action_env=LD_LIBRARY_PATH="/usr/local/cuda:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/tensorrt/lib"
 build:release_gpu_linux --action_env=GCC_HOST_COMPILER_PATH="/usr/bin/gcc-5"
