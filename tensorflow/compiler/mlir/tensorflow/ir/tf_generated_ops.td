@@ -17907,30 +17907,6 @@ https://www.tensorflow.org/xla/operation_semantics#gather
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_XlaHostComputeOp : TF_Op<"XlaHostCompute", []> {
-  let summary = [{
-A pseudo-op to represent host-side computation in an XLA program.
-  }];
-
-  let arguments = (ins
-    Arg<Variadic<TF_Tensor>, [{A list of tensors that will be sent to the host.}]>:$inputs,
-
-    StrArrayAttr:$ancestors,
-    TF_ShapeAttrArray:$shapes,
-    SymbolRefAttr:$shape_inference_graph,
-    StrAttr:$key,
-    DefaultValuedAttr<I64Attr, "1000000">:$cost_estimate_ns,
-    DefaultValuedAttr<I64Attr, "0">:$tpu_core
-  );
-
-  let results = (outs
-    Res<Variadic<TF_Tensor>, [{A list of tensors that will be returned to the device.}]>:$outputs
-  );
-
-  TF_DerivedOperandTypeListAttr Tinputs = TF_DerivedOperandTypeListAttr<0>;
-  TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
-}
-
 def TF_XlaKeyValueSortOp : TF_Op<"XlaKeyValueSort", [NoSideEffect]> {
   let summary = "Wraps the XLA Sort operator, documented at";
 

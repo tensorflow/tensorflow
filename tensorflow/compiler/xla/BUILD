@@ -18,6 +18,7 @@ package_group(
         "//tensorflow/compiler/...",
         "//tensorflow/python/tpu/...",
         "//third_party/iree/...",
+        "//third_party/mlir_edge/model_curriculum/...",
         "//third_party/py/jax/...",
     ],
 )

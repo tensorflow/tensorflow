@@ -143,9 +143,9 @@ message ThreadingOptions {
 
 // Represents how to handle external state during serialization.
 enum ExternalStatePolicy {
-  WARN = 0;
-  IGNORE = 1;
-  FAIL = 2;
+  POLICY_WARN = 0;
+  POLICY_IGNORE = 1;
+  POLICY_FAIL = 2;
 }
 
 // Message stored with Dataset objects to control how datasets are processed and

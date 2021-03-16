@@ -16,10 +16,11 @@
 """Python TFLite metrics helper."""
 from typing import Optional, Text
 
+from tensorflow.lite.python import metrics_interface
 from tensorflow.python.eager import monitoring
 
 
-class TFLiteMetrics(object):
+class TFLiteMetrics(metrics_interface.TFLiteMetricsInterface):
   """TFLite metrics helper for prod (borg) environment.
 
   Attributes:
@@ -27,6 +28,10 @@ class TFLiteMetrics(object):
     model_path: A string containing the path of the model for debugging
       purposes.
   """
+
+  _counter_debugger_creation = monitoring.Counter(
+      '/tensorflow/lite/quantization_debugger/created',
+      'Counter for the number of debugger created.')
 
   _counter_interpreter_creation = monitoring.Counter(
       '/tensorflow/lite/interpreter/created',
@@ -42,6 +47,9 @@ class TFLiteMetrics(object):
     if md5:
       # TODO(b/180400857): Create stub once the service is implemented.
       pass
+
+  def increase_counter_debugger_creation(self):
+    self._counter_debugger_creation.get_cell().increase_by(1)
 
   def increase_counter_interpreter_creation(self):
     self._counter_interpreter_creation.get_cell('python').increase_by(1)

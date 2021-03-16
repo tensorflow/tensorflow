@@ -87,14 +87,27 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
   TF_LITE_ENSURE(context, 0 <= axis && axis < NumDimensions(input));
 
+  int batch_dims = params->batch_dims;
+  // batch_dims should be in range: [-rank(positions), rank(positions)].
+  // Negative batch_dims is added with rank of positions.
+  if (batch_dims < 0) {
+    batch_dims += NumDimensions(positions);
+  }
+  TF_LITE_ENSURE(context, batch_dims <= axis);
+  TF_LITE_ENSURE(context, 0 <= batch_dims && batch_dims < NumDimensions(input));
+  TF_LITE_ENSURE(context, batch_dims <= NumDimensions(positions));
+  for (int i = 0; i < batch_dims; ++i) {
+    TF_LITE_ENSURE_EQ(context, input->dims->data[i], positions->dims->data[i]);
+  }
+
   const int num_dimensions =
-      NumDimensions(input) + NumDimensions(positions) - 1;
+      NumDimensions(input) + NumDimensions(positions) - 1 - batch_dims;
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(num_dimensions);
   int output_index = 0;
   for (int i = 0; i < axis; ++i) {
     output_shape->data[output_index++] = input->dims->data[i];
   }
-  for (int i = 0; i < positions->dims->size; ++i) {
+  for (int i = batch_dims; i < positions->dims->size; ++i) {
     output_shape->data[output_index++] = positions->dims->data[i];
   }
   for (int i = axis + 1; i < input->dims->size; ++i) {
@@ -108,6 +121,7 @@ TfLiteStatus Gather(const TfLiteGatherParams& params, const TfLiteTensor* input,
                     const TfLiteTensor* positions, TfLiteTensor* output) {
   tflite::GatherParams op_params;
   op_params.axis = params.axis;
+  op_params.batch_dims = params.batch_dims;
   optimized_ops::Gather(op_params, GetTensorShape(input),
                         GetTensorData<InputT>(input), GetTensorShape(positions),
                         GetTensorData<PositionsT>(positions),

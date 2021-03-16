@@ -221,7 +221,21 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     # Initialize the options for this dataset and its inputs.
     self._options_attr = Options()
     for input_dataset in self._inputs():
-      input_options = input_dataset.options()
+      input_options = None
+      if isinstance(input_dataset, DatasetV1):
+        # If the V1 dataset does not have the `_dataset` attribute, we assume it
+        # is a dataset source and hence does not have options. Otherwise, we
+        # grab the options of `_dataset` object
+        if hasattr(input_dataset, "_dataset"):
+          if not isinstance(input_dataset._dataset, DatasetV2):
+            raise AssertionError(
+                "The input_dataset._dataset of dataset %s should be DatasetV2."
+                % type(self))
+          input_options = input_dataset._dataset._options_attr
+      elif isinstance(input_dataset, DatasetV2):
+        input_options = input_dataset._options_attr
+      else:
+        raise TypeError("Unexpected dataset type: ", type(input_dataset))
       if input_options is not None:
         self._options_attr = self._options_attr.merge(input_options)
     self._options_attr._set_mutable(False)  # pylint: disable=protected-access
@@ -358,16 +372,46 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     """
     return []
 
+  def _options(self):
+    """Returns the options tensor for this dataset."""
+    # pylint: disable=protected-access
+    return gen_dataset_ops.get_options(self._variant_tensor)
+
+  @classmethod
+  def _options_tensor_to_options(cls, serialized_options):
+    """Converts options tensor to tf.data.Options object."""
+    options = Options()
+    if tensor_util.constant_value(serialized_options) is not None:
+      pb = dataset_options_pb2.Options.FromString(tensor_util.constant_value(
+          serialized_options))
+      options._from_proto(pb)  # pylint: disable=protected-access
+    return options
+
   def options(self):
     """Returns the options for this dataset and its inputs.
 
     Returns:
       A `tf.data.Options` object representing the dataset options.
     """
+    if tf_compat.forward_compatible(2021, 4, 12):
+      if context.executing_eagerly():
+        options = self._options_tensor_to_options(self._options())
+        options._set_mutable(False)  # pylint: disable=protected-access
+        return options
+      warnings.warn("To make it possible to preserve tf.data options across "
+                    "serialization boundaries, their implementation has moved "
+                    "to be part of the TensorFlow graph. As a consequence, the "
+                    "options value is in general no longer known at graph "
+                    "construction time. Invoking this method in graph mode "
+                    "retains the legacy behavior of the original "
+                    "implementation, but note that the returned value might "
+                    "not reflect the actual value of the options.")
     return self._options_attr
 
   def _apply_options(self):
     """Apply options, such as optimization configuration, to the dataset."""
+    if tf_compat.forward_compatible(2021, 4, 12):
+      return _FinalizeDataset(self, self._has_captured_ref())
 
     dataset = self
     options = self.options()
@@ -4696,7 +4740,15 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
   def __init__(self, input_dataset, options):
     # pylint: disable=protected-access
     self._input_dataset = input_dataset
-    variant_tensor = input_dataset._variant_tensor
+    if tf_compat.forward_compatible(2021, 4, 12):
+      options_pb = dataset_options_pb2.Options()
+      options_pb.CopyFrom(options._to_proto())
+      with ops.colocate_with(input_dataset._variant_tensor):
+        variant_tensor = gen_dataset_ops.options_dataset(
+            input_dataset._variant_tensor,
+            options_pb.SerializeToString(), **self._flat_structure)
+    else:
+      variant_tensor = input_dataset._variant_tensor
     super(_OptionsDataset, self).__init__(input_dataset, variant_tensor)
 
     if self._options_attr:
@@ -4705,6 +4757,18 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
     else:
       self._options_attr = options
     self._options_attr._set_mutable(False)
+
+
+class _FinalizeDataset(UnaryUnchangedStructureDataset):
+  """A `Dataset` that acts on the options set on the input dataset."""
+
+  def __init__(self, input_dataset, has_captured_ref):
+    self._input_dataset = input_dataset
+    with ops.colocate_with(input_dataset._variant_tensor):
+      variant_tensor = gen_dataset_ops.finalize_dataset(
+          input_dataset._variant_tensor,  # pylint: disable=protected-access
+          has_captured_ref=has_captured_ref, **self._flat_structure)
+    super(_FinalizeDataset, self).__init__(input_dataset, variant_tensor)
 
 
 class _ModelDataset(UnaryUnchangedStructureDataset):

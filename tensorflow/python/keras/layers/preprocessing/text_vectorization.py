@@ -307,18 +307,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
       raise ValueError("`output_sequence_length` must not be set if "
                        "`output_mode` is not 'int'.")
 
-    # If max_tokens is set, the value must be greater than 1 - otherwise we
-    # are creating a 0-element vocab, which doesn't make sense.
-    if max_tokens is not None and max_tokens < 1:
-      raise ValueError("max_tokens must be > 1.")
-
     self._max_tokens = max_tokens
-
-    # In INT mode, the zero value is reserved for padding (per Keras standard
-    # padding approaches). In non-INT modes, there is no padding so we can set
-    # the OOV value to zero instead of one.
-    self._oov_value = 1 if output_mode == INT else 0
-
     self._standardize = standardize
     self._split = split
     self._ngrams_arg = ngrams
@@ -329,13 +318,13 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
 
     self._output_mode = output_mode
     self._output_sequence_length = output_sequence_length
-    vocab_size = 0
+    vocabulary_size = 0
     # IndexLookup needs to keep track the current vocab size outside of its
     # layer weights. We persist it as a hidden part of the config during
     # serialization.
-    if "vocab_size" in kwargs:
-      vocab_size = kwargs["vocab_size"]
-      del kwargs["vocab_size"]
+    if "vocabulary_size" in kwargs:
+      vocabulary_size = kwargs["vocabulary_size"]
+      del kwargs["vocabulary_size"]
 
     super(TextVectorization, self).__init__(
         combiner=None,
@@ -343,14 +332,12 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     base_preprocessing_layer.keras_kpl_gauge.get_cell(
         "TextVectorization").set(True)
 
-    mask_token = "" if output_mode in [None, INT] else None
     self._index_lookup_layer = self._get_index_lookup_class()(
         max_tokens=max_tokens,
-        mask_token=mask_token,
         vocabulary=vocabulary,
         pad_to_max_tokens=pad_to_max_tokens,
         output_mode=output_mode if output_mode is not None else INT,
-        vocab_size=vocab_size)
+        vocabulary_size=vocabulary_size)
 
   def _get_index_lookup_class(self):
     return string_lookup.StringLookup
@@ -433,6 +420,14 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
   def get_vocabulary(self):
     return self._index_lookup_layer.get_vocabulary()
 
+  def vocabulary_size(self):
+    """Gets the current size of the layer's vocabulary.
+
+    Returns:
+      The integer size of the voculary, including optional mask and oov indices.
+    """
+    return self._index_lookup_layer.vocabulary_size()
+
   def get_config(self):
     # This does not include the 'vocabulary' arg, since if the vocab was passed
     # at init time it's now stored in variable state - we don't need to
@@ -445,7 +440,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
         "output_mode": self._output_mode,
         "output_sequence_length": self._output_sequence_length,
         "pad_to_max_tokens": self._index_lookup_layer.pad_to_max_tokens,
-        "vocab_size": self._index_lookup_layer.vocab_size(),
+        "vocabulary_size": self._index_lookup_layer.vocabulary_size(),
     }
     base_config = super(TextVectorization, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -457,7 +452,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     # abstraction for ease of saving!) we return 0.
     return 0
 
-  def set_vocabulary(self, vocab, idf_weights=None):
+  def set_vocabulary(self, vocabulary, idf_weights=None):
     """Sets vocabulary (and optionally document frequency) data for this layer.
 
     This method sets the vocabulary and idf weights for this layer directly,
@@ -467,7 +462,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     it.
 
     Args:
-      vocab: An array of string tokens, or a path to a file containing one
+      vocabulary: An array of string tokens, or a path to a file containing one
         token per line.
       idf_weights: An array of document frequency data with equal length to
         vocab. Only necessary if the layer output_mode is TFIDF.
@@ -480,7 +475,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
         if "pad_to_max_tokens" is False and the layer itself has already been
         called.
     """
-    self._index_lookup_layer.set_vocabulary(vocab, idf_weights=idf_weights)
+    self._index_lookup_layer.set_vocabulary(vocabulary, idf_weights=idf_weights)
 
   def build(self, input_shape):
     # We have to use 'and not ==' here, because input_shape[1] !/== 1 can result

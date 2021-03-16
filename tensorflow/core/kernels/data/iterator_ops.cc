@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
@@ -26,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -53,7 +51,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/resource.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/public/session_options.h"
@@ -120,7 +117,6 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
   }
   IteratorContext::Params params(ctx);
   params.flr = captured_state->flr();
-  params.function_handle_cache = captured_state->function_handle_cache();
   params.resource_mgr = captured_state->resource_mgr();
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
@@ -208,7 +204,6 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
   core::ScopedUnref scoped_unref(dataset);
   IteratorContext::Params params(ctx);
   params.flr = new_state->flr();
-  params.function_handle_cache = new_state->function_handle_cache();
   params.resource_mgr = new_state->resource_mgr();
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
@@ -243,7 +238,6 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   std::unique_ptr<IteratorBase> iterator;
   IteratorContext::Params params(ctx);
   params.flr = new_state->flr();
-  params.function_handle_cache = new_state->function_handle_cache();
   params.resource_mgr = new_state->resource_mgr();
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
@@ -654,21 +648,6 @@ class ToSingleElementOp : public AsyncOpKernel {
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
 
     IteratorContext::Params params(ctx);
-    {
-      mutex_lock l(mu_);
-      auto cache =
-          gtl::FindOrNull(function_handle_caches_, ctx->function_library());
-      if (cache == nullptr) {
-        // TODO(jsimsa): Support configuring the cache capacity.
-        auto result = function_handle_caches_.emplace(
-            std::make_pair(ctx->function_library(),
-                           absl::make_unique<FunctionHandleCache>(
-                               ctx->function_library(), /*capacity=*/1000)));
-        cache = &result.first->second;
-      }
-      params.function_handle_cache = cache->get();
-    }
-
     ResourceMgr resource_mgr;
     params.resource_mgr = &resource_mgr;
     CancellationManager cancellation_manager(ctx->cancellation_manager());
@@ -704,10 +683,6 @@ class ToSingleElementOp : public AsyncOpKernel {
     return Status::OK();
   }
 
-  mutex mu_;
-  absl::flat_hash_map<FunctionLibraryRuntime*,
-                      std::unique_ptr<FunctionHandleCache>>
-      function_handle_caches_ TF_GUARDED_BY(mu_);
   UnboundedThreadPool unbounded_threadpool_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
@@ -748,9 +723,6 @@ class ReduceDatasetOp : public HybridAsyncOpKernel {
         ctx, func_metadata_, "other_arguments", &captured_func));
 
     IteratorContext::Params params(ctx);
-    auto function_handle_cache =
-        absl::make_unique<FunctionHandleCache>(params.flr);
-    params.function_handle_cache = function_handle_cache.get();
     ResourceMgr resource_mgr;
     params.resource_mgr = &resource_mgr;
     CancellationManager cancellation_manager(ctx->cancellation_manager());

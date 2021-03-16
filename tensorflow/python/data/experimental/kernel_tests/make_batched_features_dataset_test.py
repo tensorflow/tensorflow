@@ -20,9 +20,9 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.kernel_tests import tf_record_test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.data.util import nest
@@ -35,9 +35,8 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import test
 
 
-class MakeBatchedFeaturesDatasetTest(
-    reader_dataset_ops_test_base.MakeBatchedFeaturesDatasetTestBase,
-    parameterized.TestCase):
+class MakeBatchedFeaturesDatasetTest(tf_record_test_base.FeaturesTestBase,
+                                     parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testRead(self):
@@ -46,11 +45,11 @@ class MakeBatchedFeaturesDatasetTest(
         # Basic test: read from file 0.
         self.outputs = self.getNext(
             self.make_batch_feature(
-                filenames=self.test_filenames[0],
+                filenames=self._filenames[0],
                 label_key="label",
                 num_epochs=num_epochs,
                 batch_size=batch_size))
-        self.verify_records(
+        self._verify_records(
             batch_size, 0, num_epochs=num_epochs, label_key_provided=True)
         with self.assertRaises(errors.OutOfRangeError):
           self._next_actual_batch(label_key_provided=True)
@@ -58,11 +57,11 @@ class MakeBatchedFeaturesDatasetTest(
           # Basic test: read from file 1.
         self.outputs = self.getNext(
             self.make_batch_feature(
-                filenames=self.test_filenames[1],
+                filenames=self._filenames[1],
                 label_key="label",
                 num_epochs=num_epochs,
                 batch_size=batch_size))
-        self.verify_records(
+        self._verify_records(
             batch_size, 1, num_epochs=num_epochs, label_key_provided=True)
         with self.assertRaises(errors.OutOfRangeError):
           self._next_actual_batch(label_key_provided=True)
@@ -70,21 +69,21 @@ class MakeBatchedFeaturesDatasetTest(
         # Basic test: read from both files.
         self.outputs = self.getNext(
             self.make_batch_feature(
-                filenames=self.test_filenames,
+                filenames=self._filenames,
                 label_key="label",
                 num_epochs=num_epochs,
                 batch_size=batch_size))
-        self.verify_records(
+        self._verify_records(
             batch_size, num_epochs=num_epochs, label_key_provided=True)
         with self.assertRaises(errors.OutOfRangeError):
           self._next_actual_batch(label_key_provided=True)
         # Basic test: read from both files.
         self.outputs = self.getNext(
             self.make_batch_feature(
-                filenames=self.test_filenames,
+                filenames=self._filenames,
                 num_epochs=num_epochs,
                 batch_size=batch_size))
-        self.verify_records(batch_size, num_epochs=num_epochs)
+        self._verify_records(batch_size, num_epochs=num_epochs)
         with self.assertRaises(errors.OutOfRangeError):
           self._next_actual_batch()
 
@@ -95,7 +94,7 @@ class MakeBatchedFeaturesDatasetTest(
         "record": parsing_ops.FixedLenFeature([], dtypes.int64),
     }
     dataset = (
-        core_readers.TFRecordDataset(self.test_filenames)
+        core_readers.TFRecordDataset(self._filenames)
         .map(lambda x: parsing_ops.parse_single_example(x, features))
         .repeat(10).batch(2))
     next_element = self.getNext(dataset)
@@ -115,14 +114,14 @@ class MakeBatchedFeaturesDatasetTest(
       # Test that shuffling with same seed produces the same result.
       outputs1 = self.getNext(
           self.make_batch_feature(
-              filenames=self.test_filenames[0],
+              filenames=self._filenames[0],
               num_epochs=num_epochs,
               batch_size=batch_size,
               shuffle=True,
               shuffle_seed=5))
       outputs2 = self.getNext(
           self.make_batch_feature(
-              filenames=self.test_filenames[0],
+              filenames=self._filenames[0],
               num_epochs=num_epochs,
               batch_size=batch_size,
               shuffle=True,
@@ -136,14 +135,14 @@ class MakeBatchedFeaturesDatasetTest(
       # Test that shuffling with different seeds produces a different order.
       outputs1 = self.getNext(
           self.make_batch_feature(
-              filenames=self.test_filenames[0],
+              filenames=self._filenames[0],
               num_epochs=num_epochs,
               batch_size=batch_size,
               shuffle=True,
               shuffle_seed=5))
       outputs2 = self.getNext(
           self.make_batch_feature(
-              filenames=self.test_filenames[0],
+              filenames=self._filenames[0],
               num_epochs=num_epochs,
               batch_size=batch_size,
               shuffle=True,
@@ -164,13 +163,13 @@ class MakeBatchedFeaturesDatasetTest(
         for parser_num_threads in [2, 4]:
           self.outputs = self.getNext(
               self.make_batch_feature(
-                  filenames=self.test_filenames,
+                  filenames=self._filenames,
                   label_key="label",
                   num_epochs=num_epochs,
                   batch_size=batch_size,
                   reader_num_threads=reader_num_threads,
                   parser_num_threads=parser_num_threads))
-          self.verify_records(
+          self._verify_records(
               batch_size,
               num_epochs=num_epochs,
               label_key_provided=True,
@@ -180,12 +179,12 @@ class MakeBatchedFeaturesDatasetTest(
 
           self.outputs = self.getNext(
               self.make_batch_feature(
-                  filenames=self.test_filenames,
+                  filenames=self._filenames,
                   num_epochs=num_epochs,
                   batch_size=batch_size,
                   reader_num_threads=reader_num_threads,
                   parser_num_threads=parser_num_threads))
-          self.verify_records(
+          self._verify_records(
               batch_size,
               num_epochs=num_epochs,
               interleave_cycle_length=reader_num_threads)
@@ -199,7 +198,7 @@ class MakeBatchedFeaturesDatasetTest(
         with ops.Graph().as_default():
           # Basic test: read from file 0.
           outputs = self.make_batch_feature(
-              filenames=self.test_filenames[0],
+              filenames=self._filenames[0],
               label_key="label",
               num_epochs=num_epochs,
               batch_size=batch_size,
@@ -211,7 +210,7 @@ class MakeBatchedFeaturesDatasetTest(
   @combinations.generate(test_base.default_test_combinations())
   def testIndefiniteRepeatShapeInference(self):
     dataset = self.make_batch_feature(
-        filenames=self.test_filenames[0],
+        filenames=self._filenames[0],
         label_key="label",
         num_epochs=None,
         batch_size=32)
@@ -227,7 +226,7 @@ class MakeBatchedFeaturesDatasetTest(
         TypeError, r"The `reader` argument must return a `Dataset` object. "
         r"`tf.ReaderBase` subclasses are not supported."):
       _ = readers.make_batched_features_dataset(
-          file_pattern=self.test_filenames[0], batch_size=32,
+          file_pattern=self._filenames[0], batch_size=32,
           features={
               "file": parsing_ops.FixedLenFeature([], dtypes.int64),
               "record": parsing_ops.FixedLenFeature([], dtypes.int64),

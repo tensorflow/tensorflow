@@ -154,3 +154,27 @@ add_subdirectory(
 add_executable(minimal minimal.cc)
 target_link_libraries(minimal tensorflow-lite ${CMAKE_DL_LIBS}
 ```
+
+## Build TensorFlow Lite C library
+
+If you want to build TensorFlow Lite shared library for
+[C API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/c/README.md),
+follow [step 1](#step-1-install-cmake-tool) to
+[step 3](#step-3-create-cmake-build-directory) first. After that, run the
+following commands.
+
+```sh
+cmake ../tensorflow_src/tensorflow/lite/c
+cmake --build . -j
+```
+
+This command generates the following shared library in the current directory.
+
+Platform | Library name
+-------- | -------------------------
+Linux    | libtensorflowlite_c.so
+macOS    | libtensorflowlite_c.dylib
+Windows  | tensorflowlite_c.dll
+
+**Note:** You need necessary headers (c_api.h, c_api_experimental.h and
+common.h) to use the generated shared library.

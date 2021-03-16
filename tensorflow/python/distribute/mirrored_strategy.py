@@ -724,24 +724,27 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         reduce_op == reduce_util.ReduceOp.MEAN):
       return value
     assert not distribute_utils.is_mirrored(value)
-    if not isinstance(value, values.DistributedValues):
-      # This function handles reducing values that are not PerReplica or
-      # Mirrored values. For example, the same value could be present on all
-      # replicas in which case `value` would be a single value or value could
-      # be 0.
-      return cross_device_ops_lib.reduce_non_distributed_value(
-          reduce_op, value, destinations, self._num_replicas_in_sync)
-    if self._collective_ops_in_use and (
-        (not cross_device_ops_lib._devices_match(value, destinations) or  # pylint: disable=protected-access
-         any("cpu" in d.lower()
-             for d in cross_device_ops_lib.get_devices_from(destinations)))):
-      return cross_device_ops_lib.ReductionToOneDevice().reduce(
-          reduce_op, value, destinations)
-    return self._get_cross_device_ops(value).reduce(
-        reduce_op,
-        value,
-        destinations=destinations,
-        options=self._communication_options.merge(options))
+    def get_values(value):
+      if not isinstance(value, values.DistributedValues):
+        # This function handles reducing values that are not PerReplica or
+        # Mirrored values. For example, the same value could be present on all
+        # replicas in which case `value` would be a single value or value could
+        # be 0.
+        return cross_device_ops_lib.reduce_non_distributed_value(
+            reduce_op, value, destinations, self._num_replicas_in_sync)
+      if self._collective_ops_in_use and (
+          (not cross_device_ops_lib._devices_match(value, destinations) or  # pylint: disable=protected-access
+           any("cpu" in d.lower()
+               for d in cross_device_ops_lib.get_devices_from(destinations)))):
+        return cross_device_ops_lib.ReductionToOneDevice().reduce(
+            reduce_op, value, destinations)
+      return self._get_cross_device_ops(value).reduce(
+          reduce_op,
+          value,
+          destinations=destinations,
+          options=self._communication_options.merge(options))
+
+    return nest.map_structure(get_values, value)
 
   def _batch_reduce_to(self, reduce_op, value_destination_pairs, options):
     cross_device_ops = None

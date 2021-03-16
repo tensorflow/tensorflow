@@ -3419,6 +3419,30 @@ TEST_P(OpConverter_FP32_Test, ConvertCombinedNMS) {
           {0, 0, 0, -1},  // exp_classes
           {3},            // exp_num_detections
           conv_status},
+      TestParams{"Test 5: TopK error",
+                 {1, 5000, 1, 4},  // boxes dims
+                 {1, 5000, 1},     // scores dims
+                 {},               // boxes values:
+                 {},               // scores values
+                 4,                // max_output_size_per_class
+                 4,                // max_total_size
+                 0.1,              // IOU threshold
+                 0,                // score threshold
+                 false,            // pad_per_class
+                 false,            // clip_boxes
+                 {},               // expected_valid_detections_dims
+                 {},               // exp_boxes_values
+                 {},               // exp_scores
+                 {},               // exp_classes
+                 {},               // exp_num_detections
+                 conv_status.ok()
+                     ? errors::InvalidArgument(
+                           "TRT NMS plugin allow top_k<=4096, where top_k = "
+                           "max(num_boxes, max_total_size). You can override "
+                           "this by setting TF_TRT_ALLOW_NMS_TOPK_OVERRIDE=1 "
+                           "environment variable, but this can result in a "
+                           "loss of accuracy.")
+                     : conv_status},
   };
 
   for (auto p : params) {

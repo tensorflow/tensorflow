@@ -139,6 +139,8 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "//tensorflow/core/platform:bfloat16",
+        "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/stream_executor/tpu:c_api_conversions",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:Dialect",

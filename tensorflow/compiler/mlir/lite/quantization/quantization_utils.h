@@ -22,9 +22,11 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
@@ -32,6 +34,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -48,6 +51,10 @@ namespace quant {
 // added by the quantization passes. These ops can be removed erased without
 // losing accuracy.
 constexpr char kVolatileOpAttrName[] = "volatile";
+
+enum QuantizationTrait { FullyQuantizable, NotQuantizable };
+extern const char kQuantTraitAttr[];
+extern const absl::string_view QuantTraitValues[];
 
 using QuantParams = quant::QuantizedType;
 using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
@@ -90,6 +97,8 @@ QuantizedType DownCastScale(QuantizedType type,
 
 QuantizedType DownCastScale(QuantizedType type, double min, double max,
                             Location loc);
+
+bool IsOpNotQuantizable(Operation* op);
 
 template <typename Q, typename DQ>
 struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
@@ -227,10 +236,7 @@ struct QuantizationPattern : public RewritePattern {
 
       // If it is terminator or not quantizable or any ops form the mlir quant
       // ops dialect, we shouldn't rewrite.
-      if (quantized_op->hasTrait<OpTrait::IsTerminator>() ||
-          quantized_op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
-          llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp>(
-              quantized_op)) {
+      if (IsOpNotQuantizable(quantized_op)) {
         return failure();
       }
 
@@ -306,8 +312,9 @@ struct QuantizationPattern : public RewritePattern {
       if (quantized_op->getNumRegions() != 0) {
         for (auto indexed_regions :
              llvm::enumerate(quantized_op->getRegions())) {
-          new_op->getRegion(indexed_regions.index())
-              .takeBody(indexed_regions.value());
+          Region& target_region = new_op->getRegion(indexed_regions.index());
+          BlockAndValueMapping mapping;
+          indexed_regions.value().cloneInto(&target_region, mapping);
         }
       }
       for (auto output : outputs_replaced) {

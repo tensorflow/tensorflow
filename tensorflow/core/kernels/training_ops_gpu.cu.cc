@@ -27,84 +27,6 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
 
-#if TENSORFLOW_USE_ROCM
-
-#include "rocm/include/hip/hip_complex.h"
-
-#endif  // TENSORFLOW_USE_ROCM
-
-// if any kernels involving complex sqrt/rsqrt are compiled with ROCm, build
-// process completes without errors,but the resulting executable ends up
-// unusable (throwing errors "no device code available for function" for
-/// completely unrelated kernels.)
-// We also can't cast to hipFloatComplex etc. because (as of 2020-01) HIP does
-// not provide sqrt for complex.
-// We have no choice but to implement sqrt and rsqrt by hand
-template <typename T>
-__device__ T impl_sqrt(T x) {
-  return sqrt(x);
-}
-template <typename T>
-__device__ T impl_rsqrt(T x) {
-  return rsqrt(x);
-}
-template <>
-__device__ Eigen::half impl_sqrt(Eigen::half x) {
-  return __float2half(sqrt(__half2float(x)));
-}
-template <>
-__device__ Eigen::half impl_rsqrt(Eigen::half x) {
-  return __float2half(rsqrt(__half2float(x)));
-}
-
-template <class T>
-__device__ std::complex<T> impl_sqrt(std::complex<T> x) {
-  T re = x.real(), im = x.imag();
-  T mod_x = sqrt(re * re + im * im);
-  const T root2 = 0.7071067811865475;
-  // We pick the root with the same sign of the imaginary component as
-  // the input.
-  T root[2] = {T(sqrt(mod_x + re) * root2),
-               T(sqrt(mod_x - re) * root2 * (im >= 0 ? 1. : -1.))};
-  // hcc/clang is really weird with its support of complex in device code;
-  // for some reason it does not permit a 2-argument constructor
-  return *(reinterpret_cast<std::complex<T>*>(&root));
-}
-
-template <class T>
-__device__ T rsqrt_helper(T x) {
-  return 0.5 * x + 0.125 * x * x + 0.0625 * x * x * x;
-}
-
-template <class T>
-__device__ std::complex<T> impl_rsqrt(std::complex<T> x) {
-  T re = x.real(), im = x.imag();
-  T r = rsqrt(re * re + im * im);
-  T ar2 = re * r * r;
-  const T root2 = 0.7071067811865475;
-  T root[2];
-  // With float, calculating 1+re*r and 1-re*r may result in excessive errors
-  // due to subtraction of two close values. We have to get fancy
-  root[0] = sqrt(r * ((std::is_same<T, float>::value && re * r < -0.98)
-                          ? rsqrt_helper(im * im * r * r)
-                          : max(T(0.0), 1 + re * r))) *
-            root2;
-  root[1] = sqrt(r * ((std::is_same<T, float>::value && re * r > 0.98)
-                          ? rsqrt_helper(im * im * r * r)
-                          : max(T(0.0), 1 - re * r))) *
-            root2 * (im >= 0 ? -1. : 1.);
-  return *(reinterpret_cast<std::complex<T>*>(&root));
-}
-
-template <typename T>
-__device__ T impl_fabs(T x) {
-  return fabs(x);
-}
-template <>
-__device__ Eigen::half impl_fabs(Eigen::half x) {
-  return __float2half(fabs(__half2float(x)));
-}
-
 template <typename T>
 __device__ T impl_sign(T x) {
   return x == T(0) ? T(0) : x < T(0) ? T(-1) : T(1);
@@ -140,7 +62,7 @@ __global__ __launch_bounds__(1024) void SparseApplyAdagradKernel(
     if (has_epsilon) {
       var_i -= lr_t * grad_i / (sqrt(accum_i) + epsilon_t);
     } else {
-      var_i -= lr_t * grad_i * impl_rsqrt(accum_i);
+      var_i -= lr_t * grad_i * Eigen::numext::rsqrt(accum_i);
     }
 
     // Write update back to variables.
@@ -175,7 +97,7 @@ __global__ __launch_bounds__(1024) void SparseApplyProximalAdagradKernel(
     const T l2_t = *l2;
 
     accum_i += grad_i * grad_i;
-    T learning_rate = lr_t * impl_rsqrt(accum_i);
+    T learning_rate = lr_t * Eigen::numext::rsqrt(accum_i);
     // compute v = w - lr * grad.
     T prox_var_i = var_i - grad_i * learning_rate;
     // compute sign(v) * max(|v| - lr * max(l1, 0), 0)
@@ -353,7 +275,7 @@ __global__ __launch_bounds__(1024) void ApplyAdagradKernel(GpuLaunchConfig cfg,
                                                            bool update_slots) {
   GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
     if (update_slots) accum[i] += grad[i] * grad[i];
-    var[i] -= lr[0] * grad[i] * impl_rsqrt(accum[i]);
+    var[i] -= lr[0] * grad[i] * Eigen::numext::rsqrt(accum[i]);
   }
 }
 
@@ -363,7 +285,7 @@ __global__ __launch_bounds__(1024) void ApplyAdagradV2Kernel(
     const T* grad, bool update_slots) {
   GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
     if (update_slots) accum[i] += grad[i] * grad[i];
-    T update = grad[i] / (impl_sqrt(accum[i]) + epsilon[0]);
+    T update = grad[i] / (Eigen::numext::sqrt(accum[i]) + epsilon[0]);
     var[i] -= lr[0] * update;
   }
 }
@@ -374,10 +296,11 @@ __global__ __launch_bounds__(1024) void ApplyProximalAdagradKernel(
     const T* l2, const T* grad) {
   GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
     accum[i] += grad[i] * grad[i];
-    T lr_scaled = lr[0] * impl_rsqrt(accum[i]);
+    T lr_scaled = lr[0] * Eigen::numext::rsqrt(accum[i]);
     T prox_var = var[i] - grad[i] * lr_scaled;
     var[i] = impl_sign(prox_var) *
-             max(impl_fabs(prox_var) - lr_scaled * max(l1[0], T(0.f)), T(0.f)) /
+             max(Eigen::numext::abs(prox_var) - lr_scaled * max(l1[0], T(0.f)),
+                 T(0.f)) /
              (T(1.f) + l2[0] * lr_scaled);
   }
 }
@@ -391,8 +314,8 @@ __global__ __launch_bounds__(1024) void ApplyAdadeltaKernel(
   T lr = plr[0];
   GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
     accum[i] = accum[i] * rho + grad[i] * grad[i] * (T(1.0) - rho);
-    T update =
-        impl_sqrt(accum_update[i] + eps) * grad[i] * impl_rsqrt(accum[i] + eps);
+    T update = Eigen::numext::sqrt(accum_update[i] + eps) * grad[i] *
+               Eigen::numext::rsqrt(accum[i] + eps);
     var[i] -= update * lr;
     accum_update[i] = accum_update[i] * rho + update * update * (T(1.0) - rho);
   }
@@ -408,7 +331,8 @@ __global__ __launch_bounds__(1024) void ApplyRMSPropKernel(
   T momentum = pmomentum[0];
   GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
     ms[i] += (T(1.0) - rho) * (grad[i] * grad[i] - ms[i]);
-    mom[i] = mom[i] * momentum + lr * grad[i] * impl_rsqrt(eps + ms[i]);
+    mom[i] =
+        mom[i] * momentum + lr * grad[i] * Eigen::numext::rsqrt(eps + ms[i]);
     var[i] -= mom[i];
   }
 }
@@ -426,7 +350,7 @@ __global__ __launch_bounds__(1024) void ApplyCenteredRMSPropKernel(
     ms[i] += one_minus_rho * (grad[i] * grad[i] - ms[i]);
     mg[i] += one_minus_rho * (grad[i] - mg[i]);
     T denom = (ms[i] - mg[i] * mg[i]) + eps;
-    mom[i] = mom[i] * momentum + lr * grad[i] * impl_rsqrt(denom);
+    mom[i] = mom[i] * momentum + lr * grad[i] * Eigen::numext::rsqrt(denom);
     var[i] -= mom[i];
   }
 }

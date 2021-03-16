@@ -176,8 +176,7 @@ class EventForest {
 
   void ConnectTfDataEvents();
 
-  void GroupEvents(
-      const std::vector<int64>& user_defined_root_event_types = {});
+  void GroupEvents();
 
   const EventNodeMap& GetEventNodeMap() const { return event_node_map_; }
 
@@ -198,9 +197,6 @@ class EventForest {
   // Connects events across threads according to connect_info_list.
   void ConnectInterThread(
       const std::vector<InterThreadConnectInfo>& connect_info_list);
-
-  void ProcessUserDefinedRootEvents(
-      const std::vector<int64 /*EventType*/>& user_defined_root_event_types);
 
   // Creates event groups and populates group_metadata_map. If a TF loop is
   // used, each TF loop iteration becomes a root. Otherwise, top root events

@@ -74,6 +74,8 @@
     *   Add `tf.data.experimental.AutoShardingPolicy.HINT` which can be used
         to provide hints to tf.distribute-based auto-sharding as to where in
         the input pipeline to insert sharding transformations.
+    *   Make tf.data.Options persistent across `tf.function` and `GraphDef`
+        boundaries.
 *   XLA compilation:
     *   `tf.function(experimental_compile=True)` has become a stable API,
         renamed `tf.function(jit_compile=True)`.
@@ -126,6 +128,8 @@
     *  Deprecate `tf.compat.v1.lite.experimental.get_potentially_supported_ops`.
        Use `tf.lite.TFLiteConverter` directly to check whether a model is
        convertible.
+    * Add support to select one of three different built-in op resolvers to be
+      used in Python Interpreter API.
 
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,
@@ -174,6 +178,11 @@
         `tf.config.experimental.mlir_bridge_rollout` to enable a \"safe\" mode.
         This runs the MLIR bridge only when an analysis of the graph only when
         an analysis of the graph determines that it is safe to run.
+    *   Add new enum value 'MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED' to
+        `tf.config.experimental.mlir_bridge_rollout` to enable a fallback for
+        the MLIR bridge in a \"safe\" mode. This runs the MLIR bridge in a
+        FallbackEnabled mode when an analysis of the graph determines
+        that the graph does not have unsupported features.
 
 * Other
     *   Adding show_debug_info to mlir.convert_graph_def and

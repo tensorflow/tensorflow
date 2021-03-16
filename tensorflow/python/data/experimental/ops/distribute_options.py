@@ -99,22 +99,22 @@ class ExternalStatePolicy(enum.Enum):
   def _to_proto(cls, obj):
     """Convert enum to proto."""
     if obj == cls.IGNORE:
-      return dataset_options_pb2.ExternalStatePolicy.IGNORE
+      return dataset_options_pb2.ExternalStatePolicy.POLICY_IGNORE
     if obj == cls.FAIL:
-      return dataset_options_pb2.ExternalStatePolicy.FAIL
+      return dataset_options_pb2.ExternalStatePolicy.POLICY_FAIL
     if obj == cls.WARN:
-      return dataset_options_pb2.ExternalStatePolicy.WARN
+      return dataset_options_pb2.ExternalStatePolicy.POLICY_WARN
     raise ValueError("%s._to_proto() is called with undefined enum %s." %
                      (cls.__name__, obj.name))
 
   @classmethod
   def _from_proto(cls, pb):
     """Convert proto to enum."""
-    if pb == dataset_options_pb2.ExternalStatePolicy.IGNORE:
+    if pb == dataset_options_pb2.ExternalStatePolicy.POLICY_IGNORE:
       return cls.IGNORE
-    if pb == dataset_options_pb2.ExternalStatePolicy.FAIL:
+    if pb == dataset_options_pb2.ExternalStatePolicy.POLICY_FAIL:
       return cls.FAIL
-    if pb == dataset_options_pb2.ExternalStatePolicy.WARN:
+    if pb == dataset_options_pb2.ExternalStatePolicy.POLICY_WARN:
       return cls.WARN
     raise ValueError("%s._from_proto() is called with undefined enum %s." %
                      (cls.__name__, pb))

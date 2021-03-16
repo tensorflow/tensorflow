@@ -1714,23 +1714,6 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
           },
           run_eagerly=testing_utils.should_run_eagerly())
 
-  @keras_parameterized.run_with_all_model_types
-  @keras_parameterized.run_all_keras_modes
-  def test_sparse_op_with_op_layer(self):
-    with testing_utils.use_keras_tensors_scope(False):
-      # The meaningful error is only raised w/o KerasTensors.
-      # It's tricky to raise the exact same error w/ KerasTensors enabled.
-      # We may want to add dispatching to the sparse_ops and have dispatch
-      # trigger on attributeerror so that these ops fully work w/ KerasTensors.
-      # This may need to wait until dispatch v2
-      inputs = layers_module.Input(
-          shape=(2,), sparse=True, name='sparse_tensor')
-      output = sparse_ops.sparse_minimum(inputs, inputs)
-      with self.assertRaisesRegex(
-          ValueError, 'not supported by Keras automatic '
-          'op wrapping'):
-        training_module.Model([inputs], output)
-
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_predict_error_with_empty_x(self):
     inputs = layers_module.Input(shape=(2,))

@@ -523,25 +523,14 @@ StatusOr<Shape> GetConsistentInputShapeForRootSlices(
 }  // namespace
 
 IrEmitterUnnested::IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
-                                     const HloComputation* hlo_computation,
                                      IrEmitterContext* ir_emitter_context)
     : IrEmitter(hlo_module_config, ir_emitter_context, /*is_nested=*/false) {}
 
 StatusOr<std::unique_ptr<IrEmitterUnnested>> IrEmitterUnnested::Create(
     const HloModuleConfig& hlo_module_config,
-    const HloComputation* hlo_computation,
     IrEmitterContext* ir_emitter_context) {
-  auto emitter = std::unique_ptr<IrEmitterUnnested>(new IrEmitterUnnested(
-      hlo_module_config, hlo_computation, ir_emitter_context));
-  if (hlo_computation) {
-    emitter->mlir_scratch_module_.emplace(mlir::ModuleOp::create(
-        mlir::Builder(ir_emitter_context->mlir_context()).getUnknownLoc()));
-    emitter->lhlo_scratch_emitter_.emplace(
-        emitter->ir_emitter_context_->buffer_assignment(), *hlo_computation,
-        emitter->mlir_scratch_module_->get());
-    TF_RETURN_IF_ERROR(emitter->lhlo_scratch_emitter_->Initialize());
-  }
-  return std::move(emitter);
+  return std::unique_ptr<IrEmitterUnnested>(
+      new IrEmitterUnnested(hlo_module_config, ir_emitter_context));
 }
 
 Status IrEmitterUnnested::Postprocess(HloInstruction* hlo) {
@@ -792,8 +781,52 @@ Status IrEmitterUnnested::EmitConstant(MlirEmitterInput mlir_input) {
 }
 
 Status IrEmitterUnnested::HandleConditional(HloInstruction* conditional) {
-  TF_ASSIGN_OR_RETURN(auto thunk, BuildConditionalThunk(conditional));
-  AddThunkToThunkSequence(std::move(thunk));
+  TF_ASSIGN_OR_RETURN(auto mlir_input, GetMlirEmitterInput(conditional));
+  return EmitConditionalFromMlir(mlir_input);
+}
+
+static ConditionalThunkConfig GetConditionalThunkConfig(
+    mlir::lmhlo::CaseOp op, std::vector<ThunkSequence> branch_thunk_sequences) {
+  ConditionalThunkConfig config;
+  config.branch_index_is_bool =
+      op.index().getType().cast<mlir::ShapedType>().getElementType().isInteger(
+          /*width=*/1);
+  config.branch_count = op.branches().size();
+  // Pass nullptr as the HloInstruction* to the branch_thunks
+  // constructors because these SequentialThunks are logically "part of"
+  // this ConditionalThunk, and shouldn't be profiled separately from it.
+  config.branch_thunks.reserve(branch_thunk_sequences.size());
+  for (auto& branch_thunk_sequence : branch_thunk_sequences) {
+    config.branch_thunks.emplace_back(new SequentialThunk(
+        Thunk::ThunkInfo(), std::move(branch_thunk_sequence)));
+  }
+  return config;
+}
+
+Status IrEmitterUnnested::EmitConditionalFromMlir(MlirEmitterInput mlir_input) {
+  auto conditional = mlir::cast<mlir::lmhlo::CaseOp>(mlir_input.op);
+
+  std::vector<ThunkSequence> branch_thunks;
+
+  int branch_count = conditional.branches().size();
+  branch_thunks.reserve(branch_count);
+
+  for (int j = 0; j < branch_count; ++j) {
+    mlir::Region* branch_computation = &conditional.branches()[j];
+    TF_ASSIGN_OR_RETURN(
+        auto ir_emitter,
+        IrEmitterUnnested::Create(hlo_module_config_, ir_emitter_context_));
+    TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(branch_computation));
+    branch_thunks.push_back(std::move(*ir_emitter->ConsumeThunkSequence()));
+  }
+
+  ConditionalThunkConfig config =
+      GetConditionalThunkConfig(conditional, std::move(branch_thunks));
+
+  TF_ASSIGN_OR_RETURN(auto slice,
+                      GetAllocationSliceForMlir(conditional.index()));
+  AddThunkToThunkSequence(std::unique_ptr<Thunk>(new ConditionalThunk(
+      mlir_input.thunk_info, std::move(config), slice, {})));
   return Status::OK();
 }
 
@@ -1989,9 +2022,9 @@ Status IrEmitterUnnested::EmitFusionFromMlir(MlirEmitterInput mlir_input) {
             });
       }
 
-      TF_ASSIGN_OR_RETURN(
-          const auto dim_numbers,
-          lhlo_scratch_emitter_->GetScatterDimensionNumbers(root));
+      TF_ASSIGN_OR_RETURN(const auto dim_numbers,
+                          mlir::LhloDialectEmitter::GetScatterDimensionNumbers(
+                              root, fusion_op.getContext()));
 
       ScatterDescriptor desc;
       desc.name = IrName(root);
@@ -2440,19 +2473,31 @@ Status IrEmitterUnnested::EmitSelectAndScatterFromMlir(
 }
 
 Status IrEmitterUnnested::HandleWhile(HloInstruction* xla_while) {
-  HloComputation* condition = xla_while->while_condition();
-  TF_RET_CHECK(ShapeUtil::IsScalar(condition->root_instruction()->shape()) &&
-               condition->root_instruction()->shape().element_type() == PRED)
+  TF_ASSIGN_OR_RETURN(auto mlir_input, GetMlirEmitterInput(xla_while));
+  return EmitWhileFromMlir(mlir_input);
+}
+
+Status IrEmitterUnnested::EmitWhileFromMlir(MlirEmitterInput mlir_input) {
+  auto while_op = mlir::cast<mlir::lmhlo::WhileOp>(mlir_input.op);
+
+  auto cond_result = GetHloOutputs(while_op);
+  TF_RET_CHECK(cond_result.size() == 1);
+  TF_RET_CHECK(cond_result[0]
+                   .getType()
+                   .cast<mlir::ShapedType>()
+                   .getElementType()
+                   .isInteger(/*width=*/1))
       << "While condition computation must return bool";
-  // Build ForThunk for conformant while loops, otherwise build WhileThunk.
-  auto config = xla_while->backend_config<WhileLoopBackendConfig>();
-  if (config.ok() && config.ValueOrDie().has_known_trip_count()) {
+
+  //  Build ForThunk for conformant while loops, otherwise build WhileThunk.
+  if (while_op.trip_count()) {
     TF_ASSIGN_OR_RETURN(
         auto thunk,
-        BuildForThunk(xla_while, config.ValueOrDie().known_trip_count().n()));
+        BuildForThunk(while_op, mlir_input.thunk_info, *while_op.trip_count()));
     AddThunkToThunkSequence(std::move(thunk));
   } else {
-    TF_ASSIGN_OR_RETURN(auto thunk, BuildWhileThunk(xla_while));
+    TF_ASSIGN_OR_RETURN(auto thunk,
+                        BuildWhileThunk(while_op, mlir_input.thunk_info));
     AddThunkToThunkSequence(std::move(thunk));
   }
   return Status::OK();
@@ -3815,65 +3860,6 @@ Status CheckHloBuffersShareAllocation(
   return Status::OK();
 }
 
-// Checks that all buffers used during while loop iteration share the same
-// buffer allocation. This includes buffers for while result, while init
-// operand, condition parameter, body parameter and body result.
-// Returns OK on success, error status otherwise.
-Status CheckWhileBuffersShareAllocation(
-    const HloInstruction* xla_while,
-    const BufferAssignment& buffer_assignment) {
-  return ShapeUtil::ForEachSubshapeWithStatus(
-      xla_while->shape(),
-      [&](const Shape& /*subshape*/, const ShapeIndex& index) -> Status {
-        const HloInstruction* condition_parameter =
-            xla_while->while_condition()->parameter_instruction(0);
-        const HloComputation* body = xla_while->while_body();
-        const HloInstruction* body_parameter = body->parameter_instruction(0);
-        const HloInstruction* body_result = body->root_instruction();
-        TF_RETURN_IF_ERROR(CheckHloBuffersShareAllocation(
-            xla_while, xla_while->operand(0), index, buffer_assignment));
-        TF_RETURN_IF_ERROR(CheckHloBuffersShareAllocation(
-            xla_while, condition_parameter, index, buffer_assignment));
-        TF_RETURN_IF_ERROR(CheckHloBuffersShareAllocation(
-            xla_while, body_parameter, index, buffer_assignment));
-        TF_RETURN_IF_ERROR(CheckHloBuffersShareAllocation(
-            xla_while, body_result, index, buffer_assignment));
-        return Status::OK();
-      });
-}
-
-// Checks that the buffers used in a conditional instruction are shared with the
-// operands and result as follows:
-//   * The result buffer of the conditional should share the allocation with the
-//     result buffers of each branch computation.
-//   * The buffer of operand b+1 should share the allocation with the buffer of
-//     the parameter 0 instruction of the b'th computation.
-Status CheckConditionalBuffersShareAllocation(
-    const HloInstruction* conditional,
-    const BufferAssignment& buffer_assignment) {
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      conditional->shape(),
-      [&](const Shape& /*subshape*/, const ShapeIndex& index) -> Status {
-        for (auto branch_computation : conditional->branch_computations()) {
-          TF_RETURN_IF_ERROR(CheckHloBuffersShareAllocation(
-              conditional, branch_computation->root_instruction(), index,
-              buffer_assignment));
-        }
-        return Status::OK();
-      }));
-  for (int j = 0; j < conditional->branch_count(); ++j) {
-    TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-        conditional->operand(j + 1)->shape(),
-        [&](const Shape& /*subshape*/, const ShapeIndex& index) -> Status {
-          return CheckHloBuffersShareAllocation(
-              conditional->operand(j + 1),
-              conditional->branch_computation(j)->parameter_instruction(0),
-              index, buffer_assignment);
-        }));
-  }
-  return Status::OK();
-}
-
 Status AcceptMaybeOrdered(HloComputation* computation,
                           IrEmitterUnnested* emitter,
                           const BufferAssignment& buffer_assignment) {
@@ -3891,109 +3877,50 @@ Status AcceptMaybeOrdered(HloComputation* computation,
 }  // namespace
 
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildWhileThunk(
-    const HloInstruction* hlo) {
-  // Check that all while-related buffers share an allocation.
-  TF_CHECK_OK(CheckWhileBuffersShareAllocation(
-      hlo, ir_emitter_context_->buffer_assignment()));
-
+    mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info) {
   // Generate thunk sequence for while 'condition'.
-  HloComputation* condition = hlo->while_condition();
-  TF_ASSIGN_OR_RETURN(auto ir_emitter_condition,
-                      IrEmitterUnnested::Create(hlo_module_config_, condition,
-                                                ir_emitter_context_));
+  mlir::Region* condition = &while_op.cond();
+  TF_ASSIGN_OR_RETURN(
+      auto ir_emitter_condition,
+      IrEmitterUnnested::Create(hlo_module_config_, ir_emitter_context_));
 
-  TF_RETURN_IF_ERROR(
-      AcceptMaybeOrdered(condition, ir_emitter_condition.get(),
-                         ir_emitter_context_->buffer_assignment()));
+  TF_RETURN_IF_ERROR(ir_emitter_condition->EmitLmhloRegion(condition));
 
   // Generate thunk sequence for while 'body'.
-  HloComputation* body = hlo->while_body();
+  mlir::Region* body = &while_op.body();
   TF_ASSIGN_OR_RETURN(
       auto ir_emitter_body,
-      IrEmitterUnnested::Create(hlo_module_config_, body, ir_emitter_context_));
-  TF_RETURN_IF_ERROR(AcceptMaybeOrdered(
-      body, ir_emitter_body.get(), ir_emitter_context_->buffer_assignment()));
+      IrEmitterUnnested::Create(hlo_module_config_, ir_emitter_context_));
 
-  const auto* index_map = ir_emitter_context_->profile_index_map();
-  absl::optional<size_t> condition_profile_index, body_profile_index;
-  if (index_map) {
-    condition_profile_index = index_map->GetProfileIndexFor(*condition);
-    body_profile_index = index_map->GetProfileIndexFor(*body);
-  }
+  TF_RETURN_IF_ERROR(ir_emitter_body->EmitLmhloRegion(body));
 
-  return std::unique_ptr<Thunk>(new WhileThunk(
-      GetThunkInfo(hlo),
-      GetAllocationSlice(*condition->root_instruction()),  // cond result
-      ir_emitter_condition->ConsumeThunkSequence(),
-      ir_emitter_body->ConsumeThunkSequence(), condition_profile_index,
-      body_profile_index));
+  // Extract the condition value from the last op (exlucidng the terminator op)
+  // in the condition region.
+  auto cond_result = GetHloOutputs(while_op);
+  TF_RET_CHECK(cond_result.size() == 1);
+  TF_ASSIGN_OR_RETURN(auto cond_result_slice,
+                      GetAllocationSliceForMlir(cond_result[0]));
+
+  return std::unique_ptr<Thunk>(
+      new WhileThunk(thunk_info, cond_result_slice,
+                     ir_emitter_condition->ConsumeThunkSequence(),
+                     ir_emitter_body->ConsumeThunkSequence()));
 }
 
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildForThunk(
-    const HloInstruction* hlo, const int64 loop_limit) {
-  // Check that all while-related buffers share an allocation.
-  TF_CHECK_OK(CheckWhileBuffersShareAllocation(
-      hlo, ir_emitter_context_->buffer_assignment()));
-
+    mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info,
+    const int64 loop_limit) {
   // Generate thunk sequence for while 'body' (will be used a For loop body).
-  HloComputation* body = hlo->while_body();
+  mlir::Region* body = &while_op.body();
   TF_ASSIGN_OR_RETURN(
       auto ir_emitter_body,
-      IrEmitterUnnested::Create(hlo_module_config_, body, ir_emitter_context_));
-  TF_RETURN_IF_ERROR(AcceptMaybeOrdered(
-      body, ir_emitter_body.get(), ir_emitter_context_->buffer_assignment()));
-
-  const auto* index_map = ir_emitter_context_->profile_index_map();
-  absl::optional<size_t> body_profile_index;
-  if (index_map) {
-    body_profile_index = index_map->GetProfileIndexFor(*body);
+      IrEmitterUnnested::Create(hlo_module_config_, ir_emitter_context_));
+  for (mlir::Operation& op : llvm::make_early_inc_range(body->front())) {
+    TF_RETURN_IF_ERROR(ir_emitter_body->EmitOp(MlirEmitterInput{&op}));
   }
 
   return std::unique_ptr<Thunk>(new ForThunk(
-      GetThunkInfo(hlo), loop_limit, ir_emitter_body->ConsumeThunkSequence(),
-      body_profile_index));
-}
-
-StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildConditionalThunk(
-    const HloInstruction* hlo) {
-  // Check that the buffers used in conditional are shared with the operands and
-  // result appropriately.
-  TF_CHECK_OK(CheckConditionalBuffersShareAllocation(
-      hlo, ir_emitter_context_->buffer_assignment()));
-
-  std::vector<BufferAllocation::Slice> branch_operands;
-  std::vector<ThunkSequence> branch_thunks;
-  std::vector<absl::optional<size_t>> branch_profile_indices;
-
-  int branch_count = hlo->branch_count();
-  branch_thunks.reserve(branch_count);
-  branch_profile_indices.reserve(branch_count);
-
-  const auto* index_map = ir_emitter_context_->profile_index_map();
-
-  for (int j = 0; j < branch_count; ++j) {
-    branch_operands.emplace_back(GetAllocationSlice(*hlo->operand(j + 1)));
-    HloComputation* branch_computation = hlo->branch_computation(j);
-    TF_ASSIGN_OR_RETURN(
-        auto ir_emitter,
-        IrEmitterUnnested::Create(hlo_module_config_, branch_computation,
-                                  ir_emitter_context_));
-    TF_CHECK_OK(AcceptMaybeOrdered(branch_computation, ir_emitter.get(),
-                                   ir_emitter_context_->buffer_assignment()));
-    branch_thunks.push_back(std::move(*ir_emitter->ConsumeThunkSequence()));
-
-    absl::optional<size_t> profile_index;
-    if (index_map) {
-      profile_index = index_map->GetProfileIndexFor(*branch_computation);
-    }
-    branch_profile_indices.push_back(profile_index);
-  }
-
-  ConditionalThunkConfig config = GetConditionalThunkConfig(
-      hlo, std::move(branch_thunks), std::move(branch_profile_indices));
-  return std::unique_ptr<Thunk>(new ConditionalThunk(
-      GetThunkInfo(hlo), std::move(config),
-      GetAllocationSlice(*hlo->operand(0)), branch_operands));
+      thunk_info, loop_limit, ir_emitter_body->ConsumeThunkSequence()));
 }
 
 Status IrEmitterUnnested::EmitTargetElementLoop(
@@ -5892,15 +5819,141 @@ Thunk::ThunkInfo IrEmitterUnnested::GetThunkInfo(
 }
 
 Status IrEmitterUnnested::EmitOp(MlirEmitterInput mlir_input) {
+  if (mlir::isa<mlir::ConstantOp, mlir::ViewOp, mlir::MemRefReinterpretCastOp,
+                mlir::ReturnOp, mlir::lmhlo::TerminatorOp>(mlir_input.op)) {
+    return Status::OK();
+  }
+
+  if (mlir::isa<mlir::GetGlobalMemrefOp>(mlir_input.op)) {
+    return EmitConstant(mlir_input);
+  }
+
+  if (auto call = mlir::dyn_cast<mlir::lmhlo::CustomCallOp>(mlir_input.op)) {
+    if (call.call_target_name() == "PadToStatic") {
+      return EmitPadToStaticFromMlir(mlir_input);
+    }
+    if (call.call_target_name() == "SliceToDynamic") {
+      return EmitSliceToDynamicFromMlir(mlir_input);
+    }
+    return EmitCustomCallThunkFromMlir(mlir_input);
+  }
+
+  if (mlir::isa<mlir::lmhlo_gpu::GEMMOp, mlir::lmhlo_gpu::GEMM_BiasOp>(
+          mlir_input.op)) {
+    return EmitGemmThunkFromMlir(mlir_input);
+  }
+
+  if (mlir::isa<mlir::lmhlo_gpu::ConvForwardOp,
+                mlir::lmhlo_gpu::ConvForwardFusedOp,
+                mlir::lmhlo_gpu::ConvForwardFusedSideInputOp,
+                mlir::lmhlo_gpu::ConvBackwardFilterOp,
+                mlir::lmhlo_gpu::ConvBackwardInputOp>(mlir_input.op)) {
+    return EmitConvolutionThunkFromMlir(mlir_input);
+  }
+
+  if (mlir::isa<mlir::lmhlo_gpu::BatchNormTrainingOp,
+                mlir::lmhlo_gpu::BatchNormInferenceOp,
+                mlir::lmhlo_gpu::BatchNormGradOp>(mlir_input.op)) {
+    return EmitBatchNormThunkFromMlir(mlir_input);
+  }
+
+#if GOOGLE_CUDA
+  if (mlir::isa<mlir::lmhlo_gpu::CholeskyOp>(mlir_input.op)) {
+    return EmitCholeskyThunkFromMlir(mlir_input);
+  }
+#endif  // GOOGLE_CUDA
+
+  if (mlir::isa<mlir::lmhlo::FftOp>(mlir_input.op)) {
+    return EmitFftThunkFromMlir(mlir_input);
+  }
+
+  if (mlir::isa<mlir::lmhlo::TriangularSolveOp>(mlir_input.op)) {
+    return EmitTriangularSolveFromMlir(mlir_input);
+  }
+
+  if (mlir::isa<mlir::lmhlo::FusionOp>(mlir_input.op)) {
+    return EmitFusionFromMlir(mlir_input);
+  }
+
+  if (mlir::isa<mlir::lmhlo::CopyOp>(mlir_input.op)) {
+    return EmitCopyFromMlir(mlir_input);
+  }
+
+  if (mlir::isa<mlir::lmhlo::ReduceOp>(mlir_input.op)) {
+    return EmitReduceFromMlir(mlir_input);
+  }
+
+  if (mlir::isa<mlir::lmhlo::SelectAndScatterOp>(mlir_input.op)) {
+    return EmitSelectAndScatterFromMlir(mlir_input);
+  }
+
+  if (mlir::isa<mlir::lmhlo::RngGetAndUpdateStateOp>(mlir_input.op)) {
+    return EmitRngGetAndUpdateState(mlir_input);
+  }
+
+  if (mlir::isa<mlir::lmhlo::ScatterOp>(mlir_input.op)) {
+    return EmitScatterFromMlir(mlir_input);
+  }
+
   if (mlir::isa<mlir::lmhlo::SortOp>(mlir_input.op)) {
     return EmitSortFromMlir(mlir_input);
   }
+
+  if (mlir::isa<mlir::lmhlo::ReplicaIdOp>(mlir_input.op)) {
+    return EmitReplicaOrPartitionIdFromMlir<ReplicaIdThunk,
+                                            mlir::lmhlo::ReplicaIdOp>(
+        mlir_input);
+  }
+
+  if (mlir::isa<mlir::lmhlo::PartitionIdOp>(mlir_input.op)) {
+    return EmitReplicaOrPartitionIdFromMlir<PartitionIdThunk,
+                                            mlir::lmhlo::PartitionIdOp>(
+        mlir_input);
+  }
+
   if (mlir::isa<mlir::lmhlo::CollectivePermuteOp>(mlir_input.op)) {
     return EmitCollectivePermuteFromMlir(mlir_input);
   }
-  LOG(FATAL)
-      << "This function is for test only, and the op is not implemented: "
-      << MlirToString(mlir_input.op);
+
+  if (mlir::isa<mlir::lmhlo::AllGatherOp>(mlir_input.op)) {
+    return EmitNcclThunkFromMlir<NcclAllGatherThunk, mlir::lmhlo::AllGatherOp>(
+        mlir_input);
+  }
+
+  if (mlir::isa<mlir::lmhlo::AllReduceOp>(mlir_input.op)) {
+    return EmitNcclThunkFromMlir<NcclAllReduceThunk, mlir::lmhlo::AllReduceOp>(
+        mlir_input);
+  }
+
+  if (mlir::isa<mlir::lmhlo::AllToAllOp>(mlir_input.op)) {
+    return EmitNcclThunkFromMlir<NcclAllToAllThunk, mlir::lmhlo::AllToAllOp>(
+        mlir_input);
+  }
+
+  if (mlir::isa<mlir::lmhlo::InfeedOp>(mlir_input.op)) {
+    return EmitInfeedFromMlir(mlir_input);
+  }
+
+  if (mlir::isa<mlir::lmhlo::OutfeedOp>(mlir_input.op)) {
+    return EmitOutfeedFromMlir(mlir_input);
+  }
+
+  if (mlir::isa<mlir::lmhlo::CaseOp>(mlir_input.op)) {
+    return EmitConditionalFromMlir(mlir_input);
+  }
+
+  if (mlir::isa<mlir::lmhlo::WhileOp>(mlir_input.op)) {
+    return EmitWhileFromMlir(mlir_input);
+  }
+
+  return EmitUsingElementalIrEmitter(mlir_input);
+}
+
+Status IrEmitterUnnested::EmitLmhloRegion(mlir::Region* region) {
+  for (mlir::Operation& op : llvm::make_early_inc_range(region->front())) {
+    TF_RETURN_IF_ERROR(EmitOp(MlirEmitterInput{&op}));
+  }
+  return Status::OK();
 }
 
 void MlirEmitterContext::SetOperation(mlir::Operation* op) {

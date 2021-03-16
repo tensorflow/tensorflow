@@ -264,7 +264,7 @@ tf_class {
   }
   member_method {
     name: "set_vocabulary"
-    argspec: "args=[\'self\', \'vocab\', \'idf_weights\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'vocabulary\', \'idf_weights\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "set_weights"
@@ -276,6 +276,10 @@ tf_class {
   }
   member_method {
     name: "vocab_size"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "vocabulary_size"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {

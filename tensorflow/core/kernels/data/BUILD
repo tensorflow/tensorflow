@@ -491,7 +491,6 @@ tf_kernel_library(
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
     ],
 )

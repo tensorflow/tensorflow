@@ -138,7 +138,6 @@ class IrEmitterUnnested : public IrEmitter,
 
   static StatusOr<std::unique_ptr<IrEmitterUnnested>> Create(
       const HloModuleConfig& hlo_module_config,
-      const HloComputation* hlo_computation,
       IrEmitterContext* ir_emitter_context);
 
   // Transfers the ownship of thunk_sequence_ out.
@@ -160,6 +159,7 @@ class IrEmitterUnnested : public IrEmitter,
   Status EmitCopyFromMlir(MlirEmitterInput input);
 
   Status HandleConditional(HloInstruction* conditional) override;
+  Status EmitConditionalFromMlir(MlirEmitterInput mlir_input);
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
   Status EmitCustomCallFromMlir(MlirEmitterInput input);
@@ -183,6 +183,7 @@ class IrEmitterUnnested : public IrEmitter,
   Status EmitSelectAndScatterFromMlir(MlirEmitterInput mlir_input);
   Status HandleTuple(HloInstruction* tuple) override;
   Status HandleWhile(HloInstruction* xla_while) override;
+  Status EmitWhileFromMlir(MlirEmitterInput mlir_input);
   Status HandleInfeed(HloInstruction* xla_infeed) override;
   Status EmitInfeedFromMlir(MlirEmitterInput input);
   Status HandleOutfeed(HloInstruction* outfeed) override;
@@ -214,6 +215,7 @@ class IrEmitterUnnested : public IrEmitter,
   Status EmitCollectivePermuteFromMlir(MlirEmitterInput input);
 
   Status EmitOp(MlirEmitterInput mlir_input);
+  Status EmitLmhloRegion(mlir::Region* region);
 
   Status EmitTargetElementLoop(
       const HloInstruction& hlo,
@@ -230,7 +232,6 @@ class IrEmitterUnnested : public IrEmitter,
 
  private:
   IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
-                    const HloComputation* hlo_computation,
                     IrEmitterContext* ir_emitter_context);
 
   // Add a owning Thunk object to the thunk sequence.
@@ -674,18 +675,20 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction 'hlo'.
-  StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(const HloInstruction* hlo);
+  StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(
+      mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info);
 
   // Returns a ForThunk which executes 'loop_limit' invocations of a thunk
   // sequence from the 'body' sub-computation of the while instruction 'hlo'.
-  StatusOr<std::unique_ptr<Thunk>> BuildForThunk(const HloInstruction* hlo,
-                                                 const int64 loop_limit);
+  StatusOr<std::unique_ptr<Thunk>> BuildForThunk(
+      mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info,
+      const int64 loop_limit);
 
   // Returns a ConditionalThunk which executes the thunk sequence for the
   // 'branch_computation' corresponding to the predicate/branch_index of the
   // given conditional instruction.
   StatusOr<std::unique_ptr<Thunk>> BuildConditionalThunk(
-      const HloInstruction* hlo);
+      const HloInstruction* conditional);
 
   // Emits current thread id with the given type.
   //

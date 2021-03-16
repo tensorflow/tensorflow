@@ -268,16 +268,22 @@ PYBIND11_MODULE(xla_extension, m) {
   device_array_base.def(py::init<>());
 
   py::class_<PyBuffer, DeviceArrayBase, std::unique_ptr<PyBuffer>> buffer(
-      m, "Buffer");
+      m, "DeviceArray");
   // TODO(phawkins): alias for backward compatibility. Remove after JAX no
   // longer uses this name.
   m.add_object("PyLocalBuffer", buffer);
+  m.add_object("Buffer", buffer);
   buffer
       .def_property_readonly("__array_priority__",
                              [](py::object) { return 100; })
-      .def_property("_device", &PyBuffer::GetStickyDevice,
-                    &PyBuffer::SetStickyDevice)
+      .def_property(
+          "_device",
+          [](const PyBuffer& buffer) -> ClientAndPtr<PjRtDevice> {
+            return WrapWithClient(buffer.client(), buffer.sticky_device());
+          },
+          &PyBuffer::set_sticky_device)
       .def_property("aval", &PyBuffer::GetAval, &PyBuffer::SetAval)
+      .def_property("weak_type", &PyBuffer::weak_type, &PyBuffer::set_weak_type)
       .def_property_readonly("_lazy_expr",
                              [](py::object buffer) { return py::none(); })
       .def_property_readonly("device_buffer",
@@ -322,6 +328,7 @@ PYBIND11_MODULE(xla_extension, m) {
              return buffer->AsNumPyArray(buffer_obj);
            })
       .def("xla_shape", &PyBuffer::shape)
+      .def("xla_dynamic_shape", &PyBuffer::xla_dynamic_shape)
       .def_property_readonly("client", &PyBuffer::client)
       .def("device", &PyBuffer::device)
       .def("platform", &PyBuffer::platform_name)

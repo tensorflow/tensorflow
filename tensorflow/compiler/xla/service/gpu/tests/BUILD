@@ -545,9 +545,7 @@ xla_test(
 
 tf_cc_test(
     name = "sorting_test",
-    srcs = [
-        "sorting_test.cc",
-    ],
+    srcs = ["sorting_test.cc"],
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
@@ -578,13 +576,10 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/compiler/xla/service/gpu:gpu_device_info",
-        "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
         "//tensorflow/compiler/xla/service/gpu:target_constants",
-        "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/tools:hlo_module_loader",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "@llvm-project//llvm:Target",
     ],
 )
 

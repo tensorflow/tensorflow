@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/env.h"
 
 // Tests cross-GPU operations.
 //
@@ -42,7 +43,7 @@ class CollectiveOpsTest : public HloTestBase {
   static void SetUpTestSuite() {
     // Not needed structly, since this test exercises cross replica collective
     // permute which does not use NCCL. But keeping it here for testing.
-    setenv("NCCL_LAUNCH_MODE", "PARALLEL", /*replace=*/1);
+    tensorflow::setenv("NCCL_LAUNCH_MODE", "PARALLEL", /*overwrite=*/1);
     HloTestBase::SetUpTestSuite();
   }
 

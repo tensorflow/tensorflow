@@ -140,7 +140,8 @@ INSTANTIATE_TEST_SUITE_P(
          "deterministic: true "
          "optimization_options { map_vectorization { enabled: true }}"},
         // Values are enums.
-        {"external_state_policy: IGNORE", "external_state_policy: FAIL",
-         "external_state_policy: IGNORE"}}));
+        {"external_state_policy: POLICY_IGNORE",
+         "external_state_policy: POLICY_FAIL",
+         "external_state_policy: POLICY_IGNORE"}}));
 
 }  // namespace tensorflow

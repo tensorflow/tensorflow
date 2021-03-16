@@ -597,12 +597,18 @@ OpFoldResult GetTupleElementOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(TupleOp op) {
-  SmallVector<Type, 8> operandTypes = {op.operand_type_begin(),
-                                       op.operand_type_end()};
-  auto expectedType = TupleType::get(op.getContext(), operandTypes);
-  if (op.getType() != expectedType) {
-    return op.emitOpError(llvm::formatv("has return type {0}, but expected {1}",
-                                        op.getType(), expectedType));
+  auto opType = op.getType().dyn_cast<TupleType>();
+  if (!opType) return op.emitOpError("tuple op with non-tuple result");
+  if (op.getNumOperands() != opType.size())
+    return op.emitOpError(
+        "number of operands to tuple expected to match number of types in "
+        "resultant tuple type");
+  for (auto it : llvm::enumerate(
+           llvm::zip_first(op.getOperandTypes(), opType.getTypes()))) {
+    if (std::get<0>(it.value()) != std::get<1>(it.value()))
+      return op.emitOpError("has return type mismatch at ")
+             << it.index() << "th value (" << std::get<0>(it.value())
+             << " != " << std::get<1>(it.value()) << ")";
   }
   return success();
 }
@@ -3151,19 +3157,11 @@ LogicalResult deriveShapeFromFirstOperand(
     return failure();
   }
   auto loc = op->getLoc();
-  SmallVector<Value, 4> shape_values;
-  shape_values.reserve(operand_type.getRank());
-  for (auto element : llvm::enumerate(operand_type.getShape())) {
-    if (element.value() == ShapedType::kDynamicSize) {
-      shape_values.push_back(
-          builder->create<DimOp>(loc, operand, element.index()));
-    } else {
-      shape_values.push_back(
-          builder->create<ConstantIndexOp>(loc, element.value()));
-    }
-  }
-  *reifiedReturnShapes = SmallVector<Value, 1>{
-      builder->create<tensor::FromElementsOp>(loc, shape_values)};
+  // Some users rely on the result type being a static shape.
+  auto shape_type =
+      RankedTensorType::get(operand_type.getRank(), builder->getIndexType());
+  reifiedReturnShapes->assign(
+      {builder->create<shape::ShapeOfOp>(loc, shape_type, operand)});
   return success();
 }
 

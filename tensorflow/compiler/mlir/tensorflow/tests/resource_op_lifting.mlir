@@ -359,6 +359,31 @@ func @while_cond(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32> {
 
 // -----
 
+// Tests that the pass reports error on non-aliasing WhileRegion input/output
+// resources. It cannot lift resource ops from such WhileRegion ops and should
+// fail with a helpful error message.
+
+func @fail_non_aliasing_resource_input_output() -> () {
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<f32>>>
+  "tf_device.cluster"() ( {
+    // expected-error@+1 {{Result #0 is not tied to arg #0 of the body}}
+    %1 = "tf.WhileRegion"(%0) ({
+      ^bb0(%carg0:tensor<*x!tf.resource<tensor<f32>>>):
+        %cond = "tf.SomeOp"() : () -> tensor<i1>
+        "tf.Yield"(%cond) : (tensor<i1>) -> ()
+      }, {
+      ^bb0(%carg0:tensor<*x!tf.resource<tensor<f32>>>):
+        %body = "tf.VarHandleOp"() {container = "c", shared_name = "v2"} : () -> tensor<*x!tf.resource<tensor<f32>>>
+        "tf.Yield"(%body) : (tensor<*x!tf.resource<tensor<f32>>>) -> ()
+    }) { is_stateless = false }
+         : (tensor<*x!tf.resource<tensor<f32>>>) -> (tensor<*x!tf.resource<tensor<f32>>>)
+    tf_device.return
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  return
+}
+
+// -----
+
 // Tests that pass reports error on unsupported ops in loop cond.
 
 func @cluster_with_loop() -> () {
