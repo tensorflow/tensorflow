@@ -23,7 +23,7 @@ class TFLiteMetrics(metrics_interface.TFLiteMetricsInterface):
   """TFLite metrics helper."""
 
   def __init__(self,
-               md5: Optional[Text] = None,
+               model_hash: Optional[Text] = None,
                model_path: Optional[Text] = None) -> None:
     pass
 
