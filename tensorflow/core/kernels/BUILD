@@ -368,6 +368,7 @@ cc_library(
     srcs = ["initializable_lookup_table.cc"],
     hdrs = ["initializable_lookup_table.h"],
     deps = [
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],

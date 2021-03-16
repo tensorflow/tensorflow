@@ -357,6 +357,16 @@ Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
                                    char delimiter, int32 key_index,
                                    int32 value_index, int64 offset, Env* env,
                                    InitializableLookupTable* table) {
+  return InitializeTableFromTextFile(filename, vocab_size, delimiter, key_index,
+                                     value_index, offset, env, absl::nullopt,
+                                     table);
+}
+
+Status InitializeTableFromTextFile(
+    const string& filename, int64 vocab_size, char delimiter, int32 key_index,
+    int32 value_index, int64 offset, Env* env,
+    absl::optional<InitializableLookupTable::InitializerAsGraphDefFunc>&& func,
+    InitializableLookupTable* table) {
   if (key_index == kLineNumber && table->key_dtype() != DT_INT64) {
     return errors::InvalidArgument(
         "Key index for line number requires table key dtype of int64, got ",
@@ -391,7 +401,7 @@ Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
   // initialized. The table shared name should contain the filename to
   // avoid trying to initialize the same table from the same file at the same
   // time.
-  Status s = table->Initialize(iter);
+  Status s = table->Initialize(iter, std::move(func));
   if (errors::IsFailedPrecondition(s) && table->is_initialized()) {
     LOG(INFO) << "Table trying to initialize from file " << filename
               << " is already initialized.";
