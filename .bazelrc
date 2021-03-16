@@ -193,8 +193,8 @@ build:cuda_clang --config=cuda
 build:cuda_clang --repo_env TF_CUDA_CLANG=1
 build:cuda_clang --@local_config_cuda//:cuda_compiler=clang
 
-# dbg config, as a shorthand for '--config=opt -c dbg'
-build:dbg --config=opt -c dbg
+# Debug config
+build:dbg -c dbg
 # for now, disable arm_neon. see: https://github.com/tensorflow/tensorflow/issues/33360
 build:dbg --cxxopt -DTF_LITE_DISABLE_X86_NEON
 # AWS SDK must be compiled in release mode. see: https://github.com/tensorflow/tensorflow/issues/37498
@@ -419,20 +419,6 @@ build:rbe_linux_cuda_base --config=tensorrt
 build:rbe_linux_cuda_base --repo_env=REMOTE_GPU_TESTING=1
 test:rbe_linux_cuda_base --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
 
-build:rbe_linux_cuda11.0_nvcc_base --config=rbe_linux_cuda_base
-build:rbe_linux_cuda11.0_nvcc_base --action_env=TF_CUDA_VERSION=11
-build:rbe_linux_cuda11.0_nvcc_base --action_env=TF_CUDNN_VERSION=8
-build:rbe_linux_cuda11.0_nvcc_base --host_crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_cuda//crosstool:toolchain"
-build:rbe_linux_cuda11.0_nvcc_base --crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_cuda//crosstool:toolchain"
-build:rbe_linux_cuda11.0_nvcc_base --extra_toolchains="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_cuda//crosstool:toolchain-linux-x86_64"
-build:rbe_linux_cuda11.0_nvcc_base --extra_execution_platforms="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_platform//:platform"
-build:rbe_linux_cuda11.0_nvcc_base --host_platform="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_platform//:platform"
-build:rbe_linux_cuda11.0_nvcc_base --platforms="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_platform//:platform"
-build:rbe_linux_cuda11.0_nvcc_base --repo_env=TF_CUDA_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_cuda"
-build:rbe_linux_cuda11.0_nvcc_base --repo_env=TF_TENSORRT_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_tensorrt"
-build:rbe_linux_cuda11.0_nvcc_base --repo_env=TF_NCCL_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_nccl"
-build:rbe_linux_cuda11.0_nvcc_py3.6 --config=rbe_linux_cuda11.0_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_python3.6"
-
 build:rbe_linux_cuda11.2_nvcc_base --config=rbe_linux_cuda_base
 build:rbe_linux_cuda11.2_nvcc_base --action_env=TF_CUDA_VERSION=11
 build:rbe_linux_cuda11.2_nvcc_base --action_env=TF_CUDNN_VERSION=8
@@ -450,7 +436,7 @@ build:rbe_linux_cuda11.2_nvcc_py3.7 --config=rbe_linux_cuda11.2_nvcc_base --repo
 build:rbe_linux_cuda11.2_nvcc_py3.8 --config=rbe_linux_cuda11.2_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.8"
 build:rbe_linux_cuda11.2_nvcc_py3.9 --config=rbe_linux_cuda11.2_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.9"
 
-# Map default to CUDA 11.2 for PY36 and greater.
+# Map default to CUDA 11.2.
 build:rbe_linux_cuda_nvcc_py36 --config=rbe_linux_cuda11.2_nvcc_py3.6
 build:rbe_linux_cuda_nvcc_py37 --config=rbe_linux_cuda11.2_nvcc_py3.7
 build:rbe_linux_cuda_nvcc_py38 --config=rbe_linux_cuda11.2_nvcc_py3.8
@@ -556,13 +542,13 @@ try-import %workspace%/.tf_configure.bazelrc
 try-import %workspace%/.bazelrc.user
 
 # Here are bazelrc configs for release builds
-build:release_base --config=opt
 build:release_base --config=v2
 build:release_base --distinct_host_configuration=false
 build:release_base --action_env TF_CONFIGURE_IOS="0"
 
 build:release_cpu_linux --config=release_base
 build:release_cpu_linux --config=avx_linux
+build:release_cpu_linux --config=native_arch_linux
 build:release_cpu_linux --crosstool_top=@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/ubuntu16.04-py3-gcc7_manylinux2010:toolchain
 
 build:release_cpu_macos --config=release_base
@@ -583,8 +569,8 @@ build:release_gpu_linux --action_env=GCC_HOST_COMPILER_PATH="/usr/bin/gcc-5"
 build:release_gpu_linux --crosstool_top=@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda11.2:toolchain
 
 build:release_cpu_windows --config=release_base
+build:release_base        --config=avx_windows
 build:release_cpu_windows --define=no_tensorflow_py_deps=true
-build:release_cpu_windows --announce_rc
 # First available in VS 16.4. Speeds Windows compile times by a lot. See
 # https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
 build:release_cpu_windows --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions

@@ -542,7 +542,6 @@ def set_cc_opt_flags(environ_cp):
   for opt in cc_opt_flags.split():
     write_to_bazelrc('build:opt --copt=%s' % opt)
     write_to_bazelrc('build:opt --host_copt=%s' % opt)
-  write_to_bazelrc('build:opt --define with_default_optimizations=true')
 
 
 def set_tf_cuda_clang(environ_cp):
