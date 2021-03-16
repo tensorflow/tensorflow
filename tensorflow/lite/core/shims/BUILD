@@ -125,6 +125,27 @@ build_test(
     ],
 )
 
+cc_library(
+    name = "delegate_registry",
+    hdrs = ["cc/experimental/acceleration/configuration/delegate_registry.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts_warnings(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/acceleration/configuration:delegate_registry",
+    ],
+)
+
+build_test(
+    name = "delegate_registry_build_test",
+    targets = [
+        ":delegate_registry",
+    ],
+)
+
 #------------------------------------------------------------------------------
 # C API
 
