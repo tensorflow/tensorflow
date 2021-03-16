@@ -14,9 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
-#include "tensorflow/c/experimental/stream_executor/stream_executor_test_util.h"
 
 void SE_InitPlugin(SE_PlatformRegistrationParams* const params,
                    TF_Status* const status) {
-  stream_executor::test_util::PopulateDefaultPlatformRegistrationParams(params);
+  params->platform->struct_size = SP_PLATFORM_STRUCT_SIZE;
+  params->platform->name = "GPU";
+  params->platform->type = "XGPU";
 }
