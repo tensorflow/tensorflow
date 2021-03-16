@@ -28,12 +28,13 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
+# TODO(b/180958557): Remove all tests in this file
 class LatencyAllEdgesTest(stats_dataset_test_base.StatsDatasetTestBase,
                           parameterized.TestCase):
 
   # TODO(jsimsa): Investigate why are graph-mode tests failing.
   @combinations.generate(test_base.eager_only_combinations())
-  def testLatencyStatsOptimizationAutotuneOff(self):
+  def DISABLED_testLatencyStatsOptimizationAutotuneOff(self):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.from_tensors(1).apply(
         testing.assert_next([
@@ -60,7 +61,7 @@ class LatencyAllEdgesTest(stats_dataset_test_base.StatsDatasetTestBase,
         handle, self.regexForNodeName("record_latency::PrefetchDataset"), 1)
 
   @combinations.generate(test_base.eager_only_combinations())
-  def testLatencyStatsOptimizationAutotuneOn(self):
+  def DISABLED_testLatencyStatsOptimizationAutotuneOn(self):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.from_tensors(1).apply(
         testing.assert_next([
