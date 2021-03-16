@@ -1,4 +1,4 @@
-/* Copyright 2020-2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -84,6 +84,7 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
   if (op_params.align_corners && output_width > 1) {
     width_scale = static_cast<float>(input_width - 1) / (output_width - 1);
   }
+  const float rounding_offset = std::numeric_limits<T>::is_integer ? .5f : .0f;
 
   for (int b = 0; b < batches; ++b) {
     for (int y = 0; y < output_height; ++y) {
@@ -105,7 +106,8 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
                              input_data[Offset(input_shape, b, y0, x1, c)] *
                                  (1 - (input_y - y0)) * (input_x - x0) +
                              input_data[Offset(input_shape, b, y1, x1, c)] *
-                                 (input_y - y0) * (input_x - x0));
+                                 (input_y - y0) * (input_x - x0) +
+                             rounding_offset);
           output_data[Offset(output_shape, b, y, x, c)] = interpolation;
         }
       }
