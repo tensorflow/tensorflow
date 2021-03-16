@@ -74,8 +74,6 @@
     *   Add `tf.data.experimental.AutoShardingPolicy.HINT` which can be used
         to provide hints to tf.distribute-based auto-sharding as to where in
         the input pipeline to insert sharding transformations.
-    *   Make tf.data.Options persistent across `tf.function` and `GraphDef`
-        boundaries.
 *   XLA compilation:
     *   `tf.function(experimental_compile=True)` has become a stable API,
         renamed `tf.function(jit_compile=True)`.
