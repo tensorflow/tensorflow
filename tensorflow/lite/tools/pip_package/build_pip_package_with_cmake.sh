@@ -114,7 +114,7 @@ case "${TENSORFLOW_TARGET}" in
     ;;
 esac
 
-cmake --build . --verbose -j -t _pywrap_tensorflow_interpreter_wrapper
+cmake --build . --verbose -j ${BUILD_NUM_JOBS} -t _pywrap_tensorflow_interpreter_wrapper
 cd "${BUILD_DIR}"
 
 case "${TENSORFLOW_TARGET}" in
