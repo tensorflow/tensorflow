@@ -97,10 +97,10 @@ class KubernetesClusterResolver(ClusterResolver):
       k8sconfig.load_kube_config()
     except ImportError:
       if not override_client:
-          raise ImportError('The Kubernetes Python client must be installed before'
-          'using the Kubernetes Cluster Resolver. To install the'
-          'Kubernetes Python client, run `pip install '
-          'kubernetes` on your command line.')
+        raise ImportError('The Kubernetes Python client must be installed '
+                          'before using the Kubernetes Cluster Resolver. '
+                          'To install the Kubernetes Python client, run '
+                          '`pip install kubernetes` on your command line.')
 
     if not job_to_label_mapping:
       job_to_label_mapping = {'worker': ['job-name=tensorflow']}
@@ -154,13 +154,15 @@ class KubernetesClusterResolver(ClusterResolver):
       RuntimeError: If any of the pods returned by the master is not in the
         `Running` phase.
     """
-    from kubernetes import client as k8sclient  # pylint: disable=g-import-not-at-top
-    from kubernetes import config as k8sconfig  # pylint: disable=g-import-not-at-top
+    if self._override_client:
+      client = self._override_client
+    else:
+      from kubernetes import config as k8sconfig  # pylint: disable=g-import-not-at-top
+      from kubernetes import client as k8sclient  # pylint: disable=g-import-not-at-top
 
-    if not self._override_client:
       k8sconfig.load_kube_config()
+      client = k8sclient.CoreV1Api()
 
-    client = self._override_client or k8sclient.CoreV1Api()
     cluster_map = {}
 
     for tf_job in self._job_to_label_mapping:
