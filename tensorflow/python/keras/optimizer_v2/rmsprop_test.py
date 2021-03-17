@@ -38,10 +38,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
-_DATA_TYPES = [
-    dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
-    dtypes.complex128
-]
+_DATA_TYPES = [dtypes.half, dtypes.float32, dtypes.float64]
+# TODO(b/143684500): Eigen to support complex sqrt
+if not test_util.IsBuiltWithNvcc():
+  _DATA_TYPES += [dtypes.complex64, dtypes.complex128]
 
 _TEST_PARAM_VALUES = [
     # learning_rate, rho, momentum, epsilon, centered
@@ -352,6 +352,8 @@ class RMSpropOptimizerTest(test.TestCase, parameterized.TestCase):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     with ops.Graph().as_default():
       for dtype in _DATA_TYPES:
+        if test_util.is_xla_enabled() and dtype.is_complex:
+          self.skipTest("b/143578550")
         var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
 
