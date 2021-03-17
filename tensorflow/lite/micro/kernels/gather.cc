@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -26,43 +27,71 @@ constexpr int kInputTensor = 0;
 constexpr int kInputPositions = 1;
 constexpr int kOutputTensor = 0;
 
-template <typename InputT, typename CoordT = int32_t>
+template <typename InputT, typename CoordsT = int32_t>
 TfLiteStatus Gather(const TfLiteGatherParams* params,
                     const TfLiteEvalTensor* input,
-                    const TfLiteEvalTensor* positions,
+                    const TfLiteEvalTensor* coords,
                     TfLiteEvalTensor* output) {
   const InputT* input_data = tflite::micro::GetTensorData<InputT>(input);
-  const CoordT* coord_data = tflite::micro::GetTensorData<CoordT>(positions);
+  const CoordsT* coords_data = tflite::micro::GetTensorData<CoordsT>(coords);
   InputT* output_data = tflite::micro::GetTensorData<InputT>(output);
   const TfLiteIntArray* input_dims = input->dims;
   const int input_dims_size = input_dims->size;
   int axis = params->axis;
-  TFLITE_DCHECK_LT(axis, input_dims_size);
   if (axis < 0) {
     axis += input_dims_size;
   }
   TFLITE_DCHECK_GE(axis, 0);
+  TFLITE_DCHECK_LT(axis, input_dims_size);
+
+  int batch_dims = params->batch_dims;
+  // batch_dims should be in range: [-rank(coords), rank(coords)].
+  // Negative batch_dims is added with rank of coords.
+  const TfLiteIntArray* coords_dims = coords->dims;
+  const int coords_dims_size = coords_dims->size;
+  if (batch_dims < 0) {
+    batch_dims += coords_dims_size;
+  }
+  TFLITE_DCHECK_GE(batch_dims, 0);
+  TFLITE_DCHECK_LT(batch_dims, input_dims_size);
+  TFLITE_DCHECK_LE(batch_dims, coords_dims_size);
+  TFLITE_DCHECK_GE(axis, batch_dims);
+  for (int i = 0; i < batch_dims; ++i) {
+    TFLITE_DCHECK_EQ(input_dims->data[i], coords_dims->data[i]);
+  }
+
   const int axis_size = input_dims->data[axis];
 
-  const TfLiteIntArray* coord_dims = positions->dims;
-  const int coord_count = ElementCount(*coord_dims);
+  int batch_size = 1;
+  for (int i = 0; i < batch_dims; ++i) {
+    batch_size *= input_dims->data[i];
+  }
   int outer_size = 1;
-  for (int i = 0; i < axis; ++i) {
+  for (int i = batch_dims; i < axis; ++i) {
     outer_size *= input_dims->data[i];
   }
   int inner_size = 1;
   for (int i = axis + 1; i < input_dims_size; ++i) {
     inner_size *= input_dims->data[i];
   }
+  int coord_size = 1;
+  for (int i = batch_dims; i < coords_dims_size; ++i) {
+    coord_size *= coords_dims->data[i];
+  }
 
-  for (int outer_j = 0; outer_j < outer_size; ++outer_j) {
-    for (int inner_i = 0; inner_i < coord_count; ++inner_i) {
-      TFLITE_DCHECK_GE(coord_data[inner_i], 0);
-      TFLITE_DCHECK_LT(coord_data[inner_i], axis_size);
-      std::memcpy(
-          output_data + (outer_j * coord_count + inner_i) * inner_size,
-          input_data + (outer_j * axis_size + coord_data[inner_i]) * inner_size,
-          sizeof(InputT) * inner_size);
+  for (int batch = 0; batch < batch_size; ++batch) {
+    for (int outer = 0; outer < outer_size; ++outer) {
+      for (int i = 0; i < coord_size; ++i) {
+        TFLITE_DCHECK_GE(coords_data[i], 0);
+        TFLITE_DCHECK_LT(coords_data[i], axis_size);
+        std::memcpy(
+            output_data +
+                (((batch * outer_size) + outer) * coord_size + i) * inner_size,
+            input_data + (((batch * outer_size) + outer) * axis_size +
+                          coords_data[batch * coord_size + i]) *
+                             inner_size,
+            sizeof(InputT) * inner_size);
+      }
     }
   }
   return kTfLiteOk;
@@ -76,21 +105,21 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       reinterpret_cast<const TfLiteGatherParams*>(node->builtin_data);
   const TfLiteTensor* input;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
-  const TfLiteTensor* positions;
+  const TfLiteTensor* coords;
   TF_LITE_ENSURE_OK(context,
-                    GetInputSafe(context, node, kInputPositions, &positions));
+                    GetInputSafe(context, node, kInputPositions, &coords));
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
-  switch (positions->type) {
-    case kTfLiteInt64:
+  switch (coords->type) {
     case kTfLiteInt32:
       break;
     default:
       TF_LITE_KERNEL_LOG(context,
                          "Positions of type '%s' are not supported by gather.",
-                         TfLiteTypeGetName(positions->type));
+                         TfLiteTypeGetName(coords->type));
       return kTfLiteError;
+      break;
   }
 
   // Assign to output the input type.
@@ -105,6 +134,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by gather.",
                          TfLiteTypeGetName(input->type));
       return kTfLiteError;
+      break;
   }
 
   int axis = params->axis;
@@ -113,14 +143,30 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
   TF_LITE_ENSURE(context, 0 <= axis && axis < NumDimensions(input));
 
+  int batch_dims = params->batch_dims;
+  // batch_dims should be in range: [-rank(coords), rank(coords)].
+  // Negative batch_dims is added with rank of coords.
+  if (batch_dims < 0) {
+    batch_dims += NumDimensions(coords);
+  }
+  TF_LITE_ENSURE(context, batch_dims <= axis);
+  TF_LITE_ENSURE(context, 0 <= batch_dims && batch_dims < NumDimensions(input));
+  TF_LITE_ENSURE(context, batch_dims <= NumDimensions(coords));
+  for (int i = 0; i < batch_dims; ++i) {
+    TF_LITE_ENSURE_EQ(context, input->dims->data[i], coords->dims->data[i]);
+  }
+
+  // TFLM gather does not create the output tensor, but it needs to ensure
+  // that the output shape is correct.
   TfLiteIntArray* output_shape = output->dims;
-  output_shape->size = NumDimensions(input) + NumDimensions(positions) - 1;
+  output_shape->size = NumDimensions(input) + NumDimensions(coords) - 1
+                       - batch_dims;
   int output_index = 0;
   for (int i = 0; i < axis; ++i) {
     output_shape->data[output_index++] = input->dims->data[i];
   }
-  for (int i = 0; i < positions->dims->size; ++i) {
-    output_shape->data[output_index++] = positions->dims->data[i];
+  for (int i = batch_dims; i < coords->dims->size; ++i) {
+    output_shape->data[output_index++] = coords->dims->data[i];
   }
   for (int i = axis + 1; i < input->dims->size; ++i) {
     output_shape->data[output_index++] = input->dims->data[i];
@@ -133,21 +179,39 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       reinterpret_cast<const TfLiteGatherParams*>(node->builtin_data);
   const TfLiteEvalTensor* input =
       tflite::micro::GetEvalInput(context, node, kInputTensor);
-  const TfLiteEvalTensor* positions =
+  const TfLiteEvalTensor* coords =
       tflite::micro::GetEvalInput(context, node, kInputPositions);
   TfLiteEvalTensor* output =
       tflite::micro::GetEvalOutput(context, node, kOutputTensor);
 
-  if (positions->type == kTfLiteInt32) {
+  if (coords->type == kTfLiteInt32) {
     switch (input->type) {
       case kTfLiteFloat32:
-        return Gather<float, int32_t>(params, input, positions, output);
+        return Gather<float, int32_t>(params, input, coords, output);
+        break;
       case kTfLiteInt8:
-        return Gather<int8_t, int32_t>(params, input, positions, output);
+        return Gather<int8_t, int32_t>(params, input, coords, output);
+        break;
       default:
         TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by gather.",
                            TfLiteTypeGetName(input->type));
         return kTfLiteError;
+        break;
+    }
+  }
+  if (coords->type == kTfLiteInt64) {
+    switch (input->type) {
+      case kTfLiteFloat32:
+        return Gather<float, int64_t>(params, input, coords, output);
+        break;
+      case kTfLiteInt8:
+        return Gather<int8_t, int64_t>(params, input, coords, output);
+        break;
+      default:
+        TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by gather.",
+                           TfLiteTypeGetName(input->type));
+        return kTfLiteError;
+        break;
     }
   }
   return kTfLiteOk;
