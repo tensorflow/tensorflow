@@ -30,8 +30,7 @@ constexpr int kOutputTensor = 0;
 template <typename InputT, typename CoordsT = int32_t>
 TfLiteStatus Gather(const TfLiteGatherParams* params,
                     const TfLiteEvalTensor* input,
-                    const TfLiteEvalTensor* coords,
-                    TfLiteEvalTensor* output) {
+                    const TfLiteEvalTensor* coords, TfLiteEvalTensor* output) {
   const InputT* input_data = tflite::micro::GetTensorData<InputT>(input);
   const CoordsT* coords_data = tflite::micro::GetTensorData<CoordsT>(coords);
   InputT* output_data = tflite::micro::GetTensorData<InputT>(output);
@@ -159,8 +158,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // TFLM gather does not create the output tensor, but it needs to ensure
   // that the output shape is correct.
   TfLiteIntArray* output_shape = output->dims;
-  output_shape->size = NumDimensions(input) + NumDimensions(coords) - 1
-                       - batch_dims;
+  output_shape->size =
+      NumDimensions(input) + NumDimensions(coords) - 1 - batch_dims;
   int output_index = 0;
   for (int i = 0; i < axis; ++i) {
     output_shape->data[output_index++] = input->dims->data[i];
