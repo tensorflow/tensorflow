@@ -1176,7 +1176,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     if isinstance(
         value,
         values.DistributedVariable) and value._packed_variable is not None:
-      value_list = tuple(
+      value_list = list(
           value._packed_variable.on_device(d)
           for d in value._packed_variable.devices)
     # pylint: enable=protected-access
