@@ -827,6 +827,11 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
   }
 
   if (consumer->opcode() == HloOpcode::kConvolution) {
+    if (!ConsumeFuel("space-to-batch-converter", [&] {
+          return "Skipping space-to-batch propagation because fuel over\n";
+        })) {
+      return false;
+    }
     // Lambda that checks basic sanity of dimension propagation on convolutions.
     // This includes: the split dimension from the previous convolution should
     // remain the same. No feature/batch dimension should be turned into a
@@ -2016,12 +2021,6 @@ Status ConvolutionVisitor::PropagateOnUsers(HloInstruction* old_conv) {
 }
 
 Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
-  if (!ConsumeFuel("space-to-batch-converter", [&] {
-        return "Skipping space-to-batch propagation because fuel over\n";
-      })) {
-    return Status::OK();
-  }
-
   auto activations_old = convolution->mutable_operand(0);
 
   CHECK(old_to_new_instrs_.contains(activations_old));
