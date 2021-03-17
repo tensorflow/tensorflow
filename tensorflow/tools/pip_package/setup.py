@@ -75,11 +75,11 @@ if '--project_name' in sys.argv:
 # comment the versioning scheme.
 # NOTE: Please add test only packages to `TEST_PACKAGES` below.
 REQUIRED_PACKAGES = [
-    # NOTE: As numpy has releases that break semver guarantees and several other
-    # deps depend on numpy without an upper bound, we must install numpy before
-    # everything else.
+#     NOTE: As numpy has releases that break semver guarantees and several other
+#     deps depend on numpy without an upper bound, we must install numpy before
+#     everything else.
     'numpy ~= 1.19.2',
-    # Install other dependencies
+#     Install other dependencies
     'absl-py ~= 0.10',
     'astunparse ~= 1.6.3',
     'flatbuffers ~= 1.12.0',
@@ -93,13 +93,13 @@ REQUIRED_PACKAGES = [
     'typing_extensions ~= 3.7.4',
     'wheel ~= 0.35',
     'wrapt ~= 1.12.1',
-    # These packages need to be pinned exactly as newer versions are
-    # incompatible with the rest of the ecosystem
+#     These packages need to be pinned exactly as newer versions are
+#     incompatible with the rest of the ecosystem
     'gast == 0.4.0',
-    # TensorFlow ecosystem packages that TF exposes API for
-    # These need to be in sync with the existing TF version
-    # They are updated during the release process
-    # When updating these, please also update the nightly versions below
+#     TensorFlow ecosystem packages that TF exposes API for
+#     These need to be in sync with the existing TF version
+#     They are updated during the release process
+#     When updating these, please also update the nightly versions below
     'tensorboard ~= 2.4',
     'tensorflow_estimator ~= 2.4.0',
 ]
@@ -153,10 +153,10 @@ CONSOLE_SCRIPTS = [
     'toco = tensorflow.lite.python.tflite_convert:main',
     'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
     'import_pb_to_tensorboard = tensorflow.python.tools.import_pb_to_tensorboard:main',
-    # We need to keep the TensorBoard command, even though the console script
-    # is now declared by the tensorboard pip package. If we remove the
-    # TensorBoard command, pip will inappropriately remove it during install,
-    # even though the command is not removed, just moved to a different wheel.
+#     We need to keep the TensorBoard command, even though the console script
+#     is now declared by the tensorboard pip package. If we remove the
+#     TensorBoard command, pip will inappropriately remove it during install,
+#     even though the command is not removed, just moved to a different wheel.
     'tensorboard = tensorboard.main:run_main',
     'tf_upgrade_v2 = tensorflow.tools.compatibility.tf_upgrade_v2_main:main',
     'estimator_ckpt_converter = '
@@ -213,15 +213,15 @@ class InstallHeaders(Command):
 
   def mkdir_and_copy_file(self, header):
     install_dir = os.path.join(self.install_dir, os.path.dirname(header))
-    # Get rid of some extra intervening directories so we can have fewer
-    # directories for -I
+#     Get rid of some extra intervening directories so we can have fewer
+#     directories for -I
     install_dir = re.sub('/google/protobuf_archive/src', '', install_dir)
 
-    # Copy external code headers into tensorflow/include.
-    # A symlink would do, but the wheel file that gets created ignores
-    # symlink within the directory hierarchy.
-    # NOTE(keveman): Figure out how to customize bdist_wheel package so
-    # we can do the symlink.
+#     Copy external code headers into tensorflow/include.
+#     A symlink would do, but the wheel file that gets created ignores
+#     symlink within the directory hierarchy.
+#     NOTE(keveman): Figure out how to customize bdist_wheel package so
+#     we can do the symlink.
     external_header_locations = [
         'tensorflow/include/external/eigen_archive/',
         'tensorflow/include/external/com_google_absl/',
@@ -304,7 +304,7 @@ setup(
     download_url='https://github.com/tensorflow/tensorflow/tags',
     author='Google Inc.',
     author_email='packages@tensorflow.org',
-    # Contained modules and scripts.
+#     Contained modules and scripts.
     packages=find_packages(),
     entry_points={
         'console_scripts': CONSOLE_SCRIPTS,
@@ -312,7 +312,7 @@ setup(
     headers=headers,
     install_requires=REQUIRED_PACKAGES,
     tests_require=REQUIRED_PACKAGES + TEST_PACKAGES,
-    # Add in any packaged data.
+#      Add in any packaged data.
     include_package_data=True,
     package_data={
         'tensorflow': [
@@ -325,10 +325,10 @@ setup(
         'install_headers': InstallHeaders,
         'install': InstallCommand,
     },
-    # PyPI package information.
+#      PyPI package information.
     classifiers=sorted([
         'Development Status :: 5 - Production/Stable',
-        # TODO(angerson) Add IFTTT when possible
+#         TODO(angerson) Add IFTTT when possible
         'Environment :: GPU :: NVIDIA CUDA :: 11.0',
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
