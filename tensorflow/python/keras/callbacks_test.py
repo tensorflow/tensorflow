@@ -1883,7 +1883,10 @@ class UnsupportedSummaryHistogramTypesLayer(keras.layers.Layer):
       #, 'q(u)int8/16/32', 'string', 'resource, 'variant'
       ]
     for t,i in unsupported_histogram_dtypes:
-      self.add_weight('UnsupportedHistogramTypeWeight_{}'.format(t), shape=(1,), dtype=t, initializer=i)
+      self.add_weight \
+        ( 'UnsupportedHistogramTypeWeight_{}'.format(t)
+        , shape=(1,), dtype=t, initializer=i
+        )
   def call(self,inputs):
     return inputs
 
