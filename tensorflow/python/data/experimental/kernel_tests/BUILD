@@ -1,5 +1,6 @@
-load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
+# Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -673,6 +674,7 @@ tf_py_test(
     name = "rebatch_dataset_test",
     size = "small",
     srcs = ["rebatch_dataset_test.py"],
+    shard_count = 4,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:image_ops",
@@ -786,21 +788,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "sql_dataset_test",
-    size = "medium",
-    srcs = ["sql_dataset_test.py"],
-    tags = ["no_pip"],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python/data/experimental/ops:readers",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "@org_sqlite//:python",
-    ],
-)
-
-tf_py_test(
     name = "snapshot_test",
     size = "medium",
     timeout = "long",
@@ -826,9 +813,25 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "sql_dataset_test",
+    size = "medium",
+    srcs = ["sql_dataset_test.py"],
+    tags = ["no_pip"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/experimental/ops:readers",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
+        "@org_sqlite//:python",
+    ],
+)
+
+tf_py_test(
     name = "stats_dataset_ops_test",
     size = "small",
     srcs = ["stats_dataset_ops_test.py"],
+    shard_count = 4,
     tags = [
         "no_oss",  # TODO(b/155795733): Note that this functionality is deprecated.
         "no_pip",
@@ -868,6 +871,7 @@ tf_py_test(
     name = "take_while_test",
     size = "small",
     srcs = ["take_while_test.py"],
+    shard_count = 4,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
