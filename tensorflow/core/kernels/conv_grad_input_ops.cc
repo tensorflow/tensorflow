@@ -359,11 +359,9 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   // CuDNN frontend will expose more engines some of which might use too much
   // workspace. This would increase the overall demand of memory when training
   // models.
-#if GOOGLE_CUDA
   if (CudnnUseFrontend()) {
     workspace_bytes = 1LL << 30; // 1GB by default.
   }
-#endif // GOOGLE_CUDA
   static int64 ConvolveBackwardDataScratchSize = GetDnnWorkspaceLimit(
       "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", workspace_bytes
   );
