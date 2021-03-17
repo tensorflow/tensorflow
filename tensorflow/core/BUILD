@@ -421,6 +421,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:device_base.h",
         "//tensorflow/core/framework:device_factory.h",
         "//tensorflow/core/framework:function.h",
+        "//tensorflow/core/framework:function_handle_cache.h",
         "//tensorflow/core/framework:graph_def_util.h",
         "//tensorflow/core/framework:graph_to_functiondef.h",
         "//tensorflow/core/framework:kernel_def_builder.h",

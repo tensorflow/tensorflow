@@ -512,7 +512,7 @@ bool QuantizationDriver::SetOperandParams(Operation *op, int index,
 
 void QuantizationDriver::QuantizeOpResult(Operation *op, int index,
                                           QuantParams params) {
-  builder_.setInsertionPoint(op->getBlock(), ++Block::iterator(op));
+  builder_.setInsertionPointAfter(op);
   Value original_result = op->getResult(index);
   QuantizeValue(original_result, params, op->getLoc());
 }
@@ -741,10 +741,9 @@ void QuantizationDriver::SetupAllStates() {
   }
 
   fn_.walk([&](Operation *op) {
-    if (op->hasTrait<OpTrait::IsTerminator>() ||
-        op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
-        llvm::isa<quant::DequantizeCastOp, quant::QuantizeCastOp>(op))
+    if (IsOpNotQuantizable(op)) {
       return;
+    }
     work_list_.push_back(op);
 
     for (int i = 0, e = op->getNumOperands(); i != e; ++i) {

@@ -225,9 +225,11 @@ inline bool array_cmp(const T* a1, const T* a2, size_t size) {
 inline mkldnn::stream* CreateStream(MklDnnThreadPool* eigen_tp,
                                     const engine& engine) {
 #ifndef ENABLE_ONEDNN_OPENMP
+  stream_attr tp_stream_attr(engine::kind::cpu);
   if (eigen_tp != nullptr) {
+    tp_stream_attr.set_threadpool(eigen_tp);
     stream* tp_stream =
-        new stream(dnnl::threadpool_interop::make_stream(engine, eigen_tp));
+        new stream(engine, stream::flags::default_flags, tp_stream_attr);
     return tp_stream;
   } else {
     stream* tp_stream = new stream(engine);

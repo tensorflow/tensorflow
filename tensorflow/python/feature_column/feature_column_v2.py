@@ -2355,6 +2355,7 @@ class SequenceDenseColumn(FeatureColumn):
     pass
 
 
+@tf_export('__internal__.feature_column.FeatureTransformationCache', v1=[])
 class FeatureTransformationCache(object):
   """Handles caching of transformations while building the model.
 

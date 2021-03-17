@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -826,6 +827,11 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
   }
 
   if (consumer->opcode() == HloOpcode::kConvolution) {
+    if (!ConsumeFuel("space-to-batch-converter", [&] {
+          return "Skipping space-to-batch propagation because fuel over\n";
+        })) {
+      return false;
+    }
     // Lambda that checks basic sanity of dimension propagation on convolutions.
     // This includes: the split dimension from the previous convolution should
     // remain the same. No feature/batch dimension should be turned into a
@@ -2848,6 +2854,11 @@ ConvolutionVisitor::ConvDetails ConvolutionVisitor::GetConvolutionDetails(
 
 Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
     HloInstruction* convolution) {
+  if (!ConsumeFuel("space-to-batch-converter", [&] {
+        return "Skipping space-to-batch propagation because fuel over\n";
+      })) {
+    return Status::OK();
+  }
   VLOG(1) << "Handling conv " << convolution->ToString();
 
   changed_ = false;
@@ -3036,9 +3047,9 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
 
 }  // namespace
 
-StatusOr<bool> ConvolutionSpaceToBatchConverter::Run(HloModule* module) {
-  XLA_VLOG_LINES(2, "ConvolutionSpaceToBatchConverter::Run(), before:\n" +
-                        module->ToString());
+StatusOr<bool> SpaceToBatchConverter::Run(HloModule* module) {
+  XLA_VLOG_LINES(
+      2, "SpaceToBatchConverter::Run(), before:\n" + module->ToString());
   bool changed = false;
 
   for (auto* comp : module->MakeNonfusionComputations()) {
@@ -3048,8 +3059,8 @@ StatusOr<bool> ConvolutionSpaceToBatchConverter::Run(HloModule* module) {
     }
     VLOG(1) << "Done operating on computation";
   }
-  XLA_VLOG_LINES(2, "ConvolutionSpaceToBatchConverter::Run(), after:\n" +
-                        module->ToString());
+  XLA_VLOG_LINES(2,
+                 "SpaceToBatchConverter::Run(), after:\n" + module->ToString());
   return changed;
 }
 

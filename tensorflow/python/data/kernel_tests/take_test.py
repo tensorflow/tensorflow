@@ -20,6 +20,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -40,6 +41,35 @@ class TakeTest(test_base.DatasetTestBase, parameterized.TestCase):
     num_output = min(count, 10) if count != -1 else 10
     self.assertDatasetProduces(
         dataset, [tuple(components[0][i:i + 1]) for i in range(num_output)])
+
+
+class TakeDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                parameterized.TestCase):
+
+  def _build_take_dataset(self, count):
+    components = (np.arange(10),)
+    return dataset_ops.Dataset.from_tensor_slices(components).take(count)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testTakeFewerThanInputs(self):
+    count = 4
+    self.run_core_tests(lambda: self._build_take_dataset(count), count)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testTakeVarious(self):
+    # Take more than inputs
+    self.run_core_tests(lambda: self._build_take_dataset(20), 10)
+    # Take exactly the input size
+    self.run_core_tests(lambda: self._build_take_dataset(10), 10)
+    # Take all
+    self.run_core_tests(lambda: self._build_take_dataset(-1), 10)
+    # Take nothing
+    self.run_core_tests(lambda: self._build_take_dataset(0), 0)
+
+  def testInvalidTake(self):
+    with self.assertRaisesRegex(ValueError,
+                                "Shape must be rank 0 but is rank 1"):
+      self.run_core_tests(lambda: self._build_take_dataset([1, 2]), 0)
 
 
 if __name__ == "__main__":

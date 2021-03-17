@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Analysis/BufferAliasAnalysis.h"  // from @llvm-project
 #include "mlir/Analysis/Liveness.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -148,13 +149,13 @@ class BufferReuseAnalysis {
 
   static constexpr int32_t kIndexAmbiguous = -1;
 
-  Optional<SmallVector<int32_t, 2>> get_reuse_candiates(AllocOp op) {
+  Optional<SmallVector<int32_t, 2>> get_reuse_candiates(memref::AllocOp op) {
     auto it = reuse_candidates_.find(op);
     if (it == reuse_candidates_.end()) return llvm::None;
     return it->second;
   }
 
-  Optional<int32_t> get_output_index(AllocOp op) {
+  Optional<int32_t> get_output_index(memref::AllocOp op) {
     auto it = output_indices_.find(op);
     if (it == output_indices_.end()) return llvm::None;
     return it->second;
@@ -168,7 +169,7 @@ class BufferReuseAnalysis {
   }
 
   void find_output_indices(FuncOp &f, BufferAliasAnalysis &aliases) {
-    f.walk([&](AllocOp alloc_op) {
+    f.walk([&](memref::AllocOp alloc_op) {
       int32_t output_index = kIndexAmbiguous;
       int count_return_uses = 0;
       auto buffer_aliases = aliases.resolve(alloc_op.getResult());
@@ -201,7 +202,7 @@ class BufferReuseAnalysis {
                             BufferSizeAnalysis &size_equivalences,
                             ArrayRef<BlockArgument> arguments) {
     for (Operation &op : *block) {
-      auto alloc_op = dyn_cast<AllocOp>(op);
+      auto alloc_op = dyn_cast<memref::AllocOp>(op);
       if (!alloc_op) continue;
 
       // Find first use of the newly allocated buffer within this block.
@@ -332,7 +333,7 @@ struct BufferReusePass : public BufferReusePassBase<BufferReusePass> {
 
     // Annotate IR with reuse candidates and output indices per allocation.
     Builder builder(&getContext());
-    getFunction().walk([&](AllocOp op) {
+    getFunction().walk([&](memref::AllocOp op) {
       if (auto output_index = analysis.get_output_index(op)) {
         auto attr = builder.getI32IntegerAttr(*output_index);
         op.getOperation()->setAttr(

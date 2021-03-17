@@ -122,6 +122,7 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   std::vector<InputTensorData> inputs_data_;
   std::unique_ptr<BenchmarkListener> profiling_listener_ = nullptr;
   std::unique_ptr<BenchmarkListener> ruy_profiling_listener_ = nullptr;
+  std::unique_ptr<BenchmarkListener> interpreter_state_printer_ = nullptr;
   std::mt19937 random_engine_;
   std::vector<Interpreter::TfLiteDelegatePtr> owned_delegates_;
   // Always TFLITE_LOG the benchmark result.

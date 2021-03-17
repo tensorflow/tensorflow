@@ -29,18 +29,10 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers.preprocessing import normalization
-from tensorflow.python.keras.layers.preprocessing import normalization_v1
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-
-
-def get_layer_class():
-  if context.executing_eagerly():
-    return normalization.Normalization
-  else:
-    return normalization_v1.Normalization
 
 
 def _get_layer_computation_test_cases():
@@ -128,8 +120,59 @@ def _get_layer_computation_test_cases():
 class NormalizationTest(keras_parameterized.TestCase,
                         preprocessing_test_utils.PreprocessingLayerTest):
 
+  def test_broadcasting_during_direct_setting(self):
+    layer = normalization.Normalization(axis=-1, mean=[1.0], variance=[2.0])
+    layer.build((None, 2))
+    weights = layer.get_weights()
+    self.assertAllClose([1.0, 1.0], weights[0])
+    self.assertAllClose([2.0, 2.0], weights[1])
+
+  def test_broadcasting_during_direct_setting_with_tensors(self):
+    layer = normalization.Normalization(
+        axis=-1,
+        mean=constant_op.constant([1.0]),
+        variance=constant_op.constant([2.0]))
+    layer.build((None, 2))
+    weights = layer.get_weights()
+    self.assertAllClose([1.0, 1.0], weights[0])
+    self.assertAllClose([2.0, 2.0], weights[1])
+
+  def test_broadcasting_during_direct_setting_with_variables_fails(self):
+    with self.assertRaisesRegex(ValueError, "passing a Variable"):
+      _ = normalization.Normalization(
+          axis=-1,
+          mean=variables.Variable([1.0]),
+          variance=variables.Variable([2.0]))
+
+  @parameterized.parameters(
+      {"axis": 0},
+      {"axis": (-1, 0)},
+  )
+  def test_zeros_fail_init(self, axis):
+    with self.assertRaisesRegex(ValueError,
+                                "The argument 'axis' may not be 0."):
+      normalization.Normalization(axis=axis)
+
+  @parameterized.parameters(
+      # Out of bounds
+      {"axis": 3},
+      {"axis": -3},
+      # In a tuple
+      {"axis": (1, 3)},
+      {"axis": (1, -3)},
+  )
+  def test_bad_axis_fail_build(self, axis):
+    layer = normalization.Normalization(axis=axis)
+    with self.assertRaisesRegex(ValueError, r"in the range"):
+      layer.build([None, 2, 3])
+
+
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class NormalizationAdaptTest(keras_parameterized.TestCase,
+                             preprocessing_test_utils.PreprocessingLayerTest):
+
   def test_layer_api_compatibility(self):
-    cls = get_layer_class()
+    cls = normalization.Normalization
     with CustomObjectScope({"Normalization": cls}):
       output_data = testing_utils.layer_test(
           cls,
@@ -152,8 +195,7 @@ class NormalizationTest(keras_parameterized.TestCase,
       test_data = dataset_ops.Dataset.from_tensor_slices(test_data).batch(
           test_data.shape[0] // 2)
 
-    cls = get_layer_class()
-    layer = cls(axis=axis)
+    layer = normalization.Normalization(axis=axis)
     layer.adapt(adapt_data)
 
     input_data = keras.Input(shape=input_shape)
@@ -167,7 +209,8 @@ class NormalizationTest(keras_parameterized.TestCase,
     mean = weights[0]
     var = weights[1]
 
-    direct_set_layer = cls(axis=axis, mean=mean, variance=var)
+    direct_set_layer = normalization.Normalization(
+        axis=axis, mean=mean, variance=var)
     input_data = keras.Input(shape=input_shape)
     output = direct_set_layer(input_data)
     model = keras.Model(input_data, output)
@@ -175,37 +218,9 @@ class NormalizationTest(keras_parameterized.TestCase,
     output_data = model.predict(test_data)
     self.assertAllClose(expected, output_data)
 
-  def test_broadcasting_during_direct_setting(self):
-    cls = get_layer_class()
-    layer = cls(axis=-1, mean=[1.0], variance=[2.0])
-    layer.build((None, 2))
-    weights = layer.get_weights()
-    self.assertAllClose([1.0, 1.0], weights[0])
-    self.assertAllClose([2.0, 2.0], weights[1])
-
-  def test_broadcasting_during_direct_setting_with_tensors(self):
-    cls = get_layer_class()
-    layer = cls(
-        axis=-1,
-        mean=constant_op.constant([1.0]),
-        variance=constant_op.constant([2.0]))
-    layer.build((None, 2))
-    weights = layer.get_weights()
-    self.assertAllClose([1.0, 1.0], weights[0])
-    self.assertAllClose([2.0, 2.0], weights[1])
-
-  def test_broadcasting_during_direct_setting_with_variables_fails(self):
-    cls = get_layer_class()
-    with self.assertRaisesRegex(ValueError, "passing a Variable"):
-      _ = cls(
-          axis=-1,
-          mean=variables.Variable([1.0]),
-          variance=variables.Variable([2.0]))
-
   def test_1d_data(self):
     data = [0, 2, 0, 2]
-    cls = get_layer_class()
-    layer = cls(axis=-1)
+    layer = normalization.Normalization(axis=-1)
     layer.adapt(data)
     output = layer(data)
     self.assertListEqual(output.shape.as_list(), [4, 1])
@@ -217,36 +232,11 @@ class NormalizationTest(keras_parameterized.TestCase,
       self.skipTest("Only supported in TF2.")
 
     data = [0, 2, 0, 2]
-    cls = get_layer_class()
-    layer = cls(axis=-1)
+    layer = normalization.Normalization(axis=-1)
     layer.adapt(data)
     output = layer(0.)
     self.assertListEqual(output.shape.as_list(), [1, 1])
     self.assertAllClose(output.numpy(), [[-1]])
-
-  @parameterized.parameters(
-      {"axis": 0},
-      {"axis": (-1, 0)},
-  )
-  def test_zeros_fail_init(self, axis):
-    cls = get_layer_class()
-    with self.assertRaisesRegex(ValueError,
-                                "The argument 'axis' may not be 0."):
-      cls(axis=axis)
-
-  @parameterized.parameters(
-      # Out of bounds
-      {"axis": 3},
-      {"axis": -3},
-      # In a tuple
-      {"axis": (1, 3)},
-      {"axis": (1, -3)},
-  )
-  def test_bad_axis_fail_build(self, axis):
-    cls = get_layer_class()
-    layer = cls(axis=axis)
-    with self.assertRaisesRegex(ValueError, r"in the range"):
-      layer.build([None, 2, 3])
 
   @parameterized.parameters(
       # Results should be identical no matter how the axes are specified (3d).
@@ -256,8 +246,7 @@ class NormalizationTest(keras_parameterized.TestCase,
       {"axis": (-1, 1)},
   )
   def test_axis_permutations(self, axis):
-    cls = get_layer_class()
-    layer = cls(axis=axis)
+    layer = normalization.Normalization(axis=axis)
     # data.shape = [2, 2, 3]
     data = np.array([[[0., 1., 2.], [0., 2., 6.]],
                      [[2., 3., 4.], [3., 6., 10.]]])
@@ -269,8 +258,7 @@ class NormalizationTest(keras_parameterized.TestCase,
   def test_model_summary_after_layer_adapt(self):
     data = np.array([[[0., 1., 2.], [0., 2., 6.]],
                      [[2., 3., 4.], [3., 6., 10.]]])
-    cls = get_layer_class()
-    layer = cls(axis=-1)
+    layer = normalization.Normalization(axis=-1)
     layer.adapt(data)
     model = keras.Sequential(
         [layer,
@@ -282,19 +270,18 @@ class NormalizationTest(keras_parameterized.TestCase,
     if not context.executing_eagerly():
       self.skipTest("`merge_state` only supported in TF2")
 
-    cls = get_layer_class()
     data = np.random.rand(30, 10, 2)
     ds = dataset_ops.Dataset.from_tensor_slices(data).batch(2)
-    norm = cls(axis=(1, 2))
+    norm = normalization.Normalization(axis=(1, 2))
     norm.adapt(ds)
 
     partial_ds_1 = ds.shard(3, 0)
     partial_ds_2 = ds.shard(3, 1)
     partial_ds_3 = ds.shard(3, 2)
 
-    norm_1 = cls(axis=(1, 2))
-    norm_2 = cls(axis=(1, 2))
-    norm_3 = cls(axis=(1, 2))
+    norm_1 = normalization.Normalization(axis=(1, 2))
+    norm_2 = normalization.Normalization(axis=(1, 2))
+    norm_3 = normalization.Normalization(axis=(1, 2))
 
     norm_1.adapt(partial_ds_1)
     norm_2.adapt(partial_ds_2)

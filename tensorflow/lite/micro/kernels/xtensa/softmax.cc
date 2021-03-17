@@ -277,6 +277,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         tflite::micro::GetTensorData<int8_t>(input),
         tflite::micro::GetTensorShape(output),
         tflite::micro::GetTensorData<int16_t>(output));
+    return kTfLiteOk;
 #endif
   } else {
     TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
