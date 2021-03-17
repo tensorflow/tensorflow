@@ -611,9 +611,9 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(
   const CustomKernelCreator* custom_kernel_creator =
       GetDefaultCustomKernelCreator();
   if (custom_kernel_creator &&
-      custom_kernel_creator->CanCreateKernel(*this, props)) {
+      custom_kernel_creator->CanCreateKernel(*flr, props)) {
     std::unique_ptr<OpKernel> ret;
-    s = custom_kernel_creator->CreateKernel(this, props, &ret);
+    s = custom_kernel_creator->CreateKernel(flr, props, &ret);
     if (s.ok()) {
       *kernel = ret.release();
     } else {
