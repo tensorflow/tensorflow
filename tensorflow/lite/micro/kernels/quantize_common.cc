@@ -24,8 +24,9 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
-	
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+
+TfLiteStatus PrepareQuantizeReference(TfLiteContext* context,
+                                      TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
   auto* data = static_cast<OpDataQuantizeReference*>(node->user_data);
 
@@ -71,7 +72,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   data->input_zero_point = input->params.zero_point;
   return kTfLiteOk;
-}	
+}
 
 TfLiteStatus EvalQuantizeReference(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
