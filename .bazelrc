@@ -101,6 +101,11 @@ build:libc++ --action_env=PATH
 build:libc++ --define force_libcpp=enabled
 build:libc++ --linkopt -fuse-ld=lld
 
+# Trigger --config=<host platform>, except when cross-compiling.
+build --enable_platform_specific_config
+build:android --noenable_platform_specific_config
+build:ios --noenable_platform_specific_config
+
 # Android configs. Bazel needs to have --cpu and --fat_apk_cpu both set to the
 # target CPU to build transient dependencies correctly. See
 # https://docs.bazel.build/versions/master/user-manual.html#flag--fat_apk_cpu
@@ -120,7 +125,13 @@ build:android_x86_64 --cpu=x86_64
 build:android_x86_64 --fat_apk_cpu=x86_64
 
 # Sets the default Apple platform to macOS.
-build --apple_platform_type=macos
+build:macos --apple_platform_type=macos
+
+# gRPC on MacOS requires this #define
+build:macos --copt=-DGRPC_BAZEL_BUILD
+
+# Settings for MacOS on ARM CPUs.
+build:macos_arm64 --cpu=darwin_arm64
 
 # iOS configs for each architecture and the fat binary builds.
 build:ios --apple_platform_type=ios
@@ -136,11 +147,6 @@ build:ios_x86_64 --config=ios
 build:ios_x86_64 --cpu=ios_x86_64
 build:ios_fat --config=ios
 build:ios_fat --ios_multi_cpus=armv7,arm64,i386,x86_64
-
-# Enables all the macos config options for macos_arm64
-build:macos_arm64 --config=macos
-build:macos_arm64 --apple_platform_type=macos
-build:macos_arm64 --cpu=darwin_arm64
 
 # For projects which use TensorFlow as part of a Bazel build process, putting
 # nothing in a bazelrc will default to a monolithic build. The following line
@@ -261,13 +267,6 @@ build:c++17 --cxxopt=-stdlib=libc++
 build:c++1z --config=c++17
 build:c++17_gcc --cxxopt=-std=c++1z
 build:c++1z_gcc --config=c++17_gcc
-
-# Enable using platform specific build settings, except when cross-compiling for
-# mobile platforms.
-build --enable_platform_specific_config
-build:android --noenable_platform_specific_config
-build:ios --noenable_platform_specific_config
-build:macos_arm64 --noenable_platform_specific_config
 
 # Suppress C++ compiler warnings, otherwise build logs become 10s of MBs.
 build:android --copt=-w
