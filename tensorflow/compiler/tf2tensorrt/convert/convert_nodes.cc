@@ -2378,6 +2378,13 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
         {{"input_sizes", true}, {"filter", true}, {"out_backprop", false}}));
     backprop_output_size = inputs.at(0);
     tensor = inputs.at(2).tensor();
+    if (!HasStaticShape(tensor->getDimensions())) {
+      // TODO(tfeher): Allow dynamic input. We need to implement padding
+      // correction for dynamic shapes in this case.
+      return errors::Unimplemented(
+          "Conv2dBackpropInput does not support input with unknown shape, at ",
+          node_def.name());
+    }
   } else {
     TF_RETURN_IF_ERROR(
         CheckInputsWeights(*params, {{"input", false}, {"filter", true}}));
@@ -2429,6 +2436,12 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   if (!params->use_implicit_batch && tensor->getDimensions().d[c_index] == -1) {
     return errors::InvalidArgument("Channel dimension must be static, at ",
                                    node_def.name());
+  }
+  string padding = attrs.get<string>("padding");
+  if (padding != "SAME" && padding != "VALID") {
+    return errors::Unimplemented(padding +
+                                 " padding type not implemented, "
+                                 "only VALID and SAME are supported");
   }
   const nvinfer1::DimsHW stride(tf_stride[h_index], tf_stride[w_index]);
   if (params->validation_only) return Status::OK();
@@ -2536,8 +2549,10 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
     nvinfer1::Dims trt_output_shape = output_tensor->getDimensions();
     // What determines the padding size is the difference between the given
     // input_sizes (tf_output_shape) and TRT computed size.
-    const int height_diff = output_height - trt_output_shape.d[1];
-    const int width_diff = output_width - trt_output_shape.d[2];
+    int out_h_idx = params->use_implicit_batch ? 1 : 2;
+    int out_w_idx = params->use_implicit_batch ? 2 : 3;
+    const int height_diff = output_height - trt_output_shape.d[out_h_idx];
+    const int width_diff = output_width - trt_output_shape.d[out_w_idx];
     if ((height_diff < 0) || (width_diff < 0)) {
       return errors::InvalidArgument(
           "input_sizes argument of Conv2DBackprop (i.e. output_shape argument "
@@ -2545,8 +2560,8 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
           "is too small for the given out_backprop argument of Conv2DBackprop "
           "(i.e. input argument of conv2d_transpose). Expect: ",
           "(", output_height, ", ", output_width, ") >= ", "(",
-          trt_output_shape.d[1], ", ", trt_output_shape.d[2], ") for op ",
-          node_def.name());
+          trt_output_shape.d[out_h_idx], ", ", trt_output_shape.d[out_w_idx],
+          ") for op ", node_def.name());
     }
     // Only add a padding layer if padding sizes are larger than 0
     if ((height_diff > 0) || (width_diff > 0)) {

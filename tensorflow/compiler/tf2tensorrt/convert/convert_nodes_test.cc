@@ -4833,15 +4833,15 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2D) {
   }
 }
 
-TEST_F(OpConverterTest, ConvertConv2DBackpropInput) {
+TEST_P(OpConverter_FP32_Test, ConvertConv2DBackpropInput) {
   // Get nodedef for Conv2D layer.
   auto get_conv2d_backprop_input_nodedef =
-      [](std::vector<int> strides = {1, 1, 1, 1}, string padding = "SAME",
-         string data_format = "NCHW",
+      [](DataType tf_type, std::vector<int> strides = {1, 1, 1, 1},
+         string padding = "SAME", string data_format = "NCHW",
          std::vector<int> dilations = {1, 1, 1, 1}) -> NodeDef {
     Scope s = Scope::NewRootScope();
-    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
-    auto filter = ops::Placeholder(s.WithOpName("weights"), DT_FLOAT);
+    auto input = ops::Placeholder(s.WithOpName("input"), tf_type);
+    auto filter = ops::Placeholder(s.WithOpName("weights"), tf_type);
     auto input_sizes = ops::Placeholder(s.WithOpName("input_sizes"), DT_INT32);
     ops::Conv2DBackpropInput::Attrs attrs = ops::Conv2DBackpropInput::Attrs()
                                                 .DataFormat(data_format)
@@ -4851,20 +4851,6 @@ TEST_F(OpConverterTest, ConvertConv2DBackpropInput) {
         strides, padding, attrs);
     return conv2d.operation.node()->def();
   };
-
-  {
-    // Dilation + Conv2DBackpropInput, should fail.
-    Reset();
-    NodeDef node_def = get_conv2d_backprop_input_nodedef({1, 1, 1, 1}, "SAME",
-                                                         "NHWC", {1, 1, 2, 1});
-    AddTestTensor("input", {2, 3, 1});
-    AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
-    AddTestWeights<int>("input_sizes", {4}, {1, 2, 3, 1});
-    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                               "Dilation with Conv2DBackpropInput "
-                               "(conv2d_transpose) is not supported, "
-                               "at my_conv2d_backprop_input");
-  }
 
   struct TestParams {
     std::vector<int> input_dims;
@@ -4877,12 +4863,14 @@ TEST_F(OpConverterTest, ConvertConv2DBackpropInput) {
     std::vector<int> dilations;
     std::vector<int> expected_output_dims;
     std::vector<float> expected_output;
+    Status conversion_status;
+    bool unknown_channel;
   };
 
   // Ok.
-  std::vector<TestParams> ok_params = {
+  std::vector<TestParams> params = {
       // Transpose Strided
-      TestParams{/*input_dims=*/{1, 2, 2},
+      TestParams{/*input_dims=*/{1, 1, 2, 2},
                  /*input=*/{0, 1, 2, 3},
                  /*filter_dims=*/{1, 2, 1, 1},
                  /*filter=*/{-1, 1},
@@ -4890,10 +4878,10 @@ TEST_F(OpConverterTest, ConvertConv2DBackpropInput) {
                  /*padding=*/"SAME",
                  /*data_format=*/"NCHW",
                  /*dilations=*/{1, 1, 1, 1},
-                 /*expected_output_dims=*/{1, 2, 4},
+                 /*expected_output_dims=*/{1, 1, 2, 4},
                  /*expected_output=*/{0, 0, -1, 1, -2, 2, -3, 3}},
       // Transpose Strided NHWC
-      TestParams{/*input_dims=*/{2, 2, 1},
+      TestParams{/*input_dims=*/{1, 2, 2, 1},
                  /*input=*/{0, 1, 2, 3},
                  /*filter_dims=*/{1, 2, 1, 1},
                  /*filter=*/{-1, 1},
@@ -4901,10 +4889,10 @@ TEST_F(OpConverterTest, ConvertConv2DBackpropInput) {
                  /*padding=*/"SAME",
                  /*data_format=*/"NHWC",
                  /*dilations=*/{1, 1, 1, 1},
-                 /*expected_output_dims=*/{2, 4, 1},
+                 /*expected_output_dims=*/{1, 2, 4, 1},
                  /*expected_output=*/{0, 0, -1, 1, -2, 2, -3, 3}},
       // Transpose Strided NHWC with VALID padding
-      TestParams{/*input_dims=*/{3, 1, 1},
+      TestParams{/*input_dims=*/{1, 3, 1, 1},
                  /*input=*/{0, 1, 2},
                  /*filter_dims=*/{2, 1, 1, 1},
                  /*filter=*/{-1, 1},
@@ -4912,51 +4900,100 @@ TEST_F(OpConverterTest, ConvertConv2DBackpropInput) {
                  /*padding=*/"VALID",
                  /*data_format=*/"NHWC",
                  /*dilations=*/{1, 1, 1, 1},
-                 /*expected_output_dims=*/{7, 1, 1},
+                 /*expected_output_dims=*/{1, 7, 1, 1},
                  /*expected_output=*/{0, 0, -1, 1, -2, 2, 0}},
+      TestParams{/*input_dims=*/{1, 1, 2, 2},
+                 /*input=*/{0, 1, 2, 3},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 1, 2},
+                 /*padding=*/"EXPLICIT",
+                 /*data_format=*/"NCHW",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*expected_output_dims=*/{1, 1, 2, 4},
+                 /*expected_output=*/{0, 0, -1, 1, -2, 2, -3, 3},
+                 errors::Unimplemented("EXPLICIT padding type not "
+                                       "implemented, only VALID and SAME are"
+                                       " supported")},
+      // Dilation + Conv2DBackpropInput, should fail.
+      TestParams{/*input_dims=*/{1, 1, 2, 2},
+                 /*input=*/{0, 1, 2, 3},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*padding=*/"SAME",
+                 /*data_format=*/"NCHW",
+                 /*dilations=*/{1, 1, 1, 2},
+                 {1, 1, 2, 2},
+                 {},
+                 errors::Unimplemented("Dilation with Conv2DBackpropInput "
+                                       "(conv2d_transpose) is not supported, "
+                                       "at my_conv2d_backprop_input")},
   };
-
-  for (int i = 0; i < ok_params.size(); i++) {
+  if (trt_mode_ == TrtTestMode::kDynamicShape) {
+    params.push_back(TestParams{
+        /*input_dims=*/{1, 1, 2, 2},
+        /*input=*/{0, 1, 2, 3},
+        /*filter_dims=*/{1, 2, 1, 1},
+        /*filter=*/{-1, 1},
+        /*strides=*/{1, 1, 1, 2},
+        /*padding=*/"SAME",
+        /*data_format=*/"NCHW",
+        /*dilations=*/{1, 1, 1, 1},
+        /*expected_output_dims=*/{1, 1, 2, 4},
+        /*expected_output=*/{0, 0, -1, 1, -2, 2, -3, 3},
+        errors::InvalidArgument(
+            "Channel dimension must be static, at my_conv2d_backprop_input"),
+        1});
+  }
+  for (auto p : params) {
     for (int input_sizes_length : {2, 4}) {
       Reset();
       NodeDef node_def = get_conv2d_backprop_input_nodedef(
-          ok_params[i].strides, ok_params[i].padding, ok_params[i].data_format,
-          ok_params[i].dilations);
-      AddTestTensor("input", ok_params[i].input_dims);
-      AddTestWeights<float>("weights", ok_params[i].filter_dims,
-                            ok_params[i].filter);
+          tf_type_, p.strides, p.padding, p.data_format, p.dilations);
 
-      std::vector<int> tf_input_sizes = ok_params[i].expected_output_dims;
+      std::vector<int> partial_input_shape;
+      if (trt_mode_ == TrtTestMode::kDynamicShape && !p.unknown_channel) {
+        // In dynamic shape mode, AddTestTensor will replace the input tensor
+        // dims with -1, unless we give a non-empty partial_input_shape_tensor.
+        // Having -1 channel dimension is invalid for TRT. We have a single
+        // test to check the converter in that case (p.unknown_channel==true).
+        // For all the other tests, we define here an input with known channel
+        // dimension.
+        partial_input_shape.resize(p.input_dims.size(), -1);
+        int channel_id = (p.data_format == "NCHW") ? 1 : 3;
+        partial_input_shape[channel_id] = p.input_dims[channel_id];
+      }
+
+      AddTestTensor("input", p.input_dims, tf_type_, p.input,
+                    partial_input_shape);
+      AddTestWeights<float>("weights", p.filter_dims, p.filter, tf_type_);
+
       if (input_sizes_length == 4) {
-        tf_input_sizes.insert(tf_input_sizes.begin(),
-                              1);  // Add batch dimension.
-        QCHECK_EQ(4, tf_input_sizes.size());
-        AddTestWeights<int>("input_sizes", {4}, tf_input_sizes);
+        AddTestWeights<int>("input_sizes", {4}, p.expected_output_dims);
       } else {
-        // Remove the channel dimension.
-        if (ok_params[i].data_format == "NHWC") {
-          tf_input_sizes.pop_back();
+        std::vector<int> tf_input_sizes(2);
+        // Remove the channel and batch dimensions.
+        if (p.data_format == "NHWC") {
+          std::copy(p.expected_output_dims.begin() + 1,
+                    p.expected_output_dims.end() - 1, tf_input_sizes.begin());
         } else {
-          tf_input_sizes.erase(tf_input_sizes.begin());
+          std::copy(p.expected_output_dims.begin() + 2,
+                    p.expected_output_dims.end(), tf_input_sizes.begin());
         }
         QCHECK_EQ(2, tf_input_sizes.size());
         AddTestWeights<int>("input_sizes", {2}, tf_input_sizes);
       }
+      Status conv_status =
+          trt_mode_ == TrtTestMode::kDynamicShape
+              ? errors::Unimplemented(
+                    "Conv2dBackpropInput does not support input with unknown "
+                    "shape, at my_conv2d_backprop_input")
+              : p.conversion_status;
 
-      RunValidationAndConversion(node_def);
-      TRT_TensorOrWeights output;
-      TF_EXPECT_OK(GetTensorOrWeights("my_conv2d_backprop_input", &output));
-      ASSERT_TRUE(output.is_tensor());
-      ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
-                               output.tensor()->getDimensions());
-
-      const DataVec input_data{{"input", AsTensor<float>(ok_params[i].input)}};
-      DataVec output_data{
-          {"my_conv2d_backprop_input",
-           ConstructTensor<float>(ok_params[i].expected_output.size())}};
-      TF_EXPECT_OK(BuildAndRun(input_data, &output_data));
-      EXPECT_THAT(GetSpanForData<float>(output_data[0]),
-                  ElementsAreArray(ok_params[i].expected_output));
+      TestOpConverter("my_conv2d_backprop_input", node_def,
+                      p.expected_output_dims, conv_status, Status::OK(),
+                      ElementsAreArray(p.expected_output));
     }
   }
 }
