@@ -587,6 +587,7 @@ py_strict_library(
         "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:row_partition",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )
