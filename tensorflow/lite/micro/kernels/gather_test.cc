@@ -340,7 +340,7 @@ TF_LITE_MICRO_TEST(GatherOpTestNegativeBatchDims) {
   const int golden_dims[] = {2, 2, 2, 2, 5};
   const int positions_dims[] = {3, 2, 2, 2};
   const int32_t positions_data[] = {1, 0, 0, 1, 1, 0, 0, 1};
-  int output_dims[] = {5, 0, 0, 0, 0};
+  int output_dims[] = {5, 0, 0, 0, 0, 0};
   tflite::testing::TestGather<int8_t, int32_t>(
       input_dims, tflite::testing::batchdims_input_data_i8, positions_dims,
       positions_data, output_dims, tflite::testing::batchdims_output_data_i8,
