@@ -432,7 +432,7 @@ TransposeTest/.+
 
 # transpose_conv_test
 -TransposeConvOpTest/TransposeConvOpTest.SimpleTestQuantizedPerChannel16x8/.+
--TransposeConvOpTest/TransposeConvOpTest..*Bias.*
+TransposeConvOpTest/TransposeConvOpTest..*Bias.*/0,29
 # Const tensor only
 TransposeConvOpTest/TransposeConvOpTest/.+/0,29
 
