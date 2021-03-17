@@ -114,8 +114,8 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   if (output->type == kTfLiteInt16) {
-    TF_LITE_ENSURE(context, input->type == kTfLiteInt8 ||
-                                                             input->type == kTfLiteInt16);
+    TF_LITE_ENSURE(context,
+                   input->type == kTfLiteInt8 || input->type == kTfLiteInt16);
   } else {
     TF_LITE_ENSURE_EQ(context, input->type, output->type);
   }
