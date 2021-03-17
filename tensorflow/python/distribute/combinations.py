@@ -185,7 +185,7 @@ class GPUCombination(combinations_lib.TestCombination):
           and context.num_gpus() < number_of_required_gpus):
       return (False, ("Only {} of {} required GPUs are available.".format(
           context.num_gpus(), number_of_required_gpus)))
-    elif required_physical_gpus > len(config.list_physical_devices("GPU")):
+    elif required_physical_gpus < len(config.list_physical_devices("GPU")):
       return (False,
               ("Only {} of {} required physical GPUs are available.".format(
                   config.list_physical_devices("GPU"), required_physical_gpus)))
