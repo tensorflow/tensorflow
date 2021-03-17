@@ -24,18 +24,20 @@ namespace tflite {
 namespace testing {
 namespace {
 
-const int8_t batchdims1_input_data_i8[] = {
+const int8_t batchdims_input_data_i8[] = {
     0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14,
     15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
     30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44,
     45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59};
 
-const int8_t batchdims1_golden_data_i8[] = {
+const int8_t batchdims_golden_data_i8[] = {
     5,  6,  7,  8,  9,  0,  1,  2,  3,  4,  0,  1,  2,  3,  4,  5,
     6,  7,  8,  9,  20, 21, 22, 23, 24, 15, 16, 17, 18, 19, 15, 16,
     17, 18, 19, 20, 21, 22, 23, 24, 35, 36, 37, 38, 39, 30, 31, 32,
     33, 34, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 50, 51, 52, 53,
     54, 45, 46, 47, 48, 49, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54};
+
+int8_t batchdims_output_data_i8[80];
 
 template <typename InType, typename PosType>
 void TestGather(const int* input_dims, const InType* input_data,
@@ -325,11 +327,10 @@ TF_LITE_MICRO_TEST(GatherOpTestBatchDims1) {
   const int positions_dims[] = {3, 2, 2, 2};
   const int32_t positions_data[] = {1, 0, 0, 1, 1, 0, 0, 1};
   int output_dims[] = {5, 0, 0, 0, 0, 0};
-  int8_t output_data[80];
   tflite::testing::TestGather<int8_t, int32_t>(
-      input_dims, tflite::testing::batchdims1_input_data_i8, positions_dims,
-      positions_data, output_dims, output_data, golden_dims,
-      tflite::testing::batchdims1_golden_data_i8, axis, batch_dims);
+      input_dims, tflite::testing::batchdims_input_data_i8, positions_dims,
+      positions_data, output_dims, tflite::testing::batchdims_output_data_i8,
+      golden_dims, tflite::testing::batchdims_golden_data_i8, axis, batch_dims);
 }
 
 TF_LITE_MICRO_TEST(GatherOpTestNegativeBatchDims) {
@@ -340,11 +341,10 @@ TF_LITE_MICRO_TEST(GatherOpTestNegativeBatchDims) {
   const int positions_dims[] = {3, 2, 2, 2};
   const int32_t positions_data[] = {1, 0, 0, 1, 1, 0, 0, 1};
   int output_dims[] = {5, 0, 0, 0, 0};
-  int8_t output_data[80];
   tflite::testing::TestGather<int8_t, int32_t>(
-      input_dims, tflite::testing::batchdims1_input_data_i8, positions_dims,
-      positions_data, output_dims, output_data, golden_dims,
-      tflite::testing::batchdims1_golden_data_i8, axis, batch_dims);
+      input_dims, tflite::testing::batchdims_input_data_i8, positions_dims,
+      positions_data, output_dims, tflite::testing::batchdims_output_data_i8,
+      golden_dims, tflite::testing::batchdims_golden_data_i8, axis, batch_dims);
 }
 
 TF_LITE_MICRO_TEST(GatherOpTestBatchDimsEqualIndiceDims) {
