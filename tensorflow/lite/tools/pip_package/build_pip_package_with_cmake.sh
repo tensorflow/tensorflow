@@ -50,6 +50,7 @@ cp -r "${TENSORFLOW_LITE_DIR}/tools/pip_package/debian" \
       "${TENSORFLOW_LITE_DIR}/python/interpreter_wrapper" \
       "${BUILD_DIR}"
 cp "${TENSORFLOW_LITE_DIR}/python/interpreter.py" \
+   "${TENSORFLOW_LITE_DIR}/python/metrics_interface.py" \
    "${TENSORFLOW_LITE_DIR}/python/metrics_portable.py" \
    "${BUILD_DIR}/tflite_runtime"
 echo "__version__ = '${PACKAGE_VERSION}'" >> "${BUILD_DIR}/tflite_runtime/__init__.py"

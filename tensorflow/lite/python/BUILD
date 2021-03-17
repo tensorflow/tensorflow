@@ -497,7 +497,7 @@ py_test(
     ],
 )
 
-pytype_strict_library(
+py_library(
     name = "metrics_portable",
     srcs = ["metrics_portable.py"],
     compatible_with = get_compatible_with_portable(),

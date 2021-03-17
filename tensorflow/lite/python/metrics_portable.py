@@ -14,9 +14,18 @@
 # limitations under the License.
 # ==============================================================================
 """Python TFLite metrics helper."""
+import os
 from typing import Optional, Text
 
-from tensorflow.lite.python import metrics_interface
+# pylint: disable=g-import-not-at-top
+if not os.path.splitext(__file__)[0].endswith(
+    os.path.join('tflite_runtime', 'metrics_portable')):
+  # This file is part of tensorflow package.
+  from tensorflow.lite.python import metrics_interface
+else:
+  # This file is part of tflite_runtime package.
+  from tflite_runtime import metrics_interface
+# pylint: enable=g-import-not-at-top
 
 
 class TFLiteMetrics(metrics_interface.TFLiteMetricsInterface):
