@@ -336,8 +336,6 @@ TF_LITE_MICRO_TEST(Softmax1DFloatShouldMatchGolden) {
       tflite::testing::shape_1d, tflite::testing::golden_1d, output_data);
 }
 
-
-
 TF_LITE_MICRO_TEST(Softmax1DQuantizedInt8ShouldMatchGolden) {
   const float input_scale = 0.1f;
   const int input_zero_point = 0;
@@ -374,8 +372,6 @@ TF_LITE_MICRO_TEST(Softmax2DFloatShouldMatchGolden) {
       tflite::testing ::shape_2d, tflite::testing::input_data_2d,
       tflite::testing::shape_2d, tflite::testing::golden_2d, output_data);
 }
-
-
 
 TF_LITE_MICRO_TEST(Softmax2DQuantizedInt8ShouldMatchGolden) {
   const float input_scale = 0.1f;
@@ -414,7 +410,6 @@ TF_LITE_MICRO_TEST(Softmax3DFloatShouldMatchGolden) {
       tflite::testing::shape_3d, tflite::testing::golden_3d, output_data);
 }
 
-
 TF_LITE_MICRO_TEST(Softmax3DQuantizedInt8ShouldMatchGolden) {
   const float input_scale = 0.1f;
   const int input_zero_point = 0;
@@ -452,8 +447,6 @@ TF_LITE_MICRO_TEST(Softmax4DFloatShouldMatchGolden) {
       tflite::testing ::shape_4d, tflite::testing::input_data_4d,
       tflite::testing::shape_4d, tflite::testing::golden_4d, output_data);
 }
-
-
 
 TF_LITE_MICRO_TEST(Softmax4DQuantizedInt8ShouldMatchGolden) {
   const float input_scale = 0.1f;
