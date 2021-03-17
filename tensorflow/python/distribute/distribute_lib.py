@@ -594,6 +594,7 @@ class RunOptions(
     collections.namedtuple("RunOptions", [
         "experimental_enable_dynamic_batch_size",
         "experimental_bucketizing_dynamic_shape",
+        "experimental_xla_options",
     ])):
   """Run options for `strategy.run`.
 
@@ -609,14 +610,18 @@ class RunOptions(
       bucketize inputs passed into `run` if the input shape is
       dynamic. This is a performance optimization to reduce XLA recompilation,
       which should not have impact on correctness.
+    experimental_xla_options: A `tf.tpu.XLAOptions` instance. Only applies to
+      TPUStrategy. Controls the XLA compiling options on TPUs. Default to None.
   """
 
   def __new__(cls,
               experimental_enable_dynamic_batch_size=True,
-              experimental_bucketizing_dynamic_shape=False):
+              experimental_bucketizing_dynamic_shape=False,
+              experimental_xla_options=None):
     return super(RunOptions,
                  cls).__new__(cls, experimental_enable_dynamic_batch_size,
-                              experimental_bucketizing_dynamic_shape)
+                              experimental_bucketizing_dynamic_shape,
+                              experimental_xla_options)
 
 
 @tf_export("distribute.InputOptions", v1=[])

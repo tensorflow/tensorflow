@@ -865,10 +865,11 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           context.async_wait()
       atexit.register(async_wait)
 
-    # Flag to turn on VariablePolicy
+    # Flag to turn on VariablePolicy.
     self._use_var_policy = True
 
-    # Flag to enable TF2 SPMD
+    # Flag to enable XLA SPMD partitioning.
+    # TODO(b/170873313): Enable XLA SPMD partitioning in TPUStrategy.
     self._use_spmd_for_xla_partitioning = False
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
@@ -1477,14 +1478,15 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         padding_spec = None
 
       with strategy.scope():
+        xla_options = options.experimental_xla_options or tpu.XLAOptions(
+            use_spmd_for_xla_partitioning=self._use_spmd_for_xla_partitioning)
         replicate_outputs = tpu.replicate(
             replicated_fn,
             replicate_inputs,
             device_assignment=self._device_assignment,
             maximum_shapes=maximum_shapes,
             padding_spec=padding_spec,
-            xla_options=tpu.XLAOptions(use_spmd_for_xla_partitioning=self
-                                       ._use_spmd_for_xla_partitioning))
+            xla_options=xla_options)
 
       # Remove all no ops that may have been added during 'tpu.replicate()'
       filter_ops = lambda x: [o for o in x if not isinstance(o, ops.Operation)]

@@ -39,6 +39,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.tpu import tpu
 from tensorflow.python.util import nest
 
 
@@ -510,13 +511,12 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
 
   @combinations.generate(
       combinations.combine(
-          distribution=strategy_combinations.multidevice_strategies,
-          mode=["eager"]))
-  def testDynamicShapesWithRunOptions(self, distribution):
+          distribution=strategy_combinations.tpu_strategy, mode=["eager"]))
+  def testDynamicShapesWithRunOptionsBucketizing(self, distribution):
     dataset = get_dataset_from_tensor_slices([5., 6., 7.]).batch(4)
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
-    options = distribute_lib.RunOptions
-    options.experimental_bucketizing_dynamic_shape = True
+    options = distribute_lib.RunOptions(
+        experimental_bucketizing_dynamic_shape=True)
 
     @def_function.function
     def run(iterator):
@@ -532,6 +532,35 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
 
     # This assumes that there are exactly 2 replicas
     self.assertAllEqual([5.5, 7.], run(input_iterator))
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.tpu_strategy, mode=["eager"]))
+  def testDynamicShapesWithRunOptionsDisableDynamicPadder(self, distribution):
+    dataset = get_dataset_from_tensor_slices([5, 6, 7]).batch(4)
+    mask_dataset = get_dataset_from_tensor_slices([1, 0, 1]).batch(4)
+    dataset = dataset_ops.DatasetV2.zip((dataset, mask_dataset))
+
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+    options = distribute_lib.RunOptions(
+        experimental_xla_options=tpu.XLAOptions(
+            enable_xla_dynamic_padder=False))
+
+    @def_function.function
+    def run(iterator):
+
+      def computation(inputs):
+        x, mask = inputs
+        y = x * mask
+        return math_ops.reduce_sum(y)
+
+      inputs = next(iterator)
+      outputs = distribution.experimental_local_results(
+          distribution.run(computation, args=(inputs,), options=options))
+      return outputs
+
+    # This assumes that there are exactly 2 replicas
+    self.assertAllEqual([5, 7], run(input_iterator))
 
   @combinations.generate(
       combinations.combine(
