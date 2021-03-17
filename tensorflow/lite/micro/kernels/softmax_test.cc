@@ -28,10 +28,8 @@ namespace {
 // The Softmax kernel assumes an output in the range [0, 1.0], leading to these
 // quantization parameters.
 const float output_scale_int8 = 1.0f / 256.0f;
-const float output_scale_uint8 = 1.0f / 256.0f;
 const float output_scale_int16 = 1.0f / 32768.0f;
 const int output_zero_point_int8 = -128;
-const int output_zero_point_uint8 = 0;
 const int output_zero_point_int16 = 0;
 
 // Empirical tolerance in quantization space
