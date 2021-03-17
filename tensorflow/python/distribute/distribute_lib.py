@@ -893,7 +893,7 @@ class StrategyBase(object):
       automatically enter it for you. Any variable that is created outside scope
       will not be distributed and may have performance implications. Some common
       objects that create variables in TF are Models, Optimizers, Metrics. Such
-      objects should always be initiliazized in the scope, and any functions
+      objects should always be initialized in the scope, and any functions
       that may lazily create variables (e.g., `Model.__call__()`, tracing a
       `tf.function`, etc.) should similarly be called within scope. Another
       source of variable creation can be a checkpoint restore - when variables
