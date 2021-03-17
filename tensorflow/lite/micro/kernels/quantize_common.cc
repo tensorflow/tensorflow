@@ -41,13 +41,6 @@ TfLiteStatus EvalQuantizeReference(TfLiteContext* context, TfLiteNode* node) {
             tflite::micro::GetTensorShape(output),
             tflite::micro::GetTensorData<int8_t>(output));
         break;
-      case kTfLiteUInt8:
-        reference_ops::AffineQuantize(
-            data->quantization_params, tflite::micro::GetTensorShape(input),
-            tflite::micro::GetTensorData<float>(input),
-            tflite::micro::GetTensorShape(output),
-            tflite::micro::GetTensorData<uint8_t>(output));
-        break;
       case kTfLiteInt16:
         reference_ops::AffineQuantize(
             data->quantization_params, tflite::micro::GetTensorShape(input),

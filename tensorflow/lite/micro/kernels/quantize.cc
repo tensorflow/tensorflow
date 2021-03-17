@@ -56,8 +56,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, input->type == kTfLiteFloat32 ||
                               input->type == kTfLiteInt16 ||
                               input->type == kTfLiteInt8);
-  TF_LITE_ENSURE(context, output->type == kTfLiteUInt8 ||
-                              output->type == kTfLiteInt8 ||
+  TF_LITE_ENSURE(context, output->type == kTfLiteInt8 ||
                               output->type == kTfLiteInt16 ||
                               output->type == kTfLiteInt32);
 
