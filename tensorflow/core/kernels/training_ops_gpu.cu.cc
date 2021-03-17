@@ -60,7 +60,7 @@ __global__ __launch_bounds__(1024) void SparseApplyAdagradKernel(
       accum_i += grad_i * grad_i;
     }
     if (has_epsilon) {
-      var_i -= lr_t * grad_i / (sqrt(accum_i) + epsilon_t);
+      var_i -= lr_t * grad_i / (Eigen::numext::sqrt(accum_i) + epsilon_t);
     } else {
       var_i -= lr_t * grad_i * Eigen::numext::rsqrt(accum_i);
     }
@@ -147,10 +147,10 @@ __global__ void SparseApplyFtrlKernel(T* var, T* accum, T* linear, const T* lr,
     const T new_accum_i = accum_i + grad_i * grad_i;
     const bool lr_power_is_neg_half = lr_power_t == static_cast<T>(-0.5);
     const T pow_new_accum = lr_power_is_neg_half
-                                ? sqrt(new_accum_i)
+                                ? Eigen::numext::sqrt(new_accum_i)
                                 : pow(new_accum_i, -lr_power_t);
-    const T pow_accum =
-        lr_power_is_neg_half ? sqrt(accum_i) : pow(accum_i, -lr_power_t);
+    const T pow_accum = lr_power_is_neg_half ? Eigen::numext::sqrt(accum_i)
+                                             : pow(accum_i, -lr_power_t);
     T linear_change = grad_shr_i * lr_t - (pow_new_accum - pow_accum) * var_i;
     if (!multiply_linear_by_lr) {
       linear_change /= lr_t;
@@ -188,8 +188,9 @@ __global__ __launch_bounds__(1024) void ApplyAdamKernel(
   eigen_assert(gridDim.y == 1);
   eigen_assert(gridDim.z == 1);
 
-  const T mul_factor = (*lr_) * sqrt(static_cast<T>(1.0) - (*beta2_power_)) /
-                       (static_cast<T>(1.0) - (*beta1_power_));
+  const T mul_factor =
+      (*lr_) * Eigen::numext::sqrt(static_cast<T>(1.0) - (*beta2_power_)) /
+      (static_cast<T>(1.0) - (*beta1_power_));
   const T epsilon = (*epsilon_);
   const T beta1 = (*beta1_);
   const T one_minus_beta1 = static_cast<T>(1.0) - (beta1);
@@ -206,9 +207,9 @@ __global__ __launch_bounds__(1024) void ApplyAdamKernel(
     v_i += one_minus_beta2 * (g_i * g_i - v_i);
     if (use_nesterov) {
       var[i] -= mul_factor * (m_i * beta1 + one_minus_beta1 * g_i) /
-                (epsilon + sqrt(v_i));
+                (epsilon + Eigen::numext::sqrt(v_i));
     } else {
-      var[i] -= mul_factor * m_i / (epsilon + sqrt(v_i));
+      var[i] -= mul_factor * m_i / (epsilon + Eigen::numext::sqrt(v_i));
     }
 
     m[i] = m_i;
@@ -1010,29 +1011,20 @@ struct ApplyPowerSign<GPUDevice, T> {
 template struct functor::ApplyGradientDescent<GPUDevice, Eigen::half>;
 template struct functor::ApplyGradientDescent<GPUDevice, float>;
 template struct functor::ApplyGradientDescent<GPUDevice, double>;
-#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support
-                             // complex sqrt
 template struct functor::ApplyGradientDescent<GPUDevice, complex64>;
 template struct functor::ApplyGradientDescent<GPUDevice, complex128>;
-#endif
 
 template struct functor::ApplyAdagrad<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdagrad<GPUDevice, float>;
 template struct functor::ApplyAdagrad<GPUDevice, double>;
-#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support
-                             // complex sqrt
 template struct functor::ApplyAdagrad<GPUDevice, complex64>;
 template struct functor::ApplyAdagrad<GPUDevice, complex128>;
-#endif
 
 template struct functor::ApplyAdagradV2<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdagradV2<GPUDevice, float>;
 template struct functor::ApplyAdagradV2<GPUDevice, double>;
-#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support
-                             // complex sqrt
 template struct functor::ApplyAdagradV2<GPUDevice, complex64>;
 template struct functor::ApplyAdagradV2<GPUDevice, complex128>;
-#endif
 
 #define EXPLICITLY_INSTANTIATE_FUNCTOR(T)                             \
   template struct functor::SparseApplyAdagrad<GPUDevice, T, int32,    \
@@ -1064,11 +1056,8 @@ template struct functor::SparseApplyProximalAdagrad<GPUDevice, double, int64>;
 template struct functor::ApplyAdadelta<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdadelta<GPUDevice, float>;
 template struct functor::ApplyAdadelta<GPUDevice, double>;
-#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support
-                             // complex sqrt
 template struct functor::ApplyAdadelta<GPUDevice, complex64>;
 template struct functor::ApplyAdadelta<GPUDevice, complex128>;
-#endif
 
 template struct functor::ApplyFtrl<GPUDevice, Eigen::half>;
 template struct functor::ApplyFtrl<GPUDevice, float>;
@@ -1103,22 +1092,14 @@ EXPLICITLY_INSTANTIATE_FUNCTOR(double);
 template struct functor::ApplyMomentum<GPUDevice, Eigen::half>;
 template struct functor::ApplyMomentum<GPUDevice, float>;
 template struct functor::ApplyMomentum<GPUDevice, double>;
-#if !defined(TENSORFLOW_USE_NVCC) && \
-    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
-                                   // complex sqrt
 template struct functor::ApplyMomentum<GPUDevice, complex64>;
 template struct functor::ApplyMomentum<GPUDevice, complex128>;
-#endif
 
 template struct functor::ApplyKerasMomentum<GPUDevice, Eigen::half>;
 template struct functor::ApplyKerasMomentum<GPUDevice, float>;
 template struct functor::ApplyKerasMomentum<GPUDevice, double>;
-#if !defined(TENSORFLOW_USE_NVCC) && \
-    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
-                                   // complex sqrt
 template struct functor::ApplyKerasMomentum<GPUDevice, complex64>;
 template struct functor::ApplyKerasMomentum<GPUDevice, complex128>;
-#endif
 
 template struct functor::SparseApplyKerasMomentum<GPUDevice, Eigen::half,
                                                   int32>;
@@ -1128,24 +1109,16 @@ template struct functor::SparseApplyKerasMomentum<GPUDevice, float, int32>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, float, int64>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, double, int32>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, double, int64>;
-#if !defined(TENSORFLOW_USE_NVCC) && \
-    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
-                                   // complex sqrt
 template struct functor::SparseApplyKerasMomentum<GPUDevice, complex64, int32>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, complex64, int64>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, complex128, int32>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, complex128, int64>;
-#endif
 
 template struct functor::ApplyAdam<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdam<GPUDevice, float>;
 template struct functor::ApplyAdam<GPUDevice, double>;
-#if !defined(TENSORFLOW_USE_NVCC) && \
-    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
-                                   // complex sqrt
 template struct functor::ApplyAdam<GPUDevice, complex64>;
 template struct functor::ApplyAdam<GPUDevice, complex128>;
-#endif
 
 template struct functor::ApplyAdamWithAmsgrad<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdamWithAmsgrad<GPUDevice, float>;
@@ -1158,20 +1131,14 @@ template struct functor::ApplyAdaMax<GPUDevice, double>;
 template struct functor::ApplyRMSProp<GPUDevice, Eigen::half>;
 template struct functor::ApplyRMSProp<GPUDevice, float>;
 template struct functor::ApplyRMSProp<GPUDevice, double>;
-#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support
-                             // complex sqrt
 template struct functor::ApplyRMSProp<GPUDevice, complex64>;
 template struct functor::ApplyRMSProp<GPUDevice, complex128>;
-#endif
 
 template struct functor::ApplyCenteredRMSProp<GPUDevice, Eigen::half>;
 template struct functor::ApplyCenteredRMSProp<GPUDevice, float>;
 template struct functor::ApplyCenteredRMSProp<GPUDevice, double>;
-#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support
-                             // complex sqrt
 template struct functor::ApplyCenteredRMSProp<GPUDevice, complex64>;
 template struct functor::ApplyCenteredRMSProp<GPUDevice, complex128>;
-#endif
 
 template struct functor::ApplyAddSign<GPUDevice, Eigen::half>;
 template struct functor::ApplyAddSign<GPUDevice, float>;
