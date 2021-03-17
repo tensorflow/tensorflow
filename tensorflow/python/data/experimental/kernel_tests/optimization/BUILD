@@ -28,7 +28,7 @@ tf_py_test(
 
 tf_py_test(
     name = "choose_fastest_branch_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["choose_fastest_branch_dataset_test.py"],
     tags = [
         "no_oss",
