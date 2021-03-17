@@ -19,6 +19,8 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/gradient_checker.h"
+#include "tensorflow/cc/framework/gradients.h"
+#include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/testutil.h"
 #include "tensorflow/cc/gradients/grad_testutil.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -55,14 +57,32 @@ class ResourceVariableGradTest : public ::testing::Test {
 };
 
 TEST_F(ResourceVariableGradTest, ReadVariableOpGrad) {
-  TensorShape shape({5, 2});
+  TensorShape shape({});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+
   auto var = VarHandleOp(scope_, DT_FLOAT, shape);
-  auto init = AssignVariableOp(scope_, var, x);
+  auto init = AssignVariableOp(scope_, var, Const(scope_, (float) 2, {}));
 
-  auto y = ReadVariableOp(scope_, var, DT_FLOAT);
+  auto temp = ReadVariableOp(scope_, var, DT_FLOAT);
 
-  RunTest(x, shape, y, shape);
+  auto y = Mul(scope_, temp, x);
+
+  auto dy = ops::Cast(scope_, ops::Const(scope_, 1.0, shape), DT_FLOAT);
+
+  OutputList dxs;
+  TF_ASSERT_OK(AddSymbolicGradients(scope_, {y}, {var}, {dy}, &dxs));
+
+
+  ClientSession::FeedType feed_list;
+  feed_list.insert({x, (float) 5});
+  feed_list.insert({dy, (float) 1});
+
+  std::vector<Tensor> dxout;
+  ClientSession session(scope_);
+  TF_ASSERT_OK(session.Run(feed_list, dxs, &dxout));
+
+  auto grad = dxout[0].scalar<float>()();
+  EXPECT_EQ(grad, 5);
 }
 
 }  // namespace
