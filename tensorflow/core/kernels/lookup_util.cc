@@ -418,8 +418,7 @@ class DatasetIterator : public InitializableLookupTable::InitTableIterator {
 
   Status Init(OpKernelContext* ctx) {
     data::IteratorContext::Params params(ctx);
-    function_handle_cache_ =
-        absl::make_unique<data::FunctionHandleCache>(params.flr);
+    function_handle_cache_ = absl::make_unique<FunctionHandleCache>(params.flr);
     params.function_handle_cache = function_handle_cache_.get();
     params.resource_mgr = &resource_mgr_;
     cancellation_manager_ =
@@ -460,7 +459,7 @@ class DatasetIterator : public InitializableLookupTable::InitTableIterator {
  private:
   data::DatasetBase* dataset_;  // not owned.
   std::unique_ptr<data::IteratorContext> iterator_ctx_;
-  std::unique_ptr<data::FunctionHandleCache> function_handle_cache_;
+  std::unique_ptr<FunctionHandleCache> function_handle_cache_;
   ResourceMgr resource_mgr_;
   std::unique_ptr<CancellationManager> cancellation_manager_;
   std::unique_ptr<data::IteratorBase> iterator_;

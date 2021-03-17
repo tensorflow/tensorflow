@@ -594,6 +594,10 @@ Status CapturedFunction::Instantiate(
     inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
   }
   inst_opts.is_multi_device_function = metadata_->use_multi_device_function();
+  if (!ctx->function_handle_cache()) {
+    // If the caller does not provide a cache, we use the FLR cache.
+    inst_opts.use_function_cache = true;
+  }
 
   // We infer the target device from the function library runtime.
   DCHECK(lib->device() != nullptr);
@@ -696,9 +700,15 @@ Status CapturedFunction::Instantiate(
   }
 
   FunctionLibraryRuntime::Handle f_handle;
-  TF_RETURN_IF_ERROR(ctx->function_handle_cache()->Instantiate(
-      metadata_->func().name(), AttrSlice(&metadata_->func().attr()), inst_opts,
-      &f_handle));
+  if (ctx->function_handle_cache()) {
+    TF_RETURN_IF_ERROR(ctx->function_handle_cache()->Instantiate(
+        metadata_->func().name(), AttrSlice(&metadata_->func().attr()),
+        inst_opts, &f_handle));
+  } else {
+    TF_RETURN_IF_ERROR(lib->Instantiate(metadata_->func().name(),
+                                        AttrSlice(&metadata_->func().attr()),
+                                        inst_opts, &f_handle));
+  }
 
   DataTypeVector ret_types;
   TF_RETURN_IF_ERROR(lib->GetRetTypes(f_handle, &ret_types));

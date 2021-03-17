@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
@@ -1063,7 +1064,8 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
   }
   if (options.config_proto.ByteSize() > 0) {
     string config_proto_serialized;
-    options.config_proto.SerializeToString(&config_proto_serialized);
+    SerializeToStringDeterministic(options.config_proto,
+                                   &config_proto_serialized);
     entries.push_back(AttrKeyAndValue("_config_proto", -1,
                                       config_proto_serialized,
                                       AttrKeyAndValue::kCEscape));
