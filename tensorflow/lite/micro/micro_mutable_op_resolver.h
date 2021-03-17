@@ -143,7 +143,7 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParsePool);
   }
 
-  TfLiteStatus AddBatchToSpaceND() {
+  TfLiteStatus AddBatchToSpaceNd() {
     return AddBuiltin(BuiltinOperator_BATCH_TO_SPACE_ND,
                       Register_BATCH_TO_SPACE_ND(), ParseBatchToSpaceNd);
   }
@@ -455,6 +455,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
   TfLiteStatus AddTanh() {
     return AddBuiltin(BuiltinOperator_TANH, tflite::ops::micro::Register_TANH(),
                       ParseTanh);
+  }
+
+  TfLiteStatus AddTransposeConv() {
+    return AddBuiltin(BuiltinOperator_TRANSPOSE_CONV,
+                      tflite::Register_TRANSPOSE_CONV(), ParseTransposeConv);
   }
 
   TfLiteStatus AddUnpack() {
