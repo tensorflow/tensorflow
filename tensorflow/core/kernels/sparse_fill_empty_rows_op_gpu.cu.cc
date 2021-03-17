@@ -174,7 +174,6 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
                     const Tensor& dense_shape_t,
                     typename AsyncOpKernel::DoneCallback done) {
     const int kEmptyRowIndicatorOutput = 2;
-    const int kReverseIndexMapOutput = 3;
 
     const auto default_value = default_value_t.scalar<T>();
     const auto indices = indices_t.matrix<Tindex>();
@@ -392,8 +391,8 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
     // the host, so we enqueue the remainder of the computation onto the stream
     // asynchronously to avoid stalling execution.
     auto async_finish_computation =
-        [this, context, kReverseIndexMapOutput, kAllIndicesValid, index_type, N,
-         rank, indices, values, default_value, dense_rows, num_empty_rows_host,
+        [this, context, kAllIndicesValid, index_type, N, rank, indices, values,
+         default_value, dense_rows, num_empty_rows_host,
          rows_are_not_ordered_host, first_invalid_index_host,
          num_empty_rows_through_t, num_empty_rows_through, input_row_ends_t,
          input_row_ends, empty_row_indicator_t, empty_row_indicator,
@@ -411,35 +410,16 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
                                                 ", 0) is invalid."),
                         done);
 
-      Tensor* output_indices_t;
       Tindex num_empty_rows = *num_empty_rows_host.data();
-      const Tindex N_full = N + num_empty_rows;
-      TensorShape output_indices_shape({N_full, rank});
+
+      Tindex* output_indices;
+      T* output_values;
+      Tindex* reverse_index_map;
       OP_REQUIRES_OK_ASYNC(
           context,
-          context->allocate_output("output_indices", output_indices_shape,
-                                   &output_indices_t),
+          AllocateOutputs(context, N, rank, num_empty_rows, &output_indices,
+                          &output_values, &reverse_index_map),
           done);
-      auto output_indices = output_indices_t->matrix<Tindex>();
-
-      Tensor* output_values_t;
-      OP_REQUIRES_OK_ASYNC(
-          context,
-          context->allocate_output("output_values", TensorShape({N_full}),
-                                   &output_values_t),
-          done);
-      auto output_values = output_values_t->vec<T>();
-
-      Tindex* reverse_index_map = nullptr;
-      if (context->output_required(kReverseIndexMapOutput)) {
-        Tensor* reverse_index_map_t = nullptr;
-        OP_REQUIRES_OK_ASYNC(
-            context,
-            context->allocate_output(kReverseIndexMapOutput, TensorShape({N}),
-                                     &reverse_index_map_t),
-            done);
-        reverse_index_map = reverse_index_map_t->vec<Tindex>().data();
-      }
 
       const GPUDevice& device = context->eigen_device<GPUDevice>();
 
@@ -447,48 +427,11 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
       Tensor input_index_map_t;
       int rows_are_not_ordered = *rows_are_not_ordered_host.data();
       if (rows_are_not_ordered) {
-        // Extract row indices into separate array for use as keys for sorting.
-        Tensor row_indices_t;
         OP_REQUIRES_OK_ASYNC(context,
-                             context->allocate_temp(
-                                 index_type, TensorShape({N}), &row_indices_t),
+                             ArgSortByRows(context, device, N, rank, indices,
+                                           &input_index_map_t),
                              done);
-        auto row_indices = row_indices_t.flat<Tindex>();
-        OP_REQUIRES_OK_ASYNC(
-            context,
-            wrap_kernel_call(CopyRowIndicesKernel<Tindex>, device, N, rank,
-                             indices, row_indices),
-            done);
-        // Allocate input_index_map.
-        OP_REQUIRES_OK_ASYNC(
-            context,
-            context->allocate_temp(index_type, TensorShape({N}),
-                                   &input_index_map_t),
-            done);
         input_index_map = input_index_map_t.vec<Tindex>().data();
-
-        // Allocate temp storage for sort indices input.
-        Tensor input_indexes_t;
-        OP_REQUIRES_OK_ASYNC(
-            context,
-            context->allocate_temp(index_type, TensorShape({N}),
-                                   &input_indexes_t),
-            done);
-
-        // Allocate temp storage for sorted_row_indices_t.
-        Tensor sorted_row_indices_t;
-        OP_REQUIRES_OK_ASYNC(
-            context,
-            context->allocate_temp(index_type, TensorShape({N}),
-                                   &sorted_row_indices_t),
-            done);
-
-        // Sort element indices by row indices.
-        OP_REQUIRES_OK_ASYNC(
-            context,
-            RadixArgSort(context, row_indices_t, &input_indexes_t,
-                         &sorted_row_indices_t, &input_index_map_t),
-            done);
       }
 
       OP_REQUIRES_OK_ASYNC(
@@ -515,6 +458,33 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
   }
 
  private:
+  Status AllocateOutputs(OpKernelContext* context, Tindex N, int rank,
+                         Tindex num_empty_rows, Tindex** output_indices,
+                         T** output_values, Tindex** reverse_index_map) {
+    Tensor* output_indices_t;
+    const Tindex N_full = N + num_empty_rows;
+    TensorShape output_indices_shape({N_full, rank});
+    TF_RETURN_IF_ERROR(context->allocate_output(
+        "output_indices", output_indices_shape, &output_indices_t));
+    *output_indices = output_indices_t->matrix<Tindex>().data();
+
+    Tensor* output_values_t;
+    TF_RETURN_IF_ERROR(context->allocate_output(
+        "output_values", TensorShape({N_full}), &output_values_t));
+    *output_values = output_values_t->vec<T>().data();
+
+    const int kReverseIndexMapOutput = 3;
+    if (context->output_required(kReverseIndexMapOutput)) {
+      Tensor* reverse_index_map_t = nullptr;
+      TF_RETURN_IF_ERROR(context->allocate_output(
+          kReverseIndexMapOutput, TensorShape({N}), &reverse_index_map_t));
+      *reverse_index_map = reverse_index_map_t->vec<Tindex>().data();
+    } else {
+      *reverse_index_map = nullptr;
+    }
+    return Status::OK();
+  }
+
   Status RangeInit(OpKernelContext* context, const Tindex start,
                    const Tindex delta, const Tindex size,
                    typename TTypes<Tindex>::Flat out) {
@@ -552,6 +522,37 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
         cu_stream);
     return Status::OK();
   }  // At this point cub_temp_storage will be marked for deallocation.
+
+  Status ArgSortByRows(OpKernelContext* context, const GPUDevice& device,
+                       Tindex N, int rank,
+                       typename TTypes<Tindex>::ConstMatrix indices,
+                       Tensor* input_index_map_t) {
+    DataType index_type = DataTypeToEnum<Tindex>::value;
+    // Extract row indices into separate array for use as keys for sorting.
+    Tensor row_indices_t;
+    TF_RETURN_IF_ERROR(
+        context->allocate_temp(index_type, TensorShape({N}), &row_indices_t));
+    auto row_indices = row_indices_t.flat<Tindex>();
+    TF_RETURN_IF_ERROR(wrap_kernel_call(CopyRowIndicesKernel<Tindex>, device, N,
+                                        rank, indices, row_indices));
+    // Allocate input_index_map.
+    TF_RETURN_IF_ERROR(context->allocate_temp(index_type, TensorShape({N}),
+                                              input_index_map_t));
+
+    // Allocate temp storage for sort indices input.
+    Tensor input_indexes_t;
+    TF_RETURN_IF_ERROR(
+        context->allocate_temp(index_type, TensorShape({N}), &input_indexes_t));
+
+    // Allocate temp storage for sorted_row_indices_t.
+    Tensor sorted_row_indices_t;
+    TF_RETURN_IF_ERROR(context->allocate_temp(index_type, TensorShape({N}),
+                                              &sorted_row_indices_t));
+
+    // Sort element indices by row indices.
+    return RadixArgSort(context, row_indices_t, &input_indexes_t,
+                        &sorted_row_indices_t, input_index_map_t);
+  }
 };
 
 }  // namespace functor
