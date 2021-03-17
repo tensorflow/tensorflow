@@ -3,7 +3,6 @@
 
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load(":build_defs.bzl", "build_test")
 
 package(
@@ -39,7 +38,6 @@ cc_library(
     name = "framework",
     srcs = [],
     hdrs = FRAMEWORK_LIB_HDRS + CC_API_HDRS,
-    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
@@ -71,7 +69,6 @@ cc_library(
     name = "cc_api",
     srcs = [],
     hdrs = CC_API_HDRS,
-    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
     visibility = ["//tensorflow/lite:__pkg__"],
     deps = [
@@ -104,7 +101,6 @@ cc_library(
         "//tensorflow/lite/kernels:builtin_op_kernels.h",
         "//tensorflow/lite/kernels:fully_connected.h",
     ],
-    compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
         "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
@@ -128,7 +124,6 @@ build_test(
 cc_library(
     name = "delegate_registry",
     hdrs = ["cc/experimental/acceleration/configuration/delegate_registry.h"],
-    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
@@ -152,7 +147,6 @@ build_test(
 cc_library(
     name = "c_api",
     hdrs = ["c/c_api.h"],
-    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
@@ -164,7 +158,6 @@ cc_library(
 cc_library(
     name = "c_api_experimental",
     hdrs = ["c/c_api_experimental.h"],
-    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
@@ -176,7 +169,6 @@ cc_library(
 cc_library(
     name = "common",
     hdrs = ["c/common.h"],
-    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
@@ -188,7 +180,6 @@ cc_library(
 cc_library(
     name = "builtin_op_data",
     hdrs = ["c/builtin_op_data.h"],
-    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
