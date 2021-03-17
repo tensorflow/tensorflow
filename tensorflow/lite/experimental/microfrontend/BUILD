@@ -2,9 +2,11 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_copts",
     "tf_custom_op_library",
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
+    "tf_opts_nortti_if_android",
     "tf_py_test",
 )
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
@@ -30,11 +32,31 @@ cc_library(
 cc_library(
     name = "audio_microfrontend_op_lib",
     srcs = ["ops/audio_microfrontend_op.cc"],
+    copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_android() + [
+        "-Wno-narrowing",
+        "-Wno-sign-compare",
+        "-Wno-overloaded-virtual",
+    ] + select({
+        "//tensorflow:android": [
+            # Selective registration uses constexprs with recursive
+            # string comparisons; that can lead to compiler errors, so
+            # we increase the constexpr recursion depth.
+            "-fconstexpr-depth=1024",
+            "-Oz",
+        ],
+        "//conditions:default": [],
+    }),
     deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/lite/experimental/microfrontend/lib:frontend",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+        ],
+    }),
     alwayslink = 1,
 )
 
@@ -84,7 +106,7 @@ tf_custom_op_py_library(
     kernels = [
         ":audio_microfrontend_op_op_lib",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":audio_microfrontend_op",
         "//tensorflow/python:array_ops",

@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import platform
+
 from tensorflow.python.platform import build_info
 from tensorflow.python.platform import test
 
@@ -30,11 +32,19 @@ class BuildInfoTest(test.TestCase):
     self.assertEqual(build_info.build_info['is_cuda_build'],
                      test.is_built_with_cuda())
 
+    # TODO(b/173044576): make the test work for Windows.
+    if platform.system() != 'Windows':
+      # pylint: disable=g-import-not-at-top
+      from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
+      self.assertEqual(build_info.build_info['is_tensorrt_build'],
+                       is_tensorrt_enabled())
+
   def testDeterministicOrder(self):
     # The dict may contain other keys depending on the platform, but the ones
     # it always contains should be in order.
-    self.assertContainsSubsequence(build_info.build_info.keys(),
-                                   ('is_cuda_build', 'is_rocm_build'))
+    self.assertContainsSubsequence(
+        build_info.build_info.keys(),
+        ('is_cuda_build', 'is_rocm_build', 'is_tensorrt_build'))
 
 
 if __name__ == '__main__':

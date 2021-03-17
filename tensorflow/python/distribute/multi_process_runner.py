@@ -191,13 +191,7 @@ class MultiProcessRunner(object):
       raise ValueError('If chief exists in the cluster, there must be at most '
                        'one chief. Current `cluster_spec` has {} chiefs.'
                        .format(len(cluster_spec['chief'])))
-    if not multi_process_lib.initialized():
-      raise NotInitializedError(
-          '`multi_process_runner` is not initialized. '
-          'Please call `tf.__internal__.distribute.multi_process_runner.'
-          'test_main()` within `if __name__ == \'__main__\':` block '
-          'in your python module to properly initialize '
-          '`multi_process_runner`.')
+    _check_initialization()
     if not callable(fn):
       raise ValueError('fn is not a callable')
 
@@ -854,11 +848,8 @@ class _ProcFunc(object):
 
 
 # Active MultiProcessPoolRunner. We need to shut them down when the program
-# exits. For the main process, we do this via atexit callback. For a process
-# that is spawned by MultiProcessPoolRunner, e.g. nested MultiProcessPoolRunner,
-# we do this manually at the end of _pool_runner_worker. The reason is that
-# multiprocessing library waits for all spawned processes to exit, so atexit
-# callbacks won't trigger until all pools are shutdown.
+# exits, and this is by setting the `tearDownModule` of the module containing
+# `__main__`. Note this it set in both the parent process and the subprocesses.
 _active_pool_runners = weakref.WeakSet()
 
 
@@ -955,6 +946,7 @@ class MultiProcessPoolRunner(object):
     Returns:
       A list of return values.
     """
+    _check_initialization()
     # TODO(b/150264776): skip in OSS until it's implemented.
     multi_process_lib.Process()
     if self._runner is None:
@@ -1014,12 +1006,6 @@ def _pool_runner_worker(task_type, task_id, initializer, conn):
     sys.stdout.flush()
     sys.stderr.flush()
     conn.send(info)
-  # Shutdown all MultiProcessPoolRunner in this process manually.
-  # MultiProcessPoolRunner registers an atexit callback to shutdown all pool
-  # runners, but we cannot rely on that in processes spawned by the
-  # multiprocessing library. This is because the library waits for all
-  # subprocesses before exiting and thus all atexit callbacks.
-  _shutdown_all_pool_runners()
 
 
 def _run_contained(task_type, task_id, fn, args, kwargs):
@@ -1112,6 +1098,16 @@ class NotInitializedError(RuntimeError):
   `multi_process_runner.run`.
   """
   pass
+
+
+def _check_initialization():
+  if not multi_process_lib.initialized():
+    raise NotInitializedError(
+        '`multi_process_runner` is not initialized. '
+        'Please call `tf.__internal__.distribute.multi_process_runner.'
+        'test_main()` within `if __name__ == \'__main__\':` block '
+        'in your python module to properly initialize '
+        '`multi_process_runner`.')
 
 
 def _set_tf_config(task_type, task_id, cluster_spec, rpc_layer=None):

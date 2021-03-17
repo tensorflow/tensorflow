@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import threading
 import time
 
@@ -28,19 +29,25 @@ from tensorflow.python.data.experimental.ops import testing as dataset_testing
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import test_util
+from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import collective_ops as _collective_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
 
 
 class CollectiveOpsV1(object):
   all_reduce = _collective_ops.all_reduce
   all_gather = _collective_ops.all_gather
+  broadcast_send = _collective_ops.broadcast_send
+  broadcast_recv = _collective_ops.broadcast_recv
 
 
 class CollectiveOpsV2(object):
@@ -61,11 +68,43 @@ class CollectiveOpsV2(object):
     return _collective_ops.all_gather_v2(t, group_size, group_key, instance_key,
                                          *args, **kwargs)
 
+  @staticmethod
+  def broadcast_send(t, shape, dtype, group_size, group_key, instance_key,
+                     *args, **kwargs):
+    group_size = array_ops.identity(group_size)
+    group_key = array_ops.identity(group_key)
+    instance_key = array_ops.identity(instance_key)
+    return _collective_ops.broadcast_send_v2(t, group_size, group_key,
+                                             instance_key, *args, **kwargs)
+
+  @staticmethod
+  def broadcast_recv(shape, dtype, group_size, group_key, instance_key, *args,
+                     **kwargs):
+    group_size = array_ops.identity(group_size)
+    group_key = array_ops.identity(group_key)
+    instance_key = array_ops.identity(instance_key)
+    shape = array_ops.identity(shape)
+    return _collective_ops.broadcast_recv_v2(
+        shape, dtype, group_size, group_key, instance_key, *args, **kwargs)
+
 
 device_combination = (
     combinations.combine(device='CPU', communication='RING', required_gpus=0) +
     combinations.combine(
         device='GPU', communication=['RING', 'NCCL'], required_gpus=2))
+
+
+collective_op_combinations = combinations.times(
+    combinations.combine(
+        collective_op=[
+            combinations.NamedObject('all_reduce', CollectiveOpsV1.all_reduce),
+            combinations.NamedObject('all_reduce_v2',
+                                     CollectiveOpsV2.all_reduce),
+            combinations.NamedObject('all_gather', CollectiveOpsV1.all_gather),
+            combinations.NamedObject('all_gather_v2',
+                                     CollectiveOpsV2.all_gather),
+        ],
+        mode='eager'), device_combination)
 
 
 @combinations.generate(
@@ -176,6 +215,42 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
     for result in run_all_gather_2devices():
       self.assertAllClose(result, [1., 1.], rtol=1e-5, atol=1e-5)
 
+  def testBroadcast(self, collective_ops, device, communication):
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
+
+    @def_function.function
+    def run_broadcast_2devices():
+      shape = [3]
+      in_value = constant_op.constant([1., 2., 3.], shape=shape)
+      group_size = 2
+      group_key = 2
+      instance_key = 2
+      collectives = []
+      with ops.device(dev0):
+        collectives.append(
+            collective_ops.broadcast_send(
+                in_value,
+                shape,
+                in_value.dtype,
+                group_size,
+                group_key,
+                instance_key,
+                communication_hint=communication))
+      with ops.device(dev1):
+        collectives.append(
+            collective_ops.broadcast_recv(
+                shape,
+                in_value.dtype,
+                group_size,
+                group_key,
+                instance_key,
+                communication_hint=communication))
+      return collectives
+
+    for result in run_broadcast_2devices():
+      self.assertAllClose(result, [1., 2., 3.], rtol=1e-5, atol=1e-5)
+
   def testInstanceKeyScopedUnderGroupKey(self, collective_ops, device,
                                          communication):
     if device == 'GPU' and context.num_gpus() < 4:
@@ -222,8 +297,32 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(results[3], 7., rtol=1e-5, atol=1e-5)
 
   def testCollectiveGroupSizeOne(self, collective_ops, device, communication):
-    if communication == 'NCCL':
-      self.skipTest('b/170672646: it crashes with NCCL and group size one')
+    dev0 = '/device:%s:0' % device
+
+    group_size = 1
+    group_key = 100
+    in_value = [1., 2., 3., 4.]
+    in_tensor = constant_op.constant(in_value)
+
+    with ops.device(dev0):
+      reduced_tensor = collective_ops.all_reduce(
+          in_tensor,
+          group_size,
+          group_key,
+          instance_key=100,
+          communication_hint=communication)
+    self.assertAllEqual(in_value, reduced_tensor.numpy())
+
+    with ops.device(dev0):
+      gathered_tensor = collective_ops.all_gather(
+          in_tensor,
+          group_size,
+          group_key,
+          instance_key=200,
+          communication_hint=communication)
+    self.assertAllEqual(in_value, gathered_tensor.numpy())
+
+  def testCollectiveInvalidKey(self, collective_ops, device, communication):
     dev0 = '/device:%s:0' % device
 
     group_size = 1
@@ -241,14 +340,16 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
           communication_hint=communication)
     self.assertAllEqual(in_value, reduced_tensor.numpy())
 
-    with ops.device(dev0):
-      gathered_tensor = collective_ops.all_gather(
-          in_tensor,
-          group_size,
-          group_key,
-          instance_key,
-          communication_hint=communication)
-    self.assertAllEqual(in_value, gathered_tensor.numpy())
+    with self.assertRaisesRegex(
+        errors.InternalError, 'instance 100 expected type 0 and data_type 1 but'
+        ' got type 2 and data_type 1'):
+      with ops.device(dev0):
+        collective_ops.all_gather(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            communication_hint=communication)
 
   def testMultipleGroups(self, collective_ops, device, communication):
     if device == 'GPU' and context.num_gpus() < 4:
@@ -283,20 +384,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
     run_and_assert(group_size=3, group_key=2)
 
 
-@combinations.generate(
-    combinations.times(
-        combinations.combine(
-            collective_op=[
-                combinations.NamedObject('all_reduce',
-                                         CollectiveOpsV1.all_reduce),
-                combinations.NamedObject('all_reduce_v2',
-                                         CollectiveOpsV2.all_reduce),
-                combinations.NamedObject('all_gather',
-                                         CollectiveOpsV1.all_gather),
-                combinations.NamedObject('all_gather_v2',
-                                         CollectiveOpsV2.all_gather),
-            ],
-            mode='eager'), device_combination))
+@combinations.generate(collective_op_combinations)
 class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
@@ -646,21 +734,78 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
     # proceed.
     collective_fn()
 
+  @combinations.generate(
+      combinations.times(
+          combinations.combine(
+              collective_op=[
+                  combinations.NamedObject('all_reduce_v2',
+                                           CollectiveOpsV2.all_reduce),
+                  combinations.NamedObject('all_gather_v2',
+                                           CollectiveOpsV2.all_gather),
+              ],
+              mode='eager'), device_combination))
+  def testCancelDuringParamResolution(self, collective_op, device,
+                                      communication):
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
+    group_size = 2
+    group_key = 100
+    instance_key = 100
+    in_tensor = constant_op.constant([1.])
+    t1_cancellation_manager = cancellation.CancellationManager()
+    t2_cancellation_manager = cancellation.CancellationManager()
 
-@combinations.generate(
-    combinations.times(
-        combinations.combine(
-            collective_op=[
-                combinations.NamedObject('all_reduce',
-                                         CollectiveOpsV1.all_reduce),
-                combinations.NamedObject('all_reduce_v2',
-                                         CollectiveOpsV2.all_reduce),
-                combinations.NamedObject('all_gather',
-                                         CollectiveOpsV1.all_gather),
-                combinations.NamedObject('all_gather_v2',
-                                         CollectiveOpsV2.all_gather),
-            ],
-            mode='eager'), device_combination))
+    @def_function.function
+    def _collective_fn(x):
+      # Run an assertion to crash one of the two function executions running
+      # collectives. We explicitly cancel the other in response.
+      assert_op = check_ops.assert_equal(x, in_tensor)
+      with ops.control_dependencies([assert_op]):
+        return collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            communication_hint=communication)
+
+    collective_concrete = _collective_fn.get_concrete_function(in_tensor)
+
+    finish_mu = threading.Lock()
+    finishes = 0
+
+    def _placement_wrapper(device, x, my_cancellation, other_cancellation):
+      try:
+        with ops.device(device):
+          cancelable_collective = my_cancellation.get_cancelable_function(
+              collective_concrete)
+          return cancelable_collective(x)
+      except errors.InvalidArgumentError:
+        # `assert_equal` failed for this execution of the function. The other
+        # function would deadlock without cancellation.
+        other_cancellation.start_cancel()
+      except errors.CancelledError:
+        pass
+      nonlocal finishes
+      with finish_mu:
+        finishes += 1
+
+    t1 = threading.Thread(
+        target=_placement_wrapper,
+        args=(dev0, constant_op.constant([1.]), t1_cancellation_manager,
+              t2_cancellation_manager))
+    t2 = threading.Thread(
+        target=_placement_wrapper,
+        # Will cause the assertion to fail
+        args=(dev1, constant_op.constant([2.]), t2_cancellation_manager,
+              t1_cancellation_manager))
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+    self.assertEqual(finishes, 2)
+
+
+@combinations.generate(collective_op_combinations)
 class TimeoutTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
@@ -785,6 +930,94 @@ class TimeoutTest(test.TestCase, parameterized.TestCase):
             communication_hint=communication)
 
 
+@combinations.generate(
+    combinations.times(
+        combinations.combine(
+            collective_op=[
+                combinations.NamedObject('all_reduce_v2',
+                                         CollectiveOpsV2.all_reduce),
+                combinations.NamedObject('all_gather_v2',
+                                         CollectiveOpsV2.all_gather),
+            ],
+            mode='eager'), device_combination))
+class OrderingTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    _setup_context()
+    super().setUp()
+
+  def testOrdering(self, collective_op, device, communication):
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
+    group_size = 2
+    group_key = 100
+    instance_key = 100
+    in_tensor = constant_op.constant([1.])
+
+    with ops.device(dev0):
+      token0 = resource_variable_ops.ResourceVariable(0.)
+    with ops.device(dev1):
+      token1 = resource_variable_ops.ResourceVariable(0.)
+
+    @def_function.function
+    def f():
+      # Launch the first collective with token.
+      with ops.device(dev0):
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            ordering_token=token0.handle)
+      with ops.device(dev1):
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            ordering_token=token1.handle)
+      # Launch the second collective without token.
+      with ops.device(dev0):
+        collective_op(in_tensor, group_size, group_key, instance_key)
+      with ops.device(dev1):
+        collective_op(in_tensor, group_size, group_key, instance_key)
+      # Launch the third collective with token.
+      with ops.device(dev0):
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            ordering_token=token0.handle)
+      with ops.device(dev1):
+        collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            ordering_token=token1.handle)
+
+    graph = f.get_concrete_function().graph
+    for device in [dev0, dev1]:
+      # Try to find the third collective, which should have the first collective
+      # as a control input.
+      third = None
+      for op in graph.get_operations():
+        if (op.type.startswith('Collective') and op.device.endswith(device) and
+            op.control_inputs and
+            op.control_inputs[0].type.startswith('Collective')):
+          self.assertIsNone(third)
+          third = op
+      self.assertIsNotNone(third)
+      # Verify it's not the second collective by looking at the inputs.
+      self.assertTrue(any(v.dtype == dtypes.resource for v in third.inputs))
+      first = third.control_inputs[0]
+      self.assertEqual(third.device, first.device)
+      # Verify it's not the second collective by looking at the inputs.
+      self.assertTrue(any(v.dtype == dtypes.resource for v in first.inputs))
+      self.assertEmpty(first.control_inputs)
+
+
 def _setup_context():
   context._reset_context()
   test_util.set_logical_devices_to_at_least('CPU', 4)
@@ -792,5 +1025,6 @@ def _setup_context():
 
 
 if __name__ == '__main__':
+  os.environ['NCCL_DEBUG'] = 'INFO'
   v2_compat.enable_v2_behavior()
   test.main()

@@ -42,7 +42,7 @@ struct TestMaterializeBroadcastsPass
     PopulateMaterializeBroadcastsPatterns(&getContext(), &conversionPatterns);
 
     if (failed(applyPartialConversion(getFunction(), conversionTarget,
-                                      conversionPatterns))) {
+                                      std::move(conversionPatterns)))) {
       return signalPassFailure();
     }
   }

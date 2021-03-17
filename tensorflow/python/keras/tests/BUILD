@@ -1,15 +1,16 @@
 # Description:
 #   Contains Keras test utils and integration tests.
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 package(
     default_visibility = [
+        "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/tools/pip_package:__pkg__",
     ],
     licenses = ["notice"],  # Apache 2.0
@@ -56,6 +57,7 @@ tpu_py_test(
         "automatic_outside_compilation_test.py",
     ],
     disable_experimental = True,
+    disable_mlir_bridge = False,
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
@@ -147,7 +149,6 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 16,
     tags = [
-        "no_rocm",
         "notsan",
     ],
     deps = [
@@ -166,7 +167,7 @@ py_library(
     srcs = [
         "model_architectures.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/keras",
     ],
@@ -188,7 +189,7 @@ tf_py_test(
 py_library(
     name = "model_subclassing_test_util",
     srcs = ["model_subclassing_test_util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/keras",
     ],
@@ -276,41 +277,6 @@ tf_py_test(
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:memory_checker",
-    ],
-)
-
-cuda_py_test(
-    name = "op_callbacks_test",
-    srcs = ["op_callbacks_test.py"],
-    python_version = "PY3",
-    xla_enable_strict_auto_jit = False,
-    deps = [
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:op_callbacks",
-        "//tensorflow/python:script_ops",
-        "//tensorflow/python:util",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras",
-        "//tensorflow/python/keras:combinations",
-    ],
-)
-
-cuda_py_test(
-    name = "summary_ops_test",
-    size = "small",
-    srcs = ["summary_ops_test.py"],
-    deps = [
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:lib",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary_ops_v2",
-        "//tensorflow/python/keras:testing_utils",
-        "//tensorflow/python/keras/engine",
-        "//tensorflow/python/keras/layers:core",
     ],
 )
 
@@ -425,7 +391,6 @@ tf_py_test(
     python_version = "PY3",
     tags = ["notsan"],  # b/74395663
     deps = [
-        "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:checkpoint_management",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -519,6 +484,6 @@ tf_xla_py_test(
 py_library(
     name = "get_config_samples",
     srcs = ["get_config_samples.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [],
 )

@@ -27,9 +27,9 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import parameter_server_strategy
+from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -55,6 +55,7 @@ from tensorflow.python.keras.engine import training_utils_v1
 from tensorflow.python.keras.mixed_precision import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
+from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
@@ -66,9 +67,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.types import core
 from tensorflow.python.util import nest
-from tensorflow.python.util.compat import collections_abc
 
 try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
@@ -202,7 +201,7 @@ class Model(training_lib.Model):
     TensorFlow format loads based on the object-local names of attributes to
     which layers are assigned in the `Model`'s constructor.
 
-    Arguments:
+    Args:
         filepath: String, path to the weights file to load. For weight files in
             TensorFlow format, this is the file prefix (the same as was passed
             to `save_weights`).
@@ -228,9 +227,9 @@ class Model(training_lib.Model):
         ValueError: If `skip_mismatch` is set to `True` when `by_name` is
           `False`.
     """
-    if distributed_training_utils.is_tpu_strategy(self._distribution_strategy):
+    if K.is_tpu_strategy(self._distribution_strategy):
       if (self._distribution_strategy.extended.steps_per_run > 1 and
-          (not training_lib._is_hdf5_filepath(filepath))):  # pylint: disable=protected-access
+          (not saving_utils.is_hdf5_filepath(filepath))):  # pylint: disable=protected-access
         raise ValueError('Load weights is not yet supported with TPUStrategy '
                          'with steps_per_run greater than 1.')
     return super(Model, self).load_weights(filepath, by_name, skip_mismatch)
@@ -248,7 +247,7 @@ class Model(training_lib.Model):
               **kwargs):
     """Configures the model for training.
 
-    Arguments:
+    Args:
         optimizer: String (name of optimizer) or optimizer instance.
             See `tf.keras.optimizers`.
         loss: String (name of objective function), objective function or
@@ -309,6 +308,7 @@ class Model(training_lib.Model):
 
     # Prepare Session arguments (legacy).
     kwargs.pop('cloning', None)  # Legacy DistStrat argument, never used.
+    self._from_serialized = kwargs.pop('from_serialized', False)
     allowed_kwargs = {'feed_dict', 'fetches', 'options', 'run_metadata'}
     unknown_kwargs = set(kwargs.keys()) - allowed_kwargs
     if unknown_kwargs:
@@ -361,9 +361,15 @@ class Model(training_lib.Model):
 
     if isinstance(self._distribution_strategy,
                   parameter_server_strategy.ParameterServerStrategyV1):
-      raise NotImplementedError('`tf.compat.v1.distribute.experimental.Paramet'
-                                'erServerStrategy` currently only works '
-                                'with the tf.Estimator API')
+      raise NotImplementedError(
+          '`tf.compat.v1.distribute.experimental.ParameterServerStrategy` '
+          'currently only works with the tf.Estimator API')
+
+    if isinstance(self._distribution_strategy,
+                  parameter_server_strategy_v2.ParameterServerStrategyV2):
+      raise NotImplementedError(
+          '`tf.distribute.experimental.ParameterServerStrategy` is only '
+          'supported in TF2.')
 
     if not self._experimental_run_tf_function:
       self._validate_compile_param_for_distribution_strategy(self.run_eagerly,
@@ -498,7 +504,9 @@ class Model(training_lib.Model):
         return super(Model, self).metrics
       metrics += self._compile_metric_functions
     metrics.extend(self._metrics)
-    metrics.extend(_get_metrics_from_layers(self._layers))
+    metrics.extend(
+        _get_metrics_from_layers(
+            list(self._flatten_layers(include_self=False, recursive=False))))
     return metrics
 
   @property
@@ -629,7 +637,7 @@ class Model(training_lib.Model):
           **kwargs):
     """Trains the model for a fixed number of epochs (iterations on a dataset).
 
-    Arguments:
+    Args:
         x: Input data. It could be:
           - A Numpy array (or array-like), or a list of arrays
             (in case the model has multiple inputs).
@@ -740,7 +748,7 @@ class Model(training_lib.Model):
             the dataset at each epoch. This ensures that the same validation
             samples are used every time.
         validation_freq: Only relevant if validation data is provided. Integer
-            or `collections_abc.Container` instance (e.g. list, tuple, etc.).
+            or `collections.abc.Container` instance (e.g. list, tuple, etc.).
             If an integer, specifies how many training epochs to run before a
             new validation run is performed, e.g. `validation_freq=2` runs
             validation every 2 epochs. If a Container, specifies the epochs on
@@ -822,7 +830,7 @@ class Model(training_lib.Model):
 
     Computation is done in batches (see the `batch_size` arg.)
 
-    Arguments:
+    Args:
         x: Input data. It could be:
           - A Numpy array (or array-like), or a list of arrays
             (in case the model has multiple inputs).
@@ -926,7 +934,7 @@ class Model(training_lib.Model):
 
     Computation is done in batches (see the `batch_size` arg.)
 
-    Arguments:
+    Args:
         x: Input samples. It could be:
           - A Numpy array (or array-like), or a list of arrays
             (in case the model has multiple inputs).
@@ -1008,7 +1016,7 @@ class Model(training_lib.Model):
                      reset_metrics=True):
     """Runs a single gradient update on a single batch of data.
 
-    Arguments:
+    Args:
         x: Input data. It could be:
           - A Numpy array (or array-like), or a list of arrays
               (in case the model has multiple inputs).
@@ -1097,7 +1105,7 @@ class Model(training_lib.Model):
   def test_on_batch(self, x, y=None, sample_weight=None, reset_metrics=True):
     """Test the model on a single batch of samples.
 
-    Arguments:
+    Args:
         x: Input data. It could be:
           - A Numpy array (or array-like), or a list of arrays
             (in case the model has multiple inputs).
@@ -1173,7 +1181,7 @@ class Model(training_lib.Model):
   def predict_on_batch(self, x):
     """Returns predictions for a single batch of samples.
 
-    Arguments:
+    Args:
         x: Input data. It could be:
           - A Numpy array (or array-like), or a list of arrays
             (in case the model has multiple inputs).
@@ -1202,7 +1210,7 @@ class Model(training_lib.Model):
     # at this point.
     if self.run_eagerly or self._distribution_strategy:
       inputs = training_utils_v1.cast_if_floating_dtype(inputs)
-      if isinstance(inputs, collections_abc.Sequence):
+      if isinstance(inputs, collections.abc.Sequence):
         # Unwrap lists with only one input, as we do when training on batch
         if len(inputs) == 1:
           inputs = inputs[0]
@@ -1438,7 +1446,7 @@ class Model(training_lib.Model):
         for name in self.output_names:
           tmp_target_tensors.append(target_tensors.get(name, None))
         target_tensors = tmp_target_tensors
-      elif tensor_util.is_tensor(target_tensors):
+      elif tensor_util.is_tf_type(target_tensors):
         target_tensors = [target_tensors]
       else:
         raise TypeError('Expected `target_tensors` to be a list or tuple or '
@@ -1562,7 +1570,7 @@ class Model(training_lib.Model):
   def _prepare_total_loss(self, masks):
     """Computes total loss from loss functions.
 
-    Arguments:
+    Args:
         masks: List of mask values corresponding to each model output.
 
     Returns:
@@ -1688,7 +1696,7 @@ class Model(training_lib.Model):
     raised if `x` is a tf.data.Dataset and `batch_size` is specified as we
     expect users to provide batched datasets.
 
-    Arguments:
+    Args:
       batch_size: The batch_size provided as an argument to
         fit/evaluate/predict.
       steps: The steps provided as an argument to fit/evaluate/predict.
@@ -1711,7 +1719,7 @@ class Model(training_lib.Model):
 
     # Avoids the override in Sequential.layers which filters Input layers.
     # (Which are often the very layers that we're after.)
-    layers = layer_utils.filter_empty_layer_containers(self._layers)
+    layers = self._flatten_layers(include_self=False, recursive=False)
     first_layer = next(layers, None)
     if first_layer:
       # The per-replica static batch size.
@@ -1743,7 +1751,7 @@ class Model(training_lib.Model):
         # Check Dataset/Iterator batch size is consistent with InputLayer.
         if isinstance(x, (dataset_ops.DatasetV2, iterator_ops.Iterator,
                           iterator_ops.IteratorBase)):
-          ds_batch_size = tensor_shape.as_dimension(
+          ds_batch_size = tensor_shape.Dimension(
               nest.flatten(dataset_ops.get_legacy_output_shapes(x))[0][0]).value
           if ds_batch_size is not None:
             if ds_batch_size % num_splits_for_ds != 0:
@@ -1792,32 +1800,44 @@ class Model(training_lib.Model):
       else:
         output_shapes.append(output.shape.as_list())
     self._per_output_metrics = training_utils_v1.collect_per_output_metric_info(
-        metrics, self.output_names, output_shapes, self.loss_functions)
+        metrics, self.output_names, output_shapes, self.loss_functions,
+        from_serialized=self._from_serialized)
     self._per_output_weighted_metrics = (
         training_utils_v1.collect_per_output_metric_info(
             weighted_metrics,
             self.output_names,
             output_shapes,
             self.loss_functions,
+            from_serialized=self._from_serialized,
             is_weighted=True))
 
-  def _add_unique_metric_name(self, metric_name, output_index):
-    """Makes the metric name unique and adds it to the model's metric name list.
+  def _add_unique_metric_name(self, metric_name, metric_fn, output_index):
+    """Makes the metric name unique.
 
       If there are multiple outputs for which the metrics are calculated, the
       metric names have to be made unique by appending an integer.
 
-    Arguments:
+    Args:
       metric_name: Metric name that corresponds to the metric specified by the
           user. For example: 'acc'.
+      metric_fn: The Metric object.
       output_index: The index of the model output for which the metric name is
         being added.
 
     Returns:
       string, name of the model's unique metric name
     """
+    # For multi-output models, prepend the output names to the metric name.
     if len(self.output_names) > 1:
-      metric_name = '%s_%s' % (self.output_names[output_index], metric_name)
+      # If we're loading from an already-serialized model, we've already
+      # prepended the output name, and we don't want to do it again.
+      #
+      # Alternatively, we may be receiving a stateless metric (e.g. the string
+      # "accuracy") rather than a `Metric` object, in which case we want to
+      # prepend the output name even if we are loading a serialized model.
+      if not getattr(metric_fn, '_from_serialized', False):
+        metric_name = '%s_%s' % (self.output_names[output_index], metric_name)
+
     j = 1
     base_metric_name = metric_name
     while metric_name in self.metrics_names:
@@ -1835,7 +1855,7 @@ class Model(training_lib.Model):
   def _set_per_output_metric_attributes(self, metrics_dict, output_index):
     """Sets the metric attributes on the model for the given output.
 
-    Arguments:
+    Args:
       metrics_dict: A dict with metric names as keys and metric fns as values.
       output_index: The index of the model output for which the metric
         attributes are added.
@@ -1845,7 +1865,8 @@ class Model(training_lib.Model):
     """
     updated_metrics_dict = collections.OrderedDict()
     for metric_name, metric_fn in metrics_dict.items():
-      metric_name = self._add_unique_metric_name(metric_name, output_index)
+      metric_name = self._add_unique_metric_name(
+          metric_name, metric_fn, output_index)
 
       # Update the name on the metric class to be the unique generated name.
       metric_fn._name = metric_name  # pylint: disable=protected-access
@@ -1891,7 +1912,7 @@ class Model(training_lib.Model):
                                  weights=None):
     """Calls metric functions for a single output.
 
-    Arguments:
+    Args:
       metrics_dict: A dict with metric names as keys and metric fns as values.
       y_true: Target output.
       y_pred: Predicted output.
@@ -1919,7 +1940,7 @@ class Model(training_lib.Model):
                       return_weighted_and_unweighted_metrics=False):
     """Handles calling metric functions.
 
-    Arguments:
+    Args:
       outputs: List of outputs (predictions).
       targets: List of targets.
       skip_target_masks: Optional. List of boolean for whether the corresponding
@@ -2129,8 +2150,7 @@ class Model(training_lib.Model):
                                 'when using tf.distribute.Strategy.')
 
     if (sample_weight is not None and sample_weight.all() and
-        distributed_training_utils.is_tpu_strategy(
-            self._distribution_strategy)):
+        K.is_tpu_strategy(self._distribution_strategy)):
       raise NotImplementedError('`sample_weight` is currently not supported '
                                 'when using TPUStrategy.')
 
@@ -2184,8 +2204,7 @@ class Model(training_lib.Model):
         # TODO(b/131720208): We still drop remainder here if number of examples
         # is divisible by batch size, as sometimes dynamic padder will time out
         # with keras.metrics.CategoricalAccuracy() metric.
-        if distributed_training_utils.is_tpu_strategy(
-            strategy) and not drop_remainder:
+        if K.is_tpu_strategy(strategy) and not drop_remainder:
           dataset_size = first_x_value.shape[0]
           if dataset_size % batch_size == 0:
             drop_remainder = True
@@ -2495,7 +2514,7 @@ class Model(training_lib.Model):
     # users should explicitly add composite tensor inputs to their subclassed
     # models.
     for input_tensor in processed_inputs:
-      if composite_tensor_utils.is_composite_or_composite_value(input_tensor):
+      if training_utils_v1.is_composite_or_composite_value(input_tensor):
         # TODO(b/132691975): Document subclass-model CT input handling.
         raise ValueError(
             'All SparseTensor and RaggedTensor inputs must be explicitly '
@@ -2540,8 +2559,8 @@ class Model(training_lib.Model):
         all_inputs.append(target)
     # Type check that all inputs are *either* value *or* symbolic.
     # TODO(fchollet): this check could be removed in Eager mode?
-    if any(tensor_util.is_tensor(v) for v in all_inputs):
-      if not all(tensor_util.is_tensor(v) for v in all_inputs):
+    if any(tensor_util.is_tf_type(v) for v in all_inputs):
+      if not all(tensor_util.is_tf_type(v) for v in all_inputs):
         raise ValueError('Do not pass inputs that mix Numpy arrays and '
                          'TensorFlow tensors. '
                          'You passed: x=' + str(orig_inputs) +
@@ -2626,7 +2645,7 @@ class Model(training_lib.Model):
       raise ValueError('Model inputs are already set.')
 
     if self.__class__.__name__ == 'Sequential' and not self.built:
-      if tensor_util.is_tensor(inputs):
+      if tensor_util.is_tf_type(inputs):
         input_shape = (None,) + tuple(inputs.shape.as_list()[1:])
       elif isinstance(inputs, tensor_shape.TensorShape):
         input_shape = (None,) + tuple(inputs.as_list()[1:])
@@ -2746,10 +2765,10 @@ class Model(training_lib.Model):
   def _maybe_load_initial_epoch_from_ckpt(self, initial_epoch, mode):
     """Maybe load initial epoch from ckpt considering possible worker recovery.
 
-    Refer to tensorflow/python/keras/distribute/multi_worker_training_state.py
+    Refer to tensorflow/python/keras/distribute/worker_training_state.py
     for more information.
 
-    Arguments:
+    Args:
       initial_epoch: The original initial_epoch user passes in in `fit()`.
       mode: The mode for running `model.fit()`.
 
@@ -2800,20 +2819,12 @@ class Model(training_lib.Model):
     Returns:
       Whether this model indicates it's working in multi-worker settings.
     """
-    strategy = self._get_distribution_strategy()
-    return strategy and strategy.extended._in_multi_worker_mode()  # pylint: disable=protected-access
-
-  def _get_distribution_strategy(self):
-    # If the model was compiled under the scope of a `tf.distribute.Strategy',
-    # `self._distribution_strategy` would have been set and model should infer
-    # that as the used strategy (even if it's out of strategy scope already).
     strategy = self._distribution_strategy
 
     # Otherwise, use the strategy whose scope this is in.
     if not strategy and distribution_strategy_context.has_strategy():
       strategy = distribution_strategy_context.get_strategy()
-
-    return strategy
+    return strategy and strategy.extended._in_multi_worker_mode()  # pylint: disable=protected-access
 
   @property
   def _trackable_saved_model_saver(self):
@@ -3111,7 +3122,7 @@ class _TrainingEndpoint(object):
 class _TrainingTarget(object):
   """Container for a target tensor (y_true) and its metadata (shape, loss...).
 
-  Arguments:
+  Args:
     target: A target tensor for the model. It may be `None` if the
       output is excluded from loss computation. It is still kept as None
       since each output of the model should have a corresponding target. If
@@ -3142,7 +3153,7 @@ class _TrainingTarget(object):
 
 
 def _is_symbolic_tensor(x):
-  return tensor_util.is_tensor(x)
+  return tensor_util.is_tf_type(x)
 
 
 def _convert_scipy_sparse_tensor(value, expected_input):
@@ -3155,7 +3166,7 @@ def _convert_scipy_sparse_tensor(value, expected_input):
   not a scipy sparse tensor, or scipy is not imported, we pass it through
   unchanged.
 
-  Arguments:
+  Args:
     value: An object that may be a scipy sparse tensor
     expected_input: The expected input placeholder.
 
@@ -3163,20 +3174,20 @@ def _convert_scipy_sparse_tensor(value, expected_input):
     The possibly-converted 'value'.
   """
   if issparse is not None and issparse(value):
-    if isinstance(expected_input, core.Tensor):
-      if ops.executing_eagerly_outside_functions():
-        # In TF2 we do not silently densify sparse matrices.
-        raise ValueError('A SciPy sparse matrix was passed to a model '
-                         'that expects dense inputs. Please densify your '
-                         'inputs first, such as by calling `x.toarray().')
-      return value.toarray()
-    else:
+    if K.is_sparse(expected_input):
       sparse_coo = value.tocoo()
       row, col = sparse_coo.row, sparse_coo.col
       data, shape = sparse_coo.data, sparse_coo.shape
       indices = np.concatenate((np.expand_dims(row, 1), np.expand_dims(col, 1)),
                                1)
       return sparse_tensor.SparseTensor(indices, data, shape)
+    else:
+      if ops.executing_eagerly_outside_functions():
+        # In TF2 we do not silently densify sparse matrices.
+        raise ValueError('A SciPy sparse matrix was passed to a model '
+                         'that expects dense inputs. Please densify your '
+                         'inputs first, such as by calling `x.toarray().')
+      return value.toarray()
   else:
     return value
 
@@ -3186,7 +3197,7 @@ def _get_metrics_from_layers(layers):
 
   This will not include the `compile` metrics of a model layer.
 
-  Arguments:
+  Args:
     layers: List of layers.
 
   Returns:

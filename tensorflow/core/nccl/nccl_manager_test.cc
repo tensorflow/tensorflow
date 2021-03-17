@@ -639,7 +639,7 @@ TEST(NcclManagerTest, CommunicatorKey) {
 }
 
 #if !TENSORFLOW_USE_ROCM
-// ROCm platform currently does not support simulating a mutli-node
+// ROCm platform currently does not support simulating a multi-node
 // environment, on a single node with multiple GPUS. So tests that rely
 // upon such simulation need to be skipped on the ROCm platform
 
@@ -664,7 +664,7 @@ TYPED_TEST(NcclManagerTest, MultiNodeSingle) {
 }
 
 #if !TENSORFLOW_USE_ROCM
-// ROCm platform currently does not support simulating a mutli-node
+// ROCm platform currently does not support simulating a multi-node
 // environment, on a single node with multiple GPUS. So tests that rely
 // upon such simulation need to be skipped on the ROCm platform
 
@@ -858,7 +858,7 @@ TYPED_TEST(NcclManagerTest, BroadcastInconsistentSource) {
 }
 
 #if !TENSORFLOW_USE_ROCM
-// ROCm platform currently does not support simulating a mutli-node
+// ROCm platform currently does not support simulating a multi-node
 // environment, on a single node with multiple GPUS. So tests that rely
 // upon such simulation need to be skipped on the ROCm platform
 
@@ -867,7 +867,7 @@ TYPED_TEST(NcclManagerTest, AbortThenReset) {
   using TestCase = typename TestFixture::TestCase;
   const int num_nodes = 2;
   std::vector<NodeState> nodes(num_nodes);
-  // First do a normal all-reduce to simulate the the case when there're
+  // First do a normal all-reduce to simulate the case when there're
   // multiple communicators.
   this->RunMultiNodeAllReduceTest(nodes, /* num_ranks_per_node */ 1);
 

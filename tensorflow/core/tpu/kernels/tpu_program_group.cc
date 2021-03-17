@@ -88,6 +88,9 @@ void TpuProgramGroup::Initialize(
                                   "`TpuProgramGroup` instance is prohibited.";
   set_tpu_programs(xla_tpu_programs);
 
+  CHECK_EQ(tpu_program_fingerprints_.size(), 0);
+  set_fingerprints();
+
   std::vector<bool> may_modify_variables_array(tpu_programs_.size(), false);
   std::vector<TPUExecutableInfoProto> executable_infos(tpu_programs_.size());
   std::vector<TPUHostTransferInfoProto> host_transfer_infos(
@@ -214,6 +217,20 @@ const std::vector<XLA_TpuProgram*>& TpuProgramGroup::tpu_programs() const {
   return tpu_programs_;
 }
 
+const std::vector<std::string>& TpuProgramGroup::fingerprints() const {
+  return tpu_program_fingerprints_;
+}
+
+void TpuProgramGroup::set_fingerprints() {
+  for (const XLA_TpuProgram* tpu_program : tpu_programs_) {
+    TpuProgramFingerprint fingerprint =
+        OpsApiFn()->TpuProgram_GetFingerprintFn(tpu_program);
+    tpu_program_fingerprints_.emplace_back(
+        std::string(fingerprint.bytes, fingerprint.size));
+    OpsApiFn()->TpuProgram_DestroyFingerprintFn(fingerprint);
+  }
+}
+
 const XLA_TpuProgram* TpuProgramGroup::tpu_program(int index) const {
   CHECK_GE(index, 0);
   CHECK_LT(index, tpu_programs_.size());
@@ -267,6 +284,42 @@ Status TpuProgramGroup::CompileAndBuild(
   TF_RET_CHECK(count == 1 ||
                count == compilation_request.metadata().num_cores_per_replica());
 
+  VLOG(1) << "Initialize TpuProgramGroup.";
+  TpuProgramGroup* tpu_program_group =
+      tensorflow::down_cast<TpuProgramGroup*>(tpu_program_group_interface);
+  tpu_program_group->Initialize(
+      absl::MakeConstSpan(&xla_tpu_programs[0], count));
+  OpsApiFn()->TpuProgram_FreeArrayFn(xla_tpu_programs);
+  return status.status();
+}
+
+/*static*/
+Status TpuProgramGroup::CompileAndBuild(
+    const xrt::XLAComputation& xrt_computation_proto,
+    const XLA_TpuMeshState* mesh_state,
+    TpuProgramGroupInterface* tpu_program_group_interface) {
+  se_tpu::SerializedProto serialized_compilation_request =
+      se_tpu::SerializeProto(xrt_computation_proto);
+  auto cleanup = gtl::MakeCleanup([serialized_compilation_request] {
+    se_tpu::SerializedProto_Free(serialized_compilation_request);
+  });
+  size_t count = 0;
+  XLA_TpuProgram** xla_tpu_programs = nullptr;
+  StatusHelper status;
+  OpsApiFn()->TpuCompile_XrtCompileAndBuildFn(serialized_compilation_request,
+                                              mesh_state, &xla_tpu_programs,
+                                              &count, status.c_status);
+  if (!status.ok()) {
+    VLOG(1) << "Run CompileAndBuild failed.";
+    return status.status();
+  }
+
+  // SPMD could return 1 result for all partitions.
+  int num_cores_per_replica =
+      xrt_computation_proto.config().num_cores_per_replica()
+          ? xrt_computation_proto.config().num_cores_per_replica()
+          : 1;
+  TF_RET_CHECK(count == 1 || count == num_cores_per_replica);
   VLOG(1) << "Initialize TpuProgramGroup.";
   TpuProgramGroup* tpu_program_group =
       tensorflow::down_cast<TpuProgramGroup*>(tpu_program_group_interface);

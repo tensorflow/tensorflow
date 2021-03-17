@@ -24,7 +24,7 @@ import time
 import tensorflow as tf
 
 from tensorflow.python.platform import gfile
-from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
 
 
 def save_and_load_benchmark(app):
@@ -34,7 +34,7 @@ def save_and_load_benchmark(app):
   model = app(weights=None)
   model_name = app.__name__
 
-  tmp_dir = googletest.GetTempDir()
+  tmp_dir = test.get_temp_dir()
   gfile.MakeDirs(tmp_dir)
   save_dir = tempfile.mkdtemp(dir=tmp_dir)
 

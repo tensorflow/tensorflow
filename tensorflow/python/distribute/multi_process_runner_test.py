@@ -590,13 +590,9 @@ class MultiProcessPoolRunnerTest(test.TestCase):
     self.assertAllEqual(result, [1, 1])
 
   def test_global_pool(self):
-    if multi_process_runner.is_oss():
-      self.skipTest('TODO(b/170360740): Failing in OSS')
     _global_pool.run(fn_that_does_nothing)
 
   def test_nested_pool(self):
-    if multi_process_runner.is_oss():
-      self.skipTest('TODO(b/170360740): Failing in OSS')
 
     def fn():
       # This runs in sub processes, so they are each using their own

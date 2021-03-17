@@ -20,11 +20,11 @@ from __future__ import print_function
 import argparse
 import sys
 
-# Google-internal import(s).
+from absl import app
 
+# Google-internal import(s).
 from tensorflow.python.debug.cli import analyzer_cli
 from tensorflow.python.debug.lib import debug_data
-from tensorflow.python.platform import app
 
 
 def main(_):

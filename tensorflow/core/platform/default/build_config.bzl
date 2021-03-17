@@ -54,7 +54,7 @@ def pyx_library(
         py_deps = [],
         srcs = [],
         testonly = None,
-        srcs_version = "PY2AND3",
+        srcs_version = "PY3",
         **kwargs):
     """Compiles a group of .pyx / .pxd / .py files.
 
@@ -454,7 +454,7 @@ def tf_proto_library_py(
         deps = [],
         visibility = None,
         testonly = 0,
-        srcs_version = "PY2AND3",
+        srcs_version = "PY3",
         use_grpc_plugin = False):
     py_deps = tf_deps(protodeps, "_py")
     py_name = name + "_py"
@@ -552,7 +552,7 @@ def tf_proto_library(
         testonly = testonly,
         srcs = srcs,
         protodeps = protodeps,
-        srcs_version = "PY2AND3",
+        srcs_version = "PY3",
         use_grpc_plugin = has_services,
         visibility = visibility,
     )
@@ -569,7 +569,6 @@ def tf_additional_lib_hdrs():
         "//tensorflow/core/platform/default:mutex_data.h",
         "//tensorflow/core/platform/default:notification.h",
         "//tensorflow/core/platform/default:stacktrace.h",
-        "//tensorflow/core/platform/default:strong_hash.h",
         "//tensorflow/core/platform/default:test_benchmark.h",
         "//tensorflow/core/platform/default:tracing_impl.h",
         "//tensorflow/core/platform/default:unbounded_work_queue.h",
@@ -586,9 +585,6 @@ def tf_additional_lib_hdrs():
             "//tensorflow/core/platform/default:subprocess.h",
         ],
     })
-
-def tf_additional_env_hdrs():
-    return []
 
 def tf_additional_all_protos():
     return [clean_dep("//tensorflow/core:protos_all")]

@@ -25,11 +25,7 @@ limitations under the License.
 
 #if defined(INTEL_MKL)
 
-#ifdef ENABLE_MKLDNN_V1
 #include "mkldnn.hpp"
-#else
-#include "mkl_cblas.h"
-#endif  // ENABLE_MKLDNN_V1
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -55,18 +51,19 @@ class MklMatMulOp : public OpKernel {
 
     // Check that the dimensions of the two matrices are valid.
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(a.shape()),
-                errors::InvalidArgument("In[0] is not a matrix"));
+                errors::InvalidArgument("In[0] ndims must be >= 2"));
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(b.shape()),
-                errors::InvalidArgument("In[1] is not a matrix"));
+                errors::InvalidArgument("In[1] ndims must be >= 2"));
     Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
     dim_pair[0].first = transpose_a_ ? 0 : 1;
     dim_pair[0].second = transpose_b_ ? 1 : 0;
 
-    OP_REQUIRES(
-        ctx, a.dim_size(dim_pair[0].first) == b.dim_size(dim_pair[0].second),
-        errors::InvalidArgument(
-            "Matrix size-incompatible: In[0]: ", a.shape().DebugString(),
-            ", In[1]: ", b.shape().DebugString()));
+    int d1 = a.dim_size(dim_pair[0].first);
+    int d2 = b.dim_size(dim_pair[0].second);
+    OP_REQUIRES(ctx, d1 == d2,
+                errors::InvalidArgument(
+                    "In[0] mismatch In[1] shape: ", d1, " vs. ", d2, ": ",
+                    a.shape().DebugString(), " ", b.shape().DebugString()));
     int a_dim_remaining = 1 - dim_pair[0].first;
     int b_dim_remaining = 1 - dim_pair[0].second;
     TensorShape out_shape(
@@ -155,29 +152,19 @@ class MklMatMulOp : public OpKernel {
     // 1.0 and 0.0 respectively.
     const float alpha = 1.0f;
     const float beta = 0.0f;
-#ifdef ENABLE_MKLDNN_V1
     char char_transa = transa ? 'T' : 'N';
     char char_transb = transb ? 'T' : 'N';
     VLOG(2) << "MKL DNN SGEMM called";
-#ifdef ENABLE_MKLDNN_THREADPOOL
-    auto eigen_tp =
-        MklDnnThreadPoolWrapper::GetInstance().CreateThreadPoolPtr(ctx);
-
+#ifndef ENABLE_ONEDNN_OPENMP
+    MklDnnThreadPool eigen_tp(ctx);
     dnnl_sgemm_tp(char_transa, char_transb, m, n, k, alpha, a, lda, b, ldb,
-                  beta, c, ldc, eigen_tp);
+                  beta, c, ldc, &eigen_tp);
 #else
     dnnl_sgemm(char_transa, char_transb, m, n, k, alpha, a, lda, b, ldb, beta,
                c, ldc);
-#endif  // ENABLE_MKLDNN_THREADPOOL
-#else
-    // TODO(intel-tf): Remove this after TF2.3 fork.
-    cblas_sgemm(CblasRowMajor, transa ? CblasTrans : CblasNoTrans,
-                transb ? CblasTrans : CblasNoTrans, m, n, k, alpha, a, lda, b,
-                ldb, beta, c, ldc);
-#endif  // ENABLE_MKLDNN_V1
+#endif  // !ENABLE_ONEDNN_OPENMP
   }
 
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
   void MklBlasGemm(OpKernelContext* ctx, bool transa, bool transb, const int m,
                    const int n, const int k, const bfloat16* a, const int lda,
                    const bfloat16* b, const int ldb, bfloat16* c,
@@ -187,26 +174,10 @@ class MklMatMulOp : public OpKernel {
     const int index_transa = transa ? 1 : 0;
     const int index_transb = transb ? 1 : 0;
 
-#ifdef ENABLE_MKLDNN_V1
     const char ftrans[] = {'N', 'T', 'C'};
     dnnl_gemm<bfloat16>(ftrans[index_transa], ftrans[index_transb], m, n, k,
                         alpha, a, lda, b, ldb, beta, c, ldc, ctx);
-#else
-    Tensor c_float;
-    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, {m, n}, &c_float));
-    const char* const ftrans[] = {"N", "T", "C"};
-
-    // MKL-DNN only supports the Fortran API and requires column major while
-    // Tensorflow uses row major so we reverse the order of A and B.
-    mkldnn_gemm_bf16bf16f32(ftrans[index_transb], ftrans[index_transa], &n, &m,
-                            &k, &alpha,
-                            reinterpret_cast<const mkldnn_bfloat16_t*>(b), &ldb,
-                            reinterpret_cast<const mkldnn_bfloat16_t*>(a), &lda,
-                            &beta, c_float.flat<float>().data(), &ldc);
-    FloatToBFloat16(c_float.flat<float>().data(), c, c_float.NumElements());
-#endif  // ENABLE_MKLDNN_V1
   }
-#endif  // ENABLE_INTEL_MKL_BFLOAT16
 };
 
 #define REGISTER_CPU(T)                                   \
@@ -221,9 +192,7 @@ class MklMatMulOp : public OpKernel {
 // TODO(inteltf) Consider template specialization when adding/removing
 // additional types
 TF_CALL_float(REGISTER_CPU);
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
 TF_CALL_bfloat16(REGISTER_CPU);
-#endif  // ENABLE_INTEL_MKL_BFLOAT16
 #endif  // ENABLE_MKL
 }  // namespace tensorflow
 #endif  // INTEL_MKL

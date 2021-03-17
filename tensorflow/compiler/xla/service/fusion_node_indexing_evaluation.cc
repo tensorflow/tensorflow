@@ -38,14 +38,60 @@ FusionNodeIndexingEvaluation::FusionNodeIndexingEvaluation(
 // a tradeoff between compilation time and runtime here.
 const int64 FusionNodeIndexingEvaluation::kAllowedCodeDuplication = 15;
 
+namespace {
+
+// Returns which ops invalidate the cache of emitted instructions by creating a
+// new BasicBlock and setting the insertion point to the newly created
+// BasicBlock. We can only reuse cached values if they were emitted in the same
+// BasicBlock as the current BasicBlock.
+bool OpInvalidatesCache(const HloInstruction* hlo) {
+  switch (hlo->opcode()) {
+    // This list of ops was created by inspecting the code. There is no
+    // guarantee that it is complete.
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kDot:
+    case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kPad:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReduceWindow:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Counts the number of "real" users of 'hlo'. When 'hlo' has a fusion node as
+// user, we consider the users of the fusion parameter corresponding to 'hlo' as
+// the real users.
+int64 UserCount(const HloInstruction* hlo) {
+  int64 cnt = 0;
+  for (HloInstruction* user : hlo->users()) {
+    if (user->opcode() == HloOpcode::kFusion) {
+      // Count the number of users of the parameter corresponding to the fusion
+      // operand.
+      int64 operand_index = user->operand_index(hlo);
+      cnt += user->fused_parameter(operand_index)->user_count();
+    } else {
+      ++cnt;
+    }
+  }
+  return cnt;
+}
+}  // namespace
+
 bool FusionNodeIndexingEvaluation::CodeDuplicationTooHigh(
     const HloInstruction* producer) const {
-  return EvaluateEmittedInstructions(producer) > kAllowedCodeDuplication;
+  int64 emitted_instructions = EvaluateEmittedInstructions(producer);
+  return emitted_instructions > kAllowedCodeDuplication ||
+         (OpInvalidatesCache(producer) &&
+          (emitted_instructions > 1 || UserCount(producer) > 1));
 }
 
 bool FusionNodeIndexingEvaluation::MaxCodeDuplicationTooHigh() const {
   for (const auto& entry : index_usage_count_) {
-    if (entry.second > kAllowedCodeDuplication) {
+    if (entry.second > kAllowedCodeDuplication ||
+        (OpInvalidatesCache(entry.first) &&
+         (entry.second > 1 || UserCount(entry.first) > 1))) {
       return true;
     }
   }

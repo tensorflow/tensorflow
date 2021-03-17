@@ -123,12 +123,6 @@ class MemorySpaceAssignmentCostAnalysis {
       absl::optional<int64> operand_in_alternate_mem = absl::nullopt,
       bool output_in_alternate_mem = false) const;
 
-  // Returns the elapsed time in seconds that other BufferIntervals are slowed
-  // down, due to the prefetching of current bytes. Assuming other
-  // BufferIntervals needs default memory bandwidth, and only current
-  // BufferInterval is prefetched.
-  float GetInstructionElapsedDueToMemorySlowdown(int64 bytes) const;
-
   // Returns the estimated elapsed duration of the instruction in seconds.  It
   // assumes all operands and outputs of the instruction are in the default
   // memory.
@@ -400,6 +394,8 @@ class MemorySpaceAssignment {
       GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare;
   using IsAllowedInAlternateMemoryFunction =
       std::function<bool(const HloValue&)>;
+  using IsUseAllowedInAlternateMemoryFunction =
+      std::function<bool(const HloUse&)>;
 
   // MemorySpaceAssignment uses a notion of a slow and large default memory
   // space and a fast and small alternate memory space.
@@ -433,6 +429,11 @@ class MemorySpaceAssignment {
     // This function can be used to prevent certain HloValues (e.g., based on
     // the opcode) to be placed on the alternate memory.
     IsAllowedInAlternateMemoryFunction is_allowed_in_alternate_mem_fn;
+
+    // This function can be used to prevent certain HloUses (e.g., based on
+    // the opcode) to be placed on the alternate memory.
+    IsUseAllowedInAlternateMemoryFunction is_use_allowed_in_alternate_mem_fn =
+        [](const HloUse&) { return true; };
 
     // Specifies the upper bound for number of outstanding prefetches and
     // evictions, -1 for unlimited.
@@ -748,7 +749,10 @@ class MemorySpaceAssignment {
 
     AllocationValue(const HloValue* value, const HloPosition& position,
                     int64 size)
-        : value_(value), defining_position_(position), size_(size) {}
+        : value_(value),
+          defining_position_(position),
+          size_(size),
+          requires_contiguous_allocation_(false) {}
 
     const HloPosition& defining_position() const { return defining_position_; }
     const HloInstruction* defining_instruction() const {
@@ -763,6 +767,16 @@ class MemorySpaceAssignment {
     }
     AllocationSequence* allocation_sequence() { return &allocation_sequence_; }
 
+    // Sets/gets whether this AllocationValue requires allocating it
+    // contiguously throughout its live range (without any copies).
+    bool requires_contiguous_allocation() const {
+      return requires_contiguous_allocation_;
+    }
+    void set_requires_contiguous_allocation(
+        bool requires_contiguous_allocation) {
+      requires_contiguous_allocation_ = requires_contiguous_allocation;
+    }
+
     void AddUse(const HloUse& use, int64 use_time) {
       uses_.push_back({use, use_time, {}});
     }
@@ -774,6 +788,9 @@ class MemorySpaceAssignment {
     const HloValue* value_;
     HloPosition defining_position_;
     int64 size_;
+    // If true, there must be a contiguous allocation for this buffer without
+    // any copies.
+    bool requires_contiguous_allocation_;
     std::vector<Use> uses_;
     AllocationSequence allocation_sequence_;
   };
@@ -982,7 +999,7 @@ class AlternateMemoryBestFitHeap
 
   // Given colocated intervals, populates allocation_values with the
   // corresponding AllocationValue objects.
-  void CreateAllocationValuesFromColocatedIntervals(
+  virtual void CreateAllocationValuesFromColocatedIntervals(
       absl::Span<const AlternateMemoryBestFitHeap::BufferInterval* const>
           colocated_intervals,
       std::vector<MemorySpaceAssignment::AllocationValue>& allocation_values);
@@ -1044,6 +1061,7 @@ class AlternateMemoryBestFitHeap
     AliasedOffset* preferred_offset;
     const MemorySpaceAssignment::AllocationValue::Use* use;
     MemorySpaceAssignment::AllocationValue* allocation_value;
+    absl::Span<const int64_t> all_use_times;
   };
 
   // This struct contains mandatory memory assignments at a given time. E.g., an

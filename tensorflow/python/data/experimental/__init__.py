@@ -28,6 +28,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@CsvDataset
 @@DatasetStructure
 @@DistributeOptions
+@@ExternalStatePolicy
 @@MapVectorizationOptions
 @@OptimizationOptions
 @@Optional
@@ -85,6 +86,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 
 @@AUTOTUNE
 @@INFINITE_CARDINALITY
+@@SHARD_HINT
 @@UNKNOWN_CARDINALITY
 """
 
@@ -104,8 +106,10 @@ from tensorflow.python.data.experimental.ops.cardinality import cardinality
 from tensorflow.python.data.experimental.ops.cardinality import INFINITE as INFINITE_CARDINALITY
 from tensorflow.python.data.experimental.ops.cardinality import UNKNOWN as UNKNOWN_CARDINALITY
 from tensorflow.python.data.experimental.ops.counter import Counter
+from tensorflow.python.data.experimental.ops.distribute import SHARD_HINT
 from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.experimental.ops.distribute_options import DistributeOptions
+from tensorflow.python.data.experimental.ops.distribute_options import ExternalStatePolicy
 from tensorflow.python.data.experimental.ops.enumerate_ops import enumerate_dataset
 from tensorflow.python.data.experimental.ops.error_ops import ignore_errors
 from tensorflow.python.data.experimental.ops.get_single_element import get_single_element

@@ -179,6 +179,8 @@ cc_test(
     srcs = ["fuse_auto_input_test.cc"],
     tags = [
         "local",
+        "no_mac",  # TODO(b/171881489)
+        "no_oss",  # TODO(b/171881489)
     ],
     deps = [
         ":compiled_node",

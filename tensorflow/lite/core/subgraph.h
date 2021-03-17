@@ -15,25 +15,31 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_SUBGRAPH_H_
 #define TENSORFLOW_LITE_CORE_SUBGRAPH_H_
 
+#include <stdarg.h>
+#include <stddef.h>
+
 #include <cstdint>
 #include <cstdlib>
 #include <map>
+#include <memory>
 #include <utility>
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/macros.h"
-#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
-
-// Forward declare since NNAPIDelegate uses Interpreter.
-class NNAPIDelegate;
+namespace delegates {
+namespace test_utils {
+class TestDelegate;  // Class for friend declarations.
+}  // namespace test_utils
+}  // namespace delegates
 
 class Subgraph {
  public:
@@ -115,11 +121,15 @@ class Subgraph {
   inline TfLiteStatus SetTensorParametersReadWrite(
       int tensor_index, TfLiteType type, const char* name,
       const std::vector<int>& dims, TfLiteQuantization quantization,
-      bool is_variable = false, const size_t rank_dims_signature = 0,
-      const int* dims_signature = nullptr) {
-    return SetTensorParametersReadWrite(tensor_index, type, name, dims.size(),
-                                        dims.data(), quantization, is_variable,
-                                        rank_dims_signature, dims_signature);
+      bool is_variable = false, const std::vector<int>& dims_signature = {}) {
+    if (dims_signature.empty()) {
+      return SetTensorParametersReadWrite(tensor_index, type, name, dims.size(),
+                                          dims.data(), quantization,
+                                          is_variable);
+    }
+    return SetTensorParametersReadWrite(
+        tensor_index, type, name, dims.size(), dims.data(), quantization,
+        is_variable, dims_signature.size(), dims_signature.data());
   }
   TfLiteStatus SetTensorParametersReadWrite(
       int tensor_index, TfLiteType type, const char* name, const size_t rank,
@@ -184,16 +194,6 @@ class Subgraph {
   // Return read-only vector of node indices in the order of execution.
   const std::vector<int>& execution_plan() const { return execution_plan_; }
 
-  // Mutable form of tensors (TEMPORARY for refactor).
-  // TODO(b/119495520): remove when refactoring complete.
-  std::vector<TfLiteTensor>& tensors() { return tensors_; }
-  // Mutable form of tensors (TEMPORARY for refactor).
-  // TODO(b/119495520): remove when refactoring complete.
-  std::vector<std::pair<TfLiteNode, TfLiteRegistration>>&
-  nodes_and_registration() {
-    return nodes_and_registration_;
-  }
-
   const std::vector<std::pair<TfLiteNode, TfLiteRegistration>>&
   nodes_and_registration() const {
     return nodes_and_registration_;
@@ -246,8 +246,6 @@ class Subgraph {
 
   // Entry point for C node plugin API to report an error.
   void ReportError(const char* format, ...);
-
-  void UseNNAPI(bool enable);
 
   // Return the subgraph specific context.
   TfLiteContext* context() { return &context_; }
@@ -327,13 +325,12 @@ class Subgraph {
   bool HasDynamicTensors() { return has_dynamic_tensors_; }
 
   // Assigns (or reassigns) a custom memory allocation for the given tensor.
-  // If AllocateTensors() is called after this, the runtime does not consider
-  // the tensor during internal memory planning and will continue using the
-  // provided allocation for the tensor (assuming it satisfies the expected
-  // tensor byte length).
+  // `flags` is a bitmask, see TfLiteCustomAllocationFlags.
   // The runtime does NOT take ownership of the underlying memory.
-  // Note that while this function can be called again to set a new allocation
-  // for the tensor, it can no longer be reset to the TFLite arena memory.
+  //
+  // NOTE: User needs to call AllocateTensors() after this. In case of input
+  // resizing, buffers will be checked for required data size during
+  // AllocateTensors().
   //
   // Parameters should satisfy the following conditions:
   // 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
@@ -344,12 +341,20 @@ class Subgraph {
   //    This condition is checked again if any tensors are resized.
   // 4. allocation->data should be aligned to kDefaultTensorAlignment
   //    defined in lite/util.h. (Currently 64 bytes)
+  //    This check is skipped if kTfLiteCustomAllocationFlagsSkipAlignCheck is
+  //    set through `flags`.
+  // TODO(b/182215910): Expand on this documentation in a g3doc.
   //
   // WARNING: This is an experimental interface that is subject to change.
   TfLiteStatus SetCustomAllocationForTensor(
-      int tensor_index, const TfLiteCustomAllocation& allocation);
+      int tensor_index, const TfLiteCustomAllocation& allocation,
+      int64_t flags = kTfLiteCustomAllocationFlagsNone);
+
+  void SetName(const char* name);
+  const std::string& GetName() const;
 
  private:
+  friend class TestDelegate;
   // SubgraphAwareProfiler wraps an actual TFLite profiler, such as a
   // BufferedProfiler instance, and takes care of event profiling/tracing in a
   // certain subgraph.
@@ -564,7 +569,8 @@ class Subgraph {
   // Returns one of the following status codes:
   // 1. kTfLiteOk: Delegation succeeded
   // 2. kTfLiteDelegateError: Delegation failed due to an error *in the
-  // delegate*. The Subgraph has been restored to its pre-delegation state.
+  // delegate*, or the delegate parameter was null. The Subgraph has been
+  // restored to its pre-delegation state.
   // NOTE: This reverts all delegates previously applied to the Subgraph.
   // 3. kTfLiteApplicationError : Delegation failed to be applied due to the
   // incompatibility with the TfLite runtime, e.g., the model graph is already
@@ -704,10 +710,6 @@ class Subgraph {
   // Used by PreviewDelegateParitioning.
   std::vector<TfLiteDelegateParams> partitioning_preview_cache_;
 
-  // Whether to use delegate to modify the graph.
-  bool should_apply_nnapi_delegate_ = false;
-  bool applied_nnapi_delegate_ = false;
-
   std::unique_ptr<MemoryPlanner> memory_planner_;
 
   // Contains <tensor idx, custom allocation> pairs for all applicable tensors.
@@ -741,6 +743,8 @@ class Subgraph {
 
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap* resources_ = nullptr;
+
+  std::string name_;
 };
 
 }  // namespace tflite

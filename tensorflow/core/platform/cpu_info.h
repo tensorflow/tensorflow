@@ -44,7 +44,7 @@ int NumSchedulableCPUs();
 // This value is either the number of schedulable CPUs, or a value specific to
 // the underlying cluster management. Applications should assume this value can
 // change throughout the lifetime of the process. This function must not be
-// called during initialization, i.e., before before main() has started.
+// called during initialization, i.e., before main() has started.
 int MaxParallelism();
 
 // Returns an estimate for the maximum parallelism for this process on the

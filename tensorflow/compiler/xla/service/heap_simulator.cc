@@ -409,11 +409,16 @@ HeapSimulator::Result<HloValue> HeapSimulator::Finish() {
   // Post-process the result to add chunks for shared buffers.  An empty chunk
   // map means that either no buffers were allocated, or the heap was only
   // collecting statistics, e.g. NoFragmentationStatsHeap.
-  if (!result.chunk_map.empty()) {
+  size_t total_chunk_count = absl::c_accumulate(
+      result.heap_results, static_cast<size_t>(0),
+      [&](size_t lhs, const HeapResult<HloValue>& rhs) -> size_t {
+        return lhs + rhs.chunk_map.size();
+      });
+  if (total_chunk_count != 0) {
     // If we were told to assign specific buffers, make sure we've assigned
     // exactly that many buffers.
     if (options_.buffers_to_assign != nullptr) {
-      CHECK_EQ(options_.buffers_to_assign->size(), result.chunk_map.size());
+      CHECK_EQ(options_.buffers_to_assign->size(), total_chunk_count);
     }
   }
 
@@ -825,7 +830,10 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::Finish() {
     CommitChunk(buffer_interval, chunk_candidate);
   }
   VLOG(1) << "result heap_size: " << result_.heap_size;
-  return result_;
+  Result result;
+  result.heap_size = result_.heap_size;
+  result.heap_results.emplace_back(result_);
+  return result;
 }
 
 template <typename BufferType>
@@ -966,6 +974,58 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::AddToChunkMap(
     const BufferType* buffer, Chunk chunk) {
   const auto emplace_result = result_.chunk_map.emplace(buffer, chunk);
   DCHECK(emplace_result.second);
+}
+
+HeapSimulator::Result<HloValue>
+ConstrainedGlobalDecreasingSizeBestFitHeap::Finish() {
+  std::vector<BufferInterval> sorted_buffer_vec = GetSortedBufferIntervals();
+  // Convert into std::list so that erase() is O(1).
+  std::list<BufferInterval> sorted_buffer_intervals(sorted_buffer_vec.begin(),
+                                                    sorted_buffer_vec.end());
+
+  // Use do-while here, because we need to create 1 heap in `multi_heap_result`
+  // even if `sorted_buffer_intervals` is empty.
+  Result multi_heap_result;
+  do {
+    // Place buffers into the currently processed heap as many as possible.
+    for (auto it = sorted_buffer_intervals.begin();
+         it != sorted_buffer_intervals.end();) {
+      BufferInterval buffer_interval = *it;
+      if (!buffer_interval.need_allocation) {
+        it = sorted_buffer_intervals.erase(it);
+        continue;
+      }
+      if (buffer_interval.size > size_limit_per_heap_) {
+        LOG(WARNING) << "Alloc buffer size " << buffer_interval.size
+                     << " larger than the per-heap size limit "
+                     << size_limit_per_heap_;
+      }
+
+      ChunkCandidate chunk_candidate = FindChunkCandidate(buffer_interval);
+      if (chunk_candidate.heap_size <= size_limit_per_heap_ ||
+          // Commit the chunk as long as the heap is empty. We do this because
+          // we want the size constraint to be soft, meaning that results are
+          // successfully generated even if there are some buffer sizes larger
+          // than the given constraint size.
+          result_.heap_size == 0) {
+        CommitChunk(buffer_interval, chunk_candidate);
+        it = sorted_buffer_intervals.erase(it);
+        continue;
+      }
+
+      ++it;
+    }
+    // Collect the result from the currently processed heap and reset the heap
+    // states.
+    multi_heap_result.heap_size += result_.heap_size;
+    multi_heap_result.heap_results.push_back(std::move(result_));
+    result_ = {};
+    interval_tree_ = {};
+  } while (!sorted_buffer_intervals.empty());
+
+  VLOG(1) << "Number of heaps produced = "
+          << multi_heap_result.heap_results.size();
+  return multi_heap_result;
 }
 
 template <typename BufferType>

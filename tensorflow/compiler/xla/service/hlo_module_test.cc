@@ -394,6 +394,86 @@ TEST_F(HloModuleTest, VerifyReplaceComputationsWithSortOp) {
   EXPECT_EQ(root->to_apply(), new_comp);
 }
 
+TEST_F(HloModuleTest, OneComputationAllAllowed) {
+  // Create a module with a single computation and
+  // ensure it is available when placed in the allow-list
+  auto module = CreateNewVerifiedModule();
+  auto computation = module->AddEntryComputation(CreateConstantComputation());
+
+  absl::flat_hash_set<HloComputation*> allowList = {computation};
+  EXPECT_THAT(module->MakeComputationPostOrder(allowList),
+              ::testing::ElementsAre(computation));
+}
+
+TEST_F(HloModuleTest, OneComputationAllFiltered) {
+  // Create a module with a single computation.
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(CreateConstantComputation());
+
+  absl::flat_hash_set<HloComputation*> allowList = {};
+  module->MakeComputationPostOrder(allowList);
+  EXPECT_THAT(module->MakeComputationPostOrder(allowList),
+              ::testing::IsEmpty());
+}
+
+TEST_F(HloModuleTest, DiamondComputationsPostOrderAllAllowed) {
+  // Create a module with a diamond call graph of computations.
+  auto module = CreateNewVerifiedModule();
+  auto computation1 =
+      module->AddEmbeddedComputation(CreateConstantComputation());
+  auto computation2 =
+      module->AddEmbeddedComputation(CreateCallComputation({computation1}));
+  auto computation3 =
+      module->AddEmbeddedComputation(CreateCallComputation({computation1}));
+  auto computation4 = module->AddEntryComputation(
+      CreateCallComputation({computation2, computation3}));
+
+  absl::flat_hash_set<HloComputation*> allowList = {computation1, computation2,
+                                                    computation3, computation4};
+  auto post_order = module->MakeComputationPostOrder(allowList);
+  EXPECT_THAT(post_order,
+              ::testing::UnorderedElementsAre(computation1, computation2,
+                                              computation3, computation4));
+  EXPECT_EQ(post_order.back(), computation4);
+  EXPECT_EQ(post_order.front(), computation1);
+}
+
+TEST_F(HloModuleTest, DiamondComputationsPostOrderMiddleFiltered) {
+  // Create a module with a diamond call graph of computations.
+  auto module = CreateNewVerifiedModule();
+  auto computation1 =
+      module->AddEmbeddedComputation(CreateConstantComputation());
+  auto computation2 =
+      module->AddEmbeddedComputation(CreateCallComputation({computation1}));
+  auto computation3 =
+      module->AddEmbeddedComputation(CreateCallComputation({computation1}));
+  auto computation4 = module->AddEntryComputation(
+      CreateCallComputation({computation2, computation3}));
+
+  absl::flat_hash_set<HloComputation*> allowList = {computation1, computation4};
+  auto post_order = module->MakeComputationPostOrder(allowList);
+  EXPECT_THAT(post_order,
+              ::testing::UnorderedElementsAre(computation1, computation4));
+}
+
+TEST_F(HloModuleTest, DiamondComputationsPostOrderAllFiltered) {
+  // Create a module with a diamond call graph of computations.
+  auto module = CreateNewVerifiedModule();
+  auto computation1 =
+      module->AddEmbeddedComputation(CreateConstantComputation());
+  auto computation2 =
+      module->AddEmbeddedComputation(CreateCallComputation({computation1}));
+  auto computation3 =
+      module->AddEmbeddedComputation(CreateCallComputation({computation1}));
+  module->AddEntryComputation(
+      CreateCallComputation({computation2, computation3}));
+
+  absl::flat_hash_set<HloComputation*> allowList = {};
+  auto post_order = module->MakeComputationPostOrder(allowList);
+  EXPECT_THAT(module->MakeComputationPostOrder(allowList),
+              ::testing::IsEmpty());
+}
+
 }  // namespace
 
 }  // namespace xla

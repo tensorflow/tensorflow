@@ -72,6 +72,7 @@ class GenerateVocabRemappingOp : public OpKernel {
                                 kUnusedLookupDelim,
                                 -1,  // key_index, use the line number.
                                 -2,  // value_index, use the whole line/token.
+                                0,   // No offset.
                                 context->env(), new_vocab_table));
     OP_REQUIRES(context,
                 new_vocab_offset_ + num_new_vocab_ <= new_vocab_table->size(),
@@ -101,6 +102,7 @@ class GenerateVocabRemappingOp : public OpKernel {
                        old_vocab_filename, old_vocab_size_, kUnusedLookupDelim,
                        -2,  // key_index, use the whole line/token.
                        -1,  // value_index, use the line number.
+                       0,   // No offset.
                        context->env(), old_vocab_table));
 
     // Fill out new_ids = [new_vocab_offset, new_vocab_offset + 1, ...,

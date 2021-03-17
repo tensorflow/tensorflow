@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef LHLO_OPS_BASE
 #define LHLO_OPS_BASE
 
+include "mlir/Dialect/MemRef/IR/MemRefBase.td"
 include "mlir/IR/OpBase.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
 
@@ -40,8 +41,6 @@ def LHLO_IntOrFpBuffer : MemRefOf<[HLO_Int, AnyFloat]>;
 
 def LHLO_PredOrIntBuffer : MemRefOf<[HLO_Int, HLO_Pred]>;
 
-def LHLO_Buffer : MemRefOf<[AnyFloat, AnySignlessInteger, AnyComplex]>;
-
-def LHLO_ExtentBuffer : MemRefRankOf<[AnySignlessInteger, Index], [1]>;
+def LHLO_Buffer : MemRefOf<[AnyFloat, AnyInteger, AnyComplex]>;
 
 #endif // LHLO_OPS_BASE

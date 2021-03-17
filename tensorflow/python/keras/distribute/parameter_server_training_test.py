@@ -21,29 +21,31 @@ from __future__ import print_function
 
 import random
 import tempfile
+
 from absl.testing import parameterized
 
 from tensorflow.python import keras
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
-from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.keras.distribute import multi_worker_testing_utils
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.layers.preprocessing import string_lookup
 from tensorflow.python.keras.optimizer_v2 import rmsprop
+from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.ops.losses import loss_reduction
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
-from tensorflow.python.training.server_lib import ClusterSpec
 
 
 # These vocabularies usually come from TFT or a Beam pipeline.
@@ -54,18 +56,15 @@ FEATURE_VOCAB = [
 LABEL_VOCAB = ["yes", "no"]
 
 
-def make_coordinator(num_workers, num_ps):
-  cluster_def = multi_worker_test_base.create_in_process_cluster(
-      num_workers=num_workers, num_ps=num_ps, rpc_layer="grpc")
-  cluster_def["chief"] = [
-      "localhost:%d" % multi_worker_test_base.pick_unused_port()
-  ]
-  cluster_resolver = SimpleClusterResolver(
-      ClusterSpec(cluster_def), rpc_layer="grpc")
+def make_coordinator(num_workers, num_ps, variable_partitioner=None):
   return coordinator_lib.ClusterCoordinator(
-      parameter_server_strategy_v2.ParameterServerStrategyV2(cluster_resolver))
+      parameter_server_strategy_v2.ParameterServerStrategyV2(
+          multi_worker_testing_utils.make_parameter_server_cluster(
+              num_workers, num_ps),
+          variable_partitioner=variable_partitioner))
 
 
+# TODO(yuefengz): move this to keras/integration_tests.
 class KPLTest(test.TestCase, parameterized.TestCase):
 
   @classmethod
@@ -85,8 +84,11 @@ class KPLTest(test.TestCase, parameterized.TestCase):
           num_oov_indices=0, mask_token=None)
       label_lookup_layer.adapt(LABEL_VOCAB)
     else:
+      # Do vocab shuffling.
+      shuffled_vocab = FEATURE_VOCAB.copy()
+      random.shuffle(shuffled_vocab)
       feature_lookup_layer = string_lookup.StringLookup(
-          vocabulary=FEATURE_VOCAB, num_oov_indices=1)
+          vocabulary=shuffled_vocab, num_oov_indices=1)
       label_lookup_layer = string_lookup.StringLookup(
           vocabulary=LABEL_VOCAB, num_oov_indices=0, mask_token=None)
 
@@ -98,7 +100,7 @@ class KPLTest(test.TestCase, parameterized.TestCase):
     feature_ps = keras.Model({"features": raw_feature_input}, feature_id_input)
 
     raw_label_input = keras.layers.Input(
-        shape=(), dtype=dtypes.string, name="label")
+        shape=(1,), dtype=dtypes.string, name="label")
     label_id_input = label_lookup_layer(raw_label_input)
     label_ps = keras.Model({"label": raw_label_input}, label_id_input)
 
@@ -107,7 +109,7 @@ class KPLTest(test.TestCase, parameterized.TestCase):
   def define_reverse_lookup_layer(self):
     # Only needed for serving.
     label_inverse_lookup_layer = string_lookup.StringLookup(
-        num_oov_indices=1, mask_token=None, vocabulary=LABEL_VOCAB, invert=True)
+        num_oov_indices=0, mask_token=None, vocabulary=LABEL_VOCAB, invert=True)
     return label_inverse_lookup_layer
 
   @combinations.generate(
@@ -123,29 +125,22 @@ class KPLTest(test.TestCase, parameterized.TestCase):
         def feature_and_label_gen():
           while True:
             features = random.sample(FEATURE_VOCAB, 3)
-            label = "yes" if "avenger" in features else "no"
+            label = ["yes"] if "avenger" in features else ["no"]
             yield {"features": features, "label": label}
 
-        # The dataset will be created on the coordinator?
+        # The dataset will be created on the coordinator.
         raw_dataset = dataset_ops.Dataset.from_generator(
             feature_and_label_gen,
-            output_types={
-                "features": dtypes.string,
-                "label": dtypes.string
-            }).shuffle(200).batch(32)
-        preproc_dataset = raw_dataset.map(
-            lambda x: {  # pylint: disable=g-long-lambda
-                "features": feature_ps(x["features"]),
-                "label": label_ps(x["label"])
-            })
-        train_dataset = preproc_dataset.map(lambda x: (  # pylint: disable=g-long-lambda
-            {
-                "features": x["features"]
-            }, [x["label"]]))
-        return train_dataset
+            output_signature={
+                "features": tensor_spec.TensorSpec([3], dtypes.string),
+                "label": tensor_spec.TensorSpec([1], dtypes.string)
+            }).shuffle(100).batch(32)
 
-      distributed_dataset = self.coordinator.create_per_worker_dataset(
-          dataset_fn)
+        train_dataset = raw_dataset.map(lambda x: (  # pylint: disable=g-long-lambda
+            {
+                "features": feature_ps(x["features"])
+            }, label_ps(x["label"])))
+        return train_dataset
 
       # Create the model. The input needs to be compatible with KPLs.
       model_input = keras.layers.Input(
@@ -161,33 +156,36 @@ class KPLTest(test.TestCase, parameterized.TestCase):
               emb_output)
       model = keras.Model({"features": model_input}, dense_output)
 
-      optimizer = rmsprop.RMSprop(learning_rate=0.01)
+      optimizer = rmsprop.RMSprop(learning_rate=0.1)
       accuracy = keras.metrics.Accuracy()
 
-      @def_function.function
-      def worker_fn(iterator):
+    @def_function.function
+    def worker_fn(iterator):
 
-        def replica_fn(iterator):
-          batch_data, labels = next(iterator)
-          with backprop.GradientTape() as tape:
-            pred = model(batch_data, training=True)
-            loss = nn.compute_average_loss(
-                keras.losses.BinaryCrossentropy(
-                    reduction=loss_reduction.ReductionV2.NONE)(labels, pred))
-            gradients = tape.gradient(loss, model.trainable_variables)
+      def replica_fn(iterator):
+        batch_data, labels = next(iterator)
+        with backprop.GradientTape() as tape:
+          pred = model(batch_data, training=True)
+          loss = nn.compute_average_loss(
+              keras.losses.BinaryCrossentropy(
+                  reduction=losses_utils.ReductionV2.NONE)(labels, pred))
+          gradients = tape.gradient(loss, model.trainable_variables)
 
-          optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
 
-          actual_pred = math_ops.cast(math_ops.greater(pred, 0.5), dtypes.int64)
-          accuracy.update_state(labels, actual_pred)
+        actual_pred = math_ops.cast(math_ops.greater(pred, 0.5), dtypes.int64)
+        accuracy.update_state(labels, actual_pred)
 
-        self.coordinator._strategy.run(replica_fn, args=(iterator,))
+      self.coordinator.strategy.run(replica_fn, args=(iterator,))
 
+    distributed_dataset = self.coordinator.create_per_worker_dataset(dataset_fn)
     distributed_iterator = iter(distributed_dataset)
-    for _ in range(10):
-      self.coordinator.schedule(worker_fn, args=(distributed_iterator,))
-    self.coordinator.join()
-    self.assertGreater(accuracy.result().numpy(), 0.0)
+    for _ in range(4):
+      accuracy.reset_states()
+      for _ in range(7):
+        self.coordinator.schedule(worker_fn, args=(distributed_iterator,))
+      self.coordinator.join()
+    self.assertGreater(accuracy.result().numpy(), 0.5)
 
     # Create a saved model.
     model.feature_ps = feature_ps
@@ -228,6 +226,74 @@ class KPLTest(test.TestCase, parameterized.TestCase):
     prediction1 = loaded_serving_fn(
         constant_op.constant(["ironman", "ironman", "unkonwn"]))["output_0"]
     self.assertIn(prediction1, ("yes", "no"))
+
+
+class ShardedVariableTest(test.TestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    cls.strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        multi_worker_testing_utils.make_parameter_server_cluster(3, 2),
+        variable_partitioner=sharded_variable.FixedShardsPartitioner(2))
+
+  def test_keras_layer_setattr(self):
+
+    class Layer(base_layer.Layer):
+
+      def __init__(self):
+        super().__init__()
+        self.w = variables_lib.Variable([0, 1])
+        self.b = variables_lib.Variable([2, 3], trainable=False)
+
+    with self.strategy.scope():
+      layer = Layer()
+
+    self.assertLen(layer.trainable_weights, 2)
+    self.assertEqual(layer.trainable_weights[0], [0])
+    self.assertEqual(layer.trainable_weights[1], [1])
+    self.assertLen(layer.non_trainable_weights, 2)
+    self.assertEqual(layer.non_trainable_weights[0], [2])
+    self.assertEqual(layer.non_trainable_weights[1], [3])
+    self.assertAllEqual(layer.weights,
+                        layer.trainable_weights + layer.non_trainable_weights)
+    self.assertAllEqual(layer.trainable_weights, layer.trainable_variables)
+    self.assertAllEqual(layer.weights, layer.variables)
+
+    checkpoint_deps = set(dep.ref for dep in layer._checkpoint_dependencies)
+    self.assertEqual(checkpoint_deps, set([layer.w, layer.b]))
+
+  def test_keras_layer_add_weight(self):
+
+    class Layer(base_layer.Layer):
+
+      def __init__(self):
+        super().__init__()
+        self.w = self.add_weight(
+            shape=(2,),
+            initializer=lambda shape, dtype: constant_op.constant([0., 1.],),
+            trainable=True)
+        self.b = self.add_weight(
+            shape=(2,),
+            initializer=lambda shape, dtype: constant_op.constant([2., 3.]),
+            trainable=False)
+
+    with self.strategy.scope():
+      layer = Layer()
+
+    self.assertLen(layer.trainable_weights, 2)
+    self.assertEqual(layer.trainable_weights[0], [0.])
+    self.assertEqual(layer.trainable_weights[1], [1.])
+    self.assertLen(layer.non_trainable_weights, 2)
+    self.assertEqual(layer.non_trainable_weights[0], [2.])
+    self.assertEqual(layer.non_trainable_weights[1], [3.])
+    self.assertAllEqual(layer.weights,
+                        layer.trainable_weights + layer.non_trainable_weights)
+    self.assertAllEqual(layer.trainable_weights, layer.trainable_variables)
+    self.assertAllEqual(layer.weights, layer.variables)
+
+    checkpoint_deps = set(dep.ref for dep in layer._checkpoint_dependencies)
+    self.assertEqual(checkpoint_deps, set([layer.w, layer.b]))
 
 
 if __name__ == "__main__":

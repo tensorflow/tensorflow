@@ -177,7 +177,7 @@ def maximum(x1, x2):  # pylint: disable=missing-function-docstring
   # Fast path for when maximum is used as relu.
   if isinstance(
       x2, numbers.Real) and not isinstance(x2, bool) and x2 == 0 and isinstance(
-          x1, np_arrays.ndarray) and not x1._is_boolean():  # pylint: disable=protected-access
+          x1, np_arrays.ndarray) and x1.dtype != dtypes.bool:
     return nn_ops.relu(np_array_ops.asarray(x1))
 
   def max_or_or(x1, x2):
@@ -264,10 +264,11 @@ def cross(a, b, axisa=-1, axisb=-1, axisc=-1, axis=None):  # pylint: disable=mis
 
   def f(a, b):  # pylint: disable=missing-docstring
     # We can't assign to captured variable `axisa`, so make a new variable
-    axis_a = axisa
-    axis_b = axisb
-    axis_c = axisc
-    if axis is not None:
+    if axis is None:
+      axis_a = axisa
+      axis_b = axisb
+      axis_c = axisc
+    else:
       axis_a = axis
       axis_b = axis
       axis_c = axis
@@ -1193,8 +1194,7 @@ def sort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missing-d
   a = np_array_ops.array(a)
 
   if axis is None:
-    result_t = sort_ops.sort(array_ops.reshape(a, [-1]), 0)
-    return result_t
+    return sort_ops.sort(array_ops.reshape(a, [-1]), 0)
   else:
     return sort_ops.sort(a, axis)
 
@@ -1400,11 +1400,15 @@ def enable_numpy_methods_on_tensor():
   setattr(ops.Tensor, '__pos__', _tensor_pos)
   setattr(ops.Tensor, 'tolist', _tensor_tolist)
 
-  # TODO(wangpeng): Make a custom `setattr` that also sets docstring for the
-  # method.
+  # TODO(b/178540516): Make a custom `setattr` that changes the method's
+  #   docstring to the TF one.
   setattr(ops.Tensor, 'transpose', np_array_ops.transpose)
   setattr(ops.Tensor, 'reshape', np_array_ops._reshape_method_wrapper)  # pylint: disable=protected-access
   setattr(ops.Tensor, 'ravel', np_array_ops.ravel)
   setattr(ops.Tensor, 'clip', clip)
   setattr(ops.Tensor, 'astype', math_ops.cast)
   setattr(ops.Tensor, '__round__', np_array_ops.around)
+
+  # TODO(wangpeng): Remove `data` when all uses of it are removed
+  data = property(lambda self: self)
+  setattr(ops.Tensor, 'data', data)

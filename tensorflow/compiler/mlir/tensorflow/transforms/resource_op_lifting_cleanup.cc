@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/BitVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -31,11 +31,18 @@ bool IsResource(Value value) {
   return getElementTypeOrSelf(value.getType()).isa<TF::ResourceType>();
 }
 
-// Removes identity nodes in the block. The device computation does not need
+// Checks if a cast op is casting a resource -> resource.
+bool IsCastOfResource(Operation &op) {
+  auto cast = dyn_cast<TF::CastOp>(op);
+  if (!cast) return false;
+  return IsResource(cast.x());
+}
+
+// Removes passthrough ops in the block. The device computation does not need
 // such nodes to carry information.
-void RemoveIdentity(Block &block) {
+void RemovePassthroughOp(Block &block) {
   for (auto &op : llvm::make_early_inc_range(block)) {
-    if (isa<TF::IdentityOp, TF::IdentityNOp>(&op)) {
+    if (isa<TF::IdentityOp, TF::IdentityNOp>(op) || IsCastOfResource(op)) {
       op.replaceAllUsesWith(op.getOperands());
       op.erase();
     }
@@ -110,12 +117,12 @@ void EliminateUnusedResults(
 // multiple uses or unknown uses (for external functions). The cloned function
 // will be marked as private.
 FuncOp CloneFunctionIfNeeded(FuncOp func) {
-  ModuleOp module = func.getParentOfType<ModuleOp>();
+  ModuleOp module = func->getParentOfType<ModuleOp>();
   auto func_uses = SymbolTable::getSymbolUses(func, &module.getBodyRegion());
   if (func_uses.hasValue() && llvm::hasSingleElement(func_uses.getValue()))
     return func;
   FuncOp cloned = func.clone();
-  cloned.setVisibility(SymbolTable::Visibility::Private);
+  cloned.setPrivate();
   cloned.setName(func.getName().str() + "_lifted");
   SymbolTable(module).insert(cloned);
   return cloned;
@@ -139,7 +146,7 @@ void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
       if (!symref) continue;
       if (symref.getValue() != func.getName()) continue;
       op->setAttr(attr.first,
-                  FlatSymbolRefAttr::get(cloned.getName(), op->getContext()));
+                  FlatSymbolRefAttr::get(op->getContext(), cloned.getName()));
       break;
     }
   }
@@ -177,9 +184,9 @@ void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
   // Patch up function types (with less number of return values and potentially
   // less number of arguments)
   for (FuncOp func : cloned_branches) {
-    func.setType(FunctionType::get(
-        func.front().getArgumentTypes(),
-        func.front().getTerminator()->getOperandTypes(), func.getContext()));
+    func.setType(
+        FunctionType::get(func.getContext(), func.front().getArgumentTypes(),
+                          func.front().getTerminator()->getOperandTypes()));
   }
 
   EliminateUnusedResults(op);
@@ -210,8 +217,8 @@ void EliminateUnusedResultsForWhile(TF::WhileOp op) {
 
   FuncOp cloned_cond = CloneFunctionIfNeeded(cond);
   FuncOp cloned_body = CloneFunctionIfNeeded(body);
-  op.condAttr(FlatSymbolRefAttr::get(cloned_cond.getName(), op.getContext()));
-  op.bodyAttr(FlatSymbolRefAttr::get(cloned_body.getName(), op.getContext()));
+  op.condAttr(FlatSymbolRefAttr::get(op.getContext(), cloned_cond.getName()));
+  op.bodyAttr(FlatSymbolRefAttr::get(op.getContext(), cloned_body.getName()));
 
   // Drop cond/body args and return value. WhileOp result will be dropped later
   // in EliminateUnusedResults. Traverse in reverse order so that indices to be
@@ -225,9 +232,9 @@ void EliminateUnusedResultsForWhile(TF::WhileOp op) {
 
   // Patch up branch function types.
   for (FuncOp func : {cloned_cond, cloned_body}) {
-    func.setType(FunctionType::get(
-        func.front().getArgumentTypes(),
-        func.front().getTerminator()->getOperandTypes(), func.getContext()));
+    func.setType(
+        FunctionType::get(func.getContext(), func.front().getArgumentTypes(),
+                          func.front().getTerminator()->getOperandTypes()));
   }
   EliminateUnusedResults(op, &can_eliminate);
 }
@@ -370,20 +377,21 @@ LogicalResult CanonicalizeWhileRegion(TF::WhileRegionOp op) {
   for (OpResult result : llvm::reverse(op.getResults())) {
     if (!IsResource(result)) continue;
     int result_idx = result.getResultNumber();
-    auto body_arg = body.front()
-                        .getTerminator()
-                        ->getOperand(result_idx)
-                        .dyn_cast<BlockArgument>();
-    if (!body_arg || body_arg.getArgNumber() != result_idx) {
+    Operation *yield_op = body.front().getTerminator();
+    Value yield_operand = yield_op->getOperand(result_idx);
+    Value while_operand = op.getOperand(result_idx);
+    Value body_arg = body.getArgument(result_idx);
+    Value cond_arg = cond.getArgument(result_idx);
+    if (yield_operand != body_arg && yield_operand != while_operand) {
       return op.emitOpError("Result #") << result_idx << " is not tied to arg #"
                                         << result_idx << " of the body";
     }
-    body.getArgument(result_idx).replaceAllUsesWith(op.getOperand(result_idx));
-    cond.getArgument(result_idx).replaceAllUsesWith(op.getOperand(result_idx));
+    body_arg.replaceAllUsesWith(while_operand);
+    cond_arg.replaceAllUsesWith(while_operand);
+    result.replaceAllUsesWith(while_operand);
     body.front().getTerminator()->eraseOperand(result_idx);
     body.eraseArgument(result_idx);
     cond.eraseArgument(result_idx);
-    result.replaceAllUsesWith(op.getOperand(result_idx));
     op.getOperation()->eraseOperand(result_idx);
     can_eliminate.set(result_idx);
   }
@@ -397,7 +405,7 @@ LogicalResult CleanupAndCanonicalize(Operation *parent_op) {
     // Cleanup code in attached regions.
     for (Region &region : op->getRegions()) {
       if (!llvm::hasSingleElement(region)) return WalkResult::interrupt();
-      RemoveIdentity(region.front());
+      RemovePassthroughOp(region.front());
       RemoveDeadLocalVariables(region.front());
     }
 
@@ -427,7 +435,7 @@ LogicalResult CleanupAndCanonicalize(Operation *parent_op) {
       if (while_region.cond().walk(check_while_cond).wasInterrupted())
         return WalkResult::interrupt();
       // For while region, the body input and output arg should match.
-      CanonicalizeWhileRegion(while_region);
+      result = CanonicalizeWhileRegion(while_region);
     } else if (auto call = dyn_cast<CallOpInterface>(op)) {
       FuncOp func = dyn_cast<FuncOp>(call.resolveCallable());
       if (!func) return WalkResult::interrupt();

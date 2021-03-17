@@ -173,8 +173,10 @@ TEST(ScopedShapedBufferTest, TestSubShapeTree) {
 
 // Test TakeSubTree with different depths (depth of ShapeTree) and fan-outs
 // (cardinality of each non-leaf node's children).
-void BM_TakeSubTree(int iters, int depth, int fan_out) {
-  tensorflow::testing::StopTiming();
+void BM_TakeSubTree(::testing::benchmark::State& state) {
+  const int depth = state.range(0);
+  const int fan_out = state.range(1);
+
   TestAllocator allocator;
   xla::Shape shape = xla::ShapeUtil::MakeShape(xla::F32, {32, 64, 128});
   for (int i = 0; i < depth; ++i) {
@@ -183,13 +185,11 @@ void BM_TakeSubTree(int iters, int depth, int fan_out) {
   }
   xla::ScopedShapedBuffer shaped_buffer(shape, /*allocator=*/&allocator,
                                         /*device_ordinal=*/0);
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     // Extract a buffer from approximately the middle of the first level of the
     // tree.
     (void)shaped_buffer.TakeSubTree(/*index=*/{fan_out / 2}).release();
   }
-  tensorflow::testing::StopTiming();
 }
 
 BENCHMARK(BM_TakeSubTree)

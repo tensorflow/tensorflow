@@ -89,7 +89,8 @@ class HloTestBase : public ManifestCheckingTest {
 
   // Parses the given string and returns module as a VerifiedHloModule.
   StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
-      absl::string_view hlo_text, int64 replica_count = 1);
+      absl::string_view hlo_text, int64 replica_count = 1,
+      int64 num_partitions = 1);
   StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
       absl::string_view hlo_text, const HloModuleConfig& config);
 
@@ -135,10 +136,12 @@ class HloTestBase : public ManifestCheckingTest {
   virtual DebugOptions GetDebugOptionsForTest();
 
   // Gets an HloModuleConfig with options appropriate for tests.
-  HloModuleConfig GetModuleConfigForTest(int64 replica_count = 1) {
+  HloModuleConfig GetModuleConfigForTest(int64 replica_count = 1,
+                                         int64 num_partitions = 1) {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     config.set_replica_count(replica_count);
+    config.set_num_partitions(num_partitions);
     return config;
   }
 
@@ -319,6 +322,11 @@ class HloTestBase : public ManifestCheckingTest {
   std::unique_ptr<HloVerifier> hlo_verifier_;
 
   ErrorSpec error_spec_{0.0001};
+
+ protected:
+  // Helper functions to get test and reference platforms.
+  static se::Platform* GetReferencePlatform();
+  static se::Platform* GetTestPlatform();
 
  private:
   // Given the test module, makes a reference module that is ready to run on the

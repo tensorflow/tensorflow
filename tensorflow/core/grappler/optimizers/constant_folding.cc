@@ -59,8 +59,8 @@ namespace tensorflow {
 namespace grappler {
 using TensorVector = gtl::InlinedVector<TensorValue, 4>;
 
-// We only fold/materialize constants smaller than 10 MiB.
-const int64 kMaxConstantSize = 10 * 1024 * 1024;
+// We only fold/materialize constants smaller than 100kB.
+const int64 kMaxConstantSize = 100 * 1024;
 
 namespace {
 template <typename T>
@@ -188,18 +188,22 @@ float QuantizedTypeMaxAsFloat(DataType data_type) {
 
 ConstantFolding::ConstantFolding(RewriterConfig::Toggle opt_level,
                                  DeviceBase* cpu_device,
-                                 bool disable_compressed_tensor_optimization)
+                                 bool disable_compressed_tensor_optimization,
+                                 bool fold_quantization_emulation)
     : opt_level_(opt_level),
       cpu_device_(cpu_device),
       disable_compressed_tensor_optimization_(
-          disable_compressed_tensor_optimization) {
+          disable_compressed_tensor_optimization),
+      fold_quantization_emulation_(fold_quantization_emulation) {
   resource_mgr_.reset(new ResourceMgr());
 }
 
 ConstantFolding::ConstantFolding(DeviceBase* cpu_device,
-                                 bool disable_compressed_tensor_optimization)
+                                 bool disable_compressed_tensor_optimization,
+                                 bool fold_quantization_ops)
     : ConstantFolding(RewriterConfig::ON, cpu_device,
-                      disable_compressed_tensor_optimization) {}
+                      disable_compressed_tensor_optimization,
+                      fold_quantization_ops) {}
 
 // static
 string ConstantFolding::AddControlDependency(const string& input_name,
@@ -279,6 +283,11 @@ bool ConstantFolding::ForwardInputs(NodeDef* node,
            consumer_input_idx < consumer->input_size(); ++consumer_input_idx) {
         const string& consumer_input = consumer->input(consumer_input_idx);
         if (IsControlInput(consumer_input)) {
+          break;
+        }
+        // It is illegal to add control dependencies to _Retval nodes, so we
+        // can't bypass value producing `node` and forward inputs to `consumer`.
+        if (IsRetval(*consumer)) {
           break;
         }
         int output_idx;
@@ -1058,6 +1067,10 @@ bool ConstantFolding::MaybeFoldable(const NodeDef& node,
   }
   // Removing LoopCond nodes can screw up the partitioner.
   if (node.op() == "LoopCond") {
+    return false;
+  }
+
+  if (!fold_quantization_emulation_ && IsQuantizationEmulation(node)) {
     return false;
   }
 

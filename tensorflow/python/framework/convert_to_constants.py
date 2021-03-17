@@ -28,6 +28,7 @@ from tensorflow.core.framework import variable_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
@@ -294,7 +295,7 @@ class _Node(_Convertible):
       The object referred to by 'input_name'.
     """
 
-    # The logic below oversimplifes the semantics, but is good enough for the
+    # The logic below oversimplifies the semantics, but is good enough for the
     # purposes of converting to constants. The introduction of new types of
     # operations may change this, forcing the code to be more generic.
     #
@@ -786,7 +787,7 @@ class _FunctionConverterData(_ConverterData):
       func: ConcreteFunction.
       lower_control_flow: Boolean indicating whether or not to lower control
         flow ops such as If and While.
-      aggressive_inlining: Boolean indicating whether or not to to aggressive
+      aggressive_inlining: Boolean indicating whether or not to do aggressive
         function inlining (might be unsafe if function has stateful ops, not
         properly connected to control outputs).
       variable_names_allowlist: The set of variable names to convert (by
@@ -822,7 +823,7 @@ class _FunctionConverterData(_ConverterData):
       if idx in map_index_to_variable:
         data = map_index_to_variable[idx].numpy()
       else:
-        data = val_tensor.numpy()
+        data = np.array(val_tensor.numpy())
       self._tensor_data[tensor_name] = _TensorData(
           numpy=data,
           dtype=dtypes.as_dtype(data.dtype).as_datatype_enum,
@@ -918,7 +919,7 @@ def _run_inline_graph_optimization(func, lower_control_flow,
     func: ConcreteFunction.
     lower_control_flow: Boolean indicating whether or not to lower control flow
       ops such as If and While. (default True)
-    aggressive_inlining: Boolean indicating whether or not to to aggressive
+    aggressive_inlining: Boolean indicating whether or not to do aggressive
       function inlining (might be unsafe if function has stateful ops not
       properly connected to control outputs).
 
@@ -998,6 +999,12 @@ def _construct_concrete_function(func, output_graph_def,
 
   new_input_names = [tensor.name for tensor in not_converted_inputs]
   new_output_names = [tensor.name for tensor in func.outputs]
+
+  # Remove old functions to use updated functions from graph def.
+  for f in output_graph_def.library.function:
+    if context.context().has_function(f.signature.name):
+      context.context().remove_function(f.signature.name)
+
   new_func = wrap_function.function_from_graph_def(output_graph_def,
                                                    new_input_names,
                                                    new_output_names)
@@ -1057,7 +1064,7 @@ def convert_variables_to_constants_v2(func,
     func: ConcreteFunction.
     lower_control_flow: Boolean indicating whether or not to lower control flow
       ops such as If and While. (default True)
-    aggressive_inlining: Boolean indicating whether or not to to aggressive
+    aggressive_inlining: Boolean indicating whether or not to do aggressive
       function inlining (might be unsafe if function has stateful ops, not
       properly connected to control outputs). (default False)
 
@@ -1090,7 +1097,7 @@ def convert_variables_to_constants_v2_as_graph(func,
     func: ConcreteFunction.
     lower_control_flow: Boolean indicating whether or not to lower control flow
       ops such as If and While. (default True)
-    aggressive_inlining: Boolean indicating whether or not to to aggressive
+    aggressive_inlining: Boolean indicating whether or not to do aggressive
       function inlining (might be unsafe if function has stateful ops, not
       properly connected to control outputs).
 
@@ -1139,6 +1146,16 @@ def convert_variables_to_constants_from_session_graph(
   Returns:
     An optimized GraphDef.
   """
+  # TODO(b/176982859): Find a more satisfying way to update shape information
+  # than clearing it, or migrate users to a workflow that does not require
+  # freezing.
+  for function in graph_def.library.function:
+    if "_input_shapes" in function.attr:
+      for input_arg, shape_attribute in zip(
+          function.signature.input_arg,
+          function.attr["_input_shapes"].list.shape):
+        if dtypes.as_dtype(input_arg.type) == dtypes.resource:
+          shape_attribute.unknown_rank = True
   graph_def, _ = _replace_variables_by_constants(
       converter_data=_SessionConverterData(
           session=session,

@@ -200,6 +200,10 @@ Node* UnaryOp(const string& op_name, NodeOut input,
 Node* BinaryOp(const string& op_name, NodeOut a, NodeOut b,
                const GraphDefBuilder::Options& opts);
 
+// For adding an Op with three inputs to a GraphDefBuilder.
+Node* TernaryOp(const string& op_name, NodeOut a, NodeOut b, NodeOut c,
+                const GraphDefBuilder::Options& opts);
+
 }  // namespace ops
 }  // namespace tensorflow
 

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xrt/xrt.pb.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
@@ -94,6 +95,12 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
       const XLA_TpuMeshState* mesh_state,
       TpuProgramGroupInterface* tpu_program_group_interface);
 
+  // Compiles HLO IR and returns TPU programs ready for execution.
+  static Status CompileAndBuild(
+      const xrt::XLAComputation& xrt_computation_proto,
+      const XLA_TpuMeshState* mesh_state,
+      TpuProgramGroupInterface* tpu_program_group_interface);
+
   // Initializes `TpuProgramGroup` object with `xla_tpu_programs`.
   void Initialize(absl::Span<XLA_TpuProgram* const> xla_tpu_programs);
 
@@ -118,14 +125,17 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   void set_may_modify_variables(const std::vector<bool>& may_modify_variables);
   bool may_modify_variables(int index) const override;
 
+  const std::vector<std::string>& fingerprints() const;
+  void set_fingerprints();
+
   const std::vector<XLA_TpuProgram*>& tpu_programs() const;
   std::vector<XLA_TpuProgram*> tpu_programs(TpuProgramShardingType type) const;
-  const XLA_TpuProgram* tpu_program(int index) const;
+  const XLA_TpuProgram* tpu_program(int index) const override;
   void set_tpu_programs(absl::Span<XLA_TpuProgram* const> tpu_programs);
 
-  const TPUExecutableInfoProto& executable_info(int index) const;
+  const TPUExecutableInfoProto& executable_info(int index) const override;
 
-  const TPUHostTransferInfoProto& host_transfer_info(int index) const;
+  const TPUHostTransferInfoProto& host_transfer_info(int index) const override;
   void set_hlo_metadatas(absl::Span<const xla::HloProto> hlo_metadatas);
   const xla::HloProto* hlo_metadata(int index) const;
   absl::Span<const xla::HloProto* const> hlo_metadatas() const override;
@@ -161,6 +171,7 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   void RefreshHloMetadatasPtrs();
 
   std::vector<bool> may_modify_variables_;
+  std::vector<std::string> tpu_program_fingerprints_;
 
   std::vector<XLA_TpuProgram*> tpu_programs_;  // Not owned.
   std::vector<TPUExecutableInfoProto> executable_infos_;

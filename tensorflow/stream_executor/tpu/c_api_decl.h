@@ -20,10 +20,12 @@ limitations under the License.
 #include <stdint.h>
 
 #include "tensorflow/c/tf_attrtype.h"
-#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/tpu/libtftpu.h"
 
 extern "C" {
+
+struct TF_Status;
+typedef struct TF_Status TF_Status;
 
 // Maximum number of array elements to inline into structs for performance.
 #define TPU_C_API_MAX_INLINED 6
@@ -41,7 +43,12 @@ enum TpuVersionEnum {
   kTpuV4,
 };
 
-typedef struct SE_Status SE_Status;
+typedef struct TpuRuntimeVersion {
+  // The three version numbers are: major, minor, patch
+  int version[3];
+  const char* metadata;
+  size_t metadata_size;
+} TpuRuntimeVersion;
 
 typedef struct SE_Platform SE_Platform;
 typedef struct SE_StreamExecutor SE_StreamExecutor;
@@ -59,7 +66,7 @@ typedef struct SE_PlatformId {
 } SE_PlatformId;
 typedef struct SE_StreamExecutorConfig SE_StreamExecutorConfig;
 typedef struct SE_DeviceOptions SE_DeviceOptions;
-typedef SE_Status* (*SE_StatusCallbackFn)(void*);
+typedef TF_Status* (*SE_StatusCallbackFn)(void*);
 
 typedef struct SE_DeviceMemoryBase {
   void* opaque;
@@ -95,10 +102,10 @@ typedef struct SE_AllocatorStats {
 // direction and request memory via a callback.
 typedef void (*SE_AllocateFn)(void* ctx, int device_ordinal, uint64_t size,
                               bool retry_on_failure, int64_t memory_space,
-                              SE_ScopedDeviceMemory* result, SE_Status* status);
+                              SE_ScopedDeviceMemory* result, TF_Status* status);
 
 typedef void (*SE_DeallocateFn)(void* ctx, SE_DeviceMemoryBase* base,
-                                int device_ordinal, SE_Status* status);
+                                int device_ordinal, TF_Status* status);
 
 typedef struct SE_DeviceMemoryAllocator {
   SE_Platform* platform;
@@ -142,6 +149,7 @@ typedef struct SE_DeviceDescription {
   int cuda_compute_capability_minor;
 
   int rocm_amdgpu_isa_version;
+  char* rocm_amdgpu_gcn_arch_name;
 
   int numa_node;
   int core_count;
@@ -271,6 +279,7 @@ typedef struct XLA_HloModuleConfig {
   int64_t replica_count;
   int64_t num_partitions;
   bool use_spmd_partitioning;
+  TpuSerializedProto debug_options;
   bool has_static_device_assignment;
   TpuSerializedProto static_device_assignment;
   bool has_entry_computation_layout;
@@ -299,7 +308,7 @@ typedef struct XLA_TransferManager XLA_TransferManager;
 typedef struct XLA_ComputationPlacer XLA_ComputationPlacer;
 
 typedef void (*XLA_CallbackFn)(void*);
-typedef void (*XLA_StatusCallbackFn)(void*, SE_Status*);
+typedef void (*XLA_StatusCallbackFn)(void*, TF_Status*);
 
 typedef struct SE_TpuTopology SE_TpuTopology;
 typedef struct SE_TpuTopology_Core SE_TpuTopology_Core;

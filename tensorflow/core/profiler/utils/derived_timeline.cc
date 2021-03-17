@@ -174,7 +174,8 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
     event.ForEachStat([&](const XStatVisitor& stat) {
       if (stat.Type() == StatType::kGroupId) {
         group_id = stat.IntValue();
-      } else if (stat.Type() == StatType::kLevel0) {
+      } else if (stat.Type() == StatType::kLevel0 ||  // old way to carry tf_op
+                 stat.Type() == StatType::kTfOp) {
         tf_op_full_name = stat.StrOrRefValue();
       } else if (stat.Type() == StatType::kHloOp) {
         hlo_op_names =
@@ -264,7 +265,7 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
         if (stat.Type() == StatType::kGroupId) {
           group_id = stat.IntValue();
         } else if (stat.Type() == StatType::kDeviceId) {
-          device_id = stat.IntValue();
+          device_id = stat.IntOrUintValue();
         } else if (stat.Type() == StatType::kCorrelationId) {
           correlation_id = stat.IntValue();
         }
@@ -277,10 +278,7 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
         Timespan& group_span = group_launch_info.timespan;
         Timespan event_span = event.GetTimespan();
         if (group_launch_info.num_launches) {  // Existing group.
-          uint64 begin_ps =
-              std::min(group_span.begin_ps(), event_span.begin_ps());
-          uint64 end_ps = std::max(group_span.end_ps(), event_span.end_ps());
-          group_span = Timespan::FromEndPoints(begin_ps, end_ps);
+          group_span.ExpandToInclude(event_span);
         } else {
           group_span = event_span;
         }

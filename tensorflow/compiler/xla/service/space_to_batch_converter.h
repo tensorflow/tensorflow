@@ -24,14 +24,12 @@ namespace xla {
 
 // A pass which rewrites convolutions such that space dimension is turned into
 // batch.
-class ConvolutionSpaceToBatchConverter : public HloModulePass {
+class SpaceToBatchConverter : public HloModulePass {
  public:
-  explicit ConvolutionSpaceToBatchConverter(int64 limit_on_batch_size = 1)
+  explicit SpaceToBatchConverter(int64 limit_on_batch_size = 1)
       : limit_on_batch_size_(limit_on_batch_size) {}
 
-  absl::string_view name() const override {
-    return "convolution-space-to-batch-converter";
-  }
+  absl::string_view name() const override { return "space-to-batch-converter"; }
 
   // Run convolution rewriting on the given computation. Returns whether the
   // computation was changed.

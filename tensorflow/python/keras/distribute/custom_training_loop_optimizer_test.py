@@ -25,6 +25,7 @@ from tensorflow.python.distribute import values
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_combinations as combinations
+from tensorflow.python.keras.distribute import strategy_combinations as keras_strategy_combinations
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -35,7 +36,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   @ds_combinations.generate(
       combinations.times(
           combinations.combine(
-              distribution=strategy_combinations.multidevice_strategies,
+              distribution=keras_strategy_combinations.multidevice_strategies,
               mode=["eager"],
           ),
           combinations.combine(

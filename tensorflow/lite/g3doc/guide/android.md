@@ -41,6 +41,34 @@ as a starting point.
 The following sections contain some useful information for working with
 TensorFlow Lite on Android.
 
+### Use Android Studio ML Model Binding
+
+Note: Required [Android Studio 4.1](https://developer.android.com/studio) or
+above
+
+To import a TensorFlow Lite (TFLite) model:
+
+1.  Right-click on the module you would like to use the TFLite model or click on
+    `File`, then `New` > `Other` > `TensorFlow Lite Model`
+    ![Right-click menus to access the TensorFlow Lite import functionality](../images/android/right_click_menu.png)
+
+1.  Select the location of your TFLite file. Note that the tooling will
+    configure the module's dependency on your behalf with ML Model binding and
+    all dependencies automatically inserted into your Android module's
+    `build.gradle` file.
+
+    Optional: Select the second checkbox for importing TensorFlow GPU if you
+    want to use [GPU acceleration](../performance/gpu).
+    ![Import dialog for TFLite model](../images/android/import_dialog.png)
+
+1.  Click `Finish`.
+
+1.  The following screen will appear after the import is successful. To start
+    using the model, select Kotlin or Java, copy and paste the code under the
+    `Sample Code` section. You can get back to this screen by double clicking
+    the TFLite model under the `ml` directory in Android Studio.
+    ![Model details page in Android Studio](../images/android/model_details.png)
+
 ### Use the TensorFlow Lite Task Library
 
 TensorFlow Lite Task Library contains a set of powerful and easy-to-use
@@ -62,8 +90,8 @@ You can specify this in your `build.gradle` dependencies as follows:
 
 ```build
 dependencies {
-    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.0.0-nightly'
-    implementation 'org.tensorflow:tensorflow-lite-task-text:0.0.0-nightly'
+    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.1.0'
+    implementation 'org.tensorflow:tensorflow-lite-task-text:0.1.0'
 }
 ```
 
@@ -89,7 +117,7 @@ You can specify this in your `build.gradle` dependencies as follows:
 
 ```build
 dependencies {
-    implementation 'org.tensorflow:tensorflow-lite-support:0.0.0-nightly'
+    implementation 'org.tensorflow:tensorflow-lite-support:0.1.0'
 }
 ```
 
@@ -105,7 +133,7 @@ You can specify this in your `build.gradle` dependencies as follows:
 
 ```build
 dependencies {
-    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
+    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly-SNAPSHOT'
 }
 ```
 

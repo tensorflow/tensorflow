@@ -5,14 +5,6 @@ load(
     "template_rule",
 )
 
-config_setting(
-    name = "clang_linux_x86_64",
-    values = {
-        "cpu": "k8",
-        "define": "using_clang=true",
-    },
-)
-
 template_rule(
     name = "mkldnn_config_h",
     src = "include/mkldnn_config.h.in",
@@ -57,8 +49,10 @@ cc_library(
         "src/cpu/xbyak/*.h",
     ]) + [":mkldnn_version_h"],
     hdrs = glob(["include/*"]),
-    copts = [
-        "-fexceptions",
+    copts = select({
+        "@org_tensorflow//tensorflow:windows": [],
+        "//conditions:default": ["-fexceptions"],
+    }) + [
         "-DMKLDNN_THR=MKLDNN_THR_SEQ",  # Disables threading.
     ],
     includes = [

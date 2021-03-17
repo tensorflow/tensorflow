@@ -28,10 +28,12 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import reduce_util
-from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import test_combinations as combinations
+from tensorflow.python.keras.distribute import strategy_combinations
+from tensorflow.python.keras.layers import core
+from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.module import module
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -413,13 +415,45 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
     loss = train_step(input_iterator)
     loss = distribution.reduce(reduce_util.ReduceOp.MEAN, loss, axis=0)
 
+  def test_variable_run_argument(self, distribution):
+    # Test that variables passed to run() remain variables. Previous behavior
+    # in TPUStrategy was to cast to Tensor.
+
+    with distribution.scope():
+      optimizer = gradient_descent.SGD(0.1)
+      net = core.Dense(1, trainable=True)
+    dataset = dataset_ops.Dataset.from_tensors([[1.]])
+    dataset = dataset.repeat()
+    dataset = dataset.batch(2, drop_remainder=True)
+
+    def replica_step(trainable_variables, features):
+
+      with backprop.GradientTape() as tape:
+        net_out = net(features[0], training=True)
+        loss = (net_out - 1.0) * (net_out - 1.0)
+      gradients = tape.gradient(loss, trainable_variables)
+      optimizer.apply_gradients(zip(gradients, trainable_variables))
+      return loss
+
+    @def_function.function
+    def step(features):
+      per_replica_losses = distribution.run(
+          replica_step,
+          (net.trainable_variables, features),
+      )
+      loss = distribution.reduce(
+          reduce_util.ReduceOp.SUM, per_replica_losses, axis=None)
+      return loss
+
+    step(next(iter(dataset)))
+
 
 class KerasModelsXLATest(test.TestCase, parameterized.TestCase):
 
   @ds_combinations.generate(
       combinations.combine(
           distribution=strategy_combinations.tpu_strategies, mode=["eager"]))
-  def test_tf_function_experimental_compile(self, distribution):
+  def test_tf_function_jit_compile(self, distribution):
     dataset = _get_dataset()
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
@@ -433,7 +467,7 @@ class KerasModelsXLATest(test.TestCase, parameterized.TestCase):
         self.kernel = self.add_variable(
             "kernel", shape=[int(input_shape[-1]), self.num_outputs])
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def call(self, inputs):
         return math_ops.matmul(inputs, self.kernel)
 

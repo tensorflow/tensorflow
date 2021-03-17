@@ -23,6 +23,7 @@ cc_library(
     hdrs = ["capture_profile.h"],
     copts = tf_profiler_copts(),
     visibility = [
+        "//tensorflow/compiler/xla/python:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
     ],
     deps = [
@@ -37,6 +38,7 @@ cc_library(
         "//tensorflow/core/profiler/convert:xplane_to_profile_response",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -65,6 +67,7 @@ tf_profiler_pybind_cc_library_wrapper(
 cc_library(
     name = "profiler_client",
     hdrs = ["profiler_client.h"],
+    visibility = ["//tensorflow/compiler/xla:__subpackages__"],
     deps = [
         ":profiler_client_impl",
         "//tensorflow/core:lib",
@@ -116,6 +119,7 @@ cc_library(
 tf_cc_test(
     name = "profiler_client_test",
     srcs = ["profiler_client_test.cc"],
+    tags = ["notap"],  # b/173824689
     deps = [
         ":profiler_client",
         ":profiler_client_impl",  # for oss

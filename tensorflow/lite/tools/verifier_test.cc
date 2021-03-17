@@ -29,8 +29,8 @@ limitations under the License.
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/op_resolver.h"
+#include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
@@ -558,7 +558,9 @@ TEST(VerifyModel, TypedTensorShapeMatchesTensorBufferSize) {
   TfLiteFlatbufferModelBuilder builder;
   for (int tensor_type = TensorType_MIN; tensor_type <= TensorType_MAX;
        ++tensor_type) {
-    if (tensor_type == TensorType_STRING) continue;
+    if (tensor_type == TensorType_STRING ||
+        tensor_type == TensorType_RESOURCE || tensor_type == TensorType_VARIANT)
+      continue;
     TfLiteType lite_type = kTfLiteNoType;
     ASSERT_EQ(ConvertTensorType(static_cast<TensorType>(tensor_type),
                                 &lite_type, /*error_reporter=*/nullptr),

@@ -49,7 +49,7 @@ dependencies {
     // Other dependencies
 
     // Import the Task Text Library dependency
-    implementation 'org.tensorflow:tensorflow-lite-task-text:0.0.0-nightly'
+    implementation 'org.tensorflow:tensorflow-lite-task-text:0.1.0'
 }
 ```
 
@@ -137,7 +137,7 @@ with your own model and test data.
 The `BetNLClassifier` API expects a TFLite model with mandatory
 [TFLite Model Metadata](../../convert/metadata.md).
 
-The Metadata should meet the following requiresments:
+The Metadata should meet the following requirements:
 
 *   input_process_units for Wordpiece/Sentencepiece Tokenizer
 

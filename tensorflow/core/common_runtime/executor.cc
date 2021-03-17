@@ -73,6 +73,7 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
 namespace tensorflow {
+
 namespace {
 
 // 1-D, 0 element tensor.
@@ -155,7 +156,7 @@ class ExecutorImpl : public Executor {
     KernelStats() = default;
 
     void Initialize(const GraphView& gview) {
-      is_expensive_ = absl::make_unique<std::atomic<bool>[]>(gview.num_nodes());
+      is_expensive_.resize(gview.num_nodes());
       cost_estimates_ =
           absl::make_unique<std::atomic_uint_fast64_t[]>(gview.num_nodes());
       for (int32 i = 0; i < gview.num_nodes(); ++i) {
@@ -176,28 +177,26 @@ class ExecutorImpl : public Executor {
               kOpIsExpensiveThresholdCycles);
     }
 
+    // Returns the value of kernel->IsExpensive().
+    bool HasExpensiveMarker(const NodeItem& node) const {
+      return is_expensive_[node.node_id];
+    }
+
     // Updates the dynamic cost estimate, which is used to determine whether the
     // given node is expensive. The new cost estimate is a weighted average of
-    // the old cost estimate and the latest cost.
-    //
-    // NOTE: We currently only expect updates to the cost estimate when
-    // `is_expensive_[node.node_id]` is true (or at least, it *was* true, when
-    // we started to execute the kernel. As a result, we expect that a kernel
-    // can only ever transition from "expensive" to "inexpensive", but not vice
-    // versa.
+    // the old cost estimate and the latest cost. We only update cost estimates
+    // for kernels for which IsExpensive() return true.
     void UpdateCostEstimate(const NodeItem& node, uint64 elapsed_cycles) {
       // N.B. Updates to `cost_estimate` are atomic but unlocked.  Simultaneous
       // updates may result in one or more updates being ignored.  This does not
       // affect correctness but may slow down the update frequency.
       std::atomic_uint_fast64_t& cost_estimate = cost_estimates_[node.node_id];
-      uint64 new_estimate = (kCostDecay - 1) *
-                                cost_estimate.load(std::memory_order_relaxed) /
-                                kCostDecay +
-                            (elapsed_cycles / kCostDecay);
+      auto prev_estimate = cost_estimate.load(std::memory_order_relaxed);
+
+      uint64 new_estimate =
+          ((kCostDecay - 1) * prev_estimate + elapsed_cycles) / kCostDecay;
+
       cost_estimate.store(new_estimate, std::memory_order_relaxed);
-      if (new_estimate < kOpIsExpensiveThresholdCycles) {
-        is_expensive_[node.node_id].store(false, std::memory_order_relaxed);
-      }
     }
 
    private:
@@ -205,10 +204,11 @@ class ExecutorImpl : public Executor {
     // determine whether an operation should be place in a threadpool.
     // Operations start out "expensive".
     static constexpr uint64 kInitialCostEstimateCycles = 100 * 1000 * 1000;
-    static constexpr uint64 kOpIsExpensiveThresholdCycles = 5000;
+    static constexpr uint64 kOpIsExpensiveThresholdCycles = 8000;
     static constexpr uint64 kCostDecay = 10;
 
-    std::unique_ptr<std::atomic<bool>[]> is_expensive_;
+    std::vector<bool> is_expensive_;
+    // std::unique_ptr<std::atomic<bool>[]> is_expensive_;
     std::unique_ptr<std::atomic_uint_fast64_t[]> cost_estimates_;
   };
 
@@ -567,15 +567,19 @@ Status ExecutorState<PropagatorStateType>::ProcessSync(
         },
         profiler::GetTFTraceMeLevel(is_expensive));
     device->Compute(op_kernel, &ctx);
-  } else {
-    // In the common case, avoid creating any tracing objects.
-    if (is_expensive) {
-      KernelTimer timer;
-      device->Compute(op_kernel, &ctx);
+  } else if (kernel_stats_->HasExpensiveMarker(item)) {
+    KernelTimer timer;
+    device->Compute(op_kernel, &ctx);
+    // For expensive kernels, always update the cost estimate. For inexpensive
+    // kernels, update the cost estimate with ~1/16 probability. This assumes
+    // that the last 4 bits of the CPU cycle count is uniformly distributed.
+    constexpr int kKernelExecutionTrackingInvocationSkipCount = 16;
+    if (is_expensive ||
+        timer.start_cycles % kKernelExecutionTrackingInvocationSkipCount == 0) {
       kernel_stats_->UpdateCostEstimate(item, timer.ElapsedCycles());
-    } else {
-      device->Compute(op_kernel, &ctx);
     }
+  } else {
+    device->Compute(op_kernel, &ctx);
   }
   nodestats::SetOpEnd(stats);
   if (outputs->size() < item.num_outputs) outputs->resize(item.num_outputs);

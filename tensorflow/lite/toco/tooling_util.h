@@ -25,9 +25,6 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/logging.h"
-#if TOCO_SUPPORT_PORTABLE_PROTOS
-#include "third_party/protobuf/include/google/protobuf/text_format.h"
-#endif  // TOCO_SUPPORT_PORTABLE_PROTOS
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"

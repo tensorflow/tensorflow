@@ -99,7 +99,7 @@ class SelectTest(test.TestCase):
       a0 = constant_op.constant(1)
       b0 = constant_op.constant(2)
       c0 = math_ops.add(a0, b0)  # pylint: disable=unused-variable
-    # Should extract the tensors from tre graph.
+    # Should extract the tensors from the graph.
     self.assertEqual(len(op_selector.make_list_of_t(g0)), 3)
     # Should extract the tensors from the tuple
     self.assertEqual(len(op_selector.make_list_of_t((a0, b0))), 2)

@@ -195,6 +195,14 @@ class DimensionTest(test_util.TensorFlowTestCase):
     with self.assertRaises(TypeError):
       tensor_shape.Dimension(dtypes.string)
 
+  def testBool(self):
+    one = tensor_shape.Dimension(1)
+    zero = tensor_shape.Dimension(0)
+    has_none = tensor_shape.Dimension(None)
+    self.assertTrue(one)
+    self.assertFalse(zero)
+    self.assertFalse(has_none)
+
   def testMod(self):
     four = tensor_shape.Dimension(4)
     nine = tensor_shape.Dimension(9)
@@ -375,20 +383,6 @@ class ShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertIs(expected, mcs_dims)
     else:
       self.assertEqual(expected, mcs.as_list())
-
-  def testHash(self):
-    base = tensor_shape.TensorShape([1, 2, 3, 4])
-    base_copy = tensor_shape.TensorShape([1, 2, 3, 4])
-    self.assertEqual(hash(base), hash(base_copy))
-
-    with self.assertRaisesRegex(ValueError, r"Unable to hash partially"):
-      hash(tensor_shape.TensorShape([1, 2, 3, 4, None]))
-
-    with self.assertRaisesRegex(ValueError, r"Unable to hash partially"):
-      hash(tensor_shape.TensorShape(None))
-
-    with self.assertRaisesRegex(ValueError, r"Unable to hash Dimension"):
-      hash(tensor_shape.Dimension(None))
 
   def testMostSpecificCompatibleShape(self):
     self._testMostSpecificCompatibleShapeHelper([1, 2], None, None)

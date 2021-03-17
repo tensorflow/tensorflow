@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+
 namespace mlir {
 namespace TF {
 
@@ -114,7 +116,7 @@ bool ShapeAttr::hasStaticShape() const {
 
 FuncAttr FuncAttr::get(mlir::MLIRContext* context, llvm::StringRef name,
                        DictionaryAttr attr) {
-  auto symbol = SymbolRefAttr::get(name, context);
+  auto symbol = SymbolRefAttr::get(context, name);
   return Base::get(context, symbol, attr);
 }
 
@@ -129,6 +131,10 @@ SymbolRefAttr FuncAttr::GetName() const {
 
 DictionaryAttr FuncAttr::GetAttrs() const {
   return getImpl()->attrs.cast<DictionaryAttr>();
+}
+
+void TensorFlowDialect::registerAttributes() {
+  addAttributes<ShapeAttr, FuncAttr>();
 }
 
 }  // namespace TF

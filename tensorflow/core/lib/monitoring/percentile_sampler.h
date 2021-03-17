@@ -24,7 +24,11 @@ limitations under the License.
 // We replace this implementation with a null implementation for mobile
 // platforms.
 #ifdef IS_MOBILE_PLATFORM
+#define TENSORFLOW_INCLUDED_FROM_PERCENTILE_SAMPLER_H  // prevent accidental use
+                                                       // of
+// mobile_percentile_sampler.h
 #include "tensorflow/core/lib/monitoring/mobile_percentile_sampler.h"
+#undef TENSORFLOW_INCLUDED_FROM_PERCENTILE_SAMPLER_H
 #else
 
 #include <cmath>

@@ -55,6 +55,11 @@ void AutoShardDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
       ctx, index >= 0 && index < num_workers,
       errors::InvalidArgument("index must be between 0 and ", num_workers - 1));
   auto_shard_policy = auto_shard_policy_;
+  if (input->options().distribute_options().auto_shard_policy() !=
+      AutoShardPolicy::AUTO) {
+    auto_shard_policy =
+        input->options().distribute_options().auto_shard_policy();
+  }
   num_replicas = num_replicas_;
 
   auto config_factory = [num_workers, index, auto_shard_policy,

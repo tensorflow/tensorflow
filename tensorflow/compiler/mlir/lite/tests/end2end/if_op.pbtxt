@@ -406,16 +406,16 @@ versions {
   min_consumer: 12
 }
 
-# CHECK:      func @StatefulIf_else
+# CHECK:      func @main
+# CHECK-NEXT: constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]>
 # CHECK-NEXT: constant dense<[5.000000e+00, 6.000000e+00, 7.000000e+00, 8.000000e+00]>
-# CHECK-NEXT: tfl.mul
-# CHECK:      func @StatefulIf_then
-# CHECK-NEXT: constant dense<[6.000000e+00, 8.000000e+00, 1.000000e+01, 1.200000e+01]>
-# CHECK-NEXT: return
-# CHECK:      func @StatelessIf_else
+# CHECK:      "tf.If"{{.+}}else_branch = @cond_false_10{{.+}}is_stateless = true{{.+}}then_branch = @cond_true_10
+# CHECK:      "tf.If"{{.+}}else_branch = @cond_false0{{.+}}is_stateless = false{{.+}}then_branch = @cond_true0
+# CHECK:      func private @cond_false_10
 # CHECK-NEXT: tfl.div
-# CHECK:      func @StatelessIf_then
+# CHECK:      func private @cond_true_10
 # CHECK-NEXT: tfl.sub
-# CHECK:      "tf.If"{{.+}}else_branch = @StatelessIf_else{{.+}}then_branch = @StatelessIf_then
-# CHECK:      "tf.If"{{.+}}else_branch = @StatefulIf_else{{.+}}then_branch = @StatefulIf_then
-
+# CHECK:      func private @cond_false0
+# CHECK-NEXT: tfl.mul
+# CHECK:      func private @cond_true0
+# CHECK-NEXT: tfl.add

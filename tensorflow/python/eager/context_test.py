@@ -75,8 +75,23 @@ class ContextTest(test.TestCase):
     del tensor2
     self.assertIs(weak_c(), None)
 
-  @test_util.disable_tfrt('b/169294215: tfrt does not support RunMetadata yet')
   def testSimpleGraphCollection(self):
+
+    @def_function.function
+    def f(x):
+      with ops.device('CPU:0'):
+        return x + constant_op.constant(1.)
+
+    with context.collect_graphs() as graphs:
+      f(constant_op.constant(1.))
+
+    self.assertLen(graphs, 1)
+    graph, = graphs
+    self.assertIn('CPU:0', graph.node[1].device)
+
+  @test_util.disable_tfrt(
+      'b/171600738: tfrt does not support exporting post-optimization graph')
+  def testGraphCollectionAfterDevicePlacement(self):
 
     @def_function.function
     def f(x):
@@ -135,6 +150,16 @@ class ContextTest(test.TestCase):
       self.skipTest('Need at least 2 GPUs')
     with self.assertRaisesRegex(ValueError, 'Multiple devices'):
       context.context().get_total_memory_usage('GPU')
+
+  def testListFunctionNames(self):
+
+    @def_function.function
+    def f():
+      return constant_op.constant(1.)
+
+    concrete = f.get_concrete_function()
+    self.assertIn(concrete.name.decode(),
+                  context.context().list_function_names())
 
 
 if __name__ == '__main__':

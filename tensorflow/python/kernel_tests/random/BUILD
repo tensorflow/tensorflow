@@ -15,6 +15,7 @@ package(
 py_library(
     name = "util",
     srcs = ["util.py"],
+    srcs_version = "PY3",
     deps = [
         "//third_party/py/numpy",
     ],
@@ -97,6 +98,9 @@ cuda_py_test(
     name = "random_crop_test",
     size = "small",
     srcs = ["random_crop_test.py"],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:random_ops",
@@ -122,6 +126,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["stateless_random_ops_test.py"],
     shard_count = 10,
+    xla_tags = [
+        "no_cuda_asan",  # times-out
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -139,6 +146,9 @@ cuda_py_test(
     srcs = ["random_gamma_test.py"],
     shard_count = 4,
     tags = ["nozapfhahn"],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         ":util",
         "//tensorflow/python:array_ops",
@@ -155,6 +165,9 @@ cuda_py_test(
     name = "random_grad_test",
     size = "small",
     srcs = ["random_grad_test.py"],
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

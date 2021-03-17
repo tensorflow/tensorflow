@@ -13,15 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This pass outlines regions of `tf_device.cluster` into functions and replaces
-// `tf_device.cluster` with equivalent `tf_device.cluster_func` operations.
-
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -29,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -38,7 +36,7 @@ namespace {
 constexpr char kFuncAttr[] = "func";
 
 struct ClusterOutliningPass
-    : public PassWrapper<ClusterOutliningPass, OperationPass<ModuleOp>> {
+    : public TF::ClusterOutliningPassBase<ClusterOutliningPass> {
   void runOnOperation() override;
 };
 
@@ -58,8 +56,8 @@ FuncOp BuildFunction(llvm::ArrayRef<Value> live_ins,
   operand_types.reserve(live_ins.size());
   for (Value v : live_ins) operand_types.emplace_back(v.getType());
 
-  auto func_type = FunctionType::get(operand_types, cluster_op.getResultTypes(),
-                                     builder->getContext());
+  auto func_type =
+      builder->getFunctionType(operand_types, cluster_op.getResultTypes());
 
   // TODO(lyandy): Define better name for outlined function. Potentially some
   // name can be added during cluster formation.
@@ -68,7 +66,7 @@ FuncOp BuildFunction(llvm::ArrayRef<Value> live_ins,
 
   // This function is not externally visible and marking it private would allow
   // symbol-dce pass to remove it when it is not referenced anymore.
-  outlined_func.setVisibility(FuncOp::Visibility::Private);
+  outlined_func.setPrivate();
 
   // Create function body.
   Block* outlined_func_block = outlined_func.addEntryBlock();
@@ -108,13 +106,13 @@ void OutlineCluster(tf_device::ClusterOp cluster_op, SymbolTable* symbol_table,
 
   FuncOp outlined_func =
       BuildFunction(live_ins.getArrayRef(), cluster_op, symbol_table, builder);
-  cluster_op.setAttr(builder->getIdentifier(kFuncAttr),
-                     builder->getSymbolRefAttr(outlined_func.getName()));
+  cluster_op->setAttr(builder->getIdentifier(kFuncAttr),
+                      builder->getSymbolRefAttr(outlined_func.getName()));
 
   builder->setInsertionPoint(cluster_op);
   auto cluster_func_op = builder->create<tf_device::ClusterFuncOp>(
       cluster_op.getLoc(), outlined_func.getType().getResults(),
-      live_ins.getArrayRef(), cluster_op.getAttrs());
+      live_ins.getArrayRef(), cluster_op->getAttrs());
 
   cluster_op.replaceAllUsesWith(cluster_func_op);
   cluster_op.erase();
@@ -134,10 +132,6 @@ void ClusterOutliningPass::runOnOperation() {
 std::unique_ptr<OperationPass<ModuleOp>> CreateClusterOutliningPass() {
   return std::make_unique<ClusterOutliningPass>();
 }
-
-static PassRegistration<ClusterOutliningPass> pass(
-    "tf-device-cluster-outlining",
-    "Outline regions of tf_device.cluster operations.");
 
 }  // namespace TFDevice
 }  // namespace mlir

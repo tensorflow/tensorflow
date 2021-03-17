@@ -416,7 +416,7 @@ def _NonEagerInputs(op, xs_set):
   """Returns the inputs of op, crossing closure boundaries where necessary.
 
   Does not return any captured EagerTensors, i.e., the number of tensors
-  returned may be less than than the actual number of inputs.
+  returned may be less than the actual number of inputs.
 
   Args:
     op: Operation
@@ -911,7 +911,7 @@ class AggregationMethod(object):
   be supported in future releases:
 
   * `EXPERIMENTAL_TREE`: Gradient terms are summed in pairs using
-    using the "AddN" op. This method of summing gradients may reduce
+    the "AddN" op. This method of summing gradients may reduce
     performance, but it can improve memory utilization because the
     gradients can be released earlier.
 

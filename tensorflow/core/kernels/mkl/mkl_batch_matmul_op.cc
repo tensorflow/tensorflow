@@ -33,8 +33,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/batch_matmul_op_impl.h"
 #include "tensorflow/core/kernels/fill_functor.h"
+#include "tensorflow/core/kernels/matmul_op_impl.h"
 #include "tensorflow/core/kernels/mkl/mkl_matmul_ops_common.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -144,7 +144,8 @@ class BatchMatMulMkl : public OpKernel {
             *params, false /* value for do_not_cache */);
     // Execute matmul primitive.
     std::shared_ptr<stream> cpu_stream;
-    cpu_stream.reset(CreateStream(ctx, matmul_prim->GetEngine()));
+    MklDnnThreadPool eigen_tp(ctx);
+    cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
     matmul_prim->Execute(lhs.flat<Scalar>().data(), rhs.flat<Scalar>().data(),
                          out->flat<Scalar>().data(), cpu_stream);
   }

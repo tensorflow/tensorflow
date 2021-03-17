@@ -61,7 +61,8 @@ class MetaOptimizer : public GraphOptimizer {
   std::unique_ptr<GraphOptimizer> MakeNewOptimizer(
       const string& optimizer) const;
 
-  bool IsSingleThreadedExecutor() const;
+  // When grappler should lower control flow to V1 switch/merge style nodes.
+  bool LowerControlFlow() const;
 
   // Initialize active optimizers from RewriterConfig toggles.
   Status InitializeOptimizers(
@@ -91,6 +92,7 @@ class MetaOptimizer : public GraphOptimizer {
   DeviceBase* const cpu_device_;  // may be NULL
   ConfigProto config_proto_;
   RewriterConfig& cfg_;
+  bool xla_auto_clustering_on_;
 
   struct OptimizerResult {
     string optimizer_name;

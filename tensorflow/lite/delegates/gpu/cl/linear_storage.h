@@ -21,55 +21,19 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
-
-enum class LinearStorageType { BUFFER, TEXTURE_2D };
-
-struct TensorLinearDescriptor : public GPUObjectDescriptor {
-  LinearStorageType storage_type;
-  DataType element_type;  // FLOAT32 or FLOAT16
-  MemoryType memory_type = MemoryType::GLOBAL;  // applicable for BUFFER
-
-  // optional
-  int size = 0;
-  std::vector<uint8_t> data;
-
-  TensorLinearDescriptor() = default;
-  TensorLinearDescriptor(const TensorLinearDescriptor&) = default;
-  TensorLinearDescriptor& operator=(const TensorLinearDescriptor&) = default;
-  TensorLinearDescriptor(TensorLinearDescriptor&& desc);
-  TensorLinearDescriptor& operator=(TensorLinearDescriptor&& desc);
-
-  void UploadLinearData(
-      const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src,
-      int aligned_size = 0);
-
-  absl::Status PerformSelector(const std::string& selector,
-                               const std::vector<std::string>& args,
-                               const std::vector<std::string>& template_args,
-                               std::string* result) const override;
-
-  GPUResources GetGPUResources() const override;
-  absl::Status PerformReadSelector(const std::vector<std::string>& args,
-                                   std::string* result) const;
-
-  absl::Status CreateGPUObject(CLContext* context,
-                               GPUObjectPtr* result) const override;
-  void Release() override;
-};
-
-LinearStorageType DeduceLinearStorageType(
-    TensorStorageType tensor_storage_type);
 
 // Represent GPU 1D-array of FLT4(float4/half4) values
 // Can use inside texture2d or buffer

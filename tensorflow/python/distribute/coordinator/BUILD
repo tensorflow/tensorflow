@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -10,7 +11,7 @@ exports_files(["LICENSE"])
 py_library(
     name = "cluster_coordinator",
     srcs = ["cluster_coordinator.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":metric_utils",
         ":utils",
@@ -33,15 +34,21 @@ py_library(
     ],
 )
 
-tf_py_test(
+distribute_py_test(
     name = "cluster_coordinator_test",
     size = "small",
     srcs = ["cluster_coordinator_test.py"],
     python_version = "PY3",
     shard_count = 50,
     tags = [
-        "no_oss",  # TODO(b/162119374)
+        "multi_gpu",
+        "no_oss",
+        "no_pip",
+        "notpu",
         "notsan",  # TODO(b/171040359): Flaky timeout, even if maximum shards
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # Race condition on async test
     ],
     deps = [
         ":cluster_coordinator",
@@ -66,39 +73,13 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "cluster_coordinator_mpr_test",
-    srcs = ["cluster_coordinator_mpr_test.py"],
-    python_version = "PY3",
-    shard_count = 5,
-    tags = [
-        "no_oss_py38",  # TODO(b/171435331)
-        "notsan",  # TODO(b/171406091)
-    ],
-    deps = [
-        ":cluster_coordinator",
-        ":remote_eager_lib",
-        ":utils",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/distribute:multi_process_runner",
-        "//tensorflow/python/distribute:multi_worker_test_base",
-        "//tensorflow/python/distribute:parameter_server_strategy_v2",
-        "//tensorflow/python/distribute:sharded_variable",
-        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/eager:test",
-    ],
-)
-
-tf_py_test(
     name = "fault_tolerance_test",
     srcs = ["fault_tolerance_test.py"],
     python_version = "PY3",
-    shard_count = 9,
+    shard_count = 27,
     tags = [
-        "no_oss",  # TODO(b/168772720)
         "noasan",  # Multi-process runner does not work with test sanitizers
+        "nomac",  # TODO(b/177065434)
         "notsan",  # Multi-process runner does not work with test sanitizers
     ],
     deps = [
@@ -116,6 +97,7 @@ tf_py_test(
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:parameter_server_strategy_v2",
+        "//tensorflow/python/distribute:test_util",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
@@ -127,7 +109,7 @@ tf_py_test(
 py_library(
     name = "metric_utils",
     srcs = ["metric_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/eager:monitoring",
     ],
@@ -151,7 +133,7 @@ tf_py_test(
 py_library(
     name = "utils",
     srcs = ["utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:training_server_lib",
     ],
@@ -159,6 +141,6 @@ py_library(
 
 py_library(
     name = "remote_eager_lib",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
 )

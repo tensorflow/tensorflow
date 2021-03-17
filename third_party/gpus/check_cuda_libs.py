@@ -14,7 +14,7 @@
 # ==============================================================================
 """Verifies that a list of libraries is installed on the system.
 
-Takes a a list of arguments with every two subsequent arguments being a logical
+Takes a list of arguments with every two subsequent arguments being a logical
 tuple of (path, check_soname). The path to the library and either True or False
 to indicate whether to check the soname field on the shared library.
 

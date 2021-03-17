@@ -116,10 +116,6 @@ Status EagerExecutor::SyncExecute(EagerNode* node) {
   // Inline execution in sync mode.
   s = node->Run();
   tensorflow::mutex_lock l(node_queue_mutex_);
-  if (!s.ok()) {
-    status_ = s;
-    ok_ = false;
-  }
   NotifyWaiters(id);
   return s;
 }
@@ -299,6 +295,9 @@ void EagerExecutor::NotifyWaiters(uint64 id) {
       upperbound_id = node_queue_.front()->id - 1;
     } else {
       upperbound_id = next_node_id_ - 1;
+    }
+    if (upperbound_id < id) {
+      return;
     }
     DVLOG(3) << "Notify node done: [id " << id << " to " << upperbound_id
              << "] ";

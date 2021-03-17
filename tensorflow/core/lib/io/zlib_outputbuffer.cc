@@ -42,8 +42,8 @@ ZlibOutputBuffer::~ZlibOutputBuffer() {
 }
 
 Status ZlibOutputBuffer::Init() {
-  // Output buffer size should be greater than 1 because deflation needs atleast
-  // one byte for book keeping etc.
+  // Output buffer size should be greater than 1 because deflation needs at
+  // least one byte for book keeping etc.
   if (output_buffer_capacity_ <= 1) {
     return errors::InvalidArgument(
         "output_buffer_bytes should be greater than "
@@ -190,7 +190,7 @@ Status ZlibOutputBuffer::Append(StringPiece data) {
   return Status::OK();
 }
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
 Status ZlibOutputBuffer::Append(const absl::Cord& cord) {
   for (absl::string_view fragment : cord.Chunks()) {
     TF_RETURN_IF_ERROR(Append(fragment));

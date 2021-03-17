@@ -20,7 +20,7 @@ py_library(
         "np_random.py",
         "np_utils.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:array_ops",
@@ -38,6 +38,17 @@ py_library(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "np_dtypes_test",
+    srcs = ["np_dtypes_test.py"],
+    deps = [
+        ":numpy",
+        "//tensorflow/python:platform",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

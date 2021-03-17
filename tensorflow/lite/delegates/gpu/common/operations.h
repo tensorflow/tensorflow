@@ -39,7 +39,7 @@ enum class OperationType {
   BATCH_NORMALIZATION,
   BATCHED_MATMUL,
   CONCAT,
-  CONST,
+  CONSTANT,
   CONVOLUTION_2D,
   CONVOLUTION_TRANSPOSED,
   COPY,
@@ -85,6 +85,7 @@ enum class OperationType {
   SOFTMAX,
   SPACE_TO_BATCH,
   SPACE_TO_DEPTH,
+  SPLIT,
   SQRT,
   SQUARE,
   SQUARED_DIFF,
@@ -372,7 +373,7 @@ struct PReLUAttributes {
 };
 
 struct ReduceAttributes {
-  Axis axis = Axis::UNKNOWN;
+  std::set<Axis> dims;
 };
 
 struct SoftmaxAttributes {
@@ -505,6 +506,9 @@ BHWC CalculateOutputShape(const BHWC& input,
 // @return shape of a tensor after Mean operation is applied to the given input.
 BHWC CalculateOutputShape(const BHWC& input, const MeanAttributes& attr);
 
+// @return shape of a tensor after Mean operation is applied to the given input.
+BHWDC CalculateOutputShape(const BHWDC& input, const MeanAttributes& attr);
+
 struct ElementwiseAttributes {
   TensorOrScalar param;
   // For elementwise operation with 2 inputs op(A, B), runtime_tensor_is_second
@@ -542,6 +546,11 @@ BHWDC CalculateOutputShape(const BHWDC& input,
 
 struct SpaceToDepthAttributes {
   int block_size;
+};
+
+struct SplitAttributes {
+  // Defines axis by which to split.
+  Axis axis = Axis::UNKNOWN;
 };
 
 // These help perform a combination of Quantize & Dequantize to adjust float

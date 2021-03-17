@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstring>
 #include <unordered_map>
 
+#include "absl/debugging/leak_check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
 #include "tensorflow/c/c_api.h"
@@ -42,7 +43,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/util/abstract_stack_trace.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 #include "tensorflow/python/eager/pywrap_gradient_exclusions.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
@@ -243,7 +244,7 @@ struct FastPathOpExecInfo {
 
 #if PY_MAJOR_VERSION >= 3
 PARSE_VALUE(ParseIntValue, int, PyLong_Check, PyLong_AsLong)
-PARSE_VALUE(ParseInt64Value, int64_t, PyLong_Check, PyLong_AsLong)
+PARSE_VALUE(ParseInt64Value, int64_t, PyLong_Check, PyLong_AsLongLong)
 #else
 PARSE_VALUE(ParseIntValue, int, PyInt_Check, PyInt_AsLong)
 #endif
@@ -865,7 +866,8 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
   auto cleaner = tensorflow::gtl::MakeCleanup([ctx, op] { ReturnOp(ctx, op); });
   if (!out_status->status.ok()) return;
 
-  tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace());
+  tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace(
+      tensorflow::StackTrace::kStackTraceInitialSize));
 
   for (int i = 0; i < inputs->size() && out_status->status.ok(); ++i) {
     TFE_OpAddInput(op, inputs->at(i), out_status);
@@ -1110,23 +1112,35 @@ static tensorflow::int64 FastTensorId(PyObject* tensor) {
   return id;
 }
 
-static tensorflow::DataType FastTensorDtype(PyObject* tensor) {
+namespace tensorflow {
+DataType PyTensor_DataType(PyObject* tensor) {
   if (EagerTensor_CheckExact(tensor)) {
     return PyEagerTensor_Dtype(tensor);
+  } else {
+#if PY_MAJOR_VERSION < 3
+    // Python 2.x:
+    static PyObject* dtype_attr = PyString_InternFromString("dtype");
+    static PyObject* type_enum_attr = PyString_InternFromString("_type_enum");
+#else
+    // Python 3.x:
+    static PyObject* dtype_attr = PyUnicode_InternFromString("dtype");
+    static PyObject* type_enum_attr = PyUnicode_InternFromString("_type_enum");
+#endif
+    Safe_PyObjectPtr dtype_field(PyObject_GetAttr(tensor, dtype_attr));
+    if (!dtype_field) {
+      return DT_INVALID;
+    }
+
+    Safe_PyObjectPtr enum_field(
+        PyObject_GetAttr(dtype_field.get(), type_enum_attr));
+    if (!enum_field) {
+      return DT_INVALID;
+    }
+
+    return static_cast<DataType>(MakeInt(enum_field.get()));
   }
-  PyObject* dtype_field = PyObject_GetAttrString(tensor, "dtype");
-  if (dtype_field == nullptr) {
-    return tensorflow::DT_INVALID;
-  }
-  PyObject* enum_field = PyObject_GetAttrString(dtype_field, "_type_enum");
-  Py_DECREF(dtype_field);
-  if (enum_field == nullptr) {
-    return tensorflow::DT_INVALID;
-  }
-  tensorflow::int64 id = MakeInt(enum_field);
-  Py_DECREF(enum_field);
-  return static_cast<tensorflow::DataType>(id);
 }
+}  // namespace tensorflow
 
 class PyTapeTensor {
  public:
@@ -1314,10 +1328,10 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
   }
 
   tensorflow::Status CallBackwardFunction(
-      PyBackwardFunction* backward_function,
+      const string& op_type, PyBackwardFunction* backward_function,
       const std::vector<tensorflow::int64>& unneeded_gradients,
       tensorflow::gtl::ArraySlice<PyObject*> output_gradients,
-      std::vector<PyObject*>* result) const final {
+      absl::Span<PyObject*> result) const final {
     PyObject* grads = PyTuple_New(output_gradients.size());
     for (int i = 0; i < output_gradients.size(); ++i) {
       if (output_gradients[i] == nullptr) {
@@ -1333,7 +1347,6 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
     if (py_result == nullptr) {
       return tensorflow::errors::Internal("gradient function threw exceptions");
     }
-    result->clear();
     PyObject* seq =
         PySequence_Fast(py_result, "expected a sequence of gradients");
     if (seq == nullptr) {
@@ -1341,16 +1354,21 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
           "gradient function did not return a list");
     }
     int len = PySequence_Fast_GET_SIZE(seq);
+    if (len != result.size()) {
+      return tensorflow::errors::Internal(
+          "Recorded operation '", op_type,
+          "' returned too few gradients. Expected ", result.size(),
+          " but received ", len);
+    }
     PyObject** seq_array = PySequence_Fast_ITEMS(seq);
     VLOG(1) << "Gradient length is " << len;
-    result->reserve(len);
     for (int i = 0; i < len; ++i) {
       PyObject* item = seq_array[i];
       if (item == Py_None) {
-        result->push_back(nullptr);
+        result[i] = nullptr;
       } else {
         Py_INCREF(item);
-        result->push_back(item);
+        result[i] = item;
       }
     }
     Py_DECREF(seq);
@@ -1423,22 +1441,28 @@ PyObject* PyTapeTensor::OnesLike() const {
     return py_vspace->OnesLike(tensor);
   }
   PyObject* py_shape = GetShape();
-  PyObject* py_dtype = GetPyDType();
-  PyObject* result = py_vspace->Ones(py_shape, py_dtype);
-  Py_DECREF(py_dtype);
+  PyObject* dtype_field = GetPyDType();
+  PyObject* result = py_vspace->Ones(py_shape, dtype_field);
+  Py_DECREF(dtype_field);
   Py_DECREF(py_shape);
   return result;
 }
 
 PyObject* PyTapeTensor::ZerosLike() const {
+  if (GetDType() == tensorflow::DT_RESOURCE) {
+    // Gradient functions for ops which return resource tensors accept
+    // None. This is the behavior of py_vspace->Zeros, but checking here avoids
+    // issues with ZerosLike.
+    Py_RETURN_NONE;
+  }
   if (shape_.index() == 1) {
     PyObject* tensor = absl::get<1>(shape_);
     return py_vspace->ZerosLike(tensor);
   }
   PyObject* py_shape = GetShape();
-  PyObject* py_dtype = GetPyDType();
-  PyObject* result = py_vspace->Zeros(py_shape, py_dtype);
-  Py_DECREF(py_dtype);
+  PyObject* dtype_field = GetPyDType();
+  PyObject* result = py_vspace->Zeros(py_shape, dtype_field);
+  Py_DECREF(dtype_field);
   Py_DECREF(py_shape);
   return result;
 }
@@ -1929,7 +1953,7 @@ bool TensorShapesAndDtypes(PyObject* tensors,
   for (int i = 0; i < len; ++i) {
     PyObject* item = seq_array[i];
     tensor_ids->push_back(FastTensorId(item));
-    dtypes->push_back(FastTensorDtype(item));
+    dtypes->push_back(tensorflow::PyTensor_DataType(item));
   }
   return true;
 }
@@ -2068,6 +2092,14 @@ bool ListContainsNone(PyObject* list) {
   return false;
 }
 
+// As an optimization, the tape generally keeps only the shape and dtype of
+// tensors, and uses this information to generate ones/zeros tensors. However,
+// some tensors require OnesLike/ZerosLike because their gradients do not match
+// their inference shape/dtype.
+bool DTypeNeedsHandleData(tensorflow::DataType dtype) {
+  return dtype == tensorflow::DT_VARIANT || dtype == tensorflow::DT_RESOURCE;
+}
+
 static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
   if (EagerTensor_CheckExact(tensor)) {
     tensorflow::ImmediateExecutionTensorHandle* handle =
@@ -2075,7 +2107,7 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
     tensorflow::int64 id = PyEagerTensor_ID(tensor);
     tensorflow::DataType dtype =
         static_cast<tensorflow::DataType>(handle->DataType());
-    if (dtype == tensorflow::DT_VARIANT) {
+    if (DTypeNeedsHandleData(dtype)) {
       return PyTapeTensor(id, dtype, tensor);
     }
 
@@ -2121,7 +2153,7 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
                         tensorflow::TensorShape({}));
   }
 
-  if (ListContainsNone(shape_tuple.get()) || dtype == tensorflow::DT_VARIANT) {
+  if (ListContainsNone(shape_tuple.get()) || DTypeNeedsHandleData(dtype)) {
     return PyTapeTensor(id, dtype, tensor);
   }
 
@@ -2238,7 +2270,7 @@ std::vector<tensorflow::DataType> MakeTensorDtypeList(PyObject* tensors) {
   list.reserve(len);
   for (int i = 0; i < len; ++i) {
     PyObject* tensor = seq_array[i];
-    list.push_back(FastTensorDtype(tensor));
+    list.push_back(tensorflow::PyTensor_DataType(tensor));
   }
   Py_DECREF(seq);
   return list;
@@ -2761,10 +2793,10 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
       Py_INCREF(tensor);
     }
   }
-  std::vector<PyObject*> result;
+  std::vector<PyObject*> result(sources_vec.size());
   status->status = tape_obj->tape->ComputeGradient(
       *py_vspace, target_vec, sources_vec, source_tensors_that_are_targets,
-      outgrad_vec, &result);
+      outgrad_vec, absl::MakeSpan(result));
   if (!status->status.ok()) {
     if (PyErr_Occurred()) {
       // Do not propagate the erroneous status as that would swallow the
@@ -2790,7 +2822,8 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
       if (result[i] == nullptr) {
         if (unconnected_gradients_zero) {
           // generate a zeros tensor in the shape of sources[i]
-          tensorflow::DataType dtype = FastTensorDtype(sources_obj[i]);
+          tensorflow::DataType dtype =
+              tensorflow::PyTensor_DataType(sources_obj[i]);
           PyTapeTensor tensor =
               PyTapeTensor(sources_vec[i], dtype, sources_obj[i]);
           result[i] = tensor.ZerosLike();
@@ -2886,7 +2919,7 @@ PyObject* TFE_Py_PackJVPs(PyObject* tensors) {
     if (input == Py_None) {
       continue;
     }
-    tensorflow::DataType input_dtype(FastTensorDtype(input));
+    tensorflow::DataType input_dtype(tensorflow::PyTensor_DataType(input));
     if (input_dtype == tensorflow::DT_INVALID) {
       return nullptr;
     }
@@ -3058,7 +3091,7 @@ bool CheckInputsOk(PyObject* seq, int start_index,
 
 tensorflow::DataType MaybeGetDType(PyObject* item) {
   if (EagerTensor_CheckExact(item) || CheckResourceVariable(item)) {
-    return FastTensorDtype(item);
+    return tensorflow::PyTensor_DataType(item);
   }
 
   return tensorflow::DT_INVALID;
@@ -3616,7 +3649,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
     return nullptr;
   }
 
-  tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace());
+  tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace(
+      tensorflow::StackTrace::kStackTraceInitialSize));
 
   const tensorflow::OpDef* op_def = tensorflow::unwrap(op)->OpDef();
   if (op_def == nullptr) return nullptr;
@@ -3804,10 +3838,10 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
     }
   }
 
-  int num_retvals = 0;
+  int64_t num_outputs = 0;
   for (int i = 0; i < op_def->output_arg_size(); i++) {
     const auto& output_arg = op_def->output_arg(i);
-    int delta = 1;
+    int64_t delta = 1;
     if (!output_arg.number_attr().empty()) {
       delta = attr_list_sizes[output_arg.number_attr()];
     } else if (!output_arg.type_list_attr().empty()) {
@@ -3818,8 +3852,17 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
           "Attributes suggest that the size of an output list is less than 0");
       return nullptr;
     }
-    num_retvals += delta;
+    num_outputs += delta;
   }
+
+  // If number of retvals is larger than int32, we error out.
+  if (static_cast<int64_t>(static_cast<int32_t>(num_outputs)) != num_outputs) {
+    PyErr_SetString(
+        PyExc_ValueError,
+        Printf("Number of outputs is too big: %ld", num_outputs).c_str());
+    return nullptr;
+  }
+  int num_retvals = num_outputs;
 
   tensorflow::gtl::InlinedVector<TFE_TensorHandle*, 2> retvals(num_retvals);
 
@@ -4269,6 +4312,7 @@ void MakeEagerContextThreadLocalData(PyObject* py_eager_context,
                                      PyObject* device_spec) {
   DCheckPyGilState();
   if (eager_context_thread_local_data_defaults == nullptr) {
+    absl::LeakCheckDisabler disabler;
     eager_context_thread_local_data_defaults =
         new EagerContextThreadLocalDataDefaultsMap();
   }
@@ -4304,6 +4348,7 @@ EagerContextThreadLocalData* GetEagerContextThreadLocalData(
   }
 
   if (eager_context_thread_local_data_map == nullptr) {
+    absl::LeakCheckDisabler disabler;
     eager_context_thread_local_data_map = new EagerContextThreadLocalDataMap();
   }
   auto& thread_local_data =

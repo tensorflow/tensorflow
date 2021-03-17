@@ -31,12 +31,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/converter.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
-#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 #ifdef CL_DELEGATE_ALLOW_GL
@@ -440,7 +440,7 @@ class TensorTieFactory {
   std::unique_ptr<TensorObjectConverterBuilder> converter_builder_;
 };
 
-class InferenceRunnerImpl : public InferenceRunner {
+class InferenceRunnerImpl : public CLInferenceRunner {
  public:
   InferenceRunnerImpl(Environment* environment,
                       std::unique_ptr<InferenceContext> context
@@ -503,25 +503,49 @@ class InferenceRunnerImpl : public InferenceRunner {
     return outputs_[index]->SetExternalObject(object);
   }
 
+  absl::Status CopyFromExternalInput(int index) override {
+    if (index > inputs_.size()) {
+      return absl::NotFoundError(
+          absl::StrCat("Input id ", index, " is an invalid input index."));
+    }
+    return inputs_[index]->CopyFromExternalObject();
+  }
+
+  absl::Status CopyToExternalOutput(int index) override {
+    if (index > outputs_.size()) {
+      return absl::NotFoundError(
+          absl::StrCat("Output id ", index, " is an invalid output index"));
+    }
+    return outputs_[index]->CopyToExternalObject();
+  }
+
   absl::Status Run() override {
 #ifdef CL_DELEGATE_ALLOW_GL
     if (gl_interop_fabric_) {
       RETURN_IF_ERROR(gl_interop_fabric_->Start());
     }
 #endif
-    for (auto& obj : inputs_) {
-      RETURN_IF_ERROR(obj->CopyFromExternalObject());
+    for (int i = 0; i < inputs_.size(); i++) {
+      RETURN_IF_ERROR(CopyFromExternalInput(i));
     }
-    RETURN_IF_ERROR(context_->AddToQueue(queue_));
-    clFlush(queue_->queue());
-    for (auto& obj : outputs_) {
-      RETURN_IF_ERROR(obj->CopyToExternalObject());
+
+    RETURN_IF_ERROR(RunWithoutExternalBufferCopy());
+
+    for (int i = 0; i < outputs_.size(); i++) {
+      RETURN_IF_ERROR(CopyToExternalOutput(i));
     }
 #ifdef CL_DELEGATE_ALLOW_GL
     if (gl_interop_fabric_) {
       RETURN_IF_ERROR(gl_interop_fabric_->Finish());
     }
 #endif
+    return absl::OkStatus();
+  }
+
+  absl::Status RunWithoutExternalBufferCopy() override {
+    RETURN_IF_ERROR(context_->AddToQueue(queue_));
+    clFlush(queue_->queue());
+
     return absl::OkStatus();
   }
 
@@ -660,7 +684,9 @@ class InferenceBuilderImpl : public InferenceBuilder {
   }
 
   absl::Status Initialize(const InferenceEnvironmentOptions& env_options,
-                          const std::vector<uint8_t>& serialized_model) {
+                          const absl::Span<const uint8_t> serialized_model,
+                          std::vector<int64_t>* in_refs = nullptr,
+                          std::vector<int64_t>* out_refs = nullptr) {
     context_ = absl::make_unique<InferenceContext>();
     RETURN_IF_ERROR(
         context_->RestoreDeserialized(serialized_model, environment_));
@@ -680,6 +706,12 @@ class InferenceBuilderImpl : public InferenceBuilder {
 
     inputs_ = LinkTensors(context_->GetInputIds(), AccessType::READ);
     outputs_ = LinkTensors(context_->GetOutputIds(), AccessType::WRITE);
+    if (in_refs) {
+      *in_refs = context_->GetInputRefs();
+    }
+    if (out_refs) {
+      *out_refs = context_->GetOutputRefs();
+    }
     return absl::OkStatus();
   }
 
@@ -925,8 +957,9 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
   }
 
   absl::Status NewInferenceBuilder(
-      const std::vector<uint8_t>& serialized_model,
-      std::unique_ptr<InferenceBuilder>* builder) final {
+      const absl::Span<const uint8_t> serialized_model,
+      std::unique_ptr<InferenceBuilder>* builder, std::vector<int64_t>* in_refs,
+      std::vector<int64_t>* out_refs) final {
     if (environment_.program_cache() &&
         !options_.serialized_binary_cache.empty()) {
       // Ignore returned error. Cache is discarded.
@@ -937,7 +970,8 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
     }
 
     auto builder_impl = absl::make_unique<InferenceBuilderImpl>(&environment_);
-    RETURN_IF_ERROR(builder_impl->Initialize(options_, serialized_model));
+    RETURN_IF_ERROR(builder_impl->Initialize(options_, serialized_model,
+                                             in_refs, out_refs));
     *builder = std::move(builder_impl);
     return absl::OkStatus();
   }

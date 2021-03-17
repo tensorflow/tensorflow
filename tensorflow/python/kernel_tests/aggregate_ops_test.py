@@ -26,8 +26,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
 
@@ -58,7 +58,7 @@ class AddNTest(test.TestCase):
 
   def testAddN(self):
     np.random.seed(12345)
-    with self.session(use_gpu=True) as sess:
+    with self.session():
       for dtype in self._supported_types():
         for count in range(1, self._MAX_N + 1):
           data = [self._buildData((2, 2), dtype) for _ in range(count)]
@@ -71,7 +71,7 @@ class AddNTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testUnknownShapes(self):
     np.random.seed(12345)
-    with self.session(use_gpu=True) as sess:
+    with self.session() as sess:
       for dtype in self._supported_types():
         data = self._buildData((2, 2), dtype)
         for count in range(1, self._MAX_N + 1):
@@ -100,24 +100,28 @@ class AddNTest(test.TestCase):
     # TODO(ebrevdo): Re-enable use_gpu=True once non-DMA Variant
     # copying between CPU and GPU is supported.
     with self.session(use_gpu=False):
-      variant_const_3 = create_constant_variant(3)
-      variant_const_4 = create_constant_variant(4)
-      variant_const_5 = create_constant_variant(5)
-      # 3 + 3 + 5 + 4 = 15.
-      result = math_ops.add_n((variant_const_3, variant_const_3,
-                               variant_const_5, variant_const_4))
+      num_tests = 127
+      values = list(range(100))
+      variant_consts = [create_constant_variant(x) for x in values]
+      sum_count_indices = np.random.randint(1, 29, size=num_tests)
+      sum_indices = [
+          np.random.randint(100, size=count) for count in sum_count_indices]
+      expected_sums = [np.sum(x) for x in sum_indices]
+      variant_sums = [math_ops.add_n([variant_consts[i] for i in x])
+                      for x in sum_indices]
 
-      # Smoke test -- ensure this executes without trouble.
+      # We use as_string() to get the Variant DebugString for the
+      # variant_sums; we know its value so we can check via string equality
+      # here.
+      #
       # Right now, non-numpy-compatible objects cannot be returned from a
       # session.run call; similarly, objects that can't be converted to
       # native numpy types cannot be passed to ops.convert_to_tensor.
-      # For now, run the test and examine the output to see that the result is
-      # equal to 15.
-      result_op = logging_ops.Print(
-          result, [variant_const_3, variant_const_4, variant_const_5, result],
-          message=("Variants stored an int: c(3), c(4), c(5), "
-                   "add_n(c(3), c(3), c(5), c(4)): ")).op
-      result_op.run()
+      variant_sums_string = string_ops.as_string(variant_sums)
+      self.assertAllEqual(
+          variant_sums_string,
+          ["Variant<type: int value: {}>".format(s).encode("utf-8")
+           for s in expected_sums])
 
 
 if __name__ == "__main__":

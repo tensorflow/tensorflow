@@ -535,12 +535,10 @@ class BenchmarkType {
 
 // Calibrate the amount of time spent just calling DoWork, since each of our
 // tests will do this, we can subtract this out of benchmark results.
-void BM_CalibrateWorkLoop(int iters) {
-  tensorflow::testing::StopTiming();
+void BM_CalibrateWorkLoop(::testing::benchmark::State& state) {
   BenchmarkFactory<BenchmarkType> factory;
   BenchmarkType* result = factory.TrivialFactory();
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i != iters; ++i) {
+  for (auto s : state) {
     if (result != nullptr) {
       result->DoWork();
     }
@@ -550,11 +548,9 @@ BENCHMARK(BM_CalibrateWorkLoop);
 
 // Measure the time taken to call into the factory, return the value,
 // determine that it is OK, and invoke a trivial function.
-void BM_TrivialFactory(int iters) {
-  tensorflow::testing::StopTiming();
+void BM_TrivialFactory(::testing::benchmark::State& state) {
   BenchmarkFactory<BenchmarkType> factory;
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i != iters; ++i) {
+  for (auto s : state) {
     BenchmarkType* result = factory.TrivialFactory();
     if (result != nullptr) {
       result->DoWork();
@@ -566,11 +562,9 @@ BENCHMARK(BM_TrivialFactory);
 // Measure the time taken to call into the factory, providing an
 // out-param for the result, evaluating the status result and the
 // result pointer, and invoking the trivial function.
-void BM_ArgumentFactory(int iters) {
-  tensorflow::testing::StopTiming();
+void BM_ArgumentFactory(::testing::benchmark::State& state) {
   BenchmarkFactory<BenchmarkType> factory;
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i != iters; ++i) {
+  for (auto s : state) {
     BenchmarkType* result = nullptr;
     Status status = factory.ArgumentFactory(&result);
     if (status.ok() && result != nullptr) {
@@ -582,11 +576,9 @@ BENCHMARK(BM_ArgumentFactory);
 
 // Measure the time to use the StatusOr<T*> factory, evaluate the result,
 // and invoke the trivial function.
-void BM_StatusOrFactory(int iters) {
-  tensorflow::testing::StopTiming();
+void BM_StatusOrFactory(::testing::benchmark::State& state) {
   BenchmarkFactory<BenchmarkType> factory;
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i != iters; ++i) {
+  for (auto s : state) {
     StatusOr<BenchmarkType*> result = factory.StatusOrFactory();
     if (result.ok()) {
       result.ValueOrDie()->DoWork();
@@ -598,11 +590,9 @@ BENCHMARK(BM_StatusOrFactory);
 // Measure the time taken to call into the factory, providing an
 // out-param for the result, evaluating the status result and the
 // result pointer, and invoking the trivial function.
-void BM_ArgumentFactoryFail(int iters) {
-  tensorflow::testing::StopTiming();
+void BM_ArgumentFactoryFail(::testing::benchmark::State& state) {
   BenchmarkFactory<BenchmarkType> factory;
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i != iters; ++i) {
+  for (auto s : state) {
     BenchmarkType* result = nullptr;
     Status status = factory.ArgumentFactoryFail(&result);
     if (status.ok() && result != nullptr) {
@@ -614,11 +604,9 @@ BENCHMARK(BM_ArgumentFactoryFail);
 
 // Measure the time to use the StatusOr<T*> factory, evaluate the result,
 // and invoke the trivial function.
-void BM_StatusOrFactoryFail(int iters) {
-  tensorflow::testing::StopTiming();
+void BM_StatusOrFactoryFail(::testing::benchmark::State& state) {
   BenchmarkFactory<BenchmarkType> factory;
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i != iters; ++i) {
+  for (auto s : state) {
     StatusOr<BenchmarkType*> result = factory.StatusOrFactoryFail();
     if (result.ok()) {
       result.ValueOrDie()->DoWork();
@@ -630,11 +618,9 @@ BENCHMARK(BM_StatusOrFactoryFail);
 // Measure the time taken to call into the factory, providing an
 // out-param for the result, evaluating the status result and the
 // result pointer, and invoking the trivial function.
-void BM_ArgumentFactoryFailShortMsg(int iters) {
-  tensorflow::testing::StopTiming();
+void BM_ArgumentFactoryFailShortMsg(::testing::benchmark::State& state) {
   BenchmarkFactory<BenchmarkType> factory;
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i != iters; ++i) {
+  for (auto s : state) {
     BenchmarkType* result = nullptr;
     Status status = factory.ArgumentFactoryFailShortMsg(&result);
     if (status.ok() && result != nullptr) {
@@ -646,11 +632,9 @@ BENCHMARK(BM_ArgumentFactoryFailShortMsg);
 
 // Measure the time to use the StatusOr<T*> factory, evaluate the result,
 // and invoke the trivial function.
-void BM_StatusOrFactoryFailShortMsg(int iters) {
-  tensorflow::testing::StopTiming();
+void BM_StatusOrFactoryFailShortMsg(::testing::benchmark::State& state) {
   BenchmarkFactory<BenchmarkType> factory;
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i != iters; ++i) {
+  for (auto s : state) {
     StatusOr<BenchmarkType*> result = factory.StatusOrFactoryFailShortMsg();
     if (result.ok()) {
       result.ValueOrDie()->DoWork();
@@ -662,11 +646,9 @@ BENCHMARK(BM_StatusOrFactoryFailShortMsg);
 // Measure the time taken to call into the factory, providing an
 // out-param for the result, evaluating the status result and the
 // result pointer, and invoking the trivial function.
-void BM_ArgumentFactoryFailLongMsg(int iters) {
-  tensorflow::testing::StopTiming();
+void BM_ArgumentFactoryFailLongMsg(::testing::benchmark::State& state) {
   BenchmarkFactory<BenchmarkType> factory;
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i != iters; ++i) {
+  for (auto s : state) {
     BenchmarkType* result = nullptr;
     Status status = factory.ArgumentFactoryFailLongMsg(&result);
     if (status.ok() && result != nullptr) {
@@ -678,11 +660,9 @@ BENCHMARK(BM_ArgumentFactoryFailLongMsg);
 
 // Measure the time to use the StatusOr<T*> factory, evaluate the result,
 // and invoke the trivial function.
-void BM_StatusOrFactoryFailLongMsg(int iters) {
-  tensorflow::testing::StopTiming();
+void BM_StatusOrFactoryFailLongMsg(::testing::benchmark::State& state) {
   BenchmarkFactory<BenchmarkType> factory;
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i != iters; ++i) {
+  for (auto s : state) {
     StatusOr<BenchmarkType*> result = factory.StatusOrFactoryFailLongMsg();
     if (result.ok()) {
       result.ValueOrDie()->DoWork();

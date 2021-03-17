@@ -18,6 +18,9 @@ limitations under the License.
 // Test the new interface: BM_benchmark(benchmark::State& state)
 namespace tensorflow {
 namespace testing {
+
+bool no_arg_was_run_ = false;
+
 namespace {
 
 void BM_TestIterState(::testing::benchmark::State& state) {
@@ -26,9 +29,55 @@ void BM_TestIterState(::testing::benchmark::State& state) {
     ++i;
     DoNotOptimize(i);
   }
+  no_arg_was_run_ = true;
 }
 
 BENCHMARK(BM_TestIterState);
+
+const int kArgOne = 543;
+const int kArgTwo = 345;
+
+void BM_OneArg(::testing::benchmark::State& state) {
+  const int arg1 = state.range(0);
+  CHECK(arg1 == kArgOne);
+
+  int i = 0;
+  for (auto s : state) {
+    ++i;
+    DoNotOptimize(i);
+  }
+}
+
+BENCHMARK(BM_OneArg)->Arg(kArgOne);
+
+// void BM_OneArg_Use_Two(::testing::benchmark::State& state) {
+//   // FIXME: This will trigger a failed CHECK.
+//   // I don't know how to express the death-test in this framework.
+//   const int arg2 = state.range(1);
+
+//   int i = 0;
+//   for (auto s : state) {
+//     ++i;
+//     DoNotOptimize(i);
+//   }
+// }
+
+// BENCHMARK(BM_OneArg_Use_Two)->Arg(kArgOne);
+
+void BM_TwoArgs(::testing::benchmark::State& state) {
+  const int arg1 = state.range(0);
+  const int arg2 = state.range(1);
+  CHECK(arg1 == kArgOne);
+  CHECK(arg2 == kArgTwo);
+
+  int i = 0;
+  for (auto s : state) {
+    ++i;
+    DoNotOptimize(i);
+  }
+}
+
+BENCHMARK(BM_TwoArgs)->ArgPair(kArgOne, kArgTwo);
 
 }  // namespace
 }  // namespace testing
@@ -36,5 +85,6 @@ BENCHMARK(BM_TestIterState);
 
 int main() {
   ::testing::benchmark::RunSpecifiedBenchmarks();
+  CHECK(tensorflow::testing::no_arg_was_run_);
   return 0;
 }

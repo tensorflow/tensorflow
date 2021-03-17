@@ -28,7 +28,6 @@ import sys
 import six
 
 from tensorflow.python import pywrap_tfe
-from tensorflow.python import _pywrap_utils
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
@@ -49,6 +48,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
@@ -675,7 +675,7 @@ def _zeros(shape, dtype):
 
   device = ctx.device_name
 
-  if tensor_util.is_tensor(shape):
+  if tensor_util.is_tf_type(shape):
     shape_key = shape.ref()
   else:
     shape_key = shape
@@ -843,10 +843,6 @@ class GradientTape(object):
     self._watch_accessed_variables = watch_accessed_variables
     self._watched_variables = ()
     self._recording = False
-    self._created_eagerly = context.executing_eagerly()
-    if self._created_eagerly:
-      context.ensure_initialized()
-      context.context().start_step()
 
   def __enter__(self):
     """Enters a context inside which operations are recorded on this tape."""
@@ -877,14 +873,17 @@ class GradientTape(object):
     tape.pop_tape(self._tape)
     self._recording = False
 
-  def __del__(self):
-    if self._created_eagerly:
+  @tf_contextlib.contextmanager
+  def _ensure_recording(self):
+    """Ensures that this tape is recording."""
+    if not self._recording:
       try:
-        context.context().end_step()
-      except AttributeError:
-        pass
-      except TypeError:
-        pass
+        self._push_tape()
+        yield
+      finally:
+        self._pop_tape()
+    else:
+      yield
 
   def watch(self, tensor):
     """Ensures that `tensor` is being traced by this tape.
@@ -1015,11 +1014,12 @@ class GradientTape(object):
     Raises:
       RuntimeError: If called on a used, non-persistent tape.
       RuntimeError: If called inside the context of the tape.
+      TypeError: If the target is a None object.
       ValueError: If the target is a variable or if unconnected gradients is
        called with an unknown value.
     """
     if self._tape is None:
-      raise RuntimeError("A non-persistent GradientTape can only be used to"
+      raise RuntimeError("A non-persistent GradientTape can only be used to "
                          "compute one set of gradients (or jacobians)")
     if self._recording:
       if not self._persistent:
@@ -1035,6 +1035,11 @@ class GradientTape(object):
             "context if you actually want to trace the "
             "gradient in order to compute higher order "
             "derivatives.", 1)
+
+    if target is None:
+      raise TypeError("Target should be a list or nested structure"
+                      " of Tensors or Variables to be differentiated,"
+                      " but recieved %r" % (target))
 
     flat_targets = []
     for t in nest.flatten(target):
@@ -1093,7 +1098,13 @@ class GradientTape(object):
     Note: Unless you set `persistent=True` a GradientTape can only be used to
     compute one set of gradients (or jacobians).
 
-    See[wikipedia article](http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant)
+    Note: By default the jacobian implementation uses parallel for (pfor), which
+    creates a tf.function under the hood for each jacobian call. For better
+    performance, and to avoid recompilation and vectorization rewrites on each
+    call, enclose GradientTape code in @tf.function.
+
+    See[wikipedia
+    article](http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant)
     for the definition of a Jacobian.
 
     Example usage:
@@ -1137,7 +1148,7 @@ class GradientTape(object):
       ValueError: If vectorization of jacobian computation fails.
     """
     if self._tape is None:
-      raise RuntimeError("A non-persistent GradientTape can only be used to"
+      raise RuntimeError("A non-persistent GradientTape can only be used to "
                          "compute one set of gradients (or jacobians)")
 
     flat_sources = nest.flatten(sources)
@@ -1145,14 +1156,12 @@ class GradientTape(object):
     target_shape = array_ops.shape(target)
     # Note that we push and pop the tape here and below. This is needed since we
     # need gradients through the enclosed operations.
-    self._push_tape()
-    target = array_ops.reshape(target, [-1])
-    self._pop_tape()
+    with self._ensure_recording():
+      target = array_ops.reshape(target, [-1])
 
     def loop_fn(i):
-      self._push_tape()
-      y = array_ops.gather(target, i)
-      self._pop_tape()
+      with self._ensure_recording():
+        y = array_ops.gather(target, i)
       return self.gradient(y, flat_sources,
                            unconnected_gradients=unconnected_gradients)
 
@@ -1219,6 +1228,12 @@ class GradientTape(object):
     Note: Unless you set `persistent=True` a GradientTape can only be used to
     compute one set of gradients (or jacobians).
 
+    Note: By default the batch_jacobian implementation uses parallel for (pfor),
+    which creates a tf.function under the hood for each batch_jacobian call.
+    For better performance, and to avoid recompilation and vectorization
+    rewrites on each call, enclose GradientTape code in @tf.function.
+
+
     Example usage:
 
     ```python
@@ -1280,16 +1295,14 @@ class GradientTape(object):
     # Flatten target to 2-D.
     # Note that we push and pop the tape here and below. This is needed since we
     # need gradients through the enclosed operations.
-    self._push_tape()
-    with ops.control_dependencies(
-        [check_ops.assert_equal(batch_size, source_shape[0])]):
-      target = array_ops.reshape(target, [batch_size, target_row_size])
-    self._pop_tape()
+    with self._ensure_recording():
+      with ops.control_dependencies(
+          [check_ops.assert_equal(batch_size, source_shape[0])]):
+        target = array_ops.reshape(target, [batch_size, target_row_size])
 
     def loop_fn(i):
-      self._push_tape()
-      y = array_ops.gather(target, i, axis=1)
-      self._pop_tape()
+      with self._ensure_recording():
+        y = array_ops.gather(target, i, axis=1)
       return self.gradient(y, source,
                            unconnected_gradients=unconnected_gradients)
 
@@ -1315,7 +1328,10 @@ class GradientTape(object):
                                  parallel_iterations=parallel_iterations)
     new_shape = array_ops.concat([target_shape, source_shape[1:]], axis=0)
     if output is None:
-      output = array_ops.zeros(new_shape)
+      # Note that this block is returning zeros when it could use `None` to
+      # represent unconnected gradients. This is to maintain compatibility with
+      # the previous behavior, which ignored `unconnected_gradients`.
+      output = array_ops.zeros(new_shape, target.dtype)
       return output
     else:
       output = array_ops.reshape(output,

@@ -22,6 +22,7 @@ limitations under the License.
 #include <ostream>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
@@ -607,7 +608,10 @@ void BufferAssignment::AddAssignment(BufferAllocation* allocation,
 // BufferAllocation.
 void BufferAssignment::CombineTempAllocations() {
   VLOG(1) << "CombineTempAllocations()";
-  flat_hash_map<BufferValue::Color, BufferAllocation> combined_allocation_map;
+  // Stores the combined allocations.
+  std::deque<BufferAllocation> combined_allocations;
+  // Holds the pointer to a combined allocation of each color, if any.
+  flat_hash_map<BufferValue::Color, BufferAllocation*> combined_allocation_map;
 
   // Move all temp allocations into a single run at the end of the allocations
   // vector.
@@ -621,19 +625,31 @@ void BufferAssignment::CombineTempAllocations() {
   // to the same color.
   if (first_temp_it != allocations_.end()) {
     for (auto it = first_temp_it; it != allocations_.end(); ++it) {
-      const BufferAllocation& temp_allocation = *it;
+      BufferAllocation& temp_allocation = *it;
       BufferValue::Color color = temp_allocation.color();
       auto combined_it = combined_allocation_map.find(color);
       if (combined_it == combined_allocation_map.end()) {
         // We have found the first temp allocation of this color. Collect
-        // the other temp allocations of the same color into it.
+        // the other temp allocations of the same color into it subject to the
+        // size constraint.
         VLOG(1) << "Combined temp allocation for color " << color
                 << " is: " << temp_allocation;
-        combined_allocation_map.emplace(color, temp_allocation);
+        combined_allocations.emplace_back(temp_allocation);
+        combined_allocation_map.emplace(color, &combined_allocations.back());
+        continue;
+      }
+      if (combined_it->second->size() + it->size() >=
+          multiheap_size_constraint_per_heap_) {
+        // We cannot put more into the current combined_it. So, appoint a new
+        // combined_it.
+        VLOG(1) << "Due to size constraint, reset temp allocation for color "
+                << color << " to: " << temp_allocation;
+        combined_allocations.emplace_back(temp_allocation);
+        combined_allocation_map.emplace(color, &combined_allocations.back());
         continue;
       }
 
-      auto* combined_allocation = &combined_it->second;
+      BufferAllocation* combined_allocation = combined_it->second;
       VLOG(1) << "Combined allocation absorbing temp allocation: "
               << temp_allocation;
 
@@ -663,9 +679,9 @@ void BufferAssignment::CombineTempAllocations() {
     // Replace all existing temporary allocations with the new combined
     // allocations.
     allocations_.erase(first_temp_it, allocations_.end());
-    for (auto& combined : combined_allocation_map) {
-      allocations_.push_back(combined.second);
-      temp_allocation_total_size_ += combined.second.size();
+    for (BufferAllocation& combined : combined_allocations) {
+      temp_allocation_total_size_ += combined.size();
+      allocations_.push_back(std::move(combined));
     }
   }
 
@@ -779,6 +795,78 @@ string BufferAssignment::ToString() const {
   return output;
 }
 
+string BufferAssignment::BufferInfoString() const {
+  string binfo;
+  // Columns in buffer information:
+  // buffer_id: int. This value can be used to match the allocation in
+  // allocation information.
+  // buffer_name: string.
+  // offset: int. Starting position of the buffer in the memory space.
+  // size: int. Size of the buffer in bytes.
+  // definition_time: int. Position in the schedule where the buffer starts
+  // being live (inclusive).
+  // end_time: int. Position in the schedule where the buffer stops being live
+  // (exclusive).
+  // num_uses: int. Number of uses of the buffer.
+  // use_names: string. This is a semicolon-separated list of string
+  // representation of uses.
+  // Append the column names.
+  absl::StrAppend(&binfo,
+                  "buffer_id,buffer_name,offset,size,"
+                  "definition_time,end_time,num_uses,use_times,use_names\n");
+  const HloLiveRange& live_ranges = hlo_live_range();
+  const auto& instruction_schedule = live_ranges.instruction_schedule();
+  const auto& buffer_live_ranges = live_ranges.buffer_live_ranges();
+  // Sort the buffers by Id.
+  std::vector<std::pair<const HloValue*, BufferAllocation::OffsetSize>> buffers;
+  for (const BufferAllocation& allocation : allocations_) {
+    absl::c_copy(allocation.assigned_buffers(), std::back_inserter(buffers));
+  }
+  absl::c_sort(
+      buffers,
+      [](const std::pair<const HloValue*, BufferAllocation::OffsetSize>& b1,
+         const std::pair<const HloValue*, BufferAllocation::OffsetSize>& b2) {
+        return b1.first->id() < b2.first->id();
+      });
+  for (const auto& buffer_pair : buffers) {
+    const HloValue& buffer = *buffer_pair.first;
+    const BufferAllocation::OffsetSize& offset_size = buffer_pair.second;
+    if (!buffer_live_ranges.contains(&buffer)) {
+      continue;
+    }
+    // Ordering uses by their use position.
+    std::vector<std::pair<int64, std::string>> uses;
+    uses.reserve(buffer.uses().size());
+    for (const HloUse& use : buffer.uses()) {
+      uses.emplace_back(instruction_schedule.at(use.instruction),
+                        use.ToString());
+    }
+    absl::c_sort(uses);
+    std::vector<int64> use_positions;
+    std::vector<std::string> use_names;
+    use_positions.reserve(uses.size());
+    use_names.reserve(uses.size());
+    for (const auto& use : uses) {
+      use_positions.push_back(use.first);
+      use_names.push_back(use.second);
+    }
+    const int64 definition_time =
+        instruction_schedule.at(buffer.defining_position().instruction);
+    const int64 end_t = buffer_live_ranges.at(&buffer).end;
+    absl::StrAppend(&binfo, buffer.id(), ",");
+    absl::StrAppend(&binfo, "\"", buffer.ToShortString(), "\",");
+    absl::StrAppend(&binfo, offset_size.offset, ",");
+    absl::StrAppend(&binfo, offset_size.size, ",");
+    absl::StrAppend(&binfo, definition_time, ",");
+    absl::StrAppend(&binfo, end_t, ",");
+    absl::StrAppend(&binfo, use_positions.size(), ",");
+    absl::StrAppend(&binfo, "\"", absl::StrJoin(use_positions, ";"), "\",");
+    absl::StrAppend(&binfo, "\"", absl::StrJoin(use_names, ";"), "\"");
+    absl::StrAppend(&binfo, "\n");
+  }
+  return binfo;
+}
+
 BufferAssignmentProto BufferAssignment::ToProto() const {
   BufferAssignmentProto proto;
   // NOTE: DataflowAnalysis state is serialized here in BufferAssignment,
@@ -823,11 +911,11 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     BufferValue::SizeFunction buffer_size,
     LogicalBuffer::AlignmentFunction color_alignment,
     bool allocate_buffers_for_constants, BufferAssigner::Colorer colorer,
-    const absl::flat_hash_set<HloOpcode>& reuse_checker,
+    const absl::flat_hash_set<HloOpcode>& must_not_live_out,
     HloDataflowAnalysis::CanShareBuffer can_share_buffer,
     std::unique_ptr<PresetAssignments> preset_assignments) {
   BufferAssigner assigner(allocate_buffers_for_constants, std::move(colorer),
-                          reuse_checker, std::move(preset_assignments));
+                          must_not_live_out, std::move(preset_assignments));
   return assigner.CreateAssignment(
       module, std::move(hlo_ordering), std::move(buffer_size),
       std::move(color_alignment), std::move(can_share_buffer));
@@ -1331,11 +1419,13 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
     auto algorithms = absl::make_unique<
         std::vector<std::unique_ptr<HeapAlgorithm<HloValue>>>>();
     algorithms->push_back(
-        absl::make_unique<GlobalDecreasingSizeBestFitHeap<HloValue>>(
-            alignment, GlobalDecreasingSizeBestFitHeap<HloValue>::kSpatial));
+        absl::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+            assignment->multiheap_size_constraint_per_heap(), alignment,
+            GlobalDecreasingSizeBestFitHeap<HloValue>::kSpatial));
     algorithms->push_back(
-        absl::make_unique<GlobalDecreasingSizeBestFitHeap<HloValue>>(
-            alignment, GlobalDecreasingSizeBestFitHeap<HloValue>::kTemporal));
+        absl::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+            assignment->multiheap_size_constraint_per_heap(), alignment,
+            GlobalDecreasingSizeBestFitHeap<HloValue>::kTemporal));
     return absl::make_unique<ChooseBestHeapAlgorithm<HloValue>>(
         std::move(algorithms));
   };
@@ -1444,6 +1534,12 @@ std::vector<const HloValue*> ComputePeakMemoryLogicalBuffers(
   int64 max_live_size = 0;
   int64 live_size = 0;
   for (const auto& event : heap_trace.events()) {
+    if (!id_to_value.contains(event.buffer_id())) {
+      // Skip as the buffer associated with this trace event is not placed into
+      // this allocation. This can happen when size constraints are given to the
+      // heap simulator.
+      continue;
+    }
     live_size += memory_delta(event);
     if (max_live_size < live_size) {
       max_live_size = live_size;
@@ -1455,6 +1551,12 @@ std::vector<const HloValue*> ComputePeakMemoryLogicalBuffers(
   absl::flat_hash_set<const HloValue*> live_values;
   live_size = 0;
   for (const auto& event : heap_trace.events()) {
+    if (!id_to_value.contains(event.buffer_id())) {
+      // Skip as the buffer associated with this trace event is not placed into
+      // this allocation. This can happen when size constraints are given to the
+      // heap simulator.
+      continue;
+    }
     const HloValue* value = id_to_value.at(event.buffer_id());
     if (event.kind() == HeapSimulatorTrace::Event::ALLOC ||
         event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
@@ -1500,20 +1602,24 @@ void BufferAssigner::AssignBuffersFromHeapSimulator(
   }
   VLOG(1) << "Result size from heap simulator: " << result.heap_size;
 
-  BufferAllocation* allocation =
-      assignment->NewEmptyAllocation(result.heap_size, color);
-  for (const auto& buffer_chunk : result.chunk_map) {
-    const HloValue& value = *buffer_chunk.first;
-    const HeapSimulator::Chunk& chunk = buffer_chunk.second;
-    assignment->AddAssignment(allocation, value, chunk.offset, chunk.size);
+  // Iterate through heap_results. For each heap_result, create a new allocation
+  // in `assignment`.
+  for (const HeapSimulator::HeapResult<HloValue>& heap_result :
+       result.heap_results) {
+    BufferAllocation* allocation =
+        assignment->NewEmptyAllocation(heap_result.heap_size, color);
+    for (const auto& buffer_chunk : heap_result.chunk_map) {
+      const HloValue& value = *buffer_chunk.first;
+      const HeapSimulator::Chunk& chunk = buffer_chunk.second;
+      assignment->AddAssignment(allocation, value, chunk.offset, chunk.size);
+    }
+    allocation->peak_buffers_ =
+        ComputePeakMemoryLogicalBuffers(*allocation, result.debug_trace);
+
+    XLA_VLOG_LINES(2, allocation->ToString());
+
+    allocation->AddHeapTrace(result.debug_trace);
   }
-  allocation->peak_buffers_ =
-      ComputePeakMemoryLogicalBuffers(*allocation, result.debug_trace);
-
-  VLOG(1) << "Ran heap simulation for allocation: ";
-  XLA_VLOG_LINES(2, allocation->ToString());
-
-  allocation->AddHeapTrace(result.debug_trace);
 }
 
 StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
@@ -1580,6 +1686,10 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
       buffers_to_assign_sequentially.size() == global_computations.size();
   VLOG(2) << "Running whole module heap simulation: "
           << run_whole_module_heap_simulation;
+  const int32 multiheap_size_constraint_per_heap =
+      module->config().debug_options().xla_multiheap_size_constraint_per_heap();
+  VLOG(2) << "Multiheap per heap size limit: "
+          << multiheap_size_constraint_per_heap;
   TF_RETURN_IF_ERROR(AssignBuffersWithSequentialOrdering(
       buffers_to_assign_sequentially, run_whole_module_heap_simulation,
       assignment.get()));
@@ -1614,10 +1724,11 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
     }
   }
 
-  // Combines allocations of temporary buffers into one big BufferAllocation.
-  // This can only be performed after all buffers have been assigned, and
-  // after maybe_live_out is marked, since it is used to determine whether an
-  // allocation contains temporary buffers or not.
+  // Combines allocations of temporary buffers into big BufferAllocations
+  // subject to the buffer allocation size constraint. This can only be
+  // performed after all buffers have been assigned, and after maybe_live_out
+  // is marked, since it is used to determine whether an allocation contains
+  // temporary buffers or not.
   assignment->CombineTempAllocations();
 
   XLA_VLOG_LINES(2, assignment->ToString());

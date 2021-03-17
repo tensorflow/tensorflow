@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_op_resolver.h"
 #include "tensorflow/lite/micro/simple_memory_allocator.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 
 namespace tflite {
 
@@ -39,7 +40,7 @@ namespace {
 
 // Maximum number of scratch buffer requests per operator. Operator kernels that
 // request more than this value will receive an exception.
-constexpr size_t kMaxScratchBuffersPerOp = 8;
+constexpr size_t kMaxScratchBuffersPerOp = 12;
 
 // Sentinel value used as a placeholder to mark a ScratchBufferRequest request
 // needs a node id assignment.
@@ -795,11 +796,9 @@ TfLiteStatus MicroAllocator::PrepareNodeAndRegistrationDataFromFlatbuffer(
         GetRegistrationFromOpCode(opcode, op_resolver, error_reporter_,
                                   &(node_and_registrations[i].registration));
     if (status != kTfLiteOk) {
-      // TODO(b/171278094): Use the GetBuiltinCode method in the schema utilitly
-      // to get builtin code from op code.
       TF_LITE_REPORT_ERROR(error_reporter_,
                            "Failed to get registration from op code %s\n ",
-                           EnumNameBuiltinOperator(opcode->builtin_code()));
+                           EnumNameBuiltinOperator(GetBuiltinCode(opcode)));
       return status;
     }
     const auto* registration = node_and_registrations[i].registration;

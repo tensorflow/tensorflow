@@ -191,7 +191,10 @@ class MeanTest(keras_parameterized.TestCase):
     self.assertEqual(self.evaluate(m.count), 1)
 
     # check update_state() and result() + state accumulation + tensor input
-    update_op = m.update_state(ops.convert_n_to_tensor([1, 5]))
+    update_op = m.update_state([
+        ops.convert_to_tensor_v2_with_dispatch(1),
+        ops.convert_to_tensor_v2_with_dispatch(5)
+    ])
     self.evaluate(update_op)
     self.assertAlmostEqual(self.evaluate(m.result()), 106 / 3, 2)
     self.assertEqual(self.evaluate(m.total), 106)  # 100 + 1 + 5
@@ -1414,7 +1417,10 @@ class MeanTensorTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(self.evaluate(m.count), [1, 1])
 
       # check update_state() and result() + state accumulation + tensor input
-      update_op = m.update_state(ops.convert_n_to_tensor([1, 5]))
+      update_op = m.update_state([
+          ops.convert_to_tensor_v2_with_dispatch(1),
+          ops.convert_to_tensor_v2_with_dispatch(5)
+      ])
       self.evaluate(update_op)
       self.assertAllClose(self.evaluate(m.result()), [50.5, 22.5])
       self.assertAllClose(self.evaluate(m.total), [101, 45])
@@ -2252,6 +2258,29 @@ class ResetStatesTest(keras_parameterized.TestCase):
                         np.ones((25, 4))))
     y = np.concatenate((np.ones((25, 1)), np.zeros((25, 1)), np.ones((25, 1)),
                         np.zeros((25, 1))))
+
+    for _ in range(2):
+      model.evaluate(x, y)
+      self.assertEqual(self.evaluate(auc_obj.true_positives[1]), 25.)
+      self.assertEqual(self.evaluate(auc_obj.false_positives[1]), 25.)
+      self.assertEqual(self.evaluate(auc_obj.false_negatives[1]), 25.)
+      self.assertEqual(self.evaluate(auc_obj.true_negatives[1]), 25.)
+
+  def test_reset_states_auc_from_logits(self):
+    auc_obj = metrics.AUC(num_thresholds=3, from_logits=True)
+
+    model_layers = [layers.Dense(1, kernel_initializer='ones', use_bias=False)]
+    model = testing_utils.get_model_from_layers(model_layers, input_shape=(4,))
+    model.compile(
+        loss='mae',
+        metrics=[auc_obj],
+        optimizer='rmsprop',
+        run_eagerly=testing_utils.should_run_eagerly())
+
+    x = np.concatenate((np.ones((25, 4)), -np.ones((25, 4)), -np.ones(
+        (25, 4)), np.ones((25, 4))))
+    y = np.concatenate((np.ones((25, 1)), np.zeros((25, 1)), np.ones(
+        (25, 1)), np.zeros((25, 1))))
 
     for _ in range(2):
       model.evaluate(x, y)

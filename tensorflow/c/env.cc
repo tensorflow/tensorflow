@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/c/env.h"
 
-#include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/c_api_macros.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"

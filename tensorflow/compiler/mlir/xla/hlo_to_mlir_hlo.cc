@@ -22,14 +22,17 @@ limitations under the License.
 namespace xla {
 
 Status ConvertHloToMlirHlo(mlir::ModuleOp module,
-                           xla::HloModuleProto* hlo_module_proto) {
+                           xla::HloModuleProto* hlo_module_proto,
+                           bool import_all_computation) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
-  return HloModuleImporter(module).Import(*hlo_module_proto);
+  return HloModuleImporter(module, import_all_computation)
+      .Import(*hlo_module_proto);
 }
 
-Status ConvertHloToMlirHlo(mlir::ModuleOp module, xla::HloModule* hlo_module) {
+Status ConvertHloToMlirHlo(mlir::ModuleOp module, xla::HloModule* hlo_module,
+                           bool import_all_computation) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
-  return HloModuleImporter(module).Import(*hlo_module);
+  return HloModuleImporter(module, import_all_computation).Import(*hlo_module);
 }
 
 }  // namespace xla

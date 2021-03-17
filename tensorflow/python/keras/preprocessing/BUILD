@@ -5,9 +5,6 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = [
-        # TODO(scottzhu): Remove non-keras deps from TF.
-        "//tensorflow/lite/experimental/tf_runtime:__pkg__",
-        "//tensorflow/tools/docs:__pkg__",
         "//tensorflow/python/keras:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
@@ -24,6 +21,7 @@ py_library(
     srcs = [
         "__init__.py",
     ],
+    srcs_version = "PY3",
     deps = [
         ":image",
         ":sequence",
@@ -40,6 +38,7 @@ py_library(
         "image.py",
         "image_dataset.py",
     ],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/keras:backend",
@@ -53,6 +52,7 @@ py_library(
     srcs = [
         "sequence.py",
     ],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/keras/utils:data_utils",
@@ -64,6 +64,7 @@ py_library(
     srcs = [
         "timeseries.py",
     ],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
@@ -79,6 +80,7 @@ py_library(
         "text.py",
         "text_dataset.py",
     ],
+    srcs_version = "PY3",
     deps = ["//tensorflow/python:util"],
 )
 

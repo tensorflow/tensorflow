@@ -20,7 +20,7 @@ py_library(
         "gpu_info_lib.py",
         "system_info_lib.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
@@ -35,7 +35,7 @@ py_binary(
     name = "system_info",
     srcs = ["system_info.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":system_info_lib",
         "//tensorflow/python:platform",
@@ -47,7 +47,7 @@ py_library(
     srcs = [
         "run_and_gather_logs_lib.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":system_info_lib",
         "//tensorflow/core:protos_all_py",
@@ -60,7 +60,7 @@ py_binary(
     name = "run_and_gather_logs",
     srcs = ["run_and_gather_logs.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":run_and_gather_logs_main_lib",
@@ -71,7 +71,7 @@ py_binary(
 py_library(
     name = "run_and_gather_logs_main_lib",
     srcs = ["run_and_gather_logs.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":run_and_gather_logs_lib",

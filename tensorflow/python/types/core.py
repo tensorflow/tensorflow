@@ -37,6 +37,8 @@ else:
 # TODO(mdan): Add type annotations.
 
 
+# TODO(b/178822082): Revisit this API when tf.types gets more resource.
+@tf_export("__internal__.types.Tensor", v1=[])
 class Tensor(object):
   """The base class of all dense Tensor objects.
 

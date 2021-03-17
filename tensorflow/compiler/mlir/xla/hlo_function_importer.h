@@ -22,12 +22,12 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -61,6 +61,20 @@ class HloFunctionImporter {
       const xla::HloComputation& computation,
       const llvm::SmallVectorImpl<mlir::Value>& arguments,
       mlir::OpBuilder* builder);
+
+  static void SetLayoutForMlir(mlir::Operation* op, const Shape& shape);
+
+  // TODO(b/179166199): move this to attribute_importer.h.
+  // Converts XLA instruction source target pairs to MLIR attribute.
+  static mlir::NamedAttribute ConvertSourceTargetPairs(
+      const std::vector<std::pair<tensorflow::int64, tensorflow::int64>>&
+          source_target_pairs,
+      mlir::Builder* builder);
+
+  // TODO(b/179166199): move this to attribute_importer.h.
+  // Converts replica groups to attribute
+  static mlir::NamedAttribute ConvertReplicaGroups(
+      const std::vector<ReplicaGroup>& replica_groups, mlir::Builder* builder);
 
  private:
   HloFunctionImporter(mlir::ModuleOp module,
@@ -118,7 +132,10 @@ class HloFunctionImporter {
 
   // Converts an XLA ComparisonDirection to the corresponding MLIR attribute.
   mlir::NamedAttribute ConvertComparisonDirection(
-      xla::HloInstruction* instruction);
+      ComparisonDirection direction);
+
+  // Converts an XLA Comparison::Type to the corresponding MLIR attribute.
+  mlir::NamedAttribute ConvertComparisonType(Comparison::Type type);
 
   // Converts the dimensions of an HLO instruction into an MLIR attribute.
   mlir::DenseIntElementsAttr ConvertDimensions(
@@ -131,21 +148,12 @@ class HloFunctionImporter {
   // padding low and padding high for each of the spatial dimensions.
   mlir::NamedAttribute ConvertPadding(llvm::ArrayRef<int64_t> padding);
 
-  // Converts replica groups to attribute
-  mlir::NamedAttribute ConvertReplicaGroups(
-      const std::vector<ReplicaGroup>& replica_groups);
-
   // Converts channel id to attribute
   mlir::NamedAttribute ConvertChannelHandle(
       absl::optional<tensorflow::int64> channel_id);
 
   // Converts channel handle to attribute
   mlir::NamedAttribute ConvertChannelHandle(const xla::ChannelHandle& channel);
-
-  // Converts XLA instruction source target pairs to MLIR attribute.
-  mlir::NamedAttribute ConvertSourceTargetPairs(
-      const std::vector<std::pair<tensorflow::int64, tensorflow::int64>>&
-          source_target_pairs);
 
   mlir::MLIRContext* context_;
   mlir::ModuleOp module_;

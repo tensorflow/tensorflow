@@ -154,6 +154,18 @@ class NNFreeExecution {
   // NnApi instance to use. Not owned by this object.
   const NnApi* nnapi_;
 };
+// RAII NN API Burst Destructor for use with std::unique_ptr
+class NNFreeBurst {
+ public:
+  explicit NNFreeBurst(const NnApi* nnapi) : nnapi_(nnapi) {}
+  void operator()(ANeuralNetworksBurst* model) {
+    nnapi_->ANeuralNetworksBurst_free(model);
+  }
+
+ private:
+  // NnApi instance to use. Not owned by this object.
+  const NnApi* nnapi_;
+};
 
 // Manage NNAPI shared memory handle
 class NNMemory {
@@ -175,7 +187,7 @@ class NNMemory {
   ANeuralNetworksMemory* nn_memory_handle_ = nullptr;
 };
 
-
+// LINT.IfChange
 enum class NNAPIValidationFailureType : int {
   // The operator is not supported by either NNAPI or the NNAPI Delegate.
   kUnsupportedOperator = 0,
@@ -232,7 +244,7 @@ enum class NNAPIValidationFailureType : int {
   // for the accelerated operation.
   kUnsupportedQuantizationParameters = 15,
 };
-
+// LINT.ThenChange(nnapi_linter/linter.proto)
 
 struct NNAPIValidationFailure {
   NNAPIValidationFailureType type;
@@ -249,7 +261,8 @@ class NNAPIDelegateKernel {
       : initialised_(false),
         nnapi_(nnapi),
         nn_model_(nullptr, NNFreeModel(nnapi_)),
-        nn_compilation_(nullptr, NNFreeCompilation(nnapi_)) {}
+        nn_compilation_(nullptr, NNFreeCompilation(nnapi_)),
+        nn_burst_(nullptr, NNFreeBurst(nnapi_)) {}
   NNAPIDelegateKernel() : NNAPIDelegateKernel(NnApiImplementation()) {}
   ~NNAPIDelegateKernel() {
     for (auto content : allocation_memory_mapping_) {
@@ -323,6 +336,7 @@ class NNAPIDelegateKernel {
   std::unique_ptr<ANeuralNetworksModel, NNFreeModel> nn_model_;
   std::unique_ptr<ANeuralNetworksCompilation, NNFreeCompilation>
       nn_compilation_;
+  std::unique_ptr<ANeuralNetworksBurst, NNFreeBurst> nn_burst_;
   // Node indices that this delegate is responsible for. Indices here
   // indexes into the nodes array in the TfLiteContext.
   std::vector<int> nodes_;

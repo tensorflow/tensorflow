@@ -61,6 +61,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/map_dataset_op.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
+#include "tensorflow/core/kernels/data/options_dataset_op.h"
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
 #include "tensorflow/core/kernels/data/split_utils.h"
 #include "tensorflow/core/kernels/data/take_dataset_op.h"
@@ -607,6 +608,27 @@ Status DatasetOpsTestBase::CheckIteratorGetNext(
   return Status::OK();
 }
 
+Status DatasetOpsTestBase::CheckIteratorSkip(
+    int num_to_skip, int expected_num_skipped, bool get_next,
+    const std::vector<Tensor>& expected_outputs, bool compare_order) {
+  IteratorBase* iterator = iterator_.get();
+  IteratorContext* ctx = iterator_ctx_.get();
+
+  bool end_of_sequence = false;
+  int num_skipped = 0;
+  TF_RETURN_IF_ERROR(
+      iterator->Skip(ctx, num_to_skip, &end_of_sequence, &num_skipped));
+  EXPECT_TRUE(num_skipped == expected_num_skipped);
+  if (get_next) {
+    EXPECT_TRUE(!end_of_sequence);
+    std::vector<Tensor> out_tensors;
+    TF_RETURN_IF_ERROR(iterator->GetNext(ctx, &out_tensors, &end_of_sequence));
+    TF_EXPECT_OK(ExpectEqual(out_tensors, expected_outputs,
+                             /*compare_order=*/compare_order));
+  }
+  return Status::OK();
+}
+
 Status DatasetOpsTestBase::CheckSplitProviderFullIteration(
     const DatasetParams& params, const std::vector<Tensor>& expected_outputs) {
   std::unique_ptr<TestDataset> dataset;
@@ -676,6 +698,13 @@ Status DatasetOpsTestBase::CheckDatasetOutputShapes(
 
 Status DatasetOpsTestBase::CheckDatasetCardinality(int expected_cardinality) {
   EXPECT_EQ(dataset_->Cardinality(), expected_cardinality);
+  return Status::OK();
+}
+
+Status DatasetOpsTestBase::CheckDatasetOptions(
+    const Options& expected_options) {
+  EXPECT_EQ(dataset_->options().SerializeAsString(),
+            expected_options.SerializeAsString());
   return Status::OK();
 }
 
@@ -878,11 +907,25 @@ Status DatasetOpsTestBase::MakeDatasetOpKernel(
   TF_RETURN_IF_ERROR(dataset_params.GetInputNames(&input_names));
   AttributeVector attributes;
   TF_RETURN_IF_ERROR(dataset_params.GetAttributes(&attributes));
-  NodeDef node_def = test::function::NDef(
-      dataset_params.node_name(),
-      name_utils::OpName(dataset_params.dataset_type(), params), input_names,
-      attributes);
+  NodeDef node_def =
+      test::function::NDef(dataset_params.node_name(), dataset_params.op_name(),
+                           input_names, attributes);
   TF_RETURN_IF_ERROR(CreateOpKernel(node_def, dataset_kernel));
+  return Status::OK();
+}
+
+Status DatasetOpsTestBase::MakeGetOptionsOpKernel(
+    const DatasetParams& dataset_params, std::unique_ptr<OpKernel>* op_kernel) {
+  name_utils::OpNameParams params;
+  params.op_version = dataset_params.op_version();
+  std::vector<string> input_names;
+  TF_RETURN_IF_ERROR(dataset_params.GetInputNames(&input_names));
+  AttributeVector attributes;
+  TF_RETURN_IF_ERROR(dataset_params.GetAttributes(&attributes));
+  NodeDef node_def = test::function::NDef(dataset_params.node_name(),
+                                          dataset_params.dataset_type(),
+                                          input_names, attributes);
+  TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
   return Status::OK();
 }
 
@@ -1136,6 +1179,25 @@ Status ConcatenateDatasetParams::GetAttributes(
 
 string ConcatenateDatasetParams::dataset_type() const {
   return ConcatenateDatasetOp::kDatasetType;
+}
+
+std::vector<Tensor> OptionsDatasetParams::GetInputTensors() const { return {}; }
+
+Status OptionsDatasetParams::GetInputNames(
+    std::vector<string>* input_names) const {
+  input_names->emplace_back(OptionsDatasetOp::kInputDataset);
+  return Status::OK();
+}
+
+Status OptionsDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
+  *attr_vector = {{OptionsDatasetOp::kSerializedOptions, serialized_options_},
+                  {OptionsDatasetOp::kOutputShapes, output_shapes_},
+                  {OptionsDatasetOp::kOutputTypes, output_dtypes_}};
+  return Status::OK();
+}
+
+string OptionsDatasetParams::dataset_type() const {
+  return OptionsDatasetOp::kDatasetType;
 }
 
 }  // namespace data

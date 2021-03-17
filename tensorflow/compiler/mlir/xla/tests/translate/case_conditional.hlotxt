@@ -26,10 +26,10 @@ ENTRY %indexed_conditional () -> f32[] {
 }
 
 // CHECK-LABEL: func @main() -> tensor<f32>
-// CHECK: %[[INDEX:.*]] = constant dense<1> : tensor<i32>
-// CHECK: %[[OPERAND_1:.*]] = constant dense<5.600000e+01> : tensor<f32>
-// CHECK: %[[OPERAND_2:.*]] = constant dense<1.200000e+01> : tensor<f32>
-// CHECK: %[[OPERAND_3:.*]] = constant dense<1.300000e+01> : tensor<f32>
+// CHECK: %[[INDEX:.*]] = mhlo.constant dense<1> : tensor<i32>
+// CHECK: %[[OPERAND_1:.*]] = mhlo.constant dense<5.600000e+01> : tensor<f32>
+// CHECK: %[[OPERAND_2:.*]] = mhlo.constant dense<1.200000e+01> : tensor<f32>
+// CHECK: %[[OPERAND_3:.*]] = mhlo.constant dense<1.300000e+01> : tensor<f32>
 // CHECK: %[[RESULT:.*]] = "mhlo.case"(%[[INDEX]], %[[OPERAND_1]], %[[OPERAND_2]], %[[OPERAND_3]]) ( {
 // CHECK:   ^bb0(%[[ARG_1:.*]]: tensor<f32>):
 // CHECK:     %[[RES_1:.*]] = "mhlo.negate"(%[[ARG_1]]) : (tensor<f32>) -> tensor<f32>

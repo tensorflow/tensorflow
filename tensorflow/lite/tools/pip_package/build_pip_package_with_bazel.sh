@@ -43,7 +43,7 @@ fi
 # Build source tree.
 rm -rf "${BUILD_DIR}" && mkdir -p "${BUILD_DIR}/tflite_runtime"
 cp -r "${TENSORFLOW_LITE_DIR}/tools/pip_package/debian" \
-      "${TENSORFLOW_LITE_DIR}/tools/pip_package/setup_with_bazel.py" \
+      "${TENSORFLOW_LITE_DIR}/tools/pip_package/setup_with_binary.py" \
       "${TENSORFLOW_LITE_DIR}/tools/pip_package/MANIFEST.in" \
       "${TENSORFLOW_LITE_DIR}/python/interpreter_wrapper" \
       "${BUILD_DIR}"
@@ -101,19 +101,19 @@ chmod u+w "${BUILD_DIR}/tflite_runtime/_pywrap_tensorflow_interpreter_wrapper${L
 cd "${BUILD_DIR}"
 case "${TENSORFLOW_TARGET}" in
   armhf)
-    ${PYTHON} setup_with_bazel.py bdist --plat-name=linux-armv7l \
+    ${PYTHON} setup_with_binary.py bdist --plat-name=linux-armv7l \
                        bdist_wheel --plat-name=linux-armv7l
     ;;
   aarch64)
-    ${PYTHON} setup_with_bazel.py bdist --plat-name=linux-aarch64 \
+    ${PYTHON} setup_with_binary.py bdist --plat-name=linux-aarch64 \
                        bdist_wheel --plat-name=linux-aarch64
     ;;
   *)
     if [[ -n "${TENSORFLOW_TARGET}" ]] && [[ -n "${TENSORFLOW_TARGET_ARCH}" ]]; then
-      ${PYTHON} setup_with_bazel.py bdist --plat-name=${TENSORFLOW_TARGET}-${TENSORFLOW_TARGET_ARCH} \
+      ${PYTHON} setup_with_binary.py bdist --plat-name=${TENSORFLOW_TARGET}-${TENSORFLOW_TARGET_ARCH} \
                          bdist_wheel --plat-name=${TENSORFLOW_TARGET}-${TENSORFLOW_TARGET_ARCH}
     else
-      ${PYTHON} setup_with_bazel.py bdist bdist_wheel
+      ${PYTHON} setup_with_binary.py bdist bdist_wheel
     fi
     ;;
 esac

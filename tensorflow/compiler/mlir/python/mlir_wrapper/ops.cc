@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/python/mlir_wrapper/mlir_wrapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -180,7 +180,7 @@ void init_ops(py::module& m) {
                         mlir::Value y) {
         return opb
             .create<mlir::TF::NotEqualOp>(
-                loc, x, y, mlir::BoolAttr::get(true, opb.getContext()))
+                loc, x, y, mlir::BoolAttr::get(opb.getContext(), true))
             .getOperation();
       });
 

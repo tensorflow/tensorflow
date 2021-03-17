@@ -4,6 +4,8 @@ Delegate which uses Hexagon SDK to delegate the processing to QC DSP.
 Note that we only support quantized models, since the DSP is efficient
 with quantized versions. So all op support is for quantized versions.
 
+For more detailed usage and examples check the [user guide.](https://www.tensorflow.org/lite/performance/hexagon_delegate)
+
 Usage:
 
 - Add dependency on hexagon_delegate rule.
@@ -95,10 +97,12 @@ are verified in `IsNodeSupportedByHexagon`:
   * Constraints:
     - Requested size <= 65 (b/143105433)
 * Resize Nearest Neighbor
+* Rsqrt
 * Slice
 * SoftMax
 * SpaceToDepth
 * Split
+* SquaredDifference
 * Strided Slice
 * Sub (Support relu activations)
 * Tanh

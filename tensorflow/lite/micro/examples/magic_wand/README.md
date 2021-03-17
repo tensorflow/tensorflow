@@ -145,7 +145,7 @@ SLOPE:
 
 The following instructions will help you build and deploy this example to
 [HIMAX WE1 EVB](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_board_brief)
-board. To undstand more about using this board, please check
+board. To understand more about using this board, please check
 [HIMAX WE1 EVB user guide](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_user_guide).
 
 ### Initial Setup
@@ -246,7 +246,7 @@ Following the Steps to run magic wand example at HIMAX WE1 EVB platform.
 
 After these steps, press reset button on the HIMAX WE1 EVB, you will see
 application output in the serial terminal. Perform following gestures
-`'Wing'`,`'Ring'`,`'Slope'` and you can see the otuput in serial terminal.
+`'Wing'`,`'Ring'`,`'Slope'` and you can see the output in serial terminal.
 
 ```
 WING:

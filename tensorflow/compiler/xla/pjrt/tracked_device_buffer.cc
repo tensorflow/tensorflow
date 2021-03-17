@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 
+#include <atomic>
 #include <iterator>
 #include <memory>
 
@@ -36,6 +37,7 @@ void BufferSequencingEvent::SetSequencingEvent(EventPool::Handle event,
   event_ = std::move(event);
   CHECK(streams_defined_on_.empty());
   streams_defined_on_.push_back(stream);
+  sequence_number_.store(event_.sequence_number(), std::memory_order_seq_cst);
 }
 
 bool BufferSequencingEvent::EventHasBeenRecorded() const {
@@ -43,9 +45,9 @@ bool BufferSequencingEvent::EventHasBeenRecorded() const {
 }
 
 uint64 BufferSequencingEvent::sequence_number() const {
-  absl::MutexLock lock(&mu_);
-  CHECK(EventHasBeenRecorded());
-  return event_.sequence_number();
+  uint64_t seq = sequence_number_.load(std::memory_order_seq_cst);
+  CHECK_NE(seq, 0);
+  return seq;
 }
 
 void BufferSequencingEvent::WaitForEventOnStream(se::Stream* stream) {
@@ -117,11 +119,9 @@ TrackedDeviceBuffer::FromScopedShapedBuffer(
       /*on_delete_callback=*/nullptr);
 }
 
-ShapedBuffer TrackedDeviceBuffer::AsShapedBuffer(const Shape& on_host_shape,
-                                                 const Shape& on_device_shape,
-                                                 se::Platform* platform) const {
-  ShapedBuffer shaped_buffer(on_host_shape, on_device_shape, platform,
-                             device_ordinal_);
+ShapedBuffer TrackedDeviceBuffer::AsShapedBuffer(
+    const Shape& on_device_shape) const {
+  ShapedBuffer shaped_buffer(on_device_shape, device_ordinal_);
   ShapeTree<se::DeviceMemoryBase>::iterator iterator =
       shaped_buffer.buffers().begin();
   for (const se::DeviceMemoryBase& buf : device_memory_) {
@@ -162,13 +162,6 @@ void TrackedDeviceBuffer::AddToInputAsDonated(
   }
 }
 
-namespace {
-
-using MoveIterator =
-    absl::Span<const std::shared_ptr<BufferSequencingEvent>>::iterator;
-
-}  // namespace
-
 TrackedDeviceBuffer::TrackedDeviceBuffer(
     se::DeviceMemoryAllocator* allocator, int device_ordinal,
     absl::Span<se::DeviceMemoryBase const> device_memory,
@@ -177,9 +170,8 @@ TrackedDeviceBuffer::TrackedDeviceBuffer(
     : allocator_(allocator),
       device_ordinal_(device_ordinal),
       device_memory_(device_memory.begin(), device_memory.end()),
-      definition_events_(
-          std::move_iterator<MoveIterator>(definition_events.begin()),
-          std::move_iterator<MoveIterator>(definition_events.end())),
+      definition_events_(std::make_move_iterator(definition_events.begin()),
+                         std::make_move_iterator(definition_events.end())),
       in_use_(true),
       on_delete_callback_(std::move(on_delete_callback)) {}
 

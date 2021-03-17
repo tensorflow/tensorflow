@@ -174,14 +174,6 @@ bool IsProfitableFusionCandidate(const HloInstruction& instr) {
     return false;
   }
 
-  // We can emit DUS in-place, horizontally fusing it makes the emitter no
-  // longer recognize that it can be done in-place. This creates much slower
-  // code. This restriction could be lifted if buffer assignment would recognize
-  // that the DUS can be done in-place even inside of a horizontal fusion.
-  if (root->opcode() == HloOpcode::kDynamicUpdateSlice) {
-    return false;
-  }
-
   return true;
 }
 
@@ -203,19 +195,36 @@ bool HasOnlyRowMajorLayout(const HloInstruction& fusion_instr) {
   return true;
 }
 
+// Returns whether any operand of `instr` is a parameter instruction that
+// is shared with `fusion_instrs`.
+bool AnyOpndIsParamSharedAmongFusions(
+    const HloInstruction* instr,
+    const absl::flat_hash_set<HloInstruction*>& fusion_instrs) {
+  return absl::c_any_of(instr->operands(), [&](const HloInstruction* opnd) {
+    return opnd->opcode() == HloOpcode::kParameter &&
+           absl::c_any_of(opnd->users(), [&](const HloInstruction* user) {
+             return user != instr && fusion_instrs.contains(user);
+           });
+  });
+}
+
 void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
     HloInstruction* consumer) {
   // First, find out all fusion instructions. We will filter out
   // unsupported/non-profitable cases below.
   absl::flat_hash_set<HloInstruction*> fusion_instrs;
+  std::vector<HloInstruction*> fusion_instrs_ordered;
   for (auto opnd : consumer->operands()) {
     auto predecessor = opnd->LatestNonGteAncestor();
     if (predecessor->opcode() == HloOpcode::kFusion) {
-      fusion_instrs.insert(predecessor);
+      if (fusion_instrs.insert(predecessor).second) {
+        // Add unseen fusion to ordered list.
+        fusion_instrs_ordered.push_back(predecessor);
+      }
     }
   }
 
-  for (auto instr : fusion_instrs) {
+  for (auto instr : fusion_instrs_ordered) {
     if (!IsFusionSupported(*instr)) {
       VLOG(2) << "Reject unsupported fusion instr " << instr->ToString();
       continue;
@@ -229,6 +238,14 @@ void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
       continue;
     } else if (!HasOnlyRowMajorLayout(*instr)) {
       VLOG(2) << "Reject non-row-major fusion instr " << instr->ToString();
+      continue;
+    } else if (AnyOpndIsParamSharedAmongFusions(instr, fusion_instrs)) {
+      // Don't fuse fusions whose operands are parameter instructions that are
+      // shared among fusions because we cannot i/o alias the produced
+      // horizontal fusion due to the concat insertion.
+      VLOG(2) << "Reject the fusion instr because it shares parameter with"
+              << " other fusion candidates, instr: ",
+          instr->ToString();
       continue;
     } else {
       VLOG(2) << "Find a fusion candidate " << instr->ToString();

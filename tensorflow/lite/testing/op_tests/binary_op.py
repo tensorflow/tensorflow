@@ -178,6 +178,19 @@ def make_binary_op_tests(options,
         },
     ]
 
+  # High dimension broadcasting support in MLIR converter.
+  if options.use_experimental_converter:
+    test_parameters = test_parameters + [
+        {
+            "dtype": [tf.float32],
+            "input_shape_1": [[8, 7, 6, 5, 4, 3, 2, 1]],
+            "input_shape_2": [[4, 3, 2, 1]],
+            "activation": [False],
+            "fully_quantize": [False],
+            "dynamic_range_quantize": [False],
+        },
+    ]
+
   # test_parameters include fully_quantize option only when
   # allow_fully_quantize is True.
   if not allow_fully_quantize:
@@ -305,4 +318,5 @@ def make_floor_mod_tests(options):
 
 @register_make_test_function()
 def make_squared_difference_tests(options):
-  make_binary_op_tests(options, tf.math.squared_difference)
+  make_binary_op_tests(options, tf.math.squared_difference,
+                       allow_fully_quantize=True)

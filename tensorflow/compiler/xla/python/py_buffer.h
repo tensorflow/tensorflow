@@ -17,8 +17,14 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_PY_BUFFER_H_
 
 #include <memory>
+#include <stdexcept>
 #include <vector>
 
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/notification.h"
+#include "absl/types/optional.h"
+#include "pybind11/numpy.h"
+#include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -26,12 +32,27 @@ limitations under the License.
 
 namespace xla {
 
+// As we are deploying both a C++ and a Python implementation for DeviceArray,
+// we use an empty base-class to ensure `isinstance(x, DeviceArray)` works.
+//         DeviceArrayBase == DeviceArray
+//              /  \
+//             /    \
+//    PyBuffer      _DeviceArray (Python)
+//      in C++
+class DeviceArrayBase {
+ public:
+  DeviceArrayBase() = default;
+};
+
 // Python wrapper around PjRtBuffer. We use a wrapper class:
 // a) to keep the PjRtClient alive via a std::shared_ptr<>
 // b) to add Python-specific functionality.
-class PyBuffer {
+//
+// A `PyBuffer` can be used from Python without being wrapped in a Python
+// `DeviceArray` object, at the condition there is no associated LazyExpr.
+class PyBuffer : public DeviceArrayBase {
  public:
-  PyBuffer(std::shared_ptr<PyClient> client, std::unique_ptr<PjRtBuffer> buffer,
+  PyBuffer(std::shared_ptr<PyClient> client, std::shared_ptr<PjRtBuffer> buffer,
            std::shared_ptr<Traceback> traceback);
   ~PyBuffer();
 
@@ -39,39 +60,103 @@ class PyBuffer {
   PjRtBuffer* buffer() const { return buffer_.get(); }
 
   ClientAndPtr<PjRtDevice> device() const;
-  const std::string& platform_name() const { return buffer_->platform_name(); }
+  absl::string_view platform_name() const {
+    return buffer_->client()->platform_name();
+  }
   bool is_deleted() const { return buffer_->IsDeleted(); }
 
   StatusOr<std::unique_ptr<PyBuffer>> CopyToDevice(
       const ClientAndPtr<PjRtDevice>& dst_device) const;
 
-  void Delete() { return buffer_->Delete(); }
+  int64 OnDeviceSizeInBytes() { return buffer_->OnDeviceSizeInBytes(); }
 
+  void Delete() {
+    buffer_->Delete();
+    host_value_ = nullptr;
+  }
+
+  // Makes a copy of this PyBuffer object that shares the underlying PjRtBuffer.
+  // This is useful because we may wish to change JAX metadata (e.g., the sticky
+  // device) without copying the buffer.
+  std::unique_ptr<PyBuffer> Clone() const;
+
+  // Returns xla::InvalidArgument if the buffer has been deleted.
   Status BlockHostUntilReady();
-  Status CopyToHostAsync() { return buffer_->CopyToHostAsync(); }
+  Status CopyToHostAsync();
 
-  const Shape& shape() { return buffer_->on_host_shape(); }
+  const Shape& shape() { return buffer_->on_device_shape(); }
 
   StatusOr<std::uintptr_t> UnsafeBufferPointer() const;
 
   // Implementation of the CUDA array interface for sharing GPU buffers with
   // other Python libraries.
-  StatusOr<pybind11::dict> CudaArrayInterface() const;
+  StatusOr<pybind11::dict> CudaArrayInterface();
 
   // PEP 3118 Python buffer protocol implementation.
   static PyBufferProcs* BufferProtocol();
 
   Traceback* traceback() { return traceback_.get(); }
 
+  // Returns the size (i.e. number of elements) of the (host) numpy array.
+  StatusOr<int64> size();
+
+  // Returns the number of dimensions of the (host) numpy array.
+  int ndim() const { return buffer()->on_device_shape().dimensions_size(); }
+
+  pybind11::tuple python_shape() const;
+  pybind11::dtype python_dtype() const;
+
+  // Representing the logical view of the underlying dynamic shapes.
+  StatusOr<Shape> xla_dynamic_shape();
+
+  Status set_sticky_device(PjRtDevice* sticky_device) {
+    TF_RET_CHECK(sticky_device == nullptr ||
+                 sticky_device == buffer_->device());
+    sticky_device_ = sticky_device;
+    return Status::OK();
+  }
+  PjRtDevice* sticky_device() const { return sticky_device_; }
+
+  void set_weak_type(absl::optional<bool> weak_type) { weak_type_ = weak_type; }
+  absl::optional<bool> weak_type() const { return weak_type_; }
+
+  StatusOr<pybind11::object> AsNumPyArray(pybind11::handle this_obj);
+
+  void SetAval(pybind11::object aval) { aval_ = aval; }
+  pybind11::object GetAval() const { return aval_; }
+
  private:
   friend class PyClient;
 
+  struct HostValue {
+    absl::Notification ready;
+    Status status;
+    std::shared_ptr<xla::Literal> value;
+  };
   std::shared_ptr<PyClient> client_;
-  std::unique_ptr<PjRtBuffer> buffer_;
+  std::shared_ptr<PjRtBuffer> buffer_;
   std::shared_ptr<Traceback> traceback_;
+  std::shared_ptr<HostValue> host_value_;  // Protected by the GIL.
 
-  // Doubly-linked list of all buffers known to the client. Protected by the
-  // GIL.
+  // JAX uses this field to record whether a buffer is committed to a particular
+  // device by the user (https://github.com/google/jax/pull/1916).
+  PjRtDevice* sticky_device_ = nullptr;
+
+  // TODO(phawkins): consider not keeping an explicit aval on C++ buffer
+  // objects.
+  pybind11::object aval_ = pybind11::none();
+
+  // An optional weak type. If absent, the JAX jit code computes the weak_type
+  // from the aval_.weak_type attribute. This is a backwards compatibility
+  // measure for older Python code that does not set weak_type explicitly.
+  // TODO(phawkins): drop support for older jax Python versions and make
+  // weak_type mandatory.
+  absl::optional<bool> weak_type_ = absl::nullopt;
+
+  absl::optional<Shape> dynamic_shape_ = absl::nullopt;
+  // Doubly-linked list of all PyBuffers known to the client. Protected by the
+  // GIL. Since multiple PyBuffers may share the same PjRtBuffer, there may be
+  // duplicate PjRtBuffers in this list.
   PyBuffer* next_;
   PyBuffer* prev_;
 };

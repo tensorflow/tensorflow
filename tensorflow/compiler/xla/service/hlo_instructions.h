@@ -1415,6 +1415,12 @@ class HloCustomCallInstruction : public HloInstruction {
                            HloComputation* to_apply,
                            absl::string_view custom_call_target, string opaque);
 
+  // Constructor for a custom call with multiple computations.
+  HloCustomCallInstruction(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      absl::Span<HloComputation* const> called_computations,
+      absl::string_view custom_call_target, string opaque);
+
   const Window& window() const override {
     CHECK(window_ != nullptr);
     return *window_;
@@ -1453,6 +1459,23 @@ class HloCustomCallInstruction : public HloInstruction {
   bool custom_call_has_side_effect() const {
     return custom_call_has_side_effect_;
   }
+  // Returns padding type used for ops like convolution.
+  PaddingType padding_type() const { return padding_type_; }
+
+  void set_padding_type(PaddingType padding_type) {
+    padding_type_ = padding_type;
+  }
+
+  // Returns the literal associated with this instruction.
+  const Literal& literal() const { return *literal_; }
+  // Set the value of literal to a new one.
+  void set_literal(Literal&& literal) { literal_.emplace(std::move(literal)); }
+  // Returns whether there is literal associated with this instruction.
+  bool HasLiteral() const { return literal_.has_value(); }
+
+  const PrecisionConfig& precision_config() const { return precision_config_; }
+  PrecisionConfig* mutable_precision_config() { return &precision_config_; }
+
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -1502,6 +1525,11 @@ class HloCustomCallInstruction : public HloInstruction {
   int64 batch_group_count_;
   // Whether the result and operand layouts are constrained.
   bool layout_constrained_;
+  // Information used to communicate to the implementation about the algorithm
+  // used to produce results for convolution instructions.
+  PrecisionConfig precision_config_;
+  // Describes the padding type for convolution instructions.
+  PaddingType padding_type_;
   // For layout-constrained custom calls, this vector holds the shape with
   // layout for each operand.
   std::vector<Shape> operand_shapes_with_layout_;
@@ -1511,6 +1539,7 @@ class HloCustomCallInstruction : public HloInstruction {
   // output_to_operand_aliasing().
   std::vector<std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
       output_to_operand_aliasing_;
+  absl::optional<Literal> literal_;
 };
 
 class HloPadInstruction : public HloInstruction {

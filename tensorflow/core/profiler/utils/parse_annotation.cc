@@ -30,7 +30,7 @@ namespace {
 std::vector<absl::string_view> SplitNameAndMetadata(
     absl::string_view annotation) {
   std::vector<absl::string_view> parts;
-  if (annotation.empty() || annotation.back() != '#') {
+  if (!HasMetadata(annotation)) {
     parts.emplace_back(annotation);
   } else {
     annotation.remove_suffix(1);

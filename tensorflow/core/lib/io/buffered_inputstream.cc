@@ -60,25 +60,32 @@ Status BufferedInputStream::ReadLineHelper(StringType* result,
                                            bool include_eol) {
   result->clear();
   Status s;
+  size_t start_pos = pos_;
   while (true) {
     if (pos_ == limit_) {
+      result->append(buf_.data() + start_pos, pos_ - start_pos);
       // Get more data into buffer
       s = FillBuffer();
       if (limit_ == 0) {
         break;
       }
+      start_pos = pos_;
     }
-    char c = buf_[pos_++];
+    char c = buf_[pos_];
     if (c == '\n') {
+      result->append(buf_.data() + start_pos, pos_ - start_pos);
       if (include_eol) {
         result->append(1, c);
       }
+      pos_++;
       return Status::OK();
     }
     // We don't append '\r' to *result
-    if (c != '\r') {
-      result->append(1, c);
+    if (c == '\r') {
+      result->append(buf_.data() + start_pos, pos_ - start_pos);
+      start_pos = pos_ + 1;
     }
+    pos_++;
   }
   if (errors::IsOutOfRange(s) && !result->empty()) {
     return Status::OK();
@@ -157,15 +164,22 @@ Status BufferedInputStream::Seek(int64 position) {
                                    position);
   }
 
-  // Position of the buffer within file.
-  const int64 bufpos = Tell();
-  if (position < bufpos) {
-    // Reset input stream and skip 'position' bytes.
+  // Position of the buffer's lower limit within file.
+  const int64 buf_lower_limit = input_stream_->Tell() - limit_;
+  if (position < buf_lower_limit) {
+    // Seek before buffer, reset input stream and skip 'position' bytes.
     TF_RETURN_IF_ERROR(Reset());
     return SkipNBytes(position);
   }
 
-  return SkipNBytes(position - bufpos);
+  if (position < Tell()) {
+    // Seek within buffer before 'pos_'
+    pos_ -= Tell() - position;
+    return Status::OK();
+  }
+
+  // Seek after 'pos_'
+  return SkipNBytes(position - Tell());
 }
 
 template <typename T>

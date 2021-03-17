@@ -12,53 +12,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-r"""Randomize all weights in a tflite file.
-
-Example usage:
-python randomize_weights.py \
-  --input_tflite_file=foo.tflite \
-  --output_tflite_file=foo_randomized.tflite
-"""
+r"""Randomize all weights in a tflite file."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
-import sys
+from absl import app
+from absl import flags
 
 from tensorflow.lite.tools import flatbuffer_utils
-from tensorflow.python.platform import app
+
+FLAGS = flags.FLAGS
+
+flags.DEFINE_string('input_tflite_file', None,
+                    'Full path name to the input TFLite file.')
+flags.DEFINE_string('output_tflite_file', None,
+                    'Full path name to the output randomized TFLite file.')
+flags.DEFINE_integer('random_seed', 0, 'Input to the random number generator.')
+
+flags.mark_flag_as_required('input_tflite_file')
+flags.mark_flag_as_required('output_tflite_file')
 
 
 def main(_):
-  parser = argparse.ArgumentParser(
-      description='Randomize weights in a tflite file.')
-  parser.add_argument(
-      '--input_tflite_file',
-      type=str,
-      required=True,
-      help='Full path name to the input tflite file.')
-  parser.add_argument(
-      '--output_tflite_file',
-      type=str,
-      required=True,
-      help='Full path name to the output randomized tflite file.')
-  parser.add_argument(
-      '--random_seed',
-      type=str,
-      required=False,
-      default=0,
-      help='Input to the random number generator. The default value is 0.')
-  args = parser.parse_args()
-
-  # Read the model
-  model = flatbuffer_utils.read_model(args.input_tflite_file)
-  # Invoke the randomize weights function
-  flatbuffer_utils.randomize_weights(model, args.random_seed)
-  # Write the model
-  flatbuffer_utils.write_model(model, args.output_tflite_file)
+  model = flatbuffer_utils.read_model(FLAGS.input_tflite_file)
+  flatbuffer_utils.randomize_weights(model, FLAGS.random_seed)
+  flatbuffer_utils.write_model(model, FLAGS.output_tflite_file)
 
 
 if __name__ == '__main__':
-  app.run(main=main, argv=sys.argv[:1])
+  app.run(main)

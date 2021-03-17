@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -49,7 +50,7 @@ class ArrayTest(test.TestCase):
 
   def testNeg(self):
     a = ops.convert_to_tensor(value=[1.0, 2.0])
-    self.assertAllEqual([-1.0, -2.0], -a)
+    self.assertAllEqual([-1.0, -2.0], -a)  # pylint: disable=invalid-unary-operand-type
 
   def _testBinOp(self, a, b, out, f, types=None):
     a = ops.convert_to_tensor(value=a, dtype=np.int32)
@@ -173,6 +174,21 @@ class ArrayTest(test.TestCase):
     self.assertFalse(bool(ops.convert_to_tensor(value=0)))
     self.assertTrue(bool(ops.convert_to_tensor(value=0.1)))
     self.assertFalse(bool(ops.convert_to_tensor(value=0.0)))
+
+  def testHash(self):
+    a = ops.convert_to_tensor(value=10)
+    def eager():
+      hash(a)
+    def graph():
+      @def_function.function
+      def f(x):
+        hash(x)
+      f(a)
+    for f in [eager, graph]:
+      with self.assertRaisesRegexp(
+          TypeError,
+          r'Tensor is unhashable. Instead, use tensor.ref\(\) as the key.'):
+        f()
 
   def testFromToCompositeTensor(self):
     tensors = [ops.convert_to_tensor(0.1), ops.convert_to_tensor(0.2)]

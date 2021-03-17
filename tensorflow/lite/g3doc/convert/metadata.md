@@ -16,6 +16,31 @@ All image models published on
 and [TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite) have been
 populated with metadata.
 
+## Model with metadata format
+
+<center><img src="../images/convert/model_with_metadata.png" alt="model_with_metadata" width="70%"></center>
+<center>Figure 1. TFLite model with metadata and associated files.</center>
+
+Model metadata is defined in
+[metadata_schema.fbs](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/metadata_schema.fbs),
+a
+[FlatBuffer](https://google.github.io/flatbuffers/index.html#flatbuffers_overview)
+file. As shown in Figure 1, it is stored in the
+[metadata](https://github.com/tensorflow/tensorflow/blob/bd73701871af75539dd2f6d7fdba5660a8298caf/tensorflow/lite/schema/schema.fbs#L1208)
+field of the
+[TFLite model schema](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/schema/schema.fbs),
+under the name, `"TFLITE_METADATA"`. Some models may come with associated files,
+such as
+[classification label files](https://github.com/tensorflow/examples/blob/dd98bc2b595157c03ac9fa47ac8659bb20aa8bbd/lite/examples/image_classification/android/models/src/main/assets/labels.txt#L1).
+These files are concatenated to the end of the original model file as a ZIP
+using the ZipFile
+["append" mode](https://pymotw.com/2/zipfile/#appending-to-files) (`'a'` mode).
+TFLite Interpreter can consume the new file format in the same way as before.
+See [Pack the associated files](#pack-the-associated-files) for more
+information.
+
+See the instruction below about how to populate, visualize, and read metadata.
+
 ## Setup the metadata tools
 
 Before adding metadata to your model, you will need to a Python programming
@@ -37,7 +62,7 @@ There are three parts to the model metadata in the
 [schema](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/metadata_schema.fbs):
 
 1.  **Model information** - Overall description of the model as well as items
-    such as licence terms. See
+    such as license terms. See
     [ModelMetadata](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L640).
 2.  **Input information** - Description of the inputs and pre-processing
     required such as normalization. See
@@ -82,8 +107,8 @@ is compatible with existing TFLite framework and Interpreter. See
 [Pack mtadata and associated files into the model](#pack-metadata-and-associated-files-into-the-model)
 for more details.
 
-The associated file information can be recored in the metadata. Depending on the
-file type and where the file is attached to (i.e. `ModelMetadata`,
+The associated file information can be recorded in the metadata. Depending on
+the file type and where the file is attached to (i.e. `ModelMetadata`,
 `SubGraphMetadata`, and `TensorMetadata`),
 [the TensorFlow Lite Android code generator](../inference_with_metadata/codegen.md)
 may apply corresponding pre/post processing automatically to the object. See
@@ -328,7 +353,7 @@ populator.populate()
 
 You can pack as many associated files as you want into the model through
 `load_associated_files`. However, it is required to pack at least those files
-documented in the metadata. In this example, packing the lable file is
+documented in the metadata. In this example, packing the label file is
 mandatory.
 
 ## Visualize the metadata
@@ -375,12 +400,12 @@ does not imply the true incompatibility. When bumping up the MAJOR number, it
 does not necessarily mean the backwards compatibility is broken. Therefore, we
 use the
 [Flatbuffers file identification](https://google.github.io/flatbuffers/md__schemas.html),
-[file_identifiler](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L61),
+[file_identifier](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L61),
 to denote the true compatibility of the metadata schema. The file identifier is
 exactly 4 characters long. It is fixed to a certain metadata schema and not
 subject to change by users. If the backward compatibility of the metadata schema
 has to be broken for some reason, the file_identifier will bump up, for example,
-from “M001” to “M002”. File_identifiler is expected to be changed much less
+from “M001” to “M002”. File_identifier is expected to be changed much less
 frequently than the metadata_version.
 
 ### The minimum necessary metadata parser version
@@ -421,7 +446,7 @@ You can specify this in your `build.gradle` dependencies as follows:
 
 ```build
 dependencies {
-    implementation 'org.tensorflow:tensorflow-lite-metadata:0.0.0-nightly'
+    implementation 'org.tensorflow:tensorflow-lite-metadata:0.1.0'
 }
 ```
 
@@ -472,15 +497,39 @@ public QuantizationParams getoutputTensorQuantizationParams(int inputIndex);
 public int[] getoutputTensorShape(int inputIndex);
 ```
 
-You can also read associated files through their names with the
-`getAssociatedFile` method:
-
-```java
-public InputStream getAssociatedFile(String fileName);
-```
-
 Though the
 [TensorFlow Lite model schema](https://github.com/tensorflow/tensorflow/blob/aa7ff6aa28977826e7acae379e82da22482b2bf2/tensorflow/lite/schema/schema.fbs#L1075)
 supports multiple subgraphs, the TFLite Interpreter currently only supports a
 single subgraph. Therefore, `MetadataExtractor` omits subgraph index as an input
 argument in its methods.
+
+## Read the associated files from models
+
+The TensorFlow Lite model with metadata and associated files is essentially a
+zip file that can be unpacked with common zip tools to get the associated files.
+For example, you can unzip
+[mobilenet_v1_0.75_160_quantized](https://tfhub.dev/tensorflow/lite-model/mobilenet_v1_0.75_160_quantized/1/metadata/1)
+and extract the label file in the model as follows:
+
+```sh
+$ unzip mobilenet_v1_0.75_160_quantized_1_metadata_1.tflite
+Archive:  mobilenet_v1_0.75_160_quantized_1_metadata_1.tflite
+ extracting: labels.txt
+```
+
+You can also read associated files through the Metadata Extractor library.
+
+In Java, pass the file name into the `MetadataExtractor.getAssociatedFile`
+method:
+
+```java
+public InputStream getAssociatedFile(String fileName);
+```
+
+Similarily, in C++, this can be done with the method,
+`ModelMetadataExtractor::GetAssociatedFile`:
+
+```c++
+tflite::support::StatusOr<absl::string_view> GetAssociatedFile(
+      const std::string& filename) const;
+```

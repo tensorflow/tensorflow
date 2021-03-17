@@ -240,7 +240,7 @@ class TileOp : public OpKernel {
  private:
   template <DataType DT>
   void HandleCaseImpl(OpKernelContext* context,
-                      const gtl::ArraySlice<Tmultiples>& multiples_array,
+                      const gtl::ArraySlice<Tmultiples> multiples_array,
                       Tensor* result) {
     typedef typename EnumToDataType<DT>::Type T;
     functor::Tile<Device, T, Tmultiples>()(context->eigen_device<Device>(),
@@ -250,7 +250,7 @@ class TileOp : public OpKernel {
 
   template <DataType DT>
   void HandleCase(OpKernelContext* context,
-                  const gtl::ArraySlice<Tmultiples>& multiples_array,
+                  const gtl::ArraySlice<Tmultiples> multiples_array,
                   Tensor* result);
 
   TF_DISALLOW_COPY_AND_ASSIGN(TileOp);
@@ -259,8 +259,8 @@ class TileOp : public OpKernel {
 template <typename Device, typename Tmultiples>
 template <DataType DT>
 inline void TileOp<Device, Tmultiples>::HandleCase(
-    OpKernelContext* context,
-    const gtl::ArraySlice<Tmultiples>& multiples_array, Tensor* result) {
+    OpKernelContext* context, const gtl::ArraySlice<Tmultiples> multiples_array,
+    Tensor* result) {
   // TODO(vrv): print out the device name if useful. Currently disabled to avoid
   // having to use RTTI.
   LOG(FATAL) << "TileOp: Invalid combination of Device, DT: "
@@ -268,13 +268,13 @@ inline void TileOp<Device, Tmultiples>::HandleCase(
              << DataTypeString(DT);
 }
 
-#define HANDLE_CASE(device, dtype, Tmultiples)                              \
-  template <>                                                               \
-  template <>                                                               \
-  void TileOp<device, Tmultiples>::HandleCase<dtype>(                       \
-      OpKernelContext * context,                                            \
-      const gtl::ArraySlice<Tmultiples>& multiples_array, Tensor* result) { \
-    HandleCaseImpl<dtype>(context, multiples_array, result);                \
+#define HANDLE_CASE(device, dtype, Tmultiples)                             \
+  template <>                                                              \
+  template <>                                                              \
+  void TileOp<device, Tmultiples>::HandleCase<dtype>(                      \
+      OpKernelContext * context,                                           \
+      const gtl::ArraySlice<Tmultiples> multiples_array, Tensor* result) { \
+    HandleCaseImpl<dtype>(context, multiples_array, result);               \
   }
 
 #define HANDLE_TYPE_NAME_CPU(T)                            \
@@ -413,13 +413,13 @@ class TileGradientOp : public OpKernel {
   template <DataType DT, int NDIM>
   void HandleCase(OpKernelContext* context,
                   const std::vector<Tmultiples>& input_dims,
-                  const gtl::ArraySlice<Tmultiples>& multiples_array,
+                  const gtl::ArraySlice<Tmultiples> multiples_array,
                   Tensor* result);
 
   template <DataType DT, int NDIM>
   void HandleCaseImpl(OpKernelContext* context,
                       const std::vector<Tmultiples>& input_dims,
-                      const gtl::ArraySlice<Tmultiples>& multiples_array,
+                      const gtl::ArraySlice<Tmultiples> multiples_array,
                       Tensor* result) {
     typedef typename EnumToDataType<DT>::Type T;
 
@@ -512,7 +512,7 @@ template <typename Device, typename Tmultiples>
 template <DataType DT, int NDIM>
 inline void TileGradientOp<Device, Tmultiples>::HandleCase(
     OpKernelContext* context, const std::vector<Tmultiples>& input_dims,
-    const gtl::ArraySlice<Tmultiples>& multiples_array, Tensor* result) {
+    const gtl::ArraySlice<Tmultiples> multiples_array, Tensor* result) {
   LOG(FATAL) << "TileGradientOp: Invalid combination of Device, DT and NDIM: "
              << TypeIndex::Make<Device>().name() << ", " << DataTypeString(DT)
              << ", " << NDIM;
@@ -523,7 +523,7 @@ inline void TileGradientOp<Device, Tmultiples>::HandleCase(
   template <>                                                                  \
   void TileGradientOp<device, Tmultiples>::HandleCase<dtype, ndim>(            \
       OpKernelContext * context, const std::vector<Tmultiples>& input_dims,    \
-      const gtl::ArraySlice<Tmultiples>& multiples_array, Tensor* result) {    \
+      const gtl::ArraySlice<Tmultiples> multiples_array, Tensor* result) {     \
     HandleCaseImpl<dtype, ndim>(context, input_dims, multiples_array, result); \
   }
 

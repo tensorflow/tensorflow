@@ -74,6 +74,9 @@ class XlaExpression {
   // Builds a resource expression.
   static XlaExpression Resource(XlaResource* resource);
 
+  // Builds a resource whose value is known at a compile time.
+  static XlaExpression ConstantResource(Tensor value, XlaResource* resource);
+
   Kind kind() const { return kind_; }
 
   DataType dtype() const { return dtype_; }
@@ -81,8 +84,23 @@ class XlaExpression {
   // handle() returns the XlaOp that backs a kXlaOp expression.
   const xla::XlaOp& handle() const { return handle_; }
 
-  const Tensor& constant_value() const { return constant_value_; }
+  // Return a constant value associated with this expression. Always set for
+  // constants, might be set for resources.
+  absl::optional<Tensor> constant_value() const {
+    if (kind_ == Kind::kResource && resource_->IsOverwritten()) {
+      // The constant is no longer available if the value was overwritten.
+      return absl::nullopt;
+    }
+    return constant_value_;
+  }
 
+  // Set the bound of the expression.
+  void set_value_bound(Tensor tensor) {
+    value_bound_.emplace(std::move(tensor));
+  }
+
+  // Return the bound of the expression, if available.
+  absl::optional<Tensor> value_bound() const { return value_bound_; }
   XlaResource* resource() const { return resource_; }
 
   // Returns a human-readable summary of the expression.
@@ -124,8 +142,11 @@ class XlaExpression {
   // a tuple expression if kind_ == kTensorList.
   xla::XlaOp handle_;
 
-  // The value of the constant, if kind_ == kConstant.
-  Tensor constant_value_;
+  // The value of the constant, if available.
+  absl::optional<Tensor> constant_value_;
+
+  // The bound of the expression, if available.
+  absl::optional<Tensor> value_bound_;
 
   // The resource, if kind_ == kResource. Not owned.
   XlaResource* resource_ = nullptr;

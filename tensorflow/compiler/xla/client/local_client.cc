@@ -267,9 +267,8 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::RunAsync(
 }
 
 static ShapedBuffer MaybeOwningShapeTreeToShapedBuffer(
-    const ShapeTree<MaybeOwningDeviceMemory>& tree, se::Platform* platform,
-    int device_ordinal) {
-  ShapedBuffer result(tree.shape(), platform, device_ordinal);
+    const ShapeTree<MaybeOwningDeviceMemory>& tree, int device_ordinal) {
+  ShapedBuffer result(tree.shape(), device_ordinal);
   auto it = tree.begin();
   auto out_it = result.buffers().begin();
   for (; it != tree.end(); ++it, ++out_it) {
@@ -299,8 +298,7 @@ StatusOr<ExecutionOutput> LocalExecutable::RunAsync(
     shaped_buffer_ptrs.reserve(arguments.size());
     for (size_t i = 0; i < arguments.size(); ++i) {
       shaped_buffers.push_back(MaybeOwningShapeTreeToShapedBuffer(
-          arguments[i].Buffers(), backend_->platform(),
-          stream->parent()->device_ordinal()));
+          arguments[i].Buffers(), stream->parent()->device_ordinal()));
       shaped_buffer_ptrs.push_back(&shaped_buffers.back());
     }
 
@@ -435,14 +433,12 @@ Status LocalClient::TransferToInfeedLocal(const LiteralSlice& literal,
                                                                literal);
 }
 
-StatusOr<Literal> LocalClient::TransferFromOutfeedLocal(const Shape& shape,
-                                                        int device_ordinal) {
+Status LocalClient::TransferFromOutfeedLocal(int device_ordinal,
+                                             MutableBorrowingLiteral literal) {
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       backend().stream_executor(device_ordinal));
-  auto literal = Literal::CreateFromShape(shape);
-  TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralFromOutfeed(
-      executor, shape, &literal));
-  return std::move(literal);
+  return backend().transfer_manager()->TransferLiteralFromOutfeed(executor,
+                                                                  literal);
 }
 
 StatusOr<int> LocalClient::ReplicaNumberToDeviceOrdinal(int replica_number) {

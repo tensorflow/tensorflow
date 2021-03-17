@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/kernels/xla_ops.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
+#include "tensorflow/compiler/tf2xla/mlir_bridge_pass.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -30,44 +31,6 @@ limitations under the License.
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
-
-// Returns true iff 'ndef' is a call to a function that is compilable.  A
-// function is compilable iff every operator in the function body is
-// compilable. If 'ndef' is not compilable and 'uncompilable_node_info' is not
-// null, we will populate 'uncompilable_node_info' with uncompilable node info.
-static bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef,
-                         RecursiveCompilabilityChecker::UncompilableNodesMap*
-                             uncompilable_node_info) {
-  Device* device = flr->device();
-  const XlaOpRegistry::DeviceRegistration* registration;
-  CHECK(XlaOpRegistry::GetCompilationDevice(device->device_type(),
-                                            &registration));
-
-  // We can always *compile* resource operations, stateful RNGs and dummy ops,
-  // even if we are sometimes unable to auto-cluster them.
-  RecursiveCompilabilityChecker::OperationFilter op_filter;
-  op_filter.allow_resource_ops_in_called_functions = true;
-  op_filter.allow_stack_ops = true;
-  op_filter.allow_tensor_array_ops = true;
-  op_filter.allow_stateful_rng_ops = true;
-  op_filter.allow_control_trigger = true;
-  op_filter.allow_eliding_assert_and_checknumerics_ops = true;
-  op_filter.allow_ops_producing_or_consuming_variant = true;
-  op_filter.allow_slow_ops = true;
-  op_filter.allow_inaccurate_ops = true;
-
-  RecursiveCompilabilityChecker checker{
-      op_filter, DeviceType{registration->compilation_device_name}};
-  if (!uncompilable_node_info) {
-    // We do not need uncompilable node info. Just return the result.
-    return checker.IsCompilableCall(ndef, flr);
-  }
-
-  RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_node_result =
-      checker.FindUncompilableNodes(ndef, flr);
-  uncompilable_node_info->swap(uncompilable_node_result);
-  return uncompilable_node_info->empty();
-}
 
 bool XlaKernelCreator::CanCreateKernel(
     const FunctionLibraryRuntime& flr,
@@ -87,37 +50,6 @@ static Status CreateXlaKernel(FunctionLibraryRuntime* flr,
 
   // Make sure that kernels have been registered on the JIT device.
   XlaOpRegistry::RegisterCompilationKernels();
-
-  // Only check for compilability if the MLIR bridge is not enabled.
-  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge !=
-      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED) {
-    RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_nodes_map;
-    if (!IsCompilable(flr, node_def, &uncompilable_nodes_map)) {
-      std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>
-          uncompilable_node_info;
-      for (const auto& it : uncompilable_nodes_map) {
-        for (const auto& info : it.second.second) {
-          uncompilable_node_info.emplace_back(info);
-        }
-      }
-      string message = absl::StrCat(
-          "Function invoked by the following node is not compilable: ",
-          SummarizeNodeDef(node_def, /*max_inputs_in_summary=*/10), ".\n");
-      absl::StrAppend(&message, "Uncompilable nodes:");
-      for (const auto& node_info : uncompilable_node_info) {
-        string node_message = absl::StrCat("\n", node_info.name, ": ",
-                                           node_info.uncompilable_reason, "\n",
-                                           "\tStacktrace:\n");
-        for (const auto& stack_frame : node_info.stack_trace) {
-          absl::StrAppendFormat(&node_message, "\t\tNode: %s, function: %s\n",
-                                stack_frame.name, stack_frame.function_name);
-        }
-        absl::StrAppend(&message, node_message);
-      }
-      VLOG(1) << message;
-      return errors::InvalidArgument(message);
-    }
-  }
 
   // Get function body, constant args, and resource args.
   NameAttrList function;

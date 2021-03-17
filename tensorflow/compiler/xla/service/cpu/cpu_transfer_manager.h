@@ -42,7 +42,6 @@ class CpuTransferManager : public GenericTransferManager {
   Status TransferLiteralToInfeed(se::StreamExecutor* executor,
                                  const LiteralSlice& literal) override;
   Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
-                                    const Shape& literal_shape,
                                     MutableBorrowingLiteral literal) override;
 
   bool CanShapedBufferBeAccessedNow(
@@ -56,6 +55,9 @@ class CpuTransferManager : public GenericTransferManager {
       const se::DeviceMemoryBase& device_buffer) const override {
     return true;
   }
+
+  Status ReadDynamicShapes(se::Stream* stream, ShapedBuffer* device_buffer,
+                           Shape* device_shape) override;
 
  private:
   Status TransferBufferToInfeed(se::StreamExecutor* executor, int64 size,

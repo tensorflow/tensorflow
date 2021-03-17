@@ -34,64 +34,15 @@ limitations under the License.
 
 namespace xla {
 
-/*static*/ StatusOr<std::unique_ptr<HloModule>>
-HloRunner::CreateModuleFromString(const absl::string_view hlo_string,
-                                  const DebugOptions& debug_options) {
-  HloModuleConfig config;
-  config.set_debug_options(debug_options);
-  return ParseAndReturnUnverifiedModule(hlo_string, config);
-}
-
-namespace {
-
-// Creates an HloModule from the given proto.
-StatusOr<std::unique_ptr<HloModule>> HloProtoToModule(
-    const HloProto& proto, const DebugOptions& debug_options) {
-  TF_ASSIGN_OR_RETURN(HloModuleConfig config,
-                      HloModule::CreateModuleConfigFromProto(proto.hlo_module(),
-                                                             debug_options));
-  TF_ASSIGN_OR_RETURN(auto module,
-                      HloModule::CreateFromProto(proto.hlo_module(), config));
-  return std::move(module);
-}
-
-}  // namespace
-
-/*static*/ StatusOr<std::unique_ptr<HloModule>>
-HloRunner::ReadModuleFromBinaryProtoFile(const std::string& filename,
-                                         const DebugOptions& debug_options) {
-  HloProto proto;
-  TF_RETURN_IF_ERROR(tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
-                                                 filename, &proto));
-  return HloProtoToModule(proto, debug_options);
-}
-
-/*static*/ StatusOr<std::unique_ptr<HloModule>>
-HloRunner::ReadModuleFromTextProtoFile(const std::string& filename,
-                                       const DebugOptions& debug_options) {
-  HloProto proto;
-  TF_RETURN_IF_ERROR(
-      tensorflow::ReadTextProto(tensorflow::Env::Default(), filename, &proto));
-  return HloProtoToModule(proto, debug_options);
-}
-
-/*static*/ StatusOr<std::unique_ptr<HloModule>>
-HloRunner::ReadModuleFromHloTextFile(const std::string& filename,
-                                     const DebugOptions& debug_options) {
-  string hlo_string;
-  TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(tensorflow::Env::Default(),
-                                                  filename, &hlo_string));
-  HloModuleConfig config;
-  config.set_debug_options(debug_options);
-  return ParseAndReturnUnverifiedModule(hlo_string, config);
-}
-
 HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads) {
   BackendOptions backend_options;
   backend_options.set_platform(platform);
   backend_options.set_intra_op_parallelism_threads(
       intra_op_parallelism_threads);
   backend_ = Backend::CreateBackend(backend_options).ConsumeValueOrDie();
+  device_shape_representation_fn_ = [this](const Shape& shape) {
+    return backend_->compiler()->DeviceShapeRepresentation(shape);
+  };
   VLOG(1) << "Created HloRunner for platform: " << platform->Name();
 }
 
@@ -99,10 +50,11 @@ HloRunner::~HloRunner() {}
 
 StatusOr<ScopedShapedBuffer> HloRunner::TransferLiteralToDevice(
     const Literal& literal) {
-  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer buffer,
-                      backend().transfer_manager()->AllocateScopedShapedBuffer(
-                          literal.shape(), backend().memory_allocator(),
-                          backend().default_device_ordinal()));
+  TF_ASSIGN_OR_RETURN(
+      ScopedShapedBuffer buffer,
+      backend().transfer_manager()->AllocateScopedShapedBuffer(
+          literal.shape(), backend().memory_allocator(),
+          backend().default_device_ordinal(), device_shape_representation_fn_));
   TF_ASSIGN_OR_RETURN(
       auto stream, backend().BorrowStream(backend().default_stream_executor()));
   TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
@@ -144,6 +96,8 @@ StatusOr<Literal> HloRunner::Execute(std::unique_ptr<HloModule> module,
                                      absl::Span<const Literal* const> arguments,
                                      bool run_hlo_passes,
                                      ExecutionProfile* profile) {
+  UpdateEntryComputationLayout(module.get(), device_shape_representation_fn_);
+
   TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
                       TransferLiteralsToDevice(arguments));
   TF_ASSIGN_OR_RETURN(ExecutionOutput result,
@@ -155,26 +109,9 @@ StatusOr<Literal> HloRunner::Execute(std::unique_ptr<HloModule> module,
   return TransferLiteralFromDevice(result.Result());
 }
 
-StatusOr<Literal> HloRunner::Execute(std::unique_ptr<HloModule> module,
-                                     absl::Span<const Literal> arguments,
-                                     bool run_hlo_passes,
-                                     ExecutionProfile* profile) {
-  // Construct a vector of plain pointers for the arguments.
-  std::vector<const Literal*> argument_pointers;
-  argument_pointers.reserve(arguments.size());
-  for (const auto& argument : arguments) {
-    argument_pointers.push_back(&argument);
-  }
-  return Execute(
-      /*module=*/std::move(module),
-      /*arguments=*/argument_pointers,
-      /*run_hlo_passes=*/run_hlo_passes,
-      /*profile=*/profile);
-}
-
-StatusOr<Literal> HloRunner::Execute(std::unique_ptr<Executable> executable,
-                                     absl::Span<const Literal> arguments,
-                                     ExecutionProfile* profile) {
+StatusOr<Literal> HloRunner::ExecuteWithExecutable(
+    std::unique_ptr<Executable> executable,
+    absl::Span<const Literal* const> arguments, ExecutionProfile* profile) {
   TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
                       TransferLiteralsToDevice(arguments));
   TF_ASSIGN_OR_RETURN(ExecutionOutput result,
@@ -307,7 +244,8 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
       TF_ASSIGN_OR_RETURN(
           ScopedShapedBuffer argument_buffer,
           backend().transfer_manager()->AllocateScopedShapedBuffer(
-              argument->shape(), backend().memory_allocator(), device));
+              argument->shape(), backend().memory_allocator(), device,
+              device_shape_representation_fn_));
       TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
           streams.back().get(), *argument, argument_buffer));
       argument_buffers.push_back(std::move(argument_buffer));
@@ -354,9 +292,9 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
         VLOG(1) << "Starting outfeed on device " << device;
         for (int64 step = 1;
              options.infeed_steps < 0 || step <= options.infeed_steps; ++step) {
-          Literal literal;
+          Literal literal(options.outfeed_shape);
           TF_CHECK_OK(backend().transfer_manager()->TransferLiteralFromOutfeed(
-              executor, options.outfeed_shape, &literal));
+              executor, &literal));
           if (options.outfeed_values != nullptr) {
             options.outfeed_values->push_back(std::move(literal));
           }
