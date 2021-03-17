@@ -426,6 +426,13 @@ td_library(
     deps = [":OpBaseTdFiles"],
 )
 
+td_library(
+    name = "ReducerTdFiles",
+    srcs = ["include/mlir/Reducer/Passes.td"],
+    includes = ["include"],
+    deps = [":OpBaseTdFiles"],
+)
+
 ##---------------------------------------------------------------------------##
 # Affine dialect.
 ##---------------------------------------------------------------------------##
@@ -5697,6 +5704,45 @@ cc_library(
         ":DLTIBaseIncGen",
         ":DataLayoutInterfaces",
         ":IR",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+gentbl(
+    name = "ReducerIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-pass-decls",
+            "include/mlir/Reducer/Passes.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Reducer/Passes.td",
+    deps = [
+        ":PassBaseTdFiles",
+        ":ReducerTdFiles",
+    ],
+)
+
+cc_binary(
+    name = "mlir-reduce",
+    srcs = glob([
+        "include/mlir/Reducer/*.h",
+        "include/mlir/Reducer/Passes/*.h",
+        "tools/mlir-reduce/*.cpp",
+        "tools/mlir-reduce/Passes/*.cpp",
+    ]) + ["lib/Reducer/Tester.cpp"],
+    includes = ["include"],
+    stamp = 0,
+    deps = [
+        ":AllPassesAndDialectsNoRegistration",
+        ":IR",
+        ":Parser",
+        ":Pass",
+        ":ReducerIncGen",
+        ":Support",
+        ":Transforms",
         "@llvm-project//llvm:Support",
     ],
 )
