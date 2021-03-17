@@ -18,8 +18,6 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#include <type_traits>
-
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda_fp16.h"
 #endif
@@ -197,88 +195,6 @@ __device__ EIGEN_ALWAYS_INLINE Eigen::half GpuShuffleXorSync(
 }
 // Aliased in gpu_device_functions.h
 #endif
-
-#ifdef __CUDA_ARCH__
-#define UNROLL_ON_DEVICE _Pragma("unroll")
-#else
-#define UNROLL_ON_DEVICE
-#endif
-
-// Represents an aligned array of N elements of T. Data pointers can be
-// reinterpreted as this type to generate vectorized loads/stores in a kernel.
-template <typename T, int N>
-class alignas(alignof(T) * N) AlignedVector {
- public:
-  typedef T value_type;
-  static constexpr const int kSize = N;
-
-  AlignedVector() = default;
-
-  // Uniform initialization.
-  __host__ __device__ explicit AlignedVector(value_type uniform) {
-    UNROLL_ON_DEVICE for (int i = 0; i < kSize; ++i) { values_[i] = uniform; }
-  }
-  // Uniform initialization with explicit conversion.
-  // Note: This is required for T=Eigen::half because it only supports explicit
-  // conversions from other types and its template constructor is too relaxed
-  // to be able to use std::is_constructible.
-  template <typename U, typename std::enable_if<std::is_arithmetic<U>::value,
-                                                int>::type = 0>
-  __host__ __device__ explicit AlignedVector(U uniform_u) {
-    value_type uniform(uniform_u);
-    UNROLL_ON_DEVICE for (int i = 0; i < kSize; ++i) { values_[i] = uniform; }
-  }
-
- private:
-  value_type values_[N];
-};
-
-#undef UNROLL_ON_DEVICE
-
-// Returns the maximum power-of-two alignment (in units of elements, not bytes)
-// of a stride or pointer value.
-inline int64 alignment_of(int64 element_stride) {
-  return element_stride & -element_stride;
-}
-
-template <typename T>
-inline int64 alignment_of(T* ptr) {
-  const intptr_t ptr_val = reinterpret_cast<std::uintptr_t>(ptr);
-  // Pointers should always be aligned to sizeof(T) bytes.
-  DCHECK_EQ(ptr_val % sizeof(T), 0);
-  // Note that we want the alignment in elements, not bytes.
-  return alignment_of(ptr_val / sizeof(T));
-}
-
-template <typename... Args>
-int64 MinAlignmentOf(Args... args) {
-  return std::min({alignment_of(args)...});
-}
-
-// Calls Functor<vec_size>()(args...) with vec_size set to the optimal GPU
-// vector instruction size for type T that is <= max_vec_size. The max_vec_size
-// argument should be set to the minimum alignment of all relevant parameters.
-template <typename T, template <int vec_size> typename Functor,
-          typename... Args>
-auto DispatchToVectorized(int64 max_vec_size, Args&&... args) {
-  constexpr const int kOptimalVecSizeBytes = 16;
-  // The optimal number of (aligned) elements of T to load/store in a
-  // single instruction inside a kernel.
-  constexpr const int optimal_vec_size =
-      (kOptimalVecSizeBytes - 1) / sizeof(T) + 1;
-  int64 vec_size = std::min((int64)optimal_vec_size, max_vec_size);
-  if (vec_size >= 16) {
-    return Functor<16>()(std::forward<Args>(args)...);
-  } else if (vec_size >= 8) {
-    return Functor<8>()(std::forward<Args>(args)...);
-  } else if (vec_size >= 4) {
-    return Functor<4>()(std::forward<Args>(args)...);
-  } else if (vec_size >= 2) {
-    return Functor<2>()(std::forward<Args>(args)...);
-  } else {
-    return Functor<1>()(std::forward<Args>(args)...);
-  }
-}
 
 namespace gpu_helper {
 template <typename T, typename OutType = int32>
