@@ -87,6 +87,8 @@ __global__ __launch_bounds__(1024) void CountElementsPerRowKernel(
       continue;
     }
     GpuAtomicAdd(&elements_per_row[row], 1);
+    // Note that this only needs to compare rows, not columns, to satisfy the
+    // row-major order invariant.
     if (i > 0 && row < indices[(i - 1) * rank]) {
       // TODO(benbarsdell): Replace this with atomic_ref::store when available.
       GpuAtomicMax(rows_are_not_ordered, 1);
@@ -134,9 +136,6 @@ __global__ __launch_bounds__(1024) void ScatterInputElementsKernel(
   GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
     Tindex input_i = input_index_map ? input_index_map[i] : i;
     Tindex row = indices[input_i * rank];
-    if (row < 0 || row >= dense_rows) {
-      continue;  // Ignore indices that are out of range
-    }
     Tindex output_i = i + num_new_rows_before[row];
     for (int dim = 0; dim < rank; ++dim) {
       output_indices[output_i * rank + dim] = indices[input_i * rank + dim];
@@ -399,7 +398,7 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
          num_empty_rows_through_t, num_empty_rows_through, input_row_ends_t,
          input_row_ends, empty_row_indicator_t, empty_row_indicator,
          done]() -> void {
-      CHECK(done);  // Crash OK
+      DCHECK(done);  // Crash OK
 
       // Ensure that within the callback, the proper GPU settings are
       // configured.
