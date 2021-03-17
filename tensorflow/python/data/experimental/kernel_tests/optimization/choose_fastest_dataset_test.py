@@ -20,6 +20,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
@@ -95,6 +96,25 @@ class ChooseFastestDatasetTest(test_base.DatasetTestBase,
       merge = optimization._ChooseFastestDataset([dataset_a, dataset_b])
       self.assertDatasetProduces(
           merge, expected_error=(errors.InvalidArgumentError, error_msg))
+
+
+class ChooseFastestDatasetCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCore(self):
+    num_outputs = 10
+    batch_size = 2
+
+    def build_ds():
+      dataset = dataset_ops.Dataset.range(num_outputs)
+      map_fn = lambda x: x * 2
+      return optimization._ChooseFastestDataset([  # pylint: disable=protected-access
+          dataset.map(map_fn).batch(batch_size),
+          dataset.batch(batch_size).map(map_fn)
+      ])
+
+    self.run_core_tests(build_ds, num_outputs // 2)
 
 
 if __name__ == "__main__":

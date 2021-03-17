@@ -264,6 +264,7 @@ tf_py_test(
     size = "small",
     srcs = ["from_sparse_tensor_slices_test.py"],
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -287,6 +288,7 @@ tf_py_test(
     size = "small",
     srcs = ["from_tensors_test.py"],
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -310,6 +312,7 @@ tf_py_test(
     size = "small",
     srcs = ["from_tensor_slices_test.py"],
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -677,6 +680,7 @@ tf_py_test(
     size = "small",
     srcs = ["repeat_test.py"],
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -727,6 +731,7 @@ tf_py_test(
     size = "small",
     srcs = ["skip_test.py"],
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -742,6 +747,7 @@ tf_py_test(
     size = "small",
     srcs = ["take_test.py"],
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
