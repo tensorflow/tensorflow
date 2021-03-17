@@ -1201,12 +1201,11 @@ def config_info_line(name, help_text):
   print('\t--config=%-12s\t# %s' % (name, help_text))
 
 
-def configure_ios():
-  """Configures TensorFlow for iOS builds.
-
-  This function will only be executed if `is_macos()` is true.
-  """
+def configure_ios(environ_cp):
+  """Configures TensorFlow for iOS builds."""
   if not is_macos():
+    return
+  if not get_var(environ_cp, 'TF_CONFIGURE_IOS', 'iOS', False):
     return
   for filepath in APPLE_BAZEL_FILES:
     existing_filepath = os.path.join(_TF_WORKSPACE_ROOT, filepath + '.apple')
@@ -1326,8 +1325,6 @@ def main():
 
   if is_macos():
     environ_cp['TF_NEED_TENSORRT'] = '0'
-  else:
-    environ_cp['TF_CONFIGURE_IOS'] = '0'
 
   with_xla_support = environ_cp.get('TF_ENABLE_XLA', None)
   if with_xla_support is not None:
@@ -1451,9 +1448,7 @@ def main():
 
   system_specific_test_config(environ_cp)
 
-  set_action_env_var(environ_cp, 'TF_CONFIGURE_IOS', 'iOS', False)
-  if environ_cp.get('TF_CONFIGURE_IOS') == '1':
-    configure_ios()
+  configure_ios(environ_cp)
 
   print('Preconfigured Bazel build configs. You can use any of the below by '
         'adding "--config=<>" to your build command. See .bazelrc for more '

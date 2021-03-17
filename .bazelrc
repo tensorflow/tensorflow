@@ -542,7 +542,6 @@ try-import %workspace%/.bazelrc.user
 # Here are bazelrc configs for release builds
 build:release_base --config=v2
 build:release_base --distinct_host_configuration=false
-build:release_base --action_env TF_CONFIGURE_IOS="0"
 
 build:release_cpu_linux --config=release_base
 build:release_cpu_linux --config=avx_linux
