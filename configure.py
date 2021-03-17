@@ -1329,8 +1329,10 @@ def main():
   else:
     environ_cp['TF_CONFIGURE_IOS'] = '0'
 
-  if environ_cp.get('TF_ENABLE_XLA', '1') == '1':
-    write_to_bazelrc('build --config=xla')
+  with_xla_support = environ_cp.get('TF_ENABLE_XLA', None)
+  if with_xla_support is not None:
+    write_to_bazelrc('build --define=with_xla_support=%s' % (
+        'true' if int(with_xla_support) else 'false'))
 
   set_action_env_var(
       environ_cp, 'TF_NEED_ROCM', 'ROCm', False, bazel_config_name='rocm')

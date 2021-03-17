@@ -352,15 +352,15 @@ build:avx_win --copt=/arch=AVX
 build:avx2_win --copt=/arch=AVX2
 
 # Options to build TensorFlow 1.x or 2.x.
-build:v1 --define=tf_api_version=1
-build:v2 --define=tf_api_version=2
-build:v1 --action_env=TF2_BEHAVIOR=0
-build:v2 --action_env=TF2_BEHAVIOR=1
+build:v1 --define=tf_api_version=1 --action_env=TF2_BEHAVIOR=0
+build:v2 --define=tf_api_version=2 --action_env=TF2_BEHAVIOR=1
 build --config=v2
-test --config=v2
 
-# Enable XLA
-build:xla --define=with_xla_support=true
+# Enable XLA except on mobile.
+build         --config=xla
+build:xla     --define=with_xla_support=true
+build:android --define=with_xla_support=false
+build:ios     --define=with_xla_support=false
 
 # BEGIN TF REMOTE BUILD EXECUTION OPTIONS
 # Options when using remote execution
@@ -394,7 +394,6 @@ build:rbe_linux --host_java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8
 build:rbe_linux --java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8
 
 # Non-rbe settings we should include because we do not run configure
-build:rbe_linux --config=xla
 build:rbe_linux --config=avx_linux
 build:rbe_linux --config=short_logs
 # TODO(gunan): Check why we need this specified in rbe, but not in other builds.
