@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <iostream>
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
@@ -31,43 +32,18 @@ namespace {
 
 using namespace ops;  // NOLINT(build/namespaces)
 
-class ResourceVariableGradTest : public ::testing::Test {
- protected:
-  ResourceVariableGradTest() : scope_(Scope::NewRootScope()) {}
-
-  void RunTest(const Output& x, const TensorShape& x_shape, const Output& y,
-               const TensorShape& y_shape) {
-    TF_ASSERT_OK(scope_.status());
-    float max_error;
-    TF_ASSERT_OK((ComputeGradientError<float, float, float>(
-        scope_, {x}, {x_shape}, {y}, {y_shape}, &max_error)));
-    EXPECT_LT(max_error, 1e-3);
-  }
-
-  void RunTest(const OutputList& xs, const std::vector<TensorShape>& x_shapes,
-               const OutputList& ys, const std::vector<TensorShape>& y_shapes) {
-    TF_ASSERT_OK(scope_.status());
-    float max_error;
-    TF_ASSERT_OK((ComputeGradientError<float, float, float>(
-        scope_, xs, x_shapes, ys, y_shapes, &max_error)));
-    EXPECT_LT(max_error, 1e-3);
-  }
-
-  Scope scope_;
-};
-
-TEST_F(ResourceVariableGradTest, ReadVariableOpGrad) {
+TEST(ResourceVariableGradTest, ReadVariableOpGrad) {
   TensorShape shape({});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
 
   auto var = VarHandleOp(scope_, DT_FLOAT, shape);
-  auto init = AssignVariableOp(scope_, var, Const(scope_, (float) 2, {}));
+  auto init = AssignVariableOp(scope_, var, Const(scope_, (float) 2, shape));
 
   auto temp = ReadVariableOp(scope_, var, DT_FLOAT);
 
   auto y = Mul(scope_, temp, x);
 
-  auto dy = ops::Cast(scope_, ops::Const(scope_, 1.0, shape), DT_FLOAT);
+  auto dy = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
 
   OutputList dxs;
   TF_ASSERT_OK(AddSymbolicGradients(scope_, {y}, {var}, {dy}, &dxs));
