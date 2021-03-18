@@ -38,7 +38,6 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers.preprocessing import index_lookup
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
-from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
@@ -1044,17 +1043,31 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
     expected_output = [[2, 3, 4, 5], [5, 0, 2, 1]]
 
     vocab_file = self._write_to_temp_file("temp", vocab_data)
-    vocabulary_initializer = lookup_ops.TextFileInitializer(
-        filename=vocab_file,
-        key_dtype=dtypes.string,
-        key_index=lookup_ops.TextFileIndex.WHOLE_LINE,
-        value_dtype=dtypes.int64,
-        value_index=lookup_ops.TextFileIndex.LINE_NUMBER,
-        value_index_offset=2)
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
     layer = get_layer_class()(
-        vocabulary=vocabulary_initializer,
+        vocabulary=vocab_file,
+        max_tokens=None,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        dtype=dtypes.string)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_int_output_file_vocab_nonstandard_mask(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "", "earth", "michigan"]])
+    expected_output = [[2, 3, 4, 5], [5, 0, 2, 1]]
+
+    vocab_file = self._write_to_temp_file("temp", vocab_data)
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        vocabulary=vocab_file,
         max_tokens=None,
         num_oov_indices=1,
         mask_token="",
@@ -1071,17 +1084,9 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
     expected_output = [[2, 3, 4, 5], [5, 0, 2, 1]]
 
     vocab_file = self._write_to_temp_file("temp", vocab_data)
-    vocabulary_initializer = lookup_ops.TextFileInitializer(
-        filename=vocab_file,
-        key_dtype=dtypes.int64,
-        key_index=lookup_ops.TextFileIndex.WHOLE_LINE,
-        value_dtype=dtypes.int64,
-        value_index=lookup_ops.TextFileIndex.LINE_NUMBER,
-        value_index_offset=2)
-
     input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
     layer = get_layer_class()(
-        vocabulary=vocabulary_initializer,
+        vocabulary=vocab_file,
         max_tokens=None,
         num_oov_indices=1,
         mask_token=0,
@@ -1396,6 +1401,16 @@ class IndexLookupVocabularyTest(keras_parameterized.TestCase,
         dtype=dtypes.int64)
     with self.assertRaisesRegex(ValueError, "Reserved mask"):
       layer.set_vocabulary(vocab_data)
+
+  def test_no_vocab_file_string_fails(self):
+    with self.assertRaisesRegex(ValueError, ".*non_existant_file.*"):
+      _ = get_layer_class()(
+          vocabulary="non_existant_file",
+          max_tokens=None,
+          num_oov_indices=1,
+          mask_token=0,
+          oov_token=-1,
+          dtype=dtypes.int64)
 
 
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
