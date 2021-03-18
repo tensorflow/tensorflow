@@ -16,7 +16,6 @@ limitations under the License.
 #include <cstddef>
 #include <vector>
 
-#include "llvm/ADT/EquivalenceClasses.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -52,96 +51,6 @@ namespace mlir {
 namespace kernel_gen {
 namespace transforms {
 namespace {
-
-/// A temporary buffer size analysis that is correct but may be incomplete.
-class BufferSizeAnalysis {
- public:
-  BufferSizeAnalysis(FuncOp f, const BufferAliasAnalysis &aliases) {
-    build(f, aliases);
-  }
-
-  bool is_same_size(Value a, Value b) { return ecs_.isEquivalent(a, b); }
-
- private:
-  void build(FuncOp &f, const BufferAliasAnalysis &aliases) {
-    auto buffers = find_buffer_values(f);
-
-    // Memrefs with statically known same shape and same symbol-free affine maps
-    // must be of the same size.
-    int n = buffers.size();
-    for (int i = 0; i < n; ++i) {
-      for (int j = i + 1; j < n; ++j) {
-        Value a = buffers[i];
-        Value b = buffers[j];
-        auto a_ty = a.getType().dyn_cast<MemRefType>();
-        auto b_ty = b.getType().dyn_cast<MemRefType>();
-        if (a_ty && b_ty && a_ty.hasStaticShape() && b_ty.hasStaticShape() &&
-            a_ty.getNumElements() == b_ty.getNumElements() &&
-            a_ty.getElementType() == b_ty.getElementType() &&
-            affine_maps_symbol_free_and_equal(a_ty.getAffineMaps(),
-                                              b_ty.getAffineMaps())) {
-          ecs_.unionSets(a, b);
-        }
-      }
-    }
-
-    // Operands to `linalg.generic` with equal affine maps must be of same size.
-    f.walk([&](linalg::GenericOp genericOp) {
-      auto operand_buffers = genericOp.getShapedOperands();
-      int n = operand_buffers.size();
-      for (int i = 0; i < n; ++i) {
-        for (int j = i + 1; j < n; ++j) {
-          Value a = operand_buffers[i];
-          Value b = operand_buffers[j];
-          auto a_ty = a.getType().dyn_cast<MemRefType>();
-          auto b_ty = b.getType().dyn_cast<MemRefType>();
-          if (a_ty && b_ty && a_ty.getElementType() == b_ty.getElementType() &&
-              a_ty.getAffineMaps() == b_ty.getAffineMaps()) {
-            AffineMap map_i = genericOp.getIndexingMap(i);
-            AffineMap map_j = genericOp.getIndexingMap(j);
-            if (map_i == map_j && map_i.isPermutation()) ecs_.unionSets(a, b);
-          }
-        }
-      }
-    });
-
-    // All aliases of a memref must be of the same underlying buffer size.
-    for (auto e : aliases) {
-      Value value = e.getFirst();
-      if (!value.getType().isa<BaseMemRefType>()) continue;
-      for (Value alias : e.getSecond()) {
-        assert(alias.getType().isa<BaseMemRefType>() &&
-               "Expected aliases of memref to be memrefs.");
-        ecs_.unionSets(value, alias);
-      }
-    }
-  }
-
-  bool affine_maps_symbol_free_and_equal(ArrayRef<AffineMap> as,
-                                         ArrayRef<AffineMap> bs) {
-    auto is_symbol_free = [](AffineMap map) {
-      return map.getNumSymbols() == 0;
-    };
-    return llvm::all_of(as, is_symbol_free) &&
-           llvm::all_of(bs, is_symbol_free) && as == bs;
-  }
-
-  llvm::SmallVector<Value, 8> find_buffer_values(FuncOp f) {
-    llvm::SmallVector<Value, 8> buffers;
-    f.walk([&](Operation *op) {
-      for (Value val : op->getResults())
-        if (val.getType().isa<BaseMemRefType>()) buffers.push_back(val);
-    });
-    f.walk([&](Block *block) {
-      for (Value val : block->getArguments()) {
-        if (val.getType().isa<BaseMemRefType>()) buffers.push_back(val);
-      }
-    });
-    return buffers;
-  }
-
-  llvm::EquivalenceClasses<Value> ecs_;
-};
 
 class BufferReuseAnalysis {
  public:
@@ -190,16 +99,14 @@ class BufferReuseAnalysis {
 
   void find_reuse_candiates(FuncOp &f, BufferAliasAnalysis &aliases) {
     Liveness liveness(f);
-    BufferSizeAnalysis size_equivalences(f, aliases);
     f.walk([&](Block *block) {
       find_reuse_candiates(block, aliases, liveness.getLiveness(block),
-                           size_equivalences, f.getArguments());
+                           f.getArguments());
     });
   }
 
   void find_reuse_candiates(Block *block, BufferAliasAnalysis &aliases,
                             const LivenessBlockInfo *liveness,
-                            BufferSizeAnalysis &size_equivalences,
                             ArrayRef<BlockArgument> arguments) {
     for (Operation &op : *block) {
       auto alloc_op = dyn_cast<memref::AllocOp>(op);
@@ -215,10 +122,6 @@ class BufferReuseAnalysis {
       SmallVector<int32_t, 2> local_reuse_candidates;
       for (BlockArgument old_buffer : arguments) {
         if (!old_buffer.getType().isa<BaseMemRefType>()) continue;
-
-        // Size criterion: Do not reuse buffers of different size as they may be
-        // too small.
-        if (!size_equivalences.is_same_size(new_buffer, old_buffer)) continue;
 
         // Lifetime criterion: Only reuse buffers that are no longer used on
         // first reuse, i.e. they are no longer alive.

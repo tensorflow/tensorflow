@@ -32,7 +32,7 @@ func @direct_reuse(%not_a_memref : index,
                    %reusable_1 : memref<6xi64>) -> memref<2x3xi64>
                    attributes {tf_entry} {
   // CHECK: alloc
-  // CHECK-SAME: reuse_input_candidates = [4 : i32, 5 : i32]
+  // CHECK-SAME: reuse_input_candidates = [1 : i32, 2 : i32, 3 : i32, 4 : i32, 5 : i32]
   %result = memref.alloc() : memref<2x3xi64>
   return %result : memref<2x3xi64>
 }
@@ -357,7 +357,7 @@ func @abs_unranked_i64(%arg : memref<*xi64>,
   %flat_arg = memref.reshape %arg(%flat_shape)
       : (memref<*xi64>, memref<1xindex>) -> memref<?xi64>
   // CHECK: alloc
-  // CHECK-SAME: reuse_input_candidates = [0 : i32], reuse_output = 0 : i32
+  // CHECK-SAME: reuse_input_candidates = [0 : i32, 2 : i32], reuse_output = 0 : i32
   %flat_result = memref.alloc(%arg_size) : memref<?xi64>
   linalg.generic {
     indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>],
