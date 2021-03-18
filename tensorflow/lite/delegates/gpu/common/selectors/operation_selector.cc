@@ -459,20 +459,17 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       }
       return absl::OkStatus();
     }
-    case OperationType::FULLY_CONNECTED:
-    case OperationType::FULLY_CONNECTED_INT8: {
-      FullyConnectedAttributes fc_attr;
-      if (op_type == OperationType::FULLY_CONNECTED) {
-        fc_attr =
-            absl::any_cast<FullyConnectedAttributes>(node.operation.attributes);
-      } else if (op_type == OperationType::FULLY_CONNECTED_INT8) {
-        FullyConnectedInt8Attributes quant_attr =
-            absl::any_cast<FullyConnectedInt8Attributes>(
-                node.operation.attributes);
-        fc_attr = DequatizeFullyConnectedAttr(quant_attr);
-      }
-      *gpu_op = SelectFullyConnected(fc_attr, gpu_info, op_def,
+    case OperationType::FULLY_CONNECTED: {
+      auto attr =
+          absl::any_cast<FullyConnectedAttributes>(node.operation.attributes);
+      *gpu_op = SelectFullyConnected(attr, gpu_info, op_def,
                                      inputs[0]->tensor.shape.b);
+      return absl::OkStatus();
+    }
+    case OperationType::FULLY_CONNECTED_INT8: {
+      auto attr = absl::any_cast<FullyConnectedInt8Attributes>(
+          node.operation.attributes);
+      *gpu_op = SelectFullyConnected(attr, gpu_info, op_def);
       return absl::OkStatus();
     }
     case OperationType::LSTM: {
