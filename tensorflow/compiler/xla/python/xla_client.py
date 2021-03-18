@@ -325,17 +325,18 @@ HostBufferSemantics = _xla.HostBufferSemantics
 #   def size_of_generated_code_in_bytes(self) -> int:
 #     """Return generated binary size, or -1 if not known."""
 #
-#   def execute_on_local_devices(self, arguments: [[Buffer]]) -> [Buffer]:
+#   def execute_sharded_on_local_devices(self, arguments: [[Buffer]])
+#       -> [Buffer]:
 #     """Execute on many replicas with Buffer arguments and return value.
 #
 #     Args:
-#       arguments: A sequence of sequences of Buffers. The i'th inner sequence
-#         comprises the arguments for execution on the i'th local device.
+#       arguments: A sequence of sequences of Buffers. The i'th element of each
+#         sequence comprises the arguments for execution on the i'th local
+#         device.
 #
 #     Returns:
-#       A list of the computation's outputs for each local device, as a Buffer.
-#       If a shallow sequence of arguments was passed in for `arguments`, then
-#       the sole, zero'th device's output is returned instead, as a Buffer.
+#       A list of the computation's outputs as a list of Buffers for each
+#       device.
 #     """
 #
 # There are different implementations of Executable for different backends.
@@ -366,19 +367,12 @@ def execute_with_python_values_replicated(executable, arguments, backend):
   """
   devices = executable.local_devices()
   # pylint: disable=g-complex-comprehension
-  flat_args = [(arg, devices[replica])
-               for replica, replica_args in enumerate(arguments)
-               for arg in replica_args]
-  flat_arg_buffers = [
-      backend.buffer_from_pyval(pyval, device) for pyval, device in flat_args
-  ]
-  arg_buffers = []
-  for replica_args in arguments:
-    arg_buffers.append(flat_arg_buffers[:len(replica_args)])
-    flat_arg_buffers = flat_arg_buffers[len(replica_args):]
-  return [[x.to_py()
-           for x in xs]
-          for xs in executable.execute_on_local_devices(arg_buffers)]
+  def copy_to_devices(pyvals):
+    return [backend.buffer_from_pyval(v, d) for v, d in zip(pyvals, devices)]
+
+  inputs = [copy_to_devices(pyvals) for pyvals in zip(*arguments)]
+  outputs = executable.execute_sharded_on_local_devices(inputs)
+  return [[x.to_py() for x in xs] for xs in zip(*outputs)]
 
 
 class PaddingType(enum.Enum):
