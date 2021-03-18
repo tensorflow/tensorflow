@@ -58,14 +58,14 @@ namespace wrap {
 
 #define STREAM_EXECUTOR_ROCFFT_WRAP(__name)                               \
   struct DynLoadShim__##__name {                                          \
-    static const char* kName;                                             \
+    static const char *kName;                                             \
     using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
-    static void* GetDsoHandle() {                                         \
+    static void *GetDsoHandle() {                                         \
       auto s = internal::CachedDsoLoader::GetHipfftDsoHandle();           \
       return s.ValueOrDie();                                              \
     }                                                                     \
     static FuncPtrT LoadOrDie() {                                         \
-      void* f;                                                            \
+      void *f;                                                            \
       auto s = port::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
                                                           kName, &f);     \
       CHECK(s.ok()) << "could not find " << kName                         \
@@ -77,12 +77,12 @@ namespace wrap {
       return f;                                                           \
     }                                                                     \
     template <typename... Args>                                           \
-    hipfftResult operator()(GpuExecutor* parent, Args... args) {          \
+    hipfftResult operator()(GpuExecutor *parent, Args... args) {          \
       gpu::ScopedActivateExecutorContext sac{parent};                     \
       return DynLoad()(args...);                                          \
     }                                                                     \
   } __name;                                                               \
-  const char* DynLoadShim__##__name::kName = #__name;
+  const char *DynLoadShim__##__name::kName = #__name;
 
 #endif
 
@@ -328,7 +328,7 @@ port::Status ROCMFftPlan::Initialize(GpuExecutor *parent, Stream *stream,
 }
 
 port::Status ROCMFftPlan::UpdateScratchAllocator(
-    Stream* stream, ScratchAllocator* scratch_allocator) {
+    Stream *stream, ScratchAllocator *scratch_allocator) {
   if (scratch_size_bytes_ != 0) {
     auto allocated = scratch_allocator->AllocateBytes(scratch_size_bytes_);
     if (!allocated.ok() || (scratch_ = allocated.ValueOrDie()) == nullptr) {
@@ -525,7 +525,7 @@ bool ROCMFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT hipfftExec,
   // && std::is_same<OutputT, std::complex<float>>::value;
   bool isD2Z = std::is_same<InputT, double>::value;
 
-  if (input.opaque() != output->opaque() && (isR2C || isD2Z) && 
+  if (input.opaque() != output->opaque() && (isR2C || isD2Z) &&
       input.size() > 0) {
     auto *allocator = rocm_fft_plan->GetScratchAllocator();
     if (allocator) {
@@ -575,7 +575,7 @@ bool ROCMFft::DoFftWithDirectionInternal(Stream *stream, fft::Plan *plan,
   // && std::is_same<OutputT, std::complex<float>>::value;
   bool isD2Z = std::is_same<InputT, double>::value;
 
-  if (input.opaque() != output->opaque() && (isR2C || isD2Z) && 
+  if (input.opaque() != output->opaque() && (isR2C || isD2Z) &&
       input.size() > 0) {
     auto *allocator = rocm_fft_plan->GetScratchAllocator();
     if (allocator) {
