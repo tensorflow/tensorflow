@@ -26,26 +26,46 @@ limitations under the License.
 
 namespace tensorflow {
 
-static Status InitDeviceModule(void* dso_handle) {
-  void* dso_symbol;
+static Status InitDeviceAndGraphModule(void* dso_handle) {
+  void* dso_symbol_se;
+  void* dso_symbol_graph;
   tensorflow::Env* env = tensorflow::Env::Default();
 
-  TF_RETURN_IF_ERROR(
-      env->GetSymbolFromLibrary(dso_handle, "SE_InitPlugin", &dso_symbol));
-  auto init_fn = reinterpret_cast<stream_executor::SEInitPluginFn>(dso_symbol);
+  Status status_se =
+      env->GetSymbolFromLibrary(dso_handle, "SE_InitPlugin", &dso_symbol_se);
+  Status status_graph =
+      env->GetSymbolFromLibrary(dso_handle, "TF_InitGraph", &dso_symbol_graph);
 
-  string device_type, platform_name;
-  TF_RETURN_IF_ERROR(stream_executor::InitStreamExecutorPlugin(
-      init_fn, &device_type, &platform_name));
+  // Raise error if neither device nor graph is found.
+  if (errors::IsNotFound(status_se) && errors::IsNotFound(status_graph)) {
+    return errors::NotFound(status_se.ToString() + " " +
+                            status_graph.ToString());
+  }
 
-  DeviceFactory::Register(
-      device_type, new PluggableDeviceFactory(device_type, platform_name),
-      /*priority=*/220, /*is_pluggable_device=*/true);
+  if (status_se == Status::OK()) {
+    auto init_fn =
+        reinterpret_cast<stream_executor::SEInitPluginFn>(dso_symbol_se);
 
-  TF_RETURN_IF_ERROR(CopyTensor::Register(
-      DeviceType(device_type), DeviceType(device_type),
-      PluggableDeviceUtil::DeviceToDeviceCopy,
-      /*is_pluggable_device=*/true));  // Register the Copy tensor.
+    string device_type, platform_name;
+    TF_RETURN_IF_ERROR(stream_executor::InitStreamExecutorPlugin(
+        init_fn, &device_type, &platform_name));
+
+    DeviceFactory::Register(
+        device_type, new PluggableDeviceFactory(device_type, platform_name),
+        /*priority=*/220, /*is_pluggable_device=*/true);
+
+    TF_RETURN_IF_ERROR(CopyTensor::Register(
+        DeviceType(device_type), DeviceType(device_type),
+        PluggableDeviceUtil::DeviceToDeviceCopy,
+        /*is_pluggable_device=*/true));  // Register the Copy tensor.
+  }
+
+  if (status_graph == Status::OK()) {
+    auto init_fn =
+        reinterpret_cast<grappler::TFInitGraphPluginFn>(dso_symbol_graph);
+    TF_RETURN_IF_ERROR(grappler::InitGraphPlugin(init_fn));
+  }
+
   return Status::OK();
 }
 
@@ -61,22 +81,12 @@ static Status InitKernelModule(void* dso_handle) {
   return Status::OK();
 }
 
-static Status InitGraphModule(void* dso_handle) {
-  void* dso_symbol;
-  tensorflow::Env* env = tensorflow::Env::Default();
-  TF_RETURN_IF_ERROR(grappler::InitGraphPlugin(dso_handle));
-  return Status::OK();
-}
-
 Status RegisterPluggableDevicePlugin(void* dso_handle) {
-  // Step 1 Init Device Module
-  TF_RETURN_IF_ERROR(InitDeviceModule(dso_handle));
+  // Step 1 Init Device/Graph Module
+  TF_RETURN_IF_ERROR(InitDeviceAndGraphModule(dso_handle));
 
   // Step 2 Init Kernel Module
   TF_RETURN_IF_ERROR(InitKernelModule(dso_handle));
-
-  // Step3 Init Graph Module
-  TF_RETURN_IF_ERROR(InitGraphModule(dso_handle));
 
   return Status::OK();
 }
