@@ -368,6 +368,7 @@ cc_library(
     srcs = ["initializable_lookup_table.cc"],
     hdrs = ["initializable_lookup_table.h"],
     deps = [
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
@@ -5989,6 +5990,7 @@ filegroup(
         "//tensorflow/core/kernels/image:adjust_contrast_op.h",
         "//tensorflow/core/kernels/image:adjust_hue_op.h",
         "//tensorflow/core/kernels/image:adjust_saturation_op.h",
+        "//tensorflow/core/kernels/image:colorspace_op.h",
         "//tensorflow/core/kernels/image:extract_image_patches_op.h",
         "//tensorflow/core/kernels/image:image_ops.h",
         "//tensorflow/core/kernels/image:mirror_pad_op.h",
@@ -6134,6 +6136,7 @@ filegroup(
         "//tensorflow/core/kernels/image:decode_image_op.cc",
         "//tensorflow/core/kernels/image:encode_jpeg_op.cc",
         "//tensorflow/core/kernels/image:encode_png_op.cc",
+        "//tensorflow/core/kernels/image:colorspace_op.cc",
     ] + select({
         ":xsmm_convolutions": [
             "xsmm_conv2d.h",

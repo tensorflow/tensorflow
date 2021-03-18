@@ -19,6 +19,13 @@ exports_files(glob([
     "create_op_resolver_with_selected_ops.cc",
 ])
 
+# Config to keep symbol tables even for optimized builds. Debug builds already
+# preserve symbols.
+config_setting(
+    name = "tflite_keep_symbols",
+    define_values = {"tflite_keep_symbols": "true"},
+)
+
 config_setting(
     name = "gemmlowp_profiling",
     values = {

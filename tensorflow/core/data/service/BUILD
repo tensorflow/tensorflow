@@ -367,6 +367,15 @@ cc_library(
 )
 
 cc_library(
+    name = "py_utils",
+    srcs = ["py_utils.cc"],
+    hdrs = ["py_utils.h"],
+    deps = [
+        ":credentials_factory",
+    ],
+)
+
+cc_library(
     name = "server_lib",
     srcs = ["server_lib.cc"],
     hdrs = ["server_lib.h"],

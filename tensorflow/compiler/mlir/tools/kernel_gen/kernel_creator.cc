@@ -85,7 +85,7 @@ bool IsSmallAlloc(Value alloc) {
   constexpr unsigned kMaxRankOfAllocatedMemRef = 1;
 
   auto type = alloc.getType().dyn_cast<mlir::ShapedType>();
-  if (!type || !alloc.getDefiningOp<mlir::AllocOp>()) return false;
+  if (!type || !alloc.getDefiningOp<mlir::memref::AllocOp>()) return false;
   if (!type.hasStaticShape()) {
     // Check if the dynamic shape dimension of the alloc is produced by RankOp
     // or SelectOp(_, RankOp, RankOp).
@@ -114,11 +114,11 @@ bool IsSmallAlloc(Value alloc) {
 }
 
 // TODO(herhut): Remove this once leftover tensor_to_memref are handled in core.
-struct RemoveUnusedTensorToMemrefOperations
-    : public mlir::PassWrapper<RemoveUnusedTensorToMemrefOperations,
+struct RemoveUnusedBufferCastOperations
+    : public mlir::PassWrapper<RemoveUnusedBufferCastOperations,
                                mlir::FunctionPass> {
   void runOnFunction() override {
-    getFunction().walk([](mlir::TensorToMemrefOp op) {
+    getFunction().walk([](mlir::memref::BufferCastOp op) {
       // Drop all tensor_to_memref that have no more users. Currently this will
       // not happen, as tensor_to_memref has a side-effect. See
       // https://reviews.llvm.org/D91967 for a dicsussion.
@@ -276,7 +276,7 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   pm.addPass(mlir::createCanonicalizerPass());
   // TODO(herhut) Remove once handled in mlir core.
   pm.addNestedPass<mlir::FuncOp>(
-      std::make_unique<RemoveUnusedTensorToMemrefOperations>());
+      std::make_unique<RemoveUnusedBufferCastOperations>());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
   // Before inserting more allocs, map the ones we already have to the

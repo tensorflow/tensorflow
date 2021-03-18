@@ -13,8 +13,6 @@ package_group(
     packages = ["//tensorflow/lite/experimental/microfrontend/..."],
 )
 
-exports_files(["test_linux_binary.sh"])
-
 cc_library(
     name = "micro_test",
     hdrs = [

@@ -1021,12 +1021,20 @@ class _EagerTensorBase(Tensor):
     return self
 
   def __str__(self):
-    return "tf.Tensor(%s, shape=%s, dtype=%s)" % (numpy_text(self), self.shape,
+    if self._has_custom_summarizer():
+      value_text = self._summarize_value()
+    else:
+      value_text = numpy_text(self)
+    return "tf.Tensor(%s, shape=%s, dtype=%s)" % (value_text, self.shape,
                                                   self.dtype.name)
 
   def __repr__(self):
-    return "<tf.Tensor: shape=%s, dtype=%s, numpy=%s>" % (
-        self.shape, self.dtype.name, numpy_text(self, is_repr=True))
+    if self._has_custom_summarizer():
+      value_text = "value=" + self._summarize_value()
+    else:
+      value_text = "numpy=" + numpy_text(self, is_repr=True)
+    return "<tf.Tensor: shape=%s, dtype=%s, %s>" % (self.shape, self.dtype.name,
+                                                    value_text)
 
   def __len__(self):
     """Returns the length of the first dimension in the Tensor."""

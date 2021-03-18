@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import os
 import warnings
 
 from absl.testing import parameterized
@@ -43,6 +44,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
@@ -63,6 +65,33 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.evaluate(
           dataset._as_serialized_graph(external_state_policy=distribute_options
                                        .ExternalStatePolicy.FAIL))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(init_from_file=[True, False])))
+  def testLookupTableGraphSerialization(self, init_from_file):
+    if init_from_file:
+      file = os.path.join(self.get_temp_dir(), "lookup_table_graph_serialize")
+      with open(file, "w") as f:
+        f.write("10\n11\n")
+      initializer = lookup_ops.TextFileInitializer(
+          file, dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER,
+          dtypes.int64, lookup_ops.TextFileIndex.WHOLE_LINE)
+    else:
+      keys_tensor = constant_op.constant([0, 1], dtype=dtypes.int64)
+      vals_tensor = constant_op.constant([10, 11])
+      initializer = lookup_ops.KeyValueTensorInitializer(
+          keys_tensor, vals_tensor)
+
+    table = lookup_ops.StaticHashTable(initializer, -1)
+    dataset = dataset_ops.Dataset.range(3)
+    dataset = dataset.map(table.lookup)
+    self.evaluate(lookup_ops.tables_initializer())
+    round_tripped = self.graphRoundTrip(dataset)
+    del table
+    del dataset
+    self.assertDatasetProduces(
+        round_tripped, [10, 11, -1], requires_initialization=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def testAsFunctionWithMap(self):

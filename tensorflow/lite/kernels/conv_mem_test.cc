@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/interpreter_builder.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/profiling/memory_info.h"
@@ -25,28 +26,49 @@ limitations under the License.
 namespace tflite {
 
 TEST(ConvMemUsage, HugeIm2ColData) {
+  // As the test validates memory usage, skip if unsupported.
+  if (!profiling::memory::MemoryUsage::IsSupported()) {
+    return;
+  }
+
+  // The Im2Col optimization is only applied on mobile platforms, so only
+  // validate on such platforms.
+  if (!IsMobilePlatform()) {
+    return;
+  }
+
   // The model has a conv op will require a temporary tensor of ~3.5GB if
   // im2col is performed and it's possible to cause OOM on devices. To prevent
-  // this from happening, a size cap (i.e. kMaxIm2colBufferSize) of
+  // this from happening, a size cap (i.e. kMaxIm2colBufferSizeMobile) of
   // to-be-allocated im2col data is used to determine whether to disable im2col.
   // This test will check the memory footprint before/after interpreter Invoke
-  // to ensure the size cap is correctly enforced.
+  // to ensure the size cap is correctly enforced on mobile platforms.
   auto model = FlatBufferModel::BuildFromFile(
       "tensorflow/lite/testdata/conv_huge_im2col.bin");
   ASSERT_TRUE(model);
 
   const auto mem_before = profiling::memory::GetMemoryUsage();
   std::unique_ptr<Interpreter> interpreter;
+
+  // Note that we explicitly set 1 thread here to avoid extra memory footprint
+  // caused by multithreading, which will make the memory usage threshold check
+  // later more reliable.
   ASSERT_EQ(InterpreterBuilder(*model, ops::builtin::BuiltinOpResolver())(
                 &interpreter, /*num_threads*/ 1),
             kTfLiteOk);
   ASSERT_TRUE(interpreter);
   ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteOk);
-  ASSERT_EQ(interpreter->Invoke(), kTfLiteOk);
+  // Note that we skip invocation on such a large model as it can be
+  // prohibitively slow for tests.
   const auto mem_after = profiling::memory::GetMemoryUsage();
   TFLITE_LOG(INFO) << "HugeIm2ColData Memory usage info: "
                    << mem_after - mem_before;
-  EXPECT_LE((mem_after - mem_before).max_rss_kb, 2 * 1024 * 1024);
+
+  // The 3GB threshold is still < 3.5GB, chosen to suit different testing
+  // configurations, such as MSan/TSan related tests where extra system-level
+  // memory footprint usage might be counted as well. Note that the im2col
+  // buffer limit is only applied *only on mobile platforms*.
+  EXPECT_LE((mem_after - mem_before).max_rss_kb, 3 * 1024 * 1024);
 }
 
 }  // namespace tflite

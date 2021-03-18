@@ -138,7 +138,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'scale\', \'offset\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'0.0\', \'None\'], "
+    argspec: "args=[\'self\', \'scale\', \'offset\'], varargs=None, keywords=kwargs, defaults=[\'0.0\'], "
   }
   member_method {
     name: "adapt"

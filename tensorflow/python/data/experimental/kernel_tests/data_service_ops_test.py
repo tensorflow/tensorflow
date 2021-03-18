@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import time
 
 from absl.testing import parameterized
@@ -38,6 +39,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
@@ -77,8 +79,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   @combinations.generate(test_base.default_test_combinations())
   def testDistributeInvalidCompression(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
-    with self.assertRaisesRegex(ValueError,
-                                "Invalid compression argument"):
+    with self.assertRaisesRegex(ValueError, "Invalid compression argument"):
       self.make_distributed_range_dataset(10, cluster, compression="foo")
 
   @combinations.generate(test_base.eager_only_combinations())
@@ -104,6 +105,30 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertAllEqual(results[0], [[0, 0, 0, 0, 0], [0, 1, 2, 3, 4]])
     self.assertAllEqual(results[1], [[0, 1, 2], [0, 1, 0]])
     self.assertAllEqual(results[2], [[0, 1, 2, 3, 4, 5, 6, 7]])
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(init_from_file=[True, False])))
+  def testDistributeLookupTable(self, init_from_file):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    if init_from_file:
+      file = os.path.join(self.get_temp_dir(), "distribute_lookup_table")
+      with open(file, "w") as f:
+        f.write("10\n11\n")
+      initializer = lookup_ops.TextFileInitializer(
+          file, dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER,
+          dtypes.int64, lookup_ops.TextFileIndex.WHOLE_LINE)
+    else:
+      keys_tensor = constant_op.constant([0, 1], dtype=dtypes.int64)
+      vals_tensor = constant_op.constant([10, 11])
+      initializer = lookup_ops.KeyValueTensorInitializer(
+          keys_tensor, vals_tensor)
+    table = lookup_ops.StaticHashTable(initializer, -1)
+    ds = dataset_ops.Dataset.range(3)
+    ds = ds.map(table.lookup)
+    ds = self.make_distributed_dataset(ds, cluster)
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertDatasetProduces(ds, [10, 11, -1], requires_initialization=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def testDifferentShuffleOrders(self):
@@ -270,6 +295,22 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     results += self.getIteratorOutput(get_next_1)
     results += self.getIteratorOutput(get_next_2)
     self.assertCountEqual(num_repetitions * list(range(num_elements)), results)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testRoundRobinConsumerRestart(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    # Round robin reads can cause slow cluster shutdown.
+    data_service_test_base.GLOBAL_CLUSTERS.add(cluster)
+    num_consumers = 3
+    ds = self.make_round_robin_dataset(cluster, num_consumers)
+    ds = ds.take(20)
+    self.getDatasetOutput(ds)
+    ds2 = self.make_round_robin_dataset(cluster, num_consumers)
+    ds2 = ds2.take(20)
+    with self.assertRaisesRegex(errors.FailedPreconditionError,
+                                "current round has already reached"):
+      self.getDatasetOutput(ds2)
 
   @combinations.generate(
       combinations.times(
@@ -637,6 +678,29 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
               processing_mode="parallel_epochs", service=""))
 
   @combinations.generate(test_base.default_test_combinations())
+  def testDistributeExplicitProtocol(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    ds = dataset_ops.Dataset.range(10)
+    ds = ds.apply(
+        data_service_ops.distribute(
+            processing_mode="parallel_epochs",
+            service="grpc://" + cluster.dispatcher_address()))
+    self.assertDatasetProduces(ds, list(range(10)))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDistributeInvalidProtocol(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    ds = dataset_ops.Dataset.range(10)
+    with self.assertRaisesRegex(
+        errors.NotFoundError,
+        "No credentials factory has been registered for protocol grp"):
+      ds = ds.apply(
+          data_service_ops.distribute(
+              processing_mode="parallel_epochs",
+              service="grp://" + cluster.dispatcher_address()))
+      self.getDatasetOutput(ds)
+
+  @combinations.generate(test_base.eager_only_combinations())
   def testDistributeInvalidProcessingMode(self):
     ds = dataset_ops.Dataset.range(10)
     with self.assertRaisesRegex(ValueError,
@@ -682,9 +746,11 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
     num_elements = 10
     ds = dataset_ops.Dataset.range(num_elements)
-    dataset_id = data_service_ops.register_dataset(cluster.target, ds)
+    dataset_id = data_service_ops.register_dataset(cluster.dispatcher_address(),
+                                                   ds)
     from_dataset_id_ds = data_service_ops.from_dataset_id(
-        "parallel_epochs", cluster.target, dataset_id, ds.element_spec)
+        "parallel_epochs", cluster.dispatcher_address(), dataset_id,
+        ds.element_spec)
     self.assertDatasetProduces(from_dataset_id_ds, list(range(num_elements)))
 
   @combinations.generate(test_base.default_test_combinations())
@@ -694,9 +760,11 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     num_elements = 10
     ds = dataset_ops.Dataset.range(num_elements)
     ds = dataset_ops.Dataset.zip({"a": (ds, ds), "b": ds})
-    dataset_id = data_service_ops.register_dataset(cluster.target, ds)
+    dataset_id = data_service_ops.register_dataset(cluster.dispatcher_address(),
+                                                   ds)
     from_dataset_id_ds = data_service_ops.from_dataset_id(
-        "parallel_epochs", cluster.target, dataset_id, ds.element_spec)
+        "parallel_epochs", cluster.dispatcher_address(), dataset_id,
+        ds.element_spec)
     output = self.getDatasetOutput(from_dataset_id_ds)
     for i in range(num_elements):
       self.assertEqual(i, output[i]["a"][0])
@@ -709,10 +777,11 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
     num_elements = 10
     ds = dataset_ops.Dataset.range(num_elements)
-    dataset_id = data_service_ops.register_dataset(cluster.target, ds)
+    dataset_id = data_service_ops.register_dataset(cluster.dispatcher_address(),
+                                                   ds)
     wrong_spec = tensor_spec.TensorSpec(shape=(), dtype=dtypes.variant)
     from_dataset_id_ds = data_service_ops.from_dataset_id(
-        "parallel_epochs", cluster.target, dataset_id, wrong_spec)
+        "parallel_epochs", cluster.dispatcher_address(), dataset_id, wrong_spec)
     with self.assertRaisesRegex(errors.FailedPreconditionError,
                                 "Expected a tensor of type variant"):
       self.evaluate(self.getNext(from_dataset_id_ds)())
@@ -724,7 +793,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     dataset_id = 0
     element_spec = tensor_spec.TensorSpec(shape=(), dtype=dtypes.variant)
     from_dataset_id_ds = data_service_ops.from_dataset_id(
-        "parallel_epochs", cluster.target, dataset_id, element_spec)
+        "parallel_epochs", cluster.dispatcher_address(), dataset_id,
+        element_spec)
     with self.assertRaisesRegex(errors.NotFoundError, "Dataset id"):
       self.evaluate(self.getNext(from_dataset_id_ds)())
 
@@ -752,8 +822,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     ds_1 = dataset_ops.Dataset.range(10)
     ds_2 = dataset_ops.Dataset.range(10)
     cluster = data_service_test_base.TestCluster(num_workers=1)
-    id_1 = data_service_ops.register_dataset(cluster.target, ds_1)
-    id_2 = data_service_ops.register_dataset(cluster.target, ds_2)
+    id_1 = data_service_ops.register_dataset(cluster.dispatcher_address(), ds_1)
+    id_2 = data_service_ops.register_dataset(cluster.dispatcher_address(), ds_2)
     self.assertEqual(self.evaluate(id_1), self.evaluate(id_2))
 
   @combinations.generate(test_base.default_test_combinations())
@@ -761,8 +831,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     ds_1 = dataset_ops.Dataset.range(10)
     ds_2 = dataset_ops.Dataset.range(20)
     cluster = data_service_test_base.TestCluster(num_workers=1)
-    id_1 = data_service_ops.register_dataset(cluster.target, ds_1)
-    id_2 = data_service_ops.register_dataset(cluster.target, ds_2)
+    id_1 = data_service_ops.register_dataset(cluster.dispatcher_address(), ds_1)
+    id_2 = data_service_ops.register_dataset(cluster.dispatcher_address(), ds_2)
     self.assertNotEqual(self.evaluate(id_1), self.evaluate(id_2))
 
   @combinations.generate(test_base.default_test_combinations())

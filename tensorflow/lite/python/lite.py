@@ -49,6 +49,7 @@ from tensorflow.lite.python.convert import toco_convert_impl as _toco_convert_im
 from tensorflow.lite.python.convert import toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.lite.python.convert_saved_model import freeze_saved_model as _freeze_saved_model
 from tensorflow.lite.python.interpreter import Interpreter  # pylint: disable=unused-import
+from tensorflow.lite.python.interpreter import OpResolverType  # pylint: disable=unused-import
 from tensorflow.lite.python.interpreter import load_delegate  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import is_ophint_converted as _is_ophint_converted
@@ -434,7 +435,7 @@ class TFLiteConverterBase(object):
     self.target_spec = TargetSpec()
     self.allow_custom_ops = False
     self.experimental_new_converter = True
-    self.experimental_new_quantizer = False
+    self.experimental_new_quantizer = True
     self._experimental_new_quantizer = None
     self._experimental_calibrate_only = False
     self._experimental_sparsify_model = False
@@ -1029,7 +1030,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       MLIR-based conversion instead of TOCO conversion. (default True)
     experimental_new_quantizer: Experimental flag, subject to change. Enables
       MLIR-based quantization conversion instead of Flatbuffer-based conversion.
-      (default False)
+      (default True)
 
   Example usage:
 
@@ -1751,7 +1752,7 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
       MLIR-based conversion instead of TOCO conversion. (default True)
     experimental_new_quantizer: Experimental flag, subject to change. Enables
       MLIR-based quantization conversion instead of Flatbuffer-based conversion.
-      (default False)
+      (default True)
 
   Example usage:
 

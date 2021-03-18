@@ -737,6 +737,9 @@ class FunctionLibraryRuntime {
     // `FunctionLibraryRuntime::DebugString(handle)` contains the optimized
     // Graph. Otherwise, the unoptimized function Graph will be returned.
     bool include_optimized_graph_in_debug_string = false;
+
+    // If true, the function library runtime cache the function instantiation.
+    bool use_function_cache = false;
   };
   typedef uint64 Handle;
   virtual Status Instantiate(const std::string& function_name, AttrSlice attrs,
@@ -916,13 +919,12 @@ std::string GetFunctionResourceInputDevice(
     const Tensor& input, const int arg_index, const FunctionDef& function_def,
     absl::flat_hash_map<string, std::vector<string>>* composite_devices);
 
-// Returns a canonicalized string for the instantiation of the
-// function of the given "name", attributes "attrs", and "options".
+// Returns a canonicalized string for the instantiation of the function of the
+// given "name", attributes "attrs", and "options".
 //
-// The returned string is guaranteed to be stable within one address
-// space. But it may be change as the implementation
-// evolves. Therefore, it should not be persisted or compared across
-// address spaces.
+// The returned string is guaranteed to be stable within one address space. But
+// it may be change as the implementation evolves. Therefore, it should not be
+// persisted or compared across address spaces.
 std::string Canonicalize(
     const std::string& funcname, AttrSlice attrs,
     const FunctionLibraryRuntime::InstantiateOptions& options);

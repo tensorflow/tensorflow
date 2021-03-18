@@ -16,32 +16,40 @@
 """Python TFLite metrics helper."""
 from typing import Optional, Text
 
+from tensorflow.lite.python import metrics_interface
 from tensorflow.python.eager import monitoring
 
 
-class TFLiteMetrics(object):
+class TFLiteMetrics(metrics_interface.TFLiteMetricsInterface):
   """TFLite metrics helper for prod (borg) environment.
 
   Attributes:
-    md5: A string containing the MD5 hash of the model binary.
+    model_hash: A string containing the hash of the model binary.
     model_path: A string containing the path of the model for debugging
       purposes.
   """
 
+  _counter_debugger_creation = monitoring.Counter(
+      '/tensorflow/lite/quantization_debugger/created',
+      'Counter for the number of debugger created.')
+
   _counter_interpreter_creation = monitoring.Counter(
       '/tensorflow/lite/interpreter/created',
-      'Counter for number of interpreter created in Python.', 'python')
+      'Counter for number of interpreter created in Python.', 'language')
 
   def __init__(self,
-               md5: Optional[Text] = None,
+               model_hash: Optional[Text] = None,
                model_path: Optional[Text] = None) -> None:
     del self  # Temporarily removing self until parameter logic is implemented.
-    if md5 and not model_path or not md5 and model_path:
-      raise ValueError('Both model metadata(md5, model_path) should be given '
-                       'at the same time.')
-    if md5:
+    if model_hash and not model_path or not model_hash and model_path:
+      raise ValueError('Both model metadata(model_hash, model_path) should be '
+                       'given at the same time.')
+    if model_hash:
       # TODO(b/180400857): Create stub once the service is implemented.
       pass
+
+  def increase_counter_debugger_creation(self):
+    self._counter_debugger_creation.get_cell().increase_by(1)
 
   def increase_counter_interpreter_creation(self):
     self._counter_interpreter_creation.get_cell('python').increase_by(1)

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <vector>
+
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def_builder.h"
@@ -119,33 +120,35 @@ TEST_F(NodeDefBuilderTest, Simple) {
   Op(OpDefBuilder("Simple").Input("a: int32").Output("out: float"));
 
   ExpectSuccess(Builder().Input("x", 0, DT_INT32), {DT_INT32}, {DT_FLOAT},
-                R"proto( op: "Simple" input: "x" )proto");
+                R"proto(op: "Simple" input: "x")proto");
 
   // Port != 0
   ExpectSuccess(Builder().Input("y", 2, DT_INT32), {DT_INT32}, {DT_FLOAT},
-                R"proto( op: "Simple" input: "y:2" )proto");
+                R"proto(op: "Simple" input: "y:2")proto");
 
   // FakeInput
   ExpectSuccess(Builder().Input(FakeInput()), {DT_INT32}, {DT_FLOAT}, R"proto(
-      op: "Simple" input: "a" )proto");
+    op: "Simple"
+    input: "a")proto");
 
   ExpectSuccess(Builder().Input(FakeInput(DT_INT32)), {DT_INT32}, {DT_FLOAT},
-                R"proto( op: "Simple" input: "a" )proto");
+                R"proto(op: "Simple" input: "a")proto");
 
   // Ref input
   ExpectSuccess(Builder().Input(FakeInput(DT_INT32_REF)), {DT_INT32},
-                {DT_FLOAT}, R"proto( op: "Simple" input: "a" )proto");
+                {DT_FLOAT}, R"proto(op: "Simple" input: "a")proto");
 
   // ControlInput
   ExpectSuccess(
       Builder().ControlInput("x").Input(FakeInput()).ControlInput("y"),
       {DT_INT32}, {DT_FLOAT}, R"proto(
-      op: "Simple" input: ["a", "^x", "^y"] )proto");
+        op: "Simple"
+        input: [ "a", "^x", "^y" ])proto");
 
   // Device
   ExpectSuccess(Builder().Input(FakeInput()).Device("ddd"), {DT_INT32},
                 {DT_FLOAT}, R"proto(
-      op: "Simple" input: "a" device: "ddd" )proto");
+    op: "Simple" input: "a" device: "ddd")proto");
 
   // Extra input
   ExpectFailure(Builder().Input("x", 0, DT_INT32).Input("y", 0, DT_INT32),
@@ -162,7 +165,8 @@ TEST_F(NodeDefBuilderTest, Simple) {
     TF_EXPECT_OK(builder.Input(FakeInput()).Finalize(nullptr));
     // ExpectSuccess() also calls Finalize().
     ExpectSuccess(builder, {DT_INT32}, {DT_FLOAT}, R"proto(
-        op: "Simple" input: "a" )proto");
+      op: "Simple"
+      input: "a")proto");
   }
 
   {  // Input() after Finalize()
@@ -172,7 +176,8 @@ TEST_F(NodeDefBuilderTest, Simple) {
     builder.Input(FakeInput());
     // Calling Finalize() with enough inputs -> success
     ExpectSuccess(builder, {DT_INT32}, {DT_FLOAT}, R"proto(
-        op: "Simple" input: "a" )proto");
+      op: "Simple"
+      input: "a")proto");
     // Calling Finalize() with too many inputs -> error.
     builder.Input(FakeInput(DT_INT32));
     ExpectFailure(builder, "More Input() calls than the 1 input_args while");
@@ -223,19 +228,31 @@ TEST_F(NodeDefBuilderTest, Polymorphic) {
 
   ExpectSuccess(Builder().Input(FakeInput(DT_INT32)), {DT_INT32}, {DT_INT32},
                 R"proto(
-      op: "Polymorphic" input: "a"
-      attr { key: "T" value { type: DT_INT32 } } )proto");
+                  op: "Polymorphic"
+                  input: "a"
+                  attr {
+                    key: "T"
+                    value { type: DT_INT32 }
+                  })proto");
 
   ExpectSuccess(Builder().Input(FakeInput(DT_FLOAT)), {DT_FLOAT}, {DT_FLOAT},
                 R"proto(
-      op: "Polymorphic" input: "a"
-      attr { key: "T" value { type: DT_FLOAT } } )proto");
+                  op: "Polymorphic"
+                  input: "a"
+                  attr {
+                    key: "T"
+                    value { type: DT_FLOAT }
+                  })proto");
 
   // Redundant Attr()
   ExpectSuccess(Builder().Input(FakeInput(DT_BOOL)).Attr("T", DT_BOOL),
                 {DT_BOOL}, {DT_BOOL}, R"proto(
-      op: "Polymorphic" input: "a"
-      attr { key: "T" value { type: DT_BOOL } } )proto");
+    op: "Polymorphic"
+    input: "a"
+    attr {
+      key: "T"
+      value { type: DT_BOOL }
+    })proto");
 
   // Conflicting Attr()
   ExpectFailure(Builder().Input(FakeInput(DT_BOOL)).Attr("T", DT_STRING),
@@ -252,18 +269,27 @@ TEST_F(NodeDefBuilderTest, PolymorphicOut) {
   Op(OpDefBuilder("PolymorphicOut").Output("out: T").Attr("T: type"));
 
   ExpectSuccess(Builder().Attr("T", DT_INT32), {}, {DT_INT32}, R"proto(
-      op: "PolymorphicOut"
-      attr { key: "T" value { type: DT_INT32 } } )proto");
+    op: "PolymorphicOut"
+    attr {
+      key: "T"
+      value { type: DT_INT32 }
+    })proto");
 
   ExpectSuccess(Builder().Attr("T", DT_FLOAT), {}, {DT_FLOAT}, R"proto(
-      op: "PolymorphicOut"
-      attr { key: "T" value { type: DT_FLOAT } } )proto");
+    op: "PolymorphicOut"
+    attr {
+      key: "T"
+      value { type: DT_FLOAT }
+    })proto");
 
   // Redundant attr
   ExpectSuccess(Builder().Attr("T", DT_FLOAT).Attr("T", DT_FLOAT), {},
                 {DT_FLOAT}, R"proto(
-      op: "PolymorphicOut"
-      attr { key: "T" value { type: DT_FLOAT } } )proto");
+    op: "PolymorphicOut"
+    attr {
+      key: "T"
+      value { type: DT_FLOAT }
+    })proto");
 
   // Conflicting attr
   ExpectFailure(Builder().Attr("T", DT_BOOL).Attr("T", DT_FLOAT),
@@ -287,12 +313,18 @@ TEST_F(NodeDefBuilderTest, PolymorphicDefaultOut) {
          .Attr("T: type = DT_STRING"));
 
   ExpectSuccess(Builder(), {}, {DT_STRING}, R"proto(
-      op: "PolymorphicDefaultOut"
-      attr { key: "T" value { type: DT_STRING } } )proto");
+    op: "PolymorphicDefaultOut"
+    attr {
+      key: "T"
+      value { type: DT_STRING }
+    })proto");
 
   ExpectSuccess(Builder().Attr("T", DT_BOOL), {}, {DT_BOOL}, R"proto(
-      op: "PolymorphicDefaultOut"
-      attr { key: "T" value { type: DT_BOOL } } )proto");
+    op: "PolymorphicDefaultOut"
+    attr {
+      key: "T"
+      value { type: DT_BOOL }
+    })proto");
 }
 
 TEST_F(NodeDefBuilderTest, Binary) {
@@ -301,13 +333,23 @@ TEST_F(NodeDefBuilderTest, Binary) {
 
   ExpectSuccess(Builder().Input(FakeInput(DT_INT32)).Input(FakeInput(DT_INT32)),
                 {DT_INT32, DT_INT32}, {DT_INT32}, R"proto(
-      op: "Binary" input: "a" input: "b"
-      attr { key: "T" value { type: DT_INT32 } } )proto");
+    op: "Binary"
+    input: "a"
+    input: "b"
+    attr {
+      key: "T"
+      value { type: DT_INT32 }
+    })proto");
 
   ExpectSuccess(Builder().Input(FakeInput(DT_STRING)).Input(FakeInput()),
                 {DT_STRING, DT_STRING}, {DT_STRING}, R"proto(
-      op: "Binary" input: "a" input: "b"
-      attr { key: "T" value { type: DT_STRING } } )proto");
+    op: "Binary"
+    input: "a"
+    input: "b"
+    attr {
+      key: "T"
+      value { type: DT_STRING }
+    })proto");
 
   // Type mismatch
   ExpectFailure(Builder().Input(FakeInput(DT_BOOL)).Input(FakeInput(DT_STRING)),
@@ -321,8 +363,12 @@ TEST_F(NodeDefBuilderTest, Restrict) {
          .Attr("T: {string, bool}"));
   ExpectSuccess(Builder().Input(FakeInput(DT_STRING)), {DT_STRING}, {DT_STRING},
                 R"proto(
-      op: "Restrict" input: "a"
-      attr { key: "T" value { type: DT_STRING } } )proto");
+                  op: "Restrict"
+                  input: "a"
+                  attr {
+                    key: "T"
+                    value { type: DT_STRING }
+                  })proto");
 
   ExpectInvalid(Builder().Input(FakeInput(DT_INT32)),
                 "Value for attr 'T' of int32 is not in the list of allowed "
@@ -334,15 +380,23 @@ TEST_F(NodeDefBuilderTest, TypeList) {
 
   ExpectSuccess(Builder().Input(FakeInput({DT_STRING, DT_INT32})),
                 {DT_STRING, DT_INT32}, {}, R"proto(
-      op: "TypeList" input: ["a", "a:1"]
-      attr { key: "T" value { list { type: [DT_STRING, DT_INT32] } } }
-      )proto");
+    op: "TypeList"
+    input: [ "a", "a:1" ]
+    attr {
+      key: "T"
+      value { list { type: [ DT_STRING, DT_INT32 ] } }
+    }
+  )proto");
 
   ExpectSuccess(Builder().Input(FakeInput(3, DT_BOOL)),
                 {DT_BOOL, DT_BOOL, DT_BOOL}, {}, R"proto(
-      op: "TypeList" input: ["a", "a:1", "a:2"]
-      attr { key: "T" value { list { type: [DT_BOOL, DT_BOOL, DT_BOOL] } } }
-      )proto");
+    op: "TypeList"
+    input: [ "a", "a:1", "a:2" ]
+    attr {
+      key: "T"
+      value { list { type: [ DT_BOOL, DT_BOOL, DT_BOOL ] } }
+    }
+  )proto");
 
   ExpectInvalid(Builder().Input(FakeInput(0)),
                 "Length for attr 'T' of 0 must be at least minimum 1");
@@ -364,17 +418,33 @@ TEST_F(NodeDefBuilderTest, TypeListNoMin) {
   Op(OpDefBuilder("TypeListNoMin").Input("a: T").Attr("T: list(type) >= 0"));
 
   ExpectSuccess(Builder().Input(FakeInput(0)), {}, {}, R"proto(
-      op: "TypeListNoMin" attr { key: "T" value { list { } } } )proto");
+    op: "TypeListNoMin"
+    attr {
+      key: "T"
+      value { list {} }
+    })proto");
 
   ExpectSuccess(Builder().Input(FakeInput(DataTypeVector())), {}, {}, R"proto(
-      op: "TypeListNoMin" attr { key: "T" value { list { } } } )proto");
+    op: "TypeListNoMin"
+    attr {
+      key: "T"
+      value { list {} }
+    })proto");
 
   ExpectSuccess(Builder().Input(FakeInput({})), {}, {}, R"proto(
-      op: "TypeListNoMin" attr { key: "T" value { list { } } } )proto");
+    op: "TypeListNoMin"
+    attr {
+      key: "T"
+      value { list {} }
+    })proto");
 
   ExpectSuccess(Builder().Input(FakeInput({DT_BOOL})), {DT_BOOL}, {}, R"proto(
-      op: "TypeListNoMin" input: "a"
-      attr { key: "T" value { list { type: DT_BOOL } } } )proto");
+    op: "TypeListNoMin"
+    input: "a"
+    attr {
+      key: "T"
+      value { list { type: DT_BOOL } }
+    })proto");
 }
 
 TEST_F(NodeDefBuilderTest, TypeListTwice) {
@@ -387,22 +457,38 @@ TEST_F(NodeDefBuilderTest, TypeListTwice) {
                     .Input(FakeInput({DT_INT32, DT_BOOL}))
                     .Input(FakeInput({DT_INT32, DT_BOOL})),
                 {DT_INT32, DT_BOOL, DT_INT32, DT_BOOL}, {}, R"proto(
-      op: "TypeListTwice" input: ["a", "a:1", "b", "b:1"]
-      attr { key: "T" value { list { type: [DT_INT32, DT_BOOL] } } } )proto");
+    op: "TypeListTwice"
+    input: [ "a", "a:1", "b", "b:1" ]
+    attr {
+      key: "T"
+      value { list { type: [ DT_INT32, DT_BOOL ] } }
+    })proto");
 
   ExpectSuccess(
       Builder().Input(FakeInput({DT_INT32, DT_BOOL})).Input(FakeInput()),
       {DT_INT32, DT_BOOL, DT_INT32, DT_BOOL}, {}, R"proto(
-      op: "TypeListTwice" input: ["a", "a:1", "b", "b:1"]
-      attr { key: "T" value { list { type: [DT_INT32, DT_BOOL] } } } )proto");
+        op: "TypeListTwice"
+        input: [ "a", "a:1", "b", "b:1" ]
+        attr {
+          key: "T"
+          value { list { type: [ DT_INT32, DT_BOOL ] } }
+        })proto");
 
   ExpectSuccess(Builder().Input(FakeInput(0)).Input(FakeInput(0)), {}, {},
                 R"proto(
-      op: "TypeListTwice" attr { key: "T" value { list { } } } )proto");
+                  op: "TypeListTwice"
+                  attr {
+                    key: "T"
+                    value { list {} }
+                  })proto");
 
   ExpectSuccess(Builder().Input(FakeInput(0)).Input(FakeInput()), {}, {},
                 R"proto(
-      op: "TypeListTwice" attr { key: "T" value { list { } } } )proto");
+                  op: "TypeListTwice"
+                  attr {
+                    key: "T"
+                    value { list {} }
+                  })proto");
 
   ExpectFailure(Builder()
                     .Input(FakeInput({DT_INT32, DT_BOOL}))
@@ -415,17 +501,26 @@ TEST_F(NodeDefBuilderTest, OutTypeList) {
   Op(OpDefBuilder("OutTypeList").Output("out: T").Attr("T: list(type) >= 0"));
 
   ExpectSuccess(Builder().Attr("T", {DT_FLOAT}), {}, {DT_FLOAT}, R"proto(
-      op: "OutTypeList"
-      attr { key: "T" value { list { type: DT_FLOAT } } } )proto");
+    op: "OutTypeList"
+    attr {
+      key: "T"
+      value { list { type: DT_FLOAT } }
+    })proto");
 
   ExpectSuccess(Builder().Attr("T", {DT_STRING, DT_BOOL}), {},
                 {DT_STRING, DT_BOOL}, R"proto(
-      op: "OutTypeList"
-      attr { key: "T" value { list { type: [DT_STRING, DT_BOOL] } } } )proto");
+    op: "OutTypeList"
+    attr {
+      key: "T"
+      value { list { type: [ DT_STRING, DT_BOOL ] } }
+    })proto");
 
   ExpectSuccess(Builder().Attr("T", DataTypeVector()), {}, {}, R"proto(
-      op: "OutTypeList"
-      attr { key: "T" value { list { } } } )proto");
+    op: "OutTypeList"
+    attr {
+      key: "T"
+      value { list {} }
+    })proto");
 
   ExpectInvalid(
       Builder().Attr("T", DT_FLOAT),
@@ -439,8 +534,12 @@ TEST_F(NodeDefBuilderTest, TypeListRestrict) {
 
   ExpectSuccess(Builder().Input(FakeInput({DT_STRING, DT_BOOL})),
                 {DT_STRING, DT_BOOL}, {}, R"proto(
-      op: "TypeListRestrict" input: ["a", "a:1"]
-      attr { key: "T" value { list { type: [DT_STRING, DT_BOOL] } } } )proto");
+    op: "TypeListRestrict"
+    input: [ "a", "a:1" ]
+    attr {
+      key: "T"
+      value { list { type: [ DT_STRING, DT_BOOL ] } }
+    })proto");
 
   ExpectInvalid(Builder().Input(FakeInput({DT_STRING, DT_INT32})),
                 "Value for attr 'T' of int32 is not in the list of allowed "
@@ -454,8 +553,11 @@ TEST_F(NodeDefBuilderTest, OutTypeListRestrict) {
 
   ExpectSuccess(Builder().Attr("t", {DT_BOOL, DT_STRING}), {},
                 {DT_BOOL, DT_STRING}, R"proto(
-      op: "OutTypeListRestrict"
-      attr { key: "t" value { list { type: [DT_BOOL, DT_STRING] } } } )proto");
+    op: "OutTypeListRestrict"
+    attr {
+      key: "t"
+      value { list { type: [ DT_BOOL, DT_STRING ] } }
+    })proto");
 
   ExpectInvalid(Builder().Attr("t", {DT_STRING, DT_INT32}),
                 "Value for attr 't' of int32 is not in the list of allowed "
@@ -466,7 +568,11 @@ TEST_F(NodeDefBuilderTest, Attr) {
   Op(OpDefBuilder("Attr").Attr("a: int"));
 
   ExpectSuccess(Builder().Attr("a", 12), {}, {}, R"proto(
-      op: "Attr" attr { key: "a" value { i: 12 } } )proto");
+    op: "Attr"
+    attr {
+      key: "a"
+      value { i: 12 }
+    })proto");
 
   // Attr has wrong type
   ExpectInvalid(Builder().Attr("a", "bad"),
@@ -479,25 +585,39 @@ TEST_F(NodeDefBuilderTest, Attr) {
   // Missing attr
   ExpectInvalid(Builder(), "NodeDef missing attr 'a' from Op<");
 
-  // Wrong attr
-  ExpectInvalid(Builder().Attr("b", 12),
-                "NodeDef mentions attr 'b' not in Op<");
-
-  // Extra attr
-  ExpectInvalid(Builder().Attr("a", 12).Attr("extra", 12),
-                "NodeDef mentions attr 'extra' not in Op<");
+  // Extra attribute should be ignored.
+  ExpectSuccess(Builder().Attr("a", 10).Attr("b", 12), {}, {},
+                R"proto(
+                  op: "Attr"
+                  attr {
+                    key: "a"
+                    value { i: 10 }
+                  }
+                  attr {
+                    key: "b"
+                    value { i: 12 }
+                  }
+                )proto");
 }
 
 TEST_F(NodeDefBuilderTest, AttrFloat) {
   Op(OpDefBuilder("AttrFloat").Attr("a: float"));
 
   ExpectSuccess(Builder().Attr("a", 1.2f /* float */), {}, {}, R"proto(
-      op: "AttrFloat" attr { key: "a" value { f: 1.2 } }
-      )proto");
+    op: "AttrFloat"
+    attr {
+      key: "a"
+      value { f: 1.2 }
+    }
+  )proto");
 
   ExpectSuccess(Builder().Attr("a", 1.2 /* double */), {}, {}, R"proto(
-      op: "AttrFloat" attr { key: "a" value { f: 1.2 } }
-      )proto");
+    op: "AttrFloat"
+    attr {
+      key: "a"
+      value { f: 1.2 }
+    }
+  )proto");
 
   // Won't automatically cast int to float
   ExpectInvalid(Builder().Attr("a", 12),
@@ -508,13 +628,20 @@ TEST_F(NodeDefBuilderTest, AttrBoolList) {
   Op(OpDefBuilder("AttrBoolList").Attr("a: list(bool)"));
 
   ExpectSuccess(Builder().Attr("a", {true, false, true}), {}, {}, R"proto(
-      op: "AttrBoolList"
-      attr { key: "a" value { list { b: [true, false, true] } } }
-      )proto");
+    op: "AttrBoolList"
+    attr {
+      key: "a"
+      value { list { b: [ true, false, true ] } }
+    }
+  )proto");
 
   ExpectSuccess(Builder().Attr("a", std::vector<bool>()), {}, {}, R"proto(
-      op: "AttrBoolList" attr { key: "a" value { list { } } }
-      )proto");
+    op: "AttrBoolList"
+    attr {
+      key: "a"
+      value { list {} }
+    }
+  )proto");
 
   // Won't cast int -> bool.
   ExpectInvalid(Builder().Attr("a", {0}),
@@ -526,7 +653,11 @@ TEST_F(NodeDefBuilderTest, AttrMin) {
   Op(OpDefBuilder("AttrMin").Attr("a: int >= 5"));
 
   ExpectSuccess(Builder().Attr("a", 12), {}, {}, R"proto(
-      op: "AttrMin" attr { key: "a" value { i: 12 } } )proto");
+    op: "AttrMin"
+    attr {
+      key: "a"
+      value { i: 12 }
+    })proto");
 
   ExpectInvalid(Builder().Attr("a", 2),
                 "Value for attr 'a' of 2 must be at least minimum 5");
@@ -536,8 +667,11 @@ TEST_F(NodeDefBuilderTest, AttrListMin) {
   Op(OpDefBuilder("AttrListMin").Attr("a: list(int) >= 2"));
 
   ExpectSuccess(Builder().Attr("a", {1, 2}), {}, {}, R"proto(
-      op: "AttrListMin"
-      attr { key: "a" value { list { i: [1, 2] } } } )proto");
+    op: "AttrListMin"
+    attr {
+      key: "a"
+      value { list { i: [ 1, 2 ] } }
+    })proto");
 
   ExpectInvalid(Builder().Attr("a", {17}),
                 "Length for attr 'a' of 1 must be at least minimum 2");
@@ -547,8 +681,11 @@ TEST_F(NodeDefBuilderTest, AttrEnum) {
   Op(OpDefBuilder("AttrEnum").Attr("a: {'apples', 'oranges'}"));
 
   ExpectSuccess(Builder().Attr("a", "oranges"), {}, {}, R"proto(
-      op: "AttrEnum"
-      attr { key: "a" value { s: "oranges" } } )proto");
+    op: "AttrEnum"
+    attr {
+      key: "a"
+      value { s: "oranges" }
+    })proto");
 
   ExpectInvalid(
       Builder().Attr("a", "invalid"),
@@ -560,8 +697,11 @@ TEST_F(NodeDefBuilderTest, AttrEnumList) {
   Op(OpDefBuilder("AttrEnumList").Attr("a: list({'apples', 'oranges'})"));
 
   ExpectSuccess(Builder().Attr("a", {"oranges", "apples"}), {}, {}, R"proto(
-      op: "AttrEnumList"
-      attr { key: "a" value { list { s: ["oranges", "apples"] } } } )proto");
+    op: "AttrEnumList"
+    attr {
+      key: "a"
+      value { list { s: [ "oranges", "apples" ] } }
+    })proto");
 
   ExpectInvalid(
       Builder().Attr("a", {"apples", "invalid", "oranges"}),
@@ -573,35 +713,62 @@ TEST_F(NodeDefBuilderTest, AttrShape) {
   Op(OpDefBuilder("AttrShape").Attr("a: shape"));
 
   ExpectSuccess(Builder().Attr("a", TensorShape({5})), {}, {}, R"proto(
-      op: "AttrShape"
-      attr { key: "a" value { shape { dim { size: 5 } } } } )proto");
+    op: "AttrShape"
+    attr {
+      key: "a"
+      value { shape { dim { size: 5 } } }
+    })proto");
 
   ExpectSuccess(Builder().Attr("a", TensorShape({4, 3, 2})), {}, {}, R"proto(
-      op: "AttrShape"
-      attr { key: "a" value { shape {
-        dim { size: 4 } dim { size: 3 } dim { size: 2 } } } } )proto");
+    op: "AttrShape"
+    attr {
+      key: "a"
+      value {
+        shape {
+          dim { size: 4 }
+          dim { size: 3 }
+          dim { size: 2 }
+        }
+      }
+    })proto");
 
   ExpectSuccess(Builder().Attr("a", TensorShape({3, 2})), {}, {},
                 R"proto(
-      op: "AttrShape"
-      attr { key: "a" value { shape {
-        dim { size: 3 } dim { size: 2 } } } } )proto");
+                  op: "AttrShape"
+                  attr {
+                    key: "a"
+                    value {
+                      shape {
+                        dim { size: 3 }
+                        dim { size: 2 }
+                      }
+                    }
+                  })proto");
 
   ExpectSuccess(Builder().Attr("a", TensorShape()), {}, {}, R"proto(
-      op: "AttrShape"
-      attr { key: "a" value { shape { } } } )proto");
+    op: "AttrShape"
+    attr {
+      key: "a"
+      value { shape {} }
+    })proto");
 }
 
 TEST_F(NodeDefBuilderTest, AttrDefault) {
   Op(OpDefBuilder("AttrDefault").Attr("a: string = 'banana'"));
 
   ExpectSuccess(Builder(), {}, {}, R"proto(
-      op: "AttrDefault"
-      attr { key: "a" value { s: "banana" } } )proto");
+    op: "AttrDefault"
+    attr {
+      key: "a"
+      value { s: "banana" }
+    })proto");
 
   ExpectSuccess(Builder().Attr("a", "kiwi"), {}, {}, R"proto(
-      op: "AttrDefault"
-      attr { key: "a" value { s: "kiwi" } } )proto");
+    op: "AttrDefault"
+    attr {
+      key: "a"
+      value { s: "kiwi" }
+    })proto");
 }
 
 TEST_F(NodeDefBuilderTest, AttrManyDefault) {
@@ -610,9 +777,15 @@ TEST_F(NodeDefBuilderTest, AttrManyDefault) {
          .Attr("b: string = 'kiwi'"));
 
   ExpectSuccess(Builder(), {}, {}, R"proto(
-      op: "AttrManyDefault"
-      attr { key: "a" value { s: "banana" } }
-      attr { key: "b" value { s: "kiwi" } } )proto");
+    op: "AttrManyDefault"
+    attr {
+      key: "a"
+      value { s: "banana" }
+    }
+    attr {
+      key: "b"
+      value { s: "kiwi" }
+    })proto");
 
   Op(OpDefBuilder("AttrManyDefaultWithMandatory")
          .Attr("a: string = 'banana'")
@@ -620,10 +793,19 @@ TEST_F(NodeDefBuilderTest, AttrManyDefault) {
          .Attr("c: string"));
 
   ExpectSuccess(Builder().Attr("c", "strawberry"), {}, {}, R"proto(
-      op: "AttrManyDefaultWithMandatory"
-      attr { key: "c" value { s: "strawberry" } }
-      attr { key: "a" value { s: "banana" } }
-      attr { key: "b" value { s: "kiwi" } } )proto");
+    op: "AttrManyDefaultWithMandatory"
+    attr {
+      key: "c"
+      value { s: "strawberry" }
+    }
+    attr {
+      key: "a"
+      value { s: "banana" }
+    }
+    attr {
+      key: "b"
+      value { s: "kiwi" }
+    })proto");
 
   Op(OpDefBuilder("AttrManyDefaultAndInferred")
          .Input("input: T")
@@ -642,47 +824,86 @@ TEST_F(NodeDefBuilderTest, AttrManyDefault) {
                     .Attr("b", std::vector<string>({"bar", "baz"}))
                     .Attr("f", 1.0f),
                 {DT_FLOAT}, {}, R"proto(
-      op: "AttrManyDefaultAndInferred"
-      input: "a"
-      attr { key: "T" value { type: DT_FLOAT } }
-      attr { key: "a" value { s: "foo" } }
-      attr { key: "e" value { s: "foo" } }
-      attr { key: "b" value { list { s: "bar" s: "baz" } } }
-      attr { key: "f" value { f: 1.0 } }
-      attr { key: "c" value { b: true } }
-      attr { key: "d" value { f: 0.3 } } )proto");
+    op: "AttrManyDefaultAndInferred"
+    input: "a"
+    attr {
+      key: "T"
+      value { type: DT_FLOAT }
+    }
+    attr {
+      key: "a"
+      value { s: "foo" }
+    }
+    attr {
+      key: "e"
+      value { s: "foo" }
+    }
+    attr {
+      key: "b"
+      value { list { s: "bar" s: "baz" } }
+    }
+    attr {
+      key: "f"
+      value { f: 1.0 }
+    }
+    attr {
+      key: "c"
+      value { b: true }
+    }
+    attr {
+      key: "d"
+      value { f: 0.3 }
+    })proto");
 }
 
 TEST_F(NodeDefBuilderTest, AttrListDefault) {
   Op(OpDefBuilder("AttrListDefault").Attr("a: list(int) = [5, 15]"));
 
   ExpectSuccess(Builder(), {}, {}, R"proto(
-      op: "AttrListDefault"
-      attr { key: "a" value { list { i: [5, 15] } } } )proto");
+    op: "AttrListDefault"
+    attr {
+      key: "a"
+      value { list { i: [ 5, 15 ] } }
+    })proto");
 
   ExpectSuccess(Builder().Attr("a", {3}), {}, {}, R"proto(
-      op: "AttrListDefault"
-      attr { key: "a" value { list { i: 3 } } } )proto");
+    op: "AttrListDefault"
+    attr {
+      key: "a"
+      value { list { i: 3 } }
+    })proto");
 
   ExpectSuccess(Builder().Attr("a", std::vector<int>()), {}, {}, R"proto(
-      op: "AttrListDefault"
-      attr { key: "a" value { list { } } } )proto");
+    op: "AttrListDefault"
+    attr {
+      key: "a"
+      value { list {} }
+    })proto");
 }
 
 TEST_F(NodeDefBuilderTest, AttrEmptyListDefault) {
   Op(OpDefBuilder("AttrEmptyListDefault").Attr("a: list(int) = []"));
 
   ExpectSuccess(Builder(), {}, {}, R"proto(
-      op: "AttrEmptyListDefault"
-      attr { key: "a" value { list { } } } )proto");
+    op: "AttrEmptyListDefault"
+    attr {
+      key: "a"
+      value { list {} }
+    })proto");
 
   ExpectSuccess(Builder().Attr("a", {3}), {}, {}, R"proto(
-      op: "AttrEmptyListDefault"
-      attr { key: "a" value { list { i: 3 } } } )proto");
+    op: "AttrEmptyListDefault"
+    attr {
+      key: "a"
+      value { list { i: 3 } }
+    })proto");
 
   ExpectSuccess(Builder().Attr("a", std::vector<int>()), {}, {}, R"proto(
-      op: "AttrEmptyListDefault"
-      attr { key: "a" value { list { } } } )proto");
+    op: "AttrEmptyListDefault"
+    attr {
+      key: "a"
+      value { list {} }
+    })proto");
 }
 
 TEST_F(NodeDefBuilderTest, NIntsIn) {
@@ -690,14 +911,21 @@ TEST_F(NodeDefBuilderTest, NIntsIn) {
 
   ExpectSuccess(Builder().Input(FakeInput(2)), {DT_INT32, DT_INT32}, {},
                 R"proto(
-      op: "NIntsIn" input: ["a", "a:1"]
-      attr { key: "N" value { i: 2 } } )proto");
+                  op: "NIntsIn"
+                  input: [ "a", "a:1" ]
+                  attr {
+                    key: "N"
+                    value { i: 2 }
+                  })proto");
 
   ExpectSuccess(Builder().Input(FakeInput(5, DT_INT32)),
                 {DT_INT32, DT_INT32, DT_INT32, DT_INT32, DT_INT32}, {}, R"proto(
-      op: "NIntsIn"
-      input: ["a", "a:1", "a:2", "a:3", "a:4"]
-      attr { key: "N" value { i: 5 } } )proto");
+    op: "NIntsIn"
+    input: [ "a", "a:1", "a:2", "a:3", "a:4" ]
+    attr {
+      key: "N"
+      value { i: 5 }
+    })proto");
 
   ExpectFailures(Builder().Input(FakeInput(2, DT_STRING)),
                  {"2 errors while building NodeDef",
@@ -730,16 +958,29 @@ TEST_F(NodeDefBuilderTest, NPolymorphicIn) {
 
   ExpectSuccess(Builder().Input(FakeInput(2, DT_INT32)), {DT_INT32, DT_INT32},
                 {}, R"proto(
-      op: "NPolymorphicIn" input: ["a", "a:1"]
-      attr { key: "N" value { i: 2 } }
-      attr { key: "T" value { type: DT_INT32 } } )proto");
+    op: "NPolymorphicIn"
+    input: [ "a", "a:1" ]
+    attr {
+      key: "N"
+      value { i: 2 }
+    }
+    attr {
+      key: "T"
+      value { type: DT_INT32 }
+    })proto");
 
   ExpectSuccess(Builder().Input(FakeInput(3, DT_STRING)),
                 {DT_STRING, DT_STRING, DT_STRING}, {}, R"proto(
-      op: "NPolymorphicIn"
-      input: ["a", "a:1", "a:2"]
-      attr { key: "N" value { i: 3 } }
-      attr { key: "T" value { type: DT_STRING } } )proto");
+    op: "NPolymorphicIn"
+    input: [ "a", "a:1", "a:2" ]
+    attr {
+      key: "N"
+      value { i: 3 }
+    }
+    attr {
+      key: "T"
+      value { type: DT_STRING }
+    })proto");
 
   ExpectFailures(
       Builder().Input(FakeInput(2)),
@@ -768,16 +1009,29 @@ TEST_F(NodeDefBuilderTest, NPolymorphicRestrictIn) {
 
   ExpectSuccess(Builder().Input(FakeInput(2, DT_BOOL)), {DT_BOOL, DT_BOOL}, {},
                 R"proto(
-      op: "NPolymorphicRestrictIn" input: ["a", "a:1"]
-      attr { key: "N" value { i: 2 } }
-      attr { key: "T" value { type: DT_BOOL } } )proto");
+                  op: "NPolymorphicRestrictIn"
+                  input: [ "a", "a:1" ]
+                  attr {
+                    key: "N"
+                    value { i: 2 }
+                  }
+                  attr {
+                    key: "T"
+                    value { type: DT_BOOL }
+                  })proto");
 
   ExpectSuccess(Builder().Input(FakeInput(3, DT_STRING)),
                 {DT_STRING, DT_STRING, DT_STRING}, {}, R"proto(
-      op: "NPolymorphicRestrictIn"
-      input: ["a", "a:1", "a:2"]
-      attr { key: "N" value { i: 3 } }
-      attr { key: "T" value { type: DT_STRING } } )proto");
+    op: "NPolymorphicRestrictIn"
+    input: [ "a", "a:1", "a:2" ]
+    attr {
+      key: "N"
+      value { i: 3 }
+    }
+    attr {
+      key: "T"
+      value { type: DT_STRING }
+    })proto");
 
   ExpectInvalid(Builder().Input(FakeInput(2, DT_INT32)),
                 "Value for attr 'T' of int32 is not in the list of allowed "
@@ -792,13 +1046,20 @@ TEST_F(NodeDefBuilderTest, NInTwice) {
 
   ExpectSuccess(Builder().Input(FakeInput(2)).Input(FakeInput(2)),
                 {DT_INT32, DT_INT32, DT_STRING, DT_STRING}, {}, R"proto(
-      op: "NInTwice"
-      input: ["a", "a:1", "b", "b:1"]
-      attr { key: "N" value { i: 2 } } )proto");
+    op: "NInTwice"
+    input: [ "a", "a:1", "b", "b:1" ]
+    attr {
+      key: "N"
+      value { i: 2 }
+    })proto");
 
   ExpectSuccess(Builder().Input(FakeInput(0)).Input(FakeInput()), {}, {},
                 R"proto(
-      op: "NInTwice" attr { key: "N" value { i: 0 } } )proto");
+                  op: "NInTwice"
+                  attr {
+                    key: "N"
+                    value { i: 0 }
+                  })proto");
 
   ExpectFailure(Builder().Input(FakeInput(3)).Input(FakeInput(1)),
                 "Inconsistent values for attr 'N' 3 vs. 1 while");
@@ -813,10 +1074,16 @@ TEST_F(NodeDefBuilderTest, NInPolymorphicTwice) {
 
   ExpectSuccess(Builder().Input(FakeInput(2, DT_INT32)).Input(FakeInput()),
                 {DT_INT32, DT_INT32, DT_INT32, DT_INT32}, {}, R"proto(
-      op: "NInPolymorphicTwice"
-      input: ["a", "a:1", "b", "b:1"]
-      attr { key: "N" value { i: 2 } }
-      attr { key: "T" value { type: DT_INT32 } } )proto");
+    op: "NInPolymorphicTwice"
+    input: [ "a", "a:1", "b", "b:1" ]
+    attr {
+      key: "N"
+      value { i: 2 }
+    }
+    attr {
+      key: "T"
+      value { type: DT_INT32 }
+    })proto");
 
   ExpectFailure(
       Builder().Input(FakeInput(3, DT_INT32)).Input(FakeInput(1, DT_INT32)),
@@ -845,20 +1112,38 @@ TEST_F(NodeDefBuilderTest, NInTwoTypeVariables) {
   ExpectSuccess(
       Builder().Input(FakeInput(2, DT_INT32)).Input(FakeInput(2, DT_BOOL)),
       {DT_INT32, DT_INT32, DT_BOOL, DT_BOOL}, {}, R"proto(
-      op: "NInTwoTypeVariables"
-      input: ["a", "a:1", "b", "b:1"]
-      attr { key: "N" value { i: 2 } }
-      attr { key: "S" value { type: DT_INT32 } }
-      attr { key: "T" value { type: DT_BOOL } } )proto");
+        op: "NInTwoTypeVariables"
+        input: [ "a", "a:1", "b", "b:1" ]
+        attr {
+          key: "N"
+          value { i: 2 }
+        }
+        attr {
+          key: "S"
+          value { type: DT_INT32 }
+        }
+        attr {
+          key: "T"
+          value { type: DT_BOOL }
+        })proto");
 
   ExpectSuccess(
       Builder().Input(FakeInput(2, DT_INT32)).Input(FakeInput(DT_BOOL)),
       {DT_INT32, DT_INT32, DT_BOOL, DT_BOOL}, {}, R"proto(
-      op: "NInTwoTypeVariables"
-      input: ["a", "a:1", "b", "b:1"]
-      attr { key: "N" value { i: 2 } }
-      attr { key: "S" value { type: DT_INT32 } }
-      attr { key: "T" value { type: DT_BOOL } } )proto");
+        op: "NInTwoTypeVariables"
+        input: [ "a", "a:1", "b", "b:1" ]
+        attr {
+          key: "N"
+          value { i: 2 }
+        }
+        attr {
+          key: "S"
+          value { type: DT_INT32 }
+        }
+        attr {
+          key: "T"
+          value { type: DT_BOOL }
+        })proto");
 
   ExpectFailure(
       Builder().Input(FakeInput(3, DT_INT32)).Input(FakeInput(1, DT_STRING)),
@@ -876,25 +1161,54 @@ TEST_F(NodeDefBuilderTest, InPolymorphicTwice) {
   ExpectSuccess(
       Builder().Input(FakeInput(1, DT_INT32)).Input(FakeInput(3, DT_INT32)),
       {DT_INT32, DT_INT32, DT_INT32, DT_INT32}, {}, R"proto(
-      op: "InPolymorphicTwice"
-      input: ["a", "b", "b:1", "b:2"]
-      attr { key: "N" value { i: 1 } }
-      attr { key: "T" value { type: DT_INT32 } }
-      attr { key: "M" value { i: 3 } } )proto");
+        op: "InPolymorphicTwice"
+        input: [ "a", "b", "b:1", "b:2" ]
+        attr {
+          key: "N"
+          value { i: 1 }
+        }
+        attr {
+          key: "T"
+          value { type: DT_INT32 }
+        }
+        attr {
+          key: "M"
+          value { i: 3 }
+        })proto");
 
   ExpectSuccess(Builder().Input(FakeInput(1, DT_BOOL)).Input(FakeInput(0)),
                 {DT_BOOL}, {}, R"proto(
-      op: "InPolymorphicTwice" input: "a"
-      attr { key: "N" value { i: 1 } }
-      attr { key: "T" value { type: DT_BOOL } }
-      attr { key: "M" value { i: 0 } } )proto");
+    op: "InPolymorphicTwice"
+    input: "a"
+    attr {
+      key: "N"
+      value { i: 1 }
+    }
+    attr {
+      key: "T"
+      value { type: DT_BOOL }
+    }
+    attr {
+      key: "M"
+      value { i: 0 }
+    })proto");
 
   ExpectSuccess(Builder().Input(FakeInput(0)).Input(FakeInput(1, DT_BOOL)),
                 {DT_BOOL}, {}, R"proto(
-      op: "InPolymorphicTwice" input: "b"
-      attr { key: "N" value { i: 0 } }
-      attr { key: "M" value { i: 1 } }
-      attr { key: "T" value { type: DT_BOOL } } )proto");
+    op: "InPolymorphicTwice"
+    input: "b"
+    attr {
+      key: "N"
+      value { i: 0 }
+    }
+    attr {
+      key: "M"
+      value { i: 1 }
+    }
+    attr {
+      key: "T"
+      value { type: DT_BOOL }
+    })proto");
 
   ExpectFailure(
       Builder().Input(FakeInput(2, DT_INT32)).Input(FakeInput(2, DT_STRING)),
@@ -905,13 +1219,19 @@ TEST_F(NodeDefBuilderTest, NIntsOut) {
   Op(OpDefBuilder("NIntsOut").Output("a: N*int32").Attr("N: int >= 2"));
 
   ExpectSuccess(Builder().Attr("N", 2), {}, {DT_INT32, DT_INT32}, R"proto(
-      op: "NIntsOut"
-      attr { key: "N" value { i: 2 } } )proto");
+    op: "NIntsOut"
+    attr {
+      key: "N"
+      value { i: 2 }
+    })proto");
 
   ExpectSuccess(Builder().Attr("N", 3), {}, {DT_INT32, DT_INT32, DT_INT32},
                 R"proto(
-      op: "NIntsOut"
-      attr { key: "N" value { i: 3 } } )proto");
+                  op: "NIntsOut"
+                  attr {
+                    key: "N"
+                    value { i: 3 }
+                  })proto");
 
   ExpectInvalid(Builder().Attr("N", 1),
                 "Value for attr 'N' of 1 must be at least minimum 2");
@@ -929,12 +1249,18 @@ TEST_F(NodeDefBuilderTest, NIntsOutDefault) {
          .Attr("N: int >= 2 = 3"));
 
   ExpectSuccess(Builder(), {}, {DT_INT32, DT_INT32, DT_INT32}, R"proto(
-      op: "NIntsOutDefault"
-      attr { key: "N" value { i: 3 } } )proto");
+    op: "NIntsOutDefault"
+    attr {
+      key: "N"
+      value { i: 3 }
+    })proto");
 
   ExpectSuccess(Builder().Attr("N", 2), {}, {DT_INT32, DT_INT32}, R"proto(
-      op: "NIntsOutDefault"
-      attr { key: "N" value { i: 2 } } )proto");
+    op: "NIntsOutDefault"
+    attr {
+      key: "N"
+      value { i: 2 }
+    })proto");
 }
 
 TEST_F(NodeDefBuilderTest, NPolymorphicOut) {
@@ -945,15 +1271,27 @@ TEST_F(NodeDefBuilderTest, NPolymorphicOut) {
 
   ExpectSuccess(Builder().Attr("T", DT_INT32).Attr("N", 2), {},
                 {DT_INT32, DT_INT32}, R"proto(
-      op: "NPolymorphicOut"
-      attr { key: "T" value { type: DT_INT32 } }
-      attr { key: "N" value { i: 2 } } )proto");
+    op: "NPolymorphicOut"
+    attr {
+      key: "T"
+      value { type: DT_INT32 }
+    }
+    attr {
+      key: "N"
+      value { i: 2 }
+    })proto");
 
   ExpectSuccess(Builder().Attr("N", 3).Attr("T", DT_STRING), {},
                 {DT_STRING, DT_STRING, DT_STRING}, R"proto(
-      op: "NPolymorphicOut"
-      attr { key: "N" value { i: 3 } }
-      attr { key: "T" value { type: DT_STRING } } )proto");
+    op: "NPolymorphicOut"
+    attr {
+      key: "N"
+      value { i: 3 }
+    }
+    attr {
+      key: "T"
+      value { type: DT_STRING }
+    })proto");
 
   ExpectInvalid(Builder().Attr("N", 1).Attr("T", DT_STRING),
                 "Value for attr 'N' of 1 must be at least minimum 2");
@@ -970,27 +1308,51 @@ TEST_F(NodeDefBuilderTest, NPolymorphicOutDefault) {
          .Attr("N: int >= 2 = 2"));
 
   ExpectSuccess(Builder(), {}, {DT_BOOL, DT_BOOL}, R"proto(
-      op: "NPolymorphicOutDefault"
-      attr { key: "T" value { type: DT_BOOL } }
-      attr { key: "N" value { i: 2 } } )proto");
+    op: "NPolymorphicOutDefault"
+    attr {
+      key: "T"
+      value { type: DT_BOOL }
+    }
+    attr {
+      key: "N"
+      value { i: 2 }
+    })proto");
 
   ExpectSuccess(Builder().Attr("N", 3), {}, {DT_BOOL, DT_BOOL, DT_BOOL},
                 R"proto(
-      op: "NPolymorphicOutDefault"
-      attr { key: "N" value { i: 3 } }
-      attr { key: "T" value { type: DT_BOOL } } )proto");
+                  op: "NPolymorphicOutDefault"
+                  attr {
+                    key: "N"
+                    value { i: 3 }
+                  }
+                  attr {
+                    key: "T"
+                    value { type: DT_BOOL }
+                  })proto");
 
   ExpectSuccess(Builder().Attr("T", DT_INT32), {}, {DT_INT32, DT_INT32},
                 R"proto(
-      op: "NPolymorphicOutDefault"
-      attr { key: "T" value { type: DT_INT32 } }
-      attr { key: "N" value { i: 2 } } )proto");
+                  op: "NPolymorphicOutDefault"
+                  attr {
+                    key: "T"
+                    value { type: DT_INT32 }
+                  }
+                  attr {
+                    key: "N"
+                    value { i: 2 }
+                  })proto");
 
   ExpectSuccess(Builder().Attr("N", 3).Attr("T", DT_INT32), {},
                 {DT_INT32, DT_INT32, DT_INT32}, R"proto(
-      op: "NPolymorphicOutDefault"
-      attr { key: "N" value { i: 3 } }
-      attr { key: "T" value { type: DT_INT32 } } )proto");
+    op: "NPolymorphicOutDefault"
+    attr {
+      key: "N"
+      value { i: 3 }
+    }
+    attr {
+      key: "T"
+      value { type: DT_INT32 }
+    })proto");
 }
 
 TEST_F(NodeDefBuilderTest, NPolymorphicRestrictOut) {
@@ -1001,9 +1363,15 @@ TEST_F(NodeDefBuilderTest, NPolymorphicRestrictOut) {
 
   ExpectSuccess(Builder().Attr("N", 3).Attr("T", DT_BOOL), {},
                 {DT_BOOL, DT_BOOL, DT_BOOL}, R"proto(
-      op: "NPolymorphicRestrictOut"
-      attr { key: "N" value { i: 3 } }
-      attr { key: "T" value { type: DT_BOOL } } )proto");
+    op: "NPolymorphicRestrictOut"
+    attr {
+      key: "N"
+      value { i: 3 }
+    }
+    attr {
+      key: "T"
+      value { type: DT_BOOL }
+    })proto");
 
   ExpectInvalid(Builder().Attr("N", 3).Attr("T", DT_INT32),
                 "Value for attr 'T' of int32 is not in the list of allowed "
@@ -1015,7 +1383,7 @@ TEST_F(NodeDefBuilderTest, RefIn) {
 
   ExpectSuccess(Builder().Input(FakeInput(DT_INT32_REF)), {DT_INT32_REF}, {},
                 R"proto(
-      op: "RefIn" input: "a" )proto");
+                  op: "RefIn" input: "a")proto");
 
   ExpectFailure(Builder().Input(FakeInput(DT_BOOL_REF)),
                 "Input 'a' passed bool_ref expected int32_ref while");
@@ -1029,8 +1397,12 @@ TEST_F(NodeDefBuilderTest, PolymorphicRefIn) {
 
   ExpectSuccess(Builder().Input(FakeInput(DT_BOOL_REF)), {DT_BOOL_REF}, {},
                 R"proto(
-      op: "PolymorphicRefIn" input: "a"
-      attr { key: "T" value { type: DT_BOOL } } )proto");
+                  op: "PolymorphicRefIn"
+                  input: "a"
+                  attr {
+                    key: "T"
+                    value { type: DT_BOOL }
+                  })proto");
 
   ExpectFailure(Builder().Input(FakeInput(DT_BOOL)),
                 "Input 'a' passed bool expected ref type while");
@@ -1040,22 +1412,26 @@ TEST_F(NodeDefBuilderTest, RefOut) {
   Op(OpDefBuilder("RefOut").Output("a: Ref(string)"));
 
   ExpectSuccess(Builder(), {}, {DT_STRING_REF}, R"proto(
-      op: "RefOut" )proto");
+    op: "RefOut")proto");
 }
 
 TEST_F(NodeDefBuilderTest, PolymorphicRefOut) {
   Op(OpDefBuilder("PolymorphicRefOut").Output("a: Ref(t)").Attr("t: type"));
 
   ExpectSuccess(Builder().Attr("t", DT_BOOL), {}, {DT_BOOL_REF}, R"proto(
-      op: "PolymorphicRefOut"
-      attr { key: "t" value { type: DT_BOOL } } )proto");
+    op: "PolymorphicRefOut"
+    attr {
+      key: "t"
+      value { type: DT_BOOL }
+    })proto");
 }
 
 TEST_F(NodeDefBuilderTest, SpecifyDevice) {
   Op(OpDefBuilder("SpecifyDevice"));
 
   ExpectSuccess(Builder().Device("ADevice"), {}, {}, R"proto(
-      op: "SpecifyDevice" device: "ADevice" )proto");
+    op: "SpecifyDevice"
+    device: "ADevice")proto");
 }
 
 }  // namespace

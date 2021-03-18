@@ -40,6 +40,9 @@ HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads) {
   backend_options.set_intra_op_parallelism_threads(
       intra_op_parallelism_threads);
   backend_ = Backend::CreateBackend(backend_options).ConsumeValueOrDie();
+  device_shape_representation_fn_ = [this](const Shape& shape) {
+    return backend_->compiler()->DeviceShapeRepresentation(shape);
+  };
   VLOG(1) << "Created HloRunner for platform: " << platform->Name();
 }
 
@@ -47,10 +50,11 @@ HloRunner::~HloRunner() {}
 
 StatusOr<ScopedShapedBuffer> HloRunner::TransferLiteralToDevice(
     const Literal& literal) {
-  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer buffer,
-                      backend().transfer_manager()->AllocateScopedShapedBuffer(
-                          literal.shape(), backend().memory_allocator(),
-                          backend().default_device_ordinal()));
+  TF_ASSIGN_OR_RETURN(
+      ScopedShapedBuffer buffer,
+      backend().transfer_manager()->AllocateScopedShapedBuffer(
+          literal.shape(), backend().memory_allocator(),
+          backend().default_device_ordinal(), device_shape_representation_fn_));
   TF_ASSIGN_OR_RETURN(
       auto stream, backend().BorrowStream(backend().default_stream_executor()));
   TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
@@ -92,6 +96,8 @@ StatusOr<Literal> HloRunner::Execute(std::unique_ptr<HloModule> module,
                                      absl::Span<const Literal* const> arguments,
                                      bool run_hlo_passes,
                                      ExecutionProfile* profile) {
+  UpdateEntryComputationLayout(module.get(), device_shape_representation_fn_);
+
   TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
                       TransferLiteralsToDevice(arguments));
   TF_ASSIGN_OR_RETURN(ExecutionOutput result,
@@ -238,7 +244,8 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
       TF_ASSIGN_OR_RETURN(
           ScopedShapedBuffer argument_buffer,
           backend().transfer_manager()->AllocateScopedShapedBuffer(
-              argument->shape(), backend().memory_allocator(), device));
+              argument->shape(), backend().memory_allocator(), device,
+              device_shape_representation_fn_));
       TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
           streams.back().get(), *argument, argument_buffer));
       argument_buffers.push_back(std::move(argument_buffer));
