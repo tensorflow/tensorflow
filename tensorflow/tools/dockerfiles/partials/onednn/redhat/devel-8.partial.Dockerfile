@@ -1,6 +1,6 @@
 FROM registry.access.redhat.com/ubi8/ubi:${REDHAT_VERSION} AS base
 
-ARG REDHAT_VERSION=8
+ARG REDHAT_VERSION=latest
 
 # Enable both PowerTools and EPEL otherwise some packages like hdf5-devel fail to install
 RUN dnf --disableplugin=subscription-manager install -y 'dnf-command(config-manager)' && \
