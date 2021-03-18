@@ -21,13 +21,13 @@ executing the computation graph, TensorFlow may read and write files, send and
 receive data over the network, and even spawn additional processes. All these
 tasks are performed with the permissions of the TensorFlow process. Allowing
 for this flexibility makes for a powerful machine learning platform,
-but it has implications for security.
+but it has security implications.
 
 The computation graph may also accept **inputs**. Those inputs are the
-data you supply to TensorFlow to train a model, or to use a model to run
+data you supply to TensorFlow to train a model or to use a model to run
 inference on the data.
 
-**TensorFlow models are programs, and need to be treated as such from a security
+**TensorFlow models are programs and need to be treated as such from a security
 perspective.**
 
 ## Running untrusted models
