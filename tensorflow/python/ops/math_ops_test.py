@@ -461,23 +461,27 @@ class DivAndModTest(test_util.TensorFlowTestCase):
 
   def testFloorModInt(self):
     nums, divs = self.intTestData()
-    # TODO(aselle): Change test to use % after switch
-    # tf_result = math_ops.floor_mod(nums, divs)
-    tf_result = math_ops.floormod(nums, divs)
-    np_result = nums % divs
-    self.assertAllEqual(tf_result, np_result)
+    for dtype in [np.int32, np.int64]:
+      x = nums.astype(dtype)
+      y = divs.astype(dtype)
+      tf_result = math_ops.floormod(x, y)
+      np_result = x % y
+      self.assertAllEqual(tf_result, np_result)
+      tf2_result = (array_ops.constant(x) % array_ops.constant(y))
+      self.assertAllEqual(tf2_result, tf_result)
 
   def testFloorModFloat(self):
     nums, divs = self.floatTestData()
-    tf_result = math_ops.floormod(nums, divs)
-    np_result = nums % divs
-    self.assertAllEqual(tf_result, np_result)
-    # TODO(aselle): put this test in once % switched to floormod
-    # tf2_result = (array_ops.constant(nums)
-    #               % array_ops.constant(divs))
-    # self.assertAllEqual(tf2_result, tf_result)
+    for dtype in [np.float16, np.float32, np.float64]:
+      x = nums.astype(dtype)
+      y = divs.astype(dtype)
+      tf_result = math_ops.floormod(x, y)
+      np_result = x % y
+      self.assertAllEqual(tf_result, np_result)
+      tf2_result = (array_ops.constant(x) % array_ops.constant(y))
+      self.assertAllEqual(tf2_result, tf_result)
 
-  def testFloorModBfloat64(self):
+  def testFloorModBfloat16(self):
     nums, divs = self.floatTestData()
     tf_result = math_ops.floormod(math_ops.cast(nums, dtypes.bfloat16),
                                   math_ops.cast(divs, dtypes.bfloat16))
@@ -501,10 +505,8 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     tf_result = math_ops.floor_div(nums, divs)
     np_result = nums // divs
     self.assertAllEqual(tf_result, np_result)
-    # TODO(aselle): Put this test in once // is switched to floordiv
-    # tf2_result = (array_ops.constant(nums)
-    #               // array_ops.constant(divs))
-    # self.assertAllEqual(tf2_result, tf_result)
+    tf2_result = (array_ops.constant(nums) // array_ops.constant(divs))
+    self.assertAllEqual(tf2_result, tf_result)
 
   @test_util.deprecated_graph_mode_only
   def testDivideName(self):

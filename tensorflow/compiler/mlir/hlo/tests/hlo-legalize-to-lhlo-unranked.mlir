@@ -17,7 +17,7 @@ func @dynamic_reshape_from_unranked(
   return %reshaped : tensor<?xf32>
 }
 // CHECK-SAME: ([[ARG:%.*]]: memref<*xf32>, [[SHAPE:%.*]]: memref<1xi32>)
-// CHECK-NEXT: memref_reshape [[ARG]]([[SHAPE]])
+// CHECK-NEXT: memref.reshape [[ARG]]([[SHAPE]])
 // CHECK-SAME:   : (memref<*xf32>, memref<1xi32>) -> memref<?xf32>
 
 // -----
@@ -30,7 +30,7 @@ func @dynamic_reshape_to_unranked(
   return %reshaped : tensor<*xf32>
 }
 // CHECK-SAME: ([[ARG:%.*]]: memref<?xf32>, [[SHAPE:%.*]]: memref<?xi32>)
-// CHECK-NEXT: memref_reshape [[ARG]]([[SHAPE]])
+// CHECK-NEXT: memref.reshape [[ARG]]([[SHAPE]])
 // CHECK-SAME:   : (memref<?xf32>, memref<?xi32>) -> memref<*xf32>
 
 // -----
@@ -41,4 +41,4 @@ func @reshape_unranked(%operand: tensor<*xf32>) -> tensor<f32> {
   return %reshaped : tensor<f32>
 }
 // CHECK-SAME: ([[ARG:%.*]]: memref<*xf32>)
-// CHECK-NEXT: memref_cast [[ARG]] : memref<*xf32> to memref<f32>
+// CHECK-NEXT: memref.cast [[ARG]] : memref<*xf32> to memref<f32>

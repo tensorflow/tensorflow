@@ -121,6 +121,19 @@ int ObjectReader::GetNumberOfRuntimeInputs() const {
   return GetNumberOfRuntimeInputsForNode(context_, node_);
 }
 
+absl::Status ObjectReader::GetTensorId(uint32_t input_id,
+                                       int* tensor_id) const {
+  if (input_id >= node_->inputs->size) {
+    return absl::OutOfRangeError(
+        absl::StrCat("Input tensor index: ", input_id));
+  }
+  *tensor_id = node_->inputs->data[input_id];
+  if (*tensor_id < 0 || *tensor_id > context_->tensors_size) {
+    return absl::OutOfRangeError(absl::StrCat("Tensor index: ", *tensor_id));
+  }
+  return absl::OkStatus();
+}
+
 absl::Status ObjectReader::GetTensorDims(uint32_t idx,
                                          TfLiteIntArray* dimensions) const {
   if (idx >= node_->inputs->size) {

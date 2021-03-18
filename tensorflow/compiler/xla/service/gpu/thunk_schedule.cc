@@ -171,8 +171,9 @@ string ThunkSchedule::ToString() const {
     absl::string_view kind_str = ThunkKindToString(thunk->kind());
     absl::StrAppend(&result, kind_str,
                     string(max_thunk_kind_len - kind_str.length(), ' '), "\t");
-    if (thunk_to_hlo_.at(thunk) != nullptr) {
-      absl::StrAppend(&result, thunk_to_hlo_.at(thunk)->ToString());
+    auto iter = thunk_to_hlo_.find(thunk);
+    if (iter != thunk_to_hlo_.end() && iter->second != nullptr) {
+      absl::StrAppend(&result, iter->second->ToString());
     } else {
       absl::StrAppend(&result, "(no HloInstruction)");
     }
@@ -182,9 +183,13 @@ string ThunkSchedule::ToString() const {
   for (const auto& entry : depends_on_) {
     const Thunk* dependent = entry.first;
     for (const Thunk* dependency : entry.second) {
-      absl::StrAppend(&result, "\t", thunk_to_hlo_.at(dependent)->name(),
-                      " depends on ", thunk_to_hlo_.at(dependency)->name(),
-                      "\n");
+      auto dependent_iter = thunk_to_hlo_.find(dependent);
+      auto dependency_iter = thunk_to_hlo_.find(dependency);
+      if (dependent_iter != thunk_to_hlo_.end() &&
+          dependency_iter != thunk_to_hlo_.end()) {
+        absl::StrAppend(&result, "\t", dependent_iter->second->name(),
+                        " depends on ", dependency_iter->second->name(), "\n");
+      }
     }
   }
   return result;

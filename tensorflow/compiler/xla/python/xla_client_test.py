@@ -578,6 +578,13 @@ def TestFactory(xla_backend, cloud_tpu=False):
       np.testing.assert_array_equal(y.to_py(), z.to_py())
       self.assertEqual(y.unsafe_buffer_pointer(), z.unsafe_buffer_pointer())
 
+    @unittest.skipIf(cloud_tpu, "not implemented")
+    def testJaxAttributesHaveCorrectDefaults(self):
+      x = np.array([[3., 4., 5.]], np.float32)
+      y = self.backend.buffer_from_pyval(x)
+      self.assertIsNone(y.aval)
+      self.assertIsNone(y._device)
+
   tests.append(BufferTest)
 
   class SingleOpTest(ComputationTest):

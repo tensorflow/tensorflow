@@ -31,20 +31,20 @@ func @func_op_long(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> 
   return %5 : tensor<4xf32>
 }
 //       CHECK: (%[[NEW_ARG0:.*]]: memref<4xf32>, %[[NEW_ARG1:.*]]: memref<4xf32>) -> memref<4xf32>
-//  CHECK-NEXT: %[[MAX_RESULT:.*]] = alloc() : memref<4xf32>
+//  CHECK-NEXT: %[[MAX_RESULT:.*]] = memref.alloc() : memref<4xf32>
 //  CHECK-NEXT: "lmhlo.maximum"(%[[NEW_ARG0]], %[[NEW_ARG1]], %[[MAX_RESULT]])
-//  CHECK-NEXT: %[[ADD_RESULT:.*]] = alloc() : memref<4xf32>
+//  CHECK-NEXT: %[[ADD_RESULT:.*]] = memref.alloc() : memref<4xf32>
 //  CHECK-NEXT: "lmhlo.add"(%[[NEW_ARG0]], %[[MAX_RESULT]], %[[ADD_RESULT]])
-//  CHECK-NEXT: dealloc %[[MAX_RESULT]] : memref<4xf32>
-//  CHECK-NEXT: %[[MIN_RESULT:.*]] = alloc() : memref<4xf32>
+//  CHECK-NEXT: memref.dealloc %[[MAX_RESULT]] : memref<4xf32>
+//  CHECK-NEXT: %[[MIN_RESULT:.*]] = memref.alloc() : memref<4xf32>
 //  CHECK-NEXT: "lmhlo.minimum"(%[[NEW_ARG0]], %[[NEW_ARG1]], %[[MIN_RESULT]])
-//  CHECK-NEXT: %[[SUB_RESULT:.*]] = alloc() : memref<4xf32>
+//  CHECK-NEXT: %[[SUB_RESULT:.*]] = memref.alloc() : memref<4xf32>
 //  CHECK-NEXT: "lmhlo.subtract"(%[[NEW_ARG1]], %[[MIN_RESULT]], %[[SUB_RESULT]])
-//  CHECK-NEXT: dealloc %[[MIN_RESULT]] : memref<4xf32>
-//  CHECK-NEXT: %[[MUL_RESULT:.*]] = alloc() : memref<4xf32>
+//  CHECK-NEXT: memref.dealloc %[[MIN_RESULT]] : memref<4xf32>
+//  CHECK-NEXT: %[[MUL_RESULT:.*]] = memref.alloc() : memref<4xf32>
 //  CHECK-NEXT: "lmhlo.multiply"(%[[ADD_RESULT]], %[[SUB_RESULT]], %[[MUL_RESULT]])
-//  CHECK-NEXT: dealloc %[[SUB_RESULT]] : memref<4xf32>
-//  CHECK-NEXT: dealloc %[[ADD_RESULT]] : memref<4xf32>
+//  CHECK-NEXT: memref.dealloc %[[SUB_RESULT]] : memref<4xf32>
+//  CHECK-NEXT: memref.dealloc %[[ADD_RESULT]] : memref<4xf32>
 //  CHECK-NEXT: return %[[MUL_RESULT]] : memref<4xf32>
 
 // -----
@@ -53,15 +53,15 @@ func @func_op_long(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> 
 func @fusion(%multiplier: tensor<2x2xf32>, %summand_1: tensor<2x2xf32>,
              %summand_2: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: (%{{.*}}: {{.*}}, {{.*}}: {{.*}}, {{.*}}: {{.*}})
-  // CHECK-NEXT:  %[[ADD_RESULT:.*]] = alloc() : memref<2x2xf32>
+  // CHECK-NEXT:  %[[ADD_RESULT:.*]] = memref.alloc() : memref<2x2xf32>
   %sum = "mhlo.add"(%summand_1, %summand_2)
       : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK-NEXT: "lmhlo.add"(%{{.*}}, %{{.*}}, %[[ADD_RESULT]])
-  // CHECK-NEXT:  %[[MUL_RESULT:.*]] = alloc() : memref<2x2xf32>
+  // CHECK-NEXT:  %[[MUL_RESULT:.*]] = memref.alloc() : memref<2x2xf32>
   %result = "mhlo.multiply"(%sum, %multiplier)
       : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK-NEXT: "lmhlo.multiply"(%[[ADD_RESULT]], %{{.*}}, %[[MUL_RESULT]])
-  // CHECK-NEXT:  dealloc %[[ADD_RESULT]] : memref<2x2xf32>
+  // CHECK-NEXT:  memref.dealloc %[[ADD_RESULT]] : memref<2x2xf32>
   // CHECK-NEXT:  return %[[MUL_RESULT]] : memref<2x2xf32>
   return %result : tensor<2x2xf32>
 }
@@ -154,9 +154,9 @@ func @dyn_broadcast(%operand: tensor<?x?xf32>) -> tensor<?x?x?xf32> {
 
 // CHECK: %[[C0:.*]] = constant 0 : index
 // CHECK: %[[C1:.*]] = constant 1 : index
-// CHECK: %[[OPER_DIM_1:.*]] = dim %[[OPERAND]], %[[C1]] : memref<?x?xf32>
+// CHECK: %[[OPER_DIM_1:.*]] = memref.dim %[[OPERAND]], %[[C1]] : memref<?x?xf32>
 // CHECK: %[[OP_STRIDE_0:.*]] = muli %[[C1]], %[[OPER_DIM_1]] : index
-// CHECK: %[[OPER_DIM_0:.*]] = dim %[[OPERAND]], %[[C0]] : memref<?x?xf32>
+// CHECK: %[[OPER_DIM_0:.*]] = memref.dim %[[OPERAND]], %[[C0]] : memref<?x?xf32>
 
 // CHECK: %[[EL0:.*]] = tensor.extract %[[SHAPE]]{{\[}}%[[C0]]] : tensor<3xi64>
 // CHECK: %[[SIZE_0:.*]] = index_cast %[[EL0]] : i64 to index
@@ -172,9 +172,9 @@ func @dyn_broadcast(%operand: tensor<?x?xf32>) -> tensor<?x?x?xf32> {
 // CHECK: %[[EXPAND_2:.*]] = cmpi slt, %[[OPER_DIM_1]], %[[SIZE_2]] : index
 // CHECK: %[[STRIDE_2:.*]] = select %[[EXPAND_2]], %[[C0]], %[[C1]] : index
 
-// CHECK: %[[TRANSFORMED_MEMREF:.*]] = memref_reinterpret_cast %[[OPERAND]] to offset: [0], sizes: {{\[}}%[[SIZE_0]], %[[SIZE_1]], %[[SIZE_2]]], strides: {{\[}}%[[C0]], %[[STRIDE_1]], %[[STRIDE_2]]] : memref<?x?xf32> to memref<?x?x?xf32, #map>
+// CHECK: %[[TRANSFORMED_MEMREF:.*]] = memref.reinterpret_cast %[[OPERAND]] to offset: [0], sizes: {{\[}}%[[SIZE_0]], %[[SIZE_1]], %[[SIZE_2]]], strides: {{\[}}%[[C0]], %[[STRIDE_1]], %[[STRIDE_2]]] : memref<?x?xf32> to memref<?x?x?xf32, #map>
 
-// CHECK: %[[RESULT:.*]] = alloc(%[[SIZE_0]], %[[SIZE_1]], %[[SIZE_2]]) : memref<?x?x?xf32>
+// CHECK: %[[RESULT:.*]] = memref.alloc(%[[SIZE_0]], %[[SIZE_1]], %[[SIZE_2]]) : memref<?x?x?xf32>
 
 // CHECK: "lmhlo.copy"(%[[TRANSFORMED_MEMREF]], %[[RESULT]]) : (memref<?x?x?xf32, #map>, memref<?x?x?xf32>) -> ()
 // CHECK: return %[[RESULT]] : memref<?x?x?xf32>
@@ -469,7 +469,7 @@ func @add_dyn(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) -> tensor<?x?xf32> {
   // CHECK: %[[SHAPE:.*]] = shape.shape_of %arg0 : memref<?x?xf32> -> tensor<2xindex>
   // CHECK: %[[EE0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]] : tensor<2xindex>
   // CHECK: %[[EE1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]] : tensor<2xindex>
-  // CHECK: %[[RESULT:.*]] = alloc(%[[EE0]], %[[EE1]])
+  // CHECK: %[[RESULT:.*]] = memref.alloc(%[[EE0]], %[[EE1]])
   // CHECK: "lmhlo.add"(%arg0, %arg1, %[[RESULT]]) : (memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>) -> ()
   return %result : tensor<?x?xf32>
   // CHECK: return %[[RESULT]]
@@ -485,7 +485,7 @@ func @tanh_dyn(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   // CHECK: %[[SHAPE:.*]] = shape.shape_of %arg0 : memref<?x?xf32> -> tensor<2xindex>
   // CHECK: %[[EE0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]] : tensor<2xindex>
   // CHECK: %[[EE1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]] : tensor<2xindex>
-  // CHECK: %[[RESULT:.*]] = alloc(%[[EE0]], %[[EE1]])
+  // CHECK: %[[RESULT:.*]] = memref.alloc(%[[EE0]], %[[EE1]])
   // CHECK: "lmhlo.tanh"(%arg0, %[[RESULT]]) : (memref<?x?xf32>, memref<?x?xf32>) -> ()
   return %result : tensor<?x?xf32>
   // CHECK: return %[[RESULT]]
@@ -496,7 +496,7 @@ func @tanh_dyn(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
 // CHECK-LABEL: func @dot
 func @dot(%arg0: tensor<1024x1024xf32>) -> tensor<1024x1024xf32> {
 // CHECK-SAME: (%[[ARG0:.*]]: [[TYPE:.*]]) -> [[TYPE]]
-// CHECK-NEXT: %[[ALLOC:.*]] = alloc
+// CHECK-NEXT: %[[ALLOC:.*]] = memref.alloc
 //      CHECK: "lmhlo.dot"(%[[ARG0]], %[[ARG0]], %[[ALLOC]]) {
 //        dot_dimension_numbers = {
 //          lhs_batching_dimensions = dense<> : tensor<0xi64>,
@@ -517,7 +517,7 @@ func @dot(%arg0: tensor<1024x1024xf32>) -> tensor<1024x1024xf32> {
 func @conv(%input: tensor<3x5x5x3xf32>, %filter : tensor<2x2x3x4xf32>)
     -> tensor<3x5x5x4xf32> {
   %c0 = constant 0 : index
-  // CHECK: %[[OUT:.*]] = alloc() : memref<3x5x5x4xf32>
+  // CHECK: %[[OUT:.*]] = memref.alloc() : memref<3x5x5x4xf32>
   // CHECK: "lmhlo.convolution"(%{{.+}}, %{{.+}}, %[[OUT]])
   // CHECK-SAME: padding = dense<[
   // CHECK-SAME:                  [0, 1], [0, 1]]> : tensor<2x2xi64>
@@ -548,11 +548,11 @@ func @conv(%input: tensor<3x5x5x3xf32>, %filter : tensor<2x2x3x4xf32>)
 
 // CHECK-LABEL: func @reduce
 func @reduce(%arg0: tensor<1x8xf32>, %arg1: tensor<f32>) -> tensor<1xf32> {
-  // CHECK: %[[OUT:.*]] = alloc() : memref<1xf32>
+  // CHECK: %[[OUT:.*]] = memref.alloc() : memref<1xf32>
   // CHECK:  "lmhlo.reduce"(%{{.+}}, %{{.+}}, %[[OUT]]) ( {
   // CHECK:  ^bb0(%[[ARG1:.*]]: memref<f32>, %[[ARG2:.*]]: memref<f32>,
   // CHECK-SAME:  %[[ARG3:.*]]: memref<f32>):
-  // CHECK:    %[[TMP:.*]] = alloc() : memref<f32>
+  // CHECK:    %[[TMP:.*]] = memref.alloc() : memref<f32>
   // CHECK:    "lmhlo.add"(%[[ARG1]], %[[ARG2]], %[[TMP]])
   // CHECK:    "lmhlo.copy"(%[[TMP]], %[[ARG3]])
   // CHECK:    "lmhlo.terminator"() : () -> ()

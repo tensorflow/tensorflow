@@ -39,6 +39,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/hlo",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:StandardOps",
@@ -57,6 +58,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LLVMTransforms",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
@@ -101,6 +103,7 @@ cc_library(
         "@llvm-project//llvm:TransformUtils",
         "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:ComplexToLLVM",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:Analysis",

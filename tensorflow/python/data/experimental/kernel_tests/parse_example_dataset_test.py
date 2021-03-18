@@ -25,10 +25,10 @@ import numpy as np
 
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
-from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.ops import parsing_ops as contrib_parsing_ops
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.kernel_tests import tf_record_test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
@@ -1150,13 +1150,13 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
       self.assertCountEqual(expected, actual)
 
 
-class ParseExampleDatasetCheckpointTest(
-    reader_dataset_ops_test_base.MakeBatchedFeaturesDatasetTestBase,
-    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
+class ParseExampleDatasetCheckpointTest(tf_record_test_base.FeaturesTestBase,
+                                        checkpoint_test_base.CheckpointTestBase,
+                                        parameterized.TestCase):
 
   def _parse_example_dataset(self, num_repeat, batch_size):
     return self.make_batch_feature(
-        filenames=self.test_filenames,
+        filenames=self._filenames,
         num_epochs=num_repeat,
         batch_size=batch_size,
         reader_num_threads=5,

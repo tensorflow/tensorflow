@@ -478,7 +478,7 @@ StatusOr<Value> LhloDialectEmitter::RewriteFusionOperand(
   }
   TF_ASSIGN_OR_RETURN(Value memref,
                       GetOrCreateArrayView(root, shape, *shape_index));
-  auto load = b->create<TensorLoadOp>(loc, memref);
+  auto load = b->create<memref::TensorLoadOp>(loc, memref);
   if (shape.layout() !=
       xla::LayoutUtil::MakeDescendingLayout(shape.dimensions().size())) {
     llvm::SmallVector<int64_t, 4> minor_to_major(
@@ -522,7 +522,7 @@ StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
     llvm::SmallVector<Value, 4> output;
     TF_RETURN_IF_ERROR(GetOrCreateView(instr, &output));
     TF_RETURN_IF_ERROR(WalkTuplePostOrder(result, [&](Value v) mutable {
-      region_builder.create<TensorStoreOp>(loc, v, output[i++]);
+      region_builder.create<memref::TensorStoreOp>(loc, v, output[i++]);
       return Status::OK();
     }));
     if (i != output.size()) {
@@ -965,7 +965,7 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnBatchNorm(
 }
 
 // Convert an XLA HLO constant to a global_memref + get_global_memref pair.
-StatusOr<mlir::GetGlobalMemrefOp> LhloDialectEmitter::EmitConstant(
+StatusOr<mlir::memref::GetGlobalOp> LhloDialectEmitter::EmitConstant(
     const HloInstruction* instr) {
   // Insert a global_memref in the module.
   Location loc = getLocation(instr);
@@ -989,7 +989,7 @@ StatusOr<mlir::GetGlobalMemrefOp> LhloDialectEmitter::EmitConstant(
   {
     OpBuilder::InsertionGuard guard(builder_);
     builder_.clearInsertionPoint();
-    auto global_var = builder_.create<GlobalMemrefOp>(
+    auto global_var = builder_.create<memref::GlobalOp>(
         loc, constant_name, builder_.getStringAttr("private"), memref_type,
         initial_value, true);
     SymbolTable(module_).insert(global_var);
@@ -1009,7 +1009,7 @@ StatusOr<mlir::GetGlobalMemrefOp> LhloDialectEmitter::EmitConstant(
   }
 
   auto get_global_memref =
-      builder_.create<GetGlobalMemrefOp>(loc, memref_type, constant_name);
+      builder_.create<memref::GetGlobalOp>(loc, memref_type, constant_name);
 
   // Update the cache to remember this value.
   auto& cached_value = slices_[std::make_pair(instr, xla::ShapeIndex())];
@@ -1538,15 +1538,15 @@ StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
   // then follow up with a MemRefReinterpretCast to cast the resulting memref to
   // the original layout.
   Value result =
-      builder_.create<ViewOp>(loc, physical_out_type, alloc, byte_shift,
-                              /*sizes=*/ValueRange{});
+      builder_.create<memref::ViewOp>(loc, physical_out_type, alloc, byte_shift,
+                                      /*sizes=*/ValueRange{});
   if (physical_out_type != out_type) {
     int64_t out_offset;
     SmallVector<int64_t, 4> out_strides;
     if (failed(getStridesAndOffset(out_memref_type, out_strides, out_offset)))
       return tensorflow::errors::Internal(
           "Failed to get strides and offset from the output type.");
-    result = builder_.create<MemRefReinterpretCastOp>(
+    result = builder_.create<memref::ReinterpretCastOp>(
         loc, out_memref_type, result, out_offset, out_memref_type.getShape(),
         out_strides);
   }
@@ -1710,7 +1710,8 @@ std::unique_ptr<OperationPass<ModuleOp>> createXlaHloToLhloWithXlaPass() {
 Status HloToLhloModule(const BufferAssignment& assignment,
                        const HloModule& hlo_module, ModuleOp module) {
   module.getContext()
-      ->loadDialect<StandardOpsDialect, mhlo::MhloDialect, lmhlo::LmhloDialect,
+      ->loadDialect<StandardOpsDialect, memref::MemRefDialect,
+                    mhlo::MhloDialect, lmhlo::LmhloDialect,
                     lmhlo_gpu::LmhloGpuDialect>();
   const HloComputation* computation = hlo_module.entry_computation();
 

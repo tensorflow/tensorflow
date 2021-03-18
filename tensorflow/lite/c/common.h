@@ -84,7 +84,8 @@ typedef struct TfLiteIntArray {
 // https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
 #if (!defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
      __GNUC_MINOR__ >= 1) ||                                      \
-    defined(HEXAGON) || (__clang_major__ == 7 && __clang_minor__ == 1)
+    defined(HEXAGON) ||                                           \
+    (defined(__clang__) && __clang_major__ == 7 && __clang_minor__ == 1)
   int data[0];
 #else
   int data[];

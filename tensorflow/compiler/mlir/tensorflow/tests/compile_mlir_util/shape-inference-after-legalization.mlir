@@ -9,4 +9,4 @@ module attributes {tf.versions = {producer = 179 : i32}} {
 }
 
 // CHECK-LABEL: HloModule main
-// CHECK:       -> (bf16[8,16,16,64], f32[64], f32[64], f32[64], f32[64], f32[0])
+// CHECK:       -> (bf16[8,16,16,64], f32[64], f32[64], f32[64], f32[64], /*index=5*/f32[0])

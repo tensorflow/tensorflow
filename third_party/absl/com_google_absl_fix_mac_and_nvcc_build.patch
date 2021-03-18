@@ -1,5 +1,5 @@
 diff --git a/absl/container/internal/compressed_tuple.h b/absl/container/internal/compressed_tuple.h
-index 4bfe92f..01db713 100644
+index 02bfd03..d25d96d 100644
 --- a/absl/container/internal/compressed_tuple.h
 +++ b/absl/container/internal/compressed_tuple.h
 @@ -32,7 +32,6 @@
@@ -10,7 +10,7 @@ index 4bfe92f..01db713 100644
  #include <tuple>
  #include <type_traits>
  #include <utility>
-@@ -77,110 +76,61 @@ constexpr bool IsFinal() {
+@@ -77,134 +76,61 @@ constexpr bool IsFinal() {
  #endif
  }
  
@@ -88,29 +88,29 @@ index 4bfe92f..01db713 100644
      //   error C3548: 'I': parameter pack cannot be used in this context
 -    : uses_inheritance,
 -      Storage<Ts, std::integral_constant<size_t, I>::value>... {
--  constexpr CompressedTupleImpl() = default;
--  template <typename... Vs>
--  explicit constexpr CompressedTupleImpl(absl::in_place_t, Vs&&... args)
--      : Storage<Ts, I>(absl::in_place, absl::forward<Vs>(args))... {}
--  friend CompressedTuple<Ts...>;
--};
--
--template <typename... Ts, size_t... I>
--struct ABSL_INTERNAL_COMPRESSED_TUPLE_DECLSPEC CompressedTupleImpl<
--    CompressedTuple<Ts...>, absl::index_sequence<I...>, false>
--    // We use the dummy identity function as above...
--    : Storage<Ts, std::integral_constant<size_t, I>::value, false>... {
 +    : Storage<CompressedTuple<Ts...>,
 +              std::integral_constant<size_t, I>::value>... {
    constexpr CompressedTupleImpl() = default;
 -  template <typename... Vs>
 -  explicit constexpr CompressedTupleImpl(absl::in_place_t, Vs&&... args)
--      : Storage<Ts, I, false>(absl::in_place, absl::forward<Vs>(args))... {}
+-      : Storage<Ts, I>(absl::in_place, absl::forward<Vs>(args))... {}
 -  friend CompressedTuple<Ts...>;
 +  explicit constexpr CompressedTupleImpl(Ts&&... args)
 +      : Storage<CompressedTuple<Ts...>, I>(absl::forward<Ts>(args))... {}
  };
  
+-template <typename... Ts, size_t... I>
+-struct ABSL_INTERNAL_COMPRESSED_TUPLE_DECLSPEC CompressedTupleImpl<
+-    CompressedTuple<Ts...>, absl::index_sequence<I...>, false>
+-    // We use the dummy identity function as above...
+-    : Storage<Ts, std::integral_constant<size_t, I>::value, false>... {
+-  constexpr CompressedTupleImpl() = default;
+-  template <typename... Vs>
+-  explicit constexpr CompressedTupleImpl(absl::in_place_t, Vs&&... args)
+-      : Storage<Ts, I, false>(absl::in_place, absl::forward<Vs>(args))... {}
+-  friend CompressedTuple<Ts...>;
+-};
+-
 -std::false_type Or(std::initializer_list<std::false_type>);
 -std::true_type Or(std::initializer_list<bool>);
 -
@@ -123,9 +123,33 @@ index 4bfe92f..01db713 100644
 -}
 -
 -template <typename T, typename V>
--using TupleMoveConstructible = typename std::conditional<
--      std::is_reference<T>::value, std::is_convertible<V, T>,
--      std::is_constructible<T, V&&>>::type;
+-using TupleElementMoveConstructible =
+-    typename std::conditional<std::is_reference<T>::value,
+-                              std::is_convertible<V, T>,
+-                              std::is_constructible<T, V&&>>::type;
+-
+-template <bool SizeMatches, class T, class... Vs>
+-struct TupleMoveConstructible : std::false_type {};
+-
+-template <class... Ts, class... Vs>
+-struct TupleMoveConstructible<true, CompressedTuple<Ts...>, Vs...>
+-    : std::integral_constant<
+-          bool, absl::conjunction<
+-                    TupleElementMoveConstructible<Ts, Vs&&>...>::value> {};
+-
+-template <typename T>
+-struct compressed_tuple_size;
+-
+-template <typename... Es>
+-struct compressed_tuple_size<CompressedTuple<Es...>>
+-    : public std::integral_constant<std::size_t, sizeof...(Es)> {};
+-
+-template <class T, class... Vs>
+-struct TupleItemsMoveConstructible
+-    : std::integral_constant<
+-          bool, TupleMoveConstructible<compressed_tuple_size<T>::value ==
+-                                           sizeof...(Vs),
+-                                       T, Vs...>::value> {};
 -
  }  // namespace internal_compressed_tuple
  
@@ -139,7 +163,7 @@ index 4bfe92f..01db713 100644
  //
  // To access the members, use member .get<N>() function.
  //
-@@ -196,58 +146,36 @@ using TupleMoveConstructible = typename std::conditional<
+@@ -220,59 +146,36 @@ struct TupleItemsMoveConstructible
  template <typename... Ts>
  class ABSL_INTERNAL_COMPRESSED_TUPLE_DECLSPEC CompressedTuple
      : private internal_compressed_tuple::CompressedTupleImpl<
@@ -165,17 +189,18 @@ index 4bfe92f..01db713 100644
 -  explicit constexpr CompressedTuple(const Ts&... base)
 -      : CompressedTuple::CompressedTupleImpl(absl::in_place, base...) {}
 -
--  template <typename... Vs,
+-  template <typename First, typename... Vs,
 -            absl::enable_if_t<
 -                absl::conjunction<
 -                    // Ensure we are not hiding default copy/move constructors.
 -                    absl::negation<std::is_same<void(CompressedTuple),
--                                                void(absl::decay_t<Vs>...)>>,
--                    internal_compressed_tuple::TupleMoveConstructible<
--                        Ts, Vs&&>...>::value,
+-                                                void(absl::decay_t<First>)>>,
+-                    internal_compressed_tuple::TupleItemsMoveConstructible<
+-                        CompressedTuple<Ts...>, First, Vs...>>::value,
 -                bool> = true>
--  explicit constexpr CompressedTuple(Vs&&... base)
+-  explicit constexpr CompressedTuple(First&& first, Vs&&... base)
 -      : CompressedTuple::CompressedTupleImpl(absl::in_place,
+-                                             absl::forward<First>(first),
 -                                             absl::forward<Vs>(base)...) {}
 +  explicit constexpr CompressedTuple(Ts... base)
 +      : CompressedTuple::CompressedTupleImpl(absl::forward<Ts>(base)...) {}
@@ -208,10 +233,10 @@ index 4bfe92f..01db713 100644
  };
  
 diff --git a/absl/strings/string_view.h b/absl/strings/string_view.h
-index 1861ea6..c7a916b 100644
+index 5260b5b..1e4740c 100644
 --- a/absl/strings/string_view.h
 +++ b/absl/strings/string_view.h
-@@ -283,7 +283,14 @@ class string_view {
+@@ -288,7 +288,14 @@ class string_view {
    // Returns the ith element of the `string_view` using the array operator.
    // Note that this operator does not perform any bounds checking.
    constexpr const_reference operator[](size_type i) const {
@@ -221,12 +246,12 @@ index 1861ea6..c7a916b 100644
 +    // CUDA 10.2 release.
 +    return ptr_[i];
 +#else
-     return ABSL_ASSERT(i < size()), ptr_[i];
+     return ABSL_HARDENING_ASSERT(i < size()), ptr_[i];
 +#endif
    }
  
    // string_view::at()
-@@ -292,25 +299,46 @@ class string_view {
+@@ -297,25 +304,46 @@ class string_view {
    // and an exception of type `std::out_of_range` will be thrown on invalid
    // access.
    constexpr const_reference at(size_type i) const {
@@ -254,7 +279,7 @@ index 1861ea6..c7a916b 100644
 +    // CUDA 10.2 release.
 +    return ptr_[0];
 +#else
-     return ABSL_ASSERT(!empty()), ptr_[0];
+     return ABSL_HARDENING_ASSERT(!empty()), ptr_[0];
 +#endif
    }
  
@@ -268,12 +293,12 @@ index 1861ea6..c7a916b 100644
 +    // CUDA 10.2 release.
 +    return ptr_[size() - 1];
 +#else
-     return ABSL_ASSERT(!empty()), ptr_[size() - 1];
+     return ABSL_HARDENING_ASSERT(!empty()), ptr_[size() - 1];
 +#endif
    }
  
    // string_view::data()
-@@ -519,7 +547,14 @@ class string_view {
+@@ -526,7 +554,14 @@ class string_view {
        (std::numeric_limits<difference_type>::max)();
  
    static constexpr size_type CheckLengthInternal(size_type len) {
@@ -283,13 +308,13 @@ index 1861ea6..c7a916b 100644
 +    // CUDA 10.2 release.
 +    return len;
 +#else
-     return (void)ABSL_ASSERT(len <= kMaxSize), len;
+     return ABSL_HARDENING_ASSERT(len <= kMaxSize), len;
 +#endif
    }
  
    static constexpr size_type StrlenInternal(const char* str) {
 diff --git a/absl/time/internal/cctz/BUILD.bazel b/absl/time/internal/cctz/BUILD.bazel
-index 7a53c81..159b0f0 100644
+index 45a9529..57c954e 100644
 --- a/absl/time/internal/cctz/BUILD.bazel
 +++ b/absl/time/internal/cctz/BUILD.bazel
 @@ -74,15 +74,6 @@ cc_library(

@@ -78,8 +78,8 @@ py_test(
 #     ],
 #     python_version = "PY3",
 #     deps = [
-#         "//pyglib",
 #         "//testing/pybase",
+#         "@absl_py//absl/flags",
 #     ],
 # )
 # copybara:uncomment_end
