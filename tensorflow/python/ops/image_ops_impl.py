@@ -2637,16 +2637,27 @@ def adjust_hue(image, delta, name=None):
   """
   with ops.name_scope(name, 'adjust_hue', [image]) as name:
     image = ops.convert_to_tensor(image, name='image')
-    # Remember original dtype to so we can convert back if needed
-    orig_dtype = image.dtype
-    if orig_dtype in (dtypes.float16, dtypes.float32):
-      flt_image = image
-    else:
-      flt_image = convert_image_dtype(image, dtypes.float32)
 
-    rgb_altered = gen_image_ops.adjust_hue(flt_image, delta)
+    # Check valid range for `delta`
+    checks = [
+        control_flow_ops.Assert(
+            math_ops.greater_equal(delta, -1.0),
+            ['delta must be in range [-1, 1]']),
+        control_flow_ops.Assert(
+            math_ops.less_equal(delta, 1.0), ['delta must be in range [-1, 1]'])
+    ]
 
-    return convert_image_dtype(rgb_altered, orig_dtype)
+    with ops.control_dependencies(checks):
+      # Remember original dtype to so we can convert back if needed
+      orig_dtype = image.dtype
+      if orig_dtype in (dtypes.float16, dtypes.float32):
+        flt_image = image
+      else:
+        flt_image = convert_image_dtype(image, dtypes.float32)
+
+      rgb_altered = gen_image_ops.adjust_hue(flt_image, delta)
+
+      return convert_image_dtype(rgb_altered, orig_dtype)
 
 
 # pylint: disable=invalid-name
