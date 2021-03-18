@@ -31,7 +31,7 @@ genrule(
     # classes would have the same names.
     cmd = """
     $(location {}) --proto -o $(@D) $(location :configuration.proto)
-    python -c "import sys; filename=sys.argv[1]; f=open(filename, 'rt'); data=f.read().replace('tflite.proto', 'tflite'); f.close(); f=open(filename, 'wt'); f.write(data); f.close()" $(@D)/configuration.fbs
+    perl -p -i -e 's/tflite.proto/tflite/' $(@D)/configuration.fbs
     """.format(flatc_path),
     compatible_with = get_compatible_with_portable(),
     tools = [

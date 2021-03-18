@@ -6,6 +6,10 @@ load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
 )
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+)
 
 package(
     default_visibility = [
@@ -43,6 +47,7 @@ cc_library(
     deps = [
         ":pluggable_device_bfc_allocator",
         ":pluggable_device_init_impl",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -53,6 +58,8 @@ cc_library(
         "//tensorflow/core/common_runtime/device:device_event_mgr",
         "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/platform:tensor_float_32_utils",
+        "//tensorflow/stream_executor:event",
+        "//tensorflow/stream_executor:kernel",
     ],
     alwayslink = 1,
 )
@@ -69,9 +76,25 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":pluggable_device_runtime_impl",
         "//tensorflow/c/experimental/stream_executor",
-    ],
+        "//tensorflow/c/experimental/stream_executor:stream_executor_internal",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime:bfc_allocator",
+        "//tensorflow/core/common_runtime:dma_helper",
+        "//tensorflow/core/common_runtime:local_device",
+        "//tensorflow/core/common_runtime:process_state",
+        "//tensorflow/core/common_runtime:shared_counter",
+        "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/stream_executor:event",
+        "//tensorflow/stream_executor:kernel",
+    ] + if_static([
+        ":pluggable_device_runtime_impl",
+        "//tensorflow/core/common_runtime:copy_tensor",
+    ]),
 )
 
 cc_library(
@@ -79,8 +102,24 @@ cc_library(
     hdrs = [":pluggable_device_runtime_headers"],
     linkstatic = 1,
     deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime:core_cpu",
+        "//tensorflow/core/common_runtime:dma_helper",
+        "//tensorflow/core/common_runtime:shared_counter",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/stream_executor:event",
+        "//tensorflow/stream_executor:kernel",
+    ] + if_static([
         ":pluggable_device_runtime_impl",
-    ],
+        "//tensorflow/core/common_runtime:bfc_allocator",
+        "//tensorflow/core/common_runtime:process_state",
+        "//tensorflow/core/common_runtime:local_device",
+    ]),
 )
 
 cc_library(

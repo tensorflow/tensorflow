@@ -491,6 +491,9 @@ std::string MetalArguments::GetListOfArgs(int buffer_offset,
   for (auto& t : images2d_) {
     std::string access = AccessToMetalTextureAccess(t.second.desc.access_type);
     std::string data_type = ToMetalDataType(t.second.desc.data_type);
+    if (t.second.desc.normalized) {
+      data_type = ToMetalDataType(t.second.desc.normalized_type);
+    }
     AppendArgument(absl::StrCat("texture2d<", data_type, ", ", access, "> ",
                                 t.first, "[[texture(", textures_offset, ")]]"),
                    &result);

@@ -1067,7 +1067,8 @@ void DepthwiseConv2DOp::getCanonicalizationPatterns(
 //===----------------------------------------------------------------------===//
 
 static void BuildGatherOp(OpBuilder *builder, OperationState &result,
-                          Value params, Value indices, IntegerAttr axis) {
+                          Value params, Value indices, IntegerAttr axis,
+                          IntegerAttr batch_dims) {
   auto params_type = params.getType().cast<TensorType>();
   auto indices_type = indices.getType().cast<TensorType>();
 
@@ -1075,7 +1076,7 @@ static void BuildGatherOp(OpBuilder *builder, OperationState &result,
   if (!params_type.hasRank() || !indices_type.hasRank())
     return TFL::GatherOp::build(
         *builder, result, UnrankedTensorType::get(params_type.getElementType()),
-        params, indices, axis);
+        params, indices, axis, batch_dims);
 
   int64_t params_rank = params_type.getRank();
   int64_t indices_rank = indices_type.getRank();
@@ -1096,7 +1097,29 @@ static void BuildGatherOp(OpBuilder *builder, OperationState &result,
     emitError(result.location, "params must be at least rank axis + 1");
   }
 
-  if (indices_rank == 0) {
+  int64_t batch_dims_i = batch_dims.getInt();
+  if (batch_dims_i < 0) {
+    batch_dims_i += indices_rank;
+  }
+
+  if (batch_dims_i > axis_i) {
+    emitError(result.location,
+              "axis should be bigger than or equal to batch_dims");
+  }
+  if (batch_dims_i >= params_rank || batch_dims_i > indices_rank) {
+    emitError(result.location,
+              "batch_dims must be smaller than params' rank and smaller than "
+              "or equal to indices'rank");
+  }
+  for (int i = 0; i < batch_dims_i; ++i) {
+    if (indices_type.getShape()[i] != params_type.getShape()[i]) {
+      emitError(result.location,
+                "batch dimensions of params must be equal to batch dimensions "
+                "of indices");
+    }
+  }
+
+  if ((indices_rank == 0) || (indices_rank == batch_dims_i)) {
     // Scalar indices (output is rank(params) - 1).
     // Erase shape[axis]
     shape.erase(shape.begin() + axis_i);
@@ -1107,21 +1130,21 @@ static void BuildGatherOp(OpBuilder *builder, OperationState &result,
               std::end(indices_type.getShape()), std::begin(shape) + axis_i);
   } else {
     // Higher rank indices (output is rank(params) + rank(indices) - 1).
-    shape.resize(params_rank + indices_rank - 1);
+    shape.resize(params_rank + indices_rank - 1 - batch_dims_i);
     // Copy params.shape[axis + 1: ] into shape[axis + indices_rank:]
     std::copy(std::begin(params_type.getShape()) + axis_i + 1,
               std::end(params_type.getShape()),
-              std::begin(shape) + axis_i + indices_rank);
+              std::begin(shape) + axis_i + indices_rank - batch_dims_i);
 
     // Copy indices.shape into params.shape[axis]
-    std::copy(std::begin(indices_type.getShape()),
+    std::copy(std::begin(indices_type.getShape()) + batch_dims_i,
               std::end(indices_type.getShape()), std::begin(shape) + axis_i);
   }
 
   TFL::GatherOp::build(
       *builder, result,
       RankedTensorType::get(shape, params_type.getElementType()), params,
-      indices, axis);
+      indices, axis, batch_dims);
 }
 
 //===----------------------------------------------------------------------===//

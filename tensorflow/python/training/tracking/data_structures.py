@@ -123,6 +123,7 @@ def wrap_or_unwrap(value):
   # pylint: enable=unidiomatic-typecheck
 
 
+@tf_export("__internal__.tracking.sticky_attribute_assignment", v1=[])
 def sticky_attribute_assignment(trackable, name, value):
   """Adds dependencies, generally called from __setattr__.
 
@@ -169,6 +170,7 @@ class _UntrackableError(ValueError):
              "Trackable.") % (self._value,))
 
 
+@tf_export("__internal__.tracking.TrackableDataStructure", v1=[])
 class TrackableDataStructure(base.Trackable):
   """Base class for data structures which contain trackable objects."""
 

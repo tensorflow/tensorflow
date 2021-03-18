@@ -33,25 +33,6 @@ from tensorflow.python.util import nest
 
 # pylint: disable=g-classes-have-attributes
 
-_KERAS_TENSORS_ENABLED = True
-
-
-def enable_keras_tensors():
-  """Enable using KerasTensors in Keras's functional API."""
-  global _KERAS_TENSORS_ENABLED
-  _KERAS_TENSORS_ENABLED = True
-
-
-def disable_keras_tensors():
-  """Disable using KerasTensors in Keras's functional API."""
-  global _KERAS_TENSORS_ENABLED
-  _KERAS_TENSORS_ENABLED = False
-
-
-def keras_tensors_enabled():
-  """Return a bool specifying if KerasTensors are enabled."""
-  return _KERAS_TENSORS_ENABLED and ops.executing_eagerly_outside_functions()
-
 
 # Tensorflow tensors have a maximum rank of 254
 # (See `MaxDimensions()` in //tensorflow/core/framework/tensor_shape.h )

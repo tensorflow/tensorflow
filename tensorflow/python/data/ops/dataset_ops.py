@@ -145,7 +145,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
   To create a dataset of all files matching a pattern, use
   `tf.data.Dataset.list_files`:
 
-  >>> dataset = tf.data.Dataset.list_files("/path/*.txt")  # doctest: +SKIP
+  ```python
+  dataset = tf.data.Dataset.list_files("/path/*.txt")
+  ```
 
   See `tf.data.FixedLengthRecordDataset` and `tf.data.Dataset.from_generator`
   for more ways to create datasets.
@@ -179,13 +181,15 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
   representable by `tf.TypeSpec`, including `tf.Tensor`, `tf.data.Dataset`,
   `tf.sparse.SparseTensor`, `tf.RaggedTensor`, and `tf.TensorArray`.
 
-  >>> a = 1 # Integer element
-  >>> b = 2.0 # Float element
-  >>> c = (1, 2) # Tuple element with 2 components
-  >>> d = {"a": (2, 2), "b": 3} # Dict element with 3 components
-  >>> Point = collections.namedtuple("Point", ["x", "y"]) # doctest: +SKIP
-  >>> e = Point(1, 2) # Named tuple # doctest: +SKIP
-  >>> f = tf.data.Dataset.range(10) # Dataset element
+  ```python
+  a = 1 # Integer element
+  b = 2.0 # Float element
+  c = (1, 2) # Tuple element with 2 components
+  d = {"a": (2, 2), "b": 3} # Dict element with 3 components
+  Point = collections.namedtuple("Point", ["x", "y"])
+  e = Point(1, 2) # Named tuple
+  f = tf.data.Dataset.range(10) # Dataset element
+  ```
 
   For more information,
   read [this guide](https://www.tensorflow.org/guide/data).
@@ -217,7 +221,21 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     # Initialize the options for this dataset and its inputs.
     self._options_attr = Options()
     for input_dataset in self._inputs():
-      input_options = input_dataset.options()
+      input_options = None
+      if isinstance(input_dataset, DatasetV1):
+        # If the V1 dataset does not have the `_dataset` attribute, we assume it
+        # is a dataset source and hence does not have options. Otherwise, we
+        # grab the options of `_dataset` object
+        if hasattr(input_dataset, "_dataset"):
+          if not isinstance(input_dataset._dataset, DatasetV2):
+            raise AssertionError(
+                "The input_dataset._dataset of dataset %s should be DatasetV2."
+                % type(self))
+          input_options = input_dataset._dataset._options_attr
+      elif isinstance(input_dataset, DatasetV2):
+        input_options = input_dataset._options_attr
+      else:
+        raise TypeError("Unexpected dataset type: ", type(input_dataset))
       if input_options is not None:
         self._options_attr = self._options_attr.merge(input_options)
     self._options_attr._set_mutable(False)  # pylint: disable=protected-access
@@ -354,16 +372,46 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     """
     return []
 
+  def _options(self):
+    """Returns the options tensor for this dataset."""
+    # pylint: disable=protected-access
+    return gen_dataset_ops.get_options(self._variant_tensor)
+
+  @classmethod
+  def _options_tensor_to_options(cls, serialized_options):
+    """Converts options tensor to tf.data.Options object."""
+    options = Options()
+    if tensor_util.constant_value(serialized_options) is not None:
+      pb = dataset_options_pb2.Options.FromString(tensor_util.constant_value(
+          serialized_options))
+      options._from_proto(pb)  # pylint: disable=protected-access
+    return options
+
   def options(self):
     """Returns the options for this dataset and its inputs.
 
     Returns:
       A `tf.data.Options` object representing the dataset options.
     """
+    if tf_compat.forward_compatible(2021, 4, 12):
+      if context.executing_eagerly():
+        options = self._options_tensor_to_options(self._options())
+        options._set_mutable(False)  # pylint: disable=protected-access
+        return options
+      warnings.warn("To make it possible to preserve tf.data options across "
+                    "serialization boundaries, their implementation has moved "
+                    "to be part of the TensorFlow graph. As a consequence, the "
+                    "options value is in general no longer known at graph "
+                    "construction time. Invoking this method in graph mode "
+                    "retains the legacy behavior of the original "
+                    "implementation, but note that the returned value might "
+                    "not reflect the actual value of the options.")
     return self._options_attr
 
   def _apply_options(self):
     """Apply options, such as optimization configuration, to the dataset."""
+    if tf_compat.forward_compatible(2021, 4, 12):
+      return _FinalizeDataset(self, self._has_captured_ref())
 
     dataset = self
     options = self.options()
@@ -1320,32 +1368,38 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     different for each epoch. In TF 1.X, the idiomatic way to create epochs
     was through the `repeat` transformation:
 
-    >>> dataset = tf.data.Dataset.range(3)
-    >>> dataset = dataset.shuffle(3, reshuffle_each_iteration=True)
-    >>> dataset = dataset.repeat(2)  # doctest: +SKIP
-    [1, 0, 2, 1, 2, 0]
+    ```python
+    dataset = tf.data.Dataset.range(3)
+    dataset = dataset.shuffle(3, reshuffle_each_iteration=True)
+    dataset = dataset.repeat(2)
+    # [1, 0, 2, 1, 2, 0]
 
-    >>> dataset = tf.data.Dataset.range(3)
-    >>> dataset = dataset.shuffle(3, reshuffle_each_iteration=False)
-    >>> dataset = dataset.repeat(2)  # doctest: +SKIP
-    [1, 0, 2, 1, 0, 2]
+    dataset = tf.data.Dataset.range(3)
+    dataset = dataset.shuffle(3, reshuffle_each_iteration=False)
+    dataset = dataset.repeat(2)
+    # [1, 0, 2, 1, 0, 2]
+    ```
 
     In TF 2.0, `tf.data.Dataset` objects are Python iterables which makes it
     possible to also create epochs through Python iteration:
 
-    >>> dataset = tf.data.Dataset.range(3)
-    >>> dataset = dataset.shuffle(3, reshuffle_each_iteration=True)
-    >>> list(dataset.as_numpy_iterator())  # doctest: +SKIP
-    [1, 0, 2]
-    >>> list(dataset.as_numpy_iterator())  # doctest: +SKIP
-    [1, 2, 0]
+    ```python
+    dataset = tf.data.Dataset.range(3)
+    dataset = dataset.shuffle(3, reshuffle_each_iteration=True)
+    list(dataset.as_numpy_iterator())
+    # [1, 0, 2]
+    list(dataset.as_numpy_iterator())
+    # [1, 2, 0]
+    ```
 
-    >>> dataset = tf.data.Dataset.range(3)
-    >>> dataset = dataset.shuffle(3, reshuffle_each_iteration=False)
-    >>> list(dataset.as_numpy_iterator())  # doctest: +SKIP
-    [1, 0, 2]
-    >>> list(dataset.as_numpy_iterator())  # doctest: +SKIP
-    [1, 0, 2]
+    ```python
+    dataset = tf.data.Dataset.range(3)
+    dataset = dataset.shuffle(3, reshuffle_each_iteration=False)
+    list(dataset.as_numpy_iterator())
+    # [1, 0, 2]
+    list(dataset.as_numpy_iterator())
+    # [1, 0, 2]
+    ```
 
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
@@ -1389,14 +1443,16 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     the input pipeline before the call to `.cache()` will have no effect until
     the cache file is removed or the filename is changed.
 
-    >>> dataset = tf.data.Dataset.range(5)
-    >>> dataset = dataset.cache("/path/to/file")  # doctest: +SKIP
-    >>> list(dataset.as_numpy_iterator())  # doctest: +SKIP
-    [0, 1, 2, 3, 4]
-    >>> dataset = tf.data.Dataset.range(10)
-    >>> dataset = dataset.cache("/path/to/file")  # Same file! # doctest: +SKIP
-    >>> list(dataset.as_numpy_iterator())  # doctest: +SKIP
-    [0, 1, 2, 3, 4]
+    ```python
+    dataset = tf.data.Dataset.range(5)
+    dataset = dataset.cache("/path/to/file")
+    list(dataset.as_numpy_iterator())
+    # [0, 1, 2, 3, 4]
+    dataset = tf.data.Dataset.range(10)
+    dataset = dataset.cache("/path/to/file")  # Same file!
+    list(dataset.as_numpy_iterator())
+    # [0, 1, 2, 3, 4]
+    ```
 
     Note: `cache` will produce exactly the same elements during each iteration
     through the dataset. If you wish to randomize the iteration order, make sure
@@ -4684,7 +4740,15 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
   def __init__(self, input_dataset, options):
     # pylint: disable=protected-access
     self._input_dataset = input_dataset
-    variant_tensor = input_dataset._variant_tensor
+    if tf_compat.forward_compatible(2021, 4, 12):
+      options_pb = dataset_options_pb2.Options()
+      options_pb.CopyFrom(options._to_proto())
+      with ops.colocate_with(input_dataset._variant_tensor):
+        variant_tensor = gen_dataset_ops.options_dataset(
+            input_dataset._variant_tensor,
+            options_pb.SerializeToString(), **self._flat_structure)
+    else:
+      variant_tensor = input_dataset._variant_tensor
     super(_OptionsDataset, self).__init__(input_dataset, variant_tensor)
 
     if self._options_attr:
@@ -4693,6 +4757,18 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
     else:
       self._options_attr = options
     self._options_attr._set_mutable(False)
+
+
+class _FinalizeDataset(UnaryUnchangedStructureDataset):
+  """A `Dataset` that acts on the options set on the input dataset."""
+
+  def __init__(self, input_dataset, has_captured_ref):
+    self._input_dataset = input_dataset
+    with ops.colocate_with(input_dataset._variant_tensor):
+      variant_tensor = gen_dataset_ops.finalize_dataset(
+          input_dataset._variant_tensor,  # pylint: disable=protected-access
+          has_captured_ref=has_captured_ref, **self._flat_structure)
+    super(_FinalizeDataset, self).__init__(input_dataset, variant_tensor)
 
 
 class _ModelDataset(UnaryUnchangedStructureDataset):

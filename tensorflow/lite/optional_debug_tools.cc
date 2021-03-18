@@ -17,30 +17,99 @@ limitations under the License.
 #include <stddef.h>
 #include <stdio.h>
 
+#include <limits>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 
-void PrintIntVector(const std::vector<int>& v) {
-  for (const auto& it : v) {
-    printf(" %d", it);
+namespace {
+// Just forward declarations.
+const char* AllocTypeName(TfLiteAllocationType type);
+
+// A class to represent the information of a memory arena that's used in TfLite
+// runtime for holding allocated memory of tensors. The information includes
+// the following:
+// 1. The memory allocation type.
+// 2. The tensor id of the tensor that has the most amount of memory allocated,
+// and the memory size.
+// 3. The estimated memory boundary and size of the arena.
+class MemoryArenaInfo {
+ public:
+  explicit MemoryArenaInfo(TfLiteAllocationType type)
+      : allocation_type_(type) {}
+
+  void Update(size_t tensor_index, const TfLiteTensor& tensor) {
+    if (tensor.allocation_type != allocation_type_) return;
+    if (tensor.data.data == nullptr) return;
+    if (tensor.bytes > max_tensor_mem_bytes_) {
+      max_tensor_mem_bytes_ = tensor.bytes;
+      max_tensor_id_ = tensor_index;
+    }
+
+    size_t current_start_addr = reinterpret_cast<size_t>(tensor.data.data);
+
+    size_t current_end_addr = current_start_addr + tensor.bytes;
+    if (current_start_addr < min_tensor_start_addr_) {
+      min_tensor_start_addr_ = current_start_addr;
+    }
+    if (current_end_addr > max_tensor_end_addr_) {
+      max_tensor_end_addr_ = current_end_addr;
+    }
   }
-  printf("\n");
+
+  void Print() const {
+    printf("%s Info: ", AllocTypeName(allocation_type_));
+    if (max_tensor_end_addr_ == 0) {
+      printf("not holding any allocation.\n");
+      return;
+    }
+    printf("\nTensor %zu has the max size %zu bytes (%.1f MB).\n",
+           max_tensor_id_, max_tensor_mem_bytes_,
+           static_cast<float>(max_tensor_mem_bytes_) / (1 << 20));
+    printf("This memory arena is estimated as[0x%zx, 0x%zx), taking %.1f MB.\n",
+           max_tensor_end_addr_, min_tensor_start_addr_,
+           static_cast<float>(max_tensor_end_addr_ - min_tensor_start_addr_) /
+               (1 << 20));
+  }
+
+ private:
+  TfLiteAllocationType allocation_type_;
+  size_t max_tensor_mem_bytes_ = 0;
+  // the index of the tensor that has the max memory size.
+  size_t max_tensor_id_ = -1;
+  size_t min_tensor_start_addr_ = std::numeric_limits<size_t>::max();
+  size_t max_tensor_end_addr_ = 0;
+};
+
+void PrintIntVector(const std::vector<int>& v) {
+  if (v.empty()) {
+    printf("(null)\n");
+    return;
+  }
+
+  printf("[");
+  for (int i = 0; i < v.size() - 1; ++i) {
+    printf("%d,", v[i]);
+  }
+  printf("%d]\n", v.back());
 }
 
 void PrintTfLiteIntVector(const TfLiteIntArray* v) {
-  if (!v) {
-    printf(" (null)\n");
+  if (!v || v->size <= 0) {
+    printf("(null)\n");
     return;
   }
-  for (int k = 0; k < v->size; k++) {
-    printf(" %d", v->data[k]);
+  printf("[");
+  for (int k = 0; k < v->size - 1; k++) {
+    printf("%d,", v->data[k]);
   }
-  printf("\n");
+  printf("%d]\n", v->data[v->size - 1]);
 }
 
 const char* TensorTypeName(TfLiteType type) {
@@ -103,50 +172,94 @@ const char* AllocTypeName(TfLiteAllocationType type) {
   return "(invalid)";
 }
 
+std::string TruncateString(const char* str, int size_limit,
+                           bool truncate_at_end = false) {
+  if (str == nullptr) return "(nil)";
+
+  std::string truncated(str);
+  const size_t length = truncated.size();
+  if (length <= size_limit) return truncated;
+
+  if (size_limit <= 3) return std::string(size_limit, '.');
+
+  if (truncate_at_end) {
+    truncated.resize(size_limit);
+    // Change the the last 3 chars to  "..." to imply truncation.
+    truncated.replace(size_limit - 3, 3, "...");
+  } else {
+    truncated.erase(0, length - size_limit);
+    // Change the the first 3 chars to  "..." to imply truncation.
+    truncated.replace(0, 3, "...");
+  }
+  return truncated;
+}
+
+}  // namespace
+
 // Prints a dump of what tensors and what nodes are in the interpreter.
 void PrintInterpreterState(Interpreter* interpreter) {
-  printf("Interpreter has %zu tensors and %zu nodes\n",
-         interpreter->tensors_size(), interpreter->nodes_size());
-  printf("Inputs:");
-  PrintIntVector(interpreter->inputs());
-  printf("Outputs:");
-  PrintIntVector(interpreter->outputs());
-  printf("\n");
-  for (size_t tensor_index = 0; tensor_index < interpreter->tensors_size();
-       tensor_index++) {
-    TfLiteTensor* tensor = interpreter->tensor(static_cast<int>(tensor_index));
-    printf("Tensor %3zu %-20s %10s %15s %10zu bytes (%4.1f MB) ", tensor_index,
-           tensor->name, TensorTypeName(tensor->type),
-           AllocTypeName(tensor->allocation_type), tensor->bytes,
-           (static_cast<float>(tensor->bytes) / (1 << 20)));
-    PrintTfLiteIntVector(tensor->dims);
-  }
-  printf("\n");
-  for (size_t node_index = 0; node_index < interpreter->nodes_size();
-       node_index++) {
-    const std::pair<TfLiteNode, TfLiteRegistration>* node_and_reg =
-        interpreter->node_and_registration(static_cast<int>(node_index));
-    const TfLiteNode& node = node_and_reg->first;
-    const TfLiteRegistration& reg = node_and_reg->second;
-    if (reg.custom_name != nullptr) {
-      printf("Node %3zu Operator Custom Name %s\n", node_index,
-             reg.custom_name);
-    } else {
-      printf("Node %3zu Operator Builtin Code %3d %s\n", node_index,
-             reg.builtin_code, EnumNamesBuiltinOperator()[reg.builtin_code]);
+  const size_t num_subgraphs = interpreter->subgraphs_size();
+  printf("Interpreter has %zu subgraphs.\n\n", num_subgraphs);
+
+  for (int i = 0; i < num_subgraphs; ++i) {
+    const Subgraph& subgraph = *(interpreter->subgraph(i));
+    printf("-----------Subgraph-%d has %zu tensors and %zu nodes------------\n",
+           i, subgraph.tensors_size(), subgraph.nodes_size());
+    printf("Inputs: ");
+    PrintIntVector(subgraph.inputs());
+    printf("Outputs: ");
+    PrintIntVector(subgraph.outputs());
+    printf("\n");
+
+    printf("Tensor %3s %-25s %-15s %-18s %10s\n", "ID", "Name", "Type",
+           "AllocType", "Size");
+    MemoryArenaInfo rw_info(kTfLiteArenaRw);
+    MemoryArenaInfo rw_persistent_info(kTfLiteArenaRwPersistent);
+    for (size_t tensor_index = 0; tensor_index < subgraph.tensors_size();
+         tensor_index++) {
+      const TfLiteTensor* tensor =
+          subgraph.tensor(static_cast<int>(tensor_index));
+      printf("Tensor %3zu %-25s %-15s %-18s %10zuB (%4.1f MB) ", tensor_index,
+             TruncateString(tensor->name, 25, /*truncate_at_end*/ true).c_str(),
+             TruncateString(TensorTypeName(tensor->type), 15).c_str(),
+             TruncateString(AllocTypeName(tensor->allocation_type), 18).c_str(),
+             tensor->bytes, (static_cast<float>(tensor->bytes) / (1 << 20)));
+      PrintTfLiteIntVector(tensor->dims);
+      rw_info.Update(tensor_index, *tensor);
+      rw_persistent_info.Update(tensor_index, *tensor);
     }
-    printf("  Inputs:");
-    PrintTfLiteIntVector(node.inputs);
-    printf("  Outputs:");
-    PrintTfLiteIntVector(node.outputs);
-    if (node.intermediates && node.intermediates->size) {
-      printf("  Intermediates:");
-      PrintTfLiteIntVector(node.intermediates);
+    printf("\n");
+    rw_info.Print();
+    printf("\n");
+    rw_persistent_info.Print();
+    printf("\n");
+    for (size_t node_index = 0; node_index < subgraph.nodes_size();
+         node_index++) {
+      const std::pair<TfLiteNode, TfLiteRegistration>* node_and_reg =
+          subgraph.node_and_registration(static_cast<int>(node_index));
+      const TfLiteNode& node = node_and_reg->first;
+      const TfLiteRegistration& reg = node_and_reg->second;
+      if (reg.custom_name != nullptr) {
+        printf("Node %3zu Operator Custom Name %s\n", node_index,
+               reg.custom_name);
+      } else {
+        printf("Node %3zu Operator Builtin Code %3d %s\n", node_index,
+               reg.builtin_code, EnumNamesBuiltinOperator()[reg.builtin_code]);
+      }
+      printf("  Input Tensors:");
+      PrintTfLiteIntVector(node.inputs);
+      printf("  Output Tensors:");
+      PrintTfLiteIntVector(node.outputs);
+      if (node.intermediates && node.intermediates->size) {
+        printf("  Intermediate Tensors:");
+        PrintTfLiteIntVector(node.intermediates);
+      }
+      if (node.temporaries && node.temporaries->size) {
+        printf("  Temporary Tensors:");
+        PrintTfLiteIntVector(node.temporaries);
+      }
     }
-    if (node.temporaries && node.temporaries->size) {
-      printf("  Temporaries:");
-      PrintTfLiteIntVector(node.temporaries);
-    }
+    printf("--------------Subgraph-%d dump has completed--------------\n\n", i);
   }
 }
 

@@ -668,7 +668,7 @@ template <int shift>
 struct int64_right_shift_op {
   EIGEN_EMPTY_STRUCT_CTOR(int64_right_shift_op)
   EIGEN_DEVICE_FUNC
-  EIGEN_STRONG_INLINE const int64 operator()(const int64& a) const {
+  EIGEN_STRONG_INLINE const int64 operator()(const int64 a) const {
     return a >> shift;
   }
 };

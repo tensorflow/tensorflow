@@ -1851,19 +1851,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
           name="my_var",
           container="my_container")
 
-    class MyResourceDeleter(tracking.CapturableResourceDeleter):
-
-      def destroy_resource(self):
-        handle = get_handle()
-        resource_variable_ops.destroy_resource_op(
-            handle, ignore_lookup_error=True)
-
     class MyResource(tracking.TrackableResource):
-
-      def __init__(self):
-        # Set the resource deleter, so when the resource object goes out of
-        # scope it will be deleted automatically.
-        super(MyResource, self).__init__(deleter=MyResourceDeleter())
 
       def _create_resource(self):
         return get_handle()
@@ -1871,6 +1859,11 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       def _initialize(self):
         resource_variable_ops.assign_variable_op(
             self.resource_handle, 1.0, name="assign")
+
+      def _destroy_resource(self):
+        handle = get_handle()
+        resource_variable_ops.destroy_resource_op(
+            handle, ignore_lookup_error=True)
 
     class MyModel(tracking.AutoTrackable):
 

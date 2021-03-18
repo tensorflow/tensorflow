@@ -109,6 +109,9 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   std::vector<ClientAndPtr<PjRtDevice>> Devices();
   std::vector<ClientAndPtr<PjRtDevice>> LocalDevices();
 
+  // Returns a vector of live PyBuffer objects. PyBuffer objects may share
+  // PjRtBuffers, so there may be duplicates of the same underlying device
+  // buffer.
   std::vector<ClientAndPtr<PyBuffer>> LiveBuffers();
 
   // TODO(zhangqiaorjc): Remove when we have transparent defragmentation.

@@ -315,12 +315,20 @@ function activate_venv_macos () {
 }
 
 function setup_python_from_pyenv_macos {
+  if [[ -z "${1}" ]]; then
+    PY_VERSION=3.9.1
+  else
+    PY_VERSION=$1
+  fi
+
   git clone --branch v1.2.23 https://github.com/pyenv/pyenv.git
+
   PYENV_ROOT="$(pwd)/pyenv"
   export PYENV_ROOT
   export PATH="$PYENV_ROOT/bin:$PATH"
+
   eval "$(pyenv init -)"
-  PY_VERSION=3.9.1
+
   pyenv install -s "${PY_VERSION}"
   pyenv local "${PY_VERSION}"
   python --version

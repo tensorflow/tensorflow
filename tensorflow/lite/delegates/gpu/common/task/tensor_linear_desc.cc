@@ -39,6 +39,7 @@ GPUResources TensorLinearDescriptor::GetGPUResources() const {
   } else {
     GPUImage2DDescriptor desc;
     desc.data_type = element_type;
+    desc.normalized = false;
     desc.access_type = access_type_;
     resources.images2d.push_back({"tex2d", desc});
   }

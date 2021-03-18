@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace tensorflow {
-namespace data {
 
 FunctionHandleCache::FunctionHandleCache(FunctionLibraryRuntime* lib)
     : lib_(lib),
@@ -64,5 +63,4 @@ Status FunctionHandleCache::Clear() {
   return Status::OK();
 }
 
-}  // namespace data
 }  // namespace tensorflow

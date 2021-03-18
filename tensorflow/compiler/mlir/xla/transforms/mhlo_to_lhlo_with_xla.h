@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_MHLO_TO_LHLO_WITH_XLA_H_
 
 #include "absl/types/optional.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -51,8 +52,9 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
 
   xla::StatusOr<mlir::Operation*> EmitOp(const xla::HloInstruction* instr);
 
-  xla::StatusOr<mhlo::ScatterDimensionNumbers> GetScatterDimensionNumbers(
-      const xla::HloInstruction* instr);
+  static xla::StatusOr<mhlo::ScatterDimensionNumbers>
+  GetScatterDimensionNumbers(const xla::HloInstruction* instr,
+                             mlir::MLIRContext* context);
 
  private:
   xla::StatusOr<lmhlo::SortOp> EmitSortOp(const xla::HloInstruction* instr);
@@ -73,7 +75,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
       const xla::HloCustomCallInstruction* custom_call);
 
   xla::StatusOr<lmhlo::ReduceOp> EmitReduceOp(const xla::HloInstruction* instr);
-  xla::StatusOr<GetGlobalMemrefOp> EmitConstant(
+  xla::StatusOr<memref::GetGlobalOp> EmitConstant(
       const xla::HloInstruction* instr);
 
   xla::StatusOr<lmhlo::CompareOp> EmitCompareOp(
@@ -128,6 +130,14 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   xla::StatusOr<lmhlo::FftOp> EmitFftOp(const xla::HloInstruction* instr);
   xla::StatusOr<lmhlo::TriangularSolveOp> EmitTriangularSolveOp(
       const xla::HloInstruction* instr);
+  xla::StatusOr<Operation*> EmitBitcast(const xla::HloInstruction* instr);
+
+  xla::StatusOr<lmhlo::CaseOp> EmitCaseOp(const xla::HloInstruction* instr);
+
+  xla::StatusOr<lmhlo::WhileOp> EmitWhileOp(const xla::HloInstruction* instr);
+
+  xla::Status ImportAsLmhloRegion(xla::HloComputation* computation,
+                                  mlir::Region* region);
 
   // Since LMHLO dialect does not define token types, this enum controls how
   // token operand/results from XLA:HLO are lowered to MLIR.

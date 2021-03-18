@@ -169,7 +169,7 @@ class CUDABlas : public blas::BlasSupport {
 
 #if CUDA_VERSION >= 11000
   // cuBLASLt library handle on the device.
-  cublasLtHandle_t blasLt_ GUARDED_BY(mu_);
+  cublasLtHandle_t blasLt_ TF_GUARDED_BY(mu_);
 #endif
 
   SE_DISALLOW_COPY_AND_ASSIGN(CUDABlas);

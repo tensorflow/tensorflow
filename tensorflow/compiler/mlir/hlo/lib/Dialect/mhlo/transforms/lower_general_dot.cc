@@ -167,8 +167,10 @@ struct GeneralDotConvert : public OpRewritePattern<mlir::mhlo::DotGeneralOp> {
     auto new_dot_type =
         RankedTensorType::get({lhs_shape[0], rhs_shape[1]}, dot_element_type);
 
+    mlir::ArrayAttr precision_config;
+    if (op.precision_config()) precision_config = *op.precision_config();
     auto new_dot_op = rewriter.create<mlir::mhlo::DotOp>(
-        op.getLoc(), new_dot_type, lhs, rhs, *(op.precision_config()));
+        op.getLoc(), new_dot_type, lhs, rhs, precision_config);
 
     rewriter.replaceOpWithNewOp<mlir::mhlo::ReshapeOp>(op, op.getType(),
                                                        new_dot_op);

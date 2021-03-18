@@ -37,6 +37,7 @@ from tensorflow.python.keras.mixed_precision import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision import test_util as mp_test_util
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import math_ops
@@ -653,6 +654,43 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
         TypeError, 'Passing a LossScale that is not a FixedLossScale or a '
                    'DynamicLossScale is no longer supported. Got:'):
       loss_scale_optimizer.LossScaleOptimizerV1(opt, MyLossScale())
+
+  def testLossScaleDelegationWithWrapper(self):
+    # Test learning_rate is exposed when LossScaleOptimizer wraps another
+    # wrapper.
+
+    class MyOptimizer(optimizer_v2.OptimizerV2):
+
+      def __init__(self):
+        super().__init__('MyOptimizer')
+        self.inner_optimizer = adam.Adam(learning_rate=1.0)
+
+      @property
+      def learning_rate(self):
+        return self.inner_optimizer.learning_rate
+
+      @learning_rate.setter
+      def learning_rate(self, value):
+        self.inner_optimizer.learning_rate = value
+
+      def get_config(self):
+        return {}
+
+    with self.cached_session():
+      opt = MyOptimizer()
+      opt = loss_scale_optimizer.LossScaleOptimizer(opt)
+
+      # Force hyperparameters to be created
+      opt.learning_rate  # pylint: disable=pointless-statement
+      self.evaluate(variables.global_variables_initializer())
+
+      self.assertEqual(self.evaluate(opt.learning_rate), 1.0)
+      self.assertEqual(
+          self.evaluate(opt.inner_optimizer.inner_optimizer.learning_rate), 1.0)
+      opt.learning_rate = 2.0
+      self.assertEqual(self.evaluate(opt.learning_rate), 2.0)
+      self.assertEqual(self.evaluate(
+          opt.inner_optimizer.inner_optimizer.learning_rate), 2.0)
 
   @parameterized.named_parameters({
       'testcase_name': 'SaveAndRestoreBase',

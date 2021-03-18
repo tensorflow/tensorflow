@@ -71,6 +71,7 @@ cc_library(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core/common_runtime/gpu:gpu_init",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
@@ -544,9 +545,7 @@ xla_test(
 
 tf_cc_test(
     name = "sorting_test",
-    srcs = [
-        "sorting_test.cc",
-    ],
+    srcs = ["sorting_test.cc"],
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",

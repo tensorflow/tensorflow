@@ -213,6 +213,25 @@ Status GetAttrValuesFromOperation(
       "while converting attributes for node: ", mlir::StringRefToView(name));
   TF_RETURN_IF_ERROR(PopulateDerivedAttributes(
       inst, name, derived_attrs, ignore_unregistered_attrs, attributes));
+
+  //  Explicitly handle XlaHostCompute op which has required function attribute
+  //  in TensorFlow op def but it could have an empty value to represent missing
+  //  functions. This value can't be represented using MLIR SymbolRefAttr and
+  //  instead uses optional symbol ref attribute.
+  //
+  // TODO(b/182315488): Remove custom handling by finding a better
+  // representation in MLIR for empty function names. One option could be to use
+  // TensorFlow op defs to figure out function attributes that are missing in
+  // MLIR. This will also require some trait to identify optional attributes in
+  // MLIR.
+  constexpr char kShapeInferenceGraph[] = "shape_inference_graph";
+  if (mlir::isa<mlir::TF::XlaHostComputeOp>(inst) &&
+      !inst->hasAttr(kShapeInferenceGraph) &&
+      !attrs_to_ignore.contains(kShapeInferenceGraph)) {
+    AttrValue value;
+    value.mutable_func()->set_name("");
+    (*attributes)[kShapeInferenceGraph] = value;
+  }
   return Status::OK();
 }
 

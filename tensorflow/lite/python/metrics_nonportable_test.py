@@ -25,15 +25,20 @@ class MetricsNonportableTest(test_util.TensorFlowTestCase):
     metrics.TFLiteMetrics()
 
   def test_TFLiteMetrics_creation_arg_success(self):
-    metrics.TFLiteMetrics('md5', '/path/to/model')
+    metrics.TFLiteMetrics('hash', '/path/to/model')
 
-  def test_TFLiteMetrics_creation_fails_with_only_md5(self):
+  def test_TFLiteMetrics_creation_fails_with_only_hash(self):
     with self.assertRaises(ValueError):
-      metrics.TFLiteMetrics(md5='md5')
+      metrics.TFLiteMetrics(model_hash='hash')
 
   def test_TFLiteMetrics_creation_fail2_with_only_model_path(self):
     with self.assertRaises(ValueError):
       metrics.TFLiteMetrics(model_path='/path/to/model')
+
+  def test_debugger_creation_counter_increase_success(self):
+    stub = metrics.TFLiteMetrics()
+    stub.increase_counter_debugger_creation()
+    self.assertEqual(stub._counter_debugger_creation.get_cell().value(), 1)
 
   def test_interpreter_creation_counter_increase_success(self):
     stub = metrics.TFLiteMetrics()

@@ -48,7 +48,8 @@ def : Pat<(TFL_PowOp $l, $r), (Tosa_PowOp $l, $r)>;
 
 def : Pat<(TFL_GatherOp $params,
                         $indices,
-                        $axis),
+                        $axis,
+                        ConstantAttr<I32Attr, "0">:$batch_dims),
           (Tosa_GatherOp $indices,
                            $params,
                            $axis)>;

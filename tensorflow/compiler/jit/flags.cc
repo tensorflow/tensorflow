@@ -163,6 +163,7 @@ void AllocateAndParseFlags() {
 
   ops_flags = new XlaOpsCommonFlags;
   ops_flags->tf_xla_always_defer_compilation = false;
+  ops_flags->tf_xla_async_compilation = false;
 
   jitter_flags = new IntroduceFloatingPointJitterPassFlags;
   jitter_flags->jitter_amount = 1e-5;
@@ -216,6 +217,10 @@ void AllocateAndParseFlags() {
 
        Flag("tf_xla_always_defer_compilation",
             &ops_flags->tf_xla_always_defer_compilation, ""),
+       Flag("tf_xla_async_compilation", &ops_flags->tf_xla_async_compilation,
+            "When lazy compilation is enabled, asynchronous compilation starts "
+            "the cluster compilation in the background, and the fallback path "
+            "is executed until the compilation has finished."),
 
        Flag("tf_introduce_floating_point_jitter_to_tensors",
             setter_for_jitter_tensor_names, "",
@@ -242,7 +247,10 @@ void AllocateAndParseFlags() {
   mlir_flags = new MlirCommonFlags;
   if (!enable_mlir_bridge_is_explicit) {
     mlir_flags->tf_mlir_enable_mlir_bridge =
-        ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
+        (mlir_bridge_safe_mode)
+            ? ConfigProto::Experimental::
+                  MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED
+            : ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
   } else if (enable_mlir_bridge) {
     mlir_flags->tf_mlir_enable_mlir_bridge =
         (mlir_bridge_safe_mode)

@@ -15,6 +15,7 @@
 # Remove flexbuffers library and detection postprocess kernel from chre build
 # due to string dependencies.
 EXCLUDED_CC_SRCS := \
+  tensorflow/lite/micro/kernels/circular_buffer.cc \
   tensorflow/lite/micro/kernels/detection_postprocess.cc \
   tensorflow/lite/micro/kernels/flexbuffers_generated_data.cc
 

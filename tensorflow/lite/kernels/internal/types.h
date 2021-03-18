@@ -952,6 +952,7 @@ struct FullyConnectedParams {
 
 struct GatherParams {
   int16_t axis;
+  int16_t batch_dims;
 };
 
 struct L2NormalizationParams {

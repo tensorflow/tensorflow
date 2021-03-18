@@ -820,6 +820,10 @@ port::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn,
           std::move(timer_fns)));
   SE_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
       std::move(cplatform)));
+
+  // TODO(annarev): Add pluggable device registration here.
+  // TODO(annarev): Return `use_bfc_allocator` value in some way so that it is
+  // available in `PluggableDeviceProcessState` once the latter is checked in.
   return port::Status::OK();
 }
 }  // namespace stream_executor

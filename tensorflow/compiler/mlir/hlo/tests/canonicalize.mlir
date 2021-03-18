@@ -440,6 +440,29 @@ func @dynamic_broadcast_in_dim_to_same_shape_2(%arg0: tensor<?xf32>) -> tensor<?
   return %2 : tensor<?xf32>
 }
 
+// CHECK-LABEL: func @dynamic_broadcast_in_dim_to_same_shape_3
+func @dynamic_broadcast_in_dim_to_same_shape_3(%arg0: tensor<*xf32>) -> tensor<?xf32> {
+  // CHECK-SAME: %[[ARG:.*]]: tensor<*xf32>
+  %0 = shape.shape_of %arg0 : tensor<*xf32> -> tensor<?xindex>
+  %1 = tensor.cast %0 : tensor<?xindex> to tensor<1xindex>
+  %2 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %1) { broadcast_dimensions = dense<0> : tensor<1xi64> } : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
+  // CHECK: %[[RES:.*]] = tensor.cast %[[ARG]] : tensor<*xf32> to tensor<?xf32>
+  // CHECK: return %[[RES]] : tensor<?xf32>
+  return %2 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @dynamic_broadcast_in_dim_to_same_shape_4
+func @dynamic_broadcast_in_dim_to_same_shape_4(%arg0: tensor<*xf32>) -> tensor<?xf32> {
+  // CHECK-SAME: %[[ARG:.*]]: tensor<*xf32>
+  %0 = shape.shape_of %arg0 : tensor<*xf32> -> !shape.shape
+  %1 = shape.to_extent_tensor %0 : !shape.shape -> tensor<?xindex>
+  %2 = tensor.cast %1 : tensor<?xindex> to tensor<1xindex>
+  %3 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %2) { broadcast_dimensions = dense<0> : tensor<1xi64> } : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
+  // CHECK: %[[RES:.*]] = tensor.cast %[[ARG]] : tensor<*xf32> to tensor<?xf32>
+  // CHECK: return %[[RES]] : tensor<?xf32>
+  return %3 : tensor<?xf32>
+}
+
 // CHECK-LABEL: func @broadcast_in_dim_constant_fold_0d
 func @broadcast_in_dim_constant_fold_0d() -> tensor<1x64x224x224xf32> {
   %cst = mhlo.constant dense<0.000000e+00> : tensor<f32>
@@ -944,10 +967,10 @@ func @unpack_repack_same_tuple_single_element(%arg0: tuple<tensor<i32>>) -> tupl
 
 // CHECK-LABEL: func @erase_dead_lhlo_constant
 func @erase_dead_lhlo_constant() {
-  %M = alloc() : memref<256x1024xf32>
+  %M = memref.alloc() : memref<256x1024xf32>
   // CHECK-NEXT: return
   "lmhlo.constant"(%M) {value = dense<0.0> : tensor<f32>} : (memref<256x1024xf32>) -> ()
-  dealloc %M : memref<256x1024xf32>
+  memref.dealloc %M : memref<256x1024xf32>
   return
 }
 
@@ -956,9 +979,9 @@ func @erase_dead_lhlo_constant() {
 func @erase_dead_lhlo_constant_negative(%M : memref<4xf32>) -> memref<256x1024xf32> {
   // CHECK-NEXT: lmhlo.constant
   "lmhlo.constant"(%M) {value = dense<0.0> : tensor<f32>} : (memref<4xf32>) -> ()
-  // CHECK-NEXT: alloc
+  // CHECK-NEXT: memref.alloc
   // CHECK-NEXT: lmhlo.constant
-  %N = alloc() : memref<256x1024xf32>
+  %N = memref.alloc() : memref<256x1024xf32>
   "lmhlo.constant"(%N) {value = dense<0.0> : tensor<f32>} : (memref<256x1024xf32>) -> ()
   return %N : memref<256x1024xf32>
 }

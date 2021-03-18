@@ -114,6 +114,7 @@ filegroup(
     name = "enabled_binary_gpu_kernel_srcs",
     srcs = [
         "gpu_op_add.cc",
+        "gpu_op_atan2.cc",
         "gpu_op_bitwise_and.cc",
         "gpu_op_bitwise_or.cc",
         "gpu_op_bitwise_xor.cc",
@@ -122,6 +123,7 @@ filegroup(
         "gpu_op_equal.cc",
         "gpu_op_greater.cc",
         "gpu_op_greater_equal.cc",
+        "gpu_op_left_shift.cc",
         "gpu_op_less.cc",
         "gpu_op_less_equal.cc",
         "gpu_op_logical_and.cc",
@@ -130,6 +132,11 @@ filegroup(
         "gpu_op_minimum.cc",
         "gpu_op_mul.cc",
         "gpu_op_not_equal.cc",
+        "gpu_op_polygamma.cc",
+        "gpu_op_pow.cc",
+        "gpu_op_right_shift.cc",
+        "gpu_op_sub.cc",
+        "gpu_op_zeta.cc",
     ],
     compatible_with = get_compatible_with_cloud(),
 )
@@ -137,14 +144,8 @@ filegroup(
 filegroup(
     name = "experimental_binary_gpu_kernel_srcs",
     srcs = [
-        "gpu_op_atan2.cc",
         "gpu_op_floor_div.cc",
-        "gpu_op_left_shift.cc",
-        "gpu_op_pow.cc",
-        "gpu_op_right_shift.cc",
         "gpu_op_squared_difference.cc",
-        "gpu_op_sub.cc",
-        "gpu_op_zeta.cc",
     ],
     compatible_with = get_compatible_with_cloud(),
 )
@@ -245,8 +246,11 @@ tf_kernel_library(
     name = "cpu_cwise_unary_op",
     srcs = [
         "cpu_op_abs.cc",
+        "cpu_op_cos.cc",
         "cpu_op_rsqrt.cc",
+        "cpu_op_sin.cc",
         "cpu_op_sqrt.cc",
+        "cpu_op_square.cc",
     ],
     tags = ["manual"],
     # Technically we only need to depend on the kernel libraries for the
@@ -257,8 +261,11 @@ tf_kernel_library(
     deps = [
         ":base_cpu_op",
         ":cpu_abs_kernels",
+        ":cpu_cos_kernels",
         ":cpu_rsqrt_kernels",
+        ":cpu_sin_kernels",
         ":cpu_sqrt_kernels",
+        ":cpu_square_kernels",
         "//third_party/eigen3",
     ],
 )
@@ -296,6 +303,7 @@ tf_kernel_library(
         ":gpu_minimum_kernels",
         ":gpu_mul_kernels",
         ":gpu_not_equal_kernels",
+        ":gpu_polygamma_kernels",
         ":gpu_pow_kernels",
         ":gpu_right_shift_kernels",
         ":gpu_squared_difference_kernels",
@@ -682,6 +690,16 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_polygamma_lib",
+    op = "polygamma",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
+    ],
+)
+
+gpu_kernel_library(
     name = "gpu_sign_lib",
     op = "sign",
     tile_size = "256",
@@ -834,7 +852,6 @@ gpu_kernel_library(
         types = [
             "i1",
         ],
-        unroll_factors = "4",
     )
     for op in [
         "logical_and",
@@ -1081,8 +1098,32 @@ cpu_kernel_library(
 )
 
 cpu_kernel_library(
+    name = "cpu_cos_lib",
+    op = "cos",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+cpu_kernel_library(
     name = "cpu_rsqrt_lib",
     op = "rsqrt",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+cpu_kernel_library(
+    name = "cpu_sin_lib",
+    op = "sin",
     tile_size = "256",
     types = [
         "f16",
@@ -1100,6 +1141,22 @@ cpu_kernel_library(
         "f16",
         "f32",
         "f64",
+    ],
+    unroll_factors = "4",
+)
+
+cpu_kernel_library(
+    name = "cpu_square_lib",
+    op = "square",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+        "i32",
+        "i64",
+        "c64",
+        "c128",
     ],
     unroll_factors = "4",
 )

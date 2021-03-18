@@ -6491,22 +6491,29 @@ flatbuffers::Offset<EmbeddingLookupSparseOptions> CreateEmbeddingLookupSparseOpt
 struct GatherOptionsT : public flatbuffers::NativeTable {
   typedef GatherOptions TableType;
   int32_t axis;
+  int32_t batch_dims;
   GatherOptionsT()
-      : axis(0) {
+      : axis(0),
+        batch_dims(0) {
   }
 };
 
 struct GatherOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef GatherOptionsT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_AXIS = 4
+    VT_AXIS = 4,
+    VT_BATCH_DIMS = 6
   };
   int32_t axis() const {
     return GetField<int32_t>(VT_AXIS, 0);
   }
+  int32_t batch_dims() const {
+    return GetField<int32_t>(VT_BATCH_DIMS, 0);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_AXIS) &&
+           VerifyField<int32_t>(verifier, VT_BATCH_DIMS) &&
            verifier.EndTable();
   }
   GatherOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -6519,6 +6526,9 @@ struct GatherOptionsBuilder {
   flatbuffers::uoffset_t start_;
   void add_axis(int32_t axis) {
     fbb_.AddElement<int32_t>(GatherOptions::VT_AXIS, axis, 0);
+  }
+  void add_batch_dims(int32_t batch_dims) {
+    fbb_.AddElement<int32_t>(GatherOptions::VT_BATCH_DIMS, batch_dims, 0);
   }
   explicit GatherOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -6534,8 +6544,10 @@ struct GatherOptionsBuilder {
 
 inline flatbuffers::Offset<GatherOptions> CreateGatherOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
-    int32_t axis = 0) {
+    int32_t axis = 0,
+    int32_t batch_dims = 0) {
   GatherOptionsBuilder builder_(_fbb);
+  builder_.add_batch_dims(batch_dims);
   builder_.add_axis(axis);
   return builder_.Finish();
 }
@@ -13132,6 +13144,7 @@ inline void GatherOptions::UnPackTo(GatherOptionsT *_o, const flatbuffers::resol
   (void)_o;
   (void)_resolver;
   { auto _e = axis(); _o->axis = _e; }
+  { auto _e = batch_dims(); _o->batch_dims = _e; }
 }
 
 inline flatbuffers::Offset<GatherOptions> GatherOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const GatherOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -13143,9 +13156,11 @@ inline flatbuffers::Offset<GatherOptions> CreateGatherOptions(flatbuffers::FlatB
   (void)_o;
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const GatherOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _axis = _o->axis;
+  auto _batch_dims = _o->batch_dims;
   return tflite::CreateGatherOptions(
       _fbb,
-      _axis);
+      _axis,
+      _batch_dims);
 }
 
 inline TransposeOptionsT *TransposeOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
