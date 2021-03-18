@@ -66,11 +66,11 @@ RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/tensorflow/t
 ENV LANG C.UTF-8
 ARG PYTHON=python3
 
-RUN yum --disableplugin=subscription-managerupdate -y && yum --disableplugin=subscription-managerinstall -y \
+RUN yum --disableplugin=subscription-manager update -y && yum --disableplugin=subscription-manager install -y \
     ${PYTHON} \
     ${PYTHON}-pip \
     which && \
-    yum --disableplugin=subscription-managerclean all
+    yum --disableplugin=subscription-manager clean all
 
 
 RUN ${PYTHON} -m pip --no-cache-dir install --upgrade \
@@ -90,13 +90,13 @@ RUN mkdir /bazel && \
     bash /bazel/installer.sh && \
     rm -f /bazel/installer.sh
 
-RUN yum --disableplugin=subscription-managerupdate -y && yum --disableplugin=subscription-managerinstall -y \
+RUN yum --disableplugin=subscription-manager update -y && yum --disableplugin=subscription-manager install -y \
     openmpi \
     openmpi-devel \
     openssh \
     openssh-server \
     which && \
-    yum --disableplugin=subscription-managerclean all
+    yum --disableplugin=subscription-manager clean all
 
 ENV PATH="/usr/lib64/openmpi/bin:${PATH}"
 
