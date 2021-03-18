@@ -1487,13 +1487,18 @@ cc_library(
 
 cc_library(
     name = "infeed_manager",
-    srcs = ["infeed_manager.cc"],
+    srcs = [
+        "infeed_manager.cc",
+        "xla_executor_state.h",
+    ],
     hdrs = ["infeed_manager.h"],
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
     deps = [
         ":xfeed_queue",
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core/platform:stream_executor_no_cuda",
+        "//tensorflow/stream_executor/gpu:gpu_executor_header",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
     ],
