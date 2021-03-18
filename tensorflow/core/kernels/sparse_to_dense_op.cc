@@ -241,8 +241,8 @@ class SparseToDenseGPU : public AsyncOpKernel {
                                             output_shape_vec.data(),
                                             num_dims * sizeof(Index)).ok(),
                       errors::InvalidArgument(
-                          "failed to copy memory from host to device in "
-                          "SparseToDense"), done);
+                          "failed to copy output_shape vector from host to "
+                          "device in SparseToDenseOp"), done);
 
     functor::LaunchSparseToDense<T, Index>()(
         c, done, this, validate_indices_, indices.flat<Index>().data(),
