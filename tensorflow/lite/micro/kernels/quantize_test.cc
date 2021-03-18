@@ -122,58 +122,6 @@ void TestRequantize(const int* input_dims_data, const float* input_data,
 TF_LITE_MICRO_TESTS_BEGIN
 
 #if !defined(XTENSA)
-TF_LITE_MICRO_TEST(QuantizeOpTestUint8) {
-  const int length = 10;
-  const int dims[] = {2, 2, 5};
-  const float values[] = {-63.5, -63,  -62.5, -62,  -61.5,
-                          62,    62.5, 63,    63.5, 64};
-  const float scale = 0.5;
-  const int zero_point = 127;
-  uint8_t output[length];
-  uint8_t values_quantized[length];
-  tflite::testing::TestQuantizeFloat(
-      dims, values, dims, values, values_quantized, scale, zero_point, output);
-}
-
-TF_LITE_MICRO_TEST(QuantizeOpTestUint8NoScale) {
-  const int length = 10;
-  const int dims[] = {2, 2, 5};
-  const float values[] = {-127, -126, -125, -124, -123,
-                          124,  125,  126,  127,  128};
-  const float scale = 1.0;
-  const int zero_point = 127;
-  uint8_t output[length];
-  uint8_t values_quantized[length];
-  tflite::testing::TestQuantizeFloat(
-      dims, values, dims, values, values_quantized, scale, zero_point, output);
-}
-
-TF_LITE_MICRO_TEST(QuantizeOpTestInt8) {
-  const int length = 10;
-  const int dims[] = {2, 2, 5};
-  const float values[] = {-63.5, -63,  -62.5, -62,  -61.5,
-                          62,    62.5, 63,    63.5, 64};
-  const float scale = 0.5;
-  const int zero_point = -1;
-  uint8_t output[length];
-  uint8_t values_quantized[length];
-  tflite::testing::TestQuantizeFloat(
-      dims, values, dims, values, values_quantized, scale, zero_point, output);
-}
-
-TF_LITE_MICRO_TEST(QuantizeOpTestInt8NoScale) {
-  const int length = 10;
-  const int dims[] = {2, 2, 5};
-  const float values[] = {-128, -127, -126, -125, -124,
-                          123,  124,  125,  126,  127};
-  const float scale = 1.0;
-  const int zero_point = 0;
-  uint8_t output[length];
-  uint8_t values_quantized[length];
-  tflite::testing::TestQuantizeFloat(
-      dims, values, dims, values, values_quantized, scale, zero_point, output);
-}
-
 TF_LITE_MICRO_TEST(QuantizeOpTestInt16) {
   const int length = 10;
   const int dims[] = {2, 2, 5};
