@@ -5548,7 +5548,8 @@ def non_max_suppression_padded_v2(boxes,
         array_ops.gather(array_ops.reshape(sorted_indices, [-1]),
                          gather_idx),
         [batch_size, -1])
-  invalid_index = array_ops.fill([batch_size, max_output_size], 0)
+  invalid_index = array_ops.zeros([batch_size, max_output_size],
+                                  dtype=dtypes.int32)
   idx_index = array_ops.expand_dims(math_ops.range(max_output_size), 0)
   num_valid_expanded = array_ops.expand_dims(num_valid, 1)
   idx = array_ops.where(idx_index < num_valid_expanded,
