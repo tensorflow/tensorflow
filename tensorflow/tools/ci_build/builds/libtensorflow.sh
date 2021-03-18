@@ -52,7 +52,7 @@ function build_libtensorflow_tarball() {
 
   TARBALL_SUFFIX="${1}"
   if [ "$(uname)" == "Darwin" ]; then
-    BAZEL_OPTS="${BAZEL_OPTS} --config=release_macos_linux"
+    BAZEL_OPTS="${BAZEL_OPTS} --config=release_cpu_macos"
   elif [ "${TF_NEED_CUDA}" == "1" ]; then
     BAZEL_OPTS="${BAZEL_OPTS} --config=release_gpu_linux"
   else
