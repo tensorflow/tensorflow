@@ -21,10 +21,10 @@ from typing import Optional, Text
 if not os.path.splitext(__file__)[0].endswith(
     os.path.join('tflite_runtime', 'metrics_portable')):
   # This file is part of tensorflow package.
-  from tensorflow.lite.python import metrics_interface
+  from tensorflow.lite.python import metrics_interface  # type: ignore
 else:
   # This file is part of tflite_runtime package.
-  from tflite_runtime import metrics_interface
+  from tflite_runtime import metrics_interface  # type: ignore
 # pylint: enable=g-import-not-at-top
 
 
