@@ -597,6 +597,7 @@ def _tf_repositories():
     )
 
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
+    # fix for https://github.com/protocolbuffers/upb/issues/300 - using grpc v1.33.2
     tf_http_archive(
         name = "com_github_grpc_grpc",
         sha256 = "a21c3a70eb356e0be2d989fdface89633421f2eddb95a1ede1f10a4804d7860b",
