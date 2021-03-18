@@ -22,16 +22,12 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/micro/kernels/ceva/ceva_common.h"
 #include "tensorflow/lite/micro/kernels/ceva/ceva_tflm_lib.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/softmax.h"
 #ifdef MCPS_MEASUREMENT
 #include "tensorflow/lite/micro/kernels/ceva/mcps_macros.h"
-#endif
-
-#if defined(CEVA_BX1) || defined(CEVA_SP500)
-extern int32_t* CEVA_TFLM_KERNELS_SCRATCH;
-extern int32_t CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL;
 #endif
 
 namespace tflite {
@@ -72,13 +68,7 @@ TfLiteStatus SoftmaxQuantizedCEVA(TfLiteContext* context,
                                   const TfLiteEvalTensor* input,
                                   TfLiteEvalTensor* output,
                                   const SoftmaxParams& op_data) {
-  if (input->type == kTfLiteUInt8) {
-    tflite::reference_ops::Softmax(
-        op_data, tflite::micro::GetTensorShape(input),
-        tflite::micro::GetTensorData<uint8_t>(input),
-        tflite::micro::GetTensorShape(output),
-        tflite::micro::GetTensorData<uint8_t>(output));
-  } else if (input->type == kTfLiteInt8) {
+  if (input->type == kTfLiteInt8) {
     if (output->type == kTfLiteInt16) {
       tflite::reference_ops::Softmax(
           op_data, tflite::micro::GetTensorShape(input),
@@ -149,7 +139,6 @@ TfLiteStatus SoftmaxEvalCEVA(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     }
     case kTfLiteInt8:
-    case kTfLiteUInt8:
     case kTfLiteInt16: {
       return SoftmaxQuantizedCEVA(context, input, output, op_data);
     }
