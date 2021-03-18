@@ -291,12 +291,10 @@ class LocallyConnectedImplementationModeTest(test.TestCase,
       
       # Following code generates sparse targets and converts them 
       # to one-hot encoded vectors
-    
       # Create sparse targets eg. [0,1,2]
       sparse_targets = np.random.randint(0, num_classes, (num_samples,)) 
       
       # Convert to one-hot encoding
-      
       # Final targets:
       # [[ 1. 0. 0. ]
       #  [ 0. 1. 0. ]
