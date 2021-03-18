@@ -44,6 +44,13 @@
         *   The new backend is used for 8 bits full integer post-training quantization
         *   The new backend removes the redundant rescales and fixes some bugs (shared weight/bias, extremely small scales, etc)
         *   Set `experimental_new_quantizer` in tf.lite.TFLiteConverter to False to disable this change
+* `tf.keras`
+    *   Enabled a new supported input type in `Model.fit`,
+        `tf.keras.utils.experimental.DatasetCreator`, which takes a
+        callable, `dataset_fn`.
+        `DatasetCreator` is intended to work across all `tf.distribute`
+        strategies, and is the only input type supported for Parameter Server
+        strategy.
 
 ## Bug Fixes and Other Changes
 
