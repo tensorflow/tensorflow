@@ -4178,14 +4178,14 @@ def sparse_softmax_cross_entropy_with_logits_v2(labels, logits, name=None):
   example, each CIFAR-10 image is labeled with one and only one label: an image
   can be a dog or a truck, but not both.
 
-  **NOTE:**  For this operation, the probability of a given label is considered
+  Note:  For this operation, the probability of a given label is considered
   exclusive.  That is, soft classes are not allowed, and the `labels` vector
   must provide a single specific index for the true class for each row of
   `logits` (each minibatch entry).  For soft softmax classification with
   a probability distribution for each entry, see
   `softmax_cross_entropy_with_logits_v2`.
 
-  **WARNING:** This op expects unscaled logits, since it performs a `softmax`
+  Warning: This op expects unscaled logits, since it performs a `softmax`
   on `logits` internally for efficiency.  Do not call this op with the
   output of `softmax`, as it will produce incorrect results.
 
@@ -4196,8 +4196,16 @@ def sparse_softmax_cross_entropy_with_logits_v2(labels, logits, name=None):
   `logits` must have the dtype of `float16`, `float32`, or `float64`, and
   `labels` must have the dtype of `int32` or `int64`.
 
-  **Note that to avoid confusion, it is required to pass only named arguments to
-  this function.**
+  >>> logits = tf.constant([[2., -5., .5, -.1],
+  ...                       [0., 0., 1.9, 1.4],
+  ...                       [-100., 100., -100., -100.]])
+  >>> labels = tf.constant([0, 3, 1])
+  >>> tf.nn.sparse_softmax_cross_entropy_with_logits(
+  ...     labels=labels, logits=logits).numpy()
+  array([0.29750752, 1.1448325 , 0.        ], dtype=float32)
+
+  To avoid confusion, passing only named arguments to this function is
+  recommended.
 
   Args:
     labels: `Tensor` of shape `[d_0, d_1, ..., d_{r-1}]` (where `r` is rank of
