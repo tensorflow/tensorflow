@@ -204,14 +204,81 @@ class MaxPooling1D(Pooling1D):
 class AveragePooling1D(Pooling1D):
   """Average pooling for temporal data.
 
+  Downsamples the input representation by taking the average value over the
+  window defined by `pool_size`. The window is shifted by `strides`.  The
+  resulting output when using "valid" padding option has a shape of:
+  `output_shape = (input_shape - pool_size + 1) / strides)`
+
+  The resulting output shape when using the "same" padding option is:
+  `output_shape = input_shape / strides`
+
+  For example, for strides=1 and padding="valid":
+
+  >>> x = tf.constant([1., 2., 3., 4., 5.])
+  >>> x = tf.reshape(x, [1, 5, 1])
+  >>> x
+  <tf.Tensor: shape=(1, 5, 1), dtype=float32, numpy=
+    array([[[1.],
+            [2.],
+            [3.],
+            [4.],
+            [5.]], dtype=float32)>
+  >>> avg_pool_1d = tf.keras.layers.AveragePooling1D(pool_size=2,
+  ...    strides=1, padding='valid')
+  >>> avg_pool_1d(x)
+  <tf.Tensor: shape=(1, 4, 1), dtype=float32, numpy=
+  array([[[1.5],
+          [2.5],
+          [3.5],
+          [4.5]]], dtype=float32)>
+
+  For example, for strides=2 and padding="valid":
+
+  >>> x = tf.constant([1., 2., 3., 4., 5.])
+  >>> x = tf.reshape(x, [1, 5, 1])
+  >>> x
+  <tf.Tensor: shape=(1, 5, 1), dtype=float32, numpy=
+    array([[[1.],
+            [2.],
+            [3.],
+            [4.],
+            [5.]], dtype=float32)>
+  >>> avg_pool_1d = tf.keras.layers.AveragePooling1D(pool_size=2,
+  ...    strides=2, padding='valid')
+  >>> avg_pool_1d(x)
+  <tf.Tensor: shape=(1, 2, 1), dtype=float32, numpy=
+  array([[[1.5],
+          [3.5]]], dtype=float32)>
+
+  For example, for strides=1 and padding="same":
+
+  >>> x = tf.constant([1., 2., 3., 4., 5.])
+  >>> x = tf.reshape(x, [1, 5, 1])
+  >>> x
+  <tf.Tensor: shape=(1, 5, 1), dtype=float32, numpy=
+    array([[[1.],
+            [2.],
+            [3.],
+            [4.],
+            [5.]], dtype=float32)>
+  >>> avg_pool_1d = tf.keras.layers.AveragePooling1D(pool_size=2,
+  ...    strides=1, padding='same')
+  >>> avg_pool_1d(x)
+  <tf.Tensor: shape=(1, 5, 1), dtype=float32, numpy=
+  array([[[1.5],
+          [2.5],
+          [3.5],
+          [4.5],
+          [5.]]], dtype=float32)>
+
   Args:
     pool_size: Integer, size of the average pooling windows.
     strides: Integer, or None. Factor by which to downscale.
       E.g. 2 will halve the input.
       If None, it will default to `pool_size`.
     padding: One of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to 
-      the left/right or up/down of the input such that output has the same 
+      `"valid"` means no padding. `"same"` results in padding evenly to
+      the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
