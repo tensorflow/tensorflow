@@ -83,8 +83,8 @@ cmake ../tensorflow_src/tensorflow/lite -DTFLITE_ENABLE_GPU=ON
 ```
 
 **Note:** It's experimental and available only on master(r2.5) branch. There
-could be compatbility issues. It's only verified with Android devices and NVidia
-CUDA OpenCL 1.2.
+could be compatibility issues. It's only verified with Android devices and
+NVidia CUDA OpenCL 1.2.
 
 ### Step 5. Build TensorFlow Lite
 
