@@ -24,7 +24,6 @@ import zlib
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import readers
@@ -34,11 +33,11 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-class FixedLengthRecordDatasetTest(test_base.DatasetTestBase,
-                                   parameterized.TestCase):
+class FixedLengthRecordDatasetTestBase(test_base.DatasetTestBase):
+  """Base class for setting up and testing FixedLengthRecordDataset."""
 
   def setUp(self):
-    super(FixedLengthRecordDatasetTest, self).setUp()
+    super(FixedLengthRecordDatasetTestBase, self).setUp()
     self._num_files = 2
     self._num_records = 7
     self._header_bytes = 5
@@ -75,6 +74,10 @@ class FixedLengthRecordDatasetTest(test_base.DatasetTestBase,
         raise ValueError("Unsupported compression_type", compression_type)
 
     return filenames
+
+
+class FixedLengthRecordDatasetTest(FixedLengthRecordDatasetTestBase,
+                                   parameterized.TestCase):
 
   def _testFixedLengthRecordDataset(self, compression_type=None):
     test_filenames = self._createFiles(compression_type=compression_type)
@@ -213,8 +216,8 @@ class FixedLengthRecordDatasetTest(test_base.DatasetTestBase,
 
 
 class FixedLengthRecordDatasetCheckpointTest(
-    reader_dataset_ops_test_base.FixedLengthRecordDatasetTestBase,
-    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
+    FixedLengthRecordDatasetTestBase, checkpoint_test_base.CheckpointTestBase,
+    parameterized.TestCase):
 
   def _build_iterator_graph(self, num_epochs, compression_type=None):
     filenames = self._createFiles()

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
@@ -65,7 +66,7 @@ class EmbedTFFrameworkFunctionAndAllocPass
       return func_type.getNumInputs() > 0 &&
              func_type.getInput(0).isa<OpKernelContextType>();
     });
-    target.addDynamicallyLegalOp<AllocOp, DeallocOp>(
+    target.addDynamicallyLegalOp<memref::AllocOp, memref::DeallocOp>(
         IsNotInsideTfEntryFunction);
 
     if (failed(applyPartialConversion(m, target, std::move(patterns)))) {

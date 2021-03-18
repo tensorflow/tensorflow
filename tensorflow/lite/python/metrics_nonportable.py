@@ -24,7 +24,7 @@ class TFLiteMetrics(metrics_interface.TFLiteMetricsInterface):
   """TFLite metrics helper for prod (borg) environment.
 
   Attributes:
-    md5: A string containing the MD5 hash of the model binary.
+    model_hash: A string containing the hash of the model binary.
     model_path: A string containing the path of the model for debugging
       purposes.
   """
@@ -38,13 +38,13 @@ class TFLiteMetrics(metrics_interface.TFLiteMetricsInterface):
       'Counter for number of interpreter created in Python.', 'language')
 
   def __init__(self,
-               md5: Optional[Text] = None,
+               model_hash: Optional[Text] = None,
                model_path: Optional[Text] = None) -> None:
     del self  # Temporarily removing self until parameter logic is implemented.
-    if md5 and not model_path or not md5 and model_path:
-      raise ValueError('Both model metadata(md5, model_path) should be given '
-                       'at the same time.')
-    if md5:
+    if model_hash and not model_path or not model_hash and model_path:
+      raise ValueError('Both model metadata(model_hash, model_path) should be '
+                       'given at the same time.')
+    if model_hash:
       # TODO(b/180400857): Create stub once the service is implemented.
       pass
 

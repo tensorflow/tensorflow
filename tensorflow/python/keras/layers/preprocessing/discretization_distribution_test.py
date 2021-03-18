@@ -33,7 +33,7 @@ from tensorflow.python.platform import test
 
 @ds_combinations.generate(
     combinations.combine(
-        distribution=strategy_combinations.strategies_minus_tpu,
+        distribution=strategy_combinations.all_strategies,
         mode=["eager", "graph"]))
 class DiscretizationDistributionTest(
     keras_parameterized.TestCase,

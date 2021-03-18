@@ -85,8 +85,8 @@ class AssertCardinalityTest(test_base.DatasetTestBase, parameterized.TestCase):
         self.evaluate(get_next())
 
 
-class AssertCardinalityDatasetCheckpointTest(
-    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
+class AssertCardinalityCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                      parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testCardinality(self):

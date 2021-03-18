@@ -1916,7 +1916,7 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 5,
     tags = [
-        "no_pip",  # TODO(b/171349346, b/181878817)
+        "no_oss",  # TODO(b/171349346, b/181878817): Frequent timeouts. Do not re-enable until rewritten
     ],
     deps = [
         ":multi_worker_test_base",

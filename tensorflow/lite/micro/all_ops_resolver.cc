@@ -27,6 +27,7 @@ AllOpsResolver::AllOpsResolver() {
   AddArgMax();
   AddArgMin();
   AddAveragePool2D();
+  AddBatchToSpaceNd();
   AddCeil();
   AddConcatenation();
   AddConv2D();
@@ -51,8 +52,8 @@ AllOpsResolver::AllOpsResolver() {
   AddLogicalNot();
   AddLogicalOr();
   AddLogistic();
-  AddMaximum();
   AddMaxPool2D();
+  AddMaximum();
   AddMean();
   AddMinimum();
   AddMul();
@@ -73,15 +74,17 @@ AllOpsResolver::AllOpsResolver() {
   AddShape();
   AddSin();
   AddSoftmax();
+  AddSpaceToBatchNd();
   AddSplit();
   AddSplitV();
-  AddSqueeze();
   AddSqrt();
   AddSquare();
+  AddSqueeze();
   AddStridedSlice();
   AddSub();
   AddSvdf();
   AddTanh();
+  AddTransposeConv();
   AddUnpack();
 }
 

@@ -284,6 +284,7 @@ py_strict_library(
         ":function_serialization",
         ":revived_types",
         ":signature_constants",
+        "//tensorflow/python:composite_tensor",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_spec",
@@ -586,6 +587,7 @@ py_strict_library(
         "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:row_partition",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )

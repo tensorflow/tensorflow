@@ -160,8 +160,8 @@ class FilterTest(test_base.DatasetTestBase, parameterized.TestCase):
                          [next_element() for next_element in next_elements]))
 
 
-class FilterDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                                  parameterized.TestCase):
+class FilterCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                           parameterized.TestCase):
 
   def _build_filter_range_graph(self, div):
     return dataset_ops.Dataset.range(100).filter(

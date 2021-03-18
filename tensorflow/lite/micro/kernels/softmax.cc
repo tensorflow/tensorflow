@@ -30,13 +30,7 @@ namespace {
 
 void SoftmaxQuantized(const TfLiteEvalTensor* input, TfLiteEvalTensor* output,
                       const SoftmaxParams& op_data) {
-  if (input->type == kTfLiteUInt8) {
-    tflite::reference_ops::Softmax(
-        op_data, tflite::micro::GetTensorShape(input),
-        tflite::micro::GetTensorData<uint8_t>(input),
-        tflite::micro::GetTensorShape(output),
-        tflite::micro::GetTensorData<uint8_t>(output));
-  } else if (input->type == kTfLiteInt8) {
+  if (input->type == kTfLiteInt8) {
     if (output->type == kTfLiteInt16) {
       tflite::reference_ops::Softmax(
           op_data, tflite::micro::GetTensorShape(input),
@@ -76,7 +70,6 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     }
     case kTfLiteInt8:
-    case kTfLiteUInt8:
     case kTfLiteInt16: {
       SoftmaxQuantized(input, output, op_data);
       return kTfLiteOk;

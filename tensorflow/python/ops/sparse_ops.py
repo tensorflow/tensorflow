@@ -1126,7 +1126,7 @@ def sparse_split_v2(sp_input=None,
 @tf_export("sparse.slice", v1=["sparse.slice", "sparse_slice"])
 @deprecation.deprecated_endpoints("sparse_slice")
 def sparse_slice(sp_input, start, size, name=None):
-  """Slice a `SparseTensor` based on the `start` and `size.
+  """Slice a `SparseTensor` based on the `start` and `size`.
 
   For example, if the input is
 
