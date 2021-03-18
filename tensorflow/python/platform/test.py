@@ -35,6 +35,8 @@ from tensorflow.python.ops.gradient_checker import compute_gradient_error
 from tensorflow.python.ops.gradient_checker import compute_gradient
 # pylint: enable=unused-import,g-bad-import-order
 
+import functools
+
 import sys
 from tensorflow.python.util.tf_export import tf_export
 if sys.version_info.major == 2:
@@ -94,6 +96,24 @@ def is_built_with_cuda():
 def is_built_with_rocm():
   """Returns whether TensorFlow was built with ROCm (GPU) support."""
   return _test_util.IsBuiltWithROCm()
+
+
+@tf_export('test.disable_with_predicate')
+def disable_with_predicate(pred, skip_message):
+  """Disables the test if pred is true."""
+
+  def decorator_disable_with_predicate(func):
+
+    @functools.wraps(func)
+    def wrapper_disable_with_predicate(self, *args, **kwargs):
+      if pred():
+        self.skipTest(skip_message)
+      else:
+        return func(self, *args, **kwargs)
+
+    return wrapper_disable_with_predicate
+
+  return decorator_disable_with_predicate
 
 
 @tf_export('test.is_built_with_gpu_support')
