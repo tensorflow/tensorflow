@@ -4479,7 +4479,66 @@ def avg_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None): 
 @tf_export("nn.max_pool", v1=["nn.max_pool_v2"])
 @dispatch.add_dispatch_support
 def max_pool_v2(input, ksize, strides, padding, data_format=None, name=None):
-  """Performs the max pooling on the input.
+  """Performs max pooling on the input.
+
+  For a given window of `ksize`, takes the maximum value within that window.
+  Used for reducing computation and preventing overfitting.
+
+  Consider an example of pooling with 2x2, non-overlapping windows:
+
+  >>> matrix = tf.constant([
+  ...     [0, 0, 1, 7],
+  ...     [0, 2, 0, 0],
+  ...     [5, 2, 0, 0],
+  ...     [0, 0, 9, 8],
+  ... ])
+  >>> reshaped = tf.reshape(matrix, (1, 4, 4, 1))
+  >>> tf.nn.max_pool(reshaped, ksize=2, strides=2, padding="SAME")
+  <tf.Tensor: shape=(1, 2, 2, 1), dtype=int32, numpy=
+  array([[[[2],
+           [7]],
+          [[5],
+           [9]]]], dtype=int32)>
+
+  We can adjust the window size using the `ksize` parameter. For example, if we
+  were to expand the window to 3:
+
+  >>> tf.nn.max_pool(reshaped, ksize=3, strides=2, padding="SAME")
+  <tf.Tensor: shape=(1, 2, 2, 1), dtype=int32, numpy=
+  array([[[[5],
+           [7]],
+          [[9],
+           [9]]]], dtype=int32)>
+
+  We've now picked up two additional large numbers (5 and 9) in two of the
+  pooled spots.
+
+  Note that our windows are now overlapping, since we're still moving by 2 units
+  on each iteration. This is causing us to see the same 9 repeated twice, since
+  it is part of two overlapping windows.
+
+  We can adjust how far we move our window with each iteration using the
+  `strides` parameter. Updating this to the same value as our window size
+  eliminates the overlap:
+
+  >>> tf.nn.max_pool(reshaped, ksize=3, strides=3, padding="SAME")
+  <tf.Tensor: shape=(1, 2, 2, 1), dtype=int32, numpy=
+  array([[[[2],
+           [7]],
+          [[5],
+           [9]]]], dtype=int32)>
+
+  Because the window does not neatly fit into our input, padding is added around
+  the edges, giving us the same result as when we used a 2x2 window. We can skip
+  padding altogether and simply drop the windows that do not fully fit into our
+  input by instead passing `"VALID"` to the `padding` argument:
+
+  >>> tf.nn.max_pool(reshaped, ksize=3, strides=3, padding="VALID")
+  <tf.Tensor: shape=(1, 1, 1, 1), dtype=int32, numpy=array([[[[5]]]],
+   dtype=int32)>
+
+  Now we've grabbed the largest value in the 3x3 window starting from the upper-
+  left corner. Since no other windows fit in our input, they are dropped.
 
   Args:
     input:  Tensor of rank N+2, of shape `[batch_size] + input_spatial_shape +
