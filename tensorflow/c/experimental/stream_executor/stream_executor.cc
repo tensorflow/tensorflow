@@ -749,8 +749,9 @@ port::StatusOr<std::unique_ptr<StreamExecutor>> CPlatform::GetUncachedExecutor(
   return result;
 }
 
-port::Status InitStreamExecutorPlugin(void* dso_handle, string* device_type,
-                                      string* platform_name) {
+port::Status InitStreamExecutorPlugin(void* dso_handle,
+                                      std::string* device_type,
+                                      std::string* platform_name) {
   tensorflow::Env* env = tensorflow::Env::Default();
 
   // Step 1: Load symbol for `TF_InitPlugin`
@@ -764,8 +765,8 @@ port::Status InitStreamExecutorPlugin(void* dso_handle, string* device_type,
 }
 
 port::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn,
-                                      string* device_type,
-                                      string* platform_name) {
+                                      std::string* device_type,
+                                      std::string* platform_name) {
   SE_PlatformRegistrationParams params{
       SE_PLATFORM_REGISTRATION_PARAMS_STRUCT_SIZE};
   SP_Platform platform{SP_PLATFORM_STRUCT_SIZE};
