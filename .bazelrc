@@ -542,11 +542,14 @@ try-import %workspace%/.bazelrc.user
 # Here are bazelrc configs for release builds
 build:release_base --config=v2
 build:release_base --distinct_host_configuration=false
+test:release_base --flaky_test_attempts=3
+test:release_base --test_size_filters=small,medium
 
 build:release_cpu_linux --config=release_base
 build:release_cpu_linux --config=avx_linux
 build:release_cpu_linux --config=native_arch_linux
 build:release_cpu_linux --crosstool_top=@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda11.2:toolchain
+test:release_cpu_linux --test_env=LD_LIBRARY_PATH
 
 build:release_cpu_macos --config=release_base
 build:release_cpu_macos --config=avx_linux
