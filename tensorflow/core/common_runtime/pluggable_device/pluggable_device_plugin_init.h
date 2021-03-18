@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/c/experimental/stream_executor/stream_executor.h"
-#include "tensorflow/c/experimental/stream_executor/stream_executor_test_util.h"
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_PLUGGABLE_DEVICE_PLUGGABLE_DEVICE_PLUGIN_INIT_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_PLUGGABLE_DEVICE_PLUGGABLE_DEVICE_PLUGIN_INIT_H_
 
-extern "C" {
+#include "tensorflow/core/platform/status.h"
 
-void SE_InitPlugin(SE_PlatformRegistrationParams* const params,
-                   TF_Status* const status) {
-  stream_executor::test_util::PopulateDefaultPlatformRegistrationParams(params);
-}
+namespace tensorflow {
 
-void TF_InitKernel() {}
-}
+Status RegisterPluggableDevicePlugin(void* library_filename);
+
+}  // namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_PLUGGABLE_DEVICE_PLUGGABLE_DEVICE_PLUGIN_INIT_H_
