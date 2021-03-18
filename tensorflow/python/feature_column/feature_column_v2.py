@@ -1026,19 +1026,47 @@ def numeric_column(key,
 
   Example:
 
-  ```python
-  price = numeric_column('price')
-  columns = [price, ...]
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  dense_tensor = input_layer(features, columns)
-
-  # or
-  bucketized_price = bucketized_column(price, boundaries=[...])
-  columns = [bucketized_price, ...]
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  linear_prediction = linear_model(features, columns)
-  ```
-
+  Assume we have a dataset with two features `a` and `b`.
+  Feature `a` is of numeric in nature.
+  
+  >>> data = {'a': [15, 9, 17, 19, 21, 18, 25, 30],
+  ...    'b': [5.0, 6.4, 10.5, 13.6, 15.7, 19.9, 20.3 , 0.0]}
+  
+  Convert the data to `tf.data.Dataset` and batch the dataset.
+  >>> dataset = tf.data.Dataset.from_tensor_slices(data).batch(2)
+  
+  Let us represent the feature `a` as numerical feature.
+  >>> a = tf.feature_column.numeric_column('a')
+  
+  The output of the feature column will be used as an input to the model.
+  But before we apply the feature column as an input, we can bucketize the
+  column as well.
+  Here we are providing `5` bucket boundaries, the bucketized_column api
+  will bucket this feature in total of `6` buckets. One extra bucket for
+  the data that is greater then the last bucket boundary.
+  
+  >>> a_buckets = tf.feature_column.bucketized_column(a,
+  ...    boundaries=[10, 15, 20, 25, 30])
+  
+  Creating the `DenseFeatures` which will receive the bucketized numerical
+  feature column that was just created above.
+  
+  >>> feature_layer = tf.keras.layers.DenseFeatures(a_buckets)
+  >>> for batch_record in dataset.as_numpy_iterator():
+  ...    print(feature_layer(batch_record))
+  tf.Tensor(
+  [[0. 0. 1. 0. 0. 0.]
+   [1. 0. 0. 0. 0. 0.]], shape=(2, 6), dtype=float32)
+  tf.Tensor(
+  [[0. 0. 1. 0. 0. 0.]
+   [0. 0. 1. 0. 0. 0.]], shape=(2, 6), dtype=float32)
+  tf.Tensor(
+  [[0. 0. 0. 1. 0. 0.]
+   [0. 0. 1. 0. 0. 0.]], shape=(2, 6), dtype=float32)
+  tf.Tensor(
+  [[0. 0. 0. 0. 1. 0.]
+   [0. 0. 0. 0. 0. 1.]], shape=(2, 6), dtype=float32)
+    
   Args:
     key: A unique string identifying the input feature. It is used as the
       column name and the dictionary key for feature parsing configs, feature
