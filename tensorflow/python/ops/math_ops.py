@@ -1409,7 +1409,14 @@ def div(x, y, name=None):
 @deprecation.deprecated_endpoints("div_no_nan")
 @dispatch.add_dispatch_support
 def div_no_nan(x, y, name=None):
-  """Computes a safe divide which returns 0 if the y is zero.
+  """Computes a safe divide which returns 0 if `y` (denominator) is zero.
+
+  For example:
+
+  >>> tf.constant(3.0) / 0.0
+  <tf.Tensor: shape=(), dtype=float32, numpy=inf>
+  >>> tf.math.divide_no_nan(3.0, 0.0)
+  <tf.Tensor: shape=(), dtype=float32, numpy=0.0>
 
   Args:
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`.
