@@ -288,9 +288,23 @@ class LocallyConnectedImplementationModeTest(test.TestCase,
 
       np.random.seed(1)
       tf_test_util.random_seed.set_seed(1)
+      
+      # Following code generates sparse targets and converts them 
+      # to one-hot encoded vectors
+    
+      # Create sparse targets eg. [0,1,2]
       sparse_targets = np.random.randint(0, num_classes, (num_samples,)) 
-      targets =  np.zeros((sparse_targets.size, sparse_targets.max()+1))
-      targets[np.arange(sparse_targets.size),sparse_targets] = 1
+      
+      # Convert to one-hot encoding
+      targets =  np.zeros((sparse_targets.size, sparse_targets.max() + 1)) 
+      targets[np.arange(sparse_targets.size), sparse_targets] = 1 
+      
+      # Final targets:
+      # [[ 1. 0. 0. ]
+      #  [ 0. 1. 0. ]
+      #  [ 0. 0. 1. ]]
+          
+        
         
       height = 7
       filters = 2
