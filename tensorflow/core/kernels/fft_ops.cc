@@ -29,8 +29,8 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/work_sharder.h"
 
-#if (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
-#include "tensorflow/core/kernels/gpu_utils.h"
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -336,9 +336,24 @@ REGISTER_KERNEL_BUILDER(Name("RFFT3D").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("IRFFT3D").Device(DEVICE_CPU),
                         FFTCPU<false, true, 3>);
 
-#if (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
 namespace {
+template <typename T>
+se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory) {
+  se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory));
+  se::DeviceMemory<T> typed(wrapped);
+  return typed;
+}
+
+template <typename T>
+se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
+  se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory), size * sizeof(T));
+  se::DeviceMemory<T> typed(wrapped);
+  return typed;
+}
+
 // A class to provide scratch-space allocator for Stream-Executor Cufft
 // callback. Tensorflow is responsible for releasing the temporary buffers after
 // the kernel finishes.
