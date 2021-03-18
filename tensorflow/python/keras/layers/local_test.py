@@ -296,16 +296,15 @@ class LocallyConnectedImplementationModeTest(test.TestCase,
       sparse_targets = np.random.randint(0, num_classes, (num_samples,)) 
       
       # Convert to one-hot encoding
-      targets =  np.zeros((sparse_targets.size, sparse_targets.max() + 1)) 
-      targets[np.arange(sparse_targets.size), sparse_targets] = 1 
       
       # Final targets:
       # [[ 1. 0. 0. ]
       #  [ 0. 1. 0. ]
       #  [ 0. 0. 1. ]]
-          
-        
-        
+      
+      targets =  np.zeros((sparse_targets.size, sparse_targets.max() + 1)) 
+      targets[np.arange(sparse_targets.size), sparse_targets] = 1 
+      
       height = 7
       filters = 2
       inputs = get_inputs(data_format, filters, height, num_samples, width)
