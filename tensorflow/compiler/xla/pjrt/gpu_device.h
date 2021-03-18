@@ -37,6 +37,7 @@ struct GpuAllocatorConfig {
     kPlatform,  // The platform's default.
     kBFC,  // Allocator using a "Best-Fit with Coalescing" algorithm. Currently
            // only available for GPU.
+    kCudaAsync,  // Use the CUDA async allocator.
   };
   Kind kind = Kind::kDefault;
 
