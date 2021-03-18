@@ -69,7 +69,7 @@ else
 
   # Check if newer version available
   LATEST_RENODE_VERSION=`echo "${RELEASES_JSON}" |grep 'tag_name' |\
-      head --lines 1 | grep --extended-regexp --only-matching '[0-9]+\.[0-9]+\.[0-9]+'`
+      head -n 1 | grep --extended-regexp --only-matching '[0-9]+\.[0-9]+\.[0-9]+'`
   if [ "${RENODE_VERSION}" != "${LATEST_RENODE_VERSION}" ]; then
     echo -e "${ORANGE}Latest available version is ${LATEST_RENODE_VERSION}, please consider using it.${NC}" &>2
   fi
