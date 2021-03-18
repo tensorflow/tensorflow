@@ -2333,10 +2333,11 @@ class DepthwiseConv2D(Conv2D):
 
   Output shape:
     4D tensor with shape:
-    `[batch_size, filters, new_rows, new_cols]` if data_format='channels_first'
-    or 4D tensor with shape:
-    `[batch_size, new_rows, new_cols, filters]` if data_format='channels_last'.
-    `rows` and `cols` values might have changed due to padding.
+    `[batch_size, channels * depth_multiplier, new_rows, new_cols]` if
+    data_format='channels_first' or 4D tensor with shape:
+    `[batch_size, new_rows, new_cols, channels * depth_multiplier]` if
+    data_format='channels_last'. `rows` and `cols` values might have
+    changed due to padding.
 
   Returns:
     A tensor of rank 4 representing

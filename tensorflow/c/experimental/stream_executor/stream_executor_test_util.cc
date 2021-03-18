@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/stream_executor/stream_executor_test_util.h"
 
-#include <cstring>
-
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 
 namespace stream_executor {

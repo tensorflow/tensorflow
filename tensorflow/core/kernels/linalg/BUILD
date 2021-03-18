@@ -48,6 +48,8 @@ exports_files([
     "einsum_op.h",
     "linalg_ops_common.h",
     "linalg_ops_common.cc",
+    "matrix_band_part_op.h",
+    "matrix_band_part_op.cc",
     "matrix_diag_op.h",
     "matrix_diag_op.cc",
     "matrix_inverse_op.cc",

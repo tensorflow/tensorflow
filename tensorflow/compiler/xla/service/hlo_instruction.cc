@@ -2750,11 +2750,19 @@ string HloInstruction::OperandsToStringWithCanonicalNameMap(
       slice.size() > kMaxOperandsToShowIfCompact) {
     slice.remove_suffix(slice.size() - kMaxOperandsToShowIfCompact);
   }
-  operands = StrJoin(slice, ", ", [&](string* out, HloInstruction* operand) {
+  for (int64 i = 0; i < slice.size(); ++i) {
+    HloInstruction* operand = slice[i];
+    if (i != 0) {
+      StrAppend(&operands, ", ");
+      if (options.print_operand_index_annotation_interval() != 0 &&
+          i % options.print_operand_index_annotation_interval() == 0) {
+        StrAppend(&operands, absl::StrFormat("/*index=%lld*/", i));
+      }
+    }
     // If operand is already been deleted, put `null` to the string output.
     if (operand == nullptr) {
-      StrAppend(out, "null ");
-      return;
+      StrAppend(&operands, "null ");
+      continue;
     }
     std::vector<string> str;
     if (options.print_operand_shape()) {
@@ -2774,8 +2782,8 @@ string HloInstruction::OperandsToStringWithCanonicalNameMap(
     } else if (options.print_operand_names()) {
       str.push_back(PrintNameInternal(operand->name(), options));
     }
-    StrAppend(out, StrJoin(str, " "));
-  });
+    StrAppend(&operands, StrJoin(str, " "));
+  }
   const int64 remaining = operands_.size() - slice.size();
   if (slice.size() != operands_.size()) {
     StrAppend(&operands, ", ...(+", remaining, ")");

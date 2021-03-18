@@ -1,5 +1,6 @@
-load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
+# Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -75,6 +76,24 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "checkpoint_input_pipeline_hook_test",
+    size = "small",
+    srcs = ["checkpoint_input_pipeline_hook_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/experimental/ops:iterator_ops",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/estimator:estimator_py",
     ],
 )
 
@@ -235,6 +254,7 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:random_seed",
         "//tensorflow/python/data/experimental/ops:interleave_ops",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
@@ -369,6 +389,21 @@ tf_py_test(
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/util:nest",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "make_saveable_from_iterator_test",
+    size = "small",
+    srcs = ["make_saveable_from_iterator_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_combinations",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/data/experimental/ops:iterator_ops",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 
@@ -639,6 +674,7 @@ tf_py_test(
     name = "rebatch_dataset_test",
     size = "small",
     srcs = ["rebatch_dataset_test.py"],
+    shard_count = 4,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:image_ops",
@@ -752,21 +788,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "sql_dataset_test",
-    size = "medium",
-    srcs = ["sql_dataset_test.py"],
-    tags = ["no_pip"],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python/data/experimental/ops:readers",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "@org_sqlite//:python",
-    ],
-)
-
-tf_py_test(
     name = "snapshot_test",
     size = "medium",
     timeout = "long",
@@ -792,9 +813,25 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "sql_dataset_test",
+    size = "medium",
+    srcs = ["sql_dataset_test.py"],
+    tags = ["no_pip"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/experimental/ops:readers",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
+        "@org_sqlite//:python",
+    ],
+)
+
+tf_py_test(
     name = "stats_dataset_ops_test",
     size = "small",
     srcs = ["stats_dataset_ops_test.py"],
+    shard_count = 4,
     tags = [
         "no_oss",  # TODO(b/155795733): Note that this functionality is deprecated.
         "no_pip",
@@ -834,6 +871,7 @@ tf_py_test(
     name = "take_while_test",
     size = "small",
     srcs = ["take_while_test.py"],
+    shard_count = 4,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

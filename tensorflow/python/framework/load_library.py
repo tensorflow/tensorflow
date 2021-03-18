@@ -65,7 +65,7 @@ def load_op_library(library_filename):
     py_tf.TF_DeleteLibraryHandle(lib_handle)
 
   # Get a unique name for the module.
-  module_name = hashlib.md5(wrappers).hexdigest()
+  module_name = hashlib.sha1(wrappers).hexdigest()
   if module_name in sys.modules:
     return sys.modules[module_name]
   module = imp.new_module(module_name)

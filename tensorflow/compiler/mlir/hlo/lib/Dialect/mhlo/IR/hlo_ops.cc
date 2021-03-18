@@ -908,6 +908,18 @@ void DynamicBroadcastInDimOp::getCanonicalizationPatterns(
       context);
 }
 
+LogicalResult DynamicBroadcastInDimOp::inferReturnTypeComponents(
+    MLIRContext*, llvm::Optional<mlir::Location>, ValueRange, DictionaryAttr,
+    RegionRange, llvm::SmallVectorImpl<mlir::ShapedTypeComponents>&) {
+  return failure();
+}
+
+LogicalResult DynamicBroadcastInDimOp::reifyReturnTypeShapes(
+    OpBuilder&, SmallVectorImpl<Value>& reifiedReturnShapes) {
+  reifiedReturnShapes.push_back(output_dimensions());
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // ClampOp
 //===----------------------------------------------------------------------===//

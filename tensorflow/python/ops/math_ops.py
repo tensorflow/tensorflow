@@ -4169,7 +4169,7 @@ def reduced_shape(input_shape, axes):
       ],  # [1, 2]
       [
           input_shape,  # [2, 3, 5, 7]
-          array_ops.fill(axes_shape, 1)
+          array_ops.ones(axes_shape, dtype=dtypes.int32)
       ])  # [1, 1]
 
 

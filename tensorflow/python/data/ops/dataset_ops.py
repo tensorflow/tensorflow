@@ -4115,22 +4115,14 @@ class ParallelBatchDataset(UnaryDataset):
           lambda component_spec: component_spec._batch(None),
           input_dataset.element_spec)
 
-    if tf_compat.forward_compatible(2021, 3,
-                                    18) or self._deterministic != "default":
-      variant_tensor = gen_dataset_ops.parallel_batch_dataset(
-          input_dataset._variant_tensor,
-          batch_size=self._batch_size,
-          num_parallel_calls=self._num_parallel_calls,
-          drop_remainder=self._drop_remainder,
-          deterministic=self._deterministic,
-          **self._flat_structure)
-    else:
-      variant_tensor = gen_dataset_ops.parallel_batch_dataset(
-          input_dataset._variant_tensor,
-          batch_size=self._batch_size,
-          num_parallel_calls=self._num_parallel_calls,
-          drop_remainder=self._drop_remainder,
-          **self._flat_structure)
+    variant_tensor = gen_dataset_ops.parallel_batch_dataset(
+        input_dataset._variant_tensor,
+        batch_size=self._batch_size,
+        num_parallel_calls=self._num_parallel_calls,
+        drop_remainder=self._drop_remainder,
+        deterministic=self._deterministic,
+        **self._flat_structure)
+
     super(ParallelBatchDataset, self).__init__(input_dataset, variant_tensor)
 
   @property

@@ -102,14 +102,11 @@ REQUIRED_PACKAGES = [
     # When updating these, please also update the nightly versions below
     'tensorboard ~= 2.4',
     'tensorflow_estimator ~= 2.4.0',
-    # TODO(scottzhu): OSS keras hasn't been formally released yet.
-    # Use keras-nightly at the moment.
-    'keras-nightly ~= 2.5.0.dev',
 ]
 
 
-# For nightly packages, instead of depending on tensorboard,
-# tensorflow_estimator and keras, we depend on their nightly equivalent.
+# For nightly packages, instead of depending on tensorboard and
+# tensorflow_estimator, we depend on their nightly equivalent.
 # When updating these, make sure to also update the release versions above.
 # NOTE: the nightly versions are one version ahead of the release ones!
 # NOTE: the nightly versions specify alpha/dev!
@@ -119,8 +116,6 @@ if 'tf_nightly' in project_name:
       REQUIRED_PACKAGES[i] = 'tb-nightly ~= 2.5.0.a'
     elif 'tensorflow_estimator' in pkg:
       REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.5.0.dev'
-    elif 'keras' in pkg and 'keras_preprocessing' not in pkg:
-      REQUIRED_PACKAGES[i] = 'keras-nightly ~= 2.5.0.dev'
 
 
 # grpcio does not build correctly on big-endian machines due to lack of

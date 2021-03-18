@@ -98,32 +98,6 @@ TF_LITE_MICRO_TEST(InputAndFilterSameWidthHeight) {
           tflite::Register_CONV_2D(), output_data));
 }
 
-TF_LITE_MICRO_TEST(SimpleTestQuantized) {
-  const int output_dims_count = 12;
-  uint8_t output_data[output_dims_count];
-
-  const float input_scale = 0.5f;
-  const float filter_scale = 0.5f;
-  const float output_scale = 1.0f;
-
-  uint8_t input_quantized[tflite::testing::kInputElements];
-  uint8_t filter_quantized[tflite::testing::kFilterElements];
-  int32_t bias_quantized[tflite::testing::kBiasElements];
-  uint8_t golden_quantized[tflite::testing::kOutputElements];
-
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk,
-      tflite::testing::TestConvQuantizedPerLayer(
-          tflite::testing::kInputShape, tflite::testing::kInputData,
-          input_quantized, input_scale, tflite::testing::kFilterShape,
-          tflite::testing::kFilterData, filter_quantized, filter_scale,
-          tflite::testing::kBiasShape, tflite::testing::kBiasData,
-          bias_quantized, tflite::testing::kOutputShape,
-          tflite::testing::kGoldenData, golden_quantized, output_scale,
-          &tflite::testing::common_conv_params, tflite::Register_CONV_2D(),
-          output_data));
-}
-
 TF_LITE_MICRO_TEST(InputOutputDifferentTypeIsError) {
   using tflite::testing::CreateQuantizedTensor;
   using tflite::testing::CreateTensor;
@@ -182,46 +156,6 @@ TF_LITE_MICRO_TEST(HybridModeIsError) {
       tflite::testing::InvokeConv(tensors, tensors_size, output_dims_count,
                                   &tflite::testing::common_conv_params,
                                   tflite::Register_CONV_2D(), output_data));
-}
-
-TF_LITE_MICRO_TEST(SimpleTestDilatedQuantized) {
-  const int output_dims_count = 24;
-  uint8_t output_data[output_dims_count];
-
-  const float input_scale = 0.5f;
-  const float filter_scale = 0.5f;
-  const float output_scale = 1.0f;
-
-  const int input_elements = 48;
-  const int input_shape[] = {4, 2, 4, 6, 1};
-  const float input_data[] = {
-      // b = 0
-      1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4,
-      // b = 1
-      1, 2, 3, 4, 5, 6, 2, 6, 2, 4, 4, 2, 3, 2, 6, 5, 1, 4, 1, 2, 1, 4, 6, 3};
-  const int output_elements = 24;
-  const int output_shape[] = {4, 2, 2, 2, 3};
-  const float golden_data[] = {25, 2, 7, 25, 2, 7, 10, 2, -3, 10, 2, -3,
-                               39, 7, 6, 50, 3, 4, 14, 4, -5, 15, 0, -7};
-
-  uint8_t input_quantized[input_elements];
-  uint8_t filter_quantized[tflite::testing::kFilterElements];
-  int32_t bias_quantized[tflite::testing::kBiasElements];
-  uint8_t golden_quantized[output_elements];
-
-  TfLiteConvParams conv_params{tflite::testing::common_conv_params};
-  conv_params.dilation_width_factor = 3;
-  conv_params.dilation_height_factor = 2;
-
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk,
-      tflite::testing::TestConvQuantizedPerLayer(
-          input_shape, input_data, input_quantized, input_scale,
-          tflite::testing::kFilterShape, tflite::testing::kFilterData,
-          filter_quantized, filter_scale, tflite::testing::kBiasShape,
-          tflite::testing::kBiasData, bias_quantized, output_shape, golden_data,
-          golden_quantized, output_scale, &conv_params,
-          tflite::Register_CONV_2D(), output_data));
 }
 
 TF_LITE_MICRO_TEST(SimpleTestQuantizedPerChannel) {

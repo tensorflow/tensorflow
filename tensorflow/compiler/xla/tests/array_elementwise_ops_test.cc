@@ -1523,14 +1523,15 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareLtU32s) {
 XLA_TEST_F(ArrayElementwiseOpTest, PowF32s) {
   SetFastMathDisabled(true);
   XlaBuilder builder(TestName());
-  auto lhs =
-      ConstantR1<float>(&builder, {4.0f, 2.0f, 2.0f, NAN, 6.0f, -2.0f, -2.0f});
-  auto rhs =
-      ConstantR1<float>(&builder, {2.0f, -2.0f, 3.0f, 10.0f, NAN, 3.0f, 4.0f});
+  auto lhs = ConstantR1<float>(
+      &builder, {0.0f, 4.0f, 2.0f, 2.0f, NAN, 6.0f, -2.0f, -2.0f});
+  auto rhs = ConstantR1<float>(
+      &builder, {0.0f, 2.0f, -2.0f, 3.0f, 10.0f, NAN, 3.0f, 4.0f});
   Pow(lhs, rhs);
 
-  ComputeAndCompareR1<float>(
-      &builder, {16.0f, 0.25f, 8.0f, NAN, NAN, -8.0f, 16.0f}, {}, error_spec_);
+  ComputeAndCompareR1<float>(&builder,
+                             {1.0f, 16.0f, 0.25f, 8.0f, NAN, NAN, -8.0f, 16.0f},
+                             {}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, PowNonIntegerF32s) {

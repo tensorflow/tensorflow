@@ -39,6 +39,7 @@ from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations as framework_combinations
+from tensorflow.python.framework import config
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_combinations as combinations_lib
 from tensorflow.python.framework import test_util
@@ -163,21 +164,31 @@ class GPUCombination(combinations_lib.TestCombination):
     distributions = [
         v for v in kwargs.values() if isinstance(v, NamedDistribution)
     ]
-    required_gpus = kwargs.get("required_gpus", None)
+    required_gpus = kwargs.get("required_gpus", 0)
+    required_physical_gpus = kwargs.get("required_physical_gpus", 0)
 
     if distributions and required_gpus:
       raise ValueError("Do not use `required_gpus` and arguments of type "
                        "NamedDistribution together.")
 
-    number_of_required_gpus = max([required_gpus or 0] +
+    number_of_required_gpus = max([required_gpus] +
+                                  [required_physical_gpus] +
                                   [d.required_gpus or 0 for d in distributions])
 
+    if (required_physical_gpus and required_gpus):
+      raise ValueError("Only one of `required_physical_gpus`(number of physical"
+                       " GPUs required) and `required_gpus`(total number of "
+                       "GPUs required) should be set. ")
     if not number_of_required_gpus and GPUCombination.GPU_TEST:
       return (False, "Test that doesn't require GPUs.")
     elif (number_of_required_gpus > 0
           and context.num_gpus() < number_of_required_gpus):
       return (False, ("Only {} of {} required GPUs are available.".format(
           context.num_gpus(), number_of_required_gpus)))
+    elif required_physical_gpus < len(config.list_physical_devices("GPU")):
+      return (False,
+              ("Only {} of {} required physical GPUs are available.".format(
+                  config.list_physical_devices("GPU"), required_physical_gpus)))
     else:
       return (True, None)
 
@@ -254,6 +265,7 @@ class NamedDistribution(object):
                name,
                distribution_fn,
                required_gpus=None,
+               required_physical_gpus=0,
                required_tpu=False,
                use_cloud_tpu=False,
                has_chief=False,
@@ -265,7 +277,10 @@ class NamedDistribution(object):
     Args:
       name: Name that will be a part of the name of the test case.
       distribution_fn: A callable that creates a `tf.distribute.Strategy`.
-      required_gpus: The number of GPUs that the strategy requires.
+      required_gpus: The number of GPUs that the strategy requires. Only one of
+      `required_gpus` and `required_physical_gpus` should be set.
+      required_physical_gpus: Number of physical GPUs required. Only one of
+      `required_gpus` and `required_physical_gpus` should be set.
       required_tpu: Whether the strategy requires TPU.
       use_cloud_tpu: Whether the strategy requires cloud TPU.
       has_chief: Whether the strategy requires a chief worker.
@@ -278,6 +293,7 @@ class NamedDistribution(object):
     self._name = name
     self._distribution_fn = distribution_fn
     self.required_gpus = required_gpus
+    self.required_physical_gpus = required_physical_gpus
     self.required_tpu = required_tpu
     self.use_cloud_tpu = use_cloud_tpu
     self.has_chief = has_chief

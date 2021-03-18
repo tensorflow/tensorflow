@@ -35,7 +35,9 @@ TEST(StreamExecutor, SuccessfulRegistration) {
     TF_SetStatus(status, TF_OK, "");
     test_util::PopulateDefaultPlatformRegistrationParams(params);
   };
-  port::Status status = InitStreamExecutorPlugin(plugin_init);
+  string device_type, platform_name;
+  port::Status status =
+      InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   TF_ASSERT_OK(status);
   port::StatusOr<Platform*> maybe_platform =
       MultiPlatformManager::PlatformWithName("MY_DEVICE");
@@ -57,7 +59,9 @@ TEST(StreamExecutor, NameNotSet) {
     params->platform->name = nullptr;
   };
 
-  port::Status status = InitStreamExecutorPlugin(plugin_init);
+  string device_type, platform_name;
+  port::Status status =
+      InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   ASSERT_EQ(status.error_message(), "'name' field in SP_Platform must be set.");
 }
@@ -70,7 +74,9 @@ TEST(StreamExecutor, InvalidNameWithSemicolon) {
     params->platform->name = "INVALID:NAME";
   };
 
-  port::Status status = InitStreamExecutorPlugin(plugin_init);
+  string device_type, platform_name;
+  port::Status status =
+      InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   EXPECT_THAT(
       status.error_message(),
@@ -85,7 +91,9 @@ TEST(StreamExecutor, InvalidNameWithSlash) {
     params->platform->name = "INVALID/";
   };
 
-  port::Status status = InitStreamExecutorPlugin(plugin_init);
+  string device_type, platform_name;
+  port::Status status =
+      InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   EXPECT_THAT(status.error_message(),
               testing::ContainsRegex("Device name/type 'INVALID/' must match"));
@@ -99,7 +107,9 @@ TEST(StreamExecutor, CreateDeviceNotSet) {
     params->platform_fns->create_device = nullptr;
   };
 
-  port::Status status = InitStreamExecutorPlugin(plugin_init);
+  string device_type, platform_name;
+  port::Status status =
+      InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   ASSERT_EQ(status.error_message(),
             "'create_device' field in SP_PlatformFns must be set.");
@@ -113,7 +123,9 @@ TEST(StreamExecutor, UnifiedMemoryAllocateNotSet) {
     params->platform->supports_unified_memory = true;
   };
 
-  port::Status status = InitStreamExecutorPlugin(plugin_init);
+  string device_type, platform_name;
+  port::Status status =
+      InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   ASSERT_EQ(
       status.error_message(),

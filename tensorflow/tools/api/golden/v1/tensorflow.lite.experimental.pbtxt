@@ -1,6 +1,10 @@
 path: "tensorflow.lite.experimental"
 tf_module {
   member {
+    name: "OpResolverType"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
     name: "nn"
     mtype: "<type \'module\'>"
   }

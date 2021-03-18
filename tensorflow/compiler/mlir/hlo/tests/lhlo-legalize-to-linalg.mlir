@@ -52,10 +52,10 @@ func @element_wise_scalar(%lhs: memref<f32>, %rhs: memref<f32>,
       : (memref<f32>, memref<f32>, memref<f32>) -> ()
   return
 }
-// CHECK: %[[LHS:.*]] = load
-// CHECK: %[[RHS:.*]] = load
+// CHECK: %[[LHS:.*]] = memref.load
+// CHECK: %[[RHS:.*]] = memref.load
 // CHECK: %[[RES:.*]] = addf %[[LHS]], %[[RHS]]
-// CHECK: store %[[RES]]
+// CHECK: memref.store %[[RES]]
 // CHECK-NEXT: return
 
 // -----
@@ -347,7 +347,7 @@ func @static_broadcast_in_dim_with_one_to_many(%operand: memref<1xf32>,
 }
 // CHECK-NOT: linalg.reshape
 // CHECK: %[[C0:.*]] = constant 0 : index
-// CHECK: %[[VALUE:.*]] = load %{{.*}}[[C0]]
+// CHECK: %[[VALUE:.*]] = memref.load %{{.*}}[[C0]]
 // CHECK: linalg.generic {{{.*}}indexing_maps = [#[[RESULT_MAP]]]
 // CHECK-NEXT: ^bb0(%{{.+}}: f32):
 // CHECK-NEXT:   linalg.yield %[[VALUE]] : f32
@@ -785,7 +785,7 @@ func @slice(%operand: memref<?x?xf32>, %result: memref<?x?xf32>) {
   } : (memref<?x?xf32>, memref<?x?xf32>) -> ()
   return
 }
-// CHECK: %[[RESULT:.*]] = subview %[[IN]][0, 1] [2, 2] [1, 1] : memref<?x?xf32> to memref<2x2xf32, #{{.*}}>
+// CHECK: %[[RESULT:.*]] = memref.subview %[[IN]][0, 1] [2, 2] [1, 1] : memref<?x?xf32> to memref<2x2xf32, #{{.*}}>
 // CHECK: linalg.copy(%[[RESULT]], %[[OUT]])
 
 // -----
@@ -899,7 +899,7 @@ func @reverse(%arg0: memref<2x3xf32>, %arg1: memref<2x3xf32>) {
 
 func @conv(%input: memref<3x5x5x3xf32>, %filter: memref<2x2x3x4xf32>, %output: memref<3x5x5x4xf32>) {
   %c0 = constant 0 : index
-  %0 = alloc() : memref<3x5x5x4xf32>
+  %0 = memref.alloc() : memref<3x5x5x4xf32>
   // CHECK: linalg.conv(%{{.+}}, %{{.+}}, %{{.+}})
   // CHECK-SAME: dilations = [1, 2]
   // CHECK-SAME: padding = dense<{{\[\[}}0, 1], [0, 1]]> : tensor<2x2xi64>
@@ -948,22 +948,22 @@ func @reduce_add(%arg: memref<100x10xf32>,
       : (memref<100x10xf32>, memref<f32>, memref<100xf32>) -> ()
   return
 }
-// CHECK: %[[INIT_VAL:.*]] = load %arg1[] : memref<f32>
+// CHECK: %[[INIT_VAL:.*]] = memref.load %arg1[] : memref<f32>
 // CHECK: linalg.fill(%arg2, %[[INIT_VAL]])
 // CHECK: linalg.generic {
 // CHECK-SAME: indexing_maps = [#[[REDUCE_INPUT_MAP]], #[[REDUCE_OUTPUT_MAP]]],
 // CHECK-SAME: iterator_types = ["parallel", "reduction"]}
 // CHECK-SAME: ins(%arg0 : memref<100x10xf32>) outs(%arg2 : memref<100xf32>) {
-// CHECK: alloca
-// CHECK-NEXT: alloca
-// CHECK-NEXT: alloca
-// CHECK-NEXT: store
-// CHECK-NEXT: store
-// CHECK-NEXT: load
-// CHECK-NEXT: load
+// CHECK: memref.alloca
+// CHECK-NEXT: memref.alloca
+// CHECK-NEXT: memref.alloca
+// CHECK-NEXT: memref.store
+// CHECK-NEXT: memref.store
+// CHECK-NEXT: memref.load
+// CHECK-NEXT: memref.load
 // CHECK-NEXT: addf
-// CHECK-NEXT: store
-// CHECK-NEXT: load
+// CHECK-NEXT: memref.store
+// CHECK-NEXT: memref.load
 // CHECK-NEXT: linalg.yield
 // CHECK-NEXT: }
 
@@ -984,22 +984,22 @@ func @reduce_maximum(%arg: memref<100x10xf32>,
       : (memref<100x10xf32>, memref<f32>, memref<100xf32>) -> ()
   return
 }
-// CHECK: %[[INIT_VAL:.*]] = load %arg1[] : memref<f32>
+// CHECK: %[[INIT_VAL:.*]] = memref.load %arg1[] : memref<f32>
 // CHECK: linalg.fill(%arg2, %[[INIT_VAL]])
 // CHECK: linalg.generic {
 // CHECK-SAME: indexing_maps = [#[[REDUCE_INPUT_MAP]], #[[REDUCE_OUTPUT_MAP]]],
 // CHECK-SAME: iterator_types = ["parallel", "reduction"]}
 // CHECK-SAME: ins(%arg0 : memref<100x10xf32>) outs(%arg2 : memref<100xf32>) {
-// CHECK: alloca
-// CHECK-NEXT: alloca
-// CHECK-NEXT: alloca
-// CHECK-NEXT: store
-// CHECK-NEXT: store
-// CHECK-NEXT: load
-// CHECK-NEXT: load
+// CHECK: memref.alloca
+// CHECK-NEXT: memref.alloca
+// CHECK-NEXT: memref.alloca
+// CHECK-NEXT: memref.store
+// CHECK-NEXT: memref.store
+// CHECK-NEXT: memref.load
+// CHECK-NEXT: memref.load
 // CHECK: cmpf
 // CHECK: select
-// CHECK: store
-// CHECK-NEXT: load
+// CHECK: memref.store
+// CHECK-NEXT: memref.load
 // CHECK-NEXT: linalg.yield
 // CHECK-NEXT: }

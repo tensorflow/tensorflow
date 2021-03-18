@@ -240,5 +240,49 @@ absl::Status SplitBatchTest(TestExecutionEnvironment* env) {
   return absl::OkStatus();
 }
 
+absl::Status SplitDepthTest(TestExecutionEnvironment* env) {
+  Tensor5DFloat32 src_tensor;
+  src_tensor.shape = BHWDC(1, 6, 1, 5, 1);
+  src_tensor.data = {
+      half(0.1f),  half(0.2f),  half(0.3f),  half(0.4),  half(0.5),
+      half(1.1f),  half(1.2f),  half(1.3f),  half(1.4),  half(1.5),
+      half(10.1f), half(10.2f), half(10.3f), half(10.4), half(10.5),
+      half(11.1f), half(11.2f), half(11.3f), half(11.4), half(11.5),
+      half(20.1f), half(20.2f), half(20.3f), half(20.4), half(20.5),
+      half(21.1f), half(21.2f), half(21.3f), half(21.4), half(21.5)};
+
+  SplitAttributes attr;
+  attr.axis = Axis::DEPTH;
+
+  for (auto storage : env->GetSupportedStorages()) {
+    for (auto precision : env->GetSupportedPrecisions()) {
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWDC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWDC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWDC});
+      Tensor5DFloat32 dst_tensor0, dst_tensor1;
+      Split operation = CreateSplit(op_def, attr);
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          {src_tensor}, absl::make_unique<Split>(std::move(operation)),
+          {BHWDC(1, 6, 1, 2, 1), BHWDC(1, 6, 1, 3, 1)},
+          {&dst_tensor0, &dst_tensor1}));
+      RETURN_IF_ERROR(
+          PointWiseNear({half(0.1f), half(0.2f), half(1.1f), half(1.2f),
+                         half(10.1f), half(10.2f), half(11.1f), half(11.2f),
+                         half(20.1f), half(20.2f), half(21.1f), half(21.2f)},
+                        dst_tensor0.data, 0.0f));
+      RETURN_IF_ERROR(PointWiseNear(
+          {half(0.3f), half(0.4), half(0.5), half(1.3f), half(1.4), half(1.5),
+           half(10.3f), half(10.4), half(10.5), half(11.3f), half(11.4),
+           half(11.5), half(20.3f), half(20.4), half(20.5), half(21.3f),
+           half(21.4), half(21.5)},
+          dst_tensor1.data, 0.0f));
+    }
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace gpu
 }  // namespace tflite

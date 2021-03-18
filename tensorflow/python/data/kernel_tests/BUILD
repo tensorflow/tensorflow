@@ -1,7 +1,6 @@
-# Tests of TensorFlow kernels written using the Python API.
-
-load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
+# Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -172,6 +171,7 @@ tf_py_test(
     name = "filter_test",
     size = "small",
     srcs = ["filter_test.py"],
+    shard_count = 4,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -243,7 +243,7 @@ tf_py_test(
     name = "from_generator_test",
     size = "medium",
     srcs = ["from_generator_test.py"],
-    shard_count = 10,
+    shard_count = 8,
     deps = [
         ":test_base",
         "//tensorflow/python:client_testlib",
@@ -263,6 +263,7 @@ tf_py_test(
     size = "small",
     srcs = ["from_sparse_tensor_slices_test.py"],
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -286,6 +287,7 @@ tf_py_test(
     size = "small",
     srcs = ["from_tensors_test.py"],
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -309,6 +311,7 @@ tf_py_test(
     size = "small",
     srcs = ["from_tensor_slices_test.py"],
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -328,6 +331,7 @@ tf_py_test(
     name = "interleave_test",
     size = "medium",
     srcs = ["interleave_test.py"],
+    shard_count = 4,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -676,6 +680,7 @@ tf_py_test(
     size = "small",
     srcs = ["repeat_test.py"],
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -725,7 +730,9 @@ tf_py_test(
     name = "skip_test",
     size = "small",
     srcs = ["skip_test.py"],
+    shard_count = 4,
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -740,7 +747,9 @@ tf_py_test(
     name = "take_test",
     size = "small",
     srcs = ["take_test.py"],
+    shard_count = 4,
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -774,7 +783,7 @@ tf_py_test(
     name = "tf_record_dataset_test",
     size = "small",
     srcs = ["tf_record_dataset_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":checkpoint_test_base",
         ":test_base",

@@ -11,10 +11,10 @@ module attributes {gpu.container_module} {
       attributes {tf_entry} {
     %c0 = constant 0 : index
     %c1 = constant 1 : index
-    %13 = alloca() : memref<1xindex>
-    store %size, %13[%c0] : memref<1xindex>
-    %14 = memref_reshape %arg0(%13) : (memref<*xf32>, memref<1xindex>) -> memref<?xf32>
-    %15 = dim %14, %c0 : memref<?xf32>
+    %13 = memref.alloca() : memref<1xindex>
+    memref.store %size, %13[%c0] : memref<1xindex>
+    %14 = memref.reshape %arg0(%13) : (memref<*xf32>, memref<1xindex>) -> memref<?xf32>
+    %15 = memref.dim %14, %c0 : memref<?xf32>
     %16 = tf_framework.alloc(%ctx, %15) : memref<?xf32>
     gpu.launch_func @abs_kernel::@abs_kernel
         blocks in (%c1, %c1, %c1) threads in (%c1, %c1, %c1)
@@ -80,8 +80,8 @@ module attributes {gpu.container_module} {
       attributes {tf_entry} {
     %c0 = constant 0 : index
     %c1 = constant 1 : index
-    %82 = memref_reinterpret_cast %arg1 to offset: [0], sizes: [%size], strides: [%c1]: memref<*xf32> to memref<?xf32>
-    %83 = memref_reinterpret_cast %arg2 to offset: [0], sizes: [%size], strides: [%c1]: memref<*xf32> to memref<?xf32>
+    %82 = memref.reinterpret_cast %arg1 to offset: [0], sizes: [%size], strides: [%c1]: memref<*xf32> to memref<?xf32>
+    %83 = memref.reinterpret_cast %arg2 to offset: [0], sizes: [%size], strides: [%c1]: memref<*xf32> to memref<?xf32>
     %84 = tf_framework.alloc(%arg0, %size) : memref<?xf32>
     gpu.launch_func  @AddV2_kernel_1::@AddV2_kernel blocks in (%c1, %c1, %c1) threads in (%c1, %c1, %c1) args(%size : index, %82 : memref<?xf32>, %83 : memref<?xf32>, %84 : memref<?xf32>)
     return
@@ -166,10 +166,10 @@ module attributes {gpu.container_module} {
   func @add_same_shape(%arg0: !tf_framework.op_kernel_context, %arg1: memref<*xf32>, %arg2: memref<*xf32>, %size0: index, %size1: index, %stride0: index, %stride1: index)
       attributes {tf_entry} {
     %c1 = constant 1 : index
-    %216 = memref_reinterpret_cast %arg1 to offset: [0], sizes: [%size1, %size0], strides: [%size0, %c1]: memref<*xf32> to memref<?x?xf32>
-    %241 = memref_reinterpret_cast %arg2 to offset: [0], sizes: [%size1, %size0], strides: [%size0, %c1]: memref<*xf32> to memref<?x?xf32>
-    %304 = memref_reinterpret_cast %216 to offset: [0], sizes: [%size1, %size0], strides: [%stride1, %stride0]: memref<?x?xf32> to memref<?x?xf32, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>
-    %309 = memref_reinterpret_cast %241 to offset: [0], sizes: [%size1, %size0], strides: [%stride0, %stride1]: memref<?x?xf32> to memref<?x?xf32, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>
+    %216 = memref.reinterpret_cast %arg1 to offset: [0], sizes: [%size1, %size0], strides: [%size0, %c1]: memref<*xf32> to memref<?x?xf32>
+    %241 = memref.reinterpret_cast %arg2 to offset: [0], sizes: [%size1, %size0], strides: [%size0, %c1]: memref<*xf32> to memref<?x?xf32>
+    %304 = memref.reinterpret_cast %216 to offset: [0], sizes: [%size1, %size0], strides: [%stride1, %stride0]: memref<?x?xf32> to memref<?x?xf32, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>
+    %309 = memref.reinterpret_cast %241 to offset: [0], sizes: [%size1, %size0], strides: [%stride0, %stride1]: memref<?x?xf32> to memref<?x?xf32, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>
     %310 = tf_framework.alloc(%arg0, %size1, %size0) : memref<?x?xf32>
     gpu.launch_func  @AddV2_kernel_3::@AddV2_kernel blocks in (%c1, %c1, %c1) threads in (%c1, %c1, %c1) args(%size0 : index, %size1 : index, %310 : memref<?x?xf32>, %304 : memref<?x?xf32, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>, %309 : memref<?x?xf32, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>)
     return
@@ -275,10 +275,10 @@ module attributes {gpu.container_module} {
       attributes {tf_entry} {
     %c0 = constant 0 : index
     %c1 = constant 1 : index
-    %13 = memref_cast %arg1 : memref<*xf32> to memref<f32>
-    %26 = memref_reinterpret_cast %arg2 to offset: [0], sizes: [%size], strides: [%c1]: memref<*xf32> to memref<?xf32>
-    %27 = memref_reinterpret_cast %13 to offset: [0], sizes: [%size], strides: [%c0]: memref<f32> to memref<?xf32, #map0>
-    %28 = memref_reinterpret_cast %26 to offset: [0], sizes: [%size], strides: [%c1]: memref<?xf32> to memref<?xf32, #map0>
+    %13 = memref.cast %arg1 : memref<*xf32> to memref<f32>
+    %26 = memref.reinterpret_cast %arg2 to offset: [0], sizes: [%size], strides: [%c1]: memref<*xf32> to memref<?xf32>
+    %27 = memref.reinterpret_cast %13 to offset: [0], sizes: [%size], strides: [%c0]: memref<f32> to memref<?xf32, #map0>
+    %28 = memref.reinterpret_cast %26 to offset: [0], sizes: [%size], strides: [%c1]: memref<?xf32> to memref<?xf32, #map0>
     %29 = tf_framework.alloc(%arg0, %size) : memref<?xf32>
     gpu.launch_func  @AddV2_kernel::@AddV2_kernel blocks in (%c1, %c1, %c1) threads in (%c1, %c1, %c1) args(%size : index, %29 : memref<?xf32>, %27 : memref<?xf32, #map0>, %28 : memref<?xf32, #map0>)
     return

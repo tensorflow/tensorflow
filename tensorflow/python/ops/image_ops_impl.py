@@ -2637,16 +2637,27 @@ def adjust_hue(image, delta, name=None):
   """
   with ops.name_scope(name, 'adjust_hue', [image]) as name:
     image = ops.convert_to_tensor(image, name='image')
-    # Remember original dtype to so we can convert back if needed
-    orig_dtype = image.dtype
-    if orig_dtype in (dtypes.float16, dtypes.float32):
-      flt_image = image
-    else:
-      flt_image = convert_image_dtype(image, dtypes.float32)
 
-    rgb_altered = gen_image_ops.adjust_hue(flt_image, delta)
+    # Check valid range for `delta`
+    checks = [
+        control_flow_ops.Assert(
+            math_ops.greater_equal(delta, -1.0),
+            ['delta must be in range [-1, 1]']),
+        control_flow_ops.Assert(
+            math_ops.less_equal(delta, 1.0), ['delta must be in range [-1, 1]'])
+    ]
 
-    return convert_image_dtype(rgb_altered, orig_dtype)
+    with ops.control_dependencies(checks):
+      # Remember original dtype to so we can convert back if needed
+      orig_dtype = image.dtype
+      if orig_dtype in (dtypes.float16, dtypes.float32):
+        flt_image = image
+      else:
+        flt_image = convert_image_dtype(image, dtypes.float32)
+
+      rgb_altered = gen_image_ops.adjust_hue(flt_image, delta)
+
+      return convert_image_dtype(rgb_altered, orig_dtype)
 
 
 # pylint: disable=invalid-name
@@ -5548,7 +5559,8 @@ def non_max_suppression_padded_v2(boxes,
         array_ops.gather(array_ops.reshape(sorted_indices, [-1]),
                          gather_idx),
         [batch_size, -1])
-  invalid_index = array_ops.fill([batch_size, max_output_size], 0)
+  invalid_index = array_ops.zeros([batch_size, max_output_size],
+                                  dtype=dtypes.int32)
   idx_index = array_ops.expand_dims(math_ops.range(max_output_size), 0)
   num_valid_expanded = array_ops.expand_dims(num_valid, 1)
   idx = array_ops.where(idx_index < num_valid_expanded,
