@@ -737,7 +737,8 @@ TF_Library* TF_LoadPluggableDeviceLibrary(const char* library_filename,
       status->status =
           env->LoadDynamicLibrary(library_filename, &lib_handle->lib_handle);
       if (status->status.ok()) {
-        tensorflow::RegisterPluggableDevicePlugin(lib_handle->lib_handle);
+        TF_CHECK_OK(
+            tensorflow::RegisterPluggableDevicePlugin(lib_handle->lib_handle));
       } else {
         delete lib_handle;
         return nullptr;

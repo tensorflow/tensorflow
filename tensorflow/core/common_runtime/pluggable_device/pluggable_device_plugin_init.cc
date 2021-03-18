@@ -14,12 +14,52 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/c/experimental/grappler/grappler_internal.h"
+#include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
+#include "tensorflow/core/common_runtime/copy_tensor.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_factory.h"
+#include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
+
+static Status InitDeviceModule(void* dso_handle) {
+  void* dso_symbol;
+  tensorflow::Env* env = tensorflow::Env::Default();
+
+  TF_RETURN_IF_ERROR(
+      env->GetSymbolFromLibrary(dso_handle, "SE_InitPlugin", &dso_symbol));
+  auto init_fn = reinterpret_cast<stream_executor::SEInitPluginFn>(dso_symbol);
+
+  string device_type, platform_name;
+  TF_RETURN_IF_ERROR(stream_executor::InitStreamExecutorPlugin(
+      init_fn, &device_type, &platform_name));
+
+  DeviceFactory::Register(
+      device_type, new PluggableDeviceFactory(device_type, platform_name),
+      /*priority=*/220, /*is_pluggable_device=*/true);
+
+  TF_RETURN_IF_ERROR(CopyTensor::Register(
+      DeviceType(device_type), DeviceType(device_type),
+      PluggableDeviceUtil::DeviceToDeviceCopy,
+      /*is_pluggable_device=*/true));  // Register the Copy tensor.
+  return Status::OK();
+}
+
+typedef void (*TFKernelInitFn)();
+static Status InitKernelModule(void* dso_handle) {
+  void* dso_symbol;
+  tensorflow::Env* env = tensorflow::Env::Default();
+
+  TF_RETURN_IF_ERROR(
+      env->GetSymbolFromLibrary(dso_handle, "TF_InitKernel", &dso_symbol));
+  auto init_fn = reinterpret_cast<TFKernelInitFn>(dso_symbol);
+  init_fn();
+  return Status::OK();
+}
 
 static Status InitGraphModule(void* dso_handle) {
   void* dso_symbol;
@@ -29,10 +69,14 @@ static Status InitGraphModule(void* dso_handle) {
 }
 
 Status RegisterPluggableDevicePlugin(void* dso_handle) {
-  // Step1 Init Graph Module
-  TF_RETURN_IF_ERROR(InitGraphModule(dso_handle));
+  // Step 1 Init Device Module
+  TF_RETURN_IF_ERROR(InitDeviceModule(dso_handle));
 
-  // Step2 Init Device/Kernel Module
+  // Step 2 Init Kernel Module
+  TF_RETURN_IF_ERROR(InitKernelModule(dso_handle));
+
+  // Step3 Init Graph Module
+  TF_RETURN_IF_ERROR(InitGraphModule(dso_handle));
 
   return Status::OK();
 }
