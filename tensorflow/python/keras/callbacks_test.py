@@ -76,6 +76,13 @@ INPUT_DIM = 3
 NUM_HIDDEN = 5
 BATCH_SIZE = 5
 
+CALLBACK_HOOKS = [
+    'on_batch_begin', 'on_batch_end', 'on_epoch_begin', 'on_epoch_end',
+    'on_predict_batch_begin', 'on_predict_batch_end', 'on_predict_begin',
+    'on_predict_end', 'on_test_batch_begin', 'on_test_batch_end',
+    'on_test_begin', 'on_test_end', 'on_train_batch_begin',
+    'on_train_batch_end', 'on_train_begin', 'on_train_end'
+]
 
 class Counter(keras.callbacks.Callback):
   """Counts the number of times each callback method was run.
@@ -87,14 +94,7 @@ class Counter(keras.callbacks.Callback):
 
   def __init__(self):
     self.method_counts = collections.defaultdict(int)
-    methods_to_count = [
-        'on_batch_begin', 'on_batch_end', 'on_epoch_begin', 'on_epoch_end',
-        'on_predict_batch_begin', 'on_predict_batch_end', 'on_predict_begin',
-        'on_predict_end', 'on_test_batch_begin', 'on_test_batch_end',
-        'on_test_begin', 'on_test_end', 'on_train_batch_begin',
-        'on_train_batch_end', 'on_train_begin', 'on_train_end'
-    ]
-    for method_name in methods_to_count:
+    for method_name in CALLBACK_HOOKS:
       setattr(self, method_name,
               self.wrap_with_counts(method_name, getattr(self, method_name)))
 
@@ -105,6 +105,17 @@ class Counter(keras.callbacks.Callback):
       return method(*args, **kwargs)
 
     return _call_and_count
+
+
+class CallAllHooks(keras.callbacks.Callback):
+  """A callback that calls self._run for all hooks"""
+
+  def __init__(self):
+    for method_name in CALLBACK_HOOKS:
+      setattr(self, method_name, self._run)
+
+  def _run(self, *args, logs=None):
+    raise NotImplementedError
 
 
 def _get_numpy():
@@ -1719,6 +1730,56 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     model.fit(x, y, epochs=2, batch_size=10, callbacks=[my_cb], verbose=0)
     model.evaluate(x, y, batch_size=10, callbacks=[my_cb], verbose=0)
     model.predict(x, batch_size=10, callbacks=[my_cb], verbose=0)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_logs_conversion(self):
+    assert_dict_equal = self.assertDictEqual
+
+    class MutateNumpyLogs(CallAllHooks):
+      def _run(self, *args, logs=None):
+        logs = logs or args[-1]
+        logs["numpy"] = 1
+
+    class MutateTensorFlowLogs(CallAllHooks):
+      def __init__(self):
+        super(MutateTensorFlowLogs, self).__init__()
+        self._supports_tf_logs = True
+
+      def _run(self, *args, logs=None):
+        logs = logs or args[-1]
+        logs["tf"] = 2
+
+    class AssertNumpyLogs(CallAllHooks):
+      def _run(self, *args, logs=None):
+        logs = logs or args[-1]
+        assert_dict_equal(logs, {"all": 0, "numpy": 1, "tf": 2})
+
+    class AssertTensorFlowLogs(AssertNumpyLogs):
+      def __init__(self):
+        super(AssertTensorFlowLogs, self).__init__()
+        self._supports_tf_logs = True
+
+    cb_list = keras.callbacks.CallbackList([
+        MutateNumpyLogs(),
+        MutateTensorFlowLogs(),
+        AssertNumpyLogs(),
+        AssertTensorFlowLogs()])
+
+    assert len(cb_list.callbacks) == 4
+    cb_list.on_epoch_begin(0, logs={"all": 0})
+    cb_list.on_epoch_end(0, logs={"all": 0})
+    cb_list.on_predict_batch_begin(0, logs={"all": 0})
+    cb_list.on_predict_batch_end(0, logs={"all": 0})
+    cb_list.on_predict_begin(logs={"all": 0})
+    cb_list.on_predict_end(logs={"all": 0})
+    cb_list.on_test_batch_begin(0, logs={"all": 0})
+    cb_list.on_test_batch_end(0, logs={"all": 0})
+    cb_list.on_test_begin(logs={"all": 0})
+    cb_list.on_test_end(logs={"all": 0})
+    cb_list.on_train_batch_begin(0, logs={"all": 0})
+    cb_list.on_train_batch_end(0, logs={"all": 0})
+    cb_list.on_train_begin(logs={"all": 0})
+    cb_list.on_train_end(logs={"all": 0})
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_implements_batch_hooks_override(self):
