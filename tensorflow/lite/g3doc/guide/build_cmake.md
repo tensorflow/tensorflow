@@ -4,9 +4,8 @@ This page describes how to build and use the TensorFlow Lite library with
 [CMake](https://cmake.org/) tool.
 
 The following instructions have been tested on Ubuntu 16.04.3 64-bit PC (AMD64)
-, TensorFlow devel docker image
-[tensorflow/tensorflow:devel](https://hub.docker.com/r/tensorflow/tensorflow/tags/)
-and Windows 10.
+, macOS Catalina (x86_64), Windows 10 and TensorFlow devel Docker image
+[tensorflow/tensorflow:devel](https://hub.docker.com/r/tensorflow/tensorflow/tags/).
 
 **Note:** This feature is currently experimental and available since version 2.4
 and may change.
