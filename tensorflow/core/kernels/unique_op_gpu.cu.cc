@@ -291,7 +291,7 @@ class UniqueOpGPU : public AsyncOpKernel {
         done);
 
     // Create a fancy input iterator to indicate segment boundaries.
-    gpuprim::TransformInputIterator<bool, SegmentIndicatorFunctor<T, TIndex>,
+    gpuprim::TransformInputIterator<TIndex, SegmentIndicatorFunctor<T, TIndex>,
                                     gpuprim::CountingInputIterator<TIndex>>
         segment_indicator_iter(0, {sorted_input_ptr});
 
