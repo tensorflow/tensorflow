@@ -104,7 +104,8 @@ class CustomBufferizeTypeConverter : public BufferizeTypeConverter {
   }
 };
 
-struct HloBufferizePass : public HloBufferizePassBase<HloBufferizePass> {
+struct ComputeOpAndFuncBufferizePass
+    : public ComputeOpAndFuncBufferizePassBase<ComputeOpAndFuncBufferizePass> {
   // TODO(b/173201243): Move to tablegen.
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<lmhlo::LmhloDialect>();
@@ -206,8 +207,9 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp> > CreateHloBufferizePass() {
-  return std::make_unique<HloBufferizePass>();
+std::unique_ptr<OperationPass<ModuleOp> >
+CreateComputeOpAndFuncBufferizePass() {
+  return std::make_unique<ComputeOpAndFuncBufferizePass>();
 }
 
 std::unique_ptr<OperationPass<ModuleOp> > CreateFinalBufferizePass() {
