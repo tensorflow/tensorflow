@@ -324,12 +324,12 @@ class DirectoryIterator(image.DirectoryIterator, Iterator):
           containing images from each class (e.g. `["dogs", "cats"]`).
           It will be computed automatically if not set.
       class_mode: Mode for yielding the targets:
-          `"binary"`: binary targets (if there are only two classes),
-          `"categorical"`: categorical targets,
-          `"sparse"`: integer targets,
-          `"input"`: targets are images identical to input images (mainly
+          - `"binary"`: binary targets (if there are only two classes),
+          - `"categorical"`: categorical targets,
+          - `"sparse"`: integer targets,
+          - `"input"`: targets are images identical to input images (mainly
               used to work with autoencoders),
-          `None`: no targets get yielded (only input images are yielded).
+          - `None`: no targets get yielded (only input images are yielded).
       batch_size: Integer, size of a batch.
       shuffle: Boolean, whether to shuffle the data between epochs.
       seed: Random seed for data shuffling.
@@ -921,8 +921,8 @@ class ImageDataGenerator(image.ImageDataGenerator):
             "input", or None. Default: "categorical".
             Determines the type of label arrays that are returned:
             - "categorical" will be 2D one-hot encoded labels,
-            - "binary" will be 1D binary labels, "sparse" will be 1D integer
-              labels,
+            - "binary" will be 1D binary labels,
+            - "sparse" will be 1D integer labels,
             - "input"  will be images identical to input images (mainly used to
               work with autoencoders).
             - If None, no labels are returned (the generator will only yield
