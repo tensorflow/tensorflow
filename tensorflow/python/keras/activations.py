@@ -372,8 +372,8 @@ def tanh(x):
 @keras_export('keras.activations.tanhexp')
 @dispatch.add_dispatch_support
 def tanhexp(x):
-  """TanhExponential activation function, `tanhexp(x) = x * tanh(exp(x))`.
-  TanhExponential activation function which returns `x * tanh(exp(x))`.
+  """TanhExp activation function, `tanhexp(x) = x * tanh(exp(x))`.
+  TanhExp activation function which returns `x * tanh(exp(x))`.
   It is a smooth, non-monotonic function with high convergence speed and with good accuracy
   that consistently matches or outperforms ReLU on lightweight (or) mobile neural networks.
   Example Usage:
