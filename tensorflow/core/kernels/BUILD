@@ -803,7 +803,7 @@ cc_library(
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
         "//tensorflow:linux_s390x": [],
-        "//conditions:default": ["@mkl_dnn_v1//:dnnl_single_threaded"],
+        "//conditions:default": ["@mkl_dnn_v1//:mkl_dnn"],
     }),
 )
 
