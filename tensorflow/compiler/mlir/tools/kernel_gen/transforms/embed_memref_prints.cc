@@ -16,6 +16,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Analysis/Liveness.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -79,7 +80,7 @@ void EmitPrint(Operation* op, Liveness& liveness, OpBuilder* b) {
 
   auto unranked_type =
       UnrankedMemRefType::get(element_type, memref_type.getMemorySpaceAsInt());
-  Value unranked_memref = b->create<MemRefCastOp>(loc, memref, unranked_type);
+  Value unranked_memref = b->create<memref::CastOp>(loc, memref, unranked_type);
 
   if (element_type.isF32()) {
     emitCallToPrint(loc, "print_memref_f32", unranked_memref, b);
@@ -111,9 +112,10 @@ struct EmbedMemRefPrintsPass
 
     Liveness liveness(func);
     OpBuilder b(&getContext());
-    func.walk([&](AllocOp op) { EmitPrint(op, liveness, &b); });
-    func.walk([&](AllocaOp op) { EmitPrint(op, liveness, &b); });
-    func.walk([&](MemRefReinterpretCastOp op) { EmitPrint(op, liveness, &b); });
+    func.walk([&](memref::AllocOp op) { EmitPrint(op, liveness, &b); });
+    func.walk([&](memref::AllocaOp op) { EmitPrint(op, liveness, &b); });
+    func.walk(
+        [&](memref::ReinterpretCastOp op) { EmitPrint(op, liveness, &b); });
   }
 };
 

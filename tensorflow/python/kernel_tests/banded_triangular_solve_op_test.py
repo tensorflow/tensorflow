@@ -142,10 +142,11 @@ class BandedTriangularSolveOpTest(test.TestCase):
     matrix = 2. * np.random.uniform(size=[3, 6]) + 1.
     self._verifySolveAllWaysReal(matrix, rhs0)
 
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message="ROCm does not support BLAS operations for complex types")
   @test_util.run_deprecated_v1
   def testSolveComplex(self):
-    if test.is_built_with_rocm():
-      self.skipTest("ROCm does not support BLAS operations for complex types")
     # 1x1 matrix, single rhs.
     matrix = np.array([[0.1 + 1j * 0.1]])
     rhs0 = np.array([[1. + 1j]])
@@ -180,10 +181,11 @@ class BandedTriangularSolveOpTest(test.TestCase):
     # Batch of 3x2x4x4 matrices with 3 bands, 3x2x4x2 right-hand sides.
     self._verifySolveAllWaysReal(matrix, rhs, batch_dims=[3, 2])
 
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message="ROCm does not support BLAS operations for complex types")
   @test_util.run_deprecated_v1
   def testSolveBatchComplex(self):
-    if test.is_built_with_rocm():
-      self.skipTest("ROCm does not support BLAS operations for complex types")
     matrix = np.array([[1., 2.], [3., 4.]]).astype(np.complex64)
     matrix += 1j * matrix
     rhs = np.array([[1., 0., 1.], [0., 1., 1.]]).astype(np.complex64)

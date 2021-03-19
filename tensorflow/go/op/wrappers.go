@@ -6917,12 +6917,12 @@ func GetSessionHandle(scope *Scope, value tf.Output) (handle tf.Output) {
 // #                [-2, -1,  0, 1]
 // #                [-3, -2, -1, 0]],
 //
-// tf.matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
+// tf.linalg.band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
 //                                        [-1,  0,  1, 2]
 //                                        [ 0, -1,  0, 1]
 //                                        [ 0,  0, -1, 0]],
 //
-// tf.matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
+// tf.linalg.band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
 //                                       [-1,  0,  1, 0]
 //                                       [-2, -1,  0, 1]
 //                                       [ 0, -2, -1, 0]]
@@ -6931,9 +6931,9 @@ func GetSessionHandle(scope *Scope, value tf.Output) (handle tf.Output) {
 // Useful special cases:
 //
 // ```
-//  tf.matrix_band_part(input, 0, -1) ==> Upper triangular part.
-//  tf.matrix_band_part(input, -1, 0) ==> Lower triangular part.
-//  tf.matrix_band_part(input, 0, 0) ==> Diagonal.
+//  tf.linalg.band_part(input, 0, -1) ==> Upper triangular part.
+//  tf.linalg.band_part(input, -1, 0) ==> Lower triangular part.
+//  tf.linalg.band_part(input, 0, 0) ==> Diagonal.
 // ```
 //
 // Arguments:
@@ -7504,9 +7504,9 @@ func StackV2(scope *Scope, max_size tf.Output, elem_type tf.DataType, optional .
 // Checks a tensor for NaN, -Inf and +Inf values.
 //
 // When run, reports an `InvalidArgument` error if `tensor` has any values
-// that are not a number (NaN) or infinity (Inf). Otherwise, passes `tensor` as-is.
-// Unlike CheckNumerics (V1), CheckNumericsV2 distinguishes -Inf and +Inf in the
-// errors it throws.
+// that are not a number (NaN) or infinity (Inf). Otherwise, returns the input
+// tensor. Unlike CheckNumerics (V1), CheckNumericsV2 distinguishes -Inf and +Inf
+// in the errors it throws.
 //
 // Arguments:
 //
@@ -8516,6 +8516,29 @@ func IteratorToStringHandle(scope *Scope, resource_handle tf.Output) (string_han
 		Input: []tf.Input{
 			resource_handle,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset by attaching tf.data.Options to `input_dataset`.
+//
+// Arguments:
+//	input_dataset: A variant tensor representing the input dataset.
+//	serialized_options: A `tf.string` scalar `tf.Tensor` of serialized `tf.data.Options` protocol buffer.
+//
+//
+func OptionsDataset(scope *Scope, input_dataset tf.Output, serialized_options string, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"serialized_options": serialized_options, "output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "OptionsDataset",
+		Input: []tf.Input{
+			input_dataset,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -29783,6 +29806,42 @@ func MulNoNan(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 		Input: []tf.Input{
 			x, y,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// FinalizeDatasetAttr is an optional argument to FinalizeDataset.
+type FinalizeDatasetAttr func(optionalAttr)
+
+// FinalizeDatasetHasCapturedRef sets the optional has_captured_ref attribute to value.
+// If not specified, defaults to false
+func FinalizeDatasetHasCapturedRef(value bool) FinalizeDatasetAttr {
+	return func(m optionalAttr) {
+		m["has_captured_ref"] = value
+	}
+}
+
+// Creates a dataset by applying `tf.data.Options` to `input_dataset`.
+//
+// Arguments:
+//	input_dataset: A variant tensor representing the input dataset.
+//
+//
+func FinalizeDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...FinalizeDatasetAttr) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "FinalizeDataset",
+		Input: []tf.Input{
+			input_dataset,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -51211,7 +51270,28 @@ func MatrixDiagPartV2(scope *Scope, input tf.Output, k tf.Output, padding_value 
 // Checks a tensor for NaN and Inf values.
 //
 // When run, reports an `InvalidArgument` error if `tensor` has any values
-// that are not a number (NaN) or infinity (Inf). Otherwise, passes `tensor` as-is.
+// that are not a number (NaN) or infinity (Inf). Otherwise, returns the input
+// tensor.
+//
+// Example usage:
+//
+// ``` python
+// a = tf.Variable(1.0)
+// tf.debugging.check_numerics(a, message='')
+//
+// b = tf.Variable(np.nan)
+// try:
+//   tf.debugging.check_numerics(b, message='Checking b')
+// except Exception as e:
+//   assert "Checking b : Tensor had NaN values" in e.message
+//
+// c = tf.Variable(np.inf)
+// try:
+//   tf.debugging.check_numerics(c, message='Checking c')
+// except Exception as e:
+//   assert "Checking c : Tensor had Inf values" in e.message
+// ```
+//
 //
 // Arguments:
 //
@@ -52050,6 +52130,24 @@ func QuantizeAndDequantizeV3(scope *Scope, input tf.Output, input_min tf.Output,
 			input, input_min, input_max, num_bits,
 		},
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns the `tf.data.Options` attached to `input_dataset`.
+//
+// Arguments:
+//	input_dataset: A variant tensor representing the input dataset.
+func GetOptions(scope *Scope, input_dataset tf.Output) (serialized_options tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "GetOptions",
+		Input: []tf.Input{
+			input_dataset,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)

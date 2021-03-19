@@ -30,14 +30,16 @@ class MlirBridgePass : public MlirOptimizationPass {
  public:
   llvm::StringRef name() const override { return "bridge"; }
 
-  MlirOptimizationPassState GetPassState(const DeviceSet* device_set,
-                                         const ConfigProto& config_proto,
-                                         const Graph& graph) const override;
+  MlirOptimizationPassState GetPassState(
+      const DeviceSet* device_set, const ConfigProto& config_proto,
+      const Graph& graph,
+      const FunctionLibraryDefinition& function_library) const override;
 
   // This should be used as a thin mapper around mlir::ModulePass::runOnModule
   // API integrated with the Tensorflow runtime.
   Status Run(const ConfigProto& config_proto, mlir::ModuleOp module,
-             const Graph& graph) override;
+             const Graph& graph,
+             const FunctionLibraryDefinition& function_library) override;
 };
 
 // This pass uses MLIR to implement all the conversion steps to target XLA from
@@ -47,9 +49,10 @@ class MlirBridgeV1CompatPass : public MlirV1CompatOptimizationPass {
  public:
   llvm::StringRef name() const override { return "bridge"; }
 
-  MlirOptimizationPassState GetPassState(const DeviceSet* device_set,
-                                         const ConfigProto& config_proto,
-                                         const Graph& graph) const override;
+  MlirOptimizationPassState GetPassState(
+      const DeviceSet* device_set, const ConfigProto& config_proto,
+      const Graph& graph,
+      const FunctionLibraryDefinition& function_library) const override;
 
   // This should be used as a thin mapper around mlir::ModulePass::runOnModule
   // API integrated with the Tensorflow runtime.

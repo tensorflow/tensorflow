@@ -1387,6 +1387,20 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
          opcode == HloOpcode::kScatter;
 }
 
+/*static*/ bool HloDataflowAnalysis::IsAsynchronousOperationStart(
+    HloOpcode opcode) {
+  return opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv ||
+         opcode == HloOpcode::kCopyStart ||
+         opcode == HloOpcode::kCollectivePermuteStart;
+}
+
+/*static*/ bool HloDataflowAnalysis::IsAsynchronousOperationDone(
+    HloOpcode opcode) {
+  return opcode == HloOpcode::kSendDone || opcode == HloOpcode::kRecvDone ||
+         opcode == HloOpcode::kCopyDone ||
+         opcode == HloOpcode::kCollectivePermuteDone;
+}
+
 /*static*/ std::vector<std::pair<HloUse, ShapeIndex>>
 HloDataflowAnalysis::GetInPlaceInputOutputPairs(HloInstruction* instruction) {
   if (IsInPlaceOperation(instruction->opcode())) {

@@ -936,6 +936,7 @@ tf_cc_shared_object(
         "//tensorflow/core/common_runtime:core_cpu_impl",
         "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
+        "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime_impl",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
         "//tensorflow/core:lib_internal_impl",
         "//tensorflow/core/profiler:profiler_impl",

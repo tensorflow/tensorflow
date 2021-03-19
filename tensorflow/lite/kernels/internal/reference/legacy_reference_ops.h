@@ -895,6 +895,7 @@ inline void Gather(const T* input_data, const Dims<4>& input_dims,
                    const Dims<4>& output_dims) {
   tflite::GatherParams op_params;
   op_params.axis = 4 - input_rank;
+  op_params.batch_dims = 0;
 
   Gather(op_params, DimsToShape(input_dims), input_data,
          DimsToShape(coords_dims), coords_data, DimsToShape(output_dims),

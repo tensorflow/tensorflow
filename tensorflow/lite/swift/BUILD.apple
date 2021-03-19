@@ -1,6 +1,6 @@
 # TensorFlow Lite for Swift
 
-load("//tensorflow/lite:special_rules.bzl", "ios_visibility_whitelist", "tflite_ios_lab_runner")
+load("//tensorflow/lite:special_rules.bzl", "ios_visibility_allowlist", "tflite_ios_lab_runner")
 load("//tensorflow/lite/ios:ios.bzl", "TFL_DEFAULT_TAGS", "TFL_DISABLED_SANITIZER_TAGS", "TFL_MINIMUM_OS_VERSION")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework", "ios_unit_test")
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
@@ -57,7 +57,7 @@ swift_library(
     }),
     module_name = "TensorFlowLite",
     tags = TFL_DEFAULT_TAGS + ["nobuilder"],
-    visibility = ios_visibility_whitelist(),
+    visibility = ios_visibility_allowlist(),
     deps = [
         "//tensorflow/lite/ios:tensorflow_lite_c",
     ] + select({

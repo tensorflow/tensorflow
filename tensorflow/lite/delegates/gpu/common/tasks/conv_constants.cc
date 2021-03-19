@@ -77,7 +77,7 @@ std::string GenerateConv(int src_size, int dst_size, bool use_dot_conv,
                   std::to_string(const_mem_offset + i) + "]" + dst_postfix;
       }
       std::string size = dst_size == 1 ? "" : std::to_string(dst_size);
-      result = "    " + dst + dst_postfix + " += convert_float" + size + "(" +
+      result = "    " + dst + dst_postfix + " += TO_ACCUM_FLT" + size + "(" +
                result + ");\n";
     } else {
       for (int i = 0; i < src_size; ++i) {
@@ -119,10 +119,9 @@ std::string GenerateConvolutionConstantCode(const OperationDef& op_def,
   const std::string postfixes[] = {".x", ".xy", ".xyz", ""};
 
   std::string c;
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
-  c += "  int X = get_global_id(0);\n";
-  c += "  int Y = get_global_id(1);\n";
+  c += "MAIN_FUNCTION($0) {\n";
+  c += "  int X = GLOBAL_ID_0;\n";
+  c += "  int Y = GLOBAL_ID_1;\n";
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height()) "
        "return;\n";
   if (stride_correction) {
@@ -141,8 +140,7 @@ std::string GenerateConvolutionConstantCode(const OperationDef& op_def,
   c += "  int start_y = Y * args.stride_y + args.padding_y;\n";
   c += "  __constant FLT4* constants = args.weights.GetPtr();\n";
   for (int i = 0; i < out_z; ++i) {
-    c += "  ACCUM_FLT4 r" + std::to_string(i) +
-         " = (ACCUM_FLT4)(0.0f, 0.0f, 0.0f, 0.0f);\n";
+    c += "  ACCUM_FLT4 r" + std::to_string(i) + " = INIT_ACCUM_FLT4(0.0f);\n";
   }
   auto generate_check = [&]() {
     std::string check;
@@ -189,9 +187,10 @@ std::string GenerateConvolutionConstantCode(const OperationDef& op_def,
           c += "    " + s_type + " src = args.src_tensor.Read(" + s_x + ", " +
                s_y + ", " + std::to_string(s) + ")" + s_postfix + ";\n";
         } else {
+          c += "    FLT4 zero_vec = INIT_FLT4(0.0);\n";
           c += "    " + s_type + " src = x_out || y_out ? ";
-          c += "(" + s_type + ")(0.0) : args.src_tensor.Read(" + s_x + ", " +
-               s_y + ", " + std::to_string(s) + ")" + s_postfix + ";\n";
+          c += "zero_vec" + s_postfix + " : args.src_tensor.Read(" + s_x +
+               ", " + s_y + ", " + std::to_string(s) + ")" + s_postfix + ";\n";
         }
         for (int d = 0; d < out_z; ++d) {
           const int dst_ch_count = std::min(4, weights_shape.o - d * 4);

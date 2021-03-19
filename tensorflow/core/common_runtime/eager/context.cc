@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/nccl/collective_communicator.h"
@@ -1073,17 +1074,10 @@ Status EagerContext::StoreCollectiveOpsServer(
           std::move(local_device_manager_.owned_object));
     }
     local_device_manager_.Reset(device_mgr);
+    if (rendezvous_ != nullptr) rendezvous_->Unref();
+    rendezvous_ = new IntraProcessRendezvous(local_device_manager_.Get());
   }
   host_cpu_device_ = local_device_manager_.Get()->HostCPU();
-
-  if (reuse_rendezvous_for_functions_) {
-    // If reuse_rendezvous_for_functions_ is true, CreateRendezvous is
-    // idempotent and ignores its step_id argument. Create a rendezvous now to
-    // replace the old one, preventing the old one from getting used.
-    if (rendezvous_ != nullptr) rendezvous_->Unref();
-    rendezvous_ = CreateRendezvous(/*step_id=*/-1);
-    return errors::Aborted("Cannot create a valid rendezvous.");
-  }
 
   InitPrioritizedDeviceTypeList();
   ClearCachesAndThreadExecutors();

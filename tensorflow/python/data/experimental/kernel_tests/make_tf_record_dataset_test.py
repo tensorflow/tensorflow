@@ -19,9 +19,9 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.kernel_tests import tf_record_test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import combinations
@@ -30,16 +30,15 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
 
-class MakeTFRecordDatasetTest(
-    reader_dataset_ops_test_base.TFRecordDatasetTestBase,
-    parameterized.TestCase):
+class MakeTFRecordDatasetTest(tf_record_test_base.TFRecordTestBase,
+                              parameterized.TestCase):
 
   def _read_test(self, batch_size, num_epochs, file_index=None,
                  num_parallel_reads=1, drop_final_batch=False, parser_fn=False):
     if file_index is None:
-      file_pattern = self.test_filenames
+      file_pattern = self._filenames
     else:
-      file_pattern = self.test_filenames[file_index]
+      file_pattern = self._filenames[file_index]
 
     if parser_fn:
       fn = lambda x: string_ops.substr(x, 1, 999)
@@ -111,7 +110,7 @@ class MakeTFRecordDatasetTest(
 
     def dataset_fn():
       return readers.make_tf_record_dataset(
-          file_pattern=self.test_filenames,
+          file_pattern=self._filenames,
           num_epochs=num_epochs,
           batch_size=batch_size,
           num_parallel_reads=num_parallel_reads,
@@ -166,7 +165,7 @@ class MakeTFRecordDatasetTest(
   @combinations.generate(test_base.default_test_combinations())
   def testIndefiniteRepeatShapeInference(self):
     dataset = readers.make_tf_record_dataset(
-        file_pattern=self.test_filenames, num_epochs=None, batch_size=32)
+        file_pattern=self._filenames, num_epochs=None, batch_size=32)
     for shape in nest.flatten(dataset_ops.get_legacy_output_shapes(dataset)):
       self.assertEqual(32, shape[0])
 

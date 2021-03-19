@@ -122,6 +122,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParseAdd);
   }
 
+  TfLiteStatus AddAddN() {
+    return AddBuiltin(BuiltinOperator_ADD_N, tflite::Register_ADD_N(),
+                      ParseAddN);
+  }
+
   TfLiteStatus AddArgMax() {
     return AddBuiltin(BuiltinOperator_ARG_MAX,
                       tflite::ops::micro::Register_ARG_MAX(), ParseArgMax);
@@ -138,7 +143,7 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParsePool);
   }
 
-  TfLiteStatus AddBatchToSpaceND() {
+  TfLiteStatus AddBatchToSpaceNd() {
     return AddBuiltin(BuiltinOperator_BATCH_TO_SPACE_ND,
                       Register_BATCH_TO_SPACE_ND(), ParseBatchToSpaceNd);
   }
@@ -209,6 +214,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
     return AddBuiltin(BuiltinOperator_EXP, Register_EXP(), ParseExp);
   }
 
+  TfLiteStatus AddExpandDims() {
+    return AddBuiltin(BuiltinOperator_EXPAND_DIMS, Register_EXPAND_DIMS(),
+                      ParseExpandDims);
+  }
+
   TfLiteStatus AddFloor() {
     return AddBuiltin(BuiltinOperator_FLOOR,
                       tflite::ops::micro::Register_FLOOR(), ParseFloor);
@@ -241,6 +251,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
     return AddBuiltin(BuiltinOperator_L2_NORMALIZATION,
                       tflite::ops::micro::Register_L2_NORMALIZATION(),
                       ParseL2Normalization);
+  }
+
+  TfLiteStatus AddLeakyRelu() {
+    return AddBuiltin(BuiltinOperator_LEAKY_RELU, tflite::Register_LEAKY_RELU(),
+                      ParseLeakyRelu);
   }
 
   TfLiteStatus AddLess() {
@@ -440,6 +455,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
   TfLiteStatus AddTanh() {
     return AddBuiltin(BuiltinOperator_TANH, tflite::ops::micro::Register_TANH(),
                       ParseTanh);
+  }
+
+  TfLiteStatus AddTransposeConv() {
+    return AddBuiltin(BuiltinOperator_TRANSPOSE_CONV,
+                      tflite::Register_TRANSPOSE_CONV(), ParseTransposeConv);
   }
 
   TfLiteStatus AddUnpack() {

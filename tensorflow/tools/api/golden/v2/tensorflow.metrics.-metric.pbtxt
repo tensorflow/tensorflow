@@ -224,6 +224,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "reset_state"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "reset_states"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }

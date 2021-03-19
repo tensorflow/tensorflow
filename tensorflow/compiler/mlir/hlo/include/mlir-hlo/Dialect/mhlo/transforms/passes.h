@@ -67,6 +67,8 @@ std::unique_ptr<OperationPass<FuncOp>> createMhloFusionPass();
 std::unique_ptr<OperationPass<FuncOp>>
 createLegalizeTrigonometricToApproximationPass();
 
+std::unique_ptr<FunctionPass> createMoveUpDynamicBroadcastsForFusionPass();
+
 std::unique_ptr<FunctionPass> createOptimizeMhloPass();
 std::unique_ptr<FunctionPass> createLowerComplexPass();
 std::unique_ptr<::mlir::Pass> createLegalizeGeneralDotPass();

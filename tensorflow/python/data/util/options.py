@@ -56,7 +56,9 @@ class OptionsBase(object):
   def __setattr__(self, name, value):
     if not self._mutable:
       raise ValueError("Mutating `tf.data.Options()` returned by "
-                       "`tf.data.Dataset.options()` has no effect.")
+                       "`tf.data.Dataset.options()` has no effect. Use "
+                       "`tf.data.Dataset.with_options(options)` to set or "
+                       "update dataset options.")
     if hasattr(self, name):
       object.__setattr__(self, name, value)
     else:

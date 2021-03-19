@@ -20,8 +20,13 @@ THIRD_PARTY_CC_SRCS += \
   $(call recursive_find,$(CMSIS_PATH)/CMSIS/NN/Source,*.c)
 THIRD_PARTY_CC_HDRS += \
   $(call recursive_find,$(CMSIS_PATH)/CMSIS/NN/Include,*.h)
+
+# Note all the headers from CMSIS/Core/Include are needed to ensure that the
+# project generation scripts copy over the compiler specific implementations of
+# the various intrinisics.
 THIRD_PARTY_CC_HDRS += \
-  $(CMSIS_PATH)/CMSIS/Core/Include/cmsis_compiler.h \
+  $(CMSIS_PATH)/LICENSE.txt \
+  $(wildcard $(CMSIS_PATH)/CMSIS/Core/Include/*.h) \
   $(CMSIS_PATH)/CMSIS/DSP/Include/arm_common_tables.h \
   $(CMSIS_PATH)/CMSIS/DSP/Include/arm_helium_utils.h \
   $(CMSIS_PATH)/CMSIS/DSP/Include/arm_math.h \

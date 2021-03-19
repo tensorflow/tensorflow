@@ -2394,7 +2394,7 @@ XlaOp RngNormal(XlaOp mu, XlaOp sigma, const Shape& shape);
 XlaOp RngUniform(XlaOp a, XlaOp b, const Shape& shape);
 
 // Enqueues a B(initial_state) random bit generation instruction onto the
-// computation. Resturns the new key and random bits with the specified shape.
+// computation. Returns the new key and random bits with the specified shape.
 XlaOp RngBitGenerator(RandomAlgorithm algorithm, XlaOp initial_state,
                       const Shape& shape);
 

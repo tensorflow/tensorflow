@@ -23,9 +23,11 @@ AllOpsResolver::AllOpsResolver() {
   // Please keep this list of Builtin Operators in alphabetical order.
   AddAbs();
   AddAdd();
+  AddAddN();
   AddArgMax();
   AddArgMin();
   AddAveragePool2D();
+  AddBatchToSpaceNd();
   AddCeil();
   AddConcatenation();
   AddConv2D();
@@ -33,6 +35,7 @@ AllOpsResolver::AllOpsResolver() {
   AddDepthwiseConv2D();
   AddDequantize();
   AddDetectionPostprocess();
+  AddElu();
   AddEqual();
   AddEthosU();
   AddFloor();
@@ -41,6 +44,7 @@ AllOpsResolver::AllOpsResolver() {
   AddGreaterEqual();
   AddHardSwish();
   AddL2Normalization();
+  AddLeakyRelu();
   AddLess();
   AddLessEqual();
   AddLog();
@@ -48,8 +52,8 @@ AllOpsResolver::AllOpsResolver() {
   AddLogicalNot();
   AddLogicalOr();
   AddLogistic();
-  AddMaximum();
   AddMaxPool2D();
+  AddMaximum();
   AddMean();
   AddMinimum();
   AddMul();
@@ -70,15 +74,17 @@ AllOpsResolver::AllOpsResolver() {
   AddShape();
   AddSin();
   AddSoftmax();
+  AddSpaceToBatchNd();
   AddSplit();
   AddSplitV();
-  AddSqueeze();
   AddSqrt();
   AddSquare();
+  AddSqueeze();
   AddStridedSlice();
   AddSub();
   AddSvdf();
   AddTanh();
+  AddTransposeConv();
   AddUnpack();
 }
 

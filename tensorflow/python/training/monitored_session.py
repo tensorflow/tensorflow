@@ -194,7 +194,8 @@ class Scaffold(object):
       def default_init_op():
         return control_flow_ops.group(
             variables.global_variables_initializer(),
-            resources.initialize_resources(resources.shared_resources()))
+            resources.initialize_resources(resources.shared_resources()),
+            ops.get_collection('saved_model_initializers'))
 
       self._init_op = Scaffold.get_or_default('init_op', ops.GraphKeys.INIT_OP,
                                               default_init_op)

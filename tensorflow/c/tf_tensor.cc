@@ -196,6 +196,10 @@ bool TensorInterface::CanMove() const {
   return false;
 }
 
+std::string TensorInterface::SummarizeValue() const {
+  return tensor_.SummarizeValue(/*max_entries=*/3, /*print_v2=*/true);
+}
+
 DataType TensorInterface::Type() const { return tensor_.dtype(); }
 
 int TensorInterface::NumDims() const { return tensor_.dims(); }

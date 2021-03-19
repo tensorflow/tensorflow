@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/relu_op.h"
 
-#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -36,7 +35,15 @@ XlaOp Relu6(XlaOp x) {
 namespace tensorflow {
 namespace {
 
-REGISTER_XLA_OP(Name("Relu"), MlirXlaOpKernel);
+class ReluOp : public XlaOpKernel {
+ public:
+  explicit ReluOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  // Computes the max of the scalar input x and 0.
+  void Compile(XlaOpKernelContext* ctx) override {
+    ctx->SetOutput(0, xla::Relu(ctx->Input(0)));
+  }
+};
+REGISTER_XLA_OP(Name("Relu"), ReluOp);
 
 class Relu6Op : public XlaOpKernel {
  public:

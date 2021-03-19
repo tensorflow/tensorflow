@@ -31,7 +31,6 @@ from tensorflow.python.data.ops import readers
 from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations as ds_combinations
-from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_process_runner
@@ -2697,7 +2696,8 @@ class TestModelCapturesStrategy(test.TestCase, parameterized.TestCase):
       model.load_weights(temp_dir)
       self.assertNotEmpty(model.optimizer.weights)
       self.assertTrue(
-          distribute_utils.is_distributed_variable(model.optimizer.weights[0]))
+          distributed_training_utils.is_distributed_variable(
+              model.optimizer.weights[0]))
 
     with distribution.scope():
       model = create_model()
@@ -2705,7 +2705,8 @@ class TestModelCapturesStrategy(test.TestCase, parameterized.TestCase):
     model.load_weights(temp_dir)
     self.assertNotEmpty(model.optimizer.weights)
     self.assertTrue(
-        distribute_utils.is_distributed_variable(model.optimizer.weights[0]))
+        distributed_training_utils.is_distributed_variable(
+            model.optimizer.weights[0]))
 
 
 if __name__ == '__main__':

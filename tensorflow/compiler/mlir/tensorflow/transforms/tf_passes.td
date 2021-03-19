@@ -811,3 +811,47 @@ def VerifySuitableForExportPass : Pass<"tf-verify-for-export", "ModuleOp"> {
 
   let constructor = "TF::CreateVerifySuitableForExportPass()";
 }
+
+def PrepareTpuComputationForTfExportPass : Pass<"prepare-tpu-computation-for-tf-export", "FuncOp"> {
+  let summary = "Prepare TPU computation to be legal for export to TensorFlow";
+  let description = [{
+    Prepares TPU computation module attached to _TPUCompileMlir op for
+    TensorFlow graph export by making transformation such as replacing or
+    removing MLIR or XLA specific attributes that are not legal in TensorFlow
+    graph.
+  }];
+
+  let constructor = "TF::CreatePrepareTpuComputationForTfExportPass()";
+}
+
+def DeviceAttributeToLaunchPass : FunctionPass<"tf-device-attribute-to-launch"> {
+  let summary = "Wraps each TF op which has a non-empty device attribute in a tf_device.launch.";
+
+  let description = [{
+This pass wraps TF ops which have a non-empty device attribute in a tf_device.lauch with
+the same device attribute.
+
+For example, the following:
+
+```mlir
+func @single_op_launch() {
+  %a = "tf.opA"() {device = "CPU:0"} : () -> tensor<i1>
+  return %a
+}
+```
+
+will be transformed into:
+
+```mlir
+func @single_op_launch() {
+  %1 = tf_device.launch() ( {
+    %a = "tf.opA"() : () -> tensor<i1>
+    tf_device.return %a
+  }) {device = "CPU:0"} : () -> tensor<i1>
+  return %1
+}
+```
+  }];
+
+  let constructor = "TFDevice::CreateDeviceAttributeToLaunchPass()";
+}

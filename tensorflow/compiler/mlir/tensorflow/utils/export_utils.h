@@ -62,6 +62,22 @@ Status ConvertAttributes(
     const absl::flat_hash_set<absl::string_view>& attrs_to_ignore,
     bool remove_ref_type, AttrValueMap* values);
 
+// Fill in the contents of TensorShapeProto for the given shape.
+// ShapeContainerT is any type with the following methods:
+//   bool hasRank()
+//   ArrayRef<int64_t> getShape()
+// This includes mlir::TF::ShapeAttr and mlir::ShapedType.
+template <typename ShapeContainerT>
+void SetTensorShapeProto(ShapeContainerT shape, TensorShapeProto* proto) {
+  if (shape.hasRank()) {
+    for (int64_t dim : shape.getShape()) {
+      proto->add_dim()->set_size(dim);
+    }
+  } else {
+    proto->set_unknown_rank(true);
+  }
+}
+
 // Sets shape attribute with the given name. If the attribute already exists
 // with a different value, returns an error.
 Status SetShapeAttribute(absl::string_view name, mlir::ShapedType shape,

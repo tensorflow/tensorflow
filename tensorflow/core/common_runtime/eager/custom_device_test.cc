@@ -81,6 +81,11 @@ class TestCustomDeviceTensorHandle : public CustomDeviceTensorHandle {
       return errors::Internal("Dim out of bounds");
     }
   }
+
+  Status SummarizeValue(std::string& summary) const override {
+    summary = std::string("TestValue");
+    return Status::OK();
+  }
 };
 
 TEST(CustomDevice, TestTensorHandle) {
@@ -105,7 +110,8 @@ TEST(CustomDevice, TestTensorHandle) {
   s = tensor->NumElements(&num_elements);
   ASSERT_TRUE(s.ok()) << s.error_message();
   EXPECT_EQ(3, num_elements);
-  EXPECT_EQ("TensorHandle(shape=[3], dtype=DT_FLOAT)", tensor->DebugString());
+  EXPECT_EQ("TensorHandle(TestValue, shape=[3], dtype=DT_FLOAT)",
+            tensor->DebugString());
 }
 
 TEST(CustomDevice, TestResourcePlacement) {

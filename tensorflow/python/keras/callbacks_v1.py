@@ -386,7 +386,6 @@ class TensorBoard(callbacks.TensorBoard):
 
     # check if histogram summary should be run for this epoch
     if self.histogram_freq and epoch % self.histogram_freq == 0:
-      self._epoch = epoch
       # pylint: disable=protected-access
       # add the histogram summary op if it should run this epoch
       self.model._make_test_function()

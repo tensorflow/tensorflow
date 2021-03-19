@@ -20,8 +20,8 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 
 namespace tensorflow {
-namespace data {
 
+// Thread-safe data structure for caching function instantiations.
 class FunctionHandleCache {
  public:
   explicit FunctionHandleCache(FunctionLibraryRuntime* lib);
@@ -31,6 +31,9 @@ class FunctionHandleCache {
   // Looks up the function to be instantiated in the cache first. If present,
   // returns handle from there. Otherwise, instantiates a new function
   // and stores handle in the cache.
+  //
+  // The cache retains the ownership of the handle. In particular, the caller
+  // should not invoke `ReleaseHandle`.
   Status Instantiate(const string& function_name, AttrSlice attrs,
                      FunctionLibraryRuntime::InstantiateOptions options,
                      FunctionLibraryRuntime::Handle* handle);
@@ -47,7 +50,6 @@ class FunctionHandleCache {
       TF_GUARDED_BY(mu_);
 };
 
-}  // namespace data
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_FUNCTION_HANDLE_CACHE_H_

@@ -1149,4 +1149,13 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %3 = "tf.SpaceToBatchND"(%arg0, %0, %2) {device = ""} : (tensor<1x192x256x128xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x?x?x128xf32>
     return
   }
+
+  // CHECK-LABEL: check_subtyperefinement
+  func @check_subtyperefinement(%arg0 : tensor<1x192x256x128xf32>, %arg1 :  tensor<i32>, %arg2 :  tensor<!tf.variant>) {
+  // CHECK: TensorListReserve
+  // CHECK-SAME: -> tensor<!tf.variant<tensor<!tf.variant>>>
+    %0 = "tf.TensorListReserve"(%arg1, %arg1) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<!tf.variant<tensor<*x!tf.variant>>>
+    %1 = "tf.TensorListSetItem"(%0, %arg1, %arg2) {device = ""} : (tensor<!tf.variant<tensor<*x!tf.variant>>>, tensor<i32>, tensor<!tf.variant>) -> tensor<!tf.variant<tensor<*x!tf.variant>>>
+    return
+  }
 }

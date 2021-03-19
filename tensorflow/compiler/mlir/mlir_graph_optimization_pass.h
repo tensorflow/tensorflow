@@ -63,12 +63,16 @@ class MlirOptimizationPass {
   // module will be committed.
   // `device_set` can be nullptr if the devices information is not
   // available or no device specific filtering is required.
+  // `function_library` contains function definitions for function calls in
+  // `graph` not included in the `graph` FunctionLibraryDefinition.
   virtual MlirOptimizationPassState GetPassState(
       const DeviceSet* device_set, const ConfigProto& config_proto,
-      const Graph& graph) const = 0;
+      const Graph& graph,
+      const FunctionLibraryDefinition& function_library) const = 0;
 
   virtual Status Run(const ConfigProto& config_proto, mlir::ModuleOp module,
-                     const Graph& graph) = 0;
+                     const Graph& graph,
+                     const FunctionLibraryDefinition& function_library) = 0;
 };
 
 class MlirOptimizationPassRegistry {
@@ -159,7 +163,8 @@ class MlirV1CompatOptimizationPass {
   // on exact values.
   virtual MlirOptimizationPassState GetPassState(
       const DeviceSet* device_set, const ConfigProto& config_proto,
-      const Graph& graph) const = 0;
+      const Graph& graph,
+      const FunctionLibraryDefinition& function_library) const = 0;
 
   virtual Status Run(const GraphOptimizationPassOptions& options,
                      mlir::ModuleOp module) = 0;

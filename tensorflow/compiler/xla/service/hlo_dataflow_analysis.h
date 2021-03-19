@@ -167,6 +167,12 @@ class HloDataflowAnalysis {
   // must alias with the output.
   static bool IsInPlaceOperation(HloOpcode opcode);
 
+  // Returns true if the operation is the start/done of an asynchronous
+  // operation, where the buffer used/produced by the op needs to stay alive
+  // until the asynchronous operation completes.
+  static bool IsAsynchronousOperationStart(HloOpcode opcode);
+  static bool IsAsynchronousOperationDone(HloOpcode opcode);
+
   // Returns a vector consisting of the HloUse (operand number and shape index)
   // and output shape index of the in-place operations within this HLO.
   static std::vector<std::pair<HloUse, ShapeIndex>> GetInPlaceInputOutputPairs(
