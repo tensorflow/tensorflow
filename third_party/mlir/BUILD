@@ -2236,6 +2236,7 @@ cc_library(
         ":Pass",
         ":StandardToLLVM",
         ":Support",
+        ":VectorToLLVM",
         "@llvm-project//llvm:Support",
     ],
 )
