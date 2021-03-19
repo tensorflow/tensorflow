@@ -48,7 +48,7 @@ class SegmentReductionDeterminismExceptionsTest(test.TestCase):
     return data, segment_ids, num_segments
 
   @test_util.run_cuda_only
-  def testSortedOps(self):
+  def DISABLED_testSortedOps(self):
     op_should_throw_for_float = {
         math_ops.segment_max: False,
         math_ops.segment_min: False,
@@ -105,7 +105,7 @@ class SegmentReductionDeterminismExceptionsTest(test.TestCase):
               self.evaluate(result)
 
   @test_util.run_cuda_only
-  def testUnsortedOpsComplex(self):
+  def DISABLED_testUnsortedOpsComplex(self):
     for op in [
         math_ops.unsorted_segment_mean,  # uses unsorted_segment_sum
         math_ops.unsorted_segment_sqrt_n,  # uses unsorted_segment_sum
@@ -139,7 +139,7 @@ class SegmentReductionDeterminismExceptionsTest(test.TestCase):
             self.evaluate(result)
 
   @test_util.run_cuda_only
-  def testGatherBackprop(self):
+  def DISABLED_testGatherBackprop(self):
     for data_type in [
         dtypes.float16, dtypes.float32, dtypes.float64, dtypes.complex64,
         dtypes.complex128
