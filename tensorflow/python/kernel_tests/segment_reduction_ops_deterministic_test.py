@@ -124,10 +124,10 @@ class SegmentReductionDeterminismExceptionsTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testConvertToTensor(self):
     with self.session(force_gpu=True):
-      for data_type in [
-          dtypes.float16, dtypes.float32, dtypes.float64, dtypes.complex64,
-          dtypes.complex128
-      ]:
+      dtypes_to_test = [dtypes.float16, dtypes.float32, dtypes.float64]
+      if not test.is_built_with_rocm():
+        dtypes_to_test += [dtypes.complex64, dtypes.complex128]
+      for data_type in dtypes_to_test:
         for segment_ids_type in [dtypes.int32, dtypes.int64]:
           values, indices, _ = self._input(data_type, segment_ids_type)
           sparse_value = indexed_slices.IndexedSlices(
