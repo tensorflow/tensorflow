@@ -88,13 +88,43 @@ def test_src_dir_path(relative_path):
 
 @tf_export('test.is_built_with_cuda')
 def is_built_with_cuda():
-  """Returns whether TensorFlow was built with CUDA (GPU) support."""
+  """Returns whether TensorFlow was built with CUDA (GPU) support.
+
+  This method should only be used in tests written with `tf.test.TestCase`. A
+  typical usage is to skip tests that should only run with CUDA (GPU).
+
+  >>> class MyTest(tf.test.TestCase):
+  ...
+  ...   def test_add_on_gpu(self):
+  ...     if not tf.test.is_built_with_cuda():
+  ...       self.skipTest("test is only applicable on GPU")
+  ...
+  ...     with tf.device("GPU:0"):
+  ...       self.assertEqual(tf.math.add(1.0, 2.0), 3.0)
+
+  TensorFlow official binary is built with CUDA.
+  """
   return _test_util.IsGoogleCudaEnabled()
 
 
 @tf_export('test.is_built_with_rocm')
 def is_built_with_rocm():
-  """Returns whether TensorFlow was built with ROCm (GPU) support."""
+  """Returns whether TensorFlow was built with ROCm (GPU) support.
+
+  This method should only be used in tests written with `tf.test.TestCase`. A
+  typical usage is to skip tests that should only run with ROCm (GPU).
+
+  >>> class MyTest(tf.test.TestCase):
+  ...
+  ...   def test_add_on_gpu(self):
+  ...     if not tf.test.is_built_with_rocm():
+  ...       self.skipTest("test is only applicable on GPU")
+  ...
+  ...     with tf.device("GPU:0"):
+  ...       self.assertEqual(tf.math.add(1.0, 2.0), 3.0)
+
+  TensorFlow official binary is NOT built with ROCm.
+  """
   return _test_util.IsBuiltWithROCm()
 
 
@@ -118,11 +148,44 @@ def disable_with_predicate(pred, skip_message):
 
 @tf_export('test.is_built_with_gpu_support')
 def is_built_with_gpu_support():
-  """Returns whether TensorFlow was built with GPU (i.e. CUDA or ROCm) support."""
+  """Returns whether TensorFlow was built with GPU (CUDA or ROCm) support.
+
+  This method should only be used in tests written with `tf.test.TestCase`. A
+  typical usage is to skip tests that should only run with GPU.
+
+  >>> class MyTest(tf.test.TestCase):
+  ...
+  ...   def test_add_on_gpu(self):
+  ...     if not tf.test.is_built_with_gpu_support():
+  ...       self.skipTest("test is only applicable on GPU")
+  ...
+  ...     with tf.device("GPU:0"):
+  ...       self.assertEqual(tf.math.add(1.0, 2.0), 3.0)
+
+  TensorFlow official binary is built with CUDA GPU support.
+  """
   return is_built_with_cuda() or is_built_with_rocm()
 
 
 @tf_export('test.is_built_with_xla')
 def is_built_with_xla():
-  """Returns whether TensorFlow was built with XLA support."""
+  """Returns whether TensorFlow was built with XLA support.
+
+  This method should only be used in tests written with `tf.test.TestCase`. A
+  typical usage is to skip tests that should only run with XLA.
+
+  >>> class MyTest(tf.test.TestCase):
+  ...
+  ...   def test_add_on_xla(self):
+  ...     if not tf.test.is_built_with_xla():
+  ...       self.skipTest("test is only applicable on XLA")
+
+  ...     @tf.function(jit_compile=True)
+  ...     def add(x, y):
+  ...       return tf.math.add(x, y)
+  ...
+  ...     self.assertEqual(add(tf.ones(()), tf.ones(())), 2.0)
+
+  TensorFlow official binary is built with XLA.
+  """
   return _test_util.IsBuiltWithXLA()
