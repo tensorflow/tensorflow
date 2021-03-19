@@ -525,7 +525,38 @@ class _FixedLengthRecordDataset(dataset_ops.DatasetSource):
 
 @tf_export("data.FixedLengthRecordDataset", v1=[])
 class FixedLengthRecordDatasetV2(dataset_ops.DatasetSource):
-  """A `Dataset` of fixed-length records from one or more binary files."""
+  """A `Dataset` of fixed-length records from one or more binary files.
+
+  The `tf.data.FixedLengthRecordDataset` reads fixed length records from binary
+  files and creates a dataset where each record becomes an element of the
+  dataset. The binary files can have a fixed length header and a fixed length
+  footer, which will both be skipped.
+
+  For example, suppose we have 2 files "fixed_length0.bin" and
+  "fixed_length1.bin" with the following content:
+
+  >>> with open('/tmp/fixed_length0.bin', 'wb') as f:
+  ...   f.write(b'HEADER012345FOOTER')
+  >>> with open('/tmp/fixed_length1.bin', 'wb') as f:
+  ...   f.write(b'HEADER6789abFOOTER')
+
+  We can construct a `FixedLengthRecordDataset` from them as follows:
+
+  >>> dataset1 = tf.data.FixedLengthRecordDataset(
+  ...     filenames=['/tmp/fixed_length0.bin', '/tmp/fixed_length1.bin'],
+  ...     record_bytes=2, header_bytes=6, footer_bytes=6)
+
+  The elements of the dataset are:
+
+  >>> for element in dataset1.as_numpy_iterator():
+  ...   print(element)
+  b'01'
+  b'23'
+  b'45'
+  b'67'
+  b'89'
+  b'ab'
+  """
 
   def __init__(self,
                filenames,
