@@ -423,9 +423,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
   def _allow_variable_partition(self):
     return not context.executing_eagerly()
 
-  # TODO(yuefengz): Not all ops in device_setter.STANDARD_PS_OPS will go through
-  # this creator, such as "MutableHashTable".
-  def _create_variable(self, next_creator, **kwargs):
+  def _create_var_creator(self, next_creator, **kwargs):
     if self._num_replicas_in_sync > 1:
       aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
       if aggregation not in (
@@ -470,8 +468,14 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
           ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, wrapped)
 
         return wrapped
+      return var_creator
     else:
-      var_creator = next_creator
+      return next_creator
+
+  # TODO(yuefengz): Not all ops in device_setter.STANDARD_PS_OPS will go through
+  # this creator, such as "MutableHashTable".
+  def _create_variable(self, next_creator, **kwargs):
+    var_creator = self._create_var_creator(next_creator, **kwargs)
 
     if "colocate_with" in kwargs:
       colocate_with = kwargs["colocate_with"]

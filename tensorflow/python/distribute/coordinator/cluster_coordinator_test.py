@@ -47,6 +47,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
@@ -978,17 +979,13 @@ class StrategyIntegrationTest(test.TestCase):
     self.assertEqual(result.fetch(), expected_result)
 
   def testRunAndReduceWithAssignAdd(self):
-    if self.strategy.num_replicas_in_sync > 1:
-      self.skipTest(
-          'Skipping test since assign_add performed multiple times per replica.'
-          'It should assign_add variable only once.'
-      )
-
     self.assertFalse(distribution_strategy_context.in_cross_replica_context())
     with self.strategy.scope():
       self.assertTrue(distribution_strategy_context.in_cross_replica_context())
       v = variables.Variable(initial_value=1.)
-      v1 = variables.Variable(initial_value=0.)
+      v1 = variables.Variable(
+          initial_value=0.,
+          aggregation=variable_scope.VariableAggregation.ONLY_FIRST_REPLICA)
 
       expected_result = (4. * self.strategy.num_replicas_in_sync,
                          2. * self.strategy.num_replicas_in_sync)
@@ -1020,6 +1017,32 @@ class StrategyIntegrationTest(test.TestCase):
         worker_fn, args=(constant_op.constant(3.),))
     self.assertEqual(result.fetch(), expected_result)
     self.assertEqual(v1, 6.)
+
+  def testVariableAggregation(self):
+    self.assertFalse(distribution_strategy_context.in_cross_replica_context())
+    with self.strategy.scope():
+      self.assertTrue(distribution_strategy_context.in_cross_replica_context())
+      v = variables.Variable(
+          initial_value=1.,
+          aggregation=variable_scope.VariableAggregation.SUM)
+
+      @def_function.function
+      def worker_fn():
+
+        def replica_fn():
+          value = math_ops.cast(
+              distribution_strategy_context.get_replica_context()
+              .replica_id_in_sync_group + 1, v.dtype)
+          v.assign(value)
+
+        self.strategy.run(replica_fn)
+
+      self.coordinator.schedule(worker_fn)
+      self.coordinator.join()
+      expected_result = 0.
+      for i in range(self.strategy.num_replicas_in_sync):
+        expected_result = expected_result + i + 1
+      self.assertEqual(v, expected_result)
 
   def testDistributeDataset(self):
 
