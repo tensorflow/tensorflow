@@ -1299,6 +1299,22 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     actual_value = interpreter.get_tensor(output_details[0]['index'])
     self.assertEqual([2., 4., 6.], list(actual_value))
 
+  @test_util.run_v2_only
+  def testSequentialMultiInputOutputModel(self):
+    """Test a saved model with multiple inputs and outputs."""
+    model, input_data = self._getSequentialMultiInputOutputModel()
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    model.save(save_dir)
+    converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
+    tflite_model = converter.convert()
+
+    # Check values from converted saved model.
+    expected_value = model.predict(input_data)
+    actual_value = self._evaluateTFLiteModel(tflite_model, input_data)
+    for tf_result, tflite_result in zip(expected_value, actual_value):
+      self.assertAllClose(tf_result, tflite_result, atol=1e-05)
+
 
 class FromKerasModelTest(lite_v2_test_util.ModelTest):
 
