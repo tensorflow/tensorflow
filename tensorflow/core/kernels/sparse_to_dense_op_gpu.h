@@ -21,6 +21,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_SPARSE_TO_DENSE_GPU_H_
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/stream_executor/device_memory.h"
 
 namespace tensorflow {
 
@@ -29,9 +30,11 @@ template <typename T, typename Index>
 struct LaunchSparseToDense {
   void operator()(OpKernelContext* c, AsyncOpKernel::DoneCallback done,
                   AsyncOpKernel *op, bool validate_indices,
-                  const Index* indices, const T* values, const int num_elems,
-                  const int num_values, const Index* shape, const int num_dims,
-                  const T default_value, int64 dense_size, T* dense);
+                  const se::DeviceMemory<Index> &indices_data,
+                  const se::DeviceMemory<T> &values, const int num_elems,
+                  const int num_values, const se::DeviceMemory<Index> &shape,
+                  const int num_dims, const T default_value, int64 dense_size,
+                  se::DeviceMemory<T> *dense);
 };
 
 }  // namespace functor

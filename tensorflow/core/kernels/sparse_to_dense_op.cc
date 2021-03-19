@@ -234,21 +234,28 @@ class SparseToDenseGPU : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(c, c->allocate_temp(DataTypeToEnum<Index>::value,
                                              {output_shape_vec.size()},
                                              &output_shape_tensor), done);
-    auto output_shape_ptr = AsDeviceMemory(
+    auto output_shape_data = AsDeviceMemory(
         output_shape_tensor.template flat<Index>().data(),
         output_shape_tensor.template flat<Index>().size());
-    OP_REQUIRES_ASYNC(c, stream->ThenMemcpy(&output_shape_ptr,
+    OP_REQUIRES_ASYNC(c, stream->ThenMemcpy(&output_shape_data,
                                             output_shape_vec.data(),
                                             num_dims * sizeof(Index)).ok(),
                       errors::InvalidArgument(
                           "failed to copy output_shape vector from host to "
                           "device in SparseToDenseOp"), done);
 
+    auto indices_data = AsDeviceMemory(indices.template flat<Index>().data(),
+                                       indices.template flat<Index>().size());
+    auto sparse_values_data = AsDeviceMemory(
+                                  sparse_values.template flat<T>().data(),
+                                  sparse_values.template flat<T>().size());
+    auto output_data = AsDeviceMemory(output->template flat<T>().data(),
+                                      output->template flat<T>().size());
+
     functor::LaunchSparseToDense<T, Index>()(
-        c, done, this, validate_indices_, indices.flat<Index>().data(),
-        sparse_values.flat<T>().data(), num_elems, num_values,
-        static_cast<Index*>(output_shape_ptr.opaque()), num_dims,
-        default_value.scalar<T>()(), dense_size, output->flat<T>().data());
+        c, done, this, validate_indices_, indices_data, sparse_values_data,
+        num_elems, num_values, output_shape_data, num_dims,
+        default_value.scalar<T>()(), dense_size, &output_data);
   }
 
  private:

@@ -139,12 +139,18 @@ namespace functor {
 template <typename T, typename Index>
 void LaunchSparseToDense<T, Index>::operator()(
     OpKernelContext* c, AsyncOpKernel::DoneCallback done, AsyncOpKernel* op,
-    bool validate_indices, const Index* indices, const T* values,
-    const int num_elems, const int num_values, const Index* shape,
-    const int num_dims, const T default_value, int64 dense_size, T* dense) {
+    bool validate_indices, const se::DeviceMemory<Index> &indices,
+    const se::DeviceMemory<T> &values, const int num_elems,
+    const int num_values, const se::DeviceMemory<Index> &shape,
+    const int num_dims, const T default_value, int64 dense_size,
+    se::DeviceMemory<T> *dense) {
   auto* stream = c->op_device_context()->stream();
   const Eigen::GpuDevice& d = c->eigen_gpu_device();
 
+  auto indices_ptr = static_cast<const Index*>(indices.opaque());
+  auto values_ptr = static_cast<const T*>(values.opaque());
+  auto shape_ptr = static_cast<const Index*>(shape.opaque());
+  auto dense_ptr = static_cast<T*>(dense->opaque());
   if (validate_indices && num_elems != 0) {
     VLOG(1) << "SparseToDense will be performed on GPUs. For performance "
         "reasons, it is suggested to pass False to validate_indices.";
@@ -165,14 +171,15 @@ void LaunchSparseToDense<T, Index>::operator()(
     stream->ThenMemset32(&valid_status_ptr, INT_MAX, valid_status_bytes);
     OP_REQUIRES_OK_ASYNC(c, GpuLaunchKernel(
         CheckIndicesValid<Index>, config.block_count, config.thread_per_block,
-        0, d.stream(), indices, num_elems, shape, num_dims, status_ptr), done);
+        0, d.stream(), indices_ptr, num_elems, shape_ptr, num_dims,
+        status_ptr), done);
     stream->ThenMemcpy(reinterpret_cast<int*>(&valid_status), valid_status_ptr,
                        valid_status_bytes);
 
     auto check_status_and_compute = [op, c, valid_status, dense_size,
-                                     default_value, indices, values, num_elems,
-                                     num_values, shape, num_dims, dense,
-                                     done]() {
+                                     default_value, indices_ptr, values_ptr,
+                                     num_elems, num_values, shape_ptr, num_dims,
+                                     dense_ptr, done]() {
 	    // Ensure that within the callback, the proper GPU settings are
       // configured.
       auto stream = c->op_device_context()->stream();
@@ -198,8 +205,9 @@ void LaunchSparseToDense<T, Index>::operator()(
                         done);
 
       OP_REQUIRES_OK_ASYNC(c, LaunchComputeKernels(c, dense_size, default_value,
-                                  indices, values, num_elems, num_values, shape,
-                                  num_dims, dense), done);
+                                  indices_ptr, values_ptr, num_elems,
+                                  num_values, shape_ptr, num_dims, dense_ptr),
+                           done);
       done();
     };
 
@@ -207,8 +215,8 @@ void LaunchSparseToDense<T, Index>::operator()(
         stream, check_status_and_compute);
   } else {
     OP_REQUIRES_OK_ASYNC(c, LaunchComputeKernels(c, dense_size, default_value,
-                                indices, values, num_elems, num_values, shape,
-                                num_dims, dense), done);
+                                indices_ptr, values_ptr, num_elems, num_values,
+                                shape_ptr, num_dims, dense_ptr), done);
     done();
   }
 }
