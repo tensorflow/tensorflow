@@ -3694,6 +3694,7 @@ SavedModelSignatureDefImporterLite::ConvertGraph(
   specs.inputs = ParseInputArrays(inputs);
   for (auto& output : outputs) specs.outputs.push_back(output.second.name());
   specs.control_outputs = control_outputs;
+  specs.enable_shape_inference = false;
 
   TF_ASSIGN_OR_RETURN(const auto* subgraph, input_.GetSubGraph(name, specs));
 
