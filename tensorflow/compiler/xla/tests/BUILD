@@ -980,6 +980,43 @@ xla_test(
     ],
 )
 
+# Run dot tests with dot canonicalization after the layout assignment pass.
+xla_test(
+    name = "dot_operation_test_canonicalization_after_layout",
+    srcs = ["dot_operation_test.cc"],
+    args = [
+        "--xla_tpu_order_dot_after_layout=true",
+    ],
+    disabled_backends = [
+        "cpu",
+        "gpu",
+        "interpreter",
+    ],
+    tags = [
+        "optonly",
+    ],
+    deps = [
+        ":client_library_test_base",
+        ":hlo_test_base",
+        ":literal_test_util",
+        ":test_macros_header",
+        ":test_utils",
+        ":xla_internal_test_main",
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:array3d",
+        "//tensorflow/compiler/xla:reference_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:matrix",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 xla_test(
     name = "gather_operation_test",
     srcs = ["gather_operation_test.cc"],
