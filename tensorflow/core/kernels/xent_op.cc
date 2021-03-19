@@ -85,8 +85,8 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
     if (std::is_same<Device, GPUDevice>::value) {
       OP_REQUIRES(
           context,
-          (!RequireDeterminism() ||
-            DisableSoftmaxXentWithLogitsOpDeterminismExceptions()),
+          !RequireDeterminism() ||
+          DisableSoftmaxXentWithLogitsOpDeterminismExceptions(),
           errors::Unimplemented(
               "Deterministic GPU implementation of"
               " SoftmaxCrossEntropyWithLogits not available."

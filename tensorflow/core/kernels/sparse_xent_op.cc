@@ -101,8 +101,8 @@ class SparseSoftmaxXentWithLogitsOp : public OpKernel {
     if (std::is_same<Device, GPUDevice>::value) {
       OP_REQUIRES(
           context,
-          (!RequireDeterminism() ||
-            DisableSparseSoftmaxXentWithLogitsOpDeterminismExceptions()),
+          !RequireDeterminism() ||
+          DisableSparseSoftmaxXentWithLogitsOpDeterminismExceptions(),
           errors::Unimplemented(
               "Deterministic GPU implementation of"
               " SparseSoftmaxCrossEntropyWithLogits not available."
