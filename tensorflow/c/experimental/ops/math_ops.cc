@@ -43,7 +43,7 @@ Status Conj(AbstractContext* ctx,
   auto dtype = inputs[0]->DataType();
   if (DataTypeIsFloating(BaseType(dtype)) ||
       DataTypeIsInteger(BaseType(dtype))) {
-    TF_RETURN_IF_ERROR(Identity(ctx, inputs, outputs, name));
+    TF_RETURN_IF_ERROR(Identity(ctx, inputs[0], outputs, name));
   } else if (DataTypeIsComplex(BaseType(dtype)) ||
              BaseType(dtype) == DT_VARIANT) {
     AbstractOperationPtr conj_op(ctx->CreateOperation());
