@@ -25,11 +25,24 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/xent_op.h"
 #include "tensorflow/core/util/bcast.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+
+// TODO(duncanriach): Factor this into a shared utility library
+bool RequireDeterminism() {
+  static bool require_determinism = [] {
+    bool deterministic_ops = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
+                                               /*default_val=*/false,
+                                               &deterministic_ops));
+    return deterministic_ops;
+  }();
+  return require_determinism;
+}
 
 template <typename Device, typename T>
 class SoftmaxXentWithLogitsOp : public OpKernel {
@@ -57,6 +70,13 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
                 errors::InvalidArgument("logits and labels must be either "
                                         "2-dimensional, or broadcasted to be "
                                         "2-dimensional"));
+
+    if (std::is_same<Device, GPUDevice>::value) {
+      OP_REQUIRES(context, !RequireDeterminism(), errors::Unimplemented(
+          "Deterministic GPU implementation of SoftmaxCrossEntropyWithLogits"
+          " not available."
+      ));
+    }
 
     // loss is 1-D (one per example), and size is batch_size.
 
