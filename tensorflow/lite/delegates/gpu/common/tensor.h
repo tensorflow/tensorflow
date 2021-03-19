@@ -41,6 +41,11 @@ struct StorageType<DataType::INT32> {
   using value = std::vector<int32_t>;
 };
 
+template <>
+struct StorageType<DataType::INT8> {
+  using value = std::vector<int8_t>;
+};
+
 }  // namespace internal_tensor
 
 template <typename ShapeT, DataType Type>

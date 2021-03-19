@@ -229,6 +229,8 @@ class Bfloat16Test(parameterized.TestCase):
     sorted_bf16 = np.sort(values_to_sort.astype(bfloat16))
     np.testing.assert_equal(sorted_f32, np.float32(sorted_bf16))
 
+  def testDtypeFromString(self):
+    assert np.dtype("bfloat16") == np.dtype(bfloat16)
 
 BinaryOp = collections.namedtuple("BinaryOp", ["op"])
 

@@ -322,7 +322,7 @@ class TPUStrategyV2(distribute_lib.Strategy):
     """Synchronous training in TPU donuts or Pods.
 
     Args:
-      tpu_cluster_resolver: A 
+      tpu_cluster_resolver: A
         `tf.distribute.cluster_resolver.TPUClusterResolver` instance, which
         provides information about the TPU cluster. If None, it will assume
         running on a local TPU worker.
@@ -532,10 +532,10 @@ class TPUStrategyV2(distribute_lib.Strategy):
 
       split_size = partition_dimensions[dim_index]
       if dim_size % split_size != 0:
-        raise ValueError("Tensor shape at dimension ({}) must be "
+        raise ValueError("Tensor shape at dimension {} ({}) must be "
                          "divisible by corresponding value specified "
                          "by `partition_dimensions` ({}).".format(
-                             dim_index, split_size))
+                             dim_index, dim_size, split_size))
 
     if num_partition_splits != num_logical_devices_per_replica:
       raise ValueError("Number of logical devices ({}) does not match the "
@@ -865,10 +865,11 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           context.async_wait()
       atexit.register(async_wait)
 
-    # Flag to turn on VariablePolicy
+    # Flag to turn on VariablePolicy.
     self._use_var_policy = True
 
-    # Flag to enable TF2 SPMD
+    # Flag to enable XLA SPMD partitioning.
+    # TODO(b/170873313): Enable XLA SPMD partitioning in TPUStrategy.
     self._use_spmd_for_xla_partitioning = False
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
@@ -909,7 +910,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         session)
 
   def _get_input_workers(self, options):
-    if not options or options.experimental_prefetch_to_device:
+    if not options or options.experimental_fetch_to_device:
       return input_lib.InputWorkers(
           tuple(self._device_input_worker_devices.items()))
     else:
@@ -928,7 +929,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
             "distributed datasets with device prefetch when using sparse or "
             "ragged tensors. If you intend to use sparse or ragged tensors, "
             "please pass a tf.distribute.InputOptions object with "
-            "experimental_prefetch_to_device set to False to your dataset "
+            "experimental_fetch_to_device set to False to your dataset "
             "distribution function.".format(path, type(spec)))
 
   def _experimental_distribute_dataset(self, dataset, options):
@@ -939,7 +940,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           "is only supported in "
           "`experimental_distribute_datasets_from_function`."
       )
-    if options is None or options.experimental_prefetch_to_device:
+    if options is None or options.experimental_fetch_to_device:
       self._check_spec(dataset.element_spec)
 
     return input_lib.get_distributed_dataset(
@@ -974,7 +975,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         options=options)
 
     # We can only check after the dataset_fn is called.
-    if options is None or options.experimental_prefetch_to_device:
+    if options is None or options.experimental_fetch_to_device:
       self._check_spec(distributed_dataset.element_spec)
     return distributed_dataset
 
@@ -1176,7 +1177,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     if isinstance(
         value,
         values.DistributedVariable) and value._packed_variable is not None:
-      value_list = tuple(
+      value_list = list(
           value._packed_variable.on_device(d)
           for d in value._packed_variable.devices)
     # pylint: enable=protected-access
@@ -1477,14 +1478,15 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         padding_spec = None
 
       with strategy.scope():
+        xla_options = options.experimental_xla_options or tpu.XLAOptions(
+            use_spmd_for_xla_partitioning=self._use_spmd_for_xla_partitioning)
         replicate_outputs = tpu.replicate(
             replicated_fn,
             replicate_inputs,
             device_assignment=self._device_assignment,
             maximum_shapes=maximum_shapes,
             padding_spec=padding_spec,
-            xla_options=tpu.XLAOptions(use_spmd_for_xla_partitioning=self
-                                       ._use_spmd_for_xla_partitioning))
+            xla_options=xla_options)
 
       # Remove all no ops that may have been added during 'tpu.replicate()'
       filter_ops = lambda x: [o for o in x if not isinstance(o, ops.Operation)]

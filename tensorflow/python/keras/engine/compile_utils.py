@@ -149,6 +149,10 @@ class LossesContainer(Container):
     self._create_metrics()
     self._built = True
 
+  @property
+  def built(self):
+    return self._built
+
   def _create_metrics(self):
     """Creates per-output loss metrics, but only for multi-output Models."""
     if len(self._output_names) == 1:
@@ -250,14 +254,14 @@ class LossesContainer(Container):
       # Ok for a model to have no compiled loss.
       return array_ops.zeros(shape=())
 
-  def reset_states(self):
+  def reset_state(self):
     """Resets the state of loss metrics."""
     if not self._built:
       return
     metrics = [self._loss_metric] + nest.flatten(self._per_output_metrics)
     for metric_obj in metrics:
       if metric_obj is not None:
-        metric_obj.reset_states()
+        metric_obj.reset_state()
 
   def _get_loss_object(self, loss):
     """Returns a `Loss` object.
@@ -379,6 +383,10 @@ class MetricsContainer(Container):
     self._create_ordered_metrics()
     self._built = True
 
+  @property
+  def built(self):
+    return self._built
+
   def _set_metric_names(self):
     """Sets unique metric names."""
     # For multi-output models, prepend the output name to the metric name.
@@ -461,7 +469,7 @@ class MetricsContainer(Container):
           continue
         weighted_metric_obj.update_state(y_t, y_p, sample_weight=sw)
 
-  def reset_states(self):
+  def reset_state(self):
     """Resets the state of all `Metric`s in this container."""
     if self._built:
       metrics = self._metrics_in_order
@@ -474,7 +482,7 @@ class MetricsContainer(Container):
 
     for metric_obj in metrics:
       if isinstance(metric_obj, metrics_mod.Metric):
-        metric_obj.reset_states()
+        metric_obj.reset_state()
 
   def _get_metric_objects(self, metrics, y_t, y_p):
     """Convert user-supplied metrics to `Metric` objects."""

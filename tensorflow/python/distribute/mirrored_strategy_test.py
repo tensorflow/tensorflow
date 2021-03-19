@@ -109,6 +109,20 @@ class MirroredTwoDeviceDistributionTest(
       expected = sum(range(distribution.num_replicas_in_sync))
       self.assertEqual(expected, self.evaluate(reduced))
 
+  def testReduceToCpuNested(self, distribution):
+    with distribution.scope():
+      def replica_fn(input_tensor):
+        return input_tensor + constant_op.constant(
+            1.0), input_tensor - constant_op.constant(1.0)
+
+      input_tensor = constant_op.constant(3.0)
+      run_result = distribution.run(replica_fn, args=(input_tensor,))
+      reduced_result = distribution.reduce("SUM", run_result, axis=None)
+      expected_result = (4 * distribution.num_replicas_in_sync,
+                         2 * distribution.num_replicas_in_sync)
+
+      self.assertEqual(expected_result, self.evaluate(reduced_result))
+
   def reduce_axis_helper(self, distribution, replica_squared_fn):
     with distribution.scope():
       num_replicas = distribution.num_replicas_in_sync
@@ -236,7 +250,7 @@ class MirroredTwoDeviceDistributionTest(
 
   def test_prefetch_to_device_dataset(self, distribution):
     input_options = distribute_lib.InputOptions(
-        experimental_prefetch_to_device=True)
+        experimental_fetch_to_device=True)
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.batch(distribution.num_replicas_in_sync)
     dataset = distribution.experimental_distribute_dataset(
@@ -258,7 +272,7 @@ class MirroredTwoDeviceDistributionTest(
 
   def test_prefetch_to_host_dataset(self, distribution):
     input_options = distribute_lib.InputOptions(
-        experimental_prefetch_to_device=False)
+        experimental_fetch_to_device=False)
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.batch(distribution.num_replicas_in_sync)
     dataset = distribution.experimental_distribute_dataset(

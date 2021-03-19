@@ -508,9 +508,8 @@ void TFE_DeleteCancellationManager(
 void TFE_OpSetCancellationManager(TFE_Op* op,
                                   TFE_CancellationManager* cancellation_manager,
                                   TF_Status* status) {
-  tensorflow::EagerOperation* operation =
-      tensorflow::OperationFromInterface(tensorflow::unwrap(op));
-  operation->SetCancellationManager(tensorflow::unwrap(cancellation_manager));
+  tensorflow::unwrap(op)->SetCancellationManager(
+      tensorflow::unwrap(cancellation_manager));
   status->status = tensorflow::Status::OK();
 }
 

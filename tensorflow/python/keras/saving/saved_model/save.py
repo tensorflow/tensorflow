@@ -20,7 +20,6 @@ from __future__ import print_function
 import os
 
 from tensorflow.core.framework import versions_pb2
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.protobuf import saved_metadata_pb2
 from tensorflow.python.keras.saving import saving_utils
@@ -89,13 +88,9 @@ def save(model, filepath, overwrite, include_optimizer, signatures=None,
   # This is needed for compatibility reasons until learning phase setting
   # is removed from the public apis.
   with K.deprecated_internal_learning_phase_scope(0):
-    # When saving a model involving batch norm layer within a strategy scope,
-    # the replica context is not available when calling `add_update()`, and thus
-    # we use the default replica context here.
-    with distribution_strategy_context._get_default_replica_context():  # pylint: disable=protected-access
-      with utils.keras_option_scope(save_traces):
-        saved_nodes, node_paths = save_lib.save_and_return_nodes(
-            model, filepath, signatures, options)
+    with utils.keras_option_scope(save_traces):
+      saved_nodes, node_paths = save_lib.save_and_return_nodes(
+          model, filepath, signatures, options)
 
     # Save all metadata to a separate file in the SavedModel directory.
     metadata = generate_keras_metadata(saved_nodes, node_paths)

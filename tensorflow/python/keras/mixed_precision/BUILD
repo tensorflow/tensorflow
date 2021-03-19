@@ -137,6 +137,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:ps_values",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras/distribute",
         "//tensorflow/python/types",
     ],
 )
@@ -186,7 +187,6 @@ py_library(
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/keras/optimizer_v2",
-        "//tensorflow/python/keras/utils:control_flow_util",
         "@absl_py//absl/testing:parameterized",
     ],
 )

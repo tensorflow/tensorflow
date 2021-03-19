@@ -586,59 +586,6 @@ func @testPackShapeComputation(%arg0: tensor<?x1xf32>, %arg1: tensor<?x1x2xf32>,
   return %5, %9, %15, %17, %20 : tensor<2xi32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>, tensor<*xi32>
 }
 
-// CHECK-LABEL: testSelectScalarPred
-func @testSelectScalarPred(%arg0: tensor<i1>, %arg1: tensor<4x2xf16>, %arg2: tensor<4x2xf16>) -> tensor<4x2xf16> {
-  // CHECK-NEXT: "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<4x2xf16>, tensor<4x2xf16>) -> tensor<4x2xf16>
-  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<4x2xf16>, tensor<4x2xf16>) -> tensor<4x2xf16>
-  return %0: tensor<4x2xf16>
-}
-
-// CHECK-LABEL: testSelectVectorPred
-func @testSelectVectorPred(%arg0: tensor<2xi1>, %arg1: tensor<2x3xf16>, %arg2: tensor<2x3xf16>) -> tensor<2x3xf16> {
-  // CHECK-NEXT: %[[SHAPE:.*]] = "tf.Const"
-  // CHECK-NEXT: %[[PRED:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) : (tensor<2xi1>, tensor<2xi64>) -> tensor<2x1xi1>
-  // CHECK-NEXT: "tf.SelectV2"(%[[PRED]], %arg1, %arg2) : (tensor<2x1xi1>, tensor<2x3xf16>, tensor<2x3xf16>) -> tensor<2x3xf16>
-  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<2xi1>, tensor<2x3xf16>, tensor<2x3xf16>) -> tensor<2x3xf16>
-  return %0: tensor<2x3xf16>
-}
-
-// CHECK-LABEL: testSelectAllSameShape
-func @testSelectAllSameShape(%arg0: tensor<2x3xi1>, %arg1: tensor<2x3xf16>, %arg2: tensor<2x3xf16>) -> tensor<2x3xf16> {
-  // CHECK-NEXT: "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<2x3xi1>, tensor<2x3xf16>, tensor<2x3xf16>) -> tensor<2x3xf16>
-  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<2x3xi1>, tensor<2x3xf16>, tensor<2x3xf16>) -> tensor<2x3xf16>
-  return %0: tensor<2x3xf16>
-}
-
-// If we don't have guarantees on input shapes, we can't support canonicalizing
-// to SelectV2. Test these cases.
-// CHECK-LABEL: testSelectInvalid
-func @testSelectInvalid(%arg0: tensor<?xi1>, %arg1: tensor<2x3xf16>, %arg2: tensor<2x3xf16>) -> tensor<2x3xf16> {
-  // CHECK-NEXT: tf.Select
-  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<?xi1>, tensor<2x3xf16>, tensor<2x3xf16>) -> tensor<2x3xf16>
-  return %0: tensor<2x3xf16>
-}
-
-// CHECK-LABEL: testSelectInvalidUnranked
-func @testSelectInvalidUnranked(%arg0: tensor<6x7xi1>, %arg1: tensor<*xf16>, %arg2: tensor<*xf16>) -> tensor<*xf16> {
-  // CHECK-NEXT: tf.Select
-  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<6x7xi1>, tensor<*xf16>, tensor<*xf16>) -> tensor<*xf16>
-  return %0: tensor<*xf16>
-}
-
-// CHECK-LABEL: testSelectThenUnranked
-func @testSelectThenUnranked(%arg0: tensor<3xi1>, %arg1: tensor<*xf16>, %arg2: tensor<3x2xf16>) -> tensor<*xf16> {
-  // CHECK-NEXT: tf.Select
-  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<*xf16>, tensor<3x2xf16>) -> tensor<*xf16>
-  return %0: tensor<*xf16>
-}
-
-// CHECK-LABEL: testSelectElseUnranked
-func @testSelectElseUnranked(%arg0: tensor<3xi1>, %arg1: tensor<3x2xf16>, %arg2: tensor<*xf16>) -> tensor<*xf16> {
-  // CHECK-NEXT: tf.Select
-  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<3x2xf16>, tensor<*xf16>) -> tensor<*xf16>
-  return %0: tensor<*xf16>
-}
-
 // CHECK-LABEL: testTileMultiplesAllOnes
 func @testTileMultiplesAllOnes(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   %cst = constant dense <[1, 1]> : tensor<2xi32>
@@ -1205,6 +1152,30 @@ func @testWhileRegionSimplePassThrough(%arg0 : tensor<*xf32>, %arg1 : tensor<i32
   return %0#0 : tensor<*xf32>
 }
 
+// Explicit capture and return of extern values is removed.
+// CHECK-LABEL: testWhileRegionReturnExternValues
+func @testWhileRegionReturnExternValues(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<*xf32> {
+  // CHECK: "tf.WhileRegion"(%arg1)
+  %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
+    {
+      // condition, check if count has reached 0
+      ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
+      %zero = constant dense<0> : tensor<i32>
+      %ne = "tf.NotEqual"(%carg1, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      "tf.Yield"(%ne) : (tensor<i1>) -> ()
+    },
+    {
+      // loop body
+      ^bb0(%barg0: tensor<*xf32>, %barg1: tensor<i32>):
+      %one = constant dense<1> : tensor<i32>
+      %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      "tf.Yield"(%arg0, %sub) : (tensor<*xf32>, tensor<i32>) -> ()
+    }
+  ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+  // CHECK: return %arg0 : tensor<*xf32>
+  return %0#0 : tensor<*xf32>
+}
+
 // Multiple pass through values
 // CHECK-LABEL: testWhileRegionMultiplePassThrough
 func @testWhileRegionMultiplePassThrough(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>, %arg2 : tensor<*xf32>, %arg3 : tensor<i32>) -> tensor<*xf32> {
@@ -1618,4 +1589,40 @@ func @testFoldStridedSliceShapeWithEmptySlice(%arg0: tensor<?x1x2x3xf32>) -> (te
   return %4 : tensor<0xi32>
   // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: testFoldEnsureShapeOp
+func @testFoldEnsureShapeOp(%arg0: tensor<10x20xf32>) -> (tensor<10x20xf32>, tensor<20x10xf32>) {
+  %0 = "tf.EnsureShape"(%arg0) {shape = #tf.shape<10x20>} : (tensor<10x20xf32>) -> tensor<10x20xf32>
+  // Failing case which should not be folded.
+  // CHECK: %[[NF:.*]] = "tf.EnsureShape"(%arg0) {shape = #tf.shape<20x10>}
+  %1 = "tf.EnsureShape"(%arg0) {shape = #tf.shape<20x10>} : (tensor<10x20xf32>) -> tensor<20x10xf32>
+  // CHECK: return %arg0, %[[NF]]
+  return %0, %1: tensor<10x20xf32>, tensor<20x10xf32>
+}
+
+// CHECK-LABEL: testConvertPackToReshapeAxis0
+func @testConvertPackToReshapeAxis0(%arg0: tensor<2x3xf32>) -> tensor<1x2x3xf32> {
+  %0 = "tf.Pack"(%arg0) {axis = 0 : i64, _xla_outside_compilation = "1"} : (tensor<2x3xf32>) -> tensor<1x2x3xf32>
+  return %0 : tensor<1x2x3xf32>
+  // CHECK: %[[SHAPE:.*]] = "tf.Const"() {value = dense<[1, 2, 3]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) {_xla_outside_compilation = "1"} : (tensor<2x3xf32>, tensor<3xi64>) -> tensor<1x2x3xf32>
+  // CHECK: return %[[RESHAPE]] : tensor<1x2x3xf32>
+}
+
+// CHECK-LABEL: testConvertPackToReshapeAxis1
+func @testConvertPackToReshapeAxis1(%arg0: tensor<2x3xf32>) -> tensor<2x1x3xf32> {
+  %0 = "tf.Pack"(%arg0) {axis = 1 : i64} : (tensor<2x3xf32>) -> tensor<2x1x3xf32>
+  return %0 : tensor<2x1x3xf32>
+  // CHECK: %[[SHAPE:.*]] = "tf.Const"() {value = dense<[2, 1, 3]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) : (tensor<2x3xf32>, tensor<3xi64>) -> tensor<2x1x3xf32>
+  // CHECK: return %[[RESHAPE]] : tensor<2x1x3xf32>
+}
+
+// CHECK-LABEL: testDontConvertPackToReshapeDynamicShape
+func @testDontConvertPackToReshapeDynamicShape(%arg0: tensor<2x?xf32>) -> tensor<1x2x?xf32> {
+  %0 = "tf.Pack"(%arg0) {axis = 0 : i64} : (tensor<2x?xf32>) -> tensor<1x2x?xf32>
+  return %0 : tensor<1x2x?xf32>
+  // CHECK: %[[PACK:.*]] = "tf.Pack"(%arg0) {axis = 0 : i64} : (tensor<2x?xf32>) -> tensor<1x2x?xf32>
+  // CHECK: return %[[PACK]] : tensor<1x2x?xf32>
 }

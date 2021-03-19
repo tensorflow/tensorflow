@@ -39,11 +39,11 @@ from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import dataset_creator
 from tensorflow.python.keras.utils import tf_utils
@@ -518,8 +518,15 @@ class GenericArrayLikeDataAdapter(TensorLikeDataAdapter):
 class DatasetCreatorAdapter(DataAdapter):
   """Adapter that handles dataset functions."""
 
-  def __init__(self, *args, **kwargs):
-    super(DatasetCreatorAdapter, self).__init__(*args, **kwargs)
+  def __init__(self, x, *args, **kwargs):
+    super(DatasetCreatorAdapter, self).__init__(x, *args, **kwargs)
+
+    if not isinstance(x, dataset_creator.DatasetCreator):
+      raise TypeError("The input of a `DatasetCreatorAdapter` should be a "
+                      "`DatasetCreator` but it received type {}.".format(
+                          type(x)))
+    self.dataset_creator = x
+    self.strategy = kwargs.get("distribution_strategy", None)
 
   @staticmethod
   def can_handle(x, y=None):
@@ -534,10 +541,10 @@ class DatasetCreatorAdapter(DataAdapter):
     return False
 
   def get_size(self):
-    raise NotImplementedError()
+    return None  # To be inferred by `DataHandler`.
 
   def get_dataset(self):
-    raise NotImplementedError()
+    return self.strategy.distribute_datasets_from_function(self.dataset_creator)
 
   def batch_size(self):
     raise NotImplementedError()
@@ -559,11 +566,12 @@ class CompositeTensorDataAdapter(DataAdapter):
       flat_inputs += nest.flatten(y)
 
     def _is_composite(v):
-      # Dataset/iterator inherits from CompositeTensor but should be handled
-      # by DatasetAdapter and GeneratorAdapter.
+      # Dataset/iterator/DistributedDataset inherits from CompositeTensor but
+      # should be handled by DatasetAdapter and GeneratorAdapter.
       if (tf_utils.is_extension_type(v) and
-          not isinstance(v, (dataset_ops.DatasetV2,
-                             iterator_ops.IteratorBase))):
+          not isinstance(v,
+                         (dataset_ops.DatasetV2, iterator_ops.IteratorBase)) and
+          not _is_distributed_dataset(v)):
         return True
       # Support Scipy sparse tensors if scipy is installed
       if scipy_sparse is not None and scipy_sparse.issparse(v):
@@ -1180,9 +1188,7 @@ class DataHandler(object):
                                                class_weight, distribute)
 
   def _verify_data_adapter_compatibility(self, adapter_cls):
-    if adapter_cls == DatasetCreatorAdapter:
-      raise NotImplementedError("`DatasetCreator` input is only supported in "
-                                "`ParameterServerStrategy` at this time.")
+    pass
 
   def _configure_dataset_and_inferred_steps(self, strategy, x, steps_per_epoch,
                                             class_weight, distribute):
@@ -1414,7 +1420,7 @@ def _make_class_weight_map_fn(class_weight):
       raise ValueError("`class_weight` not supported for "
                        "3+ dimensional targets.")
 
-    y_classes = control_flow_util.smart_cond(
+    y_classes = smart_cond.smart_cond(
         y.shape.rank == 2 and backend.shape(y)[1] > 1,
         lambda: backend.argmax(y, axis=1),
         lambda: math_ops.cast(backend.reshape(y, (-1,)), dtypes.int64))

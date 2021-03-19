@@ -40,17 +40,18 @@ void ThreadingSetProfile(const py::object& callback) {
   setprofile(callback);
 }
 
-std::string GetEventName(PyCodeObject* py_code) {
-  string filename(py::reinterpret_borrow<py::str>(py_code->co_filename));
+std::string GetEventName(PyObject* co_filename, PyObject* co_name,
+                         int co_firstlineno) {
+  string filename(py::reinterpret_borrow<py::str>(co_filename));
   string function;
-  if (py_code->co_name == nullptr) {
+  if (co_name == nullptr) {
     function = "<unknown>";
   } else {
-    function = py::reinterpret_borrow<py::str>(py_code->co_name);
+    function = py::reinterpret_borrow<py::str>(co_name);
   }
 
-  return absl::StrCat("$", io::Basename(filename), ":", py_code->co_firstlineno,
-                      " ", function);
+  return absl::StrCat("$", io::Basename(filename), ":", co_firstlineno, " ",
+                      function);
 }
 
 string GetEventName(PyCFunctionObject* py_cfunc) {
@@ -85,8 +86,8 @@ void AddEventToXLine(const PythonTraceEntry& event, XLineBuilder* line,
 
 std::string PythonTraceEntry::Name() const {
   std::string event_name;
-  if (code_object) {
-    return GetEventName(code_object);
+  if (co_filename) {
+    return GetEventName(co_filename, co_name, co_firstlineno);
   } else if (function_object) {
     return GetEventName(function_object);
   }
@@ -252,7 +253,8 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
   switch (what) {
     case PyTrace_CALL: {
       PyCodeObject* f_code = frame->f_code;
-      thread_traces.active.emplace(now, 0, f_code, nullptr);
+      thread_traces.active.emplace(now, 0, f_code->co_filename, f_code->co_name,
+                                   f_code->co_firstlineno);
       break;
     }
     case PyTrace_RETURN:
@@ -264,8 +266,9 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
         thread_traces.active.pop();
       } else if (options_.include_incomplete_events) {
         PyCodeObject* f_code = frame->f_code;
-        thread_traces.completed.emplace_back(start_timestamp_ns_, now, f_code,
-                                             nullptr);
+        thread_traces.completed.emplace_back(
+            start_timestamp_ns_, now, f_code->co_filename, f_code->co_name,
+            f_code->co_firstlineno);
       }
       break;
     }
@@ -273,7 +276,7 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
       if (PyCFunction_Check(arg)) {
         // Python stack does not have a filename/line_no for native calls.
         auto* func = reinterpret_cast<PyCFunctionObject*>(arg);
-        entries_[thread_id].active.emplace(now, 0, nullptr, func);
+        entries_[thread_id].active.emplace(now, 0, func);
       }
       break;
     }
@@ -290,7 +293,7 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
           // Python stack does not have a filename/line_no for native calls.
           auto* func = reinterpret_cast<PyCFunctionObject*>(arg);
           entries_[thread_id].completed.emplace_back(start_timestamp_ns_, now,
-                                                     nullptr, func);
+                                                     func);
         }
       }
       break;

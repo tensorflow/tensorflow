@@ -518,22 +518,33 @@ class BatchNormalizationBase(Layer):
     self.built = True
 
   def _assign_moving_average(self, variable, value, momentum, inputs_size):
+
+    def calculate_update_delta():
+      decay = ops.convert_to_tensor_v2_with_dispatch(
+          1.0 - momentum, name='decay')
+      if decay.dtype != variable.dtype.base_dtype:
+        decay = math_ops.cast(decay, variable.dtype.base_dtype)
+      update_delta = (variable - math_ops.cast(value, variable.dtype)) * decay
+      if inputs_size is not None:
+        update_delta = array_ops.where(inputs_size > 0, update_delta,
+                                       K.zeros_like(update_delta))
+      return update_delta
+
     with K.name_scope('AssignMovingAvg') as scope:
-      with ops.colocate_with(variable):
-        decay = ops.convert_to_tensor_v2_with_dispatch(
-            1.0 - momentum, name='decay')
-        if decay.dtype != variable.dtype.base_dtype:
-          decay = math_ops.cast(decay, variable.dtype.base_dtype)
-        update_delta = (variable - math_ops.cast(value, variable.dtype)) * decay
-        if inputs_size is not None:
-          update_delta = array_ops.where(inputs_size > 0, update_delta,
-                                         K.zeros_like(update_delta))
-        return state_ops.assign_sub(variable, update_delta, name=scope)
+      if ops.executing_eagerly_outside_functions():
+        return variable.assign_sub(calculate_update_delta(), name=scope)
+      else:
+        with ops._colocate_with(variable):  # pylint: disable=protected-access
+          return state_ops.assign_sub(
+              variable, calculate_update_delta(), name=scope)
 
   def _assign_new_value(self, variable, value):
     with K.name_scope('AssignNewValue') as scope:
-      with ops.colocate_with(variable):
-        return state_ops.assign(variable, value, name=scope)
+      if ops.executing_eagerly_outside_functions():
+        return variable.assign(value, name=scope)
+      else:
+        with ops._colocate_with(variable):  # pylint: disable=protected-access
+          return state_ops.assign(variable, value, name=scope)
 
   def _fused_batch_norm(self, inputs, training):
     """Returns the output of fused batch norm."""
@@ -1259,15 +1270,12 @@ class LayerNormalization(Layer):
 
       inputs = array_ops.reshape(inputs, squeezed_shape)
 
-      def _set_const_tensor(val, dtype, shape):
-        return array_ops.fill(shape, constant_op.constant(val, dtype=dtype))
-
       # self.gamma and self.beta have the wrong shape for fused_batch_norm, so
       # we cannot pass them as the scale and offset parameters. Therefore, we
       # create two constant tensors in correct shapes for fused_batch_norm and
       # later construct a separate calculation on the scale and offset.
-      scale = _set_const_tensor(1.0, self.dtype, [pre_dim])
-      offset = _set_const_tensor(0.0, self.dtype, [pre_dim])
+      scale = array_ops.ones([pre_dim], dtype=self.dtype)
+      offset = array_ops.zeros([pre_dim], dtype=self.dtype)
 
       # Compute layer normalization using the fused_batch_norm function.
       outputs, _, _ = nn.fused_batch_norm(

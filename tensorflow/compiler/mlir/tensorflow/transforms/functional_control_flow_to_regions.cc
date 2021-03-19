@@ -63,7 +63,7 @@ YieldOp CreateCall(Operation* op, FuncOp func, Region& caller_region,
   Block* entry = builder.createBlock(&caller_region);
 
   if (use_region_args) {
-    entry->addArguments(args.getType());
+    entry->addArguments(func.getType().getInputs());
     args = entry->getArguments();
   }
   llvm::SmallVector<Value, 4> casted_args;

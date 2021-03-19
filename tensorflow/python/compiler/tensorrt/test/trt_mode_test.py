@@ -125,8 +125,8 @@ class ExplicitBatchTest(TrtModeTestBase):
 
   def setUp(self):
     super().setUp()
-    # Diable implicit batch mode for testing explicit batch mode.
-    self.DisableImplicitBatchMode()
+    self.SetDynamicShapeModeAndProfileStrategy(
+        profile_strategy="ImplicitBatchModeCompatible")
 
 
 class DynamicShapesTest(TrtModeTestBase):
@@ -162,7 +162,9 @@ class DynamicShapesTest(TrtModeTestBase):
 
   def setUp(self):
     super().setUp()
-    self.DisableImplicitBatchMode()
+    self.SetDynamicShapeModeAndProfileStrategy(
+        profile_strategy="ImplicitBatchModeCompatible")
+
 
 if __name__ == "__main__":
   test.main()

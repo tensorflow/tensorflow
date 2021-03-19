@@ -32,7 +32,6 @@ import time
 import weakref
 from six.moves import queue
 
-from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.coordinator import metric_utils
@@ -674,7 +673,7 @@ class WorkerPreemptionHandler(object):
         return
 
       self._validate_preemption_failure(e)
-      logging.error("Worker %s failed with error: %s", worker_device_name, e)
+      logging.error("Worker %s failed with %r:%s", worker_device_name, e, e)
       if on_failure_fn:
         on_failure_fn()
 
@@ -728,10 +727,10 @@ class WorkerPreemptionHandler(object):
         except Exception as e:  # pylint: disable=broad-except
           try:
             self._validate_preemption_failure(e)
-          except Exception as e:  # pylint: disable=broad-except
+          except Exception as ps_e:  # pylint: disable=broad-except
             # In this case, a parameter server fails. So we raise this error to
             # the caller of `wait_on_failure`.
-            self._error_from_recovery = e
+            self._error_from_recovery = ps_e
             self._worker_up_cond.notify_all()
             if self._should_preemption_thread_run:
               self._cluster_due_for_update_or_finish.clear()
@@ -825,13 +824,20 @@ class Worker(object):
     time.sleep(delay_secs)
 
   def _process_queue(self):
-    """Function running in a thread to process closure queues."""
+    """Function running in a worker thread to process closure queues."""
     self._maybe_delay()
     while self._should_worker_thread_run:
       closure = self._cluster._closure_queue.get()  # pylint: disable=protected-access
       if not self._should_worker_thread_run or closure is None:
         return
       self._process_closure(closure)
+      # To properly stop the worker and preemption threads, it is important that
+      # `ClusterCoordinator` object is not held onto so its `__del__` can be
+      # called. By removing the reference to the `closure` that has already been
+      # processed, we ensure that the `closure` object is released, while
+      # getting the next `closure` at above `self._cluster._closure_queue.get()`
+      # call.
+      del closure
 
   def _create_resource(self, function, args=None, kwargs=None):
     """Synchronously creates a per-worker resource represented by a `RemoteValue`.
@@ -1242,9 +1248,9 @@ class ClusterCoordinator(object):
       a `tf.distribute.experimental.coordinator.PerWorkerValues` of the
       iterators (that are on the workers).
     """
-    input_workers = input_lib.InputWorkers([
-        (w.device_name, [w.device_name]) for w in self._cluster.workers
-    ])
+    input_workers = input_lib.InputWorkers(
+        [(w.device_name, [w.device_name]) for w in self._cluster.workers],
+        False)
 
     return _PerWorkerDistributedDataset(dataset_fn, input_workers, self)
 
@@ -1376,16 +1382,23 @@ class _PerWorkerDistributedDataset(object):
     # Setting type_spec of each RemoteValue so that functions taking these
     # RemoteValues as inputs can be traced.
     for iterator_remote_value in per_worker_iterator._values:
-      iterator_remote_value._type_spec = (  # pylint: disable=protected-access
-          iterator_ops.IteratorSpec(
-              self._dataset_fn.structured_outputs.element_spec))
+      iterator_remote_value._type_spec = (
+          input_lib.get_iterator_spec_from_dataset(
+              self._coordinator.strategy, self._dataset_fn.structured_outputs))
+
     return _PerWorkerDistributedIterator(per_worker_iterator._values)
 
   @property
   def element_spec(self):
-    """The type specification of an element of this dataset."""
-    raise NotImplementedError("Passing `AsyncDistributedDataset` to a "
-                              "tf.function is not supported.")
+    """The type specification of an element of this dataset.
+
+    This property is subject to change without notice.
+    """
+    if not isinstance(self._dataset_fn, tf_function.ConcreteFunction):
+      raise NotImplementedError(
+          "`element_spec` is not supported when the `dataset_fn` is not "
+          "a `ConcreteFunction`.")
+    return self._dataset_fn.structured_outputs.element_spec
 
 
 class _PerWorkerDistributedIterator(PerWorkerValues):

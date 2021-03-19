@@ -148,6 +148,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         strings::StrCat(DebugString(), " does not yet support serialization."));
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->clear();
+    return Status::OK();
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
@@ -288,13 +293,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                            bool* end_of_sequence) override {
       VLOG(3) << "Calling GetNext in data service dataset op";
       mutex_lock l(mu_);
-      if (!task_thread_manager_ && !cancelled_) {
-        task_thread_manager_ =
-            ctx->StartThread("task-thread-manager", [this, ctx]() {
-              TaskThreadManager(absl::make_unique<IteratorContext>(*ctx));
-            });
-      }
-
+      EnsureThreadsStarted(ctx);
       bool skip = true;
       while (skip) {
         while ((results_.empty() || !results_.front().ready) &&
@@ -415,11 +414,21 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       bool skip TF_GUARDED_BY(&Iterator::mu_) = false;
     };
 
+    void EnsureThreadsStarted(IteratorContext* ctx)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (!task_thread_manager_ && !cancelled_) {
+        auto new_ctx = std::make_shared<IteratorContext>(*ctx);
+        task_thread_manager_ =
+            ctx->StartThread("task-thread-manager",
+                             [this, new_ctx]() { TaskThreadManager(new_ctx); });
+      }
+    }
+
     // Periodically refresh the task list.
     // Maintain one thread fetching elements for each task.
     // TODO(aaudibert): Instead of polling, have dispatcher send updates when
     // the list of tasks changes.
-    void TaskThreadManager(std::unique_ptr<IteratorContext> ctx) {
+    void TaskThreadManager(std::shared_ptr<IteratorContext> ctx) {
       auto cleanup =
           gtl::MakeCleanup([] { VLOG(1) << "Task thread manager exiting"; });
       VLOG(1) << "Starting task thread manager";

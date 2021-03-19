@@ -620,20 +620,15 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
     }
     auto iter = op_attrs.find(attr.first);
     if (iter == op_attrs.end()) {
-      // A common cause of this error is that TensorFlow has made a
-      // backwards-compatible change to the NodeDef (e.g., adding a
-      // new attr with a default value), but the binary consuming the
-      // NodeDef does not know about the new attribute; the solution
-      // in these cases is to ensure that the binary consuming the
-      // NodeDef is built with a version of TensorFlow no earlier than
-      // the binary producing it.
-      return errors::InvalidArgument(
-          "NodeDef mentions attr '", attr.first, "' not in ",
-          SummarizeOpDef(op_def),
-          "; NodeDef: ", FormatNodeDefForError(node_def),
-          ". (Check whether your GraphDef-interpreting binary is up to date "
-          "with your GraphDef-generating binary.).");
+      LOG_EVERY_N_SEC(ERROR, 5)
+          << "NodeDef mentions attribute " << attr.first
+          << " which is not in the op definition: " << SummarizeOpDef(op_def)
+          << " This may be expected if your graph generating binary is newer "
+          << " than this binary. Unknown attributes will be ignored."
+          << " NodeDef: " << FormatNodeDefForError(node_def);
+      continue;
     }
+
     // If attr value is placeholder, do not check it.
     if (attr.second.placeholder().empty()) {
       TF_RETURN_WITH_CONTEXT_IF_ERROR(
@@ -641,6 +636,7 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
           "; NodeDef: ", FormatNodeDefForError(node_def), "; ",
           SummarizeOpDef(op_def));
     }
+
     // Keep track of which attr names have (not) been found in the NodeDef.
     op_attrs.erase(iter);
   }

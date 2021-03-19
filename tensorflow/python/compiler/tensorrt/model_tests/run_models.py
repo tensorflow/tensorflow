@@ -26,6 +26,8 @@ from absl import logging
 from tensorflow.python.compiler.tensorrt import trt_convert as trt
 from tensorflow.python.compiler.tensorrt.model_tests import model_handler
 from tensorflow.python.compiler.tensorrt.model_tests import result_analyzer
+from tensorflow.python.eager import context
+from tensorflow.python.framework import config as framework_config
 from tensorflow.python.framework import ops as framework_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test as platform_test
@@ -68,6 +70,11 @@ flags.DEFINE_float(
     "Log errors whenever mean TensorRT relative difference is larger than "
     "the tolerance.")
 
+flags.DEFINE_integer(
+    "gpu_memory_limit_mb", None,
+    "Limitation on the device memory being used during TensorRT compilation "
+    "and inference.")
+
 flags.DEFINE_string("output_dir", None, "Output directory of analysis results.")
 
 flags.DEFINE_enum("output_format", "CSV", ["CSV", "JSON"],
@@ -77,6 +84,15 @@ DEFAUL_TRT_CONVERT_PARAMS = trt.DEFAULT_TRT_CONVERSION_PARAMS
 
 
 # pylint: disable=bad-whitespace
+def set_up_gpu_memory_limit(memory_limit_mb: int) -> None:
+  gpus = framework_config.list_physical_devices("GPU")
+  virtual_device_config = context.LogicalDeviceConfiguration(
+      memory_limit=memory_limit_mb)
+  for gpu in gpus:
+    framework_config.set_logical_device_configuration(gpu,
+                                                      [virtual_device_config])
+
+
 class SampleRunner(object):
   """The driver to run all sample models in all specified configurations."""
 
@@ -179,6 +195,9 @@ def main(argv):
   else:
     logging.info("Running in TF1 mode. Eager execution is disabled.")
     framework_ops.disable_eager_execution()
+
+  if FLAGS.gpu_memory_limit_mb:
+    set_up_gpu_memory_limit(FLAGS.gpu_memory_limit_mb)
 
   analyzer = result_analyzer.ResultAnalyzer(
       use_cpu_latency_baseline=FLAGS.latency_baseline == "CPU",

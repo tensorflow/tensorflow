@@ -46,7 +46,6 @@ py_library(
     name = "discretization",
     srcs = [
         "discretization.py",
-        "discretization_v1.py",
     ],
     srcs_version = "PY3",
     deps = [
@@ -147,7 +146,6 @@ py_library(
     name = "index_lookup",
     srcs = [
         "index_lookup.py",
-        "index_lookup_v1.py",
     ],
     srcs_version = "PY3",
     deps = [
@@ -169,7 +167,6 @@ py_library(
     name = "normalization",
     srcs = [
         "normalization.py",
-        "normalization_v1.py",
     ],
     srcs_version = "PY3",
     deps = [
@@ -191,7 +188,6 @@ py_library(
     name = "integer_lookup",
     srcs = [
         "integer_lookup.py",
-        "integer_lookup_v1.py",
     ],
     srcs_version = "PY3",
     deps = [
@@ -229,7 +225,6 @@ py_library(
     name = "text_vectorization",
     srcs = [
         "text_vectorization.py",
-        "text_vectorization_v1.py",
     ],
     srcs_version = "PY3",
     deps = [
@@ -300,7 +295,6 @@ py_library(
     name = "string_lookup",
     srcs = [
         "string_lookup.py",
-        "string_lookup_v1.py",
     ],
     srcs_version = "PY3",
     deps = [

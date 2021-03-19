@@ -58,12 +58,15 @@ tensorflow::Status SetTpuOpsStructFns(void* library_handle) {
   TFTPU_SET_FN(ops_api_fn, TpuProgram_SerializeCompilerMetadata);
   TFTPU_SET_FN(ops_api_fn,
                TpuProgram_DeserializeFromGetTpuProgramResponseProto);
+  TFTPU_SET_FN(ops_api_fn, TpuProgram_GetFingerprint);
+  TFTPU_SET_FN(ops_api_fn, TpuProgram_DestroyFingerprint);
 
   TFTPU_SET_FN(ops_api_fn, TpuNodeContext_Create);
   TFTPU_SET_FN(ops_api_fn, TpuNodeContext_Free);
   TFTPU_SET_FN(ops_api_fn, TpuNodeContext_Initialize);
   TFTPU_SET_FN(ops_api_fn, TpuNodeContext_StopChipHeartbeats);
   TFTPU_SET_FN(ops_api_fn, TpuNodeContext_CloseTpuHost);
+  TFTPU_SET_FN(ops_api_fn, TpuNodeContext_CompactionSupported);
 
   TFTPU_SET_FN(ops_api_fn, TpuTopology_AvailableCoreCount);
   TFTPU_SET_FN(ops_api_fn, TpuNetUtil_RecycleUnusedPort);
@@ -80,6 +83,12 @@ tensorflow::Status SetTpuOpsStructFns(void* library_handle) {
   TFTPU_SET_FN(ops_api_fn, TpuProfiler_CollectData);
 
   TFTPU_SET_FN(ops_api_fn, TfTpu_InitializeTpuModelServer);
+
+  TFTPU_SET_FN(ops_api_fn, TfTpuOrdinalSelector_Create);
+  TFTPU_SET_FN(ops_api_fn, TfTpuOrdinalSelector_Destroy);
+  TFTPU_SET_FN(ops_api_fn, TfTpuOrdinalSelector_GetOrdinal);
+  TFTPU_SET_FN(ops_api_fn, TfTpuOrdinalSelector_DequeueFromCoreSelector);
+  TFTPU_SET_FN(ops_api_fn, TfTpu_GetTpuPartitionedCallParams);
 
   return tensorflow::Status::OK();
 }

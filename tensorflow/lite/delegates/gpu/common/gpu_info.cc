@@ -403,6 +403,15 @@ bool GpuInfo::IsRoundToNearestSupported() const {
   if (IsApple()) {
     return apple_info.IsRoundToNearestSupported();
   }
+  if (IsAdreno()) {
+    if (adreno_info.IsAdreno1xx() || adreno_info.IsAdreno2xx() ||
+        adreno_info.IsAdreno3xx()) {
+      return false;
+    }
+  }
+  if (IsPowerVR()) {
+    return false;
+  }
   return true;
 }
 
@@ -651,6 +660,15 @@ uint64_t GpuInfo::GetMaxImage3DDepth() const {
 uint64_t GpuInfo::GetMaxBufferSize() const {
   if (IsApiOpenCl()) {
     return opencl_info.buffer_max_size;
+  } else if (IsApiMetal()) {
+    return metal_info.buffer_max_size;
+  }
+  return 128 * 1024 * 1024;
+}
+
+uint64_t GpuInfo::GetMaxMemoryAllocationSize() const {
+  if (IsApiOpenCl()) {
+    return opencl_info.max_allocation_size;
   } else if (IsApiMetal()) {
     return metal_info.buffer_max_size;
   }

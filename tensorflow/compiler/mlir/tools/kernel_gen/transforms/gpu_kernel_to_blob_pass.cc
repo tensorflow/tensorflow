@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/Target/LLVMIR.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -153,6 +152,8 @@ class GpuKernelToBlobPass
     xla::HloModuleConfig config;
     xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
     options.set_xla_gpu_ftz(enable_ftz_);
+    // Make sure we use full precision division operations.
+    (*options.mutable_xla_backend_extra_options())["-nvptx-prec-divf32"] = "2";
     config.set_debug_options(options);
 
     auto enable_fusion = [](llvm::TargetMachine* target) {
@@ -221,8 +222,7 @@ class GpuKernelToBlobPass
 
     // TODO(b/169870789): Revisit the use of fatbins.
     // Bundle cubin and PTX images into a single fatbin.
-    return tensorflow::se::BundleGpuAsm(images,
-                                        gpu_asm_opts.preferred_cuda_dir);
+    return tensorflow::se::BundleGpuAsm(images, gpu_asm_opts);
 #endif
 
     return InternalError(

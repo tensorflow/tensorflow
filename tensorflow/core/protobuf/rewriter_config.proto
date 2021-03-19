@@ -106,6 +106,8 @@ message RewriterConfig {
   Toggle auto_mixed_precision_mkl = 25;
   // Disable the entire meta optimizer (off by default).
   bool disable_meta_optimizer = 19;
+  // Optimizers registered by plugin (default is ON)
+  Toggle use_plugin_optimizers = 28;
 
   // Controls how many times we run the optimizers in meta optimizer (default
   // is once).

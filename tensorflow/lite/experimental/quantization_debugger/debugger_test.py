@@ -17,7 +17,9 @@
 import csv
 import io
 
+from unittest import mock
 from absl.testing import parameterized
+
 import numpy as np
 import tensorflow as tf
 
@@ -27,6 +29,13 @@ from tensorflow.lite.python import lite
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import tracking
+
+# pylint: disable=g-import-not-at-top
+try:
+  from tensorflow.lite.python import metrics_portable as metrics
+except ImportError:
+  from tensorflow.lite.python import metrics_nonportable as metrics
+# pylint: enable=g-import-not-at-top
 
 
 def _get_model():
@@ -131,9 +140,10 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
     expected_values = expected_metrics.copy()
     expected_values.update({
         'op_name': 'CONV_2D',
-        'op_idx': 7 if quantized_io else 8,
+        'tensor_idx': 7 if quantized_io else 8,
         'scales': [0.15686275],
         'zero_points': [-128],
+        'tensor_name': 'Identity' if quantized_io else 'Identity4'
     })
     for key, value in expected_values.items():
       if isinstance(value, str):
@@ -223,6 +233,15 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
   )
   def test_get_quant_params(self, tensor_detail, expected_value):
     self.assertEqual(debugger._get_quant_params(tensor_detail), expected_value)
+
+  @mock.patch.object(metrics.TFLiteMetrics,
+                     'increase_counter_debugger_creation')
+  def test_quantization_debugger_creation_counter(self, increase_call):
+    debug_model = QuantizationDebuggerTest.debug_model_float
+    debugger.QuantizationDebugger(
+        quant_debug_model_content=debug_model,
+        debug_dataset=_calibration_gen)
+    increase_call.assert_called_once()
 
 
 if __name__ == '__main__':

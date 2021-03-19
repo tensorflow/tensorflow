@@ -24,9 +24,9 @@ import os
 import sys
 import warnings
 
+from absl import app
 import six
 from six.moves import zip
-# Needed to enable TF2 by default.
 import tensorflow as tf  # pylint: disable=unused-import
 
 from tensorflow.lite.python import lite
@@ -35,8 +35,9 @@ from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.lite.toco.logging import gen_html
 from tensorflow.python import tf2
 from tensorflow.python.framework import dtypes
-from tensorflow.python.platform import app
 from tensorflow.python.util import keras_deps
+
+# Needed to enable TF2 by default.
 
 
 def _parse_array(values, type_fn=str):
@@ -580,8 +581,8 @@ def _get_tf2_flags(parser):
       help=("Enables the TensorFlow V1 converter in 2.0"))
 
 
-class _ParseExperimentalNewConverter(argparse.Action):
-  """Helper class to parse --experimental_new_converter argument."""
+class _ParseBooleanFlag(argparse.Action):
+  """Helper class to parse boolean flag that optionally accepts truth value."""
 
   def __init__(self, option_strings, dest, nargs=None, **kwargs):
     if nargs != "?":
@@ -589,25 +590,26 @@ class _ParseExperimentalNewConverter(argparse.Action):
       # nargs="?".
       raise ValueError(
           "This parser only supports nargs='?' (0 or 1 additional arguments)")
-    super(_ParseExperimentalNewConverter, self).__init__(
+    super(_ParseBooleanFlag, self).__init__(
         option_strings, dest, nargs=nargs, **kwargs)
 
   def __call__(self, parser, namespace, values, option_string=None):
     if values is None:
-      # Handling `--experimental_new_converter`.
+      # Handling `--boolean_flag`.
       # Without additional arguments, it implies enabling the new converter.
-      experimental_new_converter = True
+      flag_value = True
     elif values.lower() == "true":
-      # Handling `--experimental_new_converter=true`.
+      # Handling `--boolean_flag=true`.
       # (Case insensitive after the equal sign)
-      experimental_new_converter = True
+      flag_value = True
     elif values.lower() == "false":
-      # Handling `--experimental_new_converter=false`.
+      # Handling `--boolean_flag=false`.
       # (Case insensitive after the equal sign)
-      experimental_new_converter = False
+      flag_value = False
     else:
-      raise ValueError("Invalid --experimental_new_converter argument.")
-    setattr(namespace, self.dest, experimental_new_converter)
+      raise ValueError("Invalid argument to --{}. Must use flag alone,"
+                       " or specify true/false.".format(self.dest))
+    setattr(namespace, self.dest, flag_value)
 
 
 def _get_parser(use_v2_converter):
@@ -634,16 +636,17 @@ def _get_parser(use_v2_converter):
 
   parser.add_argument(
       "--experimental_new_converter",
-      action=_ParseExperimentalNewConverter,
+      action=_ParseBooleanFlag,
       nargs="?",
       help=("Experimental flag, subject to change. Enables MLIR-based "
             "conversion instead of TOCO conversion. (default True)"))
 
   parser.add_argument(
       "--experimental_new_quantizer",
-      action="store_true",
+      action=_ParseBooleanFlag,
+      nargs="?",
       help=("Experimental flag, subject to change. Enables MLIR-based "
-            "quantizer instead of flatbuffer conversion. (default False)"))
+            "quantizer instead of flatbuffer conversion. (default True)"))
   return parser
 
 

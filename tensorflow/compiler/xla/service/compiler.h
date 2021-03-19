@@ -77,7 +77,6 @@ class AotCompilationOptions {
 
   virtual int64 replica_count() const { return 0; }
   virtual int64 num_cores() const { return 0; }
-  virtual bool broadcast_replicated_params() const { return false; }
   virtual bool use_spmd_partitioning() const { return false; }
   virtual bool deduplicate_hlo() const { return false; }
 
@@ -297,6 +296,10 @@ class Compiler {
     return [shape_size](const BufferValue& buffer) {
       return shape_size(buffer.shape());
     };
+  }
+
+  virtual Shape DeviceShapeRepresentation(const Shape& shape) const {
+    return shape;
   }
 
  private:

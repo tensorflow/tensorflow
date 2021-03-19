@@ -83,6 +83,7 @@ py_binary(
         "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "@absl_py//absl:app",
         "@six_archive//:six",
     ],
 )

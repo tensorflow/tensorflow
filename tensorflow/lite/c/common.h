@@ -84,7 +84,8 @@ typedef struct TfLiteIntArray {
 // https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
 #if (!defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
      __GNUC_MINOR__ >= 1) ||                                      \
-    defined(HEXAGON) || (__clang_major__ == 7 && __clang_minor__ == 1)
+    defined(HEXAGON) ||                                           \
+    (defined(__clang__) && __clang_major__ == 7 && __clang_minor__ == 1)
   int data[0];
 #else
   int data[];
@@ -374,6 +375,17 @@ typedef struct TfLiteCustomAllocation {
   void* data;
   size_t bytes;
 } TfLiteCustomAllocation;
+
+// The flags used in `Interpreter::SetCustomAllocationForTensor`.
+// Note that this is a bitmask, so the values should be 1, 2, 4, 8, ...etc.
+typedef enum TfLiteCustomAllocationFlags {
+  kTfLiteCustomAllocationFlagsNone = 0,
+  // Skips checking whether allocation.data points to an aligned buffer as
+  // expected by the TFLite runtime.
+  // NOTE: Setting this flag can cause crashes when calling Invoke().
+  // Use with caution.
+  kTfLiteCustomAllocationFlagsSkipAlignCheck = 1,
+} TfLiteCustomAllocationFlags;
 
 // A tensor in the interpreter system which is a wrapper around a buffer of
 // data including a dimensionality (or NULL if not currently defined).

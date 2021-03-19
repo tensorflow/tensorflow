@@ -163,7 +163,6 @@ class OutputEdgeValidator {
   bool operator()(const Edge* out_edge) const;
 };
 
-int64_t TrtWeightDimsNumElements(const nvinfer1::Dims& dims);
 int64_t TrtTensorDimsNumElements(const nvinfer1::Dims& dims);
 
 // Class to convert TF compile-time constants (e.g. Const nodes) to TRT weight.
@@ -192,7 +191,15 @@ class TRT_ShapedWeights {
   template <typename T>
   Status SetValues(T value);
 
-  int64_t count() const;
+  Status SetShape(nvinfer1::Dims dims);
+
+  // Returns total number of elements. Returning 0 means either some dim is 0
+  // or the number of dims is 0. Note that a TF scalar constant is marked as
+  // Dims{0, {1}}, and has a count() == 1.
+  int64_t count() const { return count(shape_); }
+
+  // Returns the total number of elements in a weight with shape dims.
+  static int64_t count(nvinfer1::Dims dims);
 
   size_t size_bytes() const;
 
@@ -212,6 +219,11 @@ class TRT_ShapedWeights {
   nvinfer1::DataType TrtDType() const { return type_; }
 
   // TODO(aaroey): make these private.
+  // Before TRT 6, scalar weights are not supported. In that case a TF scalar
+  // constant tensor is represented via TRT_ShapedWeights::shape_ = {1,{1}}.
+  //
+  // Starting TRT 6, scalar weights are supported, a scalar constant tensor is
+  // represented via TRT_ShapedWeights::shape_ = {0, {1}}.
   nvinfer1::Dims shape_;  // Note: shape.type[] is not used.
 
  private:
@@ -558,10 +570,12 @@ class Converter {
   // This can be achieved by calling DynamicReshape(input, {{2,4},{0,2}},
   // params).
   //
-  // Before each slice we can insert a new dim if the corresponding
+  // Before each slice we can insert new dims if the corresponding
   // size_for_added_dims element is not negative. The size_for_added_dims array
   // can have more than slices.size() elements, in order to insert a dimension
-  // ater the last slice.
+  // after the last slice. For example, to add two leading 1 dimensions, and
+  // three trailing 1 dimensions, call DynamicReshape(input, {{0,nbDims}},
+  // {2, 3}).
   //
   // Parameters:
   // input - input tensor

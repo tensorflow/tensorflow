@@ -106,25 +106,10 @@ class _ErrorMetadata(error_utils.ErrorMetadataBase):
       message = self.get_message()
       init_args = tuple(init_argspec.args)
       # At the time of this writing, TF errors either take 3 or 4 arguments,
-      # with the fourth being error_code.
-      if init_args == ('self', 'node_def', 'op', 'message', 'error_code'):
-        return preferred_type(
-            node_def=source_error.node_def,
-            op=source_error.op,
-            message=message,
-            error_code=self.error_code)
-      elif init_args == ('self', 'node_def', 'op', 'message'):
-        if 'error_code' in init_argspec.kwonlyargs:
-          return preferred_type(
-              node_def=source_error.node_def,
-              op=source_error.op,
-              message=message,
-              errro_code=self.error_code)
-        else:
-          return preferred_type(
-              node_def=source_error.node_def,
-              op=source_error.op,
-              message=message)
+      # the argument '*args' may or may not be used.
+      if init_args == ('self', 'node_def', 'op', 'message'):
+        return preferred_type(source_error.node_def, source_error.op, message,
+                              source_error.experimental_payloads)
 
     elif preferred_type in (errors.PyCTError, AutoGraphError, ConversionError,
                             StagingError, errors_impl.InaccessibleTensorError,
@@ -159,8 +144,8 @@ def _attach_error_metadata(e, f):
 
   cause_tb = traceback.extract_tb(sys.exc_info()[2])[1:]
 
-  e.ag_error_metadata = _ErrorMetadata(
-      cause_tb, metadata, message, source_map, __file__)
+  e.ag_error_metadata = _ErrorMetadata(cause_tb, metadata, message, source_map,
+                                       __file__)
 
 
 class StackTraceMapper(tf_stack.StackTraceMapper):
@@ -312,11 +297,7 @@ def is_autograph_artifact(entity):
   return hasattr(entity, 'autograph_info__')
 
 
-def converted_call(f,
-                   args,
-                   kwargs,
-                   caller_fn_scope=None,
-                   options=None):
+def converted_call(f, args, kwargs, caller_fn_scope=None, options=None):
   """Converts a function call inline.
 
   For internal use only.
@@ -437,8 +418,7 @@ def converted_call(f,
     return _fall_back_unconverted(f, args, kwargs, options, e)
 
   if not hasattr(target_entity, '__code__'):
-    logging.log(2, 'Permanently allowed: %s: native binding',
-                target_entity)
+    logging.log(2, 'Permanently allowed: %s: native binding', target_entity)
     return _call_unconverted(f, args, kwargs, options)
   elif (hasattr(target_entity.__code__, 'co_filename') and
         target_entity.__code__.co_filename == '<string>'):
@@ -611,6 +591,7 @@ def tf_convert(f, ctx, convert_by_default=True, user_requested=False):
 
 def call_with_unspecified_conversion_status(func):
   """Decorator that resets the conversion context to the unspecified status."""
+
   def wrapper(*args, **kwargs):
     with ag_ctx.ControlStatusCtx(status=ag_ctx.Status.UNSPECIFIED):
       return func(*args, **kwargs)

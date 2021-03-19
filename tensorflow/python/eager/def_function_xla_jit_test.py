@@ -215,6 +215,8 @@ class DefFunctionTest(xla_test.XLATestCase):
       with self.assertRaisesRegex(errors.InvalidArgumentError, 'COMMENT2'):
         fn(inputs)
 
+  @test_util.disable_mlir_bridge('TODO(b/181176476): Wrong stack trace for '
+                                 'failed legalization in MLIR bridge')
   def testPythonStackTraceControlFlow(self):
     if 'tpu' in self.device.lower():
       self.skipTest('XLA TPU supports tf.unique')
@@ -407,8 +409,6 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       z()
 
-  @test_util.disable_mlir_bridge('TODO(b/162271237): argmax gives different'
-                                 ' results in MLIR-based bridge')
   def testArgMinMax(self):
     with ops.device('device:{}:0'.format(self.device)):
 
@@ -578,7 +578,6 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       self.assertEqual(inner_retracings, 1)
 
-  @test_util.disable_mlir_bridge('b/180951174')
   def testUpdateVariable(self):
     with ops.device('device:{}:0'.format(self.device)):
 
@@ -621,8 +620,6 @@ class DefFunctionTest(xla_test.XLATestCase):
       outer()
       self.assertAllClose(c.v, 3.52)
 
-  @test_util.disable_mlir_bridge('TODO(b/162801728): MLIR bridge causes '
-                                 ' invalid free on TPUs')
   def testUpdateVariableMultipleOutputs(self):
     with ops.device('device:{}:0'.format(self.device)):
       v = variables.Variable(3.1)

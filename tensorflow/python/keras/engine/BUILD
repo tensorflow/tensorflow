@@ -75,7 +75,6 @@ py_library(
         "//tensorflow/python/keras/mixed_precision:loss_scale_optimizer",
         "//tensorflow/python/keras/mixed_precision:policy",
         "//tensorflow/python/keras/saving",
-        "//tensorflow/python/keras/utils:control_flow_util",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:metrics_utils",
         "//tensorflow/python/keras/utils:mode_keys",
@@ -186,7 +185,6 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/keras/utils:control_flow_util",
         "//tensorflow/python/keras/utils:dataset_creator",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:tf_utils",
@@ -224,7 +222,6 @@ py_library(
     name = "base_preprocessing_layer",
     srcs = [
         "base_preprocessing_layer.py",
-        "base_preprocessing_layer_v1.py",
     ],
     srcs_version = "PY3",
     deps = [

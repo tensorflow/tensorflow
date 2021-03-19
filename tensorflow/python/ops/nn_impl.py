@@ -287,10 +287,22 @@ def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
 
   `logits` and `labels` must have the same type and shape.
 
+  >>> labels = tf.constant([1., 0.5, 0.])
+  >>> logits = tf.constant([1.5, -0.1, -10.])
+  >>> tf.nn.weighted_cross_entropy_with_logits(
+  ...     labels=labels, logits=logits, pos_weight=tf.constant(1.5)).numpy()
+  array([3.0211994e-01, 8.8049585e-01, 4.5776367e-05], dtype=float32)
+  >>> tf.nn.weighted_cross_entropy_with_logits(
+  ...     labels=labels, logits=logits, pos_weight=tf.constant(0.5)).numpy()
+  array([1.00706644e-01, 5.08297503e-01, 4.57763672e-05], dtype=float32)
+
   Args:
-    labels: A `Tensor` of the same type and shape as `logits`.
-    logits: A `Tensor` of type `float32` or `float64`.
-    pos_weight: A coefficient to use on the positive examples.
+    labels: A `Tensor` of the same type and shape as `logits`, with values
+      between 0 and 1 inclusive.
+    logits: A `Tensor` of type `float32` or `float64`, any real numbers.
+    pos_weight: A coefficient to use on the positive examples, typically a
+      scalar but otherwise broadcastable to the shape of `logits`. Its value
+      should be non-negative.
     name: A name for the operation (optional).
 
   Returns:
@@ -604,7 +616,8 @@ def normalize(tensor, ord="euclidean", axis=None, name=None):
     return normalized, norm
 
 
-@tf_export(v1=["math.l2_normalize", "linalg.l2_normalize", "nn.l2_normalize"])
+@tf_export("math.l2_normalize", "linalg.l2_normalize", "nn.l2_normalize",
+           v1=["math.l2_normalize", "linalg.l2_normalize", "nn.l2_normalize"])
 @dispatch.add_dispatch_support
 @deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
@@ -617,40 +630,12 @@ def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
   For `x` with more dimensions, independently normalizes each 1-D slice along
   dimension `axis`.
 
-  Args:
-    x: A `Tensor`.
-    axis: Dimension along which to normalize.  A scalar or a vector of
-      integers.
-    epsilon: A lower bound value for the norm. Will use `sqrt(epsilon)` as the
-      divisor if `norm < sqrt(epsilon)`.
-    name: A name for this operation (optional).
-    dim: Deprecated alias for axis.
-
-  Returns:
-    A `Tensor` with the same shape as `x`.
-  """
-  axis = deprecated_argument_lookup("axis", axis, "dim", dim)
-  return l2_normalize_v2(x, axis, epsilon, name)
-
-
-@tf_export("math.l2_normalize", "linalg.l2_normalize", "nn.l2_normalize", v1=[])
-@dispatch.add_dispatch_support
-def l2_normalize_v2(x, axis=None, epsilon=1e-12, name=None):
-  """Normalizes along dimension `axis` using an L2 norm.
-
-  For a 1-D tensor with `axis = 0`, computes
-
-      output = x / sqrt(max(sum(x**2), epsilon))
-
-  For `x` with more dimensions, independently normalizes each 1-D slice along
-  dimension `axis`.
-
-  * 1-D tensor example:
+  1-D tensor example:
   >>> x = tf.constant([3.0, 4.0])
   >>> tf.math.l2_normalize(x).numpy()
   array([0.6, 0.8], dtype=float32)
 
-  * 2-D tensor example:
+  2-D tensor example:
   >>> x = tf.constant([[3.0], [4.0]])
   >>> tf.math.l2_normalize(x, 0).numpy()
   array([[0.6],
@@ -668,10 +653,12 @@ def l2_normalize_v2(x, axis=None, epsilon=1e-12, name=None):
     epsilon: A lower bound value for the norm. Will use `sqrt(epsilon)` as the
       divisor if `norm < sqrt(epsilon)`.
     name: A name for this operation (optional).
+    dim: Deprecated, do not use.
 
   Returns:
     A `Tensor` with the same shape as `x`.
   """
+  axis = deprecated_argument_lookup("axis", axis, "dim", dim)
   with ops.name_scope(name, "l2_normalize", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
     if x.dtype.is_complex:

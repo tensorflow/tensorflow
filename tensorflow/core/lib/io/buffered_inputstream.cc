@@ -60,25 +60,32 @@ Status BufferedInputStream::ReadLineHelper(StringType* result,
                                            bool include_eol) {
   result->clear();
   Status s;
+  size_t start_pos = pos_;
   while (true) {
     if (pos_ == limit_) {
+      result->append(buf_.data() + start_pos, pos_ - start_pos);
       // Get more data into buffer
       s = FillBuffer();
       if (limit_ == 0) {
         break;
       }
+      start_pos = pos_;
     }
-    char c = buf_[pos_++];
+    char c = buf_[pos_];
     if (c == '\n') {
+      result->append(buf_.data() + start_pos, pos_ - start_pos);
       if (include_eol) {
         result->append(1, c);
       }
+      pos_++;
       return Status::OK();
     }
     // We don't append '\r' to *result
-    if (c != '\r') {
-      result->append(1, c);
+    if (c == '\r') {
+      result->append(buf_.data() + start_pos, pos_ - start_pos);
+      start_pos = pos_ + 1;
     }
+    pos_++;
   }
   if (errors::IsOutOfRange(s) && !result->empty()) {
     return Status::OK();

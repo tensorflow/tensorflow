@@ -202,6 +202,54 @@ TEST(Status, ErasePayloadRemovesIt) {
   ASSERT_EQ(s.GetPayload("Error key"), tensorflow::StringPiece());
 }
 
+TEST(Status, GetAllPayloads) {
+  Status s_error(error::INTERNAL, "Error message");
+  s_error.SetPayload("Error key", "foo");
+  auto payloads_error_status = s_error.GetAllPayloads();
+  ASSERT_EQ(payloads_error_status.size(), 1);
+  ASSERT_EQ(payloads_error_status["Error key"], "foo");
+
+  Status s_ok = Status();
+  auto payloads_ok_status = s_ok.GetAllPayloads();
+  ASSERT_TRUE(payloads_ok_status.empty());
+}
+
+TEST(Status, OKStatusReplaceAllPayloadsFromErrorStatus) {
+  // An OK status will should not change after ReplaceAllPayloads() calls.
+  Status s_error(error::INTERNAL, "Error message");
+  s_error.SetPayload("Error key", "foo");
+  Status s_ok = Status();
+
+  s_ok.ReplaceAllPayloads(s_error.GetAllPayloads());
+  auto payloads_ok_status = s_ok.GetAllPayloads();
+  ASSERT_TRUE(payloads_ok_status.empty());
+}
+
+TEST(Status, ErrorStatusReplaceAllPayloadsFromOKStatus) {
+  // An ReplaceAllPayloads() call should not take effect from empty inputs.
+  Status s_error(error::INTERNAL, "Error message");
+  s_error.SetPayload("Error key", "foo");
+  Status s_ok = Status();
+
+  s_error.ReplaceAllPayloads(s_ok.GetAllPayloads());
+  ASSERT_EQ(s_error.GetPayload("Error key"), "foo");
+}
+
+TEST(Status, ErrorStatusReplaceAllPayloadsFromErrorStatus) {
+  Status s_error1(error::INTERNAL, "Error message");
+  s_error1.SetPayload("Error key 1", "foo");
+  s_error1.SetPayload("Error key 2", "bar");
+  Status s_error2(error::INTERNAL, "Error message");
+  s_error2.SetPayload("Error key", "bar");
+  ASSERT_EQ(s_error2.GetPayload("Error key"), "bar");
+
+  s_error2.ReplaceAllPayloads(s_error1.GetAllPayloads());
+  ASSERT_EQ(s_error2.GetPayload("Error key 1"), "foo");
+  ASSERT_EQ(s_error2.GetPayload("Error key 2"), "bar");
+  auto payloads_error_status = s_error2.GetAllPayloads();
+  ASSERT_EQ(payloads_error_status.size(), 2);
+}
+
 static void BM_TF_CHECK_OK(::testing::benchmark::State& state) {
   tensorflow::Status s = (state.max_iterations < 0)
                              ? errors::InvalidArgument("Invalid")

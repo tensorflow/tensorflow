@@ -169,6 +169,12 @@ class HloRunnerInterface {
       std::function<int64(int64)> argument_count_provider,
       std::function<const Literal*(int64, int64)> argument_provider,
       const ReplicatedExecuteOptions& options) = 0;
+
+  typedef std::function<Shape(const Shape&)> DeviceShapeRepresentationFn;
+
+ protected:
+  void UpdateEntryComputationLayout(
+      HloModule* module, DeviceShapeRepresentationFn shape_representation_fn);
 };
 
 }  // namespace xla
