@@ -122,5 +122,13 @@ GENERATE_DEFAULT_TEST(Square, DT_COMPLEX64, DT_COMPLEX64, baseline_square,
 GENERATE_DEFAULT_TEST(Square, DT_COMPLEX128, DT_COMPLEX128, baseline_square,
                       test::OpsTestConfig().NoBufferReuse())
 
+/// Test `tf.Tan`.
+GENERATE_DEFAULT_TEST(Tan, DT_HALF, DT_HALF, Eigen::numext::tan,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Tan, DT_FLOAT, DT_FLOAT, Eigen::numext::tan,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Tan, DT_DOUBLE, DT_DOUBLE, Eigen::numext::tan,
+                      test::OpsTestConfig().NoBufferReuse())
+
 }  // namespace
 }  // namespace tensorflow
