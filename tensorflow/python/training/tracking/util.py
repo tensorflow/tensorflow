@@ -666,6 +666,7 @@ class _LoadStatus(object):
     return self
 
 
+@tf_export("__internal__.tracking.streaming_restore", v1=[])
 def streaming_restore(status, session=None):
   """When graph building, runs restore ops as soon as they come in.
 

@@ -25,10 +25,10 @@ import time
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.ops import snapshot
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.kernel_tests import tf_record_test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.framework import combinations
@@ -51,29 +51,29 @@ def listdir_and_filter(dirname, filter_fn):
   return [path for path in sorted(os.listdir(dirname)) if filter_fn(path)]
 
 
-class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
-                          parameterized.TestCase):
+class SnapshotTest(tf_record_test_base.TFRecordTestBase,
+                   parameterized.TestCase):
 
   def setUp(self):
-    super(SnapshotDatasetTest, self).setUp()
+    super(SnapshotTest, self).setUp()
     tmpdir = self.get_temp_dir()
     tmpdir = os.path.join(tmpdir, "snapshot")
     os.mkdir(tmpdir)
     self._snapshot_dir = tmpdir
 
   def tearDown(self):
-    super(SnapshotDatasetTest, self).tearDown()
+    super(SnapshotTest, self).tearDown()
     shutil.rmtree(self._snapshot_dir)
 
   def createTFRecords(self, num_files=10, num_records=100):
     self._num_files = num_files
     self._num_records = num_records
-    self._test_filenames = self._createFiles()
+    self._filenames = self._createFiles()
 
   def removeTFRecords(self):
-    for filename in self._test_filenames:
+    for filename in self._filenames:
       os.remove(filename)
-    self._test_filenames = []
+    self._filenames = []
     self._num_files = None
     self._num_records = None
 
@@ -124,7 +124,7 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
   @combinations.generate(test_base.default_test_combinations())
   def testReadSnapshotDatasetDefault(self):
     self.createTFRecords()
-    filenames = self._test_filenames
+    filenames = self._filenames
     expected = [
         b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
         for f in range(0, 10)
@@ -148,7 +148,7 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
   @combinations.generate(test_base.default_test_combinations())
   def testReadSnapshotDatasetAutoWriteSnappyRead(self):
     self.createTFRecords()
-    filenames = self._test_filenames
+    filenames = self._filenames
     expected = [
         b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
         for f in range(0, 10)
@@ -169,7 +169,7 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
   @combinations.generate(test_base.default_test_combinations())
   def testReadSnapshotDatasetCustomShardFn(self):
     self.createTFRecords()
-    filenames = self._test_filenames
+    filenames = self._filenames
     expected = [
         b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
         for f in range(0, 10)
@@ -195,7 +195,7 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
   @combinations.generate(test_base.default_test_combinations())
   def testReadSnapshotDatasetCustomReaderFn(self):
     self.createTFRecords()
-    filenames = self._test_filenames
+    filenames = self._filenames
     expected = [
         b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
         for f in range(0, 10)
@@ -414,12 +414,11 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
         num_snapshot_shards_per_run=multiprocessing.cpu_count())
 
 
-class LegacySnapshotDatasetTest(
-    reader_dataset_ops_test_base.TFRecordDatasetTestBase,
-    parameterized.TestCase):
+class LegacySnapshotTest(tf_record_test_base.TFRecordTestBase,
+                         parameterized.TestCase):
 
   def setUp(self):
-    super(LegacySnapshotDatasetTest, self).setUp()
+    super(LegacySnapshotTest, self).setUp()
     self.removeTFRecords()
     tmpdir = self.get_temp_dir()
     tmpdir = os.path.join(tmpdir, "snapshot")
@@ -427,18 +426,18 @@ class LegacySnapshotDatasetTest(
     self.snapshot_dir = tmpdir
 
   def tearDown(self):
-    super(LegacySnapshotDatasetTest, self).tearDown()
+    super(LegacySnapshotTest, self).tearDown()
     shutil.rmtree(self.snapshot_dir)
 
   def removeTFRecords(self):
-    for filename in self.test_filenames:
+    for filename in self._filenames:
       os.remove(filename)
-    self.test_filenames = []
+    self._filenames = []
 
   def setUpTFRecord(self, num_files=10, num_records=10):
     self._num_files = num_files
     self._num_records = num_records
-    self.test_filenames = self._createFiles()
+    self._filenames = self._createFiles()
 
   def makeSnapshotDirectory(self):
     return self.snapshot_dir
@@ -682,7 +681,7 @@ class LegacySnapshotDatasetTest(
           ])))
   def testReadSnapshotBackAfterWrite(self, compression):
     self.setUpTFRecord()
-    filenames = self.test_filenames
+    filenames = self._filenames
 
     expected = [
         b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
@@ -707,7 +706,7 @@ class LegacySnapshotDatasetTest(
   @combinations.generate(test_base.default_test_combinations())
   def testReadShuffledSnapshotAfterWrite(self):
     self.setUpTFRecord(num_files=10, num_records=50)
-    filenames = self.test_filenames
+    filenames = self._filenames
 
     expected = [
         b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
@@ -749,7 +748,7 @@ class LegacySnapshotDatasetTest(
   @combinations.generate(test_base.default_test_combinations())
   def testReadShuffledSnapshotWithSeedAfterWrite(self):
     self.setUpTFRecord(num_files=10, num_records=50)
-    filenames = self.test_filenames
+    filenames = self._filenames
 
     expected = [
         b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
@@ -799,7 +798,7 @@ class LegacySnapshotDatasetTest(
           ])))
   def testReadSnapshotParallelAfterWrite(self, compression):
     self.setUpTFRecord(10, 4000)
-    filenames = self.test_filenames
+    filenames = self._filenames
 
     expected = [
         b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
@@ -846,7 +845,7 @@ class LegacySnapshotDatasetTest(
   def testReadSnapshotBackAfterMultiThreadedWrite(self, compression, threads,
                                                   size):
     self.setUpTFRecord()
-    filenames = self.test_filenames
+    filenames = self._filenames
 
     expected = [
         b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
@@ -976,7 +975,7 @@ class LegacySnapshotDatasetTest(
   @combinations.generate(test_base.default_test_combinations())
   def testAdditionalOperationsAfterReadBack(self):
     self.setUpTFRecord()
-    filenames = self.test_filenames
+    filenames = self._filenames
 
     expected = [
         b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
@@ -1008,8 +1007,8 @@ class LegacySnapshotDatasetTest(
     self.assertDatasetProduces(dataset3, expected_after)
 
 
-class SnapshotDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                                    parameterized.TestCase):
+class SnapshotCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                             parameterized.TestCase):
 
   def _build_snapshot_dataset(self, repeat=False):
 
@@ -1098,7 +1097,7 @@ class SnapshotDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         list(range(100)) + list(range(10)) + list(range(10, 100)))
 
 
-class LegacySnapshotDatasetCheckpointTest(
+class LegacySnapshotCheckpointTest(
     checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
 
   def _build_snapshot_dataset(self,

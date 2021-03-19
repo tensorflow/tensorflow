@@ -51,4 +51,9 @@ limitations under the License.
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
+- (void)testSplitDepth {
+  auto status = SplitDepthTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
 @end

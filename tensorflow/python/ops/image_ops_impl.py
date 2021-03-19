@@ -4285,9 +4285,9 @@ def ssim(img1,
 
   Args:
     img1: First image batch. 4-D Tensor of shape `[batch, height, width,
-      channels]`.
+      channels]` with only Positive Pixel Values.
     img2: Second image batch. 4-D Tensor of shape `[batch, height, width,
-      channels]`.
+      channels]` with only Positive Pixel Values.
     max_val: The dynamic range of the images (i.e., the difference between the
       maximum the and minimum allowed values).
     filter_size: Default value 11 (size of gaussian filter).
@@ -4350,8 +4350,9 @@ def ssim_multiscale(img1,
   Computers, 2004.
 
   Args:
-    img1: First image batch.
-    img2: Second image batch. Must have the same rank as img1.
+    img1: First image batch with only Positive Pixel Values.
+    img2: Second image batch with only Positive Pixel Values. Must have the
+    same rank as img1.
     max_val: The dynamic range of the images (i.e., the difference between the
       maximum the and minimum allowed values).
     power_factors: Iterable of weights for each of the scales. The number of
@@ -5547,7 +5548,8 @@ def non_max_suppression_padded_v2(boxes,
         array_ops.gather(array_ops.reshape(sorted_indices, [-1]),
                          gather_idx),
         [batch_size, -1])
-  invalid_index = array_ops.fill([batch_size, max_output_size], 0)
+  invalid_index = array_ops.zeros([batch_size, max_output_size],
+                                  dtype=dtypes.int32)
   idx_index = array_ops.expand_dims(math_ops.range(max_output_size), 0)
   num_valid_expanded = array_ops.expand_dims(num_valid, 1)
   idx = array_ops.where(idx_index < num_valid_expanded,

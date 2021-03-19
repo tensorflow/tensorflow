@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -718,12 +719,17 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
     HloSchedule clone_schedule(module.get());
     for (HloComputation* computation : computations()) {
       if (schedule().is_computation_scheduled(computation)) {
-        HloInstructionSequence& clone_sequence =
-            clone_schedule.GetOrCreateSequence(
-                context.GetComputation(computation));
-        for (const HloInstruction* instruction :
-             schedule().sequence(computation).instructions()) {
-          clone_sequence.push_back(context.GetInstruction(instruction));
+        HloComputation* new_computation = context.FindComputation(computation);
+        // The module being cloned may have computations that are dead, i.e.,
+        // unreachable from the entry computation. In that case, new_computation
+        // is nullptr.
+        if (new_computation != nullptr) {
+          HloInstructionSequence& clone_sequence =
+              clone_schedule.GetOrCreateSequence(new_computation);
+          for (const HloInstruction* instruction :
+               schedule().sequence(computation).instructions()) {
+            clone_sequence.push_back(context.GetInstruction(instruction));
+          }
         }
       }
     }

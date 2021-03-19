@@ -217,14 +217,10 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.cc.inc"
       >();
-  addTypes<
-#define HANDLE_TF_TYPE(tftype, enumerant, name) tftype##Type,
-#define HANDLE_LAST_TF_TYPE(tftype, enumerant, name) tftype##Type
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
-      >();
+  registerTypes();
   addInterfaces<TFInlinerInterface, TFDecodeAttributesInterface,
                 TFConstantFoldInterface>();
-  addAttributes<ShapeAttr, FuncAttr>();
+  registerAttributes();
 
   // Support unknown operations because not all TensorFlow operations are
   // registered.

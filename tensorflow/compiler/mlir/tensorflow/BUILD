@@ -363,6 +363,7 @@ cc_library(
     ],
     hdrs = [
         "ir/tf_attributes.h",
+        "ir/tf_dialect.h",
     ],
     deps = [
         "@llvm-project//llvm:Support",
@@ -389,6 +390,7 @@ cc_library(
     cc_library(
         name = "tensorflow_" + target["name"],
         srcs = [
+            "ir/tf_dialect.h",
             "ir/tf_ops.h",
             "ir/tfrt_ops.h",
             "ir/tf_remaining_ops.h",
@@ -433,6 +435,7 @@ cc_library(
 cc_library(
     name = "tensorflow_remaining_ops",
     srcs = [
+        "ir/tf_dialect.h",
         "ir/tf_ops.h",
         "ir/tf_remaining_ops.h",
         "ir/tf_remaining_ops.cc",
@@ -476,6 +479,7 @@ cc_library(
 cc_library(
     name = "tensorflow_tfrt_ops",
     srcs = [
+        "ir/tf_dialect.h",
         "ir/tf_ops.h",
         "ir/tfrt_ops.h",
         "ir/tfrt_ops.cc",
@@ -519,6 +523,7 @@ cc_library(
 cc_library(
     name = "tensorflow_ops",
     srcs = [
+        "ir/tf_dialect.h",
         "ir/tf_ops.cc",
         "ir/tf_ops.h",
     ],
@@ -592,6 +597,7 @@ cc_library(
         "ir/tf_types.cc",
     ],
     hdrs = [
+        "ir/tf_dialect.h",
         "ir/tf_types.h",
     ],
     textual_hdrs = [
@@ -616,6 +622,7 @@ cc_library(
     hdrs = [
         "dialect_registration.h",
         "ir/tf_device.h",
+        "ir/tf_dialect.h",
         "ir/tf_executor.h",
         "ir/tf_ops.h",
         "ir/tf_saved_model.h",

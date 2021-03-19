@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import json
 import operator
+import os
 
 import numpy as np
 
@@ -35,6 +36,7 @@ from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 
 INT = "int"
@@ -143,9 +145,9 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     # ops do not set shape on their outputs, which means we have to set it
     # ourselves. We persist the current vocab size as a hidden part of the
     # config when serializing our model.
-    if "vocab_size" in kwargs:
-      self._vocab_size = kwargs["vocab_size"]
-      del kwargs["vocab_size"]
+    if "vocabulary_size" in kwargs:
+      self._vocab_size = kwargs["vocabulary_size"]
+      del kwargs["vocabulary_size"]
 
     if max_tokens is not None:
       available_vocab_size = max_tokens - self._token_start_index()
@@ -167,12 +169,16 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       self._value_dtype = self.dtype
       self._mask_key = 0
       self._mask_value = mask_token
+      key_index = lookup_ops.TextFileIndex.LINE_NUMBER
+      value_index = lookup_ops.TextFileIndex.WHOLE_LINE
       default_value = self.oov_token
       oov_indices = None
     else:
       self._key_dtype = self.dtype
       self._value_dtype = dtypes.int64
       self._mask_key = mask_token
+      key_index = lookup_ops.TextFileIndex.WHOLE_LINE
+      value_index = lookup_ops.TextFileIndex.LINE_NUMBER
       # Masks should map to 0 for int output and be dropped otherwise. Max ints
       # will be dropped from the bincount op.
       self._mask_value = 0 if self.output_mode == INT else dtypes.int64.max
@@ -197,13 +203,26 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
         default_value = -1
         oov_indices = list(range(oov_start, token_start))
 
-    if vocabulary is not None and isinstance(vocabulary,
-                                             lookup_ops.TextFileInitializer):
+    if vocabulary is not None and isinstance(vocabulary, str):
+      if not os.path.exists(vocabulary):
+        raise ValueError("Vocabulary file %s does not exist." % vocabulary)
+
+      total_offset = 0 if mask_token is None else 1
+      total_offset += num_oov_indices
+      initializer = lookup_ops.TextFileInitializer(
+          filename=vocabulary,
+          key_dtype=self._key_dtype,
+          key_index=key_index,
+          value_dtype=self._value_dtype,
+          value_index=value_index,
+          value_index_offset=total_offset)
+
       self._table = self._static_table_class()(
-          vocabulary, default_value=default_value)
+          initializer, default_value=default_value)
       self._table_handler = table_utils.TableHandler(
           table=self._table,
-          mask_token=mask_token,
+          mask_token=self._mask_key,
+          mask_value=self._mask_value,
           oov_tokens=oov_indices,
           use_v1_apis=self._use_v1_apis())
       self.max_tokens = (
@@ -295,8 +314,17 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     lookup = collections.defaultdict(lambda: self.oov_token, index_to_token)
     return [lookup[x] for x in range(self._vocab_size)]
 
-  def vocab_size(self):
+  def vocabulary_size(self):
+    """Gets the current size of the layer's vocabulary.
+
+    Returns:
+      The integer size of the voculary, including optional mask and oov indices.
+    """
     return self._vocab_size
+
+  def vocab_size(self):
+    logging.warning("vocab_size is deprecated, please use vocabulary_size.")
+    return self.vocabulary_size()
 
   def get_config(self):
     config = {
@@ -307,7 +335,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
         "mask_token": self.mask_token,
         "output_mode": self.output_mode,
         "pad_to_max_tokens": self.pad_to_max_tokens,
-        "vocab_size": self._vocab_size
+        "vocabulary_size": self._vocab_size
     }
     base_config = super(IndexLookup, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -319,7 +347,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     # abstraction for ease of saving!) we return 0.
     return 0
 
-  def set_vocabulary(self, vocab, idf_weights=None):
+  def set_vocabulary(self, vocabulary, idf_weights=None):
     """Sets vocabulary (and optionally document frequency) data for this layer.
 
     This method sets the vocabulary and idf weights for this layer directly,
@@ -329,7 +357,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     it.
 
     Args:
-      vocab: An array of hashable tokens.
+      vocabulary: An array of hashable tokens.
       idf_weights: An array of inverse document frequency weights with equal
         length to vocab. Only necessary if the layer output_mode is TFIDF.
 
@@ -354,11 +382,11 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     oov_start = self._oov_start_index()
     token_start = self._token_start_index()
     should_have_mask = (oov_start > 0)
-    has_mask = should_have_mask and vocab[0] == self.mask_token
+    has_mask = should_have_mask and vocabulary[0] == self.mask_token
 
     should_have_oov = (self.num_oov_indices > 0)
     expected_oov = [self.oov_token] * self.num_oov_indices
-    found_oov = vocab[oov_start:token_start]
+    found_oov = vocabulary[oov_start:token_start]
     has_oov = should_have_oov and found_oov == expected_oov
     # If we get a numpy array, then has_oov may end up being a numpy array
     # instead of a bool. Fix this by collapsing the variable if it's not bool.
@@ -393,13 +421,13 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
               oov=self.oov_token,
               start=oov_start,
               end=token_start,
-              found=vocab[0]))
+              found=vocabulary[0]))
 
     found_special_tokens = has_oov or has_mask
     if found_special_tokens:
-      tokens = vocab[token_start:]
+      tokens = vocabulary[token_start:]
     else:
-      tokens = vocab
+      tokens = vocabulary
 
     repeated_tokens = table_utils.find_repeated_tokens(tokens)
     if repeated_tokens:
@@ -430,10 +458,10 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     if self.output_mode == TFIDF:
       if idf_weights is None:
         raise ValueError("`idf_weights` must be set if output_mode is TFIDF")
-      if len(vocab) != len(idf_weights):
-        raise ValueError("`idf_weights` must be the same length as vocab. "
-                         "len(idf_weights) is {}, len(vocab) is {}".format(
-                             len(vocab), len(idf_weights)))
+      if len(vocabulary) != len(idf_weights):
+        raise ValueError("`idf_weights` must be the same length as vocabulary. "
+                         "len(idf_weights) is {}, len(vocabulary) is {}".format(
+                             len(vocabulary), len(idf_weights)))
       idf_weights = self._convert_to_ndarray(idf_weights)
       if idf_weights.ndim != 1:
         raise ValueError(

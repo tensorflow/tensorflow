@@ -37,7 +37,8 @@ static xla::StatusOr<xla::LocalExecutable*> GetLocalExecutable(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompileOptions& compile_options,
     const NameAttrList& function, XlaCompilationCache* cache,
-    absl::Span<XlaCompiler::Argument const> args, const XlaCompiler& compiler) {
+    const std::vector<XlaCompiler::Argument>& args,
+    const XlaCompiler& compiler) {
   const XlaCompiler::CompilationResult* compilation_result = nullptr;
   xla::LocalExecutable* executable = nullptr;
   TF_RETURN_IF_ERROR(cache->Compile(options, function, args, compile_options,
@@ -100,12 +101,10 @@ xla::StatusOr<std::string> GetCompilerIr(
       }));
   core::ScopedUnref cache_ref(cache);
 
-  absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
-
   XlaCompiler::Options options =
       GenerateCompilerOptions(*cache, *flr, dev,
                               /*stream=*/nullptr, platform_info,
-                              /*has_ref_vars=*/false, &tf_allocator_adapter);
+                              /*has_ref_vars=*/false);
 
   XlaCompiler::CompileOptions compile_options;
   compile_options.always_return_tuple = false;

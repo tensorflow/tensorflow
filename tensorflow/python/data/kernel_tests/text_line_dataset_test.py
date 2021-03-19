@@ -24,7 +24,6 @@ import zlib
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -41,7 +40,8 @@ except ImportError:
   psutil_import_succeeded = False
 
 
-class TextLineDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
+class TextLineDatasetTestBase(test_base.DatasetTestBase):
+  """Base class for setting up and testing TextLineDataset."""
 
   def _lineText(self, f, l):
     return compat.as_bytes("%d: %d" % (f, l))
@@ -78,6 +78,9 @@ class TextLineDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         raise ValueError("Unsupported compression_type", compression_type)
 
     return filenames
+
+
+class TextLineDatasetTest(TextLineDatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
@@ -182,9 +185,9 @@ class TextLineDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         ds, expected_output=expected_output, assert_items_equal=True)
 
 
-class TextLineDatasetCheckpointTest(
-    reader_dataset_ops_test_base.TextLineDatasetTestBase,
-    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
+class TextLineDatasetCheckpointTest(TextLineDatasetTestBase,
+                                    checkpoint_test_base.CheckpointTestBase,
+                                    parameterized.TestCase):
 
   def _build_iterator_graph(self, test_filenames, compression_type=None):
     return readers.TextLineDataset(

@@ -63,11 +63,6 @@ class PyExecutable {
   StatusOr<std::vector<std::unique_ptr<PyBuffer>>> PjRtExecute(
       const std::vector<PjRtBuffer*>& args);
 
-  // TODO(parkers): Remove in favor of `ExecuteShardedOnLocalDevices`.
-  // args is [num_devices x num_args].
-  StatusOr<std::vector<std::vector<std::unique_ptr<PyBuffer>>>>
-  ExecuteOnLocalDevices(absl::Span<const std::vector<PyBuffer*>> args);
-
   // Takes args indexed by argid then deviceid, transposes them, and passes to
   // PjRtExecutable::Execute. The result is similarly transposed back into the
   // argid,deviceid format.

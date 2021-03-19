@@ -34,7 +34,8 @@ REGISTER(BinaryOp, CPU, "Sub", functor::sub, int32);
 REGISTER8(BinaryOp, GPU, "Sub", functor::sub, float, Eigen::half, double, int64,
           complex64, complex128, uint32, uint64);
 #else
-REGISTER3(BinaryOp, GPU, "Sub", functor::sub, complex64, complex128, uint64);
+REGISTER4(BinaryOp, GPU, "Sub", functor::sub, complex64, complex128, uint64,
+          uint32);
 #endif
 
 // A special GPU kernel for int32.
