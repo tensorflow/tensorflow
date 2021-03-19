@@ -432,8 +432,9 @@ tf_py_test(
 
 tf_py_test(
     name = "map_and_batch_test",
-    size = "medium",
+    size = "small",
     srcs = ["map_and_batch_test.py"],
+    shard_count = 4,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
