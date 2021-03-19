@@ -518,15 +518,20 @@ class HloDynamicBroadcastInDimConverter
   LogicalResult matchAndRewrite(
       mhlo::DynamicBroadcastInDimOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const final {
-    // Convert only if the producer is an HLO constant. Ideally the pattern
-    // (`mhlo.constant` -> `mhlo.dynamic_broadcast_in_dim`) should be converted
-    // to an Tensor-dialect op similar to TF ConstantLikeOp.
-    if (!op.operand().getDefiningOp<mhlo::ConstOp>()) return failure();
+    // If the input has a static shape we know exactly when the broadcast must
+    // expand (the dimension is 1, which also trivially expands to 1) or will
+    // never expand (the dimension is not 1). This means we can lower the
+    // broadcast just as we would lower a fully static broadcast and go directly
+    // to linalg.generic. This also covers the important case of broadcasting a
+    // scalar.
+
+    // Ideally the pattern (`mhlo.constant` -> `mhlo.dynamic_broadcast_in_dim`)
+    // should be converted to an Tensor-dialect op similar to TF ConstantLikeOp.
 
     mhlo::DynamicBroadcastInDimOp::Adaptor adaptor(op);
     Value operand = adaptor.operand();
     auto operand_type = operand.getType().dyn_cast<RankedTensorType>();
-    if (!operand_type || operand_type.getRank() != 0) return failure();
+    if (!operand_type || !operand_type.hasStaticShape()) return failure();
 
     Value shape = adaptor.output_dimensions();
     auto shape_type = shape.getType().cast<RankedTensorType>();
@@ -544,13 +549,27 @@ class HloDynamicBroadcastInDimConverter
     }
 
     int64_t nloops = result_type.getRank();
+    auto operand_shape = operand_type.getShape();
+    SmallVector<AffineExpr, 4> dim_exprs;
+    dim_exprs.reserve(nloops);
+
+    if (op.broadcast_dimensions()) {
+      for (const auto& broadcast_dim :
+           enumerate(op.broadcast_dimensions().getIntValues())) {
+        int64_t size = broadcast_dim.value().getSExtValue();
+        bool expansion_needed = operand_shape[broadcast_dim.index()] == 1;
+        dim_exprs.push_back(expansion_needed ? rewriter.getAffineConstantExpr(0)
+                                             : rewriter.getAffineDimExpr(size));
+      }
+    }
+
     Value init = rewriter.create<linalg::InitTensorOp>(
         loc, dyn_dims, result_type.getShape(), result_type.getElementType());
     Operation* generic = rewriter.create<linalg::GenericOp>(
         loc, TypeRange{init.getType()}, ValueRange{operand},
         /*outputBuffers=*/ValueRange{init},
         llvm::makeArrayRef(
-            {AffineMap::get(/*dimCount=*/nloops, /*symbolCount=*/0, {},
+            {AffineMap::get(/*dimCount=*/nloops, /*symbolCount=*/0, dim_exprs,
                             rewriter.getContext()),
              rewriter.getMultiDimIdentityMap(nloops)}),
         GetNParallelLoopsAttrs(nloops),
