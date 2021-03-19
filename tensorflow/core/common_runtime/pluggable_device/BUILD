@@ -68,6 +68,7 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/c/experimental/grappler",
         "//tensorflow/c/experimental/stream_executor",
         "//tensorflow/c/experimental/stream_executor:stream_executor_internal",
         "//tensorflow/core:core_cpu",

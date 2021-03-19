@@ -138,7 +138,7 @@ REGISTER_GRAPH_OPTIMIZER(GrapplerItemPropertiesAccumulator);
 class MetaOptimizerTest : public GrapplerTest {};
 
 TEST_F(MetaOptimizerTest, RunsCustomOptimizer) {
-  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {kDevice});
   GrapplerItem item;
   ASSERT_TRUE(fake_input.NextItem(&item));
 
@@ -157,7 +157,7 @@ TEST_F(MetaOptimizerTest, RunsCustomOptimizer) {
 }
 
 TEST_F(MetaOptimizerTest, RunsCustomOptimizerWithParams) {
-  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {kDevice});
   GrapplerItem item;
   ASSERT_TRUE(fake_input.NextItem(&item));
 
@@ -178,7 +178,7 @@ TEST_F(MetaOptimizerTest, RunsCustomOptimizerWithParams) {
 }
 
 TEST_F(MetaOptimizerTest, RunsCustomOptimizerAndCustomGraphOptimizer) {
-  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {kDevice});
   GrapplerItem item;
   ASSERT_TRUE(fake_input.NextItem(&item));
 
@@ -200,8 +200,32 @@ TEST_F(MetaOptimizerTest, RunsCustomOptimizerAndCustomGraphOptimizer) {
   EXPECT_TRUE(TestGraphOptimizer::IsOptimized());
 }
 
+TEST_F(MetaOptimizerTest, RunsPluginOptimizer) {
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"/device:GPU:0"});
+  GrapplerItem item;
+  ASSERT_TRUE(fake_input.NextItem(&item));
+
+  TestOptimizer::SetOptimized(false);
+  ConfigProto config_proto;
+  auto& rewriter_config =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
+  rewriter_config.set_min_graph_nodes(-1);
+
+  const auto creator = []() { return new TestOptimizer; };
+  ConfigList config_list;
+  config_list.disable_model_pruning = true;
+  PluginGraphOptimizerRegistry::RegisterPluginOptimizerOrDie(creator, "GPU",
+                                                             config_list);
+
+  MetaOptimizer optimizer(nullptr, config_proto);
+  GraphDef output;
+  const Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  EXPECT_TRUE(TestOptimizer::IsOptimized());
+}
+
 TEST_F(MetaOptimizerTest, RunOptimizersTwice) {
-  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {kDevice});
   GrapplerItem item;
   ASSERT_TRUE(fake_input.NextItem(&item));
 
@@ -218,7 +242,7 @@ TEST_F(MetaOptimizerTest, RunOptimizersTwice) {
 }
 
 TEST_F(MetaOptimizerTest, RunToggleOptimizersAndCustomGraphOptimizerTwice) {
-  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {kDevice});
   GrapplerItem item;
   ASSERT_TRUE(fake_input.NextItem(&item));
 
@@ -712,7 +736,7 @@ class SleepingOptimizer : public CustomGraphOptimizer {
 REGISTER_GRAPH_OPTIMIZER(SleepingOptimizer);
 
 TEST_F(MetaOptimizerTest, OptimizerTimesOut) {
-  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {kDevice});
   GrapplerItem item;
   ASSERT_TRUE(fake_input.NextItem(&item));
 
@@ -735,7 +759,7 @@ TEST_F(MetaOptimizerTest, OptimizerTimesOut) {
 }
 
 TEST_F(MetaOptimizerTest, MetaOptimizerTimesOut) {
-  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {kDevice});
   GrapplerItem item;
   ASSERT_TRUE(fake_input.NextItem(&item));
 
@@ -757,7 +781,7 @@ TEST_F(MetaOptimizerTest, MetaOptimizerTimesOut) {
 }
 
 TEST_F(MetaOptimizerTest, OptimizerDoesNotTimeOut) {
-  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {kDevice});
   GrapplerItem item;
   ASSERT_TRUE(fake_input.NextItem(&item));
 
@@ -778,7 +802,7 @@ TEST_F(MetaOptimizerTest, OptimizerDoesNotTimeOut) {
 }
 
 TEST_F(MetaOptimizerTest, RunPostOptimizationVerifiersOnValidGraph) {
-  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {kDevice});
   GrapplerItem item;
   ASSERT_TRUE(fake_input.NextItem(&item));
 
@@ -796,7 +820,7 @@ TEST_F(MetaOptimizerTest, RunPostOptimizationVerifiersOnValidGraph) {
 }
 
 TEST_F(MetaOptimizerTest, RunInterOptimizerVerifiersOnValidGraph) {
-  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {kDevice});
   GrapplerItem item;
   ASSERT_TRUE(fake_input.NextItem(&item));
 
