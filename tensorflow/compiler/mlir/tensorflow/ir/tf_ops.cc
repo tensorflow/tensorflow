@@ -65,6 +65,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -175,9 +177,15 @@ bool TensorFlowDialect::CanDuplicate(Operation *op) {
   if (auto is_stateless = op->getAttrOfType<BoolAttr>("is_stateless"))
     return is_stateless.getValue();
 
-  // Otherwise, assume ops can be duplicated by default if its registered, else
-  // it cannot be for unknown ops.
-  return op->isRegistered();
+  // Assume ops can be duplicated when the given op is not a stateful op.
+  const tensorflow::OpRegistrationData *op_reg_data = nullptr;
+  tensorflow::Status s = tensorflow::OpRegistry::Global()->LookUp(
+      op->getName().stripDialect().str(), &op_reg_data);
+  if (!s.ok()) {
+    // Assume unknown ops can not be duplicated.
+    return false;
+  }
+  return !op_reg_data->op_def.is_stateful();
 }
 
 // Returns true if the op can have side effects.
