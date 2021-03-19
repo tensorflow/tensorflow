@@ -44,6 +44,17 @@ bool RequireDeterminism() {
   return require_determinism;
 }
 
+bool DisableSoftmaxXentWithLogitsOpDeterminismExceptions() {
+  static bool cached_disable = [] {
+    bool disable = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
+        "TF_DISABLE_SOFTMAX_XENT_WITH_LOGITS_OP_DETERMINISM_EXCEPTIONS",
+        /*default_val=*/false, &disable));
+    return disable;
+  }();
+  return cached_disable;
+}
+
 template <typename Device, typename T>
 class SoftmaxXentWithLogitsOp : public OpKernel {
  public:
@@ -72,9 +83,13 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
                                         "2-dimensional"));
 
     if (std::is_same<Device, GPUDevice>::value) {
-      OP_REQUIRES(context, !RequireDeterminism(), errors::Unimplemented(
-          "Deterministic GPU implementation of SoftmaxCrossEntropyWithLogits"
-          " not available."
+      OP_REQUIRES(
+          context,
+          (!RequireDeterminism() ||
+            DisableSoftmaxXentWithLogitsOpDeterminismExceptions()),
+          errors::Unimplemented(
+              "Deterministic GPU implementation of"
+              " SoftmaxCrossEntropyWithLogits not available."
       ));
     }
 
