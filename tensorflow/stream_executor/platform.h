@@ -126,9 +126,6 @@ class Platform {
   // Returns true iff the platform has been initialized.
   virtual bool Initialized() const;
 
-  // Returns true iff platform is using BFC device memory allocator.
-  virtual bool UseBfcAllocator() { return true; }
-
   // Initializes the platform with a custom set of options. The platform must be
   // initialized before obtaining StreamExecutor objects.  The interpretation of
   // the platform_options argument is implementation specific.  This method may

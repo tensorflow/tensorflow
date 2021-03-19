@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
@@ -116,7 +117,8 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
         pluggable_device_visitors_[bus_id], {});
 
     Allocator* device_allocator = nullptr;
-    if (platform->UseBfcAllocator()) {
+    auto cplatform = dynamic_cast<se::CPlatform*>(platform);
+    if (cplatform->UseBfcAllocator()) {
         device_allocator =
             new PluggableDeviceBFCAllocator(
                 sub_allocator, total_bytes, options,
