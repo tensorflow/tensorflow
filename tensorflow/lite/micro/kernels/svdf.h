@@ -35,6 +35,17 @@ struct OpData {
   int output_zero_point;
 };
 
+// Input tensors.
+constexpr int kInputTensor = 0;
+constexpr int kWeightsFeatureTensor = 1;
+constexpr int kWeightsTimeTensor = 2;
+constexpr int kBiasTensor = 3;
+// This is a variable tensor, and will be modified by this op.
+constexpr int kInputActivationStateTensor = 4;
+
+// Output tensor.
+constexpr int kOutputTensor = 0;
+
 // TensorflowLite Micro-specific reference implementation for Integer SVDF.
 void EvalIntegerSvdfReference(TfLiteContext* context, TfLiteNode* node,
                               const TfLiteEvalTensor* input_tensor,
@@ -53,6 +64,8 @@ void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
                    const TfLiteEvalTensor* bias, const TfLiteSVDFParams* params,
                    int scratch_tensor_index, TfLiteEvalTensor* activation_state,
                    TfLiteEvalTensor* output);
+
+TfLiteStatus PrepareSVDF(TfLiteContext* context, TfLiteNode* node);
 
 }  // namespace tflite
 
