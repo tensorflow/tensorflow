@@ -1779,6 +1779,7 @@ class Stream {
   Stream &ThenRnnForward(const dnn::RnnDescriptor &rnn_desc,
                          const dnn::RnnSequenceTensorDescriptor &input_desc,
                          const DeviceMemory<Eigen::half> &input_data,
+                         const DeviceMemory<int> &seq_lengths_data,
                          const dnn::RnnStateTensorDescriptor &input_h_desc,
                          const DeviceMemory<Eigen::half> &input_h_data,
                          const dnn::RnnStateTensorDescriptor &input_c_desc,
@@ -1798,6 +1799,7 @@ class Stream {
   Stream &ThenRnnForward(const dnn::RnnDescriptor &rnn_desc,
                          const dnn::RnnSequenceTensorDescriptor &input_desc,
                          const DeviceMemory<float> &input_data,
+                         const DeviceMemory<int> &seq_lengths_data,
                          const dnn::RnnStateTensorDescriptor &input_h_desc,
                          const DeviceMemory<float> &input_h_data,
                          const dnn::RnnStateTensorDescriptor &input_c_desc,
@@ -1816,6 +1818,7 @@ class Stream {
   Stream &ThenRnnForward(const dnn::RnnDescriptor &rnn_desc,
                          const dnn::RnnSequenceTensorDescriptor &input_desc,
                          const DeviceMemory<double> &input_data,
+                         const DeviceMemory<int> &seq_lengths_data,
                          const dnn::RnnStateTensorDescriptor &input_h_desc,
                          const DeviceMemory<double> &input_h_data,
                          const dnn::RnnStateTensorDescriptor &input_c_desc,
@@ -1837,6 +1840,7 @@ class Stream {
       const dnn::RnnDescriptor &rnn_desc,
       const dnn::RnnSequenceTensorDescriptor &input_desc,
       const DeviceMemory<Eigen::half> &input_data,
+      const DeviceMemory<int> &seq_lengths_data,
       const dnn::RnnStateTensorDescriptor &input_h_desc,
       const DeviceMemory<Eigen::half> &input_h_data,
       const dnn::RnnStateTensorDescriptor &input_c_desc,
@@ -1862,6 +1866,7 @@ class Stream {
   Stream &ThenRnnBackward(const dnn::RnnDescriptor &rnn_desc,
                           const dnn::RnnSequenceTensorDescriptor &input_desc,
                           const DeviceMemory<float> &input_data,
+                          const DeviceMemory<int> &seq_lengths_data,
                           const dnn::RnnStateTensorDescriptor &input_h_desc,
                           const DeviceMemory<float> &input_h_data,
                           const dnn::RnnStateTensorDescriptor &input_c_desc,
@@ -1887,6 +1892,7 @@ class Stream {
   Stream &ThenRnnBackward(const dnn::RnnDescriptor &rnn_desc,
                           const dnn::RnnSequenceTensorDescriptor &input_desc,
                           const DeviceMemory<double> &input_data,
+                          const DeviceMemory<int> &seq_lengths_data,
                           const dnn::RnnStateTensorDescriptor &input_h_desc,
                           const DeviceMemory<double> &input_h_data,
                           const dnn::RnnStateTensorDescriptor &input_c_desc,
@@ -1997,7 +2003,7 @@ class Stream {
   Stream &ThenDoHostCallbackWithStatus(std::function<port::Status()> callback);
 
   // Runs the given callback after the next call to BlockHostUntilDone on this
-  // stream (or after the Stream does BlockHostUntilDone iin its destructor).
+  // stream (or after the Stream does BlockHostUntilDone in its destructor).
   // This can act as a faster alternative to ThenDoHostCallbackWithStatus for
   // some use cases.
   Stream &ThenRunAfterNextBlockHostUntilDone(std::function<void()> callback);

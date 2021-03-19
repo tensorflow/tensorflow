@@ -42,7 +42,7 @@ class StreamAssignmentTest : public HloTestBase {
   Shape f32_2x2_ = ShapeUtil::MakeShape(F32, {2, 2});
 };
 
-TEST_F(StreamAssignmentTest, SequentialMatMul) {
+TEST_F(StreamAssignmentTest, DISABLED_SequentialMatMul) {
   HloComputation::Builder builder("entry_computation");
   HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, f32_2x2_, /*name=*/"x"));
@@ -63,7 +63,7 @@ TEST_F(StreamAssignmentTest, SequentialMatMul) {
             assignment->StreamNumberForHlo(*dot2));
 }
 
-TEST_F(StreamAssignmentTest, ConcurrentMatMul) {
+TEST_F(StreamAssignmentTest, DISABLED_ConcurrentMatMul) {
   HloComputation::Builder builder("entry_computation");
   HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, f32_2x2_, /*name=*/"x"));
@@ -84,7 +84,7 @@ TEST_F(StreamAssignmentTest, ConcurrentMatMul) {
             assignment->StreamNumberForHlo(*dot2));
 }
 
-TEST_F(StreamAssignmentTest, LatticeMatMul) {
+TEST_F(StreamAssignmentTest, DISABLED_LatticeMatMul) {
   //      d00      -- layer 0
   //     /   \
   //   d10   d11   -- layer 1

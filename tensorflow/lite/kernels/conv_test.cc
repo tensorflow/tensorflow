@@ -1295,6 +1295,69 @@ TEST_P(ConvolutionOpTest, SimpleTestHybridInt8) {
                                  0.16)));
 }
 
+TEST_P(ConvolutionOpTest, SimpleTestHybridInt8WithDilation) {
+  const int stride_width = 1;
+  const int stride_height = 1;
+  const Padding padding = Padding_VALID;
+  const int dilation_width_factor = 2;
+  const int dilation_height_factor = 1;
+
+  HybridConvolutionOpModel m(
+      GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 1}},
+      {TensorType_INT8, {3, 2, 2, 1}, 0, 0, 4.0 / 127.0, 0},
+      {TensorType_FLOAT32, {}}, stride_width, stride_height, padding,
+      ActivationFunctionType_NONE, dilation_width_factor,
+      dilation_height_factor);
+
+  m.SetInput({
+      // First batch
+      1, 1, 1, 1,  // row = 1
+      2, 2, 2, 2,  // row = 2
+      // Second batch
+      1, 2, 3, 4,  // row = 1
+      1, 2, 3, 4,  // row = 2
+  });
+  m.SetSignedFilter({
+      1, 2, 3, 4,    // first 2x2 filter
+      -1, 1, -1, 1,  // second 2x2 filter
+      -1, -1, 1, 1,  // third 2x2 filter
+  });
+  m.SetBias({1, 2, 3});
+
+  m.Invoke();
+
+  // Example: we get 17.1577 instead of 17.
+  //
+  // Second batch:
+  // 1 2 3 4  -> 32 64 95 127 with scale factor 127/4.
+  // 1 2 3 4     32 64 95 127
+  //
+  // First filter:
+  // 1 2  -> 32 64  with scale factor of 127/4.
+  // 3 4     95 127
+  //
+  // The left half of the input gives us 16288. Multiply by (4/127)^2 for
+  // dequantization and adding 1 for the bias gives us the result. and adding
+  // the bias gives us the result.
+  //
+  // The optimized kernel converts the input into this matrix via Im2Col
+  //
+  // 1 1 2 2
+  // 1 1 2 2
+  // 1 3 1 3
+  // 2 4 2 4
+  //
+  // and multiplies it with the filter directly.
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {
+                                     18, 2, 5,  // first batch, left
+                                     18, 2, 5,  // first batch, right
+                                     23, 6, 3,  // second batch, left
+                                     33, 6, 3,  // second batch, right
+                                 },
+                                 0.16)));
+}
+
 TEST_P(ConvolutionOpTest, SimpleTestHybridInt8Big) {
   // A bigger variant of the simple hybrid test to ensure coverage on
   // optimized paths that are only enabled at larger matrix sizes.

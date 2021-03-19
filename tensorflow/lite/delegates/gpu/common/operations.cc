@@ -86,7 +86,7 @@ std::string ToString(enum OperationType op) {
       return "batched_matmul";
     case OperationType::CONCAT:
       return "concat";
-    case OperationType::CONST:
+    case OperationType::CONSTANT:
       return "const";
     case OperationType::CONVOLUTION_2D:
       return "convolution_2d";
@@ -108,6 +108,8 @@ std::string ToString(enum OperationType op) {
       return "exp";
     case OperationType::FULLY_CONNECTED:
       return "fully_connected";
+    case OperationType::FULLY_CONNECTED_INT8:
+      return "fully_connected_int8";
     case OperationType::GREATER:
       return "greater";
     case OperationType::GREATER_EQUAL:
@@ -176,6 +178,8 @@ std::string ToString(enum OperationType op) {
       return "space_to_batch";
     case OperationType::SPACE_TO_DEPTH:
       return "space_to_depth";
+    case OperationType::SPLIT:
+      return "split";
     case OperationType::SQRT:
       return "sqrt";
     case OperationType::SQUARE:
@@ -201,7 +205,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"batch_normalization", OperationType::BATCH_NORMALIZATION},
           {"batched_matmul", OperationType::BATCHED_MATMUL},
           {"concat", OperationType::CONCAT},
-          {"const", OperationType::CONST},
+          {"const", OperationType::CONSTANT},
           {"convolution_2d", OperationType::CONVOLUTION_2D},
           {"convolution_transposed", OperationType::CONVOLUTION_TRANSPOSED},
           {"copy", OperationType::COPY},
@@ -212,6 +216,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"equal", OperationType::EQUAL},
           {"exp", OperationType::EXP},
           {"fully_connected", OperationType::FULLY_CONNECTED},
+          {"fully_connected_int8", OperationType::FULLY_CONNECTED_INT8},
           {"greater", OperationType::GREATER},
           {"greater_equal", OperationType::GREATER_EQUAL},
           {"hard_swish", OperationType::HARD_SWISH},
@@ -246,6 +251,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"slice", OperationType::SLICE},
           {"softmax", OperationType::SOFTMAX},
           {"space_to_depth", OperationType::SPACE_TO_DEPTH},
+          {"split", OperationType::SPLIT},
           {"sqrt", OperationType::SQRT},
           {"square", OperationType::SQUARE},
           {"squared_diff", OperationType::SQUARED_DIFF},
@@ -807,6 +813,23 @@ BHWDC CalculateOutputShape(const BHWDC& input,
   return BHWDC(input.get(attr.perm.b), input.get(attr.perm.h),
                input.get(attr.perm.w), input.get(attr.perm.d),
                input.get(attr.perm.c));
+}
+
+FullyConnectedAttributes DequatizeFullyConnectedAttr(
+    const FullyConnectedInt8Attributes& attr) {
+  FullyConnectedAttributes dequant_attr;
+  dequant_attr.weights.id = attr.weights.id;
+  dequant_attr.weights.shape = attr.weights.shape;
+  dequant_attr.weights.data.resize(
+      dequant_attr.weights.shape.DimensionsProduct());
+  dequant_attr.bias = attr.bias;
+
+  // weights dequantization to float32
+  for (int i = 0; i < attr.weights.data.size(); i++) {
+    const int32_t val = attr.weights.data[i];
+    dequant_attr.weights.data[i] = attr.scale * (val - attr.zero_point);
+  }
+  return dequant_attr;
 }
 
 }  // namespace gpu

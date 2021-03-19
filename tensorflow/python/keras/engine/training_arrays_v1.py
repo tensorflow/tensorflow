@@ -66,7 +66,7 @@ def model_iteration(model,
                     **kwargs):
   """Loop function for arrays of data with modes TRAIN/TEST/PREDICT.
 
-  Arguments:
+  Args:
       model: Keras Model instance.
       inputs: Either a list or dictionary of arrays, or a dataset instance.
       targets: List/dictionary of input arrays.
@@ -486,7 +486,7 @@ def _get_num_samples_or_steps(ins, batch_size, steps_per_epoch):
 def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   """Prepare feed values to the model execution function.
 
-  Arguments:
+  Args:
     model: Model to prepare feed values for.
     inputs: List or dict of model inputs.
     targets: Optional list of model targets.

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -1321,31 +1322,33 @@ HloConstantInstruction::CloneWithNewOperandsImpl(
 string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
     const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
-  string operands;
+  if (options.print_only_essential_constants()) {
+    if (!literal_.has_value()) {
+      return "{...}";
+    }
+    if (literal().IsAll(0)) {
+      return "0";
+    }
+    if (literal().IsAll(1)) {
+      return "1";
+    }
+    if (shape().IsInteger()) {
+      return literal_->ToStringWithoutShapeOneline();
+    }
+    return "{...}";
+  }
+
   // For constants, show the actual value in place of an empty operand list.
   if (literal_.has_value() &&
       ((shape().IsArray() && ShapeUtil::ElementsIn(shape()) <= 10) ||
        options.print_large_constants())) {
     // Literal::ToString emits multidimensional arrays over multiple
     // lines. Compact this into one line by stripping out white space.
-    string tmp = literal().ToStringWithoutShape();
-    std::replace(tmp.begin(), tmp.end(), '\n', ' ');
-    std::vector<string> v = absl::StrSplit(tmp, ' ');
-    bool first = true;
-    // Concatenate elements in "v" with spaces separating them, but ignoring
-    // empty entries.
-    for (const auto& s : v) {
-      if (s.empty()) {
-        continue;
-      }
-      StrAppend(&operands, (first ? "" : " "), s);
-      first = false;
-    }
+    return literal_->ToStringWithoutShapeOneline();
   } else {
     // Do not show large constants or tuples.
-    operands = "{...}";
+    return "{...}";
   }
-  return operands;
 }
 
 HloTraceInstruction::HloTraceInstruction(const string& tag,
@@ -1397,6 +1400,29 @@ HloFusionInstruction::HloFusionInstruction(
   SetAndSanitizeName("fusion");
   AppendComputation(fusion_computation);
   fusion_computation->SetFusionInstruction(this);
+}
+
+HloFusionInstruction::~HloFusionInstruction() {
+  ClearFusionComputationInstruction();
+}
+
+void HloFusionInstruction::ClearFusionComputationInstruction() {
+  // Each fusion calls a single computation, but we use called_computations()
+  // instead of fused_instructions_computation(), because the order in which
+  // things get destructed can vary; the fusion computation's back-pointer may
+  // already be null, which violates a check in fused_instructions_computation.
+  for (HloComputation* computation : called_computations()) {
+    // Some passes that rewrite fusions may reassign a fusion computation to a
+    // different fusion instruction as this instruction gets destructed.
+    if (computation->FusionInstruction() == this) {
+      computation->SetFusionInstruction(nullptr);
+    }
+  }
+}
+
+void HloFusionInstruction::ClearCalledComputations() {
+  ClearFusionComputationInstruction();
+  HloInstruction::ClearCalledComputations();
 }
 
 string HloFusionInstruction::ToCategory() const {
@@ -2074,7 +2100,7 @@ HloInstructionProto HloInfeedInstruction::ToProto() const {
 
 std::vector<string> HloInfeedInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  if (infeed_config_.empty()) {
+  if (!options.print_infeed_outfeed_config() || infeed_config_.empty()) {
     return {};
   }
   return {StrCat("infeed_config=\"", CEscape(infeed_config_), "\"")};
@@ -2116,10 +2142,14 @@ HloInstructionProto HloOutfeedInstruction::ToProto() const {
 
 std::vector<string> HloOutfeedInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  if (outfeed_config_.empty()) {
-    return {};
+  std::vector<string> extra;
+  extra.push_back(StrCat("outfeed_shape=",
+                         ShapeUtil::HumanStringWithLayout(outfeed_shape_)));
+  if (options.print_infeed_outfeed_config() && !outfeed_config_.empty()) {
+    extra.push_back(
+        StrCat("outfeed_config=\"", CEscape(outfeed_config_), "\""));
   }
-  return {StrCat("outfeed_config=\"", CEscape(outfeed_config_), "\"")};
+  return extra;
 }
 
 bool HloOutfeedInstruction::IdenticalSlowPath(
@@ -2285,9 +2315,13 @@ std::unique_ptr<HloInstruction>
 HloReduceWindowInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  CHECK_EQ(new_operands.size(), 2);
+  CHECK_EQ(new_operands.size() % 2, 0);
+  int64 num_operands = new_operands.size() / 2;
   return absl::make_unique<HloReduceWindowInstruction>(
-      shape, new_operands[0], new_operands[1], window(), to_apply());
+      shape, absl::MakeSpan(new_operands).subspan(0, num_operands),
+      absl::MakeSpan(new_operands)
+          .subspan(num_operands, new_operands.size() / 2),
+      window(), to_apply());
 }
 
 HloSelectAndScatterInstruction::HloSelectAndScatterInstruction(
@@ -2433,6 +2467,9 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
     }
   }
   proto.set_custom_call_has_side_effect(custom_call_has_side_effect_);
+  if (literal_.has_value()) {
+    *proto.mutable_literal() = literal_->ToProto();
+  }
   for (const auto& pair : output_to_operand_aliasing_) {
     auto aliasing = proto.add_custom_call_output_operand_aliasing();
     aliasing->set_operand_index(pair.second.first);
@@ -2486,6 +2523,9 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
   }
   if (custom_call_has_side_effect_) {
     extra.push_back("custom_call_has_side_effect=true");
+  }
+  if (literal_.has_value()) {
+    extra.push_back(StrCat("literal=(", literal_->ToStringOneline(), ")"));
   }
   if (!output_to_operand_aliasing_.empty()) {
     std::vector<string> pair_strings;
@@ -2563,6 +2603,13 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
       return false;
     }
   }
+  if (HasLiteral() == casted_other.HasLiteral()) {
+    if (HasLiteral() && literal() == casted_other.literal()) {
+      return false;
+    }
+  } else {
+    return true;
+  }
 
   // Note: backend_config comparison is done in Identical, which is the
   // intended/exposed way to compare computations, and so not repeated here.
@@ -2584,6 +2631,9 @@ HloCustomCallInstruction::CloneWithNewOperandsImpl(
   }
   if (convolution_dimension_numbers_ != nullptr) {
     cloned->set_convolution_dimension_numbers(*convolution_dimension_numbers_);
+  }
+  if (HasLiteral()) {
+    cloned->set_literal(literal().Clone());
   }
   cloned->set_feature_group_count(feature_group_count_);
   cloned->set_batch_group_count(batch_group_count_);

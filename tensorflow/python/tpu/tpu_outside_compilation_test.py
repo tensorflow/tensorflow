@@ -37,7 +37,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -582,6 +581,36 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
     self.assertLen(events, 2)
     self.assertEqual(events[1].summary.value[0].tag, "x")
 
+  def testNestedFunctionScalarSummary(self):
+    strategy = get_tpu_strategy()
+
+    def host_computation(x):
+      scalar_summary_v2.scalar("x", x, step=0)
+      return x * 2.0
+
+    @def_function.function
+    def step():
+
+      @def_function.function
+      def computation(x):
+        x = x + 1.0
+        y = host_computation(x)
+        return y + 1.0
+
+      return strategy.run(computation, args=(2.0,))
+
+    logdir = tempfile.mkdtemp()
+    summary_writer = summary.create_file_writer(logdir, flush_millis=10000)
+    with summary_writer.as_default(), summary.always_record_summaries():
+      self.assertAllEqual(
+          strategy.experimental_local_results(step()),
+          constant_op.constant(7., shape=(strategy.num_replicas_in_sync)))
+    events = _events_from_logdir(self, logdir)
+    # There will be 2 entries: 1 summary file header entry, and 1 entry
+    # written by host.
+    self.assertLen(events, 2)
+    self.assertEqual(events[1].summary.value[0].tag, "x")
+
   def testHistogramSummaryWithAutoOutsideCompilation(self):
     strategy = get_tpu_strategy()
 
@@ -649,9 +678,6 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
       self.assertLen(events, 2)
       self.assertEqual(events[1].summary.value[0].tag, "cond/x")
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/168493455): Reenable this test once deadlock resolved."
-  )
   def testAutoOutsideCompilationWithFunctionalNodes(self):
     strategy = get_tpu_strategy()
 
@@ -687,10 +713,6 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
     self.assertAllEqual(
         strategy.experimental_local_results(train_step())[0].shape, [1, 2, 3])
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/167235391): Reenable this test once function calls are handled "
-      "by MLIR bridge."
-  )
   def testOutsideCompilationWithTPUPartitionedCallOp(self):
     """Tests that control flow with TPUPartitionedCall including outside_compilation works."""
     get_tpu_strategy()

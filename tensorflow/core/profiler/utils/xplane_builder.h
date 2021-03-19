@@ -23,11 +23,13 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
+#include "tensorflow/core/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -189,14 +191,22 @@ class XEventBuilder : public XStatsBuilder<XEvent> {
   void SetDurationPs(int64 duration_ps) {
     event_->set_duration_ps(duration_ps);
   }
-
   void SetDurationNs(int64 duration_ns) {
     SetDurationPs(NanosToPicos(duration_ns));
   }
 
+  void SetEndTimestampPs(int64 end_timestamp_ps) {
+    SetDurationPs(end_timestamp_ps - PicosToNanos(line_->timestamp_ns()) -
+                  event_->offset_ps());
+  }
   void SetEndTimestampNs(int64 end_timestamp_ns) {
     SetDurationPs(NanosToPicos(end_timestamp_ns - line_->timestamp_ns()) -
                   event_->offset_ps());
+  }
+
+  Timespan GetTimespan() const {
+    return Timespan(NanosToPicos(line_->timestamp_ns()) + event_->offset_ps(),
+                    event_->duration_ps());
   }
 
  private:
@@ -217,6 +227,7 @@ class XLineBuilder {
 
   int64 NumEvents() const { return line_->events_size(); }
 
+  absl::string_view Name() const { return line_->name(); }
   void SetName(absl::string_view name) { line_->set_name(std::string(name)); }
 
   void SetNameIfEmpty(absl::string_view name) {
@@ -262,6 +273,7 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
   int64 Id() const { return plane_->id(); }
   void SetId(int64 id) { plane_->set_id(id); }
 
+  absl::string_view Name() const { return plane_->name(); }
   void SetName(absl::string_view name) { plane_->set_name(std::string(name)); }
 
   void ReserveLines(size_t num_lines) {
@@ -299,6 +311,13 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
   XEventMetadata* GetOrCreateEventMetadata(const char* name) {
     return GetOrCreateEventMetadata(absl::string_view(name));
   }
+
+  // Returns event metadata with the given name. Returns nullptr if not found.
+  XEventMetadata* GetEventMetadata(absl::string_view name);
+
+  // Returns event metadata ID with the give name. Returns absl::nullopt if not
+  // found.
+  absl::optional<int64> GetEventMetadataId(absl::string_view name);
 
   // Returns a new stat metadata with an automatically generated metadata_id.
   // WARNING: If calling this function, don't call GetOrCreateEventMetadata.

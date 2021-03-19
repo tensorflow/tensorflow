@@ -93,7 +93,8 @@ def TFR_singleTensorType : Type<Or<[
 // all allowed build list input types
 def TFR_allowedBuiltListType : Type<Or<[
     TFR_TensorType.predicate,
-    TF_ElementType.predicate]>, "single tfr.tensor or tensor element type">;
+    TF_ElementType.predicate,
+    TFR_AttrType.predicate]>, "single tfr.tensor or tensor element type">;
 
 // all allowed build list result types
 def TFR_allowedListResultType : Type<Or<[
@@ -266,7 +267,7 @@ def TFR_ConstOp : TFR_Op<"constant", [ConstantLike, NoSideEffect]> {
   let hasFolder = 1;
 
   let builders = [
-    OpBuilderDAG<(ins "Attribute":$value),
+    OpBuilder<(ins "Attribute":$value),
     [{
       auto* ctx = value.getContext();
       $_state.addAttribute("value", value);
@@ -349,6 +350,30 @@ def TFR_BuildListOp : TFR_Op<"build_list", [NoSideEffect]> {
   let hasCanonicalizer = 1;
 }
 
+def TFR_GetLengthOp : TFR_Op<"get_length", [NoSideEffect]> {
+  let description = [{
+    The `get_length` operation returns the number of tensors for a
+    tfr.tensor_list.
+
+    Example:
+
+    ```mlir
+    %2 = tfr.get_length(%1) : tfr.tensor -> index
+    %2 = tfr.get_length %1 -> index
+    ```
+  }];
+
+  let arguments = (ins TFR_TensorListType:$tensor_list);
+
+  let results = (outs Index:$out);
+
+  let hasCanonicalizer = 1;
+
+  let assemblyFormat = [{
+    $tensor_list attr-dict `->` type($out)
+  }];
+}
+
 //===----------------------------------------------------------------------===//
 // Function related classes
 //===----------------------------------------------------------------------===//
@@ -400,7 +425,7 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
   let skipDefaultBuilders = 1;
 
   let builders = [
-    OpBuilderDAG<(ins "StringRef":$name, "FunctionType":$type,
+    OpBuilder<(ins "StringRef":$name, "FunctionType":$type,
       CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>
   ];
 
@@ -411,6 +436,22 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
     // Hooks for the input/output type enumeration in FunctionLike .
     unsigned getNumFuncArguments() { return getType().getNumInputs(); }
     unsigned getNumFuncResults() { return getType().getNumResults(); }
+
+    // Get the names of all defined attributes, including both derived and
+    // non-derived ones.
+    llvm::StringSet<> getDefinedAttributeNames() {
+      llvm::StringSet<> all_attrs;
+      for (auto& attr : (*this)->getAttrs()) {
+        all_attrs.insert(attr.first.strref());
+      }
+      for (const auto& operand : llvm::enumerate(getType().getInputs())) {
+        if (auto attr_name = getArgAttrOfType<StringAttr>(
+            operand.index(), kAttrArgumentNameAttr)) {
+          all_attrs.insert(attr_name.getValue());
+        }
+      }
+      return all_attrs;
+    }
   }];
 
   let verifier = [{ return Verify(*this); }];

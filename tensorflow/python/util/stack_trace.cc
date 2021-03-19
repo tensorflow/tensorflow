@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/python/util/stack_trace.h"
 
+#include <limits>
+
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/stringpiece.h"
 
@@ -39,16 +41,39 @@ const char* GetPythonString(PyObject* o) {
 
 namespace tensorflow {
 
-std::vector<StackFrame> StackTrace::ToStackFrames() const {
+std::vector<StackFrame> StackTrace::ToStackFrames(
+    const StackTraceMap& mapper, const StackTraceFilter& filtered,
+    bool reverse_traversal, int limit) const {
+  DCheckPyGilStateForStackTrace();
   std::vector<StackFrame> result;
   result.reserve(code_objs_.size());
 
-  for (int i = code_objs_.size() - 1; i >= 0; --i) {
-    const char* file_name = GetPythonString(code_objs_[i]->co_filename);
-    const int line_number =
-        PyCode_Addr2Line(code_objs_[i], last_instructions_[i]);
-    result.emplace_back(StackFrame{file_name, line_number,
-                                   GetPythonString(code_objs_[i]->co_name)});
+  if (limit == -1) limit = std::numeric_limits<int>::max();
+
+  for (int i = 0; i < code_objs_.size(); i++) {
+    int idx = reverse_traversal ? i : code_objs_.size() - 1 - i;
+
+    const std::pair<PyCodeObject*, int>& code_obj = code_objs_[idx];
+    const char* file_name = GetPythonString(code_obj.first->co_filename);
+    const int line_number = PyCode_Addr2Line(code_obj.first, code_obj.second);
+
+    if (filtered && filtered(file_name)) {
+      continue;
+    }
+
+    absl::optional<StackFrame> mapped =
+        mapper ? mapper(std::make_pair(file_name, line_number)) : absl::nullopt;
+
+    if (mapped) {
+      result.push_back(*mapped);
+    } else {
+      result.emplace_back(StackFrame{file_name, line_number,
+                                     GetPythonString(code_obj.first->co_name)});
+    }
+
+    if (result.size() == limit) {
+      break;
+    }
   }
 
   return result;

@@ -887,8 +887,12 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         {
-          int64 temp;
-          TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kIndex), &temp));
+          // kIndex will not be set if we are restoring from a checkpoint
+          // written by a MemoryWriterIterator that has completed its cache.
+          int64 temp = cache_->size();
+          if (reader->Contains(full_name(kIndex))) {
+            TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kIndex), &temp));
+          }
           index_ = static_cast<size_t>(temp);
         }
         return Status::OK();

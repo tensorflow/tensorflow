@@ -403,6 +403,13 @@ string DebugEventsWriter::FileName(DebugEventFileType type) {
 }
 
 Status DebugEventsWriter::Close() {
+  {
+    mutex_lock l(initialization_mu_);
+    if (!is_initialized_) {
+      return Status::OK();
+    }
+  }
+
   std::vector<string> failed_to_close_files;
 
   if (metadata_writer_ != nullptr) {

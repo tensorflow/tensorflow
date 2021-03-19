@@ -27,6 +27,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_combinations as combinations
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.distribute import model_combinations
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
@@ -63,13 +64,8 @@ strategies = [
 ]
 
 
-def is_tpu_strategy(distribution):
-  return (distribution is not None and
-          distribution.__class__.__name__.startswith('TPUStrategy'))
-
-
 def get_tolerance(save_distribution, restore_distribution):
-  if is_tpu_strategy(save_distribution) or is_tpu_strategy(
+  if backend.is_tpu_strategy(save_distribution) or backend.is_tpu_strategy(
       restore_distribution):
     return _TPU_TOLERANCE
   return _TOLERANCE

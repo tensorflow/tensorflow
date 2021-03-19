@@ -22,7 +22,7 @@ py_library(
         "linear.py",
         "wide_deep.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
@@ -53,7 +53,7 @@ tf_py_test(
     srcs = ["wide_deep_test.py"],
     python_version = "PY3",
     shard_count = 2,
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":premade",
         "//tensorflow/python:client_testlib",

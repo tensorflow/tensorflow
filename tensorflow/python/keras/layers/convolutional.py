@@ -61,7 +61,7 @@ class Conv(Layer):
   Note: layer attributes cannot be modified after the layer has been called
   once (except the `trainable` attribute).
 
-  Arguments:
+  Args:
     rank: An integer, the rank of the convolution, e.g. "2" for 2D convolution.
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
@@ -72,9 +72,9 @@ class Conv(Layer):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: One of `"valid"`,  `"same"`, or `"causal"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to 
-      the left/right or up/down of the input such that output has the same 
-      height/width dimension as the input. `"causal"` results in causal 
+      `"valid"` means no padding. `"same"` results in padding with zeros
+      evenly to the left/right or up/down of the input such that output has the
+      same height/width dimension as the input. `"causal"` results in causal
       (dilated) convolutions, e.g. `output[t]` does not depend on `input[t+1:]`.
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -93,9 +93,10 @@ class Conv(Layer):
     activation: Activation function to use.
       If you don't specify anything, no activation is applied.
     use_bias: Boolean, whether the layer uses a bias.
-    kernel_initializer: An initializer for the convolution kernel.
+    kernel_initializer: An initializer for the convolution kernel. If None, the 
+      default initializer (glorot_uniform) will be used. 
     bias_initializer: An initializer for the bias vector. If None, the default
-      initializer will be used.
+      initializer (zeros) will be used.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Optional regularizer function for the output.
@@ -178,6 +179,10 @@ class Conv(Layer):
       raise ValueError('The argument `kernel_size` cannot contain 0(s). '
                        'Received: %s' % (self.kernel_size,))
 
+    if not all(self.strides):
+      raise ValueError('The argument `strides` cannot contains 0(s). '
+                       'Received: %s' % (self.strides,))
+
     if (self.padding == 'causal' and not isinstance(self,
                                                     (Conv1D, SeparableConv1D))):
       raise ValueError('Causal padding is only supported for `Conv1D`'
@@ -242,6 +247,8 @@ class Conv(Layer):
     self.built = True
 
   def call(self, inputs):
+    input_shape = inputs.shape
+
     if self._is_causal:  # Apply causal padding to inputs for Conv1D.
       inputs = array_ops.pad(inputs, self._compute_causal_padding(inputs))
 
@@ -260,11 +267,16 @@ class Conv(Layer):
           def _apply_fn(o):
             return nn.bias_add(o, self.bias, data_format=self._tf_data_format)
 
-          outputs = nn_ops.squeeze_batch_dims(
+          outputs = conv_utils.squeeze_batch_dims(
               outputs, _apply_fn, inner_rank=self.rank + 1)
         else:
           outputs = nn.bias_add(
               outputs, self.bias, data_format=self._tf_data_format)
+
+    if not context.executing_eagerly():
+      # Infer the static output shape:
+      out_shape = self.compute_output_shape(input_shape)
+      outputs.set_shape(out_shape)
 
     if self.activation is not None:
       return self.activation(outputs)
@@ -409,7 +421,7 @@ class Conv1D(Conv):
   >>> print(y.shape)
   (4, 7, 8, 32)
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space
       (i.e. the number of output filters in the convolution).
     kernel_size: An integer or tuple/list of a single integer,
@@ -419,8 +431,8 @@ class Conv1D(Conv):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: One of `"valid"`, `"same"` or `"causal"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to
-      the left/right or up/down of the input such that output has the same
+      `"valid"` means no padding. `"same"` results in padding with zeros evenly
+      to the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
       `"causal"` results in causal (dilated) convolutions, e.g. `output[t]`
       does not depend on `input[t+1:]`. Useful when modeling temporal data
@@ -443,9 +455,9 @@ class Conv1D(Conv):
       see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias vector.
     kernel_initializer: Initializer for the `kernel` weights matrix (
-      see `keras.initializers`).
+      see `keras.initializers`). Defaults to 'glorot_uniform'.
     bias_initializer: Initializer for the bias vector (
-      see `keras.initializers`).
+      see `keras.initializers`). Defaults to 'zeros'.
     kernel_regularizer: Regularizer function applied to
       the `kernel` weights matrix (see `keras.regularizers`).
     bias_regularizer: Regularizer function applied to the bias vector (
@@ -526,7 +538,8 @@ class Conv2D(Conv):
   provide the keyword argument `input_shape`
   (tuple of integers or `None`, does not include the sample axis),
   e.g. `input_shape=(128, 128, 3)` for 128x128 RGB pictures
-  in `data_format="channels_last"`.
+  in `data_format="channels_last"`. You can use `None` when
+  a dimension has variable size.
 
   Examples:
 
@@ -564,7 +577,7 @@ class Conv2D(Conv):
   (4, 7, 26, 26, 2)
 
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space (i.e. the number of
       output filters in the convolution).
     kernel_size: An integer or tuple/list of 2 integers, specifying the height
@@ -575,8 +588,8 @@ class Conv2D(Conv):
       specify the same value for all spatial dimensions. Specifying any stride
       value != 1 is incompatible with specifying any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to
-      the left/right or up/down of the input such that output has the same
+      `"valid"` means no padding. `"same"` results in padding with zeros evenly
+      to the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs. `channels_last` corresponds
@@ -599,13 +612,13 @@ class Conv2D(Conv):
       activation is applied (see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias vector.
     kernel_initializer: Initializer for the `kernel` weights matrix (see
-      `keras.initializers`).
+      `keras.initializers`). Defaults to 'glorot_uniform'.
     bias_initializer: Initializer for the bias vector (see
-      `keras.initializers`).
+      `keras.initializers`). Defaults to 'zeros'.
     kernel_regularizer: Regularizer function applied to the `kernel` weights
-      matrix (see `keras.regularizers`).
+      matrix (see `keras.regularizers`). 
     bias_regularizer: Regularizer function applied to the bias vector (see
-      `keras.regularizers`).
+      `keras.regularizers`). 
     activity_regularizer: Regularizer function applied to the output of the
       layer (its "activation") (see `keras.regularizers`).
     kernel_constraint: Constraint function applied to the kernel matrix (see
@@ -708,7 +721,7 @@ class Conv3D(Conv):
   >>> print(y.shape)
   (4, 7, 26, 26, 26, 2)
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space (i.e. the number of
       output filters in the convolution).
     kernel_size: An integer or tuple/list of 3 integers, specifying the depth,
@@ -719,8 +732,8 @@ class Conv3D(Conv):
       specify the same value for all spatial dimensions. Specifying any stride
       value != 1 is incompatible with specifying any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to
-      the left/right or up/down of the input such that output has the same
+      `"valid"` means no padding. `"same"` results in padding with zeros evenly
+      to the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs. `channels_last` corresponds
@@ -744,9 +757,9 @@ class Conv3D(Conv):
       activation is applied (see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias vector.
     kernel_initializer: Initializer for the `kernel` weights matrix (see
-      `keras.initializers`).
+      `keras.initializers`). Defaults to 'glorot_uniform'.
     bias_initializer: Initializer for the bias vector (see
-      `keras.initializers`).
+      `keras.initializers`). Defaults to 'zeros'.
     kernel_regularizer: Regularizer function applied to the `kernel` weights
       matrix (see `keras.regularizers`).
     bias_regularizer: Regularizer function applied to the bias vector (see
@@ -835,7 +848,7 @@ class Conv1DTranspose(Conv1D):
   (tuple of integers or `None`, does not include the sample axis),
   e.g. `input_shape=(128, 3)` for data with 128 time steps and 3 channels.
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space
       (i.e. the number of output filters in the convolution).
     kernel_size: An integer length of the 1D convolution window.
@@ -843,8 +856,8 @@ class Conv1DTranspose(Conv1D):
       time dimension. Specifying a stride value != 1 is incompatible with
       specifying a `dilation_rate` value != 1. Defaults to 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to
-      the left/right or up/down of the input such that output has the same
+      `"valid"` means no padding. `"same"` results in padding with zeros evenly
+      to the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     output_padding: An integer specifying the amount of padding along
       the time dimension of the output tensor.
@@ -865,9 +878,9 @@ class Conv1DTranspose(Conv1D):
       see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias vector.
     kernel_initializer: Initializer for the `kernel` weights matrix (
-      see `keras.initializers`).
+      see `keras.initializers`). Defaults to 'glorot_uniform'.
     bias_initializer: Initializer for the bias vector (
-      see `keras.initializers`).
+      see `keras.initializers`). Defaults to 'zeros'.
     kernel_regularizer: Regularizer function applied to
       the `kernel` weights matrix (see `keras.regularizers`).
     bias_regularizer: Regularizer function applied to the bias vector (
@@ -1083,7 +1096,7 @@ class Conv2DTranspose(Conv2D):
   e.g. `input_shape=(128, 128, 3)` for 128x128 RGB pictures
   in `data_format="channels_last"`.
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space
       (i.e. the number of output filters in the convolution).
     kernel_size: An integer or tuple/list of 2 integers, specifying the
@@ -1097,8 +1110,8 @@ class Conv2DTranspose(Conv2D):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to
-      the left/right or up/down of the input such that output has the same
+      `"valid"` means no padding. `"same"` results in padding with zeros evenly
+      to the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     output_padding: An integer or tuple/list of 2 integers,
       specifying the amount of padding along the height and width
@@ -1129,9 +1142,9 @@ class Conv2DTranspose(Conv2D):
       see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias vector.
     kernel_initializer: Initializer for the `kernel` weights matrix (
-      see `keras.initializers`).
+      see `keras.initializers`). Defaults to 'glorot_uniform'.
     bias_initializer: Initializer for the bias vector (
-      see `keras.initializers`).
+      see `keras.initializers`). Defaults to 'zeros'.
     kernel_regularizer: Regularizer function applied to
       the `kernel` weights matrix (see `keras.regularizers`).
     bias_regularizer: Regularizer function applied to the bias vector (
@@ -1386,7 +1399,7 @@ class Conv3DTranspose(Conv3D):
   e.g. `input_shape=(128, 128, 128, 3)` for a 128x128x128 volume with 3 channels
   if `data_format="channels_last"`.
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space
       (i.e. the number of output filters in the convolution).
     kernel_size: An integer or tuple/list of 3 integers, specifying the
@@ -1401,8 +1414,8 @@ class Conv3DTranspose(Conv3D):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to
-      the left/right or up/down of the input such that output has the same
+      `"valid"` means no padding. `"same"` results in padding with zeros evenly
+      to the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     output_padding: An integer or tuple/list of 3 integers,
       specifying the amount of padding along the depth, height, and
@@ -1432,8 +1445,10 @@ class Conv3DTranspose(Conv3D):
       If you don't specify anything, no activation is applied (
       see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias vector.
-    kernel_initializer: Initializer for the `kernel` weights matrix.
-    bias_initializer: Initializer for the bias vector.
+    kernel_initializer: Initializer for the `kernel` weights matrix (
+      see `keras.initializers`). Defaults to 'glorot_uniform'.
+    bias_initializer: Initializer for the bias vector (
+      see `keras.initializers`). Defaults to 'zeros'.
     kernel_regularizer: Regularizer function applied to
       the `kernel` weights matrix (
       see `keras.regularizers`).
@@ -1688,7 +1703,7 @@ class SeparableConv(Conv):
   it adds a bias vector to the output.
   It then optionally applies an activation function to produce the final output.
 
-  Arguments:
+  Args:
     rank: An integer, the rank of the convolution, e.g. "2" for 2D convolution.
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
@@ -1701,8 +1716,8 @@ class SeparableConv(Conv):
       Specifying any `stride` value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: One of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to
-      the left/right or up/down of the input such that output has the same
+      `"valid"` means no padding. `"same"` results in padding with zeros evenly
+      to the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -1722,10 +1737,14 @@ class SeparableConv(Conv):
       If you don't specify anything, no activation is applied (
       see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias.
-    depthwise_initializer: An initializer for the depthwise convolution kernel.
-    pointwise_initializer: An initializer for the pointwise convolution kernel.
+    depthwise_initializer: An initializer for the depthwise convolution kernel (
+      see `keras.initializers`). If None, then the default initializer (
+      'glorot_uniform') will be used.
+    pointwise_initializer: An initializer for the pointwise convolution kernel (
+      see `keras.initializers`). If None, then the default initializer 
+      ('glorot_uniform') will be used.
     bias_initializer: An initializer for the bias vector. If None, the default
-      initializer will be used.
+      initializer ('zeros') will be used (see `keras.initializers`).
     depthwise_regularizer: Optional regularizer for the depthwise
       convolution kernel.
     pointwise_regularizer: Optional regularizer for the pointwise
@@ -1897,7 +1916,7 @@ class SeparableConv1D(SeparableConv):
   it adds a bias vector to the output.
   It then optionally applies an activation function to produce the final output.
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: A single integer specifying the spatial
@@ -1907,8 +1926,8 @@ class SeparableConv1D(SeparableConv):
       Specifying any `stride` value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: One of `"valid"`, `"same"`, or `"causal"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to
-      the left/right or up/down of the input such that output has the same
+      `"valid"` means no padding. `"same"` results in padding with zeros evenly
+      to the left/right or up/down of the input such that output has the same
       height/width dimension as the input. `"causal"` results in causal
       (dilated) convolutions, e.g. `output[t]` does not depend on `input[t+1:]`.
     data_format: A string, one of `channels_last` (default) or `channels_first`.
@@ -1928,11 +1947,13 @@ class SeparableConv1D(SeparableConv):
       see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias.
     depthwise_initializer: An initializer for the depthwise convolution kernel (
-      see `keras.initializers`).
+      see `keras.initializers`). If None, then the default initializer (
+      'glorot_uniform') will be used.
     pointwise_initializer: An initializer for the pointwise convolution kernel (
-      see `keras.initializers`).
+      see `keras.initializers`). If None, then the default initializer 
+      ('glorot_uniform') will be used.
     bias_initializer: An initializer for the bias vector. If None, the default
-      initializer will be used (see `keras.initializers`).
+      initializer ('zeros') will be used (see `keras.initializers`).
     depthwise_regularizer: Optional regularizer for the depthwise
       convolution kernel (see `keras.regularizers`).
     pointwise_regularizer: Optional regularizer for the pointwise
@@ -2081,7 +2102,7 @@ class SeparableConv2D(SeparableConv):
   a way to factorize a convolution kernel into two smaller kernels,
   or as an extreme version of an Inception block.
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space
       (i.e. the number of output filters in the convolution).
     kernel_size: An integer or tuple/list of 2 integers, specifying the
@@ -2095,8 +2116,8 @@ class SeparableConv2D(SeparableConv):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to
-      the left/right or up/down of the input such that output has the same
+      `"valid"` means no padding. `"same"` results in padding with zeros evenly
+      to the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
@@ -2120,12 +2141,14 @@ class SeparableConv2D(SeparableConv):
       If you don't specify anything, no activation is applied (
       see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias vector.
-    depthwise_initializer: Initializer for the depthwise kernel matrix (
-      see `keras.initializers`).
-    pointwise_initializer: Initializer for the pointwise kernel matrix (
-      see `keras.initializers`).
-    bias_initializer: Initializer for the bias vector (
-      see `keras.initializers`).
+    depthwise_initializer: An initializer for the depthwise convolution kernel (
+      see `keras.initializers`). If None, then the default initializer (
+      'glorot_uniform') will be used.
+    pointwise_initializer: An initializer for the pointwise convolution kernel (
+      see `keras.initializers`). If None, then the default initializer 
+      ('glorot_uniform') will be used.
+    bias_initializer: An initializer for the bias vector. If None, the default
+      initializer ('zeros') will be used (see `keras.initializers`).
     depthwise_regularizer: Regularizer function applied to
       the depthwise kernel matrix (see `keras.regularizers`).
     pointwise_regularizer: Regularizer function applied to
@@ -2246,7 +2269,7 @@ class DepthwiseConv2D(Conv2D):
   The `depth_multiplier` argument controls how many
   output channels are generated per input channel in the depthwise step.
 
-  Arguments:
+  Args:
     kernel_size: An integer or tuple/list of 2 integers, specifying the
       height and width of the 2D convolution window.
       Can be a single integer to specify the same value for
@@ -2258,8 +2281,8 @@ class DepthwiseConv2D(Conv2D):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: one of `'valid'` or `'same'` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to
-      the left/right or up/down of the input such that output has the same
+      `"valid"` means no padding. `"same"` results in padding with zeros evenly
+      to the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     depth_multiplier: The number of depthwise convolution output channels
       for each input channel.
@@ -2284,9 +2307,11 @@ class DepthwiseConv2D(Conv2D):
       see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias vector.
     depthwise_initializer: Initializer for the depthwise kernel matrix (
-      see `keras.initializers`).
+      see `keras.initializers`). If None, the default initializer (
+      'glorot_uniform') will be used.
     bias_initializer: Initializer for the bias vector (
-      see `keras.initializers`).
+      see `keras.initializers`). If None, the default initializer (
+      'zeros') will bs used.
     depthwise_regularizer: Regularizer function applied to
       the depthwise kernel matrix (see `keras.regularizers`).
     bias_regularizer: Regularizer function applied to the bias vector (
@@ -2308,10 +2333,11 @@ class DepthwiseConv2D(Conv2D):
 
   Output shape:
     4D tensor with shape:
-    `[batch_size, filters, new_rows, new_cols]` if data_format='channels_first'
-    or 4D tensor with shape:
-    `[batch_size, new_rows, new_cols, filters]` if data_format='channels_last'.
-    `rows` and `cols` values might have changed due to padding.
+    `[batch_size, channels * depth_multiplier, new_rows, new_cols]` if
+    data_format='channels_first' or 4D tensor with shape:
+    `[batch_size, new_rows, new_cols, channels * depth_multiplier]` if
+    data_format='channels_last'. `rows` and `cols` values might have
+    changed due to padding.
 
   Returns:
     A tensor of rank 4 representing
@@ -2480,7 +2506,7 @@ class UpSampling1D(Layer):
       [ 9 10 11]
       [ 9 10 11]]], shape=(2, 4, 3), dtype=int64)
 
-  Arguments:
+  Args:
     size: Integer. Upsampling factor.
 
   Input shape:
@@ -2538,7 +2564,7 @@ class UpSampling2D(Layer):
       [[ 9 10 11]
        [ 9 10 11]]]], shape=(2, 2, 2, 3), dtype=int64)
 
-  Arguments:
+  Args:
     size: Int, or tuple of 2 integers.
       The upsampling factors for rows and columns.
     data_format: A string,
@@ -2629,7 +2655,7 @@ class UpSampling3D(Layer):
   >>> print(y.shape)
   (2, 2, 4, 2, 3)
 
-  Arguments:
+  Args:
     size: Int, or tuple of 3 integers.
       The upsampling factors for dim1, dim2 and dim3.
     data_format: A string,
@@ -2724,7 +2750,7 @@ class ZeroPadding1D(Layer):
       [ 0  0  0]
       [ 0  0  0]]], shape=(2, 6, 3), dtype=int64)
 
-  Arguments:
+  Args:
       padding: Int, or tuple of int (length 2), or dictionary.
           - If int:
           How many zeros to add at the beginning and end of
@@ -2791,7 +2817,7 @@ class ZeroPadding2D(Layer):
        [0 0]
        [0 0]]]], shape=(1, 3, 4, 2), dtype=int64)
 
-  Arguments:
+  Args:
     padding: Int, or tuple of 2 ints, or tuple of 2 tuples of 2 ints.
       - If int: the same symmetric padding
         is applied to height and width.
@@ -2898,7 +2924,7 @@ class ZeroPadding3D(Layer):
   >>> print(y.shape)
   (1, 5, 6, 6, 3)
 
-  Arguments:
+  Args:
     padding: Int, or tuple of 3 ints, or tuple of 3 tuples of 2 ints.
       - If int: the same symmetric padding
         is applied to height and width.
@@ -3035,7 +3061,7 @@ class Cropping1D(Layer):
     [[[2 3]]
      [[8 9]]], shape=(2, 1, 2), dtype=int64)
 
-  Arguments:
+  Args:
     cropping: Int or tuple of int (length 2)
       How many units should be trimmed off at the beginning and end of
       the cropping dimension (axis 1).
@@ -3087,7 +3113,7 @@ class Cropping2D(Layer):
   >>> print(y.shape)
   (2, 24, 20, 3)
 
-  Arguments:
+  Args:
     cropping: Int, or tuple of 2 ints, or tuple of 2 tuples of 2 ints.
       - If int: the same symmetric cropping
         is applied to height and width.
@@ -3212,7 +3238,7 @@ class Cropping3D(Layer):
   >>> print(y.shape)
   (2, 24, 20, 6, 3)
 
-  Arguments:
+  Args:
     cropping: Int, or tuple of 3 ints, or tuple of 3 tuples of 2 ints.
       - If int: the same symmetric cropping
         is applied to depth, height, and width.

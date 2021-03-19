@@ -18,16 +18,19 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/array2d.h"
+#include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/platform.h"
 
 namespace xla {
 
@@ -47,8 +50,16 @@ class DeviceAssignment : public Array2D<int> {
   int replica_count() const { return height(); }
   int computation_count() const { return width(); }
 
+  // The logical ID of a device is its (replica ID, computation ID) pair.
+  struct LogicalID {
+    int replica_id;
+    int computation_id;
+  };
+
+  // Finds the (replica ID, computation ID) pair for the given device.
+  StatusOr<LogicalID> LogicalIdForDevice(GlobalDeviceId device_id) const;
   // Finds the replica ID for the given device.
-  StatusOr<int> ReplicaIdForDeviceOrdinal(int device_ordinal) const;
+  StatusOr<int> ReplicaIdForDevice(GlobalDeviceId device_id) const;
 
   // Protocol buffer serialization and deserialization.
   Status Serialize(DeviceAssignmentProto* proto) const;

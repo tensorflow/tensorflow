@@ -31,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
@@ -54,6 +55,10 @@ class _CustomMapping(collections_abc.Mapping):
 
   def __len__(self):
     return len(self._wrapped)
+
+
+class _CustomList(list):
+  pass
 
 
 class _CustomSequenceThatRaisesException(collections.Sequence):
@@ -281,6 +286,14 @@ class NestTest(parameterized.TestCase, test.TestCase):
         "Structure had 2 elements, but flat_sequence had 3 elements."):
       nest.pack_sequence_as(["hello", "world"],
                             ["and", "goodbye", "again"])
+
+  def testPackSequenceAs_CompositeTensor(self):
+    val = ragged_tensor.RaggedTensor.from_row_splits(values=[1],
+                                                     row_splits=[0, 1])
+    with self.assertRaisesRegex(
+        ValueError,
+        "Structure had 2 elements, but flat_sequence had 1 elements."):
+      nest.pack_sequence_as(val, [val], expand_composites=True)
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testIsNested(self):
@@ -603,6 +616,13 @@ class NestTest(parameterized.TestCase, test.TestCase):
     # name and field names are considered to be identical.
     inp_shallow = NestTest.SameNameab(1, 2)
     inp_deep = NestTest.SameNameab2(1, [1, 2, 3])
+    nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=False)
+    nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=True)
+
+    # This assertion is expected to pass: two list-types with same number
+    # of fields are considered identical.
+    inp_shallow = _CustomList([1, 2])
+    inp_deep = [1, 2]
     nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=False)
     nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=True)
 

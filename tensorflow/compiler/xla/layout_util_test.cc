@@ -251,6 +251,24 @@ TEST_F(LayoutUtilTest, DefaultLayoutGettersMajorToMinor) {
                             ShapeUtil::MakeShape(F32, {10, 20, 30, 15, 25}))));
 }
 
+TEST_F(LayoutUtilTest, MakeDescending) {
+  EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeDescendingLayout(5),
+                                LayoutUtil::MakeLayout({4, 3, 2, 1, 0})));
+  EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeDescendingLayout(1),
+                                LayoutUtil::MakeLayout({0})));
+  EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeDescendingLayout(0),
+                                LayoutUtil::MakeLayout({})));
+}
+
+TEST_F(LayoutUtilTest, MakeAscending) {
+  EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeAscendingLayout(5),
+                                LayoutUtil::MakeLayout({0, 1, 2, 3, 4})));
+  EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeAscendingLayout(1),
+                                LayoutUtil::MakeLayout({0})));
+  EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeAscendingLayout(0),
+                                LayoutUtil::MakeLayout({})));
+}
+
 TEST_F(LayoutUtilTest, HumanStringWithTiling) {
   Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {2, 3, 4}, {0, 1, 2});
   Tile* tile;

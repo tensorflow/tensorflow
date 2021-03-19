@@ -43,6 +43,22 @@ from tensorflow.python.util.tf_export import keras_export
 
 @keras_export('keras.optimizers.serialize')
 def serialize(optimizer):
+  """Serialize the optimizer configuration to JSON compatible python dict.
+
+  The configuration can be used for persistence and reconstruct the `Optimizer`
+  instance again.
+
+  >>> tf.keras.optimizers.serialize(tf.keras.optimizers.SGD())
+  {'class_name': 'SGD', 'config': {'name': 'SGD', 'learning_rate': 0.01,
+                                   'decay': 0.0, 'momentum': 0.0,
+                                   'nesterov': False}}
+
+  Args:
+    optimizer: An `Optimizer` instance to serialize.
+
+  Returns:
+    Python dict which contains the configuration of the input optimizer.
+  """
   return serialize_keras_object(optimizer)
 
 
@@ -50,7 +66,7 @@ def serialize(optimizer):
 def deserialize(config, custom_objects=None):
   """Inverse of the `serialize` function.
 
-  Arguments:
+  Args:
       config: Optimizer configuration dictionary.
       custom_objects: Optional dictionary mapping names (strings) to custom
         objects (classes and functions) to be considered during deserialization.
@@ -91,7 +107,7 @@ def deserialize(config, custom_objects=None):
 def get(identifier):
   """Retrieves a Keras Optimizer instance.
 
-  Arguments:
+  Args:
       identifier: Optimizer identifier, one of
           - String: name of an optimizer
           - Dictionary: configuration dictionary. - Keras Optimizer instance (it

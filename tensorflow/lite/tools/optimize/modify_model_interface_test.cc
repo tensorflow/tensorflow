@@ -27,8 +27,6 @@ namespace tflite {
 namespace optimize {
 namespace {
 
-using ::testing::ElementsAreArray;
-
 // Create a model with 1 quant, 1 FC, 1 dequant
 std::unique_ptr<ModelT> CreateQuantizedModelSingleInputOutput(
     const TensorType& quantization_type) {

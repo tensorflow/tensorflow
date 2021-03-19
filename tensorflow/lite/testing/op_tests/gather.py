@@ -27,24 +27,37 @@ from tensorflow.lite.testing.zip_test_utils import register_make_test_function
 def make_gather_tests(options):
   """Make a set of tests to do gather."""
 
-  test_parameters = [
-      {
-          "params_dtype": [tf.float32, tf.int32, tf.int64],
-          "params_shape": [[1, 2, 20]],
-          "indices_dtype": [tf.int32, tf.int64],
-          "indices_shape": [[3], [5]],
-          "axis": [-1, 0, 1],
-          "constant_params": [False, True],
-      },
-      {
-          "params_dtype": [tf.string],
-          "params_shape": [[8]],
-          "indices_dtype": [tf.int32],
-          "indices_shape": [[3], [3, 2]],
-          "axis": [0],
-          "constant_params": [False, True],
-      }
-  ]
+  test_parameters = [{
+      "params_dtype": [tf.float32, tf.int32, tf.int64],
+      "params_shape": [[1, 2, 20]],
+      "indices_dtype": [tf.int32, tf.int64],
+      "indices_shape": [[3], [5]],
+      "axis": [-1, 0, 1],
+      "batch_dims": [0],
+      "constant_params": [False, True],
+  }, {
+      "params_dtype": [tf.string],
+      "params_shape": [[8]],
+      "indices_dtype": [tf.int32],
+      "indices_shape": [[3], [3, 2]],
+      "axis": [0],
+      "batch_dims": [0],
+      "constant_params": [False, True],
+  }]
+
+  if options.use_experimental_converter:
+    test_parameters = test_parameters + [
+        # Test with batch_dims.
+        {
+            "params_dtype": [tf.float32, tf.int32],
+            "params_shape": [[2, 2, 3, 5]],
+            "indices_dtype": [tf.int32],
+            "indices_shape": [[2, 2, 2]],
+            "axis": [0, 2],
+            "batch_dims": [1, 2],
+            "constant_params": [False, True],
+        }
+    ]
 
   def build_graph(parameters):
     """Build the gather op testing graph."""
@@ -66,7 +79,8 @@ def make_gather_tests(options):
         shape=parameters["indices_shape"])
     inputs.append(indices)
     axis = min(len(parameters["params_shape"]), parameters["axis"])
-    out = tf.gather(params, indices, axis=axis)
+    out = tf.gather(
+        params, indices, axis=axis, batch_dims=parameters["batch_dims"])
     return inputs, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

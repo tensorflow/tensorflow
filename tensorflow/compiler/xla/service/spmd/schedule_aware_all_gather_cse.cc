@@ -25,6 +25,30 @@ limitations under the License.
 namespace xla {
 namespace {
 
+// Returns if an instructions adds only degenerate dimensions to the shape of
+// the input, like going from [X,Y] to [1,X,Y,1].
+bool IsAddingOnlyDegenerateDimensions(const HloInstruction* inst) {
+  if (inst->opcode() != HloOpcode::kBitcast &&
+      inst->opcode() != HloOpcode::kReshape) {
+    return false;
+  }
+  const Shape& in_shape = inst->operand(0)->shape();
+  const Shape& out_shape = inst->shape();
+  return ShapeUtil::ElementsIn(in_shape) == ShapeUtil::ElementsIn(out_shape) &&
+         ShapeUtil::DimensionsUnmodifiedByReshape(in_shape, out_shape).size() ==
+             in_shape.rank();
+}
+
+// Passthrough reshapes or bitcasts adding only degenerate hdimensions to some
+// shape.
+const HloInstruction* PassthroughDegenerateAddingReshapes(
+    const HloInstruction* inst) {
+  while (IsAddingOnlyDegenerateDimensions(inst)) {
+    inst = inst->operand(0);
+  }
+  return inst;
+}
+
 HloCollectiveInstruction* MayConsiderAsAllGather(HloInstruction* hlo,
                                                  bool for_replicas) {
   auto coll = DynCast<HloCollectiveInstruction>(hlo);
@@ -55,6 +79,7 @@ StatusOr<bool> RunOnComputation(HloComputation* comp, bool for_replicas,
                                 int64 distance_threshold) {
   // We consider estimate the live ranges of all-gathers by comparing their
   // users' distance to the root, e.g., height.
+  bool changed = false;
   absl::flat_hash_map<const HloInstruction*, int64> height;
   auto ordered_hlos = comp->MakeInstructionPostOrder();
   int64 max_height = 0;
@@ -79,28 +104,28 @@ StatusOr<bool> RunOnComputation(HloComputation* comp, bool for_replicas,
   absl::flat_hash_map<const HloInstruction*,
                       std::vector<HloCollectiveInstruction*>>
       operand_to_ag;
-  bool changed = false;
   for (auto hlo : ordered_hlos) {
     auto ag = MayConsiderAsAllGather(hlo, for_replicas);
     if (!ag) {
       continue;
     }
-
-    auto& earlier_ags = operand_to_ag[ag->operand(0)];
+    auto& earlier_ags =
+        operand_to_ag[PassthroughDegenerateAddingReshapes(ag->operand(0))];
     bool found = false;
     int64 ag_height = height[ag];
     for (auto& eag : earlier_ags) {
-      auto old_channel_id = ag->channel_id();
-      if (eag->channel_id() && ag->channel_id()) {
-        ag->set_channel_id(eag->channel_id());
+      if (!ShapeUtil::Equal(eag->shape(), ag->shape())) {
+        continue;
       }
-      if (!eag->Identical(*ag)) {
-        ag->set_channel_id(old_channel_id);
+      HloInstruction* ag_operand = ag->mutable_operand(0);
+      TF_RETURN_IF_ERROR(ag->ReplaceOperandWith(0, eag->mutable_operand(0)));
+      if (!eag->IdenticalIgnoringChannelIdValues(*ag)) {
+        TF_RETURN_IF_ERROR(ag->ReplaceOperandWith(0, ag_operand));
         continue;
       }
       found = true;
-      ag->set_channel_id(old_channel_id);
       if (lowest_user_height(eag) > ag_height + distance_threshold) {
+        TF_RETURN_IF_ERROR(ag->ReplaceOperandWith(0, ag_operand));
         eag = ag;
         continue;
       }

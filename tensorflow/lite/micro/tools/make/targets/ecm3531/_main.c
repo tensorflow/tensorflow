@@ -25,6 +25,7 @@ limitations under the License.
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+
 #include "eta_bsp.h"
 #include "eta_chip.h"
 #include "eta_csp.h"

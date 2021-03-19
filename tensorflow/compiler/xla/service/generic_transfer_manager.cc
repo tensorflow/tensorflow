@@ -76,7 +76,11 @@ void GenericTransferManager::TransferLiteralFromDevice(
             stream->ThenMemcpy(
                 /*host_dst=*/literal.untyped_data(index),
                 /*gpu_src=*/device_buffer.buffer(index),
-                /*size=*/GetByteSizeRequirement(subshape));
+                // With bounded dynamic shapes, the shape of the device buffer
+                // (bounded allocation) can be bigger than the literal.
+                /*size=*/
+                GetByteSizeRequirement(
+                    ShapeUtil::GetSubshape(literal.shape(), index)));
           }
           return Status::OK();
         }));
@@ -145,8 +149,7 @@ Status GenericTransferManager::TransferLiteralToInfeed(
 }
 
 Status GenericTransferManager::TransferLiteralFromOutfeed(
-    se::StreamExecutor* executor, const Shape& literal_shape,
-    MutableBorrowingLiteral literal) {
+    se::StreamExecutor* executor, MutableBorrowingLiteral literal) {
   return Unimplemented("Generic transfer from Outfeed");
 }
 
@@ -158,7 +161,11 @@ Status GenericTransferManager::ResetDevices(
 }
 
 int64 GenericTransferManager::GetByteSizeRequirement(const Shape& shape) const {
-  return ShapeUtil::ByteSizeOf(shape, pointer_size_);
+  if (shape.is_static() || shape.IsTuple()) {
+    return ShapeUtil::ByteSizeOf(shape, pointer_size_);
+  }
+  int64 metadata_size = sizeof(int32) * shape.dimensions_size();
+  return ShapeUtil::ByteSizeOf(shape, pointer_size_) + metadata_size;
 }
 
 }  // namespace xla

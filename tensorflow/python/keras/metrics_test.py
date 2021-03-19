@@ -2266,6 +2266,29 @@ class ResetStatesTest(keras_parameterized.TestCase):
       self.assertEqual(self.evaluate(auc_obj.false_negatives[1]), 25.)
       self.assertEqual(self.evaluate(auc_obj.true_negatives[1]), 25.)
 
+  def test_reset_states_auc_from_logits(self):
+    auc_obj = metrics.AUC(num_thresholds=3, from_logits=True)
+
+    model_layers = [layers.Dense(1, kernel_initializer='ones', use_bias=False)]
+    model = testing_utils.get_model_from_layers(model_layers, input_shape=(4,))
+    model.compile(
+        loss='mae',
+        metrics=[auc_obj],
+        optimizer='rmsprop',
+        run_eagerly=testing_utils.should_run_eagerly())
+
+    x = np.concatenate((np.ones((25, 4)), -np.ones((25, 4)), -np.ones(
+        (25, 4)), np.ones((25, 4))))
+    y = np.concatenate((np.ones((25, 1)), np.zeros((25, 1)), np.ones(
+        (25, 1)), np.zeros((25, 1))))
+
+    for _ in range(2):
+      model.evaluate(x, y)
+      self.assertEqual(self.evaluate(auc_obj.true_positives[1]), 25.)
+      self.assertEqual(self.evaluate(auc_obj.false_positives[1]), 25.)
+      self.assertEqual(self.evaluate(auc_obj.false_negatives[1]), 25.)
+      self.assertEqual(self.evaluate(auc_obj.true_negatives[1]), 25.)
+
   def test_reset_states_auc_manual_thresholds(self):
     auc_obj = metrics.AUC(thresholds=[0.5])
     model = _get_model([auc_obj])

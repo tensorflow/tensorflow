@@ -33,7 +33,6 @@ from tensorflow.python.util.tf_export import keras_export
 @keras_export('keras.optimizers.Nadam')
 class Nadam(optimizer_v2.OptimizerV2):
   r"""Optimizer that implements the NAdam algorithm.
-
   Much like Adam is essentially RMSprop with momentum, Nadam is Adam with
   Nesterov momentum.
 
@@ -50,6 +49,14 @@ class Nadam(optimizer_v2.OptimizerV2):
       `"clipnorm"` or `"clipvalue"`.
       `"clipnorm"` (float) clips gradients by norm; `"clipvalue"` (float) clips
       gradients by value.
+
+  Usage Example:
+    >>> opt = tf.keras.optimizers.Nadam(learning_rate=0.2)
+    >>> var1 = tf.Variable(10.0)
+    >>> loss = lambda: (var1 ** 2) / 2.0
+    >>> step_count = opt.minimize(loss, [var1]).numpy()
+    >>> "{:.1f}".format(var1.numpy())
+    9.8
 
   Reference:
     - [Dozat, 2015](http://cs229.stanford.edu/proj2015/054_report.pdf).
@@ -207,7 +214,7 @@ class Nadam(optimizer_v2.OptimizerV2):
     config = super(Nadam, self).get_config()
     config.update({
         'learning_rate': self._serialize_hyperparameter('learning_rate'),
-        'decay': self._serialize_hyperparameter('decay'),
+        'decay': self._initial_decay,
         'beta_1': self._serialize_hyperparameter('beta_1'),
         'beta_2': self._serialize_hyperparameter('beta_2'),
         'epsilon': self.epsilon,

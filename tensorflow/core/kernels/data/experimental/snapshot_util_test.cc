@@ -91,10 +91,8 @@ TEST(SnapshotUtilTest, CombinationRoundTripTest) {
   SnapshotRoundTrip(io::compression::kSnappy, 2);
 }
 
-void SnapshotReaderBenchmarkLoop(int iters, std::string compression_type,
-                                 int version) {
-  tensorflow::testing::StopTiming();
-
+void SnapshotReaderBenchmarkLoop(::testing::benchmark::State& state,
+                                 std::string compression_type, int version) {
   tensorflow::DataTypeVector dtypes;
   std::vector<Tensor> tensors;
   GenerateTensorVector(dtypes, tensors);
@@ -106,7 +104,7 @@ void SnapshotReaderBenchmarkLoop(int iters, std::string compression_type,
   TF_ASSERT_OK(Writer::Create(tensorflow::Env::Default(), filename,
                               compression_type, version, dtypes, &writer));
 
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     writer->WriteTensors(tensors).IgnoreError();
   }
   TF_ASSERT_OK(writer->Close());
@@ -115,34 +113,32 @@ void SnapshotReaderBenchmarkLoop(int iters, std::string compression_type,
   TF_ASSERT_OK(Reader::Create(Env::Default(), filename, compression_type,
                               version, dtypes, &reader));
 
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     std::vector<Tensor> read_tensors;
     reader->ReadTensors(&read_tensors).IgnoreError();
   }
-  tensorflow::testing::StopTiming();
 
   TF_ASSERT_OK(Env::Default()->DeleteFile(filename));
 }
 
-void SnapshotCustomReaderNoneBenchmark(int iters) {
-  SnapshotReaderBenchmarkLoop(iters, io::compression::kNone, 1);
+void SnapshotCustomReaderNoneBenchmark(::testing::benchmark::State& state) {
+  SnapshotReaderBenchmarkLoop(state, io::compression::kNone, 1);
 }
 
-void SnapshotCustomReaderGzipBenchmark(int iters) {
-  SnapshotReaderBenchmarkLoop(iters, io::compression::kGzip, 1);
+void SnapshotCustomReaderGzipBenchmark(::testing::benchmark::State& state) {
+  SnapshotReaderBenchmarkLoop(state, io::compression::kGzip, 1);
 }
 
-void SnapshotCustomReaderSnappyBenchmark(int iters) {
-  SnapshotReaderBenchmarkLoop(iters, io::compression::kSnappy, 1);
+void SnapshotCustomReaderSnappyBenchmark(::testing::benchmark::State& state) {
+  SnapshotReaderBenchmarkLoop(state, io::compression::kSnappy, 1);
 }
 
-void SnapshotTFRecordReaderNoneBenchmark(int iters) {
-  SnapshotReaderBenchmarkLoop(iters, io::compression::kNone, 2);
+void SnapshotTFRecordReaderNoneBenchmark(::testing::benchmark::State& state) {
+  SnapshotReaderBenchmarkLoop(state, io::compression::kNone, 2);
 }
 
-void SnapshotTFRecordReaderGzipBenchmark(int iters) {
-  SnapshotReaderBenchmarkLoop(iters, io::compression::kGzip, 2);
+void SnapshotTFRecordReaderGzipBenchmark(::testing::benchmark::State& state) {
+  SnapshotReaderBenchmarkLoop(state, io::compression::kGzip, 2);
 }
 
 BENCHMARK(SnapshotCustomReaderNoneBenchmark);
@@ -151,10 +147,8 @@ BENCHMARK(SnapshotCustomReaderSnappyBenchmark);
 BENCHMARK(SnapshotTFRecordReaderNoneBenchmark);
 BENCHMARK(SnapshotTFRecordReaderGzipBenchmark);
 
-void SnapshotWriterBenchmarkLoop(int iters, std::string compression_type,
-                                 int version) {
-  tensorflow::testing::StopTiming();
-
+void SnapshotWriterBenchmarkLoop(::testing::benchmark::State& state,
+                                 std::string compression_type, int version) {
   tensorflow::DataTypeVector dtypes;
   std::vector<Tensor> tensors;
   GenerateTensorVector(dtypes, tensors);
@@ -166,38 +160,36 @@ void SnapshotWriterBenchmarkLoop(int iters, std::string compression_type,
   TF_ASSERT_OK(Writer::Create(tensorflow::Env::Default(), filename,
                               compression_type, version, dtypes, &writer));
 
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     writer->WriteTensors(tensors).IgnoreError();
   }
   writer->Close().IgnoreError();
-  tensorflow::testing::StopTiming();
 
   TF_ASSERT_OK(Env::Default()->DeleteFile(filename));
 }
 
-void SnapshotCustomWriterNoneBenchmark(int iters) {
-  SnapshotWriterBenchmarkLoop(iters, io::compression::kNone, 1);
+void SnapshotCustomWriterNoneBenchmark(::testing::benchmark::State& state) {
+  SnapshotWriterBenchmarkLoop(state, io::compression::kNone, 1);
 }
 
-void SnapshotCustomWriterGzipBenchmark(int iters) {
-  SnapshotWriterBenchmarkLoop(iters, io::compression::kGzip, 1);
+void SnapshotCustomWriterGzipBenchmark(::testing::benchmark::State& state) {
+  SnapshotWriterBenchmarkLoop(state, io::compression::kGzip, 1);
 }
 
-void SnapshotCustomWriterSnappyBenchmark(int iters) {
-  SnapshotWriterBenchmarkLoop(iters, io::compression::kSnappy, 1);
+void SnapshotCustomWriterSnappyBenchmark(::testing::benchmark::State& state) {
+  SnapshotWriterBenchmarkLoop(state, io::compression::kSnappy, 1);
 }
 
-void SnapshotTFRecordWriterNoneBenchmark(int iters) {
-  SnapshotWriterBenchmarkLoop(iters, io::compression::kNone, 2);
+void SnapshotTFRecordWriterNoneBenchmark(::testing::benchmark::State& state) {
+  SnapshotWriterBenchmarkLoop(state, io::compression::kNone, 2);
 }
 
-void SnapshotTFRecordWriterGzipBenchmark(int iters) {
-  SnapshotWriterBenchmarkLoop(iters, io::compression::kGzip, 2);
+void SnapshotTFRecordWriterGzipBenchmark(::testing::benchmark::State& state) {
+  SnapshotWriterBenchmarkLoop(state, io::compression::kGzip, 2);
 }
 
-void SnapshotTFRecordWriterSnappyBenchmark(int iters) {
-  SnapshotWriterBenchmarkLoop(iters, io::compression::kSnappy, 2);
+void SnapshotTFRecordWriterSnappyBenchmark(::testing::benchmark::State& state) {
+  SnapshotWriterBenchmarkLoop(state, io::compression::kSnappy, 2);
 }
 
 BENCHMARK(SnapshotCustomWriterNoneBenchmark);

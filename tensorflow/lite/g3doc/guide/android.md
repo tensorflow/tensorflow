@@ -90,8 +90,8 @@ You can specify this in your `build.gradle` dependencies as follows:
 
 ```build
 dependencies {
-    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.0.0-nightly'
-    implementation 'org.tensorflow:tensorflow-lite-task-text:0.0.0-nightly'
+    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.1.0'
+    implementation 'org.tensorflow:tensorflow-lite-task-text:0.1.0'
 }
 ```
 
@@ -117,7 +117,7 @@ You can specify this in your `build.gradle` dependencies as follows:
 
 ```build
 dependencies {
-    implementation 'org.tensorflow:tensorflow-lite-support:0.0.0-nightly'
+    implementation 'org.tensorflow:tensorflow-lite-support:0.1.0'
 }
 ```
 
@@ -133,7 +133,7 @@ You can specify this in your `build.gradle` dependencies as follows:
 
 ```build
 dependencies {
-    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
+    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly-SNAPSHOT'
 }
 ```
 

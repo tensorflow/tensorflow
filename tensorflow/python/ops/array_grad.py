@@ -77,10 +77,11 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
     # with 0's everywhere and 1 in the concat dim position.
     # Note: Can't use sparse_to_dense since it isn't GPU-capable (for now)
     mask = array_ops.concat([
-        array_ops.fill(array_ops.expand_dims(concat_dim, 0), 0), [1],
-        array_ops.fill(shape_of_shape - concat_dim - 1, 0)
+        array_ops.zeros(
+            array_ops.expand_dims(concat_dim, 0), dtype=dtypes.int32), [1],
+        array_ops.zeros(shape_of_shape - concat_dim - 1, dtype=dtypes.int32)
     ], 0)
-    begin = array_ops.fill(shape_of_shape, 0)
+    begin = array_ops.zeros(shape_of_shape, dtype=dtypes.int32)
     return mask, begin
 
   def _ExtractInputShapes(inputs):
@@ -568,15 +569,9 @@ def _IndexedSlicesToTensorNoWarning(indexed_slices):
 def _GatherGrad(op, grad):
   """Gradient for Gather op."""
   # params can be large, so colocate the shape calculation with it.
-  #
-  # params can be very large for sparse model, array_ops.shape raises
-  # exception on the Windows platform when any dimension is larger than
-  # int32. params_shape is not used in optimizer apply_sparse gradients,
-  # so it's fine to convert it back to int32 regardless of truncation.
   params = op.inputs[0]
   with ops.colocate_with(params):
-    params_shape = array_ops.shape(params, out_type=ops.dtypes.int64)
-    params_shape = math_ops.cast(params_shape, dtypes.int32)
+    params_shape = array_ops.shape(params)
 
   # Build appropriately shaped IndexedSlices
   indices = op.inputs[1]

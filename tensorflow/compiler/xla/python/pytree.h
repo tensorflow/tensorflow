@@ -85,11 +85,13 @@ class PyTreeDef {
 
   // Flattens a Pytree into a list of leaves and a PyTreeDef.
   static std::pair<std::vector<pybind11::object>, std::unique_ptr<PyTreeDef>>
-  Flatten(pybind11::handle x);
+  Flatten(pybind11::handle x,
+          absl::optional<pybind11::function> leaf_predicate = absl::nullopt);
 
   // Recursive helper used to implement Flatten().
-  void FlattenInto(pybind11::handle handle,
-                   std::vector<pybind11::object>& leaves);
+  void FlattenInto(
+      pybind11::handle handle, std::vector<pybind11::object>& leaves,
+      absl::optional<pybind11::function> leaf_predicate = absl::nullopt);
 
   // Tests whether the given list is a flat list of leaves.
   static bool AllLeaves(const pybind11::iterable& x);
@@ -102,6 +104,7 @@ class PyTreeDef {
 
   // Returns an unflattened PyTree given an iterable of leaves and a PyTreeDef.
   pybind11::object Unflatten(pybind11::iterable leaves) const;
+  pybind11::object Unflatten(absl::Span<const pybind11::object> leaves) const;
 
   // Composes two PyTreeDefs, replacing the leaves of this tree with copies of
   // `inner`.
@@ -188,6 +191,9 @@ class PyTreeDef {
   // Computes the node kind of a given Python object.
   static Kind GetKind(const pybind11::handle& obj,
                       CustomNodeRegistry::Registration const** custom);
+
+  template <typename T>
+  pybind11::object UnflattenImpl(T leaves) const;
 
   // Nodes, in a post-order traversal. We use an ordered traversal to minimize
   // allocations, and post-order corresponds to the order we need to rebuild the

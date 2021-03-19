@@ -48,17 +48,18 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
-from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import row_partition
 from tensorflow.python.util import compat
 from tensorflow.python.util.compat import collections_abc
+from tensorflow.python.util.tf_export import tf_export
 
 
 class NotEncodableError(Exception):
   """Error raised when a coder cannot encode an object."""
 
 
+@tf_export("__internal__.saved_model.StructureCoder", v1=[])
 class StructureCoder(object):
   """Encoder and decoder for nested structures into protos."""
 
@@ -517,8 +518,6 @@ class _TypeSpecCodec(object):
           resource_variable_ops.VariableSpec,
       struct_pb2.TypeSpecProto.ROW_PARTITION_SPEC:
           row_partition.RowPartitionSpec,
-      struct_pb2.TypeSpecProto.NDARRAY_SPEC:
-          np_arrays.NdarraySpec,
   }
 
   # Mapping from type (TypeSpec subclass) to enum value.

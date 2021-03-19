@@ -142,6 +142,89 @@ def bucket_by_sequence_length(element_length_func,
   Grouping together elements that have similar lengths reduces the total
   fraction of padding in a batch which increases training step efficiency.
 
+  Below is an example to bucketize the input data to the 3 buckets
+  "[0, 3), [3, 5), [5, inf)" based on sequence length, with batch size 2.
+
+  >>> elements = [
+  ...   [0], [1, 2, 3, 4], [5, 6, 7],
+  ...   [7, 8, 9, 10, 11], [13, 14, 15, 16, 19, 20], [21, 22]]
+
+  >>> dataset = tf.data.Dataset.from_generator(
+  ...     lambda: elements, tf.int64, output_shapes=[None])
+
+  >>> dataset = dataset.apply(
+  ...     tf.data.experimental.bucket_by_sequence_length(
+  ...         element_length_func=lambda elem: tf.shape(elem)[0],
+  ...         bucket_boundaries=[3, 5],
+  ...         bucket_batch_sizes=[2, 2, 2]))
+
+  >>> for elem in dataset.as_numpy_iterator():
+  ...   print(elem)
+  [[1 2 3 4]
+   [5 6 7 0]]
+  [[ 7  8  9 10 11  0]
+   [13 14 15 16 19 20]]
+  [[ 0  0]
+   [21 22]]
+
+  There is also a possibility to pad the dataset till the bucket boundary.
+  You can also provide which value to be used while padding the data.
+  Below example uses `-1` as padding and it also shows the input data
+  being bucketizied to two buckets "[0,3], [4,6]".
+  
+  >>> elements = [
+  ...   [0], [1, 2, 3, 4], [5, 6, 7],
+  ...   [7, 8, 9, 10, 11], [13, 14, 15, 16, 19, 20], [21, 22]]
+  
+  >>> dataset = tf.data.Dataset.from_generator(
+  ...   lambda: elements, tf.int32, output_shapes=[None])
+  
+  >>> dataset = dataset.apply(
+  ...     tf.data.experimental.bucket_by_sequence_length(
+  ...         element_length_func=lambda elem: tf.shape(elem)[0],
+  ...         bucket_boundaries=[4, 7],
+  ...         bucket_batch_sizes=[2, 2, 2],
+  ...         pad_to_bucket_boundary=True,
+  ...         padding_values=-1))
+  
+  >>> for elem in dataset.as_numpy_iterator():
+  ...   print(elem)
+  [[ 0 -1 -1]
+   [ 5  6  7]]
+  [[ 1  2  3  4 -1 -1]
+   [ 7  8  9 10 11 -1]]
+  [[21 22 -1]]
+  [[13 14 15 16 19 20]]
+  
+  When using `pad_to_bucket_boundary` option, it can be seen that it is
+  not always possible to maintain the bucket batch size.
+  You can drop the batches that do not maintain the bucket batch size by
+  using the option `drop_remainder`. Using the same input data as in the
+  above example you get the following result.
+  
+  >>> elements = [
+  ...   [0], [1, 2, 3, 4], [5, 6, 7],
+  ...   [7, 8, 9, 10, 11], [13, 14, 15, 16, 19, 20], [21, 22]]
+  
+  >>> dataset = tf.data.Dataset.from_generator(
+  ...   lambda: elements, tf.int32, output_shapes=[None])
+  
+  >>> dataset = dataset.apply(
+  ...     tf.data.experimental.bucket_by_sequence_length(
+  ...         element_length_func=lambda elem: tf.shape(elem)[0],
+  ...         bucket_boundaries=[4, 7],
+  ...         bucket_batch_sizes=[2, 2, 2],
+  ...         pad_to_bucket_boundary=True,
+  ...         padding_values=-1,
+  ...         drop_remainder=True))
+  
+  >>> for elem in dataset.as_numpy_iterator():
+  ...   print(elem)
+  [[ 0 -1 -1]
+   [ 5  6  7]]
+  [[ 1  2  3  4 -1 -1]
+   [ 7  8  9 10 11 -1]]
+
   Args:
     element_length_func: function from element in `Dataset` to `tf.int32`,
       determines the length of the element, which will determine the bucket it

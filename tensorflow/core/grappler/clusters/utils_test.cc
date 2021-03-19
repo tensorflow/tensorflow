@@ -33,11 +33,11 @@ TEST(UtilsTest, GetLocalGPUInfo) {
   DeviceProperties properties;
 
   // Invalid platform GPU ID.
-  properties = GetLocalGPUInfo(PlatformGpuId(100));
+  properties = GetLocalGPUInfo(PlatformDeviceId(100));
   EXPECT_EQ("UNKNOWN", properties.type());
 
   // Succeed when a valid platform GPU id was inserted.
-  properties = GetLocalGPUInfo(PlatformGpuId(0));
+  properties = GetLocalGPUInfo(PlatformDeviceId(0));
   EXPECT_EQ("GPU", properties.type());
   EXPECT_EQ("NVIDIA", properties.vendor());
 #elif TENSORFLOW_USE_ROCM
@@ -45,21 +45,21 @@ TEST(UtilsTest, GetLocalGPUInfo) {
   DeviceProperties properties;
 
   // Invalid platform GPU ID.
-  properties = GetLocalGPUInfo(PlatformGpuId(100));
+  properties = GetLocalGPUInfo(PlatformDeviceId(100));
   EXPECT_EQ("UNKNOWN", properties.type());
 
   // Succeed when a valid platform GPU id was inserted.
-  properties = GetLocalGPUInfo(PlatformGpuId(0));
+  properties = GetLocalGPUInfo(PlatformDeviceId(0));
   EXPECT_EQ("GPU", properties.type());
   EXPECT_EQ("Advanced Micro Devices, Inc", properties.vendor());
 #else
   LOG(INFO) << "CUDA is not enabled.";
   DeviceProperties properties;
 
-  properties = GetLocalGPUInfo(PlatformGpuId(0));
+  properties = GetLocalGPUInfo(PlatformDeviceId(0));
   EXPECT_EQ("GPU", properties.type());
 
-  properties = GetLocalGPUInfo(PlatformGpuId(100));
+  properties = GetLocalGPUInfo(PlatformDeviceId(100));
   EXPECT_EQ("GPU", properties.type());
 #endif
 }
@@ -97,14 +97,14 @@ TEST(UtilsTest, GetDeviceInfo) {
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // Invalid platform GPU id.
-  TF_ASSERT_OK(
-      GpuIdManager::InsertTfPlatformGpuIdPair(TfGpuId(0), PlatformGpuId(100)));
+  TF_ASSERT_OK(GpuIdManager::InsertTfPlatformDeviceIdPair(
+      TfDeviceId(0), PlatformDeviceId(100)));
   properties = GetDeviceInfo(device);
   EXPECT_EQ("UNKNOWN", properties.type());
 
   // Valid platform GPU id.
-  TF_ASSERT_OK(
-      GpuIdManager::InsertTfPlatformGpuIdPair(TfGpuId(1), PlatformGpuId(0)));
+  TF_ASSERT_OK(GpuIdManager::InsertTfPlatformDeviceIdPair(TfDeviceId(1),
+                                                          PlatformDeviceId(0)));
   device.id = 1;
   properties = GetDeviceInfo(device);
   EXPECT_EQ("GPU", properties.type());

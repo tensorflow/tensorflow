@@ -36,7 +36,7 @@ def get_source_inputs(tensor, layer=None, node_index=None):
   Output will always be a list of tensors
   (potentially with 1 element).
 
-  Arguments:
+  Args:
       tensor: The tensor to start from.
       layer: Origin layer of the tensor. Will be
           determined via tensor._keras_history if not provided.
@@ -94,7 +94,7 @@ def validate_string_arg(input_data,
 def count_params(weights):
   """Count the total number of scalars composing the weights.
 
-  Arguments:
+  Args:
       weights: An iterable containing the weights on which to compute params
 
   Returns:
@@ -111,7 +111,7 @@ def count_params(weights):
 def print_summary(model, line_length=None, positions=None, print_fn=None):
   """Prints a summary of a model.
 
-  Arguments:
+  Args:
       model: Keras model instance.
       line_length: Total length of printed lines
           (e.g. set this to adapt the display to different
@@ -196,7 +196,7 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
   def print_layer_summary(layer):
     """Prints a summary for a single layer.
 
-    Arguments:
+    Args:
         layer: target layer.
     """
     try:
@@ -207,13 +207,19 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
       output_shape = '?'
     name = layer.name
     cls_name = layer.__class__.__name__
-    fields = [name + ' (' + cls_name + ')', output_shape, layer.count_params()]
+    if not layer.built and not getattr(layer, '_is_graph_network', False):
+      # If a subclassed model has a layer that is not called in Model.call, the
+      # layer will not be built and we cannot call layer.count_params().
+      params = '0 (unused)'
+    else:
+      params = layer.count_params()
+    fields = [name + ' (' + cls_name + ')', output_shape, params]
     print_row(fields, positions)
 
   def print_layer_summary_with_connections(layer):
     """Prints a summary for a single layer (including topological connections).
 
-    Arguments:
+    Args:
         layer: target layer.
     """
     try:
@@ -270,61 +276,6 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
   print_fn('_' * line_length)
 
 
-def gather_trainable_weights(trainable, sub_layers, extra_variables):
-  """Lists the trainable weights for an object with sub-layers.
-
-  Args:
-    trainable: Whether the object collecting the variables is trainable.
-    sub_layers: A flat list of Layer objects owned by this object, to collect
-      variables from.
-    extra_variables: Any extra variables to include. Their `.trainable` property
-      is used to categorize them.
-
-  Returns:
-    A list of collected trainable weights/variables.
-  """
-  if not trainable:
-    return []
-  weights = []
-  for layer in sub_layers:
-    weights += layer.trainable_weights
-  trainable_extra_variables = [
-      v for v in extra_variables if v.trainable]
-  return weights + trainable_extra_variables
-
-
-def gather_non_trainable_weights(trainable, sub_layers, extra_variables):
-  """Lists the non-trainable weights for an object with sub-layers.
-
-  Args:
-    trainable: Whether the object collecting the variables is trainable.
-    sub_layers: A flat list of Layer objects owned by this object, to collect
-      variables from.
-    extra_variables: Any extra variables to include. Their `.trainable` property
-      is used to categorize them.
-
-  Returns:
-    A list of collected non-trainable weights/variables.
-  """
-  trainable_extra_variables = []
-  non_trainable_extra_variables = []
-  for v in extra_variables:
-    if v.trainable:
-      trainable_extra_variables.append(v)
-    else:
-      non_trainable_extra_variables.append(v)
-  weights = []
-  for layer in sub_layers:
-    weights += layer.non_trainable_weights
-  if not trainable:
-    trainable_weights = []
-    for layer in sub_layers:
-      trainable_weights += layer.trainable_weights
-    return (trainable_weights + trainable_extra_variables
-            + weights + non_trainable_extra_variables)
-  return weights + non_trainable_extra_variables
-
-
 def convert_dense_weights_data_format(dense,
                                       previous_feature_map_shape,
                                       target_data_format='channels_first'):
@@ -336,7 +287,7 @@ def convert_dense_weights_data_format(dense,
   followed by a `Dense` layer, the weights of that `Dense` layer
   should be updated to reflect the new dimension ordering.
 
-  Arguments:
+  Args:
       dense: The target `Dense` layer.
       previous_feature_map_shape: A shape tuple of 3 integers,
           e.g. `(512, 7, 7)`. The shape of the convolutional

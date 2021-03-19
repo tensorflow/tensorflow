@@ -394,6 +394,30 @@ TEST(BufferedInputStream, Seek) {
   }
 }
 
+TEST(BufferedInputStream, Seek_NotReset) {
+  // This test verifies seek backwards within the buffer doesn't reset
+  // input_stream
+  Env* env = Env::Default();
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
+  TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
+  std::unique_ptr<RandomAccessFile> file;
+  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+
+  std::unique_ptr<RandomAccessInputStream> input_stream(
+      new RandomAccessInputStream(file.get()));
+  tstring read;
+  BufferedInputStream in(input_stream.get(), 3);
+
+  TF_ASSERT_OK(in.ReadNBytes(4, &read));
+  int before_tell = input_stream.get()->Tell();
+  EXPECT_EQ(before_tell, 6);
+  // Seek backwards
+  TF_ASSERT_OK(in.Seek(3));
+  int after_tell = input_stream.get()->Tell();
+  EXPECT_EQ(before_tell, after_tell);
+}
+
 TEST(BufferedInputStream, ReadAll_Empty) {
   Env* env = Env::Default();
   string fname;
@@ -430,9 +454,9 @@ TEST(BufferedInputStream, ReadAll_Text) {
   }
 }
 
-void BM_BufferedReaderSmallReads(const int iters, const int buff_size,
-                                 const int file_size) {
-  testing::StopTiming();
+void BM_BufferedReaderSmallReads(::testing::benchmark::State& state) {
+  const int buff_size = state.range(0);
+  const int file_size = state.range(1);
   Env* env = Env::Default();
   string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
@@ -449,15 +473,16 @@ void BM_BufferedReaderSmallReads(const int iters, const int buff_size,
   TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
   tstring result;
-  testing::StartTiming();
 
-  for (int itr = 0; itr < iters; ++itr) {
+  int itr = 0;
+  for (auto s : state) {
     BufferedInputStream in(file.get(), buff_size);
     for (int64 i = 0; i < 10 * file_size; ++i) {
       TF_ASSERT_OK(in.ReadNBytes(1, &result))
           << "i: " << i << " itr: " << itr << " buff_size: " << buff_size
           << " file size: " << file_size;
     }
+    ++itr;
   }
 }
 BENCHMARK(BM_BufferedReaderSmallReads)

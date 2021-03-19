@@ -61,15 +61,18 @@ class SimplifyBroadcastReshape : public OpRewritePattern<BroadcastToOp> {
     if (!reshape_type.hasStaticShape()) return failure();
     ArrayRef<int64_t> reshape_shape = reshape_type.getShape();
 
+    auto input_type = op.input().getType().cast<ShapedType>();
+    auto output_type = op.output().getType().cast<ShapedType>();
+
+    if (!input_type.hasRank() || !output_type.hasRank()) return failure();
+
     // The pattern attempts to reduce the rank of the input to BroadcastTo.
     // Thus, we fail to match if the consuming reshape rank is larger.
-    ArrayRef<int64_t> input_shape =
-        op.input().getType().cast<ShapedType>().getShape();
+    ArrayRef<int64_t> input_shape = input_type.getShape();
     if (reshape_shape.size() > input_shape.size()) return failure();
 
     // Extend the input shape with leading 1s to match the broadcast shape.
-    ArrayRef<int64_t> broadcast_shape =
-        op.output().getType().cast<ShapedType>().getShape();
+    ArrayRef<int64_t> broadcast_shape = output_type.getShape();
     SmallVector<int64_t, 4> input_shape_extended;
     input_shape_extended.append(broadcast_shape.size() - input_shape.size(), 1);
     input_shape_extended.append(input_shape.begin(), input_shape.end());
@@ -133,7 +136,7 @@ struct TFOptimizePass : public PassWrapper<TFOptimizePass, FunctionPass> {
     auto func = getFunction();
     populateWithGenerated(&getContext(), patterns);
     patterns.insert<SimplifyBroadcastReshape>(&getContext());
-    applyPatternsAndFoldGreedily(func, std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
   }
 };
 
@@ -145,11 +148,9 @@ void CreateTFStandardPipeline(OpPassManager &pm,
   OpPassManager &func_pm = pm.nest<FuncOp>();
 
   // First operates on the executor dialect:
-  // - eliminate trivial switch/merge.
   // - remove dead islands.
   // - fuse islands as much as possible.
   // - materialize the eventual "pass-through" ops by inlining their content.
-  func_pm.addPass(tf_executor::CreateSwitchFoldPass());
   func_pm.addPass(tf_executor::CreateTFExecutorGraphPruningPass());
   func_pm.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
   func_pm.addPass(CreateMaterializePassthroughOpPass());

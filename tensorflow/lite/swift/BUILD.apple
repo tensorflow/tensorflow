@@ -1,6 +1,6 @@
 # TensorFlow Lite for Swift
 
-load("//tensorflow/lite:special_rules.bzl", "ios_visibility_whitelist", "tflite_ios_lab_runner")
+load("//tensorflow/lite:special_rules.bzl", "ios_visibility_allowlist", "tflite_ios_lab_runner")
 load("//tensorflow/lite/ios:ios.bzl", "TFL_DEFAULT_TAGS", "TFL_DISABLED_SANITIZER_TAGS", "TFL_MINIMUM_OS_VERSION")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework", "ios_unit_test")
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
@@ -12,12 +12,12 @@ package(
 
 config_setting(
     name = "use_coreml_delegate",
-    values = {"define": "use_coreml_delegate=1"},
+    define_values = {"use_coreml_delegate": "1"},
 )
 
 config_setting(
     name = "use_metal_delegate",
-    values = {"define": "use_metal_delegate=1"},
+    define_values = {"use_metal_delegate": "1"},
 )
 
 # By default this builds with no delegates.
@@ -57,12 +57,12 @@ swift_library(
     }),
     module_name = "TensorFlowLite",
     tags = TFL_DEFAULT_TAGS + ["nobuilder"],
-    visibility = ios_visibility_whitelist(),
+    visibility = ios_visibility_allowlist(),
     deps = [
         "//tensorflow/lite/ios:tensorflow_lite_c",
     ] + select({
         ":use_coreml_delegate": [
-            "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate",
+            "//tensorflow/lite/delegates/coreml:coreml_delegate",
         ],
         "//conditions:default": [],
     }) + select({
@@ -84,8 +84,8 @@ swift_library(
     module_name = "TensorFlowLite",
     tags = TFL_DEFAULT_TAGS + ["builder_default_ios_arm64"],
     deps = [
+        "//tensorflow/lite/delegates/coreml:coreml_delegate",
         "//tensorflow/lite/delegates/gpu:metal_delegate",
-        "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate",
         "//tensorflow/lite/ios:tensorflow_lite_c",
     ],
 )

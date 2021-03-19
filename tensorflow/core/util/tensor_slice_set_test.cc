@@ -144,12 +144,14 @@ TEST(TensorSliceSetTest, QueryMetaTwoD) {
   }
 }
 
-static void BM_RegisterOneByOne(int parts) {
-  TensorShape shape({parts, 41});
+static void BM_RegisterOneByOne(::testing::benchmark::State& state) {
+  TensorShape shape({static_cast<int>(state.max_iterations), 41});
   TensorSliceSet slice_set(shape, DT_INT32);
-  for (int i = 0; i < parts; ++i) {
+  int i = 0;
+  for (auto s : state) {
     TensorSlice part({{i, 1}, {0, -1}});
     TF_CHECK_OK(slice_set.Register(part, part.DebugString()));
+    ++i;
   }
 }
 

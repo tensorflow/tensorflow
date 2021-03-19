@@ -154,7 +154,7 @@ BASE_DOCSTRING = """Instantiates the {name} architecture.
   the one specified in your Keras config at `~/.keras/keras.json`.
   If you have never configured it, it defaults to `"channels_last"`.
 
-  Arguments:
+  Args:
     include_top: Whether to include the fully-connected
         layer at the top of the network. Defaults to True.
     weights: One of `None` (random initialization),
@@ -218,7 +218,7 @@ def EfficientNet(
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
 
-  Arguments:
+  Args:
     width_coefficient: float, scaling coefficient for network width.
     depth_coefficient: float, scaling coefficient for network depth.
     default_size: integer, default input image size.
@@ -423,7 +423,7 @@ def block(inputs,
           id_skip=True):
   """An inverted residual block.
 
-  Arguments:
+  Args:
       inputs: input tensor.
       activation: activation function.
       drop_rate: float between 0 and 1, fraction of the input units to drop.
@@ -738,6 +738,23 @@ EfficientNetB7.__doc__ = BASE_DOCSTRING.format(name='EfficientNetB7')
 
 @keras_export('keras.applications.efficientnet.preprocess_input')
 def preprocess_input(x, data_format=None):  # pylint: disable=unused-argument
+  """A placeholder method for backward compatibility.
+
+  The preprocessing logic has been included in the efficientnet model
+  implementation. Users are no longer required to call this method to normalize
+  the input data. This method does nothing and only kept as a placeholder to
+  align the API surface between old and new version of model.
+
+  Args:
+    x: A floating point `numpy.array` or a `tf.Tensor`.
+    data_format: Optional data format of the image tensor/array. Defaults to
+      None, in which case the global setting
+      `tf.keras.backend.image_data_format()` is used (unless you changed it,
+      it defaults to "channels_last").{mode}
+
+  Returns:
+    Unchanged `numpy.array` or `tf.Tensor`.
+  """
   return x
 
 

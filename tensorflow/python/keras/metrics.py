@@ -21,6 +21,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import math
 import types
 
 import numpy as np
@@ -36,6 +37,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
@@ -291,15 +293,13 @@ class Metric(base_layer.Layer):
                  initializer=None,
                  dtype=None):
     """Adds state variable. Only for use by subclasses."""
-    from tensorflow.python.keras.distribute import distributed_training_utils  # pylint:disable=g-import-not-at-top
-
     if distribute_ctx.has_strategy():
       strategy = distribute_ctx.get_strategy()
     else:
       strategy = None
 
     # TODO(b/120571621): Make `ON_READ` work with Keras metrics on TPU.
-    if distributed_training_utils.is_tpu_strategy(strategy):
+    if K.is_tpu_strategy(strategy):
       synchronization = tf_variables.VariableSynchronization.ON_WRITE
 
     with ops.init_scope():
@@ -1468,11 +1468,17 @@ class SensitivitySpecificityBase(Metric):
   [the following](https://en.wikipedia.org/wiki/Sensitivity_and_specificity).
   """
 
-  def __init__(self, value, num_thresholds=200, name=None, dtype=None):
+  def __init__(self,
+               value,
+               num_thresholds=200,
+               class_id=None,
+               name=None,
+               dtype=None):
     super(SensitivitySpecificityBase, self).__init__(name=name, dtype=dtype)
     if num_thresholds <= 0:
       raise ValueError('`num_thresholds` must be > 0.')
     self.value = value
+    self.class_id = class_id
     self.true_positives = self.add_weight(
         'true_positives',
         shape=(num_thresholds,),
@@ -1521,12 +1527,18 @@ class SensitivitySpecificityBase(Metric):
         y_true,
         y_pred,
         thresholds=self.thresholds,
+        class_id=self.class_id,
         sample_weight=sample_weight)
 
   def reset_states(self):
     num_thresholds = len(self.thresholds)
     K.batch_set_value(
         [(v, np.zeros((num_thresholds,))) for v in self.variables])
+
+  def get_config(self):
+    config = {'class_id': self.class_id}
+    base_config = super(SensitivitySpecificityBase, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
   def _find_max_under_constraint(self, constrained, dependent, predicate):
     """Returns the maximum of dependent_statistic that satisfies the constraint.
@@ -1571,6 +1583,11 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
 
+  If `class_id` is specified, we calculate precision by considering only the
+  entries in the batch for which `class_id` is above the threshold predictions,
+  and computing the fraction of them for which `class_id` is indeed a correct
+  label.
+
   For additional information about specificity and sensitivity, see
   [the following](https://en.wikipedia.org/wiki/Sensitivity_and_specificity).
 
@@ -1578,6 +1595,9 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
     specificity: A scalar value in range `[0, 1]`.
     num_thresholds: (Optional) Defaults to 200. The number of thresholds to
       use for matching the given specificity.
+    class_id: (Optional) Integer class ID for which we want binary metrics.
+      This must be in the half-open interval `[0, num_classes)`, where
+      `num_classes` is the last dimension of predictions.
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
 
@@ -1604,13 +1624,22 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
   ```
   """
 
-  def __init__(self, specificity, num_thresholds=200, name=None, dtype=None):
+  def __init__(self,
+               specificity,
+               num_thresholds=200,
+               class_id=None,
+               name=None,
+               dtype=None):
     if specificity < 0 or specificity > 1:
       raise ValueError('`specificity` must be in the range [0, 1].')
     self.specificity = specificity
     self.num_thresholds = num_thresholds
     super(SensitivityAtSpecificity, self).__init__(
-        specificity, num_thresholds=num_thresholds, name=name, dtype=dtype)
+        specificity,
+        num_thresholds=num_thresholds,
+        class_id=class_id,
+        name=name,
+        dtype=dtype)
 
   def result(self):
     specificities = math_ops.div_no_nan(
@@ -1646,6 +1675,11 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
 
+  If `class_id` is specified, we calculate precision by considering only the
+  entries in the batch for which `class_id` is above the threshold predictions,
+  and computing the fraction of them for which `class_id` is indeed a correct
+  label.
+
   For additional information about specificity and sensitivity, see
   [the following](https://en.wikipedia.org/wiki/Sensitivity_and_specificity).
 
@@ -1653,6 +1687,9 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
     sensitivity: A scalar value in range `[0, 1]`.
     num_thresholds: (Optional) Defaults to 200. The number of thresholds to
       use for matching the given sensitivity.
+    class_id: (Optional) Integer class ID for which we want binary metrics.
+      This must be in the half-open interval `[0, num_classes)`, where
+      `num_classes` is the last dimension of predictions.
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
 
@@ -1679,13 +1716,22 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
   ```
   """
 
-  def __init__(self, sensitivity, num_thresholds=200, name=None, dtype=None):
+  def __init__(self,
+               sensitivity,
+               num_thresholds=200,
+               class_id=None,
+               name=None,
+               dtype=None):
     if sensitivity < 0 or sensitivity > 1:
       raise ValueError('`sensitivity` must be in the range [0, 1].')
     self.sensitivity = sensitivity
     self.num_thresholds = num_thresholds
     super(SpecificityAtSensitivity, self).__init__(
-        sensitivity, num_thresholds=num_thresholds, name=name, dtype=dtype)
+        sensitivity,
+        num_thresholds=num_thresholds,
+        class_id=class_id,
+        name=name,
+        dtype=dtype)
 
   def result(self):
     sensitivities = math_ops.div_no_nan(
@@ -1716,10 +1762,18 @@ class PrecisionAtRecall(SensitivitySpecificityBase):
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
 
+  If `class_id` is specified, we calculate precision by considering only the
+  entries in the batch for which `class_id` is above the threshold predictions,
+  and computing the fraction of them for which `class_id` is indeed a correct
+  label.
+
   Args:
     recall: A scalar value in range `[0, 1]`.
     num_thresholds: (Optional) Defaults to 200. The number of thresholds to
       use for matching the given recall.
+    class_id: (Optional) Integer class ID for which we want binary metrics.
+      This must be in the half-open interval `[0, num_classes)`, where
+      `num_classes` is the last dimension of predictions.
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
 
@@ -1746,7 +1800,12 @@ class PrecisionAtRecall(SensitivitySpecificityBase):
   ```
   """
 
-  def __init__(self, recall, num_thresholds=200, name=None, dtype=None):
+  def __init__(self,
+               recall,
+               num_thresholds=200,
+               class_id=None,
+               name=None,
+               dtype=None):
     if recall < 0 or recall > 1:
       raise ValueError('`recall` must be in the range [0, 1].')
     self.recall = recall
@@ -1754,6 +1813,7 @@ class PrecisionAtRecall(SensitivitySpecificityBase):
     super(PrecisionAtRecall, self).__init__(
         value=recall,
         num_thresholds=num_thresholds,
+        class_id=class_id,
         name=name,
         dtype=dtype)
 
@@ -1786,10 +1846,18 @@ class RecallAtPrecision(SensitivitySpecificityBase):
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
 
+  If `class_id` is specified, we calculate precision by considering only the
+  entries in the batch for which `class_id` is above the threshold predictions,
+  and computing the fraction of them for which `class_id` is indeed a correct
+  label.
+
   Args:
     precision: A scalar value in range `[0, 1]`.
     num_thresholds: (Optional) Defaults to 200. The number of thresholds to
       use for matching the given precision.
+    class_id: (Optional) Integer class ID for which we want binary metrics.
+      This must be in the half-open interval `[0, num_classes)`, where
+      `num_classes` is the last dimension of predictions.
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
 
@@ -1816,7 +1884,12 @@ class RecallAtPrecision(SensitivitySpecificityBase):
   ```
   """
 
-  def __init__(self, precision, num_thresholds=200, name=None, dtype=None):
+  def __init__(self,
+               precision,
+               num_thresholds=200,
+               class_id=None,
+               name=None,
+               dtype=None):
     if precision < 0 or precision > 1:
       raise ValueError('`precision` must be in the range [0, 1].')
     self.precision = precision
@@ -1824,6 +1897,7 @@ class RecallAtPrecision(SensitivitySpecificityBase):
     super(RecallAtPrecision, self).__init__(
         value=precision,
         num_thresholds=num_thresholds,
+        class_id=class_id,
         name=name,
         dtype=dtype)
 
@@ -1844,7 +1918,17 @@ class RecallAtPrecision(SensitivitySpecificityBase):
 
 @keras_export('keras.metrics.AUC')
 class AUC(Metric):
-  """Computes the approximate AUC (Area under the curve) via a Riemann sum.
+  """Approximates the AUC (Area under the curve) of the ROC or PR curves.
+
+  The AUC (Area under the curve) of the ROC (Receiver operating
+  characteristic; default) or PR (Precision Recall) curves are quality measures
+  of binary classifiers. Unlike the accuracy, and like cross-entropy
+  losses, ROC-AUC and PR-AUC evaluate all the operational points of a model.
+
+  This classes approximates AUCs using a Riemann sum: During the metric
+  accumulation phrase, predictions are accumulated within predefined buckets
+  by value. The AUC is then computed by interpolating per-bucket averages. These
+  buckets define the evaluated operational points.
 
   This metric creates four local variables, `true_positives`, `true_negatives`,
   `false_positives` and `false_negatives` that are used to compute the AUC.
@@ -1862,11 +1946,11 @@ class AUC(Metric):
   dramatically depending on `num_thresholds`. The `thresholds` parameter can be
   used to manually specify thresholds which split the predictions more evenly.
 
-  For best results, `predictions` should be distributed approximately uniformly
-  in the range [0, 1] and not peaked around 0 or 1. The quality of the AUC
-  approximation may be poor if this is not the case. Setting `summation_method`
-  to 'minoring' or 'majoring' can help quantify the error in the approximation
-  by providing lower or upper bound estimate of the AUC.
+  For a best approximation of the real AUC, `predictions` should be distributed
+  approximately uniformly in the range [0, 1] (if `from_logits=False`). The
+  quality of the AUC approximation may be poor if this is not the case. Setting
+  `summation_method` to 'minoring' or 'majoring' can help quantify the error in
+  the approximation by providing lower or upper bound estimate of the AUC.
 
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
@@ -1912,6 +1996,10 @@ class AUC(Metric):
       label, whereas label_weights depends only on the index of that label
       before flattening; therefore `label_weights` should not be used for
       multi-class data.
+    from_logits: boolean indicating whether the predictions (`y_pred` in
+      `update_state`) are probabilities or sigmoid logits. As a rule of thumb,
+      when using a keras loss, the `from_logits` constructor argument of the
+      loss should match the AUC `from_logits` constructor argument.
 
   Standalone usage:
 
@@ -1933,7 +2021,15 @@ class AUC(Metric):
   Usage with `compile()` API:
 
   ```python
-  model.compile(optimizer='sgd', loss='mse', metrics=[tf.keras.metrics.AUC()])
+  # Reports the AUC of a model outputing a probability.
+  model.compile(optimizer='sgd',
+                loss=tf.keras.losses.BinaryCrossentropy(),
+                metrics=[tf.keras.metrics.AUC()])
+
+  # Reports the AUC of a model outputing a logit.
+  model.compile(optimizer='sgd',
+                loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
+                metrics=[tf.keras.metrics.AUC(from_logits=True)])
   ```
   """
 
@@ -1946,7 +2042,8 @@ class AUC(Metric):
                thresholds=None,
                multi_label=False,
                num_labels=None,
-               label_weights=None):
+               label_weights=None,
+               from_logits=False):
     # Validate configurations.
     if isinstance(curve, metrics_utils.AUCCurve) and curve not in list(
         metrics_utils.AUCCurve):
@@ -2000,11 +2097,13 @@ class AUC(Metric):
               label_weights,
               message='All values of `label_weights` must be non-negative.')
       ]
-      self.label_weights = control_flow_ops.with_dependencies(
-          checks, label_weights)
+      with ops.control_dependencies(checks):
+        self.label_weights = label_weights
 
     else:
       self.label_weights = None
+
+    self._from_logits = from_logits
 
     self._built = False
     if self.multi_label:
@@ -2105,6 +2204,10 @@ class AUC(Metric):
     # multi_label is False. Otherwise the averaging of individual label AUCs is
     # handled in AUC.result
     label_weights = None if self.multi_label else self.label_weights
+
+    if self._from_logits:
+      y_pred = activations.sigmoid(y_pred)
+
     with ops.control_dependencies(deps):
       return metrics_utils.update_confusion_matrix_variables(
           {
@@ -2894,6 +2997,9 @@ class MeanTensor(Metric):
   Args:
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
+    shape: (Optional) A list of integers, a tuple of integers, or a 1-D Tensor
+      of type int32. If not specified, the shape is inferred from the values at
+      the first call of update_state.
 
   Standalone usage:
 
@@ -2906,14 +3012,24 @@ class MeanTensor(Metric):
   >>> m.update_state([12, 10, 8, 6], sample_weight= [0, 0.2, 0.5, 1])
   >>> m.result().numpy()
   array([2.       , 3.6363635, 4.8      , 5.3333335], dtype=float32)
+
+  >>> m = tf.keras.metrics.MeanTensor(dtype=tf.float64, shape=(1, 4))
+  >>> m.result().numpy()
+  array([[0., 0., 0., 0.]])
+  >>> m.update_state([[0, 1, 2, 3]])
+  >>> m.update_state([[4, 5, 6, 7]])
+  >>> m.result().numpy()
+  array([[2., 3., 4., 5.]])
   """
 
-  def __init__(self, name='mean_tensor', dtype=None):
+  def __init__(self, name='mean_tensor', dtype=None, shape=None):
     super(MeanTensor, self).__init__(name=name, dtype=dtype)
     self._shape = None
     self._total = None
     self._count = None
     self._built = False
+    if shape is not None:
+      self._build(shape)
 
   def _build(self, shape):
     self._shape = tensor_shape.TensorShape(shape)
@@ -3454,7 +3570,7 @@ def clone_metrics(metrics):
 def serialize(metric):
   """Serializes metric function or `Metric` instance.
 
-  Arguments:
+  Args:
     metric: A Keras `Metric` instance or a metric function.
 
   Returns:
@@ -3467,7 +3583,7 @@ def serialize(metric):
 def deserialize(config, custom_objects=None):
   """Deserializes a serialized metric class/function instance.
 
-  Arguments:
+  Args:
     config: Metric configuration.
     custom_objects: Optional dictionary mapping names (strings) to custom
       objects (classes and functions) to be considered during deserialization.
@@ -3505,7 +3621,7 @@ def get(identifier):
   >>> type(metric)
   <class '...tensorflow.python.keras.metrics.CategoricalCrossentropy'>
 
-  Arguments:
+  Args:
     identifier: A metric identifier. One of None or string name of a metric
       function/class or metric configuration dictionary or a metric function or
       a metric class instance

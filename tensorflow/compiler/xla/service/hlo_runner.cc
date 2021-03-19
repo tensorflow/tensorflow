@@ -40,6 +40,9 @@ HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads) {
   backend_options.set_intra_op_parallelism_threads(
       intra_op_parallelism_threads);
   backend_ = Backend::CreateBackend(backend_options).ConsumeValueOrDie();
+  device_shape_representation_fn_ = [this](const Shape& shape) {
+    return backend_->compiler()->DeviceShapeRepresentation(shape);
+  };
   VLOG(1) << "Created HloRunner for platform: " << platform->Name();
 }
 
@@ -47,10 +50,11 @@ HloRunner::~HloRunner() {}
 
 StatusOr<ScopedShapedBuffer> HloRunner::TransferLiteralToDevice(
     const Literal& literal) {
-  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer buffer,
-                      backend().transfer_manager()->AllocateScopedShapedBuffer(
-                          literal.shape(), backend().memory_allocator(),
-                          backend().default_device_ordinal()));
+  TF_ASSIGN_OR_RETURN(
+      ScopedShapedBuffer buffer,
+      backend().transfer_manager()->AllocateScopedShapedBuffer(
+          literal.shape(), backend().memory_allocator(),
+          backend().default_device_ordinal(), device_shape_representation_fn_));
   TF_ASSIGN_OR_RETURN(
       auto stream, backend().BorrowStream(backend().default_stream_executor()));
   TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
@@ -92,6 +96,8 @@ StatusOr<Literal> HloRunner::Execute(std::unique_ptr<HloModule> module,
                                      absl::Span<const Literal* const> arguments,
                                      bool run_hlo_passes,
                                      ExecutionProfile* profile) {
+  UpdateEntryComputationLayout(module.get(), device_shape_representation_fn_);
+
   TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
                       TransferLiteralsToDevice(arguments));
   TF_ASSIGN_OR_RETURN(ExecutionOutput result,
@@ -104,8 +110,8 @@ StatusOr<Literal> HloRunner::Execute(std::unique_ptr<HloModule> module,
 }
 
 StatusOr<Literal> HloRunner::ExecuteWithExecutable(
-    std::unique_ptr<Executable> executable, absl::Span<const Literal> arguments,
-    ExecutionProfile* profile) {
+    std::unique_ptr<Executable> executable,
+    absl::Span<const Literal* const> arguments, ExecutionProfile* profile) {
   TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
                       TransferLiteralsToDevice(arguments));
   TF_ASSIGN_OR_RETURN(ExecutionOutput result,
@@ -238,7 +244,8 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
       TF_ASSIGN_OR_RETURN(
           ScopedShapedBuffer argument_buffer,
           backend().transfer_manager()->AllocateScopedShapedBuffer(
-              argument->shape(), backend().memory_allocator(), device));
+              argument->shape(), backend().memory_allocator(), device,
+              device_shape_representation_fn_));
       TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
           streams.back().get(), *argument, argument_buffer));
       argument_buffers.push_back(std::move(argument_buffer));
@@ -285,9 +292,9 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
         VLOG(1) << "Starting outfeed on device " << device;
         for (int64 step = 1;
              options.infeed_steps < 0 || step <= options.infeed_steps; ++step) {
-          Literal literal;
+          Literal literal(options.outfeed_shape);
           TF_CHECK_OK(backend().transfer_manager()->TransferLiteralFromOutfeed(
-              executor, options.outfeed_shape, &literal));
+              executor, &literal));
           if (options.outfeed_values != nullptr) {
             options.outfeed_values->push_back(std::move(literal));
           }

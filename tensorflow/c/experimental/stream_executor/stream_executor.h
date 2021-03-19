@@ -76,7 +76,7 @@ limitations under the License.
 //     // Values such as `name` and `type` must outlive SE_InitPlugin call.
 //     params->platform->name = DEVICE_NAME;
 //     params->platform->type = DEVICE_TYPE;
-//     params->platform->visible_device_count = 2;
+//     params->platform_fns->get_device_count = get_device_count;
 //     params->platform_fns->create_device = create_device;
 //     params->platform_fns->destroy_device = destroy_device;
 //     ...
@@ -140,8 +140,9 @@ typedef enum SE_EventStatus {
 // https://cs.opensource.google/tensorflow/tensorflow/+/refs/tags/v2.3.0:tensorflow/stream_executor/device_memory.h;l=57
 typedef struct SP_DeviceMemoryBase {
   size_t struct_size;
-  void* ext;  // free-form data set by plugin
+  void* ext;  // Reserved for future use
   // Platform-dependent value representing allocated memory.
+  // Note that the pointer does not have to be to the virtual address itself.
   void* opaque;
   uint64_t size;     // Size in bytes of this allocation.
   uint64_t payload;  // Value for plugin's use
@@ -427,22 +428,25 @@ typedef struct SP_Platform {
   // capital letters and underscores.
   const char* type;
 
-  // Number of visible devices
-  size_t visible_device_count;
-
   // Whether this platform supports unified memory.
   // Unified memory is a single memory address space accessible from any device.
   TF_Bool supports_unified_memory;
+
+  // Whether to wrap allocator for this device with an allocator that uses BFC
+  // (best-fit with coalescing) strategy.
+  TF_Bool use_bfc_allocator;
 } SP_Platform;
 
-#define SP_PLATFORM_STRUCT_SIZE \
-  TF_OFFSET_OF_END(SP_Platform, supports_unified_memory)
+#define SP_PLATFORM_STRUCT_SIZE TF_OFFSET_OF_END(SP_Platform, use_bfc_allocator)
 
 typedef struct SP_PlatformFns {
   size_t struct_size;
 
   void* ext;  // reserved for future use
 
+  // Callbacks for getting device count
+  void (*get_device_count)(const SP_Platform* platform, int* device_count,
+                           TF_Status* status);
   // Callbacks for creating/destroying SP_Device.
   void (*create_device)(const SP_Platform* platform,
                         SE_CreateDeviceParams* params, TF_Status* status);

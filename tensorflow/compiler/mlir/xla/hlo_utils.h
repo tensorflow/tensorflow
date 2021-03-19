@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -29,6 +29,11 @@ namespace xla {
 
 StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
     const LiteralBase& literal, mlir::Builder builder);
+
+Status CopyDenseElementsDataToXlaFormat(mlir::DenseElementsAttr data,
+                                        std::vector<uint8>* output);
+
+StatusOr<int> GetElementTypeBytes(mlir::Type type);
 
 // Creates an DenseIntElementsAttr using the elements of the vector and the
 // optional shape.
@@ -81,6 +86,8 @@ static StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
   }
   return ConvertTensorShapeToType<TypeT>(shape, builder);
 }
+
+::xla::StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op);
 
 }  // namespace xla
 

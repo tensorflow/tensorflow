@@ -17,6 +17,7 @@ limitations under the License.
 #include <stdarg.h>
 
 #include <functional>
+#include <memory>
 #include <sstream>
 #include <string>
 
@@ -24,9 +25,13 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/kernels/register_ref.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
@@ -68,7 +73,7 @@ using python_utils::PyDecrefDeleter;
 
 std::unique_ptr<Interpreter> CreateInterpreter(
     const InterpreterWrapper::Model* model,
-    const tflite::ops::builtin::BuiltinOpResolver& resolver) {
+    const tflite::MutableOpResolver& resolver) {
   if (!model) {
     return nullptr;
   }
@@ -165,8 +170,12 @@ bool RegisterCustomOpByName(const char* registerer_name,
 
 }  // namespace
 
+static constexpr int kBuiltinOpResolver = 1;
+static constexpr int kBuiltinRefOpResolver = 2;
+static constexpr int kBuiltinOpResolverWithoutDefaultDelegates = 3;
+
 InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
-    std::unique_ptr<InterpreterWrapper::Model> model,
+    std::unique_ptr<InterpreterWrapper::Model> model, int op_resolver_id,
     std::unique_ptr<PythonErrorReporter> error_reporter,
     const std::vector<std::string>& registerers_by_name,
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
@@ -176,7 +185,26 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
     return nullptr;
   }
 
-  auto resolver = absl::make_unique<tflite::ops::builtin::BuiltinOpResolver>();
+  std::unique_ptr<tflite::MutableOpResolver> resolver;
+  switch (op_resolver_id) {
+    case kBuiltinOpResolver:
+      resolver = absl::make_unique<tflite::ops::builtin::BuiltinOpResolver>();
+      break;
+    case kBuiltinRefOpResolver:
+      resolver =
+          absl::make_unique<tflite::ops::builtin::BuiltinRefOpResolver>();
+      break;
+    case kBuiltinOpResolverWithoutDefaultDelegates:
+      resolver = absl::make_unique<
+          tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates>();
+      break;
+    default:
+      // This should not never happen because the eventual caller in
+      // interpreter.py should have passed a valid id here.
+      TFLITE_DCHECK(false);
+      return nullptr;
+  }
+
   for (const auto& registerer : registerers_by_name) {
     if (!RegisterCustomOpByName(registerer.c_str(), resolver.get(), error_msg))
       return nullptr;
@@ -199,7 +227,7 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
 InterpreterWrapper::InterpreterWrapper(
     std::unique_ptr<InterpreterWrapper::Model> model,
     std::unique_ptr<PythonErrorReporter> error_reporter,
-    std::unique_ptr<tflite::ops::builtin::BuiltinOpResolver> resolver,
+    std::unique_ptr<tflite::MutableOpResolver> resolver,
     std::unique_ptr<Interpreter> interpreter)
     : model_(std::move(model)),
       error_reporter_(std::move(error_reporter)),
@@ -565,6 +593,48 @@ PyObject* CheckGetTensorArgs(Interpreter* interpreter_, int tensor_index,
 
 }  // namespace
 
+PyObject* InterpreterWrapper::GetSignatureDefs() const {
+  PyObject* result = PyDict_New();
+  for (const auto& sig_def_name : interpreter_->signature_def_names()) {
+    PyObject* signature_def = PyDict_New();
+    PyObject* inputs = PyDict_New();
+    PyObject* outputs = PyDict_New();
+    const auto& signature_def_inputs =
+        interpreter_->signature_inputs(sig_def_name->c_str());
+    const auto& signature_def_outputs =
+        interpreter_->signature_outputs(sig_def_name->c_str());
+    for (const auto& input : signature_def_inputs) {
+      PyDict_SetItemString(inputs, input.first.c_str(),
+                           PyLong_FromLong(input.second));
+    }
+    for (const auto& output : signature_def_outputs) {
+      PyDict_SetItemString(outputs, output.first.c_str(),
+                           PyLong_FromLong(output.second));
+    }
+
+    PyDict_SetItemString(signature_def, "inputs", inputs);
+    PyDict_SetItemString(signature_def, "outputs", outputs);
+    PyDict_SetItemString(result, sig_def_name->c_str(), signature_def);
+  }
+  return result;
+}
+
+PyObject* InterpreterWrapper::GetOutputTensorFromSignatureDefName(
+    const char* output_name, const char* method_name) const {
+  const auto& outputs = interpreter_->signature_outputs(method_name);
+  const auto& output = outputs.find(output_name);
+  if (output == outputs.end()) return nullptr;
+  return GetTensor(output->second);
+}
+
+PyObject* InterpreterWrapper::SetInputTensorFromSignatureDefName(
+    const char* input_name, const char* method_name, PyObject* value) {
+  const auto& inputs = interpreter_->signature_inputs(method_name);
+  const auto& input = inputs.find(input_name);
+  if (input == inputs.end()) return nullptr;
+  return SetTensor(input->second, value);
+}
+
 PyObject* InterpreterWrapper::GetTensor(int i) const {
   // Sanity check accessor
   TfLiteTensor* tensor = nullptr;
@@ -577,7 +647,8 @@ PyObject* InterpreterWrapper::GetTensor(int i) const {
 
   std::vector<npy_intp> dims(tensor->dims->data,
                              tensor->dims->data + tensor->dims->size);
-  if (tensor->type != kTfLiteString) {
+  if (tensor->type != kTfLiteString && tensor->type != kTfLiteResource &&
+      tensor->type != kTfLiteVariant) {
     // Make a buffer copy but we must tell Numpy It owns that data or else
     // it will leak.
     void* data = malloc(tensor->bytes);
@@ -659,25 +730,28 @@ PyObject* InterpreterWrapper::tensor(PyObject* base_object, int i) {
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
-    const char* model_path, const std::vector<std::string>& registerers_by_name,
+    const char* model_path, int op_resolver_id,
+    const std::vector<std::string>& registerers_by_name,
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
     std::string* error_msg) {
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
   std::unique_ptr<InterpreterWrapper::Model> model =
       Model::BuildFromFile(model_path, error_reporter.get());
-  return CreateInterpreterWrapper(std::move(model), std::move(error_reporter),
-                                  registerers_by_name, registerers_by_func,
-                                  error_msg);
+  return CreateInterpreterWrapper(
+      std::move(model), op_resolver_id, std::move(error_reporter),
+      registerers_by_name, registerers_by_func, error_msg);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
-    const char* model_path, const std::vector<std::string>& registerers,
-    std::string* error_msg) {
-  return CreateWrapperCPPFromFile(model_path, registerers, {}, error_msg);
+    const char* model_path, int op_resolver_id,
+    const std::vector<std::string>& registerers, std::string* error_msg) {
+  return CreateWrapperCPPFromFile(model_path, op_resolver_id, registerers,
+                                  {} /*registerers_by_func*/, error_msg);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
-    PyObject* data, const std::vector<std::string>& registerers_by_name,
+    PyObject* data, int op_resolver_id,
+    const std::vector<std::string>& registerers_by_name,
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
     std::string* error_msg) {
   char* buf = nullptr;
@@ -689,15 +763,16 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
   }
   std::unique_ptr<InterpreterWrapper::Model> model =
       Model::BuildFromBuffer(buf, length, error_reporter.get());
-  return CreateInterpreterWrapper(std::move(model), std::move(error_reporter),
-                                  registerers_by_name, registerers_by_func,
-                                  error_msg);
+  return CreateInterpreterWrapper(
+      std::move(model), op_resolver_id, std::move(error_reporter),
+      registerers_by_name, registerers_by_func, error_msg);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
-    PyObject* data, const std::vector<std::string>& registerers,
-    std::string* error_msg) {
-  return CreateWrapperCPPFromBuffer(data, registerers, {}, error_msg);
+    PyObject* data, int op_resolver_id,
+    const std::vector<std::string>& registerers, std::string* error_msg) {
+  return CreateWrapperCPPFromBuffer(data, op_resolver_id, registerers, {},
+                                    error_msg);
 }
 
 PyObject* InterpreterWrapper::ResetVariableTensors() {

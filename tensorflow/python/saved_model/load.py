@@ -20,12 +20,14 @@ from __future__ import print_function
 
 import functools
 import os
+import sys
 
 from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -388,7 +390,7 @@ class Loader(object):
         return obj.handle
       elif isinstance(obj, tracking.Asset):
         return obj.asset_path
-      elif tensor_util.is_tensor(obj):
+      elif tensor_util.is_tf_type(obj):
         return obj
       elif isinstance(obj, tracking.CapturableResource):
         # Note: this executes restored functions in the CapturableResource.
@@ -488,31 +490,32 @@ class Loader(object):
     load_status.assert_existing_objects_matched()
     checkpoint = load_status._checkpoint
 
-    # When running in eager mode, the `restore` call above has already run and
-    # restored the state of trackables, call `position.restore_ops()` will
-    # return an empty list as there is nothing left to do. In graph mode, that
-    # will return the list of ops that must run to restore the object on that
-    # position. We have to wire them in the initializers of the objects so that
-    # they get initialized properly when using common practices (e.g. the ones
-    # used by ManagedSession) without further user action.
-    for object_id, obj in dict(checkpoint.object_by_proto_id).items():
-      position = base.CheckpointPosition(checkpoint=checkpoint,
-                                         proto_id=object_id)
-      restore_ops = position.restore_ops()
-      if restore_ops:
-        if resource_variable_ops.is_resource_variable(obj):
-          if len(restore_ops) == 1:
-            obj._initializer_op = restore_ops[0]
+    if not context.executing_eagerly():
+      # When running in eager mode, the `restore` call above has already run and
+      # restored the state of trackables, and calling `position.restore_ops()`
+      # would re-run the restore. In graph mode, that will return a cached list
+      # of ops that must run to restore the object on that position. We have to
+      # wire them in the initializers of the objects so that they get
+      # initialized properly when using common practices (e.g. the ones used by
+      # ManagedSession) without further user action.
+      for object_id, obj in dict(checkpoint.object_by_proto_id).items():
+        position = base.CheckpointPosition(checkpoint=checkpoint,
+                                           proto_id=object_id)
+        restore_ops = position.restore_ops()
+        if restore_ops:
+          if resource_variable_ops.is_resource_variable(obj):
+            if len(restore_ops) == 1:
+              obj._initializer_op = restore_ops[0]
+            else:
+              obj._initializer_op = control_flow_ops.group(*restore_ops)
+          elif isinstance(obj, lookup_ops.LookupInterface):
+            # We don't need to check for eager execution here, since this code
+            # path should only be taken if we are restoring in graph mode.
+            ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, restore_ops)
           else:
-            obj._initializer_op = control_flow_ops.group(*restore_ops)
-        elif isinstance(obj, lookup_ops.LookupInterface):
-          # We don't need to check for eager execution here, since this code
-          # path should only be taken if we are restoring in graph mode.
-          ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, restore_ops)
-        else:
-          raise NotImplementedError(
-              ("Missing functionality to restore state of object "
-               "%r from the checkpoint." % obj))
+            raise NotImplementedError(
+                ("Missing functionality to restore state of object "
+                 "%r from the checkpoint." % obj))
 
   def adjust_debug_info_func_names(self, debug_info):
     """Rewrite func names in the debug info by using the concrete func names."""
@@ -573,7 +576,10 @@ class Loader(object):
     filename = os.path.join(
         saved_model_utils.get_assets_dir(self._export_dir),
         self._asset_file_def[proto.asset_file_def_index].filename)
-    return tracking.Asset(filename), setattr
+    asset = tracking.Asset(filename)
+    if not context.executing_eagerly():
+      ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, asset.asset_path)
+    return asset, setattr
 
   def _recreate_function(self, proto):
     return function_deserialization.recreate_function(
@@ -624,7 +630,7 @@ class Loader(object):
     return imported_constant, setattr
 
   def _recreate_resource(self, proto):
-    return _RestoredResource(device=proto.device), setattr
+    return _RestoredResource(device=proto.device), _setattr_and_track
 
 
 # TODO(b/124205571,b/124092991): Solve destruction of resources.
@@ -633,7 +639,6 @@ class _RestoredResource(tracking.TrackableResource):
 
   def __init__(self, device=""):
     super(_RestoredResource, self).__init__(device=device)
-    self._destroy_resource_fn = None
 
   def _create_resource(self):
     raise RuntimeError()
@@ -641,15 +646,13 @@ class _RestoredResource(tracking.TrackableResource):
   def _initialize(self):
     raise RuntimeError()
 
-  @property
+  # _list_functions_for_serialization expects Function objects, but unlike
+  # _create_resource and _initialize, _destroy_function didn't always exist in
+  # older TrackableResource implementations, so this default stub must be a
+  # Function.
+  @def_function.function
   def _destroy_resource(self):
-    return self._destroy_resource_fn
-
-  @_destroy_resource.setter
-  def _destroy_resource(self, destroy_resource_fn):
-    self._resource_deleter = tracking.CapturableResourceDeleter(
-        destroy_resource_fn)
-    self._destroy_resource_fn = destroy_resource_fn
+    raise RuntimeError()
 
   def _list_functions_for_serialization(self, unused_serialization_cache):
     # Overwrite this method to avoid the implementation of
@@ -658,14 +661,20 @@ class _RestoredResource(tracking.TrackableResource):
     functions = {
         "_create_resource": self._create_resource,
         "_initialize": self._initialize,
+        "_destroy_resource": self._destroy_resource,
     }
-    if self._destroy_resource:
-      functions.update(_destroy_resource=self._destroy_resource)
     return functions
 
 
 def _call_attribute(instance, *args, **kwargs):
   return instance.__call__(*args, **kwargs)
+
+
+def _setattr_and_track(obj, name, value):
+  """Sets new attribute and marks it as a dependency if Trackable."""
+  setattr(obj, name, value)
+  if isinstance(value, base.Trackable):
+    obj._track_trackable(value, name)  # pylint:disable=protected-access
 
 
 @tf_export("__internal__.saved_model.load_partial", v1=[])
@@ -850,7 +859,7 @@ def load(export_dir, tags=None, options=None):
 
   Returns:
     A trackable object with a `signatures` attribute mapping from signature
-    keys to functions. If the SavedModel was exported by `tf.saved_model.load`,
+    keys to functions. If the SavedModel was exported by `tf.saved_model.save`,
     it also points to trackable objects, functions, debug info which it has been
     saved.
 
@@ -874,6 +883,12 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
   if (len(saved_model_proto.meta_graphs) == 1 and
       saved_model_proto.meta_graphs[0].HasField("object_graph_def")):
     meta_graph_def = saved_model_proto.meta_graphs[0]
+    # tensor_content field contains raw bytes in litle endian format
+    # which causes problems when loaded on big-endian systems
+    # requiring byteswap
+    if sys.byteorder == "big":
+      saved_model_utils.swap_function_tensor_content(meta_graph_def, "little",
+                                                     "big")
     if (tags is not None
         and set(tags) != set(meta_graph_def.meta_info_def.tags)):
       raise ValueError(

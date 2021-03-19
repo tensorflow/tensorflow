@@ -26,17 +26,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg.sparse import sparse_csr_matrix_grad  # pylint: disable=unused-import
 from tensorflow.python.ops.linalg.sparse import sparse_csr_matrix_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
-
-
-def dense_to_csr_sparse_matrix(dense):
-  dense_t = ops.convert_to_tensor(dense)
-  locs = array_ops.stop_gradient(array_ops.where(math_ops.abs(dense_t) > 0))
-  return sparse_csr_matrix_ops.dense_to_csr_sparse_matrix(dense_t, locs)
 
 
 def _add_test(test, op_name, testcase_name, fn):  # pylint: disable=redefined-outer-name
@@ -58,30 +51,45 @@ class CSRSparseMatrixDenseMatMulGradTest(test.TestCase):
   # TODO(penporn): Make these tests runnable on eager mode.
   # (tf.gradients and gradient_checker only run in graph mode.)
   @test_util.run_deprecated_v1
-  def _testLargeBatchSparseMatrixMatMulGrad(self, datatype, transpose_a,
-                                            transpose_b, adjoint_a, adjoint_b,
-                                            transpose_output, conjugate_output):
-    if not self._gpu_available:
-      return
+  def _testLargeBatchSparseMatrixMatMulGrad(
+      self,
+      datatype,
+      transpose_a,
+      transpose_b,
+      adjoint_a,
+      adjoint_b,
+      transpose_output,
+      conjugate_output,
+      batched_inputs,
+  ):
+    if batched_inputs:
+      a_shape = (3, 5, 11)
+      b_shape = (3, 11, 13)
+      transpose = lambda x: np.transpose(x, (0, 2, 1))
+    else:
+      a_shape = (5, 11)
+      b_shape = (11, 13)
+      transpose = np.transpose
 
     sparsify = lambda m: m * (m > 0)
     a_mats_val = sparsify(
-        np.random.randn(3, 5, 11) +
-        1.j * np.random.randn(3, 5, 11)).astype(datatype)
+        np.random.randn(*a_shape) +
+        1.j * np.random.randn(*a_shape)).astype(datatype)
     if transpose_a or adjoint_a:
-      a_mats_val = np.transpose(a_mats_val, (0, 2, 1))
+      a_mats_val = transpose(a_mats_val)
     if adjoint_a:
       a_mats_val = np.conj(a_mats_val)
-    b_mats_val = (np.random.randn(3, 11, 13) +
-                  1.j * np.random.randn(3, 11, 13)).astype(datatype)
+    b_mats_val = (np.random.randn(*b_shape) +
+                  1.j * np.random.randn(*b_shape)).astype(datatype)
     if transpose_b or adjoint_b:
-      b_mats_val = np.transpose(b_mats_val, (0, 2, 1))
+      b_mats_val = transpose(b_mats_val)
     if adjoint_b:
       b_mats_val = np.conj(b_mats_val)
-    with self.test_session(use_gpu=True):
+    with self.test_session():
       a_mats = ops.convert_to_tensor(a_mats_val, dtype=datatype)
       b_mats = ops.convert_to_tensor(b_mats_val, dtype=datatype)
-      a_sm = dense_to_csr_sparse_matrix(a_mats)
+      locs = array_ops.where(abs(a_mats_val) > 0)
+      a_sm = sparse_csr_matrix_ops.dense_to_csr_sparse_matrix(a_mats, locs)
       c_mats = sparse_csr_matrix_ops.sparse_matrix_mat_mul(
           a_sm,
           b_mats,
@@ -109,10 +117,10 @@ class CSRSparseMatrixDenseMatMulGradTest(test.TestCase):
 dtypes_to_test = [np.float32, np.complex64]
 for dtype in dtypes_to_test:
   for (t_a, t_b, adj_a, adj_b, t_out,
-       conj_out) in itertools.product(*(([False, True],) * 6)):
+       conj_out, batched) in itertools.product(*(([False, True],) * 7)):
 
     def create_mat_mul_test_fn(dtype_, t_a_, t_b_, adj_a_, adj_b_, t_out_,
-                               conj_out_):
+                               conj_out_, batched_):
       # Skip invalid cases.
       if (t_a_ and adj_a_) or (t_b_ and adj_b_):
         return
@@ -122,18 +130,20 @@ for dtype in dtypes_to_test:
 
       def test_fn(self):
         self._testLargeBatchSparseMatrixMatMulGrad(dtype_, t_a_, t_b_, adj_a_,
-                                                   adj_b_, t_out_, conj_out_)
+                                                   adj_b_, t_out_, conj_out_,
+                                                   batched_)
 
       return test_fn
 
     name = (
         "_testLargeBatchSparseMatrixMatMulGrad_dtype_%s_t_a_%s_t_b_%s_adj_a_%s_"
-        "adj_b_%s_t_out_%s_conj_out_%s" %
-        (dtype.__name__, t_a, t_b, adj_a, adj_b, t_out, conj_out))
+        "adj_b_%s_t_out_%s_conj_out_%s_batched_%s" %
+        (dtype.__name__, t_a, t_b, adj_a, adj_b, t_out, conj_out, batched))
 
     _add_test(
         CSRSparseMatrixDenseMatMulGradTest, "CSRSparseMatrixGradTest", name,
-        create_mat_mul_test_fn(dtype, t_a, t_b, adj_a, adj_b, t_out, conj_out))
+        create_mat_mul_test_fn(dtype, t_a, t_b, adj_a, adj_b, t_out, conj_out,
+                               batched))
 
 if __name__ == "__main__":
   test.main()

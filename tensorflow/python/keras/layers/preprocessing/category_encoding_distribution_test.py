@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for keras.layers.preprocessing.normalization."""
+"""Distribution tests for keras.layers.preprocessing.category_encoding."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -64,13 +64,13 @@ class CategoryEncodingDistributionTest(
     expected_output = [[0, 1, 1, 1, 0, 0],
                        [1, 1, 0, 1, 0, 0]]
     # pyformat: enable
-    max_tokens = 6
+    num_tokens = 6
     config.set_soft_device_placement(True)
 
     with distribution.scope():
       input_data = keras.Input(shape=(4,), dtype=dtypes.int32)
       layer = category_encoding.CategoryEncoding(
-          max_tokens=max_tokens, output_mode=category_encoding.BINARY)
+          num_tokens=num_tokens, output_mode=category_encoding.BINARY)
       int_data = layer(input_data)
       model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(inp_dataset)

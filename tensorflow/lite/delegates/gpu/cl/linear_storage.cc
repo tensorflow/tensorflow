@@ -94,15 +94,6 @@ absl::Status LinearStorage::CreateFromTensorLinearDescriptor(
   }
 }
 
-LinearStorageType DeduceLinearStorageType(
-    TensorStorageType tensor_storage_type) {
-  if (tensor_storage_type == TensorStorageType::BUFFER) {
-    return LinearStorageType::BUFFER;
-  } else {
-    return LinearStorageType::TEXTURE_2D;
-  }
-}
-
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

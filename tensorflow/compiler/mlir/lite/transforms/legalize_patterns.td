@@ -240,15 +240,16 @@ def LegalizeGreaterEqual : Pat<(TF_GreaterEqualOp $l, $r),
 // The 'validate_indices' attribute is deprecated.
 def LegalizeGather: Pat<
   (TF_GatherOp $params, $indices, $ignored_validate_indices),
-  (TFL_GatherOp $params, $indices, ConstantAttr<I32Attr, "0">)>;
+  (TFL_GatherOp $params, $indices, ConstantAttr<I32Attr, "0">,
+     ConstantAttr<I32Attr, "0">)>;
 
 def LegalizeGatherNd : Pat<(TF_GatherNdOp $params, $indices),
                            (TFL_GatherNdOp $params, $indices)>;
 
 def LegalizeGatherV2 : Pat<
-  (TF_GatherV2Op $params, $indices, (ConstantOp ElementsAttr:$axis),
-    ConstantAttr<I64Attr, "0">:$batch_dims),
-  (TFL_GatherOp $params, $indices, ExtractSingleElementAsInt32:$axis)>;
+  (TF_GatherV2Op $params, $indices, (ConstantOp ElementsAttr:$axis), $batch_dims),
+  (TFL_GatherOp $params, $indices, ExtractSingleElementAsInt32:$axis,
+    (convertIntAttrTo32Bit $batch_dims))>;
 
 def LegalizeFloorDiv : Pat<(TF_FloorDivOp $l, $r), (TFL_FloorDivOp $l, $r)>;
 
@@ -477,13 +478,27 @@ def LegalizeReshape : Pat<
   (TF_ReshapeOp $input, $shape),
   (TFL_ReshapeOp $input, (CreateTFCastToInt32Op $shape))>;
 
+def ZeroIntAttr
+  : AttrConstraint<CPred<"$_self.cast<::mlir::IntegerAttr>().getInt() == 0">>;
+
+// ellipsis_mask and new_axis_mask should be zero.
 def LegalizeStridedSlice : Pat<
   (TF_StridedSliceOp
-    $input, $begin, $end, $strides, $begin_mask, $end_mask, $ellipsis_mask,
-    $new_axis_mask, $shrink_axis_mask),
+    $input, $begin, $end, $strides, $begin_mask, $end_mask,
+    ZeroIntAttr:$ellipsis_mask, ZeroIntAttr:$new_axis_mask, $shrink_axis_mask),
   (TFL_StridedSliceOp $input,
     (CreateTFCastToInt32Op $begin), (CreateTFCastToInt32Op $end),
     (CreateTFCastToInt32Op $strides), (convertIntAttrTo32Bit $begin_mask),
     (convertIntAttrTo32Bit $end_mask), (convertIntAttrTo32Bit $ellipsis_mask),
     (convertIntAttrTo32Bit $new_axis_mask),
     (convertIntAttrTo32Bit $shrink_axis_mask))>;
+
+def LegalizeRfft2d : Pat<
+  (TF_RFFT2DOp $input, $fft_length),
+  (TFL_RFFT2dOp $input, $fft_length)>;
+
+def LegalizeComplexAbs : Pat<(TF_ComplexAbsOp $arg), (TFL_ComplexAbsOp $arg)>;
+
+def LegalizeReal : Pat<(TF_RealOp $arg), (TFL_RealOp $arg)>;
+
+def LegalizeImag : Pat<(TF_ImagOp $arg), (TFL_ImagOp $arg)>;

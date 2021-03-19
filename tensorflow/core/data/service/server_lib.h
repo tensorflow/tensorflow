@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
+#include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
@@ -58,6 +59,7 @@ class GrpcDataServerBase {
   // Starts the service. This will be called after building the service, so
   // bound_port() will return the actual bound port.
   virtual Status StartServiceInternal() = 0;
+  virtual void StopServiceInternal() {}
 
   int bound_port() { return bound_port_; }
 
@@ -104,11 +106,13 @@ class WorkerGrpcDataServer : public GrpcDataServerBase {
  protected:
   void AddDataServiceToBuilder(::grpc::ServerBuilder& builder) override;
   Status StartServiceInternal() override;
+  void StopServiceInternal() override;
 
  private:
   const experimental::WorkerConfig config_;
   // Owned. We use a raw pointer because GrpcWorkerImpl is forward-declared.
   GrpcWorkerImpl* service_;
+  std::shared_ptr<DataTransferServer> transfer_server_;
 };
 
 // Creates a dispatch tf.data server and stores it in `out_server`.

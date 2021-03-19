@@ -39,7 +39,7 @@ enum class OperationType {
   BATCH_NORMALIZATION,
   BATCHED_MATMUL,
   CONCAT,
-  CONST,
+  CONSTANT,
   CONVOLUTION_2D,
   CONVOLUTION_TRANSPOSED,
   COPY,
@@ -50,6 +50,7 @@ enum class OperationType {
   EQUAL,
   EXP,
   FULLY_CONNECTED,
+  FULLY_CONNECTED_INT8,
   GREATER,
   GREATER_EQUAL,
   HARD_SWISH,
@@ -85,6 +86,7 @@ enum class OperationType {
   SOFTMAX,
   SPACE_TO_BATCH,
   SPACE_TO_DEPTH,
+  SPLIT,
   SQRT,
   SQUARE,
   SQUARED_DIFF,
@@ -497,6 +499,16 @@ struct FullyConnectedAttributes {
   Tensor<Linear, DataType::FLOAT32> bias;
 };
 
+struct FullyConnectedInt8Attributes {
+  Tensor<OHWI, DataType::INT8> weights;
+  Tensor<Linear, DataType::FLOAT32> bias;
+  float scale;
+  int zero_point;
+};
+
+FullyConnectedAttributes DequatizeFullyConnectedAttr(
+    const FullyConnectedInt8Attributes& attr);
+
 // @return shape of a tensor after FullyConnected operation is applied to
 // the given input.
 BHWC CalculateOutputShape(const BHWC& input,
@@ -545,6 +557,11 @@ BHWDC CalculateOutputShape(const BHWDC& input,
 
 struct SpaceToDepthAttributes {
   int block_size;
+};
+
+struct SplitAttributes {
+  // Defines axis by which to split.
+  Axis axis = Axis::UNKNOWN;
 };
 
 // These help perform a combination of Quantize & Dequantize to adjust float

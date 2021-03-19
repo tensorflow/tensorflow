@@ -292,7 +292,7 @@ class DistributedCollectiveAllReduceStrategyTest(
       input_options = None
     else:
       input_options = distribute_lib.InputOptions(
-          experimental_prefetch_to_device=prefetch_to_device)
+          experimental_fetch_to_device=prefetch_to_device)
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.batch(distribution.num_replicas_in_sync)
     dataset = distribution.experimental_distribute_dataset(
@@ -313,7 +313,7 @@ class DistributedCollectiveAllReduceStrategyTest(
         task_id=0,
         num_gpus=2)
     input_options = distribute_lib.InputOptions(
-        experimental_prefetch_to_device=False)
+        experimental_fetch_to_device=False)
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.batch(distribution.num_replicas_in_sync)
     dataset = distribution.experimental_distribute_dataset(
@@ -399,48 +399,6 @@ class DistributedCollectiveAllReduceStrategyTest(
                      new_rewrite_options.scoped_allocator_optimization)
     self.assertEqual(['CollectiveReduce'],
                      new_rewrite_options.scoped_allocator_opts.enable_op)
-
-  def _get_strategy_with_mocked_methods(self):
-    mock_called = [False]
-
-    # pylint: disable=dangerous-default-value
-    def mock_enable_collective_ops(server_def, mock_called=mock_called):
-      self.assertEqual('worker', server_def.job_name)
-      self.assertEqual(1, server_def.task_index)
-      self.assertEqual('grpc', server_def.protocol)
-      mock_called[0] = True
-
-    def mock_configure_collective_ops(*args, **kwargs):
-      del args, kwargs
-
-    with test.mock.patch.object(context.context(), 'enable_collective_ops',
-                                mock_enable_collective_ops), \
-         test.mock.patch.object(context.context(), 'configure_collective_ops',
-                                mock_configure_collective_ops):
-      strategy, _, _ = self._get_test_object(
-          task_type='worker', task_id=1, num_gpus=2)
-
-    return strategy, mock_called
-
-  @combinations.generate(combinations.combine(mode=['eager']))
-  def testEnableCollectiveOps(self):
-    # We cannot enable check health with this test because it mocks
-    # enable_collective_ops.
-    CollectiveAllReduceExtended._enable_check_health = False
-    strategy, mock_called = self._get_strategy_with_mocked_methods()
-    CollectiveAllReduceExtended._enable_check_health = True
-    self.assertTrue(strategy.extended._std_server_started)
-    self.assertTrue(mock_called[0])
-
-  @combinations.generate(combinations.combine(mode=['eager']))
-  def testEnableCollectiveOpsAndClusterResolver(self):
-    # We cannot enable check health with this test because it mocks
-    # enable_collective_ops.
-    CollectiveAllReduceExtended._enable_check_health = False
-    strategy, _ = self._get_strategy_with_mocked_methods()
-    CollectiveAllReduceExtended._enable_check_health = True
-    self.assertEqual(strategy.cluster_resolver.task_type, 'worker')
-    self.assertEqual(strategy.cluster_resolver.task_id, 1)
 
 
 class DistributedCollectiveAllReduceStrategyTestWithChief(

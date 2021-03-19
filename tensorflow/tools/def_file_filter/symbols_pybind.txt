@@ -1,4 +1,4 @@
-[//tensorflow/python:cpp_python_util] # util tfe
+[//tensorflow/python/util:cpp_python_util] # util tfe
 tensorflow::swig::IsSequence
 tensorflow::swig::IsSequenceOrComposite
 tensorflow::swig::IsCompositeTensor
@@ -21,6 +21,9 @@ tensorflow::swig::RegisterPyObject
 tensorflow::swig::RegisterType
 tensorflow::swig::IsEagerTensorSlow
 tensorflow::swig::GetRegisteredPyObject
+
+[//tensorflow/python/util:cpp_nest] # nest
+tensorflow::FlattenDictItems
 
 [//tensorflow/core/util:port] # util_port
 tensorflow::IsGoogleCudaEnabled
@@ -48,7 +51,7 @@ tensorflow::grappler::graph_analyzer::GraphAnalyzerTool
 
 [//tensorflow/python:bfloat16_lib] # bfloat16
 tensorflow::RegisterNumpyBfloat16
-tensorflow::Bfloat16PyType
+tensorflow::Bfloat16Dtype
 
 [//tensorflow/python:py_func_lib] # py_func
 tensorflow::InitializePyTrampoline
@@ -391,3 +394,7 @@ tensorflow::PythonTensorConverter
 
 [//tensorflow/python:python_api_info] # python_api_info
 tensorflow::PythonAPIInfo
+
+[//tensorflow/python:python_api_parameter_converter] # python_api_parameter_converter
+tensorflow::ConvertPythonAPIParameters
+tensorflow::CopyPythonAPITensorLists

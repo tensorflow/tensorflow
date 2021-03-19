@@ -650,6 +650,12 @@ Tensor::Tensor(DataType type, const TensorShape& shape, TensorBuffer* buf)
   RefIfNonNull(buf);
 }
 
+Tensor::Tensor(DataType type, const TensorShape& shape,
+               core::RefCountPtr<TensorBuffer> buf)
+    : shape_(shape), buf_(buf.release()) {
+  set_dtype(type);
+}
+
 bool Tensor::IsInitialized() const {
   return (buf_ != nullptr && buf_->data() != nullptr) ||
          shape_.num_elements() == 0;

@@ -12,22 +12,38 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #ifndef TENSORFLOW_CORE_FRAMEWORK_NUMERIC_OP_H_
 #define TENSORFLOW_CORE_FRAMEWORK_NUMERIC_OP_H_
 
-#include "tensorflow/core/framework/numeric_op_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 
+// One input and one output, both the same type.
 template <class T>
-using UnaryOp = UnaryOpBase<T, OpKernel, OpKernelConstruction>;
+class UnaryOp : public OpKernel {
+ public:
+  explicit UnaryOp(OpKernelConstruction* context) : OpKernel(context) {
+    const DataType dt = DataTypeToEnum<T>::v();
+    OP_REQUIRES_OK(context, context->MatchSignature({dt}, {dt}));
+  }
+};
 
+// Two inputs and one output, all the same type.
 template <class T>
-using BinaryOp = BinaryOpBase<T, OpKernel, OpKernelConstruction>;
+class BinaryOp : public OpKernel {
+ public:
+  explicit BinaryOp(OpKernelConstruction* context) : OpKernel(context) {
+    const DataType dt = DataTypeToEnum<T>::v();
+    OP_REQUIRES_OK(context, context->MatchSignature({dt, dt}, {dt}));
+  }
+};
 
 // For operations where the input and output are the same shape.
 //

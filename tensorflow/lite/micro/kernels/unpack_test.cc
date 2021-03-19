@@ -70,9 +70,9 @@ void TestUnpackThreeOutputsFloat(
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
   const TfLiteRegistration registration = tflite::ops::micro::Register_UNPACK();
-  micro::KernelRunner runner(
-      registration, tensors, tensors_size, inputs_array, outputs_array,
-      reinterpret_cast<void*>(&builtin_data), micro_test::reporter);
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array,
+                             reinterpret_cast<void*>(&builtin_data));
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
@@ -121,9 +121,9 @@ void TestUnpackOneOutputFloat(const int* input_dims_data,
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
   const TfLiteRegistration registration = tflite::ops::micro::Register_UNPACK();
-  micro::KernelRunner runner(
-      registration, tensors, tensors_size, inputs_array, outputs_array,
-      reinterpret_cast<void*>(&builtin_data), micro_test::reporter);
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array,
+                             reinterpret_cast<void*>(&builtin_data));
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
@@ -183,9 +183,9 @@ void TestUnpackThreeOutputsQuantized(
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
   const TfLiteRegistration registration = tflite::ops::micro::Register_UNPACK();
-  micro::KernelRunner runner(
-      registration, tensors, tensors_size, inputs_array, outputs_array,
-      reinterpret_cast<void*>(&builtin_data), micro_test::reporter);
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array,
+                             reinterpret_cast<void*>(&builtin_data));
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
@@ -250,9 +250,9 @@ void TestUnpackThreeOutputsQuantized32(
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
   const TfLiteRegistration registration = tflite::ops::micro::Register_UNPACK();
-  micro::KernelRunner runner(
-      registration, tensors, tensors_size, inputs_array, outputs_array,
-      reinterpret_cast<void*>(&builtin_data), micro_test::reporter);
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array,
+                             reinterpret_cast<void*>(&builtin_data));
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());

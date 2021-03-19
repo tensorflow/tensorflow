@@ -15,7 +15,6 @@ py_strict_binary(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:variables",
@@ -23,6 +22,7 @@ py_strict_binary(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/module",
         "//tensorflow/python/saved_model",
+        "@absl_py//absl:app",
     ],
 )
 

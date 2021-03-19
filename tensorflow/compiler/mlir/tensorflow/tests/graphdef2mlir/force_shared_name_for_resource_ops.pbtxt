@@ -1,4 +1,4 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir -tf-upgrade-legacy %s -tf-output-arrays=hash_table_node,variable_node -o - | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-upgrade-legacy %s -tf-output-arrays=hash_table_node,variable_node,variable_v2_node -o - | FileCheck %s
 
 node: {
   name: "hash_table_node"
@@ -24,6 +24,29 @@ node: {
 }
 node {
   name: "variable_node"
+  op: "Variable"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT64
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "variable_v2_node"
   op: "VariableV2"
   attr {
     key: "dtype"
@@ -113,8 +136,10 @@ library {
 # CHECK: tf.HashTableV2
 # CHECK-SAME: shared_name = "hash_table_node"
 
-# CHECK: tf.VariableV2
+# CHECK: "tf.Variable"
 # CHECK-SAME: shared_name = "variable_node"
+# CHECK: "tf.VariableV2"
+# CHECK-SAME: shared_name = "variable_v2_node"
 
 # CHECK: func private @create_resource
 # CHECK: tf.HashTableV2
