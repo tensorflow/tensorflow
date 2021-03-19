@@ -1027,20 +1027,17 @@ def numeric_column(key,
   Example:
 
   Assume we have a dataset with two features `a` and `b`.
-  Feature `a` is of numeric in nature.
   
   >>> data = {'a': [15, 9, 17, 19, 21, 18, 25, 30],
   ...    'b': [5.0, 6.4, 10.5, 13.6, 15.7, 19.9, 20.3 , 0.0]}
   
-  Convert the data to `tf.data.Dataset` and batch the dataset.
-  >>> dataset = tf.data.Dataset.from_tensor_slices(data).batch(2)
-  
-  Let us represent the feature `a` as numerical feature.
+  Let us represent the feature `a` and `b` as numerical features.
   >>> a = tf.feature_column.numeric_column('a')
+  >>> b = tf.feature_column.numeric_column('b')
   
   The output of the feature column will be used as an input to the model.
   But before we apply the feature column as an input, we can bucketize the
-  column as well.
+  feature `a`.
   Here we are providing `5` bucket boundaries, the bucketized_column api
   will bucket this feature in total of `6` buckets. One extra bucket for
   the data that is greater then the last bucket boundary.
@@ -1049,23 +1046,20 @@ def numeric_column(key,
   ...    boundaries=[10, 15, 20, 25, 30])
   
   Creating the `DenseFeatures` which will receive the bucketized numerical
-  feature column that was just created above.
+  feature column `a` that was just created above along with the numberic
+  column `b`.
   
-  >>> feature_layer = tf.keras.layers.DenseFeatures(a_buckets)
-  >>> for batch_record in dataset.as_numpy_iterator():
-  ...    print(feature_layer(batch_record))
+  >>> feature_layer = tf.keras.layers.DenseFeatures([a_buckets, b])
+  >>> print(feature_layer(data))
   tf.Tensor(
-  [[0. 0. 1. 0. 0. 0.]
-   [1. 0. 0. 0. 0. 0.]], shape=(2, 6), dtype=float32)
-  tf.Tensor(
-  [[0. 0. 1. 0. 0. 0.]
-   [0. 0. 1. 0. 0. 0.]], shape=(2, 6), dtype=float32)
-  tf.Tensor(
-  [[0. 0. 0. 1. 0. 0.]
-   [0. 0. 1. 0. 0. 0.]], shape=(2, 6), dtype=float32)
-  tf.Tensor(
-  [[0. 0. 0. 0. 1. 0.]
-   [0. 0. 0. 0. 0. 1.]], shape=(2, 6), dtype=float32)
+  [[ 0.   0.   1.   0.   0.   0.   5. ]
+   [ 1.   0.   0.   0.   0.   0.   6.4]
+   [ 0.   0.   1.   0.   0.   0.  10.5]
+   [ 0.   0.   1.   0.   0.   0.  13.6]
+   [ 0.   0.   0.   1.   0.   0.  15.7]
+   [ 0.   0.   1.   0.   0.   0.  19.9]
+   [ 0.   0.   0.   0.   1.   0.  20.3]
+   [ 0.   0.   0.   0.   0.   1.   0. ]], shape=(8, 7), dtype=float32)
     
   Args:
     key: A unique string identifying the input feature. It is used as the
