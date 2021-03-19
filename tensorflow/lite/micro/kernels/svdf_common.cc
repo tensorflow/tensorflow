@@ -29,6 +29,25 @@ limitations under the License.
 
 namespace tflite {
 
+/**
+ * This version of SVDF is specific to TFLite Micro. It contains the following
+ * differences between the TFLite version:
+ *
+ * 1.) Scratch tensor allocation - scratch tensors must be known ahead of time
+ * for the Micro interpreter.
+ * 2.) Output dimensions - the TFLite version determines output size and runtime
+ * and resizes the output tensor. Micro runtime does not support tensor
+ * resizing.
+ */
+
+const int kSvdfInputTensor = 0;
+const int kSvdfWeightsFeatureTensor = 1;
+const int kSvdfWeightsTimeTensor = 2;
+const int kSvdfBiasTensor = 3;
+const int kSvdfInputActivationStateTensor =
+    4;  // This is a variable tensor, and will be modified by this op.
+const int kSvdfOutputTensor = 0;
+
 void EvalIntegerSvdfReference(TfLiteContext* context, TfLiteNode* node,
                               const TfLiteEvalTensor* input_tensor,
                               const TfLiteEvalTensor* weights_feature_tensor,
@@ -235,13 +254,12 @@ static inline void ApplyTimeWeightsBiasAndActivation(
   }
 }
 
-void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
-                   const TfLiteEvalTensor* input,
-                   const TfLiteEvalTensor* weights_feature,
-                   const TfLiteEvalTensor* weights_time,
-                   const TfLiteEvalTensor* bias, const TfLiteSVDFParams* params,
-                   int scratch_tensor_index, TfLiteEvalTensor* activation_state,
-                   TfLiteEvalTensor* output) {
+void EvalFloatSvdfReference(
+    TfLiteContext* context, TfLiteNode* node, const TfLiteEvalTensor* input,
+    const TfLiteEvalTensor* weights_feature,
+    const TfLiteEvalTensor* weights_time, const TfLiteEvalTensor* bias,
+    const TfLiteSVDFParams* params, int scratch_tensor_index,
+    TfLiteEvalTensor* activation_state, TfLiteEvalTensor* output) {
   const int rank = params->rank;
   const int batch_size = input->dims->data[0];
   const int input_size = input->dims->data[1];
@@ -309,7 +327,7 @@ void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
       bias_ptr, params->activation, state_ptr, scratch_ptr, output_ptr);
 }
 
-TfLiteStatus PrepareSVDF(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus PrepareSvdf(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->builtin_data != nullptr);
 
   const auto* params = static_cast<const TfLiteSVDFParams*>(node->builtin_data);
@@ -321,17 +339,18 @@ TfLiteStatus PrepareSVDF(TfLiteContext* context, TfLiteNode* node) {
   // [3] = Bias (optional), {1, num_units}
   // [4] = Activation State (variable),
   //         {2, batch_size, memory_size * num_filters}
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input = GetInput(context, node, kSvdfInputTensor);
   TF_LITE_ENSURE(context, input != nullptr);
   const TfLiteTensor* weights_feature =
-      GetInput(context, node, kWeightsFeatureTensor);
+      GetInput(context, node, kSvdfWeightsFeatureTensor);
   TF_LITE_ENSURE(context, weights_feature != nullptr);
   const TfLiteTensor* weights_time =
-      GetInput(context, node, kWeightsTimeTensor);
+      GetInput(context, node, kSvdfWeightsTimeTensor);
   TF_LITE_ENSURE(context, weights_time != nullptr);
-  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
+  const TfLiteTensor* bias =
+      GetOptionalInputTensor(context, node, kSvdfBiasTensor);
   const TfLiteTensor* activation_state =
-      GetInput(context, node, kInputActivationStateTensor);
+      GetInput(context, node, kSvdfInputActivationStateTensor);
   TF_LITE_ENSURE(context, activation_state != nullptr);
 
   // Define input constants based on input tensor definition above:
@@ -351,7 +370,7 @@ TfLiteStatus PrepareSVDF(TfLiteContext* context, TfLiteNode* node) {
   // Validate Tensor Output:
   // [0] = float/int8_t, {2, batch_size, num_units}
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteTensor* output = GetOutput(context, node, kSvdfOutputTensor);
   TF_LITE_ENSURE(context, output != nullptr);
   TF_LITE_ENSURE_EQ(context, NumDimensions(output), 2);
   TF_LITE_ENSURE_EQ(context, output->dims->data[0], batch_size);
