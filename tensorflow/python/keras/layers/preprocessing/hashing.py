@@ -121,7 +121,6 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
       These should be non-zero. Defaults to `None` (in that
       case, the FarmHash64 hash function is used). It also supports
       tuple/list of 2 unsigned integer numbers, see reference paper for details.
-    name: Name to give to the layer.
     **kwargs: Keyword arguments to construct a layer.
 
   Input shape: A single or list of string, int32 or int64 `Tensor`,
@@ -134,10 +133,10 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
 
   """
 
-  def __init__(self, num_bins, mask_value=None, salt=None, name=None, **kwargs):
+  def __init__(self, num_bins, mask_value=None, salt=None, **kwargs):
     if num_bins is None or num_bins <= 0:
       raise ValueError('`num_bins` cannot be `None` or non-positive values.')
-    super(Hashing, self).__init__(name=name, **kwargs)
+    super(Hashing, self).__init__(**kwargs)
     base_preprocessing_layer.keras_kpl_gauge.get_cell('Hashing').set(True)
     self.num_bins = num_bins
     self.mask_value = mask_value

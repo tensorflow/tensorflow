@@ -34,6 +34,7 @@ namespace tflite {
   }
 
 DECLARE_STD_GLOBAL_SWITCH1(TfLiteRound, round);
+DECLARE_STD_GLOBAL_SWITCH1(TfLiteExpm1, expm1);
 
 }  // namespace tflite
 

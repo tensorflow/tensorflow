@@ -305,6 +305,18 @@ def _makedirs_exist_ok(datadir):
     os.makedirs(datadir, exist_ok=True)  # pylint: disable=unexpected-keyword-arg
 
 
+def _resolve_hasher(algorithm, file_hash=None):
+  """Returns hash algorithm as hashlib function."""
+  if algorithm == 'sha256':
+    return hashlib.sha256()
+
+  if algorithm == 'auto' and file_hash is not None and len(file_hash) == 64:
+    return hashlib.sha256()
+
+  # This is used only for legacy purposes.
+  return hashlib.md5()
+
+
 def _hash_file(fpath, algorithm='sha256', chunk_size=65535):
   """Calculates a file sha256 or md5 hash.
 
@@ -324,10 +336,10 @@ def _hash_file(fpath, algorithm='sha256', chunk_size=65535):
   Returns:
       The file hash
   """
-  if (algorithm == 'sha256') or (algorithm == 'auto' and len(hash) == 64):
-    hasher = hashlib.sha256()
+  if isinstance(algorithm, str):
+    hasher = _resolve_hasher(algorithm)
   else:
-    hasher = hashlib.md5()
+    hasher = algorithm
 
   with open(fpath, 'rb') as fpath_file:
     for chunk in iter(lambda: fpath_file.read(chunk_size), b''):
@@ -350,10 +362,7 @@ def validate_file(fpath, file_hash, algorithm='auto', chunk_size=65535):
   Returns:
       Whether the file is valid
   """
-  if (algorithm == 'sha256') or (algorithm == 'auto' and len(file_hash) == 64):
-    hasher = 'sha256'
-  else:
-    hasher = 'md5'
+  hasher = _resolve_hasher(algorithm, file_hash)
 
   if str(_hash_file(fpath, hasher, chunk_size)) == str(file_hash):
     return True

@@ -371,8 +371,8 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
     ckpt.restore(manager.latest_checkpoint)
 
 
-class ShuffleDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                                   parameterized.TestCase):
+class ShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                            parameterized.TestCase):
 
   def _build_shuffle_dataset(
       self,

@@ -545,9 +545,7 @@ xla_test(
 
 tf_cc_test(
     name = "sorting_test",
-    srcs = [
-        "sorting_test.cc",
-    ],
+    srcs = ["sorting_test.cc"],
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",

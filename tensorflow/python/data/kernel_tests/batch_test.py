@@ -23,7 +23,6 @@ import time
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -276,8 +275,8 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.checkDeterminism(dataset_fn, expect_determinism, elements)
 
 
-class BatchDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                                 parameterized.TestCase):
+class BatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                          parameterized.TestCase):
 
   def build_dataset(self, multiplier=15.0, tensor_slice_len=2, batch_size=2):
     components = (np.arange(tensor_slice_len), np.array([[1, 2, 3]]) *
@@ -294,19 +293,6 @@ class BatchDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     self.run_core_tests(
         lambda: self.build_dataset(15.0, tensor_slice_len, batch_size),
         num_outputs)
-
-  def _build_dataset_dense_to_sparse(self, components):
-    return dataset_ops.Dataset.from_tensor_slices(components).map(
-        lambda x: array_ops.fill([x], x)).apply(
-            batching.dense_to_sparse_batch(4, [12]))
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testDenseToSparseBatchDatasetCore(self):
-    components = np.random.randint(5, size=(40,)).astype(np.int32)
-
-    num_outputs = len(components) // 4
-    self.run_core_tests(lambda: self._build_dataset_dense_to_sparse(components),
-                        num_outputs)
 
   def _sparse(self, i):
     return sparse_tensor.SparseTensorValue(

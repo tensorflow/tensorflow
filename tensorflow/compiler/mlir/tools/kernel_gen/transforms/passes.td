@@ -49,10 +49,10 @@ def ShapeToDescriptorsPass : Pass<"shape-to-descriptors", "ModuleOp"> {
   let constructor = "transforms::CreateShapeToDescriptorsPass()";
 }
 
-def HloBufferizePass : Pass<"hlo-bufferize", "ModuleOp"> {
-  let summary = "Pass to transform hlo operations on values to buffer based "
-                "ones.";
-  let constructor = "transforms::CreateHloBufferizePass()";
+def ComputeOpAndFuncBufferizePass : Pass<"computeop-and-func-bufferize", "ModuleOp"> {
+  let summary = "Pass to transform compute operations (hlo and linalg) on "
+                "values to buffer based ones.";
+  let constructor = "transforms::CreateComputeOpAndFuncBufferizePass()";
 }
 
 def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {

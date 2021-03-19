@@ -437,7 +437,7 @@ class _DenseToRaggedDataset(dataset_ops.UnaryDataset):
         return spec._to_tensor_list(value)[0]  # pylint: disable=protected-access
 
     # Tuples are automatically unpacked by `dataset.map` so we repack them.
-    if dataset_ops._should_unpack_args(input_dataset.element_spec):  # pylint: disable=protected-access
+    if dataset_ops._should_unpack(input_dataset.element_spec):  # pylint: disable=protected-access
       map_fn = lambda *value: nest.map_structure(to_ragged_variant, value)
     else:
       map_fn = lambda value: nest.map_structure(to_ragged_variant, value)

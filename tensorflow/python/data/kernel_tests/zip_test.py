@@ -100,8 +100,8 @@ class ZipTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.evaluate(get_next())
 
 
-class ZipDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                               parameterized.TestCase):
+class ZipCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                        parameterized.TestCase):
 
   def _build_dataset(self, arr):
     components = [

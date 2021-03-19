@@ -32,6 +32,18 @@ class MetricsPortableTest(test_util.TensorFlowTestCase):
     stub = metrics.TFLiteMetrics()
     stub.increase_counter_interpreter_creation()
 
+  def test_converter_attempt_counter_increase_success(self):
+    stub = metrics.TFLiteMetrics()
+    stub.increase_counter_converter_attempt()
+
+  def test_converter_success_counter_increase_success(self):
+    stub = metrics.TFLiteMetrics()
+    stub.increase_counter_converter_success()
+
+  def test_converter_params_set_success(self):
+    stub = metrics.TFLiteMetrics()
+    stub.set_converter_param('name', 'value')
+
 
 if __name__ == '__main__':
   test.main()
