@@ -39,22 +39,22 @@ def load_data(path='boston_housing.npz', test_split=0.2, seed=113):
   [StatLib website](http://lib.stat.cmu.edu/datasets/boston).
 
   Args:
-      path: path where to cache the dataset locally
-          (relative to `~/.keras/datasets`).
-      test_split: fraction of the data to reserve as test set.
-      seed: Random seed for shuffling the data
-          before computing the test split.
+    path: path where to cache the dataset locally
+        (relative to `~/.keras/datasets`).
+    test_split: fraction of the data to reserve as test set.
+    seed: Random seed for shuffling the data
+        before computing the test split.
 
   Returns:
-      Tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
+    Tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
 
-      **x_train, x_test**: numpy arrays with shape `(num_samples, 13)`
-        containing either the training samples (for x_train),
-        or test samples (for y_train).
+  **x_train, x_test**: numpy arrays with shape `(num_samples, 13)`
+    containing either the training samples (for x_train),
+    or test samples (for y_train).
 
-      **y_train, y_test**: numpy arrays of shape `(num_samples,)` containing the
-        target scalars. The targets are float scalars typically between 10 and
-        50 that represent the home prices in k$.
+  **y_train, y_test**: numpy arrays of shape `(num_samples,)` containing the
+    target scalars. The targets are float scalars typically between 10 and
+    50 that represent the home prices in k$.
   """
   assert 0 <= test_split < 1
   origin_folder = 'https://storage.googleapis.com/tensorflow/tf-keras-datasets/'
