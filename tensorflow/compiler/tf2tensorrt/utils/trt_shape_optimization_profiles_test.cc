@@ -117,7 +117,7 @@ class TrtShapeOptimizationProfileTest : public ::testing::Test {
   TrtUniquePtrType<nvinfer1::IBuilderConfig> builder_config_;
 #endif
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
-  std::vector<ExecutionContext> exec_context_;
+  std::vector<ExecutionContext> exec_contexts_;
   // The order is important: exec_context_ must be destroyed first, and logger
   // at last.
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
@@ -146,11 +146,10 @@ TEST_F(TrtShapeOptimizationProfileTest, Static) {
       builder_->buildCudaEngine(*network_));
 #endif
   EXPECT_NE(nullptr, engine);
-  TF_CHECK_OK(
-      profile.CreateExecutionContexts(engine.get(), exec_context_, nullptr));
+  TF_CHECK_OK(profile.CreateExecutionContexts(engine.get(), &exec_contexts_));
   // A single execution context should be created for a graph with static input.
-  ASSERT_EQ(exec_context_.size(), 1);
-  EXPECT_NE(nullptr, exec_context_[0]);
+  ASSERT_EQ(exec_contexts_.size(), 1);
+  EXPECT_NE(nullptr, exec_contexts_[0]);
 
   std::vector<nvinfer1::Dims3> dim_vec(2, dims);
   std::vector<TensorShape> shape_vec = DimVecToShapeVec(dim_vec);
@@ -186,11 +185,10 @@ TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
       builder_->buildEngineWithConfig(*network_.get(), *builder_config_.get()));
   ASSERT_NE(nullptr, engine);
 
-  TF_CHECK_OK(
-      profile.CreateExecutionContexts(engine.get(), exec_context_, nullptr));
+  TF_CHECK_OK(profile.CreateExecutionContexts(engine.get(), &exec_contexts_));
 
   // Each profile has an associated execution context.
-  EXPECT_EQ(exec_context_.size(), input_profiles.size());
+  EXPECT_EQ(exec_contexts_.size(), input_profiles.size());
 
   profile.SetShapeTensorMask(network_.get());
 
@@ -201,8 +199,7 @@ TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
     std::vector<TensorShape> shape_vec = DimVecToShapeVec(dimvec);
     int idx = profile.GetProfileNumber(shape_vec);
     ASSERT_GE(idx, 0);
-    int prof_idx =
-        exec_context_[idx].GetIExecutionContext()->getOptimizationProfile();
+    int prof_idx = exec_contexts_[idx]->getOptimizationProfile();
     ASSERT_GE(prof_idx, 0);
 
     for (int j = 0; j < dimvec.size(); j++) {
