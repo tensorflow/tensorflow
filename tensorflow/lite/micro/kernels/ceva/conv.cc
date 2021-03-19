@@ -23,16 +23,12 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
+#include "tensorflow/lite/micro/kernels/ceva/ceva_common.h"
 #include "tensorflow/lite/micro/kernels/ceva/ceva_tflm_lib.h"
 #include "tensorflow/lite/micro/kernels/conv.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 #ifdef MCPS_MEASUREMENT
 #include "tensorflow/lite/micro/kernels/ceva/mcps_macros.h"
-#endif
-
-#if defined(CEVA_BX1) || defined(CEVA_SP500)
-extern int32_t* CEVA_TFLM_KERNELS_SCRATCH;
-extern int32_t CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL;
 #endif
 
 namespace tflite {
@@ -41,31 +37,6 @@ namespace {
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
   return context->AllocatePersistentBuffer(context, sizeof(OpDataConv));
-}
-
-void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
-                   TfLiteConvParams* params, const OpDataConv& data,
-                   const TfLiteEvalTensor* input,
-                   const TfLiteEvalTensor* filter, const TfLiteEvalTensor* bias,
-                   TfLiteEvalTensor* im2col, TfLiteEvalTensor* hwcn_weights,
-                   TfLiteEvalTensor* output) {
-  const int32_t input_offset = -data.input_zero_point;
-  const int32_t filter_offset = -data.filter_zero_point;
-  const int32_t output_offset = data.output_zero_point;
-
-  // TODO(b/154032858): Investigate removing extra copies.
-  ConvParams op_params = ConvParamsQuantized(*params, data);
-
-  reference_ops::Conv(op_params, tflite::micro::GetTensorShape(input),
-                      tflite::micro::GetTensorData<uint8_t>(input),
-                      tflite::micro::GetTensorShape(filter),
-                      tflite::micro::GetTensorData<uint8_t>(filter),
-                      tflite::micro::GetTensorShape(bias),
-                      tflite::micro::GetTensorData<int32_t>(bias),
-                      tflite::micro::GetTensorShape(output),
-                      tflite::micro::GetTensorData<uint8_t>(output),
-                      tflite::micro::GetTensorShape(im2col),
-                      tflite::micro::GetTensorData<uint8_t>(im2col), nullptr);
 }
 
 void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
@@ -119,12 +90,12 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   bias_data = tflite::micro::GetTensorData<int32_t>(bias);
   output_data = tflite::micro::GetTensorData<int8_t>(output);
 
-  int sizeof_scr = filter_depth;
-  if (sizeof_scr < output_depth_Dims3) sizeof_scr = output_depth_Dims3;
+  int sizeof_scratch = filter_depth;
+  if (sizeof_scratch < output_depth_Dims3) sizeof_scratch = output_depth_Dims3;
 
-  if (sizeof_scr > CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL) {
+  if (sizeof_scratch > CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL) {
     TF_LITE_KERNEL_LOG(context, "Scratch size (%d) less that required (%d)",
-                       CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL, sizeof_scr);
+                       CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL, sizeof_scratch);
   }
 
 #ifdef MCPS_MEASUREMENT
@@ -261,10 +232,6 @@ TfLiteStatus EvalCEVA(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt8:
       EvalQuantizedPerChannel(context, node, params, data, input, filter, bias,
                               output, nullptr);
-      break;
-    case kTfLiteUInt8:
-      EvalQuantized(context, node, params, data, input, filter, bias, nullptr,
-                    nullptr, output);
       break;
     default:
       TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
