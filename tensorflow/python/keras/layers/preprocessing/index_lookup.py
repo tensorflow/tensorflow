@@ -217,13 +217,14 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
           value_index=value_index,
           value_index_offset=total_offset)
 
-      self._table = lookup_ops.StaticHashTable(
+      self._table = self._static_table_class()(
           initializer, default_value=default_value)
       self._table_handler = table_utils.TableHandler(
           table=self._table,
           mask_token=self._mask_key,
           mask_value=self._mask_value,
-          oov_tokens=oov_indices)
+          oov_tokens=oov_indices,
+          use_v1_apis=self._use_v1_apis())
       self.max_tokens = (
           self._table_handler.table_size() + self.num_oov_indices +
           (0 if mask_token is None else 1))
@@ -235,7 +236,8 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
           name=(self._name + "_index_table"))
       self._table_handler = table_utils.TableHandler(
           table=self._table,
-          oov_tokens=oov_indices)
+          oov_tokens=oov_indices,
+          use_v1_apis=self._use_v1_apis())
       if vocabulary is not None:
         self.set_vocabulary(vocabulary)
 
@@ -540,6 +542,12 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
 
   def _convert_to_ndarray(self, x):
     return np.array(x) if isinstance(x, (list, tuple)) else x
+
+  def _use_v1_apis(self):
+    return False
+
+  def _static_table_class(self):
+    return lookup_ops.StaticHashTable
 
   def _oov_start_index(self):
     return 1 if self.mask_token is not None and self.output_mode == INT else 0

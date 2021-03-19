@@ -23,6 +23,7 @@ import numpy as np
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
@@ -41,12 +42,23 @@ class TableHandler(object):
                table,
                oov_tokens=None,
                mask_token=None,
-               mask_value=0):
+               mask_value=0,
+               use_v1_apis=False):
     self.table = table
+
+    # If we are using V1 APIs, and the table has an initializer, we need to run
+    # it. However, not all tables have initializers, so we try-except here.
+    if use_v1_apis:
+      try:
+        K.get_session().run(self.table.initializer)
+      except AttributeError:
+        pass
+
     self.mutable = isinstance(table, lookup_ops.MutableHashTable)
     self.mask_token = mask_token
     self.mask_value = mask_value
 
+    self.use_v1_apis = use_v1_apis
     if oov_tokens is None:
       self.oov_tokens = oov_tokens
     else:
@@ -56,17 +68,17 @@ class TableHandler(object):
 
   def data(self):
     keys, values = self.table.export()
-    return (keys.numpy(), values.numpy())
+    return (self._eval(keys), self._eval(values))
 
   def table_size(self):
-    return self.table.size().numpy()
+    return self._eval(self.table.size())
 
   def clear(self):
     if not self.mutable:
       return RuntimeError("Unable to clear a statically-backed table.")
 
     keys, _ = self.table.export()
-    self.table.remove(keys)
+    self._run(self.table.remove(keys))
 
   def insert(self, keys, values):
     """Insert values into the backed table."""
@@ -84,7 +96,7 @@ class TableHandler(object):
     if values.shape.ndims != 1:
       raise ValueError("`values` must be 1-dimensional, got an input with "
                        " %s dimensions." % values.shape.ndims)
-    self.table.insert(keys, values)
+    self._run(self.table.insert(keys, values))
 
   def _replace_oov_buckets(self, inputs, lookups):
     """Replace the default OOV value with one of the OOV bucket values."""
@@ -180,6 +192,16 @@ class TableHandler(object):
     # For normal tensor inputs
     inputs = ops.convert_to_tensor_v2_with_dispatch(inputs)
     return self._tensor_lookup(inputs)
+
+  def _eval(self, tensor):
+    if self.use_v1_apis:
+      return K.get_session().run(tensor)
+    else:
+      return tensor.numpy()
+
+  def _run(self, op):
+    if self.use_v1_apis:
+      K.get_session().run(op)
 
 
 def get_vocabulary_from_file(vocabulary_path, encoding="utf-8"):

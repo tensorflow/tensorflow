@@ -23,6 +23,7 @@ import tempfile
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import keras_parameterized
@@ -40,7 +41,8 @@ def get_table(dtype=dtypes.string, oov_tokens=None):
       value_dtype=dtypes.int64,
       default_value=-7,
       name="index_table")
-  return table_utils.TableHandler(table, oov_tokens)
+  return table_utils.TableHandler(
+      table, oov_tokens, use_v1_apis=(not context.executing_eagerly()))
 
 
 def get_static_table(tmpdir,
@@ -66,14 +68,19 @@ def get_static_table(tmpdir,
       dtypes.int64,
       lookup_ops.TextFileIndex.LINE_NUMBER,
       value_index_offset=offset)
-  table = lookup_ops.StaticHashTable(init, default_value=-7)
+  if context.executing_eagerly():
+    table = lookup_ops.StaticHashTable(init, default_value=-7)
+  else:
+    table = lookup_ops.StaticHashTableV1(init, default_value=-7)
+
   return table_utils.TableHandler(
       table,
       oov_tokens,
-      mask_token=mask_token)
+      mask_token=mask_token,
+      use_v1_apis=(not context.executing_eagerly()))
 
 
-@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+@keras_parameterized.run_all_keras_modes
 class CategoricalEncodingInputTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
@@ -150,7 +157,7 @@ class CategoricalEncodingInputTest(
       table.insert(key_data, value_data)
 
 
-@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+@keras_parameterized.run_all_keras_modes
 class CategoricalEncodingMultiOOVTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
@@ -240,7 +247,7 @@ class CategoricalEncodingMultiOOVTest(
     self.assertAllEqual(expected_output, output_data)
 
 
-@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+@keras_parameterized.run_all_keras_modes
 class IndexLookupOutputTest(keras_parameterized.TestCase,
                             preprocessing_test_utils.PreprocessingLayerTest):
 
@@ -280,7 +287,7 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
     self.assertAllEqual(expected_output, output_data)
 
 
-@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+@keras_parameterized.run_all_keras_modes
 class StaticIndexLookupOutputTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
@@ -324,7 +331,7 @@ class StaticIndexLookupOutputTest(
     self.assertAllEqual(expected_output, output_data)
 
 
-@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+@keras_parameterized.run_all_keras_modes
 class CategoricalEncodingStaticInputTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
