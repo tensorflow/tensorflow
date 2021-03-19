@@ -26,6 +26,14 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tpu {
+namespace {
+
+static std::string GetEnvVar(const char* name) {
+  // Constructing a std::string directly from nullptr is undefined behavior.
+  return absl::StrCat(getenv(name));
+}
+
+}  // namespace
 
 bool TryAcquireTpuLock() {
   static absl::Mutex* mu = new absl::Mutex();
@@ -48,8 +56,8 @@ bool TryAcquireTpuLock() {
     // if the TPU_HOST_BOUNDS or TPU_VISIBLE_DEVICES env var is set, that means
     // we are loading each chip in a different process and thus multiple libtpu
     // loads are OK.
-    if (getenv("TPU_HOST_BOUNDS") == nullptr &&
-        getenv("TPU_VISIBLE_DEVICES") == nullptr) {
+    if (GetEnvVar("TPU_HOST_BOUNDS").empty() &&
+        GetEnvVar("TPU_VISIBLE_DEVICES").empty()) {
       int fd = open("/tmp/libtpu_lockfile", O_CREAT | O_RDWR, 0644);
 
       // This lock is held until the process exits intentionally. The underlying
@@ -62,7 +70,8 @@ bool TryAcquireTpuLock() {
         should_load_library = true;
       }
     } else {
-      VLOG(1) << "TPU_HOST_BOUNDS is set, allowing multiple libtpu.so loads.";
+      VLOG(1) << "TPU_HOST_BOUNDS or TPU_VISIBLE_DEVICES is not empty, "
+                 "therefore allowing multiple libtpu.so loads.";
       should_load_library = true;
     }
   }
