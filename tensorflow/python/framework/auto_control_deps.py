@@ -469,11 +469,22 @@ class AutomaticControlDependencies(object):
 
     # Ensure all ops which must run do run
     self.ops_which_must_run.update(ops_which_must_run)
-    for r in nest.flatten(list(self._returned_tensors), expand_composites=True):
+
+    control_output_op = None
+    for idx, r in enumerate(
+        nest.flatten(list(self._returned_tensors), expand_composites=True)):
       if self.ops_which_must_run:
         updated_ops_which_must_run = []
         if r.graph.building_function:
-          updated_ops_which_must_run = self.ops_which_must_run
+          # There may be many stateful ops in the graph. Adding them as
+          # control inputs to each function output could create excessive
+          # control edges in the graph. Thus we create an intermediate No-op to
+          # chain the control dependencies between stateful ops and function
+          # outputs.
+          if idx == 0:
+            control_output_op = control_flow_ops.no_op()
+            control_output_op._add_control_inputs(self.ops_which_must_run)
+          updated_ops_which_must_run = [control_output_op]
         else:
           updated_ops_which_must_run = [
               o for o in self.ops_which_must_run
