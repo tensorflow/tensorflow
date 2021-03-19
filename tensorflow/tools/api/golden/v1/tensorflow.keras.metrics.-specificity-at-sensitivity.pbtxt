@@ -131,7 +131,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'sensitivity\', \'num_thresholds\', \'name\', \'dtype\'], varargs=None, keywords=None, defaults=[\'200\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'sensitivity\', \'num_thresholds\', \'class_id\', \'name\', \'dtype\'], varargs=None, keywords=None, defaults=[\'200\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "add_loss"

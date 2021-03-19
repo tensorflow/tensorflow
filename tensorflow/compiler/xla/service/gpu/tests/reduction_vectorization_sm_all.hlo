@@ -1,0 +1,151 @@
+// RUN: hlo_to_llvm_ir --ptx %s | FileCheck %s
+// RUN: hlo_to_llvm_ir --ptx --sm=50 %s | FileCheck %s --check-prefix=CHECK-SM50
+// RUN: hlo_to_llvm_ir --ptx --sm=60 %s | FileCheck %s --check-prefix=CHECK-SM60
+// RUN: hlo_to_llvm_ir --ptx --sm=70 %s | FileCheck %s --check-prefix=CHECK-SM70
+
+// CHECK-LABEL: .entry reduce_odd_row
+// CHECK-NOT: ld.global.nc.v2.f32
+// CHECK-NOT: ld.global.nc.v4.f32
+// CHECK-NOT: ld.global.nc.u64
+// CHECK-NOT: ld.global.u64
+
+HloModule ReduceOddRowSize
+
+%max_ {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %maximum.7 = f32[] maximum(%x, %y)
+}
+
+ENTRY %main {
+  %param_0 = f32[5,131071] parameter(0)
+  %constant.3 = f32[] constant(0)
+  ROOT %reduce.odd_row = f32[5] reduce(f32[5,131071] %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
+}
+
+// -----
+
+// CHECK-LABEL: .entry reduce_sine
+// CHECK-COUNT-32: ld.global.nc.v2.f32
+
+HloModule DisableSin
+
+%add_float {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add.17 = f32[] add(f32[] %x, f32[] %y)
+}
+
+ENTRY %main {
+  %arg0.1 = f32[5,131072] parameter(0)
+  %sine = f32[5,131072] sine(f32[5,131072] %arg0.1)
+  %constant.0 = f32[] constant(0)
+  ROOT %reduce.sine = f32[5] reduce(f32[5,131072] %sine, f32[] %constant.0), dimensions={1}, to_apply=%add_float
+}
+
+// -----
+
+// SM dependent tests
+
+// CHECK-SM50-LABEL: .entry reduce_exp
+// CHECK-SM50-NOT: ld.global.nc.v2.f32
+// CHECK-SM50-COUNT-8: ld.global.nc.f32
+
+// CHECK-SM60: .entry exp
+// CHECK-SM60-LABEL: .entry reduce_exp
+// CHECK-SM60-COUNT-8: ld.global.nc.v2.f32
+
+// CHECK-SM70: .entry exp
+// CHECK-SM70-LABEL: .entry reduce_exp
+// CHECK-SM70-COUNT-8: ld.global.nc.v2.f32
+
+HloModule Exp
+
+%add_float {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add.17 = f32[] add(f32[] %x, f32[] %y)
+}
+
+ENTRY %main {
+  %arg0.1 = f32[5,131072] parameter(0)
+  %exp = f32[5,131072] exponential(f32[5,131072] %arg0.1)
+  %constant.0 = f32[] constant(0)
+  ROOT %reduce.exp = f32[5] reduce(f32[5,131072] %exp, f32[] %constant.0), dimensions={1}, to_apply=%add_float
+}
+
+// -----
+
+HloModule ReduceTileFit
+
+// CHECK-SM50-LABEL: .entry reduce_tile_fit
+// CHECK-SM50-NOT: ld.global.nc.v2.f32
+// CHECK-SM50-COUNT-8: ld.global.nc.f32
+
+// CHECK-SM60-LABEL: .entry reduce_tile_fit
+// CHECK-SM60-COUNT-4: ld.global.nc.v2.f32
+
+// CHECK-SM70-LABEL: .entry reduce_tile_fit
+// CHECK-SM70-COUNT-4: ld.global.nc.v2.f32
+
+%max_ {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %maximum.7 = f32[] maximum(f32[] %x, f32[] %y)
+}
+
+ENTRY %main {
+  %param_0 = f32[5,122880] parameter(0)
+  %constant.3 = f32[] constant(0)
+  ROOT %reduce.tile_fit = f32[5] reduce(f32[5,122880] %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
+}
+
+// -----
+
+HloModule ReducePower2
+
+// CHECK-SM50-LABEL: .entry reduce_pow_2
+// CHECK-SM50-NOT: ld.global.nc.v2.f32
+// CHECK-SM50-COUNT-8: ld.global.nc.f32
+
+// CHECK-SM60-LABEL: .entry reduce_pow_2
+// CHECK-SM60-COUNT-4: ld.global.nc.v2.f32
+
+// CHECK-SM70-LABEL: .entry reduce_pow_2
+// CHECK-SM70-COUNT-4: ld.global.nc.v2.f32
+
+%max_ {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %maximum.7 = f32[] maximum(f32[] %x, f32[] %y)
+}
+
+ENTRY %main {
+  %param_0 = f32[5,131072] parameter(0)
+  %constant.3 = f32[] constant(0)
+  ROOT %reduce.pow_2 = f32[5] reduce(f32[5,131072] %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
+}
+
+// -----
+
+HloModule ReduceEvenColumns
+
+// CHECK-SM60-LABEL: .entry reduce_even_col
+// CHECK-SM60-NOT: ld.global.nc.f32
+// CHECK-SM60-COUNT-8: ld.global.nc.f32
+
+// CHECK-SM70-LABEL: .entry reduce_even_col
+// CHECK-SM70-COUNT-3: ld.global.nc.v2.f32
+// CHECK-SM70-COUNT-3: ld.global.nc.f32
+
+%max_ {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %maximum.7 = f32[] maximum(f32[] %x, f32[] %y)
+}
+
+ENTRY %main {
+  %param_0 = f32[5,131070] parameter(0)
+  %constant.3 = f32[] constant(0)
+  ROOT %reduce.even_col = f32[5] reduce(f32[5,131070] %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
+}

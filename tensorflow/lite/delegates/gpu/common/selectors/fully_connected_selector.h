@@ -29,6 +29,10 @@ std::unique_ptr<GPUOperation> SelectFullyConnected(
     const FullyConnectedAttributes& attr, const GpuInfo& gpu_info,
     const OperationDef& op_def, int batch_size);
 
+std::unique_ptr<GPUOperation> SelectFullyConnected(
+    const FullyConnectedInt8Attributes& attr, const GpuInfo& gpu_info,
+    const OperationDef& op_def);
+
 }  // namespace gpu
 }  // namespace tflite
 

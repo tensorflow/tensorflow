@@ -289,7 +289,7 @@ class L2NormalizeTest(test_lib.TestCase):
     for dim in range(len(x_shape)):
       y_np = self._l2Normalize(x_np, dim)
       x_tf = constant_op.constant(x_np, name="x")
-      y_tf = nn_impl.l2_normalize_v2(x_tf, dim)
+      y_tf = nn_impl.l2_normalize(x_tf, dim)
       self.assertAllClose(y_np, self.evaluate(y_tf))
 
   @test_util.run_in_graph_and_eager_modes
@@ -300,7 +300,7 @@ class L2NormalizeTest(test_lib.TestCase):
     dim = [1, 2]
     y_np = self._l2Normalize(x_np, dim)
     x_tf = constant_op.constant(x_np, name="x")
-    y_tf = nn_impl.l2_normalize_v2(x_tf, dim)
+    y_tf = nn_impl.l2_normalize(x_tf, dim)
     self.assertAllClose(y_np, self.evaluate(y_tf))
 
   @test_util.run_deprecated_v1
@@ -311,7 +311,7 @@ class L2NormalizeTest(test_lib.TestCase):
     for dim in range(len(x_shape)):
       with self.cached_session():
         x_tf = constant_op.constant(x_np, name="x")
-        y_tf = nn_impl.l2_normalize_v2(x_tf, dim)
+        y_tf = nn_impl.l2_normalize(x_tf, dim)
         err = gradient_checker.compute_gradient_error(x_tf, x_shape, y_tf,
                                                       x_shape)
       print("L2Normalize gradient err = %g " % err)
@@ -328,7 +328,7 @@ class L2NormalizeTest(test_lib.TestCase):
       for dim in range(len(x_shape)):
         y_np = self._l2Normalize(x_np, dim)
         x_tf = constant_op.constant(x_np, name="x")
-        y_tf = nn_impl.l2_normalize_v2(x_tf, dim)
+        y_tf = nn_impl.l2_normalize(x_tf, dim)
         self.assertAllClose(y_np, self.evaluate(y_tf))
 
 

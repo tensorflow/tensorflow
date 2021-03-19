@@ -18,14 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.util.tf_export import keras_export
 
 
+@keras_export('keras.utils.experimental.DatasetCreator', v1=[])
 class DatasetCreator(object):
   """Object that returns a `tf.data.Dataset` upon invoking.
 
-  `DatasetCreator` is designated as a supported type for `x`, or the input, in
-  `tf.keras.Model.fit`. Pass an instance of this class to `fit` when using a
-  callable (with a `input_context` argument) that returns a `tf.data.Dataset`.
+  `tf.keras.utils.experimental.DatasetCreator` is designated as a supported type
+  for `x`, or the input, in `tf.keras.Model.fit`. Pass an instance of this class
+  to `fit` when using a callable (with a `input_context` argument) that returns
+  a `tf.data.Dataset`.
 
   ```python
   model = tf.keras.Sequential([tf.keras.layers.Dense(10)])
@@ -43,6 +46,22 @@ class DatasetCreator(object):
 
   model.fit(DatasetCreator(dataset_fn), epochs=10, steps_per_epoch=10)
   ```
+
+  `Model.fit` usage with `DatasetCreator` is intended to work across all
+  `tf.distribute.Strategy`s, as long as `Strategy.scope` is used at model
+  creation:
+
+  ```python
+  strategy = tf.distribute.experimental.ParameterServerStrategy(
+      cluster_resolver)
+  with strategy.scope():
+    model = tf.keras.Sequential([tf.keras.layers.Dense(10)])
+  model.compile(tf.keras.optimizers.SGD(), loss="mse")
+  ...
+  ```
+
+  Note: When using `DatasetCreator`, `steps_per_epoch` argument in `Model.fit`
+  must be provided as the cardinality of such input cannot be inferred.
 
   Args:
     dataset_fn: A callable that takes a single argument of type

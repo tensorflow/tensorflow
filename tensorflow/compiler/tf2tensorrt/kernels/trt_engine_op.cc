@@ -72,15 +72,11 @@ class AsyncHelper : public core::RefCounted {
   ~AsyncHelper() override { this->operator()(); }
 
   void operator()() {
-    if (!called_) {
       done_();
-      called_ = true;
-    }
   }
 
  private:
   AsyncOpKernel::DoneCallback done_;
-  bool called_ = false;  // Has `done_` been called?
 };
 
 //  This OP can construct TRTEngine on the fly and if construction of engine

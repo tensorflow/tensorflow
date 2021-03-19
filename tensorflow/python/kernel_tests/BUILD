@@ -991,6 +991,20 @@ tf_py_test(
 )
 
 cuda_py_test(
+    name = "segment_reduction_ops_deterministic_test",
+    size = "small",
+    srcs = ["segment_reduction_ops_deterministic_test.py"],
+    xla_enable_strict_auto_jit = False,
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:backprop",
+    ],
+)
+
+cuda_py_test(
     name = "segment_reduction_ops_test",
     size = "medium",
     srcs = ["segment_reduction_ops_test.py"],

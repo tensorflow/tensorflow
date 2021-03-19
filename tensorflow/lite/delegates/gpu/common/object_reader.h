@@ -54,6 +54,8 @@ class ObjectReader {
 
   int GetNumberOfRuntimeInputs() const;
 
+  absl::Status GetTensorId(uint32_t input_id, int* tensor_id) const;
+
   absl::Status GetTensorDims(uint32_t idx, TfLiteIntArray* dimensions) const;
 
   template <typename TensorT>

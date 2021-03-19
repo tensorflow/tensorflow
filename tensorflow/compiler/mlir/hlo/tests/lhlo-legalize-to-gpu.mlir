@@ -19,14 +19,14 @@ func @reduce(%arg: memref<100x10xf32>,
 // CHECK-DAG: %[[C100:.*]] = constant 100 : index
 // CHECK-DAG: %[[C1:.*]] = constant 1 : index
 //     CHECK: gpu.launch blocks({{.*}}, {{.*}}, {{.*}}) in ({{.*}} = %[[C1]], {{.*}} = %[[C1]], {{.*}} = %[[C1]]) threads(%[[IDX:.*]], {{.*}}, {{.*}}) in ({{.*}} = %[[C100]], {{.*}} = %[[C1]], {{.*}} = %[[C1]]) {
-//     CHECK:   %[[ACC:.*]] = load %[[ARG1]][] : memref<f32>
+//     CHECK:   %[[ACC:.*]] = memref.load %[[ARG1]][] : memref<f32>
 //     CHECK:   store %[[ACC]], %[[ARG2]][%[[IDX:.*]]] : memref<100xf32>
 // CHECK-DAG:   %[[LB:.*]] = constant 0 : index
 // CHECK-DAG:   %[[UB:.*]] = constant 10 : index
 // CHECK-DAG:   %[[STEP:.*]] = constant 1 : index
 //     CHECK:   scf.for %[[IDX1:.*]] = %[[LB]] to %[[UB]] step %[[STEP]] {
-//     CHECK:     %[[LHS:.*]] = subview %[[ARG2]][%[[IDX]]] [1] [1] : memref<100xf32> to memref<f32, #[[$MAP]]>
-//     CHECK:     %[[RHS:.*]] = subview %[[ARG0]][%[[IDX]], %[[IDX1]]] [1, 1] [1, 1] : memref<100x10xf32> to memref<f32, #[[$MAP]]>
+//     CHECK:     %[[LHS:.*]] = memref.subview %[[ARG2]][%[[IDX]]] [1] [1] : memref<100xf32> to memref<f32, #[[$MAP]]>
+//     CHECK:     %[[RHS:.*]] = memref.subview %[[ARG0]][%[[IDX]], %[[IDX1]]] [1, 1] [1, 1] : memref<100x10xf32> to memref<f32, #[[$MAP]]>
 //     CHECK:     "lmhlo.add"(%[[LHS]], %[[RHS]], %[[LHS]]) : (memref<f32, {{.*}}>, memref<f32, {{.*}}>, memref<f32, {{.*}}>) -> ()
 //     CHECK:   }
 //     CHECK:   gpu.terminator

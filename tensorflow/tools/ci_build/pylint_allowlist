@@ -104,6 +104,7 @@
 ^tensorflow/python/kernel_tests/sparse_xent_op_test.py.*\[E1120.*no-value-for-parameter
 ^tensorflow/python/kernel_tests/unicode_encode_op_test.py.*\[E1120.*no-value-for-parameter
 ^tensorflow/python/kernel_tests/unicode_encode_op_test.py.*\[E1123.*unexpected-keyword-arg
+^tensorflow/python/kernel_tests/variables_test.py.*\[E1130.*invalid-unary-operand-type
 ^tensorflow/python/lib/core/bfloat16_test.py.*\[E1121.*too-many-function-args
 ^tensorflow/python/lib/io/file_io_test.py.*\[E1123.*unexpected-keyword-arg
 ^tensorflow/python/modules_with_exports.py.*\[W0622.*redefined-builtin

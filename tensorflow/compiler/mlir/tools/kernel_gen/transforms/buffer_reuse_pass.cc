@@ -16,13 +16,13 @@ limitations under the License.
 #include <cstddef>
 #include <vector>
 
-#include "llvm/ADT/EquivalenceClasses.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Analysis/BufferAliasAnalysis.h"  // from @llvm-project
 #include "mlir/Analysis/Liveness.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -52,109 +52,19 @@ namespace kernel_gen {
 namespace transforms {
 namespace {
 
-/// A temporary buffer size analysis that is correct but may be incomplete.
-class BufferSizeAnalysis {
- public:
-  BufferSizeAnalysis(FuncOp f, const BufferAliasAnalysis &aliases) {
-    build(f, aliases);
-  }
-
-  bool is_same_size(Value a, Value b) { return ecs_.isEquivalent(a, b); }
-
- private:
-  void build(FuncOp &f, const BufferAliasAnalysis &aliases) {
-    auto buffers = find_buffer_values(f);
-
-    // Memrefs with statically known same shape and same symbol-free affine maps
-    // must be of the same size.
-    int n = buffers.size();
-    for (int i = 0; i < n; ++i) {
-      for (int j = i + 1; j < n; ++j) {
-        Value a = buffers[i];
-        Value b = buffers[j];
-        auto a_ty = a.getType().dyn_cast<MemRefType>();
-        auto b_ty = b.getType().dyn_cast<MemRefType>();
-        if (a_ty && b_ty && a_ty.hasStaticShape() && b_ty.hasStaticShape() &&
-            a_ty.getNumElements() == b_ty.getNumElements() &&
-            a_ty.getElementType() == b_ty.getElementType() &&
-            affine_maps_symbol_free_and_equal(a_ty.getAffineMaps(),
-                                              b_ty.getAffineMaps())) {
-          ecs_.unionSets(a, b);
-        }
-      }
-    }
-
-    // Operands to `linalg.generic` with equal affine maps must be of same size.
-    f.walk([&](linalg::GenericOp genericOp) {
-      auto operand_buffers = genericOp.getShapedOperands();
-      int n = operand_buffers.size();
-      for (int i = 0; i < n; ++i) {
-        for (int j = i + 1; j < n; ++j) {
-          Value a = operand_buffers[i];
-          Value b = operand_buffers[j];
-          auto a_ty = a.getType().dyn_cast<MemRefType>();
-          auto b_ty = b.getType().dyn_cast<MemRefType>();
-          if (a_ty && b_ty && a_ty.getElementType() == b_ty.getElementType() &&
-              a_ty.getAffineMaps() == b_ty.getAffineMaps()) {
-            AffineMap map_i = genericOp.getIndexingMap(i);
-            AffineMap map_j = genericOp.getIndexingMap(j);
-            if (map_i == map_j && map_i.isPermutation()) ecs_.unionSets(a, b);
-          }
-        }
-      }
-    });
-
-    // All aliases of a memref must be of the same underlying buffer size.
-    for (auto e : aliases) {
-      Value value = e.getFirst();
-      if (!value.getType().isa<BaseMemRefType>()) continue;
-      for (Value alias : e.getSecond()) {
-        assert(alias.getType().isa<BaseMemRefType>() &&
-               "Expected aliases of memref to be memrefs.");
-        ecs_.unionSets(value, alias);
-      }
-    }
-  }
-
-  bool affine_maps_symbol_free_and_equal(ArrayRef<AffineMap> as,
-                                         ArrayRef<AffineMap> bs) {
-    auto is_symbol_free = [](AffineMap map) {
-      return map.getNumSymbols() == 0;
-    };
-    return llvm::all_of(as, is_symbol_free) &&
-           llvm::all_of(bs, is_symbol_free) && as == bs;
-  }
-
-  llvm::SmallVector<Value, 8> find_buffer_values(FuncOp f) {
-    llvm::SmallVector<Value, 8> buffers;
-    f.walk([&](Operation *op) {
-      for (Value val : op->getResults())
-        if (val.getType().isa<BaseMemRefType>()) buffers.push_back(val);
-    });
-    f.walk([&](Block *block) {
-      for (Value val : block->getArguments()) {
-        if (val.getType().isa<BaseMemRefType>()) buffers.push_back(val);
-      }
-    });
-    return buffers;
-  }
-
-  llvm::EquivalenceClasses<Value> ecs_;
-};
-
 class BufferReuseAnalysis {
  public:
   explicit BufferReuseAnalysis(FuncOp f) { build(f); }
 
   static constexpr int32_t kIndexAmbiguous = -1;
 
-  Optional<SmallVector<int32_t, 2>> get_reuse_candiates(AllocOp op) {
+  Optional<SmallVector<int32_t, 2>> get_reuse_candiates(memref::AllocOp op) {
     auto it = reuse_candidates_.find(op);
     if (it == reuse_candidates_.end()) return llvm::None;
     return it->second;
   }
 
-  Optional<int32_t> get_output_index(AllocOp op) {
+  Optional<int32_t> get_output_index(memref::AllocOp op) {
     auto it = output_indices_.find(op);
     if (it == output_indices_.end()) return llvm::None;
     return it->second;
@@ -168,7 +78,7 @@ class BufferReuseAnalysis {
   }
 
   void find_output_indices(FuncOp &f, BufferAliasAnalysis &aliases) {
-    f.walk([&](AllocOp alloc_op) {
+    f.walk([&](memref::AllocOp alloc_op) {
       int32_t output_index = kIndexAmbiguous;
       int count_return_uses = 0;
       auto buffer_aliases = aliases.resolve(alloc_op.getResult());
@@ -189,19 +99,17 @@ class BufferReuseAnalysis {
 
   void find_reuse_candiates(FuncOp &f, BufferAliasAnalysis &aliases) {
     Liveness liveness(f);
-    BufferSizeAnalysis size_equivalences(f, aliases);
     f.walk([&](Block *block) {
       find_reuse_candiates(block, aliases, liveness.getLiveness(block),
-                           size_equivalences, f.getArguments());
+                           f.getArguments());
     });
   }
 
   void find_reuse_candiates(Block *block, BufferAliasAnalysis &aliases,
                             const LivenessBlockInfo *liveness,
-                            BufferSizeAnalysis &size_equivalences,
                             ArrayRef<BlockArgument> arguments) {
     for (Operation &op : *block) {
-      auto alloc_op = dyn_cast<AllocOp>(op);
+      auto alloc_op = dyn_cast<memref::AllocOp>(op);
       if (!alloc_op) continue;
 
       // Find first use of the newly allocated buffer within this block.
@@ -214,10 +122,6 @@ class BufferReuseAnalysis {
       SmallVector<int32_t, 2> local_reuse_candidates;
       for (BlockArgument old_buffer : arguments) {
         if (!old_buffer.getType().isa<BaseMemRefType>()) continue;
-
-        // Size criterion: Do not reuse buffers of different size as they may be
-        // too small.
-        if (!size_equivalences.is_same_size(new_buffer, old_buffer)) continue;
 
         // Lifetime criterion: Only reuse buffers that are no longer used on
         // first reuse, i.e. they are no longer alive.
@@ -299,9 +203,23 @@ class BufferReuseAnalysis {
                  op->getOperands().end() &&
              "Expect `old/new_buffer` to be operand of `op`.");
 
+      auto is_projection = [](AffineMap map) {
+        // Allow dropping dimensions but no permutations.
+        int64_t i = -1;
+        for (AffineExpr expr : map.getResults()) {
+          auto dim_expr = expr.dyn_cast<AffineDimExpr>();
+          if (!dim_expr || dim_expr.getPosition() <= i) return false;
+          i = dim_expr.getPosition();
+        }
+        return true;
+      };
+
       // If `linalg.generic` indexing maps are the same for input and output
       // buffer then the last use of the input buffer happens before its first
-      // reuse (per memory location).
+      // reuse (per memory location). Since we know that the inputs and outputs
+      // have the same size we also know that when one side has an identity map
+      // and the other side only drops dimensions, these dimensions have to be
+      // of size 1.
       auto operand_buffers = generic_op.getShapedOperands();
       int old_index =
           llvm::find(operand_buffers, old_buffer) - operand_buffers.begin();
@@ -309,8 +227,11 @@ class BufferReuseAnalysis {
           llvm::find(operand_buffers, new_buffer) - operand_buffers.begin();
       AffineMap old_indexing_map = generic_op.getIndexingMap(old_index);
       AffineMap new_indexing_map = generic_op.getIndexingMap(new_index);
-      return old_indexing_map == new_indexing_map &&
-             old_indexing_map.isPermutation();
+      return (old_indexing_map == new_indexing_map &&
+              old_indexing_map.isProjectedPermutation()) ||
+             (old_indexing_map.isIdentity() &&
+              is_projection(new_indexing_map)) ||
+             (is_projection(old_indexing_map) && new_indexing_map.isIdentity());
     }
     return false;
   }
@@ -332,7 +253,7 @@ struct BufferReusePass : public BufferReusePassBase<BufferReusePass> {
 
     // Annotate IR with reuse candidates and output indices per allocation.
     Builder builder(&getContext());
-    getFunction().walk([&](AllocOp op) {
+    getFunction().walk([&](memref::AllocOp op) {
       if (auto output_index = analysis.get_output_index(op)) {
         auto attr = builder.getI32IntegerAttr(*output_index);
         op.getOperation()->setAttr(

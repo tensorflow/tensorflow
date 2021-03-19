@@ -32,7 +32,7 @@ from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_v2_test_util
 from tensorflow.lite.python.convert import mlir_quantize
 from tensorflow.lite.python.interpreter import Interpreter
-from tensorflow.lite.python.interpreter import OpResolver
+from tensorflow.lite.python.interpreter import OpResolverType
 from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -698,7 +698,8 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     def examine_tflite_model(tflite_content, input_data):
       interpreter = Interpreter(
           model_content=tflite_content,
-          experimental_op_resolver=OpResolver.BUILTIN_WITHOUT_DEFAULT_DELEGATES)
+          experimental_op_resolver_type=OpResolverType
+          .BUILTIN_WITHOUT_DEFAULT_DELEGATES)
       interpreter.allocate_tensors()
       input_details = interpreter.get_input_details()
       interpreter.set_tensor(input_details[0]['index'], input_data.numpy())

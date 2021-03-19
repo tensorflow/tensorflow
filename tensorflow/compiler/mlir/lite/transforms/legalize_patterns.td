@@ -240,15 +240,16 @@ def LegalizeGreaterEqual : Pat<(TF_GreaterEqualOp $l, $r),
 // The 'validate_indices' attribute is deprecated.
 def LegalizeGather: Pat<
   (TF_GatherOp $params, $indices, $ignored_validate_indices),
-  (TFL_GatherOp $params, $indices, ConstantAttr<I32Attr, "0">)>;
+  (TFL_GatherOp $params, $indices, ConstantAttr<I32Attr, "0">,
+     ConstantAttr<I32Attr, "0">)>;
 
 def LegalizeGatherNd : Pat<(TF_GatherNdOp $params, $indices),
                            (TFL_GatherNdOp $params, $indices)>;
 
 def LegalizeGatherV2 : Pat<
-  (TF_GatherV2Op $params, $indices, (ConstantOp ElementsAttr:$axis),
-    ConstantAttr<I64Attr, "0">:$batch_dims),
-  (TFL_GatherOp $params, $indices, ExtractSingleElementAsInt32:$axis)>;
+  (TF_GatherV2Op $params, $indices, (ConstantOp ElementsAttr:$axis), $batch_dims),
+  (TFL_GatherOp $params, $indices, ExtractSingleElementAsInt32:$axis,
+    (convertIntAttrTo32Bit $batch_dims))>;
 
 def LegalizeFloorDiv : Pat<(TF_FloorDivOp $l, $r), (TFL_FloorDivOp $l, $r)>;
 

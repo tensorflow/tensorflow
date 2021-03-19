@@ -243,11 +243,6 @@ class MultiProcessCluster(object):
       server_config = config_pb2.ConfigProto()
       server_config.device_count['GPU'] = 0
 
-      # Set the environment variable to prevent hanging upon job failure and
-      # restart. Note that it defaults to 'use_caller' at Google, but defaults
-      # to False in OSS.
-      os.environ['GRPC_FAIL_FAST'] = 'use_caller'
-
       server_lib.Server(
           cluster_spec,
           job_name=task_type,

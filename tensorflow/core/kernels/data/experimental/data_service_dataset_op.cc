@@ -148,6 +148,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         strings::StrCat(DebugString(), " does not yet support serialization."));
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->clear();
+    return Status::OK();
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
@@ -288,13 +293,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                            bool* end_of_sequence) override {
       VLOG(3) << "Calling GetNext in data service dataset op";
       mutex_lock l(mu_);
-      if (!task_thread_manager_ && !cancelled_) {
-        auto new_ctx = std::make_shared<IteratorContext>(*ctx);
-        task_thread_manager_ =
-            ctx->StartThread("task-thread-manager",
-                             [this, new_ctx]() { TaskThreadManager(new_ctx); });
-      }
-
+      EnsureThreadsStarted(ctx);
       bool skip = true;
       while (skip) {
         while ((results_.empty() || !results_.front().ready) &&
@@ -414,6 +413,16 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       bool end_of_sequence TF_GUARDED_BY(&Iterator::mu_) = false;
       bool skip TF_GUARDED_BY(&Iterator::mu_) = false;
     };
+
+    void EnsureThreadsStarted(IteratorContext* ctx)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (!task_thread_manager_ && !cancelled_) {
+        auto new_ctx = std::make_shared<IteratorContext>(*ctx);
+        task_thread_manager_ =
+            ctx->StartThread("task-thread-manager",
+                             [this, new_ctx]() { TaskThreadManager(new_ctx); });
+      }
+    }
 
     // Periodically refresh the task list.
     // Maintain one thread fetching elements for each task.
