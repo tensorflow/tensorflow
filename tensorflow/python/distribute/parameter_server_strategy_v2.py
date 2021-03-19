@@ -106,10 +106,6 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   sections.
 
   ```python
-  # Set the environment variable to allow reporting worker and ps failure to the
-  # coordinator. This a short-term workaround.
-  os.environ["GRPC_FAIL_FAST"] = "use_caller"
-
   # Prepare a strategy to use with the cluster and variable partitioning info.
   strategy = tf.distribute.experimental.ParameterServerStrategy(
       cluster_resolver=...,
@@ -161,10 +157,6 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   server, waiting for coordinator's requests:
 
   ```python
-  # Set the environment variable to allow reporting worker and ps failure to the
-  # coordinator.
-  os.environ["GRPC_FAIL_FAST"] = "use_caller"
-
   # Provide a `tf.distribute.cluster_resolver.ClusterResolver` that serves
   # the cluster information. See below "Cluster setup" section.
   cluster_resolver = ...
@@ -225,9 +217,6 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   If you prefer to run the same binary for all tasks, you will need to let the
   binary branch into different roles at the beginning of the program:
   ```python
-  os.environ["GRPC_FAIL_FAST"] = "use_caller"
-  cluster_resolver = tf.distribute.cluster_resolver.TFConfigClusterResolver()
-
   # If coordinator, create a strategy and start the training program.
   if cluster_resolver.task_type == 'chief':
     strategy = tf.distribute.experimental.ParameterServerStrategy(
