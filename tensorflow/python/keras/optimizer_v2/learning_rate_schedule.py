@@ -600,8 +600,9 @@ class CosineDecay(LearningRateSchedule):
       cosine_decayed = 0.5 * (1.0 + math_ops.cos(
           constant_op.constant(math.pi) * completed_fraction))
 
-      decayed = (1 - self.alpha) * cosine_decayed + self.alpha
-      return math_ops.multiply(initial_learning_rate, decayed)
+      decayed = (initial_learning_rate - self.alpha) * cosine_decayed + self.alpha
+      return decayed
+
 
   def get_config(self):
     return {
