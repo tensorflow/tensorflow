@@ -1011,27 +1011,23 @@ bool ShapeInference::RefineShapeForPassThroughOps(Operation* op) {
     // TODO(jpienaar): The tf.Cast op, which is uniformly inserted at the
     // moment, cannot handle arbirary types (e.g., it can't handle quantized
     // types). This restriction can be relaxed if not only tf.Cast is used.
-    return t.getDialect().getNamespace().empty() ||
-           isa<TensorFlowDialect>(t.getDialect());
+    ShapedType shaped_type = t.dyn_cast<ShapedType>();
+    if (!shaped_type) return false;
+    Type eltType = shaped_type.getElementType();
+    return eltType.getDialect().getNamespace().empty() ||
+           isa<TensorFlowDialect>(eltType.getDialect());
   };
 
   bool changed = false;
   for (auto entry : llvm::zip(op->getOperands(), op->getResults())) {
-    TensorType operand_type = std::get<0>(entry).getType().cast<TensorType>();
+    Value operand = std::get<0>(entry);
     Value result = std::get<1>(entry);
-    TensorType result_type = result.getType().cast<TensorType>();
-    if (operand_type == result_type) continue;
-    if (!operand_type.hasRank()) continue;
-    if (result_type.hasRank() &&
-        result_type.getShape() == operand_type.getShape())
+    if (!is_allowed_dtype(operand.getType()) ||
+        !is_allowed_dtype(result.getType()))
       continue;
-    if (!is_allowed_dtype(operand_type.getElementType()) ||
-        !is_allowed_dtype(result_type.getElementType()))
-      continue;
-
-    auto new_type = RankedTensorType::get(operand_type.getShape(),
-                                          result_type.getElementType());
-    UpdateTypeAndInsertIncompatibleUseCasts(new_type, result);
+    Type inferred_type = TypeMeet(result.getType(), operand.getType());
+    if (result.getType() == inferred_type) continue;
+    UpdateTypeAndInsertIncompatibleUseCasts(inferred_type, result);
     changed = true;
   }
   return changed;

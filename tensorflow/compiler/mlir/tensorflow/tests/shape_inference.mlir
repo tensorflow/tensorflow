@@ -375,6 +375,15 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return %0 : tensor<*xi32>
   }
 
+  // Tests that tensor.cast result shapes are not refined on non-TF types.
+  // CHECK-LABEL: func @tensor_cast_unsupported_dtype
+  func @tensor_cast_unsupported_dtype(%arg0: tensor<10x!quant.uniform<i8<-127:127>:f32, 1.000000e-01>>) -> (tensor<*x!quant.uniform<i8<-127:127>:f32, 1.000000e-01>>) {
+    // CHECK: tensor.cast
+    // CHECK-SAME: tensor<10x!quant.uniform<i8<-127:127>:f32, 1.000000e-01>> to tensor<*x!quant.uniform<i8<-127:127>:f32, 1.000000e-01>>
+    %0 = tensor.cast %arg0 : tensor<10x!quant.uniform<i8<-127:127>:f32, 1.000000e-01>> to tensor<*x!quant.uniform<i8<-127:127>:f32, 1.000000e-01>>
+    return %0 : tensor<*x!quant.uniform<i8<-127:127>:f32, 1.000000e-01>>
+  }
+
   // CHECK-LABEL: func @while_variant
   // CHECK-SAME: -> tensor<!tf.variant<tensor<16x1xf32>>>
   func @while_variant(%arg0: tensor<!tf.variant<tensor<16x1xf32>>>) -> tensor<!tf.variant> {
@@ -795,6 +804,24 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
    // CHECK: return %[[RESULT]] : tensor<1xi32>
     %1 = tensor.cast %arg0 : tensor<1xi32> to tensor<*xi32>
     return %1 : tensor<*xi32>
+  }
+
+  // CHECK-LABEL: func @tensor_cast_dont_infer
+  func @tensor_cast_dont_infer(%arg0: tensor<?xi32>) -> tensor<1xi32> {
+   // CHECK: %[[RESULT:.*]] = tensor.cast
+   // CHECK-SAME: tensor<?xi32> to tensor<1xi32>
+   // CHECK: return %[[RESULT]] : tensor<1xi32>
+    %2 = tensor.cast %arg0 : tensor<?xi32> to tensor<1xi32>
+    return %2 : tensor<1xi32>
+  }
+
+  // CHECK-LABEL: func @tensor_cast_partial_infer
+  func @tensor_cast_partial_infer(%arg0: tensor<?x10xi32>) -> tensor<10x?xi32> {
+   // CHECK: %[[RESULT:.*]] = tensor.cast
+   // CHECK-SAME: tensor<?x10xi32> to tensor<10x10xi32>
+   // CHECK: return %[[RESULT]] : tensor<10x10xi32>
+    %2 = tensor.cast %arg0 : tensor<?x10xi32> to tensor<10x?xi32>
+    return %2 : tensor<10x?xi32>
   }
 
   // CHECK-LABEL: operand_pack_unranked
