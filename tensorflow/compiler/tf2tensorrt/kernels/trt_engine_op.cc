@@ -54,6 +54,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tensorrt {
+namespace {
 static Logger logger;
 using absl::StrAppend;
 using absl::StrCat;
@@ -61,6 +62,51 @@ using ::nvinfer1::IRuntime;
 
 #define LOG_FIRST_FEW_WARNING_WITH_PREFIX \
   LOG_FIRST_N(WARNING, 5) << "TF-TRT Warning: "
+
+// Allocates device memory for an execution context to execute a TensorRT
+// engine and records the relevant information for deallocating the memory when
+// the engine finishes execution.
+class ContextDeviceMemory {
+ public:
+  ContextDeviceMemory()
+      : execution_context_(nullptr),
+        device_memory_allocator_(nullptr),
+        device_memory_(nullptr) {}
+
+  ~ContextDeviceMemory() {
+    if (device_memory_) {
+      device_memory_allocator_->free(device_memory_);
+      execution_context_->setDeviceMemory(nullptr);
+    }
+  }
+
+  Status AllocateDeviceMemory(nvinfer1::IExecutionContext* execution_context,
+                              TRTBaseAllocator* device_memory_allocator) {
+    execution_context_ = execution_context;
+    device_memory_allocator_ = device_memory_allocator;
+    device_memory_ = nullptr;
+    const size_t device_memory_size =
+        execution_context_->getEngine().getDeviceMemorySize();
+    VLOG(2) << "Device memory size for TensorRT engine " << device_memory_size;
+    if (device_memory_size > 0) {
+      device_memory_ = device_memory_allocator_->allocate(
+          device_memory_size,
+          /*unused alignment=*/0, /*flags=*/0);
+      if (device_memory_ == nullptr) {
+        return errors::InvalidArgument(
+            "Out of GPU memory for execution context");
+      }
+    }
+    execution_context_->setDeviceMemory(device_memory_);
+
+    return Status::OK();
+  }
+
+ private:
+  nvinfer1::IExecutionContext* execution_context_;
+  TRTBaseAllocator* device_memory_allocator_;
+  void* device_memory_;
+};
 
 // A helper class to call done() when destructed for asynchronous execution.
 // Helps simultaneous execution of native and TRT engines.
@@ -78,6 +124,8 @@ class AsyncHelper : public core::RefCounted {
  private:
   AsyncOpKernel::DoneCallback done_;
 };
+
+}  // end anonymous namespace
 
 //  This OP can construct TRTEngine on the fly and if construction of engine
 //  fails, executes equivalent subgraph as a TensorFlow function.
@@ -112,11 +160,13 @@ class TRTEngineOp : public AsyncOpKernel {
   // Executes replaced native segment as function Op.
   void ExecuteNativeSegment(OpKernelContext* ctx, AsyncHelper* helper);
 
-  // Executes the tensorrt engine. Returns whether we need to retry by running
-  // the native segment.
+  // Allocates the device memory for the execution context and enqueues the
+  // TensorRT engine for execution. Also deallocates the device memory. Returns
+  // whether we need to retry by running the native segment.
   Status ExecuteTrtEngine(OpKernelContext* ctx, EngineContext* engine_context,
                           int trt_context_idx,
-                          const TrtShapeOptimizationProfile& profiles);
+                          const TrtShapeOptimizationProfile& profiles,
+                          TRTBaseAllocator* allocator);
 
   // Allocates necessary resources for calibration.
   Status AllocateCalibrationResources(OpKernelContext* ctx,
@@ -719,8 +769,9 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
     }
     return;
   }
-  Status stat = ExecuteTrtEngine(ctx, engine_context, trt_context_idx,
-                                 cache_res->profiles_);
+  Status stat =
+      ExecuteTrtEngine(ctx, engine_context, trt_context_idx,
+                       cache_res->profiles_, cache_res->allocator_.get());
   if (!stat.ok()) {
     LOG_FIRST_FEW_WARNING_WITH_PREFIX << "Failed to execute engine: " << stat
                                       << " Retrying with native segment for "
@@ -742,7 +793,7 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
 
 Status TRTEngineOp::ExecuteTrtEngine(
     OpKernelContext* ctx, EngineContext* engine_context, int trt_context_idx,
-    const TrtShapeOptimizationProfile& profiles) {
+    const TrtShapeOptimizationProfile& profiles, TRTBaseAllocator* allocator) {
   tensorflow::profiler::TraceMe activity(
       "TRTEngineOp::ExecuteTrtEngine",
       tensorflow::profiler::TraceMeLevel::kInfo);
@@ -798,9 +849,15 @@ Status TRTEngineOp::ExecuteTrtEngine(
                                                 ->implementation()
                                                 ->GpuStreamMemberHack()));
 
-  TF_RETURN_IF_ERROR(TrtEnqueue(execution_context, buffers, *stream,
-                                use_implicit_batch_, num_batch));
-  return Status::OK();
+  ContextDeviceMemory context_device_memory;
+  // Allocate device memory for the TensorRT engine execution. The device
+  // memory will be released when context_device_memory goes out of scope.
+  TF_RETURN_IF_ERROR(
+      context_device_memory.AllocateDeviceMemory(execution_context, allocator));
+
+  // Enqueue the TensorRT engine for execution.
+  return TrtEnqueue(execution_context, buffers, *stream, use_implicit_batch_,
+                    num_batch);
 }
 
 Status TRTEngineOp::GetEngineCacheResource(OpKernelContext* ctx,
