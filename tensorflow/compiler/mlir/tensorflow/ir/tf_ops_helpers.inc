@@ -548,7 +548,7 @@ struct DropAttributes : public OpRewritePattern<Op> {
   // Drop the "output_shapes" attribute.
   LogicalResult matchAndRewrite(Op op,
                                 PatternRewriter &rewriter) const override {
-    bool found = !!op.removeAttr("output_shapes");
+    bool found = !!op->removeAttr("output_shapes");
     return success(found);
   }
 };
