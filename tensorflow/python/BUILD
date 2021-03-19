@@ -24,9 +24,6 @@ load("//tensorflow:tensorflow.bzl", "pywrap_tensorflow_macro")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
-
-# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")
 
 # buildifier: disable=same-origin-load
@@ -3298,7 +3295,7 @@ tf_python_pybind_extension(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "device_lib_test",
     size = "small",
     srcs = [
