@@ -114,6 +114,7 @@ py_library(
         "//tensorflow/python/data/experimental/ops:iterator_ops",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
     ],
 )

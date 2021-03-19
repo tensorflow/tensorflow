@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python.data.experimental.ops import iterator_ops as contrib_iterator_ops
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -187,6 +188,7 @@ class CheckpointTestBase(test.TestCase):
         sparse_tensors=sparse_tensors,
         verify_exhausted=verify_exhausted)
 
+  # TODO(b/183231190): implement eager mode compatible checkpointing
   def verify_reset_restored_iterator(self,
                                      ds_fn,
                                      num_outputs,
@@ -224,7 +226,6 @@ class CheckpointTestBase(test.TestCase):
         verify_exhausted=False)
 
     actual = []
-    # TODO(vikoth18): implement eager mode compatible checkpointing
     # Restore from checkpoint and then run init_op.
     with ops.Graph().as_default() as g:
       saver = self._import_meta_graph()
@@ -242,6 +243,7 @@ class CheckpointTestBase(test.TestCase):
             sess.run(get_next_op)
     self.match(expected, actual)
 
+  # TODO(b/183231190): implement eager mode compatible checkpointing
   def verify_error_on_save(self,
                            ds_fn,
                            num_outputs,
@@ -260,9 +262,11 @@ class CheckpointTestBase(test.TestCase):
     Raises:
       AssertionError if any test fails.
     """
+    if context.executing_eagerly():
+      self.skipTest("Support for testing eager mode checkpointing has not "
+                    "been implemented.")
 
     break_point = num_outputs // 2 if not break_point else break_point
-    # TODO(vikoth18): implement eager mode compatible checkpointing
     with ops.Graph().as_default() as g:
       init_op, get_next_op, saver = self._build_graph(
           ds_fn, sparse_tensors=sparse_tensors)
@@ -314,6 +318,7 @@ class CheckpointTestBase(test.TestCase):
 
     self.match(expected, actual)
 
+  # TODO(b/183231190): implement eager mode compatible checkpointing
   def gen_outputs(self,
                   ds_fn,
                   break_points,
@@ -348,6 +353,9 @@ class CheckpointTestBase(test.TestCase):
     Returns:
       A list of `num_outputs` items.
     """
+    if context.executing_eagerly():
+      self.skipTest("Support for testing eager mode checkpointing has not "
+                    "been implemented.")
     outputs = []
 
     def get_ops():
@@ -360,7 +368,6 @@ class CheckpointTestBase(test.TestCase):
             ds_fn, sparse_tensors=sparse_tensors)
       return init_op, get_next_op, saver
 
-    # TODO(vikoth18): implement eager mode compatible checkpointing
     for i in range(len(break_points) + 1):
       with ops.Graph().as_default() as g:
         init_op, get_next_op, saver = get_ops()
@@ -492,17 +499,17 @@ class CheckpointTestBase(test.TestCase):
     return all_ops[0], nest.pack_sequence_as(
         self._get_output_types(ds_fn), get_next_list)
 
-  # TODO(vikoth18): replace with `element_spec` and add eager mode support
+  # TODO(b/183231190): replace with `element_spec` and add eager mode support
   def _get_output_types(self, ds_fn):
     with ops.Graph().as_default():
       return dataset_ops.get_legacy_output_types(ds_fn())
 
-  # TODO(vikoth18): replace with `element_spec` and add eager mode support
+  # TODO(b/183231190): replace with `element_spec` and add eager mode support
   def _get_output_shapes(self, ds_fn):
     with ops.Graph().as_default():
       return dataset_ops.get_legacy_output_shapes(ds_fn())
 
-  # TODO(vikoth18): replace with `element_spec` and add eager mode support
+  # TODO(b/183231190): replace with `element_spec` and add eager mode support
   def _get_output_classes(self, ds_fn):
     with ops.Graph().as_default():
       return dataset_ops.get_legacy_output_classes(ds_fn())
