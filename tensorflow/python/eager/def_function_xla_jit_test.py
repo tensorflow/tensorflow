@@ -409,8 +409,6 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       z()
 
-  @test_util.disable_mlir_bridge('TODO(b/162271237): argmax gives different'
-                                 ' results in MLIR-based bridge')
   def testArgMinMax(self):
     with ops.device('device:{}:0'.format(self.device)):
 
