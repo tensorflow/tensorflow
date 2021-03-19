@@ -2463,6 +2463,9 @@ EstimateWindowedEinsumIterationsForNonContractingPartitioning(
             output_other_non_contracting_partitions, other_sharding,
             output_sharding, matching_non_contracting_dims,
             other_non_contracting_dims, dims_mapping.contracting_dims);
+    if (!other_grouped) {
+      return absl::nullopt;
+    }
     absl::optional<HloSharding> output_sharding_transposed_to_match_matching =
         hlo_sharding_util::TransposeShardingWithCollapsedDims(
             output_grouped.sharding, output_to_matching_indices,
