@@ -815,7 +815,7 @@ def shared_embedding_columns(categorical_columns,
     if num_buckets != c._num_buckets:  # pylint: disable=protected-access
       raise ValueError(
           'To use shared_embedding_column, all categorical_columns must have '
-          'the same number of buckets. Given column: {} with buckets: {} does  '
+          'the same number of buckets. ven column: {} with buckets: {} does  '
           'not match column: {} with buckets: {}'.format(
               c0, num_buckets, c, c._num_buckets))  # pylint: disable=protected-access
 
@@ -1026,28 +1026,28 @@ def numeric_column(key,
 
   Example:
 
-  Assume we have a dataset with two features `a` and `b`.
+  Assume we have data with two features `a` and `b`.
   
   >>> data = {'a': [15, 9, 17, 19, 21, 18, 25, 30],
   ...    'b': [5.0, 6.4, 10.5, 13.6, 15.7, 19.9, 20.3 , 0.0]}
   
-  Let us represent the feature `a` and `b` as numerical features.
+  Let us represent the features `a` and `b` as numerical features.
+
   >>> a = tf.feature_column.numeric_column('a')
   >>> b = tf.feature_column.numeric_column('b')
   
-  The output of the feature column will be used as an input to the model.
-  But before we apply the feature column as an input, we can bucketize the
-  feature `a`.
-  Here we are providing `5` bucket boundaries, the bucketized_column api
-  will bucket this feature in total of `6` buckets. One extra bucket for
-  the data that is greater then the last bucket boundary.
+  Feature column describe a set of transformations to the inputs.
+
+  For example, to "bucketize" feature `a`, wrap the `a` column in a 
+  `feature_column.bucketized_column`.
+  Providing `5` bucket boundaries, the bucketized_column api
+  will bucket this feature in total of `6` buckets.
   
   >>> a_buckets = tf.feature_column.bucketized_column(a,
   ...    boundaries=[10, 15, 20, 25, 30])
   
-  Creating the `DenseFeatures` which will receive the bucketized numerical
-  feature column `a` that was just created above along with the numberic
-  column `b`.
+  Create a `DenseFeatures` layer which will apply the transformations 
+  described by the set of `tf.feature_column` objects:
   
   >>> feature_layer = tf.keras.layers.DenseFeatures([a_buckets, b])
   >>> print(feature_layer(data))
