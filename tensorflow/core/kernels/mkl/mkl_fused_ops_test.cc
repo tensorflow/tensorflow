@@ -1689,4 +1689,4 @@ INSTANTIATE_TYPED_TEST_SUITE_P(Test, MklPadWithFusedConv2DOpTest,
                                MklPadWithFusedConv2DDataTypes);
 
 }  // namespace tensorflow
-#endif  // INTEL_MKL && ENBLE_MKL
+#endif  // INTEL_MKL && ENABLE_MKL

@@ -459,4 +459,4 @@ Status MklToTfConversionPass::Run(const GraphOptimizationPassOptions& options) {
 
 }  // namespace tensorflow
 
-#endif
+#endif  // defined(INTEL_MKL) && defined(ENABLE_MKL)

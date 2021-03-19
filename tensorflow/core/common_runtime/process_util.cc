@@ -121,7 +121,7 @@ int32 DefaultNumIntraOpThreads() {
   // Default to the maximum parallelism for the current process.
   return port::MaxParallelism();
 }
-#endif  // defined(ENABLE_ONEDNN_OPENMP) && defined(INTEL_MKL)
+#endif  // defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_MKL)
 int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
   const int32 inter_op = options.config.inter_op_parallelism_threads();
   if (inter_op > 0) return inter_op;

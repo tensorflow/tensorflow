@@ -25,6 +25,10 @@ def if_mkl(if_true, if_false = []):
 
     Returns:
       a select evaluating to either if_true or if_false as appropriate.
+
+    TODO (intel_tf):
+      the first "if_true" line is kept because non-x86 platforms (e.g., ARM)
+      may need it. It may be deleted in future with refactoring.
     """
     return select({
         "@org_tensorflow//third_party/mkl:build_with_mkl": if_true,
@@ -89,8 +93,8 @@ def if_enable_mkl(if_true, if_false = []):
 
 def mkl_deps():
     """Shorthand for select() to pull in the correct set of oneDNN library deps
-      depending on the plaform. x86 linux/windows with or without config=mkl will
-      always build with oneDNN library.
+      depending on the platform. x86 Linux/Windows with or without --config=mkl
+      will always build with oneDNN library.
 
     Returns:
       a select evaluating to a list of library dependencies, suitable for

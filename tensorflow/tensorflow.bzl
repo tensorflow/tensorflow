@@ -364,8 +364,8 @@ def tf_copts(
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         # Compile in oneDNN based ops when building for x86 platforms
         if_mkl(["-DINTEL_MKL"])+
-        # Enable additional ops and optimizations for Intel builds using
-        # oneDNN if configured
+        # Enable additional ops (e.g., ops with non-NHWC data layout) and
+        # optimizations for Intel builds using oneDNN if configured
         if_enable_mkl(["-DENABLE_MKL"]) +
         if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         if_android_arm(["-mfpu=neon"]) +

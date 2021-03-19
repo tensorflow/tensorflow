@@ -32,15 +32,15 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/util.h"
 
-#if defined(ENABLE_ONEDNN_OPENMP) && defined(INTEL_MKL)
+#if defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_MKL)
 #ifdef _OPENMP
 #include <omp.h>
-#endif
+#endif  // defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_MKL)
 #endif
 #ifdef INTEL_MKL
 #include "tensorflow/core/common_runtime/mkl_cpu_allocator.h"
 #include "tensorflow/core/platform/cpu_info.h"
-#endif
+#endif  // INTEL_MKL
 
 namespace tensorflow {
 
