@@ -1694,6 +1694,12 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       def on_predict_batch_end(self, batch, logs=None):
         self.predict_batches += 1
 
+    class MyCallbackWithTFBatchHooks(keras.callbacks.Callback):
+
+      def __init__(self):
+        super(MyCallbackWithTFBatchHooks, self).__init__()
+        self._supports_tf_logs = True
+
     class MyCallbackWithoutBatchHooks(keras.callbacks.Callback):
 
       def __init__(self):
@@ -1711,6 +1717,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     self.assertTrue(cb_list._should_call_train_batch_hooks)
     self.assertTrue(cb_list._should_call_test_batch_hooks)
     self.assertTrue(cb_list._should_call_predict_batch_hooks)
+    self.assertFalse(cb_list._batch_hooks_support_tf_logs)
 
     model.fit(x, y, epochs=2, batch_size=10, callbacks=[my_cb], verbose=0)
     model.evaluate(x, y, batch_size=10, callbacks=[my_cb], verbose=0)
@@ -1719,6 +1726,10 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     self.assertEqual(my_cb.train_batches, 2)
     self.assertEqual(my_cb.test_batches, 1)
     self.assertEqual(my_cb.predict_batches, 1)
+
+    my_cb = MyCallbackWithTFBatchHooks()
+    cb_list = keras.callbacks.CallbackList([my_cb], verbose=0)
+    self.assertTrue(cb_list._batch_hooks_support_tf_logs)
 
     my_cb = MyCallbackWithoutBatchHooks()
     cb_list = keras.callbacks.CallbackList([my_cb], verbose=0)

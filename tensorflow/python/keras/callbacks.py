@@ -236,6 +236,13 @@ class CallbackList:
     # pylint: disable=protected-access
     self._supports_tf_logs = all(
         getattr(cb, '_supports_tf_logs', False) for cb in self.callbacks)
+    self._batch_hooks_support_tf_logs = all(
+        getattr(cb, '_supports_tf_logs', False)
+        for cb in self.callbacks
+        if cb._implements_train_batch_hooks()
+        or cb._implements_test_batch_hooks()
+        or cb._implements_predict_batch_hooks())
+
     self._should_call_train_batch_hooks = any(
         cb._implements_train_batch_hooks() for cb in self.callbacks)
     self._should_call_test_batch_hooks = any(
@@ -274,13 +281,15 @@ class CallbackList:
       self._history = History()
       self.callbacks.append(self._history)
 
-  def _process_logs(self, logs):
+  def _process_logs(self, logs, is_batch_hook=False):
     """Turns tensors into numpy arrays or Python scalars if necessary."""
     if logs is None:
       return {}
-    if not self._supports_tf_logs:
-      return tf_utils.sync_to_numpy_or_python_type(logs)
-    return logs
+    if self._supports_tf_logs:
+      return logs
+    if is_batch_hook and self._batch_hooks_support_tf_logs:
+      return logs
+    return tf_utils.sync_to_numpy_or_python_type(logs)
 
   def append(self, callback):
     self.callbacks.append(callback)
@@ -360,7 +369,7 @@ class CallbackList:
     if self._check_timing:
       start_time = time.time()
 
-    logs = self._process_logs(logs)
+    logs = self._process_logs(logs, is_batch_hook=True)
     for callback in self.callbacks:
       hook = getattr(callback, hook_name)
       hook(batch, logs)
