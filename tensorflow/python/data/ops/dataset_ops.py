@@ -3690,9 +3690,15 @@ class StructuredFunctionWrapper(object):
     else:
       defun_kwargs.update({"func_name": func_name})
       defun_kwargs.update({"_tf_data_function": True})
-      if DEBUG_MODE or def_function.functions_run_eagerly():
+      if DEBUG_MODE:
         fn_factory = trace_py_function(defun_kwargs)
       else:
+        if def_function.functions_run_eagerly():
+          warnings.warn(
+              "Even though the `tf.config.experimental_run_functions_eagerly` "
+              "option is set, this option does not apply to tf.data functions. "
+              "To force eager execution of tf.data functions, please use "
+              "`tf.data.experimental.enable.debug_mode()`.")
         fn_factory = trace_tf_function(defun_kwargs)
 
     resource_tracker = tracking.ResourceTracker()
