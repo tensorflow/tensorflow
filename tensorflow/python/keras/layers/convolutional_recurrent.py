@@ -698,10 +698,16 @@ class ConvLSTM2DCell(DropoutRNNCellMixin, Layer):
 
 @keras_export('keras.layers.ConvLSTM2D')
 class ConvLSTM2D(ConvRNN2D):
-  """Convolutional LSTM.
+  """2D Convolutional LSTM layer.
 
-  It is similar to an LSTM layer, but the input transformations
-  and recurrent transformations are both convolutional.
+  A convolutional LSTM is similar to an LSTM, but the input transformations
+  and recurrent transformations are both convolutional. This layer is typically
+  used to process timeseries of images (i.e. video-like data).
+
+  It is known to perform well for weather data forecasting,
+  using inputs that are timeseries of 2D grids of sensor values.
+  It isn't usually applied to regular video data, due to its high computational
+  cost.
 
   Args:
     filters: Integer, the dimensionality of the output space
@@ -713,8 +719,8 @@ class ConvLSTM2D(ConvRNN2D):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: One of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to 
-      the left/right or up/down of the input such that output has the same 
+      `"valid"` means no padding. `"same"` results in padding evenly to
+      the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
@@ -775,7 +781,7 @@ class ConvLSTM2D(ConvRNN2D):
       the linear transformation of the recurrent state.
 
   Call arguments:
-    inputs: A 5D tensor.
+    inputs: A 5D float tensor (see input shape description below).
     mask: Binary tensor of shape `(samples, timesteps)` indicating whether
       a given timestep should be masked.
     training: Python boolean indicating whether the layer should behave in
@@ -823,6 +829,20 @@ class ConvLSTM2D(ConvRNN2D):
     - [Shi et al., 2015](http://arxiv.org/abs/1506.04214v1)
     (the current implementation does not include the feedback loop on the
     cells output).
+
+  Example:
+
+  ```python
+  steps = 10
+  height = 32
+  width = 32
+  input_channels = 3
+  output_channels = 6
+
+  inputs = tf.keras.Input(shape=(steps, height, width, input_channels))
+  layer = tf.keras.layers.ConvLSTM2D(filters=output_channels, kernel_size=3)
+  outputs = layer(inputs)
+  ```
   """
 
   def __init__(self,
