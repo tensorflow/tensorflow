@@ -605,22 +605,34 @@ class TFLiteConverterBase(object):
     """Set conversion parameter metrics."""
     converter_kwargs = converter_params.copy()
     converter_kwargs.update(self._get_base_converter_args())
-    if graph_def:
-      try:
-        quant_mode = QuantizationMode(self.optimizations, self.target_spec,
-                                      self.representative_dataset, graph_def)
-        converter_kwargs.update(
-            quant_mode.converter_flags(inference_type, inference_input_type))
 
-        calibrate_and_quantize, flags = quant_mode.quantizer_flags(
-            inference_type, inference_input_type)
-        converter_kwargs.update(
-            {"calibrate_and_quantize": calibrate_and_quantize})
-        if calibrate_and_quantize:
-          converter_kwargs.update(flags)
-      except Exception:  # pylint: disable=broad-except
-        # Still updates other params.
-        pass
+    # quantization-replated parameters.
+    try:
+      quant_mode = QuantizationMode(self.optimizations, self.target_spec,
+                                    self.representative_dataset, graph_def)
+      calibrate_and_quantize, flags = quant_mode.quantizer_flags(
+          inference_type, inference_input_type)
+      converter_kwargs.update({
+          "calibrate_and_quantize": calibrate_and_quantize,
+      })
+      if calibrate_and_quantize:
+        converter_kwargs.update(flags)
+      converter_kwargs.update(
+          quant_mode.converter_flags(inference_type, inference_input_type))
+    except Exception:  # pylint: disable=broad-except
+      # Still updates other params.
+      pass
+
+    # Optimization parameters.
+    optimization_default = set(self.optimizations).intersection([
+        Optimize.OPTIMIZE_FOR_LATENCY, Optimize.OPTIMIZE_FOR_SIZE,
+        Optimize.DEFAULT
+    ])
+    converter_kwargs.update({
+        "optimization_sparsify_model": self._sparsify_model(),
+        "optimization_default": optimization_default,
+    })
+
     for key, value in converter_kwargs.items():
       self._tflite_metrics.set_converter_param(key, str(value))
 
