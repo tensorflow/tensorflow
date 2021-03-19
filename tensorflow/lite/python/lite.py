@@ -433,6 +433,11 @@ class QuantizationMode(object):
     return False
 
 
+# The metrics are unregistered if their variables get garbage-collected. So use
+# a global variable to keep them alive till program exits.
+_global_metrics = metrics.TFLiteMetrics()
+
+
 class TFLiteConverterBase(object):
   """Converter subclass to share functionality between V1 and V2 converters."""
 
@@ -453,7 +458,7 @@ class TFLiteConverterBase(object):
     self._saved_model_version = 0
     self._saved_model_exported_names = []
     # Variable for converter metrics.
-    self._tflite_metrics = metrics.TFLiteMetrics()
+    self._tflite_metrics = _global_metrics
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
