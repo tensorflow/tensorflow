@@ -6361,7 +6361,8 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
   patterns->insert<
     ConvertAllOp,
     ConvertAnyOp,
-    ConvertArgMaxOp,
+    // TODO(b/162271237): Re-enable once fixed.
+    // ConvertArgMaxOp,
     ConvertBatchMatMulV2Op,
     ConvertBiasAddOp,
     ConvertBroadcastToOp,
