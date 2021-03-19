@@ -24,16 +24,12 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
+#include "tensorflow/lite/micro/kernels/ceva/ceva_common.h"
 #include "tensorflow/lite/micro/kernels/ceva/ceva_tflm_lib.h"
 #include "tensorflow/lite/micro/kernels/depthwise_conv.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 #ifdef MCPS_MEASUREMENT
 #include "tensorflow/lite/micro/kernels/ceva/mcps_macros.h"
-#endif
-
-#if defined(CEVA_BX1) || defined(CEVA_SP500)
-extern int32_t* CEVA_TFLM_KERNELS_SCRATCH;
-extern int32_t CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL;
 #endif
 
 namespace tflite {
