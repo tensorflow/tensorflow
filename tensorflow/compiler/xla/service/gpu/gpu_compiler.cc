@@ -173,11 +173,6 @@ Status GpuCompiler::OptimizeHloModule(
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                               /*allow_mixed_precision=*/false);
-
-    pipeline.AddPass<AllGatherDecomposer>(
-        [](const HloAllGatherInstruction& ag) {
-          return !NcclAllGatherThunk::CanImplement(&ag);
-        });
     pipeline.AddPass<AllToAllDecomposer>();
     pipeline.AddPass<RealImagExpander>();
 

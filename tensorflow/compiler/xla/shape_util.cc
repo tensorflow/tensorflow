@@ -319,6 +319,23 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   return ret.ValueOrDie();
 }
 
+/* static */ Shape ShapeUtil::MoveDimToMajor(const Shape& shape, int64 dim) {
+  Shape ret = shape;
+  if (!ret.has_layout()) {
+    LayoutUtil::SetToDefaultLayout(&ret);
+  }
+  *ret.mutable_layout() = LayoutUtil::MoveDimToMajor(ret.layout(), dim);
+  DimensionVector minor_to_major;
+  for (int64 d : LayoutUtil::MinorToMajor(ret)) {
+    if (d != dim) {
+      minor_to_major.push_back(d);
+    }
+  }
+  minor_to_major.push_back(dim);
+  *ret.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
+  return ret;
+}
+
 /* static */ Shape ShapeUtil::MakeShapeWithDescendingLayout(
     PrimitiveType element_type, absl::Span<const int64> dimensions) {
   std::vector<int64> layout(dimensions.size());
