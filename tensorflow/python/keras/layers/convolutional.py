@@ -2261,11 +2261,22 @@ class SeparableConv2D(SeparableConv):
 
 @keras_export('keras.layers.DepthwiseConv2D')
 class DepthwiseConv2D(Conv2D):
-  """Depthwise separable 2D convolution.
+  """Depthwise 2D convolution.
 
-  Depthwise Separable convolutions consist of performing
-  just the first step in a depthwise spatial convolution
-  (which acts on each input channel separately).
+  Depthwise convolution is a type of convolution in which a single convolutional
+  filter is apply to each input channel (i.e. in a depthwise way).
+  You can understand depthwise convolution as being
+  the first step in a depthwise separable convolution.
+
+  It is implemented via the following steps:
+
+  - Split the input into individual channels.
+  - Convolve each input with the layer's kernel (called a depthwise kernel).
+  - Stack the convolved outputs together (along the channels axis).
+
+  Unlike a regular 2D convolution, depthwise convolution does not mix
+  information across different input channels.
+
   The `depth_multiplier` argument controls how many
   output channels are generated per input channel in the depthwise step.
 
