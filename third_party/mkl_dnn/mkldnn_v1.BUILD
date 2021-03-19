@@ -68,6 +68,51 @@ template_rule(
     },
 )
 
+_COPTS_LIST = select({
+    "@org_tensorflow//tensorflow:windows": [],
+    "//conditions:default": ["-fexceptions"],
+}) + [
+    "-UUSE_MKL",
+    "-UUSE_CBLAS",
+    "-DDNNL_ENABLE_MAX_CPU_ISA",
+] + tf_openmp_copts()
+
+_INCLUDES_LIST = [
+    "include",
+    "src",
+    "src/common",
+    "src/cpu",
+    "src/cpu/gemm",
+    "src/cpu/x64/xbyak",
+]
+
+_TEXTUAL_HDRS_LIST = glob([
+    "include/**/*",
+    "src/common/*.hpp",
+    "src/cpu/*.hpp",
+    "src/cpu/**/*.hpp",
+    "src/cpu/x64/jit_utils/jitprofiling/*.h",
+    "src/cpu/x64/xbyak/*.h",
+]) + [
+    ":dnnl_config_h",
+    ":dnnl_version_h",
+]
+
+# Large autogen files take too long time to compile with usual optimization
+# flags. These files just generate binary kernels and are not the hot spots,
+# so we factor them out to lower compiler optimizations in ":dnnl_autogen".
+cc_library(
+    name = "onednn_autogen",
+    srcs = glob(["src/cpu/x64/gemm/**/*_kern_autogen*.cpp"]),
+    copts = select({
+        "@org_tensorflow//tensorflow:macos": ["-O0"],
+        "//conditions:default": ["-O1"],
+    }) + ["-U_FORTIFY_SOURCE"] + _COPTS_LIST,
+    includes = _INCLUDES_LIST,
+    textual_hdrs = _TEXTUAL_HDRS_LIST,
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "mkl_dnn",
     srcs = glob(
@@ -77,37 +122,16 @@ cc_library(
             "src/cpu/**/*.cpp",
             "src/cpu/x64/jit_utils/jitprofiling/*.c",
         ],
-        exclude = ["src/cpu/aarch64/**"],
-    ) + [
-        ":dnnl_config_h",
-        ":dnnl_version_h",
-    ],
-    copts = select({
-        "@org_tensorflow//tensorflow:windows": [],
-        "//conditions:default": ["-fexceptions"],
-    }) + [
-        "-UUSE_MKL",
-        "-UUSE_CBLAS",
-        "-DDNNL_ENABLE_MAX_CPU_ISA",
-    ] + tf_openmp_copts(),
-    includes = [
-        "include",
-        "src",
-        "src/common",
-        "src/cpu",
-        "src/cpu/gemm",
-        "src/cpu/x64/xbyak",
-    ],
-    textual_hdrs = glob([
-        "include/**/*",
-        "src/common/*.hpp",
-        "src/cpu/*.hpp",
-        "src/cpu/**/*.hpp",
-        "src/cpu/x64/jit_utils/jitprofiling/*.h",
-        "src/cpu/x64/xbyak/*.h",
-    ]),
+        exclude = [
+            "src/cpu/aarch64/**",
+            "src/cpu/x64/gemm/**/*_kern_autogen.cpp",
+        ],
+    ),
+    copts = _COPTS_LIST,
+    includes = _INCLUDES_LIST,
+    textual_hdrs = _TEXTUAL_HDRS_LIST,
     visibility = ["//visibility:public"],
-    deps = if_mkl_ml(
+    deps = [":onednn_autogen"] + if_mkl_ml(
         ["@org_tensorflow//third_party/mkl:intel_binary_blob"],
         [],
     ),
