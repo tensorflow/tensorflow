@@ -121,6 +121,10 @@ class BaseGPUDevice : public LocalDevice {
   // Helper method for unit tests to reset the streams. Never use in production.
   static void TestOnlyReset();
 
+  void* GetStream() {
+    return stream_->compute->implementation()->GpuStreamMemberHack();
+  }
+
  protected:
   Allocator* gpu_allocator_;  // not owned
   Allocator* cpu_allocator_;  // not owned

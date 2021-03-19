@@ -79,9 +79,6 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
         << "TF_GPU_ALLOCATOR=cuda_malloc_async isn't currently supported."
         << " Possible causes: device not supported, driver too old, "
         << " OS not supported, CUDA version too old.";
-  if (auto status = cuStreamCreate(&cuda_stream_, /*flags=*/0))
-    LOG(FATAL)  // Crash OK.
-        << "Failed to create CUDA stream: " << GetCudaErrorMessage(status);
 
   if (auto status =
           cuDeviceGetDefaultMemPool(&pool_, platform_device_id.value()))
@@ -198,14 +195,13 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
 }
 
 GpuCudaMallocAsyncAllocator::~GpuCudaMallocAsyncAllocator() {
-#if TF_CUDA_MALLOC_ASYNC_SUPPORTED
-  cuStreamDestroy(cuda_stream_);
-#endif
 }
 
 void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
                                                size_t num_bytes) {
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
+  CHECK(cuda_stream_ != nullptr)
+      << "A stream must be added to the GpuCudaMallocAsync allocator";
   if (pool_ == nullptr) {
     LOG(FATAL)  // Crash OK.
         << "The instantiation of GpuCudaMallocAsyncAllocator failed."

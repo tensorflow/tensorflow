@@ -209,7 +209,7 @@ Allocator* GPUProcessState::GetGPUAllocator(
     } else if (UseCudaMallocAsyncAllocator()) {
       LOG(INFO) << "Using CUDA malloc Async allocator for GPU: " << platform_device_id;
       // If true, passes all allocation requests through to cudaMallocAsync
-      // TODO: useful for doing memory debugging with tools like cuda-memcheck
+      // TODO: useful for doing memory debugging with tools like compute-sanitizer.
       // TODO: **WARNING** probably will not work in a multi-gpu scenario
       gpu_allocator =
           new GpuCudaMallocAsyncAllocator(platform_device_id, total_bytes);
