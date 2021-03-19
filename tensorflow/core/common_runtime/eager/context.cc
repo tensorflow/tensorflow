@@ -126,6 +126,8 @@ EagerContext::EagerContext(
       new CollectiveExecutorMgr(opts.config, local_device_mgr(), std::move(drl),
                                 std::move(cprl), MaybeCreateNcclCommunicator()),
       /*owned=*/true);
+  global_rendezvous_for_functions_ =
+      core::RefCountPtr<Rendezvous>(CreateRendezvous(-1));
 }
 
 AbstractTensorInterface* EagerContext::CreateInt64Scalar(int64 value) {
@@ -835,6 +837,10 @@ Status EagerContext::SyncExecutors() {
     sg.Update(s);
   }
 #endif  // !IS_MOBILE_PLATFORM
+  // Reset the global function rendezvous, which otherwise stores a failure
+  // state.
+  global_rendezvous_for_functions_ =
+      core::RefCountPtr<Rendezvous>(CreateRendezvous(-1));
   return sg.as_summary_status();
 }
 
