@@ -21,7 +21,7 @@ TOOLS_LIBS := \
 	-defsym \
 	__internal_code_size=256k \
 	-L${TARGET_TOOLCHAIN_ROOT}cevatools/lib/clang/9.0.1/cevabx1-unknown-unknown-elf/rtlv1.0.0-fp1-dpfp1/lib/ \
-	-lc++ -lc++abi -lc -lcompiler-rt -lCEVA_TFLM_lib
+	-lc++ -lc++abi -lc -lcompiler-rt -lCEVA_TFLM_lib -lceva_dsp_lib
     
 
 OUT_NAME = %{EXECUTABLE}%

@@ -81,6 +81,7 @@ CCFLAGS += $(PLATFORM_ARGS)
 MICROLITE_CC_HDRS += \
   tensorflow/lite/micro/kernels/ceva/ceva_tflm_lib.h \
   tensorflow/lite/micro/kernels/ceva/types.h \
+  tensorflow/lite/micro/kernels/ceva/ceva_common.h 
   
 
 MICROLITE_CC_SRCS += \
