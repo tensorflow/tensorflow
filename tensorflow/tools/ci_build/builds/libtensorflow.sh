@@ -58,9 +58,7 @@ function build_libtensorflow_tarball() {
   else
     BAZEL_OPTS="${BAZEL_OPTS} --config=release_cpu_linux"
   fi
-  bazel clean --expunge
-  export PYTHON_BIN_PATH=$(which python3.8)
-  yes "" | "$PYTHON_BIN_PATH" configure.py
+  BAZEL_OPTS="${BAZEL_OPTS} --repo_env=PYTHON_BIN_PATH="$(which python3.8)""
 
   # Remove this test call when
   # https://github.com/bazelbuild/bazel/issues/2352
