@@ -52,8 +52,8 @@ class TFLiteMetrics(metrics_interface.TFLiteMetricsInterface):
       'Counter for number of successful conversions.')
 
   _gauge_conversion_params = monitoring.StringGauge(
-      '/tensorflow/lite/convert/params', 'name',
-      'Gauge for keeping conversion parameters.')
+      '/tensorflow/lite/convert/params',
+      'Gauge for keeping conversion parameters.', 'name')
 
   def __init__(self,
                model_hash: Optional[Text] = None,
