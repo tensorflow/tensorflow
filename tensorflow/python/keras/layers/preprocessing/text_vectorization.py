@@ -207,21 +207,6 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
   This example instantiates a TextVectorization layer by passing a list
   of vocabulary terms to the layer's __init__ method.
 
-    input_array = np.array([["earth", "wind", "and", "fire"],
-                            ["fire", "and", "earth", "michigan"]])
-    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
-        max_tokens=None,
-        standardize=None,
-        split=None,
-        output_mode=text_vectorization.INT,
-        vocabulary=vocab_data)
-    int_data = layer(input_data)
-    model = keras.Model(inputs=input_data, outputs=int_data)
-
-    output_dataset = model.predict(input_array)
   >>> vocab_data = ["earth", "wind", "and", "fire"]
   >>> max_len = 4  # Sequence length to pad the outputs to.
   >>>
@@ -332,16 +317,12 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     base_preprocessing_layer.keras_kpl_gauge.get_cell(
         "TextVectorization").set(True)
 
-    self._index_lookup_layer = self._get_index_lookup_class()(
+    self._index_lookup_layer = string_lookup.StringLookup(
         max_tokens=max_tokens,
         vocabulary=vocabulary,
         pad_to_max_tokens=pad_to_max_tokens,
         output_mode=output_mode if output_mode is not None else INT,
         vocabulary_size=vocabulary_size)
-
-  def _get_index_lookup_class(self):
-    return string_lookup.StringLookup
-  # End of V1/V2 shim points.
 
   def _assert_same_type(self, expected_type, values, value_name):
     if dtypes.as_dtype(expected_type) != dtypes.as_dtype(values.dtype):
