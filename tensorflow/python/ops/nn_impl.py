@@ -287,10 +287,22 @@ def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
 
   `logits` and `labels` must have the same type and shape.
 
+  >>> labels = tf.constant([1., 0.5, 0.])
+  >>> logits = tf.constant([1.5, -0.1, -10.])
+  >>> tf.nn.weighted_cross_entropy_with_logits(
+  ...     labels=labels, logits=logits, pos_weight=tf.constant(1.5)).numpy()
+  array([3.0211994e-01, 8.8049585e-01, 4.5776367e-05], dtype=float32)
+  >>> tf.nn.weighted_cross_entropy_with_logits(
+  ...     labels=labels, logits=logits, pos_weight=tf.constant(0.5)).numpy()
+  array([1.00706644e-01, 5.08297503e-01, 4.57763672e-05], dtype=float32)
+
   Args:
-    labels: A `Tensor` of the same type and shape as `logits`.
-    logits: A `Tensor` of type `float32` or `float64`.
-    pos_weight: A coefficient to use on the positive examples.
+    labels: A `Tensor` of the same type and shape as `logits`, with values
+      between 0 and 1 inclusive.
+    logits: A `Tensor` of type `float32` or `float64`, any real numbers.
+    pos_weight: A coefficient to use on the positive examples, typically a
+      scalar but otherwise broadcastable to the shape of `logits`. Its value
+      should be non-negative.
     name: A name for the operation (optional).
 
   Returns:
