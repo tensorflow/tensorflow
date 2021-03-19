@@ -243,6 +243,7 @@ py_library(
     ],
     deps = [
         ":lite",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "@six_archive//:six",

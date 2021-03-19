@@ -22,7 +22,9 @@ from __future__ import print_function
 import os
 
 from absl.testing import parameterized
+import numpy as np
 from six.moves import zip
+import tensorflow as tf
 
 from tensorflow.lite.python.interpreter import Interpreter
 from tensorflow.python.eager import def_function
@@ -120,6 +122,39 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         return x * self.z + y
 
     return BasicModel()
+
+  def _getSequentialMultiInputOutputModel(self):
+    left_input_data = tf.constant(1., shape=[1, 3])
+    right_input_data = tf.constant(1., shape=[1, 3])
+    input_data = [left_input_data, right_input_data]
+
+    # Create a simple Keras model.
+    input_a_np = np.random.random((10, 3))
+    input_b_np = np.random.random((10, 3))
+    output_c_np = np.random.random((10, 3))
+    output_d_np = np.random.random((10, 2))
+
+    input_a = tf.keras.layers.Input(shape=(3,), name='input_a')
+    input_b = tf.keras.layers.Input(shape=(3,), name='input_b')
+
+    dense = tf.keras.layers.Dense(8, name='dense_1')
+    interm_a = dense(input_a)
+    interm_b = dense(input_b)
+    merged = tf.keras.layers.concatenate([interm_a, interm_b], name='merge')
+
+    output_c = tf.keras.layers.Dense(
+        3, activation='softmax', name='dense_2')(
+            merged)
+    output_d = tf.keras.layers.Dense(
+        2, activation='softmax', name='dense_3')(
+            merged)
+
+    model = tf.keras.models.Model(
+        inputs=[input_a, input_b], outputs=[output_c, output_d])
+    model.compile(optimizer='sgd', loss='mean_squared_error')
+    model.fit([input_a_np, input_b_np], [output_c_np, output_d_np], epochs=1)
+
+    return model, input_data
 
   def _assertValidDebugInfo(self, debug_info):
     """Verify the DebugInfo is valid."""
