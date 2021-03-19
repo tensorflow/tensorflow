@@ -15,6 +15,7 @@ filegroup(
     srcs = [
         "pluggable_device.h",
         "pluggable_device_bfc_allocator.h",
+        "pluggable_device_simple_allocator.h",
         "pluggable_device_context.h",
         "pluggable_device_factory.h",
         "pluggable_device_init.h",
@@ -38,7 +39,9 @@ cc_library(
     copts = tf_copts(),
     deps = [
         ":pluggable_device_bfc_allocator",
+        ":pluggable_device_simple_allocator",
         ":pluggable_device_init_impl",
+        "//tensorflow/c/experimental/stream_executor:stream_executor_internal",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
@@ -129,6 +132,23 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:bfc_allocator",
+        "//tensorflow/core/common_runtime/device:device_id",
+        "//tensorflow/core/common_runtime/device:device_mem_allocator",
+    ],
+)
+
+cc_library(
+    name = "pluggable_device_simple_allocator",
+    srcs = [
+        "pluggable_device_simple_allocator.cc",
+    ],
+    hdrs = ["pluggable_device_simple_allocator.h"],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/device:device_id",
         "//tensorflow/core/common_runtime/device:device_mem_allocator",
     ],

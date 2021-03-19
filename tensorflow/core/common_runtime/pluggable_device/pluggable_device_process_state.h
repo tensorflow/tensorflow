@@ -33,6 +33,7 @@ namespace tensorflow {
 
 class Allocator;
 class PluggableDeviceBFCAllocator;
+class PluggableDeviceSimpleAllocator;
 class PoolAllocator;
 
 // Singleton that manages per-process state when PluggableDevices are present.
@@ -104,7 +105,7 @@ class PluggableDeviceProcessState {
 
   struct AllocatorParts {
     std::unique_ptr<Allocator> allocator;
-    PluggableDeviceBFCAllocator* bfc_allocator;
+    Allocator* device_allocator;
     SubAllocator* sub_allocator;  // owned by allocator
   };
 
