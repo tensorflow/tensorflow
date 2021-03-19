@@ -203,9 +203,23 @@ class BufferReuseAnalysis {
                  op->getOperands().end() &&
              "Expect `old/new_buffer` to be operand of `op`.");
 
+      auto is_projection = [](AffineMap map) {
+        // Allow dropping dimensions but no permutations.
+        int64_t i = -1;
+        for (AffineExpr expr : map.getResults()) {
+          auto dim_expr = expr.dyn_cast<AffineDimExpr>();
+          if (!dim_expr || dim_expr.getPosition() <= i) return false;
+          i = dim_expr.getPosition();
+        }
+        return true;
+      };
+
       // If `linalg.generic` indexing maps are the same for input and output
       // buffer then the last use of the input buffer happens before its first
-      // reuse (per memory location).
+      // reuse (per memory location). Since we know that the inputs and outputs
+      // have the same size we also know that when one side has an identity map
+      // and the other side only drops dimensions, these dimensions have to be
+      // of size 1.
       auto operand_buffers = generic_op.getShapedOperands();
       int old_index =
           llvm::find(operand_buffers, old_buffer) - operand_buffers.begin();
@@ -213,8 +227,11 @@ class BufferReuseAnalysis {
           llvm::find(operand_buffers, new_buffer) - operand_buffers.begin();
       AffineMap old_indexing_map = generic_op.getIndexingMap(old_index);
       AffineMap new_indexing_map = generic_op.getIndexingMap(new_index);
-      return old_indexing_map == new_indexing_map &&
-             old_indexing_map.isPermutation();
+      return (old_indexing_map == new_indexing_map &&
+              old_indexing_map.isProjectedPermutation()) ||
+             (old_indexing_map.isIdentity() &&
+              is_projection(new_indexing_map)) ||
+             (is_projection(old_indexing_map) && new_indexing_map.isIdentity());
     }
     return false;
   }

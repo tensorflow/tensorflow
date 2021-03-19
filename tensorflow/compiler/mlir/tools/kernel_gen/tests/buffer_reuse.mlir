@@ -55,6 +55,101 @@ func @local_reuse_with_memref_maps(
   return %result : memref<?xi64, offset: 2, strides: [3]>
 }
 
+// CHECK-LABEL: @local_reuse_with_broadcasting_memref_maps
+func @local_reuse_with_broadcasting_memref_maps(
+    %arg0 : memref<i64>, %arg1 : memref<?xi64>, %n : index)
+    -> memref<?xi64> attributes {tf_entry} {
+  // CHECK: alloc
+  // CHECK-SAME: reuse_input_candidates = [0 : i32, 1 : i32]
+  %result = memref.alloc(%n) : memref<?xi64>
+  linalg.generic {
+    indexing_maps = [affine_map<(i) -> ()>, affine_map<(i) -> (i)>, affine_map<(i) -> (i)>],
+    iterator_types = ["parallel"]
+  } ins(%arg0, %arg1 : memref<i64>, memref<?xi64>)
+    outs(%result : memref<?xi64>) {
+  ^bb0(%a : i64, %b : i64, %c : i64):
+    %add = addi %a, %b : i64
+    linalg.yield %add : i64
+  }
+  return %result : memref<?xi64>
+}
+
+// CHECK-LABEL: @local_reuse_with_broadcasting_memref_maps2
+func @local_reuse_with_broadcasting_memref_maps2(
+    %arg0 : memref<?xi64>, %arg1 : memref<?xi64>)
+    -> memref<i64> attributes {tf_entry} {
+  // CHECK: alloc
+  // CHECK-SAME: reuse_input_candidates = [0 : i32, 1 : i32]
+  %result = memref.alloc() : memref<i64>
+  linalg.generic {
+    indexing_maps = [affine_map<(i) -> (i)>, affine_map<(i) -> (i)>, affine_map<(i) -> ()>],
+    iterator_types = ["parallel"]
+  } ins(%arg0, %arg1 : memref<?xi64>, memref<?xi64>)
+    outs(%result : memref<i64>) {
+  ^bb0(%a : i64, %b : i64, %c : i64):
+    %add = addi %a, %b : i64
+    linalg.yield %add : i64
+  }
+  return %result : memref<i64>
+}
+
+// CHECK-LABEL: @local_reuse_with_broadcasting_memref_maps3
+func @local_reuse_with_broadcasting_memref_maps3(
+    %arg0 : memref<i64>, %arg1 : memref<?xi64>)
+    -> memref<i64> attributes {tf_entry} {
+  // CHECK: alloc
+  // CHECK-SAME: reuse_input_candidates = [0 : i32, 1 : i32]
+  %result = memref.alloc() : memref<i64>
+  linalg.generic {
+    indexing_maps = [affine_map<(i) -> ()>, affine_map<(i) -> (i)>, affine_map<(i) -> ()>],
+    iterator_types = ["parallel"]
+  } ins(%arg0, %arg1 : memref<i64>, memref<?xi64>)
+    outs(%result : memref<i64>) {
+  ^bb0(%a : i64, %b : i64, %c : i64):
+    %add = addi %a, %b : i64
+    linalg.yield %add : i64
+  }
+  return %result : memref<i64>
+}
+
+// CHECK-LABEL: @nolocal_reuse_with_broadcasting_memref_maps
+func @nolocal_reuse_with_broadcasting_memref_maps(
+    %arg0 : memref<?xi64>, %arg1 : memref<?x?xi64>, %n : index)
+    -> memref<?xi64> attributes {tf_entry} {
+  // CHECK: alloc
+  // CHECK-SAME: reuse_input_candidates = [1 : i32]
+  %result = memref.alloc(%n) : memref<?xi64>
+  linalg.generic {
+    indexing_maps = [affine_map<(i,j) -> (i)>, affine_map<(i,j) -> (i,j)>, affine_map<(i,j) -> (j)>],
+    iterator_types = ["parallel", "parallel"]
+  } ins(%arg0, %arg1 : memref<?xi64>, memref<?x?xi64>)
+    outs(%result : memref<?xi64>) {
+  ^bb0(%a : i64, %b : i64, %c : i64):
+    %add = addi %a, %b : i64
+    linalg.yield %add : i64
+  }
+  return %result : memref<?xi64>
+}
+
+// CHECK-LABEL: @nolocal_reuse_with_broadcasting_memref_maps2
+func @nolocal_reuse_with_broadcasting_memref_maps2(
+    %arg0 : memref<?x?x?xi64>, %arg1 : memref<?x?x?xi64>, %n : index)
+    -> memref<?x?xi64> attributes {tf_entry} {
+  // CHECK: alloc
+  // CHECK-SAME: reuse_input_candidates = []
+  %result = memref.alloc(%n, %n) : memref<?x?xi64>
+  linalg.generic {
+    indexing_maps = [affine_map<(i,j,k) -> (i,j,k)>, affine_map<(i,j,k) -> (i,j,k)>, affine_map<(i,j,k) -> (k,i)>],
+    iterator_types = ["parallel", "parallel", "parallel"]
+  } ins(%arg0, %arg1 : memref<?x?x?xi64>, memref<?x?x?xi64>)
+    outs(%result : memref<?x?xi64>) {
+  ^bb0(%a : i64, %b : i64, %c : i64):
+    %add = addi %a, %b : i64
+    linalg.yield %add : i64
+  }
+  return %result : memref<?x?xi64>
+}
+
 // CHECK-LABEL: @memref.reinterpret_cast_alias
 func @memref.reinterpret_cast_alias(%arg : memref<f32>, %n : index)
     -> memref<?xf32> attributes {tf_entry} {
