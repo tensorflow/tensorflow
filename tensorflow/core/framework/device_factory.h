@@ -55,6 +55,10 @@ class DeviceFactory {
   // CPU is are added first.
   static Status ListAllPhysicalDevices(std::vector<string>* devices);
 
+  // Iterate through all device factories and build a list of all of the
+  // possible pluggable physical devices.
+  static Status ListPluggablePhysicalDevices(std::vector<string>* devices);
+
   // Get details for a specific device among all device factories.
   // 'device_index' indexes into devices from ListAllPhysicalDevices.
   static Status GetAnyDeviceDetails(
