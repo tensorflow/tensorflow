@@ -58,6 +58,15 @@ from tensorflow.python.util.tf_export import keras_export
 keras_data_adapter_gauge = monitoring.BoolGauge(
     "/tensorflow/api/keras/data_adapters", "keras data adapter usage", "method")
 
+try:
+  from scipy import sparse as scipy_sparse  # pylint: disable=g-import-not-at-top
+except ImportError:
+  scipy_sparse = None
+try:
+  import pandas as pd  # pylint: disable=g-import-not-at-top
+except ImportError:
+  pd = None
+
 
 @six.add_metaclass(abc.ABCMeta)
 class DataAdapter(object):
@@ -230,7 +239,9 @@ class TensorLikeDataAdapter(DataAdapter):
     if y is not None:
       flat_inputs += nest.flatten(y)
 
-    tensor_types = _get_tensor_types()
+    tensor_types = (ops.Tensor, np.ndarray)
+    if pd:
+      tensor_types = (ops.Tensor, np.ndarray, pd.Series, pd.DataFrame)
 
     def _is_tensor(v):
       if isinstance(v, tensor_types):
@@ -563,7 +574,9 @@ class CompositeTensorDataAdapter(DataAdapter):
           not _is_distributed_dataset(v)):
         return True
       # Support Scipy sparse tensors if scipy is installed
-      return _is_scipy_sparse(v)
+      if scipy_sparse is not None and scipy_sparse.issparse(v):
+        return True
+      return False
 
     def _is_tensor_or_composite(v):
       if isinstance(v, (ops.Tensor, np.ndarray)):
@@ -1039,7 +1052,7 @@ def _process_tensorlike(inputs):
       if issubclass(x.dtype.type, np.floating):
         dtype = backend.floatx()
       return ops.convert_to_tensor_v2_with_dispatch(x, dtype=dtype)
-    elif _is_scipy_sparse(x):
+    elif scipy_sparse and scipy_sparse.issparse(x):
       return _scipy_sparse_to_sparse_tensor(x)
     return x
 
@@ -1455,7 +1468,9 @@ def train_validation_split(arrays, validation_split):
   """
 
   def _can_split(t):
-    tensor_types = _get_tensor_types()
+    tensor_types = (ops.Tensor, np.ndarray)
+    if pd:
+      tensor_types = (ops.Tensor, np.ndarray, pd.Series, pd.DataFrame)
     return isinstance(t, tensor_types) or t is None
 
   flat_arrays = nest.flatten(arrays)
@@ -1634,24 +1649,6 @@ def _check_data_cardinality(data):
           label, ", ".join(str(i.shape[0]) for i in nest.flatten(single_data)))
     msg += "Make sure all arrays contain the same number of samples."
     raise ValueError(msg)
-
-
-def _get_tensor_types():
-  try:
-    import pandas as pd  # pylint: disable=g-import-not-at-top
-
-    return (ops.Tensor, np.ndarray, pd.Series, pd.DataFrame)
-  except ImportError:
-    return (ops.Tensor, np.ndarray)
-
-
-def _is_scipy_sparse(x):
-  try:
-    from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
-
-    return issparse(x)
-  except ImportError:
-    return False
 
 
 def _scipy_sparse_to_sparse_tensor(t):
