@@ -1769,14 +1769,14 @@ class MultiAUCTest(test.TestCase, parameterized.TestCase):
         metrics=[metrics.AUC(multi_label=True)]
     )
 
-  def test_reset_states(self):
+  def test_reset_state(self):
     with self.test_session():
       self.setup()
       auc_obj = metrics.AUC(num_thresholds=self.num_thresholds,
                             multi_label=True)
       self.evaluate(variables.variables_initializer(auc_obj.variables))
       auc_obj(self.y_true_good, self.y_pred)
-      auc_obj.reset_states()
+      auc_obj.reset_state()
       self.assertAllEqual(auc_obj.true_positives, np.zeros((5, 2)))
 
 

@@ -75,8 +75,8 @@ class KerasSumTest(test.TestCase, parameterized.TestCase):
       self.assertAlmostEqual(self.evaluate(m.result()), 106)
       self.assertEqual(self.evaluate(m.total), 106)  # 100 + 1 + 5
 
-      # check reset_states()
-      m.reset_states()
+      # check reset_state()
+      m.reset_state()
       self.assertEqual(self.evaluate(m.total), 0)
 
   def test_sum_with_sample_weight(self):
@@ -200,8 +200,8 @@ class MeanTest(keras_parameterized.TestCase):
     self.assertEqual(self.evaluate(m.total), 106)  # 100 + 1 + 5
     self.assertEqual(self.evaluate(m.count), 3)
 
-    # check reset_states()
-    m.reset_states()
+    # check reset_state()
+    m.reset_state()
     self.assertEqual(self.evaluate(m.total), 0)
     self.assertEqual(self.evaluate(m.count), 0)
 
@@ -216,10 +216,10 @@ class MeanTest(keras_parameterized.TestCase):
   def test_function_wrapped_reset_state(self):
     m = metrics.Mean(name='my_mean')
 
-    # check reset_states in function.
+    # check reset_state in function.
     @def_function.function
     def reset_in_fn():
-      m.reset_states()
+      m.reset_state()
       return m.update_state(100)
 
     for _ in range(5):
@@ -1426,8 +1426,8 @@ class MeanTensorTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(self.evaluate(m.total), [101, 45])
       self.assertAllClose(self.evaluate(m.count), [2, 2])
 
-      # check reset_states()
-      m.reset_states()
+      # check reset_state()
+      m.reset_state()
       self.assertAllClose(self.evaluate(m.total), [0, 0])
       self.assertAllClose(self.evaluate(m.count), [0, 0])
 
@@ -2127,7 +2127,7 @@ def _get_model(compile_metrics):
 @keras_parameterized.run_all_keras_modes
 class ResetStatesTest(keras_parameterized.TestCase):
 
-  def test_reset_states_false_positives(self):
+  def test_reset_state_false_positives(self):
     fp_obj = metrics.FalsePositives()
     model = _get_model([fp_obj])
     x = np.ones((100, 4))
@@ -2137,7 +2137,7 @@ class ResetStatesTest(keras_parameterized.TestCase):
     model.evaluate(x, y)
     self.assertEqual(self.evaluate(fp_obj.accumulator), 100.)
 
-  def test_reset_states_false_negatives(self):
+  def test_reset_state_false_negatives(self):
     fn_obj = metrics.FalseNegatives()
     model = _get_model([fn_obj])
     x = np.zeros((100, 4))
@@ -2147,7 +2147,7 @@ class ResetStatesTest(keras_parameterized.TestCase):
     model.evaluate(x, y)
     self.assertEqual(self.evaluate(fn_obj.accumulator), 100.)
 
-  def test_reset_states_true_negatives(self):
+  def test_reset_state_true_negatives(self):
     tn_obj = metrics.TrueNegatives()
     model = _get_model([tn_obj])
     x = np.zeros((100, 4))
@@ -2157,7 +2157,7 @@ class ResetStatesTest(keras_parameterized.TestCase):
     model.evaluate(x, y)
     self.assertEqual(self.evaluate(tn_obj.accumulator), 100.)
 
-  def test_reset_states_true_positives(self):
+  def test_reset_state_true_positives(self):
     tp_obj = metrics.TruePositives()
     model = _get_model([tp_obj])
     x = np.ones((100, 4))
@@ -2167,7 +2167,7 @@ class ResetStatesTest(keras_parameterized.TestCase):
     model.evaluate(x, y)
     self.assertEqual(self.evaluate(tp_obj.accumulator), 100.)
 
-  def test_reset_states_precision(self):
+  def test_reset_state_precision(self):
     p_obj = metrics.Precision()
     model = _get_model([p_obj])
     x = np.concatenate((np.ones((50, 4)), np.ones((50, 4))))
@@ -2179,7 +2179,7 @@ class ResetStatesTest(keras_parameterized.TestCase):
     self.assertEqual(self.evaluate(p_obj.true_positives), 50.)
     self.assertEqual(self.evaluate(p_obj.false_positives), 50.)
 
-  def test_reset_states_recall(self):
+  def test_reset_state_recall(self):
     r_obj = metrics.Recall()
     model = _get_model([r_obj])
     x = np.concatenate((np.ones((50, 4)), np.zeros((50, 4))))
@@ -2191,7 +2191,7 @@ class ResetStatesTest(keras_parameterized.TestCase):
     self.assertEqual(self.evaluate(r_obj.true_positives), 50.)
     self.assertEqual(self.evaluate(r_obj.false_negatives), 50.)
 
-  def test_reset_states_sensitivity_at_specificity(self):
+  def test_reset_state_sensitivity_at_specificity(self):
     s_obj = metrics.SensitivityAtSpecificity(0.5, num_thresholds=1)
     model = _get_model([s_obj])
     x = np.concatenate((np.ones((25, 4)), np.zeros((25, 4)), np.zeros((25, 4)),
@@ -2206,7 +2206,7 @@ class ResetStatesTest(keras_parameterized.TestCase):
       self.assertEqual(self.evaluate(s_obj.false_negatives), 25.)
       self.assertEqual(self.evaluate(s_obj.true_negatives), 25.)
 
-  def test_reset_states_specificity_at_sensitivity(self):
+  def test_reset_state_specificity_at_sensitivity(self):
     s_obj = metrics.SpecificityAtSensitivity(0.5, num_thresholds=1)
     model = _get_model([s_obj])
     x = np.concatenate((np.ones((25, 4)), np.zeros((25, 4)), np.zeros((25, 4)),
@@ -2221,7 +2221,7 @@ class ResetStatesTest(keras_parameterized.TestCase):
       self.assertEqual(self.evaluate(s_obj.false_negatives), 25.)
       self.assertEqual(self.evaluate(s_obj.true_negatives), 25.)
 
-  def test_reset_states_precision_at_recall(self):
+  def test_reset_state_precision_at_recall(self):
     s_obj = metrics.PrecisionAtRecall(recall=0.5, num_thresholds=1)
     model = _get_model([s_obj])
     x = np.concatenate((np.ones((25, 4)), np.zeros((25, 4)), np.zeros((25, 4)),
@@ -2236,7 +2236,7 @@ class ResetStatesTest(keras_parameterized.TestCase):
       self.assertEqual(self.evaluate(s_obj.false_negatives), 25.)
       self.assertEqual(self.evaluate(s_obj.true_negatives), 25.)
 
-  def test_reset_states_recall_at_precision(self):
+  def test_reset_state_recall_at_precision(self):
     s_obj = metrics.RecallAtPrecision(precision=0.5, num_thresholds=1)
     model = _get_model([s_obj])
     x = np.concatenate((np.ones((25, 4)), np.zeros((25, 4)), np.zeros((25, 4)),
@@ -2251,7 +2251,7 @@ class ResetStatesTest(keras_parameterized.TestCase):
       self.assertEqual(self.evaluate(s_obj.false_negatives), 25.)
       self.assertEqual(self.evaluate(s_obj.true_negatives), 25.)
 
-  def test_reset_states_auc(self):
+  def test_reset_state_auc(self):
     auc_obj = metrics.AUC(num_thresholds=3)
     model = _get_model([auc_obj])
     x = np.concatenate((np.ones((25, 4)), np.zeros((25, 4)), np.zeros((25, 4)),
@@ -2266,7 +2266,7 @@ class ResetStatesTest(keras_parameterized.TestCase):
       self.assertEqual(self.evaluate(auc_obj.false_negatives[1]), 25.)
       self.assertEqual(self.evaluate(auc_obj.true_negatives[1]), 25.)
 
-  def test_reset_states_auc_from_logits(self):
+  def test_reset_state_auc_from_logits(self):
     auc_obj = metrics.AUC(num_thresholds=3, from_logits=True)
 
     model_layers = [layers.Dense(1, kernel_initializer='ones', use_bias=False)]
@@ -2289,7 +2289,7 @@ class ResetStatesTest(keras_parameterized.TestCase):
       self.assertEqual(self.evaluate(auc_obj.false_negatives[1]), 25.)
       self.assertEqual(self.evaluate(auc_obj.true_negatives[1]), 25.)
 
-  def test_reset_states_auc_manual_thresholds(self):
+  def test_reset_state_auc_manual_thresholds(self):
     auc_obj = metrics.AUC(thresholds=[0.5])
     model = _get_model([auc_obj])
     x = np.concatenate((np.ones((25, 4)), np.zeros((25, 4)), np.zeros((25, 4)),
@@ -2304,7 +2304,7 @@ class ResetStatesTest(keras_parameterized.TestCase):
       self.assertEqual(self.evaluate(auc_obj.false_negatives[1]), 25.)
       self.assertEqual(self.evaluate(auc_obj.true_negatives[1]), 25.)
 
-  def test_reset_states_mean_iou(self):
+  def test_reset_state_mean_iou(self):
     m_obj = metrics.MeanIoU(num_classes=2)
     model = _get_model([m_obj])
     x = np.asarray([[0, 0, 0, 0], [1, 1, 1, 1], [1, 0, 1, 0], [0, 1, 0, 1]],
@@ -2317,7 +2317,7 @@ class ResetStatesTest(keras_parameterized.TestCase):
     self.assertArrayNear(self.evaluate(m_obj.total_cm)[0], [1, 0], 1e-1)
     self.assertArrayNear(self.evaluate(m_obj.total_cm)[1], [3, 0], 1e-1)
 
-  def test_reset_states_recall_float64(self):
+  def test_reset_state_recall_float64(self):
     # Test case for GitHub issue 36790.
     try:
       backend.set_floatx('float64')
