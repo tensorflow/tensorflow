@@ -21,7 +21,9 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/gpu_prim.h"
+#include "tensorflow/core/kernels/gpu_prim_helpers.h"
 #include "tensorflow/core/kernels/sparse_fill_empty_rows_op.h"
+#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
@@ -101,16 +103,6 @@ __global__ __launch_bounds__(1024) void CopyRowIndicesKernel(
     GpuLaunchConfig cfg, int rank, const Tindex* indices, Tindex* row_indices) {
   GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
     row_indices[i] = indices[i * rank];
-  }
-}
-
-template <typename Tindex>
-__global__ __launch_bounds__(1024) void RangeInitKernel(GpuLaunchConfig cfg,
-                                                        Tindex start,
-                                                        Tindex delta,
-                                                        Tindex* out) {
-  GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
-    out[i] = start + i * delta;
   }
 }
 
@@ -263,41 +255,9 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
         index_type, TensorShape({dense_rows}), &input_row_ends_t));
     auto input_row_ends = input_row_ends_t.flat<Tindex>();
 
-    size_t temp_storage_bytes;
-    auto err = gpuprim::DeviceScan::InclusiveSum(
-        /*d_temp_storage=*/nullptr,
-        /*temp_storage_bytes=*/temp_storage_bytes,
-        /*d_in=*/elements_per_row.data(),
-        /*d_out=*/input_row_ends.data(),
-        /*num_items=*/dense_rows,
-        /*stream=*/cu_stream);
-    if (err != 0) {
-      return errors::Internal(
-          "SparseFillEmptyRows: Could not launch "
-          "gpuprim::DeviceScan::InclusiveSum to calculate temp_storage_bytes, "
-          "status: ",
-          cudaGetErrorString(err));
-    }
-    {
-      Tensor temp_storage;
-      TF_RETURN_IF_ERROR(context->allocate_temp(
-          DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
-          &temp_storage));
-      err = gpuprim::DeviceScan::InclusiveSum(
-          /*d_temp_storage=*/temp_storage.flat<int8>().data(),
-          /*temp_storage_bytes=*/temp_storage_bytes,
-          /*d_in=*/elements_per_row.data(),
-          /*d_out=*/input_row_ends.data(),
-          /*num_items=*/dense_rows,
-          /*stream=*/cu_stream);
-      if (err != 0) {
-        return errors::Internal(
-            "SparseFillEmptyRows: Could not launch "
-            "gpuprim::DeviceScan::InclusiveSum to scan elements_per_row, "
-            "temp_storage_bytes:",
-            temp_storage_bytes, ", status: ", cudaGetErrorString(err));
-      }
-    }
+    TF_RETURN_IF_ERROR(GpuInclusivePrefixSum(context, /*size=*/dense_rows,
+                                             /*input=*/elements_per_row.data(),
+                                             /*output=*/input_row_ends.data()));
 
     Tensor empty_row_indicator_t;
     bool* empty_row_indicator;
@@ -323,40 +283,10 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
         index_type, TensorShape({dense_rows}), &num_empty_rows_through_t));
     auto num_empty_rows_through = num_empty_rows_through_t.flat<Tindex>();
 
-    err = gpuprim::DeviceScan::InclusiveSum(
-        /*d_temp_storage=*/nullptr,
-        /*temp_storage_bytes=*/temp_storage_bytes,
-        /*d_in=*/empty_row_indicator,
-        /*d_out=*/num_empty_rows_through.data(),
-        /*num_items=*/dense_rows,
-        /*stream=*/cu_stream);
-    if (err != 0) {
-      return errors::Internal(
-          "SparseFillEmptyRows: Could not launch "
-          "gpuprim::DeviceScan::ExclusiveSum to calculate temp_storage_bytes, "
-          "status: ",
-          cudaGetErrorString(err));
-    }
-    {
-      Tensor temp_storage2;
-      TF_RETURN_IF_ERROR(context->allocate_temp(
-          DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
-          &temp_storage2));
-      err = gpuprim::DeviceScan::InclusiveSum(
-          /*d_temp_storage=*/temp_storage2.flat<int8>().data(),
-          /*temp_storage_bytes=*/temp_storage_bytes,
-          /*d_in=*/empty_row_indicator,
-          /*d_out=*/num_empty_rows_through.data(),
-          /*num_items=*/dense_rows,
-          /*stream=*/cu_stream);
-      if (err != 0) {
-        return errors::Internal(
-            "SparseFillEmptyRows: Could not launch "
-            "gpuprim::DeviceScan::ExclusiveSum to scan empty_row_indicator, "
-            "temp_storage_bytes:",
-            temp_storage_bytes, ", status: ", cudaGetErrorString(err));
-      }
-    }
+    TF_RETURN_IF_ERROR(
+        GpuInclusivePrefixSum(context, /*size=*/dense_rows,
+                              /*input=*/empty_row_indicator,
+                              /*output=*/num_empty_rows_through.data()));
 
     ScratchSpace<Tindex> num_empty_rows_host(context, 1, /*on_host=*/true);
     if (!stream
@@ -428,8 +358,8 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
       int rows_are_not_ordered = *rows_are_not_ordered_host.data();
       if (rows_are_not_ordered) {
         OP_REQUIRES_OK_ASYNC(context,
-                             ArgSortByRows(context, device, N, rank, indices,
-                                           &input_index_map_t),
+                             ArgSortByRows(context, device, N, rank, dense_rows,
+                                           indices, &input_index_map_t),
                              done);
         input_index_map = input_index_map_t.vec<Tindex>().data();
       }
@@ -485,46 +415,8 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
     return Status::OK();
   }
 
-  Status RangeInit(OpKernelContext* context, const Tindex start,
-                   const Tindex delta, const Tindex size,
-                   typename TTypes<Tindex>::Flat out) {
-    const GPUDevice& device = context->eigen_device<GPUDevice>();
-    return wrap_kernel_call(RangeInitKernel<Tindex>, device, size, start, delta,
-                            out.data());
-  }
-
-  Status RadixArgSort(OpKernelContext* context, const Tensor& keys_in,
-                      Tensor* indices_in, Tensor* keys_out,
-                      Tensor* indices_out) {
-    Tindex N = keys_in.NumElements();
-    const auto& cu_stream = GetGpuStream(context);
-    // Initialize the indices_in tensor using the Range GPU kernel.
-    TF_RETURN_IF_ERROR(RangeInit(context, 0, 1, N, indices_in->flat<Tindex>()));
-    // Obtain the pointers to inner buffers.
-    const Tindex* keys_ptr = keys_in.flat<Tindex>().data();
-    Tindex* keys_out_ptr = keys_out->flat<Tindex>().data();
-    Tindex* indices_in_ptr = indices_in->flat<Tindex>().data();
-    Tindex* indices_out_ptr = indices_out->flat<Tindex>().data();
-    // Determine temporary device storage requirements.
-    Tensor cub_temp_storage;
-    size_t temp_storage_bytes = 0;
-    gpuprim::DeviceRadixSort::SortPairs(
-        NULL, temp_storage_bytes, keys_ptr, keys_out_ptr, indices_in_ptr,
-        indices_out_ptr, N, 0, sizeof(Tindex) * 8, cu_stream);
-    // Allocate temporary storage.
-    TF_RETURN_IF_ERROR(context->allocate_temp(
-        DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
-        &cub_temp_storage));
-    // Radix-sort the partition information.
-    gpuprim::DeviceRadixSort::SortPairs(
-        cub_temp_storage.flat<int8>().data(), temp_storage_bytes, keys_ptr,
-        keys_out_ptr, indices_in_ptr, indices_out_ptr, N, 0, sizeof(Tindex) * 8,
-        cu_stream);
-    return Status::OK();
-  }  // At this point cub_temp_storage will be marked for deallocation.
-
   Status ArgSortByRows(OpKernelContext* context, const GPUDevice& device,
-                       Tindex N, int rank,
+                       Tindex N, int rank, Tindex dense_rows,
                        typename TTypes<Tindex>::ConstMatrix indices,
                        Tensor* input_index_map_t) {
     DataType index_type = DataTypeToEnum<Tindex>::value;
@@ -538,20 +430,12 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
     // Allocate input_index_map.
     TF_RETURN_IF_ERROR(context->allocate_temp(index_type, TensorShape({N}),
                                               input_index_map_t));
-
-    // Allocate temp storage for sort indices input.
-    Tensor input_indexes_t;
-    TF_RETURN_IF_ERROR(
-        context->allocate_temp(index_type, TensorShape({N}), &input_indexes_t));
-
-    // Allocate temp storage for sorted_row_indices_t.
-    Tensor sorted_row_indices_t;
-    TF_RETURN_IF_ERROR(context->allocate_temp(index_type, TensorShape({N}),
-                                              &sorted_row_indices_t));
-
-    // Sort element indices by row indices.
-    return RadixArgSort(context, row_indices_t, &input_indexes_t,
-                        &sorted_row_indices_t, input_index_map_t);
+    Tindex* input_index_map = input_index_map_t->flat<Tindex>().data();
+    return GpuRadixSort(context, /*size=*/N, /*keys_in=*/row_indices.data(),
+                        /*keys_out=*/static_cast<Tindex*>(nullptr),
+                        /*indices_in=*/static_cast<Tindex*>(nullptr),
+                        /*indices_out=*/input_index_map,
+                        /*num_bits=*/Log2Ceiling64(dense_rows));
   }
 };
 
