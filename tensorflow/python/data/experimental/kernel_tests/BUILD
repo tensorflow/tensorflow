@@ -1,5 +1,6 @@
-load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
+# Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -10,6 +11,7 @@ exports_files(["LICENSE"])
 
 tf_py_test(
     name = "assert_cardinality_test",
+    size = "small",
     srcs = ["assert_cardinality_test.py"],
     deps = [
         "//tensorflow/python/data/experimental/ops:cardinality",
@@ -46,13 +48,13 @@ tf_py_test(
         "no_pip",
     ],
     deps = [
-        ":reader_dataset_ops_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/ops:distribute",
         "//tensorflow/python/data/experimental/ops:readers",
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/kernel_tests:tf_record_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "@absl_py//absl/testing:parameterized",
@@ -79,7 +81,26 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "checkpoint_input_pipeline_hook_test",
+    size = "small",
+    srcs = ["checkpoint_input_pipeline_hook_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/experimental/ops:iterator_ops",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/estimator:estimator_py",
+    ],
+)
+
+tf_py_test(
     name = "compression_ops_test",
+    size = "small",
     srcs = ["compression_ops_test.py"],
     deps = [
         "//tensorflow/python/data/experimental/ops:compression_ops",
@@ -142,15 +163,23 @@ tf_py_test(
     ],
 )
 
-py_library(
-    name = "data_service_test_base",
-    srcs = ["data_service_test_base.py"],
+tf_py_test(
+    name = "data_service_ops_ft_test",
+    size = "small",
+    srcs = ["data_service_ops_ft_test.py"],
+    shard_count = 10,
     srcs_version = "PY3",
     deps = [
+        ":data_service_test_base",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/data",
+        "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/experimental/service:server_lib",
         "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 
@@ -177,34 +206,27 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
-    name = "data_service_ops_ft_test",
-    srcs = ["data_service_ops_ft_test.py"],
-    shard_count = 10,
+py_library(
+    name = "data_service_test_base",
+    srcs = ["data_service_test_base.py"],
     srcs_version = "PY3",
     deps = [
-        ":data_service_test_base",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python/data",
-        "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/experimental/service:server_lib",
         "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 
 tf_py_test(
-    name = "dense_to_sparse_batch_test",
-    srcs = ["dense_to_sparse_batch_test.py"],
+    name = "dense_to_ragged_batch_test",
+    size = "small",
+    srcs = ["dense_to_ragged_batch_test.py"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
-        "//tensorflow/python/data/experimental/ops:batching",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
@@ -212,13 +234,16 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "dense_to_ragged_batch_test",
-    srcs = ["dense_to_ragged_batch_test.py"],
+    name = "dense_to_sparse_batch_test",
+    size = "small",
+    srcs = ["dense_to_sparse_batch_test.py"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python/data/experimental/ops:batching",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
@@ -234,6 +259,7 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:random_seed",
         "//tensorflow/python/data/experimental/ops:interleave_ops",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
@@ -304,6 +330,7 @@ tf_py_test(
 
 tf_py_test(
     name = "ignore_errors_test",
+    size = "small",
     srcs = ["ignore_errors_test.py"],
     deps = [
         "//tensorflow/python:array_ops",
@@ -322,6 +349,7 @@ tf_py_test(
 
 tf_py_test(
     name = "io_test",
+    size = "small",
     srcs = ["io_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -338,7 +366,6 @@ tf_py_test(
     srcs = ["make_batched_features_dataset_test.py"],
     tags = ["no_pip"],
     deps = [
-        ":reader_dataset_ops_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
@@ -346,6 +373,8 @@ tf_py_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python/data/experimental/ops:readers",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/kernel_tests:tf_record_test_base",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:nest",
         "//third_party/py/numpy",
@@ -371,17 +400,32 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "make_saveable_from_iterator_test",
+    size = "small",
+    srcs = ["make_saveable_from_iterator_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_combinations",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/data/experimental/ops:iterator_ops",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
     name = "make_tf_record_dataset_test",
     size = "medium",
     srcs = ["make_tf_record_dataset_test.py"],
     tags = ["no_pip"],
     deps = [
-        ":reader_dataset_ops_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:string_ops",
         "//tensorflow/python/data/experimental/ops:readers",
+        "//tensorflow/python/data/kernel_tests:tf_record_test_base",
         "//tensorflow/python/data/util:nest",
     ],
 )
@@ -434,9 +478,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "matching_files_test",
+    name = "matching_files_dataset_test",
     size = "small",
-    srcs = ["matching_files_test.py"],
+    srcs = ["matching_files_dataset_test.py"],
     tags = ["no_pip"],
     deps = [
         "//tensorflow/python:array_ops",
@@ -575,10 +619,10 @@ tf_py_test(
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python/data/experimental/kernel_tests:reader_dataset_ops_test_base",
         "//tensorflow/python/data/experimental/ops:parsing_ops",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/kernel_tests:tf_record_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//third_party/py/numpy",
@@ -633,32 +677,11 @@ tf_py_test(
     ],
 )
 
-py_library(
-    name = "reader_dataset_ops_test_base",
-    srcs = [
-        "reader_dataset_ops_test_base.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:lib",
-        "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:util",
-        "//tensorflow/python/data/experimental/ops:readers",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:iterator_ops",
-        "//tensorflow/python/data/ops:readers",
-    ],
-)
-
 tf_py_test(
     name = "rebatch_dataset_test",
     size = "small",
     srcs = ["rebatch_dataset_test.py"],
+    shard_count = 4,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:image_ops",
@@ -698,6 +721,7 @@ tf_py_test(
 
 tf_py_test(
     name = "replicate_test",
+    size = "small",
     srcs = ["replicate_test.py"],
     grpc_enabled = True,
     tags = [
@@ -761,6 +785,7 @@ tf_py_test(
 
 tf_py_test(
     name = "sleep_test",
+    size = "small",
     srcs = ["sleep_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -771,21 +796,28 @@ tf_py_test(
     ],
 )
 
-py_library(
-    name = "sql_dataset_test_base",
-    srcs = ["sql_dataset_test_base.py"],
-    srcs_version = "PY3",
-    visibility = [
-        "//tensorflow/python/data/experimental/kernel_tests:__pkg__",
-        "//tensorflow/python/data/experimental/kernel_tests/serialization:__pkg__",
+tf_py_test(
+    name = "snapshot_test",
+    size = "medium",
+    timeout = "long",
+    srcs = ["snapshot_test.py"],
+    shard_count = 20,
+    tags = [
+        "no_windows",  # TODO(b/182379890)
     ],
     deps = [
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:string_ops",
         "//tensorflow/python/data/experimental/ops:readers",
+        "//tensorflow/python/data/experimental/ops:snapshot",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
-        "@org_sqlite//:python",
+        "//tensorflow/python/data/kernel_tests:tf_record_test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/data/util:nest",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -795,37 +827,12 @@ tf_py_test(
     srcs = ["sql_dataset_test.py"],
     tags = ["no_pip"],
     deps = [
-        ":sql_dataset_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python/data/experimental/ops:readers",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-    ],
-)
-
-tf_py_test(
-    name = "snapshot_test",
-    size = "medium",
-    timeout = "long",
-    srcs = ["snapshot_test.py"],
-    shard_count = 10,
-    tags = [
-        "no_windows",  # TODO(b/182379890)
-    ],
-    deps = [
-        ":reader_dataset_ops_test_base",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:string_ops",
-        "//tensorflow/python/data/experimental/ops:readers",
-        "//tensorflow/python/data/experimental/ops:snapshot",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:readers",
-        "//tensorflow/python/data/util:nest",
-        "@absl_py//absl/testing:parameterized",
+        "@org_sqlite//:python",
     ],
 )
 
@@ -833,13 +840,13 @@ tf_py_test(
     name = "stats_dataset_ops_test",
     size = "small",
     srcs = ["stats_dataset_ops_test.py"],
+    shard_count = 4,
     tags = [
         "no_oss",  # TODO(b/155795733): Note that this functionality is deprecated.
         "no_pip",
         "notap",
     ],
     deps = [
-        ":reader_dataset_ops_test_base",
         ":stats_dataset_test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -851,6 +858,7 @@ tf_py_test(
         "//tensorflow/python/data/experimental/ops:stats_ops",
         "//tensorflow/python/data/experimental/ops:stats_options",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
+        "//tensorflow/python/data/kernel_tests:tf_record_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -872,6 +880,7 @@ tf_py_test(
     name = "take_while_test",
     size = "small",
     srcs = ["take_while_test.py"],
+    shard_count = 4,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -926,6 +935,7 @@ tf_py_test(
 
 tf_py_test(
     name = "variant_test",
+    size = "small",
     srcs = ["variant_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",

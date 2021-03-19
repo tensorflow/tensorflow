@@ -1452,22 +1452,6 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
       results.push_back(tensor_index_map.lookup(result));
     }
     Operation* real_inst = &inst;
-    // CustomTfOp is just a wrapper around a TF op, we export the custom Op
-    // not the wrapper, so we fetch the op from the region.
-    if (auto custom_op = dyn_cast<mlir::TFL::CustomTfOp>(inst)) {
-      // If we have custom op with a region, then use the first op in the
-      // region, if it exists, otherwise just use params for custom op.
-      if (!custom_op.body().empty()) {
-        real_inst = &custom_op.body().front().front();
-        // Use the inputs of the wrapper to reset the inputs.
-        for (auto idx_op : llvm::enumerate(custom_op->getOperands())) {
-          real_inst->setOperand(idx_op.index(), idx_op.value());
-        }
-      } else {
-        module_.emitError(
-            "Invalid CustomTfOp: Custom TF Op have empty region.");
-      }
-    }
     std::vector<int32_t> operands;
     operands.reserve(real_inst->getNumOperands());
     for (auto operand : real_inst->getOperands()) {
@@ -1479,6 +1463,19 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
         operands.push_back(tensor_index_map.lookup(stats_op.arg()));
       else
         operands.push_back(tensor_index_map.lookup(operand));
+    }
+
+    // CustomTfOp is just a wrapper around a TF op, we export the custom Op
+    // not the wrapper, so we fetch the op from the region.
+    if (auto custom_op = dyn_cast<mlir::TFL::CustomTfOp>(inst)) {
+      // If we have custom op with a region, then use the first op in the
+      // region, if it exists, otherwise just use params for custom op.
+      if (!custom_op.body().empty()) {
+        real_inst = &custom_op.body().front().front();
+      } else {
+        module_.emitError(
+            "Invalid CustomTfOp: Custom TF Op have empty region.");
+      }
     }
 
     if (auto tfl_operator =

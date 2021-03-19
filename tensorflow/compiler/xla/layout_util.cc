@@ -439,6 +439,19 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   return true;
 }
 
+/*static*/ Layout LayoutUtil::MoveDimToMajor(const Layout& layout, int64 dim) {
+  if (dim == MinorToMajor(layout).back()) return layout;
+  Layout ret = layout;
+  ret.clear_minor_to_major();
+  for (auto d : MinorToMajor(layout)) {
+    if (d != dim) {
+      ret.add_minor_to_major(d);
+    }
+  }
+  ret.add_minor_to_major(dim);
+  return ret;
+}
+
 /*static*/ size_t LayoutUtil::Hash(const Layout& layout) {
   using tensorflow::hash;
   using tensorflow::Hash64Combine;

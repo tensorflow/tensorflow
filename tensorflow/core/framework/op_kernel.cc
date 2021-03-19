@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/kernel_def_util.h"
@@ -116,7 +117,9 @@ OpKernel::OpKernel(OpKernelConstruction* context, bool is_deferred)
 
   // Kernels executing on GPU tie very few resources on the CPU where the
   // scheduler runs: we consider them as inexpensive.
-  expensive_ = context->device_type() != DeviceType(DEVICE_GPU);
+  expensive_ = context->device_type() != DeviceType(DEVICE_GPU) &&
+               !DeviceFactory::IsPluggableDevice(
+                   DeviceTypeString(context->device_type()));
 }
 
 OpKernel::OpKernel(OpKernelConstruction* context, NodeDef&& custom_def,
@@ -142,7 +145,9 @@ OpKernel::OpKernel(OpKernelConstruction* context, NodeDef&& custom_def,
 
   // Kernels executing on GPU tie very few resources on the CPU where the
   // scheduler runs: we consider them as inexpensive.
-  expensive_ = context->device_type() != DeviceType(DEVICE_GPU);
+  expensive_ = context->device_type() != DeviceType(DEVICE_GPU) &&
+               !DeviceFactory::IsPluggableDevice(
+                   DeviceTypeString(context->device_type()));
 }
 
 OpKernel::~OpKernel() {}
@@ -1716,7 +1721,6 @@ template <>
 const Eigen::GpuDevice& OpKernelContext::eigen_device() const {
   return eigen_gpu_device();
 }
-
 
 void OpKernelConstruction::CtxFailure(const Status& s) {
   VLOG(1) << s;

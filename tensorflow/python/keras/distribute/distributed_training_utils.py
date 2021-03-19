@@ -19,7 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import values as values_lib
 from tensorflow.python.keras import backend
+from tensorflow.python.ops import variables
 
 
 # TODO(b/118776054): Currently we support global batch size for TPUStrategy and
@@ -58,3 +60,9 @@ def call_replica_local_fn(fn, *args, **kwargs):
     with strategy.scope():
       return strategy.extended.call_for_each_replica(fn, args, kwargs)
   return fn(*args, **kwargs)
+
+
+def is_distributed_variable(v):
+  """Returns whether `v` is a distributed variable."""
+  return (isinstance(v, values_lib.DistributedValues) and
+          isinstance(v, variables.Variable))

@@ -1002,7 +1002,7 @@ class Model(training_lib.Model):
     """Resets the state of metrics."""
     metrics = self._get_training_eval_metrics()
     for m in metrics:
-      m.reset_states()
+      m.reset_state()
 
     # Reset metrics on all the distributed (cloned) models.
     if self._distribution_strategy:

@@ -48,27 +48,9 @@ ExecutionContext::~ExecutionContext() {
 
 StatusOr<ExecutionContext> ExecutionContext::Create(
     nvinfer1::ICudaEngine* cuda_engine, TRTBaseAllocator* allocator) {
-  void* device_memory = nullptr;
-  nvinfer1::IExecutionContext* execution_context;
-  if (allocator == nullptr) {
-    execution_context = cuda_engine->createExecutionContext();
-  } else {
-    execution_context =
-        cuda_engine->createExecutionContextWithoutDeviceMemory();
-    size_t device_memory_size = cuda_engine->getDeviceMemorySize();
-    VLOG(2) << "Device memory size for cuda engine " << device_memory_size;
-
-    if (device_memory_size > 0) {
-      device_memory = allocator->allocate(device_memory_size,
-                                          /*unused alignment=*/0, /*flags=*/0);
-      if (device_memory == nullptr) {
-        return errors::InvalidArgument(
-            "Out of GPU memory when creating execution context");
-      }
-    }
-    execution_context->setDeviceMemory(device_memory);
-  }
-  return ExecutionContext(allocator, device_memory, execution_context);
+  nvinfer1::IExecutionContext* execution_context =
+      cuda_engine->createExecutionContextWithoutDeviceMemory();
+  return ExecutionContext(nullptr, nullptr, execution_context);
 }
 
 Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,

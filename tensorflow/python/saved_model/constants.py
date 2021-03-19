@@ -106,7 +106,7 @@ tf_export(
     ]).export_constant(__name__, "DEBUG_INFO_FILENAME_PB")
 
 # File name for json format of SavedModel.
-# Not exported while keras_saved_model is in contrib.
+# TODO(kathywu): Delete when third_party/keras has copied in this constant
 SAVED_MODEL_FILENAME_JSON = "saved_model.json"
 
 # Subdirectory name containing the variables/checkpoint files.

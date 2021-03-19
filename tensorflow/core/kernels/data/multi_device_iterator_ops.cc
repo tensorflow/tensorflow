@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
@@ -50,19 +51,22 @@ using MultiDeviceIteratorCallback =
 
 class MultiDeviceIterator : public ResourceBase {
  public:
-  MultiDeviceIterator(Env* env, const DataTypeVector& output_types,
-                      const std::vector<PartialTensorShape>& output_shapes,
-                      const std::vector<string>& devices,
-                      std::unique_ptr<FunctionLibraryDefinition> flib_def,
-                      std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
-                      FunctionLibraryRuntime* flr)
+  MultiDeviceIterator(
+      Env* env, const DataTypeVector& output_types,
+      const std::vector<PartialTensorShape>& output_shapes,
+      const std::vector<string>& devices,
+      std::unique_ptr<FunctionLibraryDefinition> flib_def,
+      std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
+      FunctionLibraryRuntime* flr,
+      std::unique_ptr<FunctionHandleCache> function_handle_cache)
       : unbounded_thread_pool_(env, "tf_data_multi_device_iterator_resource"),
         output_types_(output_types),
         output_shapes_(output_shapes),
         devices_(devices),
         flib_def_(std::move(flib_def)),
         flr_(flr),
-        pflr_(std::move(pflr)) {
+        pflr_(std::move(pflr)),
+        function_handle_cache_(std::move(function_handle_cache)) {
     DCHECK(flr_ != nullptr);
   }
 
@@ -100,6 +104,7 @@ class MultiDeviceIterator : public ResourceBase {
     tf_shared_lock l(mu_);
     IteratorContext::Params params(ctx);
     params.flr = flr_;
+    params.function_handle_cache = function_handle_cache_.get();
     params.resource_mgr = &resource_mgr_;
     params.thread_factory = unbounded_thread_pool_.get_thread_factory();
     params.thread_pool = &unbounded_thread_pool_;
@@ -131,6 +136,10 @@ class MultiDeviceIterator : public ResourceBase {
   FunctionLibraryRuntime* const flr() {
     tf_shared_lock l(mu_);
     return flr_;
+  }
+
+  FunctionHandleCache* function_handle_cache() {
+    return function_handle_cache_.get();
   }
 
   ResourceMgr* resource_mgr() { return &resource_mgr_; }
@@ -371,6 +380,7 @@ class MultiDeviceIterator : public ResourceBase {
   const std::unique_ptr<FunctionLibraryDefinition> flib_def_;
   FunctionLibraryRuntime* const flr_ = nullptr;  // not owned.
   const std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
+  const std::unique_ptr<FunctionHandleCache> function_handle_cache_;
   ResourceMgr resource_mgr_;
   CancellationManager cancellation_manager_;
 
@@ -420,6 +430,8 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
         std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
         OP_REQUIRES_OK(context, context->function_library()->Clone(
                                     &flib_def, &pflr, &flr));
+        auto function_handle_cache =
+            absl::make_unique<FunctionHandleCache>(flr);
         ResourceMgr* mgr = context->resource_manager();
         OP_REQUIRES_OK(context, cinfo_.Init(mgr, def()));
 
@@ -431,7 +443,8 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
           container_name = kAnonymousMultiDeviceIterator;
           resource = new MultiDeviceIterator(
               context->env(), output_types_, output_shapes_, devices_,
-              std::move(flib_def), std::move(pflr), flr);
+              std::move(flib_def), std::move(pflr), flr,
+              std::move(function_handle_cache));
           // NOTE: `mgr->Create()` transfers the one reference on `resource` to
           // `mgr`.
           OP_REQUIRES_OK(context, mgr->Create<MultiDeviceIterator>(
@@ -439,18 +452,19 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
         } else {
           unique_name = cinfo_.name();
           container_name = cinfo_.container();
-          OP_REQUIRES_OK(context, mgr->LookupOrCreate<MultiDeviceIterator>(
-                                      container_name, unique_name, &resource,
-                                      [this, context, flr, &flib_def,
-                                       &pflr](MultiDeviceIterator** ret)
-                                          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-                                            *ret = new MultiDeviceIterator(
-                                                context->env(), output_types_,
-                                                output_shapes_, devices_,
-                                                std::move(flib_def),
-                                                std::move(pflr), flr);
-                                            return Status::OK();
-                                          }));
+          OP_REQUIRES_OK(context,
+                         mgr->LookupOrCreate<MultiDeviceIterator>(
+                             container_name, unique_name, &resource,
+                             [this, context, flr, &flib_def, &pflr,
+                              &function_handle_cache](MultiDeviceIterator** ret)
+                                 TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                                   *ret = new MultiDeviceIterator(
+                                       context->env(), output_types_,
+                                       output_shapes_, devices_,
+                                       std::move(flib_def), std::move(pflr),
+                                       flr, std::move(function_handle_cache));
+                                   return Status::OK();
+                                 }));
           Status s = VerifyResource(resource);
           if (TF_PREDICT_FALSE(!s.ok())) {
             resource->Unref();
@@ -512,9 +526,11 @@ class AnonymousMultiDeviceIteratorOp
                         std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
                         FunctionLibraryRuntime* lib,
                         MultiDeviceIterator** resource) override {
-    *resource = new MultiDeviceIterator(
-        ctx->env(), output_dtypes_, output_shapes_, devices_,
-        std::move(flib_def), std::move(pflr), lib);
+    auto function_handle_cache = absl::make_unique<FunctionHandleCache>(lib);
+    *resource =
+        new MultiDeviceIterator(ctx->env(), output_dtypes_, output_shapes_,
+                                devices_, std::move(flib_def), std::move(pflr),
+                                lib, std::move(function_handle_cache));
     return Status::OK();
   }
 
@@ -546,6 +562,7 @@ class MultiDeviceIteratorInitOp : public OpKernel {
     std::unique_ptr<IteratorBase> iterator;
     IteratorContext::Params params(ctx);
     params.flr = resource->flr();
+    params.function_handle_cache = resource->function_handle_cache();
     params.resource_mgr = resource->resource_mgr();
     params.cancellation_manager = resource->cancellation_manager();
     std::function<void()> deregister_fn;

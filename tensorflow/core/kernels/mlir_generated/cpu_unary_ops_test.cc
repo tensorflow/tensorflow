@@ -67,12 +67,28 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Abs, DT_INT64, DT_INT64, test::NearZeroAndExtremeInput<int64>(), std::abs,
     test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
 
+/// Test `tf.Cos`.
+GENERATE_DEFAULT_TEST(Cos, DT_HALF, DT_HALF, Eigen::numext::cos,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Cos, DT_FLOAT, DT_FLOAT, Eigen::numext::cos,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Cos, DT_DOUBLE, DT_DOUBLE, Eigen::numext::cos,
+                      test::OpsTestConfig().NoBufferReuse())
+
 /// Test `tf.Rsqrt`.
 GENERATE_DEFAULT_TEST(Rsqrt, DT_HALF, DT_HALF, Eigen::numext::rsqrt,
                       test::OpsTestConfig().NoBufferReuse())
 GENERATE_DEFAULT_TEST(Rsqrt, DT_FLOAT, DT_FLOAT, Eigen::numext::rsqrt,
                       test::OpsTestConfig().NoBufferReuse())
 GENERATE_DEFAULT_TEST(Rsqrt, DT_DOUBLE, DT_DOUBLE, Eigen::numext::rsqrt,
+                      test::OpsTestConfig().NoBufferReuse())
+
+/// Test `tf.Sin`.
+GENERATE_DEFAULT_TEST(Sin, DT_HALF, DT_HALF, Eigen::numext::sin,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Sin, DT_FLOAT, DT_FLOAT, Eigen::numext::sin,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Sin, DT_DOUBLE, DT_DOUBLE, Eigen::numext::sin,
                       test::OpsTestConfig().NoBufferReuse())
 
 /// Test `tf.Sqrt`.
@@ -104,6 +120,14 @@ GENERATE_DEFAULT_TEST(
 GENERATE_DEFAULT_TEST(Square, DT_COMPLEX64, DT_COMPLEX64, baseline_square,
                       test::OpsTestConfig().NoBufferReuse())
 GENERATE_DEFAULT_TEST(Square, DT_COMPLEX128, DT_COMPLEX128, baseline_square,
+                      test::OpsTestConfig().NoBufferReuse())
+
+/// Test `tf.Tan`.
+GENERATE_DEFAULT_TEST(Tan, DT_HALF, DT_HALF, Eigen::numext::tan,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Tan, DT_FLOAT, DT_FLOAT, Eigen::numext::tan,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Tan, DT_DOUBLE, DT_DOUBLE, Eigen::numext::tan,
                       test::OpsTestConfig().NoBufferReuse())
 
 }  // namespace

@@ -1729,7 +1729,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
     """
     for m in self.metrics:
-      m.reset_states()
+      m.reset_state()
 
   def train_on_batch(self,
                      x,

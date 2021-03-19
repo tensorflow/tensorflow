@@ -751,14 +751,14 @@ StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
   //  root := base | MemRefReinterpretCastOp(base)
 
   if (mlir::Operation* op = v.getDefiningOp()) {
-    if (auto cast = mlir::dyn_cast<mlir::MemRefReinterpretCastOp>(op)) {
+    if (auto cast = mlir::dyn_cast<mlir::memref::ReinterpretCastOp>(op)) {
       mlir::Value source = cast.getViewSource();
       op = source.getDefiningOp();
       if (!op) {
         return Unimplemented("MemRefReinterpretCastOp has to wrap an op");
       }
     }
-    if (auto view = mlir::dyn_cast<mlir::ViewOp>(op)) {
+    if (auto view = mlir::dyn_cast<mlir::memref::ViewOp>(op)) {
       return BufferAllocation::Slice(
           &allocations[GetAllocationIndex(
               view.source().cast<mlir::BlockArgument>())],
@@ -768,9 +768,10 @@ StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
               .getValue()
               .getSExtValue(),
           size);
-    } else if (auto get_global = mlir::dyn_cast<mlir::GetGlobalMemrefOp>(op)) {
+    } else if (auto get_global =
+                   mlir::dyn_cast<mlir::memref::GetGlobalOp>(op)) {
       auto module = get_global->getParentOfType<mlir::ModuleOp>();
-      auto global = mlir::cast<mlir::GlobalMemrefOp>(
+      auto global = mlir::cast<mlir::memref::GlobalOp>(
           module.lookupSymbol(get_global.name()));
       int64_t index =
           global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
@@ -801,7 +802,7 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
   auto output_buffers = fusion.getOutputBuffers();
   CHECK_EQ(1, output_buffers.size());
   auto parameter =
-      mlir::dyn_cast<mlir::TensorLoadOp>(dus.operand().getDefiningOp());
+      mlir::dyn_cast<mlir::memref::TensorLoadOp>(dus.operand().getDefiningOp());
 
   if (!parameter) {
     return false;

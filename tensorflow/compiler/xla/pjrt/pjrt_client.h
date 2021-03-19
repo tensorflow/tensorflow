@@ -431,6 +431,9 @@ struct ExecuteOptions {
   // If non-null, an opaque context passed to an execution that may be used to
   // supply additional arguments to a derived class of PjRtExecutable.
   const ExecuteContext* context = nullptr;
+  // If true, check that the PjRtBuffer argument shapes match the compiled
+  // shapes. Otherwise, any shape with the right size on device may be passed.
+  bool strict_shape_checking = true;
 };
 
 // Represents a compiled computation that can be executed given handles to

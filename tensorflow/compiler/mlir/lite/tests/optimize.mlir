@@ -1948,6 +1948,32 @@ func @DontRemoveReshapeBeforeFullyConnectedChangeLastDim(%arg0: tensor<128x64xf3
   // CHECK: return %[[FULLY_CONNECTED]] : tensor<256x32xf32>
 }
 
+// CHECK-LABEL: RemoveReshapeAfterFullyConnected
+func @RemoveReshapeAfterFullyConnected(%arg0: tensor<4x1024x1024xbf16>) -> tensor<4x1024x4096xbf16> {
+  %cst_0 = constant dense<1.0> : tensor<4096x1024xbf16>
+  %cst_1 = constant unit
+  %cst_2 = constant dense<[4, 1024, 4096]> : tensor<3xi32>
+  %0 = "tfl.fully_connected"(%arg0, %cst_0, %cst_1) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<4x1024x1024xbf16>, tensor<4096x1024xbf16>, none) -> tensor<4096x4096xbf16>
+  %1 = "tfl.reshape"(%0, %cst_2) : (tensor<4096x4096xbf16>, tensor<3xi32>) -> tensor<4x1024x4096xbf16>
+  return %1 : tensor<4x1024x4096xbf16>
+  // CHECK: %[[V0:.*]] = "tfl.fully_connected"(%arg0, {{.*}}) {{.*}}keep_num_dims = true{{.*}} -> tensor<4x1024x4096xbf16>
+  // CHECK: return %[[V0]]
+}
+
+// CHECK-LABEL: RemoveReshapeAfterFullyConnectedAdd
+func @RemoveReshapeAfterFullyConnectedAdd(%arg0: tensor<4x1024x1024xbf16>) -> tensor<4x1024x4096xbf16> {
+  %cst_0 = constant dense<1.0> : tensor<4096x1024xbf16>
+  %cst_1 = constant unit
+  %cst_2 = constant dense<[4, 1024, 4096]> : tensor<3xi32>
+  %0 = "tfl.fully_connected"(%arg0, %cst_0, %cst_1) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<4x1024x1024xbf16>, tensor<4096x1024xbf16>, none) -> tensor<4096x4096xbf16>
+  %1 = "tfl.reshape"(%0, %cst_2) : (tensor<4096x4096xbf16>, tensor<3xi32>) -> tensor<4x1024x4096xbf16>
+  %2 = "tfl.mul"(%1, %1) {fused_activation_function = "NONE"} : (tensor<4x1024x4096xbf16>, tensor<4x1024x4096xbf16>) -> tensor<4x1024x4096xbf16>
+  return %2 : tensor<4x1024x4096xbf16>
+  // CHECK: %[[V0:.*]] = "tfl.fully_connected"(%arg0, {{.*}}) {{.*}}keep_num_dims = true{{.*}} -> tensor<4x1024x4096xbf16>
+  // CHECK: %[[V1:.*]] = tfl.mul %[[V0]], %[[V0]] {{.*}} : tensor<4x1024x4096xbf16
+  // CHECK: return %[[V1]]
+}
+
 // CHECK-LABEL: DontFuseAddWithConvActivationFunc
 func @DontFuseAddWithConvActivationFunc(%arg0: tensor<1x3x1x1xf32>) -> tensor<1x2x1x3xf32> {
   %cst = constant dense<1.5> : tensor<1xf32>

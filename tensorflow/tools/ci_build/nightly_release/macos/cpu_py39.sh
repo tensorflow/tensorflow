@@ -35,17 +35,11 @@ export PATH=$PATH:/usr/local/bin
 
 ./tensorflow/tools/ci_build/update_version.py --nightly
 
-# Run configure.
-export CC_OPT_FLAGS='-mavx'
-export PYTHON_BIN_PATH=$(which python)
-yes "" | "$PYTHON_BIN_PATH" configure.py
-
 # Build the pip package
 # Pass PYENV_VERSION since we're using pyenv. See b/182399580
 bazel build \
-  --action_env PYENV_VERSION="$PYENV_VERSION" \
   --config=release_cpu_macos \
-  -- \
+  --action_env=PYENV_VERSION="$PYENV_VERSION" \
   tensorflow/tools/pip_package:build_pip_package
 
 mkdir pip_pkg

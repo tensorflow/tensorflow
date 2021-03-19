@@ -1037,6 +1037,25 @@ def TF_InfeedDequeueTupleOp : TF_Op<"InfeedDequeueTuple", []> {
   TF_DerivedResultTypeListAttr dtypes = TF_DerivedResultTypeListAttr<0>;
 }
 
+// TODO(b/177675373): Make dtypes and shapes derived attributes,
+// use more general solution.
+def TF_InfeedEnqueueTupleOp : TF_Op<"InfeedEnqueueTuple", []> {
+  let summary = [{
+Feeds multiple Tensor values into the computation as an XLA tuple.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_Tensor>, [{A list of tensors that will be provided using the infeed mechanism.}]>:$inputs,
+
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$dtypes,
+    TF_ShapeAttrArray:$shapes,
+    DefaultValuedAttr<I64ArrayAttr, "{}">:$layouts,
+    DefaultValuedAttr<I64Attr, "-1">:$device_ordinal
+  );
+
+  let results = (outs);
+}
+
 def TF_StringFormatOp : TF_Op<"StringFormat", [NoSideEffect]> {
   let summary = "Formats a string template using a list of tensors.";
 

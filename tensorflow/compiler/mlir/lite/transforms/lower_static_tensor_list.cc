@@ -949,7 +949,7 @@ struct ConvertWhile : public OpConversionPattern<TF::WhileOp> {
     // Create a new while op with new operands and updated result types.
     auto converted = rewriter.create<TF::WhileOp>(op.getLoc(), result_types,
                                                   operands, op->getAttrs());
-    converted.removeAttr("T");
+    converted->removeAttr("T");
     (void)UpdateFunctionTypes(rewriter, converted, tensor_list_args);
 
     rewriter.replaceOp(op, converted.getResults());

@@ -27,12 +27,11 @@ from tensorflow.python.platform import test
 class LayersTest(test.TestCase):
 
   def test_keras_private_symbol(self):
-    normalization_parent = layers.Normalization.__module__.split('.')[-1]
     if tf2.enabled():
+      normalization_parent = layers.Normalization.__module__.split('.')[-1]
       self.assertEqual('normalization', normalization_parent)
       self.assertTrue(layers.BatchNormalization._USE_V2_BEHAVIOR)
     else:
-      self.assertEqual('normalization_v1', normalization_parent)
       self.assertFalse(layers.BatchNormalization._USE_V2_BEHAVIOR)
 
 

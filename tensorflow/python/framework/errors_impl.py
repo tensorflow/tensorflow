@@ -61,10 +61,10 @@ class OperatorNotAllowedInGraphError(TypeError):
 @tf_export("errors.OpError", v1=["errors.OpError", "OpError"])
 @deprecation.deprecated_endpoints("OpError")
 class OpError(Exception):
-  """A generic error that is raised when TensorFlow execution fails.
+  """The base class for TensorFlow exceptions.
 
-  Whenever possible, the session will raise a more specific subclass
-  of `OpError` from the `tf.errors` module.
+  Usually, TensorFlow will raise a more specific subclass of `OpError` from the
+  `tf.errors` module.
   """
 
   def __init__(self, node_def, op, message, error_code, *args):
@@ -73,7 +73,8 @@ class OpError(Exception):
     Args:
       node_def: The `node_def_pb2.NodeDef` proto representing the op that
         failed, if known; otherwise None.
-      op: The `ops.Operation` that failed, if known; otherwise None.
+      op: The `ops.Operation` that failed, if known; otherwise None. During
+        eager execution, this field is always `None`.
       message: The message string describing the failure.
       error_code: The `error_codes_pb2.Code` describing the error.
       *args: If not empty, it should contain a dictionary describing details
@@ -276,13 +277,14 @@ class UnknownError(OpError):
 class InvalidArgumentError(OpError):
   """Raised when an operation receives an invalid argument.
 
-  This may occur, for example, if an operation receives an input
-  tensor that has an invalid value or shape. For example, the
-  `tf.matmul` op will raise this
-  error if it receives an input that is not a matrix, and the
-  `tf.reshape` op will raise
-  this error if the new shape does not match the number of elements in the input
-  tensor.
+  This error is typically raised when an op receives mismatched arguments.
+
+  Example:
+
+  >>> tf.reshape([1, 2, 3], (2,))
+  Traceback (most recent call last):
+     ...
+  InvalidArgumentError: ...
 
   @@__init__
   """

@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
-#include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/experimental/snapshot_util.h"
 #include "tensorflow/core/kernels/data/hash_utils.h"

@@ -149,8 +149,8 @@ class ConcatenateTest(test_base.DatasetTestBase, parameterized.TestCase):
       input_dataset.concatenate(dataset_to_concatenate)
 
 
-class ConcatenateDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                                       parameterized.TestCase):
+class ConcatenateCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                parameterized.TestCase):
 
   def _build_concatenate_dataset(self, var_array):
     input_components = (np.tile(np.array([[1], [2], [3], [4]]), 20),

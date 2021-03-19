@@ -13,6 +13,10 @@ load(
     "tf_cuda_tests_tags",
 )
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
+load(
+    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 package(
     default_visibility = [":friends"],
@@ -545,9 +549,7 @@ xla_test(
 
 tf_cc_test(
     name = "sorting_test",
-    srcs = [
-        "sorting_test.cc",
-    ],
+    srcs = ["sorting_test.cc"],
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
@@ -573,16 +575,21 @@ tf_cc_test(
 tf_cc_binary(
     name = "hlo_to_llvm_ir",
     srcs = ["hlo_to_llvm_ir.cc"],
+    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
     deps = [
+        "@llvm-project//llvm:Target",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/compiler/xla/service/gpu:gpu_device_info",
         "//tensorflow/compiler/xla/service/gpu:target_constants",
+        "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/tools:hlo_module_loader",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-    ],
+    ] + if_cuda_is_configured([
+        "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
+    ]),
 )
 
 glob_lit_tests(
@@ -591,6 +598,9 @@ glob_lit_tests(
         "no_pip",
     ],
     driver = "@llvm-project//mlir:run_lit.sh",
+    tags_override = {
+        "reduction_vectorization_sm_all.hlo": ["no_rocm"],
+    },
     test_file_exts = [
         "hlo",
         "mlir",
