@@ -283,6 +283,10 @@ class StringLookup(index_lookup.IndexLookup):
     if encoding is None:
       encoding = "utf-8"
 
+    if vocabulary is not None:
+      if isinstance(vocabulary, str):
+        vocabulary = table_utils.get_vocabulary_from_file(vocabulary, encoding)
+
     self.encoding = encoding
 
     super(StringLookup, self).__init__(

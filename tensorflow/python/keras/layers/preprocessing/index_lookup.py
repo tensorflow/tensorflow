@@ -21,7 +21,6 @@ from __future__ import print_function
 import collections
 import json
 import operator
-import os
 
 import numpy as np
 
@@ -169,16 +168,12 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       self._value_dtype = self.dtype
       self._mask_key = 0
       self._mask_value = mask_token
-      key_index = lookup_ops.TextFileIndex.LINE_NUMBER
-      value_index = lookup_ops.TextFileIndex.WHOLE_LINE
       default_value = self.oov_token
       oov_indices = None
     else:
       self._key_dtype = self.dtype
       self._value_dtype = dtypes.int64
       self._mask_key = mask_token
-      key_index = lookup_ops.TextFileIndex.WHOLE_LINE
-      value_index = lookup_ops.TextFileIndex.LINE_NUMBER
       # Masks should map to 0 for int output and be dropped otherwise. Max ints
       # will be dropped from the bincount op.
       self._mask_value = 0 if self.output_mode == INT else dtypes.int64.max
@@ -203,26 +198,13 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
         default_value = -1
         oov_indices = list(range(oov_start, token_start))
 
-    if vocabulary is not None and isinstance(vocabulary, str):
-      if not os.path.exists(vocabulary):
-        raise ValueError("Vocabulary file %s does not exist." % vocabulary)
-
-      total_offset = 0 if mask_token is None else 1
-      total_offset += num_oov_indices
-      initializer = lookup_ops.TextFileInitializer(
-          filename=vocabulary,
-          key_dtype=self._key_dtype,
-          key_index=key_index,
-          value_dtype=self._value_dtype,
-          value_index=value_index,
-          value_index_offset=total_offset)
-
+    if vocabulary is not None and isinstance(vocabulary,
+                                             lookup_ops.TextFileInitializer):
       self._table = self._static_table_class()(
-          initializer, default_value=default_value)
+          vocabulary, default_value=default_value)
       self._table_handler = table_utils.TableHandler(
           table=self._table,
-          mask_token=self._mask_key,
-          mask_value=self._mask_value,
+          mask_token=mask_token,
           oov_tokens=oov_indices,
           use_v1_apis=self._use_v1_apis())
       self.max_tokens = (
