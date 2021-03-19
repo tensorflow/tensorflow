@@ -117,6 +117,10 @@ tf_module {
     argspec: "args=[\'batch_size\', \'row_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "enable_debug_mode"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "enumerate_dataset"
     argspec: "args=[\'start\'], varargs=None, keywords=None, defaults=[\'0\'], "
   }

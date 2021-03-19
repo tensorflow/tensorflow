@@ -39,6 +39,11 @@
         `num_parallel_calls` set, `deterministic` is used to indicate that
         outputs can be obtained in the non-deterministic order.
     *   Options returned by `tf.data.Dataset.options()` are no longer mutable.
+    *   tf.data input pipelines can now be executed in debug mode, which
+        disables any asynchrony, parallelism, or non-determinism and forces
+        Python execution (as opposed to trace-compiled graph execution) of
+        user-defined functions passed into transformations such as `map`. The
+        debug mode can be enabled through `tf.data.experimental.enable_debug_mode()`.
 * `tf.lite`
     *   Enabled the new MLIR-based quantization backend by default
         *   The new backend is used for 8 bits full integer post-training quantization
