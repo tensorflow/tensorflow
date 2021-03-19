@@ -370,10 +370,15 @@ string TimestampFor(const HloModule& module) {
   return std::to_string(timestamp_emplace.first->second);
 }
 
+static string FilenameFor(int unique_id, string_view prefix,
+                          string_view suffix) {
+  return StrFormat("%s%smodule_%04d.%s", prefix, prefix.empty() ? "" : ".",
+                   unique_id, suffix);
+}
+
 string FilenameFor(const HloModule& module, string_view prefix,
                    string_view suffix) {
-  return StrFormat("%s%smodule_%04d.%s", prefix, prefix.empty() ? "" : ".",
-                   module.unique_id(), suffix);
+  return FilenameFor(module.unique_id(), prefix, suffix);
 }
 
 void DumpToFileInDir(const HloModule& module, string_view file_prefix,
@@ -387,6 +392,13 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
   DumpToFileInDirOrStdoutImpl(
       FilenameFor(module, file_prefix, file_suffix), contents,
       CanonicalDebugOptions(module.config().debug_options()));
+}
+
+void DumpToFileInDirOrStdout(const DebugOptions& debug_options, int unique_id,
+                             string_view file_prefix, string_view file_suffix,
+                             string_view contents) {
+  DumpToFileInDirOrStdoutImpl(FilenameFor(unique_id, file_prefix, file_suffix),
+                              contents, CanonicalDebugOptions(debug_options));
 }
 
 void DumpExecutionOptions(const ExecutionOptions& execution_options,

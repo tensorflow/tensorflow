@@ -55,6 +55,14 @@ void DumpToFileInDirOrStdout(const HloModule& module,
                              absl::string_view file_suffix,
                              absl::string_view contents);
 
+// Like DumpToFileInDir, except if debug_options doesn't have an xla_dump_to
+// directory specified, or if that directory is equal to "-", writes to stdout
+// instead.
+void DumpToFileInDirOrStdout(const DebugOptions& debug_options, int unique_id,
+                             absl::string_view file_prefix,
+                             absl::string_view file_suffix,
+                             absl::string_view contents);
+
 // Dumps the given execution options if dumping is enabled. Exactly
 // where and in what formats it's dumped is determined by the debug options.
 void DumpExecutionOptions(const ExecutionOptions& execution_options,
