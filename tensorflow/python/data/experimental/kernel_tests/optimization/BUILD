@@ -188,6 +188,7 @@ tf_py_test(
 
 tf_py_test(
     name = "map_and_batch_fusion_test",
+    size = "small",
     srcs = ["map_and_batch_fusion_test.py"],
     tags = [
         "no_oss",
@@ -206,6 +207,7 @@ tf_py_test(
 
 tf_py_test(
     name = "map_and_filter_fusion_test",
+    size = "small",
     srcs = ["map_and_filter_fusion_test.py"],
     tags = [
         "no_oss",
@@ -228,6 +230,7 @@ tf_py_test(
 
 tf_py_test(
     name = "map_fusion_test",
+    size = "small",
     srcs = ["map_fusion_test.py"],
     tags = [
         "no_oss",
@@ -350,6 +353,7 @@ tf_py_test(
 
 tf_py_test(
     name = "shuffle_and_repeat_fusion_test",
+    size = "small",
     srcs = ["shuffle_and_repeat_fusion_test.py"],
     tags = [
         "no_oss",

@@ -11,6 +11,7 @@ exports_files(["LICENSE"])
 
 tf_py_test(
     name = "assert_cardinality_test",
+    size = "small",
     srcs = ["assert_cardinality_test.py"],
     deps = [
         "//tensorflow/python/data/experimental/ops:cardinality",
@@ -99,6 +100,7 @@ tf_py_test(
 
 tf_py_test(
     name = "compression_ops_test",
+    size = "small",
     srcs = ["compression_ops_test.py"],
     deps = [
         "//tensorflow/python/data/experimental/ops:compression_ops",
@@ -161,15 +163,23 @@ tf_py_test(
     ],
 )
 
-py_library(
-    name = "data_service_test_base",
-    srcs = ["data_service_test_base.py"],
+tf_py_test(
+    name = "data_service_ops_ft_test",
+    size = "small",
+    srcs = ["data_service_ops_ft_test.py"],
+    shard_count = 10,
     srcs_version = "PY3",
     deps = [
+        ":data_service_test_base",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/data",
+        "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/experimental/service:server_lib",
         "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 
@@ -196,27 +206,36 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
-    name = "data_service_ops_ft_test",
-    srcs = ["data_service_ops_ft_test.py"],
-    shard_count = 10,
+py_library(
+    name = "data_service_test_base",
+    srcs = ["data_service_test_base.py"],
     srcs_version = "PY3",
     deps = [
-        ":data_service_test_base",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python/data",
-        "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/experimental/service:server_lib",
         "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
+    name = "dense_to_ragged_batch_test",
+    size = "small",
+    srcs = ["dense_to_ragged_batch_test.py"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
     ],
 )
 
 tf_py_test(
     name = "dense_to_sparse_batch_test",
+    size = "small",
     srcs = ["dense_to_sparse_batch_test.py"],
     deps = [
         "//tensorflow/python:array_ops",
@@ -225,20 +244,6 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python/data/experimental/ops:batching",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "dense_to_ragged_batch_test",
-    srcs = ["dense_to_ragged_batch_test.py"],
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
@@ -325,6 +330,7 @@ tf_py_test(
 
 tf_py_test(
     name = "ignore_errors_test",
+    size = "small",
     srcs = ["ignore_errors_test.py"],
     deps = [
         "//tensorflow/python:array_ops",
@@ -343,6 +349,7 @@ tf_py_test(
 
 tf_py_test(
     name = "io_test",
+    size = "small",
     srcs = ["io_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -714,6 +721,7 @@ tf_py_test(
 
 tf_py_test(
     name = "replicate_test",
+    size = "small",
     srcs = ["replicate_test.py"],
     grpc_enabled = True,
     tags = [
@@ -777,6 +785,7 @@ tf_py_test(
 
 tf_py_test(
     name = "sleep_test",
+    size = "small",
     srcs = ["sleep_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -926,6 +935,7 @@ tf_py_test(
 
 tf_py_test(
     name = "variant_test",
+    size = "small",
     srcs = ["variant_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
