@@ -578,6 +578,7 @@ class CosineDecay(LearningRateSchedule):
         Number of steps to decay over.
       alpha: A scalar `float32` or `float64` Tensor or a Python number.
         Minimum learning rate value as a fraction of initial_learning_rate.
+        This would be the value of learning rate at last training step.
       name: String. Optional name of the operation.  Defaults to 'CosineDecay'.
     """
     super(CosineDecay, self).__init__()
@@ -589,7 +590,7 @@ class CosineDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "CosineDecay"):
-      initial_learning_rate = ops.convert_to_tensor_v2_with_dispatch(
+      initial_learning_rate = ops.convert_to_tensor_v2(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
       decay_steps = math_ops.cast(self.decay_steps, dtype)
@@ -599,9 +600,9 @@ class CosineDecay(LearningRateSchedule):
       completed_fraction = global_step_recomp / decay_steps
       cosine_decayed = 0.5 * (1.0 + math_ops.cos(
           constant_op.constant(math.pi) * completed_fraction))
-
-      decayed = (initial_learning_rate - self.alpha) * cosine_decayed + self.alpha
-      return decayed
+      thetha = initial_learning_rate - self.alpha
+      decayed = math_ops.multiply(thetha, cosine_decayed)
+      return math_ops.add(decayed, self.alpha)
 
 
   def get_config(self):
