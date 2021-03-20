@@ -528,6 +528,7 @@ class ParameterServerStrategyV2Extended(
     self._cross_device_ops = cross_device_ops_lib.ReductionToOneDevice(
         reduce_to_device="/device:CPU:0")
     self._cross_device_ops._canonicalize_devices = False  # pylint: disable=protected-access
+    self._allow_run_without_coordinator = False
 
   def _set_num_gpus(self):
     devices = config.list_logical_devices("GPU")
@@ -716,13 +717,14 @@ class ParameterServerStrategyV2Extended(
         return var
 
   def _assert_used_with_cluster_coordinator(self):
-    if not self._used_with_coordinator:
+    if (not self._used_with_coordinator and
+        not self._allow_run_without_coordinator):
       raise NotImplementedError(
           "`tf.distribute.experimental.ParameterServerStrategy` must be used "
           "with `tf.distribute.experimental.coordinator.ClusterCoordinator`.")
 
   def _assert_being_scheduled_by_cluster_coordinator(self):
-    if not self._being_scheduled:
+    if not self._being_scheduled and not self._allow_run_without_coordinator:
       raise NotImplementedError(
           "`tf.distribute.experimental.ParameterServerStrategy`'s `run` or "
           "`reduce` must be used within a function passed to `"

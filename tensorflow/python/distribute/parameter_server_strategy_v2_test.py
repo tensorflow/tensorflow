@@ -33,7 +33,6 @@ from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
-from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -193,6 +192,19 @@ class ParameterServerStrategyV2Test(test.TestCase):
     with self._assertRaisesUsageErrorWithSchedule():
       strategy.run(step_fn, args=(iter(dataset),))
 
+  def testRunUsedWithTestOnlyMode(self):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+    strategy.extended._allow_run_without_coordinator = True
+    dataset = dataset_ops.DatasetV2.range(3)
+    with strategy.scope():
+      v = variables.Variable(1, dtype=dtypes.int64)
+
+    def step_fn(iterator):
+      return next(iterator) + v
+
+    strategy.run(step_fn, args=(iter(dataset),))
+
   def testReduceNotUsedWithClusterCoordinator(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver)
@@ -285,7 +297,7 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
   def testBasicVariableWithAggregation(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver)
-    coordinator = coordinator_lib.ClusterCoordinator(strategy)
+    strategy.extended._allow_run_without_coordinator = True
     with strategy.scope():
       v = variables.Variable(
           initial_value=[0, 0, 0, 0, 0, 0, 0, 0],
@@ -297,21 +309,17 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
     else:
       self.assertIsInstance(v, variables.Variable)
 
-    @def_function.function
-    def worker_fn():
-      def replica_fn():
-        replica_id = distribution_strategy_context.get_replica_context(
-        ).replica_id_in_sync_group
-        val = array_ops.reshape(
-            math_ops.cast(replica_id + 10, dtype=v.dtype), [1])
-        v.assign(
-            array_ops.concat(
-                [val, constant_op.constant([1., 2., 3., 4., 5., 6., 7.])], 0))
+    def replica_fn():
+      replica_id = distribution_strategy_context.get_replica_context(
+      ).replica_id_in_sync_group
+      val = array_ops.reshape(
+          math_ops.cast(replica_id + 10, dtype=v.dtype), [1])
+      v.assign(
+          array_ops.concat(
+              [val, constant_op.constant([1., 2., 3., 4., 5., 6., 7.])], 0))
 
-      strategy.run(replica_fn)
+    strategy.run(replica_fn)
 
-    coordinator.schedule(worker_fn)
-    coordinator.join()
     expected_result = np.arange(8.) * strategy.num_replicas_in_sync
     for i in range(strategy.num_replicas_in_sync):
       expected_result[0] = expected_result[0] + i + 10
@@ -320,7 +328,7 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
   def testBasicShardedVariableWithAggregation(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver, sharded_variable.FixedShardsPartitioner(2))
-    coordinator = coordinator_lib.ClusterCoordinator(strategy)
+    strategy.extended._allow_run_without_coordinator = True
     with strategy.scope():
       v = variables.Variable(
           initial_value=[0, 0, 0, 0, 0, 0, 0, 0],
@@ -334,21 +342,17 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
     else:
       self.assertIsInstance(v.variables[0], variables.Variable)
 
-    @def_function.function
-    def worker_fn():
-      def replica_fn():
-        replica_id = distribution_strategy_context.get_replica_context(
-        ).replica_id_in_sync_group
-        val = array_ops.reshape(
-            math_ops.cast(replica_id + 10, dtype=v.dtype), [1])
-        v.assign(
-            array_ops.concat(
-                [val, constant_op.constant([1., 2., 3., 4., 5., 6., 7.])], 0))
+    def replica_fn():
+      replica_id = distribution_strategy_context.get_replica_context(
+      ).replica_id_in_sync_group
+      val = array_ops.reshape(
+          math_ops.cast(replica_id + 10, dtype=v.dtype), [1])
+      v.assign(
+          array_ops.concat(
+              [val, constant_op.constant([1., 2., 3., 4., 5., 6., 7.])], 0))
 
-      strategy.run(replica_fn)
+    strategy.run(replica_fn)
 
-    coordinator.schedule(worker_fn)
-    coordinator.join()
     expected_result = np.arange(8.) * strategy.num_replicas_in_sync
     for i in range(strategy.num_replicas_in_sync):
       expected_result[0] = expected_result[0] + i + 10
