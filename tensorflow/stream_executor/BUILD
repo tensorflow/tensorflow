@@ -582,7 +582,6 @@ cc_library(
         ":dnn_proto_cc",
         ":host_or_device_scalar",
         "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/cuda:cuda_dnn_headers",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/base:core_headers",

@@ -23,7 +23,6 @@ limitations under the License.
 namespace tensorflow {
 
 bool CudnnUseAutotune();
-bool CudnnUseFrontend();
 bool CudnnRnnUseAutotune();
 bool CudnnDisableConv1x1Optimization();
 bool DebugCudnnRnn();

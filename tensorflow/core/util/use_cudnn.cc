@@ -20,10 +20,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/env_var.h"
 
-#if GOOGLE_CUDA
-#include "third_party/gpus/cudnn/cudnn.h"
-#endif  // GOOGLE_CUDA
-
 namespace tensorflow {
 
 #define ADD_BOOL_CUDNN_FLAG(func_name, flag_name, default_value)           \
@@ -35,19 +31,6 @@ namespace tensorflow {
     }                                                                      \
     return value;                                                          \
   }
-
-bool CudnnUseFrontend() {
-#if GOOGLE_CUDA && CUDNN_VERSION >= 8100
-  bool value = false;
-  Status status = ReadBoolFromEnvVar("TF_CUDNN_USE_FRONTEND", false, &value);
-  if (!status.ok()) {
-    LOG(ERROR) << status;
-  }
-  return value;
-#else
-  return false;
-#endif  // GOOGLE_CUDA && CUDNN_VERSION >= 8100
-}
 
 ADD_BOOL_CUDNN_FLAG(CudnnUseAutotune, TF_CUDNN_USE_AUTOTUNE, true);
 // Whether to auto-tuning Cudnn RNN forward and backward pass to pick

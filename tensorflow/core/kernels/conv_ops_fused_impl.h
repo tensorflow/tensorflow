@@ -424,8 +424,7 @@ Status FindBestConvolveAlgorithm(const FusedConvParameters& params,
   }
   // Only log on an AutoTuneFusedConv cache miss.
   log(results);
-  TF_RETURN_IF_ERROR(
-      BestCudnnConvAlgorithm(results, nullptr, algorithm_config));
+  TF_RETURN_IF_ERROR(BestCudnnConvAlgorithm(results, algorithm_config));
   AutoTuneFusedConv::GetInstance()->Insert(params, *algorithm_config);
   return Status::OK();
 }

@@ -274,22 +274,6 @@ bool StreamExecutor::GetConvolveAlgorithms(
                                             cc_minor, out_algorithms);
 }
 
-bool StreamExecutor::GetConvolveExecutionPlans(
-    dnn::ConvolutionKind kind, dnn::DataType element_type, Stream *stream,
-    const dnn::BatchDescriptor &input_descriptor,
-    const dnn::FilterDescriptor &filter_descriptor,
-    const dnn::BatchDescriptor &output_descriptor,
-    const dnn::ConvolutionDescriptor &convolution_descriptor,
-    std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>> *out_exec_plans) {
-  dnn::DnnSupport *dnn_support = AsDnn();
-  if (!dnn_support) {
-    return false;
-  }
-  return dnn_support->GetConvolveExecutionPlans(
-      kind, element_type, stream, input_descriptor, filter_descriptor,
-      output_descriptor, convolution_descriptor, out_exec_plans);
-}
-
 bool StreamExecutor::GetMIOpenConvolveAlgorithms(
     dnn::ConvolutionKind kind, dnn::DataType element_type, Stream *stream,
     const dnn::BatchDescriptor &input_descriptor, DeviceMemoryBase input_data,

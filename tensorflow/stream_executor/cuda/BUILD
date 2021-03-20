@@ -381,18 +381,9 @@ alias(
 )
 
 cc_library(
-    name = "cuda_dnn_headers",
-    textual_hdrs = ["cuda_dnn.h"],
-    deps = if_cuda_is_configured([
-        ":cuda_activation_header",
-    ]),
-)
-
-cc_library(
     name = "cudnn_plugin",
     srcs = if_cuda_is_configured(["cuda_dnn.cc"]),
     hdrs = if_cuda_is_configured(["cuda_dnn.h"]),
-    copts = ["-DNV_CUDNN_DISABLE_EXCEPTION"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":cuda_activation",
@@ -409,9 +400,6 @@ cc_library(
         "//third_party/eigen3",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cudnn_header",
-        # copybara:comment_begin(OSS only)
-        "@cudnn_frontend_archive//:cudnn_frontend",
-        # copybara:comment_end
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:tensor_float_32_utils",

@@ -98,8 +98,6 @@ message AlgorithmProto {
   }
   int64 algo_id = 1;
   MathType math_type = 2;
-  // cuDNN v8 uses a string to uniquely represent the backend plan.
-  string exec_plan_id = 3;
 }
 
 // Convolution-specific parameters.
