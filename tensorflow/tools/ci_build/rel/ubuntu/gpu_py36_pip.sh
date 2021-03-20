@@ -33,7 +33,7 @@ source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
 # Export optional variables for running pip.sh
 export TF_TEST_FILTER_TAGS='gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py36,-no_cuda11'
-export TF_BUILD_FLAGS="--config=release_gpu_linux  --repo_env=PYTHON_BIN_PATH"
+export TF_BUILD_FLAGS="--config=release_gpu_linux "
 export TF_TEST_FLAGS="--test_tag_filters=${TF_TEST_FILTER_TAGS} --build_tag_filters=${TF_TEST_FILTER_TAGS} \
 --distinct_host_configuration=false \
 --action_env=TF_CUDA_VERSION=11.2 --action_env=TF_CUDNN_VERSION=8.1 --test_env=TF2_BEHAVIOR=1 \

@@ -30,7 +30,7 @@ export PYTHON_BIN_PATH=$(which python3.8)
 # Build the pip package
 bazel build \
   --config=release_gpu_linux \
-  --repo_env=PYTHON_BIN_PATH \
+  --action_env=PYTHON_BIN_PATH="$PYTHON_BIN_PATH" \
   tensorflow/tools/pip_package:build_pip_package
 
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --nightly_flag
