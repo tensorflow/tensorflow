@@ -22,12 +22,13 @@ install_ubuntu_16_python_pip_deps python3.7
 
 install_bazelisk
 
-python tensorflow/tools/ci_build/update_version.py --nightly
+export PYTHON_BIN_PATH=$(which python3.7)
+"$PYTHON_BIN_PATH" tensorflow/tools/ci_build/update_version.py --nightly
 
 # Build the pip package
 bazel build \
   --config=release_gpu_linux \
-  --repo_env=PYTHON_BIN_PATH="$(which python3.7)" \
+  --repo_env=PYTHON_BIN_PATH \
   tensorflow/tools/pip_package:build_pip_package
 
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --nightly_flag
