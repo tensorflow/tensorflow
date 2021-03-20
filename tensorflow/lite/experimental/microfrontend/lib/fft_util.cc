@@ -20,6 +20,8 @@ limitations under the License.
 #include "kiss_fft.h"
 #include "tools/kiss_fftr.h"
 
+#include "tensorflow/lite/experimental/microfrontend/lib/memory_util.h"
+
 int FftPopulateState(struct FftState* state, size_t input_size) {
   state->input_size = input_size;
   state->fft_size = 1;
@@ -28,14 +30,14 @@ int FftPopulateState(struct FftState* state, size_t input_size) {
   }
 
   state->input = reinterpret_cast<int16_t*>(
-      malloc(state->fft_size * sizeof(*state->input)));
+      microfrontend_alloc(state->fft_size * sizeof(*state->input)));
   if (state->input == nullptr) {
     fprintf(stderr, "Failed to alloc fft input buffer\n");
     return 0;
   }
 
-  state->output = reinterpret_cast<complex_int16_t*>(
-      malloc((state->fft_size / 2 + 1) * sizeof(*state->output) * 2));
+  state->output = reinterpret_cast<complex_int16_t*>(microfrontend_alloc(
+      (state->fft_size / 2 + 1) * sizeof(*state->output) * 2));
   if (state->output == nullptr) {
     fprintf(stderr, "Failed to alloc fft output buffer\n");
     return 0;
@@ -49,7 +51,7 @@ int FftPopulateState(struct FftState* state, size_t input_size) {
     fprintf(stderr, "Kiss memory sizing failed.\n");
     return 0;
   }
-  state->scratch = malloc(scratch_size);
+  state->scratch = microfrontend_alloc(scratch_size);
   if (state->scratch == nullptr) {
     fprintf(stderr, "Failed to alloc fft scratch buffer\n");
     return 0;
@@ -66,7 +68,7 @@ int FftPopulateState(struct FftState* state, size_t input_size) {
 }
 
 void FftFreeStateContents(struct FftState* state) {
-  free(state->input);
-  free(state->output);
-  free(state->scratch);
+  microfrontend_free(state->input);
+  microfrontend_free(state->output);
+  microfrontend_free(state->scratch);
 }

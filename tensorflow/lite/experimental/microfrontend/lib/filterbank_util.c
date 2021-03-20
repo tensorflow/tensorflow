@@ -18,6 +18,8 @@ limitations under the License.
 #include <math.h>
 #include <stdio.h>
 
+#include "tensorflow/lite/experimental/microfrontend/lib/memory_util.h"
+
 #define kFilterbankIndexAlignment 4
 #define kFilterbankChannelBlockSize 4
 
@@ -65,32 +67,32 @@ int FilterbankPopulateState(const struct FilterbankConfig* config,
            ? 1
            : kFilterbankIndexAlignment / sizeof(int16_t));
 
-  state->channel_frequency_starts =
-      malloc(num_channels_plus_1 * sizeof(*state->channel_frequency_starts));
+state->channel_frequency_starts =
+      microfrontend_alloc(num_channels_plus_1 * sizeof(*state->channel_frequency_starts));
   state->channel_weight_starts =
-      malloc(num_channels_plus_1 * sizeof(*state->channel_weight_starts));
+      microfrontend_alloc(num_channels_plus_1 * sizeof(*state->channel_weight_starts));
   state->channel_widths =
-      malloc(num_channels_plus_1 * sizeof(*state->channel_widths));
-  state->work = malloc(num_channels_plus_1 * sizeof(*state->work));
+      microfrontend_alloc(num_channels_plus_1 * sizeof(*state->channel_widths));
+  state->work = microfrontend_alloc(num_channels_plus_1 * sizeof(*state->work));
 
   float* center_mel_freqs =
-      malloc(num_channels_plus_1 * sizeof(*center_mel_freqs));
+      microfrontend_alloc(num_channels_plus_1 * sizeof(*center_mel_freqs));
   int16_t* actual_channel_starts =
-      malloc(num_channels_plus_1 * sizeof(*actual_channel_starts));
+      microfrontend_alloc(num_channels_plus_1 * sizeof(*actual_channel_starts));
   int16_t* actual_channel_widths =
-      malloc(num_channels_plus_1 * sizeof(*actual_channel_widths));
+      microfrontend_alloc(num_channels_plus_1 * sizeof(*actual_channel_widths));
 
   if (state->channel_frequency_starts == NULL ||
       state->channel_weight_starts == NULL || state->channel_widths == NULL ||
       center_mel_freqs == NULL || actual_channel_starts == NULL ||
       actual_channel_widths == NULL) {
-    free(center_mel_freqs);
-    free(actual_channel_starts);
-    free(actual_channel_widths);
+    microfrontend_free(center_mel_freqs);
+    microfrontend_free(actual_channel_starts);
+    microfrontend_free(actual_channel_widths);
     fprintf(stderr, "Failed to allocate channel buffers\n");
     return 0;
   }
-
+  
   CalculateCenterFrequencies(num_channels_plus_1, config->lower_band_limit,
                              config->upper_band_limit, center_mel_freqs);
 
@@ -165,9 +167,9 @@ int FilterbankPopulateState(const struct FilterbankConfig* config,
 
   // If the alloc failed, we also need to nuke the arrays.
   if (state->weights == NULL || state->unweights == NULL) {
-    free(center_mel_freqs);
-    free(actual_channel_starts);
-    free(actual_channel_widths);
+    microfrontend_free(center_mel_freqs);
+    microfrontend_free(actual_channel_starts);
+    microfrontend_free(actual_channel_widths);
     fprintf(stderr, "Failed to allocate weights or unweights\n");
     return 0;
   }
@@ -200,9 +202,9 @@ int FilterbankPopulateState(const struct FilterbankConfig* config,
     }
   }
 
-  free(center_mel_freqs);
-  free(actual_channel_starts);
-  free(actual_channel_widths);
+  microfrontend_free(center_mel_freqs);
+  microfrontend_free(actual_channel_starts);
+  microfrontend_free(actual_channel_widths);
   if (state->end_index >= spectrum_size) {
     fprintf(stderr, "Filterbank end_index is above spectrum size.\n");
     return 0;
@@ -211,10 +213,10 @@ int FilterbankPopulateState(const struct FilterbankConfig* config,
 }
 
 void FilterbankFreeStateContents(struct FilterbankState* state) {
-  free(state->channel_frequency_starts);
-  free(state->channel_weight_starts);
-  free(state->channel_widths);
-  free(state->weights);
-  free(state->unweights);
-  free(state->work);
+  microfrontend_free(state->channel_frequency_starts);
+  microfrontend_free(state->channel_weight_starts);
+  microfrontend_free(state->channel_widths);
+  microfrontend_free(state->weights);
+  microfrontend_free(state->unweights);
+  microfrontend_free(state->work);
 }

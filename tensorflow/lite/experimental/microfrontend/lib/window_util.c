@@ -19,6 +19,8 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+#include "tensorflow/lite/experimental/microfrontend/lib/memory_util.h"
+
 // Some platforms don't have M_PI
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -34,7 +36,7 @@ int WindowPopulateState(const struct WindowConfig* config,
   state->size = config->size_ms * sample_rate / 1000;
   state->step = config->step_size_ms * sample_rate / 1000;
 
-  state->coefficients = malloc(state->size * sizeof(*state->coefficients));
+  state->coefficients = microfrontend_alloc(state->size * sizeof(*state->coefficients));
   if (state->coefficients == NULL) {
     fprintf(stderr, "Failed to allocate window coefficients\n");
     return 0;
@@ -51,13 +53,13 @@ int WindowPopulateState(const struct WindowConfig* config,
   }
 
   state->input_used = 0;
-  state->input = malloc(state->size * sizeof(*state->input));
+  state->input = microfrontend_alloc(state->size * sizeof(*state->input));
   if (state->input == NULL) {
     fprintf(stderr, "Failed to allocate window input\n");
     return 0;
   }
 
-  state->output = malloc(state->size * sizeof(*state->output));
+  state->output = microfrontend_alloc(state->size * sizeof(*state->output));
   if (state->output == NULL) {
     fprintf(stderr, "Failed to allocate window output\n");
     return 0;
@@ -67,7 +69,7 @@ int WindowPopulateState(const struct WindowConfig* config,
 }
 
 void WindowFreeStateContents(struct WindowState* state) {
-  free(state->coefficients);
-  free(state->input);
-  free(state->output);
+  microfrontend_free(state->coefficients);
+  microfrontend_free(state->input);
+  microfrontend_free(state->output);
 }

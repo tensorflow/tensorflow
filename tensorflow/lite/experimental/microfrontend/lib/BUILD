@@ -20,6 +20,7 @@ cc_library(
         "fft_util.h",
     ],
     deps = [
+        ":memory_util",
         "@kissfft//:kiss_fftr_16",
     ],
 )
@@ -37,6 +38,7 @@ cc_library(
     deps = [
         ":bits",
         ":fft",
+        ":memory_util",
     ],
 )
 
@@ -79,6 +81,16 @@ cc_library(
 )
 
 cc_library(
+    name = "memory_util",
+    srcs = [
+        "memory_util_stdlib.c",
+    ],
+    hdrs = [
+        "memory_util.h",
+    ],
+)
+
+cc_library(
     name = "noise_reduction",
     srcs = [
         "noise_reduction.c",
@@ -102,6 +114,7 @@ cc_library(
     ],
     deps = [
         ":bits",
+        ":memory_util",
     ],
 )
 
@@ -114,6 +127,9 @@ cc_library(
     hdrs = [
         "window.h",
         "window_util.h",
+    ],
+    deps = [
+        ":memory_util",
     ],
 )
 
@@ -158,6 +174,18 @@ cc_test(
     copts = [],
     deps = [
         ":log_scale",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "memory_util_test",
+    srcs = ["memory_util_test.cc"],
+    # Setting copts for experimental code to [], but this code should be fixed
+    # to build with the default copts (micro_copts())
+    copts = [],
+    deps = [
+        ":memory_util",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
