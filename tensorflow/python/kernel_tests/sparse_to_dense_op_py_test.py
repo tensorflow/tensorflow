@@ -105,6 +105,10 @@ class SparseToDenseTest(test.TestCase):
       self.evaluate(sparse_ops.sparse_to_dense([1, 3], [5], [1, 2], [0]))
 
   def testOutOfBoundsIndicesWithWithoutValidation(self):
+    # The GPU implementation doesn't print the contents of the invalid inputs,
+    # since the overhead of memory copy between device to host is large.
+    # Therefore, the following three tests on invalid inputs will distinguish
+    # the reference error messages between GPUs and CPUs.
     error_msg = (r"out of bounds" if test_util.is_gpu_available()
                  else r"indices\[1\] = \[10\] is out of bounds: need 0 <= "
                  "index < \[5\]")
