@@ -287,14 +287,14 @@ static py::object TF_ListPluggablePhysicalDevices() {
   tensorflow::Status s =
       tensorflow::DeviceFactory::ListPluggablePhysicalDevices(&devices);
   MaybeRaiseRegisteredFromStatus(s);
-  PyObject* result = PyList_New(devices.size());
+  Safe_PyObjectPtr result(PyList_New(devices.size()));
   int i = 0;
   for (auto& dev : devices) {
     PyObject* dev_obj = PyBytes_FromStringAndSize(dev.data(), dev.size());
-    PyList_SetItem(result, i, dev_obj);
+    PyList_SetItem(result.get(), i, dev_obj);
     ++i;
   }
-  return tensorflow::PyoOrThrow(result);
+  return tensorflow::PyoOrThrow(result.release());
 }
 
 static std::unordered_map<string, string> TF_GetDeviceDetails(int index) {
