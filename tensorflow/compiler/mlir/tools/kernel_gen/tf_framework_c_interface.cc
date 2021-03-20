@@ -52,17 +52,19 @@ extern "C" void* _mlir_ciface_tf_alloc(void* op_kernel_ctx, size_t num_elements,
     // Iterate over indices of all inputs that can potentially be used for
     // forwarding.
     for (int i = 0; i < num_candidates; ++i) {
-      // TODO(pifon): Expose fetching AllocatorAttributes with the output_index.
-      AllocatorAttributes output_attr;
-      auto tensor = ctx->forward_input(
-          candidate_input_indices[i], output_index,
-          ctx->expected_output_dtype(output_index), output_shape,
-          ctx->output_memory_type(output_index), output_attr);
+      auto tensor = ctx->forward_input(candidate_input_indices[i], output_index,
+                                       ctx->expected_output_dtype(output_index),
+                                       output_shape,
+                                       ctx->output_memory_type(output_index),
+                                       ctx->output_alloc_attr(output_index));
       if (tensor != nullptr) {
         return tensor->data();
       }
     }
+
+    CHECK(!ctx->output_expects_forwarding(output_index));
   }
+
   // If no forwarding happened, allocate a chunk of memory.
   return GetAllocator(op_kernel_ctx)
       ->AllocateRaw(Allocator::kAllocatorAlignment,

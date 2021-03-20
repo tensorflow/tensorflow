@@ -122,10 +122,19 @@ def _get_tpu_strategy_creator(steps_per_run,
 def _mirrored_strategy_with_collective_key_base(devices):
   mirrored_lib.MirroredStrategyV1._collective_key_base += 100000
   mirrored_lib.MirroredStrategy._collective_key_base += 100000
+  mirrored_lib.MirroredStrategy._use_merge_call = True  # pylint: disable=protected-access
+  mirrored_lib.MirroredStrategyV1._use_merge_call = True  # pylint: disable=protected-access
   return MirroredStrategy(devices)
 
 
-def _get_multi_worker_mirrored_creator(required_gpus):
+def _mirrored_strategy_with_no_merge_call(devices):
+  mirrored_lib.MirroredStrategyV1._collective_key_base += 100000
+  mirrored_lib.MirroredStrategy._collective_key_base += 100000
+  mirrored_lib.MirroredStrategy._use_merge_call = False  # pylint: disable=protected-access
+  return MirroredStrategy(devices)
+
+
+def _get_multi_worker_mirrored_creator(required_gpus, use_merge_call=True):
 
   def _create_multi_worker_mirrored():
     tf_config = cluster_resolver.TFConfigClusterResolver()
@@ -152,6 +161,8 @@ def _get_multi_worker_mirrored_creator(required_gpus):
     # configured after initialization.
     with context.eager_mode():
       strategy = CollectiveAllReduceStrategy(cluster_resolver=resolver)
+
+    strategy.extended._use_merge_call = use_merge_call  # pylint: disable=protected-access
     # TODO(b/152320929): Wait for the cluster before proceeding, otherwise
     # collectives may hang if any worker launches collectives before the chief
     # creates the strategy.
@@ -264,6 +275,10 @@ mirrored_strategy_with_two_gpus = combinations.NamedDistribution(
     "Mirrored2GPUs",
     lambda: _mirrored_strategy_with_collective_key_base(["/gpu:0", "/gpu:1"]),
     required_gpus=2)
+mirrored_strategy_with_two_gpus_no_merge_call = combinations.NamedDistribution(
+    "Mirrored2GPUsNoMergeCall",
+    lambda: _mirrored_strategy_with_no_merge_call(["/gpu:0", "/gpu:1"]),
+    required_physical_gpus=2)
 # Should call set_virtual_cpus_to_at_least(3) in your test's setUp methods.
 mirrored_strategy_with_cpu_1_and_2 = combinations.NamedDistribution(
     "Mirrored2CPU",
@@ -307,6 +322,16 @@ multi_worker_mirrored_2x2_gpu = combinations.NamedDistribution(
     has_chief=True,
     num_workers=1,
     required_gpus=2,
+    pool_runner_fn=_two_worker_pool,
+    no_xla=True,
+)
+multi_worker_mirrored_2x2_gpu_no_merge_call = combinations.NamedDistribution(
+    "MultiWorkerMirrored2x2GPUNoMergeCall",
+    _get_multi_worker_mirrored_creator(
+        required_gpus=2, use_merge_call=False),
+    has_chief=True,
+    num_workers=1,
+    required_physical_gpus=2,
     pool_runner_fn=_two_worker_pool,
     no_xla=True,
 )

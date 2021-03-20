@@ -1,5 +1,9 @@
 path: "tensorflow.__internal__.saved_model"
 tf_module {
+  member {
+    name: "StructureCoder"
+    mtype: "<type \'type\'>"
+  }
   member_method {
     name: "load_partial"
     argspec: "args=[\'export_dir\', \'filters\', \'tags\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "

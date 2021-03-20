@@ -798,7 +798,8 @@ def _finalize_saved_model_layers(layers):
       layer.call = utils.use_wrapped_call(
           layer, _get_keras_attr(layer).call_and_return_conditional_losses,
           return_method=True)
-      layer._init_call_fn_args()
+      layer._init_call_fn_args(
+          layer._serialized_attributes['metadata']['expects_training_arg'])
     else:
       layer.call = types.MethodType(
           _unable_to_call_layer_due_to_serialization_issue, layer)
@@ -810,6 +811,8 @@ def _finalize_saved_model_layers(layers):
 
       if hasattr(_get_keras_attr(layer), 'call_and_return_conditional_losses'):
         call_fn = _get_keras_attr(layer).call_and_return_conditional_losses
+        if not call_fn.concrete_functions:
+          continue
         if call_fn.input_signature is None:
           inputs = infer_inputs_from_restored_call_function(call_fn)
         else:
@@ -1031,7 +1034,12 @@ def _revive_setter(layer, name, value):
     # be temporarily added as a dependency so that checkpointed values can be
     # restored. These dependencies are manually deleted in
     # KerasObjectLoader.del_tracking.
-    layer._track_trackable(value, name)  # pylint: disable=protected-access
+
+    # Set `overwrite=True` in the case that `layer` already tracks a different
+    # layer-n. This may cause variable values to not be loaded properly in the
+    # original layer-n, but we already warn the users about this
+    # (ctrl-f "shared between different layers/models").
+    layer._track_trackable(value, name, overwrite=True)  # pylint: disable=protected-access
   elif getattr(layer, name, None) is not None:
     # Don't overwrite already defined attributes.
     pass
@@ -1107,8 +1115,8 @@ def infer_inputs_from_restored_call_function(fn):
   """Returns TensorSpec of inputs from a restored call function.
 
   Args:
-    fn: Restored layer call function. It is assumed that the inputs are entirely
-      in the first argument.
+    fn: Restored layer call function. It is assumed that `fn` has at least
+        one concrete function and that the inputs are in the first argument.
 
   Returns:
     TensorSpec of call function inputs.

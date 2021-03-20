@@ -157,7 +157,7 @@ renames = {
     'tf.assert_greater_equal':
         'tf.compat.v1.assert_greater_equal',
     'tf.assert_integer':
-        'tf.compat.v1.assert_integer',
+        'tf.debugging.assert_integer',
     'tf.assert_less_equal':
         'tf.compat.v1.assert_less_equal',
     'tf.assert_near':
@@ -183,7 +183,7 @@ renames = {
     'tf.assert_scalar':
         'tf.compat.v1.assert_scalar',
     'tf.assert_type':
-        'tf.compat.v1.assert_type',
+        'tf.debugging.assert_type',
     'tf.assert_variables_initialized':
         'tf.compat.v1.assert_variables_initialized',
     'tf.assign':

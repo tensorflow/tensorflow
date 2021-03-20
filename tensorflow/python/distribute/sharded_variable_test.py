@@ -116,30 +116,33 @@ class ShardedVariableTest(test.TestCase):
     v1 = variables_lib.Variable([[1, 1], [2, 2]])
     v2 = variables_lib.Variable([[3, 3]])
     s = sharded_variable.ShardedVariable([v0, v1, v2])
-    s.assign([[4, 4], [5, 5], [6, 6], [7, 7]])
+    ret = s.assign([[4, 4], [5, 5], [6, 6], [7, 7]])
     self.assertAllEqual(self.evaluate(s.variables[0]), [[4, 4]])
     self.assertAllEqual(self.evaluate(s.variables[1]), [[5, 5], [6, 6]])
     self.assertAllEqual(self.evaluate(s.variables[2]), [[7, 7]])
+    self.assertIs(ret, s)
 
   def test_assign_add(self):
     v0 = variables_lib.Variable([[0, 0]])
     v1 = variables_lib.Variable([[1, 1], [2, 2]])
     v2 = variables_lib.Variable([[3, 3]])
     s = sharded_variable.ShardedVariable([v0, v1, v2])
-    s.assign_add([[1, 1], [1, 1], [2, 2], [2, 2]])
+    ret = s.assign_add([[1, 1], [1, 1], [2, 2], [2, 2]])
     self.assertAllEqual(self.evaluate(s.variables[0]), [[1, 1]])
     self.assertAllEqual(self.evaluate(s.variables[1]), [[2, 2], [4, 4]])
     self.assertAllEqual(self.evaluate(s.variables[2]), [[5, 5]])
+    self.assertIs(ret, s)
 
   def test_assign_sub(self):
     v0 = variables_lib.Variable([[0, 0]])
     v1 = variables_lib.Variable([[1, 1], [2, 2]])
     v2 = variables_lib.Variable([[3, 3]])
     s = sharded_variable.ShardedVariable([v0, v1, v2])
-    s.assign_sub([[0, 0], [1, 1], [1, 1], [3, 3]])
+    ret = s.assign_sub([[0, 0], [1, 1], [1, 1], [3, 3]])
     self.assertAllEqual(self.evaluate(s.variables[0]), [[0, 0]])
     self.assertAllEqual(self.evaluate(s.variables[1]), [[0, 0], [1, 1]])
     self.assertAllEqual(self.evaluate(s.variables[2]), [[0, 0]])
+    self.assertIs(ret, s)
 
   def test_convert_to_tensor(self):
     v0 = variables_lib.Variable([[0, 0]])

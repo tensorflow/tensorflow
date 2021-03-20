@@ -33,7 +33,9 @@ def load_data():
 
   This is a dataset of 60,000 28x28 grayscale images of 10 fashion categories,
   along with a test set of 10,000 images. This dataset can be used as
-  a drop-in replacement for MNIST. The class labels are:
+  a drop-in replacement for MNIST.
+
+  The classes are:
 
   | Label | Description |
   |:-----:|-------------|
@@ -49,18 +51,34 @@ def load_data():
   |   9   | Ankle boot  |
 
   Returns:
-      Tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
+    Tuple of NumPy arrays: `(x_train, y_train), (x_test, y_test)`.
 
-      **x_train, x_test**: uint8 arrays of grayscale image data with shape
-        (num_samples, 28, 28).
+  **x_train**: uint8 NumPy array of grayscale image data with shapes
+    `(60000, 28, 28)`, containing the training data.
 
-      **y_train, y_test**: uint8 arrays of labels (integers in range 0-9)
-        with shape (num_samples,).
+  **y_train**: uint8 NumPy array of labels (integers in range 0-9)
+    with shape `(60000,)` for the training data.
+
+  **x_test**: uint8 NumPy array of grayscale image data with shapes
+    (10000, 28, 28), containing the test data.
+
+  **y_test**: uint8 NumPy array of labels (integers in range 0-9)
+    with shape `(10000,)` for the test data.
+
+  Example:
+
+  ```python
+  (x_train, y_train), (x_test, y_test) = fashion_mnist.load_data()
+  assert x_train.shape == (60000, 28, 28)
+  assert x_test.shape == (10000, 28, 28)
+  assert y_train.shape == (60000,)
+  assert y_test.shape == (10000,)
+  ```
 
   License:
-      The copyright for Fashion-MNIST is held by Zalando SE.
-      Fashion-MNIST is licensed under the [MIT license](
-      https://github.com/zalandoresearch/fashion-mnist/blob/master/LICENSE).
+    The copyright for Fashion-MNIST is held by Zalando SE.
+    Fashion-MNIST is licensed under the [MIT license](
+    https://github.com/zalandoresearch/fashion-mnist/blob/master/LICENSE).
 
   """
   dirname = os.path.join('datasets', 'fashion-mnist')

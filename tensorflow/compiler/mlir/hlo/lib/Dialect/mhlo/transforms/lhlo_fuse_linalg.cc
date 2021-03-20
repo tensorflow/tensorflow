@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -95,7 +96,7 @@ class LhloFuseLinalgPass
         continue;
       }
 
-      if (auto tensor_load = dyn_cast<TensorLoadOp>(definingOp)) {
+      if (auto tensor_load = dyn_cast<memref::TensorLoadOp>(definingOp)) {
         auto alias = tensor_load.memref();
         if (result_buffers.insert(alias).second) {
           worklist.push_back(alias);
@@ -103,7 +104,7 @@ class LhloFuseLinalgPass
         continue;
       }
 
-      if (auto tensor_to_memref = dyn_cast<TensorToMemrefOp>(definingOp)) {
+      if (auto tensor_to_memref = dyn_cast<memref::BufferCastOp>(definingOp)) {
         auto alias = tensor_to_memref.tensor();
         if (result_buffers.insert(alias).second) {
           worklist.push_back(alias);

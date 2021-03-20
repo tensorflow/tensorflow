@@ -57,18 +57,22 @@ def VGG19(
   - [Very Deep Convolutional Networks for Large-Scale Image Recognition](
       https://arxiv.org/abs/1409.1556) (ICLR 2015)
 
-  By default, it loads weights pre-trained on ImageNet. Check 'weights' for
-  other options.
+  For image classification use cases, see
+  [this page for detailed examples](
+    https://keras.io/api/applications/#usage-examples-for-image-classification-models).
 
-  This model can be built both with 'channels_first' data format
-  (channels, height, width) or 'channels_last' data format
-  (height, width, channels).
+  For transfer learning use cases, make sure to read the
+  [guide to transfer learning & fine-tuning](
+    https://keras.io/guides/transfer_learning/).
 
   The default input size for this model is 224x224.
 
   Note: each Keras Application expects a specific kind of input preprocessing.
   For VGG19, call `tf.keras.applications.vgg19.preprocess_input` on your
   inputs before passing them to the model.
+  `vgg19.preprocess_input` will convert the input images from RGB to BGR,
+  then will zero-center each color channel with respect to the ImageNet dataset,
+  without scaling.
 
   Args:
     include_top: whether to include the 3 fully-connected
@@ -104,15 +108,11 @@ def VGG19(
     classifier_activation: A `str` or callable. The activation function to use
       on the "top" layer. Ignored unless `include_top=True`. Set
       `classifier_activation=None` to return the logits of the "top" layer.
+      When loading pretrained weights, `classifier_activation` can only
+      be `None` or `"softmax"`.
 
   Returns:
     A `keras.Model` instance.
-
-  Raises:
-    ValueError: in case of invalid argument for `weights`,
-      or invalid input shape.
-    ValueError: if `classifier_activation` is not `softmax` or `None` when
-      using a pretrained top layer.
   """
   if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '

@@ -137,7 +137,7 @@ Status MlirFunctionOptimizationPass::Run(
       num_passes_shadow_enabled = 0, num_passes_fallback_enabled = 0;
   for (const auto& pass_registration : registry_->passes()) {
     MlirOptimizationPassState pass_state = pass_registration.pass->GetPassState(
-        &device_set, config_proto, **graph);
+        &device_set, config_proto, **graph, *flib_def);
     per_pass_state.push_back(pass_state);
     switch (pass_state) {
       case MlirOptimizationPassState::ShadowEnabled: {
@@ -168,7 +168,7 @@ Status MlirFunctionOptimizationPass::Run(
   // Capture stats relevant to graph properties used in dark launch.
   // We set `uses_uninitialized_resource_args` to false here because function
   // optimization is not affected by uninitialized resource args.
-  GetMlirBridgeRolloutPolicy(**graph, config_proto,
+  GetMlirBridgeRolloutPolicy(**graph, flib_def, config_proto,
                              /*uses_uninitialized_resource_args=*/false,
                              /*record_stats=*/true);
 
@@ -235,8 +235,8 @@ Status MlirFunctionOptimizationPass::Run(
     if (pass_state == MlirOptimizationPassState::Enabled ||
         (pass_state == MlirOptimizationPassState::ShadowEnabled &&
          overall_state == MlirOptimizationPassState::ShadowEnabled)) {
-      pass_status =
-          pass_registration.pass->Run(config_proto, *module_ref, **graph);
+      pass_status = pass_registration.pass->Run(config_proto, *module_ref,
+                                                **graph, *flib_def);
     } else if (pass_state == MlirOptimizationPassState::ShadowEnabled ||
                pass_state == MlirOptimizationPassState::FallbackEnabled) {
       // Make sure when the pass is:
@@ -244,8 +244,8 @@ Status MlirFunctionOptimizationPass::Run(
       //   FallbackEnabled, it only modifies the MLIR module in case of
       //     no failures.
       auto module_ref_clone = module_ref->clone();
-      pass_status =
-          pass_registration.pass->Run(config_proto, module_ref_clone, **graph);
+      pass_status = pass_registration.pass->Run(config_proto, module_ref_clone,
+                                                **graph, *flib_def);
       if (pass_state == MlirOptimizationPassState::FallbackEnabled &&
           pass_status.ok()) {
         module_ref = module_ref_clone;
@@ -329,8 +329,9 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   if (options.is_function_graph || !registry_->pass()) return Status::OK();
 
   auto pass = registry_->pass();
-  auto pass_state = pass->GetPassState(
-      options.device_set, options.session_options->config, **options.graph);
+  auto pass_state =
+      pass->GetPassState(options.device_set, options.session_options->config,
+                         **options.graph, *options.flib_def);
 
   // Do not run V1 compatibility pass in shadow mode.
   if (pass_state == MlirOptimizationPassState::Disabled ||

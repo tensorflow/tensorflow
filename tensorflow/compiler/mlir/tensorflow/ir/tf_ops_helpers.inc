@@ -203,39 +203,6 @@ static LogicalResult VerifyTypesCompatibility(
   return success();
 }
 
-// This is a helper for the Select to SelectV2 canonicalization. The `data` rank
-// refers to the rank of `t`/`e` (these two inputs have equal rank; this is
-// checked in the verifier).
-//
-// In most cases, the predicate for Select can be used directly as the predicate
-// for SelectV2. However, there is one case that varies, which is when the
-// predicate is a tensor and the data is multidimensional. In this case, Select
-// op semantics dictate that the predicate tensor length must match the size of
-// the first data dimension. This varies from normal broadcasting semantics
-// (which are used in SelectV2), so we must reshape the tensor in this case to
-// be compatible.
-static Value ReshapeSelectPredIfNecessary(OpBuilder *builder, Location loc,
-                                          Value cond, int data_rank) {
-  auto cond_tensor = cond.getType().cast<RankedTensorType>();
-  // Reshape is only needed in the case that the cond rank is 1 (i.e. it is
-  // a vector) AND t/e rank is > 1.
-  if (cond_tensor.getRank() != 1 || data_rank <= 1) {
-    // No reshape necessary. Leave cond as it is.
-    return cond;
-  }
-
-  // This is the case where a reshape is needed. We want to construct the
-  // shape [x,1,...1], where x is the value in the pred tensor and the
-  // length of the shape is equal to data_rank.
-  SmallVector<int64_t, 8> shape(data_rank, 1);
-  shape[0] = cond_tensor.getShape().front();
-  auto new_shape_type =
-      RankedTensorType::get({data_rank}, builder->getIntegerType(64));
-  auto shape_attr = DenseIntElementsAttr::get(new_shape_type, shape);
-  auto new_shape = builder->create<ConstOp>(loc, shape_attr);
-  return builder->create<ReshapeOp>(loc, cond, new_shape);
-}
-
 //===----------------------------------------------------------------------===//
 // Helper functions detect device capabilities from RuntimeDevices.
 //===----------------------------------------------------------------------===//
@@ -581,7 +548,7 @@ struct DropAttributes : public OpRewritePattern<Op> {
   // Drop the "output_shapes" attribute.
   LogicalResult matchAndRewrite(Op op,
                                 PatternRewriter &rewriter) const override {
-    bool found = !!op.removeAttr("output_shapes");
+    bool found = !!op->removeAttr("output_shapes");
     return success(found);
   }
 };
@@ -613,4 +580,24 @@ ResourceHandleValueAndId GetResourceHandleValueAndIdBase(
   // New ID created, increment next_id.
   if (emplace_res.second) ++next_id;
   return {resource, emplace_res.first->second};
+}
+
+// Helper function to create TF op while copying all underscore attributes from
+// another TF op.
+// TODO(jpienaar): This is a workaround until behavior is established.
+template <typename OpTy, typename... Args>
+OpTy CreateTfOp(RewriterBase& b, Operation *op, Args &&... args) {
+  auto ret = b.create<OpTy>(op->getLoc(), std::forward<Args>(args)...);
+  CopyDeviceAndUnderscoredAttributes(op, ret.getOperation());
+  return ret;
+}
+
+// Helper function to replace TF op with another op while copying all underscore
+// attributes from the TF op.
+// TODO(jpienaar): This is a workaround until behavior is established.
+template <typename OpTy, typename... Args>
+OpTy ReplaceTfOpWithNewOp(RewriterBase& b, Operation *op, Args &&... args) {
+  auto ret = CreateTfOp<OpTy>(b, op, std::forward<Args>(args)...);
+  b.replaceOp(op, ret.getOperation()->getResults());
+  return ret;
 }

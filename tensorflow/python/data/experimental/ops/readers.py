@@ -1154,22 +1154,23 @@ def _get_file_names(file_pattern, shuffle):
 
 @tf_export("data.experimental.SqlDataset", v1=[])
 class SqlDatasetV2(dataset_ops.DatasetSource):
-  """A `Dataset` consisting of the results from a SQL query."""
+  """A `Dataset` consisting of the results from a SQL query.
+
+  `SqlDataset` allows a user to read data from the result set of a SQL query.
+  For example:
+
+  ```python
+  dataset = tf.data.experimental.SqlDataset("sqlite", "/foo/bar.sqlite3",
+                                            "SELECT name, age FROM people",
+                                            (tf.string, tf.int32))
+  # Prints the rows of the result set of the above query.
+  for element in dataset:
+    print(element)
+  ```
+  """
 
   def __init__(self, driver_name, data_source_name, query, output_types):
     """Creates a `SqlDataset`.
-
-    `SqlDataset` allows a user to read data from the result set of a SQL query.
-    For example:
-
-    ```python
-    dataset = tf.data.experimental.SqlDataset("sqlite", "/foo/bar.sqlite3",
-                                              "SELECT name, age FROM people",
-                                              (tf.string, tf.int32))
-    # Prints the rows of the result set of the above query.
-    for element in dataset:
-      print(element)
-    ```
 
     Args:
       driver_name: A 0-D `tf.string` tensor containing the database type.

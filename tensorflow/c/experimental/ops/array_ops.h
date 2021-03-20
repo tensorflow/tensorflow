@@ -22,8 +22,7 @@ limitations under the License.
 namespace tensorflow {
 namespace ops {
 
-Status Identity(AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
+Status Identity(AbstractContext* ctx, AbstractTensorHandle* const input,
                 absl::Span<AbstractTensorHandle*> outputs, const char* name);
 
 Status IdentityN(AbstractContext* ctx,

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_execution_context.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -35,40 +36,10 @@ namespace tensorrt {
 
 using absl::StrCat;
 
-ExecutionContext::~ExecutionContext() {
-  if (device_memory_) {
-    DCHECK(memory_allocator_) << "Internal error: Device memory with address "
-                              << (char*)device_memory_ << "is not freed";
-    memory_allocator_->free(device_memory_);
-  }
-  if (execution_context_) {
-    execution_context_->destroy();
-  }
-}
-
-StatusOr<ExecutionContext> ExecutionContext::Create(
-    nvinfer1::ICudaEngine* cuda_engine, TRTBaseAllocator* allocator) {
-  void* device_memory = nullptr;
-  nvinfer1::IExecutionContext* execution_context;
-  if (allocator == nullptr) {
-    execution_context = cuda_engine->createExecutionContext();
-  } else {
-    execution_context =
-        cuda_engine->createExecutionContextWithoutDeviceMemory();
-    size_t device_memory_size = cuda_engine->getDeviceMemorySize();
-    VLOG(2) << "Device memory size for cuda engine " << device_memory_size;
-
-    if (device_memory_size > 0) {
-      device_memory = allocator->allocate(device_memory_size,
-                                          /*unused alignment=*/0, /*flags=*/0);
-      if (device_memory == nullptr) {
-        return errors::InvalidArgument(
-            "Out of GPU memory when creating execution context");
-      }
-    }
-    execution_context->setDeviceMemory(device_memory);
-  }
-  return ExecutionContext(allocator, device_memory, execution_context);
+ExecutionContext ExecutionContext::Create(nvinfer1::ICudaEngine* cuda_engine) {
+  nvinfer1::IExecutionContext* execution_context =
+      cuda_engine->createExecutionContextWithoutDeviceMemory();
+  return ExecutionContext(execution_context);
 }
 
 Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,
@@ -135,8 +106,9 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
                           nvinfer1::IExecutionContext* execution_context,
                           const int trt_profile_idx,
                           std::vector<void*>& buffers, bool use_implicit_batch,
-                          int num_batch, OpKernelContext* ctx,
-                          const DataVec* input_vec) {
+                          int num_batch,
+                          const TrtShapeOptimizationProfile& profiles,
+                          OpKernelContext* ctx, const DataVec* input_vec) {
   int n_inputs = ctx ? ctx->num_inputs() : (input_vec ? input_vec->size() : 0);
   // Setup engine inputs.
   for (int i = 0; i < n_inputs; i++) {
@@ -161,18 +133,21 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
     // Set known input dimensions. This is necessary because TRT network
     // could be made with dynamic dimensions.
     if (!use_implicit_batch) {
-      nvinfer1::Dims trt_dims;
-      trt_dims.nbDims = input_shape.dims();
-      for (int k = 0; k < input_shape.dims(); k++) {
-        trt_dims.d[k] = input_shape.dim_size(k);
-      }
-      bool ret =
-          execution_context->setBindingDimensions(binding_index, trt_dims);
-      if (!ret) {
-        VLOG(2) << "Error setting engine input " << binding_index << " "
-                << DebugString(trt_dims);
-        return errors::Internal(
-            "Binding dimension does not fit selected profile.");
+      TF_RETURN_IF_ERROR(profiles.SetInputShapeBinding(
+          i, binding_index, cuda_engine, execution_context));
+
+      if (cuda_engine->isExecutionBinding(binding_index)) {
+        nvinfer1::Dims trt_dims;
+        TF_RETURN_IF_ERROR(TensorShapeToTrtDims(input_shape, false, &trt_dims));
+        VLOG(2) << "Setting binding dimensions for idx " << binding_index;
+        bool ret =
+            execution_context->setBindingDimensions(binding_index, trt_dims);
+        if (!ret) {
+          VLOG(2) << "Error setting engine input " << binding_index << " "
+                  << DebugString(trt_dims);
+          return errors::Internal(
+              "Binding dimension does not fit selected profile.");
+        }
       }
     }
 #endif

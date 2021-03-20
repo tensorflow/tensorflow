@@ -30,6 +30,7 @@ limitations under the License.
 #include <map>
 #include <vector>
 
+#include "absl/synchronization/blocking_counter.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
@@ -138,6 +139,98 @@ struct LaunchGeneric {
     }
   }
 };
+
+// Compute grouped 2D convolutions on CPU. Unlike grouped convolution
+// implementation in cuDNN this is faaaaaar from optimal and needs more work
+// to deliver competitive performance. Currently it exists to close the feature
+// parity gap between convolution operations on different devices.
+template <typename T>
+struct LaunchGrouped {
+  void operator()(OpKernelContext* ctx, const Tensor& input,
+                  const Tensor& filter, int row_stride, int col_stride,
+                  int row_dilation, int col_dilation, const Padding& padding,
+                  const std::vector<int64>& explicit_paddings, Tensor* output,
+                  TensorFormat data_format) {
+    DCHECK(data_format == FORMAT_NHWC)
+        << "Grouped conv implementation only "
+           "supports NHWC tensor format for now.";
+
+    const int64 in_depth = input.dim_size(3);
+    const int64 patch_depth = filter.dim_size(2);
+    const int64 num_groups = in_depth / patch_depth;
+
+    // Shuffle input/filter tensors to have group as a leading dimension.
+    std::array<int64, 5> shuffle({3, 0, 1, 2, 4});
+
+    // Compute pre shuffle dimemnsions.
+    auto pre_shuffle = [&](const Tensor& tensor) -> std::array<int64, 5> {
+      return {tensor.dim_size(0), tensor.dim_size(1), tensor.dim_size(2),
+              num_groups, tensor.dim_size(3) / num_groups};
+    };
+
+    // Compute post shuffle dimemnsions.
+    auto post_shuffle = [&](const Tensor& tensor) -> std::array<int64, 5> {
+      return {num_groups, tensor.dim_size(0), tensor.dim_size(1),
+              tensor.dim_size(2), tensor.dim_size(3) / num_groups};
+    };
+
+    auto& device = ctx->eigen_device<CPUDevice>();
+
+    absl::BlockingCounter shuffles_completed(2);
+    auto on_shuffled = [&]() { shuffles_completed.DecrementCount(); };
+
+    // Shuffle input into temporary tensor.
+    Tensor input_shuffled(input.dtype(), TensorShape(post_shuffle(input)));
+    input_shuffled.tensor<T, 5>().device(device, on_shuffled) =
+        input.shaped<T, 5>(pre_shuffle(input)).shuffle(shuffle);
+
+    // Shuffle filter into temporary tensor.
+    Tensor filter_shuffled(filter.dtype(), TensorShape(post_shuffle(filter)));
+    filter_shuffled.tensor<T, 5>().device(device, on_shuffled) =
+        filter.shaped<T, 5>(pre_shuffle(filter)).shuffle(shuffle);
+
+    // Wait for the completion of input/filter shuffles.
+    shuffles_completed.Wait();
+
+    // Write group convolution results into temporary output tensor.
+    Tensor output_shuffled(output->dtype(), TensorShape(post_shuffle(*output)));
+
+    for (int64 i = 0; i < num_groups; ++i) {
+      // TODO(ezhulenev): Run this loop using `parallelFor` (regular parallelFor
+      // will lead to deadlock, SpatialConvolution has to use async Eigen
+      // assignment). This requires small changes to Eigen to support async
+      // exeuction for tensor chipping operation.
+
+      // TODO(ezhulenev): Grouped convolution should also support 1x1 filter
+      // optimization.
+
+      auto input_slice = input_shuffled.tensor<T, 5>().template chip<0>(i);
+      auto filter_slice = filter_shuffled.tensor<T, 5>().template chip<0>(i);
+      auto output_slice = output_shuffled.tensor<T, 5>().template chip<0>(i);
+
+      if (padding == EXPLICIT) {
+        functor::SpatialConvolution<CPUDevice, T>()(
+            ctx->eigen_device<CPUDevice>(), output_slice, input_slice,
+            filter_slice, row_stride, col_stride, row_dilation, col_dilation,
+            static_cast<int>(explicit_paddings[2]),
+            static_cast<int>(explicit_paddings[3]),
+            static_cast<int>(explicit_paddings[4]),
+            static_cast<int>(explicit_paddings[5]));
+      } else {
+        functor::SpatialConvolution<CPUDevice, T>()(
+            ctx->eigen_device<CPUDevice>(), output_slice, input_slice,
+            filter_slice, row_stride, col_stride, row_dilation, col_dilation,
+            BrainPadding2EigenPadding(padding));
+      }
+    }
+
+    // Shuffle temporary output back into pre-shuffled shape.
+    std::array<int64, 5> rev_shuffle({1, 2, 3, 0, 4});
+    output->shaped<T, 5>(pre_shuffle(*output)).device(device) =
+        output_shuffled.tensor<T, 5>().shuffle(rev_shuffle);
+  }
+};
+
 }  // namespace
 
 template <typename T>
@@ -155,14 +248,6 @@ struct LaunchConv2DOp<CPUDevice, T> {
           ToString(data_format)));
       return;
     }
-    const int64 in_depth = GetTensorDim(input, data_format, 'C');
-    OP_REQUIRES(ctx, in_depth == filter.dim_size(2),
-                errors::Unimplemented(
-                    "The Conv2D op currently does not support grouped "
-                    "convolutions on the CPU. A grouped convolution was "
-                    "attempted to be run because the input depth of ",
-                    in_depth, " does not match the filter input depth of ",
-                    filter.dim_size(2)));
 
     for (int64 explicit_padding : explicit_paddings) {
       if (!FastBoundsCheck(explicit_padding, std::numeric_limits<int>::max())) {
@@ -170,9 +255,35 @@ struct LaunchConv2DOp<CPUDevice, T> {
         return;
       }
     }
-    LaunchGeneric<CPUDevice, T>()(ctx, input, filter, row_stride, col_stride,
-                                  row_dilation, col_dilation, padding,
-                                  explicit_paddings, output, data_format);
+
+    const int64 in_depth = input.dim_size(3);
+    const int64 out_depth = output->dim_size(3);
+    const int64 patch_depth = filter.dim_size(2);
+
+    if (in_depth % patch_depth != 0) {
+      ctx->SetStatus(errors::InvalidArgument(
+          "input depth must be evenly divisible by filter depth: ", in_depth,
+          " vs ", patch_depth));
+      return;
+    }
+
+    const int64 num_groups = in_depth / patch_depth;
+    if (out_depth % num_groups != 0 || out_depth < num_groups) {
+      ctx->SetStatus(errors::InvalidArgument(
+          "output depth must be evenly divisible by number of groups: ",
+          out_depth, " vs ", num_groups));
+      return;
+    }
+
+    if (in_depth != patch_depth) {
+      LaunchGrouped<T>()(ctx, input, filter, row_stride, col_stride,
+                         row_dilation, col_dilation, padding, explicit_paddings,
+                         output, data_format);
+    } else {
+      LaunchGeneric<CPUDevice, T>()(ctx, input, filter, row_stride, col_stride,
+                                    row_dilation, col_dilation, padding,
+                                    explicit_paddings, output, data_format);
+    }
   }
 };
 

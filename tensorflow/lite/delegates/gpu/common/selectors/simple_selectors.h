@@ -82,9 +82,8 @@ void SelectSpaceToDepth(const SpaceToDepthAttributes& attr,
                         const OperationDef& op_def,
                         std::unique_ptr<GPUOperation>* ptr);
 
-absl::Status SelectSplit(const SplitAttributes& attr,
-                         const OperationDef& op_def,
-                         std::unique_ptr<GPUOperation>* ptr);
+void SelectSplit(const SplitAttributes& attr, const OperationDef& op_def,
+                 std::unique_ptr<GPUOperation>* ptr);
 
 void SelectTranspose(const TransposeAttributes& attr,
                      const OperationDef& op_def,

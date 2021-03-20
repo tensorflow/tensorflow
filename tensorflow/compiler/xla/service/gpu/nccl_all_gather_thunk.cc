@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -38,25 +39,13 @@ namespace gpu {
   return config;
 }
 
-/*static*/ bool NcclAllGatherThunk::CanImplement(const HloInstruction* hlo) {
-  auto operands_are_supported = [hlo]() {
-    return absl::c_all_of(hlo->operands(), [](HloInstruction* operand) {
-      return LayoutUtil::IsDenseArray(operand->shape()) &&
-             IsTypeSupportedByNccl(operand->shape().element_type());
-    });
-  };
-  return (Cast<HloAllGatherInstruction>(hlo)->all_gather_dimension() == 0) &&
-         operands_are_supported();
-}
-
 /*static*/ bool NcclAllGatherThunk::CanImplement(mlir::lmhlo::AllGatherOp op) {
-  bool operands_are_supported =
-      absl::c_all_of(op.operands(), [](mlir::Value operand) {
-        Shape shape = TypeToShape(operand.getType());
-        return LayoutUtil::IsDenseArray(shape) &&
-               IsTypeSupportedByNccl(shape.element_type());
-      });
-  return op.all_gather_dimension() == 0 && operands_are_supported;
+  return absl::c_all_of(op.operands(), [&](mlir::Value operand) {
+    Shape shape = TypeToShape(operand.getType());
+    return LayoutUtil::IsDenseArray(shape) &&
+           IsTypeSupportedByNccl(shape.element_type()) &&
+           LayoutUtil::MinorToMajor(shape).back() == op.all_gather_dimension();
+  });
 }
 
 NcclAllGatherThunk::NcclAllGatherThunk(

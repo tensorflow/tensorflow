@@ -611,6 +611,27 @@ class CallbackList(object):
 class Callback(object):
   """Abstract base class used to build new callbacks.
 
+  Callbacks can be passed to keras methods such as `fit`, `evaluate`, and
+  `predict` in order to hook into the various stages of the model training and
+  inference lifecycle.
+
+  To create a custom callback, subclass `keras.callbacks.Callback` and override
+  the method associated with the stage of interest. See
+  https://www.tensorflow.org/guide/keras/custom_callback for more information.
+
+  Example:
+
+  >>> training_finished = False
+  >>> class MyCallback(tf.keras.callbacks.Callback):
+  ...   def on_train_end(self, logs=None):
+  ...     global training_finished
+  ...     training_finished = True
+  >>> model = tf.keras.Sequential([tf.keras.layers.Dense(1, input_shape=(1,))])
+  >>> model.compile(loss='mean_squared_error')
+  >>> model.fit(tf.constant([[1.0]]), tf.constant([[1.0]]),
+  ...           callbacks=[MyCallback()])
+  >>> assert training_finished == True
+
   Attributes:
       params: Dict. Training parameters
           (eg. verbosity, batch size, number of epochs...).
@@ -2142,7 +2163,6 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     self.embeddings_freq = embeddings_freq
     self.embeddings_metadata = embeddings_metadata
     self._init_profile_batch(profile_batch)
-    self._epoch = 0
     self._global_train_batch = 0
     self._previous_epoch_iterations = 0
     self._train_accumulated_time = 0
@@ -2416,7 +2436,6 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
 
   def on_epoch_begin(self, epoch, logs=None):
     # Keeps track of epoch for profiling.
-    self._epoch = epoch
     if self.write_steps_per_second:
       self._previous_epoch_iterations = self.model.optimizer.iterations.numpy()
       self._train_accumulated_time = 0

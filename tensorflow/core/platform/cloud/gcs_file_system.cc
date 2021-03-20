@@ -770,6 +770,7 @@ GcsFileSystem::GcsFileSystem(bool make_default_cache) {
   uint64 value;
   block_size_ = kDefaultBlockSize;
   size_t max_bytes = kDefaultMaxCacheSize;
+
   uint64 max_staleness = kDefaultMaxStaleness;
 
   http_request_factory_ = std::make_shared<CurlHttpRequest::Factory>();
@@ -959,12 +960,7 @@ Status GcsFileSystem::NewRandomAccessFile(
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
   TF_RETURN_IF_ERROR(CheckBucketLocationConstraint(bucket));
-  bool cache_enabled;
-  {
-    mutex_lock l(block_cache_lock_);
-    cache_enabled = file_block_cache_->IsCacheEnabled();
-  }
-  if (cache_enabled) {
+  if (cache_enabled_) {
     result->reset(new GcsRandomAccessFile(fname, [this, bucket, object](
                                                      const string& fname,
                                                      uint64 offset, size_t n,
@@ -1037,6 +1033,9 @@ std::unique_ptr<FileBlockCache> GcsFileSystem::MakeFileBlockCache(
         return LoadBufferFromGCS(filename, offset, n, buffer,
                                  bytes_transferred);
       }));
+
+  // Check if cache is enabled here to avoid unnecessary mutex contention.
+  cache_enabled_ = file_block_cache->IsCacheEnabled();
   return file_block_cache;
 }
 

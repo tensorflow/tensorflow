@@ -375,6 +375,15 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return %0 : tensor<*xi32>
   }
 
+  // Tests that tensor.cast result shapes are not refined on non-TF types.
+  // CHECK-LABEL: func @tensor_cast_unsupported_dtype
+  func @tensor_cast_unsupported_dtype(%arg0: tensor<10x!quant.uniform<i8<-127:127>:f32, 1.000000e-01>>) -> (tensor<*x!quant.uniform<i8<-127:127>:f32, 1.000000e-01>>) {
+    // CHECK: tensor.cast
+    // CHECK-SAME: tensor<10x!quant.uniform<i8<-127:127>:f32, 1.000000e-01>> to tensor<*x!quant.uniform<i8<-127:127>:f32, 1.000000e-01>>
+    %0 = tensor.cast %arg0 : tensor<10x!quant.uniform<i8<-127:127>:f32, 1.000000e-01>> to tensor<*x!quant.uniform<i8<-127:127>:f32, 1.000000e-01>>
+    return %0 : tensor<*x!quant.uniform<i8<-127:127>:f32, 1.000000e-01>>
+  }
+
   // CHECK-LABEL: func @while_variant
   // CHECK-SAME: -> tensor<!tf.variant<tensor<16x1xf32>>>
   func @while_variant(%arg0: tensor<!tf.variant<tensor<16x1xf32>>>) -> tensor<!tf.variant> {
@@ -797,6 +806,24 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return %1 : tensor<*xi32>
   }
 
+  // CHECK-LABEL: func @tensor_cast_dont_infer
+  func @tensor_cast_dont_infer(%arg0: tensor<?xi32>) -> tensor<1xi32> {
+   // CHECK: %[[RESULT:.*]] = tensor.cast
+   // CHECK-SAME: tensor<?xi32> to tensor<1xi32>
+   // CHECK: return %[[RESULT]] : tensor<1xi32>
+    %2 = tensor.cast %arg0 : tensor<?xi32> to tensor<1xi32>
+    return %2 : tensor<1xi32>
+  }
+
+  // CHECK-LABEL: func @tensor_cast_partial_infer
+  func @tensor_cast_partial_infer(%arg0: tensor<?x10xi32>) -> tensor<10x?xi32> {
+   // CHECK: %[[RESULT:.*]] = tensor.cast
+   // CHECK-SAME: tensor<?x10xi32> to tensor<10x10xi32>
+   // CHECK: return %[[RESULT]] : tensor<10x10xi32>
+    %2 = tensor.cast %arg0 : tensor<?x10xi32> to tensor<10x?xi32>
+    return %2 : tensor<10x?xi32>
+  }
+
   // CHECK-LABEL: operand_pack_unranked
   // Verify fix: this only verifies that shape inference runs and completes on
   // this input, rather than refining any shapes.
@@ -1147,6 +1174,15 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %2 = "tf.Identity"(%1) {device = ""} : (tensor<2x2xi32>) -> tensor<2x2xi32>
     // CHECK: SpaceToBatchND{{.*}}-> tensor<4x98x130x128xf32>
     %3 = "tf.SpaceToBatchND"(%arg0, %0, %2) {device = ""} : (tensor<1x192x256x128xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x?x?x128xf32>
+    return
+  }
+
+  // CHECK-LABEL: check_subtyperefinement
+  func @check_subtyperefinement(%arg0 : tensor<1x192x256x128xf32>, %arg1 :  tensor<i32>, %arg2 :  tensor<!tf.variant>) {
+  // CHECK: TensorListReserve
+  // CHECK-SAME: -> tensor<!tf.variant<tensor<!tf.variant>>>
+    %0 = "tf.TensorListReserve"(%arg1, %arg1) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<!tf.variant<tensor<*x!tf.variant>>>
+    %1 = "tf.TensorListSetItem"(%0, %arg1, %arg2) {device = ""} : (tensor<!tf.variant<tensor<*x!tf.variant>>>, tensor<i32>, tensor<!tf.variant>) -> tensor<!tf.variant<tensor<*x!tf.variant>>>
     return
   }
 }

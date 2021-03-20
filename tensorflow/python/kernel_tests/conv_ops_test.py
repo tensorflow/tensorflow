@@ -834,17 +834,21 @@ class Conv2DTest(test.TestCase):
           results[0], results[1], atol=tol_to_use, rtol=tol_to_use)
 
   @test_util.run_in_graph_and_eager_modes
-  @test_util.run_cuda_only
   def testConv2DGroupConvFwd(self):
-    for data_format in ["NHWC", "NCHW"]:
+    if test.is_gpu_available(cuda_only=True):
+      data_formats = ["NHWC", "NCHW"]
+    else:
+      data_formats = ["NHWC"]
+    for data_format in data_formats:
       for dilation in [1, 2]:
         for stride in [1, 2]:
-          self._VerifyGroupConvFwd([10, 32, 32, 16], [3, 3, 4, 8],
-                                   dilations=[dilation, dilation],
-                                   strides=[stride, stride],
-                                   padding="SAME",
-                                   data_format=data_format,
-                                   dtype=dtypes.float32)
+          for filter_dims in [[3, 3, 4, 8], [1, 1, 2, 16]]:
+            self._VerifyGroupConvFwd([10, 32, 32, 16], filter_dims,
+                                     dilations=[dilation, dilation],
+                                     strides=[stride, stride],
+                                     padding="SAME",
+                                     data_format=data_format,
+                                     dtype=dtypes.float32)
 
   @test_util.deprecated_graph_mode_only
   @test_util.run_cuda_only

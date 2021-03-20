@@ -309,7 +309,6 @@ CREATE_CONV2DFUSION_ADD_BCAST_TEST(AddV2);
 REGISTER_TEST_ALL_TYPES(FuseDepthwiseConv2DWithBiasAndActivation);
 #undef REGISTER_TEST
 
-#ifdef ENABLE_MKLDNN_V1
 TEST_F(MklRemapperTest, FuseBatchNormWithRelu) {
   using ::tensorflow::ops::Placeholder;
 
@@ -524,7 +523,6 @@ TEST_F(MklRemapperTest, FuseMatMulWithBiasAddAndAdd) {
   EXPECT_EQ(1, tensors.size());
   test::ExpectClose(tensors_expected[0], tensors[0], 0, 1e-6);
 }
-#endif  // ENABLE_MKLDNN_V1
 
 }  // namespace grappler
 }  // namespace tensorflow

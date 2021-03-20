@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/kernels/lookup_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -144,7 +145,8 @@ class InitializeTableFromTextFileOp : public OpKernel {
     }
     OP_REQUIRES_OK(ctx, lookup::InitializeTableFromTextFile(
                             vocab_filename, vocab_size_, delimiter_, key_index_,
-                            value_index_, offset_, ctx->env(), table));
+                            value_index_, offset_, ctx->env(),
+                            AsGraphDefFunc(vocab_filename_tensor), table));
     if (ctx->track_allocations()) {
       ctx->record_persistent_memory_allocation(table->MemoryUsed() -
                                                memory_used_before);
@@ -152,6 +154,31 @@ class InitializeTableFromTextFileOp : public OpKernel {
   }
 
  private:
+  lookup::InitializableLookupTable::InitializerAsGraphDefFunc AsGraphDefFunc(
+      Tensor vocab_filename) {
+    return [vocab_filename, vocab_size = vocab_size_, delimiter = delimiter_,
+            key_index = key_index_, value_index = value_index_,
+            offset = offset_](GraphDefBuilder* builder, Node* table,
+                              Node** out) {
+      Node* vocab_filename_node =
+          ops::SourceOp("Const", builder->opts()
+                                     .WithAttr("dtype", vocab_filename.dtype())
+                                     .WithAttr("value", vocab_filename));
+      std::string delimiter_string(1, delimiter);
+      Node* import_table = ops::BinaryOp(
+          "InitializeTableFromTextFileV2", table, vocab_filename_node,
+          builder->opts()
+              .WithAttr("vocab_size", vocab_size)
+              .WithAttr("key_index", key_index)
+              .WithAttr("value_index", value_index)
+              .WithAttr("offset", offset)
+              .WithAttr("delimiter", delimiter_string));
+      *out = ops::UnaryOp("Identity", table,
+                          builder->opts().WithControlInput(import_table));
+      return Status::OK();
+    };
+  }
+
   mutex mu_;
   int64 vocab_size_;
   char delimiter_;

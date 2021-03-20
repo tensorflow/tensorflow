@@ -71,13 +71,6 @@ TfLiteStatus InvokeConv(TfLiteTensor* tensors, int tensors_size,
                             registration, output_data);
 }
 
-TfLiteStatus InvokeConv(TfLiteTensor* tensors, int tensors_size,
-                        int output_length, TfLiteConvParams* conv_params,
-                        TfLiteRegistration registration, uint8_t* output_data) {
-  return InvokeConv<uint8_t>(tensors, tensors_size, output_length, conv_params,
-                             registration, output_data);
-}
-
 TfLiteStatus ValidateConvGoldens(TfLiteTensor* tensors, int tensors_size,
                                  const float* expected_output_data,
                                  int output_length,
@@ -96,17 +89,6 @@ TfLiteStatus ValidateConvGoldens(TfLiteTensor* tensors, int tensors_size,
                                  TfLiteRegistration registration,
                                  int8_t* output_data, float tolerance) {
   return ValidateConvGoldens<int8_t>(
-      tensors, tensors_size, expected_output_data, output_length, conv_params,
-      registration, output_data, tolerance);
-}
-
-TfLiteStatus ValidateConvGoldens(TfLiteTensor* tensors, int tensors_size,
-                                 const uint8_t* expected_output_data,
-                                 int output_length,
-                                 TfLiteConvParams* conv_params,
-                                 TfLiteRegistration registration,
-                                 uint8_t* output_data, float tolerance) {
-  return ValidateConvGoldens<uint8_t>(
       tensors, tensors_size, expected_output_data, output_length, conv_params,
       registration, output_data, tolerance);
 }
@@ -135,48 +117,6 @@ TfLiteStatus TestConvFloat(const int* input_dims_data, const float* input_data,
   };
 
   return ValidateConvGoldens(tensors, tensors_size, expected_output_data,
-                             output_dims_count, conv_params, registration,
-                             output_data);
-}
-
-TfLiteStatus TestConvQuantizedPerLayer(
-    const int* input_dims_data, const float* input_data,
-    uint8_t* input_quantized, float input_scale, const int* filter_dims_data,
-    const float* filter_data, uint8_t* filter_quantized, float filter_scale,
-    const int* bias_dims_data, const float* bias_data, int32_t* bias_quantized,
-    const int* output_dims_data, const float* expected_output_data,
-    uint8_t* expected_output_quantized, float output_scale,
-    TfLiteConvParams* conv_params, TfLiteRegistration registration,
-    uint8_t* output_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
-  TfLiteIntArray* filter_dims = IntArrayFromInts(filter_dims_data);
-  TfLiteIntArray* bias_dims = IntArrayFromInts(bias_dims_data);
-  TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
-  const int output_dims_count = ElementCount(*output_dims);
-
-  tflite::Quantize(expected_output_data, expected_output_quantized,
-                   output_dims_count, output_scale, 128);
-
-  constexpr int inputs_size = 3;
-  constexpr int outputs_size = 1;
-  constexpr int tensors_size = inputs_size + outputs_size;
-  TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(input_data, input_quantized, input_dims,
-                            input_scale, 128),
-      CreateQuantizedTensor(filter_data, filter_quantized, filter_dims,
-                            filter_scale, 128),
-      CreateQuantizedBiasTensor(bias_data, bias_quantized, bias_dims,
-                                input_scale, filter_scale),
-      CreateQuantizedTensor(output_data, output_dims, output_scale, 128)};
-
-  float filter_scales[] = {1, filter_scale};
-  int filter_zero_points[] = {1, 128};
-  TfLiteAffineQuantization filter_quant = {FloatArrayFromFloats(filter_scales),
-                                           IntArrayFromInts(filter_zero_points),
-                                           0};
-  tensors[1].quantization = {kTfLiteAffineQuantization, &filter_quant};
-
-  return ValidateConvGoldens(tensors, tensors_size, expected_output_quantized,
                              output_dims_count, conv_params, registration,
                              output_data);
 }

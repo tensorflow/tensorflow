@@ -21,7 +21,6 @@ import collections
 import os
 import numpy as np
 
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import backend as K
@@ -234,21 +233,3 @@ def find_repeated_tokens(vocabulary):
   else:
     return []
 
-
-def assert_same_type(expected_type, values, value_name):
-  """Assert that 'values' is of type 'expected_type'."""
-  if dtypes.as_dtype(expected_type) != dtypes.as_dtype(values.dtype):
-    raise RuntimeError("Expected %s type %s, got %s" %
-                       (value_name, expected_type, values.dtype))
-
-
-def convert_to_ndarray(x, dtype=None):
-  """Convert 'x' to a numpy array."""
-  array = np.array(x) if isinstance(x, (list, tuple)) else x
-  if dtype not in (None, dtypes.string):
-    # If the dtype is an integer, we do permissive casting. This allows
-    # users to examine int32 data if the dtype is int64 without trouble.
-    np_dtype = dtypes.as_dtype(dtype).as_numpy_dtype
-    if np.can_cast(array.dtype, np_dtype):
-      array = array.astype(np_dtype, casting="safe")
-  return array

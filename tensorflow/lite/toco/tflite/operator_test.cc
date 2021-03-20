@@ -738,9 +738,7 @@ TEST_F(OperatorTest, TestShouldExportAsFlexOp) {
   EXPECT_TRUE(ShouldExportAsFlexOp(true, "EluGrad"));
   EXPECT_TRUE(ShouldExportAsFlexOp(true, "RFFT"));
   EXPECT_FALSE(ShouldExportAsFlexOp(true, "MyAwesomeCustomOp"));
-  // While the RandomShuffle op is available on desktop, it is not in the kernel
-  // set available on mobile and should be excluded.
-  EXPECT_FALSE(ShouldExportAsFlexOp(true, "RandomShuffle"));
+  EXPECT_TRUE(ShouldExportAsFlexOp(true, "RandomShuffle"));
 }
 
 TEST_F(OperatorTest, BuiltinMirrorPad) {

@@ -66,7 +66,8 @@ class ConvBuffer1x1 : public GPUOperation {
   };
 
  private:
-  ConvBuffer1x1(const OperationDef& definition, const ConvParams& conv_params);
+  ConvBuffer1x1(const OperationDef& definition, const ConvParams& conv_params,
+                const GpuInfo& gpu_info);
   friend ConvBuffer1x1 CreateConvBuffer1x1(const GpuInfo& gpu_info,
                                            const OperationDef& definition,
                                            const Convolution2DAttributes& attr,
@@ -98,7 +99,7 @@ class ConvBuffer1x1 : public GPUOperation {
 
   std::string GenerateConvBuffer1x1(
       const OperationDef& op_def, const ConvBuffer1x1::ConvParams& conv_params,
-      Arguments* args);
+      const GpuInfo& gpu_info, Arguments* args);
 
   ConvParams conv_params_;
 };

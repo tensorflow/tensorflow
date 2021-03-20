@@ -1270,15 +1270,12 @@ class LayerNormalization(Layer):
 
       inputs = array_ops.reshape(inputs, squeezed_shape)
 
-      def _set_const_tensor(val, dtype, shape):
-        return array_ops.fill(shape, constant_op.constant(val, dtype=dtype))
-
       # self.gamma and self.beta have the wrong shape for fused_batch_norm, so
       # we cannot pass them as the scale and offset parameters. Therefore, we
       # create two constant tensors in correct shapes for fused_batch_norm and
       # later construct a separate calculation on the scale and offset.
-      scale = _set_const_tensor(1.0, self.dtype, [pre_dim])
-      offset = _set_const_tensor(0.0, self.dtype, [pre_dim])
+      scale = array_ops.ones([pre_dim], dtype=self.dtype)
+      offset = array_ops.zeros([pre_dim], dtype=self.dtype)
 
       # Compute layer normalization using the fused_batch_norm function.
       outputs, _, _ = nn.fused_batch_norm(

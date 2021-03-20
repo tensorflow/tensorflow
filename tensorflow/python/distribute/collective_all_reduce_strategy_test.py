@@ -552,6 +552,7 @@ class LogicalDeviceTest(test.TestCase, parameterized.TestCase):
             strategy_combinations.multi_worker_mirrored_2x1_cpu,
             strategy_combinations.multi_worker_mirrored_2x1_gpu,
             strategy_combinations.multi_worker_mirrored_2x2_gpu,
+            strategy_combinations.multi_worker_mirrored_2x2_gpu_no_merge_call,
         ],
         mode=['eager']))
 class CollectiveAllReduceStrategyV2Test(test.TestCase, parameterized.TestCase):

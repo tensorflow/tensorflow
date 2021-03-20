@@ -89,6 +89,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   // later on.
   {
     pm.addPass(CreateTPUClusterFormationPass());
+    pm.addNestedPass<FuncOp>(TFDevice::CreateDeviceAttributeToLaunchPass());
     OpPassManager &func_pm = pm.nest<FuncOp>();
     // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass
     // because DecomposeResourceOpsPass uses pattern rewriter which hoists
@@ -97,6 +98,12 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
     func_pm.addPass(CreateTPUHostComputationExpansionPass());
     func_pm.addPass(CreateTPUUpdateEmbeddingEnqueueOpInputsPass());
   }
+  // TODO(b/173622615): Once OutsideCompilation is represented by launch op and
+  // the remaining passes including Inliner support it, remove this
+  // LaunchToDeviceAttributePass. This LaunchToDeviceAttribute pass needs to
+  // come before TPUClusterCleanupAttributes pass or else the device attribute
+  // will be removed from launch causing an error.
+  pm.addNestedPass<FuncOp>(TFDevice::CreateLaunchToDeviceAttributePass());
 
   // Note that the region-based control-flow produced here still contains
   // function call ops which get inlined by the subsequent inliner pass.

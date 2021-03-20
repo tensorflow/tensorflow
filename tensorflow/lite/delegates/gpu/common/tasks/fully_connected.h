@@ -135,13 +135,21 @@ class FullyConnected : public GPUOperation {
   friend FullyConnected CreateFullyConnected(
       const GpuInfo& gpu_info, const OperationDef& definition,
       const FullyConnectedAttributes& attr);
+  friend FullyConnected CreateFullyConnected(
+      const GpuInfo& gpu_info, const OperationDef& definition,
+      const FullyConnectedInt8Attributes& attr);
 
+  void UploadQuantizedWeights(
+      const tflite::gpu::Tensor<OHWI, DataType::INT8>& weights, float scale,
+      float zero_point);
   template <DataType T>
   void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
                      bool weights_are_buffer);
 
   std::string GetFullyConnectedKernelCode(const OperationDef& op_def,
-                                          const GpuInfo& gpu_info);
+                                          const GpuInfo& gpu_info,
+                                          bool weights_are_buffer,
+                                          bool quantized);
 };
 
 template <DataType T>
@@ -194,6 +202,10 @@ void FullyConnected::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
 FullyConnected CreateFullyConnected(const GpuInfo& gpu_info,
                                     const OperationDef& definition,
                                     const FullyConnectedAttributes& attr);
+
+FullyConnected CreateFullyConnected(const GpuInfo& gpu_info,
+                                    const OperationDef& definition,
+                                    const FullyConnectedInt8Attributes& attr);
 
 }  // namespace gpu
 }  // namespace tflite

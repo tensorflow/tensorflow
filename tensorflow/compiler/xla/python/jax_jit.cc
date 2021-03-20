@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
+#include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -53,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace jax {
 
@@ -110,53 +112,36 @@ void CallSignature::DecRef() const {
 
 namespace {
 
-// These 2 constants are protected by the GIL.
-ABSL_CONST_INIT bool disable_jit_flag = false;
-ABSL_CONST_INIT bool enable_x64_flag = false;
+// Flags, such as JIT disable and the x64 mode, are controlled by:
+// - a global flag value, e.g., associated to --jax_enable_x64
+// - possibly a thread-local value, which initially is absl::nullopt and
+//   overrides the global value if set. The thread-local state is
+//   used to implement context managers that locally override the global state.
+// TODO(phawkins): consider changing the global state to optional types to
+// catch cases where we fail to set it.
+struct GlobalJitState {
+  bool disable_jit = false;
+  bool enable_x64 = false;
+};
 
-ABSL_CONST_INIT thread_local absl::optional<bool> disable_jit_thread_local =
-    absl::nullopt;
-ABSL_CONST_INIT thread_local absl::optional<bool> jax_enable_x64_thread_local =
-    absl::nullopt;
+// Protected by the GIL.
+ABSL_CONST_INIT GlobalJitState global_state;
 
-// The x64 mode is controlled by:
-// - a global flag value, associated to --jax_enable_x64
-// - possibly a thread-local value, which initially is absl::nullopt and which
-//   will default to the flag value as long as it's not set.
-void SetEnableX64Flag(bool jax_enable_x64) { enable_x64_flag = jax_enable_x64; }
-bool GetEnableX64Flag() { return enable_x64_flag; }
-void SetEnableX64ThreadLocal(absl::optional<bool> jax_enable_x64) {
-  jax_enable_x64_thread_local = jax_enable_x64;
-}
-absl::optional<bool> GetEnableX64ThreadLocal() {
-  return jax_enable_x64_thread_local;
-}
+struct ThreadLocalJitState {
+  absl::optional<bool> disable_jit;
+  absl::optional<bool> enable_x64;
+};
 
-void SetDisableJitFlag(bool disable_jit) { disable_jit_flag = disable_jit; }
-bool GetDisableJitFlag() { return disable_jit_flag; }
-void SetDisableJitThreadLocal(absl::optional<bool> disable_jit) {
-  disable_jit_thread_local = disable_jit;
-}
-absl::optional<bool> GetDisableJitThreadLocal() {
-  return disable_jit_thread_local;
-}
+ABSL_CONST_INIT thread_local ThreadLocalJitState thread_local_state;
 
 bool JitIsDisabled() {
-  if (disable_jit_thread_local != absl::nullopt) {
-    return disable_jit_thread_local.value();
-  } else {
-    return disable_jit_flag;
-  }
+  return thread_local_state.disable_jit.value_or(global_state.disable_jit);
 }
 
 }  // namespace
 
 bool GetEnableX64() {
-  if (jax_enable_x64_thread_local != absl::nullopt) {
-    return jax_enable_x64_thread_local.value();
-  } else {
-    return enable_x64_flag;
-  }
+  return thread_local_state.enable_x64.value_or(global_state.enable_x64);
 }
 
 std::string CallSignature::DebugString() const {
@@ -227,6 +212,7 @@ H AbslHashValue(H h, const CallSignature& s) {
 xla::Status ParseArguments(const py::args& args, const py::kwargs& py_kwargs,
                            absl::Span<int const> static_argnums,
                            ParsedArgumentsAsBuffers& arguments) {
+  tensorflow::profiler::TraceMe traceme("ParseArguments");
   if (static_argnums.size() > args.size()) {
     return xla::InvalidArgument(
         "%s", "[jaxjit] Error with static argnums, executing the Python path.");
@@ -285,80 +271,6 @@ xla::Status ParseArguments(const py::args& args, const py::kwargs& py_kwargs,
 
 namespace {
 
-struct NumpyScalarTypes {
-  py::object np_bool;
-  py::object np_int8;
-  py::object np_int16;
-  py::object np_int32;
-  py::object np_int64;
-  py::object np_uint8;
-  py::object np_uint16;
-  py::object np_uint32;
-  py::object np_uint64;
-  py::object np_float16;
-  py::object np_float32;
-  py::object np_float64;
-  py::object np_complex64;
-  py::object np_complex128;
-  py::object np_longlong;
-  py::object np_intc;
-};
-
-const NumpyScalarTypes& GetNumpyScalarTypes() {
-  static const NumpyScalarTypes* singleton = []() {
-    // Use Designated initializers when they are available.
-    const auto numpy = py::module::import("numpy");
-    NumpyScalarTypes* dtypes = new NumpyScalarTypes();
-    dtypes->np_bool = py::object(numpy.attr("bool_"));
-    dtypes->np_int8 = py::object(numpy.attr("int8"));
-    dtypes->np_int16 = py::object(numpy.attr("int16"));
-    dtypes->np_int32 = py::object(numpy.attr("int32"));
-    dtypes->np_int64 = py::object(numpy.attr("int64"));
-    dtypes->np_uint8 = py::object(numpy.attr("uint8"));
-    dtypes->np_uint16 = py::object(numpy.attr("uint16"));
-    dtypes->np_uint32 = py::object(numpy.attr("uint32"));
-    dtypes->np_uint64 = py::object(numpy.attr("uint64"));
-    dtypes->np_float16 = py::object(numpy.attr("float16"));
-    dtypes->np_float32 = py::object(numpy.attr("float32"));
-    dtypes->np_float64 = py::object(numpy.attr("float64"));
-    dtypes->np_complex64 = py::object(numpy.attr("complex64"));
-    dtypes->np_complex128 = py::object(numpy.attr("complex128"));
-    dtypes->np_longlong = py::object(numpy.attr("longlong"));
-    dtypes->np_intc = py::object(numpy.attr("intc"));
-
-    return dtypes;
-  }();
-
-  return *singleton;
-}
-
-const py::dtype* DtypeTo32BitDtype(const py::dtype& dtype) {
-  // TODO(jblespiau): Use GetNumpyScalarTypes instead.
-  static const auto* int64_dt = new py::dtype("int64");
-  static const auto* int32_dt = new py::dtype("int32");
-  static const auto* uint64_dt = new py::dtype("uint64");
-  static const auto* uint32_dt = new py::dtype("uint32");
-  static const auto* float64_dt = new py::dtype("float64");
-  static const auto* float32_dt = new py::dtype("float32");
-  static const auto* complex64_dt = new py::dtype("complex64");
-  static const auto* complex128_dt = new py::dtype("complex128");
-
-  if (dtype.equal(*int64_dt)) {
-    return int32_dt;
-  }
-  if (dtype.equal(*float64_dt)) {
-    return float32_dt;
-  }
-  if (dtype.equal(*uint64_dt)) {
-    return uint32_dt;
-  }
-  if (dtype.equal(*complex128_dt)) {
-    return complex64_dt;
-  }
-
-  return nullptr;
-}
-
 bool IsFloat0(py::array arg) {
   static const auto* dtypes_module =
       new py::module(py::module::import("jax.dtypes"));
@@ -367,29 +279,10 @@ bool IsFloat0(py::array arg) {
   return float0_dtype->is(arg.attr("dtype"));
 }
 
-template <typename CppType, typename Pybind11Type>
-std::unique_ptr<xla::PjRtBuffer> ConvertToScalarBuffer(
-    const py::handle& scalar, xla::PjRtClient* client,
-    xla::PjRtDevice* device) {
-  CppType data = py::cast<Pybind11Type>(scalar);
-  // Work around for https://github.com/pybind/pybind11/issues/2786
-  if (PyErr_Occurred()) {
-    throw py::error_already_set();
-  }
-  xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<CppType>({});
-  return ValueOrThrow(client->BufferFromHostBuffer(
-      &data, shape,
-      xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-      device));
-}
-
-}  // namespace
-
-namespace {
-
 using ToArgSignatureHandler =
     std::function<xla::StatusOr<ArgSignature>(py::handle, bool)>;
-}
+
+}  // namespace
 
 xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
                                                 bool jax_enable_x64) {
@@ -400,7 +293,7 @@ xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
     const auto xla_module = py::module::import("jax.interpreters.xla");
     const auto& device_array = xla_module.attr("_DeviceArray");
 
-    const NumpyScalarTypes& dtypes = GetNumpyScalarTypes();
+    const xla::NumpyScalarTypes& dtypes = xla::GetNumpyScalarTypes();
 
     // The 4 Python native types.
     ToArgSignatureHandler bool_handler =
@@ -409,6 +302,7 @@ xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
     };
     ToArgSignatureHandler int_handler =
         [](py::handle h, bool jax_enable_x64) -> xla::StatusOr<ArgSignature> {
+      // TODO(phawkins): we should consider checking for integer overflow.
       if (jax_enable_x64) {
         return ArgSignature(xla::PrimitiveType::S64, {}, true);
       } else {
@@ -450,7 +344,9 @@ xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
     ToArgSignatureHandler buffer_handler =
         [](py::handle h, bool jax_enable_x64) -> xla::StatusOr<ArgSignature> {
       xla::PyBuffer* buffer = py::cast<xla::PyBuffer*>(h);
-      bool weak_type = py::cast<py::bool_>(h.attr("aval").attr("weak_type"));
+      bool weak_type = buffer->weak_type().has_value()
+                           ? *buffer->weak_type()
+                           : py::cast<bool>(h.attr("aval").attr("weak_type"));
       return ArgSignature(buffer->buffer()->on_device_shape().element_type(),
                           buffer->buffer()->on_device_shape().dimensions(),
                           weak_type);
@@ -476,32 +372,21 @@ xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
             "float0 numpy arrays not supported in C++. "
             "Falling back to Python.");
       }
-      if (!jax_enable_x64) {
-        const py::dtype raw_dtype = numpy_array.dtype();
-        const py::dtype* to_dtype = DtypeTo32BitDtype(raw_dtype);
-
-        xla::PrimitiveType dtype;
-        if (to_dtype) {
-          TF_ASSIGN_OR_RETURN(dtype, xla::DtypeToPrimitiveType(*to_dtype));
-        } else {
-          TF_ASSIGN_OR_RETURN(dtype, xla::DtypeToPrimitiveType(raw_dtype));
-        }
-        // We need the reinterpret_cast for the OSS version to build.
-        return ArgSignature(
-            dtype,
-            absl::MakeConstSpan(
-                reinterpret_cast<const xla::int64*>(numpy_array.shape()),
-                numpy_array.ndim()),
-            /*weak_type=*/false);
-      }
-      TF_ASSIGN_OR_RETURN(auto dtype,
+      TF_ASSIGN_OR_RETURN(xla::PrimitiveType dtype,
                           xla::DtypeToPrimitiveType(numpy_array.dtype()));
-      return ArgSignature(
-          dtype,
-          absl::MakeConstSpan(
-              reinterpret_cast<const xla::int64*>(numpy_array.shape()),
-              numpy_array.ndim()),
-          /*weak_type=*/false);
+      if (!jax_enable_x64) {
+        dtype = xla::Squash64BitTypes(dtype);
+      }
+      // We use reinterpret_cast<> to defend against environments where ssize_t
+      // may not be precisely the same type as int64_t, even if it is the same
+      // size (long vs long long).
+      static_assert(sizeof(int64_t) == sizeof(ssize_t),
+                    "Code assumes ssize_t is the same as int64_t");
+      return ArgSignature(dtype,
+                          absl::MakeConstSpan(reinterpret_cast<const int64_t*>(
+                                                  numpy_array.shape()),
+                                              numpy_array.ndim()),
+                          /*weak_type=*/false);
     };
     const auto numpy = py::module::import("numpy");
     const auto& ndarray = numpy.attr("ndarray");
@@ -546,6 +431,7 @@ xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
     (*p)[dtypes.np_uint32.ptr()] = numpy_array_handler;
     (*p)[dtypes.np_uint64.ptr()] = np_uint64_handler;
     (*p)[dtypes.np_float16.ptr()] = numpy_array_handler;
+    (*p)[dtypes.np_bfloat16.ptr()] = numpy_array_handler;
     (*p)[dtypes.np_float32.ptr()] = numpy_array_handler;
     (*p)[dtypes.np_float64.ptr()] = float_handler;
     (*p)[dtypes.np_complex64.ptr()] = numpy_array_handler;
@@ -577,252 +463,6 @@ xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
 }
 
 namespace {
-using DevicePutFunc = std::function<xla::StatusOr<DevicePutResult>(
-    py::handle, xla::PjRtDevice*, bool, xla::PyClient&)>;
-
-DevicePutResult HandleBool(py::handle h, xla::PjRtDevice* to_device,
-                           bool jax_enable_x64, xla::PyClient& pyclient) {
-  return DevicePutResult(ConvertToScalarBuffer<bool, py::bool_>(
-                             h, pyclient.pjrt_client(), to_device),
-                         /*weak_type=*/true);
-}
-
-DevicePutResult HandleInt(py::handle obj, xla::PjRtDevice* to_device,
-                          bool jax_enable_x64, xla::PyClient& pyclient) {
-  if (jax_enable_x64) {
-    return DevicePutResult(ConvertToScalarBuffer<xla::int64, py::int_>(
-                               obj, pyclient.pjrt_client(), to_device),
-                           /*weak_type=*/true);
-  } else {
-    return DevicePutResult(ConvertToScalarBuffer<int, py::int_>(
-                               obj, pyclient.pjrt_client(), to_device),
-                           /*weak_type=*/true);
-  }
-}
-
-template <bool weak_type>
-xla::StatusOr<DevicePutResult> HandleFloat(py::handle h,
-                                           xla::PjRtDevice* to_device,
-                                           bool jax_enable_x64,
-                                           xla::PyClient& pyclient) {
-  if (jax_enable_x64) {
-    return DevicePutResult(ConvertToScalarBuffer<double, py::float_>(
-                               h, pyclient.pjrt_client(), to_device),
-                           /*weak_type=*/weak_type);
-  } else {
-    return DevicePutResult(ConvertToScalarBuffer<float, py::float_>(
-                               h, pyclient.pjrt_client(), to_device),
-                           /*weak_type=*/weak_type);
-  }
-}
-
-template <bool weak_type>
-xla::StatusOr<DevicePutResult> HandleComplex(py::handle h,
-                                             xla::PjRtDevice* to_device,
-                                             bool jax_enable_x64,
-                                             xla::PyClient& pyclient) {
-  // This branch is also taken  for np.complex128:
-  // isinstance(np.complex128(3), complex) returns True
-  // isinstance(np.complex64(3), complex) returns False
-  Py_complex result = PyComplex_AsCComplex(h.ptr());
-  if (result.real == -1.0 && PyErr_Occurred()) {
-    PyErr_Clear();
-    throw std::runtime_error("Could not convert the complex number");
-  }
-  if (jax_enable_x64) {
-    xla::complex128 data(result.real, result.imag);
-    xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<xla::complex128>({});
-    return DevicePutResult(
-        ValueOrThrow(pyclient.pjrt_client()->BufferFromHostBuffer(
-            &data, shape,
-            xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
-            nullptr, to_device)),
-        /*weak_type=*/weak_type);
-  } else {
-    xla::complex64 data(result.real, result.imag);
-    xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<xla::complex64>({});
-    return DevicePutResult(
-        ValueOrThrow(pyclient.pjrt_client()->BufferFromHostBuffer(
-            &data, shape,
-            xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
-            nullptr, to_device)),
-        /*weak_type=*/weak_type);
-  }
-}
-
-xla::StatusOr<DevicePutResult> HandleDeviceArray(py::handle obj,
-                                                 xla::PjRtDevice* to_device,
-                                                 bool jax_enable_x64,
-                                                 xla::PyClient& pyclient) {
-  if (!py::getattr(obj, "_lazy_expr").is_none()) {
-    return xla::InvalidArgument(
-        "Non-trivial lazy expression not supported in C++. "
-        "Falling back to Python.");
-  }
-  xla::PyBuffer* buffer = py::cast<xla::PyBuffer*>(obj.attr("device_buffer"));
-  bool weak_type = py::cast<py::bool_>(obj.attr("aval").attr("weak_type"));
-  // Same block as in the previous `if (is_py_buffer)`.
-  if (buffer->device().contents == to_device) {
-    return DevicePutResult(buffer->buffer(), weak_type);
-  } else {
-    std::unique_ptr<xla::PjRtBuffer> copied_buffer =
-        ValueOrThrow(buffer->buffer()->CopyToDevice(to_device));
-    return DevicePutResult(std::move(copied_buffer), weak_type);
-  }
-}
-
-// Do not convert types, and only call PjRtBufferFromPyval, independently
-// of the value of jax_enable_x64.
-DevicePutResult HandleBufferFromPyval(py::handle h, xla::PjRtDevice* to_device,
-                                      bool jax_enable_x64,
-                                      xla::PyClient& pyclient) {
-  std::unique_ptr<xla::PjRtBuffer> buffer =
-      ValueOrThrow(pyclient.PjRtBufferFromPyval(
-          h, to_device,
-          /*force_copy=*/false, /*host_buffer_semantics=*/
-          xla::PjRtClient::HostBufferSemantics::kZeroCopy));
-  return DevicePutResult(std::move(buffer), /*weak_type=*/false);
-}
-
-DevicePutResult HandleNpBool(py::handle h, xla::PjRtDevice* to_device,
-                             bool jax_enable_x64, xla::PyClient& pyclient) {
-  if (jax_enable_x64) {
-    return DevicePutResult(ConvertToScalarBuffer<xla::int64, py::int_>(
-                               h, pyclient.pjrt_client(), to_device),
-                           /*weak_type=*/false);
-  } else {
-    return DevicePutResult(ConvertToScalarBuffer<int, py::int_>(
-                               h, pyclient.pjrt_client(), to_device),
-                           /*weak_type=*/false);
-  }
-}
-
-DevicePutResult HandleUint64(py::handle h, xla::PjRtDevice* to_device,
-                             bool jax_enable_x64, xla::PyClient& pyclient) {
-  if (jax_enable_x64) {
-    std::unique_ptr<xla::PjRtBuffer> buffer =
-        ValueOrThrow(pyclient.PjRtBufferFromPyval(
-            h, to_device,
-            /*force_copy=*/false, /*host_buffer_semantics=*/
-            xla::PjRtClient::HostBufferSemantics::kZeroCopy));
-    return DevicePutResult(std::move(buffer), /*weak_type=*/false);
-  } else {
-    static const auto* numpy = new py::module(py::module::import("numpy"));
-    const auto& np_array = numpy->attr("array");
-
-    // Note that this is calling back to Python!
-    std::unique_ptr<xla::PjRtBuffer> buffer =
-        ValueOrThrow(pyclient.PjRtBufferFromPyval(
-            np_array(h, py::dtype("uint32")), to_device,
-            /*force_copy=*/false, /*host_buffer_semantics=*/
-            xla::PjRtClient::HostBufferSemantics::kZeroCopy));
-    return DevicePutResult(std::move(buffer), /*weak_type=*/false);
-  }
-}
-
-xla::StatusOr<DevicePutResult> HandleNdarray(py::handle h,
-                                             xla::PjRtDevice* to_device,
-                                             bool jax_enable_x64,
-                                             xla::PyClient& pyclient) {
-  py::array numpy_array = py::cast<py::array>(h);
-  if (IsFloat0(numpy_array)) {
-    return xla::InvalidArgument("%s",
-                                "float0 numpy arrays not supported in C++. "
-                                "Falling back to Python.");
-  }
-  // If jax_enable_x64 is not set, we need to coerce 32 bits types.
-  // Note that this is calling back to Python!
-  if (!jax_enable_x64) {
-    const py::dtype* to_dtype = DtypeTo32BitDtype(numpy_array.dtype());
-    if (to_dtype) {
-      static const auto* numpy = new py::module(py::module::import("numpy"));
-      const auto& np_array = numpy->attr("array");
-      numpy_array = np_array(numpy_array, *to_dtype);
-    }
-  }
-  std::unique_ptr<xla::PjRtBuffer> buffer =
-      ValueOrThrow(pyclient.PjRtBufferFromPyval(
-          numpy_array, to_device,
-          /*force_copy=*/false, /*host_buffer_semantics=*/
-          xla::PjRtClient::HostBufferSemantics::kZeroCopy));
-  return DevicePutResult(std::move(buffer), /*weak_type=*/false);
-}
-
-}  // namespace
-
-xla::StatusOr<DevicePutResult> DevicePut(pybind11::handle arg,
-                                         xla::PjRtDevice* to_device,
-                                         bool jax_enable_x64,
-                                         xla::PyClient& pyclient) {
-  static const absl::flat_hash_map<PyObject*, DevicePutFunc>* const handlers =
-      [] {
-        auto p = new absl::flat_hash_map<PyObject*, DevicePutFunc>();
-
-        const NumpyScalarTypes& dtypes = GetNumpyScalarTypes();
-
-        const auto numpy = py::module::import("numpy");
-        const auto xla_module = py::module::import("jax.interpreters.xla");
-        const auto& device_array = xla_module.attr("_DeviceArray");
-
-        // Python base types.
-        (*p)[reinterpret_cast<PyObject*>(&PyBool_Type)] = HandleBool;
-        (*p)[reinterpret_cast<PyObject*>(&PyLong_Type)] = HandleInt;
-        (*p)[reinterpret_cast<PyObject*>(&PyFloat_Type)] = HandleFloat<true>;
-        (*p)[reinterpret_cast<PyObject*>(&PyComplex_Type)] =
-            HandleComplex<true>;
-
-        // DeviceArray and co.
-        const auto pxla_module = py::module::import("jax.interpreters.pxla");
-        const auto& sda = pxla_module.attr("ShardedDeviceArray");
-        (*p)[device_array.ptr()] = HandleDeviceArray;
-        (*p)[py::type::handle_of<xla::DeviceArrayBase>().ptr()] =
-            HandleDeviceArray;
-        (*p)[sda.ptr()] = HandleBufferFromPyval;
-        // Numpy arrays.
-        (*p)[numpy.attr("ndarray").ptr()] = HandleNdarray;
-
-        // Numpy scalar types. For some of them, we share the handler with
-        // Python types (np_int64, np_float64, np_complex128).
-        (*p)[dtypes.np_bool.ptr()] = HandleBufferFromPyval;
-        (*p)[dtypes.np_int8.ptr()] = HandleBufferFromPyval;
-        (*p)[dtypes.np_int16.ptr()] = HandleBufferFromPyval;
-        (*p)[dtypes.np_int32.ptr()] = HandleBufferFromPyval;
-        (*p)[dtypes.np_int64.ptr()] = HandleNpBool;
-        (*p)[dtypes.np_uint8.ptr()] = HandleBufferFromPyval;
-        (*p)[dtypes.np_uint16.ptr()] = HandleBufferFromPyval;
-        (*p)[dtypes.np_uint32.ptr()] = HandleBufferFromPyval;
-        (*p)[dtypes.np_uint64.ptr()] = HandleUint64;
-        (*p)[dtypes.np_float16.ptr()] = HandleBufferFromPyval;
-        (*p)[dtypes.np_float32.ptr()] = HandleBufferFromPyval;
-        (*p)[dtypes.np_float64.ptr()] = HandleFloat<false>;
-        (*p)[dtypes.np_complex64.ptr()] = HandleBufferFromPyval;
-        (*p)[dtypes.np_complex128.ptr()] = HandleComplex<false>;
-        (*p)[dtypes.np_longlong.ptr()] = HandleNpBool;
-        (*p)[dtypes.np_intc.ptr()] = HandleBufferFromPyval;
-
-        return p;
-      }();
-
-  auto res = handlers->find(arg.get_type().ptr());
-  if (res == handlers->end()) {
-    for (auto base_class : arg.get_type().attr("mro")()) {
-      res = handlers->find(base_class.ptr());
-      if (res != handlers->end()) {
-        return res->second(arg, to_device, jax_enable_x64, pyclient);
-      }
-    }
-    return xla::InvalidArgument(
-        "%s", absl::StrCat(
-                  "Not supported: The C++ jax jit execution path, only accepts "
-                  "DeviceArray, Numpy arrays scalars of supported types "
-                  "(see implementation), or Python scalars. Got type ",
-                  py::cast<std::string>(py::str(arg.get_type()))));
-  } else {
-    return res->second(arg, to_device, jax_enable_x64, pyclient);
-  }
-}
-
-namespace {
 
 struct CacheEntry {
   std::shared_ptr<xla::PyExecutable> executable;
@@ -831,10 +471,12 @@ struct CacheEntry {
   // returning to Python. No need to convert back and forth.
   // We need py::object to maintain the objects alive.
   std::vector<py::object> out_avals;
+  std::vector<bool> out_weak_types;
+
   // The processing done in `AddCacheEntry` ensures that LazyExpr are stored as
   // `py::none()`.
   std::vector<py::object> out_lazy_exprs;
-  py::object sticky_device;
+  xla::PjRtDevice* sticky_device;
 
   // Ensures a single thread performs the compilation for a given executable.
   //
@@ -863,7 +505,7 @@ class CompiledFunction {
   // (c) call the executable
   // (d) construct `DeviceArray` objects from the outputs
   // (e) reconstruct the `PyTree`.
-  py::object Call(py::args args, py::kwargs kwargs);
+  xla::StatusOr<py::object> Call(py::args args, py::kwargs kwargs);
 
   // This allows `inspect.signature(cpp_jitted_f)` from Python.
   py::object PythonSignature() {
@@ -937,6 +579,7 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
                                  xla::PjRtDevice* default_device,
                                  bool is_committed,
                                  ParsedArgumentsAsBuffers& arguments) {
+  tensorflow::profiler::TraceMe traceme("ConvertArgsToBuffers");
   std::vector<xla::PjRtBuffer*>& arg_buffers = arguments.arg_buffers;
   auto& keep_alive = arguments.keep_alive;
 
@@ -944,10 +587,21 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
   arg_buffers.reserve(num_flat_dynamic_args);
   arguments.signature.dynamic_args_signatures.reserve(num_flat_dynamic_args);
 
-  static const auto* xla_module =
-      new py::module(py::module::import("jax.interpreters.xla"));
-  const auto& device_array = xla_module->attr("_DeviceArray");
+  absl::InlinedVector<xla::PyBuffer*, 4> py_buffers;
+  py_buffers.resize(num_flat_dynamic_args, nullptr);
 
+  struct PythonTypes {
+    py::object device_array;
+    py::object py_buffer_type;
+  };
+  static const auto& types = *[]() -> PythonTypes* {
+    py::module xla_module(py::module::import("jax.interpreters.xla"));
+    py::object device_array(xla_module.attr("_DeviceArray"));
+    py::object py_buffer_type = py::reinterpret_borrow<py::object>(
+        py::type::handle_of<xla::PyBuffer>());
+
+    return new PythonTypes{device_array, py_buffer_type};
+  }();
   // When the jitted function is not committed, we first check whether any
   // sticky `DeviceArray` is present and on which device they live. See also:
   // https://github.com/google/jax/pull/1884
@@ -958,18 +612,27 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
   if (is_committed) {
     data_device = default_device;
   } else {
-    for (py::handle arg : arguments.flat_dynamic_args) {
+    for (int i = 0; i < num_flat_dynamic_args; ++i) {
+      py::handle arg = arguments.flat_dynamic_args[i];
       // We specically only deal with DeviceArray (not ShardedDeviceArray).
       // (Can happen in jit(pmap), e.g. "test_jit_nested_donate_ignored").
-      if (py::isinstance<xla::PyBuffer>(arg) ||
-          arg.get_type().is(device_array)) {
-        xla::PyBuffer* buffer;
+      xla::PjRtDevice* device = nullptr;
+      if (arg.get_type().ptr() == types.py_buffer_type.ptr()) {
+        xla::PyBuffer* buffer = py::cast<xla::PyBuffer*>(arg);
+        py_buffers[i] = buffer;
+        if (!buffer->sticky_device()) {
+          continue;
+        }
+        device = buffer->sticky_device();
+      } else if (arg.get_type().ptr() == types.device_array.ptr()) {
         if (arg.attr("_device").is_none()) {  // Skip non-sticky devices.
           continue;
         }
         try {
-          // This can fail, e.g. when device_buffer is a `DeviceConstant`.
-          buffer = py::cast<xla::PyBuffer*>(arg.attr("device_buffer"));
+          // This can fail, e.g. for cloud TPU 2VM buffers.
+          xla::PyBuffer* buffer =
+              py::cast<xla::PyBuffer*>(arg.attr("device_buffer"));
+          device = buffer->buffer()->device();
         } catch (const py::cast_error& e) {
           return xla::InvalidArgument(
               "%s",
@@ -981,7 +644,8 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
 
                            ));
         }
-        xla::PjRtDevice* device = buffer->buffer()->device();
+      }
+      if (device) {
         if (data_device && (device != data_device)) {
           throw std::invalid_argument(absl::StrCat(
               "primitive arguments must be colocated on the same device ("
@@ -1000,14 +664,23 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
   CHECK(data_device);
   arguments.signature.device = data_device;
 
-  for (py::handle arg : arguments.flat_dynamic_args) {
-    TF_ASSIGN_OR_RETURN(DevicePutResult on_device,
-                        DevicePut(arg, data_device, jax_enable_x64, pyclient));
+  xla::DevicePutOptions options;
+  options.squash_64bit_types = !jax_enable_x64;
+  // TODO(phawkins): consider allowing forces here.
+  options.force_lazy_arrays = false;
+  options.allow_zero_copy = true;
+  for (int i = 0; i < num_flat_dynamic_args; ++i) {
+    py::handle arg = arguments.flat_dynamic_args[i];
+    TF_ASSIGN_OR_RETURN(xla::DevicePutResult on_device,
+                        DevicePut(arg, data_device, options, py_buffers[i]));
 
     xla::PjRtBuffer* buffer = on_device.buffer;
     arg_buffers.push_back(buffer);
     if (on_device.owned_buffer) {
-      keep_alive.emplace_back(std::move(on_device.owned_buffer));
+      keep_alive.push_back(std::move(on_device.owned_buffer));
+    } else if (on_device.owning_pybuffer) {
+      arguments.keep_alive_objects.push_back(
+          std::move(on_device.owning_pybuffer));
     }
 
     ArgSignature sig(buffer->on_device_shape().element_type(),
@@ -1077,18 +750,21 @@ CacheEntry* CompiledFunction::AddCacheEntry(const py::args& args,
   cache_entry->out_pytree_def = std::move(out_tree);
 
   cache_entry->sticky_device =
-      py::cast<py::object>(executable_handlers_out_tree[2]);
+      py::cast<xla::PjRtDevice*>(executable_handlers_out_tree[2]);
   auto avals = py::cast<py::list>(executable_handlers_out_tree[3]);
   auto lazy_exprs = py::cast<py::list>(executable_handlers_out_tree[4]);
   CHECK_EQ(avals.size(), lazy_exprs.size());
 
   cache_entry->out_avals.reserve(avals.size());
+  cache_entry->out_weak_types.reserve(avals.size());
   cache_entry->out_lazy_exprs.reserve(avals.size());
   for (int i = 0; i < avals.size(); ++i) {
     py::object shaped_array = py::reinterpret_borrow<py::object>(avals[i]);
     py::object lazy_expr = py::reinterpret_borrow<py::object>(lazy_exprs[i]);
 
     cache_entry->out_avals.push_back(shaped_array);
+    cache_entry->out_weak_types.push_back(
+        py::cast<bool>(shaped_array.attr("weak_type")));
     cache_entry->out_lazy_exprs.push_back(lazy_expr);
   }
 
@@ -1096,12 +772,13 @@ CacheEntry* CompiledFunction::AddCacheEntry(const py::args& args,
   return cache_entry;
 }
 
-py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
+xla::StatusOr<py::object> CompiledFunction::Call(py::args args,
+                                                 py::kwargs kwargs) {
   if (JitIsDisabled()) {
     return fun_(*args, **kwargs);
   }
   if (always_fallback_to_python_) {
-    return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
+    return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
   }
   // Delayed values are retrieved on the first call to `Call`.
   if (!default_device_) {
@@ -1120,13 +797,15 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
         } catch (const py::cast_error& e) {
           // Pathways and Cloud TPU 2VM runtime.
           always_fallback_to_python_ = true;
-          return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
+          return py::object(
+              py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
         }
         default_pyclient_ = default_pydevice_.client;
         default_device_ = default_pydevice_.contents;
         if (!default_device_) {  // UPTC
           always_fallback_to_python_ = true;
-          return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
+          return py::object(
+              py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
         }
         is_committed_ =
             py::cast<bool>(device_and_is_committed.attr("committed_to_device"));
@@ -1137,7 +816,7 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
 
   ParsedArgumentsAsBuffers arguments;
   if (!ParseArguments(args, kwargs, static_argnums_, arguments).ok()) {
-    return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
+    return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
   }
 
   bool jax_enable_x64 = GetEnableX64();
@@ -1147,7 +826,7 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
   if (!ConvertArgsToBuffers(jax_enable_x64, *default_pyclient_, default_device_,
                             is_committed_, arguments)
            .ok()) {
-    return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
+    return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
   }
 
   CacheEntry* cache_entry = GetCacheEntryIfPresent(arguments.signature);
@@ -1161,39 +840,41 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
     }
     CHECK(cache_entry);
     if (cache_entry->fall_back_to_python) {
-      return py::cast<py::tuple>(out_and_fastpath_data)[0];
+      return py::object(py::cast<py::tuple>(out_and_fastpath_data)[0]);
     }
     // As we have already computed the results, we can return it.
     // It's even *required* e.g. if there are donated arguments, because
     // otherwise the buffer which has been donated already will be invalid.
-    return py::cast<py::tuple>(out_and_fastpath_data)[0];
+    return py::object(py::cast<py::tuple>(out_and_fastpath_data)[0]);
   }
   CHECK(cache_entry);
   if (cache_entry->fall_back_to_python) {
-    return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
+    return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
   }
   std::vector<std::unique_ptr<xla::PyBuffer>> outputs =
       ValueOrThrow(cache_entry->executable->PjRtExecute(arguments.arg_buffers));
 
-  const std::vector<py::object>& out_avals = cache_entry->out_avals;
   const std::vector<py::object>& out_lazy_exprs = cache_entry->out_lazy_exprs;
-  const py::object& sticky_device = cache_entry->sticky_device;
+  xla::PjRtDevice* sticky_device = cache_entry->sticky_device;
 
-  py::list flat_device_arrays;
+  std::vector<py::object> flat_device_arrays;
+  flat_device_arrays.reserve(outputs.size());
   for (int i = 0; i < outputs.size(); ++i) {
     auto& buffer = outputs[i];
     if (out_lazy_exprs[i].is_none()) {  // No LazyExpr.
-      buffer->SetAval(out_avals[i]);
-      buffer->SetStickyDevice(sticky_device);
-      flat_device_arrays.append(py::cast(std::move(outputs[i])));
+      buffer->SetAval(cache_entry->out_avals[i]);
+      buffer->set_weak_type(cache_entry->out_weak_types[i]);
+      TF_RETURN_IF_ERROR(buffer->set_sticky_device(sticky_device));
+      flat_device_arrays.push_back(py::cast(std::move(outputs[i])));
     } else {
       static const auto* xla_module =
           new py::module(py::module::import("jax.interpreters.xla"));
       static const auto* device_array =
           new py::handle(xla_module->attr("_DeviceArray"));
-      flat_device_arrays.append(
-          (*device_array)(out_avals[i], sticky_device, out_lazy_exprs[i],
-                          py::cast(std::move(outputs[i]))));
+      flat_device_arrays.push_back((*device_array)(
+          cache_entry->out_avals[i],
+          py::cast(WrapWithClient(default_pyclient_, sticky_device)),
+          out_lazy_exprs[i], py::cast(std::move(outputs[i]))));
     }
   }
   return cache_entry->out_pytree_def.Unflatten(flat_device_arrays);
@@ -1210,20 +891,58 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
   cfun.def_property_readonly("__signature__",
                              &CompiledFunction::PythonSignature);
 
-  jitlib.def("set_disable_jit_cpp_flag", &SetDisableJitFlag);
-  jitlib.def("get_disable_jit_cpp_flag", &GetDisableJitFlag);
-  jitlib.def("set_disable_jit_thread_local", &SetDisableJitThreadLocal);
-  jitlib.def("get_disable_jit_thread_local", &GetDisableJitThreadLocal);
-  jitlib.def("jit_is_disabled", &JitIsDisabled);
-  // TODO(jblespiau): Remove from the Python code and remove this
-  jitlib.def("set_disable_jit", &SetDisableJitThreadLocal);
-  jitlib.def("get_disable_jit", &GetDisableJitThreadLocal);
+  py::class_<GlobalJitState> global_state_(jitlib, "GlobalJitState");
+  global_state_.def_readwrite("disable_jit", &GlobalJitState::disable_jit);
+  global_state_.def_readwrite("enable_x64", &GlobalJitState::enable_x64);
 
-  jitlib.def("set_enable_x64_cpp_flag", &SetEnableX64Flag);
-  jitlib.def("get_enable_x64_cpp_flag", &GetEnableX64Flag);
-  jitlib.def("set_enable_x64_thread_local", &SetEnableX64ThreadLocal);
-  jitlib.def("get_enable_x64_thread_local", &GetEnableX64ThreadLocal);
+  py::class_<ThreadLocalJitState> thread_local_state_(jitlib,
+                                                      "ThreadLocalJitState");
+  thread_local_state_.def_readwrite("disable_jit",
+                                    &ThreadLocalJitState::disable_jit);
+  thread_local_state_.def_readwrite("enable_x64",
+                                    &ThreadLocalJitState::enable_x64);
+
+  jitlib.def(
+      "global_state", [&]() { return &global_state; },
+      py::return_value_policy::reference);
+  jitlib.def(
+      "thread_local_state", [&]() { return &thread_local_state; },
+      py::return_value_policy::reference);
+
+  jitlib.def("jit_is_disabled", &JitIsDisabled);
   jitlib.def("get_enable_x64", &GetEnableX64);
+
+  // TODO(phawkins): delete the following methods after dropping compatibility
+  // with JAX python versions older than 0.2.10.
+  jitlib.def("set_disable_jit_cpp_flag",
+             [&](bool disable_jit) { global_state.disable_jit = disable_jit; });
+  jitlib.def("get_disable_jit_cpp_flag",
+             [&]() { return global_state.disable_jit; });
+  jitlib.def("set_disable_jit_thread_local",
+             [&](absl::optional<bool> disable_jit) {
+               thread_local_state.disable_jit = disable_jit;
+             });
+  jitlib.def("get_disable_jit_thread_local",
+             [&]() { return thread_local_state.disable_jit; });
+  // TODO(jblespiau): Remove from the Python code and remove this
+  jitlib.def("set_disable_jit", [&](bool disable_jit) {
+    thread_local_state.disable_jit = disable_jit;
+  });
+  jitlib.def("get_disable_jit",
+             [&]() { return thread_local_state.disable_jit; });
+
+  jitlib.def("set_enable_x64_cpp_flag",
+             [&](bool enable_x64) { global_state.enable_x64 = enable_x64; });
+  jitlib.def("get_enable_x64_cpp_flag",
+             [&]() { return global_state.enable_x64; });
+  jitlib.def("set_enable_x64_thread_local",
+             [&](absl::optional<bool> enable_x64) {
+               thread_local_state.enable_x64 = enable_x64;
+             });
+  jitlib.def("get_enable_x64_thread_local", [&](bool enable_x64) {
+    thread_local_state.enable_x64 = enable_x64;
+  });
+  // TODO(phawkins): delete up to here.
 
   jitlib.def(
       "jit",
@@ -1234,35 +953,43 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
             std::move(static_argnums));
       });
 
-  // This function is yet a full replacement for the Python one, because:
+  // This function is not yet a full replacement for the Python one, because:
   // (a) it does not support abstract types,
   // (b) it does not set the device stickiness yet.
   // TODO(jblespiau): Finish the replacement of the Python feature.
-  jitlib.def("device_put", [](py::handle obj, bool jax_enable_x64,
-                              xla::ClientAndPtr<xla::PjRtDevice> to_device) {
-    std::shared_ptr<xla::PyClient>& pyclient = to_device.client;
-    xla::StatusOr<DevicePutResult> results =
-        DevicePut(obj, to_device.contents, jax_enable_x64, *pyclient);
-    if (!results.ok()) {
-      throw std::runtime_error(results.status().error_message());
-    }
-    if (results->owned_buffer) {
-      auto buffer = std::make_unique<xla::PyBuffer>(
-          pyclient, std::move(results->owned_buffer), xla::Traceback::Get());
+  jitlib.def("device_put",
+             [](py::handle obj, bool jax_enable_x64,
+                xla::ClientAndPtr<xla::PjRtDevice> to_device)
+                 -> xla::StatusOr<py::object> {
+               std::shared_ptr<xla::PyClient>& pyclient = to_device.client;
+               xla::DevicePutOptions options;
+               options.squash_64bit_types = !jax_enable_x64;
+               options.force_lazy_arrays = true;
+               options.allow_zero_copy = true;
+               xla::StatusOr<xla::DevicePutResult> results =
+                   DevicePut(obj, to_device.contents, options);
+               if (!results.ok()) {
+                 throw std::runtime_error(results.status().error_message());
+               }
+               if (results->owned_buffer) {
+                 auto buffer = std::make_unique<xla::PyBuffer>(
+                     pyclient, std::move(results->owned_buffer),
+                     xla::Traceback::Get());
 
-      static const auto* jax_core =
-          new py::module(py::module::import("jax.core"));
-      static const auto* shaped_array =
-          new py::handle(jax_core->attr("ShapedArray"));
-      buffer->SetAval((*shaped_array)(
-          buffer->python_shape(), buffer->python_dtype(), results->weak_type));
-      buffer->SetStickyDevice(py::none());
+                 static const auto* jax_core =
+                     new py::module(py::module::import("jax.core"));
+                 static const auto* shaped_array =
+                     new py::handle(jax_core->attr("ShapedArray"));
+                 buffer->SetAval((*shaped_array)(buffer->python_shape(),
+                                                 buffer->python_dtype(),
+                                                 results->weak_type));
+                 TF_RETURN_IF_ERROR(buffer->set_sticky_device(nullptr));
 
-      return py::cast(std::move(buffer));
-    } else {
-      return py::cast<py::object>(obj);
-    }
-  });
+                 return py::cast(std::move(buffer));
+               } else {
+                 return py::cast<py::object>(obj);
+               }
+             });
 
   py::class_<ArgSignature> arg_signature(jitlib, "ArgSignature");
   arg_signature
@@ -1279,15 +1006,6 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
 
   // All private members are only for testing purposes
   cfun.def("_cache_size", &CompiledFunction::cache_size);
-  jitlib.def("_DtypeTo32BitDtype", [](const py::object obj) -> py::object {
-    py::dtype dtype = py::dtype::from_args(obj);
-    const py::dtype* res = DtypeTo32BitDtype(dtype);
-    if (res) {
-      return *res;
-    } else {
-      return py::none();
-    }
-  });
   jitlib.def("_is_float0", &IsFloat0);
 }
 

@@ -27,15 +27,11 @@ export OS_TYPE="UBUNTU"
 export CONTAINER_TYPE="CPU"
 export TF_PYTHON_VERSION='python3.7'
 
-# Run configure.
-export PYTHON_BIN_PATH=$(which ${TF_PYTHON_VERSION})
-yes "" | "$PYTHON_BIN_PATH" configure.py
-
 # Get the default test targets for bazel.
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
 # Export optional variables for running pip.sh
-export TF_BUILD_FLAGS="--config=release_cpu_linux"
+export TF_BUILD_FLAGS="--config=release_cpu_linux --repo_env=PYTHON_BIN_PATH="$(which ${TF_PYTHON_VERSION})""
 export TF_TEST_FLAGS="--define=no_tensorflow_py_deps=true --test_lang_filters=py --test_output=errors --verbose_failures=true --keep_going --test_env=TF2_BEHAVIOR=1"
 export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/... "
 export TF_PIP_TESTS="test_pip_virtualenv_non_clean test_pip_virtualenv_clean"

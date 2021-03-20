@@ -44,9 +44,9 @@ class GpuVirtualMemAllocator : public SubAllocator {
       std::unique_ptr<GpuVirtualMemAllocator>>
   Create(const std::vector<Visitor>& alloc_visitors,
          const std::vector<Visitor>& free_visitors,
-         stream_executor::gpu::GpuContext& gpu_context, PlatformGpuId gpu_id,
+         stream_executor::gpu::GpuContext& gpu_context, PlatformDeviceId gpu_id,
          size_t virtual_address_space_size,
-         const std::vector<PlatformGpuId>& peer_gpu_ids);
+         const std::vector<PlatformDeviceId>& peer_gpu_ids);
   ~GpuVirtualMemAllocator() override;
 
   // Allocates memory at least as large as requested by num_bytes. Will be
@@ -74,12 +74,12 @@ class GpuVirtualMemAllocator : public SubAllocator {
   GpuVirtualMemAllocator(
       const std::vector<Visitor>& alloc_visitors,
       const std::vector<Visitor>& free_visitors,
-      stream_executor::gpu::GpuContext& gpu_context, PlatformGpuId gpu_id,
+      stream_executor::gpu::GpuContext& gpu_context, PlatformDeviceId gpu_id,
       std::vector<stream_executor::gpu::GpuDeviceHandle> access_device_handles,
       stream_executor::gpu::GpuDriver::VmemSpan vmem, size_t granularity);
 
   stream_executor::gpu::GpuContext& gpu_context_;
-  PlatformGpuId gpu_id_;
+  PlatformDeviceId gpu_id_;
 
   // Peer access is configured at mmap time so the allocator must be aware of
   // all gpus that may want to read the memory. This list also includes the

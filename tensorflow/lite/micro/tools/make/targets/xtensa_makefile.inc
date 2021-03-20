@@ -9,6 +9,7 @@
 #      For example: hifimini
 
 TARGET_ARCH :=
+XTENSA_USE_LIBC :=
 
 ifndef XTENSA_BASE
   $(error XTENSA_BASE is undefined)
@@ -49,11 +50,23 @@ TARGET_TOOLCHAIN_PREFIX := xt-
 CXX_TOOL := clang++
 CC_TOOL := clang
 
+# Unused exception related symbols make their way into a binary that links
+# against TFLM as described in https://github.com/tensorflow/tensorflow/issues/47575.
+# We have two options to avoid this. The first involves using -stdlib=libc++ and
+# the second involves stubbing out and modifying some of the files in the Xtensa
+# toolchain to prevent inclusion of the exception handling code
+# (http://b/182209217#comment3). This Makefile supports building TFLM in a way
+# that is compatible with either of the two approaches.
+ifeq ($(XTENSA_USE_LIBC), true)
+  PLATFORM_FLAGS += -stdlib=libc++
+else
+  # TODO(b/150240249): Do not filter-out -fno-rtti once that works for the
+  # Xtensa toolchain.
+  CXXFLAGS := $(filter-out -fno-rtti, $(CXXFLAGS))
+endif
+
 CXXFLAGS += $(PLATFORM_FLAGS)
 CCFLAGS += $(PLATFORM_FLAGS)
-
-# TODO(b/150240249): Do not remove -fno-rtti once that works for the Xtensa toolchain.
-CXXFLAGS := $(filter-out -fno-rtti, $(CXXFLAGS))
 
 TEST_SCRIPT := tensorflow/lite/micro/testing/test_xtensa_binary.sh
 

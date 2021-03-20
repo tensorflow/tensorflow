@@ -54,9 +54,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTFKernelToLLVMPass(
 // using memref descriptors.
 std::unique_ptr<OperationPass<ModuleOp>> CreateShapeToDescriptorsPass();
 
-// Pass to tranform hlo-level computations on values to their corresponding
-// parts on buffers.
-std::unique_ptr<OperationPass<ModuleOp>> CreateHloBufferizePass();
+// Pass to tranform compute computations (hlo and linalg) on values to their
+// corresponding counterparts on buffers. Also bufferizes function signatures.
+std::unique_ptr<OperationPass<ModuleOp>> CreateComputeOpAndFuncBufferizePass();
 
 // Pass to tranform computations on values to their corresponding parts on
 // buffers.
@@ -95,6 +95,9 @@ CreateGpuKernelToNvvmPass();
 /// Pass that transforms gpu modules in standard dialect to ROCDL.
 std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
 CreateGpuKernelToRocdlPass();
+
+// Pass to simplify shape ops.
+std::unique_ptr<FunctionPass> CreateShapeSimplification();
 
 }  // namespace transforms
 

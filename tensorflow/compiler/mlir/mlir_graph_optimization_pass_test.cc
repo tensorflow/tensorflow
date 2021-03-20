@@ -32,12 +32,14 @@ class MockMlirOptimizationPass : public MlirOptimizationPass {
   // MOCK_METHOD does not work on Windows build, using MOCK_CONST_METHODX
   // instead.
   MOCK_CONST_METHOD0(name, llvm::StringRef());
-  MOCK_CONST_METHOD3(GetPassState,
-                     MlirOptimizationPassState(const DeviceSet* device_set,
-                                               const ConfigProto& config_proto,
-                                               const Graph& graph));
-  MOCK_METHOD3(Run, Status(const ConfigProto& config_proto,
-                           mlir::ModuleOp module, const Graph& graph));
+  MOCK_CONST_METHOD4(GetPassState,
+                     MlirOptimizationPassState(
+                         const DeviceSet* device_set,
+                         const ConfigProto& config_proto, const Graph& graph,
+                         const FunctionLibraryDefinition& function_library));
+  MOCK_METHOD4(Run, Status(const ConfigProto& config_proto,
+                           mlir::ModuleOp module, const Graph& graph,
+                           const FunctionLibraryDefinition& function_library));
 };
 
 class MockMlirV1CompatOptimizationPass : public MlirV1CompatOptimizationPass {
@@ -45,10 +47,11 @@ class MockMlirV1CompatOptimizationPass : public MlirV1CompatOptimizationPass {
   // MOCK_METHOD does not work on Windows build, using MOCK_CONST_METHODX
   // instead.
   MOCK_CONST_METHOD0(name, llvm::StringRef());
-  MOCK_CONST_METHOD3(GetPassState,
-                     MlirOptimizationPassState(const DeviceSet* device_set,
-                                               const ConfigProto& config_proto,
-                                               const Graph& graph));
+  MOCK_CONST_METHOD4(GetPassState,
+                     MlirOptimizationPassState(
+                         const DeviceSet* device_set,
+                         const ConfigProto& config_proto, const Graph& graph,
+                         const FunctionLibraryDefinition& function_library));
   MOCK_METHOD2(Run, Status(const GraphOptimizationPassOptions& options,
                            mlir::ModuleOp module));
 };
@@ -59,15 +62,17 @@ class ModifyMlirModulePass : public MlirOptimizationPass {
   // MOCK_METHOD does not work on Windows build, using MOCK_CONST_METHODX
   // instead.
   MOCK_CONST_METHOD0(name, llvm::StringRef());
-  MOCK_CONST_METHOD3(GetPassState,
-                     MlirOptimizationPassState(const DeviceSet* device_set,
-                                               const ConfigProto& config_proto,
-                                               const Graph& graph));
+  MOCK_CONST_METHOD4(GetPassState,
+                     MlirOptimizationPassState(
+                         const DeviceSet* device_set,
+                         const ConfigProto& config_proto, const Graph& graph,
+                         const FunctionLibraryDefinition& function_library));
 
   // Just modify MLIR module so that we can check whether original TF graph
   // has changed or not.
   Status Run(const ConfigProto& config_proto, mlir::ModuleOp module,
-             const Graph& graph) override {
+             const Graph& graph,
+             const FunctionLibraryDefinition& function_library) override {
     mlir::Builder b(module.getContext());
     auto producer = b.getNamedAttr("producer", b.getI32IntegerAttr(0));
     auto min_consumer = b.getNamedAttr("min_consumer", b.getI32IntegerAttr(0));
@@ -95,9 +100,9 @@ class MlirGraphOptimizationPassTest : public Test {
       auto optimization_pass =
           std::make_unique<NiceMock<MockMlirOptimizationPass>>();
 
-      ON_CALL(*optimization_pass, GetPassState(_, _, _))
+      ON_CALL(*optimization_pass, GetPassState(_, _, _, _))
           .WillByDefault(Return(pass_state));
-      ON_CALL(*optimization_pass, Run(_, _, _))
+      ON_CALL(*optimization_pass, Run(_, _, _, _))
           .WillByDefault(Return(pass_run_result));
       MlirOptimizationPassRegistry::Global().Add(pass_priority++,
                                                  std::move(optimization_pass));
@@ -111,7 +116,7 @@ class MlirGraphOptimizationPassTest : public Test {
     // Add FallbackEnabled pass that modifies the graph.
     auto optimization_pass =
         std::make_unique<NiceMock<ModifyMlirModulePass>>(run_status);
-    ON_CALL(*optimization_pass, GetPassState(_, _, _))
+    ON_CALL(*optimization_pass, GetPassState(_, _, _, _))
         .WillByDefault(Return(pass_state));
     MlirOptimizationPassRegistry::Global().Add(10,
                                                std::move(optimization_pass));
