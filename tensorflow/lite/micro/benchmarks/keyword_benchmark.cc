@@ -96,4 +96,6 @@ int main(int argc, char** argv) {
   tflite::KeywordRunNIerations(10, "KeywordRunNIerations(10)",
                                *benchmark_runner, profiler);
   MicroPrintf("");  // null MicroPrintf serves as a newline.
+
+  benchmark_runner->PrintAllocations();
 }
