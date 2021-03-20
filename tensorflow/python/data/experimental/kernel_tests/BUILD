@@ -168,7 +168,6 @@ tf_py_test(
     size = "small",
     srcs = ["data_service_ops_ft_test.py"],
     shard_count = 10,
-    srcs_version = "PY3",
     deps = [
         ":data_service_test_base",
         "//tensorflow:tensorflow_py",
@@ -188,7 +187,6 @@ tf_py_test(
     size = "medium",
     srcs = ["data_service_ops_test.py"],
     shard_count = 10,
-    srcs_version = "PY3",
     tags = [
         "notsan",  # TODO(b/180454113)
     ],
@@ -222,6 +220,7 @@ tf_py_test(
     name = "dense_to_ragged_batch_test",
     size = "small",
     srcs = ["dense_to_ragged_batch_test.py"],
+    shard_count = 4,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
