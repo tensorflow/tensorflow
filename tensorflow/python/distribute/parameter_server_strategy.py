@@ -536,19 +536,8 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
     """Select any single value in `structured`."""
 
     def _select_fn(x):  # pylint: disable=g-missing-docstring
-      if isinstance(x, values.Mirrored):
-        if len(x._devices) == 1:  # pylint: disable=protected-access
-          return x._primary  # pylint: disable=protected-access
-        else:
-          raise ValueError(
-              "You cannot update variable with a Mirrored object with multiple "
-              "components %r when using ParameterServerStrategy. You must "
-              "specify a single value or a Mirrored with a single value." % x)
-      elif isinstance(x, values.PerReplica):
-        raise ValueError(
-            "You cannot update variable with a PerReplica object %r when using "
-            "ParameterServerStrategy. You must specify a single value or a "
-            "Mirrored with a single value" % x)
+      if isinstance(x, values.Mirrored) or isinstance(x, values.PerReplica):
+        return x._primary  # pylint: disable=protected-access
       else:
         return x
 

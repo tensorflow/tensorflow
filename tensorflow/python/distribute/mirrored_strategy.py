@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import copy
 
+from tensorflow.python import tf2
 from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import cross_device_utils
@@ -276,6 +277,8 @@ class MirroredStrategy(distribute_lib.Strategy):
   # Only set this in tests.
   _collective_key_base = 0
 
+  _use_merge_call = True
+
   def __init__(self, devices=None, cross_device_ops=None):
     extended = MirroredExtended(
         self, devices=devices, cross_device_ops=cross_device_ops)
@@ -291,6 +294,8 @@ class MirroredStrategyV1(distribute_lib.StrategyV1):  # pylint: disable=g-missin
 
   # Only set this in tests.
   _collective_key_base = 0
+
+  _use_merge_call = True
 
   def __init__(self, devices=None, cross_device_ops=None):
     extended = MirroredExtended(
@@ -329,6 +334,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     assert devices, ("Got an empty `devices` list and unable to recognize "
                      "any local devices.")
     self._cross_device_ops = cross_device_ops
+    self._use_merge_call = container_strategy._use_merge_call
+    if not self._use_merge_call:
+      self._prefer_collective_ops = True
+
     if self._prefer_collective_ops:
       self._communication_options = collective_util.Options(
           implementation=collective_util.CommunicationImplementation.NCCL)
@@ -697,7 +706,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     return updated_config
 
   def _get_cross_device_ops(self, value):
-    if self._collective_ops_in_use:
+    if self._collective_ops_in_use and self._use_merge_call:
       if isinstance(value, values.DistributedValues):
         value_int32 = True in {
             dtypes.as_dtype(v.dtype) == dtypes.int32 for v in value.values
@@ -732,7 +741,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         # be 0.
         return cross_device_ops_lib.reduce_non_distributed_value(
             reduce_op, value, destinations, self._num_replicas_in_sync)
-      if self._collective_ops_in_use and (
+      if self._use_merge_call and self._collective_ops_in_use and (
           (not cross_device_ops_lib._devices_match(value, destinations) or  # pylint: disable=protected-access
            any("cpu" in d.lower()
                for d in cross_device_ops_lib.get_devices_from(destinations)))):
@@ -778,7 +787,35 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
                **distribute_utils.select_replica(i, kwargs)))
     return distribute_utils.update_regroup(self, updates, group)
 
-  def _replica_ctx_update(self, var, fn, args, kwargs):
+  def _replica_ctx_all_reduce(self, reduce_op, value, options=None):
+    """Implements `StrategyExtendedV2._replica_ctx_all_reduce`."""
+    # This implementation avoids using `merge_call` and just launches collective
+    # ops in one replica.
+    if options is None:
+      options = collective_util.Options()
+
+    if context.executing_eagerly() or (
+        not tf2.enabled()) or self._use_merge_call:
+      # In eager mode, falls back to the default implementation that uses
+      # `merge_call`. Replica functions are running sequentially in eager mode,
+      # and due to the blocking nature of collective ops, execution will hang if
+      # collective ops are to be launched sequentially.
+      return super()._replica_ctx_all_reduce(reduce_op, value, options)
+
+    replica_context = distribution_strategy_context.get_replica_context()
+    assert replica_context, (
+        "`StrategyExtended._replica_ctx_all_reduce` must be called in a "
+        "replica context")
+    return self._get_cross_device_ops(value)._all_reduce(  # pylint: disable=protected-access
+        reduce_op,
+        value,
+        replica_context._replica_id,  # pylint: disable=protected-access
+        options)
+
+  def _replica_ctx_update(self, var, fn, args, kwargs, group):
+    if self._use_merge_call:
+      return super()._replica_ctx_update(var, fn, args, kwargs, group)
+
     replica_context = distribution_strategy_context.get_replica_context()
     assert replica_context
     replica_id = values_util.get_current_replica_id_as_int()

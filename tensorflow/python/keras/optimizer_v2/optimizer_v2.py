@@ -670,12 +670,8 @@ class OptimizerV2(trackable.Trackable):
         grads_and_vars = self._aggregate_gradients(grads_and_vars)
       grads_and_vars = self._transform_gradients(grads_and_vars)
 
-      return distribute_ctx.get_replica_context().merge_call(
-          functools.partial(self._distributed_apply, apply_state=apply_state),
-          args=(grads_and_vars,),
-          kwargs={
-              "name": name,
-          })
+      return self._distributed_apply(strategy, grads_and_vars, name,
+                                     apply_state)
 
   def _distributed_apply(self, distribution, grads_and_vars, name, apply_state):
     """`apply_gradients` using a `DistributionStrategy`."""
@@ -708,21 +704,13 @@ class OptimizerV2(trackable.Trackable):
     update_ops = []
     with name_scope_only_in_function_or_graph(name or self._name):
       for grad, var in grads_and_vars:
-        # TODO(crccw): It's not allowed to assign PerReplica value to
-        # MirroredVariable.  Remove this after we relax this restriction.
-        def _assume_mirrored(grad):
-          if isinstance(grad, ds_values.PerReplica):
-            return ds_values.Mirrored(grad.values)
-          return grad
-
-        grad = nest.map_structure(_assume_mirrored, grad)
         # Colocate the update with variables to avoid unnecessary communication
         # delays. See b/136304694.
         with distribution.extended.colocate_vars_with(var):
           with name_scope_only_in_function_or_graph(
               "update" if eagerly_outside_functions else "update_" +
               var.op.name):
-            update_ops.extend(distribution.extended.update(
+            update_ops.append(distribute_ctx.get_replica_context()._update(  # pylint: disable=protected-access
                 var, apply_grad_to_update_var, args=(grad,), group=False))
 
       any_symbolic = any(isinstance(i, ops.Operation) or

@@ -2442,7 +2442,7 @@ class StrategyExtendedV2(object):
     reduced = replica_context.merge_call(merge_fn, args=(nest.flatten(value),))
     return nest.pack_sequence_as(value, reduced)
 
-  def _replica_ctx_update(self, var, fn, args=(), kwargs=None):
+  def _replica_ctx_update(self, var, fn, args=(), kwargs=None, group=True):
     """Run `fn` with `args` and `kwargs` to update `var`."""
     # This method is called by ReplicaContext.update. Strategies who'd like to
     # remove merge_call in this path should override this method.
@@ -2452,7 +2452,7 @@ class StrategyExtendedV2(object):
                        "in a replica context.")
 
     def merge_fn(_, *merged_args, **merged_kwargs):
-      return self.update(var, fn, merged_args, merged_kwargs, group=True)
+      return self.update(var, fn, merged_args, merged_kwargs, group=group)
 
     return replica_context.merge_call(merge_fn, args=args, kwargs=kwargs)
 
@@ -3358,7 +3358,7 @@ class ReplicaContext(ReplicaContextBase):
 
     return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
 
-  def _update(self, var, fn, args=(), kwargs=None):
+  def _update(self, var, fn, args=(), kwargs=None, group=True):
     """Run `fn` to update `var` with `args` and `kwargs` in replica context.
 
     `tf.distribute.ReplicaContext.update` takes a (distributed) variable `var`
@@ -3435,13 +3435,16 @@ class ReplicaContext(ReplicaContextBase):
       fn: Function to call. Should take the variable as the first argument.
       args: Tuple or list. Additional positional arguments to pass to `fn()`.
       kwargs: Dict with keyword arguments to pass to `fn()`.
+      group: Boolean. Defaults to True. Most strategies enter a merge_call to
+      conduct update in cross-replica context, and group=True guarantees updates
+      on all replicas is executed.
 
     Returns:
       The return value of `fn` for the local replica.
     """
     if kwargs is None:
       kwargs = {}
-    return self._strategy.extended._replica_ctx_update(var, fn, args=args, kwargs=kwargs)  # pylint: disable=protected-access
+    return self._strategy.extended._replica_ctx_update(var, fn, args=args, kwargs=kwargs, group=group)  # pylint: disable=protected-access
 
 
 @tf_export(v1=["distribute.ReplicaContext"])
