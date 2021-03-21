@@ -65,6 +65,16 @@ else
   fi
 
   unzip -qo /tmp/${TMP_ZIP_ARCHIVE_NAME} -d ${DOWNLOADS_DIR} >&2
+  # TODO(b/183232978): remove these checks when xa_nnlib is updated.
+  sed -i '/XA_NNLIB_ARG_CHK_COND((y_stride > kernel_height), -1);/d' \
+    ${DOWNLOADS_DIR}/xa_nnlib_hifi4/algo/kernels/cnn/hifi4/*.c
+  sed -i '/XA_NNLIB_ARG_CHK_COND((x_stride > kernel_width), -1);/d' \
+    ${DOWNLOADS_DIR}/xa_nnlib_hifi4/algo/kernels/cnn/hifi4/*.c
+  sed -i '/XA_NNLIB_CHK_COND((x_stride <= 0 || x_stride > kernel_width), -1);/d' \
+    ${DOWNLOADS_DIR}/xa_nnlib_hifi4/algo/kernels/cnn/hifi4/*.c
+  sed -i '/XA_NNLIB_CHK_COND((y_stride <= 0 || y_stride > kernel_width), -1);/d' \
+    ${DOWNLOADS_DIR}/xa_nnlib_hifi4/algo/kernels/cnn/hifi4/*.c
+
 fi
 
 echo "SUCCESS"
