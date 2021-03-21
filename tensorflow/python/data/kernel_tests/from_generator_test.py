@@ -53,7 +53,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(
-              num_repeats=[1, 2], requires_initialization=[True, False])))
+              num_repeats=[1, 5], requires_initialization=[True, False])))
   def testFromGeneratorUsingFn(self, num_repeats, requires_initialization):
 
     def generator():
@@ -71,7 +71,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(
-              num_repeats=[1, 2], requires_initialization=[True, False])))
+              num_repeats=[1, 5], requires_initialization=[True, False])))
   def testFromGeneratorUsingList(self, num_repeats, requires_initialization):
     generator = lambda: [[i] * i for i in range(1, 100)]
     elem_sequence = list(generator())
@@ -85,7 +85,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(
-              num_repeats=[1, 2], requires_initialization=[True, False])))
+              num_repeats=[1, 5], requires_initialization=[True, False])))
   def testFromGeneratorUsingNdarray(self, num_repeats, requires_initialization):
     generator = lambda: np.arange(100, dtype=np.int64)
     elem_sequence = list(generator())
@@ -99,7 +99,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(
-              num_repeats=[1, 2], requires_initialization=[True, False])))
+              num_repeats=[1, 5], requires_initialization=[True, False])))
   def testFromGeneratorUsingGeneratorExpression(self, num_repeats,
                                                 requires_initialization):
     # NOTE(mrry): Generator *expressions* are not repeatable (or in general
@@ -118,18 +118,19 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testFromMultipleConcurrentGenerators(self):
     num_inner_repeats = 5
-    num_outer_repeats = 20
+    num_outer_repeats = 100
 
     def generator():
       for i in range(1, 10):
         yield ([i] * i, [i, i ** 2, i ** 3])
     input_list = list(generator())
 
-    # The interleave transformation is essentially a flat map that draws from
-    # multiple input datasets concurrently (in a cyclic fashion). By placing
-    # `Dataset.from_generator()` inside an interleave, we test its behavior when
-    # multiple iterators are active at the same time; by additionally
-    # prefetching inside the interleave, we create the possibility of concurrent
+    # The interleave transformation is essentially a flat map that
+    # draws from multiple input datasets concurrently (in a cyclic
+    # fashion). By placing `Dataset.from_generator()` inside an
+    # interleave, we test its behavior when multiple iterators are
+    # active at the same time; by additionally prefetching inside the
+    # interleave, we create the possibility of parallel (modulo GIL)
     # invocations to several iterators created by the same dataset.
     def interleave_fn(_):
       return (dataset_ops.Dataset.from_generator(
@@ -148,8 +149,8 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
-  def DISABLED_testFromGeneratorsRunningInParallel(self):
-    self.skipTest("b/67868766")
+  # TODO(b/67868766): Reenable this when the source of flakiness is discovered.
+  def _testFromGeneratorsRunningInParallel(self):
     num_parallel_iterators = 3
 
     # Define shared state that multiple iterator instances will access to

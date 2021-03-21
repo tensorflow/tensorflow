@@ -26,9 +26,8 @@ tf_py_test(
 
 tf_py_test(
     name = "batch_test",
-    size = "small",
+    size = "medium",
     srcs = ["batch_test.py"],
-    shard_count = 4,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -48,7 +47,7 @@ tf_py_test(
 
 tf_py_test(
     name = "cache_test",
-    size = "small",
+    size = "medium",
     srcs = ["cache_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -68,7 +67,6 @@ tf_py_test(
 
 tf_py_test(
     name = "cardinality_test",
-    size = "small",
     srcs = ["cardinality_test.py"],
     deps = [
         "//tensorflow/python/data/experimental/ops:cardinality",
@@ -80,7 +78,7 @@ tf_py_test(
 
 tf_py_test(
     name = "checkpoint_test",
-    size = "small",
+    size = "medium",
     srcs = ["checkpoint_test.py"],
     grpc_enabled = True,
     deps = [
@@ -98,7 +96,9 @@ tf_py_test(
 
 py_library(
     name = "checkpoint_test_base",
-    srcs = ["checkpoint_test_base.py"],
+    srcs = [
+        "checkpoint_test_base.py",
+    ],
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:client_testlib",
@@ -231,10 +231,9 @@ tf_py_test(
 
 tf_py_test(
     name = "flat_map_test",
-    size = "small",
+    size = "medium",
     srcs = ["flat_map_test.py"],
     grpc_enabled = True,
-    shard_count = 8,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -261,9 +260,9 @@ tf_py_test(
 
 tf_py_test(
     name = "from_generator_test",
-    size = "small",
+    size = "medium",
     srcs = ["from_generator_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":test_base",
         "//tensorflow/python:client_testlib",
@@ -349,7 +348,7 @@ tf_py_test(
 
 tf_py_test(
     name = "interleave_test",
-    size = "small",
+    size = "medium",
     srcs = ["interleave_test.py"],
     shard_count = 4,
     deps = [
@@ -402,7 +401,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "iterator_test",
-    size = "small",
+    size = "medium",
     srcs = ["iterator_test.py"],
     grpc_enabled = True,
     deps = [
@@ -472,9 +471,9 @@ tf_py_test(
 
 tf_py_test(
     name = "map_test",
-    size = "small",
+    size = "medium",
     srcs = ["map_test.py"],
-    shard_count = 16,
+    shard_count = 4,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -508,10 +507,9 @@ tf_py_test(
 
 cuda_py_test(
     name = "memory_cleanup_test",
-    size = "small",
+    size = "medium",
     srcs = ["memory_cleanup_test.py"],
-    shard_count = 2,
-    tags = ["notsan"],  # TODO(b/144706539)
+    tags = ["notsan"],  # b/144706539
     deps = [
         ":test_base",
         "//tensorflow/core:protos_all_py",
@@ -525,11 +523,10 @@ cuda_py_test(
 
 cuda_py_test(
     name = "multi_device_iterator_test",
-    size = "small",
+    size = "medium",
     srcs = ["multi_device_iterator_test.py"],
-    shard_count = 2,
     tags = [
-        "no_gpu",  # TODO(b/141255188)
+        "no_gpu",  #TODO(b/141255188): Enable test after bug is resolved.
         "no_oss",
         "no_windows_gpu",
     ],
@@ -589,7 +586,6 @@ tf_py_test(
     name = "padded_batch_test",
     size = "small",
     srcs = ["padded_batch_test.py"],
-    shard_count = 2,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -713,9 +709,8 @@ tf_py_test(
 
 tf_py_test(
     name = "shuffle_test",
-    size = "small",
+    size = "medium",
     srcs = ["shuffle_test.py"],
-    shard_count = 4,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -851,7 +846,7 @@ py_library(
 
 tf_py_test(
     name = "unbatch_test",
-    size = "small",
+    size = "medium",
     srcs = ["unbatch_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -877,9 +872,8 @@ tf_py_test(
 
 tf_py_test(
     name = "window_test",
-    size = "small",
+    size = "medium",
     srcs = ["window_test.py"],
-    shard_count = 2,
     deps = [
         ":test_base",
         "//tensorflow/python:array_ops",

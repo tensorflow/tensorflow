@@ -360,6 +360,14 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
 class InterleaveDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                       parameterized.TestCase):
 
+  def _build_iterator_graph(self, input_values, cycle_length, block_length,
+                            num_parallel_calls):
+    repeat_count = 2
+    return dataset_ops.Dataset.from_tensor_slices(input_values).repeat(
+        repeat_count).interleave(
+            lambda x: dataset_ops.Dataset.from_tensors(x).repeat(x),
+            cycle_length, block_length, num_parallel_calls)
+
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
@@ -368,18 +376,14 @@ class InterleaveDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
               block_length=[1, 3],
               num_parallel_calls=[None, 1, 2])))
   def testCore(self, cycle_length, block_length, num_parallel_calls):
-
-    num_repeats = 2
-    input_values = np.array([2, 3], dtype=np.int64)
-
-    def _build_dataset():
-      return dataset_ops.Dataset.from_tensor_slices(input_values).repeat(
-          num_repeats).interleave(
-              lambda x: dataset_ops.Dataset.from_tensors(x).repeat(x),
-              cycle_length, block_length, num_parallel_calls)
-
-    num_outputs = np.sum(input_values) * num_repeats
-    self.run_core_tests(_build_dataset, num_outputs)
+    input_values = np.array([4, 5, 6], dtype=np.int64)
+    num_outputs = np.sum(input_values) * 2
+    # pylint: disable=g-long-lambda
+    self.run_core_tests(
+        lambda: self._build_iterator_graph(input_values, cycle_length,
+                                           block_length, num_parallel_calls),
+        num_outputs)
+    # pylint: enable=g-long-lambda
 
   @combinations.generate(test_base.default_test_combinations())
   def testSparseCore(self):
