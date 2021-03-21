@@ -48,6 +48,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
+from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import image_ops_impl
 from tensorflow.python.ops import io_ops
@@ -4955,6 +4956,29 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
       boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
       scores = constant_op.constant([0.9])
       nms_func(boxes, scores, iou_thres, [[score_thres]])
+
+  @test_util.xla_allow_fallback(
+      "non_max_suppression with dynamic output shape unsupported.")
+  def testTensors(self):
+    with context.eager_mode():
+      boxes_tensor = constant_op.constant([[6.625, 6.688, 272., 158.5],
+                                           [6.625, 6.75, 270.5, 158.4],
+                                           [5.375, 5., 272., 157.5]])
+      scores_tensor = constant_op.constant([0.84, 0.7944, 0.7715])
+      max_output_size = 100
+      iou_threshold = 0.5
+      score_threshold = 0.3
+      soft_nms_sigma = 0.25
+      pad_to_max_output_size = False
+      
+      # gen_image_ops.non_max_suppression_v5.
+      for dtype in [np.float16, np.float32]:
+        boxes = math_ops.cast(boxes_tensor, dtype=dtype)
+        scores = math_ops.cast(scores_tensor, dtype=dtype)
+        _, _, num_selected = gen_image_ops.non_max_suppression_v5(
+            boxes, scores, max_output_size, iou_threshold, score_threshold,
+            soft_nms_sigma, pad_to_max_output_size)
+        self.assertEqual(num_selected, 1)
 
   @test_util.xla_allow_fallback(
       "non_max_suppression with dynamic output shape unsupported.")
