@@ -241,6 +241,21 @@ REGISTER_KERNEL_BUILDER(Name("ConcatV2")
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+REGISTER_KERNEL_BUILDER(Name("Concat")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<int32>("T")
+                            .HostMemory("concat_dim")
+                            .HostMemory("values")
+                            .HostMemory("output"),
+                        ConcatOp<CPUDevice, int32>);
+REGISTER_KERNEL_BUILDER(Name("ConcatV2")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<int32>("T")
+                            .HostMemory("values")
+                            .HostMemory("axis")
+                            .HostMemory("output"),
+                        ConcatV2Op<CPUDevice, int32>);
+
 
 class ConcatOffsetOp : public OpKernel {
  public:
@@ -323,6 +338,13 @@ REGISTER_KERNEL_BUILDER(Name("ConcatOffset").Device(DEVICE_CPU),
 
 REGISTER_KERNEL_BUILDER(Name("ConcatOffset")
                             .Device(DEVICE_GPU)
+                            .HostMemory("concat_dim")
+                            .HostMemory("shape")
+                            .HostMemory("offset"),
+                        ConcatOffsetOp);
+
+REGISTER_KERNEL_BUILDER(Name("ConcatOffset")
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("concat_dim")
                             .HostMemory("shape")
                             .HostMemory("offset"),

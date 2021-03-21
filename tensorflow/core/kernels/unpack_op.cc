@@ -161,5 +161,18 @@ REGISTER_KERNEL_BUILDER(Name("Unpack")
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+REGISTER_KERNEL_BUILDER(Name("Unpack")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("value")
+                            .HostMemory("output")
+                            .TypeConstraint<int32>("T"),
+                        UnpackOp<CPUDevice, int32>);
+REGISTER_KERNEL_BUILDER(Name("Unpack")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("value")
+                            .HostMemory("output")
+                            .TypeConstraint<int64>("T"),
+                        UnpackOp<CPUDevice, int64>);
+
 
 }  // end namespace tensorflow
