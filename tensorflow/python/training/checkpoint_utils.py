@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import abc
 import time
 
 import six
@@ -243,6 +244,10 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   Supports loading into partitioned variables, which are represented as
   `'<variable>/part_<part #>'`.
 
+  Assignment map can be a dict, or a list of pairs.  The latter is
+  necessary to initialize multiple variables in the current graph from
+  the same variable in the checkpoint.
+
   Example:
 
   ```python
@@ -289,13 +294,14 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
 
   Args:
     ckpt_dir_or_file: Directory with checkpoints file or path to checkpoint.
-    assignment_map: Dict, where keys are names of the variables in the
-      checkpoint and values are current variables or names of current variables
-      (in default graph).
+    assignment_map: Dict, or a list of key-value pairs, where keys are names
+      of the variables in the checkpoint and values are current variables or
+      names of current variables (in default graph).
 
   Raises:
     ValueError: If missing variables in current graph, or if missing
       checkpoints or tensors in checkpoints.
+
   """
   init_from_checkpoint_fn = lambda _: _init_from_checkpoint(
       ckpt_dir_or_file, assignment_map)
@@ -311,8 +317,9 @@ def _init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   ckpt_file = _get_checkpoint_filename(ckpt_dir_or_file)
   reader = load_checkpoint(ckpt_dir_or_file)
   variable_map = reader.get_variable_to_shape_map()
-  for tensor_name_in_ckpt, current_var_or_name in sorted(
-      six.iteritems(assignment_map)):
+  if isinstance(assignment_map, abc.Mapping):
+    assignment_map = six.iteritems(assignment_map)
+  for tensor_name_in_ckpt, current_var_or_name in sorted(assignment_map):
     var = None
     # Check if this is Variable object or list of Variable objects (in case of
     # partitioned variables).
