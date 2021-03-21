@@ -48,7 +48,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
-from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import image_ops_impl
 from tensorflow.python.ops import io_ops
