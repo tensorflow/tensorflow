@@ -40,12 +40,11 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import test
 
 
-# TODO(b/121264236): Support v2 behavior for these tests.
 class MultiDeviceIteratorTest(test_base.DatasetTestBase,
                               parameterized.TestCase):
 
   @combinations.generate(
-      combinations.times(test_base.v1_only_combinations(),
+      combinations.times(test_base.default_test_combinations(),
                          combinations.combine(num_inits=[0, 1, 42])))
   def testInitOnly(self, num_inits):
     dataset = dataset_ops.Dataset.range(10)
@@ -53,13 +52,13 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         dataset, ["/cpu:1", "/cpu:2"])
 
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
-    with self.test_session(config=config):
+    with self.cached_session(config=config):
       for _ in range(num_inits):
         self.evaluate(multi_device_iterator.initializer)
 
   @combinations.generate(
       combinations.times(
-          test_base.v1_only_combinations(),
+          test_base.default_test_combinations(),
           combinations.combine(
               max_buffer_size=[0, 1, 10], prefetch_buffer_size=[0, 1, 10])))
   def testBasic(self, prefetch_buffer_size, max_buffer_size):
@@ -70,7 +69,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         prefetch_buffer_size=prefetch_buffer_size)
 
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
-    with self.test_session(config=config):
+    with self.cached_session(config=config):
       self.evaluate(multi_device_iterator.initializer)
       for i in range(0, 10, 2):
         elem_on_1, elem_on_2 = multi_device_iterator.get_next()
@@ -81,7 +80,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
-  @combinations.generate(test_base.v1_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testOneOnSameDevice(self):
     with ops.device("/cpu:0"):
       dataset = dataset_ops.Dataset.range(10)
@@ -89,7 +88,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         dataset, ["/cpu:0", "/cpu:1"])
 
     config = config_pb2.ConfigProto(device_count={"CPU": 2})
-    with self.test_session(config=config):
+    with self.cached_session(config=config):
       self.evaluate(multi_device_iterator.initializer)
       for i in range(0, 10, 2):
         elem_on_1, elem_on_2 = multi_device_iterator.get_next()
@@ -100,7 +99,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
-  @combinations.generate(test_base.v1_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testRepeatDevices(self):
     with ops.device("/cpu:0"):
       dataset = dataset_ops.Dataset.range(20)
@@ -108,7 +107,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         dataset, ["/cpu:1", "/cpu:2", "/cpu:1", "/cpu:2"])
 
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
-    with self.test_session(config=config):
+    with self.cached_session(config=config):
       self.evaluate(multi_device_iterator.initializer)
       for i in range(0, 20, 4):
         elements = multi_device_iterator.get_next()
@@ -125,14 +124,14 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_3)
         self.evaluate(elem_on_4)
 
-  @combinations.generate(test_base.v1_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testNotFullyDivisible(self):
     dataset = dataset_ops.Dataset.range(9)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
         dataset, ["/cpu:1", "/cpu:2"])
 
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
-    with self.test_session(config=config):
+    with self.cached_session(config=config):
       self.evaluate(multi_device_iterator.initializer)
       for i in range(0, 8, 2):
         elem_on_1, elem_on_2 = multi_device_iterator.get_next()
@@ -145,7 +144,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
-  @combinations.generate(test_base.v1_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testGetNextAsOptional(self):
     if context.executing_eagerly():
       return
@@ -160,7 +159,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
     elem_on_2_t = elem_on_2.get_value()
 
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
-    with self.test_session(config=config) as sess:
+    with self.cached_session(config=config) as sess:
       self.evaluate(multi_device_iterator.initializer)
       for i in range(0, 8, 2):
         elem_on_1_has_value, elem_on_1_value = sess.run(
@@ -182,14 +181,14 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
       with self.assertRaises(errors.InvalidArgumentError):
         self.evaluate(elem_on_2_t)
 
-  @combinations.generate(test_base.v1_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testUneven(self):
     dataset = dataset_ops.Dataset.range(10)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
         dataset, ["/cpu:1", "/cpu:2"], max_buffer_size=4)
 
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
-    with self.test_session(config=config):
+    with self.cached_session(config=config):
       self.evaluate(multi_device_iterator.initializer)
       for i in range(0, 10, 2):
         elem_on_1 = multi_device_iterator.get_next("/cpu:1")
@@ -202,7 +201,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
-  @combinations.generate(test_base.v1_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testMultipleInitializationsGraph(self):
     if context.executing_eagerly():
       return
@@ -226,7 +225,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.assertEqual([(i, 0), (i, 1)], self.evaluate([elem_on_1,
                                                           elem_on_2]))
 
-  @combinations.generate(test_base.v1_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testMultipleInitializationsEager(self):
     if not context.executing_eagerly():
       return
@@ -242,7 +241,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
       elem_on_1, elem_on_2 = multi_device_iterator.get_next()
       self.assertEqual([(0, 0), (1, 1)], self.evaluate([elem_on_1, elem_on_2]))
 
-  @combinations.generate(test_base.v1_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testBasicGpu(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -252,7 +251,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         dataset, ["/cpu:1", "/gpu:0"])
 
     config = config_pb2.ConfigProto(device_count={"CPU": 2, "GPU": 1})
-    with self.test_session(config=config):
+    with self.cached_session(config=config):
       self.evaluate(multi_device_iterator.initializer)
       for i in range(0, 10, 2):
         elem_on_1, elem_on_2 = multi_device_iterator.get_next()
@@ -263,7 +262,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
-  @combinations.generate(test_base.v1_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testUnevenGpu(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -273,7 +272,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         dataset, ["/cpu:1", "/gpu:0"], max_buffer_size=4)
 
     config = config_pb2.ConfigProto(device_count={"CPU": 2, "GPU": 1})
-    with self.test_session(config=config):
+    with self.cached_session(config=config):
       self.evaluate(multi_device_iterator.initializer)
       for i in range(0, 10, 2):
         elem_on_1 = multi_device_iterator.get_next("/cpu:1")
@@ -286,7 +285,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
-  @combinations.generate(test_base.v1_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testGetNextAsOptionalGpu(self):
     if not test_util.is_gpu_available() or context.executing_eagerly():
       self.skipTest("No GPU available")
@@ -301,7 +300,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
     elem_on_2_t = elem_on_2.get_value()
 
     config = config_pb2.ConfigProto(device_count={"CPU": 2, "GPU": 1})
-    with self.test_session(config=config) as sess:
+    with self.cached_session(config=config) as sess:
       self.evaluate(multi_device_iterator.initializer)
       for i in range(0, 8, 2):
         elem_on_1_has_value, elem_on_1_value = sess.run(
@@ -323,7 +322,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
       with self.assertRaises(errors.InvalidArgumentError):
         self.evaluate(elem_on_2_t)
 
-  @combinations.generate(test_base.v1_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testOptimization(self):
     dataset = dataset_ops.Dataset.range(10)
     dataset = dataset.apply(testing.assert_next(["MemoryCacheImpl"]))
@@ -338,7 +337,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         dataset, ["/cpu:1", "/cpu:2"])
 
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
-    with self.test_session(config=config):
+    with self.cached_session(config=config):
       self.evaluate(multi_device_iterator.initializer)
       for i in range(0, 10, 2):
         elem_on_1, elem_on_2 = multi_device_iterator.get_next()
