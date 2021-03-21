@@ -584,7 +584,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         create_iterator_twice=True)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testSerializedContainingSparseAndSparseFeatureWithReuse(self):
+  def testerializedContainingSparseAndSparseFeatureWithReuse(self):
     expected_idx = sparse_tensor.SparseTensorValue(  # indices, values, shape
         np.array([[0, 0], [0, 1], [1, 0], [1, 1]], dtype=np.int64),
         np.array([0, 3, 7, 1]),
@@ -622,12 +622,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         expected_values=expected_output,
         create_iterator_twice=True)
 
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(batch_size=[1, 10, 20, 100, 256]))
-  )
-  def testSerializedContainingVarLenDenseLargerBatch(self, batch_size):
-    np.random.seed(3456)
+  def _testSerializedContainingVarLenDenseLargerBatch(self, batch_size):
     # During parsing, data read from the serialized proto is stored in buffers.
     # For small batch sizes, a buffer will contain one minibatch entry.
     # For larger batch sizes, a buffer may contain several minibatch
@@ -686,6 +681,12 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         },
         expected_values=expected_output,
         create_iterator_twice=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSerializedContainingVarLenDenseLargerBatch(self):
+    np.random.seed(3456)
+    for batch_size in (1, 10, 20, 100, 256):
+      self._testSerializedContainingVarLenDenseLargerBatch(batch_size)
 
   @combinations.generate(test_base.default_test_combinations())
   def testSerializedShapeMismatch(self):

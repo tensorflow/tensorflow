@@ -102,31 +102,31 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertDatasetProduces(dataset, expected_output)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testRequiredFields(self):
+  def testCsvDataset_requiredFields(self):
     record_defaults = [[]] * 4
     inputs = [['1,2,3,4']]
     self._test_by_comparison(inputs, record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testInt(self):
+  def testCsvDataset_int(self):
     record_defaults = [[0]] * 4
     inputs = [['1,2,3,4', '5,6,7,8']]
     self._test_by_comparison(inputs, record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testFloat(self):
+  def testCsvDataset_float(self):
     record_defaults = [[0.0]] * 4
     inputs = [['1.0,2.1,3.2,4.3', '5.4,6.5,7.6,8.7']]
     self._test_by_comparison(inputs, record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testString(self):
+  def testCsvDataset_string(self):
     record_defaults = [['']] * 4
     inputs = [['1.0,2.1,hello,4.3', '5.4,6.5,goodbye,8.7']]
     self._test_by_comparison(inputs, record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithEmptyFields(self):
+  def testCsvDataset_withEmptyFields(self):
     record_defaults = [[0]] * 4
     inputs = [[',,,', '1,1,1,', ',2,2,2']]
     self._test_dataset(
@@ -134,7 +134,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testErrWithUnquotedQuotes(self):
+  def testCsvDataset_errWithUnquotedQuotes(self):
     record_defaults = [['']] * 3
     inputs = [['1,2"3,4']]
     self._test_dataset(
@@ -143,7 +143,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testErrWithUnescapedQuotes(self):
+  def testCsvDataset_errWithUnescapedQuotes(self):
     record_defaults = [['']] * 3
     inputs = [['"a"b","c","d"']]
     self._test_dataset(
@@ -153,7 +153,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testIgnoreErrWithUnescapedQuotes(self):
+  def testCsvDataset_ignoreErrWithUnescapedQuotes(self):
     record_defaults = [['']] * 3
     inputs = [['1,"2"3",4', '1,"2"3",4",5,5', 'a,b,"c"d"', 'e,f,g']]
     filenames = self._setup_files(inputs)
@@ -162,7 +162,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, [(b'e', b'f', b'g')])
 
   @combinations.generate(test_base.default_test_combinations())
-  def testIgnoreErrWithUnquotedQuotes(self):
+  def testCsvDataset_ignoreErrWithUnquotedQuotes(self):
     record_defaults = [['']] * 3
     inputs = [['1,2"3,4', 'a,b,c"d', '9,8"7,6,5', 'e,f,g']]
     filenames = self._setup_files(inputs)
@@ -171,14 +171,14 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, [(b'e', b'f', b'g')])
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithNoQuoteDelimAndUnquotedQuotes(self):
+  def testCsvDataset_withNoQuoteDelimAndUnquotedQuotes(self):
     record_defaults = [['']] * 3
     inputs = [['1,2"3,4']]
     self._test_by_comparison(
         inputs, record_defaults=record_defaults, use_quote_delim=False)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testMixedTypes(self):
+  def testCsvDataset_mixedTypes(self):
     record_defaults = [
         constant_op.constant([], dtype=dtypes.int32),
         constant_op.constant([], dtype=dtypes.float32),
@@ -189,35 +189,35 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self._test_by_comparison(inputs, record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithUseQuoteDelimFalse(self):
+  def testCsvDataset_withUseQuoteDelimFalse(self):
     record_defaults = [['']] * 4
     inputs = [['1,2,"3,4"', '"5,6",7,8']]
     self._test_by_comparison(
         inputs, record_defaults=record_defaults, use_quote_delim=False)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithFieldDelim(self):
+  def testCsvDataset_withFieldDelim(self):
     record_defaults = [[0]] * 4
     inputs = [['1:2:3:4', '5:6:7:8']]
     self._test_by_comparison(
         inputs, record_defaults=record_defaults, field_delim=':')
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithNaValue(self):
+  def testCsvDataset_withNaValue(self):
     record_defaults = [[0]] * 4
     inputs = [['1,NA,3,4', 'NA,6,7,8']]
     self._test_by_comparison(
         inputs, record_defaults=record_defaults, na_value='NA')
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithSelectCols(self):
+  def testCsvDataset_withSelectCols(self):
     record_defaults = [['']] * 2
     inputs = [['1,2,3,4', '"5","6","7","8"']]
     self._test_by_comparison(
         inputs, record_defaults=record_defaults, select_cols=[1, 2])
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithSelectColsTooHigh(self):
+  def testCsvDataset_withSelectColsTooHigh(self):
     record_defaults = [[0]] * 2
     inputs = [['1,2,3,4', '5,6,7,8']]
     self._test_dataset(
@@ -227,27 +227,27 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         select_cols=[3, 4])
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithOneCol(self):
+  def testCsvDataset_withOneCol(self):
     record_defaults = [['NA']]
     inputs = [['0', '', '2']]
     self._test_dataset(
         inputs, [['0'], ['NA'], ['2']], record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithMultipleFiles(self):
+  def testCsvDataset_withMultipleFiles(self):
     record_defaults = [[0]] * 4
     inputs = [['1,2,3,4', '5,6,7,8'], ['5,6,7,8']]
     self._test_by_comparison(inputs, record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithLeadingAndTrailingSpaces(self):
+  def testCsvDataset_withLeadingAndTrailingSpaces(self):
     record_defaults = [[0.0]] * 4
     inputs = [['0, 1, 2, 3']]
     expected = [[0.0, 1.0, 2.0, 3.0]]
     self._test_dataset(inputs, expected, record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testErrorWithMissingDefault(self):
+  def testCsvDataset_errorWithMissingDefault(self):
     record_defaults = [[]] * 2
     inputs = [['0,']]
     self._test_dataset(
@@ -256,7 +256,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testErrorWithFewerDefaultsThanFields(self):
+  def testCsvDataset_errorWithFewerDefaultsThanFields(self):
     record_defaults = [[0.0]] * 2
     inputs = [['0,1,2,3']]
     self._test_dataset(
@@ -265,7 +265,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testErrorWithMoreDefaultsThanFields(self):
+  def testCsvDataset_errorWithMoreDefaultsThanFields(self):
     record_defaults = [[0.0]] * 5
     inputs = [['0,1,2,3']]
     self._test_dataset(
@@ -274,7 +274,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithHeader(self):
+  def testCsvDataset_withHeader(self):
     record_defaults = [[0]] * 2
     inputs = [['col1,col2', '1,2']]
     expected = [[1, 2]]
@@ -286,7 +286,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     )
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithHeaderAndNoRecords(self):
+  def testCsvDataset_withHeaderAndNoRecords(self):
     record_defaults = [[0]] * 2
     inputs = [['col1,col2']]
     expected = []
@@ -298,7 +298,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     )
 
   @combinations.generate(test_base.default_test_combinations())
-  def testErrorWithHeaderEmptyFile(self):
+  def testCsvDataset_errorWithHeaderEmptyFile(self):
     record_defaults = [[0]] * 2
     inputs = [[]]
     expected_err_re = "Can't read header of file"
@@ -310,14 +310,14 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     )
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithEmptyFile(self):
+  def testCsvDataset_withEmptyFile(self):
     record_defaults = [['']] * 2
     inputs = [['']]  # Empty file
     self._test_dataset(
         inputs, expected_output=[], record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testErrorWithEmptyRecord(self):
+  def testCsvDataset_errorWithEmptyRecord(self):
     record_defaults = [['']] * 2
     inputs = [['', '1,2']]  # First record is empty
     self._test_dataset(
@@ -326,7 +326,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithChainedOps(self):
+  def testCsvDataset_withChainedOps(self):
     # Testing that one dataset can create multiple iterators fine.
     # `repeat` creates multiple iterators from the same C++ Dataset.
     record_defaults = [[0]] * 4
@@ -338,7 +338,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         ds_expected.repeat(5).prefetch(1))
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithTypeDefaults(self):
+  def testCsvDataset_withTypeDefaults(self):
     # Testing using dtypes as record_defaults for required fields
     record_defaults = [dtypes.float32, [0.0]]
     inputs = [['1.0,2.0', '3.0,4.0']]
@@ -348,23 +348,38 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         record_defaults=record_defaults,
     )
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testMakeCsvDataset_fieldOrder(self):
+    data = [[
+        '1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19',
+        '1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19'
+    ]]
+    file_path = self._setup_files(data)
+
+    ds = readers.make_csv_dataset(
+        file_path, batch_size=1, shuffle=False, num_epochs=1)
+    nxt = self.getNext(ds)
+
+    result = list(self.evaluate(nxt()).values())
+
+    self.assertEqual(result, sorted(result))
+
 ## The following tests exercise parsing logic for quoted fields
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithQuoted(self):
+  def testCsvDataset_withQuoted(self):
     record_defaults = [['']] * 4
     inputs = [['"a","b","c :)","d"', '"e","f","g :(","h"']]
     self._test_by_comparison(inputs, record_defaults=record_defaults)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testWithOneColAndQuotes(self):
+  def testCsvDataset_withOneColAndQuotes(self):
     record_defaults = [['']]
     inputs = [['"0"', '"1"', '"2"']]
     self._test_dataset(
         inputs, [['0'], ['1'], ['2']], record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithNewLine(self):
+  def testCsvDataset_withNewLine(self):
     # In this case, we expect it to behave differently from
     # TextLineDataset->map(decode_csv) since that flow has bugs
     record_defaults = [['']] * 4
@@ -373,7 +388,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self._test_dataset(inputs, expected, record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithNewLineInUnselectedCol(self):
+  def testCsvDataset_withNewLineInUnselectedCol(self):
     record_defaults = [['']]
     inputs = [['1,"2\n3",4', '5,6,7']]
     self._test_dataset(
@@ -383,7 +398,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         select_cols=[0])
 
   @combinations.generate(test_base.v2_only_combinations())
-  def testWithExcludeCol(self):
+  def testCsvDataset_withExcludeCol(self):
     record_defaults = [['']]
     inputs = [['1,2,3', '5,6,7']]
     self._test_dataset(
@@ -393,7 +408,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         exclude_cols=[1, 2])
 
   @combinations.generate(test_base.v2_only_combinations())
-  def testWithSelectandExcludeCol(self):
+  def testCsvDataset_withSelectandExcludeCol(self):
     record_defaults = [['']]
     inputs = [['1,2,3', '5,6,7']]
     self._test_dataset(
@@ -404,7 +419,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         exclude_cols=[1, 2])
 
   @combinations.generate(test_base.v2_only_combinations())
-  def testWithExcludeColandRecordDefaultsTooLow(self):
+  def testCsvDataset_withExcludeColandRecordDefaultsTooLow(self):
     record_defaults = [['']]
     inputs = [['1,2,3', '5,6,7']]
     self._test_dataset(
@@ -414,7 +429,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         exclude_cols=[0])
 
   @combinations.generate(test_base.v2_only_combinations())
-  def testWithExcludeColandRecordDefaultsTooHigh(self):
+  def testCsvDataset_withExcludeColandRecordDefaultsTooHigh(self):
     record_defaults = [['']] * 3
     inputs = [['1,2,3', '5,6,7']]
     self._test_dataset(
@@ -424,7 +439,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         exclude_cols=[0])
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithMultipleNewLines(self):
+  def testCsvDataset_withMultipleNewLines(self):
     # In this case, we expect it to behave differently from
     # TextLineDataset->map(decode_csv) since that flow has bugs
     record_defaults = [['']] * 4
@@ -433,7 +448,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self._test_dataset(inputs, expected, record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testErrorWithTerminateMidRecord(self):
+  def testCsvDataset_errorWithTerminateMidRecord(self):
     record_defaults = [['']] * 4
     inputs = [['a,b,c,"a']]
     self._test_dataset(
@@ -443,7 +458,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithEscapedQuotes(self):
+  def testCsvDataset_withEscapedQuotes(self):
     record_defaults = [['']] * 4
     inputs = [['1.0,2.1,"she said: ""hello""",4.3', '5.4,6.5,goodbye,8.7']]
     self._test_by_comparison(inputs, record_defaults=record_defaults)
@@ -453,7 +468,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 ## and different types of line breaks
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithInvalidBufferSize(self):
+  def testCsvDataset_withInvalidBufferSize(self):
     record_defaults = [['']] * 4
     inputs = [['a,b,c,d']]
     self._test_dataset(
@@ -480,7 +495,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           buffer_size=i)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithLF(self):
+  def testCsvDataset_withLF(self):
     record_defaults = [['NA']] * 3
     inputs = [['abc,def,ghi', '0,1,2', ',,']]
     expected = [['abc', 'def', 'ghi'], ['0', '1', '2'], ['NA', 'NA', 'NA']]
@@ -488,7 +503,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         inputs, expected, linebreak='\n', record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithCR(self):
+  def testCsvDataset_withCR(self):
     # Test that when the line separator is '\r', parsing works with all buffer
     # sizes
     record_defaults = [['NA']] * 3
@@ -498,7 +513,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         inputs, expected, linebreak='\r', record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithCRLF(self):
+  def testCsvDataset_withCRLF(self):
     # Test that when the line separator is '\r\n', parsing works with all buffer
     # sizes
     record_defaults = [['NA']] * 3
@@ -508,7 +523,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         inputs, expected, linebreak='\r\n', record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithBufferSizeAndQuoted(self):
+  def testCsvDataset_withBufferSizeAndQuoted(self):
     record_defaults = [['NA']] * 3
     inputs = [['"\n\n\n","\r\r\r","abc"', '"0","1","2"', '"","",""']]
     expected = [['\n\n\n', '\r\r\r', 'abc'], ['0', '1', '2'],
@@ -517,7 +532,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         inputs, expected, linebreak='\n', record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithCRAndQuoted(self):
+  def testCsvDataset_withCRAndQuoted(self):
     # Test that when the line separator is '\r', parsing works with all buffer
     # sizes
     record_defaults = [['NA']] * 3
@@ -528,7 +543,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         inputs, expected, linebreak='\r', record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithCRLFAndQuoted(self):
+  def testCsvDataset_withCRLFAndQuoted(self):
     # Test that when the line separator is '\r\n', parsing works with all buffer
     # sizes
     record_defaults = [['NA']] * 3
@@ -539,7 +554,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         inputs, expected, linebreak='\r\n', record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithGzipCompressionType(self):
+  def testCsvDataset_withGzipCompressionType(self):
     record_defaults = [['NA']] * 3
     inputs = [['"\n\n\n","\r\r\r","abc"', '"0","1","2"', '"","",""']]
     expected = [['\n\n\n', '\r\r\r', 'abc'], ['0', '1', '2'],
@@ -552,7 +567,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithZlibCompressionType(self):
+  def testCsvDataset_withZlibCompressionType(self):
     record_defaults = [['NA']] * 3
     inputs = [['"\n\n\n","\r\r\r","abc"', '"0","1","2"', '"","",""']]
     expected = [['\n\n\n', '\r\r\r', 'abc'], ['0', '1', '2'],
@@ -565,7 +580,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWithScalarDefaults(self):
+  def testCsvDataset_withScalarDefaults(self):
     record_defaults = [constant_op.constant(0, dtype=dtypes.int64)] * 4
     inputs = [[',,,', '1,1,1,', ',2,2,2']]
     self._test_dataset(
@@ -573,7 +588,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         record_defaults=record_defaults)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testWith2DDefaults(self):
+  def testCsvDataset_with2DDefaults(self):
     record_defaults = [constant_op.constant([[0]], dtype=dtypes.int64)] * 4
     inputs = [[',,,', '1,1,1,', ',2,2,2']]
 
@@ -589,7 +604,7 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           inputs, [[0, 0, 0, 0], [1, 1, 1, 0], [0, 2, 2, 2]],
           record_defaults=record_defaults)
 
-  def testImmutableParams(self):
+  def testCsvDataset_immutableParams(self):
     inputs = [['a,b,c', '1,2,3', '4,5,6']]
     filenames = self._setup_files(inputs)
     select_cols = ['a', 'c']
@@ -602,7 +617,6 @@ class CsvDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                parameterized.TestCase):
 
   def setUp(self):
-    super(CsvDatasetCheckpointTest, self).setUp()
     self._num_cols = 7
     self._num_rows = 10
     self._num_epochs = 14
@@ -636,7 +650,7 @@ class CsvDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     return readers.CsvDataset(filename, **kwargs).repeat(self._num_epochs)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testCore(self):
+  def testSerializationCore(self):
     defs = [[0]] * self._num_cols
     self.run_core_tests(
         lambda: self.ds_func(record_defaults=defs, buffer_size=2),

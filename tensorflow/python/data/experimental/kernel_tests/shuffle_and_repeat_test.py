@@ -75,7 +75,7 @@ class ShuffleAndRepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
     output1 = self._gen_outputs(lambda: self._build_ds(10), 100)
     output2 = self._gen_outputs(lambda: self._build_ds(20), 100)
     self.assertNotEqual(output1, output2)
-    self.assertCountEqual(output1, output2)
+    self.assertEqual(sorted(output1), sorted(output2))
 
   @combinations.generate(test_base.default_test_combinations())
   def testCountNone(self):
@@ -84,7 +84,7 @@ class ShuffleAndRepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
     output2 = self._gen_outputs(
         lambda: self._build_ds(20, count=None), 100, verify_exhausted=False)
     self.assertNotEqual(output1, output2)
-    self.assertCountEqual(output1, output2)
+    self.assertEqual(sorted(output1), sorted(output2))
 
   @combinations.generate(test_base.default_test_combinations())
   def testCountMinusOne(self):
@@ -93,7 +93,7 @@ class ShuffleAndRepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
     output2 = self._gen_outputs(
         lambda: self._build_ds(20, count=-1), 100, verify_exhausted=False)
     self.assertNotEqual(output1, output2)
-    self.assertCountEqual(output1, output2)
+    self.assertEqual(sorted(output1), sorted(output2))
 
   @combinations.generate(test_base.default_test_combinations())
   def testInfiniteOutputs(self):

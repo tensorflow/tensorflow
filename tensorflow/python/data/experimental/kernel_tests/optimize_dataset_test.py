@@ -139,7 +139,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = self.getNext(dataset)
     self.evaluate(get_next())
 
-  # TODO(b/123354468)
+  # TODO(b/123902160)
   @combinations.generate(test_base.graph_only_combinations())
   def testOptimizationLargeInputFromTensor(self):
     input_t = array_ops.placeholder(dtypes.int32, (None, None, None))
@@ -155,7 +155,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       sess.run(init_op, {input_t: np.ones([512, 1024, 1025], np.int32)})
       self.evaluate(get_next)
 
-  # TODO(b/123354468)
+  # TODO(b/123902160)
   @combinations.generate(test_base.graph_only_combinations())
   def testOptimizationLargeInputFromTensorSlices(self):
     input_t = array_ops.placeholder(dtypes.int32, (None, None, None, None))
