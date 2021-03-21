@@ -402,4 +402,28 @@ REGISTER_KERNEL_BUILDER(Name("ReverseV2")
                         ReverseV2Op<CPUDevice, int32, int64>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+REGISTER_KERNEL_BUILDER(Name("Reverse")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<int32>("T")
+                            .HostMemory("tensor")
+                            .HostMemory("dims")
+                            .HostMemory("output"),
+                        ReverseOp<CPUDevice, int32>);
+REGISTER_KERNEL_BUILDER(Name("ReverseV2")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Tidx")
+                            .HostMemory("tensor")
+                            .HostMemory("axis")
+                            .HostMemory("output"),
+                        ReverseV2Op<CPUDevice, int32, int32>);
+REGISTER_KERNEL_BUILDER(Name("ReverseV2")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int64>("Tidx")
+                            .HostMemory("tensor")
+                            .HostMemory("axis")
+                            .HostMemory("output"),
+                        ReverseV2Op<CPUDevice, int32, int64>);
+
 }  // namespace tensorflow

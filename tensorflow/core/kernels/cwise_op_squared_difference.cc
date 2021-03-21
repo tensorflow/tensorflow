@@ -38,4 +38,13 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<int32>("T"),
     BinaryOp<CPUDevice, functor::squared_difference<int32>>);
 
+REGISTER_KERNEL_BUILDER(
+    Name("SquaredDifference")
+        .Device(DEVICE_DEFAULT)
+        .HostMemory("x")
+        .HostMemory("y")
+        .HostMemory("z")
+        .TypeConstraint<int32>("T"),
+    BinaryOp<CPUDevice, functor::squared_difference<int32>>);
+
 }  // namespace tensorflow

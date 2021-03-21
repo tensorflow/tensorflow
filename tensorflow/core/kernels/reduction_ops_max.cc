@@ -86,5 +86,24 @@ REGISTER_KERNEL_BUILDER(
 
 #endif
 
+REGISTER_KERNEL_BUILDER(
+    Name("Max")
+        .Device(DEVICE_DEFAULT)
+        .HostMemory("reduction_indices")
+        .HostMemory("input")
+        .HostMemory("output")
+        .TypeConstraint<int32>("T")
+        .TypeConstraint<int32>("Tidx"),
+    ReductionOp<CPUDevice, int32, int32, Eigen::internal::MaxReducer<int32>>);
+REGISTER_KERNEL_BUILDER(
+    Name("Max")
+        .Device(DEVICE_DEFAULT)
+        .HostMemory("reduction_indices")
+        .HostMemory("input")
+        .HostMemory("output")
+        .TypeConstraint<int32>("T")
+        .TypeConstraint<int64>("Tidx"),
+    ReductionOp<CPUDevice, int32, int64, Eigen::internal::MaxReducer<int32>>);
+
 
 }  // namespace tensorflow

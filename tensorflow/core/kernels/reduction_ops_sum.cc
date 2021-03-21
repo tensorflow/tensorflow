@@ -81,5 +81,24 @@ REGISTER_KERNEL_BUILDER(
 
 #endif
 
+REGISTER_KERNEL_BUILDER(
+    Name("Sum")
+        .Device(DEVICE_DEFAULT)
+        .TypeConstraint<int32>("T")
+        .TypeConstraint<int32>("Tidx")
+        .HostMemory("input")
+        .HostMemory("output")
+        .HostMemory("reduction_indices"),
+    ReductionOp<CPUDevice, int32, int32, Eigen::internal::SumReducer<int32>>);
+REGISTER_KERNEL_BUILDER(
+    Name("Sum")
+        .Device(DEVICE_DEFAULT)
+        .TypeConstraint<int32>("T")
+        .TypeConstraint<int64>("Tidx")
+        .HostMemory("input")
+        .HostMemory("output")
+        .HostMemory("reduction_indices"),
+    ReductionOp<CPUDevice, int32, int64, Eigen::internal::SumReducer<int32>>);
+
 
 }  // namespace tensorflow

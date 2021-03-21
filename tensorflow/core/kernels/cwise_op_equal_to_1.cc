@@ -26,6 +26,15 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("ApproximateEqual").Device(DEVICE_CPU).TypeConstraint<double>("T"),
     ApproximateEqualOp<CPUDevice, double>);
+
+REGISTER_KERNEL_BUILDER(Name("Equal")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("z")
+                            .TypeConstraint<int32>("T"),
+                        BinaryOp<CPUDevice, functor::equal_to<int32>>);
+
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER4(BinaryOp, GPU, "Equal", functor::equal_to, float, Eigen::half, double,
