@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_execution_context.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -35,22 +36,10 @@ namespace tensorrt {
 
 using absl::StrCat;
 
-ExecutionContext::~ExecutionContext() {
-  if (device_memory_) {
-    DCHECK(memory_allocator_) << "Internal error: Device memory with address "
-                              << (char*)device_memory_ << "is not freed";
-    memory_allocator_->free(device_memory_);
-  }
-  if (execution_context_) {
-    execution_context_->destroy();
-  }
-}
-
-StatusOr<ExecutionContext> ExecutionContext::Create(
-    nvinfer1::ICudaEngine* cuda_engine, TRTBaseAllocator* allocator) {
+ExecutionContext ExecutionContext::Create(nvinfer1::ICudaEngine* cuda_engine) {
   nvinfer1::IExecutionContext* execution_context =
       cuda_engine->createExecutionContextWithoutDeviceMemory();
-  return ExecutionContext(nullptr, nullptr, execution_context);
+  return ExecutionContext(execution_context);
 }
 
 Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,

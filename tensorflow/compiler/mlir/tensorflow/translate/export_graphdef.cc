@@ -176,13 +176,32 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
 
   node_def->set_op(FunctionLibraryDefinition::kArgOp);
 
-  TF_RETURN_IF_ERROR(SetShapeAttribute("_output_shapes",
-                                       arg.getType().cast<mlir::ShapedType>(),
-                                       node_def->mutable_attr()));
+  mlir::TensorType arg_type = arg.getType().cast<mlir::TensorType>();
+  if (auto resource_type =
+          arg_type.getElementType().dyn_cast<mlir::TF::ResourceType>()) {
+    llvm::ArrayRef<mlir::TensorType> subtypes = resource_type.getSubtypes();
+    if (!subtypes.empty()) {
+      AttrValue handle_dtypes_attr;
+      AttrValue handle_shapes_attr;
+      for (mlir::TensorType subtype : subtypes) {
+        DataType dtype;
+        TF_RETURN_IF_ERROR(ConvertToDataType(subtype.getElementType(), &dtype));
+        handle_dtypes_attr.mutable_list()->add_type(dtype);
+
+        SetTensorShapeProto(subtype,
+                            handle_shapes_attr.mutable_list()->add_shape());
+      }
+
+      (*node_def->mutable_attr())["_handle_dtypes"] = handle_dtypes_attr;
+      (*node_def->mutable_attr())["_handle_shapes"] = handle_shapes_attr;
+    }
+  }
+
+  TF_RETURN_IF_ERROR(
+      SetShapeAttribute("_output_shapes", arg_type, node_def->mutable_attr()));
 
   DataType dtype;
-  TF_RETURN_IF_ERROR(ConvertToDataType(
-      arg.getType().cast<mlir::TensorType>().getElementType(), &dtype));
+  TF_RETURN_IF_ERROR(ConvertToDataType(arg_type.getElementType(), &dtype));
   AttrValue type_attr;
   type_attr.set_type(dtype);
   (*node_def->mutable_attr())["T"] = type_attr;

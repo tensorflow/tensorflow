@@ -4825,6 +4825,8 @@ class _FinalizeDataset(UnaryUnchangedStructureDataset):
     super(_FinalizeDataset, self).__init__(input_dataset, variant_tensor)
 
 
+# TODO(b/147325552): This class can be removed after we switch to using C++
+# based implementation for tf.data options (on 4/12/2021).
 class _ModelDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and models performance."""
 
@@ -4839,6 +4841,8 @@ class _ModelDataset(UnaryUnchangedStructureDataset):
     super(_ModelDataset, self).__init__(input_dataset, variant_tensor)
 
 
+# TODO(b/147325552): This class can be removed after we switch to using C++
+# based implementation for tf.data options (on 4/12/2021).
 class _OptimizeDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and applies optimizations."""
 
@@ -4888,6 +4892,8 @@ class _OptimizeDataset(UnaryUnchangedStructureDataset):
     super(_OptimizeDataset, self).__init__(input_dataset, variant_tensor)
 
 
+# TODO(b/147325552): This class can be removed after we switch to using C++
+# based implementation for tf.data options (on 4/12/2021).
 class _SetStatsAggregatorDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and sets a stats aggregator."""
 
@@ -4906,6 +4912,8 @@ class _SetStatsAggregatorDataset(UnaryUnchangedStructureDataset):
                                                      variant_tensor)
 
 
+# TODO(b/147325552): This class can be removed after we switch to using C++
+# based implementation for tf.data options (on 4/12/2021).
 class _MaxIntraOpParallelismDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, overriding intra-op parallelism."""
 
@@ -4923,6 +4931,8 @@ class _MaxIntraOpParallelismDataset(UnaryUnchangedStructureDataset):
                                                         variant_tensor)
 
 
+# TODO(b/147325552): This class can be removed after we switch to using C++
+# based implementation for tf.data options (on 4/12/2021).
 class _PrivateThreadPoolDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, setting a private threadpool."""
 

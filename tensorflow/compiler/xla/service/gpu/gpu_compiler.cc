@@ -636,6 +636,9 @@ static Status CompileModuleToLlvmIrImpl(
   TF_RETURN_IF_ERROR(
       HloToLhloModule(**buffer_assignment, *hlo_module, *mlir_module));
 
+  llvm_ir::DumpIrIfEnabled(mlir_module.get(), hlo_module->unique_id(),
+                           hlo_module->config().debug_options());
+
   IrEmitterContext ir_emitter_context(
       hlo_module, buffer_assignment->get(), platform_name, gpu_device_info,
       cuda_compute_capability, profile_index_map, &mlir_context,

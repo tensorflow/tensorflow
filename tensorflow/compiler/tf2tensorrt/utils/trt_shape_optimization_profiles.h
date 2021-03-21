@@ -207,8 +207,7 @@ class TrtShapeOptimizationProfile {
 
   // Creates execution contexts for each optimization profile.
   Status CreateExecutionContexts(nvinfer1::ICudaEngine* engine,
-                                 std::vector<ExecutionContext>& exec_context,
-                                 TRTBaseAllocator* memory_allocator);
+                                 std::vector<ExecutionContext>* exec_contexts);
 
   Status SetInputShapeBinding(int input_index, int binding_index,
                               nvinfer1::ICudaEngine* cuda_engine,

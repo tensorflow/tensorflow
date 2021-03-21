@@ -22,27 +22,14 @@ install_ubuntu_16_python_pip_deps python3.6
 # Update Bazel to the desired version
 install_bazelisk
 
-# Run configure.
-export TF_NEED_GCP=1
-export TF_NEED_HDFS=1
-export TF_NEED_S3=1
-export TF_NEED_CUDA=1
-export TF_CUDA_VERSION=11.2
-export TF_CUDNN_VERSION=8.1
-export TF_NEED_TENSORRT=1
-export TENSORRT_INSTALL_PATH=/usr/local/tensorrt
-export CC_OPT_FLAGS='-mavx -march=native'
-export PYTHON_BIN_PATH=$(which python3.6)
-export LD_LIBRARY_PATH="/usr/local/cuda:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$TENSORRT_INSTALL_PATH/lib"
-export TF_CUDA_COMPUTE_CAPABILITIES=sm_35,sm_50,sm_60,sm_70,sm_75,compute_80
-
-yes "" | "$PYTHON_BIN_PATH" configure.py
+export LD_LIBRARY_PATH="/usr/local/cuda:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/tensorrt/lib"
 
 ########################
 ## Build GPU pip package
 ########################
-bazel build --config=opt \
-  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda11.2:toolchain \
+bazel build \
+  --config=release_gpu_linux \
+  --repo_env=PYTHON_BIN_PATH="$(which python3.6)" \
   tensorflow/tools/pip_package:build_pip_package
 
 # Set TF nightly flag so we get the proper version of estimator

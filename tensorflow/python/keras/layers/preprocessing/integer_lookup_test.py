@@ -31,7 +31,6 @@ from tensorflow.python import tf2
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import keras_parameterized
@@ -391,8 +390,8 @@ class IntegerLookupVocabularyTest(
     self.assertAllEqual(expected_output, output_dataset)
 
   def test_no_vocab(self):
-    with self.assertRaisesRegex(ValueError,
-                                "You must set the layer's vocabulary"):
+    with self.assertRaisesRegex(
+        ValueError, "You must set the layer's vocabulary"):
       layer = integer_lookup.IntegerLookup()
       layer([[1]])
 
@@ -453,35 +452,6 @@ class IntegerLookupVocabularyTest(
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
-  def test_int_output_inverted_vocab_from_file(self):
-    vocab_list = [42, 1138, 725, 1729]
-    vocab_path = self._write_to_temp_file("vocab_file", vocab_list)
-
-    input_array = np.array([[2, 3, 4, 5], [5, 4, 2, 1]])
-    expected_output = [[42, 1138, 725, 1729], [1729, 725, 42, -1]]
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
-    layer = integer_lookup.IntegerLookup(vocabulary=vocab_path, invert=True)
-    int_data = layer(input_data)
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    output_dataset = model.predict(input_array)
-    self.assertAllEqual(expected_output, output_dataset)
-
-  def test_int_output_inverted_vocab_from_file_nonstandard_mask(self):
-    vocab_list = [42, 1138, 725, 1729]
-    vocab_path = self._write_to_temp_file("vocab_file", vocab_list)
-
-    input_array = np.array([[2, 3, 4, 5], [5, 4, 2, 0]])
-    expected_output = [[42, 1138, 725, 1729], [1729, 725, 42, -10]]
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
-    layer = integer_lookup.IntegerLookup(
-        vocabulary=vocab_path, invert=True, mask_value=-10)
-    int_data = layer(input_data)
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    output_dataset = model.predict(input_array)
-    self.assertAllEqual(expected_output, output_dataset)
-
   def test_int_output_explicit_vocab_from_file_via_setter(self):
     vocab_list = [42, 1138, 725, 1729]
     vocab_path = self._write_to_temp_file("vocab_file", vocab_list)
@@ -505,9 +475,7 @@ class IntegerLookupVocabularyTest(
   def test_non_unique_vocab_from_file_fails(self):
     vocab_list = [42, 1138, 725, 1729, 42]
     vocab_path = self._write_to_temp_file("repeat_vocab_file", vocab_list)
-    with self.assertRaisesRegex(
-        errors_impl.FailedPreconditionError,
-        ".*HashTable has different value for same key.*42.*"):
+    with self.assertRaisesRegex(ValueError, ".*repeated term.*42.*"):
       _ = integer_lookup.IntegerLookup(vocabulary=vocab_path)
 
 

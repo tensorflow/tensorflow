@@ -50,7 +50,19 @@ keras_kpl_gauge = monitoring.BoolGauge(
 @keras_export('keras.layers.experimental.preprocessing.PreprocessingLayer')
 @six.add_metaclass(abc.ABCMeta)
 class PreprocessingLayer(Layer):
-  """Base class for PreprocessingLayers.
+  """Base class for Preprocessing Layers.
+
+  **Don't use this class directly: it's an abstract base class!** You may
+  be looking for one of the many built-in
+  [preprocessing layers](https://keras.io/guides/preprocessing_layers/)
+  instead.
+
+  Preprocessing layers are layers whose state gets computed before model
+  training starts. They do not get updated during training.
+  Most preprocessing layers implement an `adapt()` method for state computation.
+
+  The `PreprocessingLayer` class is the base class you would subclass to
+  implement your own preprocessing layers.
 
   Attributes:
     stateful: Whether the layer contains state that needs to be adapted via

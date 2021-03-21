@@ -193,6 +193,10 @@ class MicroMutableOpResolver : public MicroOpResolver {
                      tflite::Register_DETECTION_POSTPROCESS());
   }
 
+  TfLiteStatus AddDiv() {
+    return AddBuiltin(BuiltinOperator_DIV, tflite::Register_DIV(), ParseDiv);
+  }
+
   TfLiteStatus AddElu() {
     return AddBuiltin(BuiltinOperator_ELU, tflite::Register_ELU(), ParseElu);
   }

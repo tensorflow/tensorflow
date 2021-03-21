@@ -149,10 +149,23 @@ BASE_DOCSTRING = """Instantiates the {name} architecture.
   - [EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks](
       https://arxiv.org/abs/1905.11946) (ICML 2019)
 
-  Optionally loads weights pre-trained on ImageNet.
-  Note that the data format convention used by the model is
-  the one specified in your Keras config at `~/.keras/keras.json`.
-  If you have never configured it, it defaults to `"channels_last"`.
+  This function returns a Keras image classification model,
+  optionally loaded with weights pre-trained on ImageNet.
+
+  For image classification use cases, see
+  [this page for detailed examples](
+    https://keras.io/api/applications/#usage-examples-for-image-classification-models).
+
+  For transfer learning use cases, make sure to read the
+  [guide to transfer learning & fine-tuning](
+    https://keras.io/guides/transfer_learning/).
+
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For EfficientNet, input preprocessing is included as part of the model
+  (as a `Rescaling` layer), and thus
+  `tf.keras.applications.efficientnet.preprocess_input` is actually a
+  pass-through function. EfficientNet models expect their inputs to be float
+  tensors of pixels with values in the [0-255] range.
 
   Args:
     include_top: Whether to include the fully-connected
@@ -185,6 +198,8 @@ BASE_DOCSTRING = """Instantiates the {name} architecture.
         on the "top" layer. Ignored unless `include_top=True`. Set
         `classifier_activation=None` to return the logits of the "top" layer.
         Defaults to 'softmax'.
+        When loading pretrained weights, `classifier_activation` can only
+        be `None` or `"softmax"`.
 
   Returns:
     A `keras.Model` instance.
@@ -209,14 +224,6 @@ def EfficientNet(
     classes=1000,
     classifier_activation='softmax'):
   """Instantiates the EfficientNet architecture using given scaling coefficients.
-
-  Reference:
-  - [EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks](
-      https://arxiv.org/abs/1905.11946) (ICML 2019)
-
-  Optionally loads weights pre-trained on ImageNet.
-  Note that the data format convention used by the model is
-  the one specified in your Keras config at `~/.keras/keras.json`.
 
   Args:
     width_coefficient: float, scaling coefficient for network width.

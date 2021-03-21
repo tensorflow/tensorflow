@@ -990,18 +990,12 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     for (int i = 0; i < engine_input_shapes.size(); i++) {
       engine_input_shapes[i].set_dim(0, max_batch_size);
     }
-    auto exec_context_status =
-        ExecutionContext::Create(raw_static_engine, allocator);
-    if (!exec_context_status.ok()) {
-      return std::pair<EngineContext*, int>(&empty_context, 0);
-    }
-
+    ExecutionContext context = ExecutionContext::Create(raw_static_engine);
     // TODO(laigd): here we assume engine_input_shapes matches the actual input
     // shapes of the engine, we should verify that.
     cache.emplace(engine_input_shapes,
-                  absl::make_unique<EngineContext>(
-                      std::move(static_engine),
-                      std::move(exec_context_status.ValueOrDie())));
+                  absl::make_unique<EngineContext>(std::move(static_engine),
+                                                   std::move(context)));
     // Runtime is safe to delete after engine creation
     VLOG(1) << "Size of serialized TRT engine: "
             << serialized_segment_.capacity();
@@ -1057,7 +1051,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
         std::move(result.ValueOrDie());
     std::vector<ExecutionContext> exec_contexts;
     TF_RETURN_IF_ERROR(cache_res->profiles_.CreateExecutionContexts(
-        engine.get(), exec_contexts, allocator));
+        engine.get(), &exec_contexts));
     cache.emplace(input_concrete_shapes,
                   absl::make_unique<EngineContext>(std::move(engine),
                                                    std::move(exec_contexts)));
@@ -1149,17 +1143,10 @@ Status TRTEngineOp::AllocateCalibrationResources(
       // dump it out during conversion for TF 2.0.
       mutex_lock lock(this->engine_mutex_);
       this->calibrator_ = std::move(cres->calibrator_);
-      auto exec_context_status = ExecutionContext::Create(
-          cres->engine_.get(), cache_res->allocator_.get());
-      if (!exec_context_status.ok()) {
-        LOG(ERROR) << "Calibration failed: " << s;
-        cres->calibrator_->setDone();  // Ignore further pushes
-      } else {
-        cache_res->cache_.emplace(
-            shapes, absl::make_unique<EngineContext>(
-                        std::move(cres->engine_),
-                        std::move(exec_context_status.ValueOrDie())));
-      }
+      ExecutionContext context = ExecutionContext::Create(cres->engine_.get());
+      cache_res->cache_.emplace(
+          shapes, absl::make_unique<EngineContext>(std::move(cres->engine_),
+                                                   std::move(context)));
     }
 
     VLOG(1) << "Calibration loop terminated " << this->name();

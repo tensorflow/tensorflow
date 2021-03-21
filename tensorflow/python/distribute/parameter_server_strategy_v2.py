@@ -528,6 +528,7 @@ class ParameterServerStrategyV2Extended(
     self._cross_device_ops = cross_device_ops_lib.ReductionToOneDevice(
         reduce_to_device="/device:CPU:0")
     self._cross_device_ops._canonicalize_devices = False  # pylint: disable=protected-access
+    self._allow_run_without_coordinator = False
 
   def _set_num_gpus(self):
     devices = config.list_logical_devices("GPU")
@@ -572,20 +573,21 @@ class ParameterServerStrategyV2Extended(
       A `Variable` or `ShardedVariable`.
     """
 
+    var_creator = self._create_var_creator(next_creator, **kwargs)
     if "colocate_with" in kwargs:  # Never partition colocated_with variables.
       colocate_with = kwargs["colocate_with"]
       # Clear the variable scope to avoid possible conflicts between device
       # scope and colocation scope.
       with ops.device(None):
         with ops.colocate_with(colocate_with):
-          var = next_creator(**kwargs)
+          var = var_creator(**kwargs)
           logging.debug(
               "Creating variable (name:%s, shape:%r) that colocates with %s",
               var.name, var.shape, kwargs["colocate_with"].name)
           return var
 
     if self._variable_partitioner is None:
-      return self._create_variable_round_robin(next_creator, **kwargs)
+      return self._create_variable_round_robin(var_creator, **kwargs)
 
     name = kwargs.get("name", None)
     initial_value = kwargs.get("initial_value", None)
@@ -620,7 +622,7 @@ class ParameterServerStrategyV2Extended(
       shape = tensor_shape.as_shape(shape)
 
     if shape.rank == 0:  # Skip partitioning rank-0 variable.
-      return self._create_variable_round_robin(next_creator, **kwargs)
+      return self._create_variable_round_robin(var_creator, **kwargs)
 
     num_partitions = self._variable_partitioner(shape=shape, dtype=dtype)
     if not num_partitions or num_partitions[0] == 0 or any(
@@ -630,7 +632,7 @@ class ParameterServerStrategyV2Extended(
           " besides the first element (non-zero), got: %r" % num_partitions)
 
     if num_partitions[0] == 1:  # no partition
-      return self._create_variable_round_robin(next_creator, **kwargs)
+      return self._create_variable_round_robin(var_creator, **kwargs)
 
     # Use "div" partition strategy to partition the variable.
     num_partitions = min(num_partitions[0], shape[0])
@@ -693,7 +695,7 @@ class ParameterServerStrategyV2Extended(
       kwargs["initial_value"] = lambda: init_shard_fn(i)
       if name is not None:
         kwargs["name"] = "{}/part_{}".format(name, i)
-      var_list.append(self._create_variable_round_robin(next_creator, **kwargs))
+      var_list.append(self._create_variable_round_robin(var_creator, **kwargs))
 
     result = sharded_variable.ShardedVariable(var_list)
     return result
@@ -715,13 +717,14 @@ class ParameterServerStrategyV2Extended(
         return var
 
   def _assert_used_with_cluster_coordinator(self):
-    if not self._used_with_coordinator:
+    if (not self._used_with_coordinator and
+        not self._allow_run_without_coordinator):
       raise NotImplementedError(
           "`tf.distribute.experimental.ParameterServerStrategy` must be used "
           "with `tf.distribute.experimental.coordinator.ClusterCoordinator`.")
 
   def _assert_being_scheduled_by_cluster_coordinator(self):
-    if not self._being_scheduled:
+    if not self._being_scheduled and not self._allow_run_without_coordinator:
       raise NotImplementedError(
           "`tf.distribute.experimental.ParameterServerStrategy`'s `run` or "
           "`reduce` must be used within a function passed to `"

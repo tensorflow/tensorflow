@@ -16794,21 +16794,6 @@ func IsotonicRegression(scope *Scope, input tf.Output, optional ...IsotonicRegre
 	return op.Output(0), op.Output(1)
 }
 
-// Computes softplus: `log(exp(features) + 1)`.
-func Softplus(scope *Scope, features tf.Output) (activations tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Softplus",
-		Input: []tf.Input{
-			features,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // MutableHashTableV2Attr is an optional argument to MutableHashTableV2.
 type MutableHashTableV2Attr func(optionalAttr)
 

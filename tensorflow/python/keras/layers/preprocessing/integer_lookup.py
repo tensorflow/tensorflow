@@ -308,6 +308,11 @@ class IntegerLookup(index_lookup.IndexLookup):
           "num_oov_indices must be greater than or equal to 0. You passed %s" %
           (num_oov_indices,))
 
+    if vocabulary is not None:
+      if isinstance(vocabulary, str):
+        vocabulary = table_utils.get_vocabulary_from_file(vocabulary)
+        vocabulary = [int(v) for v in vocabulary]
+
     super(IntegerLookup, self).__init__(
         max_tokens=max_tokens,
         num_oov_indices=num_oov_indices,
