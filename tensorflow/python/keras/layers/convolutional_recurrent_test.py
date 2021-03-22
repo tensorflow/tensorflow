@@ -201,6 +201,9 @@ class ConvLSTMTest(keras_parameterized.TestCase):
       outputs = clone.predict(test_inputs)
       self.assertAllClose(reference_outputs, outputs, atol=1e-5)
 
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Skipping the test as OOM occurred with 1 GB budget.')
   def test_conv_lstm_with_initial_state(self):
     num_samples = 32
     sequence_len = 5

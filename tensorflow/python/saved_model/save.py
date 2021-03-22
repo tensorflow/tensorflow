@@ -25,6 +25,8 @@ import os
 import sys
 
 from absl import logging
+import numpy
+
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
@@ -374,7 +376,19 @@ class _SaveableView(object):
           if capture_constant_value is None:
             bad_functions.append(concrete_function)
             continue
-          copied_tensor = constant_op.constant(capture_constant_value)
+          if numpy.prod(capture.shape.as_list()) > 1 and numpy.all(
+              capture_constant_value == capture_constant_value.flat[0]):
+            # For the common case of a constant array filled with the same
+            # value, rebuidling the constant op specifically with the shape arg,
+            # since otherwise the whole array is written into the node def,
+            # causing performance and graph proto size issues (protos cannot be
+            # bigger than 2GB).
+            copied_tensor = constant_op.constant(
+                capture_constant_value.flat[0],
+                dtype=capture.dtype,
+                shape=capture.shape)
+          else:
+            copied_tensor = constant_op.constant(capture_constant_value)
           node_id = len(self.nodes)
           node = _CapturedConstant(
               eager_tensor=capture, graph_tensor=copied_tensor)

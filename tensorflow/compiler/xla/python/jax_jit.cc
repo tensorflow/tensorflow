@@ -112,53 +112,36 @@ void CallSignature::DecRef() const {
 
 namespace {
 
-// These 2 constants are protected by the GIL.
-ABSL_CONST_INIT bool disable_jit_flag = false;
-ABSL_CONST_INIT bool enable_x64_flag = false;
+// Flags, such as JIT disable and the x64 mode, are controlled by:
+// - a global flag value, e.g., associated to --jax_enable_x64
+// - possibly a thread-local value, which initially is absl::nullopt and
+//   overrides the global value if set. The thread-local state is
+//   used to implement context managers that locally override the global state.
+// TODO(phawkins): consider changing the global state to optional types to
+// catch cases where we fail to set it.
+struct GlobalJitState {
+  bool disable_jit = false;
+  bool enable_x64 = false;
+};
 
-ABSL_CONST_INIT thread_local absl::optional<bool> disable_jit_thread_local =
-    absl::nullopt;
-ABSL_CONST_INIT thread_local absl::optional<bool> jax_enable_x64_thread_local =
-    absl::nullopt;
+// Protected by the GIL.
+ABSL_CONST_INIT GlobalJitState global_state;
 
-// The x64 mode is controlled by:
-// - a global flag value, associated to --jax_enable_x64
-// - possibly a thread-local value, which initially is absl::nullopt and which
-//   will default to the flag value as long as it's not set.
-void SetEnableX64Flag(bool jax_enable_x64) { enable_x64_flag = jax_enable_x64; }
-bool GetEnableX64Flag() { return enable_x64_flag; }
-void SetEnableX64ThreadLocal(absl::optional<bool> jax_enable_x64) {
-  jax_enable_x64_thread_local = jax_enable_x64;
-}
-absl::optional<bool> GetEnableX64ThreadLocal() {
-  return jax_enable_x64_thread_local;
-}
+struct ThreadLocalJitState {
+  absl::optional<bool> disable_jit;
+  absl::optional<bool> enable_x64;
+};
 
-void SetDisableJitFlag(bool disable_jit) { disable_jit_flag = disable_jit; }
-bool GetDisableJitFlag() { return disable_jit_flag; }
-void SetDisableJitThreadLocal(absl::optional<bool> disable_jit) {
-  disable_jit_thread_local = disable_jit;
-}
-absl::optional<bool> GetDisableJitThreadLocal() {
-  return disable_jit_thread_local;
-}
+ABSL_CONST_INIT thread_local ThreadLocalJitState thread_local_state;
 
 bool JitIsDisabled() {
-  if (disable_jit_thread_local != absl::nullopt) {
-    return disable_jit_thread_local.value();
-  } else {
-    return disable_jit_flag;
-  }
+  return thread_local_state.disable_jit.value_or(global_state.disable_jit);
 }
 
 }  // namespace
 
 bool GetEnableX64() {
-  if (jax_enable_x64_thread_local != absl::nullopt) {
-    return jax_enable_x64_thread_local.value();
-  } else {
-    return enable_x64_flag;
-  }
+  return thread_local_state.enable_x64.value_or(global_state.enable_x64);
 }
 
 std::string CallSignature::DebugString() const {
@@ -361,7 +344,9 @@ xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
     ToArgSignatureHandler buffer_handler =
         [](py::handle h, bool jax_enable_x64) -> xla::StatusOr<ArgSignature> {
       xla::PyBuffer* buffer = py::cast<xla::PyBuffer*>(h);
-      bool weak_type = py::cast<py::bool_>(h.attr("aval").attr("weak_type"));
+      bool weak_type = buffer->weak_type().has_value()
+                           ? *buffer->weak_type()
+                           : py::cast<bool>(h.attr("aval").attr("weak_type"));
       return ArgSignature(buffer->buffer()->on_device_shape().element_type(),
                           buffer->buffer()->on_device_shape().dimensions(),
                           weak_type);
@@ -486,6 +471,8 @@ struct CacheEntry {
   // returning to Python. No need to convert back and forth.
   // We need py::object to maintain the objects alive.
   std::vector<py::object> out_avals;
+  std::vector<bool> out_weak_types;
+
   // The processing done in `AddCacheEntry` ensures that LazyExpr are stored as
   // `py::none()`.
   std::vector<py::object> out_lazy_exprs;
@@ -600,10 +587,21 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
   arg_buffers.reserve(num_flat_dynamic_args);
   arguments.signature.dynamic_args_signatures.reserve(num_flat_dynamic_args);
 
-  static const auto* xla_module =
-      new py::module(py::module::import("jax.interpreters.xla"));
-  static const auto* device_array =
-      new py::object(xla_module->attr("_DeviceArray"));
+  absl::InlinedVector<xla::PyBuffer*, 4> py_buffers;
+  py_buffers.resize(num_flat_dynamic_args, nullptr);
+
+  struct PythonTypes {
+    py::object device_array;
+    py::object py_buffer_type;
+  };
+  static const auto& types = *[]() -> PythonTypes* {
+    py::module xla_module(py::module::import("jax.interpreters.xla"));
+    py::object device_array(xla_module.attr("_DeviceArray"));
+    py::object py_buffer_type = py::reinterpret_borrow<py::object>(
+        py::type::handle_of<xla::PyBuffer>());
+
+    return new PythonTypes{device_array, py_buffer_type};
+  }();
   // When the jitted function is not committed, we first check whether any
   // sticky `DeviceArray` is present and on which device they live. See also:
   // https://github.com/google/jax/pull/1884
@@ -614,17 +612,19 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
   if (is_committed) {
     data_device = default_device;
   } else {
-    for (py::handle arg : arguments.flat_dynamic_args) {
+    for (int i = 0; i < num_flat_dynamic_args; ++i) {
+      py::handle arg = arguments.flat_dynamic_args[i];
       // We specically only deal with DeviceArray (not ShardedDeviceArray).
       // (Can happen in jit(pmap), e.g. "test_jit_nested_donate_ignored").
       xla::PjRtDevice* device = nullptr;
-      if (arg.get_type().ptr() == py::type::handle_of<xla::PyBuffer>().ptr()) {
+      if (arg.get_type().ptr() == types.py_buffer_type.ptr()) {
         xla::PyBuffer* buffer = py::cast<xla::PyBuffer*>(arg);
+        py_buffers[i] = buffer;
         if (!buffer->sticky_device()) {
           continue;
         }
         device = buffer->sticky_device();
-      } else if (arg.get_type().is(*device_array)) {
+      } else if (arg.get_type().ptr() == types.device_array.ptr()) {
         if (arg.attr("_device").is_none()) {  // Skip non-sticky devices.
           continue;
         }
@@ -669,9 +669,10 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
   // TODO(phawkins): consider allowing forces here.
   options.force_lazy_arrays = false;
   options.allow_zero_copy = true;
-  for (py::handle arg : arguments.flat_dynamic_args) {
+  for (int i = 0; i < num_flat_dynamic_args; ++i) {
+    py::handle arg = arguments.flat_dynamic_args[i];
     TF_ASSIGN_OR_RETURN(xla::DevicePutResult on_device,
-                        DevicePut(arg, data_device, options));
+                        DevicePut(arg, data_device, options, py_buffers[i]));
 
     xla::PjRtBuffer* buffer = on_device.buffer;
     arg_buffers.push_back(buffer);
@@ -755,12 +756,15 @@ CacheEntry* CompiledFunction::AddCacheEntry(const py::args& args,
   CHECK_EQ(avals.size(), lazy_exprs.size());
 
   cache_entry->out_avals.reserve(avals.size());
+  cache_entry->out_weak_types.reserve(avals.size());
   cache_entry->out_lazy_exprs.reserve(avals.size());
   for (int i = 0; i < avals.size(); ++i) {
     py::object shaped_array = py::reinterpret_borrow<py::object>(avals[i]);
     py::object lazy_expr = py::reinterpret_borrow<py::object>(lazy_exprs[i]);
 
     cache_entry->out_avals.push_back(shaped_array);
+    cache_entry->out_weak_types.push_back(
+        py::cast<bool>(shaped_array.attr("weak_type")));
     cache_entry->out_lazy_exprs.push_back(lazy_expr);
   }
 
@@ -850,24 +854,25 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::args args,
   std::vector<std::unique_ptr<xla::PyBuffer>> outputs =
       ValueOrThrow(cache_entry->executable->PjRtExecute(arguments.arg_buffers));
 
-  const std::vector<py::object>& out_avals = cache_entry->out_avals;
   const std::vector<py::object>& out_lazy_exprs = cache_entry->out_lazy_exprs;
   xla::PjRtDevice* sticky_device = cache_entry->sticky_device;
 
-  py::list flat_device_arrays;
+  std::vector<py::object> flat_device_arrays;
+  flat_device_arrays.reserve(outputs.size());
   for (int i = 0; i < outputs.size(); ++i) {
     auto& buffer = outputs[i];
     if (out_lazy_exprs[i].is_none()) {  // No LazyExpr.
-      buffer->SetAval(out_avals[i]);
+      buffer->SetAval(cache_entry->out_avals[i]);
+      buffer->set_weak_type(cache_entry->out_weak_types[i]);
       TF_RETURN_IF_ERROR(buffer->set_sticky_device(sticky_device));
-      flat_device_arrays.append(py::cast(std::move(outputs[i])));
+      flat_device_arrays.push_back(py::cast(std::move(outputs[i])));
     } else {
       static const auto* xla_module =
           new py::module(py::module::import("jax.interpreters.xla"));
       static const auto* device_array =
           new py::handle(xla_module->attr("_DeviceArray"));
-      flat_device_arrays.append((*device_array)(
-          out_avals[i],
+      flat_device_arrays.push_back((*device_array)(
+          cache_entry->out_avals[i],
           py::cast(WrapWithClient(default_pyclient_, sticky_device)),
           out_lazy_exprs[i], py::cast(std::move(outputs[i]))));
     }
@@ -886,20 +891,58 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
   cfun.def_property_readonly("__signature__",
                              &CompiledFunction::PythonSignature);
 
-  jitlib.def("set_disable_jit_cpp_flag", &SetDisableJitFlag);
-  jitlib.def("get_disable_jit_cpp_flag", &GetDisableJitFlag);
-  jitlib.def("set_disable_jit_thread_local", &SetDisableJitThreadLocal);
-  jitlib.def("get_disable_jit_thread_local", &GetDisableJitThreadLocal);
-  jitlib.def("jit_is_disabled", &JitIsDisabled);
-  // TODO(jblespiau): Remove from the Python code and remove this
-  jitlib.def("set_disable_jit", &SetDisableJitThreadLocal);
-  jitlib.def("get_disable_jit", &GetDisableJitThreadLocal);
+  py::class_<GlobalJitState> global_state_(jitlib, "GlobalJitState");
+  global_state_.def_readwrite("disable_jit", &GlobalJitState::disable_jit);
+  global_state_.def_readwrite("enable_x64", &GlobalJitState::enable_x64);
 
-  jitlib.def("set_enable_x64_cpp_flag", &SetEnableX64Flag);
-  jitlib.def("get_enable_x64_cpp_flag", &GetEnableX64Flag);
-  jitlib.def("set_enable_x64_thread_local", &SetEnableX64ThreadLocal);
-  jitlib.def("get_enable_x64_thread_local", &GetEnableX64ThreadLocal);
+  py::class_<ThreadLocalJitState> thread_local_state_(jitlib,
+                                                      "ThreadLocalJitState");
+  thread_local_state_.def_readwrite("disable_jit",
+                                    &ThreadLocalJitState::disable_jit);
+  thread_local_state_.def_readwrite("enable_x64",
+                                    &ThreadLocalJitState::enable_x64);
+
+  jitlib.def(
+      "global_state", [&]() { return &global_state; },
+      py::return_value_policy::reference);
+  jitlib.def(
+      "thread_local_state", [&]() { return &thread_local_state; },
+      py::return_value_policy::reference);
+
+  jitlib.def("jit_is_disabled", &JitIsDisabled);
   jitlib.def("get_enable_x64", &GetEnableX64);
+
+  // TODO(phawkins): delete the following methods after dropping compatibility
+  // with JAX python versions older than 0.2.10.
+  jitlib.def("set_disable_jit_cpp_flag",
+             [&](bool disable_jit) { global_state.disable_jit = disable_jit; });
+  jitlib.def("get_disable_jit_cpp_flag",
+             [&]() { return global_state.disable_jit; });
+  jitlib.def("set_disable_jit_thread_local",
+             [&](absl::optional<bool> disable_jit) {
+               thread_local_state.disable_jit = disable_jit;
+             });
+  jitlib.def("get_disable_jit_thread_local",
+             [&]() { return thread_local_state.disable_jit; });
+  // TODO(jblespiau): Remove from the Python code and remove this
+  jitlib.def("set_disable_jit", [&](bool disable_jit) {
+    thread_local_state.disable_jit = disable_jit;
+  });
+  jitlib.def("get_disable_jit",
+             [&]() { return thread_local_state.disable_jit; });
+
+  jitlib.def("set_enable_x64_cpp_flag",
+             [&](bool enable_x64) { global_state.enable_x64 = enable_x64; });
+  jitlib.def("get_enable_x64_cpp_flag",
+             [&]() { return global_state.enable_x64; });
+  jitlib.def("set_enable_x64_thread_local",
+             [&](absl::optional<bool> enable_x64) {
+               thread_local_state.enable_x64 = enable_x64;
+             });
+  jitlib.def("get_enable_x64_thread_local", [&](bool enable_x64) {
+    thread_local_state.enable_x64 = enable_x64;
+  });
+  // TODO(phawkins): delete up to here.
 
   jitlib.def(
       "jit",

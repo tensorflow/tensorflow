@@ -131,7 +131,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'recall\', \'num_thresholds\', \'name\', \'dtype\'], varargs=None, keywords=None, defaults=[\'200\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'recall\', \'num_thresholds\', \'class_id\', \'name\', \'dtype\'], varargs=None, keywords=None, defaults=[\'200\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "add_loss"
@@ -223,6 +223,10 @@ tf_class {
   }
   member_method {
     name: "get_weights"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reset_state"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {

@@ -295,9 +295,9 @@ if [[ "$IN_VENV" == "1" ]]; then
   deactivate || source deactivate || die "FAILED: Unable to deactivate from existing virtualenv."
 fi
 
-# Configure python. Obtain the path to python binary.
-source tools/python_bin_path.sh
-# Assume PYTHON_BIN_PATH is exported by the script above.
+# Configure python. Obtain the path to python binary as written by ./configure.
+source tools/python_bin_path.sh || true
+# Assume PYTHON_BIN_PATH is exported by the script above or the caller.
 if [[ -z "$PYTHON_BIN_PATH" ]]; then
   die "PYTHON_BIN_PATH was not provided. Did you run configure?"
 fi
@@ -309,8 +309,11 @@ bazel clean
 # Clean up and update bazel flags
 update_bazel_flags
 # Build. This outputs the file `build_pip_package`.
-bazel build ${TF_BUILD_FLAGS} ${PIP_BUILD_TARGET} || \
-  die "Error: Bazel build failed for target: '${PIP_BUILD_TARGET}'"
+bazel build \
+  --action_env=PYTHON_BIN_PATH=${PYTHON_BIN_PATH} \
+  ${TF_BUILD_FLAGS} \
+  ${PIP_BUILD_TARGET} \
+  || die "Error: Bazel build failed for target: '${PIP_BUILD_TARGET}'"
 
 ###########################################################################
 # Test function(s)

@@ -57,6 +57,7 @@ Status AsGraphDefMinimal(OpKernelContext* ctx, const DatasetBase* input,
                          std::vector<std::pair<string, Tensor>>* input_list,
                          GraphDef* result, string* dataset_node) {
   SerializationContext::Params params;
+  params.resource_mgr = ctx->resource_manager();
   params.input_list = input_list;
   params.external_state_policy =
       SerializationContext::ExternalStatePolicy::kIgnore;

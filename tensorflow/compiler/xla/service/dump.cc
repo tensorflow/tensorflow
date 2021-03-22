@@ -356,11 +356,12 @@ int64 StepNumberForModule(const HloModule& module) {
   return module_id_to_step_number[module.unique_id()]++;
 }
 
+}  // namespace
+
 // Get a timestamp which we can use as a filename prefix specific to this
 // module.
-string TimestampFor(const HloModule& module,
-                    const DebugOptions& debug_options) {
-  if (!debug_options.xla_dump_include_timestamp()) {
+string TimestampFor(const HloModule& module) {
+  if (!module.config().debug_options().xla_dump_include_timestamp()) {
     return "";
   }
   tensorflow::mutex_lock lock(mu);
@@ -369,16 +370,15 @@ string TimestampFor(const HloModule& module,
   return std::to_string(timestamp_emplace.first->second);
 }
 
-string TimestampFor(const HloModule& module) {
-  return TimestampFor(module, module.config().debug_options());
+static string FilenameFor(int unique_id, string_view prefix,
+                          string_view suffix) {
+  return StrFormat("%s%smodule_%04d.%s", prefix, prefix.empty() ? "" : ".",
+                   unique_id, suffix);
 }
-
-}  // namespace
 
 string FilenameFor(const HloModule& module, string_view prefix,
                    string_view suffix) {
-  return StrFormat("%s%smodule_%04d.%s", prefix, prefix.empty() ? "" : ".",
-                   module.unique_id(), suffix);
+  return FilenameFor(module.unique_id(), prefix, suffix);
 }
 
 void DumpToFileInDir(const HloModule& module, string_view file_prefix,
@@ -392,6 +392,13 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
   DumpToFileInDirOrStdoutImpl(
       FilenameFor(module, file_prefix, file_suffix), contents,
       CanonicalDebugOptions(module.config().debug_options()));
+}
+
+void DumpToFileInDirOrStdout(const DebugOptions& debug_options, int unique_id,
+                             string_view file_prefix, string_view file_suffix,
+                             string_view contents) {
+  DumpToFileInDirOrStdoutImpl(FilenameFor(unique_id, file_prefix, file_suffix),
+                              contents, CanonicalDebugOptions(debug_options));
 }
 
 void DumpExecutionOptions(const ExecutionOptions& execution_options,
@@ -424,17 +431,12 @@ void DumpExecutionOptions(const ExecutionOptions& execution_options,
   }
 }
 
-void DumpHloModuleIfEnabled(const HloModule& module, string_view name,
-                            const DebugOptions& debug_options) {
-  CanonicalDebugOptions opts(debug_options);
+void DumpHloModuleIfEnabled(const HloModule& module, string_view name) {
+  CanonicalDebugOptions opts(module.config().debug_options());
   if (opts.should_dump_module(module.name())) {
     DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, /*profile=*/nullptr,
-                      TimestampFor(module, debug_options), name, opts);
+                      TimestampFor(module), name, opts);
   }
-}
-
-void DumpHloModuleIfEnabled(const HloModule& module, string_view name) {
-  DumpHloModuleIfEnabled(module, name, module.config().debug_options());
 }
 
 void DumpHloModuleIfEnabled(const HloModule& module,

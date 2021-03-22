@@ -26,8 +26,19 @@ namespace xla {
 // batch.
 class SpaceToBatchConverter : public HloModulePass {
  public:
+  explicit SpaceToBatchConverter(bool enable_propagations_on_base_dilations,
+                                 bool enable_propagations_on_window_dilations,
+                                 int64 limit_on_batch_size = 1)
+      : limit_on_batch_size_(limit_on_batch_size),
+        enable_propagations_on_base_dilations_(
+            enable_propagations_on_base_dilations),
+        enable_propagations_on_window_dilations_(
+            enable_propagations_on_window_dilations) {}
+
   explicit SpaceToBatchConverter(int64 limit_on_batch_size = 1)
-      : limit_on_batch_size_(limit_on_batch_size) {}
+      : SpaceToBatchConverter(/*enable_propagations_on_base_dilations=*/true,
+                              /*enable_propagations_on_window_dilations=*/true,
+                              limit_on_batch_size) {}
 
   absl::string_view name() const override { return "space-to-batch-converter"; }
 
@@ -36,6 +47,8 @@ class SpaceToBatchConverter : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 
   int64 limit_on_batch_size_;
+  bool enable_propagations_on_base_dilations_;
+  bool enable_propagations_on_window_dilations_;
 };
 
 }  // namespace xla

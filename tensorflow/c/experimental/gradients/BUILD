@@ -32,11 +32,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/c/eager:abstract_context",
-        "//tensorflow/c/eager:abstract_operation",
-        "//tensorflow/c/eager:abstract_tensor_handle",
-        "//tensorflow/c/eager:c_api_unified_internal",
         "//tensorflow/c/eager:gradients_internal",
-        "//tensorflow/core/lib/llvm_rtti",
     ],
 )
 
@@ -93,7 +89,6 @@ cc_library(
     deps = [
         "//tensorflow/c/eager:abstract_context",
         "//tensorflow/c/eager:gradients_internal",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -113,6 +108,7 @@ cc_library(
         ":math_grad",
         ":nn_grad",
         ":not_differentiable",
+        "//tensorflow/c/eager:abstract_context",
         "//tensorflow/c/eager:gradients_internal",
     ],
 )
@@ -188,6 +184,8 @@ tf_cuda_cc_test(
         ":nn_grad",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api_test_util",
+        "//tensorflow/c/eager:c_api_unified_internal",
+        "//tensorflow/c/eager:unified_api_testutil",
         "//tensorflow/c/experimental/gradients/tape:tape_context",
         "//tensorflow/c/experimental/ops:nn_ops",
         "//tensorflow/core/platform:tensor_float_32_utils",
@@ -213,6 +211,8 @@ tf_cuda_cc_test(
         ":math_grad",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api_test_util",
+        "//tensorflow/c/eager:c_api_unified_internal",
+        "//tensorflow/c/eager:unified_api_testutil",
         "//tensorflow/c/experimental/gradients/tape:tape_context",
         "//tensorflow/c/experimental/ops:math_ops",
         "//tensorflow/core/platform:tensor_float_32_utils",
@@ -243,6 +243,8 @@ tf_cuda_cc_test(
         "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/c/eager:c_api_unified_internal",
+        "//tensorflow/c/eager:unified_api_testutil",
     ] + if_libtpu(
         if_false = ["//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration"],
         if_true = [],

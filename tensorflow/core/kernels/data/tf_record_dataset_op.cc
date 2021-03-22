@@ -44,7 +44,8 @@ constexpr int64 kCloudTpuBlockSize = 127LL << 20;  // 127MB.
 constexpr int64 kS3BlockSize = kCloudTpuBlockSize;
 
 bool is_cloud_tpu_gcs_fs() {
-#if defined(PLATFORM_CLOUD_TPU) && defined(TPU_GCS_FS)
+#if (defined(PLATFORM_CLOUD_TPU) && defined(TPU_GCS_FS)) || \
+    defined(LIBTPU_ON_GCE)
   return true;
 #endif
   return false;

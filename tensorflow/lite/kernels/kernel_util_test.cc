@@ -769,6 +769,18 @@ TEST_F(KernelUtilTest, CheckAndPopulateWithoutBias) {
   TfLiteTensorFree(&output);
 }
 
+TEST_F(KernelUtilTest, IsMobilePlatform) {
+  // Note: This isn't meant to be exhaustive, as that would require replicating
+  // the method's implementation, but it is a basic smoke check.
+#if defined(__ANDROID__)
+  EXPECT_TRUE(IsMobilePlatform());
+#elif defined(__linux__)
+  EXPECT_FALSE(IsMobilePlatform());
+#elif defined(_WIN32)
+  EXPECT_FALSE(IsMobilePlatform());
+#endif
+}
+
 }  // namespace
 }  // namespace tflite
 

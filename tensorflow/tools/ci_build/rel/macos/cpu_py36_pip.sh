@@ -32,12 +32,8 @@ export CONTAINER_TYPE="CPU"
 export TF_PYTHON_VERSION='python3.6'
 export TF_BUILD_BOTH_CPU_PACKAGES=1
 
-# Run configure.
-export PYTHON_BIN_PATH=$(which ${TF_PYTHON_VERSION})
-yes "" | "$PYTHON_BIN_PATH" configure.py
-
 # Export optional variables for running pip.sh
-export TF_BUILD_FLAGS="--config=release_cpu_macos"
+export TF_BUILD_FLAGS="--config=release_cpu_macos --repo_env=PYTHON_BIN_PATH="$(which ${TF_PYTHON_VERSION})""
 export TF_TEST_FLAGS="--define=no_tensorflow_py_deps=true --test_lang_filters=py --test_output=errors --verbose_failures=true --keep_going --test_env=TF2_BEHAVIOR=1"
 export TF_TEST_TARGETS="//tensorflow/python/..."
 export TF_PIP_TESTS="test_pip_virtualenv_non_clean test_pip_virtualenv_clean"

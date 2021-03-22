@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/lookup_util.h"
 
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -356,6 +357,16 @@ Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
                                    char delimiter, int32 key_index,
                                    int32 value_index, int64 offset, Env* env,
                                    InitializableLookupTable* table) {
+  return InitializeTableFromTextFile(filename, vocab_size, delimiter, key_index,
+                                     value_index, offset, env, absl::nullopt,
+                                     table);
+}
+
+Status InitializeTableFromTextFile(
+    const string& filename, int64 vocab_size, char delimiter, int32 key_index,
+    int32 value_index, int64 offset, Env* env,
+    absl::optional<InitializableLookupTable::InitializerAsGraphDefFunc>&& func,
+    InitializableLookupTable* table) {
   if (key_index == kLineNumber && table->key_dtype() != DT_INT64) {
     return errors::InvalidArgument(
         "Key index for line number requires table key dtype of int64, got ",
@@ -390,7 +401,7 @@ Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
   // initialized. The table shared name should contain the filename to
   // avoid trying to initialize the same table from the same file at the same
   // time.
-  Status s = table->Initialize(iter);
+  Status s = table->Initialize(iter, std::move(func));
   if (errors::IsFailedPrecondition(s) && table->is_initialized()) {
     LOG(INFO) << "Table trying to initialize from file " << filename
               << " is already initialized.";
@@ -407,6 +418,8 @@ class DatasetIterator : public InitializableLookupTable::InitTableIterator {
 
   Status Init(OpKernelContext* ctx) {
     data::IteratorContext::Params params(ctx);
+    function_handle_cache_ = absl::make_unique<FunctionHandleCache>(params.flr);
+    params.function_handle_cache = function_handle_cache_.get();
     params.resource_mgr = &resource_mgr_;
     cancellation_manager_ =
         absl::make_unique<CancellationManager>(ctx->cancellation_manager());
@@ -446,6 +459,7 @@ class DatasetIterator : public InitializableLookupTable::InitTableIterator {
  private:
   data::DatasetBase* dataset_;  // not owned.
   std::unique_ptr<data::IteratorContext> iterator_ctx_;
+  std::unique_ptr<FunctionHandleCache> function_handle_cache_;
   ResourceMgr resource_mgr_;
   std::unique_ptr<CancellationManager> cancellation_manager_;
   std::unique_ptr<data::IteratorBase> iterator_;

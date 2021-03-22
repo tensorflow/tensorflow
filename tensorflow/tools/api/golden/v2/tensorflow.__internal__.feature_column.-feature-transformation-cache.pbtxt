@@ -1,0 +1,13 @@
+path: "tensorflow.__internal__.feature_column.FeatureTransformationCache"
+tf_class {
+  is_instance: "<class \'tensorflow.python.feature_column.feature_column_v2.FeatureTransformationCache\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'features\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get"
+    argspec: "args=[\'self\', \'key\', \'state_manager\', \'training\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

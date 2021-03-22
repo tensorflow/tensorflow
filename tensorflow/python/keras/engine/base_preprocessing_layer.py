@@ -33,6 +33,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import data_adapter
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
@@ -49,7 +50,19 @@ keras_kpl_gauge = monitoring.BoolGauge(
 @keras_export('keras.layers.experimental.preprocessing.PreprocessingLayer')
 @six.add_metaclass(abc.ABCMeta)
 class PreprocessingLayer(Layer):
-  """Base class for PreprocessingLayers.
+  """Base class for Preprocessing Layers.
+
+  **Don't use this class directly: it's an abstract base class!** You may
+  be looking for one of the many built-in
+  [preprocessing layers](https://keras.io/guides/preprocessing_layers/)
+  instead.
+
+  Preprocessing layers are layers whose state gets computed before model
+  training starts. They do not get updated during training.
+  Most preprocessing layers implement an `adapt()` method for state computation.
+
+  The `PreprocessingLayer` class is the base class you would subclass to
+  implement your own preprocessing layers.
 
   Attributes:
     stateful: Whether the layer contains state that needs to be adapted via
@@ -209,6 +222,8 @@ class PreprocessingLayer(Layer):
           throw if 'reset_state' is set to False.
     """
     _disallow_inside_tf_function('adapt')
+    if not version_utils.should_use_v2():
+      raise RuntimeError('`adapt` is only supported in tensorflow v2.')  # pylint: disable=g-doc-exception
     if not self.stateful:
       return
     if not self.streaming and self._is_adapted and not reset_state:
@@ -291,6 +306,7 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
   def reset_state(self):
     self._adapt_accumulator = None
 
+  @trackable.no_automatic_dependency_tracking
   def update_state(self, data):
     if self._adapt_accumulator is None:
       self._adapt_accumulator = self._get_accumulator()

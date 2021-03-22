@@ -266,6 +266,7 @@ def all_strategy_minus_default_and_tpu_combinations():
           strategy_combinations.one_device_strategy_gpu,
           strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           strategy_combinations.mirrored_strategy_with_two_gpus,
+          strategy_combinations.mirrored_strategy_with_two_gpus_no_merge_call,
       ],
       mode=['graph', 'eager'])
 
@@ -1320,7 +1321,9 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       combinations.combine(
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              strategy_combinations.mirrored_strategy_with_two_gpus
+              strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations
+              .mirrored_strategy_with_two_gpus_no_merge_call,
           ],
           mode=['graph', 'eager']))
   def test_learning_phase_value(self, distribution):
@@ -2056,7 +2059,9 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       combinations.combine(
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              strategy_combinations.mirrored_strategy_with_two_gpus
+              strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations
+              .mirrored_strategy_with_two_gpus_no_merge_call,
           ],
           mode=['graph', 'eager'],
           reduction=[
@@ -2213,6 +2218,8 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
               strategy_combinations.one_device_strategy_gpu,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations
+              .mirrored_strategy_with_two_gpus_no_merge_call,
           ],
           mode=['eager']))
   def test_distribution_strategy_with_add_metric_object(

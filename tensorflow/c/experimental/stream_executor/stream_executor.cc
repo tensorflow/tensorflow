@@ -749,7 +749,9 @@ port::StatusOr<std::unique_ptr<StreamExecutor>> CPlatform::GetUncachedExecutor(
   return result;
 }
 
-port::Status InitStreamExecutorPlugin(void* dso_handle) {
+port::Status InitStreamExecutorPlugin(void* dso_handle,
+                                      std::string* device_type,
+                                      std::string* platform_name) {
   tensorflow::Env* env = tensorflow::Env::Default();
 
   // Step 1: Load symbol for `TF_InitPlugin`
@@ -759,10 +761,12 @@ port::Status InitStreamExecutorPlugin(void* dso_handle) {
 
   // Step 2: Call `TF_InitPlugin`
   auto init_fn = reinterpret_cast<SEInitPluginFn>(dso_symbol);
-  return InitStreamExecutorPlugin(init_fn);
+  return InitStreamExecutorPlugin(init_fn, device_type, platform_name);
 }
 
-port::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn) {
+port::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn,
+                                      std::string* device_type,
+                                      std::string* platform_name) {
   SE_PlatformRegistrationParams params{
       SE_PLATFORM_REGISTRATION_PARAMS_STRUCT_SIZE};
   SP_Platform platform{SP_PLATFORM_STRUCT_SIZE};
@@ -808,7 +812,8 @@ port::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn) {
   TF_RETURN_IF_ERROR(ValidateSPTimerFns(timer_fns));
 
   // Register new platform
-  std::string platform_name = std::string(platform.name);
+  *device_type = std::string(platform.type);
+  *platform_name = std::string(platform.name);
   std::unique_ptr<stream_executor::CPlatform> cplatform(
       new stream_executor::CPlatform(
           std::move(platform), params.destroy_platform, std::move(platform_fns),
@@ -816,8 +821,6 @@ port::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn) {
           std::move(timer_fns)));
   SE_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
       std::move(cplatform)));
-
-  // TODO(annarev): Add pluggable device registration here.
   // TODO(annarev): Return `use_bfc_allocator` value in some way so that it is
   // available in `PluggableDeviceProcessState` once the latter is checked in.
   return port::Status::OK();
