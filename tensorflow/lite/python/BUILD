@@ -176,6 +176,7 @@ py_library(
         ":convert_saved_model",
         ":interpreter",
         ":lite_constants",
+        ":metrics",
         ":op_hint",
         ":util",
         "//tensorflow/lite/experimental/examples/lstm:tflite_lstm_ops",
@@ -491,13 +492,15 @@ py_test(
     python_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        ":lite",
         ":metrics_nonportable",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
 )
 
-py_library(
+pytype_strict_library(
     name = "metrics_portable",
     srcs = ["metrics_portable.py"],
     compatible_with = get_compatible_with_portable(),

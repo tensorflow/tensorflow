@@ -44,13 +44,13 @@ namespace gpu {
 }
 
 /*static*/ bool NcclAllToAllThunk::CanImplement(mlir::lmhlo::AllToAllOp op) {
-  bool operands_are_supported =
-      absl::c_all_of(op.operands(), [](mlir::Value operand) {
-        Shape shape = TypeToShape(operand.getType());
-        return LayoutUtil::IsDenseArray(shape) &&
-               IsTypeSupportedByNccl(shape.element_type());
-      });
-  return op.split_dimension().getValueOr(0) == 0 && operands_are_supported;
+  return absl::c_all_of(op.operands(), [&op](mlir::Value operand) {
+    Shape shape = TypeToShape(operand.getType());
+    return LayoutUtil::IsDenseArray(shape) &&
+           IsTypeSupportedByNccl(shape.element_type()) &&
+           (!op.split_dimension() ||
+            LayoutUtil::MinorToMajor(shape).back() == *op.split_dimension());
+  });
 }
 
 NcclAllToAllThunk::NcclAllToAllThunk(

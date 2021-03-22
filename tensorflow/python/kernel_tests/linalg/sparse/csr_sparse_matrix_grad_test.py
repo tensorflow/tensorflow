@@ -107,13 +107,13 @@ class CSRSparseMatrixGradTest(test.TestCase):
         grad_out_vals = sess.run(grad_out)
         self.assertAllClose(grad_vals, grad_out_vals)
 
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message="sparse-matrix-add op not supported on ROCm")
   @test_util.run_deprecated_v1
   def testLargeBatchSparseMatrixAddGrad(self):
     if not self._gpu_available:
       return
-
-    if test.is_built_with_rocm():
-      self.skipTest("sparse-matrix-add op not supported on ROCm")
 
     sparsify = lambda m: m * (m > 0)
     for dense_shape in ([53, 65, 127], [127, 65]):

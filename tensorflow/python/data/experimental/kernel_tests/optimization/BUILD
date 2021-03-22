@@ -1,5 +1,6 @@
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+# Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -166,27 +167,8 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "latency_all_edges_test",
-    size = "small",
-    srcs = ["latency_all_edges_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python/data/experimental/kernel_tests:stats_dataset_test_base",
-        "//tensorflow/python/data/experimental/ops:stats_aggregator",
-        "//tensorflow/python/data/experimental/ops:stats_ops",
-        "//tensorflow/python/data/experimental/ops:testing",
-        "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
-tf_py_test(
     name = "map_and_batch_fusion_test",
+    size = "small",
     srcs = ["map_and_batch_fusion_test.py"],
     tags = [
         "no_oss",
@@ -205,6 +187,7 @@ tf_py_test(
 
 tf_py_test(
     name = "map_and_filter_fusion_test",
+    size = "small",
     srcs = ["map_and_filter_fusion_test.py"],
     tags = [
         "no_oss",
@@ -227,6 +210,7 @@ tf_py_test(
 
 tf_py_test(
     name = "map_fusion_test",
+    size = "small",
     srcs = ["map_fusion_test.py"],
     tags = [
         "no_oss",
@@ -349,6 +333,7 @@ tf_py_test(
 
 tf_py_test(
     name = "shuffle_and_repeat_fusion_test",
+    size = "small",
     srcs = ["shuffle_and_repeat_fusion_test.py"],
     tags = [
         "no_oss",

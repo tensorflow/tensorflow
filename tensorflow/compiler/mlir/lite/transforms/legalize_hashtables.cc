@@ -168,6 +168,10 @@ bool checkWhetherGraphHasValidStaticLookupTables(ModuleOp module) {
 // TensorFlow Lite hash table kernels.
 class LegalizeHashTables
     : public PassWrapper<LegalizeHashTables, OperationPass<ModuleOp>> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<TensorFlowLiteDialect>();
+  }
+
  public:
   LegalizeHashTables() = default;
   LegalizeHashTables(const LegalizeHashTables&) {}

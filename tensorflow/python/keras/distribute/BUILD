@@ -885,7 +885,6 @@ tf_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras",
         "//tensorflow/python/keras/utils:dataset_creator",
-        "@absl_py//absl/logging",
         "@absl_py//absl/testing:parameterized",
     ],
 )

@@ -825,8 +825,9 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim",
-      [NoSideEffect]> {
+def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim", [
+    NoSideEffect, DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
+    ["reifyReturnTypeShapes"]>]> {
   string summary = "Broadcast a tensor into the given dynamic shape by adding dimensions.";
   string description = [{
     This is a generalization of the BroadcastInDimOp which accepts its output

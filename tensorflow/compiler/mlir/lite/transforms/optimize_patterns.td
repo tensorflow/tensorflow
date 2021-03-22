@@ -46,7 +46,7 @@ class HasRankAtMost<int n> : Constraint<
 //===----------------------------------------------------------------------===//
 // Multi-pattern consisting of matching stand-alone convolution op followed by
 // activation op.
-multiclass FuseActFnIntoConvOpPat<dag ActFnOp, dag ActFnAttr> {
+multiclass FuseActFnIntoConvOpPat<Op ActFnOp, Attr ActFnAttr> {
   def FuseActivationFuncWithConv#ActFnOp#ActFnAttr : Pat<
     (ActFnOp (TFL_Conv2DOp:$conv_out $input, $filter, $bias, $h_factor,
                  $w_factor, TFL_AF_None, $padding, $stride_h, $stride_w)),
@@ -62,7 +62,7 @@ multiclass FuseActFnIntoConvOpPat<dag ActFnOp, dag ActFnAttr> {
     [(HasOneUse $conv_out)]>;
 }
 
-multiclass FuseActFnIntoPoolOpPat<dag ActFnOp, dag ActFnAttr> {
+multiclass FuseActFnIntoPoolOpPat<Op ActFnOp, Attr ActFnAttr> {
   def FuseActivationFuncWithAvgPool#ActFnOp#ActFnAttr : Pat<
     (ActFnOp (TFL_AveragePool2DOp:$pool_out $input, $filter_height,
                   $filter_width, $padding, $stride_h, $stride_w, TFL_AF_None)),
@@ -84,8 +84,8 @@ multiclass FuseActFnIntoPoolOpPat<dag ActFnOp, dag ActFnAttr> {
 foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
                      [TFL_Relu6Op, TFL_AF_Relu6],
                      [TFL_Relu1Op, TFL_AF_Relu1]] in {
-  defm : FuseActFnIntoConvOpPat<actFnPair[0], actFnPair[1]>;
-  defm : FuseActFnIntoPoolOpPat<actFnPair[0], actFnPair[1]>;
+  defm : FuseActFnIntoConvOpPat<!cast<Op>(actFnPair[0]), !cast<Attr>(actFnPair[1])>;
+  defm : FuseActFnIntoPoolOpPat<!cast<Op>(actFnPair[0]), !cast<Attr>(actFnPair[1])>;
 }
 
 class CanFuseConvOrDepthwiseConv<string is_depthwise> : Constraint<
@@ -95,7 +95,7 @@ class CanFuseConvOrDepthwiseConv<string is_depthwise> : Constraint<
 // op with constant bias, we can fuse the binary op into the convolution op by
 // constant folding the bias and the binary op's constant operand. The following
 // pattern restricts to float constant values for now.
-multiclass FuseBinaryOpToPrecedingAffine<dag binaryOp> {
+multiclass FuseBinaryOpToPrecedingAffine<Op binaryOp> {
   def FuseBinaryOpWithConv#binaryOp : Pat<
     (binaryOp (TFL_Conv2DOp:$output $input, $filter,
                 (ConstantOp FloatElementsAttr:$bias), $h_factor, $w_factor,
@@ -143,7 +143,7 @@ multiclass FuseBinaryOpToPrecedingAffine<dag binaryOp> {
      (IsNoneType $bias),
      (HasOneUse $output)]>;
 }
-foreach binaryOp = [TFL_AddOp, TFL_SubOp] in
+foreach binaryOp = [TFL_AddOp, TFL_SubOp]<Op> in
   defm : FuseBinaryOpToPrecedingAffine<binaryOp>;
 
 def ExpandTo4DForConv: NativeCodeCall<"ExpandTo4DForConv($0)">;
@@ -157,7 +157,7 @@ def ExpandTo4DForDepthwiseConv: NativeCodeCall<
 // the filter/bias and the div/mul op's constant operand.
 // The following pattern restricts to float constant values for now.
 
-multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<dag BinaryOp> {
+multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<Op BinaryOp> {
   def FuseMulOrDivWithDepthwiseConv#BinaryOp : Pat<
     (BinaryOp (TFL_DepthwiseConv2DOp:$output $input,
                 (ConstantOp FloatElementsAttr:$filter),
@@ -230,7 +230,7 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<dag BinaryOp> {
      (HasOneUse $output)]>;
 }
 
-foreach BinaryOp = [TFL_DivOp, TFL_MulOp] in
+foreach BinaryOp = [TFL_DivOp, TFL_MulOp]<Op> in
   defm : FuseMulOrDivWithConv2dOrDepthwiseConv2d<BinaryOp>;
 
 
@@ -304,7 +304,7 @@ def L2NormValidReduceIndex : Constraint<CPred<
 // in TFLite.
 // TODO(karimnosseir): Add constraints that the kernel code assumes.
 // constraint on axis and depth.
-multiclass L2NormalizePatterns<dag FirstOp, dag SecondOp> {
+multiclass L2NormalizePatterns<Op FirstOp, Op SecondOp> {
   // This pattern constructs L2NormalizationOp from
   // Mul->Rsqrt->Sum->Square Or
   // Div->sqrt->Sum->Square
@@ -382,7 +382,7 @@ def IsDefinedByFullyConnectedOp : Constraint<CPred<
 
 // Pattern for skipping Tile if it is mainly for broadcasting and the
 // Op is already supporting broadcasting.
-multiclass FuseTileBroadcastIntoFollowingBinary<dag BinaryOp> {
+multiclass FuseTileBroadcastIntoFollowingBinary<Op BinaryOp> {
   def FuseTileBroadcastToBinaryOp1#BinaryOp : Pat<
     (BinaryOp:$result (TFL_TileOp $input, (ConstantOp $tile)),
      $operand, $act_func),
@@ -401,7 +401,7 @@ multiclass FuseTileBroadcastIntoFollowingBinary<dag BinaryOp> {
 }
 
 // Multi-pattern consisting of matching stand-alone op or op followed by relu.
-multiclass FusedBinaryActivationFuncOpPat<dag BinaryOp> {
+multiclass FusedBinaryActivationFuncOpPat<Op BinaryOp> {
   foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
                        [TFL_Relu6Op, TFL_AF_Relu6],
                        [TFL_Relu1Op, TFL_AF_Relu1]] in {

@@ -105,15 +105,33 @@ def MobileNetV2(input_shape=None,
                 **kwargs):
   """Instantiates the MobileNetV2 architecture.
 
+  MobileNetV2 is very similar to the original MobileNet,
+  except that it uses inverted residual blocks with
+  bottlenecking features. It has a drastically lower
+  parameter count than the original MobileNet.
+  MobileNets support any input size greater
+  than 32 x 32, with larger image sizes
+  offering better performance.
+
   Reference:
   - [MobileNetV2: Inverted Residuals and Linear Bottlenecks](
       https://arxiv.org/abs/1801.04381) (CVPR 2018)
 
-  Optionally loads weights pre-trained on ImageNet.
+  This function returns a Keras image classification model,
+  optionally loaded with weights pre-trained on ImageNet.
+
+  For image classification use cases, see
+  [this page for detailed examples](
+    https://keras.io/api/applications/#usage-examples-for-image-classification-models).
+
+  For transfer learning use cases, make sure to read the
+  [guide to transfer learning & fine-tuning](
+    https://keras.io/guides/transfer_learning/).
 
   Note: each Keras Application expects a specific kind of input preprocessing.
   For MobileNetV2, call `tf.keras.applications.mobilenet_v2.preprocess_input`
   on your inputs before passing them to the model.
+  `mobilenet_v2.preprocess_input` will scale input pixels between -1 and 1.
 
   Args:
     input_shape: Optional shape tuple, to be specified if you would
@@ -162,17 +180,12 @@ def MobileNetV2(input_shape=None,
     classifier_activation: A `str` or callable. The activation function to use
       on the "top" layer. Ignored unless `include_top=True`. Set
       `classifier_activation=None` to return the logits of the "top" layer.
+      When loading pretrained weights, `classifier_activation` can only
+      be `None` or `"softmax"`.
     **kwargs: For backwards compatibility only.
 
   Returns:
     A `keras.Model` instance.
-
-  Raises:
-    ValueError: in case of invalid argument for `weights`,
-      or invalid input shape or invalid alpha, rows when
-      weights='imagenet'
-    ValueError: if `classifier_activation` is not `softmax` or `None` when
-      using a pretrained top layer.
   """
   global layers
   if 'layers' in kwargs:

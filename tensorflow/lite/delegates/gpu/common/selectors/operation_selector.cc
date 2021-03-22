@@ -466,6 +466,12 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
                                      inputs[0]->tensor.shape.b);
       return absl::OkStatus();
     }
+    case OperationType::FULLY_CONNECTED_INT8: {
+      auto attr = absl::any_cast<FullyConnectedInt8Attributes>(
+          node.operation.attributes);
+      *gpu_op = SelectFullyConnected(attr, gpu_info, op_def);
+      return absl::OkStatus();
+    }
     case OperationType::LSTM: {
       *gpu_op = SelectLSTM(op_def, gpu_info);
       return absl::OkStatus();

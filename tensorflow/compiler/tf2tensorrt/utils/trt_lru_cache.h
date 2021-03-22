@@ -120,33 +120,33 @@ class LRUCache {
 
 struct EngineContext {
   EngineContext() {}  // Creates an empty context.
-  EngineContext(TrtUniquePtrType<nvinfer1::ICudaEngine>&& input_cuda_engine,
-                ExecutionContext&& input_execution_context)
-      : cuda_engine(std::move(input_cuda_engine)) {
-    execution_context.push_back(std::move(input_execution_context));
+  EngineContext(TrtUniquePtrType<nvinfer1::ICudaEngine>&& cuda_engine,
+                ExecutionContext&& execution_context)
+      : cuda_engine(std::move(cuda_engine)) {
+    execution_contexts.push_back(std::move(execution_context));
   }
-  EngineContext(TrtUniquePtrType<nvinfer1::ICudaEngine>&& input_cuda_engine,
-                std::vector<ExecutionContext>&& input_execution_context)
-      : cuda_engine(std::move(input_cuda_engine)),
-        execution_context(std::move(input_execution_context)) {}
+  EngineContext(TrtUniquePtrType<nvinfer1::ICudaEngine>&& cuda_engine,
+                std::vector<ExecutionContext>&& execution_contexts)
+      : cuda_engine(std::move(cuda_engine)),
+        execution_contexts(std::move(execution_contexts)) {}
 
   mutex mu;
   TrtUniquePtrType<nvinfer1::ICudaEngine> cuda_engine;
 
   Status GetExecutionContext(int idx, nvinfer1::IExecutionContext** exec_ctx)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
-    if (idx >= execution_context.size()) {
+    if (idx >= execution_contexts.size()) {
       return errors::Internal("Requested engine context with index ", idx,
-                              ", but only ", execution_context.size(),
+                              ", but only ", execution_contexts.size(),
                               "contexts are present.");
     }
-    *exec_ctx = execution_context[idx];
+    *exec_ctx = execution_contexts[idx].get();
     return Status::OK();
   }
 
   int GetNumContexts() {
     mutex_lock lock(mu);
-    return execution_context.size();
+    return execution_contexts.size();
   }
 
   // In explicit batch mode, we maintain a vector of contexts for each engine,
@@ -164,7 +164,7 @@ struct EngineContext {
   // https://docs.nvidia.com/deeplearning/sdk/tensorrt-best-practices/index.html#thread-safety
   // Additional discussion about execution context management and thread safety
   // at https://github.com/tensorflow/tensorflow/issues/36959
-  std::vector<ExecutionContext> execution_context TF_GUARDED_BY(mu);
+  std::vector<ExecutionContext> execution_contexts TF_GUARDED_BY(mu);
 };
 
 // Contains the context required to build the calibration data.

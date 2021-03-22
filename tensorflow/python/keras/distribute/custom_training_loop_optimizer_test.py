@@ -55,11 +55,11 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
 
     @def_function.function
     def optimize():
-      grads = values.PerReplica([
-          ops.convert_to_tensor_v2_with_dispatch([1., 1.]),
-          ops.convert_to_tensor_v2_with_dispatch([2., 2.]),
-      ])
-
+      with ops.device(distribution.extended.worker_devices[0]):
+        v1 = ops.convert_to_tensor_v2_with_dispatch([1., 1.])
+      with ops.device(distribution.extended.worker_devices[1]):
+        v2 = ops.convert_to_tensor_v2_with_dispatch([2., 2.])
+      grads = values.PerReplica([v1, v2])
       def step_fn(grads):
         optimizer.apply_gradients(
             [(grads, v)],

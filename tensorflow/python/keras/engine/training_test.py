@@ -3435,6 +3435,41 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
           math_ops.reduce_sum(y), name='metric_1', aggregation=None)
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_calling_evaluate_in_callback_during_fit(self):
+    # Check fix for a bug that caused `evaluate` to hit a cached dataset
+    # when run from inside a fit callback.
+    x = layers_module.Input(shape=(2,))
+    y = layers_module.Dense(2, kernel_initializer='ones', use_bias=False)(x)
+    model = training_module.Model(x, y)
+
+    ones = np.ones((10, 2), dtype=np.float32)
+    zeros = np.zeros((10, 2), dtype=np.float32)
+    train_ds = dataset_ops.Dataset.from_tensor_slices(
+        (ones, ones)).batch(5)
+    val_ds_1 = dataset_ops.Dataset.from_tensor_slices(
+        (ones, ones)).batch(5)
+    val_ds_2 = dataset_ops.Dataset.from_tensor_slices(
+        (zeros, zeros)).batch(5)
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+
+    class MyCallback(Callback):
+
+      def on_epoch_end(self, *args, **kwargs):
+        eval_result = self.model.evaluate(val_ds_2)
+        if abs(eval_result) > 1e-7:
+          raise AssertionError(
+              'Expected to hit the zeros dataset but got high loss value of %s'
+              % eval_result)
+
+    history = model.fit(
+        train_ds, validation_data=val_ds_1, callbacks=[MyCallback()])
+    # Evaluate at the end of fit should hit the ones dataset (cached)
+    self.assertGreater(abs(history.history['val_loss'][-1]), 0.1)
+    # Standalone call to evaluate should not hit the cached dataset
+    eval_result = model.evaluate(val_ds_2)
+    self.assertLess(abs(eval_result), 1e-7)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_model_with_nested_compiled_model(self):
 
     class LayerWithAddMetric(layers_module.Layer):

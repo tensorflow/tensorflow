@@ -49,7 +49,11 @@ enum class OperationType {
   ELU,
   EQUAL,
   EXP,
+  FLOOR,
+  FLOOR_DIV,
+  FLOOR_MOD,
   FULLY_CONNECTED,
+  FULLY_CONNECTED_INT8,
   GREATER,
   GREATER_EQUAL,
   HARD_SWISH,
@@ -497,6 +501,16 @@ struct FullyConnectedAttributes {
   Tensor<OHWI, DataType::FLOAT32> weights;
   Tensor<Linear, DataType::FLOAT32> bias;
 };
+
+struct FullyConnectedInt8Attributes {
+  Tensor<OHWI, DataType::INT8> weights;
+  Tensor<Linear, DataType::FLOAT32> bias;
+  float scale;
+  int zero_point;
+};
+
+FullyConnectedAttributes DequatizeFullyConnectedAttr(
+    const FullyConnectedInt8Attributes& attr);
 
 // @return shape of a tensor after FullyConnected operation is applied to
 // the given input.

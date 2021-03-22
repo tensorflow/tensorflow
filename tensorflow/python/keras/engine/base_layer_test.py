@@ -320,6 +320,14 @@ class BaseLayerTest(keras_parameterized.TestCase):
       # Cannot access tensor.name in eager execution.
       self.assertIn('Variable_2/Regularizer', layer.losses[0].name)
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_add_weight_by_getter(self):
+    layer = base_layer.Layer()
+    variable = variables.Variable('abc')
+    added = layer.add_weight(
+        dtype=dtypes.string, getter=lambda *_, **__: variable)
+    self.assertIs(variable, added)
+
   @combinations.generate(combinations.keras_mode_combinations(mode=['eager']))
   def test_learning_phase_freezing_for_layers(self):
 

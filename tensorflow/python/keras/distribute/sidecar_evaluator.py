@@ -56,14 +56,28 @@ def list_checkpoint_attributes(ckpt_dir_or_file):
 class SidecarEvaluator(object):
   """A class designed for a dedicated evaluator task.
 
-  `SidecarEvaluator` is expected to be run on a process in
-  a separate machine from the training cluster. It continuously loads
-  checkpoints saved periodically by that training counterpart, and performs
-  evaluation using the model (with compiled metrics) provided at `__init__`. It
-  is expected to be used for the purpose of a dedicated evaluator, evaluating
-  the metric results of a training cluster which has one or more workers
-  performing the training and saving checkpoints. `SidecarEvaluator` uses
-  `model.evaluate` for evaluation.
+  `SidecarEvaluator` is expected to be run in a process on a separate machine
+  from the training cluster. It is meant for the purpose of a dedicated
+  evaluator, evaluating the metric results of a training cluster which has one
+  or more workers performing the training, and saving checkpoints.
+
+  The `SidecarEvaluator` API is compatible with both Custom Training Loop (CTL),
+  and Keras `Model.fit` to be used in the training cluster. Using the model
+  (with compiled metrics) provided at `__init__`, `SidecarEvaluator` repeatedly
+  performs evaluation "epochs" when it finds a checkpoint that has not yet been
+  used. Depending on the `steps` argument, an eval epoch is evaluation over all
+  eval data, or up to certain number of steps (batches). See examples below for
+  how the training program should save the checkpoints in order to be recognized
+  by `SidecarEvaluator`.
+
+  Since under the hood, `SidecarEvaluator` uses `model.evaluate` for evaluation,
+  it also supports arbitrary Keras callbacks. That is, if one or more callbacks
+  are provided, their `on_test_batch_begin` and `on_test_batch_end` methods are
+  called at the start and end of a batch, and their `on_test_begin` and
+  `on_test_end` are called at the start and end of an evaluation epoch. Note
+  that `SidecarEvaluator` may skip some checkpoints because it always picks up
+  the latest checkpoint available, and during an evaluation epoch, multiple
+  checkpoints can be produced from the training side.
 
   Example:
   ```python
@@ -91,17 +105,31 @@ class SidecarEvaluator(object):
   TensorBoard 2.4.0a0 at http://host:port (Press CTRL+C to quit)
   ```
 
-  The `checkpoint_dir` should contain checkpoints that track `model` and
-  `optimizer` to fulfill `SidecarEvaluator`'s
-  expectation:
+  If the training cluster uses a CTL, the `checkpoint_dir` should contain
+  checkpoints that track both `model` and `optimizer`, to fulfill
+  `SidecarEvaluator`'s expectation. This can be done by a
+  `tf.train.Checkpoint` and a `tf.train.CheckpointManager`:
 
   ```python
+  checkpoint_dir = ...  # Same `checkpoint_dir` supplied to `SidecarEvaluator`.
   checkpoint = tf.train.Checkpoint(model=model, optimizer=optimizer)
   checkpoint_manager = tf.train.CheckpointManager(
       checkpoint, checkpoint_dir=..., max_to_keep=...)
   checkpoint_manager.save()
   ```
 
+  If the training cluster uses Keras `Model.fit` API, a
+  `tf.keras.callbacks.ModelCheckpoint` should be used, with
+  `save_weights_only=True`, and the `filepath` should have 'ckpt-{epoch}'
+  appended:
+
+  ```python
+  checkpoint_dir = ...  # Same `checkpoint_dir` supplied to `SidecarEvaluator`.
+  model_checkpoint = tf.keras.callbacks.ModelCheckpoint(
+      filepath=os.path.join(checkpoint_dir, 'ckpt-{epoch}'),
+      save_weights_only=True)
+  model.fit(dataset, epochs, callbacks=[model_checkpoint])
+  ```
   """
 
   def __init__(self,

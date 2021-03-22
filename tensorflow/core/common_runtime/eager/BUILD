@@ -221,6 +221,8 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/core/kernels:logging_ops",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
