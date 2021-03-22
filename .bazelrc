@@ -92,6 +92,61 @@
 #     release_cpu_windows: Toolchain and CUDA options for Windows CPU builds.
 #     release_gpu_windows: Toolchain and CUDA options for Windows GPU builds.
 
+# Default build options. These are applied first and unconditionally.
+
+# For projects which use TensorFlow as part of a Bazel build process, putting
+# nothing in a bazelrc will default to a monolithic build. The following line
+# opts in to modular op registration support by default.
+build --define framework_shared_object=true
+
+# For workaround https://github.com/bazelbuild/bazel/issues/8772 with Bazel >= 0.29.1
+build --java_toolchain=@org_tensorflow//third_party/toolchains/java:tf_java_toolchain
+build --host_java_toolchain=@org_tensorflow//third_party/toolchains/java:tf_java_toolchain
+
+# Do not enable the mlir generated GPU kernels by default.
+build --//tensorflow/core/kernels/mlir_generated:enable_gpu=false
+
+build --define=use_fast_cpp_protos=true
+build --define=allow_oversize_protos=true
+
+build --spawn_strategy=standalone
+build -c opt
+
+# Make Bazel print out all options from rc files.
+build --announce_rc
+
+build --define=grpc_no_ares=true
+
+# See https://github.com/bazelbuild/bazel/issues/7362 for information on what
+# --incompatible_remove_legacy_whole_archive flag does.
+# This flag is set to true in Bazel 1.0 and newer versions. We tried to migrate
+# Tensorflow to the default, however test coverage wasn't enough to catch the
+# errors.
+# There is ongoing work on Bazel team's side to provide support for transitive
+# shared libraries. As part of migrating to transitive shared libraries, we
+# hope to provide a better mechanism for control over symbol exporting, and
+# then tackle this issue again.
+#
+# TODO: Remove this line once TF doesn't depend on Bazel wrapping all library
+# archives in -whole_archive -no_whole_archive.
+build --noincompatible_remove_legacy_whole_archive
+
+# These are bazel 2.0's incompatible flags. Tensorflow needs to use bazel 2.0.0
+# to use cc_shared_library, as part of the Tensorflow Build Improvements RFC:
+# https://github.com/tensorflow/community/pull/179
+build --noincompatible_prohibit_aapt1
+
+build --enable_platform_specific_config
+
+# Enable XLA support by default.
+build --define=with_xla_support=true
+
+build --config=short_logs
+
+build --config=v2
+
+# Default options should come above this line.
+
 # Allow builds using libc++ as a linker library
 # This is mostly for OSSFuzz, so we also pass in the flags from environment to clean build file
 build:libc++ --action_env=CC
@@ -143,20 +198,11 @@ build:ios_x86_64 --cpu=ios_x86_64
 build:ios_fat --config=ios
 build:ios_fat --ios_multi_cpus=armv7,arm64,i386,x86_64
 
-# For projects which use TensorFlow as part of a Bazel build process, putting
-# nothing in a bazelrc will default to a monolithic build. The following line
-# opts in to modular op registration support by default.
-build --define framework_shared_object=true
-
 # Config to use a mostly-static build and disable modular op registration
 # support (this will revert to loading TensorFlow with RTLD_GLOBAL in Python).
 # By default, TensorFlow will build with a dependence on
 # //tensorflow:libtensorflow_framework.so.
 build:monolithic --define framework_shared_object=false
-
-# For workaround https://github.com/bazelbuild/bazel/issues/8772 with Bazel >= 0.29.1
-build --java_toolchain=@org_tensorflow//third_party/toolchains/java:tf_java_toolchain
-build --host_java_toolchain=@org_tensorflow//third_party/toolchains/java:tf_java_toolchain
 
 # Please note that MKL on MacOS or windows is still not supported.
 # If you would like to use a local MKL instead of downloading, please set the
@@ -184,8 +230,6 @@ build:cuda --repo_env TF_NEED_CUDA=1
 build:cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
 build:cuda --@local_config_cuda//:enable_cuda
 
-# Enable the mlir generated GPU kernels only for cuda builds.
-build --//tensorflow/core/kernels/mlir_generated:enable_gpu=false
 # This option overrides the line above for cuda builds.
 build:cuda --//tensorflow/core/kernels/mlir_generated:enable_gpu=true
 
@@ -221,37 +265,6 @@ build:nonccl --define=no_nccl_support=true
 
 build:stackdriver_support --define=stackdriver_support=true
 
-build --define=use_fast_cpp_protos=true
-build --define=allow_oversize_protos=true
-
-build --spawn_strategy=standalone
-build -c opt
-
-# Make Bazel print out all options from rc files.
-build --announce_rc
-
-# Other build flags.
-build --define=grpc_no_ares=true
-
-# See https://github.com/bazelbuild/bazel/issues/7362 for information on what
-# --incompatible_remove_legacy_whole_archive flag does.
-# This flag is set to true in Bazel 1.0 and newer versions. We tried to migrate
-# Tensorflow to the default, however test coverage wasn't enough to catch the
-# errors.
-# There is ongoing work on Bazel team's side to provide support for transitive
-# shared libraries. As part of migrating to transitive shared libraries, we
-# hope to provide a better mechanism for control over symbol exporting, and
-# then tackle this issue again.
-#
-# TODO: Remove this line once TF doesn't depend on Bazel wrapping all library
-# archives in -whole_archive -no_whole_archive.
-build --noincompatible_remove_legacy_whole_archive
-
-# These are bazel 2.0's incompatible flags. Tensorflow needs to use bazel 2.0.0
-# to use cc_shared_library, as part of the Tensorflow Build Improvements RFC:
-# https://github.com/tensorflow/community/pull/179
-build --noincompatible_prohibit_aapt1
-
 # Modular TF build options
 build:dynamic_kernels --define=dynamic_loaded_kernels=true
 build:dynamic_kernels --copt=-DAUTOLOAD_DYNAMIC_KERNELS
@@ -263,8 +276,7 @@ build:c++1z --config=c++17
 build:c++17_gcc --cxxopt=-std=c++1z
 build:c++1z_gcc --config=c++17_gcc
 
-# Trigger --config=<host platform>, except when cross-compiling.
-build --enable_platform_specific_config
+# Don't trigger --config=<host platform> when cross-compiling.
 build:android --noenable_platform_specific_config
 build:ios --noenable_platform_specific_config
 
@@ -336,10 +348,9 @@ build:windows --verbose_failures
 # On windows, we never cross compile
 build:windows --distinct_host_configuration=false
 
-# Suppress all warning messages.
+# Configure short or long logs
 build:short_logs --output_filter=DONT_MATCH_ANYTHING
 build:verbose_logs --output_filter=
-build --config=short_logs
 
 # Instruction set optimizations
 # TODO(gunan): Create a feature in toolchains for avx/avx2 to
@@ -354,11 +365,9 @@ build:avx2_win --copt=/arch=AVX2
 # Options to build TensorFlow 1.x or 2.x.
 build:v1 --define=tf_api_version=1 --action_env=TF2_BEHAVIOR=0
 build:v2 --define=tf_api_version=2 --action_env=TF2_BEHAVIOR=1
-build --config=v2
 
-# Enable XLA except on mobile.
-build         --config=xla
-build:xla     --define=with_xla_support=true
+# Disable XLA on mobile.
+build:xla     --define=with_xla_supprt=true # TODO: remove, it's on by default.
 build:android --define=with_xla_support=false
 build:ios     --define=with_xla_support=false
 
@@ -531,12 +540,12 @@ build:elinux_armhf --config=elinux
 build:elinux_armhf --cpu=armhf
 # END TF REMOTE BUILD EXECUTION OPTIONS
 
-# Default options should come above this line
+# Config-specific options should come above this line.
 
-# Options from ./configure
+# Load rc file written by ./configure.
 try-import %workspace%/.tf_configure.bazelrc
 
-# Put user-specific options in .bazelrc.user
+# Load rc file with user-specific options.
 try-import %workspace%/.bazelrc.user
 
 # Here are bazelrc configs for release builds
