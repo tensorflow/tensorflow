@@ -25,8 +25,9 @@ from uuid import uuid4
 
 from numpy import asarray
 
-from tensorflow.python.platform import gfile
 from tensorflow.python.keras.saving.save import load_model
+from tensorflow.python.lib.io import file_io
+from tensorflow.python.platform import gfile
 
 
 
@@ -44,11 +45,11 @@ def unpack_model(packed_keras_model):
   with tarfile.open(fileobj=b, mode="r") as archive:
     for fname in archive.getnames():
       dest_path = os.path.join(temp_dir, fname)
-      gfile.makedirs(os.path.dirname(dest_path))
+      file_io.recursive_create_dir_v2(os.path.dirname(dest_path))
       with gfile.GFile(dest_path, "wb") as f:
         f.write(archive.extractfile(fname).read())
   model = load_model(temp_dir)
-  gfile.rmtree(temp_dir)
+  file_io.delete_recursively_v2(temp_dir)
   return model
 
 
@@ -66,13 +67,13 @@ def pack_model(model):
   model.save(temp_dir)
   b = BytesIO()
   with tarfile.open(fileobj=b, mode="w") as archive:
-    for root, _, filenames in gfile.walk(temp_dir):
+    for root, _, filenames in file_io.walk_v2(temp_dir):
       for filename in filenames:
         dest_path = os.path.join(root, filename)
         with gfile.GFile(dest_path, "rb") as f:
           info = tarfile.TarInfo(name=os.path.relpath(dest_path, temp_dir))
           info.size = f.size()
           archive.addfile(tarinfo=info, fileobj=f)
-  gfile.rmtree(temp_dir)
+  file_io.delete_recursively_v2(temp_dir)
   b.seek(0)
   return unpack_model, (asarray(memoryview(b.read())), )

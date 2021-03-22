@@ -2088,20 +2088,20 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
   def __deepcopy__(self, memo):
     if self.built:
-        deserializer, serialized = pack_keras_model(self)
-        new = deserializer(*serialized)
-        memo[id(self)] = new
+      deserializer, serialized = pack_model(self)
+      new = deserializer(*serialized)
+      memo[id(self)] = new
     else:
-        deserializer, serialized, *rest = super(Model, self).__reduce__()
-        new = deserializer(*serialized)
-        memo[id(self)] = new
-        if rest:
-          state = copy.deepcopy(rest[0], memo=memo)
-          new.__setstate__(state)
+      deserializer, serialized, *rest = super(Model, self).__reduce__()
+      new = deserializer(*serialized)
+      memo[id(self)] = new
+      if rest:
+        state = copy.deepcopy(rest[0], memo=memo)
+        new.__setstate__(state)
     return new
 
   def __copy__(self):
-    return self.__deepcopy__(self, {})
+    return self.__deepcopy__({})
 
   def save_weights(self,
                    filepath,

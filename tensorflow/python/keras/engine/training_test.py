@@ -19,9 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import copy
 import io
-import pickle
 import sys
 
 from absl.testing import parameterized
@@ -3757,41 +3755,6 @@ class TestBuildCustomModel(keras_parameterized.TestCase):
     model = MyModel()
     model.build({'x': [None, 16]})
     self.assertEqual(model.l1.kernel.shape.as_list(), [16, 1])
-
-
-class PickleProtocolTests(keras_parameterized.TestCase):
-  """Tests pickle protoocol support.
-  """
-
-  @keras_parameterized.run_all_keras_modes
-  def test_pickle_model(self):
-    """Test copy.deepcopy and pickle on Functional Model."""
-
-    def roundtest(model):
-      model = copy.deepcopy(model)
-      for protocol in range(5):  # support up to protocol version 5
-        model = pickle.loads(pickle.dumps(model, protocol=protocol))
-      return model
-
-    # create model
-    x = input_layer.Input((3,))
-    y = layers_module.Dense(2)(x)
-    model = training_module.Model(x, y)
-    # test without compiling
-    model = roundtest(model)
-    # compile
-    model.compile(oprimizer='sgd', loss='mse')
-    # test without training
-    model = roundtest(model)
-    # train
-    x = np.random.random((1000, 3))
-    y = np.random.random((1000, 2))
-    model.fit(x, y)
-    y1 = model.predict(x)
-    # test with training
-    model = roundtest(model)
-    y2 = model.predict(x)
-    self.assertAllEqual(y1, y2)
 
 
 if __name__ == '__main__':

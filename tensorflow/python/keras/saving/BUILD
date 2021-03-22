@@ -66,8 +66,8 @@ py_library(
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:metrics_utils",
         "//tensorflow/python/keras/utils:mode_keys",
-        "//tensorflow/python/saved_model",
         "//tensorflow/python/platform",
+        "//tensorflow/python/saved_model",
         "//tensorflow/python/training/tracking",
     ],
 )
@@ -226,6 +226,20 @@ tf_py_test(
     deps = [
         ":saving",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "pickle_utils_test",
+    size = "medium",
+    srcs = ["pickle_utils_test.py"],
+    python_version = "PY3",
+    shard_count = 4,
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
