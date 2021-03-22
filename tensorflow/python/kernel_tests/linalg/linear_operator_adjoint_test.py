@@ -198,19 +198,11 @@ class LinearOperatorAdjointTest(
                                adjoint_arg=True).to_dense()))
 
   def test_solve_adjoint_complex_operator(self):
-<<<<<<< HEAD
-    matrix1 = self.evaluate(linear_operator_test_util.random_tril_matrix(
-        [4, 4], dtype=dtypes.complex128, force_well_conditioned=True) +
-                            1j * linear_operator_test_util.random_tril_matrix(
-                                [4, 4], dtype=dtypes.complex128,
-                                force_well_conditioned=True))
-=======
     matrix1 = self.evaluate(
         linear_operator_test_util.random_tril_matrix(
             [4, 4], dtype=dtypes.complex128, force_well_conditioned=True) +
         1j * linear_operator_test_util.random_tril_matrix(
             [4, 4], dtype=dtypes.complex128, force_well_conditioned=True))
->>>>>>> google_upstream/master
     matrix2 = np.random.randn(4, 4) + 1j * np.random.randn(4, 4)
 
     full_matrix1 = linalg.LinearOperatorLowerTriangular(

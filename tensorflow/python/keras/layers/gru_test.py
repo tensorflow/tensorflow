@@ -47,14 +47,9 @@ class GRULayerTest(keras_parameterized.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
-<<<<<<< HEAD
-  @test.disable_for_rocm(skip_message='Double type is not '
-                                      'yet supported in ROCm')
-=======
   @test.disable_with_predicate(
       pred=test.is_built_with_rocm,
       skip_message='Double type is not yet supported in ROCm')
->>>>>>> google_upstream/master
   @testing_utils.run_v2_only
   def test_float64_GRU(self):
     num_samples = 2
@@ -139,14 +134,9 @@ class GRULayerTest(keras_parameterized.TestCase):
     gru_model.fit(x_train, y_train)
     gru_model.predict(x_train)
 
-<<<<<<< HEAD
-  @test.disable_for_rocm(skip_message='MIOpen only supports '
-                                      'packed input output')
-=======
   @test.disable_with_predicate(
       pred=test.is_built_with_rocm,
       skip_message='MIOpen only supports packed input output')
->>>>>>> google_upstream/master
   def test_with_masking_layer_GRU(self):
     layer_class = keras.layers.GRU
     inputs = np.random.random((2, 3, 4))
@@ -161,14 +151,9 @@ class GRULayerTest(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
-<<<<<<< HEAD
-  @test.disable_for_rocm(skip_message='MIOpen only supports '
-                                      'packed input output')
-=======
   @test.disable_with_predicate(
       pred=test.is_built_with_rocm,
       skip_message='MIOpen only supports packed input output')
->>>>>>> google_upstream/master
   def test_statefulness_GRU(self):
     num_samples = 2
     timesteps = 3
