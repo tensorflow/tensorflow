@@ -6461,8 +6461,6 @@ filegroup(
             "text_line_reader_op.*",
             "summary_image_op.*",
             "identity_reader_op.*",
-            "remote_fused_graph_execute_op.*",
-            "remote_fused_graph_rewriter_transform.*",
             "fixed_length_record_reader_op.*",
             "sample_distorted_bounding_box_op.*",
             "ctc_loss_op.*",
@@ -7132,18 +7130,6 @@ tf_cc_test(
     ],
 )
 
-tf_kernel_library(
-    name = "remote_fused_graph_ops",
-    prefix = "remote_fused_graph_execute_op",
-    deps = [
-        ":remote_fused_graph_execute_utils",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
 cc_library(
     name = "quantization_utils",
     srcs = ["quantization_utils.cc"],
@@ -7151,132 +7137,6 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "@gemmlowp",
-    ],
-)
-
-cc_library(
-    name = "remote_fused_graph_execute_utils",
-    srcs = [
-        "i_remote_fused_graph_ops_definitions.cc",
-        "remote_fused_graph_execute_utils.cc",
-    ],
-    hdrs = [
-        "i_remote_fused_graph_executor.h",
-        "i_remote_fused_graph_ops_definitions.h",
-        "remote_fused_graph_execute_utils.h",
-    ],
-    deps = [
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_library(
-    name = "remote_fused_graph_execute_op_test_utils",
-    testonly = 1,
-    srcs = ["remote_fused_graph_execute_op_test_utils.cc"],
-    hdrs = ["remote_fused_graph_execute_op_test_utils.h"],
-    deps = [
-        ":cwise_op",
-        ":remote_fused_graph_execute_utils",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:ops",
-        "//tensorflow/cc:scope",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cc_test(
-    name = "remote_fused_graph_execute_utils_test",
-    size = "small",
-    srcs = [
-        "remote_fused_graph_execute_utils_test.cc",
-    ],
-    deps = [
-        ":cwise_op",
-        ":remote_fused_graph_execute_op_test_utils",
-        ":remote_fused_graph_execute_utils",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:scope",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:direct_session",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:ops",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:remote_fused_graph_ops_op_lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cc_test(
-    name = "remote_fused_graph_ops_test",
-    size = "small",
-    srcs = [
-        "remote_fused_graph_execute_op_test.cc",
-    ],
-    deps = [
-        ":ops_testutil",
-        ":ops_util",
-        ":remote_fused_graph_execute_op_test_utils",
-        ":remote_fused_graph_execute_utils",
-        ":remote_fused_graph_ops",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:ops",
-        "//tensorflow/cc:scope",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:direct_session",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:remote_fused_graph_ops_op_lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-cc_library(
-    name = "remote_fused_graph_rewriter_transform",
-    srcs = [
-        "remote_fused_graph_rewriter_transform.cc",
-    ],
-    deps = [
-        ":remote_fused_graph_execute_utils",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:remote_fused_graph_ops",
-        "//tensorflow/tools/graph_transforms:transform_utils",
-    ],
-    alwayslink = 1,
-)
-
-tf_cc_test(
-    name = "remote_fused_graph_rewriter_transform_test",
-    size = "small",
-    srcs = ["remote_fused_graph_rewriter_transform_test.cc"],
-    deps = [
-        ":remote_fused_graph_execute_op_test_utils",
-        ":remote_fused_graph_execute_utils",
-        ":remote_fused_graph_rewriter_transform",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/tools/graph_transforms:transform_utils",
     ],
 )
 
