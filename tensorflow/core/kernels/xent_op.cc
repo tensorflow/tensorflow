@@ -32,6 +32,8 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
+namespace {
+
 // TODO(duncanriach): Factor this into a shared utility library
 bool RequireDeterminism() {
   static bool require_determinism = [] {
@@ -54,6 +56,8 @@ bool DisableSoftmaxXentWithLogitsOpDeterminismExceptions() {
   }();
   return cached_disable;
 }
+
+} // namespace
 
 template <typename Device, typename T>
 class SoftmaxXentWithLogitsOp : public OpKernel {

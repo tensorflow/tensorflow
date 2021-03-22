@@ -49,6 +49,8 @@ Status CheckInvalidLabelIndex(const Tensor& labels, int64 max_index) {
   return Status::OK();
 }
 
+namespace {
+
 // TODO(duncanriach): Factor this into a shared utility library
 bool RequireDeterminism() {
   static bool require_determinism = [] {
@@ -71,6 +73,8 @@ bool DisableSparseSoftmaxXentWithLogitsOpDeterminismExceptions() {
   }();
   return cached_disable;
 }
+
+} // namespace
 
 template <typename Device, typename T, typename Index>
 class SparseSoftmaxXentWithLogitsOp : public OpKernel {
