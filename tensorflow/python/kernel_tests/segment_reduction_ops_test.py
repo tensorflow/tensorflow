@@ -563,7 +563,8 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
                 s = tf_op(
                     data=tf_x,
                     indices=math_ops.cast(tf_indices, index_dtype),
-                    segment_ids=math_ops.cast(segment_indices, segment_ids_dtype))
+                    segment_ids=math_ops.cast(segment_indices,
+                                              segment_ids_dtype))
                 tf_ans = self.evaluate(s)
                 self.assertAllClose(np_ans, tf_ans)
                 # NOTE(mrry): The static shape inference that computes

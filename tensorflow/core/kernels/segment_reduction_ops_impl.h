@@ -779,6 +779,8 @@ class SparseSegmentReductionOpBase : public OpKernel {
   const T default_value_;
 };
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 // Specialization for GPU. Must be Async because may need to wait for a host to
 // device memcpy before allocating output.
 template <class T, typename Index, typename SegmentId>
@@ -874,6 +876,8 @@ class SparseSegmentReductionOpBase<GPUDevice, T, Index, SegmentId>
   const bool has_num_segments_;
   const T default_value_;
 };
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename Device, class T, typename Index, typename SegmentId>
 class SparseSegmentReductionMeanOp
