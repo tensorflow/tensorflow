@@ -238,7 +238,8 @@ class SidecarEvaluator(object):
           'Evaluation starts: Model weights loaded from latest '
           'checkpoint file: %s.', latest_checkpoint)
 
-      self.model.evaluate(self.data, steps=self.steps, callbacks=self.callbacks)
+      self.model.evaluate(
+          self.data, steps=self.steps, callbacks=self.callbacks, verbose=2)
 
       logging.info(
           'End of evaluation. Metrics: %s', ' '.join([
