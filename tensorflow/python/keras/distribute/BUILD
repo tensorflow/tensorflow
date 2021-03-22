@@ -897,6 +897,7 @@ distribute_py_test(
     tags = [
         "multi_gpu",
         "no_oss",  # TODO(b/183640564): Reenable
+        "no_rocm",
         "notsan",  # TODO(b/184542721)
     ],
     deps = [
