@@ -87,6 +87,7 @@ cc_library(
         "map_parallel_loops_to_gpu.cc",
         "parallel_loops_to_sequential.cc",
         "same_shape_propagation.cc",
+        "shape_simplification.cc",
         "shape_to_descriptors_pass.cc",
         "tensorflow_abi_knowledge_propagation.cc",
         "tf_kernel_to_llvm_pass.cc",

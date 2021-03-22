@@ -41,3 +41,13 @@ class TFLiteMetrics(metrics_interface.TFLiteMetricsInterface):
 
   def increase_counter_interpreter_creation(self):
     pass
+
+  def increase_counter_converter_attempt(self):
+    pass
+
+  def increase_counter_converter_success(self):
+    pass
+
+  def set_converter_param(self, name, value):
+    pass
+

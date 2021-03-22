@@ -25,7 +25,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras.optimizer_v2 import adadelta
 from tensorflow.python.ops import embedding_ops
@@ -33,10 +32,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
-_DATA_TYPES = [dtypes.half, dtypes.float32, dtypes.float64]
-# TODO(b/143684500): Eigen to support complex sqrt
-if not test_util.IsBuiltWithNvcc():
-  _DATA_TYPES += [dtypes.complex64, dtypes.complex128]
+_DATA_TYPES = [
+    dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
+    dtypes.complex128
+]
 
 
 class AdadeltaOptimizerTest(test.TestCase, parameterized.TestCase):

@@ -274,18 +274,26 @@ Status GetClusterName(Graph* graph, string* cluster_name) {
 // nodes in between _Arg and _Arg's children, where some of the nodes inserted
 // are TPU nodes. We will add the TPUReplicatedInput and XlaSharding op nodes
 // back where necessary.
-Status RemoveDescendantNodeOfArg(
-    Graph* graph, const std::set<std::string>& node_type_to_remove) {
+//
+// Returns the number of nodes that were removed.
+int64 RemoveDescendantNodeOfArg(Graph* graph,
+                                const std::string& node_type_to_remove,
+                                bool must_be_child_of_arg) {
+  int64 nodes_removed = 0;
   std::vector<std::pair<const Edge*, std::vector<const Edge*>>> edges_to_remove;
+
   for (Node* node : graph->nodes()) {
-    if (node_type_to_remove.count(node->type_string()) == 0) continue;
-    bool has_arg_parent = false;
-    for (const Edge* edge : node->in_edges()) {
-      if (edge->src()->type_string() == "_Arg") {
-        has_arg_parent = true;
+    if (node_type_to_remove != node->type_string()) continue;
+    if (must_be_child_of_arg) {
+      bool has_arg_parent = false;
+      for (const Edge* edge : node->in_edges()) {
+        if (edge->src()->type_string() == "_Arg") {
+          has_arg_parent = true;
+        }
       }
+      if (!has_arg_parent) continue;
     }
-    if (!has_arg_parent) continue;
+    nodes_removed++;
 
     const Edge* input_edge = nullptr;
     std::vector<const Edge*> output_edges;
@@ -309,7 +317,7 @@ Status RemoveDescendantNodeOfArg(
     }
     graph->RemoveNode(it.first->dst());
   }
-  return Status::OK();
+  return nodes_removed;
 }
 
 uint64 GetInputHash(OpKernelContext* ctx) {
@@ -1143,41 +1151,41 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
           graph.get(), xla_sharding_ops, tpu_replicated_input_ops);
     }
 
-    if (xla_spmd_input_sharded &&
-        runtime_params_.minimum_input_tensors_packing <= 1) {
-      OP_REQUIRES_OK(
-          ctx, errors::InvalidArgument("You are using XlaShardingOp in an "
-                                       "input argument, but not setting "
-                                       "--minimum_input_tensors_packing to be "
-                                       "greater than 1. This is not "
-                                       "supported."));
+    if (!enable_spmd_xla_partitioning || num_cores_per_replica == 1 ||
+        (xla_spmd_input_sharded &&
+         runtime_params_.minimum_input_tensors_packing > 1)) {
+      if (xla_spmd_input_sharded) {
+        // We are setting must_be_child_of_arg == true because we do not want
+        // to remove other XlaSharding ops that might be in the graph. We only
+        // want the XlaSharding ops that are directly attached to the input
+        // arguments to be removed.
+        RemoveDescendantNodeOfArg(graph.get(), "XlaSharding",
+                                  /*must_be_child_of_arg=*/true);
+      }
+
+      RemoveDescendantNodeOfArg(graph.get(), "TPUReplicatedInput",
+                                /*must_be_child_of_arg=*/false);
+
+      VLOG(1) << DumpGraphToFile("before_get_input_output_info", *graph,
+                                 flib_def_.get());
+
+      OP_REQUIRES_OK_ASYNC(
+          ctx,
+          GetInputOutputInfo(graph.get(), tpu_inferred_info, arg_shapes,
+                             tpu_input_shapes, tpu_input_dtypes, ctx),
+          done);
+
+      VLOG(1) << DumpGraphToFile("before_optimize_tpu_input_output_tensors",
+                                 *graph, flib_def_.get());
+
+      OP_REQUIRES_OK_ASYNC(
+          ctx,
+          OptimizeTpuInputOutputTensors(
+              graph.get(), tpu_inferred_info, arg_shapes, tpu_input_shapes,
+              tpu_input_dtypes, named_input_shapes, xla_spmd_input_sharded,
+              xla_sharding_ops, tpu_replicated_input_ops, ctx),
+          done);
     }
-
-    OP_REQUIRES_OK_ASYNC(
-        ctx,
-        RemoveDescendantNodeOfArg(graph.get(),
-                                  {"TPUReplicatedInput", "XlaSharding"}),
-        done);
-
-    VLOG(1) << DumpGraphToFile("before_get_input_output_info", *graph,
-                               flib_def_.get());
-
-    OP_REQUIRES_OK_ASYNC(
-        ctx,
-        GetInputOutputInfo(graph.get(), tpu_inferred_info, arg_shapes,
-                           tpu_input_shapes, tpu_input_dtypes, ctx),
-        done);
-
-    VLOG(1) << DumpGraphToFile("before_optimize_tpu_input_output_tensors",
-                               *graph, flib_def_.get());
-
-    OP_REQUIRES_OK_ASYNC(
-        ctx,
-        OptimizeTpuInputOutputTensors(
-            graph.get(), tpu_inferred_info, arg_shapes, tpu_input_shapes,
-            tpu_input_dtypes, named_input_shapes, xla_spmd_input_sharded,
-            xla_sharding_ops, tpu_replicated_input_ops, ctx),
-        done);
 
     VLOG(1) << DumpGraphToFile(
         "before_replace_resource_args_with_var_handle_ops", *graph,

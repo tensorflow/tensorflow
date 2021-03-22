@@ -173,11 +173,6 @@ Status GpuCompiler::OptimizeHloModule(
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                               /*allow_mixed_precision=*/false);
-
-    pipeline.AddPass<AllGatherDecomposer>(
-        [](const HloAllGatherInstruction& ag) {
-          return !NcclAllGatherThunk::CanImplement(&ag);
-        });
     pipeline.AddPass<AllToAllDecomposer>();
     pipeline.AddPass<RealImagExpander>();
 
@@ -640,6 +635,9 @@ static Status CompileModuleToLlvmIrImpl(
       mlir::ModuleOp::create(mlir::Builder(&mlir_context).getUnknownLoc());
   TF_RETURN_IF_ERROR(
       HloToLhloModule(**buffer_assignment, *hlo_module, *mlir_module));
+
+  llvm_ir::DumpIrIfEnabled(mlir_module.get(), hlo_module->unique_id(),
+                           hlo_module->config().debug_options());
 
   IrEmitterContext ir_emitter_context(
       hlo_module, buffer_assignment->get(), platform_name, gpu_device_info,

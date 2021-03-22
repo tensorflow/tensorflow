@@ -181,7 +181,7 @@ class KPLTest(test.TestCase, parameterized.TestCase):
     distributed_dataset = self.coordinator.create_per_worker_dataset(dataset_fn)
     distributed_iterator = iter(distributed_dataset)
     for _ in range(4):
-      accuracy.reset_states()
+      accuracy.reset_state()
       for _ in range(7):
         self.coordinator.schedule(worker_fn, args=(distributed_iterator,))
       self.coordinator.join()

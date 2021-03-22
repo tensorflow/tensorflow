@@ -413,7 +413,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
     self._test_adjust_gamma_float32(0.0)
 
 
-class AdjustHueTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+class AdjustHueTest(test_util.TensorFlowTestCase):
 
   def testAdjustNegativeHue(self):
     x_shape = [2, 2, 3]
@@ -536,18 +536,6 @@ class AdjustHueTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     delta_h = np.random.rand() * 2.0 - 1.0
     with self.assertRaisesOpError("input must have 3 channels"):
       self._adjustHueTf(x_np, delta_h)
-
-  @parameterized.parameters(-1.1, 1.1, -np.inf, np.inf)
-  def testInValidDeltaRange(self, delta):
-    x_shape = [2, 2, 3]
-    x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
-    x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
-
-    with self.assertRaises(errors.InvalidArgumentError):
-      with self.cached_session():
-        x = constant_op.constant(x_np, shape=x_shape)
-        y = image_ops.adjust_hue(x, delta)
-        self.evaluate(y)
 
 
 class FlipImageBenchmark(test.Benchmark):

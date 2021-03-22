@@ -46,12 +46,13 @@ llvm::cl::opt<std::string> tfl_tosa_denylist(
     llvm::cl::value_desc("pattern name"));
 
 namespace mlir {
-
 namespace tosa {
-
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
+
 // Performs lowering to TOSA dialect.
-class LegalizeTFL : public PassWrapper<LegalizeTFL, FunctionPass> {
+class LegalizeTFL : public TosaLegalizeTFLPassBase<LegalizeTFL> {
  public:
   explicit LegalizeTFL() {}
   void runOnFunction() override;

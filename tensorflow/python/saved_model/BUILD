@@ -362,6 +362,7 @@ py_strict_library(
         "//tensorflow/python/training/tracking:graph_view",
         "//tensorflow/python/training/tracking:util",
         "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
         "@absl_py//absl/logging",
     ],
 )

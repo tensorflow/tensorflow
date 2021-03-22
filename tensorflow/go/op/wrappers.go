@@ -7504,9 +7504,9 @@ func StackV2(scope *Scope, max_size tf.Output, elem_type tf.DataType, optional .
 // Checks a tensor for NaN, -Inf and +Inf values.
 //
 // When run, reports an `InvalidArgument` error if `tensor` has any values
-// that are not a number (NaN) or infinity (Inf). Otherwise, passes `tensor` as-is.
-// Unlike CheckNumerics (V1), CheckNumericsV2 distinguishes -Inf and +Inf in the
-// errors it throws.
+// that are not a number (NaN) or infinity (Inf). Otherwise, returns the input
+// tensor. Unlike CheckNumerics (V1), CheckNumericsV2 distinguishes -Inf and +Inf
+// in the errors it throws.
 //
 // Arguments:
 //
@@ -16792,21 +16792,6 @@ func IsotonicRegression(scope *Scope, input tf.Output, optional ...IsotonicRegre
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
-}
-
-// Computes softplus: `log(exp(features) + 1)`.
-func Softplus(scope *Scope, features tf.Output) (activations tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Softplus",
-		Input: []tf.Input{
-			features,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // MutableHashTableV2Attr is an optional argument to MutableHashTableV2.
@@ -51270,7 +51255,28 @@ func MatrixDiagPartV2(scope *Scope, input tf.Output, k tf.Output, padding_value 
 // Checks a tensor for NaN and Inf values.
 //
 // When run, reports an `InvalidArgument` error if `tensor` has any values
-// that are not a number (NaN) or infinity (Inf). Otherwise, passes `tensor` as-is.
+// that are not a number (NaN) or infinity (Inf). Otherwise, returns the input
+// tensor.
+//
+// Example usage:
+//
+// ``` python
+// a = tf.Variable(1.0)
+// tf.debugging.check_numerics(a, message='')
+//
+// b = tf.Variable(np.nan)
+// try:
+//   tf.debugging.check_numerics(b, message='Checking b')
+// except Exception as e:
+//   assert "Checking b : Tensor had NaN values" in e.message
+//
+// c = tf.Variable(np.inf)
+// try:
+//   tf.debugging.check_numerics(c, message='Checking c')
+// except Exception as e:
+//   assert "Checking c : Tensor had Inf values" in e.message
+// ```
+//
 //
 // Arguments:
 //

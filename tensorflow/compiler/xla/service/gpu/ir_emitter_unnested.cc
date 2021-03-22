@@ -3201,8 +3201,8 @@ Status IrEmitterUnnested::EmitNcclThunkFromMlir(MlirEmitterInput input) {
   bool should_use_nccl_thunk =
       !is_degenerate && NcclThunkType::CanImplement(op);
 
-  // Stash relevant information in NcclAllGatherThunk::Buffer even if we may
-  // not generate an NcclAllGatherThunk.
+  // Stash relevant information in NcclCollectiveThunk::Buffer even if we may
+  // not generate an NcclCollectiveThunk.
   std::vector<NcclCollectiveThunk::Buffer> buffers;
   buffers.reserve(op.operands().size());
   for (auto it : llvm::zip(op.operands(), op.results())) {

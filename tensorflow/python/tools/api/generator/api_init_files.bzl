@@ -159,6 +159,7 @@ KERAS_API_INIT_FILES = [
     "keras/preprocessing/text/__init__.py",
     "keras/regularizers/__init__.py",
     "keras/utils/__init__.py",
+    "keras/utils/experimental/__init__.py",
     "keras/wrappers/__init__.py",
     "keras/wrappers/scikit_learn/__init__.py",
 ]

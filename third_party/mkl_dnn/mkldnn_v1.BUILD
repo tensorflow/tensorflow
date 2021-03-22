@@ -39,23 +39,13 @@ _DNNL_RUNTIME_THREADPOOL = {
     "#cmakedefine DNNL_SYCL_CUDA": "#undef DNNL_SYCL_CUDA",
 }
 
-_DNNL_RUNTIME_SEQ = {
-    "#cmakedefine DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_${DNNL_CPU_THREADING_RUNTIME}": "#define DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_SEQ",
-    "#cmakedefine DNNL_CPU_RUNTIME DNNL_RUNTIME_${DNNL_CPU_RUNTIME}": "#define DNNL_CPU_RUNTIME DNNL_RUNTIME_SEQ",
-    "#cmakedefine DNNL_GPU_RUNTIME DNNL_RUNTIME_${DNNL_GPU_RUNTIME}": "#define DNNL_GPU_RUNTIME DNNL_RUNTIME_NONE",
-    "#cmakedefine DNNL_WITH_SYCL": "#undef DNNL_WITH_SYCL",
-    "#cmakedefine DNNL_WITH_LEVEL_ZERO": "#undef DNNL_WITH_LEVEL_ZERO",
-    "#cmakedefine DNNL_SYCL_CUDA": "#undef DNNL_SYCL_CUDA",
-}
-
 template_rule(
     name = "dnnl_config_h",
     src = "include/oneapi/dnnl/dnnl_config.h.in",
     out = "include/oneapi/dnnl/dnnl_config.h",
     substitutions = select({
         "@org_tensorflow//third_party/mkl_dnn:build_with_mkldnn_openmp": _DNNL_RUNTIME_OMP,
-        "@org_tensorflow//third_party/mkl:build_with_mkl": _DNNL_RUNTIME_THREADPOOL,
-        "//conditions:default": _DNNL_RUNTIME_SEQ,
+        "//conditions:default": _DNNL_RUNTIME_THREADPOOL,
     }),
 )
 
@@ -78,92 +68,73 @@ template_rule(
     },
 )
 
+_COPTS_LIST = select({
+    "@org_tensorflow//tensorflow:windows": [],
+    "//conditions:default": ["-fexceptions"],
+}) + [
+    "-UUSE_MKL",
+    "-UUSE_CBLAS",
+    "-DDNNL_ENABLE_MAX_CPU_ISA",
+] + tf_openmp_copts()
+
+_INCLUDES_LIST = [
+    "include",
+    "src",
+    "src/common",
+    "src/cpu",
+    "src/cpu/gemm",
+    "src/cpu/x64/xbyak",
+]
+
+_TEXTUAL_HDRS_LIST = glob([
+    "include/**/*",
+    "src/common/*.hpp",
+    "src/cpu/*.hpp",
+    "src/cpu/**/*.hpp",
+    "src/cpu/x64/jit_utils/jitprofiling/*.h",
+    "src/cpu/x64/xbyak/*.h",
+]) + [
+    ":dnnl_config_h",
+    ":dnnl_version_h",
+]
+
+# Large autogen files take too long time to compile with usual optimization
+# flags. These files just generate binary kernels and are not the hot spots,
+# so we factor them out to lower compiler optimizations in ":dnnl_autogen".
+cc_library(
+    name = "onednn_autogen",
+    srcs = glob(["src/cpu/x64/gemm/**/*_kern_autogen*.cpp"]),
+    copts = select({
+        "@org_tensorflow//tensorflow:macos": ["-O0"],
+        "//conditions:default": ["-O1"],
+    }) + ["-U_FORTIFY_SOURCE"] + _COPTS_LIST,
+    includes = _INCLUDES_LIST,
+    textual_hdrs = _TEXTUAL_HDRS_LIST,
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "mkl_dnn",
     srcs = glob(
         [
             "src/common/*.cpp",
-            "src/common/*.hpp",
             "src/cpu/*.cpp",
-            "src/cpu/*.hpp",
             "src/cpu/**/*.cpp",
-            "src/cpu/**/*.hpp",
-            "src/cpu/x64/xbyak/*.h",
             "src/cpu/x64/jit_utils/jitprofiling/*.c",
-            "src/cpu/x64/jit_utils/jitprofiling/*.h",
         ],
-        exclude = ["src/cpu/aarch64/**"],
-    ) + [
-        ":dnnl_config_h",
-        ":dnnl_version_h",
-    ],
-    hdrs = glob(["include/*"]),
-    copts = select({
-        "@org_tensorflow//tensorflow:windows": [],
-        "//conditions:default": ["-fexceptions"],
-    }) + [
-        "-UUSE_MKL",
-        "-UUSE_CBLAS",
-        "-DDNNL_ENABLE_MAX_CPU_ISA",
-    ] + tf_openmp_copts(),
-    includes = [
-        "include",
-        "src",
-        "src/common",
-        "src/cpu",
-        "src/cpu/gemm",
-        "src/cpu/x64/xbyak",
-    ],
+        exclude = [
+            "src/cpu/aarch64/**",
+            "src/cpu/x64/gemm/**/*_kern_autogen.cpp",
+        ],
+    ),
+    copts = _COPTS_LIST,
+    includes = _INCLUDES_LIST,
+    textual_hdrs = _TEXTUAL_HDRS_LIST,
     visibility = ["//visibility:public"],
-    deps = if_mkl_ml(
+    deps = [":onednn_autogen"] + if_mkl_ml(
         ["@org_tensorflow//third_party/mkl:intel_binary_blob"],
         [],
     ),
-)
-
-cc_library(
-    name = "dnnl_single_threaded",
-    srcs = glob([
-        "src/common/*.cpp",
-        "src/cpu/*.cpp",
-        "src/cpu/gemm/**/*.cpp",
-        "src/cpu/matmul/**/*.cpp",
-        "src/cpu/reorder/*.cpp",
-        "src/cpu/rnn/**/*.cpp",
-        "src/cpu/x64/**/*.cpp",
-        "src/cpu/x64/jit_utils/jitprofiling/*.c",
-    ]) + [
-        ":dnnl_config_h",
-        ":dnnl_version_h",
-    ],
-    copts = [
-        "-fexceptions",
-        "-DDNNL_ENABLE_MAX_CPU_ISA",
-    ],
-    includes = [
-        "include",
-        "src",
-        "src/common",
-        "src/cpu",
-        "src/cpu/gemm",
-        "src/cpu/gemm/f32",
-        "src/cpu/gemm/s8x8s32",
-        "src/cpu/matmul",
-        "src/cpu/rnn",
-        "src/cpu/x64",
-        "src/cpu/x64/jit_utils",
-        "src/cpu/x64/jit_utils/jitprofiling",
-        "src/cpu/x64/xbyak",
-    ],
-    textual_hdrs = glob([
-        "include/**/*",
-        "src/common/*.hpp",
-        "src/cpu/*.hpp",
-        "src/cpu/**/*.hpp",
-        "src/cpu/x64/jit_utils/jitprofiling/*.h",
-        "src/cpu/x64/xbyak/*.h",
-    ]),
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
