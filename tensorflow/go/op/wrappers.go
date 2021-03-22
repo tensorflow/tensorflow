@@ -15979,36 +15979,6 @@ func TensorListSplit(scope *Scope, tensor tf.Output, element_shape tf.Output, le
 	return op.Output(0)
 }
 
-// Concats all tensors in the list along the 0th dimension.
-//
-// Requires that all tensors have the same shape except the first dimension.
-//
-// input_handle: The input list.
-// element_shape: The shape of the uninitialized elements in the list. If the first
-//   dimension is not -1, it is assumed that all list elements have the same
-//   leading dim.
-// leading_dims: The list of leading dims of uninitialized list elements. Used if
-//   the leading dim of input_handle.element_shape or the element_shape input arg
-//   is not already set.
-// tensor: The concated result.
-// lengths: Output tensor containing sizes of the 0th dimension of tensors in the list, used for computing the gradient.
-//
-func TensorListConcatV2(scope *Scope, input_handle tf.Output, element_shape tf.Output, leading_dims tf.Output, element_dtype tf.DataType) (tensor tf.Output, lengths tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"element_dtype": element_dtype}
-	opspec := tf.OpSpec{
-		Type: "TensorListConcatV2",
-		Input: []tf.Input{
-			input_handle, element_shape, leading_dims,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
-}
-
 // TensorListStackAttr is an optional argument to TensorListStack.
 type TensorListStackAttr func(optionalAttr)
 
@@ -19270,6 +19240,180 @@ func UnsortedSegmentSum(scope *Scope, data tf.Output, segment_ids tf.Output, num
 		Type: "UnsortedSegmentSum",
 		Input: []tf.Input{
 			data, segment_ids, num_segments,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// ResourceScatterNdSubAttr is an optional argument to ResourceScatterNdSub.
+type ResourceScatterNdSubAttr func(optionalAttr)
+
+// ResourceScatterNdSubUseLocking sets the optional use_locking attribute to value.
+//
+// value: An optional bool. Defaults to True. If True, the assignment will
+// be protected by a lock; otherwise the behavior is undefined,
+// but may exhibit less contention.
+// If not specified, defaults to true
+func ResourceScatterNdSubUseLocking(value bool) ResourceScatterNdSubAttr {
+	return func(m optionalAttr) {
+		m["use_locking"] = value
+	}
+}
+
+// Applies sparse subtraction to individual values or slices in a Variable.
+//
+// `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+//
+// `indices` must be integer tensor, containing indices into `ref`.
+// It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+//
+// The innermost dimension of `indices` (with length `K`) corresponds to
+// indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+// dimension of `ref`.
+//
+// `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+//
+// ```
+// [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]]
+// ```
+//
+// For example, say we want to subtract 4 scattered elements from a rank-1 tensor
+// with 8 elements. In Python, that subtraction would look like this:
+//
+// ```python
+// ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8], use_resource=True)
+// indices = tf.constant([[4], [3], [1], [7]])
+// updates = tf.constant([9, 10, 11, 12])
+// sub = tf.scatter_nd_sub(ref, indices, updates)
+// with tf.Session() as sess:
+//   print sess.run(sub)
+// ```
+//
+// The resulting update to ref would look like this:
+//
+//     [1, -9, 3, -6, -4, 6, 7, -4]
+//
+// See `tf.scatter_nd` for more details about how to make updates to
+// slices.
+//
+// Arguments:
+//	ref: A resource handle. Must be from a VarHandleOp.
+//	indices: A Tensor. Must be one of the following types: int32, int64.
+// A tensor of indices into ref.
+//	updates: A Tensor. Must have the same type as ref. A tensor of
+// values to add to ref.
+//
+// Returns the created operation.
+func ResourceScatterNdSub(scope *Scope, ref tf.Output, indices tf.Output, updates tf.Output, optional ...ResourceScatterNdSubAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ResourceScatterNdSub",
+		Input: []tf.Input{
+			ref, indices, updates,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Computes the minimum along segments of a tensor.
+//
+// Read
+// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+// for an explanation of segments.
+//
+// This operator is similar to the unsorted segment sum operator found
+// [(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+// Instead of computing the sum over segments, it computes the minimum such that:
+//
+// \\(output_i = \min_{j...} data_[j...]\\) where min is over tuples `j...` such
+// that `segment_ids[j...] == i`.
+//
+// If the minimum is empty for a given segment ID `i`, it outputs the largest
+// possible value for the specific numeric type,
+// `output[i] = numeric_limits<T>::max()`.
+//
+// For example:
+//
+// ``` python
+// c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
+// tf.unsorted_segment_min(c, tf.constant([0, 1, 0]), num_segments=2)
+// # ==> [[ 1,  2, 2, 1],
+// #       [5,  6, 7, 8]]
+// ```
+//
+// If the given segment ID `i` is negative, then the corresponding value is
+// dropped, and will not be included in the result.
+//
+// Arguments:
+//
+//	segment_ids: A tensor whose shape is a prefix of `data.shape`.
+//
+//
+// Returns Has same shape as data, except for the first `segment_ids.rank`
+// dimensions, which are replaced with a single dimension which has size
+// `num_segments`.
+func UnsortedSegmentMin(scope *Scope, data tf.Output, segment_ids tf.Output, num_segments tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "UnsortedSegmentMin",
+		Input: []tf.Input{
+			data, segment_ids, num_segments,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes the minimum along segments of a tensor.
+//
+// Read
+// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+// for an explanation of segments.
+//
+// Computes a tensor such that
+// \\(output_i = \min_j(data_j)\\) where `min` is over `j` such
+// that `segment_ids[j] == i`.
+//
+// If the min is empty for a given segment ID `i`, `output[i] = 0`.
+//
+// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+// <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMin.png" alt>
+// </div>
+//
+// For example:
+//
+// ```
+// c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+// tf.segment_min(c, tf.constant([0, 0, 1]))
+// # ==> [[1, 2, 2, 1],
+// #      [5, 6, 7, 8]]
+// ```
+//
+// Arguments:
+//
+//	segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
+// first dimension.  Values should be sorted and can be repeated.
+//
+// Returns Has same shape as data, except for dimension 0 which
+// has size `k`, the number of segments.
+func SegmentMin(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SegmentMin",
+		Input: []tf.Input{
+			data, segment_ids,
 		},
 	}
 	op := scope.AddOperation(opspec)
@@ -25137,6 +25281,36 @@ func MaxPoolGradV2(scope *Scope, orig_input tf.Output, orig_output tf.Output, gr
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Concats all tensors in the list along the 0th dimension.
+//
+// Requires that all tensors have the same shape except the first dimension.
+//
+// input_handle: The input list.
+// element_shape: The shape of the uninitialized elements in the list. If the first
+//   dimension is not -1, it is assumed that all list elements have the same
+//   leading dim.
+// leading_dims: The list of leading dims of uninitialized list elements. Used if
+//   the leading dim of input_handle.element_shape or the element_shape input arg
+//   is not already set.
+// tensor: The concated result.
+// lengths: Output tensor containing sizes of the 0th dimension of tensors in the list, used for computing the gradient.
+//
+func TensorListConcatV2(scope *Scope, input_handle tf.Output, element_shape tf.Output, leading_dims tf.Output, element_dtype tf.DataType) (tensor tf.Output, lengths tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"element_dtype": element_dtype}
+	opspec := tf.OpSpec{
+		Type: "TensorListConcatV2",
+		Input: []tf.Input{
+			input_handle, element_shape, leading_dims,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
 }
 
 // MaxPoolV2Attr is an optional argument to MaxPoolV2.
@@ -41924,222 +42098,6 @@ func InitializeTableFromTextFileV2(scope *Scope, table_handle tf.Output, filenam
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
-}
-
-// ResourceScatterNdSubAttr is an optional argument to ResourceScatterNdSub.
-type ResourceScatterNdSubAttr func(optionalAttr)
-
-// ResourceScatterNdSubUseLocking sets the optional use_locking attribute to value.
-//
-// value: An optional bool. Defaults to True. If True, the assignment will
-// be protected by a lock; otherwise the behavior is undefined,
-// but may exhibit less contention.
-// If not specified, defaults to true
-func ResourceScatterNdSubUseLocking(value bool) ResourceScatterNdSubAttr {
-	return func(m optionalAttr) {
-		m["use_locking"] = value
-	}
-}
-
-// Applies sparse subtraction to individual values or slices in a Variable.
-//
-// `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
-//
-// `indices` must be integer tensor, containing indices into `ref`.
-// It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
-//
-// The innermost dimension of `indices` (with length `K`) corresponds to
-// indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
-// dimension of `ref`.
-//
-// `updates` is `Tensor` of rank `Q-1+P-K` with shape:
-//
-// ```
-// [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]]
-// ```
-//
-// For example, say we want to subtract 4 scattered elements from a rank-1 tensor
-// with 8 elements. In Python, that subtraction would look like this:
-//
-// ```python
-// ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8], use_resource=True)
-// indices = tf.constant([[4], [3], [1], [7]])
-// updates = tf.constant([9, 10, 11, 12])
-// sub = tf.scatter_nd_sub(ref, indices, updates)
-// with tf.Session() as sess:
-//   print sess.run(sub)
-// ```
-//
-// The resulting update to ref would look like this:
-//
-//     [1, -9, 3, -6, -4, 6, 7, -4]
-//
-// See `tf.scatter_nd` for more details about how to make updates to
-// slices.
-//
-// Arguments:
-//	ref: A resource handle. Must be from a VarHandleOp.
-//	indices: A Tensor. Must be one of the following types: int32, int64.
-// A tensor of indices into ref.
-//	updates: A Tensor. Must have the same type as ref. A tensor of
-// values to add to ref.
-//
-// Returns the created operation.
-func ResourceScatterNdSub(scope *Scope, ref tf.Output, indices tf.Output, updates tf.Output, optional ...ResourceScatterNdSubAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ResourceScatterNdSub",
-		Input: []tf.Input{
-			ref, indices, updates,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Computes the minimum along segments of a tensor.
-//
-// Read
-// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
-// for an explanation of segments.
-//
-// This operator is similar to the unsorted segment sum operator found
-// [(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
-// Instead of computing the sum over segments, it computes the minimum such that:
-//
-// \\(output_i = \min_{j...} data_[j...]\\) where min is over tuples `j...` such
-// that `segment_ids[j...] == i`.
-//
-// If the minimum is empty for a given segment ID `i`, it outputs the largest
-// possible value for the specific numeric type,
-// `output[i] = numeric_limits<T>::max()`.
-//
-// For example:
-//
-// ``` python
-// c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
-// tf.unsorted_segment_min(c, tf.constant([0, 1, 0]), num_segments=2)
-// # ==> [[ 1,  2, 2, 1],
-// #       [5,  6, 7, 8]]
-// ```
-//
-// If the given segment ID `i` is negative, then the corresponding value is
-// dropped, and will not be included in the result.
-//
-// Arguments:
-//
-//	segment_ids: A tensor whose shape is a prefix of `data.shape`.
-//
-//
-// Returns Has same shape as data, except for the first `segment_ids.rank`
-// dimensions, which are replaced with a single dimension which has size
-// `num_segments`.
-func UnsortedSegmentMin(scope *Scope, data tf.Output, segment_ids tf.Output, num_segments tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "UnsortedSegmentMin",
-		Input: []tf.Input{
-			data, segment_ids, num_segments,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes the minimum along segments of a tensor.
-//
-// Read
-// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
-// for an explanation of segments.
-//
-// Computes a tensor such that
-// \\(output_i = \min_j(data_j)\\) where `min` is over `j` such
-// that `segment_ids[j] == i`.
-//
-// If the min is empty for a given segment ID `i`, `output[i] = 0`.
-//
-// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMin.png" alt>
-// </div>
-//
-// For example:
-//
-// ```
-// c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
-// tf.segment_min(c, tf.constant([0, 0, 1]))
-// # ==> [[1, 2, 2, 1],
-// #      [5, 6, 7, 8]]
-// ```
-//
-// Arguments:
-//
-//	segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
-// first dimension.  Values should be sorted and can be repeated.
-//
-// Returns Has same shape as data, except for dimension 0 which
-// has size `k`, the number of segments.
-func SegmentMin(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SegmentMin",
-		Input: []tf.Input{
-			data, segment_ids,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Execute a sub graph on a remote processor.
-//
-// The graph specifications(such as graph itself, input tensors and output names)
-// are stored as a serialized protocol buffer of RemoteFusedGraphExecuteInfo
-// as serialized_remote_fused_graph_execute_info.
-// The specifications will be passed to a dedicated registered
-// remote fused graph executor.  The executor will send the graph specifications
-// to a remote processor and execute that graph.  The execution results
-// will be passed to consumer nodes as outputs of this node.
-//
-// Arguments:
-//	inputs: Arbitrary number of tensors with arbitrary data types
-//
-//	serialized_remote_fused_graph_execute_info: Serialized protocol buffer
-// of RemoteFusedGraphExecuteInfo which contains graph specifications.
-//
-// Returns Arbitrary number of tensors with arbitrary data types
-func RemoteFusedGraphExecute(scope *Scope, inputs []tf.Output, Toutputs []tf.DataType, serialized_remote_fused_graph_execute_info string) (outputs []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"Toutputs": Toutputs, "serialized_remote_fused_graph_execute_info": serialized_remote_fused_graph_execute_info}
-	opspec := tf.OpSpec{
-		Type: "RemoteFusedGraphExecute",
-		Input: []tf.Input{
-			tf.OutputList(inputs),
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if outputs, idx, err = makeOutputList(op, idx, "outputs"); err != nil {
-		scope.UpdateErr("RemoteFusedGraphExecute", err)
-		return
-	}
-	return outputs
 }
 
 // Creates and returns an empty tensor map.
