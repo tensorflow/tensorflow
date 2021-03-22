@@ -71,7 +71,6 @@ bazel test \
 //tensorflow/python/distribute:random_generator_test_2gpu \
 //tensorflow/python/distribute:tf_function_test_2gpu \
 //tensorflow/python/distribute:warm_starting_util_test_2gpu \
-//tensorflow/python/keras/distribute:checkpointing_test_2gpu \
 //tensorflow/python/keras/distribute:collective_all_reduce_strategy_test_2gpu \
 //tensorflow/python/keras/distribute:collective_all_reduce_strategy_test_xla_2gpu \
 //tensorflow/python/keras/distribute:ctl_correctness_test_2gpu \
@@ -130,3 +129,6 @@ bazel test \
 
 # FAILED  //tensorflow/python/keras/distribute:minimize_loss_test_2gpu \
 # potential breaking commit : https://github.com/tensorflow/tensorflow/commit/74e39c8fa60079862597c9db506cd15b2443a5a2
+
+# NO MORE MULTI_GPU : //tensorflow/python/keras/distribute:checkpointing_test_2gpu \
+# multi_gpu tag was commented out in this commit : https://github.com/tensorflow/tensorflow/commit/b87d02a3f8d8b55045bf4250dd72e746357a3eba
