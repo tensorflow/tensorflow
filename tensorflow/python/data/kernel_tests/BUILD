@@ -528,6 +528,7 @@ cuda_py_test(
     tags = [
         "no_gpu",  #TODO(b/141255188): Enable test after bug is resolved.
         "no_oss",
+        "no_tfrt",  # TODO(b/183398908)
         "no_windows_gpu",
     ],
     deps = [
