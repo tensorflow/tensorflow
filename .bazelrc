@@ -100,8 +100,8 @@
 build --define framework_shared_object=true
 
 # For workaround https://github.com/bazelbuild/bazel/issues/8772 with Bazel >= 0.29.1
-build --java_toolchain=@org_tensorflow//third_party/toolchains/java:tf_java_toolchain
-build --host_java_toolchain=@org_tensorflow//third_party/toolchains/java:tf_java_toolchain
+build --java_toolchain=@tf_toolchains//toolchains/java:tf_java_toolchain
+build --host_java_toolchain=@tf_toolchains//toolchains/java:tf_java_toolchain
 
 # Do not enable the mlir generated GPU kernels by default.
 build --//tensorflow/core/kernels/mlir_generated:enable_gpu=false
