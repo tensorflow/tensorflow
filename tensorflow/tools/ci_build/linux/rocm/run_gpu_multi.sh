@@ -81,7 +81,6 @@ bazel test \
 //tensorflow/python/keras/distribute:keras_optimizer_v2_test_2gpu \
 //tensorflow/python/keras/distribute:keras_premade_models_test_2gpu \
 //tensorflow/python/keras/distribute:keras_stateful_lstm_model_correctness_test_2gpu \
-//tensorflow/python/keras/distribute:minimize_loss_test_2gpu \
 //tensorflow/python/keras/distribute:mirrored_strategy_test_2gpu \
 //tensorflow/python/keras/distribute:mirrored_variable_test_2gpu \
 //tensorflow/python/keras/distribute:multi_worker_test_2gpu \
@@ -128,3 +127,6 @@ bazel test \
 
 # FAILED ON CI Node only : //tensorflow/python/distribute:collective_all_reduce_strategy_test_2gpu \
 # See run : http://ml-ci.amd.com:21096/job/tensorflow/job/github-prs-rocmfork-develop-upstream/job/rocm-latest-ubuntu-gpu-multi/216/console
+
+# FAILED  //tensorflow/python/keras/distribute:minimize_loss_test_2gpu \
+# potential breaking commit : https://github.com/tensorflow/tensorflow/commit/74e39c8fa60079862597c9db506cd15b2443a5a2
