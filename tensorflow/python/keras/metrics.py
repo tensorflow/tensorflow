@@ -73,7 +73,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import variables as variables_module
+from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import dispatch
@@ -295,14 +295,13 @@ class Metric(base_layer.Layer):
 
   ### For use by subclasses ###
   @doc_controls.for_subclass_implementers
-  def add_weight(
-      self,
-      name,
-      shape=(),
-      aggregation=variables_module.VariableAggregation.SUM,
-      synchronization=variables_module.VariableSynchronization.ON_READ,
-      initializer=None,
-      dtype=None):
+  def add_weight(self,
+                 name,
+                 shape=(),
+                 aggregation=tf_variables.VariableAggregation.SUM,
+                 synchronization=tf_variables.VariableSynchronization.ON_READ,
+                 initializer=None,
+                 dtype=None):
     """Adds state variable. Only for use by subclasses."""
     if distribute_ctx.has_strategy():
       strategy = distribute_ctx.get_strategy()
@@ -311,7 +310,7 @@ class Metric(base_layer.Layer):
 
     # TODO(b/120571621): Make `ON_READ` work with Keras metrics on TPU.
     if K.is_tpu_strategy(strategy):
-      synchronization = variables_module.VariableSynchronization.ON_WRITE
+      synchronization = tf_variables.VariableSynchronization.ON_WRITE
 
     with ops.init_scope():
       return super(Metric, self).add_weight(
@@ -395,15 +394,7 @@ class Reduce(Metric):
     [values], sample_weight = \
         metrics_utils.ragged_assert_compatible_and_get_flat_values(
             [values], sample_weight)
-    try:
-      values = math_ops.cast(values, self._dtype)
-    except (ValueError, TypeError):
-      msg = ('The output of a metric function can only be a single Tensor. '
-             'Got: %s' % (values,))
-      if isinstance(values, dict):
-        msg += ('. To return a dict of values, implement a custom Metric '
-                'subclass.')
-      raise RuntimeError(msg)
+    values = math_ops.cast(values, self._dtype)
     if sample_weight is not None:
       sample_weight = math_ops.cast(sample_weight, self._dtype)
       # Update dimensions of weights to match with values if possible.

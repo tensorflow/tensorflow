@@ -37,7 +37,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import tf_decorator
@@ -119,20 +118,7 @@ def result_wrapper(result_fn):
     has_strategy = distribution_strategy_context.has_strategy()
     replica_context = distribution_strategy_context.get_replica_context()
     if not has_strategy or replica_context is None:
-      raw_result = result_fn(*args)
-      # Results need to be wrapped in a `tf.identity` op to ensure
-      # correct execution order.
-      if isinstance(raw_result,
-                    (ops.Tensor, variables_module.Variable, float, int)):
-        result_t = array_ops.identity(raw_result)
-      elif isinstance(raw_result, dict):
-        result_t = {key: array_ops.identity(value)
-                    for key, value in raw_result.items()}
-      else:
-        raise RuntimeError(
-            'The output of `metric.result()` can only be a single '
-            'Tensor/Variable, or a dict of Tensors/Variables. '
-            'For metric %s, got result %s.' % (metric_obj.name, raw_result))
+      result_t = array_ops.identity(result_fn(*args))
     else:
       # TODO(psv): Test distribution of metrics using different distribution
       # strategies.
