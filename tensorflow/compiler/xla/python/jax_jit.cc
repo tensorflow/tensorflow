@@ -76,9 +76,10 @@ std::string ArgSignature::DebugString() const {
 
 bool CallSignature::operator==(const CallSignature& other) const {
   return std::tie(dynamic_positional_args_treedef, keyword_args,
-                  dynamic_args_signatures, device) ==
+                  dynamic_args_signatures, device, jax_enable_x64) ==
              std::tie(other.dynamic_positional_args_treedef, other.keyword_args,
-                      other.dynamic_args_signatures, other.device) &&
+                      other.dynamic_args_signatures, other.device,
+                      other.jax_enable_x64) &&
          // `==` on py:objects is the Python `is`. We need equal.
          std::equal(
              static_args.begin(), static_args.end(), other.static_args.begin(),
@@ -190,6 +191,7 @@ H AbslHashValue(H h, const CallSignature& s) {
   h = H::combine_contiguous(std::move(h), s.dynamic_args_signatures.data(),
                             s.dynamic_args_signatures.size());
   h = H::combine(std::move(h), s.device);
+  h = H::combine(std::move(h), s.jax_enable_x64);
   for (const auto& static_arg : s.static_args) {
     ssize_t hash;
     try {
