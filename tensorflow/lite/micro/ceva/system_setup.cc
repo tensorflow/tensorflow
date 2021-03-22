@@ -13,14 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/micro/micro_time.h"
+#include "tensorflow/lite/micro/system_setup.h"
 
 #include <ceva-time.h>
 
 namespace tflite {
 
-int32_t ticks_per_second() { return 100e6; }
-
-int32_t GetCurrentTimeTicks() { return clock(); }
+void InitializeTarget() {
+  // start clock for profiler
+  reset_clock();
+  start_clock();
+}
 
 }  // namespace tflite
