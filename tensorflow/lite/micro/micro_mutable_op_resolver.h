@@ -257,6 +257,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParseL2Normalization);
   }
 
+  TfLiteStatus AddL2Pool2D() {
+    return AddBuiltin(BuiltinOperator_L2_POOL_2D, tflite::Register_L2_POOL_2D(),
+                      ParsePool);
+  }
+
   TfLiteStatus AddLeakyRelu() {
     return AddBuiltin(BuiltinOperator_LEAKY_RELU, tflite::Register_LEAKY_RELU(),
                       ParseLeakyRelu);
