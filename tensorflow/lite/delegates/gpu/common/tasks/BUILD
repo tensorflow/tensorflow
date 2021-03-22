@@ -978,6 +978,31 @@ cc_library(
 )
 
 cc_library(
+    name = "tile",
+    srcs = ["tile.cc"],
+    hdrs = ["tile.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "tile_test_util",
+    testonly = 1,
+    srcs = ["tile_test_util.cc"],
+    hdrs = ["tile_test_util.h"],
+    deps = [
+        ":tile",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "transpose",
     srcs = ["transpose.cc"],
     hdrs = ["transpose.h"],
