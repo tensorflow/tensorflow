@@ -202,7 +202,7 @@ Status BufferedInputStream::ReadAll(T* result) {
   return status;
 }
 
-template Status BufferedInputStream::ReadAll<string>(string* result);
+template Status BufferedInputStream::ReadAll<std::string>(std::string* result);
 template Status BufferedInputStream::ReadAll<tstring>(tstring* result);
 
 Status BufferedInputStream::Reset() {
@@ -213,7 +213,7 @@ Status BufferedInputStream::Reset() {
   return Status::OK();
 }
 
-Status BufferedInputStream::ReadLine(string* result) {
+Status BufferedInputStream::ReadLine(std::string* result) {
   return ReadLineHelper(result, false);
 }
 
@@ -221,8 +221,8 @@ Status BufferedInputStream::ReadLine(tstring* result) {
   return ReadLineHelper(result, false);
 }
 
-string BufferedInputStream::ReadLineAsString() {
-  string result;
+std::string BufferedInputStream::ReadLineAsString() {
+  std::string result;
   ReadLineHelper(&result, true).IgnoreError();
   return result;
 }
