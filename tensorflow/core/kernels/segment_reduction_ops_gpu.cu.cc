@@ -380,7 +380,7 @@ Status LaunchSegmentReduceEpilogueKernel(
 template <typename Tto>
 struct CastFunctor {
   template <typename T>
-  __device__ Tto operator()(T val) const {
+  __device__ Tto operator()(const T& val) const {
     return static_cast<Tto>(val);
   }
 };
