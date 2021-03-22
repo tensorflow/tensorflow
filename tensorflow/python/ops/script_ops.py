@@ -545,12 +545,12 @@ def py_func_common(func, inp, Tout, stateful=True, name=None):
     `tf.compat.v1.py_func()` and you must pin the created operation to a device
     in that
     server (e.g. using `with tf.device():`).
-    
-  Note: It produces tensors of unknown shape and rank as shape inference 
+
+  Note: It produces tensors of unknown shape and rank as shape inference
     does not work on arbitrary Python code.
-    If you need the shape, you need to set it based on statically 
+    If you need the shape, you need to set it based on statically
     available information.
-    
+
     E.g.
     ```python
     import tensorflow as tf
@@ -569,7 +569,7 @@ def py_func_common(func, inp, Tout, stateful=True, name=None):
     ds = tf.data.Dataset.range(10)
     ds = ds.map(preprocess_fn)
     ```
-    
+
   Args:
     func: A Python function, which accepts `ndarray` objects as arguments and
       returns a list of `ndarray` objects (or a single `ndarray`). This function
@@ -641,7 +641,7 @@ py_func.__doc__ = "%s" % py_func_common.__doc__
 
 @tf_export("numpy_function")
 @dispatch.add_dispatch_support
-def numpy_function(func, inp, Tout, name=None):
+def numpy_function(func, inp, Tout, stateful=True, name=None):
   """Wraps a python function and uses it as a TensorFlow op.
 
   Given a python function `func` wrap this function as an operation in a
@@ -685,8 +685,6 @@ def numpy_function(func, inp, Tout, name=None):
     through a numpy_function. If you require something that is differentiable,
     please consider using tf.py_function.
 
-  * The resulting function is assumed stateful and will never be optimized.
-
   Args:
     func: A Python function, which accepts `numpy.ndarray` objects as arguments
       and returns a list of `numpy.ndarray` objects (or a single
@@ -702,12 +700,16 @@ def numpy_function(func, inp, Tout, name=None):
     inp: A list of `tf.Tensor` objects.
     Tout: A list or tuple of tensorflow data types or a single tensorflow data
       type if there is only one, indicating what `func` returns.
+    stateful: (Boolean.) If True, the function should be considered stateful. If
+      a function is stateless, when given the same input it will return the same
+      output and have no observable side effects. Optimizations such as common
+      subexpression elimination are only performed on stateless operations.
     name: (Optional) A name for the operation.
 
   Returns:
     Single or list of `tf.Tensor` which `func` computes.
   """
-  return py_func_common(func, inp, Tout, stateful=True, name=name)
+  return py_func_common(func, inp, Tout, stateful=stateful, name=name)
 
 
 ops.NotDifferentiable("PyFunc")
