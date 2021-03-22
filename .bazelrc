@@ -553,7 +553,6 @@ test:release_cpu_linux --test_env=LD_LIBRARY_PATH
 build:release_cpu_macos --config=release_base
 build:release_cpu_macos --config=avx_linux
 
-build:release_gpu_base --config=release_base
 build:release_gpu_base --config=cuda
 build:release_gpu_base --action_env=TF_CUDA_VERSION="11"
 build:release_gpu_base --action_env=TF_CUDNN_VERSION="8"
