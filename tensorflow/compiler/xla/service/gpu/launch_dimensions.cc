@@ -85,7 +85,13 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
   int64 threads_per_block_row_optimized = shape.dimensions().back() / unroll_factor;
   if (row_optimized &&
       shape.dimensions().back() % unroll_factor == 0 &&
-      (threads_per_block_row_optimized >= 32 &&
+      // If the row size is a multiple of 256, then use the old code
+      // path that use a block size of 256. This give small speed up on V100.
+      // Vectorization of the row load was already happening.
+      (shape.dimensions().back() % 256) != 0 &&
+      // Do not trigger the row vectorized codepath if this create too
+      // small block size as this hurt performance.
+      (threads_per_block_row_optimized >= 128 &&
        threads_per_block_row_optimized <= gpu_device_info.threads_per_block_limit)) {
     threads_per_block = threads_per_block_row_optimized;
     VLOG(2) << "Update # of threads per block to ("
@@ -128,7 +134,7 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
       num_elements, threads_per_block, block_count);
 
   bool last_dim_aligned_for_vectorization = false;
-  if (shape.rank() > 1) {
+  if (row_optimized && shape.rank() > 1) {
     last_dim_aligned_for_vectorization = threads_per_block * unroll_factor == shape.dimensions().back();
   }
 
