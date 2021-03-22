@@ -72,6 +72,7 @@ struct KernelDetails {
   uint64 grid_z;
 };
 
+//TODO(rocm-profiler): do we support other event types such as memfree in CUPTI? 
 enum class RocmTracerEventType {
   Unsupported = 0,
   Kernel,
@@ -118,6 +119,7 @@ struct RocmTracerEvent {
   // This points to strings in AnnotationMap, which should outlive the point
   // where serialization happens.
   absl::string_view annotation;
+  absl::string_view roctx_range;
   uint64 start_time_ns;
   uint64 end_time_ns;
   uint32 device_id = kInvalidDeviceId;

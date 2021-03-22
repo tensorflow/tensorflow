@@ -115,7 +115,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       }
       num_callback_events_++;
     }
-    if (event.source == RocmTracerEventSource::Activity) {
+    else if (event.source == RocmTracerEventSource::Activity) {
       if (num_activity_events_ > options_.max_activity_api_events) {
         OnEventsDropped("max activity event capacity reached",
                         event.correlation_id);
@@ -133,8 +133,14 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
         case RocmTracerEventDomain::HIP_API:
           switch (event.source) {
             case RocmTracerEventSource::ApiCallback:
+              if (iter->second.type == RocmTracerEventType::StreamSynchronize){
+                iter->second.device_id = event.device_id;
+                }
               break;
             case RocmTracerEventSource::Activity:
+              if (iter->second.type == RocmTracerEventType::StreamSynchronize){
+                iter->second.stream_id = event.stream_id;
+                }
               // Use the start/stop time from the HCC_OPS domain
               // unless this is one of those events for which we do not
               // receive any HCC activity record callback
@@ -155,6 +161,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
               iter->second.stream_id = event.stream_id;
               iter->second.start_time_ns = event.start_time_ns;
               iter->second.end_time_ns = event.end_time_ns;
+              //TODO(rocm-profiler): should we find annotation with this?
               // Use the annotation from the HIP_API domain
               // iter->second.annotation = event.annotation;
               break;
@@ -315,6 +322,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
   bool IsEventTypeWithoutHCCActivityRecordCallback(RocmTracerEventType type) {
     switch (type) {
       case RocmTracerEventType::MemoryAlloc:
+      case RocmTracerEventType::StreamSynchronize:
         return true;
         break;
       default:
@@ -685,6 +693,7 @@ RocmTracerOptions GpuTracer::GetRocmTracerOptions() {
   // clang-format on
 
   options.api_callbacks.emplace(ACTIVITY_DOMAIN_HIP_API, hip_api_domain_ops);
+  //options.api_callbacks.emplace(ACTIVITY_DOMAIN_ROCTX, empty_vec);
   // options.api_callbacks.emplace(ACTIVITY_DOMAIN_HIP_API, empty_vec);
 
   // options.activity_tracing.emplace(ACTIVITY_DOMAIN_HIP_API,
