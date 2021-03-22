@@ -1886,7 +1886,10 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
           // Only tested when the inputs are row-major. So only enable that case.
           // Maybe it would works if only the inner dimensions is contiguous.
           return true;//TODO: LayoutUtil::IsMonotonicWithDim0Major(instr->shape().layout());
-        });
+        }) &&
+      // Only tested when the output is row-major.
+      //LayoutUtil::IsMonotonicWithDim0Major(hlo.shape().layout());
+      true;
   bool some_row_broadcasting = false;
   for (mlir::Operation& op : fusion.region().front()) {
     if (mlir::isa<mlir::memref::TensorLoadOp, mlir::memref::TensorStoreOp,

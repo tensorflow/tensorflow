@@ -130,10 +130,12 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
                       /*HasNUW=*/true, /*HasNSW=*/true);
   }
 
-  // When row_index is true, it mean the inner most dimensions match the block sizes.
-  // So we can generates a simpler indexing for that dimensions.
-  // This help LLVM generates vectorized codes in that cases.
+  // When enable_row_index is true, it means the inner most dimensions
+  // match the block sizes.  So we can generates a simpler indexing
+  // for that dimensions.  This help LLVM generates vectorized codes
+  // in that cases.
   bool enable_row_index = launch_dimensions_.last_dim_aligned_for_vectorization();
+  VLOG(2) << "Emitting row optimized indexing: " << enable_row_index;
   llvm::Value* row_index = nullptr;
   if (!enable_row_index) {
     array_indices.emplace_back(linear_index_base, shape_, b_);
