@@ -1887,6 +1887,7 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
           // Maybe it would works if only the inner dimensions is contiguous.
           return true;//TODO: LayoutUtil::IsMonotonicWithDim0Major(instr->shape().layout());
         });
+  bool some_row_broadcasting = false;
   for (mlir::Operation& op : fusion.region().front()) {
     if (mlir::isa<mlir::memref::TensorLoadOp, mlir::memref::TensorStoreOp,
         mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp>(op) ) {
@@ -1907,18 +1908,20 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
       auto rank = TypeToShape(fusion.getFusionResults()[0].getType()).rank();
       // The row optimized codepath currently only support scalar and
       // row broadcasting.
-      if (broadcast_dimensions.size() != 0 &&
-          (broadcast_dimensions.size() != 1 ||
-           broadcast_dimensions.back() != (rank - 1))) {
-        row_optimized = false;
-        VLOG(3) << "Row vectorization not enabled due to this op: " << HloOpcodeString(opcode);
-        break;
+      if (broadcast_dimensions.size() == 0) {
+        continue;
+      }
+      if (broadcast_dimensions.size() == 1 &&
+          broadcast_dimensions.back() != (rank - 1)) {
+        some_row_broadcasting = true;
       }
     }
     row_optimized = false;
     VLOG(3) << "Row vectorization not enabled due to this op: " << HloOpcodeString(opcode);
     break;
   }
+  // Trigger only when there is a row broadcasting.
+  row_optimized &= some_row_broadcasting;
 
   Shape element_shape = context.output_shapes[0];
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
