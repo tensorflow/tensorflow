@@ -572,13 +572,13 @@ def tanhexp(features):
     features = ops.convert_to_tensor(features, name="features")
 
   def grad(dy):
-    """Gradient for the Tanhexp activation function"""
+    """Gradient for the TanhExp activation function"""
     # Naively, x * tf.nn.tanh(e^x) requires keeping both x and tanh(e^x)
-    # around for backprop, effectively doubling the tensor's memory consumption.
-    # We use a control dependency here so that tanh(e^x) is re-computed
-    # during backprop (the control dep prevents it being de-duped with the
-    # forward pass) and we can free the tanh(e^x) expression immediately
-    # after use during the forward pass.
+    # around for backprop, effectively doubling the tensor's memory
+    # consumption. We use a control dependency here so that tanh(e^x)
+    # is re-computed during backprop (the control dep prevents it being
+    # de-duped with the forward pass) and we can free the tanh(e^x) 
+    # expression immediately after use during the forward pass.
     with ops.control_dependencies([dy]):
       tanhexp_features = math_ops.tanh(math_ops.exp(features))
       activation_grad = (
