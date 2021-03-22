@@ -385,9 +385,11 @@ def tanhexp(x):
   Args:
       x: Input tensor.
   Returns:
-      The TanhExp activation applied to `x` (see reference paper for details).
+      The TanhExp activation applied to `x`
+      (see reference paper for details).
   Reference:
-    - [arXiv:2003.09855v2 [cs.LG] 9 Sep 2020](https://arxiv.org/pdf/2003.09855.pdf)
+    - [arXiv:2003.09855v2 [cs.LG] 9 Sep 2020]
+      (https://arxiv.org/pdf/2003.09855.pdf)
   """
   return nn.tanhexp(x)
 
