@@ -106,6 +106,12 @@ std::string ToString(enum OperationType op) {
       return "equal";
     case OperationType::EXP:
       return "exp";
+    case OperationType::FLOOR:
+      return "floor";
+    case OperationType::FLOOR_DIV:
+      return "floor_div";
+    case OperationType::FLOOR_MOD:
+      return "floor_mod";
     case OperationType::FULLY_CONNECTED:
       return "fully_connected";
     case OperationType::FULLY_CONNECTED_INT8:
@@ -215,6 +221,9 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"elu", OperationType::ELU},
           {"equal", OperationType::EQUAL},
           {"exp", OperationType::EXP},
+          {"floor", OperationType::FLOOR},
+          {"floor_div", OperationType::FLOOR_DIV},
+          {"floor_mod", OperationType::FLOOR_MOD},
           {"fully_connected", OperationType::FULLY_CONNECTED},
           {"fully_connected_int8", OperationType::FULLY_CONNECTED_INT8},
           {"greater", OperationType::GREATER},
