@@ -209,12 +209,11 @@ class SidecarEvaluator(object):
             if re.match(r'^layer_with_weights-[\d+]', attribute) is not None:
               self.model.load_weights(latest_checkpoint)
               break
-        else:
-          # The model checkpoint might not include optimizer in cases, e.g.
-          # using a custom training loop. Directly assign the iterations
-          # property to be used in callbacks.
-          if self.model.optimizer:
-            self.model.optimizer.iterations.assign(self._iterations)
+        # The model checkpoint might not include optimizer in cases, e.g.
+        # using a custom training loop. Directly assign the iterations
+        # property to be used in callbacks.
+        if self.model.optimizer:
+          self.model.optimizer.iterations.assign(self._iterations)
       except (errors_impl.OpError,) as e:
         # A couple errors can happen here with the coordinator racing to write
         # checkpoint:
