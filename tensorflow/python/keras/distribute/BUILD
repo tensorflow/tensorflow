@@ -900,6 +900,7 @@ distribute_py_test(
     tags = [
         "multi_gpu",
         "no_oss",  # TODO(b/183640564): Reenable
+        "no_rocm",
         "no_tfrt",  # TODO(b/180537361): Reenable TFRT after the issue is resolved.
     ],
     deps = [
