@@ -331,7 +331,7 @@ int PjRtBufferGetBuffer(PyObject* exporter, Py_buffer* view, int flags) {
   if (!status.ok()) {
     // numpy.asarray(...) silents the PyExc_BufferError. Adding a log here helps
     // debugging when the error really occurs.
-    LOG(INFO) << "Buffer Protocol Error: " << status;
+    VLOG(1) << "Buffer Protocol Error: " << status;
     PyErr_SetString(PyExc_BufferError, status.ToString().c_str());
     return -1;
   }
