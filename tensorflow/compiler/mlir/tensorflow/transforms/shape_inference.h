@@ -26,6 +26,9 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 
+// Returns whether type can be further refined.
+bool CanBeRefined(Type type);
+
 // Refines all the shapes in a module.
 LogicalResult InferModuleShape(ModuleOp module, int64_t max_iterations = 10);
 
