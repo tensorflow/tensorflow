@@ -198,6 +198,13 @@ class TargetSpec(object):
       that may not be linked in by default with the TF ops that are provided
       when using the SELECT_TF_OPS path. The client is responsible for linking
       these ops into the target runtime.
+    _experimental_custom_op_registerers: Experimental flag, subject to change.
+      List of str (symbol names) or functions that take a pointer to a
+      MutableOpResolver and register TensorFlow Lite custom ops. When passing
+      functions, use a pybind function that takes a uintptr_t that can be recast
+      as a pointer to a MutableOpResolver. The TensorFlow Lite custom ops in the
+      registerers will be used when the representative data is given and the
+      post training quantization is enabled at the same time.
   """
 
   def __init__(self,
@@ -211,7 +218,9 @@ class TargetSpec(object):
       supported_types = set()
     self.supported_types = supported_types
     if experimental_select_user_tf_ops is None:
-      self.experimental_select_user_tf_ops = set()
+      experimental_select_user_tf_ops = set()
+    self.experimental_select_user_tf_ops = experimental_select_user_tf_ops
+    self._experimental_custom_op_registerers = []
 
 
 class QuantizationMode(object):
@@ -488,13 +497,25 @@ class TFLiteConverterBase(object):
                                 inference_output_type, activations_type,
                                 allow_float):
     """Calibrate and quantize the model."""
+    # pylint: disable=protected-access
+    custom_op_registerers_by_name = [
+        x for x in self.target_spec._experimental_custom_op_registerers
+        if isinstance(x, str)
+    ]
+    custom_op_registerers_by_func = [
+        x for x in self.target_spec._experimental_custom_op_registerers
+        if not isinstance(x, str)
+    ]
+    # pylint: enable=protected-access
     if not isinstance(self.representative_dataset, RepresentativeDataset):
       self.representative_dataset = RepresentativeDataset(
           self.representative_dataset)
 
     # Add intermediate tensors to the model if needed.
     result = _calibrator.add_intermediate_tensors(result)
-    calibrate_quantize = _calibrator.Calibrator(result)
+    calibrate_quantize = _calibrator.Calibrator(result,
+                                                custom_op_registerers_by_name,
+                                                custom_op_registerers_by_func)
     if self._experimental_calibrate_only or self.experimental_new_quantizer:
       calibrated = calibrate_quantize.calibrate(
           self.representative_dataset.input_gen)

@@ -142,6 +142,9 @@
        convertible.
     * Add support to select one of three different built-in op resolvers to be
       used in Python Interpreter API.
+    *  Enabled post training with calibrations for models that require user
+       provied TensorFlow Lite custom op libraries via
+       `converter.target_spec._experimental_custom_op_registerers`.
 
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,

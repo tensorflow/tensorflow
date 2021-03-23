@@ -19,7 +19,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ctypes
 import os
+import sys
 
 from absl.testing import parameterized
 import numpy as np
@@ -27,12 +29,23 @@ from six.moves import range
 from six.moves import zip
 import tensorflow as tf
 
+# Force loaded shared object symbols to be globally visible. This is needed so
+# that the interpreter_wrapper, in one .so file, can see the test_registerer,
+# in a different .so file. Note that this may already be set by default.
+# pylint: disable=g-import-not-at-top
+if hasattr(sys, 'setdlopenflags') and hasattr(sys, 'getdlopenflags'):
+  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
+
 from tensorflow.lite.python import convert
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_v2_test_util
+from tensorflow.lite.python import test_util as tflite_test_util
 from tensorflow.lite.python.convert import mlir_quantize
 from tensorflow.lite.python.interpreter import Interpreter
+from tensorflow.lite.python.interpreter import InterpreterWithCustomOps
 from tensorflow.lite.python.interpreter import OpResolverType
+from tensorflow.lite.python.testdata import _pywrap_test_registerer as test_registerer
+from tensorflow.lite.python.testdata import double_op
 from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -46,6 +59,7 @@ from tensorflow.python.saved_model import saved_model
 from tensorflow.python.saved_model.loader_impl import parse_saved_model
 from tensorflow.python.saved_model.save import save
 from tensorflow.python.training.tracking import tracking
+# pylint: enable=g-import-not-at-top
 
 
 class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
@@ -2201,6 +2215,106 @@ class ResourceAndVariantTypes(lite_v2_test_util.ModelTest):
     interpreter.invoke()
     actual_value = interpreter.get_tensor(output_details[0]['index'])
     self.assertEqual(40.0, actual_value)
+
+
+class CalibrateAndQuantizeWithCustomOpTest(lite_v2_test_util.ModelTest):
+
+  def _createGraphWithCustomOp(self):
+    # Create a graph that has one double op.
+    np.random.seed(0)
+
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'double_model')
+    with ops.Graph().as_default():
+      with tf.compat.v1.Session() as sess:
+        in_tensor = tf.compat.v1.placeholder(
+            shape=[1, 4], dtype=dtypes.float32, name='input')
+        out_tensor = double_op.double(in_tensor)
+        inputs = {'x': in_tensor}
+        outputs = {'z': out_tensor}
+        saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+
+    def calibration_gen():
+      for _ in range(100):
+        yield [np.random.uniform(-1, 1, size=(1, 4)).astype(np.float32)]
+
+    return (saved_model_dir, calibration_gen)
+
+  def testCustomOpRegistererByName(self):
+    """Test a calibration with custom op registered by name."""
+    saved_model_dir, calibration_gen = self._createGraphWithCustomOp()
+
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    converter.representative_dataset = calibration_gen
+    converter.allow_custom_ops = True
+    converter.target_spec._experimental_custom_op_registerers = [
+        'TF_TestRegisterer'
+    ]
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+    self.assertGreater(test_registerer.get_num_test_registerer_calls(), 0)
+    self.assertIn('Double', tflite_test_util.get_ops_list(tflite_model))
+
+    # Check the model works with custom ops.
+    interpreter = InterpreterWithCustomOps(
+        model_content=tflite_model, custom_op_registerers=['TF_TestRegisterer'])
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    test_input = np.array([[0.0, 0.1, 0.2, 0.3]], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], test_input)
+    interpreter.invoke()
+
+    output_details = interpreter.get_output_details()
+    expected_output = np.array([[0.0, 0.2, 0.4, 0.6]], dtype=np.float32)
+    output_data = interpreter.get_tensor(output_details[0]['index'])
+    self.assertArrayNear(expected_output[0], output_data[0], err=1e-2)
+
+  def testCustomOpRegistererByFunc(self):
+    """Test a calibration with custom op registered by function."""
+    saved_model_dir, calibration_gen = self._createGraphWithCustomOp()
+
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    converter.representative_dataset = calibration_gen
+    converter.allow_custom_ops = True
+    converter.target_spec._experimental_custom_op_registerers = [
+        test_registerer.TF_TestRegisterer
+    ]
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+    self.assertGreater(test_registerer.get_num_test_registerer_calls(), 0)
+    self.assertIn('Double', tflite_test_util.get_ops_list(tflite_model))
+
+    # Check the model works with custom ops.
+    interpreter = InterpreterWithCustomOps(
+        model_content=tflite_model,
+        custom_op_registerers=[test_registerer.TF_TestRegisterer])
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    test_input = np.array([[0.0, 0.1, 0.2, 0.3]], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], test_input)
+    interpreter.invoke()
+
+    output_details = interpreter.get_output_details()
+    expected_output = np.array([[0.0, 0.2, 0.4, 0.6]], dtype=np.float32)
+    output_data = interpreter.get_tensor(output_details[0]['index'])
+    self.assertArrayNear(expected_output[0], output_data[0], err=1e-2)
+
+  def testCustomOpRegistererFailure(self):
+    """Test a calibration with wrong custom op registerer."""
+    saved_model_dir, calibration_gen = self._createGraphWithCustomOp()
+
+    bogus_name = 'CompletelyBogusRegistererName'
+
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    converter.representative_dataset = calibration_gen
+    converter.allow_custom_ops = True
+    converter.target_spec._experimental_custom_op_registerers = [bogus_name]
+
+    with self.assertRaisesRegex(
+        ValueError, 'Looking up symbol \'' + bogus_name + '\' failed'):
+      converter.convert()
 
 
 if __name__ == '__main__':
