@@ -526,6 +526,7 @@ class CompiledFunction {
   }
 
   int cache_size() const { return executables_.size(); }
+  void ClearCache() { executables_.clear(); }
 
  private:
   // Returns nullptr if not present in the cache.
@@ -1021,8 +1022,9 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
       .def_readonly("weak_type", &ArgSignature::weak_type);
   jitlib.def("_ArgSignatureOfValue", &ArgSignatureOfValue);
 
-  // All private members are only for testing purposes
+  // All private members are only for testing/debugging purposes
   cfun.def("_cache_size", &CompiledFunction::cache_size);
+  cfun.def("_clear_cache", &CompiledFunction::ClearCache);
   jitlib.def("_is_float0", &IsFloat0);
 }
 
