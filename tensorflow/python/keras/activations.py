@@ -383,6 +383,7 @@ def tanhexp(x):
   >>> b.numpy()
   array([-4.1223073e-08, -3.5213549e-01,  0.0000000e+00,  9.9132891e-01,
             2.0000000e+01], dtype=float32)
+
   Args:
       x: Input tensor.
   Returns:
