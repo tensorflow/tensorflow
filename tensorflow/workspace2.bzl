@@ -194,7 +194,7 @@ def _tf_repositories():
         build_file = "//third_party/compute_library:BUILD",
         patch_file = "//third_party/compute_library:compute_library.patch",
         urls = [
-            "http://mirror.tensorflow.org/github.com/ARM-software/ComputeLibrary/archive/v21.02.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/ARM-software/ComputeLibrary/archive/v21.02.tar.gz",
             "https://github.com/ARM-software/ComputeLibrary/archive/v21.02.tar.gz"
         ],
     )
