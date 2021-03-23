@@ -96,8 +96,7 @@ bool CallSignature::operator==(const CallSignature& other) const {
                      py::cast<std::string>(py::str(py::type::of(b))),
                      ". The error was:\n", e.what()));
                }
-             }) &&
-         extra_jit_context.equal(other.extra_jit_context);
+             });
 }
 
 void CallSignature::IncRef() const {
@@ -124,28 +123,20 @@ namespace {
 struct GlobalJitState {
   bool disable_jit = false;
   bool enable_x64 = false;
-  py::object extra_jit_context = py::none();
 };
 
 // Protected by the GIL.
-GlobalJitState& global_state = *new GlobalJitState();
+ABSL_CONST_INIT GlobalJitState global_state;
 
 struct ThreadLocalJitState {
   absl::optional<bool> disable_jit;
   absl::optional<bool> enable_x64;
-  absl::optional<py::object> extra_jit_context;
 };
 
-thread_local ThreadLocalJitState& thread_local_state =
-    *new ThreadLocalJitState();
+ABSL_CONST_INIT thread_local ThreadLocalJitState thread_local_state;
 
 bool JitIsDisabled() {
   return thread_local_state.disable_jit.value_or(global_state.disable_jit);
-}
-
-py::object ExtraJitContext() {
-  return thread_local_state.extra_jit_context.value_or(
-      global_state.extra_jit_context);
 }
 
 }  // namespace
@@ -215,7 +206,6 @@ H AbslHashValue(H h, const CallSignature& s) {
     }
     h = H::combine(std::move(h), hash);
   }
-  h = H::combine(std::move(h), py::hash(s.extra_jit_context));
   return h;
 }
 
@@ -841,7 +831,6 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::args args,
            .ok()) {
     return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
   }
-  arguments.signature.extra_jit_context = ExtraJitContext();
 
   CacheEntry* cache_entry = GetCacheEntryIfPresent(arguments.signature);
 
@@ -908,8 +897,6 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
   py::class_<GlobalJitState> global_state_(jitlib, "GlobalJitState");
   global_state_.def_readwrite("disable_jit", &GlobalJitState::disable_jit);
   global_state_.def_readwrite("enable_x64", &GlobalJitState::enable_x64);
-  global_state_.def_readwrite("extra_jit_context",
-                              &GlobalJitState::extra_jit_context);
 
   py::class_<ThreadLocalJitState> thread_local_state_(jitlib,
                                                       "ThreadLocalJitState");
@@ -917,8 +904,6 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
                                     &ThreadLocalJitState::disable_jit);
   thread_local_state_.def_readwrite("enable_x64",
                                     &ThreadLocalJitState::enable_x64);
-  thread_local_state_.def_readwrite("extra_jit_context",
-                                    &ThreadLocalJitState::extra_jit_context);
 
   jitlib.def(
       "global_state", [&]() { return &global_state; },

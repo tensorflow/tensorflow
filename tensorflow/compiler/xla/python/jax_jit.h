@@ -92,9 +92,6 @@ struct CallSignature {
   xla::PjRtDevice* device;
   bool jax_enable_x64;
 
-  // Opaque additional context that should be included as part of the cache key.
-  pybind11::object extra_jit_context;
-
   bool operator==(const CallSignature& other) const;
   bool operator!=(const CallSignature& other) const {
     return !(*this == other);
