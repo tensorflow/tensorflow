@@ -49,6 +49,31 @@ class DatasetCreatorTest(test.TestCase):
         next(iter(got)),
         next(iter(dataset_ops.DatasetV2.from_tensor_slices([1, 1]))))
 
+  def _get_dataset_fn(self):
+
+    def dataset_fn(input_context):
+      global_batch_size = 64
+      batch_size = input_context.get_per_replica_batch_size(global_batch_size)
+      dataset = dataset_ops.DatasetV2.from_tensors(([1.], [1.])).repeat()
+      dataset = dataset.shard(input_context.num_input_pipelines,
+                              input_context.input_pipeline_id)
+      dataset = dataset.batch(batch_size)
+      dataset = dataset.prefetch(2)
+      return dataset
+
+    return dataset_fn
+
+  def test_dataset_creator_model_fit_without_strategy(self):
+    model = sequential.Sequential([core_layers.Dense(10)])
+    model.compile(gradient_descent.SGD(), loss="mse")
+
+    history = model.fit(
+        dataset_creator.DatasetCreator(self._get_dataset_fn()),
+        epochs=10,
+        steps_per_epoch=10,
+        verbose=0)
+    self.assertLen(history.history["loss"], 10)
+
   def test_dataset_creator_usage_in_parameter_server_model_fit(self):
     cluster_def = multi_worker_test_base.create_in_process_cluster(
         num_workers=2, num_ps=1, rpc_layer="grpc")
@@ -61,18 +86,8 @@ class DatasetCreatorTest(test.TestCase):
       model = sequential.Sequential([core_layers.Dense(10)])
     model.compile(gradient_descent.SGD(), loss="mse")
 
-    def dataset_fn(input_context):
-      global_batch_size = 64
-      batch_size = input_context.get_per_replica_batch_size(global_batch_size)
-      dataset = dataset_ops.DatasetV2.from_tensors(([1.], [1.])).repeat()
-      dataset = dataset.shard(input_context.num_input_pipelines,
-                              input_context.input_pipeline_id)
-      dataset = dataset.batch(batch_size)
-      dataset = dataset.prefetch(2)
-      return dataset
-
     history = model.fit(
-        dataset_creator.DatasetCreator(dataset_fn),
+        dataset_creator.DatasetCreator(self._get_dataset_fn()),
         epochs=10,
         steps_per_epoch=10,
         verbose=0)

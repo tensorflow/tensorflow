@@ -201,10 +201,11 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
 
 #if GOOGLE_CUDA
   static void CUDART_CB asyncFree(gpuStream_t stream, cudaError_t status,
-                                  void* userData) {
+                                  void* userData)
 #elif TENSORFLOW_USE_ROCM
-  static void asyncFree(gpuStream_t stream, hipError_t status, void* userData) {
+  static void asyncFree(gpuStream_t stream, hipError_t status, void* userData)
 #endif
+  {
     AsyncFreeData* data = static_cast<AsyncFreeData*>(userData);
     if (LogMemory::IsEnabled()) {
       LogMemory::RecordRawDeallocation(data->operation_, data->step_id_,
@@ -778,54 +779,6 @@ class ConcretePerOpGpuDevice : public PerOpGpuDevice {
   Eigen::GpuDevice device_;
 };
 
-// Parse 'visible_device_list' into a list of platform GPU ids.
-Status ParseVisibleDeviceList(
-    const string& visible_device_list,
-    std::vector<PlatformDeviceId>* visible_gpu_order) {
-  visible_gpu_order->clear();
-  se::Platform* gpu_manager = GPUMachineManager();
-
-  // If the user wants to remap the visible to virtual GPU mapping,
-  // check for that here.
-  if (visible_device_list.empty()) {
-    visible_gpu_order->resize(gpu_manager->VisibleDeviceCount());
-    // By default, visible to virtual mapping is unchanged.
-    int deviceNo = 0;
-    std::generate(visible_gpu_order->begin(), visible_gpu_order->end(),
-                  [&deviceNo] { return deviceNo++; });
-  } else {
-    const std::vector<string> order_str =
-        str_util::Split(visible_device_list, ',');
-    for (const string& platform_device_id_str : order_str) {
-      int32 platform_device_id;
-      if (!strings::safe_strto32(platform_device_id_str, &platform_device_id)) {
-        return errors::InvalidArgument(
-            "Could not parse entry in 'visible_device_list': '",
-            platform_device_id_str,
-            "'. visible_device_list = ", visible_device_list);
-      }
-      if (platform_device_id < 0 ||
-          platform_device_id >= gpu_manager->VisibleDeviceCount()) {
-        return errors::InvalidArgument(
-            "'visible_device_list' listed an invalid GPU id '",
-            platform_device_id, "' but visible device count is ",
-            gpu_manager->VisibleDeviceCount());
-      }
-      visible_gpu_order->push_back(PlatformDeviceId(platform_device_id));
-    }
-  }
-
-  // Validate no repeats.
-  std::set<PlatformDeviceId> visible_device_set(visible_gpu_order->begin(),
-                                                visible_gpu_order->end());
-  if (visible_device_set.size() != visible_gpu_order->size()) {
-    return errors::InvalidArgument(
-        "visible_device_list contained a duplicate entry: ",
-        visible_device_list);
-  }
-  return Status::OK();
-}
-
 Status VerifyVirtualDeviceSettings(
     const size_t num_gpus_to_use, const GPUOptions& gpu_options,
     const std::vector<PlatformDeviceId>& visible_gpu_order,
@@ -1170,8 +1123,9 @@ Status BaseGPUDeviceFactory::CreateDevices(
   // because it treats an empty gpu_options.visible_device_list as 'all GPUs
   // are visible'.
   if (num_gpus_to_use > 0) {
-    TF_RETURN_IF_ERROR(ParseVisibleDeviceList(gpu_options.visible_device_list(),
-                                              &visible_gpu_order));
+    TF_RETURN_IF_ERROR(DeviceIdUtil::ParseVisibleDeviceList(
+        gpu_options.visible_device_list(), gpu_manager->VisibleDeviceCount(),
+        &visible_gpu_order));
     bool new_gpu_found = false;
     for (int i = 0; i < visible_gpu_order.size(); ++i) {
       int visible_gpu_id = visible_gpu_order[i].value();

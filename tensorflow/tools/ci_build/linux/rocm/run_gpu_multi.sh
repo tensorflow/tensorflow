@@ -71,7 +71,6 @@ bazel test \
 //tensorflow/python/distribute:random_generator_test_2gpu \
 //tensorflow/python/distribute:tf_function_test_2gpu \
 //tensorflow/python/distribute:warm_starting_util_test_2gpu \
-//tensorflow/python/keras/distribute:checkpointing_test_2gpu \
 //tensorflow/python/keras/distribute:collective_all_reduce_strategy_test_2gpu \
 //tensorflow/python/keras/distribute:collective_all_reduce_strategy_test_xla_2gpu \
 //tensorflow/python/keras/distribute:ctl_correctness_test_2gpu \
@@ -81,7 +80,6 @@ bazel test \
 //tensorflow/python/keras/distribute:keras_optimizer_v2_test_2gpu \
 //tensorflow/python/keras/distribute:keras_premade_models_test_2gpu \
 //tensorflow/python/keras/distribute:keras_stateful_lstm_model_correctness_test_2gpu \
-//tensorflow/python/keras/distribute:minimize_loss_test_2gpu \
 //tensorflow/python/keras/distribute:mirrored_strategy_test_2gpu \
 //tensorflow/python/keras/distribute:mirrored_variable_test_2gpu \
 //tensorflow/python/keras/distribute:multi_worker_test_2gpu \
@@ -128,3 +126,9 @@ bazel test \
 
 # FAILED ON CI Node only : //tensorflow/python/distribute:collective_all_reduce_strategy_test_2gpu \
 # See run : http://ml-ci.amd.com:21096/job/tensorflow/job/github-prs-rocmfork-develop-upstream/job/rocm-latest-ubuntu-gpu-multi/216/console
+
+# FAILED  //tensorflow/python/keras/distribute:minimize_loss_test_2gpu \
+# potential breaking commit : https://github.com/tensorflow/tensorflow/commit/74e39c8fa60079862597c9db506cd15b2443a5a2
+
+# NO MORE MULTI_GPU : //tensorflow/python/keras/distribute:checkpointing_test_2gpu \
+# multi_gpu tag was commented out in this commit : https://github.com/tensorflow/tensorflow/commit/b87d02a3f8d8b55045bf4250dd72e746357a3eba

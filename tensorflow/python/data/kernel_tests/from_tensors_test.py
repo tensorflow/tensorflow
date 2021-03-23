@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
@@ -265,12 +266,21 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
       self.assertEqual(sess.run(iterator.get_next()), 2)
 
+
+class FromTensorsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                parameterized.TestCase):
+
+  def _build_tensor_dataset(self, variable_array):
+    components = (variable_array, np.array([1, 2, 3]), np.array(37.0))
+
+    return dataset_ops.Dataset.from_tensors(components)
+
   @combinations.generate(test_base.default_test_combinations())
-  def testDatasetInputSerialization(self):
-    dataset = dataset_ops.Dataset.range(100)
-    dataset = dataset_ops.Dataset.from_tensors(dataset).flat_map(lambda x: x)
-    dataset = self.graphRoundTrip(dataset)
-    self.assertDatasetProduces(dataset, range(100))
+  def testFromTensorsCore(self):
+    # Equal length components
+    arr = np.array(1)
+    num_outputs = 1
+    self.run_core_tests(lambda: self._build_tensor_dataset(arr), num_outputs)
 
 
 if __name__ == "__main__":

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
 #include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/Transforms/Passes.h"  // from @llvm-project
@@ -50,6 +51,7 @@ struct ShapeToDescriptorsPass
     ConversionTarget target(ctx);
     target.addIllegalDialect<shape::ShapeDialect>();
     target.addLegalDialect<scf::SCFDialect>();
+    target.addLegalDialect<memref::MemRefDialect>();
     target.addLegalDialect<StandardOpsDialect>();
     target.addLegalDialect<math::MathDialect>();
     target.addLegalDialect<tensor::TensorDialect>();

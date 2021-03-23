@@ -20,6 +20,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -41,6 +42,36 @@ class SkipTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(
         dataset,
         [tuple(components[0][i:i + 1]) for i in range(start_range, 10)])
+
+
+class SkipDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                parameterized.TestCase):
+
+  def _build_skip_dataset(self, count):
+    components = (np.arange(10),)
+    return dataset_ops.Dataset.from_tensor_slices(components).skip(count)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSkipFewerThanInputs(self):
+    count = 4
+    num_outputs = 10 - count
+    self.run_core_tests(lambda: self._build_skip_dataset(count), num_outputs)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSkipVarious(self):
+    # Skip more than inputs
+    self.run_core_tests(lambda: self._build_skip_dataset(20), 0)
+    # Skip exactly the input size
+    self.run_core_tests(lambda: self._build_skip_dataset(10), 0)
+    self.run_core_tests(lambda: self._build_skip_dataset(-1), 0)
+    # Skip nothing
+    self.run_core_tests(lambda: self._build_skip_dataset(0), 10)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testInvalidSkip(self):
+    with self.assertRaisesRegex(ValueError,
+                                "Shape must be rank 0 but is rank 1"):
+      self.run_core_tests(lambda: self._build_skip_dataset([1, 2]), 0)
 
 
 if __name__ == "__main__":

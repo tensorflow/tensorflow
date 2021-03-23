@@ -50,8 +50,8 @@ struct PmapCacheEntry {
   // A function taking as argument a list of arguments and returns a list of
   // list of buffers `[num_devices x num_args]`.
   py::function handle_args;
-  // A function taking as argument the output of `ExecuteOnLocalDevices` and
-  // returning a list of ShardedDeviceArray objects.
+  // A function taking as argument the output of `ExecuteShardedOnLocalDevices`
+  // and returning a list of ShardedDeviceArray objects.
   py::function out_handler;
   xla::PyTreeDef out_pytree_def;
 
@@ -258,7 +258,8 @@ py::object PmapFunction::Call(py::args args, py::kwargs kwargs) {
   }
 
   std::vector<std::vector<std::unique_ptr<xla::PyBuffer>>> outputs =
-      ValueOrThrow(cache_entry->executable->ExecuteOnLocalDevices(arg_buffers));
+      ValueOrThrow(
+          cache_entry->executable->ExecuteShardedOnLocalDevices(arg_buffers));
 
   // TODO(jblespiau): Move this to C++.
   py::list outputs_as_python_objects;

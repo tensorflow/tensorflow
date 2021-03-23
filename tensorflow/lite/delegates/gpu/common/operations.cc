@@ -108,6 +108,8 @@ std::string ToString(enum OperationType op) {
       return "exp";
     case OperationType::FULLY_CONNECTED:
       return "fully_connected";
+    case OperationType::FULLY_CONNECTED_INT8:
+      return "fully_connected_int8";
     case OperationType::GREATER:
       return "greater";
     case OperationType::GREATER_EQUAL:
@@ -214,6 +216,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"equal", OperationType::EQUAL},
           {"exp", OperationType::EXP},
           {"fully_connected", OperationType::FULLY_CONNECTED},
+          {"fully_connected_int8", OperationType::FULLY_CONNECTED_INT8},
           {"greater", OperationType::GREATER},
           {"greater_equal", OperationType::GREATER_EQUAL},
           {"hard_swish", OperationType::HARD_SWISH},
@@ -810,6 +813,23 @@ BHWDC CalculateOutputShape(const BHWDC& input,
   return BHWDC(input.get(attr.perm.b), input.get(attr.perm.h),
                input.get(attr.perm.w), input.get(attr.perm.d),
                input.get(attr.perm.c));
+}
+
+FullyConnectedAttributes DequatizeFullyConnectedAttr(
+    const FullyConnectedInt8Attributes& attr) {
+  FullyConnectedAttributes dequant_attr;
+  dequant_attr.weights.id = attr.weights.id;
+  dequant_attr.weights.shape = attr.weights.shape;
+  dequant_attr.weights.data.resize(
+      dequant_attr.weights.shape.DimensionsProduct());
+  dequant_attr.bias = attr.bias;
+
+  // weights dequantization to float32
+  for (int i = 0; i < attr.weights.data.size(); i++) {
+    const int32_t val = attr.weights.data[i];
+    dequant_attr.weights.data[i] = attr.scale * (val - attr.zero_point);
+  }
+  return dequant_attr;
 }
 
 }  // namespace gpu

@@ -33,7 +33,6 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuComplex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #else
 #include "rocm/include/hip/hip_complex.h"
@@ -43,8 +42,6 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_cuda_alias.h"
 
 #if GOOGLE_CUDA
-using gpuFloatComplex = cuFloatComplex;
-using gpuDoubleComplex = cuDoubleComplex;
 using gpuStream_t = cudaStream_t;
 using gpuEvent_t = cudaEvent_t;
 #define gpuEventRecord cudaEventRecord
@@ -56,8 +53,6 @@ using gpuEvent_t = cudaEvent_t;
 #define gpuDeviceSynchronize cudaDeviceSynchronize
 #define gpuFree cudaFree
 #elif TENSORFLOW_USE_ROCM
-using gpuFloatComplex = hipFloatComplex;
-using gpuDoubleComplex = hipDoubleComplex;
 using gpuStream_t = hipStream_t;
 using gpuEvent_t = hipEvent_t;
 using cudaError = int;
@@ -936,66 +931,17 @@ __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicDiv(T* ptr, U value) {
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicDiv, CudaAtomicDiv);
 
-// Operator overloads for complex numbers.
-#if GOOGLE_CUDA
-__device__ inline std::complex<float> operator+(const std::complex<float>& a,
-                                                const std::complex<float>& b) {
-  auto result = cuCaddf(make_cuComplex(a.real(), a.imag()),
-                        make_cuComplex(b.real(), b.imag()));
-  return std::complex<float>(result.x, result.y);
-}
-
-__device__ inline std::complex<float> operator-(const std::complex<float>& a,
-                                                const std::complex<float>& b) {
-  auto result = cuCsubf(make_cuComplex(a.real(), a.imag()),
-                        make_cuComplex(b.real(), b.imag()));
-  return std::complex<float>(result.x, result.y);
-}
-
-__device__ inline std::complex<float> operator*(const std::complex<float>& a,
-                                                const std::complex<float>& b) {
-  auto result = cuCmulf(make_cuComplex(a.real(), a.imag()),
-                        make_cuComplex(b.real(), b.imag()));
-  return std::complex<float>(result.x, result.y);
-}
-
-__device__ inline std::complex<float> operator/(const std::complex<float>& a,
-                                                const std::complex<float>& b) {
-  auto result = cuCdivf(make_cuComplex(a.real(), a.imag()),
-                        make_cuComplex(b.real(), b.imag()));
-  return std::complex<float>(result.x, result.y);
-}
-
-__device__ inline std::complex<double> operator+(
-    const std::complex<double>& a, const std::complex<double>& b) {
-  auto result = cuCadd(make_cuDoubleComplex(a.real(), a.imag()),
-                       make_cuDoubleComplex(b.real(), b.imag()));
-  return std::complex<double>(result.x, result.y);
-}
-
-__device__ inline std::complex<double> operator-(
-    const std::complex<double>& a, const std::complex<double>& b) {
-  auto result = cuCsub(make_cuDoubleComplex(a.real(), a.imag()),
-                       make_cuDoubleComplex(b.real(), b.imag()));
-  return std::complex<double>(result.x, result.y);
-}
-
-__device__ inline std::complex<double> operator*(
-    const std::complex<double>& a, const std::complex<double>& b) {
-  auto result = cuCmul(make_cuDoubleComplex(a.real(), a.imag()),
-                       make_cuDoubleComplex(b.real(), b.imag()));
-  return std::complex<double>(result.x, result.y);
-}
-
-__device__ inline std::complex<double> operator/(
-    const std::complex<double>& a, const std::complex<double>& b) {
-  auto result = cuCdiv(make_cuDoubleComplex(a.real(), a.imag()),
-                       make_cuDoubleComplex(b.real(), b.imag()));
-  return std::complex<double>(result.x, result.y);
-}
+// Import all specialized std::complex device operators in namespace tensorflow.
+#if GOOGLE_CUDA && defined(EIGEN_USING_STD_COMPLEX_OPERATORS)
+EIGEN_USING_STD_COMPLEX_OPERATORS
 #endif  // GOOGLE_CUDA
 
 namespace functor {
+// Import all specialized std::complex device operators in namespace functor.
+#if GOOGLE_CUDA && defined(EIGEN_USING_STD_COMPLEX_OPERATORS)
+EIGEN_USING_STD_COMPLEX_OPERATORS
+#endif  // GOOGLE_CUDA
+
 // ROCm hcc(clang) has severe difficulties dealing with std::complex directly
 // due to a header issue. This template assists in casting std::complex into the
 // corresponding internal ROCm types.

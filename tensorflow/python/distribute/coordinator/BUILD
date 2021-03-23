@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -33,15 +34,21 @@ py_library(
     ],
 )
 
-tf_py_test(
+distribute_py_test(
     name = "cluster_coordinator_test",
     size = "small",
     srcs = ["cluster_coordinator_test.py"],
     python_version = "PY3",
     shard_count = 50,
     tags = [
+        "multi_gpu",
+        "no_oss",
         "no_pip",
+        "notpu",
         "notsan",  # TODO(b/171040359): Flaky timeout, even if maximum shards
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # Race condition on async test
     ],
     deps = [
         ":cluster_coordinator",

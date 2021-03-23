@@ -311,15 +311,16 @@ class StringLookup(index_lookup.IndexLookup):
     vocab = super(StringLookup, self).get_vocabulary()
     return [compat.as_text(x, self.encoding) for x in vocab]
 
-  def set_vocabulary(self, vocab, idf_weights=None):
-    if isinstance(vocab, str):
+  def set_vocabulary(self, vocabulary, idf_weights=None):
+    if isinstance(vocabulary, str):
       if self.output_mode == index_lookup.TFIDF:
         raise RuntimeError("Setting vocabulary directly from a file is not "
                            "supported in TF-IDF mode, since this layer cannot "
                            "read files containing TF-IDF weight data. Please "
-                           "read the file using Python and set the vocab "
+                           "read the file using Python and set the vocabulary "
                            "and weights by passing lists or arrays to the "
-                           "set_vocabulary function's `vocab` and "
+                           "set_vocabulary function's `vocabulary` and "
                            "`idf_weights` args.")
-      vocab = table_utils.get_vocabulary_from_file(vocab, self.encoding)
-    super().set_vocabulary(vocab, idf_weights=idf_weights)
+      vocabulary = table_utils.get_vocabulary_from_file(vocabulary,
+                                                        self.encoding)
+    super().set_vocabulary(vocabulary, idf_weights=idf_weights)

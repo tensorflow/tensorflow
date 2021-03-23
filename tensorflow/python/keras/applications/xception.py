@@ -63,14 +63,20 @@ def Xception(
   - [Xception: Deep Learning with Depthwise Separable Convolutions](
       https://arxiv.org/abs/1610.02357) (CVPR 2017)
 
-  Optionally loads weights pre-trained on ImageNet.
-  Note that the data format convention used by the model is
-  the one specified in your Keras config at `~/.keras/keras.json`.
-  Note that the default input image size for this model is 299x299.
+  For image classification use cases, see
+  [this page for detailed examples](
+    https://keras.io/api/applications/#usage-examples-for-image-classification-models).
+
+  For transfer learning use cases, make sure to read the
+  [guide to transfer learning & fine-tuning](
+    https://keras.io/guides/transfer_learning/).
+
+  The default input image size for this model is 299x299.
 
   Note: each Keras Application expects a specific kind of input preprocessing.
   For Xception, call `tf.keras.applications.xception.preprocess_input` on your
   inputs before passing them to the model.
+  `xception.preprocess_input` will scale input pixels between -1 and 1.
 
   Args:
     include_top: whether to include the fully-connected
@@ -104,15 +110,11 @@ def Xception(
     classifier_activation: A `str` or callable. The activation function to use
       on the "top" layer. Ignored unless `include_top=True`. Set
       `classifier_activation=None` to return the logits of the "top" layer.
+      When loading pretrained weights, `classifier_activation` can only
+      be `None` or `"softmax"`.
 
   Returns:
     A `keras.Model` instance.
-
-  Raises:
-    ValueError: in case of invalid argument for `weights`,
-      or invalid input shape.
-    ValueError: if `classifier_activation` is not `softmax` or `None` when
-      using a pretrained top layer.
   """
   if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '

@@ -51,6 +51,11 @@ TEST_F(OpenCLOperationTest, SplitBatch) {
   ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
+TEST_F(OpenCLOperationTest, SplitDepth) {
+  auto status = SplitDepthTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

@@ -895,6 +895,14 @@ class HloFusionInstruction : public HloInstruction {
                                 absl::Span<HloInstruction* const> operands,
                                 HloComputation* fusion_computation);
 
+  ~HloFusionInstruction() override;
+
+  void ClearCalledComputations() override;
+
+  // When a fusion instruction is being destructed, clear the back pointer of
+  // its fusion computation, to avoid referencing freed memory.
+  void ClearFusionComputationInstruction();
+
   string ToCategory() const override;
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;

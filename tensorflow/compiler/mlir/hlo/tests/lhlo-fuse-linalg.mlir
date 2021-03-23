@@ -7,7 +7,7 @@
                        iterator_types = ["parallel", "parallel"]}
 func @fusion(%multiplier: memref<6x6xf32>, %summand_1: memref<6x6xf32>,
              %summand_2: memref<6x6xf32>, %result: memref<6x6xf32>) {
-  %temp_result = alloc() : memref<6x6xf32>
+  %temp_result = memref.alloc() : memref<6x6xf32>
   linalg.generic #pointwise_2d_trait
     ins(%summand_1, %summand_2 : memref<6x6xf32>, memref<6x6xf32>)
    outs(%temp_result : memref<6x6xf32>) {
@@ -22,7 +22,7 @@ func @fusion(%multiplier: memref<6x6xf32>, %summand_1: memref<6x6xf32>,
     %out = mulf %temp_result_in, %multiplier_in : f32
     linalg.yield %out : f32
   }
-  dealloc %temp_result : memref<6x6xf32>
+  memref.dealloc %temp_result : memref<6x6xf32>
   return
 }
 // CHECK-LABEL: func @fusion
@@ -62,7 +62,7 @@ func @fusion(%multiplier: memref<6x6xf32>, %summand_1: memref<6x6xf32>,
 func @fusion_of_three(%arg0: memref<100x10xf32>,
                       %arg1: memref<100xf32>,
                       %arg2: memref<100x10xf32>) {
- %0 = alloc() : memref<100x10xf32>
+ %0 = memref.alloc() : memref<100x10xf32>
  linalg.generic {
    indexing_maps = [affine_map<(d0, d1) -> (d0)>,
                     affine_map<(d0, d1) -> (d0, d1)>],
@@ -72,7 +72,7 @@ func @fusion_of_three(%arg0: memref<100x10xf32>,
    ^bb0(%arg3: f32, %arg4: f32): // no predecessors
      linalg.yield %arg3 : f32
    }
- %1 = alloc() : memref<100x10xf32>
+ %1 = memref.alloc() : memref<100x10xf32>
  linalg.generic {
    indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
                     affine_map<(d0, d1) -> (d0, d1)>,
@@ -84,7 +84,7 @@ func @fusion_of_three(%arg0: memref<100x10xf32>,
        %2 = subf %arg3, %arg4 : f32
        linalg.yield %2 : f32
      }
- dealloc %0 : memref<100x10xf32>
+ memref.dealloc %0 : memref<100x10xf32>
  linalg.generic {
    indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
                     affine_map<(d0, d1) -> (d0, d1)>],
@@ -95,7 +95,7 @@ func @fusion_of_three(%arg0: memref<100x10xf32>,
        %2 = math.exp %arg3 : f32
        linalg.yield %2 : f32
      }
- dealloc %1 : memref<100x10xf32>
+ memref.dealloc %1 : memref<100x10xf32>
  return
 }
 // CHECK-LABEL: func @fusion
@@ -141,7 +141,7 @@ func @fusion_of_three(%arg0: memref<100x10xf32>,
                                          "parallel"]}
 func @fusion_4d(%multiplier: memref<6x6x6x6xf32>, %summand_1: memref<6x6x6x6xf32>,
              %summand_2: memref<6x6x6x6xf32>, %result: memref<6x6x6x6xf32>) {
-  %temp_result = alloc() : memref<6x6x6x6xf32>
+  %temp_result = memref.alloc() : memref<6x6x6x6xf32>
   linalg.generic #pointwise_4d_trait
     ins(%summand_1, %summand_2 : memref<6x6x6x6xf32>, memref<6x6x6x6xf32>)
    outs(%temp_result : memref<6x6x6x6xf32>) {
@@ -156,7 +156,7 @@ func @fusion_4d(%multiplier: memref<6x6x6x6xf32>, %summand_1: memref<6x6x6x6xf32
     %out = mulf %temp_result_in, %multiplier_in : f32
     linalg.yield %out : f32
   }
-  dealloc %temp_result : memref<6x6x6x6xf32>
+  memref.dealloc %temp_result : memref<6x6x6x6xf32>
   return
 }
 // CHECK-LABEL: func @fusion_4d
@@ -200,7 +200,7 @@ func @fusion_4d(%multiplier: memref<6x6x6x6xf32>, %summand_1: memref<6x6x6x6xf32
                        iterator_types = ["parallel", "parallel"]}
 func @fusion(%multiplier: memref<6x6xf32>, %summand_1: memref<6x6xf32>,
              %summand_2: memref<6x6xf32>) -> memref<6x6xf32> {
-  %temp_result = alloc() : memref<6x6xf32>
+  %temp_result = memref.alloc() : memref<6x6xf32>
   linalg.generic #pointwise_2d_trait
     ins(%summand_1, %summand_2 : memref<6x6xf32>, memref<6x6xf32>)
    outs(%temp_result : memref<6x6xf32>) {
@@ -208,7 +208,7 @@ func @fusion(%multiplier: memref<6x6xf32>, %summand_1: memref<6x6xf32>,
     %out = addf %summand_1_in, %summand_2_in : f32
     linalg.yield %out : f32
   }
-  %result = alloc() : memref<6x6xf32>
+  %result = memref.alloc() : memref<6x6xf32>
   linalg.generic #pointwise_2d_trait
     ins(%temp_result, %multiplier : memref<6x6xf32>, memref<6x6xf32>)
    outs(%result : memref<6x6xf32>) {
@@ -216,7 +216,7 @@ func @fusion(%multiplier: memref<6x6xf32>, %summand_1: memref<6x6xf32>,
     %out = mulf %temp_result_in, %multiplier_in : f32
     linalg.yield %out : f32
   }
-  dealloc %temp_result : memref<6x6xf32>
+  memref.dealloc %temp_result : memref<6x6xf32>
   return %result : memref<6x6xf32>
 }
 
@@ -258,7 +258,7 @@ func @view_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: index)
     -> memref<*xf32> {
   %c1 = constant 1 : index
   %c0 = constant 0 : index
-  %1 = alloc(%arg2) : memref<?xf32>
+  %1 = memref.alloc(%arg2) : memref<?xf32>
   linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>,
                                    affine_map<(d0) -> (d0)>],
                   iterator_types = ["parallel"]}
@@ -267,7 +267,7 @@ func @view_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: index)
     %13 = absf %arg3 : f32
     linalg.yield %13 : f32
   }
-  %2 = memref_reshape %1(%arg1)
+  %2 = memref.reshape %1(%arg1)
       : (memref<?xf32>, memref<?xindex>) -> memref<*xf32>
   return %2 : memref<*xf32>
 }
@@ -279,7 +279,7 @@ func @view_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: index)
 //   CHECK-NOT:  scf.for
 //       CHECK:      linalg.generic
 //       CHECK:        absf
-//       CHECK:  memref_reshape
+//       CHECK:  memref.reshape
 
 // TILED-LABEL: func @view_result
 //   TILED-DAG:  %[[C2:.*]] = constant 2
@@ -288,7 +288,7 @@ func @view_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: index)
 //   TILED-NOT:  scf.for
 //       TILED:      linalg.generic
 //       TILED:        absf
-//       TILED:  memref_reshape
+//       TILED:  memref.reshape
 
 
 // PLOOP-LABEL: func @view_result
@@ -297,20 +297,20 @@ func @view_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: index)
 //   PLOOP-NOT:  scf.parallel
 //       PLOOP:      linalg.generic
 //       PLOOP:        absf
-//       PLOOP:  memref_reshape
+//       PLOOP:  memref.reshape
 
 
 
 // -----
 
 // Confirm that tiling information is passed through RegionBranchOpInterfaces.
-// This test also uses memref_reshape, just to have a value to return through
+// This test also uses memref.reshape, just to have a value to return through
 // the if statement.
 func @branching_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: index)
     -> memref<*xf32> {
   %c1 = constant 1 : index
   %c0 = constant 0 : index
-  %1 = alloc(%arg2) : memref<?xf32>
+  %1 = memref.alloc(%arg2) : memref<?xf32>
   linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>,
                                    affine_map<(d0) -> (d0)>],
                   iterator_types = ["parallel"]}
@@ -321,11 +321,11 @@ func @branching_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: inde
   }
   %true = constant 1 : i1
   %3 = scf.if %true -> memref<*xf32> {
-    %2 = memref_reshape %1(%arg1)
+    %2 = memref.reshape %1(%arg1)
         : (memref<?xf32>, memref<?xindex>) -> memref<*xf32>
     scf.yield %2 : memref<*xf32>
   } else {
-    %2 = memref_reshape %1(%arg1)
+    %2 = memref.reshape %1(%arg1)
         : (memref<?xf32>, memref<?xindex>) -> memref<*xf32>
     scf.yield %2 : memref<*xf32>
   }
@@ -340,10 +340,10 @@ func @branching_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: inde
 //       CHECK:      linalg.generic
 //       CHECK:        absf
 //       CHECK:  scf.if
-//       CHECK:    memref_reshape
+//       CHECK:    memref.reshape
 //       CHECK:    scf.yield
 //       CHECK:  else
-//       CHECK:    memref_reshape
+//       CHECK:    memref.reshape
 //       CHECK:    scf.yield
 
 // TILED-LABEL: func @branching_result
@@ -354,10 +354,10 @@ func @branching_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: inde
 //       TILED:      linalg.generic
 //       TILED:        absf
 //       TILED:  scf.if
-//       TILED:    memref_reshape
+//       TILED:    memref.reshape
 //       TILED:    scf.yield
 //       TILED:  else
-//       TILED:    memref_reshape
+//       TILED:    memref.reshape
 //       TILED:    scf.yield
 
 // PLOOP-LABEL: func @branching_result
@@ -367,10 +367,10 @@ func @branching_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: inde
 //       PLOOP:      linalg.generic
 //       PLOOP:        absf
 //       PLOOP:  scf.if
-//       PLOOP:    memref_reshape
+//       PLOOP:    memref.reshape
 //       PLOOP:    scf.yield
 //       PLOOP:  else
-//       PLOOP:    memref_reshape
+//       PLOOP:    memref.reshape
 //       PLOOP:    scf.yield
 
 // -----
@@ -380,7 +380,7 @@ func @branching_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: inde
 func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
     -> memref<?xf32> {
   %c1 = constant 1 : index
-  %1 = alloc() : memref<32xf32>
+  %1 = memref.alloc() : memref<32xf32>
   linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>,
                                    affine_map<(d0) -> (d0)>],
                   iterator_types = ["parallel"]}
@@ -389,9 +389,9 @@ func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
     %13 = absf %arg3 : f32
     linalg.yield %13 : f32
   }
-  %2 = tensor_load %1 : memref<32xf32>
+  %2 = memref.tensor_load %1 : memref<32xf32>
   %3 = tensor.cast %2 : tensor<32xf32> to tensor<?xf32>
-  %4 = tensor_to_memref %3 : memref<?xf32>
+  %4 = memref.buffer_cast %3 : memref<?xf32>
   return %4 : memref<?xf32>
 }
 
@@ -402,9 +402,9 @@ func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
 //   CHECK-NOT:  scf.for
 //       CHECK:      linalg.generic
 //       CHECK:        absf
-//       CHECK:  tensor_load
+//       CHECK:  memref.tensor_load
 //       CHECK:  tensor.cast
-//       CHECK:  tensor_to_memref
+//       CHECK:  memref.buffer_cast
 
 // TILED-LABEL: func @tensor_ops
 //   TILED-DAG:  %[[C2:.*]] = constant 2
@@ -413,9 +413,9 @@ func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
 //   TILED-NOT:  scf.for
 //       TILED:      linalg.generic
 //       TILED:        absf
-//       TILED:  tensor_load
+//       TILED:  memref.tensor_load
 //       TILED:  tensor.cast
-//       TILED:  tensor_to_memref
+//       TILED:  memref.buffer_cast
 
 
 // PLOOP-LABEL: func @tensor_ops
@@ -424,6 +424,6 @@ func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
 //   PLOOP-NOT:  scf.parallel
 //       PLOOP:      linalg.generic
 //       PLOOP:        absf
-//       PLOOP:  tensor_load
+//       PLOOP:  memref.tensor_load
 //       PLOOP:  tensor.cast
-//       PLOOP:  tensor_to_memref
+//       PLOOP:  memref.buffer_cast

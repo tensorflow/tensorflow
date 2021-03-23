@@ -158,7 +158,8 @@ PYBIND11_MODULE(xla_extension, m) {
 
   py::class_<GpuDevice, PjRtDevice, ClientAndPtr<GpuDevice>>(m, "GpuDevice")
       .def("__repr__", [](const GpuDevice& device) {
-        return absl::StrFormat("GpuDevice(id=%i)", device.id());
+        return absl::StrFormat("GpuDevice(id=%i, task=%i)", device.id(),
+                               device.task_id());
       });
 
   py::class_<PjRtTpuDevice, PjRtDevice, ClientAndPtr<PjRtTpuDevice>>(
@@ -174,7 +175,7 @@ PYBIND11_MODULE(xla_extension, m) {
           "The index of this TpuDevice's core on the TPU chip.")
       .def("__repr__", [](const PjRtTpuDevice& device) {
         return absl::StrFormat(
-            "TpuDevice(id=%i, host=%i, coords=(%s), core_on_chip=%i)",
+            "TpuDevice(id=%i, task=%i, coords=(%s), core_on_chip=%i)",
             device.id(), device.task_id(), absl::StrJoin(device.coords(), ","),
             device.core_on_chip());
       });
@@ -189,7 +190,8 @@ PYBIND11_MODULE(xla_extension, m) {
   py::enum_<GpuAllocatorConfig::Kind>(alloc_config, "Kind")
       .value("DEFAULT", GpuAllocatorConfig::Kind::kDefault)
       .value("PLATFORM", GpuAllocatorConfig::Kind::kPlatform)
-      .value("BFC", GpuAllocatorConfig::Kind::kBFC);
+      .value("BFC", GpuAllocatorConfig::Kind::kBFC)
+      .value("CUDA_ASYNC", GpuAllocatorConfig::Kind::kCudaAsync);
 
   py::enum_<PjRtClient::HostBufferSemantics>(m, "HostBufferSemantics")
       .value("IMMUTABLE_ONLY_DURING_CALL",
@@ -283,6 +285,7 @@ PYBIND11_MODULE(xla_extension, m) {
           },
           &PyBuffer::set_sticky_device)
       .def_property("aval", &PyBuffer::GetAval, &PyBuffer::SetAval)
+      .def_property("weak_type", &PyBuffer::weak_type, &PyBuffer::set_weak_type)
       .def_property_readonly("_lazy_expr",
                              [](py::object buffer) { return py::none(); })
       .def_property_readonly("device_buffer",
@@ -362,8 +365,6 @@ PYBIND11_MODULE(xla_extension, m) {
            &PyExecutable::SizeOfGeneratedCodeInBytes)
       .def("delete", &PyExecutable::Delete)
       .def("execute", &PyExecutable::Execute, py::arg("arguments"))
-      .def("execute_on_local_devices", &PyExecutable::ExecuteOnLocalDevices,
-           py::arg("arguments"))
       .def("execute_sharded_on_local_devices",
            &PyExecutable::ExecuteShardedOnLocalDevices, py::arg("arguments"))
       .def("hlo_modules", &PyExecutable::HloModules)

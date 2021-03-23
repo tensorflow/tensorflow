@@ -719,6 +719,21 @@ GENERATE_DEFAULT_TEST(Tanh, DT_DOUBLE, DT_DOUBLE, std::tanh,
 GENERATE_DEFAULT_TEST_2(Tanh, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::tanh,
                         test::OpsTestConfig())
 
+// Test small/large input values to be approximated as constant -1/1.
+template <typename T>
+T baseline_tanh_limits(T x) {
+  assert((x < -10 || x > 10) &&
+         "baseline_tanh_limits is only applicable to small/large values");
+  return x < 0.0 ? -1.0 : 1.0;
+}
+TEST_F(UnaryOpsTest, TanhSmallAndLarge) {
+  Test<float, float, float, float>(
+      "Tanh", test::DefaultInputShape(),
+      test::InputAsVector<float>({-100.0, -10.5, 12.0, 123.0, 10000.0}),
+      baseline_tanh_limits,
+      test::OpsTestConfig().ExpectStrictlyEqual().SuppressTolerance());
+}
+
 /// Test `tf.Square`.
 
 template <typename T>

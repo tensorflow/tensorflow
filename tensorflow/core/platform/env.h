@@ -604,6 +604,10 @@ Status ReadBinaryProto(Env* env, const std::string& fname,
                        protobuf::MessageLite* proto);
 
 /// Write the text representation of "proto" to the named file.
+inline Status WriteTextProto(Env* /* env */, const std::string& /* fname */,
+                             const protobuf::MessageLite& /* proto */) {
+  return errors::Unimplemented("Can't write text protos with protolite.");
+}
 Status WriteTextProto(Env* env, const std::string& fname,
                       const protobuf::Message& proto);
 
