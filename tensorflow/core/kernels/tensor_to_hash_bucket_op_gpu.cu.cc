@@ -23,11 +23,11 @@ namespace tensorflow {
 
 namespace {
 
-constexpr int BF = 64;
+constexpr int BUFFER_SIZE = 64;
 
 template<typename T>
 __device__ void FillDigits(T val, int num_digits, int* i, char *buf) {
-  eigen_assert(num_digits <= BF - (*i));
+  eigen_assert(num_digits <= BUFFER_SIZE - (*i));
 
   int factor = (val < 0 ? -1: 1);
 
@@ -43,7 +43,7 @@ __device__ void FillDigits(T val, int num_digits, int* i, char *buf) {
 }
 
 template<typename T>
-__device__ void FillIntegerBuf(T val, char *buf, int *size) {
+__device__ int IntegerToString(T val, char *buf) {
   int num_digits = 0;
   T val_a = val;
   do {
@@ -58,7 +58,7 @@ __device__ void FillIntegerBuf(T val, char *buf, int *size) {
 
   FillDigits(val, num_digits, &i, buf);
   
-  *size = i;
+  return i;
 }
 
 template<typename T>
@@ -67,9 +67,9 @@ __global__ void ComputeHashes(const T* __restrict__ vals, int vals_size,
   extern __shared__ char s[];
 
   GPU_1D_KERNEL_LOOP(tid, vals_size) {
-    int size;
-    FillIntegerBuf(vals[tid], s + threadIdx.x * BF, &size);
-    uint64_t a_hash = ::util_gpu::Fingerprint64(s + threadIdx.x * BF, size);
+    int size = IntegerToString(vals[tid], s + threadIdx.x * BUFFER_SIZE);
+    uint64_t a_hash = ::util_gpu::Fingerprint64(s + threadIdx.x * BUFFER_SIZE,
+                                                size);
     int64 a_bucket = static_cast<int64>(a_hash % num_buckets);
     hashes[tid] = a_bucket;
   }
@@ -86,7 +86,7 @@ void LaunchTensorToHashBucket<Eigen::GpuDevice, T>::operator()(
   const Eigen::GpuDevice& d = c->eigen_gpu_device();
   if (num_elems > 0) {
     constexpr int32 kThreadInBlock = 128;
-    auto shared_memory_bytes = kThreadInBlock * BF * sizeof(char);
+    auto shared_memory_bytes = kThreadInBlock * BUFFER_SIZE * sizeof(char);
     GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(
         num_elems, d, ComputeHashes<T>, shared_memory_bytes, kThreadInBlock);
     OP_REQUIRES_OK(c, GpuLaunchKernel(

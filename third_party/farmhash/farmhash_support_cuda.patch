@@ -1,3 +1,13 @@
+From eb130493c8042280a01e03c28bb89bd5ae0c5d18 Mon Sep 17 00:00:00 2001
+From: Kaixi Hou <kaixih@nvidia.com>
+Date: Tue, 23 Mar 2021 12:49:18 -0700
+Subject: [PATCH] Add device modifiers for GPUs
+
+---
+ src/{farmhash.cc => farmhash_gpu.h} | 95 +++++++++++++++++++++++------
+ 1 file changed, 75 insertions(+), 20 deletions(-)
+ rename src/{farmhash.cc => farmhash_gpu.h} (99%)
+
 diff --git a/src/farmhash.cc b/src/farmhash_gpu.h
 similarity index 99%
 rename from src/farmhash.cc
@@ -274,3 +284,6 @@ index cfd4a47..50994b6 100644
  #endif  // FARMHASHSELFTEST
 +#endif // DEVICE_MODIFIER
 +#endif // FARM_HASH_GPU_H_
+-- 
+2.17.1
+
