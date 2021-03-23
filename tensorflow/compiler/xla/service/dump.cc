@@ -67,6 +67,11 @@ struct CanonicalDebugOptions {
       dump_as_text = true;
     }
 
+    // Disable dumping if specified by the user.
+    if (!opts.xla_detailed_logging_and_dumping()) {
+      dump_to = "";
+    }
+
     // If dump_to is empty, default to dumping to stdout, so long as some dump
     // format other than dump-as-url was specified.  If the user only specified
     // --xla_dump_hlo_as_url, then don't dump to stdout, that is likely noise
@@ -110,7 +115,7 @@ struct CanonicalDebugOptions {
     // Output dirs "sponge" and "test_undeclared_outputs_dir" (case-insensitive)
     // have a special meaning: Dump into the directory specified by the
     // environment variable TEST_UNDECLARED_OUTPUTS_DIR.
-    string dump_to_lower = absl::AsciiStrToLower(opts.xla_dump_to());
+    string dump_to_lower = absl::AsciiStrToLower(dump_to);
     if (dump_to_lower == "sponge" ||
         dump_to_lower == "test_undeclared_outputs_dir") {
       if (!tensorflow::io::GetTestUndeclaredOutputsDir(&dump_to)) {

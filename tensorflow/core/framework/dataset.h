@@ -431,6 +431,9 @@ class IteratorContext {
     std::shared_ptr<SplitProvider> split_provider = nullptr;
 
     // The `StatsAggregator` object to record statistics about the iterator.
+    //
+    // TODO(b/147325552): Remove this API and any of its uses after we switch to
+    // using C++ based implementation for tf.data options (on 4/12/2021).
     std::shared_ptr<StatsAggregator> stats_aggregator = nullptr;
 
     // A factory for creating threads to perform blocking work.

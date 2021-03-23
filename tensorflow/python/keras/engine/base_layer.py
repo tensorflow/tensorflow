@@ -614,7 +614,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       elif dtype.is_integer or dtype.is_unsigned or dtype.is_bool:
         initializer = initializers.get('zeros')
       # NOTES:Do we need to support for handling DT_STRING and DT_COMPLEX here?
-      else:
+      elif 'getter' not in kwargs:
+        # When `getter` is specified, it's possibly fine for `initializer` to be
+        # None since it's up to the custom `getter` to raise error in case it
+        # indeed needs `initializer`.
         raise ValueError('An initializer for variable %s of type %s is required'
                          ' for layer %s' % (name, dtype.base_dtype, self.name))
 

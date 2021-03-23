@@ -33,12 +33,13 @@ limitations under the License.
 #define DEBUG_TYPE PASS_NAME
 
 namespace mlir {
-
 namespace tosa {
-
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
+
 // Performs lowering to TOSA dialect
-class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
+class LegalizeTF : public TosaLegalizeTFPassBase<LegalizeTF> {
  public:
   explicit LegalizeTF() {}
   void runOnFunction() override;
@@ -2030,12 +2031,12 @@ LogicalResult ConvertTFFakeQuantWithMinMaxVarsOp::matchAndRewrite(
 }
 
 void LegalizeTF::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   auto* ctx = &getContext();
   auto func = getFunction();
 
   // Add the generated patterns to the list.
-  populateWithGenerated(ctx, patterns);
+  populateWithGenerated(patterns);
   patterns.insert<ConvertTFMatMulOp>(ctx);
   patterns.insert<ConvertTFReluOp>(ctx);
   patterns.insert<ConvertTFRelu6Op>(ctx);

@@ -155,7 +155,7 @@ struct LegalizeTrigonometricToApproximationPass
                          FunctionPass> {
   /// Perform the lowering of standard dialect operations to approximations.
   void runOnFunction() override {
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     PopulateTrigonometricToApproximationPatterns(&getContext(), &patterns);
     (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
   }

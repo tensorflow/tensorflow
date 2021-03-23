@@ -41,6 +41,7 @@ int main(int argc, char **argv) {
   registry.insert<mlir::shape::ShapeDialect>();
   registry.insert<mlir::TFL::TensorFlowLiteDialect>();
   registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect>();
-  return failed(
-      mlir::MlirOptMain(argc, argv, "TensorFlow pass driver\n", registry));
+  return failed(mlir::MlirOptMain(argc, argv, "TensorFlow pass driver\n",
+                                  registry,
+                                  /*preloadDialectsInContext=*/false));
 }

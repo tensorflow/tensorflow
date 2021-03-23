@@ -19,9 +19,9 @@ from __future__ import print_function
 
 import os
 
-from tensorflow.core.framework import versions_pb2
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.protobuf import saved_metadata_pb2
+from tensorflow.python.keras.protobuf import versions_pb2
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.saving.saved_model import constants
 from tensorflow.python.keras.saving.saved_model import save_impl

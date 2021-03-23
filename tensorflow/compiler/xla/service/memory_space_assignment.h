@@ -302,14 +302,19 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
 // duration) / (independent computation duration) ratios to guide whether the
 // prefetch is within those bounds. It starts with the preferred ratio in
 // Begin() and works its way for alternately earlier and later prefetches until
-// hitting min and max ratios.
+// hitting min and max ratios. The value for buffer size for max async copy is a
+// mechanism to prevent copying small buffers between the two memories
+// unnecessarily. For calculating the max time that the buffer can reside in
+// alternate memory, we use the larger of this value and the actual size of the
+// buffer.
 class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
  public:
   CostAnalysisPrefetchIntervalPicker(
       const MemorySpaceAssignmentCostAnalysis& cost_analysis,
       float min_async_copy_to_overlap_ratio,
       float max_async_copy_to_overlap_ratio,
-      float preferred_async_copy_to_overlap_ratio);
+      float preferred_async_copy_to_overlap_ratio,
+      int64_t buffer_size_for_max_async_copy);
 
   bool CanAllocateInAlternateMemoryNoCopy(const Shape& shape, int64 start_time,
                                           int64 end_time) const override;
@@ -352,6 +357,10 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   // Finds the minimum nest level in the given interval.
   int GetMinWhileNestLevel(int64 start_time, int64 end_time) const;
 
+  // Given the elapsed time to copy this buffer to the alternate memory, returns
+  // the longest time that this buffer may reside in the alternate memory space.
+  float GetMaxElapsedInAlternateMemory(float async_copy_elapsed) const;
+
   // For each instruction in the flattened schedule, maintain their elapsed time
   // (in cumulative sum) and while nesting level.
   std::vector<float> elapsed_time_cumsum_;
@@ -366,6 +375,7 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   float min_async_copy_to_overlap_ratio_;
   float max_async_copy_to_overlap_ratio_;
   float preferred_async_copy_to_overlap_ratio_;
+  int64_t buffer_size_for_max_async_copy_;
   float max_overlap_multiplier_ = 1.0;
 
   float async_copy_elapsed_;

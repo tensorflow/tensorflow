@@ -125,6 +125,7 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
         mock.call.set_converter_param('input_format', '1'),
         mock.call.set_converter_param('enable_mlir_converter', 'True'),
         mock.call.set_converter_param('allow_custom_ops', 'False'),
+        mock.call.set_converter_param('api_version', '1'),
     ], any_order=True)  # pyformat: disable
 
   def test_conversion_from_constructor_fail(self):
@@ -141,7 +142,7 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
     mock_metrics.assert_has_calls([
         mock.call.increase_counter_converter_attempt(),
         mock.call.set_converter_param('output_format', '2'),
-        mock.call.set_converter_param('select_user_tf_ops', 'set()'),
+        mock.call.set_converter_param('select_user_tf_ops', 'None'),
         mock.call.set_converter_param('post_training_quantize', 'False'),
     ], any_order=True)  # pyformat: disable
     mock_metrics.increase_counter_converter_success.assert_not_called()
@@ -181,7 +182,9 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
         mock.call.increase_counter_converter_attempt(),
         mock.call.increase_counter_converter_success(),
         mock.call.set_converter_param('calibrate_and_quantize', 'True'),
-        mock.call.set_converter_param('inference_type', "<dtype: 'int8'>"),
+        mock.call.set_converter_param('inference_type', 'tf.int8'),
+        mock.call.set_converter_param('select_user_tf_ops', 'None'),
+        mock.call.set_converter_param('activations_type', 'tf.int8'),
     ], any_order=True)  # pyformat: disable
 
   def test_conversion_from_keras_v2(self):
@@ -198,7 +201,9 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
     mock_metrics.assert_has_calls([
         mock.call.increase_counter_converter_attempt(),
         mock.call.increase_counter_converter_success(),
-        mock.call.set_converter_param('inference_type', "<dtype: 'float32'>"),
+        mock.call.set_converter_param('inference_type', 'tf.float32'),
+        mock.call.set_converter_param('target_ops', 'TFLITE_BUILTINS'),
+        mock.call.set_converter_param('optimization_default', 'False'),
     ], any_order=True)  # pyformat: disable
 
   def _createV1SavedModel(self, shape):
@@ -244,6 +249,7 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
         mock.call.increase_counter_converter_attempt(),
         mock.call.increase_counter_converter_success(),
         mock.call.set_converter_param('enable_mlir_converter', 'False'),
+        mock.call.set_converter_param('api_version', '2'),
     ], any_order=True)  # pyformat: disable
 
 

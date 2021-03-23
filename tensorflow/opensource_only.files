@@ -239,7 +239,6 @@ tensorflow/third_party/toolchains/embedded/arm-linux/aarch64-linux-toolchain.BUI
 tensorflow/third_party/toolchains/embedded/arm-linux/arm_linux_toolchain_configure.bzl
 tensorflow/third_party/toolchains/embedded/arm-linux/armhf-linux-toolchain.BUILD
 tensorflow/third_party/toolchains/embedded/arm-linux/cc_config.bzl.tpl
-tensorflow/third_party/toolchains/java/BUILD
 tensorflow/third_party/toolchains/preconfig/generate/BUILD
 tensorflow/third_party/toolchains/preconfig/generate/archives.bzl
 tensorflow/third_party/toolchains/preconfig/generate/containers.bzl

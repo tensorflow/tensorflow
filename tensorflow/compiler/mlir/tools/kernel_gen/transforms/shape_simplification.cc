@@ -155,7 +155,7 @@ struct ShapeSimplification
     : public ShapeSimplificationBase<ShapeSimplification> {
   void runOnFunction() override {
     MLIRContext *context = &getContext();
-    OwningRewritePatternList patterns;
+    RewritePatternSet patterns(&getContext());
 
     Dialect *shape_dialect = context->getLoadedDialect<shape::ShapeDialect>();
     Dialect *mhlo_dialect = context->getLoadedDialect<mhlo::MhloDialect>();

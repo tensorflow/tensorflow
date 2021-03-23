@@ -1986,7 +1986,7 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
     return errors::InvalidArgument("cluster == nullptr");
   }
 
-#if !defined(INTEL_MKL)
+#if !defined(ENABLE_MKL)
   if (mode_ == AutoMixedPrecisionMode::MKL) {
     return errors::Unimplemented(
         "The auto_mixed_precision_mkl optimizer cannot be used since "
@@ -1996,7 +1996,7 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
         "https://software.intel.com/en-us/articles/intel-optimization-for-"
         "tensorflow-installation-guide");
   }
-#endif
+#endif  // ENABLE_MKL
 
   // Start by copying input graph to output.
   *output = item.graph;

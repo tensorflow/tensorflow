@@ -51,21 +51,14 @@ class SkipDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     components = (np.arange(10),)
     return dataset_ops.Dataset.from_tensor_slices(components).skip(count)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testSkipFewerThanInputs(self):
-    count = 4
-    num_outputs = 10 - count
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(count=[5], num_outputs=[5]) +
+          combinations.combine(count=[20, 10, -1], num_outputs=[0]) +
+          combinations.combine(count=[0], num_outputs=[10])))
+  def testCore(self, count, num_outputs):
     self.run_core_tests(lambda: self._build_skip_dataset(count), num_outputs)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testSkipVarious(self):
-    # Skip more than inputs
-    self.run_core_tests(lambda: self._build_skip_dataset(20), 0)
-    # Skip exactly the input size
-    self.run_core_tests(lambda: self._build_skip_dataset(10), 0)
-    self.run_core_tests(lambda: self._build_skip_dataset(-1), 0)
-    # Skip nothing
-    self.run_core_tests(lambda: self._build_skip_dataset(0), 10)
 
   @combinations.generate(test_base.default_test_combinations())
   def testInvalidSkip(self):

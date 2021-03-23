@@ -92,6 +92,26 @@ class KerasActivationsTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       activations.softmax(x)
 
+  def test_softmax_2d_axis_0(self):
+    x = backend.placeholder(ndim=2)
+    f = backend.function([x], [activations.softmax(x, axis=0)])
+    test_values = np.random.random((2, 5))
+    result = f([test_values])[0]
+    expected = np.zeros((2, 5))
+    for i in range(5):
+      expected[:, i] = _ref_softmax(test_values[:, i])
+    self.assertAllClose(result, expected, rtol=1e-05)
+
+  def test_softmax_3d_axis_tuple(self):
+    x = backend.placeholder(ndim=3)
+    f = backend.function([x], [activations.softmax(x, axis=(1, 2))])
+    test_values = np.random.random((2, 3, 5))
+    result = f([test_values])[0]
+    expected = np.zeros((2, 3, 5))
+    for i in range(2):
+      expected[i, :, :] = _ref_softmax(test_values[i, :, :])
+    self.assertAllClose(result, expected, rtol=1e-05)
+
   def test_temporal_softmax(self):
     x = backend.placeholder(shape=(2, 2, 3))
     f = backend.function([x], [activations.softmax(x)])

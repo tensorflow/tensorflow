@@ -60,7 +60,6 @@ from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
-from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
@@ -797,14 +796,23 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     # data when a `tf.data.Dataset` is provided.
     data = data_adapter.expand_1d(data)
     x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
-
+    # Run forward pass.
     with backprop.GradientTape() as tape:
       y_pred = self(x, training=True)
       loss = self.compiled_loss(
           y, y_pred, sample_weight, regularization_losses=self.losses)
+    # Run backwards pass.
     self.optimizer.minimize(loss, self.trainable_variables, tape=tape)
     self.compiled_metrics.update_state(y, y_pred, sample_weight)
-    return {m.name: m.result() for m in self.metrics}
+    # Collect metrics to return
+    return_metrics = {}
+    for metric in self.metrics:
+      result = metric.result()
+      if isinstance(result, dict):
+        return_metrics.update(result)
+      else:
+        return_metrics[metric.name] = result
+    return return_metrics
 
   def make_train_function(self):
     """Creates a function that executes one step of training.
@@ -1170,7 +1178,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         if validation_data and self._should_eval(epoch, validation_freq):
           # Create data_handler for evaluation and cache it.
           if getattr(self, '_eval_data_handler', None) is None:
-            self._fit_frame = tf_inspect.currentframe()
             self._eval_data_handler = data_adapter.get_data_handler(
                 x=val_x,
                 y=val_y,
@@ -1194,7 +1201,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
               max_queue_size=max_queue_size,
               workers=workers,
               use_multiprocessing=use_multiprocessing,
-              return_dict=True)
+              return_dict=True,
+              _use_cached_eval_dataset=True)
           val_logs = {'val_' + name: val for name, val in val_logs.items()}
           epoch_logs.update(val_logs)
 
@@ -1206,7 +1214,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       # If eval data_hanlder exists, delete it after all epochs are done.
       if getattr(self, '_eval_data_handler', None) is not None:
         del self._eval_data_handler
-        del self._fit_frame
       callbacks.on_train_end(logs=training_logs)
       return self.history
 
@@ -1240,9 +1247,16 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     # Updates stateful loss metrics.
     self.compiled_loss(
         y, y_pred, sample_weight, regularization_losses=self.losses)
-
     self.compiled_metrics.update_state(y, y_pred, sample_weight)
-    return {m.name: m.result() for m in self.metrics}
+    # Collect metrics to return
+    return_metrics = {}
+    for metric in self.metrics:
+      result = metric.result()
+      if isinstance(result, dict):
+        return_metrics.update(result)
+      else:
+        return_metrics[metric.name] = result
+    return return_metrics
 
   def make_test_function(self):
     """Creates a function that executes one step of evaluation.
@@ -1314,7 +1328,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                max_queue_size=10,
                workers=1,
                use_multiprocessing=False,
-               return_dict=False):
+               return_dict=False,
+               **kwargs):
     """Returns the loss value & metrics values for the model in test mode.
 
     Computation is done in batches (see the `batch_size` arg.)
@@ -1378,6 +1393,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         return_dict: If `True`, loss and metric results are returned as a dict,
           with each key being the name of the metric. If `False`, they are
           returned as a list.
+        **kwargs: Unused at this time.
 
     See the discussion of `Unpacking behavior for iterator-like inputs` for
     `Model.fit`.
@@ -1397,6 +1413,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     self._assert_compile_was_called()
     self._check_call_args('evaluate')
     _disallow_inside_tf_function('evaluate')
+    use_cached_eval_dataset = kwargs.pop('_use_cached_eval_dataset', False)
+    if kwargs:
+      raise TypeError('Invalid keyword arguments: %s' % (kwargs,))
 
     if self.distribute_strategy._should_use_with_coordinator:  # pylint: disable=protected-access
       raise NotImplementedError('`model.evaluate` is not yet supported with '
@@ -1404,8 +1423,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
     with self.distribute_strategy.scope():
       # Use cached evaluation data only when it's called in `Model.fit`
-      if (getattr(self, '_fit_frame', None) is not None
-          and tf_inspect.currentframe().f_back is self._fit_frame
+      if (use_cached_eval_dataset
           and getattr(self, '_eval_data_handler', None) is not None):
         data_handler = self._eval_data_handler
       else:
@@ -1457,16 +1475,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       if return_dict:
         return logs
       else:
-        results = []
-        for name in self.metrics_names:
-          if name in logs:
-            results.append(logs[name])
-        for key in sorted(logs.keys()):
-          if key not in self.metrics_names:
-            results.append(logs[key])
-        if len(results) == 1:
-          return results[0]
-        return results
+        return flatten_metrics_in_order(logs, self.metrics_names)
 
   def predict_step(self, data):
     """The logic for one inference step.
@@ -1795,10 +1804,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     if return_dict:
       return logs
     else:
-      results = [logs.get(name, None) for name in self.metrics_names]
-      if len(results) == 1:
-        return results[0]
-      return results
+      return flatten_metrics_in_order(logs, self.metrics_names)
 
   def test_on_batch(self,
                     x,
@@ -1854,10 +1860,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     if return_dict:
       return logs
     else:
-      results = [logs.get(name, None) for name in self.metrics_names]
-      if len(results) == 1:
-        return results[0]
-      return results
+      return flatten_metrics_in_order(logs, self.metrics_names)
 
   def predict_on_batch(self, x):
     """Returns predictions for a single batch of samples.
@@ -2908,3 +2911,17 @@ def _is_readable_tf_checkpoint(filepath):
   except errors_impl.DataLossError:
     # The checkpoint is not readable in TensorFlow format.
     return False
+
+
+def flatten_metrics_in_order(logs, metrics_names):
+  """Turns the `logs` dict into a list as per key order of `metrics_names`."""
+  results = []
+  for name in metrics_names:
+    if name in logs:
+      results.append(logs[name])
+  for key in sorted(logs.keys()):
+    if key not in metrics_names:
+      results.append(logs[key])
+  if len(results) == 1:
+    return results[0]
+  return results
