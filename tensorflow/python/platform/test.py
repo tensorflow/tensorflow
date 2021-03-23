@@ -127,18 +127,6 @@ def is_built_with_rocm():
   """
   return _test_util.IsBuiltWithROCm()
 
-@tf_export('test.disable_for_rocm')
-def disable_for_rocm(skip_message):
-  """Disables the test if TensorFlow was built with ROCm (GPU) support."""
-  def decorator_disable_for_rocm(func):
-    @functools.wraps(func)
-    def wrapper_disable_for_rocm(self, *args, **kwargs):
-      if is_built_with_rocm():
-        self.skipTest(skip_message)
-      else:
-        return func(self, *args, **kwargs)
-    return wrapper_disable_for_rocm
-  return decorator_disable_for_rocm
 
 @tf_export('test.disable_with_predicate')
 def disable_with_predicate(pred, skip_message):
@@ -177,6 +165,7 @@ def is_built_with_gpu_support():
   TensorFlow official binary is built with CUDA GPU support.
   """
   return is_built_with_cuda() or is_built_with_rocm()
+
 
 @tf_export('test.is_built_with_xla')
 def is_built_with_xla():
