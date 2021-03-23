@@ -42,3 +42,18 @@ add_subdirectory(
   EXCLUDE_FROM_ALL
 )
 remove_definitions(-DNOMINMAX)
+
+# The host-side flatc binary
+include(ExternalProject)
+
+ExternalProject_Add(flatbuffers-flatc
+  PREFIX ${CMAKE_BINARY_DIR}/flatbuffers-flatc
+  SOURCE_DIR ${CMAKE_BINARY_DIR}/flatbuffers
+  CMAKE_ARGS -DCMAKE_CXX_FLAGS="-DNOMINMAX=1"
+             -DFLATBUFFERS_BUILD_TESTS=OFF
+             -DFLATBUFFERS_BUILD_FLATLIB=OFF
+             -DFLATBUFFERS_STATIC_FLATC=ON
+             -DFLATBUFFERS_BUILD_FLATHASH=OFF
+             -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+  EXCLUDE_FROM_ALL 1
+)
