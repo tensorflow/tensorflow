@@ -892,7 +892,6 @@ cc_library(
         "eigen_cuboid_convolution.h",
         "eigen_pooling.h",
         "eigen_spatial_convolutions.h",
-        "eigen_volume_patch.h",
     ],
     deps = [
         ":eigen_contraction_kernel",
@@ -912,7 +911,6 @@ cc_library(
         "eigen_cuboid_convolution.h",
         "eigen_pooling.h",
         "eigen_spatial_convolutions.h",
-        "eigen_volume_patch.h",
     ],
     deps = [
         ":eigen_convolution_helpers",
@@ -5776,7 +5774,6 @@ filegroup(
         "eigen_pooling.h",
         "eigen_spatial_convolutions.h",
         "eigen_spatial_convolutions-inl.h",
-        "eigen_volume_patch.h",
         "fifo_queue.h",
         "maxpooling_op.h",
         "ops_util.h",
