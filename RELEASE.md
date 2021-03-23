@@ -135,17 +135,18 @@
        ML authoring is generally discouraged.
     *  Add support for static hash tables through
          `TFLiteConverter.from_saved_model`.
+  *  The Python TF Lite Interpreter bindings now have an option
+        `experimental_preserve_all_tensors` to aid in debugging conversion.
     *  Quantized x86 execution defaults to Ruy GEMM library for platforms with
        AVX support.
     *  Deprecate `tf.compat.v1.lite.experimental.get_potentially_supported_ops`.
        Use `tf.lite.TFLiteConverter` directly to check whether a model is
        convertible.
     * Add support to select one of three different built-in op resolvers to be
-      used in Python Interpreter API.
     *  Enabled post training with calibrations for models that require user
        provied TensorFlow Lite custom op libraries via
        `converter.target_spec._experimental_custom_op_registerers`.
-
+      used in Python Interpreter API.
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,
         `tf.while_loop`, and compositions like `tf.foldl`) computed with
