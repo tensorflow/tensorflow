@@ -49,10 +49,10 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
 // CHECK-DAG:  [[CTRUE:%.*]] = constant true
 
 // Parallel loop to initialize the output buffer.
-// CHECK:    [[INIT:%.*]] = load [[INIT_BUF]][] : memref<f32>
+// CHECK:    [[INIT:%.*]] = memref.load [[INIT_BUF]][] : memref<f32>
 // CHECK:    scf.parallel ([[I:%.*]], [[J:%.*]]) = ([[C0]], [[C0]])
 // CHECK-SAME:          to ([[C112]], [[C112]]) step ([[C1]], [[C1]]) {
-// CHECK:      store [[INIT]], [[RESULT_BUF]]{{\[}}[[I]], [[J]]]
+// CHECK:      memref.store [[INIT]], [[RESULT_BUF]]{{\[}}[[I]], [[J]]]
 // CHECK:      scf.yield
 // CHECK:    }
 
@@ -101,7 +101,7 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
 
   // INBOUNDS-THEN-BODY, i.e. if INBOUNDS == true
 
-  // CHECK: [[ARG_ELEM:%.*]] = load [[ARG_BUF]]{{\[}}[[ARG_I]], [[ARG_J]]]
+  // CHECK: [[ARG_ELEM:%.*]] = memref.load [[ARG_BUF]]{{\[}}[[ARG_I]], [[ARG_J]]]
   // CHECK: [[IF_INIT_RES:%.*]]:4
   // CHECK-SAME:  = scf.if [[SEL_INIT]] -> (index, index, f32, i1) {
 
@@ -114,16 +114,16 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
 
     // Allocate buffers for ARG element, current selected value to adapt LHLO
     // code.
-    // CHECK:  [[ARG_ELEM_BUF:%.*]] = alloc() : memref<f32>
-    // CHECK:  [[SEL_VAL_BUF:%.*]] = alloc() : memref<f32>
-    // CHECK:  [[PRED_BUF:%.*]] = alloc() : memref<i1>
-    // CHECK:  store [[ARG_ELEM]], [[ARG_ELEM_BUF]][] : memref<f32>
-    // CHECK:  store [[SEL_VAL]], [[SEL_VAL_BUF]][] : memref<f32>
+    // CHECK:  [[ARG_ELEM_BUF:%.*]] = memref.alloc() : memref<f32>
+    // CHECK:  [[SEL_VAL_BUF:%.*]] = memref.alloc() : memref<f32>
+    // CHECK:  [[PRED_BUF:%.*]] = memref.alloc() : memref<i1>
+    // CHECK:  memref.store [[ARG_ELEM]], [[ARG_ELEM_BUF]][] : memref<f32>
+    // CHECK:  memref.store [[SEL_VAL]], [[SEL_VAL_BUF]][] : memref<f32>
 
     // Compute PRED.
     // CHECK:  "lmhlo.compare"(
     // CHECK-SAME:     [[ARG_ELEM_BUF]], [[SEL_VAL_BUF]], [[PRED_BUF]])
-    // CHECK:      [[PRED:%.*]] = load [[PRED_BUF]][] : memref<i1>
+    // CHECK:      [[PRED:%.*]] = memref.load [[PRED_BUF]][] : memref<i1>
 
 
     // Depending on PRED, return ARG ivs & elem or current select ivs and value.
@@ -165,7 +165,7 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
 // CHECK:  }
 
 // Use selected ivs to load element from the SRC buffer.
-// CHECK: [[SRC_ELEM:%.*]] = load [[SRC_BUF]]{{\[}}[[II]], [[JJ]]]
+// CHECK: [[SRC_ELEM:%.*]] = memref.load [[SRC_BUF]]{{\[}}[[II]], [[JJ]]]
 
 // Update of RESULT[SELECTED_I, SELECTED_J] should be done atomically, because
 // it may happen that several other threads select the same IVs if the windows
@@ -175,16 +175,16 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
 // CHECK: ^bb0([[CUR_RES:%.*]]: f32):
 
 // Allocate buffers for ARG element, current selected value to adapt LHLO code.
-// CHECK:  [[SRC_ELEM_BUF:%.*]] = alloc() : memref<f32>
-// CHECK:  [[CUR_RES_BUF:%.*]] = alloc() : memref<f32>
-// CHECK:  [[RES_BUF:%.*]] = alloc() : memref<f32>
-// CHECK:  store [[SRC_ELEM]], [[SRC_ELEM_BUF]][] : memref<f32>
-// CHECK:  store [[CUR_RES]], [[CUR_RES_BUF]][] : memref<f32>
+// CHECK:  [[SRC_ELEM_BUF:%.*]] = memref.alloc() : memref<f32>
+// CHECK:  [[CUR_RES_BUF:%.*]] = memref.alloc() : memref<f32>
+// CHECK:  [[RES_BUF:%.*]] = memref.alloc() : memref<f32>
+// CHECK:  memref.store [[SRC_ELEM]], [[SRC_ELEM_BUF]][] : memref<f32>
+// CHECK:  memref.store [[CUR_RES]], [[CUR_RES_BUF]][] : memref<f32>
 
 // Compute scatter value.
 // CHECK:  "lmhlo.add"([[SRC_ELEM_BUF]], [[CUR_RES_BUF]], [[RES_BUF]]) :
 // CHECK-SAME: (memref<f32>, memref<f32>, memref<f32>) -> ()
-// CHECK:  [[RES:%.*]] = load [[RES_BUF]][] : memref<f32>
+// CHECK:  [[RES:%.*]] = memref.load [[RES_BUF]][] : memref<f32>
 
 // Atomic RMW terminator that returns updated value.
 // CHECK:  atomic_yield [[RES]] : f32

@@ -33,6 +33,7 @@ limitations under the License.
 #ifndef LHLO_OPS
 #define LHLO_OPS
 
+include "mlir/Dialect/MemRef/IR/MemRefBase.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/CopyOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
@@ -685,7 +686,7 @@ def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]
   let extraClassDeclaration = [{
     SmallVector<Value, 4> getInputBuffers() {
       SmallVector<Value, 4> buffers;
-      this->region().walk([&](TensorLoadOp load) {
+      this->region().walk([&](memref::TensorLoadOp load) {
         if (load.memref().getParentRegion()->isProperAncestor(&region()))
           buffers.push_back(load.memref());
       });
@@ -694,7 +695,7 @@ def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]
 
     SmallVector<Value, 4> getOutputBuffers() {
       SmallVector<Value, 4> buffers;
-      this->region().walk([&](TensorStoreOp store) {
+      this->region().walk([&](memref::TensorStoreOp store) {
         if (store.memref().getParentRegion()->isProperAncestor(&region()))
           buffers.push_back(store.memref());
       });
@@ -703,7 +704,7 @@ def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]
 
     SmallVector<Value, 4> getFusionParameters() {
       SmallVector<Value, 4> buffers;
-      this->region().walk([&](TensorLoadOp load) {
+      this->region().walk([&](memref::TensorLoadOp load) {
         if (load.memref().getParentRegion()->isProperAncestor(&region()))
           buffers.push_back(load);
       });
@@ -712,7 +713,7 @@ def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]
 
     SmallVector<Value, 4> getFusionResults() {
       SmallVector<Value, 4> buffers;
-      this->region().walk([&](TensorStoreOp store) {
+      this->region().walk([&](memref::TensorStoreOp store) {
         if (store.memref().getParentRegion()->isProperAncestor(&region()))
           buffers.push_back(store.tensor());
       });

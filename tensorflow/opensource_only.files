@@ -13,6 +13,7 @@ tensorflow/lite/core/shims/c/c_api_experimental.h
 tensorflow/lite/core/shims/c/common.h
 tensorflow/lite/core/shims/c/shims_test_util.cc
 tensorflow/lite/core/shims/c/shims_test_util.h
+tensorflow/lite/core/shims/cc/experimental/acceleration/configuration/delegate_registry.h
 tensorflow/lite/core/shims/cc/interpreter.h
 tensorflow/lite/core/shims/cc/interpreter_builder.h
 tensorflow/lite/core/shims/cc/kernels/register.h
@@ -238,7 +239,6 @@ tensorflow/third_party/toolchains/embedded/arm-linux/aarch64-linux-toolchain.BUI
 tensorflow/third_party/toolchains/embedded/arm-linux/arm_linux_toolchain_configure.bzl
 tensorflow/third_party/toolchains/embedded/arm-linux/armhf-linux-toolchain.BUILD
 tensorflow/third_party/toolchains/embedded/arm-linux/cc_config.bzl.tpl
-tensorflow/third_party/toolchains/java/BUILD
 tensorflow/third_party/toolchains/preconfig/generate/BUILD
 tensorflow/third_party/toolchains/preconfig/generate/archives.bzl
 tensorflow/third_party/toolchains/preconfig/generate/containers.bzl

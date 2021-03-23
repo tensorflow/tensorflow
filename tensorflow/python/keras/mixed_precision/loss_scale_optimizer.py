@@ -340,7 +340,8 @@ class _DynamicLossScaleState(trackable.Trackable):
         step.
     """
     grads = nest.flatten(grads)
-    if distribution_strategy_context.has_strategy():
+    if distribution_strategy_context.has_strategy(
+    ) and distribution_strategy_context.in_cross_replica_context():
       distribution = distribution_strategy_context.get_strategy()
       is_finite_per_replica = distribution.extended.call_for_each_replica(
           _is_all_finite, args=(grads,))
@@ -714,28 +715,13 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
       # pylint: enable=protected-access
 
     grads_and_vars = tuple(grads_and_vars)
-    return distribution_strategy_context.get_replica_context().merge_call(
-        self._apply_gradients_cross_replica,
-        args=(grads_and_vars, name))
-
-  def _apply_gradients_cross_replica(self, distribution, grads_and_vars, name):
     grads = [g for g, _ in grads_and_vars]
-    if isinstance(self._loss_scale, _DynamicLossScaleState):
-      loss_scale_update_op, should_apply_grads = self._loss_scale.update(grads)
-    else:
-      loss_scale_update_op = control_flow_ops.no_op()
-      should_apply_grads = True
-
-    def apply_fn():
-      # We do not want DistributionStrategy to unwrap any MirroredVariables in
-      # grads_and_vars, because even in a replica context, the wrapped optimizer
-      # expects mirrored variables. So we wrap the variables with an
-      # _UnwrapPreventer, preventing DistributionStrategy from unwrapping the
-      # MirroredVariables.
-      wrapped_vars = _UnwrapPreventer([v for _, v in grads_and_vars])
-      return distribution.extended.call_for_each_replica(
-          self._apply_gradients,
-          args=(grads, wrapped_vars, name))
+    # We do not want DistributionStrategy to unwrap any MirroredVariables in
+    # grads_and_vars, because even in a replica context, the wrapped
+    # optimizer expects mirrored variables. So we wrap the variables with an
+    # _UnwrapPreventer, preventing DistributionStrategy from unwrapping the
+    # MirroredVariables.
+    wrapped_vars = _UnwrapPreventer([v for _, v in grads_and_vars])
 
     def do_not_apply_fn():
       # Normally self._optimizer.iterations is incremented in
@@ -743,13 +729,42 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
       # branch, we increment it here instead.
       return self._optimizer.iterations.assign_add(1, read_value=False)
 
-    # Note: We must call this cond() in a cross-replica context.
-    # DistributionStrategy does not support having a cond in a replica context
-    # with a branch that calls `merge_call`, and self._optimizer.apply_gradients
-    # calls `merge_call`.
-    maybe_apply_op = smart_cond.smart_cond(should_apply_grads, apply_fn,
-                                           do_not_apply_fn)
-    return control_flow_ops.group(maybe_apply_op, loss_scale_update_op)
+    def _if_should_apply_grads(grads):
+      if isinstance(self._loss_scale, _DynamicLossScaleState):
+        return self._loss_scale.update(grads)
+      else:
+        return (control_flow_ops.no_op(), True)
+
+    if optimizer_utils.strategy_supports_no_merge_call():
+      loss_scale_update_op, should_apply_grads = _if_should_apply_grads(grads)
+      def apply_fn():
+        return self._apply_gradients(grads, wrapped_vars, name)
+
+      maybe_apply_op = smart_cond.smart_cond(should_apply_grads, apply_fn,
+                                             do_not_apply_fn)
+      return control_flow_ops.group(maybe_apply_op, loss_scale_update_op)
+
+    else:
+
+      def _apply_gradients_cross_replica(distribution, grads, wrapped_vars,
+                                         name):
+        loss_scale_update_op, should_apply_grads = _if_should_apply_grads(grads)
+
+        def apply_fn():
+          return distribution.extended.call_for_each_replica(
+              self._apply_gradients,
+              args=(grads, wrapped_vars, name))
+
+        # Note: We must call this cond() in a cross-replica context.
+        # DistributionStrategy does not support having a cond in a replica
+        # context with a branch that calls `merge_call`, and
+        # self._optimizer.apply_gradients calls `merge_call`.
+        maybe_apply_op = smart_cond.smart_cond(should_apply_grads, apply_fn,
+                                               do_not_apply_fn)
+        return control_flow_ops.group(maybe_apply_op, loss_scale_update_op)
+      return distribution_strategy_context.get_replica_context().merge_call(
+          _apply_gradients_cross_replica,
+          args=(grads, wrapped_vars, name))
 
   def _apply_gradients(self, grads, wrapped_vars, name):
     # Pass experimental_aggregate_gradients=False since LossScaleOptimizer

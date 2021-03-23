@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -56,12 +57,12 @@ class FuncOpConverter : public OpConversionPattern<FuncOp> {
 
 // Converts std.alloc to tf_framework.alloc_raw using OpKernelContextType arg of
 // the parent function.
-class TFAllocOpConverter : public OpConversionPattern<AllocOp> {
+class TFAllocOpConverter : public OpConversionPattern<memref::AllocOp> {
  public:
-  using OpConversionPattern<AllocOp>::OpConversionPattern;
+  using OpConversionPattern<memref::AllocOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      AllocOp alloc, ArrayRef<Value> operands,
+      memref::AllocOp alloc, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
     auto func = alloc->getParentOfType<FuncOp>();
     if (func.getNumArguments() == 0) {
@@ -89,12 +90,12 @@ class TFAllocOpConverter : public OpConversionPattern<AllocOp> {
 
 // Converts std.dealloc to tf_framework.dealloc_raw using OpKernelContextType
 // arg of the parent function.
-class TFDeallocOpConverter : public OpConversionPattern<DeallocOp> {
+class TFDeallocOpConverter : public OpConversionPattern<memref::DeallocOp> {
  public:
-  using OpConversionPattern<DeallocOp>::OpConversionPattern;
+  using OpConversionPattern<memref::DeallocOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      DeallocOp dealloc, ArrayRef<Value> operands,
+      memref::DeallocOp dealloc, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
     auto func = dealloc->getParentOfType<FuncOp>();
     if (func.getNumArguments() == 0) {
@@ -109,7 +110,7 @@ class TFDeallocOpConverter : public OpConversionPattern<DeallocOp> {
     if (!operand_memref_type.getAffineMaps().empty()) {
       return failure();
     }
-    DeallocOp::Adaptor transformed(operands);
+    memref::DeallocOp::Adaptor transformed(operands);
     rewriter.replaceOpWithNewOp<TFDeallocOp>(dealloc, ctx,
                                              transformed.memref());
     return success();

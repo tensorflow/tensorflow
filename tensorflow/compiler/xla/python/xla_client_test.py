@@ -578,6 +578,13 @@ def TestFactory(xla_backend, cloud_tpu=False):
       np.testing.assert_array_equal(y.to_py(), z.to_py())
       self.assertEqual(y.unsafe_buffer_pointer(), z.unsafe_buffer_pointer())
 
+    @unittest.skipIf(cloud_tpu, "not implemented")
+    def testJaxAttributesHaveCorrectDefaults(self):
+      x = np.array([[3., 4., 5.]], np.float32)
+      y = self.backend.buffer_from_pyval(x)
+      self.assertIsNone(y.aval)
+      self.assertIsNone(y._device)
+
   tests.append(BufferTest)
 
   class SingleOpTest(ComputationTest):
@@ -2177,12 +2184,33 @@ def TestFactory(xla_backend, cloud_tpu=False):
   class DynamicReshapeTest(ComputationTest):
     """Tests related to DynamicReshape."""
 
+    def _CompareToPyAndBufferProtocol(self, builder, args, expected_results,
+                                      test_fn):
+      compiled = self.backend.compile(builder.build())
+      output_buffers = compiled.execute([
+          self.backend.buffer_from_pyval(
+              arg, device=compiled.local_devices()[0]) for arg in args
+      ])
+      self.assertLen(output_buffers, len(expected_results))
+      for buf, expected in zip(output_buffers, expected_results):
+        to_py_result = buf.to_py()
+        self.assertEqual(expected.shape, to_py_result.shape)
+        test_fn(expected, to_py_result)
+        if self.backend.platform == "cpu" and buf.dtype != bfloat16:
+          mview = memoryview(buf)
+          self.assertEqual(expected.shape, mview.shape)
+          test_fn(expected, np.asarray(mview))
+        else:
+          # Buffer protocol expected to fail on non-cpu platforms and bfloat16
+          # Note that np.asarray(buf) doesn't throw an exception. To test if the
+          # error was thrown properly we must use memoryview(buf).
+          with self.assertRaises(BufferError):
+            memoryview(buf)
+
     # 1D reshape of full size, half size, and size of 0.
     @unittest.skipIf(cloud_tpu, "not implemented")
     @parameterized.parameters((5), (3), (0))
     def testReshape1D(self, reshape_size):
-      if self.backend.platform == "cpu":
-        self.skipTest("Not implemented properly on CPU yet.")
       full_size = 5
       c = self._NewComputation()
       arg = np.array(reshape_size, dtype=np.int32)
@@ -2191,7 +2219,8 @@ def TestFactory(xla_backend, cloud_tpu=False):
       ops.DynamicReshape(
           ops.Constant(c, NumpyArrayS32(range(full_size))), [p], [full_size],
           [True])
-      self._ExecuteAndCompareExact(c, [arg], [expected])
+      self._CompareToPyAndBufferProtocol(c, [arg], [expected],
+                                         np.testing.assert_equal)
 
     # 2D reshape with an slice on the minor dimension.  We test different types
     # where the strides may differ between the host and devices. The reshaped
@@ -2203,8 +2232,6 @@ def TestFactory(xla_backend, cloud_tpu=False):
         "dtype": dtype,
     } for dtype in int_dtypes + float_dtypes)
     def testReshape2D(self, dtype):
-      if self.backend.platform == "cpu":
-        self.skipTest("Not implemented properly on CPU yet.")
       arg0 = np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype)
       arg1 = np.array(2, dtype=np.int32)
       expected = np.array([[1, 2], [4, 5]], dtype=np.int32)
@@ -2212,7 +2239,8 @@ def TestFactory(xla_backend, cloud_tpu=False):
       p0 = ops.Parameter(c, 0, xla_client.shape_from_pyval(arg0))
       p1 = ops.Parameter(c, 1, xla_client.shape_from_pyval(arg1))
       ops.DynamicReshape(p0, [p1, p1], [2, 3], [False, True])
-      self._ExecuteAndCompareClose(c, [arg0, arg1], [expected])
+      self._CompareToPyAndBufferProtocol(c, [arg0, arg1], [expected],
+                                         np.testing.assert_equal)
 
     @unittest.skipIf(cloud_tpu, "not implemented")
     @parameterized.named_parameters({

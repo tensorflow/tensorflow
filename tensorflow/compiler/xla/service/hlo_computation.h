@@ -120,6 +120,8 @@ class HloComputation {
     OpMetadata metadata_;
   };
 
+  ~HloComputation();
+
   // Add an instruction to the computation. The computation takes ownership of
   // the instruction.
   HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction,
@@ -454,7 +456,9 @@ class HloComputation {
   bool HasSideEffect() const;
 
   // Returns if this computation is a fusion computation.
-  bool IsFusionComputation() const { return fusion_instruction_ != nullptr; }
+  // Do not use this method to determine if fusion_instruction_ != nullptr.
+  // Instead, directly do: FusionInstruction() != nullptr
+  bool IsFusionComputation() const { return is_fusion_computation_; }
 
   // Returns if this computation is the entry computation of the module.
   bool IsEntryComputation() const;
@@ -464,6 +468,7 @@ class HloComputation {
   HloInstruction* FusionInstruction() const { return fusion_instruction_; }
   void SetFusionInstruction(HloInstruction* fusion_instruction) {
     fusion_instruction_ = fusion_instruction;
+    is_fusion_computation_ |= (fusion_instruction != nullptr);
   }
 
   // Clear the unique ID of the computation so that it can be re-assigned, such
@@ -540,8 +545,16 @@ class HloComputation {
   HloInstruction* root_instruction_;
 
   // If this computation is a fusion computation, this field points to the
-  // corresponding fusion instruction.  Otherwise, this is null.
+  // corresponding fusion instruction (if it is live). Otherwise, this is null.
   HloInstruction* fusion_instruction_;
+
+  // Determines whether this computation is a fusion computation. A fusion
+  // computation ordinarily also has a non-null fusion_instruction_. However, if
+  // a fusion instruction is removed during compilation, the fusion computation
+  // becomes unreachable, and its fusion_instruction_ is set to null. We still
+  // need to regard such computations as fusion computations for HLO scheduling
+  // purposes.
+  bool is_fusion_computation_;
 
   // Module containing this computation.
   HloModule* parent_ = nullptr;

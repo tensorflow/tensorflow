@@ -399,6 +399,21 @@ cc_test(
 )
 
 cc_test(
+    name = "delegate_test",
+    srcs = ["delegate_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+        "@pthreadpool",
+    ],
+)
+
+cc_test(
     name = "depth_to_space_test",
     srcs = ["depth_to_space_test.cc"],
     linkopts = select({

@@ -967,10 +967,10 @@ func @unpack_repack_same_tuple_single_element(%arg0: tuple<tensor<i32>>) -> tupl
 
 // CHECK-LABEL: func @erase_dead_lhlo_constant
 func @erase_dead_lhlo_constant() {
-  %M = alloc() : memref<256x1024xf32>
+  %M = memref.alloc() : memref<256x1024xf32>
   // CHECK-NEXT: return
   "lmhlo.constant"(%M) {value = dense<0.0> : tensor<f32>} : (memref<256x1024xf32>) -> ()
-  dealloc %M : memref<256x1024xf32>
+  memref.dealloc %M : memref<256x1024xf32>
   return
 }
 
@@ -979,9 +979,9 @@ func @erase_dead_lhlo_constant() {
 func @erase_dead_lhlo_constant_negative(%M : memref<4xf32>) -> memref<256x1024xf32> {
   // CHECK-NEXT: lmhlo.constant
   "lmhlo.constant"(%M) {value = dense<0.0> : tensor<f32>} : (memref<4xf32>) -> ()
-  // CHECK-NEXT: alloc
+  // CHECK-NEXT: memref.alloc
   // CHECK-NEXT: lmhlo.constant
-  %N = alloc() : memref<256x1024xf32>
+  %N = memref.alloc() : memref<256x1024xf32>
   "lmhlo.constant"(%N) {value = dense<0.0> : tensor<f32>} : (memref<256x1024xf32>) -> ()
   return %N : memref<256x1024xf32>
 }

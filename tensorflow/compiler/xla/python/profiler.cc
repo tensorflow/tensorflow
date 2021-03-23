@@ -36,6 +36,14 @@ class TraceMeWrapper : public tensorflow::profiler::TraceMeWrapper {
  public:
   using tensorflow::profiler::TraceMeWrapper::TraceMeWrapper;
 };
+
+tensorflow::ProfileOptions DefaultPythonProfileOptions() {
+  tensorflow::ProfileOptions options =
+      tensorflow::ProfilerSession::DefaultOptions();
+  options.set_python_tracer_level(1);
+  options.set_enable_hlo_proto(true);
+  return options;
+}
 }  // namespace
 
 void BuildProfilerSubmodule(py::module* m) {
@@ -58,7 +66,10 @@ void BuildProfilerSubmodule(py::module* m) {
   profiler_session_class
       .def(py::init([]() {
         return tensorflow::ProfilerSession::Create(
-            tensorflow::ProfilerSession::DefaultOptions());
+            DefaultPythonProfileOptions());
+      }))
+      .def(py::init([](const tensorflow::ProfileOptions& options) {
+        return tensorflow::ProfilerSession::Create(options);
       }))
       .def("stop_and_export",
            [](tensorflow::ProfilerSession* sess,
@@ -70,6 +81,32 @@ void BuildProfilerSubmodule(py::module* m) {
              return tensorflow::profiler::ExportToTensorBoard(xspace,
                                                               tensorboard_dir);
            });
+
+  py::class_<tensorflow::ProfileOptions> profile_options_class(
+      profiler, "ProfileOptions");
+  profile_options_class.def(py::init(&DefaultPythonProfileOptions))
+      .def_property("include_dataset_ops",
+                    &tensorflow::ProfileOptions::include_dataset_ops,
+                    &tensorflow::ProfileOptions::set_include_dataset_ops)
+      .def_property("host_tracer_level",
+                    &tensorflow::ProfileOptions::host_tracer_level,
+                    &tensorflow::ProfileOptions::set_host_tracer_level)
+      .def_property("python_tracer_level",
+                    &tensorflow::ProfileOptions::python_tracer_level,
+                    &tensorflow::ProfileOptions::set_python_tracer_level)
+      .def_property("enable_hlo_proto",
+                    &tensorflow::ProfileOptions::enable_hlo_proto,
+                    &tensorflow::ProfileOptions::set_enable_hlo_proto)
+      .def_property("start_timestamp_ns",
+                    &tensorflow::ProfileOptions::start_timestamp_ns,
+                    &tensorflow::ProfileOptions::set_start_timestamp_ns)
+      .def_property("duration_ms", &tensorflow::ProfileOptions::duration_ms,
+                    &tensorflow::ProfileOptions::set_duration_ms)
+      .def_property(
+          "repository_path", &tensorflow::ProfileOptions::repository_path,
+          [](tensorflow::ProfileOptions* options, const string& path) {
+            options->set_repository_path(path);
+          });
 
   py::class_<TraceMeWrapper> traceme_class(profiler, "TraceMe",
                                            py::module_local());

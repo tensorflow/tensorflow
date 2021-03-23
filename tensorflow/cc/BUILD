@@ -650,14 +650,6 @@ tf_gen_op_wrappers_cc(
 )
 
 tf_gen_op_wrappers_cc(
-    name = "remote_fused_graph_ops",
-    op_lib_names = [
-        "remote_fused_graph_ops",
-    ],
-    pkg = "//tensorflow/core",
-)
-
-tf_gen_op_wrappers_cc(
     name = "tpu_ops",
     include_internal_ops = 1,
     op_lib_names = [
@@ -823,7 +815,6 @@ transitive_hdrs(
         ":gradients",
         ":ops",
         ":queue_runner",
-        ":remote_fused_graph_ops",
         ":scope",
         "//tensorflow/cc/saved_model:constants",
         "//tensorflow/cc/saved_model:loader",

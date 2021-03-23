@@ -1763,7 +1763,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // it includes those we support.
     DataType T;
     if (!TryGetNodeAttr(n->def(), "T", &T) ||
-        !mkl_op_registry::IsMklLayoutDependentOp(csinfo_.mkl_fused_conv2d, T)) {
+        !mkl_op_registry::IsMklOp(NativeFormatEnabled()
+                                      ? csinfo_.mkl_native_fused_conv2d
+                                      : csinfo_.mkl_fused_conv2d,
+                                  T)) {
       return false;
     }
 
@@ -1796,8 +1799,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // _FusedDepthwiseConv2DNative only if it includes those we support.
     DataType T;
     if (!TryGetNodeAttr(n->def(), "T", &T) ||
-        !mkl_op_registry::IsMklLayoutDependentOp(
-            csinfo_.mkl_fused_depthwise_conv2d, T)) {
+        !mkl_op_registry::IsMklOp(
+            NativeFormatEnabled() ? csinfo_.mkl_native_fused_depthwise_conv2d
+                                  : csinfo_.mkl_fused_depthwise_conv2d,
+            T)) {
       return false;
     }
 
@@ -2054,9 +2059,7 @@ MklLayoutRewritePass::ConstStringsInfo MklLayoutRewritePass::csinfo_;
 // nodes. Do not change the ordering of the Mkl passes.
 const OptimizationPassRegistry::Grouping kMklLayoutRewritePassGroup =
     OptimizationPassRegistry::POST_PARTITIONING;
-#ifdef ENABLE_MKL
 REGISTER_OPTIMIZATION(kMklLayoutRewritePassGroup, 1, MklLayoutRewritePass);
-#endif  // ENABLE_MKL
 
 //////////////////////////////////////////////////////////////////////////
 //           Helper functions for creating new node
@@ -4100,8 +4103,8 @@ Status MklLayoutRewritePass::Run(const GraphOptimizationPassOptions& options) {
   if (options.graph == nullptr && options.partition_graphs == nullptr) {
     return Status::OK();
   }
-  if (DisableMKL()) {
-    VLOG(2) << "TF-MKL: Disabling MKL";
+  if (!IsMKLEnabled()) {
+    VLOG(2) << "TF-MKL: MKL is not enabled";
     return Status::OK();
   }
 
@@ -4130,4 +4133,4 @@ Status MklLayoutRewritePass::Run(const GraphOptimizationPassOptions& options) {
 
 }  // namespace tensorflow
 
-#endif
+#endif  // INTEL_MKL

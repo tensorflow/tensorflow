@@ -74,6 +74,9 @@ Status SaveDatasetOp::WriteData(OpKernelContext* ctx, DatasetBase* dataset,
                                 const std::string& run_dir,
                                 uint64* num_elements) {
   IteratorContext::Params params(ctx);
+  auto function_handle_cache =
+      absl::make_unique<FunctionHandleCache>(params.flr);
+  params.function_handle_cache = function_handle_cache.get();
   ResourceMgr resource_mgr;
   params.resource_mgr = &resource_mgr;
   CancellationManager cancellation_manager(ctx->cancellation_manager());

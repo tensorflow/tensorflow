@@ -19,10 +19,13 @@ from __future__ import division
 from __future__ import print_function
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import multi_worker_test_base
+from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.training.server_lib import ClusterSpec
 
 
 def mnist_synthetic_dataset(batch_size, steps_per_epoch):
@@ -73,3 +76,12 @@ def get_mnist_model(input_shape):
       optimizer=gradient_descent.SGD(learning_rate=0.001),
       metrics=["accuracy"])
   return model
+
+
+def make_parameter_server_cluster(num_workers, num_ps):
+  cluster_def = multi_worker_test_base.create_in_process_cluster(
+      num_workers=num_workers, num_ps=num_ps, rpc_layer="grpc")
+  cluster_def["chief"] = [
+      "localhost:%d" % multi_worker_test_base.pick_unused_port()
+  ]
+  return SimpleClusterResolver(ClusterSpec(cluster_def), rpc_layer="grpc")

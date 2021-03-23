@@ -375,6 +375,7 @@ class Layer(base_layer.Layer):
       if kwarg not in ['getter', 'collections', 'experimental_autocast',
                        'caching_device']:
         raise TypeError('Unknown keyword argument:', kwarg)
+    has_custom_getter = 'getter' in kwargs
     getter = kwargs.pop('getter', base_layer_utils.make_variable)
     collections_arg = kwargs.pop('collections', None)
     # 'experimental_autocast' can be set to False by the caller to indicate an
@@ -416,7 +417,10 @@ class Layer(base_layer.Layer):
       elif dtype.is_integer or dtype.is_unsigned or dtype.is_bool:
         initializer = initializers.zeros()
       # NOTES:Do we need to support for handling DT_STRING and DT_COMPLEX here?
-      else:
+      elif not has_custom_getter:
+        # When `getter` is specified, it's possibly fine for `initializer` to be
+        # None since it's up to the custom `getter` to raise error in case it
+        # indeed needs `initializer`.
         raise ValueError('An initializer for variable %s of type %s is required'
                          ' for layer %s' % (name, dtype.base_dtype, self.name))
 

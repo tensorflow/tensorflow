@@ -71,7 +71,7 @@ Value InsertDynamicAllocAndDealloc(Location loc, Value result,
     dynamic_operands.push_back(alloc_operand);
   }
 
-  return rewriter->create<AllocOp>(loc, memref_type, dynamic_operands);
+  return rewriter->create<memref::AllocOp>(loc, memref_type, dynamic_operands);
 }
 
 Value InsertAlloc(Location loc, OpResult result,
@@ -85,7 +85,7 @@ Value InsertAlloc(Location loc, OpResult result,
       MemRefType::get(result_type.getShape(), result_type.getElementType());
   OpBuilder::InsertionGuard guard(*rewriter);
   rewriter->setInsertionPoint(result.getDefiningOp());
-  auto alloc = rewriter->create<AllocOp>(loc, memref_type);
+  auto alloc = rewriter->create<memref::AllocOp>(loc, memref_type);
   return alloc;
 }
 
@@ -207,7 +207,7 @@ class HloToLhloReshapeUnrankedConverter
     if (unranked_operand_type == nullptr) return failure();
 
     auto result_type = op.getType().cast<RankedTensorType>();
-    rewriter.replaceOpWithNewOp<MemRefCastOp>(
+    rewriter.replaceOpWithNewOp<memref::CastOp>(
         op, adaptor.operand(),
         MemRefType::get(result_type.getShape(), result_type.getElementType()));
     return success();
@@ -235,7 +235,7 @@ class HloToLhloDynamicReshapeConverter
       return failure();
     }
     mhlo::DynamicReshapeOp::Adaptor adaptor(operands);
-    rewriter.replaceOpWithNewOp<MemRefReshapeOp>(
+    rewriter.replaceOpWithNewOp<memref::ReshapeOp>(
         op, result_type, adaptor.operand(), adaptor.output_shape());
     return success();
   }
@@ -273,7 +273,7 @@ class HloToLhloDynamicBroadcastInDimOpConverter
   // Inserts dynamic memref to change the layout of the memref to put 0-stride
   // and size of the target dimension if size-1 dimension expansion is
   // necessary.
-  MemRefReinterpretCastOp InsertDynamicMemrefCastOp(
+  memref::ReinterpretCastOp InsertDynamicMemrefCastOp(
       mhlo::DynamicBroadcastInDimOp op, Value operand, OpBuilder* b) const {
     auto loc = op.getLoc();
     auto operand_type = operand.getType().cast<MemRefType>();
@@ -295,7 +295,7 @@ class HloToLhloDynamicBroadcastInDimOpConverter
     for (int i = operand_rank - 1; i >= 0; --i) {
       Value operand_dim_size =
           ShapedType::isDynamic(operand_shape[i])
-              ? b->create<DimOp>(loc, operand, i).getResult()
+              ? b->create<memref::DimOp>(loc, operand, i).getResult()
               : b->create<ConstantIndexOp>(loc, operand_shape[i]).getResult();
       operand_sizes[i] = operand_dim_size;
 
@@ -355,7 +355,7 @@ class HloToLhloDynamicBroadcastInDimOpConverter
         makeStridedLinearLayoutMap(dynamic_layout,
                                    /*offset=*/0, b->getContext()));
 
-    auto transformed_operand = b->create<MemRefReinterpretCastOp>(
+    auto transformed_operand = b->create<memref::ReinterpretCastOp>(
         loc, type_erased_memref_type, operand,
         /*offset=*/b->getI64IntegerAttr(0), sizes, strides);
     return transformed_operand;
@@ -484,12 +484,12 @@ struct HloToLhloReturnOpConverter : public BaseOpConversion<mhlo::ReturnOp> {
 
 // TODO(b/175789537) Remove this pattern.
 class HloToLhloTensorStoreOpLegacyConverter
-    : public BaseOpConversion<mlir::TensorStoreOp> {
+    : public BaseOpConversion<mlir::memref::TensorStoreOp> {
  public:
-  using BaseOpConversion<mlir::TensorStoreOp>::BaseOpConversion;
+  using BaseOpConversion<mlir::memref::TensorStoreOp>::BaseOpConversion;
 
   LogicalResult matchAndRewrite(
-      mlir::TensorStoreOp op, ArrayRef<Value> operands,
+      mlir::memref::TensorStoreOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const final {
     rewriter.replaceOpWithNewOp<lmhlo::CopyOp>(op, llvm::None, operands.front(),
                                                operands.back());
@@ -577,14 +577,16 @@ struct HloLegalizeToLhlo
     ConversionTarget target(context);
     target.addLegalDialect<lmhlo::LmhloDialect>();
     target.addLegalDialect<StandardOpsDialect>();
+    target.addLegalDialect<memref::MemRefDialect>();
     target.addLegalDialect<shape::ShapeDialect>();
     target.addLegalDialect<tensor::TensorDialect>();
     target.addIllegalDialect<mhlo::MhloDialect>();
     // Declare tensor_load and tensor_store illegal.
-    target.addIllegalOp<mlir::TensorLoadOp, mlir::TensorStoreOp>();
-    // tensor_to_memref is illegal if it has uses.
-    // TODO(b/175670649) Make tensor_to_memref illegal.
-    target.addDynamicallyLegalOp<mlir::TensorToMemrefOp>(
+    target.addIllegalOp<mlir::memref::TensorLoadOp,
+                        mlir::memref::TensorStoreOp>();
+    // buffer_cast is illegal if it has uses.
+    // TODO(b/175670649) Make buffer_cast illegal.
+    target.addDynamicallyLegalOp<mlir::memref::BufferCastOp>(
         [](auto op) { return op->use_empty(); });
 
     BufferizeTypeConverter converter;
