@@ -76,6 +76,67 @@ struct ShapeOfOpConversion : public OpConversionPattern<shape::ShapeOfOp> {
   }
 };
 
+// We can only move up broadcasting ops that apply to the result of a
+// shape-preserving operation. For now, we restrict this to unary operations.
+// TODO(frgossen): Generalize this to n-ary operations.
+bool isDynamicBroadcastInDimOpMovable(Value operand) {
+  Operation *producer_op = operand.getDefiningOp();
+  return producer_op != nullptr &&
+         producer_op->hasTrait<OpTrait::SameOperandsAndResultShape>() &&
+         producer_op->hasTrait<OpTrait::Elementwise>() &&
+         producer_op->getNumOperands() == 1;
+}
+
+// TODO(frgossen): Only move up broadcasting operations if there is a consumer.
+struct MoveUpBroadcastInDimOpConversion
+    : public OpConversionPattern<DynamicBroadcastInDimOp> {
+  explicit MoveUpBroadcastInDimOpConversion(MLIRContext *context)
+      : OpConversionPattern<DynamicBroadcastInDimOp>(context) {}
+
+  LogicalResult matchAndRewrite(
+      DynamicBroadcastInDimOp bcast_op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    // We can only move up broadcasting ops that apply to the result of a
+    // shape-preserving operation.
+    DynamicBroadcastInDimOp::Adaptor transformed(operands);
+    if (!isDynamicBroadcastInDimOpMovable(transformed.operand()))
+      return failure();
+
+    // Materialize broadcast on operands.
+    SmallVector<Value, 2> bcasted_operands;
+    Location loc = bcast_op.getLoc();
+    ArrayRef<int64_t> ty_shape = bcast_op.getType().getShape();
+    Operation *producer_op = transformed.operand().getDefiningOp();
+    for (Value operand : producer_op->getOperands()) {
+      // The broadcast only works on ranked operations.
+      auto operand_ty = operand.getType().dyn_cast<RankedTensorType>();
+      if (!operand_ty) {
+        return bcast_op.emitError()
+               << "Can only move up broadcasts over ranked tensor operands.";
+      }
+
+      auto bcasted_operand_ty =
+          RankedTensorType::get(ty_shape, operand_ty.getElementType());
+      bcasted_operands.push_back(rewriter.create<DynamicBroadcastInDimOp>(
+          loc, bcasted_operand_ty, operand, transformed.output_dimensions(),
+          bcast_op.broadcast_dimensions()));
+    }
+
+    // Create a copy of the producer op with the new broadcasted operands.
+    OperationState new_producer_op_state(
+        loc, producer_op->getName().getStringRef(), bcasted_operands,
+        bcast_op.getType(), producer_op->getAttrs());
+    Operation *new_producer_op =
+        rewriter.createOperation(new_producer_op_state);
+
+    // The original result of the broadcast now falls directly out of the new
+    // producer op. Use it instead.
+    rewriter.replaceOp(bcast_op, new_producer_op->getResults());
+
+    return success();
+  }
+};
+
 struct MoveUpDynamicBroadcastsForFusionPass
     : public PassWrapper<MoveUpDynamicBroadcastsForFusionPass, FunctionPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -108,12 +169,17 @@ void PopulateMoveUpDynamicBroadcastsForFusionLegality(
                           tensor::TensorDialect>();
   target->addDynamicallyLegalOp<shape::ShapeOfOp>(
       [](shape::ShapeOfOp op) { return !IsShapeOfOpMovable(op.arg()); });
+  target->addDynamicallyLegalOp<DynamicBroadcastInDimOp>(
+      [](DynamicBroadcastInDimOp op) {
+        return !isDynamicBroadcastInDimOpMovable(op.operand());
+      });
 }
 
 void PopulateMoveUpDynamicBroadcastsForFusionPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns) {
   // clang-format off
-  patterns->insert<ShapeOfOpConversion>(context);
+  patterns->insert<ShapeOfOpConversion,
+                   MoveUpBroadcastInDimOpConversion>(context);
   // clang-format on
 }
 
