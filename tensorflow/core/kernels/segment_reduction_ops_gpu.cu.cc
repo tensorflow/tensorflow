@@ -154,6 +154,22 @@ bool DisableSegmentReductionOpDeterminismExceptions() {
   return cached_disable;
 }
 
+// Helper to set all tensor entries to a specific value. This differs from
+// SetToValue because it performs an explicit conversion from the given value
+// to the output type, which avoids compilation issues when Tvec is an aligned
+// vector type.
+template <typename Tvec, typename Tinit>
+__global__ void SetToValueVectorized(const int count, Tvec* __restrict__ ptr,
+                                     Tinit value) {
+  // Check that the grid is one dimensional and index doesn't overflow.
+  assert(blockDim.y == 1);
+  assert(blockDim.z == 1);
+  assert(blockDim.x * gridDim.x / blockDim.x == gridDim.x);
+  for (int i : GpuGridRangeX(count)) {
+    ptr[i] = Tvec(value);
+  }
+}
+
 template <typename Tindex, typename Tsegmentids>
 __global__ void SegmentOffsetsKernel(
     Tindex size, Tsegmentids nsegments,
@@ -402,9 +418,10 @@ Status SegmentReduceGPUImpl(
     GPUDevice d = ctx->template eigen_device<GPUDevice>();
     int64 output_size = static_cast<int64>(nsegments) * ninner_vec;
     GpuLaunchConfig config = GetGpuLaunchConfig(output_size, d);
-    return GpuLaunchKernel(SetToValue<Tvec>, config.block_count,
-                           config.thread_per_block, 0, d.stream(), output_size,
-                           output_vec, empty_segment_value);
+    return GpuLaunchKernel(SetToValueVectorized<Tvec, Tinit>,
+                           config.block_count, config.thread_per_block, 0,
+                           d.stream(), output_size, output_vec,
+                           empty_segment_value);
   }
 
   // Allocate and compute segment_offsets.
