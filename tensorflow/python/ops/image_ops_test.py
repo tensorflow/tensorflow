@@ -4969,7 +4969,28 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
       score_threshold = 0.3
       soft_nms_sigma = 0.25
       pad_to_max_output_size = False
-
+      
+      # gen_image_ops.non_max_suppression_v2:
+      for dtype in [np.float16, np.float32]:
+        boxes = math_ops.cast(boxes_tensor, dtype=dtype)
+        scores = math_ops.cast(scores_tensor, dtype=dtype)
+        selected_indices = gen_image_ops.non_max_suppression_v2(
+            boxes, scores, max_output_size, iou_threshold)
+        self.assertAllClose(selected_indices.shape, [1])
+      # gen_image_ops.non_max_suppression_v3
+      for dtype in [np.float16, np.float32]:
+        boxes = math_ops.cast(boxes_tensor, dtype=dtype)
+        scores = math_ops.cast(scores_tensor, dtype=dtype)
+        selected_indices = gen_image_ops.non_max_suppression_v3(
+            boxes, scores, max_output_size, iou_threshold, score_threshold)
+        self.assertAllClose(selected_indices.shape, [1])
+      # gen_image_ops.non_max_suppression_v4.
+      for dtype in [np.float16, np.float32]:
+        boxes = math_ops.cast(boxes_tensor, dtype=dtype)
+        scores = math_ops.cast(scores_tensor, dtype=dtype)
+        selected_indices, _ = gen_image_ops.non_max_suppression_v4(
+            boxes, scores, max_output_size, iou_threshold, score_threshold)
+        self.assertAllClose(selected_indices.shape, [1])
       # gen_image_ops.non_max_suppression_v5.
       for dtype in [np.float16, np.float32]:
         boxes = math_ops.cast(boxes_tensor, dtype=dtype)
