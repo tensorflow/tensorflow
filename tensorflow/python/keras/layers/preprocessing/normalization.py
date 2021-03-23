@@ -33,7 +33,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.layers.experimental.preprocessing.Normalization', v1=[])
+@keras_export('keras.layers.experimental.preprocessing.Normalization')
 class Normalization(base_preprocessing_layer.PreprocessingLayer):
   """Feature-wise normalization of the data.
 
@@ -171,8 +171,7 @@ class Normalization(base_preprocessing_layer.PreprocessingLayer):
     if (self.mean_val is not None and self.variance_val is not None):
       mean_val = self.mean_val * np.ones(mean_and_var_shape)
       variance_val = self.variance_val * np.ones(mean_and_var_shape)
-      self.mean.assign(mean_val)
-      self.variance.assign(variance_val)
+      self.set_weights([mean_val, variance_val])
 
     self.built = True
 

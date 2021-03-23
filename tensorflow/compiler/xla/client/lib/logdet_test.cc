@@ -41,14 +41,17 @@ XLA_TEST_F(LogDetTest, Simple) {
       {10, 63, 166, 310},
   });
 
-  float expected = 14.1601f;
-
   xla::XlaOp a;
   auto a_data = CreateR2Parameter<float>(a_vals, 0, "a", &builder, &a);
-  xla::LogDet(a);
-
-  ComputeAndCompareR0<float>(&builder, expected, {a_data.get()},
-                             xla::ErrorSpec(1e-4));
+  xla::SignAndLogDet slogdet = xla::SLogDet(a);
+  xla::XlaOp logdet = xla::LogDet(a);
+  xla::Tuple(&builder, {slogdet.sign, slogdet.logdet, logdet});
+  xla::Literal expected = xla::LiteralUtil::MakeTupleOwned(
+      xla::LiteralUtil::CreateR0<float>(1.f),
+      xla::LiteralUtil::CreateR0<float>(14.1601f),
+      xla::LiteralUtil::CreateR0<float>(14.1601f));
+  ComputeAndCompareLiteral(&builder, expected, {a_data.get()},
+                           xla::ErrorSpec(1e-4));
 }
 
 XLA_TEST_F(LogDetTest, SimpleTriangle) {
@@ -61,14 +64,18 @@ XLA_TEST_F(LogDetTest, SimpleTriangle) {
       {4, 6, 8, 320},
   });
 
-  float expected = 15.9131355f;
-
   xla::XlaOp a;
   auto a_data = CreateR2Parameter<float>(a_vals, 0, "a", &builder, &a);
-  xla::LogDet(a);
+  xla::SignAndLogDet slogdet = xla::SLogDet(a);
+  xla::XlaOp logdet = xla::LogDet(a);
+  xla::Tuple(&builder, {slogdet.sign, slogdet.logdet, logdet});
+  xla::Literal expected = xla::LiteralUtil::MakeTupleOwned(
+      xla::LiteralUtil::CreateR0<float>(1.f),
+      xla::LiteralUtil::CreateR0<float>(15.9131355f),
+      xla::LiteralUtil::CreateR0<float>(15.9131355f));
 
-  ComputeAndCompareR0<float>(&builder, expected, {a_data.get()},
-                             xla::ErrorSpec(1e-4));
+  ComputeAndCompareLiteral(&builder, expected, {a_data.get()},
+                           xla::ErrorSpec(1e-4));
 }
 
 XLA_TEST_F(LogDetTest, SimpleBatched) {
@@ -87,19 +94,29 @@ XLA_TEST_F(LogDetTest, SimpleBatched) {
           {8, 82, 456, 106},
           {12, 48, 106, 62},
       },
+      {{2, 2, 3, 4}, {4, 5, 6, 7}, {7, 8, 9, 8}, {10, 11, 12, 13}},
+      {{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}},
   });
-
-  std::vector<float> expected = {14.1601, 14.3092};
 
   xla::XlaOp a;
   auto a_data = CreateR3Parameter<float>(a_vals, 0, "a", &builder, &a);
-  xla::LogDet(a);
+  xla::SignAndLogDet slogdet = xla::SLogDet(a);
+  xla::XlaOp logdet = xla::LogDet(a);
+  xla::Tuple(&builder, {slogdet.sign, slogdet.logdet, logdet});
+  xla::Literal expected = xla::LiteralUtil::MakeTupleOwned(
+      xla::LiteralUtil::CreateR1<float>({1.f, 1.f, -1.f, 0.f}),
+      xla::LiteralUtil::CreateR1<float>(
+          {14.1601f, 14.3092f, 2.4849f,
+           -std::numeric_limits<float>::infinity()}),
+      xla::LiteralUtil::CreateR1<float>(
+          {14.1601f, 14.3092f, std::numeric_limits<float>::quiet_NaN(),
+           -std::numeric_limits<float>::infinity()}));
 
-  ComputeAndCompareR1<float>(&builder, expected, {a_data.get()},
-                             xla::ErrorSpec(1e-4));
+  ComputeAndCompareLiteral(&builder, expected, {a_data.get()},
+                           xla::ErrorSpec(1e-4));
 }
 
-XLA_TEST_F(LogDetTest, LargerMatricesBatched) {
+XLA_TEST_F(LogDetTest, LogdetOfLargerMatricesBatched) {
   xla::XlaBuilder builder(TestName());
 
   xla::Array<float> a_vals = {
@@ -127,13 +144,18 @@ XLA_TEST_F(LogDetTest, LargerMatricesBatched) {
        {-3.5759, -1.5619, 2.4410, 1.3046, 4.2678, 7.3587, -4.0935},
        {-1.1187, 0.9150, -1.8253, 0.0390, -2.5684, -4.0778, 4.1447}}};
 
-  std::vector<float> expected = {8.93788053, 6.77846303, 7.4852403};
-
   xla::XlaOp a;
   auto a_data = CreateParameter<float>(a_vals, 0, "a", &builder, &a);
-  xla::LogDet(a);
-  ComputeAndCompareR1<float>(&builder, expected, {a_data.get()},
-                             xla::ErrorSpec(1e-4));
+  xla::SignAndLogDet slogdet = xla::SLogDet(a);
+  xla::XlaOp logdet = xla::LogDet(a);
+  xla::Tuple(&builder, {slogdet.sign, slogdet.logdet, logdet});
+  xla::Literal expected = xla::LiteralUtil::MakeTupleOwned(
+      xla::LiteralUtil::CreateR1<float>({1.f, 1.f, 1.f}),
+      xla::LiteralUtil::CreateR1<float>({8.93788053, 6.77846303, 7.4852403}),
+      xla::LiteralUtil::CreateR1<float>({8.93788053, 6.77846303, 7.4852403}));
+
+  ComputeAndCompareLiteral(&builder, expected, {a_data.get()},
+                           xla::ErrorSpec(1e-4));
 }
 
 }  // namespace

@@ -71,9 +71,19 @@ StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
     // adding the dimension the all-gather is operating on then perform the
     // canonicalization.
     if (real_data != ag->operand(0)) {
-      std::vector<int64> new_dimensions(real_data->shape().dimensions().begin(),
-                                        real_data->shape().dimensions().end());
-      new_dimensions[0] *= all_gather_participants;
+      std::vector<int64> new_dimensions;
+      new_dimensions.reserve(real_data->shape().dimensions_size() + 1);
+      new_dimensions.push_back(1);
+      new_dimensions.insert(new_dimensions.end(),
+                            real_data->shape().dimensions().begin(),
+                            real_data->shape().dimensions().end());
+      // Adding specialized all-gather dimension.
+      HloInstruction* ag_input =
+          comp->AddInstruction(HloInstruction::CreateReshape(
+              ShapeUtil::MakeShape(real_data->shape().element_type(),
+                                   new_dimensions),
+              real_data));
+      new_dimensions[0] = all_gather_participants;
       absl::optional<int64> new_channel_id =
           ag->channel_id() ? absl::make_optional(this->NextChannelId())
                            : absl::nullopt;
@@ -81,7 +91,7 @@ StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
           comp->AddInstruction(HloInstruction::CreateAllGather(
               ShapeUtil::MakeShape(real_data->shape().element_type(),
                                    new_dimensions),
-              real_data, /*all_gather_dimension=*/0, ag->replica_groups(),
+              ag_input, /*all_gather_dimension=*/0, ag->replica_groups(),
               ag->constrain_layout(), new_channel_id,
               ag->use_global_device_ids()));
       HloInstruction* new_formatting = comp->AddInstruction(

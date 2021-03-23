@@ -186,7 +186,7 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
 }
 
 void BroadcastFoldPass::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   auto func = getFunction();
 
   patterns.insert<ConvertResultsBroadcastableShapeOp>();

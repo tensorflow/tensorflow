@@ -217,6 +217,10 @@ void AddGraphExportLoweringPasses(OpPassManager& pm);
 // single op.
 std::unique_ptr<OperationPass<ModuleOp>> CreateVerifySuitableForExportPass();
 
+// Returns pass that prepares TPU computation to be legal for export to
+// TensorFlow.
+std::unique_ptr<OperationPass<FuncOp>>
+CreatePrepareTpuComputationForTfExportPass();
 }  // namespace TF
 
 namespace tf_executor {
@@ -260,7 +264,12 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateClusterOutliningPass();
 
 // Creates a pass that clusters ops into tf_device::ClusterOp regions
 // according to a policy specified by the pass options.
+//
+// See the documentation for the pass options in `tf_passes.td`.
 std::unique_ptr<FunctionPass> CreateClusterOpsByPolicyPass();
+std::unique_ptr<FunctionPass> CreateClusterOpsByPolicyPass(
+    ArrayRef<std::string> oplist, int min_cluster_size, StringRef algorithm,
+    StringRef policy_name);
 
 // A pass that decomposes composite resource operations into primitive ones like
 // ReadVariableOp, AssignVariableOp and other computations to facilitate
@@ -302,6 +311,10 @@ CreateMarkOpsForOutsideCompilationPass();
 
 // Creates a pass that merges control flow with similar predicates.
 std::unique_ptr<OperationPass<ModuleOp>> CreateMergeControlFlowPass();
+
+// Creates a pass that wraps each TensorFlow dialect with `device` attribute
+// in a `tf_device.launch` op with the same `device` attribute.
+std::unique_ptr<OperationPass<FuncOp>> CreateDeviceAttributeToLaunchPass();
 
 // Creates a pass that hoists a `tf_device.launch` body and assigns a `device`
 // attribute to each TensorFlow dialect op in the body based on the `device`

@@ -28,7 +28,7 @@ function install_pylint () {
   # TODO(mihaimaruseac): this is used in the release build in the same way,
   # maybe extract out to a common?
   sudo python3.8 -m pip install setuptools --upgrade
-  sudo python3.8 -m pip install pylint==2.6.2 astroid==2.5
+  sudo python3.8 -m pip install pylint==2.7.2
 }
 
 function run_sanity_checks () {

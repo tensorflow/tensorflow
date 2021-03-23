@@ -391,7 +391,7 @@ class TruncatedNormal(Initializer):
     mean: a python scalar or a scalar tensor. Mean of the random values
       to generate.
     stddev: a python scalar or a scalar tensor. Standard deviation of the
-      random values to generate.
+      random values to generate before truncation.
     seed: A Python integer. An initializer created with a given seed will
       always produce the same random tensor for a given shape and dtype.
   """

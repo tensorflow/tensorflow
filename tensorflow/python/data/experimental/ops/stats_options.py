@@ -24,6 +24,8 @@ from tensorflow.python.data.util import options
 from tensorflow.python.util.tf_export import tf_export
 
 
+# TODO(b/147325552): Remove this API after we switch to using C++ based
+# implementation for tf.data options (on 4/12/2021).
 @tf_export("data.experimental.StatsOptions")
 class StatsOptions(options.OptionsBase):
   """Represents options for collecting dataset stats using `StatsAggregator`.

@@ -31,7 +31,9 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h.inc"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -133,6 +135,15 @@ static LogicalResult Verify(AllReduceOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// CollectivePermuteOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(CollectivePermuteOp op) {
+  return mlir::hlo::VerifyCollectivePermuteSourceTargetPairs(
+      op, op.source_target_pairs());
+}
+
+//===----------------------------------------------------------------------===//
 // ConstOp.
 //===----------------------------------------------------------------------===//
 
@@ -146,13 +157,13 @@ struct EraseConstOp : public OpRewritePattern<ConstOp> {
   LogicalResult matchAndRewrite(ConstOp op,
                                 PatternRewriter& rewriter) const override {
     Value memref = op.output();
-    if (!memref.getDefiningOp<AllocOp>()) {
+    if (!memref.getDefiningOp<memref::AllocOp>()) {
       return failure();
     }
 
     // Check that all uses of the memref are either DeallocOps or this op.
     for (Operation* user : memref.getUsers())
-      if (user != op && !isa<DeallocOp>(user)) return failure();
+      if (user != op && !isa<memref::DeallocOp>(user)) return failure();
 
     rewriter.eraseOp(op);
     return success();

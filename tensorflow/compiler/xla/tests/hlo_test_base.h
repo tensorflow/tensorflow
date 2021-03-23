@@ -323,6 +323,11 @@ class HloTestBase : public ManifestCheckingTest {
 
   ErrorSpec error_spec_{0.0001};
 
+ protected:
+  // Helper functions to get test and reference platforms.
+  static se::Platform* GetReferencePlatform();
+  static se::Platform* GetTestPlatform();
+
  private:
   // Given the test module, makes a reference module that is ready to run on the
   // reference platform. This assumes that the given module is ready to run on

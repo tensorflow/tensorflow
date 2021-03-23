@@ -7,8 +7,7 @@ def if_cuda(if_true, if_false = []):
 
     """
     return select({
-        "@local_config_cuda//cuda:using_nvcc": if_true,
-        "@local_config_cuda//cuda:using_clang": if_true,
+        "@local_config_cuda//:is_cuda_enabled": if_true,
         "//conditions:default": if_false,
     })
 
@@ -96,3 +95,22 @@ def cuda_header_library(
 def cuda_library(copts = [], **kwargs):
     """Wrapper over cc_library which adds default CUDA options."""
     native.cc_library(copts = cuda_default_copts() + copts, **kwargs)
+
+EnableCudaInfo = provider()
+
+def _enable_cuda_flag_impl(ctx):
+    value = ctx.build_setting_value
+    if ctx.attr.enable_override:
+        print(
+            "\n\033[1;33mWarning:\033[0m '--define=using_cuda_nvcc' will be " +
+            "unsupported soon. Use '--@local_config_cuda//:enable_cuda' " +
+            "instead."
+        )
+        value = True
+    return EnableCudaInfo(value = value)
+
+enable_cuda_flag = rule(
+    implementation = _enable_cuda_flag_impl,
+    build_setting = config.bool(flag = True),
+    attrs = {"enable_override": attr.bool()},
+)

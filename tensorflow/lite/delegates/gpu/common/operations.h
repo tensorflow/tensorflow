@@ -49,7 +49,12 @@ enum class OperationType {
   ELU,
   EQUAL,
   EXP,
+  FLOOR,
+  FLOOR_DIV,
+  FLOOR_MOD,
   FULLY_CONNECTED,
+  FULLY_CONNECTED_INT8,
+  GATHER,
   GREATER,
   GREATER_EQUAL,
   HARD_SWISH,
@@ -91,6 +96,7 @@ enum class OperationType {
   SQUARED_DIFF,
   SUB,
   TANH,
+  TILE,
   TRANSPOSE,
 };
 
@@ -498,6 +504,16 @@ struct FullyConnectedAttributes {
   Tensor<Linear, DataType::FLOAT32> bias;
 };
 
+struct FullyConnectedInt8Attributes {
+  Tensor<OHWI, DataType::INT8> weights;
+  Tensor<Linear, DataType::FLOAT32> bias;
+  float scale;
+  int zero_point;
+};
+
+FullyConnectedAttributes DequatizeFullyConnectedAttr(
+    const FullyConnectedInt8Attributes& attr);
+
 // @return shape of a tensor after FullyConnected operation is applied to
 // the given input.
 BHWC CalculateOutputShape(const BHWC& input,
@@ -559,6 +575,10 @@ struct QuantizeAndDequantizeAttributes {
   float min = 0;
   float max = 0;
   float scale = 0;
+};
+
+struct GatherAttributes {
+  Axis axis = Axis::UNKNOWN;
 };
 
 }  // namespace gpu

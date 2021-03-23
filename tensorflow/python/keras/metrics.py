@@ -14,6 +14,7 @@
 # ==============================================================================
 # pylint: disable=unused-import
 # pylint: disable=g-classes-have-attributes
+# pylint: disable=g-doc-return-or-yield
 """Built-in metrics.
 """
 from __future__ import absolute_import
@@ -23,6 +24,7 @@ from __future__ import print_function
 import abc
 import math
 import types
+import warnings
 
 import numpy as np
 import six
@@ -56,6 +58,7 @@ from tensorflow.python.keras.losses import poisson
 from tensorflow.python.keras.losses import sparse_categorical_crossentropy
 from tensorflow.python.keras.losses import squared_hinge
 from tensorflow.python.keras.saving.saved_model import metric_serialization
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import metrics_utils
 from tensorflow.python.keras.utils import tf_inspect
@@ -70,7 +73,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import dispatch
@@ -246,13 +249,20 @@ class Metric(base_layer.Layer):
     """Returns the serializable config of the metric."""
     return {'name': self.name, 'dtype': self.dtype}
 
-  def reset_states(self):
+  def reset_state(self):
     """Resets all of the metric state variables.
 
     This function is called between epochs/steps,
     when a metric is evaluated during training.
     """
-    K.batch_set_value([(v, 0) for v in self.variables])
+    if not generic_utils.is_default(self.reset_states):
+      warnings.warn('Metric %s implements a `reset_states()` method; rename it '
+                    'to `reset_state()` (without the final "s"). The name '
+                    '`reset_states()` has been deprecated to improve API '
+                    'consistency.' % (self.__class__.__name__,))
+      return self.reset_states()
+    else:
+      K.batch_set_value([(v, 0) for v in self.variables])
 
   @abc.abstractmethod
   def update_state(self, *args, **kwargs):
@@ -285,13 +295,14 @@ class Metric(base_layer.Layer):
 
   ### For use by subclasses ###
   @doc_controls.for_subclass_implementers
-  def add_weight(self,
-                 name,
-                 shape=(),
-                 aggregation=tf_variables.VariableAggregation.SUM,
-                 synchronization=tf_variables.VariableSynchronization.ON_READ,
-                 initializer=None,
-                 dtype=None):
+  def add_weight(
+      self,
+      name,
+      shape=(),
+      aggregation=variables_module.VariableAggregation.SUM,
+      synchronization=variables_module.VariableSynchronization.ON_READ,
+      initializer=None,
+      dtype=None):
     """Adds state variable. Only for use by subclasses."""
     if distribute_ctx.has_strategy():
       strategy = distribute_ctx.get_strategy()
@@ -300,7 +311,7 @@ class Metric(base_layer.Layer):
 
     # TODO(b/120571621): Make `ON_READ` work with Keras metrics on TPU.
     if K.is_tpu_strategy(strategy):
-      synchronization = tf_variables.VariableSynchronization.ON_WRITE
+      synchronization = variables_module.VariableSynchronization.ON_WRITE
 
     with ops.init_scope():
       return super(Metric, self).add_weight(
@@ -344,6 +355,13 @@ class Metric(base_layer.Layer):
   def _trackable_saved_model_saver(self):
     return metric_serialization.MetricSavedModelSaver(self)
 
+  @generic_utils.default
+  @doc_controls.do_not_generate_docs
+  def reset_states(self):
+    # Backwards compatibility alias of `reset_state`. New classes should
+    # only implement `reset_state`.
+    return self.reset_state()
+
 
 class Reduce(Metric):
   """Encapsulates metrics that perform a reduce operation on the values.
@@ -377,7 +395,15 @@ class Reduce(Metric):
     [values], sample_weight = \
         metrics_utils.ragged_assert_compatible_and_get_flat_values(
             [values], sample_weight)
-    values = math_ops.cast(values, self._dtype)
+    try:
+      values = math_ops.cast(values, self._dtype)
+    except (ValueError, TypeError):
+      msg = ('The output of a metric function can only be a single Tensor. '
+             'Got: %s' % (values,))
+      if isinstance(values, dict):
+        msg += ('. To return a dict of values, implement a custom Metric '
+                'subclass.')
+      raise RuntimeError(msg)
     if sample_weight is not None:
       sample_weight = math_ops.cast(sample_weight, self._dtype)
       # Update dimensions of weights to match with values if possible.
@@ -496,7 +522,7 @@ class Mean(Reduce):
   >>> m.update_state([1, 3, 5, 7])
   >>> m.result().numpy()
   4.0
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([1, 3, 5, 7], sample_weight=[1, 1, 0, 0])
   >>> m.result().numpy()
   2.0
@@ -690,7 +716,7 @@ class Accuracy(MeanMetricWrapper):
   >>> m.result().numpy()
   0.75
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([[1], [2], [3], [4]], [[0], [2], [3], [4]],
   ...                sample_weight=[1, 1, 0, 0])
   >>> m.result().numpy()
@@ -734,7 +760,7 @@ class BinaryAccuracy(MeanMetricWrapper):
   >>> m.result().numpy()
   0.75
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([[1], [1], [0], [0]], [[0.98], [1], [0], [0.6]],
   ...                sample_weight=[1, 0, 0, 1])
   >>> m.result().numpy()
@@ -784,7 +810,7 @@ class CategoricalAccuracy(MeanMetricWrapper):
   >>> m.result().numpy()
   0.5
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([[0, 0, 1], [0, 1, 0]], [[0.1, 0.9, 0.8],
   ...                 [0.05, 0.95, 0]],
   ...                sample_weight=[0.7, 0.3])
@@ -836,7 +862,7 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
   >>> m.result().numpy()
   0.5
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([[2], [1]], [[0.1, 0.6, 0.3], [0.05, 0.95, 0]],
   ...                sample_weight=[0.7, 0.3])
   >>> m.result().numpy()
@@ -875,7 +901,7 @@ class TopKCategoricalAccuracy(MeanMetricWrapper):
   >>> m.result().numpy()
   0.5
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([[0, 0, 1], [0, 1, 0]],
   ...                [[0.1, 0.9, 0.8], [0.05, 0.95, 0]],
   ...                sample_weight=[0.7, 0.3])
@@ -913,7 +939,7 @@ class SparseTopKCategoricalAccuracy(MeanMetricWrapper):
   >>> m.result().numpy()
   0.5
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([2, 1], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]],
   ...                sample_weight=[0.7, 0.3])
   >>> m.result().numpy()
@@ -990,7 +1016,7 @@ class _ConfusionMatrixConditionCount(Metric):
       result = self.accumulator
     return ops.convert_to_tensor_v2_with_dispatch(result)
 
-  def reset_states(self):
+  def reset_state(self):
     num_thresholds = len(to_list(self.thresholds))
     K.batch_set_value(
         [(v, np.zeros((num_thresholds,))) for v in self.variables])
@@ -1028,7 +1054,7 @@ class FalsePositives(_ConfusionMatrixConditionCount):
   >>> m.result().numpy()
   2.0
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([0, 1, 0, 0], [0, 0, 1, 1], sample_weight=[0, 0, 1, 0])
   >>> m.result().numpy()
   1.0
@@ -1077,7 +1103,7 @@ class FalseNegatives(_ConfusionMatrixConditionCount):
   >>> m.result().numpy()
   2.0
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([0, 1, 1, 1], [0, 1, 0, 0], sample_weight=[0, 0, 1, 0])
   >>> m.result().numpy()
   1.0
@@ -1126,7 +1152,7 @@ class TrueNegatives(_ConfusionMatrixConditionCount):
   >>> m.result().numpy()
   2.0
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([0, 1, 0, 0], [1, 1, 0, 0], sample_weight=[0, 0, 1, 0])
   >>> m.result().numpy()
   1.0
@@ -1175,7 +1201,7 @@ class TruePositives(_ConfusionMatrixConditionCount):
   >>> m.result().numpy()
   2.0
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([0, 1, 1, 1], [1, 0, 1, 1], sample_weight=[0, 0, 1, 0])
   >>> m.result().numpy()
   1.0
@@ -1240,7 +1266,7 @@ class Precision(Metric):
   >>> m.result().numpy()
   0.6666667
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([0, 1, 1, 1], [1, 0, 1, 1], sample_weight=[0, 0, 1, 0])
   >>> m.result().numpy()
   1.0
@@ -1320,7 +1346,7 @@ class Precision(Metric):
                                  self.true_positives + self.false_positives)
     return result[0] if len(self.thresholds) == 1 else result
 
-  def reset_states(self):
+  def reset_state(self):
     num_thresholds = len(to_list(self.thresholds))
     K.batch_set_value(
         [(v, np.zeros((num_thresholds,))) for v in self.variables])
@@ -1377,7 +1403,7 @@ class Recall(Metric):
   >>> m.result().numpy()
   0.6666667
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([0, 1, 1, 1], [1, 0, 1, 1], sample_weight=[0, 0, 1, 0])
   >>> m.result().numpy()
   1.0
@@ -1445,7 +1471,7 @@ class Recall(Metric):
                                  self.true_positives + self.false_negatives)
     return result[0] if len(self.thresholds) == 1 else result
 
-  def reset_states(self):
+  def reset_state(self):
     num_thresholds = len(to_list(self.thresholds))
     K.batch_set_value(
         [(v, np.zeros((num_thresholds,))) for v in self.variables])
@@ -1468,11 +1494,17 @@ class SensitivitySpecificityBase(Metric):
   [the following](https://en.wikipedia.org/wiki/Sensitivity_and_specificity).
   """
 
-  def __init__(self, value, num_thresholds=200, name=None, dtype=None):
+  def __init__(self,
+               value,
+               num_thresholds=200,
+               class_id=None,
+               name=None,
+               dtype=None):
     super(SensitivitySpecificityBase, self).__init__(name=name, dtype=dtype)
     if num_thresholds <= 0:
       raise ValueError('`num_thresholds` must be > 0.')
     self.value = value
+    self.class_id = class_id
     self.true_positives = self.add_weight(
         'true_positives',
         shape=(num_thresholds,),
@@ -1521,12 +1553,18 @@ class SensitivitySpecificityBase(Metric):
         y_true,
         y_pred,
         thresholds=self.thresholds,
+        class_id=self.class_id,
         sample_weight=sample_weight)
 
-  def reset_states(self):
+  def reset_state(self):
     num_thresholds = len(self.thresholds)
     K.batch_set_value(
         [(v, np.zeros((num_thresholds,))) for v in self.variables])
+
+  def get_config(self):
+    config = {'class_id': self.class_id}
+    base_config = super(SensitivitySpecificityBase, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
   def _find_max_under_constraint(self, constrained, dependent, predicate):
     """Returns the maximum of dependent_statistic that satisfies the constraint.
@@ -1571,6 +1609,11 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
 
+  If `class_id` is specified, we calculate precision by considering only the
+  entries in the batch for which `class_id` is above the threshold predictions,
+  and computing the fraction of them for which `class_id` is indeed a correct
+  label.
+
   For additional information about specificity and sensitivity, see
   [the following](https://en.wikipedia.org/wiki/Sensitivity_and_specificity).
 
@@ -1578,6 +1621,9 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
     specificity: A scalar value in range `[0, 1]`.
     num_thresholds: (Optional) Defaults to 200. The number of thresholds to
       use for matching the given specificity.
+    class_id: (Optional) Integer class ID for which we want binary metrics.
+      This must be in the half-open interval `[0, num_classes)`, where
+      `num_classes` is the last dimension of predictions.
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
 
@@ -1588,7 +1634,7 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
   >>> m.result().numpy()
   0.5
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([0, 0, 0, 1, 1], [0, 0.3, 0.8, 0.3, 0.8],
   ...                sample_weight=[1, 1, 2, 2, 1])
   >>> m.result().numpy()
@@ -1604,13 +1650,22 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
   ```
   """
 
-  def __init__(self, specificity, num_thresholds=200, name=None, dtype=None):
+  def __init__(self,
+               specificity,
+               num_thresholds=200,
+               class_id=None,
+               name=None,
+               dtype=None):
     if specificity < 0 or specificity > 1:
       raise ValueError('`specificity` must be in the range [0, 1].')
     self.specificity = specificity
     self.num_thresholds = num_thresholds
     super(SensitivityAtSpecificity, self).__init__(
-        specificity, num_thresholds=num_thresholds, name=name, dtype=dtype)
+        specificity,
+        num_thresholds=num_thresholds,
+        class_id=class_id,
+        name=name,
+        dtype=dtype)
 
   def result(self):
     specificities = math_ops.div_no_nan(
@@ -1646,6 +1701,11 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
 
+  If `class_id` is specified, we calculate precision by considering only the
+  entries in the batch for which `class_id` is above the threshold predictions,
+  and computing the fraction of them for which `class_id` is indeed a correct
+  label.
+
   For additional information about specificity and sensitivity, see
   [the following](https://en.wikipedia.org/wiki/Sensitivity_and_specificity).
 
@@ -1653,6 +1713,9 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
     sensitivity: A scalar value in range `[0, 1]`.
     num_thresholds: (Optional) Defaults to 200. The number of thresholds to
       use for matching the given sensitivity.
+    class_id: (Optional) Integer class ID for which we want binary metrics.
+      This must be in the half-open interval `[0, num_classes)`, where
+      `num_classes` is the last dimension of predictions.
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
 
@@ -1663,7 +1726,7 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
   >>> m.result().numpy()
   0.66666667
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([0, 0, 0, 1, 1], [0, 0.3, 0.8, 0.3, 0.8],
   ...                sample_weight=[1, 1, 2, 2, 2])
   >>> m.result().numpy()
@@ -1679,13 +1742,22 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
   ```
   """
 
-  def __init__(self, sensitivity, num_thresholds=200, name=None, dtype=None):
+  def __init__(self,
+               sensitivity,
+               num_thresholds=200,
+               class_id=None,
+               name=None,
+               dtype=None):
     if sensitivity < 0 or sensitivity > 1:
       raise ValueError('`sensitivity` must be in the range [0, 1].')
     self.sensitivity = sensitivity
     self.num_thresholds = num_thresholds
     super(SpecificityAtSensitivity, self).__init__(
-        sensitivity, num_thresholds=num_thresholds, name=name, dtype=dtype)
+        sensitivity,
+        num_thresholds=num_thresholds,
+        class_id=class_id,
+        name=name,
+        dtype=dtype)
 
   def result(self):
     sensitivities = math_ops.div_no_nan(
@@ -1716,10 +1788,18 @@ class PrecisionAtRecall(SensitivitySpecificityBase):
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
 
+  If `class_id` is specified, we calculate precision by considering only the
+  entries in the batch for which `class_id` is above the threshold predictions,
+  and computing the fraction of them for which `class_id` is indeed a correct
+  label.
+
   Args:
     recall: A scalar value in range `[0, 1]`.
     num_thresholds: (Optional) Defaults to 200. The number of thresholds to
       use for matching the given recall.
+    class_id: (Optional) Integer class ID for which we want binary metrics.
+      This must be in the half-open interval `[0, num_classes)`, where
+      `num_classes` is the last dimension of predictions.
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
 
@@ -1730,7 +1810,7 @@ class PrecisionAtRecall(SensitivitySpecificityBase):
   >>> m.result().numpy()
   0.5
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([0, 0, 0, 1, 1], [0, 0.3, 0.8, 0.3, 0.8],
   ...                sample_weight=[2, 2, 2, 1, 1])
   >>> m.result().numpy()
@@ -1746,7 +1826,12 @@ class PrecisionAtRecall(SensitivitySpecificityBase):
   ```
   """
 
-  def __init__(self, recall, num_thresholds=200, name=None, dtype=None):
+  def __init__(self,
+               recall,
+               num_thresholds=200,
+               class_id=None,
+               name=None,
+               dtype=None):
     if recall < 0 or recall > 1:
       raise ValueError('`recall` must be in the range [0, 1].')
     self.recall = recall
@@ -1754,6 +1839,7 @@ class PrecisionAtRecall(SensitivitySpecificityBase):
     super(PrecisionAtRecall, self).__init__(
         value=recall,
         num_thresholds=num_thresholds,
+        class_id=class_id,
         name=name,
         dtype=dtype)
 
@@ -1786,10 +1872,18 @@ class RecallAtPrecision(SensitivitySpecificityBase):
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
 
+  If `class_id` is specified, we calculate precision by considering only the
+  entries in the batch for which `class_id` is above the threshold predictions,
+  and computing the fraction of them for which `class_id` is indeed a correct
+  label.
+
   Args:
     precision: A scalar value in range `[0, 1]`.
     num_thresholds: (Optional) Defaults to 200. The number of thresholds to
       use for matching the given precision.
+    class_id: (Optional) Integer class ID for which we want binary metrics.
+      This must be in the half-open interval `[0, num_classes)`, where
+      `num_classes` is the last dimension of predictions.
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
 
@@ -1800,7 +1894,7 @@ class RecallAtPrecision(SensitivitySpecificityBase):
   >>> m.result().numpy()
   0.5
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9],
   ...                sample_weight=[1, 0, 0, 1])
   >>> m.result().numpy()
@@ -1816,7 +1910,12 @@ class RecallAtPrecision(SensitivitySpecificityBase):
   ```
   """
 
-  def __init__(self, precision, num_thresholds=200, name=None, dtype=None):
+  def __init__(self,
+               precision,
+               num_thresholds=200,
+               class_id=None,
+               name=None,
+               dtype=None):
     if precision < 0 or precision > 1:
       raise ValueError('`precision` must be in the range [0, 1].')
     self.precision = precision
@@ -1824,6 +1923,7 @@ class RecallAtPrecision(SensitivitySpecificityBase):
     super(RecallAtPrecision, self).__init__(
         value=precision,
         num_thresholds=num_thresholds,
+        class_id=class_id,
         name=name,
         dtype=dtype)
 
@@ -1938,7 +2038,7 @@ class AUC(Metric):
   >>> m.result().numpy()
   0.75
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9],
   ...                sample_weight=[1, 0, 0, 1])
   >>> m.result().numpy()
@@ -2286,7 +2386,7 @@ class AUC(Metric):
           math_ops.multiply(x[:self.num_thresholds - 1] - x[1:], heights),
           name=self.name)
 
-  def reset_states(self):
+  def reset_state(self):
     if self.multi_label:
       K.batch_set_value([(v, np.zeros((self.num_thresholds, self._num_labels)))
                          for v in self.variables])
@@ -2344,7 +2444,7 @@ class CosineSimilarity(MeanMetricWrapper):
   >>> m.result().numpy()
   0.49999997
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([[0., 1.], [1., 1.]], [[1., 0.], [1., 1.]],
   ...                sample_weight=[0.3, 0.7])
   >>> m.result().numpy()
@@ -2380,7 +2480,7 @@ class MeanAbsoluteError(MeanMetricWrapper):
   >>> m.result().numpy()
   0.25
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
   ...                sample_weight=[1, 0])
   >>> m.result().numpy()
@@ -2416,7 +2516,7 @@ class MeanAbsolutePercentageError(MeanMetricWrapper):
   >>> m.result().numpy()
   250000000.0
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
   ...                sample_weight=[1, 0])
   >>> m.result().numpy()
@@ -2452,7 +2552,7 @@ class MeanSquaredError(MeanMetricWrapper):
   >>> m.result().numpy()
   0.25
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
   ...                sample_weight=[1, 0])
   >>> m.result().numpy()
@@ -2488,7 +2588,7 @@ class MeanSquaredLogarithmicError(MeanMetricWrapper):
   >>> m.result().numpy()
   0.12011322
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
   ...                sample_weight=[1, 0])
   >>> m.result().numpy()
@@ -2527,7 +2627,7 @@ class Hinge(MeanMetricWrapper):
   >>> m.result().numpy()
   1.3
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]],
   ...                sample_weight=[1, 0])
   >>> m.result().numpy()
@@ -2562,7 +2662,7 @@ class SquaredHinge(MeanMetricWrapper):
   >>> m.result().numpy()
   1.86
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]],
   ...                sample_weight=[1, 0])
   >>> m.result().numpy()
@@ -2597,7 +2697,7 @@ class CategoricalHinge(MeanMetricWrapper):
   >>> m.result().numpy()
   1.4000001
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]],
   ...                sample_weight=[1, 0])
   >>> m.result().numpy()
@@ -2628,7 +2728,7 @@ class RootMeanSquaredError(Mean):
   >>> m.result().numpy()
   0.5
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
   ...                sample_weight=[1, 0])
   >>> m.result().numpy()
@@ -2689,7 +2789,7 @@ class LogCoshError(MeanMetricWrapper):
   >>> m.result().numpy()
   0.10844523
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
   ...                sample_weight=[1, 0])
   >>> m.result().numpy()
@@ -2725,7 +2825,7 @@ class Poisson(MeanMetricWrapper):
   >>> m.result().numpy()
   0.49999997
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
   ...                sample_weight=[1, 0])
   >>> m.result().numpy()
@@ -2761,7 +2861,7 @@ class KLDivergence(MeanMetricWrapper):
   >>> m.result().numpy()
   0.45814306
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]],
   ...                sample_weight=[1, 0])
   >>> m.result().numpy()
@@ -2814,7 +2914,7 @@ class MeanIoU(Metric):
   >>> m.result().numpy()
   0.33333334
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([0, 0, 1, 1], [0, 1, 0, 1],
   ...                sample_weight=[0.3, 0.3, 0.3, 0.1])
   >>> m.result().numpy()
@@ -2902,7 +3002,7 @@ class MeanIoU(Metric):
     return math_ops.div_no_nan(
         math_ops.reduce_sum(iou, name='mean_iou'), num_valid_entries)
 
-  def reset_states(self):
+  def reset_state(self):
     K.set_value(self.total_cm, np.zeros((self.num_classes, self.num_classes)))
 
   def get_config(self):
@@ -3029,7 +3129,7 @@ class MeanTensor(Metric):
           )
     return math_ops.div_no_nan(self.total, self.count)
 
-  def reset_states(self):
+  def reset_state(self):
     if self._built:
       K.batch_set_value(
           [(v, np.zeros(self._shape.as_list())) for v in self.variables])
@@ -3059,7 +3159,7 @@ class BinaryCrossentropy(MeanMetricWrapper):
   >>> m.result().numpy()
   0.81492424
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]],
   ...                sample_weight=[1, 0])
   >>> m.result().numpy()
@@ -3122,7 +3222,7 @@ class CategoricalCrossentropy(MeanMetricWrapper):
   >>> m.result().numpy()
   1.1769392
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([[0, 1, 0], [0, 0, 1]],
   ...                [[0.05, 0.95, 0], [0.1, 0.8, 0.1]],
   ...                sample_weight=tf.constant([0.3, 0.7]))
@@ -3193,7 +3293,7 @@ class SparseCategoricalCrossentropy(MeanMetricWrapper):
   >>> m.result().numpy()
   1.1769392
 
-  >>> m.reset_states()
+  >>> m.reset_state()
   >>> m.update_state([1, 2],
   ...                [[0.05, 0.95, 0], [0.1, 0.8, 0.1]],
   ...                sample_weight=tf.constant([0.3, 0.7]))

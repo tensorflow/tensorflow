@@ -1,31 +1,48 @@
 load(":build_defs.bzl", "cuda_header_library")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@bazel_skylib//lib:selects.bzl", "selects")
 
 licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
 
 package(default_visibility = ["//visibility:public"])
 
-config_setting(
-    name = "using_nvcc",
-    values = {
-        "define": "using_cuda_nvcc=true",
-    },
+# Config setting whether TensorFlow is built with CUDA support using clang.
+#
+# TODO(b/174244321), DEPRECATED: this target will be removed when all users
+# have been converted to :is_cuda_enabled (most) or :is_cuda_compiler_clang.
+selects.config_setting_group(
+    name = "using_clang",
+    match_all = [
+        "@local_config_cuda//:is_cuda_enabled",
+        "@local_config_cuda//:is_cuda_compiler_clang",
+    ],
 )
 
-config_setting(
-    name = "using_clang",
-    values = {
-        "define": "using_cuda_clang=true",
-    },
+# Config setting whether TensorFlow is built with CUDA support using nvcc.
+#
+# TODO(b/174244321), DEPRECATED: this target will be removed when all users
+# have been converted to :is_cuda_enabled (most) or :is_cuda_compiler_nvcc.
+selects.config_setting_group(
+    name = "using_nvcc",
+    match_all = [
+        "@local_config_cuda//:is_cuda_enabled",
+        "@local_config_cuda//:is_cuda_compiler_nvcc",
+    ],
 )
 
 # Equivalent to using_clang && -c opt.
-config_setting(
+selects.config_setting_group(
     name = "using_clang_opt",
-    values = {
-        "define": "using_cuda_clang=true",
-        "compilation_mode": "opt",
-    },
+    match_all = [
+        ":using_clang",
+        ":_opt",
+    ],
+)
+
+config_setting(
+    name = "_opt",
+    values = {"compilation_mode": "opt"},
+    visibility = ["//visibility:private"],
 )
 
 # Provides CUDA headers for '#include "third_party/gpus/cuda/include/cuda.h"'

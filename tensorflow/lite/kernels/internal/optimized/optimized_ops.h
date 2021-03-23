@@ -64,8 +64,6 @@ namespace tflite {
 namespace optimized_ops {
 
 // Unoptimized reference ops:
-using reference_ops::ArgMax;
-using reference_ops::ArgMinMax;
 using reference_ops::Broadcast4DSlowGreater;
 using reference_ops::Broadcast4DSlowGreaterEqual;
 using reference_ops::Broadcast4DSlowGreaterEqualWithScaling;
@@ -7728,6 +7726,238 @@ inline void BroadcastPReluDispatch(
   BinaryBroadcastFiveFold(params, input_shape, input_data, alpha_shape,
                           alpha_data, output_shape, output_data,
                           PReluElementWise, PReluScalarBroadcast);
+}
+
+// Returns the index with minimum value within `input_data`.
+// If there is a tie, returns the smaller index.
+template <typename T>
+inline int ArgMinVector(const T* input_data, int size) {
+  T min_value = input_data[0];
+  int min_index = 0;
+  for (int i = 1; i < size; ++i) {
+    const T curr_value = input_data[i];
+    if (curr_value < min_value) {
+      min_value = curr_value;
+      min_index = i;
+    }
+  }
+  return min_index;
+}
+
+// Returns the index with maximum value within `input_data`.
+// If there is a tie, returns the smaller index.
+template <typename T>
+inline int ArgMaxVector(const T* input_data, int size) {
+  T max_value = input_data[0];
+  int max_index = 0;
+  for (int i = 1; i < size; ++i) {
+    const T curr_value = input_data[i];
+    if (curr_value > max_value) {
+      max_value = curr_value;
+      max_index = i;
+    }
+  }
+  return max_index;
+}
+
+template <>
+inline int ArgMinVector(const float* input_data, int size) {
+  int32_t min_index = 0;
+  float min_value = input_data[0];
+  int32_t i = 1;
+#ifdef USE_NEON
+  if (size >= 4) {
+    float32x4_t min_value_f32x4 = vld1q_f32(input_data);
+    const int32_t index_init[4] = {0, 1, 2, 3};
+    int32x4_t min_index_s32x4 = vld1q_s32(index_init);
+    int32x4_t index_s32x4 = min_index_s32x4;
+    int32x4_t inc = vdupq_n_s32(4);
+    for (i = 4; i <= size - 4; i += 4) {
+      // Increase indices by 4.
+      index_s32x4 = vaddq_s32(index_s32x4, inc);
+      float32x4_t v = vld1q_f32(&input_data[i]);
+      uint32x4_t mask = vcltq_f32(v, min_value_f32x4);
+      min_value_f32x4 = vminq_f32(min_value_f32x4, v);
+      min_index_s32x4 = vbslq_s32(mask, index_s32x4, min_index_s32x4);
+    }
+    // Find min element within float32x4_t.
+#ifdef __aarch64__
+    min_value = vminvq_f32(min_value_f32x4);
+#else
+    float32x2_t min_value_f32x2 = vpmin_f32(vget_low_f32(min_value_f32x4),
+                                            vget_high_f32(min_value_f32x4));
+    min_value_f32x2 = vpmin_f32(min_value_f32x2, min_value_f32x2);
+    min_value = vget_lane_f32(min_value_f32x2, 0);
+#endif  // __aarch64__
+    // Mask indices of non-min values with max int32_t.
+    float32x4_t fill_min_value_f32x4 = vdupq_n_f32(min_value);
+    uint32x4_t mask = vceqq_f32(min_value_f32x4, fill_min_value_f32x4);
+    int32x4_t all_set = vdupq_n_s32(std::numeric_limits<int>::max());
+    min_index_s32x4 = vbslq_s32(mask, min_index_s32x4, all_set);
+    // Find min index of min values.
+#ifdef __aarch64__
+    min_index = vminvq_s32(min_index_s32x4);
+#else
+    int32x2_t min_index_s32x2 = vpmin_s32(vget_low_s32(min_index_s32x4),
+                                          vget_high_s32(min_index_s32x4));
+    min_index_s32x2 = vpmin_s32(min_index_s32x2, min_index_s32x2);
+    min_index = vget_lane_s32(min_index_s32x2, 0);
+#endif  // __aarch64__
+  }
+#endif  // USE_NEON
+  // Leftover loop.
+  for (; i < size; ++i) {
+    const float curr_value = input_data[i];
+    if (curr_value < min_value) {
+      min_value = curr_value;
+      min_index = i;
+    }
+  }
+  return min_index;
+}
+
+template <>
+inline int ArgMaxVector(const float* input_data, int size) {
+  int32_t max_index = 0;
+  float max_value = input_data[0];
+  int32_t i = 1;
+#ifdef USE_NEON
+  if (size >= 4) {
+    float32x4_t max_value_f32x4 = vld1q_f32(input_data);
+    const int32_t index_init[4] = {0, 1, 2, 3};
+    int32x4_t max_index_s32x4 = vld1q_s32(index_init);
+    int32x4_t index_s32x4 = max_index_s32x4;
+    int32x4_t inc = vdupq_n_s32(4);
+    for (i = 4; i <= size - 4; i += 4) {
+      // Increase indices by 4.
+      index_s32x4 = vaddq_s32(index_s32x4, inc);
+      float32x4_t v = vld1q_f32(&input_data[i]);
+      uint32x4_t mask = vcgtq_f32(v, max_value_f32x4);
+      max_value_f32x4 = vmaxq_f32(max_value_f32x4, v);
+      max_index_s32x4 = vbslq_s32(mask, index_s32x4, max_index_s32x4);
+    }
+    // Find max element within float32x4_t.
+#ifdef __aarch64__
+    max_value = vmaxvq_f32(max_value_f32x4);
+#else
+    float32x2_t max_value_f32x2 = vpmax_f32(vget_low_f32(max_value_f32x4),
+                                            vget_high_f32(max_value_f32x4));
+    max_value_f32x2 = vpmax_f32(max_value_f32x2, max_value_f32x2);
+    max_value = vget_lane_f32(max_value_f32x2, 0);
+#endif  // __aarch64__
+    // Mask indices of non-max values with max int32_t.
+    float32x4_t fill_max_value_f32x4 = vdupq_n_f32(max_value);
+    uint32x4_t mask = vceqq_f32(max_value_f32x4, fill_max_value_f32x4);
+    int32x4_t all_set = vdupq_n_s32(std::numeric_limits<int>::max());
+    max_index_s32x4 = vbslq_s32(mask, max_index_s32x4, all_set);
+    // Find min index of max values.
+#ifdef __aarch64__
+    max_index = vminvq_s32(max_index_s32x4);
+#else
+    int32x2_t max_index_s32x2 = vpmin_s32(vget_low_s32(max_index_s32x4),
+                                          vget_high_s32(max_index_s32x4));
+    max_index_s32x2 = vpmin_s32(max_index_s32x2, max_index_s32x2);
+    max_index = vget_lane_s32(max_index_s32x2, 0);
+#endif  // __aarch64__
+  }
+#endif  // USE_NEON
+  // Leftover loop.
+  for (; i < size; ++i) {
+    const float curr_value = input_data[i];
+    if (curr_value > max_value) {
+      max_value = curr_value;
+      max_index = i;
+    }
+  }
+  return max_index;
+}
+
+// Specializes ArgMinMax function with axis=dims-1.
+// In this case, ArgMinMax reduction is applied on contiguous memory.
+template <typename T1, typename T2, bool is_arg_max>
+inline void ArgMinMaxLastAxis(const RuntimeShape& input_shape,
+                              const T1* input_data,
+                              const RuntimeShape& output_shape,
+                              T2* output_data) {
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 2);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 1);
+  TFLITE_DCHECK_EQ(input_shape.Dims(0), output_shape.Dims(0));
+
+  int outer_size = input_shape.Dims(0);
+  int axis_size = input_shape.Dims(1);
+  for (int outer = 0; outer < outer_size; ++outer) {
+    if (is_arg_max) {
+      output_data[outer] = static_cast<T2>(
+          ArgMaxVector<T1>(input_data + outer * axis_size, axis_size));
+    } else {
+      output_data[outer] = static_cast<T2>(
+          ArgMinVector<T1>(input_data + outer * axis_size, axis_size));
+    }
+  }
+}
+
+template <typename T1, typename T2, typename T3>
+inline void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
+                      const T3* input2_data, const RuntimeShape& output_shape,
+                      T2* output_data, const bool is_arg_max) {
+  ruy::profiler::ScopeLabel label("ArgMinMax");
+
+  TFLITE_DCHECK_GT(input1_shape.DimensionsCount(), 0);
+  TFLITE_DCHECK_EQ(input1_shape.DimensionsCount() - 1,
+                   output_shape.DimensionsCount());
+  int axis = input2_data[0];
+  if (axis < 0) {
+    axis += input1_shape.DimensionsCount();
+  }
+  const int axis_size = input1_shape.Dims(axis);
+
+  int outer_size = 1;
+  for (int i = 0; i < axis; ++i) {
+    TFLITE_DCHECK_EQ(input1_shape.Dims(i), output_shape.Dims(i));
+    outer_size *= input1_shape.Dims(i);
+  }
+
+  int inner_size = 1;
+  const int dims_count = input1_shape.DimensionsCount();
+  for (int i = axis + 1; i < dims_count; ++i) {
+    TFLITE_DCHECK_EQ(input1_shape.Dims(i), output_shape.Dims(i - 1));
+    inner_size *= input1_shape.Dims(i);
+  }
+
+  // Call specialized function when axis=dims-1. So far, only float32 is
+  // optimized so reroute to specialized function only when T1 is float32.
+  if (inner_size == 1 && std::is_same<T1, float>::value) {
+    if (is_arg_max) {
+      ArgMinMaxLastAxis<T1, T2, /*is_arg_max=*/true>(
+          {outer_size, axis_size}, input1_data, {outer_size}, output_data);
+    } else {
+      ArgMinMaxLastAxis<T1, T2, /*is_arg_max=*/false>(
+          {outer_size, axis_size}, input1_data, {outer_size}, output_data);
+    }
+    return;
+  }
+
+  reference_ops::ArgMinMax(input1_shape, input1_data, input2_data, output_shape,
+                           output_data, is_arg_max);
+}
+
+template <typename T1, typename T2, typename T3>
+void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
+            const T3* input2_data, const RuntimeShape& output_shape,
+            T2* output_data) {
+  ArgMinMax(input1_shape, input1_data, input2_data, output_shape, output_data,
+            /*is_arg_max=*/true);
+}
+
+// Convenience version that allows, for example, generated-code calls to be
+// the same as other binary ops.
+// For backward compatibility, reference_ops has ArgMax function.
+template <typename T1, typename T2, typename T3>
+inline void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
+                   const RuntimeShape& input2_shape, const T3* input2_data,
+                   const RuntimeShape& output_shape, T2* output_data) {
+  // Drop shape of second input: not needed.
+  ArgMax(input1_shape, input1_data, input2_data, output_shape, output_data);
 }
 
 }  // namespace optimized_ops

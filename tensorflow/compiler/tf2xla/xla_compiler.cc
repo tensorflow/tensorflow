@@ -807,7 +807,7 @@ Status XlaCompiler::CompileFunction(
   MlirBridgeRolloutPolicy policy = MlirBridgeRolloutPolicy::kDisabledByUser;
   if (options.is_entry_computation) {
     policy = GetMlirBridgeRolloutPolicy(
-        *graph, config_proto,
+        *graph, /*function_library=*/nullptr, config_proto,
         /*uses_uninitialized_resource_args=*/AnyUninitializedResourceArg(args));
   }
   if (policy == MlirBridgeRolloutPolicy::kEnabledByUser) {

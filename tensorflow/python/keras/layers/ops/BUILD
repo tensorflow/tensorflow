@@ -19,6 +19,7 @@ py_library(
     srcs = ["core.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:standard_ops",

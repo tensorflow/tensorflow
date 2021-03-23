@@ -148,6 +148,13 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def("DotGeneral", &DotGeneral, py::arg("lhs"), py::arg("rhs"),
           py::arg("dimension_numbers"), py::arg("precision_config") = nullptr,
           py::arg("preferred_element_type") = absl::nullopt);
+  ops.def(
+      "DynamicReshape",
+      static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>,
+                            absl::Span<const int64>, const std::vector<bool>&)>(
+          &DynamicReshape),
+      py::arg("operand"), py::arg("dim_sizes"), py::arg("new_size_bounds"),
+      py::arg("dims_are_dynamic"));
   ops.def("DynamicSlice",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>,
                                 absl::Span<const int64>)>(&DynamicSlice),
@@ -163,6 +170,8 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def("Gather", &Gather, py::arg("a"), py::arg("start_indices"),
           py::arg("dimension_numbers"), py::arg("slice_sizes"),
           py::arg("indices_are_sorted") = false);
+  ops.def("GetDimensionSize", &GetDimensionSize, py::arg("operand"),
+          py::arg("dimension"));
   ops.def("GetTupleElement", &GetTupleElement, py::arg("tuple_data"),
           py::arg("index"));
   ops.def("InfeedWithToken", &InfeedWithToken, py::arg("token"),
@@ -234,6 +243,8 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("window_dimensions"), py::arg("window_strides"),
           py::arg("base_dilations"), py::arg("window_dilations"),
           py::arg("padding"));
+  ops.def("RemoveDynamicDimension", &RemoveDynamicDimension, py::arg("operand"),
+          py::arg("dimension"));
   ops.def("ReplicaId", &ReplicaId, py::arg("builder"));
   ops.def("Reshape",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>,
@@ -260,6 +271,8 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("select"), py::arg("window_dimensions"),
           py::arg("window_strides"), py::arg("padding"), py::arg("source"),
           py::arg("init_value"), py::arg("scatter"));
+  ops.def("SetDimensionSize", &SetDimensionSize, py::arg("operand"),
+          py::arg("val"), py::arg("dimension"));
   ops.def("Slice", &Slice, py::arg("operand"), py::arg("start_indices"),
           py::arg("limit_indices"), py::arg("strides"));
   ops.def("SliceInDim", &SliceInDim, py::arg("operand"), py::arg("start_index"),

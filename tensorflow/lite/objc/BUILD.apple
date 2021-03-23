@@ -1,6 +1,6 @@
 # TensorFlow Lite for Objective-C
 
-load("//tensorflow/lite:special_rules.bzl", "ios_visibility_whitelist", "tflite_ios_lab_runner")
+load("//tensorflow/lite:special_rules.bzl", "ios_visibility_allowlist", "tflite_ios_lab_runner")
 load("//tensorflow/lite/ios:ios.bzl", "TFL_DEFAULT_TAGS", "TFL_DISABLED_SANITIZER_TAGS", "TFL_MINIMUM_OS_VERSION")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_unit_test")
 
@@ -61,7 +61,7 @@ objc_library(
     hdrs = API_HEADERS,
     copts = RELEASE_COPTS,
     tags = TFL_DEFAULT_TAGS,
-    visibility = ios_visibility_whitelist(),
+    visibility = ios_visibility_allowlist(),
     deps = [
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/delegates/coreml:coreml_delegate",

@@ -22,20 +22,32 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import init_ops
 from tensorflow.python.util.tf_export import keras_export
 
+
+_v1_zeros_initializer = init_ops.Zeros
+_v1_ones_initializer = init_ops.Ones
+_v1_constant_initializer = init_ops.Constant
+_v1_variance_scaling_initializer = init_ops.VarianceScaling
+_v1_orthogonal_initializer = init_ops.Orthogonal
+_v1_identity = init_ops.Identity
+_v1_glorot_uniform_initializer = init_ops.GlorotUniform
+_v1_glorot_normal_initializer = init_ops.GlorotNormal
+
 keras_export(v1=['keras.initializers.Zeros', 'keras.initializers.zeros'])(
-    init_ops.Zeros)
+    _v1_zeros_initializer)
 keras_export(v1=['keras.initializers.Ones', 'keras.initializers.ones'])(
-    init_ops.Ones)
+    _v1_ones_initializer)
 keras_export(v1=['keras.initializers.Constant', 'keras.initializers.constant'])(
-    init_ops.Constant)
+    _v1_constant_initializer)
 keras_export(v1=['keras.initializers.VarianceScaling'])(
-    init_ops.VarianceScaling)
+    _v1_variance_scaling_initializer)
 keras_export(v1=['keras.initializers.Orthogonal',
-                 'keras.initializers.orthogonal'])(init_ops.Orthogonal)
+                 'keras.initializers.orthogonal'])(_v1_orthogonal_initializer)
 keras_export(v1=['keras.initializers.Identity',
-                 'keras.initializers.identity'])(init_ops.Identity)
-keras_export(v1=['keras.initializers.glorot_uniform'])(init_ops.GlorotUniform)
-keras_export(v1=['keras.initializers.glorot_normal'])(init_ops.GlorotNormal)
+                 'keras.initializers.identity'])(_v1_identity)
+keras_export(v1=['keras.initializers.glorot_uniform'])(
+    _v1_glorot_uniform_initializer)
+keras_export(v1=['keras.initializers.glorot_normal'])(
+    _v1_glorot_normal_initializer)
 
 
 @keras_export(v1=['keras.initializers.RandomNormal',

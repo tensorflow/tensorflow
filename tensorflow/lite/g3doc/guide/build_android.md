@@ -25,13 +25,15 @@ Development Kit License Agreement available at
 https://developer.android.com/studio/terms (such URL may be updated or changed
 by Google from time to time).*
 
-{% dynamic if 'tflite-android-tos' in user.acknowledged_walls and request.tld !=
-'cn' %} You can download the Docker file
+<!-- mdformat off(devsite fails if there are line-breaks in templates) -->
+{% dynamic if 'tflite-android-tos' in user.acknowledged_walls and request.tld != 'cn' %}
+You can download the Docker file
 <a href="https://raw.githubusercontent.com/tensorflow/tensorflow/master/tensorflow/tools/dockerfiles/tflite-android.Dockerfile">here</a>
 {% dynamic else %} You must acknowledge the terms of service to download the
 file.
 <a class="button button-blue devsite-acknowledgement-link" data-globally-unique-wall-id="tflite-android-tos">Acknowledge</a>
 {% dynamic endif %}
+<!-- mdformat on -->
 
 *   You can optionally change the Android SDK or NDK version. Put the downloaded
     Docker file in an empty folder and build your docker image by running:

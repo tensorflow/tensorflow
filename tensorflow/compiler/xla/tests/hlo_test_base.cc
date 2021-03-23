@@ -47,19 +47,6 @@ using absl::string_view;
 
 constexpr char kInterpreter[] = "interpreter";
 
-// Helper functions to get test and reference platforms.
-se::Platform* GetReferencePlatform() {
-  auto result = PlatformUtil::GetPlatform(kInterpreter);
-  TF_CHECK_OK(result.status()) << "could not get interpreter platform";
-  return result.ValueOrDie();
-}
-
-se::Platform* GetTestPlatform() {
-  auto result = PlatformUtil::GetDefaultPlatform();
-  TF_CHECK_OK(result.status()) << "could not get test platform";
-  return result.ValueOrDie();
-}
-
 bool ProgramShapesEqual(const ProgramShape& lhs, const ProgramShape& rhs) {
   if (lhs.parameters_size() != rhs.parameters_size()) {
     return false;
@@ -109,6 +96,18 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
       /*layout_sensitive=*/verifier_layout_sensitive,
       /*allow_mixed_precision=*/allow_mixed_precision_in_hlo_verifier,
       instruction_can_change_layout_func);
+}
+
+/*static*/ se::Platform* HloTestBase::GetReferencePlatform() {
+  auto result = PlatformUtil::GetPlatform(kInterpreter);
+  TF_CHECK_OK(result.status()) << "could not get interpreter platform";
+  return result.ValueOrDie();
+}
+
+/*static*/ se::Platform* HloTestBase::GetTestPlatform() {
+  auto result = PlatformUtil::GetDefaultPlatform();
+  TF_CHECK_OK(result.status()) << "could not get test platform";
+  return result.ValueOrDie();
 }
 
 std::unique_ptr<HloModule> HloTestBase::CreateNewUnverifiedModule(

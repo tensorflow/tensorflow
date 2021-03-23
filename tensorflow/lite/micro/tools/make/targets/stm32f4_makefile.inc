@@ -86,8 +86,7 @@ EXCLUDED_TESTS := \
   tensorflow/lite/micro/micro_allocator_test.cc \
   tensorflow/lite/micro/memory_helpers_test.cc \
   tensorflow/lite/micro/memory_arena_threshold_test.cc \
-  tensorflow/lite/micro/recording_micro_allocator_test.cc \
-  tensorflow/lite/micro/kernels/circular_buffer_test.cc
+  tensorflow/lite/micro/recording_micro_allocator_test.cc
 MICROLITE_TEST_SRCS := $(filter-out $(EXCLUDED_TESTS), $(MICROLITE_TEST_SRCS))
 
 EXCLUDED_EXAMPLE_TESTS := \

@@ -109,15 +109,7 @@ Status ConvertAttribute(const mlir::ElementsAttr& attr, AttrValue* value) {
 }
 
 Status ConvertAttribute(const mlir::TF::ShapeAttr& attr, AttrValue* value) {
-  auto* shape = value->mutable_shape();
-  if (attr.hasRank()) {
-    for (auto dim_size : attr.getShape()) {
-      auto* dim = shape->add_dim();
-      dim->set_size(dim_size);
-    }
-  } else {
-    shape->set_unknown_rank(true);
-  }
+  SetTensorShapeProto(attr, value->mutable_shape());
   return Status::OK();
 }
 
@@ -413,14 +405,8 @@ Status ConvertAttributes(
 
 Status SetShapeAttribute(absl::string_view name, mlir::ShapedType shaped_type,
                          AttrValueMap* values) {
-  tensorflow::TensorShapeProto tshape;
   AttrValue value;
-  if (shaped_type.hasRank()) {
-    for (auto dim : shaped_type.getShape()) tshape.add_dim()->set_size(dim);
-  } else {
-    tshape.set_unknown_rank(true);
-  }
-  *value.mutable_shape() = tshape;
+  SetTensorShapeProto(shaped_type, value.mutable_shape());
 
   auto result = values->insert({string(name), value});
   if (!result.second) {
@@ -430,9 +416,10 @@ Status SetShapeAttribute(absl::string_view name, mlir::ShapedType shaped_type,
     TensorShapeProto actual_shape = result.first->second.shape();
     // Just check via string output as we shouldn't get here and if we do they
     // should be trivially the same, else fail.
-    if (actual_shape.ShortDebugString() != tshape.ShortDebugString()) {
-      return errors::InvalidArgument("Expected ", tshape.ShortDebugString(),
-                                     " '", name, "' attribute but found ",
+    std::string new_shape_string = value.shape().ShortDebugString();
+    if (actual_shape.ShortDebugString() != new_shape_string) {
+      return errors::InvalidArgument("Expected ", new_shape_string, " '", name,
+                                     "' attribute but found ",
                                      actual_shape.ShortDebugString());
     }
   }

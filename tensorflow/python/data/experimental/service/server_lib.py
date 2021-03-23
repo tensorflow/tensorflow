@@ -24,6 +24,7 @@ import collections
 from tensorflow.core.protobuf import service_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.data.experimental.service import _pywrap_server_lib
+from tensorflow.python.data.experimental.service import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -63,11 +64,13 @@ class DispatcherConfig(
 
   def __new__(cls,
               port=0,
-              protocol="grpc",
+              protocol=None,
               work_dir=None,
               fault_tolerant_mode=False,
               job_gc_check_interval_ms=None,
               job_gc_timeout_ms=None):
+    if protocol is None:
+      protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
     if job_gc_check_interval_ms is None:
       job_gc_check_interval_ms = 10 * 60 * 1000  # 10 minutes.
     if job_gc_timeout_ms is None:
@@ -244,11 +247,13 @@ class WorkerConfig(
               dispatcher_address,
               worker_address=None,
               port=0,
-              protocol="grpc",
+              protocol=None,
               heartbeat_interval_ms=None,
               dispatcher_timeout_ms=None):
     if worker_address is None:
       worker_address = "localhost:%port%"
+    if protocol is None:
+      protocol = _pywrap_utils.TF_DATA_DefaultProtocol()
     if heartbeat_interval_ms is None:
       heartbeat_interval_ms = 30 * 1000  # 30 seconds
     if dispatcher_timeout_ms is None:

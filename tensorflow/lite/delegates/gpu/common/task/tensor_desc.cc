@@ -134,6 +134,7 @@ GPUResources TensorDescriptor::GetGPUResources() const {
              storage_type == TensorStorageType::TEXTURE_2D) {
     GPUImage2DDescriptor desc;
     desc.data_type = data_type;
+    desc.normalized = false;
     desc.access_type = access_type_;
     resources.images2d.push_back({"image2d", desc});
   } else if (storage_type == TensorStorageType::TEXTURE_ARRAY) {

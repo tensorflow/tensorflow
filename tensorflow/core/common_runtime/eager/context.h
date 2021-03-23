@@ -255,7 +255,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // are required, `reuse_rendezvous_for_functions_` can be set to true so that
   // function executions and eager executions use the same rendezvous instance,
   // instead of creating new instance per function calls.
-  void SetReuseRendezvousForFunctions(bool reuse_rendezvous_for_functions) {
+  void SetReuseRendezvousForFunctions(
+      bool reuse_rendezvous_for_functions) override {
     reuse_rendezvous_for_functions_ = reuse_rendezvous_for_functions;
   }
   bool GetReuseRendezvousForFunctions() const {
@@ -280,10 +281,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   std::function<Rendezvous*(int64)> RendezvousCreator() {
     if (reuse_rendezvous_for_functions_) {
       return [this](int64 step_id) {
-        // Increment reference count as `rendezvous_` will be unref'ed after
-        // function execution.
-        rendezvous_->Ref();
-        return rendezvous_;
+        global_rendezvous_for_functions_->Ref();
+        return global_rendezvous_for_functions_.get();
       };
     } else {
       return [this](int64 step_id) { return CreateRendezvous(step_id); };
@@ -652,6 +651,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   // Whether to use same rendezvous instance across function/eager executions.
   bool reuse_rendezvous_for_functions_ = false;
+  core::RefCountPtr<Rendezvous> global_rendezvous_for_functions_;
 
   Env* const env_;
 

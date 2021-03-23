@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/stream_executor/stream.h"
 
@@ -98,7 +99,8 @@ Status LocalDeviceState::ThenMemcpyDeviceToDevice(
 
 void LocalDeviceState::ThenExecuteOnCallbackThread(
     se::Stream* stream, std::function<void()> callback) const {
-  stream->ThenDoHostCallback([this, callback]() mutable {
+  tensorflow::profiler::TraceMe traceme("ThenExecuteOnCallbackThread");
+  stream->ThenDoHostCallback([this, callback{std::move(callback)}]() mutable {
     callback_thread_->Schedule(std::move(callback));
   });
 }

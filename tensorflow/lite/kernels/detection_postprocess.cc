@@ -41,6 +41,9 @@ constexpr int kInputTensorClassPredictions = 1;
 constexpr int kInputTensorAnchors = 2;
 
 // Output tensors
+// When max_classes_per_detection > 1, detection boxes will be replicated by the
+// number of detected classes of that box. Dummy data will be appended if the
+// number of classes is smaller than max_classes_per_detection.
 constexpr int kOutputTensorDetectionBoxes = 0;
 constexpr int kOutputTensorDetectionClasses = 1;
 constexpr int kOutputTensorDetectionScores = 2;
@@ -707,7 +710,7 @@ TfLiteStatus NonMaxSuppressionMultiClassFastHelper(TfLiteContext* context,
         sorted_class_indices.data() + selected_index * num_classes;
 
     for (int col = 0; col < num_categories_per_anchor; ++col) {
-      int box_offset = num_categories_per_anchor * output_box_index + col;
+      int box_offset = max_categories_per_anchor * output_box_index + col;
       // detection_boxes
       TF_LITE_ENSURE_EQ(context, detection_boxes->type, kTfLiteFloat32);
       TF_LITE_ENSURE_EQ(context, decoded_boxes->type, kTfLiteFloat32);
@@ -719,8 +722,8 @@ TfLiteStatus NonMaxSuppressionMultiClassFastHelper(TfLiteContext* context,
       // detection_scores
       GetTensorData<float>(detection_scores)[box_offset] =
           box_scores[class_indices[col]];
-      output_box_index++;
     }
+    output_box_index++;
   }
   GetTensorData<float>(num_detections)[0] = output_box_index;
   return kTfLiteOk;

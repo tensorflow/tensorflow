@@ -161,6 +161,8 @@ class HloRunner : public HloRunnerInterface {
       DeviceAssignment* device_assignment);
 
   std::unique_ptr<Backend> backend_;
+
+  DeviceShapeRepresentationFn device_shape_representation_fn_;
 };
 
 }  // namespace xla

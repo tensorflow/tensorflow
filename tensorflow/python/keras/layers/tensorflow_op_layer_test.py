@@ -165,7 +165,7 @@ def _int32_manipulation_at_max_shape_dims_limit():
   # Verify that a value was actually inferred for a tensor that *might*
   # represent the shape, bying checking that a value in
   # the range appears in the printed inferred value
-  if keras_tensor.keras_tensors_enabled():
+  if ops.executing_eagerly_outside_functions():
     assert str(keras_tensor._MAX_TENSOR_RANK - 1) in str(x)
 
   x = array_ops.reshape(x, (batch_size, num_features))
@@ -421,7 +421,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     expected = array_ops.stack([
         math_ops.range(8)[::step] for _ in range(batch_size)])
 
-    if keras_tensor.keras_tensors_enabled():
+    if ops.executing_eagerly_outside_functions():
       self.assertIn('tf.__operators__.getitem', (
           x.name for x in model.layers))
       self.assertNotIn('tf.strided_slice', (
@@ -455,7 +455,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     args = constant_op.constant(stop, shape=(batch_size,))
     expected = x[:stop]
 
-    if keras_tensor.keras_tensors_enabled():
+    if ops.executing_eagerly_outside_functions():
       self.assertIn('tf.__operators__.getitem', (
           x.name for x in model.layers))
       # TODO(b/161925288): Fix the dispatch triggering then uncomment:
@@ -489,7 +489,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     args = constant_op.constant(index, shape=(batch_size,))
     expected = x[index]
 
-    if keras_tensor.keras_tensors_enabled():
+    if ops.executing_eagerly_outside_functions():
       self.assertIn('tf.__operators__.getitem', (
           x.name for x in model.layers))
       # TODO(b/161925288): Fix the bug then uncomment:
@@ -526,7 +526,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     args = [x, constant_op.constant(stop, shape=(batch_size,))]
     expected = x[:stop]
 
-    if keras_tensor.keras_tensors_enabled():
+    if ops.executing_eagerly_outside_functions():
       self.assertIn('tf.__operators__.getitem', (
           x.name for x in model.layers))
       self.assertNotIn('tf.strided_slice', (
@@ -563,7 +563,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     expected = array_ops.stack([
         math_ops.range(8)[:stop] for _ in range(batch_size)])
 
-    if keras_tensor.keras_tensors_enabled():
+    if ops.executing_eagerly_outside_functions():
       self.assertIn('tf.__operators__.getitem', (
           x.name for x in model.layers))
       self.assertNotIn('tf.strided_slice', (
@@ -613,7 +613,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
         math_ops.range(8)[start:stop:step]
         for _ in range(4)]) for _ in range(batch_size)])
 
-    if keras_tensor.keras_tensors_enabled():
+    if ops.executing_eagerly_outside_functions():
       self.assertIn('tf.__operators__.getitem', (
           x.name for x in model.layers))
       self.assertNotIn('tf.strided_slice', (

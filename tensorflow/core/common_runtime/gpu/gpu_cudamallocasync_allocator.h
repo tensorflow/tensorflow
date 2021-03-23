@@ -64,7 +64,7 @@ namespace tensorflow {
 // driver can return the excess memory to other processes.
 class GpuCudaMallocAsyncAllocator : public Allocator {
  public:
-  explicit GpuCudaMallocAsyncAllocator(PlatformGpuId platform_gpu_id,
+  explicit GpuCudaMallocAsyncAllocator(PlatformDeviceId platform_device_id,
                                        size_t pool_size,
                                        bool reserve_memory = false,
                                        bool compute_stats = false);

@@ -26,9 +26,15 @@ limitations under the License.
 #include "tensorflow/core/kernels/initializable_lookup_table.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/platform/random.h"
 
 namespace tensorflow {
 namespace lookup {
+
+std::string UniqueNodeName(const std::string& base) {
+  static std::atomic<int64> counter(0);
+  return strings::StrCat(base, "/", counter.fetch_add(1), "/", random::New64());
+}
 
 // Lookup table that wraps an unordered_map, where the key and value data type
 // is specified. Each individual value must be a scalar. If vector values are

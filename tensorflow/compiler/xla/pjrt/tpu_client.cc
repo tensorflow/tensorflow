@@ -79,6 +79,10 @@ class PjRtTpuClient : public PjRtStreamExecutorClient {
                 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
                 int task_id);
 
+  absl::string_view platform_version() const override {
+    return platform_version_;
+  }
+
   StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
@@ -86,6 +90,9 @@ class PjRtTpuClient : public PjRtStreamExecutorClient {
 
   StatusOr<absl::optional<std::string>> ExecutableFingerprint(
       const PjRtExecutable& executable) const override;
+
+ private:
+  const std::string platform_version_;
 };
 
 PjRtTpuClient::PjRtTpuClient(
@@ -95,7 +102,18 @@ PjRtTpuClient::PjRtTpuClient(
                                /*allocator=*/nullptr,
                                /*host_memory_allocator=*/nullptr,
                                /*should_stage_host_to_device_transfers=*/false,
-                               /*gpu_run_options=*/nullptr) {}
+                               /*gpu_run_options=*/nullptr),
+      platform_version_([]() {
+        // Example platform version string:
+        //   libtpu version 0.0.1
+        //   Built on Mar 4 2021 15:25:57 (1614900357) cl/360760169
+        tf_tpu::TpuPlatformInterface* platform =
+            tf_tpu::TpuPlatformInterface::GetRegisteredPlatform();
+        TpuRuntimeVersion version = platform->version();
+        return absl::StrCat(
+            "libtpu version ", absl::StrJoin(version.version, "."), "\n",
+            absl::string_view(version.metadata, version.metadata_size));
+      }()) {}
 
 StatusOr<DeviceAssignment> PjRtTpuClient::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
@@ -184,17 +202,18 @@ StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
   // RPCs may timeout waiting for other hosts to come up, but will succeed
   // at a later point if retried).
   auto start = absl::Now();
-  // TODO(b/165870356): TpuPlatform::Initialized() always returns true!
-  auto status = platform->Initialize({});
-  while (!platform->Initialized()) {
-    status = platform->Initialize({});
-    if (!status.ok()) {
-      LOG(ERROR) << "Platform initialization failed: " << status;
-      if ((absl::Now() - start) >= init_retry_timeout) {
-        return status;
-      }
+  while (true) {
+    Status status = platform->Initialize({});
+    if (status.ok()) {
+      break;
     }
+    LOG(INFO) << "TPU platform initialization failed: " << status;
+    if ((absl::Now() - start) >= init_retry_timeout) {
+      return status;
+    }
+    absl::SleepFor(absl::Microseconds(10));
   }
+  CHECK(platform->Initialized());
   if (platform->VisibleDeviceCount() <= 0) {
     return InvalidArgument("No TPU devices found.");
   }

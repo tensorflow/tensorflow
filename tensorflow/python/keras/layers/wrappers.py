@@ -407,7 +407,7 @@ class Bidirectional(Wrapper):
       automatically.
       Note that the provided `backward_layer` layer should have properties
       matching those of the `layer` argument, in particular it should have the
-      same values for `stateful`, `return_states`, `return_sequence`, etc.
+      same values for `stateful`, `return_states`, `return_sequences`, etc.
       In addition, `backward_layer` and `layer` should have different
       `go_backwards` argument values.
       A `ValueError` will be raised if these requirements are not met.

@@ -12,6 +12,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/182567920)
     ],
     deps = [
         "//tensorflow/python:array_ops",

@@ -56,6 +56,12 @@ class ClExecutionEnvironment : public TestExecutionEnvironment {
       const std::vector<BHWC>& dst_sizes,
       const std::vector<TensorFloat32*>& dst_cpu) override;
 
+  absl::Status ExecuteGPUOperation(
+      const std::vector<Tensor5DFloat32>& src_cpu,
+      std::unique_ptr<GPUOperation>&& operation,
+      const std::vector<BHWDC>& dst_sizes,
+      const std::vector<Tensor5DFloat32*>& dst_cpu) override;
+
  private:
   Environment env_;
 };

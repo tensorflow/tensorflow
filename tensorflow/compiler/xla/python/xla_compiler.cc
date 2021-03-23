@@ -121,9 +121,17 @@ StatusOr<uint64> HashComputation(const XlaComputation& computation) {
 // invalid input.
 StatusOr<Shape> MakeShapeWithLayout(
     PrimitiveType element_type, absl::Span<const int64> dims,
-    absl::optional<absl::Span<const int64>> minor_to_major) {
-  TF_ASSIGN_OR_RETURN(Shape shape,
-                      ShapeUtil::MakeValidatedShape(element_type, dims));
+    absl::optional<absl::Span<const int64>> minor_to_major,
+    absl::optional<const std::vector<bool>> dynamic_dimensions) {
+  Shape shape;
+  if (dynamic_dimensions) {
+    TF_ASSIGN_OR_RETURN(
+        shape, ShapeUtil::MakeValidatedShape(element_type, dims,
+                                             dynamic_dimensions.value()));
+  } else {
+    TF_ASSIGN_OR_RETURN(shape,
+                        ShapeUtil::MakeValidatedShape(element_type, dims));
+  }
   if (minor_to_major) {
     *shape.mutable_layout() = LayoutUtil::MakeLayout(*minor_to_major);
     TF_RETURN_IF_ERROR(
@@ -173,33 +181,56 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_static(
           "array_shape",
           [](PrimitiveType type, py::object dims_seq,
-             absl::optional<py::object> layout_seq) -> StatusOr<Shape> {
+             absl::optional<py::object> layout_seq,
+             absl::optional<std::vector<bool>> dynamic_dimensions)
+              -> StatusOr<Shape> {
             std::vector<int64> dims = IntSequenceToVector(dims_seq);
             if (layout_seq) {
               std::vector<int64> layout = IntSequenceToVector(*layout_seq);
-              return MakeShapeWithLayout(type, dims, layout);
+              return MakeShapeWithLayout(type, dims, layout,
+                                         dynamic_dimensions);
             } else {
-              return MakeShapeWithLayout(type, dims, absl::nullopt);
+              return MakeShapeWithLayout(type, dims, absl::nullopt,
+                                         dynamic_dimensions);
             }
           },
           "Constructs an array shape.", py::arg("type"), py::arg("dims"),
-          py::arg("layout") = absl::nullopt)
+          py::arg("layout") = absl::nullopt,
+          py::arg("dynamic_dimensions") = absl::nullopt)
       .def_static(
           "array_shape",
           [](py::dtype dtype, py::object dims_seq,
-             absl::optional<py::object> layout_seq) -> StatusOr<Shape> {
+             absl::optional<py::object> layout_seq,
+             absl::optional<std::vector<bool>> dynamic_dimensions)
+              -> StatusOr<Shape> {
             PrimitiveType type = ValueOrThrow(DtypeToPrimitiveType(dtype));
             std::vector<int64> dims = IntSequenceToVector(dims_seq);
             if (layout_seq) {
               std::vector<int64> layout = IntSequenceToVector(*layout_seq);
-              return MakeShapeWithLayout(type, dims, layout);
+              return MakeShapeWithLayout(type, dims, layout,
+                                         dynamic_dimensions);
             } else {
-              return MakeShapeWithLayout(type, dims, absl::nullopt);
+              return MakeShapeWithLayout(type, dims, absl::nullopt,
+                                         dynamic_dimensions);
             }
           },
           "Constructs an array shape.", py::arg("type"), py::arg("dims"),
-          py::arg("layout") = absl::nullopt)
+          py::arg("layout") = absl::nullopt,
+          py::arg("dynamic_dimensions") = absl::nullopt)
       .def_static("token_shape", []() { return ShapeUtil::MakeTokenShape(); })
+      .def_static(
+          "scalar_shape",
+          [](PrimitiveType type) -> Shape {
+            return ShapeUtil::MakeScalarShape(type);
+          },
+          "Constructs a scalar shape.", py::arg("type"))
+      .def_static(
+          "scalar_shape",
+          [](py::dtype dtype) -> StatusOr<Shape> {
+            PrimitiveType type = ValueOrThrow(DtypeToPrimitiveType(dtype));
+            return ShapeUtil::MakeScalarShape(type);
+          },
+          "Constructs a scalar shape.", py::arg("type"))
       .def("dimensions",
            [](const Shape& shape) -> py::tuple {
              return IntSpanToTuple(shape.dimensions());
@@ -218,6 +249,13 @@ void BuildXlaCompilerSubmodule(py::module& m) {
            })
       .def("is_tuple", &Shape::IsTuple)
       .def("is_array", &Shape::IsArray)
+      .def("is_token", &Shape::IsToken)
+      .def("is_static", &Shape::is_static)
+      .def("is_dynamic", &Shape::is_dynamic)
+      .def("is_dynamic_dimension", &Shape::is_dynamic_dimension,
+           py::arg("dimension"))
+      .def("set_dynamic_dimension", &Shape::set_dynamic_dimension,
+           py::arg("dimension"), py::arg("is_dynamic"))
       .def("rank", &Shape::rank)
       .def("to_serialized_proto",
            [](const Shape& shape) {

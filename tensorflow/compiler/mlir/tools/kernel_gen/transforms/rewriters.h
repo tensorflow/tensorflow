@@ -23,7 +23,7 @@ namespace mlir {
 class BufferizeTypeConverter;
 class LLVMTypeConverter;
 class MLIRContext;
-class OwningRewritePatternList;
+class RewritePatternSet;
 class TypeConverter;
 
 namespace kernel_gen {
@@ -31,16 +31,16 @@ namespace tf_framework {
 
 /// Collects a set of patterns to convert from the TF Framework dialect to LLVM.
 void PopulateTFFrameworkToLLVMConversionPatterns(
-    LLVMTypeConverter *converter, OwningRewritePatternList *patterns);
+    LLVMTypeConverter *converter, RewritePatternSet *patterns);
 
 /// Collects a set of patterns to rewrite functions for use with TF framework
 /// and also replace `alloc` and correspondign free operations with .
 void PopulateEmbedTFFrameworkFunctionAndAllocConversionPatterns(
-    MLIRContext *context, OwningRewritePatternList *patterns);
+    MLIRContext *context, RewritePatternSet *patterns);
 
 /// Collects a set of patterns to embed TF Framework.
 void PopulateEmbedTFFrameworkAssertConversionPatterns(
-    MLIRContext *context, OwningRewritePatternList *patterns);
+    MLIRContext *context, RewritePatternSet *patterns);
 
 }  // namespace tf_framework
 
@@ -50,7 +50,7 @@ namespace transforms {
 /// dialect.
 void populateExtraStdBufferizePattern(MLIRContext *context,
                                       BufferizeTypeConverter *converter,
-                                      OwningRewritePatternList *patterns);
+                                      RewritePatternSet *patterns);
 }  // namespace transforms
 }  // namespace kernel_gen
 }  // namespace mlir

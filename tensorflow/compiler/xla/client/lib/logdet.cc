@@ -34,10 +34,8 @@ limitations under the License.
 
 namespace xla {
 
-// log(det(A)) = sum(log(vecdiag(QR(A).r))), since R is triangular and Q is
-// orthonormal
-XlaOp LogDet(XlaOp a) {
-  return a.builder()->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+SignAndLogDet SLogDet(XlaOp a) {
+  StatusOr<SignAndLogDet> result = [&]() -> StatusOr<SignAndLogDet> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, a.builder()->GetShape(a));
     auto qr = Qr(a);
 
@@ -63,8 +61,20 @@ XlaOp LogDet(XlaOp a) {
         One(a.builder(), a_shape.element_type()),
         CreateScalarMultiplyComputation(a_shape.element_type(), a.builder()),
         {a_shape.rank() - 2});
-    return sign_diag * log_abs_det * sign_taus;
-  });
+    return SignAndLogDet{sign_diag * sign_taus, log_abs_det};
+  }();
+  if (!result.ok()) {
+    XlaOp error = a.builder()->ReportError(result.status());
+    return SignAndLogDet{error, error};
+  }
+  return result.ValueOrDie();
+}
+
+XlaOp LogDet(XlaOp a) {
+  SignAndLogDet slogdet = SLogDet(a);
+  return Select(
+      Ge(slogdet.sign, ZerosLike(slogdet.sign)), slogdet.logdet,
+      FullLike(slogdet.logdet, std::numeric_limits<float>::quiet_NaN()));
 }
 
 }  // namespace xla

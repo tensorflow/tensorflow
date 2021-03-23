@@ -102,19 +102,21 @@ struct EdgePtrCompare {
 // TODO(laigd): instead of deciding the device here, the converter should accept
 // a device name as one of the conversion parameter so users can control on
 // which device they want to run the conversion.
-std::pair<TfGpuId, PlatformGpuId> GetFirstValidDeviceId() {
-  for (int tf_gpu_id_value = 0; tf_gpu_id_value < 100; ++tf_gpu_id_value) {
-    TfGpuId tf_gpu_id(tf_gpu_id_value);
-    PlatformGpuId platform_gpu_id;
-    Status s = GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id);
+std::pair<TfDeviceId, PlatformDeviceId> GetFirstValidDeviceId() {
+  for (int tf_device_id_value = 0; tf_device_id_value < 100;
+       ++tf_device_id_value) {
+    TfDeviceId tf_device_id(tf_device_id_value);
+    PlatformDeviceId platform_device_id;
+    Status s =
+        GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id);
     if (s.ok()) {
-      VLOG(1) << "Found TF GPU " << tf_gpu_id.value() << " at cuda device "
-              << platform_gpu_id.value();
-      return std::make_pair(tf_gpu_id, platform_gpu_id);
+      VLOG(1) << "Found TF GPU " << tf_device_id.value() << " at cuda device "
+              << platform_device_id.value();
+      return std::make_pair(tf_device_id, platform_device_id);
     }
   }
   LOG(ERROR) << "Could not find any TF GPUs";
-  return std::make_pair(TfGpuId(-1), PlatformGpuId(-1));
+  return std::make_pair(TfDeviceId(-1), PlatformDeviceId(-1));
 }
 
 // Returns false for const nodes (we intend to drop control edges from those).
@@ -266,14 +268,14 @@ Status GetEngineInfo(const Graph* g,
     }
     info->device = DeviceNameUtils::ParsedNameToString(segment_device);
   } else {
-    TfGpuId tf_gpu_id;
-    PlatformGpuId platform_gpu_id;
-    std::tie(tf_gpu_id, platform_gpu_id) = GetFirstValidDeviceId();
-    if (tf_gpu_id.value() >= 0) {
+    TfDeviceId tf_device_id;
+    PlatformDeviceId platform_device_id;
+    std::tie(tf_device_id, platform_device_id) = GetFirstValidDeviceId();
+    if (tf_device_id.value() >= 0) {
       DeviceNameUtils::ParsedName parsed_name;
       parsed_name.type = "GPU";
       parsed_name.has_type = true;
-      parsed_name.id = tf_gpu_id.value();
+      parsed_name.id = tf_device_id.value();
       parsed_name.has_id = true;
       info->device = DeviceNameUtils::ParsedNameToString(parsed_name);
     } else {
@@ -640,17 +642,17 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
   if (params.cluster == nullptr || params.cluster->GetDeviceSet() == nullptr ||
       engine.device.empty()) {
     // If device is not set, use the first found GPU device for the conversion.
-    TfGpuId tf_gpu_id;
-    PlatformGpuId platform_gpu_id;
-    std::tie(tf_gpu_id, platform_gpu_id) = GetFirstValidDeviceId();
-    cuda_device_id = platform_gpu_id.value();
+    TfDeviceId tf_device_id;
+    PlatformDeviceId platform_device_id;
+    std::tie(tf_device_id, platform_device_id) = GetFirstValidDeviceId();
+    cuda_device_id = platform_device_id.value();
     if (cuda_device_id >= 0) {
       GPUOptions gpu_options;
       // If the TF to Cuda gpu id mapping exist, the device and corresponding
       // allocator must have been initialized already, so the
       // GetGPUAllocator() call won't create a new allocator.
       dev_allocator = GPUProcessState::singleton()->GetGPUAllocator(
-          gpu_options, tf_gpu_id, /*total_bytes=*/1, /*peer_gpu_ids=*/{});
+          gpu_options, tf_device_id, /*total_bytes=*/1, /*peer_gpu_ids=*/{});
     }
     return std::make_pair(cuda_device_id, dev_allocator);
   }

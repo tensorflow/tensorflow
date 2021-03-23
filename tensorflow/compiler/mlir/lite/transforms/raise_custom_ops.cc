@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -55,10 +57,17 @@ void RaiseCustomOpsPass::runOnFunction() {
     auto custom_op = builder.create<CustomTfOp>(
         op->getLoc(), op->getResultTypes(), op->getOperands());
     Region region;
-    region.push_back(new Block);
+    Block *new_block = new Block;
+    region.push_back(new_block);
 
     builder.setInsertionPointToEnd(&region.front());
     Operation *inner_op = builder.clone(*op);
+
+    new_block->addArguments(op->getOperandTypes());
+    for (auto idx_args : llvm::enumerate(new_block->getArguments())) {
+      inner_op->setOperand(idx_args.index(), idx_args.value());
+    }
+    custom_op->setAttrs(inner_op->getAttrs());
     builder.create<YieldOp>(op->getLoc(), inner_op->getResults());
     custom_op.body().takeBody(region);
 

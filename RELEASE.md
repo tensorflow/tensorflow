@@ -38,6 +38,24 @@
         multiple input batches should be computed in parallel. With
         `num_parallel_calls` set, `deterministic` is used to indicate that
         outputs can be obtained in the non-deterministic order.
+    *   Options returned by `tf.data.Dataset.options()` are no longer mutable.
+    *   tf.data input pipelines can now be executed in debug mode, which
+        disables any asynchrony, parallelism, or non-determinism and forces
+        Python execution (as opposed to trace-compiled graph execution) of
+        user-defined functions passed into transformations such as `map`. The
+        debug mode can be enabled through `tf.data.experimental.enable_debug_mode()`.
+* `tf.lite`
+    *   Enabled the new MLIR-based quantization backend by default
+        *   The new backend is used for 8 bits full integer post-training quantization
+        *   The new backend removes the redundant rescales and fixes some bugs (shared weight/bias, extremely small scales, etc)
+        *   Set `experimental_new_quantizer` in tf.lite.TFLiteConverter to False to disable this change
+* `tf.keras`
+    *   Enabled a new supported input type in `Model.fit`,
+        `tf.keras.utils.experimental.DatasetCreator`, which takes a
+        callable, `dataset_fn`.
+        `DatasetCreator` is intended to work across all `tf.distribute`
+        strategies, and is the only input type supported for Parameter Server
+        strategy.
 
 ## Bug Fixes and Other Changes
 
@@ -65,9 +83,18 @@
     *   Add `.element_spec` property to `tf.data.DatasetSpec` to access the
         inner spec. This can be used to extract the structure of nested
         datasets.
+    *   Add `tf.data.experimental.AutoShardingPolicy.HINT` which can be used
+        to provide hints to tf.distribute-based auto-sharding as to where in
+        the input pipeline to insert sharding transformations.
+    *   Make tf.data.Options persistent across `tf.function` and `GraphDef`
+        boundaries.
 *   XLA compilation:
     *   `tf.function(experimental_compile=True)` has become a stable API,
         renamed `tf.function(jit_compile=True)`.
+
+*   `tf.distribute`:
+    *   Rename `experimental_prefetch_to_device` in `tf.distribute.InputOptions`
+        to `experimental_fetch_to_device` to better reflect the purpose.
 
 *   `tf.lite`:
     *   class `tflite::Subgraph`:
@@ -108,7 +135,18 @@
        ML authoring is generally discouraged.
     *  Add support for static hash tables through
          `TFLiteConverter.from_saved_model`.
-
+  *  The Python TF Lite Interpreter bindings now have an option
+        `experimental_preserve_all_tensors` to aid in debugging conversion.
+    *  Quantized x86 execution defaults to Ruy GEMM library for platforms with
+       AVX support.
+    *  Deprecate `tf.compat.v1.lite.experimental.get_potentially_supported_ops`.
+       Use `tf.lite.TFLiteConverter` directly to check whether a model is
+       convertible.
+    * Add support to select one of three different built-in op resolvers to be
+    *  Enabled post training with calibrations for models that require user
+       provied TensorFlow Lite custom op libraries via
+       `converter.target_spec._experimental_custom_op_registerers`.
+      used in Python Interpreter API.
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,
         `tf.while_loop`, and compositions like `tf.foldl`) computed with
@@ -156,6 +194,11 @@
         `tf.config.experimental.mlir_bridge_rollout` to enable a \"safe\" mode.
         This runs the MLIR bridge only when an analysis of the graph only when
         an analysis of the graph determines that it is safe to run.
+    *   Add new enum value 'MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED' to
+        `tf.config.experimental.mlir_bridge_rollout` to enable a fallback for
+        the MLIR bridge in a \"safe\" mode. This runs the MLIR bridge in a
+        FallbackEnabled mode when an analysis of the graph determines
+        that the graph does not have unsupported features.
 
 * Other
     *   Adding show_debug_info to mlir.convert_graph_def and

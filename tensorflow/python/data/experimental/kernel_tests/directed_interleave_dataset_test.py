@@ -21,6 +21,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import interleave_ops
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -60,42 +61,39 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
     chi2 = np.sum(diff * diff / expected, axis=0)
     return chi2
 
-  def _testSampleFromDatasetsHelper(self, weights, num_datasets, num_samples):
-    # Create a dataset that samples each integer in `[0, num_datasets)`
-    # with probability given by `weights[i]`.
-    dataset = interleave_ops.sample_from_datasets([
-        dataset_ops.Dataset.from_tensors(i).repeat(None)
-        for i in range(num_datasets)
-    ], weights)
-    dataset = dataset.take(num_samples)
-
-    next_element = self.getNext(dataset)
-    freqs = np.zeros([num_datasets])
-    for _ in range(num_samples):
-      freqs[self.evaluate(next_element())] += 1
-    with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate(next_element())
-
-    return freqs
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testSampleFromDatasets(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(weights_as_dataset=[False, True]))
+  )
+  def testSampleFromDatasets(self, weights_as_dataset):
     random_seed.set_random_seed(1619)
     num_samples = 5000
-    rand_probs = self._normalize(np.random.random_sample((15,)))
+    rand_probs = self._normalize(np.random.random_sample((5,)))
 
     # Use chi-squared test to assert that the observed distribution matches the
     # expected distribution. Based on the implementation in
     # "third_party/tensorflow/python/kernel_tests/multinomial_op_test.py".
     for probs in [[.85, .05, .1], rand_probs, [1.]]:
-      probs = np.asarray(probs)
+      weights = np.asarray(probs)
+      if weights_as_dataset:
+        weights = dataset_ops.Dataset.from_tensors(weights).repeat()
       classes = len(probs)
-      freqs = self._testSampleFromDatasetsHelper(probs, classes, num_samples)
-      self.assertLess(self._chi2(probs, freqs / num_samples), 1e-2)
 
-      # Also check that `weights` as a dataset samples correctly.
-      probs_ds = dataset_ops.Dataset.from_tensors(probs).repeat()
-      freqs = self._testSampleFromDatasetsHelper(probs_ds, classes, num_samples)
+      # Create a dataset that samples each integer in `[0, num_datasets)`
+      # with probability given by `weights[i]`.
+      dataset = interleave_ops.sample_from_datasets([
+          dataset_ops.Dataset.from_tensors(i).repeat()
+          for i in range(classes)
+      ], weights)
+      dataset = dataset.take(num_samples)
+
+      next_element = self.getNext(dataset)
+      freqs = np.zeros([classes])
+      for _ in range(num_samples):
+        freqs[self.evaluate(next_element())] += 1
+      with self.assertRaises(errors.OutOfRangeError):
+        self.evaluate(next_element())
+
       self.assertLess(self._chi2(probs, freqs / num_samples), 1e-2)
 
   @combinations.generate(test_base.default_test_combinations())
@@ -158,6 +156,23 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
               constant_op.constant(1, dtype=dtypes.int64)))
       next_element = self.getNext(dataset)
       self.evaluate(next_element())
+
+
+class SampleFromDatasetsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                       parameterized.TestCase):
+
+  def _build_dataset(self, probs, num_samples):
+    dataset = interleave_ops.sample_from_datasets([
+        dataset_ops.Dataset.from_tensors(i).repeat(None)
+        for i in range(len(probs))
+    ],
+                                                  probs,
+                                                  seed=1813)
+    return dataset.take(num_samples)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCheckpointCore(self):
+    self.run_core_tests(lambda: self._build_dataset([0.5, 0.5], 100), 100)
 
 
 if __name__ == "__main__":

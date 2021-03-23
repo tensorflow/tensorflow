@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #endif
 #include "tensorflow/lite/kernels/custom_ops_register.h"
+#include "tensorflow/lite/kernels/gradient/gradient_ops.h"
 #include "tensorflow/lite/kernels/parse_example/parse_example.h"
 #include "tensorflow/lite/kernels/perception/perception_ops.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -384,6 +385,7 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
         reinterpret_cast<ops::builtin::BuiltinOpResolver*>(resolver_.get());
     buildinop_resolver_->AddCustom("IRFFT2D",		
                                    tflite::ops::custom::Register_IRFFT2D());
+    tflite::ops::custom::AddGradientOps(buildinop_resolver_);
     tflite::ops::custom::AddParseExampleOp(buildinop_resolver_);
     tflite::ops::custom::AddPerceptionOps(buildinop_resolver_);
   }

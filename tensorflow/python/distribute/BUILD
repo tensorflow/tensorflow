@@ -1805,9 +1805,6 @@ distribute_py_test(
         "no_rocm",
         "notsan",  # TODO(b/160006974)
     ],
-    tpu_tags = [
-        "no_oss",  # TODO(b/179045543)
-    ],
     xla_enable_strict_auto_jit = True,
     deps = [
         ":collective_all_reduce_strategy",
@@ -1913,13 +1910,14 @@ py_library(
     ],
 )
 
-tf_py_test(
+distribute_py_test(
     name = "parameter_server_strategy_v2_test",
     srcs = ["parameter_server_strategy_v2_test.py"],
     python_version = "PY3",
+    shard_count = 5,
     tags = [
-        "no_windows",  # TODO(171349346)
-        "notsan",  # TODO(b/168675975)
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/171349346, b/181878817): Frequent timeouts. Do not re-enable until rewritten
     ],
     deps = [
         ":multi_worker_test_base",

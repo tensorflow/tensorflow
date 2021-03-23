@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#define FLATBUFFERS_LOCALE_INDEPENDENT 0
+#include "flatbuffers/flexbuffers.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -55,7 +57,7 @@ constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
 // TODO(b/149795762): Add this to TfLiteStatus enum.
-constexpr int kTfLiteAbort = -9;
+constexpr TfLiteStatus kTfLiteAbort = static_cast<TfLiteStatus>(-9);
 
 // These fields control the stride period of a strided streaming model. This op
 // returns kTfLiteAbort until cycles_until_run-- is zero.  At this time,
@@ -69,7 +71,18 @@ struct OpData {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  return context->AllocatePersistentBuffer(context, sizeof(OpData));
+  OpData* op_data = static_cast<OpData*>(
+      context->AllocatePersistentBuffer(context, sizeof(OpData)));
+
+  if (buffer != nullptr && length > 0) {
+    const uint8_t* buffer_t = reinterpret_cast<const uint8_t*>(buffer);
+    const flexbuffers::Map& m = flexbuffers::GetRoot(buffer_t, length).AsMap();
+    op_data->cycles_max = m["cycles_max"].AsInt32();
+  } else {
+    op_data->cycles_max = 0;
+  }
+
+  return op_data;
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -91,25 +104,27 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // The circular buffer custom operator currently only supports int8.
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteInt8);
 
-  // The last circular buffer layer simply accumulates outputs, and does not run
-  // periodically.
-  // TODO(b/150001379): Move this special case logic to the tflite flatbuffer.
-  static int cb_prepare_count = 0;
-  cb_prepare_count++;
-  // These checks specifically work for the only two streaming models supported
-  // on TFLM. They use the shape of the output tensor along with the layer
-  // number to determine if the circular buffer period should be 1 or 2.
+  if (op_data->cycles_max <= 0) {
+    // The last circular buffer layer simply accumulates outputs, and does not
+    // run periodically.
+    // TODO(b/150001379): Move this special case logic to the tflite flatbuffer.
+    static int cb_prepare_count = 0;
+    cb_prepare_count++;
+    // These checks specifically work for the only two streaming models
+    // supported on TFLM. They use the shape of the output tensor along with the
+    // layer number to determine if the circular buffer period should be 1 or 2.
 
-  // These models are outlined int the following documents:
-  // https://docs.google.com/document/d/1lc_G2ZFhjiKFo02UHjBaljye1xsL0EkfybkaVELEE3Q/edit?usp=sharing
-  // https://docs.google.com/document/d/1pGc42PuWyrk-Jy1-9qeqtggvsmHr1ifz8Lmqfpr2rKA/edit?usp=sharing
-  if (output->dims->data[1] == 5 || output->dims->data[1] == 13 ||
-      (cb_prepare_count == 5 && output->dims->data[2] == 2 &&
-       output->dims->data[3] == 96)) {
-    op_data->cycles_max = 1;
-    cb_prepare_count = 0;
-  } else {
-    op_data->cycles_max = 2;
+    // These models are outlined int the following documents:
+    // https://docs.google.com/document/d/1lc_G2ZFhjiKFo02UHjBaljye1xsL0EkfybkaVELEE3Q/edit?usp=sharing
+    // https://docs.google.com/document/d/1pGc42PuWyrk-Jy1-9qeqtggvsmHr1ifz8Lmqfpr2rKA/edit?usp=sharing
+    if (output->dims->data[1] == 5 || output->dims->data[1] == 13 ||
+        (cb_prepare_count == 5 && output->dims->data[2] == 2 &&
+         output->dims->data[3] == 96)) {
+      op_data->cycles_max = 1;
+      cb_prepare_count = 0;
+    } else {
+      op_data->cycles_max = 2;
+    }
   }
   op_data->cycles_until_run = op_data->cycles_max;
   node->user_data = op_data;

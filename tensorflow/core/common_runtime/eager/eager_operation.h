@@ -177,7 +177,8 @@ class EagerOperation : public ImmediateExecutionOperation {
   CancellationManager* GetCancellationManager() const {
     return cancellation_manager_;
   }
-  void SetCancellationManager(CancellationManager* cancellation_manager) {
+  void SetCancellationManager(
+      CancellationManager* cancellation_manager) override {
     cancellation_manager_ = cancellation_manager;
   }
 

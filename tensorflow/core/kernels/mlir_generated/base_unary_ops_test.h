@@ -72,7 +72,9 @@ class UnaryOpsTestBase : public OpsTestBase {
     Tensor expected_tensor(allocator(), DataTypeToEnum<OutT>::value, shape);
     test::FillValues<OutT>(&expected_tensor, expected_output);
     if (config.expect_strictly_equal) {
-      test::ExpectEqual(expected_tensor, *GetOutput(0));
+      test::ExpectEqual(expected_tensor, *GetOutput(0),
+                        config.supress_tolerance ? test::Tolerance::kNone
+                                                 : test::Tolerance::kDefault);
     } else {
       test::ExpectClose(expected_tensor, *GetOutput(0), kAbsoluteTolerance,
                         kRelativeTolerance);

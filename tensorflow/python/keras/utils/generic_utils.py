@@ -606,21 +606,46 @@ def deserialize_keras_object(identifier,
                              printable_module_name='object'):
   """Turns the serialized form of a Keras object back into an actual object.
 
-  Calls to `deserialize_keras_object` while underneath the
+  This function is for mid-level library implementers rather than end users.
+
+  Importantly, this utility requires you to provide the dict of `module_objects`
+  to use for looking up the object config; this is not populated by default.
+  If you need a deserialization utility that has preexisting knowledge of
+  built-in Keras objects, use e.g. `keras.layers.deserialize(config)`,
+  `keras.metrics.deserialize(config)`, etc.
+
+  Calling `deserialize_keras_object` while underneath the
   `SharedObjectLoadingScope` context manager will cause any already-seen shared
   objects to be returned as-is rather than creating a new object.
 
   Args:
     identifier: the serialized form of the object.
-    module_objects: A dictionary of custom objects to look the name up in.
-      Generally, module_objects is provided by midlevel library implementers.
+    module_objects: A dictionary of built-in objects to look the name up in.
+      Generally, `module_objects` is provided by midlevel library implementers.
     custom_objects: A dictionary of custom objects to look the name up in.
-      Generally, custom_objects is provided by the user.
+      Generally, `custom_objects` is provided by the end user.
     printable_module_name: A human-readable string representing the type of the
       object. Printed in case of exception.
 
   Returns:
     The deserialized object.
+
+  Example:
+
+  A mid-level library implementer might want to implement a utility for
+  retrieving an object from its config, as such:
+
+  ```python
+  def deserialize(config, custom_objects=None):
+     return deserialize_keras_object(
+       identifier,
+       module_objects=globals(),
+       custom_objects=custom_objects,
+       name="MyObjectType",
+     )
+  ```
+
+  This is how e.g. `keras.layers.deserialize()` is implemented.
   """
   if identifier is None:
     return None

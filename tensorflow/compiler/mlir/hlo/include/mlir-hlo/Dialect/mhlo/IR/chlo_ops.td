@@ -90,7 +90,7 @@ class HLOClient_BroadcastBinaryElementwiseOp<
   );
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$left, "Value":$right,
+    OpBuilder<(ins "Value":$left, "Value":$right,
       "DenseIntElementsAttr":$broadcast_dimensions)>];
 
   let results = (outs HLO_Tensor);
@@ -673,7 +673,7 @@ def HLOClient_BroadcastCompareOp : HLOClient_BroadcastBinaryElementwiseOp<
   let results = (outs HLO_PredTensor);
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$lhs, "Value":$rhs,
+    OpBuilder<(ins "Value":$lhs, "Value":$rhs,
       "DenseIntElementsAttr":$broadcast_dimensions,
       "StringAttr":$comparison_direction, CArg<"StringAttr", "{}">:$compare_type)>];
 }

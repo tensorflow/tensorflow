@@ -676,12 +676,14 @@ class Model {
   // To terminate the execution of the optimization loop, the caller needs to
   // invoke `cancellation_mgr->StartCancel()`.
   Status OptimizeLoop(AutotuneAlgorithm algorithm, int64 cpu_budget,
-                      int64 ram_budget, CancellationManager* cancellation_mgr);
+                      int64 ram_budget,
+                      CancellationManager* cancellation_manager);
 
   // Uses the given algorithm and resource budgets to perform the autotuning
   // optimization.
   void Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget, int64 ram_budget,
-                double model_input_time);
+                double model_input_time,
+                CancellationManager* cancellation_manager);
 
   // Removes the given node.
   void RemoveNode(std::shared_ptr<Node> node) TF_LOCKS_EXCLUDED(mu_);
@@ -726,7 +728,8 @@ class Model {
   // the projected output time is less than or equal to the processing time
   // needed to produce an element divided by CPU budget.
   void OptimizeHillClimb(std::shared_ptr<Node> snapshot,
-                         const OptimizationParams& optimization_params);
+                         const OptimizationParams& optimization_params,
+                         CancellationManager* cancellation_manager);
 
   // This optimization algorithm starts by setting all tunable parallelism
   // parameters to the minimum value. It then improves current parameters by
@@ -736,7 +739,8 @@ class Model {
   // value or the output time is less than the processing time needed to produce
   // an element divided by CPU budget.
   void OptimizeGradientDescent(std::shared_ptr<Node> snapshot,
-                               const OptimizationParams& optimization_params);
+                               const OptimizationParams& optimization_params,
+                               CancellationManager* cancellation_manager);
 
   // Collects the output time and if `gradients` is not `nullptr`, the output
   // time gradient w.r.t. tunable parameters of the subtree rooted in the given

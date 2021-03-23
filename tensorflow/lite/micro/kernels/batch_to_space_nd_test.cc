@@ -151,18 +151,4 @@ TF_LITE_MICRO_TEST(BatchToSpaceBasicInt8) {
           tflite::testing::basic_golden, golden_quantized, 1.0f, 0, output));
 }
 
-TF_LITE_MICRO_TEST(BatchToSpaceInvalidOutputDimensionShouldFail) {
-  constexpr int output_length = 12;
-  const int output_dims[] = {4, 1, 4, 3, 1};
-  float output[output_length];
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteError,
-      tflite::testing::TestBatchToSpaceNdFloat(
-          tflite::testing::basic_input_dims, tflite::testing::basic_input,
-          tflite::testing::basic_block_shape_dims,
-          tflite::testing::basic_block_shape, tflite::testing::basic_crops_dims,
-          tflite::testing::basic_crops, output_dims,
-          tflite::testing::basic_golden, output));
-}
-
 TF_LITE_MICRO_TESTS_END
