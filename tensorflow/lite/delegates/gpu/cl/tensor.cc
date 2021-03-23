@@ -68,7 +68,8 @@ absl::Status AllocateTensorMemory(const CLContext& context, const BHWDC& shape,
 
       cl_image_format format;
       format.image_channel_order = CL_RGBA;
-      format.image_channel_data_type = ToImageChannelType(descriptor.data_type);
+      format.image_channel_data_type =
+          DataTypeToChannelType(descriptor.data_type);
 
       cl_int error_code;
       cl_mem memory =
@@ -97,7 +98,8 @@ absl::Status AllocateTensorMemory(const CLContext& context, const BHWDC& shape,
 
       cl_image_format format;
       format.image_channel_order = CL_RGBA;
-      format.image_channel_data_type = ToImageChannelType(descriptor.data_type);
+      format.image_channel_data_type =
+          DataTypeToChannelType(descriptor.data_type);
 
       cl_int error_code;
       cl_mem memory =
@@ -127,7 +129,8 @@ absl::Status AllocateTensorMemory(const CLContext& context, const BHWDC& shape,
 
       cl_image_format format;
       format.image_channel_order = CL_RGBA;
-      format.image_channel_data_type = ToImageChannelType(descriptor.data_type);
+      format.image_channel_data_type =
+          DataTypeToChannelType(descriptor.data_type);
 
       cl_int error_code;
       cl_mem memory =
@@ -164,7 +167,7 @@ absl::Status AllocateTensorMemory(const CLContext& context, const BHWDC& shape,
       if (context.IsFloatTexture2DSupported(shape.c, descriptor.data_type)) {
         format.image_channel_order = ToChannelOrder(shape.c);
         format.image_channel_data_type =
-            ToImageChannelType(descriptor.data_type);
+            DataTypeToChannelType(descriptor.data_type);
       } else {
         return absl::InvalidArgumentError(absl::StrCat(
             "This device doesn't support ", shape.c, "-channel textures."));
@@ -199,7 +202,7 @@ absl::Status CreateImageBufferFromBuffer(const CLContext& context,
   desc.image_width = width;
   desc.mem_object = memory;
 
-  format.image_channel_data_type = ToImageChannelType(data_type);
+  format.image_channel_data_type = DataTypeToChannelType(data_type);
   format.image_channel_order = CL_RGBA;
 
   cl_int error_code;
