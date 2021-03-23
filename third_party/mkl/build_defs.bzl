@@ -78,7 +78,6 @@ def if_enable_mkl(if_true, if_false = []):
     """
     return select({
         "@org_tensorflow//third_party/mkl:enable_mkl": if_true,
-        "@org_tensorflow//third_party/mkl:build_with_mkl_aarch64": if_true,
         "//conditions:default": if_false,
     })
 
