@@ -50,7 +50,7 @@ void RunSoftmaxFloatReference(const uint8* input_data,
                             reference_dequant_data.data());
   SoftmaxParams sm_params;
   sm_params.beta = beta;
-  optimized_ops::Softmax(sm_params, shape_common, reference_dequant_data.data(),
+  reference_ops::Softmax(sm_params, shape_common, reference_dequant_data.data(),
                          shape_common, reference_output_float_data.data());
   // Work with quantized scaling for Softmax, under which 256 represents 1, but
   // we limit this to 255.
