@@ -13,14 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 """TensorFlow-related utilities."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import collections
 import copy
 import numpy as np
-import six
 
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.eager import context
@@ -224,7 +220,7 @@ def convert_inner_node_data(nested, wrap=False):
     # Node data can be of form `[layer_name, node_id, tensor_id]` or
     # `[layer_name, node_id, tensor_id, kwargs]`.
     if (isinstance(nested, list) and (len(nested) in [3, 4]) and
-        isinstance(nested[0], six.string_types)):
+        isinstance(nested[0], str)):
       return True
     return False
 

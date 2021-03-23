@@ -15,12 +15,10 @@
 # ==============================================================================
 """Tests for `DatasetCreator` with `Model.fit` across usages and strategies."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 from absl import logging
 from absl.testing import parameterized
 import numpy as np
+
 from tensorflow.python import keras
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops

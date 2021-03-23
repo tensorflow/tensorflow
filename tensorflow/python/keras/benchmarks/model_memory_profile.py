@@ -19,9 +19,6 @@ To add a new model for memory profile:
 2. Decorate it with `@memory_profiler.profile`.
 3. Add the model function to the dict `models`.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from absl import app
 from absl import flags

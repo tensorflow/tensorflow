@@ -14,17 +14,12 @@
 # ==============================================================================
 """Tests for training routines."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import io
 import sys
 
 from absl.testing import parameterized
 import numpy as np
-import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
@@ -1014,7 +1009,7 @@ class TrainingTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_logging(self):
-    mock_stdout = io.BytesIO() if six.PY2 else io.StringIO()
+    mock_stdout = io.StringIO()
     model = sequential.Sequential()
     model.add(layers_module.Dense(10, activation='relu'))
     model.add(layers_module.Dense(1, activation='sigmoid'))

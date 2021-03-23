@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Core Keras layers.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Core Keras layers."""
 
 import copy
 import functools

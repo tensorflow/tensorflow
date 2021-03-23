@@ -15,11 +15,7 @@
 # pylint: disable=invalid-name
 # pylint: disable=g-import-not-at-top
 # pylint: disable=g-classes-have-attributes
-"""Set of tools for real-time data augmentation on image data.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Set of tools for real-time data augmentation on image data."""
 
 from keras_preprocessing import image
 import numpy as np

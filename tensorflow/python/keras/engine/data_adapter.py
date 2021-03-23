@@ -14,10 +14,6 @@
 # ==============================================================================
 """Adapter module that convert different input data objects into tf.dataset."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import contextlib
 import functools
@@ -26,7 +22,6 @@ import math
 import random
 
 import numpy as np
-import six
 
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.experimental.ops import distribute_options
@@ -59,8 +54,7 @@ keras_data_adapter_gauge = monitoring.BoolGauge(
     "/tensorflow/api/keras/data_adapters", "keras data adapter usage", "method")
 
 
-@six.add_metaclass(abc.ABCMeta)
-class DataAdapter(object):
+class DataAdapter(object, metaclass=abc.ABCMeta):
   """Base class for input data adapter.
 
   In TF 2.0, tf.data is the preferred API for user to feed in data. In order
