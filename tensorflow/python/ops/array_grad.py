@@ -592,7 +592,7 @@ def _GetBatchIndices(params_shape, indices, batch_dims):
   for dim in range(batch_dims, 0, -1):
     dim_value = casted_params_shape[dim - 1]
     accum_dim_value *= casted_params_shape[dim]
-    start = array_ops.zeros((), dtype=indices_dtype)
+    start = array_ops.constant(0, dtype=indices_dtype)
     step = array_ops.ones((), dtype=indices_dtype)
     dim_indices = math_ops.range(start, dim_value, step)
     dim_indices *= accum_dim_value

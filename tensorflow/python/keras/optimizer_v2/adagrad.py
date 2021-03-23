@@ -90,7 +90,7 @@ class Adagrad(optimizer_v2.OptimizerV2):
             epsilon=ops.convert_to_tensor_v2_with_dispatch(
                 self.epsilon, var_dtype),
             neg_lr_t=-apply_state[(var_device, var_dtype)]['lr_t'],
-            zero=array_ops.zeros((), dtype=dtypes.int64)))
+            zero=array_ops.constant(0, dtype=dtypes.int64)))
 
   def set_weights(self, weights):
     params = self.weights

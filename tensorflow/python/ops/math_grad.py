@@ -1659,7 +1659,7 @@ def _SelectGradV2(op, grad):
   c = op.inputs[0]
   x = op.inputs[1]
   y = op.inputs[2]
-  zeros = array_ops.zeros([], dtype=grad.dtype.base_dtype)
+  zeros = array_ops.constant(0, dtype=grad.dtype.base_dtype)
   gx = array_ops.where_v2(c, grad, zeros)
   x_shape = array_ops.shape(x)
   output_shape = array_ops.shape(op.outputs[0])

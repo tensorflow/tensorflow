@@ -5165,7 +5165,7 @@ def _batch_gather(params, indices, batch_dims, axis=None):
   for dim in range(batch_dims, 0, -1):
     dim_value = casted_params_shape[dim - 1]
     accum_dim_value *= casted_params_shape[dim]
-    start = zeros((), dtype=indices_dtype)
+    start = constant(0, dtype=indices_dtype)
     step = ones((), dtype=indices_dtype)
     dim_indices = gen_math_ops._range(start, dim_value, step)
     dim_indices *= accum_dim_value

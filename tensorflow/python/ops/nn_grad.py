@@ -1125,7 +1125,7 @@ def _TopKGrad(op, grad, _):
           array_ops.scatter_nd(
               array_ops.expand_dims(ind, -1), array_ops.reshape(grad, [-1]),
               [math_ops.reduce_prod(in_shape)]), in_shape),
-      array_ops.zeros([], dtype=dtypes.int32)
+      array_ops.constant(0, dtype=dtypes.int32)
   ]
 
 

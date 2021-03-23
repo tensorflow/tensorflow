@@ -128,7 +128,7 @@ class Adamax(optimizer_v2.OptimizerV2):
             beta_1_power=beta_1_power,
             one_minus_beta_1_t=1 - beta_1_t,
             beta_2_t=beta_2_t,
-            zero=array_ops.zeros((), dtype=dtypes.int64)))
+            zero=array_ops.constant(0, dtype=dtypes.int64)))
 
   def _resource_apply_dense(self, grad, var, apply_state=None):
     var_device, var_dtype = var.device, var.dtype.base_dtype
