@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import enum
+import pprint
 import shutil
 import tempfile
 import warnings
@@ -49,8 +50,8 @@ from tensorflow.lite.python.convert import toco_convert_impl as _toco_convert_im
 from tensorflow.lite.python.convert import toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.lite.python.convert_saved_model import freeze_saved_model as _freeze_saved_model
 from tensorflow.lite.python.interpreter import Interpreter  # pylint: disable=unused-import
-from tensorflow.lite.python.interpreter import OpResolverType  # pylint: disable=unused-import
 from tensorflow.lite.python.interpreter import load_delegate  # pylint: disable=unused-import
+from tensorflow.lite.python.interpreter import OpResolverType  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import is_ophint_converted as _is_ophint_converted
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
@@ -651,11 +652,24 @@ class TFLiteConverterBase(object):
     ])
     converter_kwargs.update({
         "optimization_sparsify_model": self._sparsify_model(),
-        "optimization_default": optimization_default,
+        "optimization_default": bool(optimization_default),
     })
 
+    def format_element(elem):
+      if isinstance(elem, enum.Enum):
+        return str(elem.value)
+      return pprint.pformat(elem)
+
+    def format_param(param):
+      if isinstance(param, (list, tuple, set)):
+        if not param:
+          return "None"  # Return None if empty.
+        string_list = [format_element(x) for x in param]
+        return ",".join(sorted(string_list))
+      return format_element(param)
+
     for key, value in converter_kwargs.items():
-      self._tflite_metrics.set_converter_param(key, str(value))
+      self._tflite_metrics.set_converter_param(key, format_param(value))
 
 
 class TFLiteConverterBaseV2(TFLiteConverterBase):
@@ -685,6 +699,20 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
         self.inference_output_type not in default_types:
       raise ValueError("The inference_input_type and inference_output_type "
                        "must be tf.float32.")
+
+  def _save_conversion_params_metric(self,
+                                     converter_params,
+                                     graph_def=None,
+                                     inference_type=None,
+                                     inference_input_type=None):
+    converter_kwargs = converter_params.copy()
+    converter_kwargs.update({
+        "api_version": 2,
+    })
+    super(TFLiteConverterBaseV2,
+          self)._save_conversion_params_metric(converter_kwargs, graph_def,
+                                               inference_type,
+                                               inference_input_type)
 
   def convert(self, graph_def, input_tensors, output_tensors):
     """Converts a TensorFlow GraphDef based on instance variables.
@@ -1556,6 +1584,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
         "dump_graphviz_dir": self.dump_graphviz_dir,
         "dump_graphviz_video": self.dump_graphviz_video,
         "conversion_summary_dir": self.conversion_summary_dir,
+        "api_version": 1,
     })
     super(TFLiteConverterBaseV1,
           self)._save_conversion_params_metric(converter_kwargs,
