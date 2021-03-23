@@ -36,8 +36,6 @@ class SparseTensorDenseMatmulDeterministicTest(
     sparse_tensor_dense_matmul_op_base.SparseTensorDenseMatMulTestBase):
 
   def _gen_data(self, m, k, n, nnz, row_occupied_rate, data_type):
-    random.seed(123)
-    np.random.seed(123)
 
     occupied_rows = random.sample(range(m), int(m * row_occupied_rate))
     sparse_input_dense_shape = [m, k]
@@ -65,22 +63,22 @@ class SparseTensorDenseMatmulDeterministicTest(
   @test_util.run_cuda_only
   @test_util.run_in_graph_and_eager_modes
   def testDeterministicSparseDenseMatmul(self):
-    types_list = (np.float16, np.float32, np.float64,
-                  np.complex64, np.complex128)
-    unimplemented_types = (np.float64, np.complex128)
+    random.seed(123)
+    np.random.seed(123)
+    gpu_determinism_implemented_types = (np.float16, np.float32, np.complex64)
 
-    for data_type in types_list:
+    for data_type in gpu_determinism_implemented_types:
       sparse_input, dense_input = self._gen_data(
           m=2430, k=615, n=857, nnz=(1<<16)+243, row_occupied_rate=0.02,
           data_type=data_type)
 
       repeat_count = 5
       with self.session(force_gpu=True):
-
-        if data_type in unimplemented_types:
+        if data_type in (np.float64, np.complex128):
           with self.assertRaisesRegex(
               errors.UnimplementedError,
-              "No deterministic GPU implementation of *"):
+              "No deterministic GPU implementation of sparse_dense_matmul "
+              "available for data of type tf.float64 or tf.complex128"):
             result_ = sparse_ops.sparse_tensor_dense_matmul(
                 sparse_input, dense_input)
             self.evaluate(result_)

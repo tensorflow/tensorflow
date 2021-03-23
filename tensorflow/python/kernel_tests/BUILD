@@ -3220,7 +3220,6 @@ cuda_py_test(
     name = "sparse_tensor_dense_matmul_op_test",
     size = "medium",
     srcs = ["sparse_tensor_dense_matmul_op_test.py"],
-    tfrt_enabled = True,
     deps = [
         ":sparse_tensor_dense_matmul_op_base",
     ],

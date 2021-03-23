@@ -1,8 +1,11 @@
 /* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
+
     http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -41,30 +44,31 @@ struct OutOfBoundsValue<std::complex<T>> {
 
 template <typename Tsrc, typename Tdst>
 __global__ void DownCast(
-    const int size, const Tsrc* src, Tdst* __restrict__ dst) {
+    const int size, const Tsrc* __restrict__  src, Tdst* __restrict__ dst) {
 
-    GPU_1D_KERNEL_LOOP(index, size) {
-        dst[index] = static_cast<Tdst>(src[index]);
-    }
+  GPU_1D_KERNEL_LOOP(index, size) {
+    dst[index] = static_cast<Tdst>(src[index]);
+  }
 }
 
 template<>
 __global__ void DownCast(
-    const int size, const complex128* src, complex64* __restrict__ dst) {
+    const int size, const complex128* __restrict__  src,
+    complex64* __restrict__ dst) {
 
-    GPU_1D_KERNEL_LOOP(index, size) {
-        dst[index] = complex64(src[index].real(), (src[index].imag()));
-    }
+  GPU_1D_KERNEL_LOOP(index, size) {
+    dst[index] = complex64(src[index].real(), (src[index].imag()));
+  }
 }
 
 template <typename Tout, typename Tin>
 __device__ void reduction(Tout* out_location, Tin val){
-   GpuAtomicAdd(out_location, static_cast<Tout>(val));
+  GpuAtomicAdd(out_location, static_cast<Tout>(val));
 }
 
 template<>
 __device__ void reduction(complex128* out_location, complex64 val){
-      GpuAtomicAdd(out_location, complex128(val.real(), val.imag()));
+  GpuAtomicAdd(out_location, complex128(val.real(), val.imag()));
 }
 
 template <typename T, typename Tsum, typename Tindices, bool ADJ_A, bool ADJ_B>
@@ -104,6 +108,8 @@ __global__ void SparseTensorDenseMatMulKernel(
 
 namespace functor {
 
+namespace {
+
 bool RequireDeterminism() {
   static bool require_determinism = [] {
     bool deterministic_ops = false;
@@ -114,6 +120,8 @@ bool RequireDeterminism() {
   }();
   return require_determinism;
 }
+
+} // namespace
 
 template <typename T, typename Tindices, bool ADJ_A, bool ADJ_B>
 struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
@@ -140,29 +148,28 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
       if (std::is_same<T, double>::value ||
           std::is_same<T, complex128>::value) {
         return errors::Unimplemented(
-            "No deterministic GPU implementation of "
-            "float64 or complex128 for sparse_dense_matmul");
+            "No deterministic GPU implementation of sparse_dense_matmul "
+            "available for data of type tf.float64 or tf.complex128");
       }
 
-       Tupcast* maybe_temp_out_data = nullptr;
+      Tupcast* maybe_temp_out_data = nullptr;
+      TF_RETURN_IF_ERROR(ctx->allocate_temp(
+          DataTypeToEnum<Tupcast>::value,
+          TensorShape({out.dimension(0), out.dimension(1)}), &temp_out_t));
 
-       TF_RETURN_IF_ERROR(ctx->allocate_temp(
-            DataTypeToEnum<Tupcast>::value,
-            TensorShape({out.dimension(0), out.dimension(1)}), &temp_out_t));
-       auto temp_out = temp_out_t.matrix<Tupcast>();
-       maybe_temp_out_data = temp_out.data();
+      auto temp_out = temp_out_t.matrix<Tupcast>();
+      maybe_temp_out_data = temp_out.data();
+      TF_CHECK_OK(GpuLaunchKernel(
+          SetZero<Tupcast>, config.block_count, config.thread_per_block, 0,
+          d.stream(), m * p, maybe_temp_out_data));
 
-       TF_CHECK_OK(GpuLaunchKernel(
-           SetZero<Tupcast>, config.block_count, config.thread_per_block, 0,
-           d.stream(), m * p, maybe_temp_out_data));
-
-       TF_CHECK_OK(GpuLaunchKernel(
+      TF_CHECK_OK(GpuLaunchKernel(
           SparseTensorDenseMatMulKernel<T, Tupcast, Tindices, ADJ_A, ADJ_B>,
           config.block_count, config.thread_per_block, 0, d.stream(), nnz, m,
           b_rows, b_cols, p, a_indices.data(), a_values.data(), b.data(),
           maybe_temp_out_data));
 
-       TF_CHECK_OK(GpuLaunchKernel(
+      TF_CHECK_OK(GpuLaunchKernel(
           DownCast<Tupcast, T>, config.block_count, config.thread_per_block,
           0, d.stream(), m * p, maybe_temp_out_data,
           out.data()));
@@ -178,8 +185,8 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
         maybe_temp_out_data = temp_out.data();
 
         TF_CHECK_OK(GpuLaunchKernel(
-           SetZero<Tsum>, config.block_count, config.thread_per_block, 0,
-           d.stream(), m * p, maybe_temp_out_data));
+            SetZero<Tsum>, config.block_count, config.thread_per_block, 0,
+            d.stream(), m * p, maybe_temp_out_data));
 
       } else {
         // Note: The reinterpret cast is only required to avoid a compilation

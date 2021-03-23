@@ -20,13 +20,73 @@ from __future__ import print_function
 
 import sys
 
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.kernel_tests import sparse_tensor_dense_matmul_op_base
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-SparseTensorDenseMatMulTest = \
-  sparse_tensor_dense_matmul_op_base.SparseTensorDenseMatMulTestBase
+SparseTensorDenseMatMulTest = (
+    sparse_tensor_dense_matmul_op_base.SparseTensorDenseMatMulTestBase
+)
 
+def _sparse_tensor_dense_vs_dense_matmul_benchmark_dense(x, y, adjoint_a,
+                                                         adjoint_b):
+
+  def body(t, prev):
+    with ops.control_dependencies([prev]):
+      return (t + 1, math_ops.matmul(
+          x,
+          y,
+          transpose_a=adjoint_a,
+          transpose_b=adjoint_b,
+          a_is_sparse=True,
+          b_is_sparse=False))
+
+  t0 = constant_op.constant(0)
+  v0 = constant_op.constant(0.0)
+
+  def _timeit(iterations, _):
+    (_, final) = control_flow_ops.while_loop(
+        lambda t, _: t < iterations,
+        body, (t0, v0),
+        parallel_iterations=1,
+        back_prop=False,
+        shape_invariants=(tensor_shape.TensorShape(()),
+                          tensor_shape.TensorShape(None)))
+    return [final]
+
+  return _timeit
+
+
+def _sparse_tensor_dense_vs_dense_matmul_benchmark_sparse(x_ind, x_val, x_shape,
+                                                          y, adjoint_a,
+                                                          adjoint_b):
+  sp_x = sparse_tensor.SparseTensor(
+      indices=x_ind, values=x_val, dense_shape=x_shape)
+
+  def body(t, prev):
+    with ops.control_dependencies([prev]):
+      return (t + 1, sparse_ops.sparse_tensor_dense_matmul(
+          sp_x, y, adjoint_a=adjoint_a, adjoint_b=adjoint_b))
+
+  t0 = constant_op.constant(0)
+  v0 = constant_op.constant(0.0)
+
+  def _timeit(iterations, _):
+    (_, final) = control_flow_ops.while_loop(
+        lambda t, _: t < iterations,
+        body, (t0, v0),
+        parallel_iterations=1,
+        back_prop=False,
+        shape_invariants=(tensor_shape.TensorShape(()),
+                          tensor_shape.TensorShape(None)))
+    return [final]
+
+  return _timeit
 
 def sparse_tensor_dense_vs_dense_matmul_benchmark(thresh,
                                                   m,

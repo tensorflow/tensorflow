@@ -23,19 +23,14 @@ import time
 
 import numpy as np
 
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import config
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import app
 from tensorflow.python.platform import test
@@ -69,19 +64,20 @@ class SparseTensorDenseMatMulTestBase(test.TestCase):
     x_shape = x.shape
 
     with self.cached_session(use_gpu=True):
-      required_determinisim = \
-          True if os.getenv('TF_DETERMINISTIC_OPS') in ('1', 'True') else False
+      determinism_required = False
+      if os.getenv('TF_DETERMINISTIC_OPS') in ('1', 'True'):
+        determinism_required = True
 
-      unimplemented_types = (np.float64, np.complex128)
       sp_x_value = sparse_tensor.SparseTensorValue(
           indices=x_indices, values=x_values, dense_shape=x_shape)
       gpus = config.list_physical_devices('GPU')
-      if len(gpus) > 0 and required_determinisim and \
-         x.dtype in unimplemented_types:
+      if (len(gpus) > 0 and determinism_required and
+          x.dtype in (np.float64, np.complex128)):
 
         with self.assertRaisesRegex(
             errors.UnimplementedError,
-            "No deterministic GPU implementation of *"):
+            "No deterministic GPU implementation of sparse_dense_matmul "
+            "available for data of type tf.float64 or tf.complex128"):
           tf_value_ans = sparse_ops.sparse_tensor_dense_matmul(
               sp_x_value, y, adjoint_a=adjoint_a, adjoint_b=adjoint_b)
           self.evaluate(tf_value_ans)
@@ -260,60 +256,4 @@ class SparseTensorDenseMatMulTestBase(test.TestCase):
             x = x.transpose() if adjoint_a else x
             y = y.transpose() if adjoint_b else y
             self._testMatmul(x, y, adjoint_a, adjoint_b)
-
-
-def _sparse_tensor_dense_vs_dense_matmul_benchmark_dense(x, y, adjoint_a,
-                                                         adjoint_b):
-
-  def body(t, prev):
-    with ops.control_dependencies([prev]):
-      return (t + 1, math_ops.matmul(
-          x,
-          y,
-          transpose_a=adjoint_a,
-          transpose_b=adjoint_b,
-          a_is_sparse=True,
-          b_is_sparse=False))
-
-  t0 = constant_op.constant(0)
-  v0 = constant_op.constant(0.0)
-
-  def _timeit(iterations, _):
-    (_, final) = control_flow_ops.while_loop(
-        lambda t, _: t < iterations,
-        body, (t0, v0),
-        parallel_iterations=1,
-        back_prop=False,
-        shape_invariants=(tensor_shape.TensorShape(()),
-                          tensor_shape.TensorShape(None)))
-    return [final]
-
-  return _timeit
-
-
-def _sparse_tensor_dense_vs_dense_matmul_benchmark_sparse(x_ind, x_val, x_shape,
-                                                          y, adjoint_a,
-                                                          adjoint_b):
-  sp_x = sparse_tensor.SparseTensor(
-      indices=x_ind, values=x_val, dense_shape=x_shape)
-
-  def body(t, prev):
-    with ops.control_dependencies([prev]):
-      return (t + 1, sparse_ops.sparse_tensor_dense_matmul(
-          sp_x, y, adjoint_a=adjoint_a, adjoint_b=adjoint_b))
-
-  t0 = constant_op.constant(0)
-  v0 = constant_op.constant(0.0)
-
-  def _timeit(iterations, _):
-    (_, final) = control_flow_ops.while_loop(
-        lambda t, _: t < iterations,
-        body, (t0, v0),
-        parallel_iterations=1,
-        back_prop=False,
-        shape_invariants=(tensor_shape.TensorShape(()),
-                          tensor_shape.TensorShape(None)))
-    return [final]
-
-  return _timeit
 
