@@ -303,21 +303,19 @@ class MklConvFwdPrimitive : public MklPrimitive {
     }
 
     if (!convFwdDims.fuse_bn_dims.empty()) {
-      memory::format_tag fuse_bn_arg_fmt;
-      if (convFwdDims.native_format) {
-        fuse_bn_arg_fmt = user_data_fmt;
-      } else {
-        fuse_bn_arg_fmt = MklTensorFormatToMklDnnDataFormat(convFwdDims.tf_fmt);
-      }
+      const memory::format_tag fused_bn_arg_fmt =
+          convFwdDims.native_format
+              ? user_data_fmt
+              : MklTensorFormatToMklDnnDataFormat(convFwdDims.tf_fmt);
 
       context_.bn_scale_md.reset(new memory::desc(
-          {convFwdDims.fuse_bn_dims}, MklDnnType<Tinput>(), fuse_bn_arg_fmt));
+          {convFwdDims.fuse_bn_dims}, MklDnnType<Tinput>(), fused_bn_arg_fmt));
       context_.bn_mean_md.reset(new memory::desc(
-          {convFwdDims.fuse_bn_dims}, MklDnnType<Tinput>(), fuse_bn_arg_fmt));
+          {convFwdDims.fuse_bn_dims}, MklDnnType<Tinput>(), fused_bn_arg_fmt));
       context_.bn_rsqrt_md.reset(new memory::desc(
-          {convFwdDims.fuse_bn_dims}, MklDnnType<Tinput>(), fuse_bn_arg_fmt));
+          {convFwdDims.fuse_bn_dims}, MklDnnType<Tinput>(), fused_bn_arg_fmt));
       context_.bn_offset_md.reset(new memory::desc(
-          {convFwdDims.fuse_bn_dims}, MklDnnType<Tinput>(), fuse_bn_arg_fmt));
+          {convFwdDims.fuse_bn_dims}, MklDnnType<Tinput>(), fused_bn_arg_fmt));
     }
 
     // Check if there is any fusions as post-ops
@@ -765,7 +763,7 @@ class MklConvOp : public OpKernel {
         // Inputs to FusedBatchNorm have same 1D shape
         fuse_bn_shape = MklGetInput(context, kInputIndex_BN_Mean).shape();
         OP_REQUIRES(context, fuse_bn_shape.dims() == 1,
-                    errors::InvalidArgument("fused bn must be 1D not: ",
+                    errors::InvalidArgument("FusedBatchNorm must be 1D, not: ",
                                             fuse_bn_shape.DebugString()));
 
         // Note - MKL-DNN expects {1, C, 1, 1} for binary post-op even for NHWC
