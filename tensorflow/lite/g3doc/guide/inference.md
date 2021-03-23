@@ -145,8 +145,34 @@ In both cases, you must provide a valid TensorFlow Lite model or the API throws
 `Interpreter`, it must remain unchanged for the whole lifetime of the
 `Interpreter`.
 
-To then run an inference with the model, simply call `Interpreter.run()`. For
-example:
+The preferred way to run inference on a model is to use signatures -
+Available for models converted starting Tensorflow 2.5
+
+```Java
+try (Interpreter interpreter = new Interpreter(file_of_tensorflowlite_model)) {
+  Map<String, Object> inputs = new HashMap<>();
+  inputs.put("input_1", input1);
+  inputs.put("input_2", input2);
+  Map<String, Object> outputs = new HashMap<>();
+  outputs.put("output_1", output1);
+  interpreter.runSignature(inputs, outputs, "mySignature");
+}
+```
+
+The `runSignature` method takes three arguments:
+
+-   **Inputs** : map for inputs from input name in the signature to an input
+    object.
+
+-   **Outputs** : map for output mapping from output name in signature to output
+    data.
+
+-   **Signature Name** [optional]: Signature name (Can be left empty if the
+    model has single signature).
+
+Another way to run an inference when the model doesn't
+have a defined signatures.
+Simply call `Interpreter.run()`. For example:
 
 ```java
 try (Interpreter interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
@@ -467,6 +493,57 @@ to load a model and run an inference.
 
 The following example shows how to use the Python interpreter to load a
 `.tflite` file and run inference with random input data:
+
+This example is recommended if you're converting from SavedModel with a defined
+SignatureDef.
+Available starting from TensorFlow 2.5
+
+```python
+class TestModel(tf.Module):
+  def __init__(self):
+    super(TestModel, self).__init__()
+
+  @tf.function(input_signature=[tf.TensorSpec(shape=[1, 10], dtype=tf.float32)])
+  def add(self, x):
+    '''
+    Simple method that accepts single input 'x' and returns 'x' + 4.
+    '''
+    # Name the output 'result' for convenience.
+    return {'result' : x + 4}
+
+
+SAVED_MODEL_PATH = 'content/saved_models/test_variable'
+TFLITE_FILE_PATH = 'content/test_variable.tflite'
+
+# Save the model
+module = TestModel()
+# You can omit the signatures argument and a default signature name will be
+# created with name 'serving_default'.
+tf.saved_model.save(
+    module, SAVED_MODEL_PATH,
+    signatures={'my_signature':module.add.get_concrete_function()})
+
+# Convert the model using TFLiteConverter
+converter = tf.lite.TFLiteConverter.from_saved_model(SAVED_MODEL_PATH)
+tflite_model = converter.convert()
+with open(TFLITE_FILE_PATH, 'wb') as f:
+  f.write(tflite_model)
+
+# Load the TFLite model in TFLite Interpreter
+interpreter = tf.lite.Interpreter(TFLITE_FILE_PATH)
+# There is only 1 signature defined in the model,
+# so it will return it by default.
+# If there are multiple signatures then we can pass the name.
+my_signature = interpreter.get_signature_runner()
+
+# my_signature is callable with input as arguments.
+output = my_signature(x=tf.constant([1.0], shape=(1,10), dtype=tf.float32))
+# 'output' is dictionary with all outputs from the inference.
+# In this case we have single output 'result'.
+print(output['result'])
+```
+
+Another example if the model doesn't have SignatureDefs defined.
 
 ```python
 import numpy as np
