@@ -300,7 +300,7 @@ class LocallyConnectedImplementationModeTest(test.TestCase,
       #  [ 0. 1. 0. ]
       #  [ 0. 0. 1. ]]
       
-      targets =  np.zeros((sparse_targets.size, sparse_targets.max() + 1)) 
+      targets =  np.zeros((sparse_targets.size, num_classes)) 
       targets[np.arange(sparse_targets.size), sparse_targets] = 1 
       
       height = 7
@@ -480,7 +480,7 @@ def get_model(implementation,
   model.compile(
       optimizer=RMSPropOptimizer(0.01),
       metrics=[keras.metrics.categorical_accuracy],
-      loss=xent
+      loss=keras.losses.CategoricalCrossentropy(from_logits=True)
   )
   return model
 
