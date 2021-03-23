@@ -23,15 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 
-#if (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
-#include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
-#endif
-
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
-    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
-#include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
-#endif
-
 namespace xla {
 namespace gpu {
 
