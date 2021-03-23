@@ -92,6 +92,9 @@ bool inline DoesControlEdgeExist(const Node* src, const Node* dst) {
 // based on environment variable setting. Native format mode is default. User
 // can set TF_ENABLE_MKL_NATIVE_FORMAT=0 to disable the native format mode.
 bool inline NativeFormatEnabled() {
+#ifndef ENABLE_MKL
+  return true;
+#else
   static bool native_fmt_enabled = true;
   static absl::once_flag once;
   absl::call_once(once, [&] {
@@ -100,6 +103,7 @@ bool inline NativeFormatEnabled() {
                                    &native_fmt_enabled));
   });
   return native_fmt_enabled;
+#endif
 }
 
 // Check if the data_format attribute in the node def represents 5D tensor
