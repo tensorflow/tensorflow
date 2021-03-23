@@ -815,6 +815,7 @@ def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [ConstantLike, NoSideEffect,
   let results = (outs AnyTensor:$output);
 
   let hasFolder = 1;
+  let hasCanonicalizer = 1;
 
   let builders = [
     OpBuilder<(ins "Attribute":$value),

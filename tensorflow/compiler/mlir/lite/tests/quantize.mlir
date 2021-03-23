@@ -71,8 +71,8 @@ func @QuantizeConv2D(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>
 // CHECK: %[[conv:.*]] = "tfl.conv_2d"(%arg0, %[[cst1]], %[[cst0]])
 // CHECK: return %[[conv]] : tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>
 
-// DEBUG: %[[wt:.*]] = constant dense<-1.000000e+00> : tensor<32x3x3x3xf32>
-// DEBUG: %[[bias:.*]] = constant dense<-1.23697901> : tensor<32xf32>
+// DEBUG-DAG: %[[wt:.*]] = constant dense<-1.000000e+00> : tensor<32x3x3x3xf32>
+// DEBUG-DAG: %[[bias:.*]] = constant dense<-1.23697901> : tensor<32xf32>
 // DEBUG: %[[act:.*]] = "tfl.dequantize"(%arg0) : (tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x224x224x3xf32>
 // DEBUG: %[[f_conv:.*]] = "tfl.conv_2d"(%[[act]], %[[wt]], %[[bias]])
 // DEBUG: %[[q_conv:.*]] = "tfl.conv_2d"
@@ -81,6 +81,7 @@ func @QuantizeConv2D(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>
 }
 
 // CHECK-LABEL: QuantizeDepthwiseConv2D
+// DEBUG-LABEL: QuantizeDepthwiseConv2D
 func @QuantizeDepthwiseConv2D(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>> {
 ^bb0(%arg0: tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>):
   %cst = constant dense<-1.23697901> : tensor<32xf32>
@@ -98,6 +99,7 @@ func @QuantizeDepthwiseConv2D(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500
 }
 
 // CHECK-LABEL: QuantizeFullyConnected
+// DEBUG-LABEL: QuantizeFullyConnected
 func @QuantizeFullyConnected(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>> {
 ^bb0(%arg0: tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>):
   %cst = constant dense<-1.23697901> : tensor<32xf32>

@@ -146,7 +146,7 @@ struct MoveUpDynamicBroadcastsForFusionPass
     PopulateMoveUpDynamicBroadcastsForFusionLegality(&target);
 
     // Populate rewrite patterns.
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&ctx);
     mhlo::PopulateMoveUpDynamicBroadcastsForFusionPatterns(&ctx, &patterns);
 
     // Apply transformation.

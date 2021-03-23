@@ -1515,7 +1515,7 @@ void PopulateLoweringTFPatterns(MLIRContext *context,
                    LowerBatchToSpaceND, LowerSpaceToBatchNDOp,
                    LowerResizeNearestNeighbor, LowerSparseMatMulOp,
                    Lower_UnaryOpsComposition>(context);
-  populateWithGenerated(context, *patterns);
+  populateWithGenerated(*patterns);
 }
 
 void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,

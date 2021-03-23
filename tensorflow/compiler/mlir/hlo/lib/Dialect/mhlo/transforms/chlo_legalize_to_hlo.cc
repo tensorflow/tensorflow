@@ -1239,7 +1239,7 @@ void PopulateChloBroadcastingPatterns(MLIRContext *context,
 
 void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
                                        OwningRewritePatternList *patterns) {
-  populateWithGenerated(context, *patterns);
+  populateWithGenerated(*patterns);
   PopulateChloBroadcastingPatterns(context, patterns);
 
   // Other patterns.

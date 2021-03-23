@@ -178,7 +178,7 @@ struct LhloLegalizeToGpuPass
   }
 
   void runOnFunction() override {
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     ConversionTarget target(getContext());
     target.addLegalDialect<linalg::LinalgDialect, memref::MemRefDialect,
                            StandardOpsDialect, gpu::GPUDialect, scf::SCFDialect,

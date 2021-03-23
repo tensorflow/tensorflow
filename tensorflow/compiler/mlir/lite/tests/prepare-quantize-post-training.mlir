@@ -29,7 +29,8 @@ func @QuantizeLstmCellInput(%arg0: tensor<1x28x28xf32>) -> tensor<1x28x20xf32> {
         none, none, none, none) -> tensor<1x28x20xf32>
     %1 = "quant.stats"(%0) {layerStats = dense<[-1.0, 2.0]> : tensor<2xf32>} : (tensor<1x28x20xf32>) -> tensor<1x28x20xf32>
     return %1 : tensor<1x28x20xf32>
-// CHECK: %[[none:.*]] = constant unit
+// CHECK-DAG: %[[none:.*]] = constant unit
+// CHECK: %[[cst1:.*]] = constant dense<1.000000e+00> : tensor<1x20xf32>
 // CHECK: %[[cell_input:.*]] = constant dense<1.000000e+00> : tensor<1x20xf32>
 // CHECK: %[[q:.*]] = "tfl.quantize"(%[[cell_input]]) {qtype = tensor<1x20x!quant.uniform<i16:f32, 2.44140625E-4>>} : (tensor<1x20xf32>) -> tensor<1x20x!quant.uniform<i16:f32, 2.44140625E-4>>
 // CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[q]]) : (tensor<1x20x!quant.uniform<i16:f32, 2.44140625E-4>>) -> tensor<1x20xf32>
@@ -400,15 +401,15 @@ func @QuantizeSVDF(%arg0: tensor<1x3xf32>) -> tensor<1x2xf32>  {
 // CHECK-DAG: %[[input_4:.*]] = "tfl.dequantize"({{.*}}) : (tensor<1x4x!quant.uniform<i16<-32767:32767>:f32, 0.0037514108011770368>>)
 // CHECK: %[[svdf:.*]] = "tfl.svdf"(%[[input_0]], %[[input_1]], %[[input_2]], %[[input_3]], %[[input_4]])
 // CHECK: %[[q:.*]] = "tfl.quantize"(%[[svdf]]) {qtype = tensor<1x2x!quant.uniform<i8:f32, 0.12954867493872549:-128>>, volatile}
-// CHECK: %[[dq:.*]] = "tfl.dequantize"(%11)
+// CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
 // CHECK: return %[[dq]]
 }
 
 // Legacy-LABEL: QuantizeSmallRange
 func @QuantizeSmallRange(%arg0: tensor<1x2xf32>) -> tensor<1x2xf32>  {
   %0 = "quant.stats"(%arg0) {layerStats = dense<[-1.0, 1.0]> : tensor<2xf32>} : (tensor<1x2xf32>) -> tensor<1x2xf32>
-  %1 = "tfl.pseudo_const"() {value = dense<[[-1.27e-7, 1.27e-7], [-1.0e-8, 1.0e-8]]> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
-  %2 = "tfl.pseudo_const"() {value = dense<[1.0, 2.0]> : tensor<2xf32>} : () -> tensor<2xf32>
+  %1 = "std.constant"() {value = dense<[[-1.27e-7, 1.27e-7], [-1.0e-8, 1.0e-8]]> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
+  %2 = "std.constant"() {value = dense<[1.0, 2.0]> : tensor<2xf32>} : () -> tensor<2xf32>
   %3 = "tfl.fully_connected"(%0, %1, %2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<1x2xf32>
   %4 = "quant.stats"(%3) {layerStats = dense<[-2.0, 2.0]> : tensor<2xf32>} : (tensor<1x2xf32>) -> tensor<1x2xf32>
   return %4 : tensor<1x2xf32>
@@ -418,7 +419,7 @@ func @QuantizeSmallRange(%arg0: tensor<1x2xf32>) -> tensor<1x2xf32>  {
 // CHECK-LABEL: ZeroPointLegacy
 // Legacy-LABEL: ZeroPointLegacy
 // Legacy mode re-calculates zero point when it's changed due to subtle difference in scale.
-func @ZeroPointLegacy(%arg0: tensor<1x2xf32> -> tensor<1x2xf32>  {
+func @ZeroPointLegacy(%arg0: tensor<1x2xf32>) -> tensor<1x2xf32>  {
   %0 = "quant.stats"(%arg0) {layerStats = dense<[-1.0, 1.20779215]> : tensor<2xf32>} : (tensor<1x2xf32>) -> tensor<1x2xf32>
   return %0 : tensor<1x2xf32>
 // CHECK: %1 = "tfl.dequantize"(%0) : (tensor<1x2x!quant.uniform<i8:f32, 0.0086580084819419707:-12>>)

@@ -99,7 +99,7 @@ func @fusion_of_three(%arg0: memref<100x10xf32>,
  return
 }
 // CHECK-LABEL: func @fusion
-//       CHECK:  %[[C1:.*]] = constant 1
+//       CHECK:  %[[C1:.*]] = constant 1 :
 //   CHECK-NOT:  linalg.generic
 //       CHECK:  scf.for {{.*}} step %[[C1]]
 //       CHECK:    scf.for {{.*}} step %[[C1]]

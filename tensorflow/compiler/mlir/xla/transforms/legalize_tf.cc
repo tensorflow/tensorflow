@@ -6298,7 +6298,7 @@ LogicalResult legalizeTF(
     Operation *op, bool allow_partial_conversion, bool legalize_chlo,
     llvm::Optional<StringRef> tf2xla_fallback_device_type) {
   MLIRContext *context = op->getContext();
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(context);
   // Note that the `OperationConverter` orders patterns lexicographically by:
   // 1) Ascending legalization depth (i.e., minimum number of patterns necessary
   //    to arrive at conversion target). This requires relevant patterns to
@@ -6363,7 +6363,7 @@ LogicalResult legalizeTF(
 
 void PopulateLegalizeTfPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
-  populateWithGenerated(context, *patterns);
+  populateWithGenerated(*patterns);
   // clang-format off
   patterns->insert<
     ConvertAllOp,

@@ -142,11 +142,11 @@ struct QuantizePass : public PassWrapper<QuantizePass, FunctionPass> {
 #include "tensorflow/compiler/mlir/lite/transforms/generated_quantize.inc"
 
 void QuantizePass::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   auto func = getFunction();
   auto* ctx = func.getContext();
 
-  TFL::populateWithGenerated(ctx, patterns);
+  TFL::populateWithGenerated(patterns);
   patterns.insert<TFLFullQuantization>(
       ctx, enable_numeric_verify || verify_numeric, error_tolerance,
       enable_single_layer_verify, enable_log_if_failed);
@@ -154,7 +154,7 @@ void QuantizePass::runOnFunction() {
 
   // Constant quantization is a lossy transformation, so they are applied only
   // after all the other patterns have been aplied.
-  OwningRewritePatternList patterns_2;
+  OwningRewritePatternList patterns_2(&getContext());
   if (legacy_float_scale) {
     patterns_2.insert<LegacyQuantizeConstPattern>(ctx);
   }
