@@ -2218,7 +2218,7 @@ cc_library(
 cc_library(
     name = "GPUToGPURuntimeTransforms",
     srcs = [
-        "lib/Conversion/GPUCommon/ConvertLaunchFuncToRuntimeCalls.cpp",
+        "lib/Conversion/GPUCommon/GPUToLLVMConversion.cpp",
         "lib/Conversion/PassDetail.h",
     ],
     hdrs = ["include/mlir/Conversion/GPUCommon/GPUCommonPass.h"],
