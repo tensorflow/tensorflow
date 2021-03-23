@@ -748,7 +748,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
-        "//third_party/fft2d:fft2d_headers",		
+        "//third_party/fft2d:fft2d_headers",
         "@fft2d",
         "@ruy//ruy/profiler:instrumentation",
     ],
