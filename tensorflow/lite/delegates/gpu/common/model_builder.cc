@@ -725,6 +725,7 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
       case OperationType::COS:
       case OperationType::ELU:
       case OperationType::EXP:
+      case OperationType::FLOOR:
       case OperationType::LOG:
       case OperationType::NEG:
       case OperationType::RSQRT:
@@ -742,6 +743,8 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
   bool IsTwoArgumentOperation() const {
     switch (operation_type_) {
       case OperationType::DIV:
+      case OperationType::FLOOR_DIV:
+      case OperationType::FLOOR_MOD:
       case OperationType::MAXIMUM:
       case OperationType::MINIMUM:
       case OperationType::POW:
@@ -756,6 +759,8 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
   bool IsTwoArgumentOperationWithConst() const {
     switch (operation_type_) {
       case OperationType::DIV:
+      case OperationType::FLOOR_DIV:
+      case OperationType::FLOOR_MOD:
       case OperationType::MAXIMUM:
       case OperationType::MINIMUM:
       case OperationType::POW:
@@ -2367,6 +2372,14 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<ElementwiseOperationParser>(OperationType::ELU);
     case kTfLiteBuiltinExp:
       return std::make_unique<ElementwiseOperationParser>(OperationType::EXP);
+    case kTfLiteBuiltinFloor:
+      return std::make_unique<ElementwiseOperationParser>(OperationType::FLOOR);
+    case kTfLiteBuiltinFloorDiv:
+      return std::make_unique<ElementwiseOperationParser>(
+          OperationType::FLOOR_DIV);
+    case kTfLiteBuiltinFloorMod:
+      return std::make_unique<ElementwiseOperationParser>(
+          OperationType::FLOOR_MOD);
     case kTfLiteBuiltinFullyConnected:
       return std::make_unique<FullyConnectedOperationParser>();
     case kTfLiteBuiltinHardSwish:
