@@ -128,6 +128,48 @@ struct ConvertUint8QConstOp : public RewritePattern {
   }
 };
 
+struct ConvertAveragePool2DOp : public RewritePattern {
+  // In TFLite, quantized average pool2d doesn't have zeropoint. Therefore, when
+  // doing reciprocal division, it rounded toward +-inf with the stored value.
+  // While TOSA avg_pool2d is zeropoint biased before doing rounding.
+  // Since TFLite is rounded based on the storage type, where int8 has range
+  // [-128, 127], uint8 has range [0, 255] To preserve the same rounding
+  // behavior, we override TOSA zeropoint with 0 (if int8) or -128 (if
+  // uint8), by adding intermediate attribute 'override_zeropoint' to operator.
+  explicit ConvertAveragePool2DOp(MLIRContext *context)
+      : RewritePattern(TFL::AveragePool2DOp::getOperationName(), 1, context) {}
+
+  LogicalResult matchAndRewrite(Operation *op, PatternRewriter &builder) const {
+    auto tfl_avgpool2d_op = cast<TFL::AveragePool2DOp>(op);
+
+    auto input_type =
+        tfl_avgpool2d_op.input().getType().dyn_cast<RankedTensorType>();
+    auto output_type =
+        tfl_avgpool2d_op.getResult().getType().dyn_cast<RankedTensorType>();
+    // Not a ranked tensor output
+    if (!output_type) return failure();
+
+    // Bail out if not quantized type.
+    auto input_qtype = input_type.getElementType()
+                           .dyn_cast<mlir::quant::UniformQuantizedType>();
+    if (!input_qtype) {
+      return failure();
+    }
+
+    // Annotate attribute to match TFLite average pool2d rounding behavior.
+    auto key =
+        mlir::Identifier::get(kOverrideZeropointAttrName, builder.getContext());
+    int32_t override_zeropoint =
+        (!input_qtype.isSigned() && input_qtype.getStorageTypeIntegralWidth())
+            ? -128
+            : 0;
+    auto value = builder.getI32IntegerAttr(override_zeropoint);
+    op->setAttr(key, value);
+
+    return success();
+  }
+};
+
 LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
                                          mlir::FuncOp &function) {
   size_t num_blocks_in_main = 0;
@@ -340,6 +382,7 @@ void ConvertUint8ToInt8::runOnFunction() {
 
   // Convert uint8 const tensor. const needs to be handled specifically.
   patterns.insert<ConvertUint8QConstOp>(&ctx);
+  patterns.insert<ConvertAveragePool2DOp>(&ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Replace uint8 tensor in the graph and insert rescale as needed.

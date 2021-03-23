@@ -105,9 +105,16 @@ func @test_relu6(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 // -----
 
 // CHECK-LABEL: test_leaky_relu
-func @test_leaky_relu(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
-  %2 = "tf.LeakyRelu"(%arg0)  {alpha = 0.707330704 : f32}  : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
-  return %2 : tensor<13x21x3xf32>
+// CHECK: tosa.const
+// CHECK: tosa.const
+// CHECK: tosa.reshape
+// CHECK: tosa.mul
+// CHECK: tosa.reshape
+// CHECK: tosa.greater_equal
+// CHECK: tosa.select
+func @test_leaky_relu(%arg0: tensor<4x4xf32>) -> tensor<4x4xf32> {
+  %0 = "tf.LeakyRelu"(%arg0) {alpha = 0.5 : f32} : (tensor<4x4xf32>) -> tensor<4x4xf32>
+  return %0 : tensor<4x4xf32>
 }
 
 // -----
@@ -764,22 +771,64 @@ func @test_depth_to_space(%arg0: tensor<1x32x32x8xf32>) -> tensor<1x64x64x2xf32>
 
 // -----
 
+// CHECK-LABEL: test_left_shift
+// CHECK: tosa.logical_left_shift
+func @test_left_shift(%arg0: tensor<4x4xi32>, %arg1: tensor<1x1xi32>) -> tensor<4x4xi32> {
+  %0 = "tf.LeftShift"(%arg0, %arg1) : (tensor<4x4xi32>, tensor<1x1xi32>) -> tensor<4x4xi32>
+  return %0 : tensor<4x4xi32>
+}
+
+// -----
+
+// CHECK-LABEL: test_right_shift
+// CHECK: tosa.arithmetic_right_shift
+func @test_right_shift(%arg0: tensor<4x4xi32>, %arg1: tensor<1x1xi32>) -> tensor<4x4xi32> {
+  %0 = "tf.RightShift"(%arg0, %arg1) : (tensor<4x4xi32>, tensor<1x1xi32>) -> tensor<4x4xi32>
+  return %0 : tensor<4x4xi32>
+}
+
+// -----
+
+// CHECK-LABEL: test_one_hot
+// CHECK: tosa.const
+// CHECK: tosa.reshape
+// CHECK: tosa.tile
+// CHECK: tosa.reshape
+// CHECK: tosa.tile
+// CHECK: tosa.reshape
+// CHECK: tosa.scatter
+// CHECK: tosa.reshape
+// CHECK: tosa.transpose
+// CHECK: tosa.reshape
+func @test_one_hot(%arg0: tensor<4x4xi32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<4x4x2xf32> {
+  %0 = "tf.Const"()  {value = dense<2> : tensor<i32>}  : () -> tensor<i32>
+  %1 = "tf.OneHot"(%arg0, %0, %arg1, %arg2) {axis = -1 : i64} : (tensor<4x4xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<4x4x2xf32>
+  return %1 : tensor<4x4x2xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_fakequant_with_min_max_args
-// CHECK-DAG: "tosa.const"() {value = dense<16383.75> : tensor<f32>}
-// CHECK-DAG: "tosa.const"() {value = dense<-1.000000e+00> : tensor<f32>}
+// CHECK-DAG: "tosa.const"() {value = dense<-2.00003052> : tensor<f32>} 
+// CHECK-DAG: "tosa.const"() {value = dense<1.99996948> : tensor<f32>}
 // CHECK-DAG: "tosa.const"() {value = dense<6.10360876E-5> : tensor<f32>}
+// CHECK-DAG: "tosa.const"() {value = dense<16383.75> : tensor<f32>}
+// CHECK-DAG: "tosa.const"() {value = dense<5.000000e-01> : tensor<f32>}
 // CHECK: tosa.reshape
-// CHECK: tosa.mul
+// CHECK: tosa.minimum
 // CHECK: tosa.reshape
-// CHECK: tosa.add
-// CHECK: tosa.cast
-// CHECK: tosa.rescale
-// CHECK: tosa.rescale
-// CHECK: tosa.cast
+// CHECK: tosa.maximum
 // CHECK: tosa.reshape
 // CHECK: tosa.sub
 // CHECK: tosa.reshape
 // CHECK: tosa.mul
+// CHECK: tosa.reshape
+// CHECK: tosa.add
+// CHECK: tosa.floor
+// CHECK: tosa.reshape
+// CHECK: tosa.mul
+// CHECK: tosa.reshape
+// CHECK: tosa.add
 func @test_fakequant_with_min_max_args(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
   %2 = "tf.FakeQuantWithMinMaxArgs"(%arg0)  {max = 2.000000e+00 : f32, min = -2.000000e+00 : f32, narrow_range = false, num_bits = 16 : i64}  : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
   return %2 : tensor<13x21x3xf32>
