@@ -126,7 +126,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
 namespace gpu {
@@ -1132,7 +1132,7 @@ Status IrEmitterUnnested::EmitCustomCallFromMlir(MlirEmitterInput input) {
   if (mlir::isa<mlir::lmhlo_gpu::CholeskyOp>(input.op)) {
     return EmitCholeskyThunkFromMlir(input);
   }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   return Unimplemented("No registered implementation for custom call to \"%s\"",
                        MlirToString(input.op));
@@ -1560,7 +1560,7 @@ Status IrEmitterUnnested::EmitCholeskyThunkFromMlir(MlirEmitterInput input) {
 
   return Status::OK();
 }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 Status IrEmitterUnnested::EmitCustomCallThunkFromMlir(MlirEmitterInput input) {
   auto custom_call = mlir::cast<mlir::lmhlo::CustomCallOp>(input.op);

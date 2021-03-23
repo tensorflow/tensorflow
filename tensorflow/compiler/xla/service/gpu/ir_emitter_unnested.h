@@ -168,7 +168,7 @@ class IrEmitterUnnested : public IrEmitter,
   Status EmitBatchNormThunkFromMlir(MlirEmitterInput input);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitCholeskyThunkFromMlir(MlirEmitterInput input);
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitCustomCallThunkFromMlir(MlirEmitterInput input);
   Status HandleFft(HloInstruction* fft) override;
   Status EmitFftThunkFromMlir(MlirEmitterInput input);

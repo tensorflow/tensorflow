@@ -371,9 +371,6 @@ class LSTMV2Test(keras_parameterized.TestCase):
     self.assertAllClose(y_1, y_3, rtol=1e-5, atol=2e-5)
     self.assertAllClose(y_2, y_4, rtol=1e-5, atol=2e-5)
 
-  @test.disable_for_rocm(skip_message='Skipping the test as ROCm '
-                                      'MIOpen does not support '
-                                      'padded input yet.')
   @parameterized.named_parameters(('v0', 0), ('v1', 1), ('v2', 2))
   @test.disable_with_predicate(
       pred=test.is_built_with_rocm,
