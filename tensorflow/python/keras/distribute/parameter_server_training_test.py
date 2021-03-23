@@ -237,6 +237,22 @@ class ShardedVariableTest(test.TestCase):
         multi_worker_testing_utils.make_parameter_server_cluster(3, 2),
         variable_partitioner=sharded_variable.FixedShardsPartitioner(2))
 
+  def assert_list_all_equal(self, list1, list2):
+    """Used in lieu of `assertAllEqual`.
+
+    This is used to replace standard `assertAllEqual` for the cases where
+    `list1` and `list2` contain `AggregatingVariable`. Lists with
+    `AggregatingVariable` are not convertible to numpy array via `np.array`
+    calls as numpy would raise `ValueError: setting an array element with a
+    sequence.`
+
+    Args:
+      list1: The first list to compare equality.
+      list2: The second list to compare equality.
+    """
+    for lhs, rhs in zip(list1, list2):
+      self.assertEqual(lhs, rhs)
+
   def test_keras_layer_setattr(self):
 
     class Layer(base_layer.Layer):
@@ -255,10 +271,11 @@ class ShardedVariableTest(test.TestCase):
     self.assertLen(layer.non_trainable_weights, 2)
     self.assertEqual(layer.non_trainable_weights[0], [2])
     self.assertEqual(layer.non_trainable_weights[1], [3])
-    self.assertAllEqual(layer.weights,
-                        layer.trainable_weights + layer.non_trainable_weights)
-    self.assertAllEqual(layer.trainable_weights, layer.trainable_variables)
-    self.assertAllEqual(layer.weights, layer.variables)
+    self.assert_list_all_equal(
+        layer.weights, layer.trainable_weights + layer.non_trainable_weights)
+    self.assert_list_all_equal(layer.trainable_weights,
+                               layer.trainable_variables)
+    self.assert_list_all_equal(layer.weights, layer.variables)
 
     checkpoint_deps = set(dep.ref for dep in layer._checkpoint_dependencies)
     self.assertEqual(checkpoint_deps, set([layer.w, layer.b]))
@@ -287,10 +304,11 @@ class ShardedVariableTest(test.TestCase):
     self.assertLen(layer.non_trainable_weights, 2)
     self.assertEqual(layer.non_trainable_weights[0], [2.])
     self.assertEqual(layer.non_trainable_weights[1], [3.])
-    self.assertAllEqual(layer.weights,
-                        layer.trainable_weights + layer.non_trainable_weights)
-    self.assertAllEqual(layer.trainable_weights, layer.trainable_variables)
-    self.assertAllEqual(layer.weights, layer.variables)
+    self.assert_list_all_equal(
+        layer.weights, layer.trainable_weights + layer.non_trainable_weights)
+    self.assert_list_all_equal(layer.trainable_weights,
+                               layer.trainable_variables)
+    self.assert_list_all_equal(layer.weights, layer.variables)
 
     checkpoint_deps = set(dep.ref for dep in layer._checkpoint_dependencies)
     self.assertEqual(checkpoint_deps, set([layer.w, layer.b]))

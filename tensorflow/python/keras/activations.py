@@ -82,13 +82,14 @@ def softmax(x, axis=-1):
 
   >>> layer = tf.keras.layers.Dense(32, activation=tf.keras.activations.softmax)
   """
-  rank = x.shape.rank
-  if rank == 2:
-    output = nn.softmax(x)
-  elif rank > 2:
-    e = math_ops.exp(x - math_ops.reduce_max(x, axis=axis, keepdims=True))
-    s = math_ops.reduce_sum(e, axis=axis, keepdims=True)
-    output = e / s
+  if x.shape.rank > 1:
+    if isinstance(axis, int):
+      output = nn.softmax(x, axis=axis)
+    else:
+      # nn.softmax does not support tuple axis.
+      e = math_ops.exp(x - math_ops.reduce_max(x, axis=axis, keepdims=True))
+      s = math_ops.reduce_sum(e, axis=axis, keepdims=True)
+      output = e / s
   else:
     raise ValueError('Cannot apply softmax to a tensor that is 1D. '
                      'Received input: %s' % (x,))

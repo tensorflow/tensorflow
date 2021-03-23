@@ -32,7 +32,15 @@ def make_abs_tests(options):
   test_parameters = [{
       "input_shape": [[], [1], [2, 3], [1, 1, 1, 1], [1, 3, 4, 3],
                       [3, 15, 14, 3], [3, 1, 2, 4, 6], [2, 2, 3, 4, 5, 6]],
-      "dynamic_range_quantize": [False, True]
+      "dynamic_range_quantize": [False, True],
+      "fully_quantize": [False],
+      "input_range": [(-10, 10)],
+  }, {
+      "input_shape": [[], [1], [2, 3], [1, 1, 1, 1], [1, 3, 4, 3],
+                      [3, 15, 14, 3], [3, 1, 2, 4, 6], [2, 2, 3, 4, 5, 6]],
+      "dynamic_range_quantize": [False],
+      "fully_quantize": [True],
+      "input_range": [(-10, 10)],
   }]
 
   def build_graph(parameters):

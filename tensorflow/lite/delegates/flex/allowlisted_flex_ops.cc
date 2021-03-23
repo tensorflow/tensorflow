@@ -704,6 +704,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "TensorScatterMin",
           "TensorScatterSub",
           "TensorScatterUpdate",
+          "TensorSliceDataset",
           "TensorStridedSliceUpdate",
           "Tile",
           "TileGrad",

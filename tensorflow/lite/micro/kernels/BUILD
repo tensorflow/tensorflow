@@ -276,6 +276,7 @@ cc_library(
         "fill.cc",
         "floor.cc",
         "l2norm.cc",
+        "l2_pool_2d.cc",
         "leaky_relu.cc",
         "logical.cc",
         "logistic.cc",
@@ -710,6 +711,21 @@ cc_test(
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "l2_pool_2d_test",
+    srcs = [
+        "l2_pool_2d_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",

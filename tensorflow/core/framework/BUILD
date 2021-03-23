@@ -130,7 +130,6 @@ exports_files(
         "node_def.proto",
         "op_def.proto",
         "reader_base.proto",
-        "remote_fused_graph_execute_info.proto",
         "resource_handle.proto",
         "step_stats.proto",
         "summary.proto",
@@ -1539,25 +1538,6 @@ tf_proto_library(
 )
 
 tf_proto_library(
-    name = "remote_fused_graph_execute_info_proto",
-    srcs = ["remote_fused_graph_execute_info.proto"],
-    cc_api_version = 2,
-    make_default_target_header_only = True,
-    protodeps = [
-        ":attr_value_proto",
-        ":function_proto",
-        ":graph_proto",
-        ":node_def_proto",
-        ":op_def_proto",
-        ":resource_handle_proto",
-        ":tensor_proto",
-        ":tensor_shape_proto",
-        ":types_proto",
-        ":versions_proto",
-    ],
-)
-
-tf_proto_library(
     name = "tensor_proto",
     srcs = ["tensor.proto"],
     cc_api_version = 2,
@@ -1688,7 +1668,6 @@ tf_proto_library(
         ":node_def_proto",
         ":op_def_proto",
         ":reader_base_proto",
-        ":remote_fused_graph_execute_info_proto",
         ":resource_handle_proto",
         ":step_stats_proto",
         ":summary_proto",

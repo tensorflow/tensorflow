@@ -170,11 +170,6 @@ tf_py_test(
     name = "map_and_batch_fusion_test",
     size = "small",
     srcs = ["map_and_batch_fusion_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",

@@ -45,6 +45,7 @@ AllOpsResolver::AllOpsResolver() {
   AddGreaterEqual();
   AddHardSwish();
   AddL2Normalization();
+  AddL2Pool2D();
   AddLeakyRelu();
   AddLess();
   AddLessEqual();

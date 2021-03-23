@@ -35,6 +35,8 @@ export PATH=$PATH:/usr/local/bin
 
 ./tensorflow/tools/ci_build/update_version.py --nightly
 
+export PYTHON_BIN_PATH=$(which python)
+
 # Build the pip package
 # Pass PYENV_VERSION since we're using pyenv. See b/182399580
 bazel build \
