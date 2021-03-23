@@ -218,6 +218,7 @@ HloInstruction* SpmdBuilder::AddInstruction(
   HloInstruction* hlo =
       HloComputation::Builder::AddInstruction(std::move(instruction));
   if (visiting_hlo_) {
+    hlo->set_metadata(visiting_hlo_->metadata());
     instructions_[visiting_hlo_].push_back(hlo);
   }
   if (hlo->opcode() == HloOpcode::kBroadcast) {
@@ -1397,7 +1398,6 @@ Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
   auto clone =
       b_.AddInstruction(hlo->CloneWithNewOperands(hlo->shape(), new_operands));
   clone->set_sharding(sharding);
-  clone->set_metadata(hlo->metadata());
   SetPartitionedHlo(hlo,
                     PartitionedHlo(clone, hlo->shape(), MakePartitioningState())
                         .Reshard(hlo->sharding()));
@@ -2139,7 +2139,6 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
         input_shard_shape.dimensions(input_sharded_dim) * merge_factor);
     auto tmp_reshape = b_.AddInstruction(
         HloInstruction::CreateReshape(tmp_shard_shape, operand.hlo()));
-    tmp_reshape->set_metadata(hlo->metadata());
     tmp_reshape->set_sharding(hlo->sharding());
     auto tmp_full_shape = tmp_shard_shape;
     tmp_full_shape.set_dimensions(
@@ -2793,7 +2792,6 @@ Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
   }
   auto local_reduce = b_.AddInstruction(HloInstruction::CreateReduce(
       reduce_shape, input_hlos, inits, hlo->dimensions(), hlo->to_apply()));
-  local_reduce->set_metadata(hlo->metadata());
 
   SetPartitionedHlo(hlo, [&]() {
     HloInstruction* reduce = local_reduce;
