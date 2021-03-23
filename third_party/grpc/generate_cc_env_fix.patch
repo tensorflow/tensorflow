@@ -1,24 +1,10 @@
-diff --git a/bazel/generate_cc.bzl b/bazel/generate_cc.bzl
-index a180863021..1534e526fd 100644
 --- a/bazel/generate_cc.bzl
 +++ b/bazel/generate_cc.bzl
-@@ -4,9 +4,8 @@ This is an internal rule used by cc_grpc_library, and shouldn't be used
- directly.
- """
- 
--load("@rules_proto//proto:defs.bzl", "ProtoInfo")
- load(
--    "//bazel:protobuf.bzl",
-+    "@com_github_grpc_grpc//bazel:protobuf.bzl",
-     "get_include_directory",
-     "get_plugin_args",
-     "get_proto_root",
-@@ -167,7 +166,7 @@ _generate_cc = rule(
-             mandatory = False,
-         ),
-         "_protoc": attr.label(
--            default = Label("//external:protocol_compiler"),
-+            default = Label("@com_google_protobuf//:protoc"),
-             executable = True,
-             cfg = "host",
-         ),
+@@ -141,6 +141,7 @@ def generate_cc_impl(ctx):
+         outputs = out_files,
+         executable = ctx.executable._protoc,
+         arguments = arguments,
++        use_default_shell_env = True,
+     )
+
+     return struct(files = depset(out_files))
