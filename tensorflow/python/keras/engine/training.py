@@ -796,14 +796,23 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     # data when a `tf.data.Dataset` is provided.
     data = data_adapter.expand_1d(data)
     x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
-
+    # Run forward pass.
     with backprop.GradientTape() as tape:
       y_pred = self(x, training=True)
       loss = self.compiled_loss(
           y, y_pred, sample_weight, regularization_losses=self.losses)
+    # Run backwards pass.
     self.optimizer.minimize(loss, self.trainable_variables, tape=tape)
     self.compiled_metrics.update_state(y, y_pred, sample_weight)
-    return {m.name: m.result() for m in self.metrics}
+    # Collect metrics to return
+    return_metrics = {}
+    for metric in self.metrics:
+      result = metric.result()
+      if isinstance(result, dict):
+        return_metrics.update(result)
+      else:
+        return_metrics[metric.name] = result
+    return return_metrics
 
   def make_train_function(self):
     """Creates a function that executes one step of training.
@@ -1238,9 +1247,16 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     # Updates stateful loss metrics.
     self.compiled_loss(
         y, y_pred, sample_weight, regularization_losses=self.losses)
-
     self.compiled_metrics.update_state(y, y_pred, sample_weight)
-    return {m.name: m.result() for m in self.metrics}
+    # Collect metrics to return
+    return_metrics = {}
+    for metric in self.metrics:
+      result = metric.result()
+      if isinstance(result, dict):
+        return_metrics.update(result)
+      else:
+        return_metrics[metric.name] = result
+    return return_metrics
 
   def make_test_function(self):
     """Creates a function that executes one step of evaluation.
@@ -1459,16 +1475,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       if return_dict:
         return logs
       else:
-        results = []
-        for name in self.metrics_names:
-          if name in logs:
-            results.append(logs[name])
-        for key in sorted(logs.keys()):
-          if key not in self.metrics_names:
-            results.append(logs[key])
-        if len(results) == 1:
-          return results[0]
-        return results
+        return flatten_metrics_in_order(logs, self.metrics_names)
 
   def predict_step(self, data):
     """The logic for one inference step.
@@ -1797,10 +1804,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     if return_dict:
       return logs
     else:
-      results = [logs.get(name, None) for name in self.metrics_names]
-      if len(results) == 1:
-        return results[0]
-      return results
+      return flatten_metrics_in_order(logs, self.metrics_names)
 
   def test_on_batch(self,
                     x,
@@ -1856,10 +1860,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     if return_dict:
       return logs
     else:
-      results = [logs.get(name, None) for name in self.metrics_names]
-      if len(results) == 1:
-        return results[0]
-      return results
+      return flatten_metrics_in_order(logs, self.metrics_names)
 
   def predict_on_batch(self, x):
     """Returns predictions for a single batch of samples.
@@ -2910,3 +2911,17 @@ def _is_readable_tf_checkpoint(filepath):
   except errors_impl.DataLossError:
     # The checkpoint is not readable in TensorFlow format.
     return False
+
+
+def flatten_metrics_in_order(logs, metrics_names):
+  """Turns the `logs` dict into a list as per key order of `metrics_names`."""
+  results = []
+  for name in metrics_names:
+    if name in logs:
+      results.append(logs[name])
+  for key in sorted(logs.keys()):
+    if key not in metrics_names:
+      results.append(logs[key])
+  if len(results) == 1:
+    return results[0]
+  return results

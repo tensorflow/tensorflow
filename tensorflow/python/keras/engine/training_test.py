@@ -55,7 +55,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
@@ -699,7 +699,7 @@ class TrainingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_compile_with_sparse_placeholders(self):
     inputs = layers_module.Input(shape=(10,), sparse=True)
-    weights = variables_lib.Variable(
+    weights = variables_module.Variable(
         np.ones((10, 1)).astype(np.float32), name='weights')
     weights_mult = lambda x: sparse_ops.sparse_tensor_dense_matmul(x, weights)
     output_layer = layers_module.Lambda(weights_mult)(inputs)
@@ -834,8 +834,8 @@ class TrainingTest(keras_parameterized.TestCase):
 
       def __init__(self):
         super(LayerWithWeightSharedLayers, self).__init__()
-        shared_trainable_var = variables_lib.Variable(1.)
-        shared_non_trainable_var = variables_lib.Variable(
+        shared_trainable_var = variables_module.Variable(1.)
+        shared_non_trainable_var = variables_module.Variable(
             1., trainable=False)
         self.layer1 = AddWeightLayer(shared_trainable_var,
                                      shared_non_trainable_var)
@@ -1535,7 +1535,7 @@ class TrainingTest(keras_parameterized.TestCase):
       def __init__(self, name):
         super(MyModel, self).__init__(name=name)
 
-        self.weight = variables_lib.Variable(0, name=name)
+        self.weight = variables_module.Variable(0, name=name)
 
         self.direct_sublayer = MyLayer(name='direct')
         self.direct_sublayer.d = {'d': MyLayer(name='direct/dict')}
@@ -1557,7 +1557,7 @@ class TrainingTest(keras_parameterized.TestCase):
 
       def __init__(self):
         super(UpdateLayer, self).__init__()
-        self.v = variables_lib.Variable(0., trainable=False)
+        self.v = variables_module.Variable(0., trainable=False)
 
       def call(self, x):
         self.add_update(lambda: self.v.assign_add(1.))
@@ -1776,7 +1776,6 @@ class LossWeightingTest(keras_parameterized.TestCase):
         input_shape=(input_dim,),
         num_classes=num_classes)
     int_y_test = y_test.copy()
-    int_y_train = y_train.copy()
     # convert class vectors to binary class matrices
     y_train = np_utils.to_categorical(y_train, num_classes)
     y_test = np_utils.to_categorical(y_test, num_classes)
@@ -2442,8 +2441,8 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
       output_a_np = np.random.random((10, 4))
       output_b_np = np.random.random((10, 3))
 
-      input_v = variables_lib.Variable(input_a_np, dtype='float32')
-      self.evaluate(variables_lib.variables_initializer([input_v]))
+      input_v = variables_module.Variable(input_a_np, dtype='float32')
+      self.evaluate(variables_module.variables_initializer([input_v]))
       a = input_layer.Input(tensor=input_v)
       b = input_layer.Input(shape=(3,), name='input_b')
 
@@ -2489,7 +2488,7 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
 
       # Now test a model with a single input
       # i.e. we don't pass any data to fit the model.
-      self.evaluate(variables_lib.variables_initializer([input_v]))
+      self.evaluate(variables_module.variables_initializer([input_v]))
       a = input_layer.Input(tensor=input_v)
       a_2 = layers_module.Dense(4, name='dense_1')(a)
       a_2 = layers_module.Dropout(0.5, name='dropout')(a_2)
@@ -2528,7 +2527,7 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
 
       # Same, without learning phase
       # i.e. we don't pass any data to fit the model.
-      self.evaluate(variables_lib.variables_initializer([input_v]))
+      self.evaluate(variables_module.variables_initializer([input_v]))
       a = input_layer.Input(tensor=input_v)
       a_2 = layers_module.Dense(4, name='dense_1')(a)
       model = training_module.Model(a, a_2)
@@ -2653,8 +2652,8 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
       out = model.evaluate(input_a_np, None)
 
       # Test model with no external data at all.
-      input_v = variables_lib.Variable(input_a_np, dtype='float32')
-      self.evaluate(variables_lib.variables_initializer([input_v]))
+      input_v = variables_module.Variable(input_a_np, dtype='float32')
+      self.evaluate(variables_module.variables_initializer([input_v]))
       a = input_layer.Input(tensor=input_v)
       a_2 = layers_module.Dense(4, name='dense_1')(a)
       a_2 = layers_module.Dropout(0.5, name='dropout')(a_2)
@@ -2671,7 +2670,7 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
       out = model.predict_on_batch(None)
 
       # Test multi-output model with no external data at all.
-      self.evaluate(variables_lib.variables_initializer([input_v]))
+      self.evaluate(variables_module.variables_initializer([input_v]))
       a = input_layer.Input(tensor=input_v)
       a_1 = layers_module.Dense(4, name='dense_1')(a)
       a_2 = layers_module.Dropout(0.5, name='dropout')(a_1)
@@ -3515,6 +3514,64 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     outer_model.fit(np.ones((10, 1)), np.ones((10, 1)), batch_size=10)
     self.assertEqual([m.name for m in outer_model.metrics],
                      ['loss', 'acc2', 'mean', 'mean1', 'mean2'])
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_model_with_metric_class_that_returns_dict(self):
+    x = layers_module.Input(shape=(2,))
+    y = layers_module.Dense(3)(x)
+    model = training_module.Model(x, y)
+
+    class DictMetric(metrics_module.Metric):
+
+      def __init__(self):
+        super(DictMetric, self).__init__()
+        self.sample_count = variables_module.Variable(0)
+        self.l2_sum = variables_module.Variable(0.)
+
+      def update_state(self, y_true, y_pred, sample_weight=None):
+        self.l2_sum.assign_add(
+            math_ops.reduce_sum(math_ops.square(y_true - y_pred)))
+        self.sample_count.assign_add(array_ops.shape(y_true)[0])
+
+      def reset_state(self):
+        self.sample_count.assign(0)
+        self.l2_sum.assign(0.)
+
+      def result(self):
+        mse = self.l2_sum / math_ops.cast(self.sample_count, 'float32')
+        rmse = math_ops.sqrt(mse)
+        return {'my_mse': mse,
+                'my_rmse': rmse}
+
+    model.compile('sgd',
+                  'mse',
+                  metrics=['mae', DictMetric()],
+                  run_eagerly=testing_utils.should_run_eagerly())
+
+    history = model.fit(np.ones((10, 2)), np.ones((10, 3)))
+    self.assertEqual(list(history.history.keys()),
+                     ['loss', 'mae', 'my_mse', 'my_rmse'])
+    list_evaluate_res = model.evaluate(
+        np.ones((10, 2)), np.ones((10, 3)))
+    self.assertEqual(len(list_evaluate_res), 4)
+    dict_evaluate_res = model.evaluate(
+        np.ones((10, 2)), np.ones((10, 3)), return_dict=True)
+    self.assertEqual(list(dict_evaluate_res.keys()),
+                     ['loss', 'mae', 'my_mse', 'my_rmse'])
+    list_train_on_batch_res = model.train_on_batch(
+        np.ones((10, 2)), np.ones((10, 3)))
+    self.assertEqual(len(list_train_on_batch_res), 4)
+    dict_train_on_batch_res = model.train_on_batch(
+        np.ones((10, 2)), np.ones((10, 3)), return_dict=True)
+    self.assertEqual(list(dict_train_on_batch_res.keys()),
+                     ['loss', 'mae', 'my_mse', 'my_rmse'])
+    list_test_on_batch_res = model.test_on_batch(
+        np.ones((10, 2)), np.ones((10, 3)))
+    self.assertEqual(len(list_test_on_batch_res), 4)
+    dict_test_on_batch_res = model.test_on_batch(
+        np.ones((10, 2)), np.ones((10, 3)), return_dict=True)
+    self.assertEqual(list(dict_test_on_batch_res.keys()),
+                     ['loss', 'mae', 'my_mse', 'my_rmse'])
 
 
 class BareUpdateLayer(layers_module.Layer):
