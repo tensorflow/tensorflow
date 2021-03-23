@@ -87,10 +87,10 @@ struct TFLFullQuantization
   static bool AllowHybridResult() { return false; }
 };
 
-struct LegacyQuantizePass : public OpRewritePattern<QuantizeOp> {
+struct LegacyQuantizeConstPattern : public OpRewritePattern<QuantizeOp> {
   // This pattern should be applied before existing quantize pattern in
   // `quantize_patterns.td`, so the benefit is set to some value larger than 1.
-  explicit LegacyQuantizePass(MLIRContext* context)
+  explicit LegacyQuantizeConstPattern(MLIRContext* context)
       : OpRewritePattern<QuantizeOp>(context, /*benefit=*/10) {}
   LogicalResult matchAndRewrite(QuantizeOp op,
                                 PatternRewriter& rewriter) const override {
@@ -98,6 +98,23 @@ struct LegacyQuantizePass : public OpRewritePattern<QuantizeOp> {
     if (matchPattern(op.input(), m_Constant(&attr))) {
       auto qtype = op.qtypeAttr();
       if (auto quantized_attr = quant::QuantizeLegacy(attr, qtype.getValue())) {
+        rewriter.replaceOpWithNewOp<QConstOp>(op, qtype, quantized_attr);
+        return success();
+      }
+    }
+    return failure();
+  }
+};
+
+struct QuantizeConstPattern : public OpRewritePattern<QuantizeOp> {
+  explicit QuantizeConstPattern(MLIRContext* context)
+      : OpRewritePattern<QuantizeOp>(context) {}
+  LogicalResult matchAndRewrite(QuantizeOp op,
+                                PatternRewriter& rewriter) const override {
+    DenseFPElementsAttr attr;
+    if (matchPattern(op.input(), m_Constant(&attr))) {
+      auto qtype = op.qtypeAttr();
+      if (auto quantized_attr = quant::Quantize(attr, qtype.getValue())) {
         rewriter.replaceOpWithNewOp<QConstOp>(op, qtype, quantized_attr);
         return success();
       }
@@ -128,14 +145,21 @@ void QuantizePass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto func = getFunction();
   auto* ctx = func.getContext();
-  if (legacy_float_scale) {
-    patterns.insert<LegacyQuantizePass>(ctx);
-  }
+
   TFL::populateWithGenerated(ctx, patterns);
   patterns.insert<TFLFullQuantization>(
       ctx, enable_numeric_verify || verify_numeric, error_tolerance,
       enable_single_layer_verify, enable_log_if_failed);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+
+  // Constant quantization is a lossy transformation, so they are applied only
+  // after all the other patterns have been aplied.
+  OwningRewritePatternList patterns_2;
+  if (legacy_float_scale) {
+    patterns_2.insert<LegacyQuantizeConstPattern>(ctx);
+  }
+  patterns_2.insert<QuantizeConstPattern>(ctx);
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns_2));
 }
 }  // namespace
 
