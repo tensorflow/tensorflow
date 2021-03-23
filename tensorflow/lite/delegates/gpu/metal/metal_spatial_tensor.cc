@@ -381,37 +381,34 @@ int MetalSpatialTensor::GetAlignedChannels() const {
 
 absl::Status MetalSpatialTensor::WriteDataBHWDC(id<MTLDevice> device,
                                                 const float* in) {
-  void* data_ptr = nullptr;
   const int aligned_channels = GetAlignedChannels();
   const int elements_count =
       shape_.b * shape_.w * shape_.h * shape_.d * aligned_channels;
 
   const size_t data_size = elements_count * SizeOf(descriptor_.data_type);
-  std::unique_ptr<float[]> data_f;
-  std::unique_ptr<half[]> data_h;
+  std::unique_ptr<uint8_t[]> data_copy;
+  data_copy.reset(new uint8_t[data_size]);
   if (descriptor_.data_type == DataType::FLOAT32) {
-    data_f.reset(new float[elements_count]);
-    data_ptr = data_f.get();
-    DataFromBHWDC(in, shape_, descriptor_, data_f.get());
+    DataFromBHWDC(in, shape_, descriptor_,
+                  reinterpret_cast<float*>(data_copy.get()));
   } else {
-    data_h.reset(new half[elements_count]);
-    data_ptr = data_h.get();
-    DataFromBHWDC(in, shape_, descriptor_, data_h.get());
+    DataFromBHWDC(in, shape_, descriptor_,
+                  reinterpret_cast<half*>(data_copy.get()));
   }
 
   switch (descriptor_.storage_type) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
-      std::memcpy([memory_ contents], data_ptr, data_size);
+      std::memcpy([memory_ contents], data_copy.get(), data_size);
       break;
     case TensorStorageType::TEXTURE_2D:
-      WriteDataToTexture2D(texture_mem_, device, data_ptr);
+      WriteDataToTexture2D(texture_mem_, device, data_copy.get());
       break;
     case TensorStorageType::TEXTURE_3D:
-      WriteDataToTexture3D(texture_mem_, device, data_ptr);
+      WriteDataToTexture3D(texture_mem_, device, data_copy.get());
       break;
     case TensorStorageType::TEXTURE_ARRAY:
-      WriteDataToTexture2DArray(texture_mem_, device, data_ptr);
+      WriteDataToTexture2DArray(texture_mem_, device, data_copy.get());
       break;
     case TensorStorageType::SINGLE_TEXTURE_2D:
     default:
@@ -447,34 +444,26 @@ absl::Status MetalSpatialTensor::WriteData(id<MTLDevice> device,
 
 absl::Status MetalSpatialTensor::ReadDataBHWDC(id<MTLDevice> device,
                                                float* out) const {
-  void* data_ptr = nullptr;
   const int aligned_channels = GetAlignedChannels();
   const int elements_count =
       shape_.b * shape_.w * shape_.h * shape_.d * aligned_channels;
   const size_t data_size = elements_count * SizeOf(descriptor_.data_type);
-  std::unique_ptr<float[]> data_f;
-  std::unique_ptr<half[]> data_h;
-  if (descriptor_.data_type == DataType::FLOAT32) {
-    data_f.reset(new float[elements_count]);
-    data_ptr = data_f.get();
-  } else {
-    data_h.reset(new half[elements_count]);
-    data_ptr = data_h.get();
-  }
+  std::unique_ptr<uint8_t[]> data_copy;
+  data_copy.reset(new uint8_t[data_size]);
 
   switch (descriptor_.storage_type) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
-      std::memcpy(data_ptr, [memory_ contents], data_size);
+      std::memcpy(data_copy.get(), [memory_ contents], data_size);
       break;
     case TensorStorageType::TEXTURE_2D:
-      ReadDataFromTexture2D(texture_mem_, device, data_ptr);
+      ReadDataFromTexture2D(texture_mem_, device, data_copy.get());
       break;
     case TensorStorageType::TEXTURE_3D:
-      ReadDataFromTexture3D(texture_mem_, device, data_ptr);
+      ReadDataFromTexture3D(texture_mem_, device, data_copy.get());
       break;
     case TensorStorageType::TEXTURE_ARRAY:
-      ReadDataFromTexture2DArray(texture_mem_, device, data_ptr);
+      ReadDataFromTexture2DArray(texture_mem_, device, data_copy.get());
       break;
     case TensorStorageType::SINGLE_TEXTURE_2D:
     default:
@@ -482,9 +471,11 @@ absl::Status MetalSpatialTensor::ReadDataBHWDC(id<MTLDevice> device,
   }
 
   if (descriptor_.data_type == DataType::FLOAT32) {
-    DataToBHWDC(data_f.get(), shape_, descriptor_, out);
+    DataToBHWDC(reinterpret_cast<float*>(data_copy.get()), shape_, descriptor_,
+                out);
   } else {
-    DataToBHWDC(data_h.get(), shape_, descriptor_, out);
+    DataToBHWDC(reinterpret_cast<half*>(data_copy.get()), shape_, descriptor_,
+                out);
   }
 
   return absl::OkStatus();

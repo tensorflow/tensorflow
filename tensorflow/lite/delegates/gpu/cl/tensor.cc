@@ -488,35 +488,33 @@ cl_mem Tensor::GetMemoryPtr() const {
 cl_mem Tensor::GetMemoryPtrForWriting() const { return memory_; }
 
 absl::Status Tensor::WriteDataBHWDC(const float* in, CLCommandQueue* queue) {
-  void* data_ptr = nullptr;
   const int aligned_channels = GetAlignedChannels();
   const int elements_count =
       shape_.b * shape_.w * shape_.h * shape_.d * aligned_channels;
 
   const size_t data_size = elements_count * SizeOf(descriptor_.data_type);
-  std::unique_ptr<float[]> data_f;
-  std::unique_ptr<half[]> data_h;
+  std::unique_ptr<uint8_t[]> data_copy;
+  data_copy.reset(new uint8_t[data_size]);
   if (descriptor_.data_type == DataType::FLOAT32) {
-    data_f.reset(new float[elements_count]);
-    data_ptr = data_f.get();
-    DataFromBHWDC(in, shape_, descriptor_, data_f.get());
+    DataFromBHWDC(in, shape_, descriptor_,
+                  reinterpret_cast<float*>(data_copy.get()));
   } else {
-    data_h.reset(new half[elements_count]);
-    data_ptr = data_h.get();
-    DataFromBHWDC(in, shape_, descriptor_, data_h.get());
+    DataFromBHWDC(in, shape_, descriptor_,
+                  reinterpret_cast<half*>(data_copy.get()));
   }
 
   switch (descriptor_.storage_type) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
-      RETURN_IF_ERROR(queue->EnqueueWriteBuffer(memory_, data_size, data_ptr));
+      RETURN_IF_ERROR(
+          queue->EnqueueWriteBuffer(memory_, data_size, data_copy.get()));
       break;
     case TensorStorageType::TEXTURE_ARRAY:
     case TensorStorageType::TEXTURE_2D:
     case TensorStorageType::TEXTURE_3D:
     case TensorStorageType::SINGLE_TEXTURE_2D:
-      RETURN_IF_ERROR(
-          queue->EnqueueWriteImage(memory_, GetFullTensorRegion(), data_ptr));
+      RETURN_IF_ERROR(queue->EnqueueWriteImage(memory_, GetFullTensorRegion(),
+                                               data_copy.get()));
       break;
     default:
       return absl::InternalError("Unsupported tensor storage type");
@@ -550,41 +548,36 @@ absl::Status Tensor::WriteData(CLCommandQueue* queue,
 }
 
 absl::Status Tensor::ReadDataBHWDC(float* out, CLCommandQueue* queue) const {
-  void* data_ptr = nullptr;
   const int aligned_channels = GetAlignedChannels();
   const int elements_count =
       shape_.b * shape_.w * shape_.h * shape_.d * aligned_channels;
   const size_t data_size = elements_count * SizeOf(descriptor_.data_type);
-  std::unique_ptr<float[]> data_f;
-  std::unique_ptr<half[]> data_h;
-  if (descriptor_.data_type == DataType::FLOAT32) {
-    data_f.reset(new float[elements_count]);
-    data_ptr = data_f.get();
-  } else {
-    data_h.reset(new half[elements_count]);
-    data_ptr = data_h.get();
-  }
+  std::unique_ptr<uint8_t[]> data_copy;
+  data_copy.reset(new uint8_t[data_size]);
 
   switch (descriptor_.storage_type) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
-      RETURN_IF_ERROR(queue->EnqueueReadBuffer(memory_, data_size, data_ptr));
+      RETURN_IF_ERROR(
+          queue->EnqueueReadBuffer(memory_, data_size, data_copy.get()));
       break;
     case TensorStorageType::TEXTURE_ARRAY:
     case TensorStorageType::TEXTURE_2D:
     case TensorStorageType::TEXTURE_3D:
     case TensorStorageType::SINGLE_TEXTURE_2D:
-      RETURN_IF_ERROR(
-          queue->EnqueueReadImage(memory_, GetFullTensorRegion(), data_ptr));
+      RETURN_IF_ERROR(queue->EnqueueReadImage(memory_, GetFullTensorRegion(),
+                                              data_copy.get()));
       break;
     default:
       return absl::InternalError("Unsupported tensor storage type");
   }
 
   if (descriptor_.data_type == DataType::FLOAT32) {
-    DataToBHWDC(data_f.get(), shape_, descriptor_, out);
+    DataToBHWDC(reinterpret_cast<float*>(data_copy.get()), shape_, descriptor_,
+                out);
   } else {
-    DataToBHWDC(data_h.get(), shape_, descriptor_, out);
+    DataToBHWDC(reinterpret_cast<half*>(data_copy.get()), shape_, descriptor_,
+                out);
   }
 
   return absl::OkStatus();
