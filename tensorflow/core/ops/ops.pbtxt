@@ -26462,7 +26462,7 @@ op {
   }
   input_arg {
     name: "iou_threshold"
-    type_attr: "T_threshold"
+    type_attr: "T"
   }
   output_arg {
     name: "selected_indices"
@@ -26511,11 +26511,11 @@ op {
   }
   input_arg {
     name: "iou_threshold"
-    type_attr: "T_threshold"
+    type_attr: "T"
   }
   input_arg {
     name: "score_threshold"
-    type_attr: "T_threshold"
+    type_attr: "T"
   }
   output_arg {
     name: "selected_indices"
@@ -26564,11 +26564,11 @@ op {
   }
   input_arg {
     name: "iou_threshold"
-    type_attr: "T_threshold"
+    type_attr: "T"
   }
   input_arg {
     name: "score_threshold"
-    type_attr: "T_threshold"
+    type_attr: "T"
   }
   output_arg {
     name: "selected_indices"
