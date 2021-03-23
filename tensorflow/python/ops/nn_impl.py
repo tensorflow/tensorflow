@@ -549,23 +549,27 @@ def swish(features):
 
   return features * math_ops.sigmoid(features), grad
 
-# pylint: disable=line-too-long
+
 @tf_export("nn.tanhexp")
 @dispatch.add_dispatch_support
 @custom_gradient.custom_gradient
 def tanhexp(features):
-  # pylint: disable=g-doc-args
-  """Computes the TanhExp activation function: `x * tanh(e^x)`.
-  The TanhExp activation function was introduced in "TanhExp: A Smooth Activation Function
-  with High Convergence Speed for Lightweight Neural Networks"
-  [Xinyu et al. 2020](https://arxiv.org/pdf/2003.09855.pdf) 
+
+  """Computes the TanhExp activation function: `x * tanh(exp(x))`.
+
+  The TanhExp activation function was introduced in 
+  "TanhExp: A Smooth Activation Function with High Convergence
+  Speed for Lightweight Neural Networks"
+  [Xinyu et al. 2020](https://arxiv.org/pdf/2003.09855.pdf)
+
   Args:
     features: A `Tensor` representing preactivation values.
     name: A name for the operation (optional).
+
   Returns:
     The activation value.
   """
-  # pylint: enable=g-doc-args
+
   if isinstance(features, int):
     features = ops.convert_to_tensor(features, name="features", dtype ='double')
   else:
@@ -573,12 +577,12 @@ def tanhexp(features):
 
   def grad(dy):
     """Gradient for the TanhExp activation function"""
-    # Naively, x * tf.nn.tanh(e^x) requires keeping both x and tanh(e^x)
-    # around for backprop, effectively doubling the tensor's memory
-    # consumption. We use a control dependency here so that tanh(e^x)
-    # is re-computed during backprop (the control dep prevents it being
-    # de-duped with the forward pass) and we can free the tanh(e^x) 
-    # expression immediately after use during the forward pass.
+    # Naively, x * tf.nn.tanh(exp(x)) requires keeping both x and 
+    # tanh(exp(x)) around for backprop, effectively doubling the tensor's 
+    # memory consumption. We use a control dependency here so that 
+    # tanh(exp(x)) is re-computed during backprop (the control dep prevents 
+    # it being de-duped with the forward pass) and we can free the 
+    # tanh(exp(x)) expression immediately after use during the forward pass.
     with ops.control_dependencies([dy]):
       tanhexp_features = math_ops.tanh(math_ops.exp(features))
       activation_grad = (
@@ -586,7 +590,7 @@ def tanhexp(features):
     return dy * activation_grad
 
   return features * math_ops.tanh(math_ops.exp(features)) , grad
-# pylint: enable=line-too-long
+
 
 # pylint: disable=redefined-builtin
 @tf_export("linalg.normalize")
