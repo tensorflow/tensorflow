@@ -683,6 +683,35 @@ cc_library(
 )
 
 cc_library(
+    name = "tile",
+    srcs = ["tile.cc"],
+    hdrs = ["tile.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:any",
+    ],
+)
+
+cc_test(
+    name = "tile_test",
+    srcs = ["tile_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":test_util",
+        ":tile",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "transpose_conv",
     srcs = ["transpose_conv.cc"],
     hdrs = ["transpose_conv.h"],
@@ -764,6 +793,7 @@ TFLITE_GPU_BINARY_RELEASE_OPERATORS = [
     "slice",
     "softmax",
     "space_to_depth",
+    "tile",
     "transpose_conv",
 ]
 
