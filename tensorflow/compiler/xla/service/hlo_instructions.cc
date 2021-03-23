@@ -1361,7 +1361,6 @@ std::unique_ptr<HloInstruction> HloTraceInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode());
-  std::abort();
 }
 
 HloFusionInstruction::HloFusionInstruction(const Shape& shape,
