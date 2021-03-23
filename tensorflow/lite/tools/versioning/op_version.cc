@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 
 namespace tflite {
@@ -857,54 +858,30 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
   return op_sig;
 }
 
-void UpdateOpVersion(flatbuffers::FlatBufferBuilder& builder) {
-  std::vector<std::pair<decltype(std::declval<Operator>().opcode_index()),
-                        decltype(std::declval<OperatorCode>().version())>>
-      op_version_list;
-
-  auto model = GetModel(builder.GetBufferPointer());
+void UpdateOpVersion(uint8_t* model_buffer_pointer) {
+  auto model = GetMutableModel(model_buffer_pointer);
   auto subgraphs = model->subgraphs();
 
   for (int i = 0; i < subgraphs->Length(); ++i) {
     const SubGraph* subgraph = subgraphs->Get(i);
     for (int j = 0; j < subgraph->operators()->Length(); ++j) {
       const Operator* op = subgraph->operators()->Get(j);
-      auto index = op->opcode_index();
-      const OperatorCode* op_code = model->operator_codes()->Get(index);
+      OperatorCode* op_code =
+          model->mutable_operator_codes()->GetMutableObject(op->opcode_index());
 
       auto builtin_code = GetBuiltinCode(op_code);
       if (builtin_code != BuiltinOperator_CUSTOM) {
         OpSignature op_sig = GetOpSignature(op_code, op, subgraph);
-        auto op_ver = GetBuiltinOperatorVersion(op_sig);
-        op_version_list.emplace_back(
-            std::make_pair(index, GetBuiltinOperatorVersion(op_sig)));
+        // Update builtin operator version.
+        int32_t op_ver = GetBuiltinOperatorVersion(op_sig);
+        if (!op_code->mutate_version(op_ver)) {
+          LOG(ERROR) << "Can't set operator "
+                     << EnumNameBuiltinOperator(builtin_code) << " to version "
+                     << op_ver;
+        }
       }
     }
   }
-
-#ifdef TFLITE_VERSION_USE_MUTABLE_SCHEMA
-  auto mutable_model = GetMutableModel(builder.GetBufferPointer());
-  for (const auto& op_version : op_version_list) {
-    OperatorCode* op_code =
-        mutable_model->mutable_operator_codes()->GetMutableObject(
-            op_version.first);
-
-    if (!op_code->mutate_version(op_version.second)) {
-      LOG(ERROR) << "Can't set operator "
-                 << EnumNameBuiltinOperator(GetBuiltinCode(op_code))
-                 << " to version " << op_version.second;
-    }
-  }
-#else
-  // Since we don't have the mutable interface, we should do
-  // pack and unpack to update the content in builder.
-  auto new_model = UnPackModel(builder.GetBufferPointer());
-  for (const auto& op_version : op_version_list) {
-    new_model->operator_codes[op_version.first]->version=op_version.second;
-  }
-  builder.Clear();
-  builder.Finish(Model::Pack(builder, new_model.get()));
-#endif  // TFLITE_VERSION_USE_MUTABLE_SCHEMA
 }
 
 }  // namespace tflite

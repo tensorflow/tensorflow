@@ -11,9 +11,6 @@ package(
 
 cc_library(
     name = "versioning",
-    defines = [
-        "TFLITE_VERSION_USE_MUTABLE_SCHEMA",
-    ],
     srcs = [
         "op_version.cc",
         "runtime_version.cc",
@@ -27,6 +24,7 @@ cc_library(
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/memory",
