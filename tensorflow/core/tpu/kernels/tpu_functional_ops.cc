@@ -1151,41 +1151,37 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
           graph.get(), xla_sharding_ops, tpu_replicated_input_ops);
     }
 
-    if (!enable_spmd_xla_partitioning || num_cores_per_replica == 1 ||
-        (xla_spmd_input_sharded &&
-         runtime_params_.minimum_input_tensors_packing > 1)) {
-      if (xla_spmd_input_sharded) {
-        // We are setting must_be_child_of_arg == true because we do not want
-        // to remove other XlaSharding ops that might be in the graph. We only
-        // want the XlaSharding ops that are directly attached to the input
-        // arguments to be removed.
-        RemoveDescendantNodeOfArg(graph.get(), "XlaSharding",
-                                  /*must_be_child_of_arg=*/true);
-      }
-
-      RemoveDescendantNodeOfArg(graph.get(), "TPUReplicatedInput",
-                                /*must_be_child_of_arg=*/false);
-
-      VLOG(1) << DumpGraphToFile("before_get_input_output_info", *graph,
-                                 flib_def_.get());
-
-      OP_REQUIRES_OK_ASYNC(
-          ctx,
-          GetInputOutputInfo(graph.get(), tpu_inferred_info, arg_shapes,
-                             tpu_input_shapes, tpu_input_dtypes, ctx),
-          done);
-
-      VLOG(1) << DumpGraphToFile("before_optimize_tpu_input_output_tensors",
-                                 *graph, flib_def_.get());
-
-      OP_REQUIRES_OK_ASYNC(
-          ctx,
-          OptimizeTpuInputOutputTensors(
-              graph.get(), tpu_inferred_info, arg_shapes, tpu_input_shapes,
-              tpu_input_dtypes, named_input_shapes, xla_spmd_input_sharded,
-              xla_sharding_ops, tpu_replicated_input_ops, ctx),
-          done);
+    if (xla_spmd_input_sharded) {
+      // We are setting must_be_child_of_arg == true because we do not want
+      // to remove other XlaSharding ops that might be in the graph. We only
+      // want the XlaSharding ops that are directly attached to the input
+      // arguments to be removed.
+      RemoveDescendantNodeOfArg(graph.get(), "XlaSharding",
+                                /*must_be_child_of_arg=*/true);
     }
+
+    RemoveDescendantNodeOfArg(graph.get(), "TPUReplicatedInput",
+                              /*must_be_child_of_arg=*/false);
+
+    VLOG(1) << DumpGraphToFile("before_get_input_output_info", *graph,
+                               flib_def_.get());
+
+    OP_REQUIRES_OK_ASYNC(
+        ctx,
+        GetInputOutputInfo(graph.get(), tpu_inferred_info, arg_shapes,
+                           tpu_input_shapes, tpu_input_dtypes, ctx),
+        done);
+
+    VLOG(1) << DumpGraphToFile("before_optimize_tpu_input_output_tensors",
+                               *graph, flib_def_.get());
+
+    OP_REQUIRES_OK_ASYNC(
+        ctx,
+        OptimizeTpuInputOutputTensors(
+            graph.get(), tpu_inferred_info, arg_shapes, tpu_input_shapes,
+            tpu_input_dtypes, named_input_shapes, xla_spmd_input_sharded,
+            xla_sharding_ops, tpu_replicated_input_ops, ctx),
+        done);
 
     VLOG(1) << DumpGraphToFile(
         "before_replace_resource_args_with_var_handle_ops", *graph,
