@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/space_to_depth.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/split.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/strided_slice.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/tile.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/transpose.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/winograd.h"
 
@@ -171,6 +172,11 @@ void SelectSoftmax(const BHWC& shape, const OperationDef& op_def,
     GPUOperation operation = CreateSoftmax(op_def);
     *ptr = absl::make_unique<GPUOperation>(std::move(operation));
   }
+}
+
+std::unique_ptr<GPUOperation> SelectTile(const OperationDef& op_def,
+                                         const BHWC& src_shape) {
+  return absl::make_unique<GPUOperation>(CreateTile(op_def, src_shape.c));
 }
 
 void SelectTranspose(const TransposeAttributes& attr,

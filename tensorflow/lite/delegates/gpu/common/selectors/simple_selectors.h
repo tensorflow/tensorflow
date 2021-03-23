@@ -85,6 +85,9 @@ void SelectSpaceToDepth(const SpaceToDepthAttributes& attr,
 void SelectSplit(const SplitAttributes& attr, const OperationDef& op_def,
                  std::unique_ptr<GPUOperation>* ptr);
 
+std::unique_ptr<GPUOperation> SelectTile(const OperationDef& op_def,
+                                         const BHWC& src_shape);
+
 void SelectTranspose(const TransposeAttributes& attr,
                      const OperationDef& op_def,
                      std::unique_ptr<GPUOperation>* ptr);

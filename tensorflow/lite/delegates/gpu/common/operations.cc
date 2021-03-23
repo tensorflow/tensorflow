@@ -196,6 +196,8 @@ std::string ToString(enum OperationType op) {
       return "subtract";
     case OperationType::TANH:
       return "tanh";
+    case OperationType::TILE:
+      return "tile";
     case OperationType::TRANSPOSE:
       return "transpose";
     case OperationType::UNKNOWN:
@@ -266,6 +268,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"squared_diff", OperationType::SQUARED_DIFF},
           {"subtract", OperationType::SUB},
           {"tanh", OperationType::TANH},
+          {"tile", OperationType::TILE},
           {"transpose", OperationType::TRANSPOSE},
       });
   auto op = operations->find(name);

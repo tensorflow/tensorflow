@@ -95,6 +95,7 @@ enum class OperationType {
   SQUARED_DIFF,
   SUB,
   TANH,
+  TILE,
   TRANSPOSE,
 };
 

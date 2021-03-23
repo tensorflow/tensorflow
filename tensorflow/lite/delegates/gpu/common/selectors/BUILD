@@ -138,6 +138,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth",
         "//tensorflow/lite/delegates/gpu/common/tasks:split",
         "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice",
+        "//tensorflow/lite/delegates/gpu/common/tasks:tile",
         "//tensorflow/lite/delegates/gpu/common/tasks:transpose",
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd",
         "@com_google_absl//absl/memory",

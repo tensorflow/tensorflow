@@ -552,6 +552,10 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       SelectSplit(attr, op_def, gpu_op);
       return absl::OkStatus();
     }
+    case OperationType::TILE: {
+      *gpu_op = SelectTile(op_def, inputs[0]->tensor.shape);
+      return absl::OkStatus();
+    }
     case OperationType::TRANSPOSE: {
       auto attr =
           absl::any_cast<TransposeAttributes>(node.operation.attributes);
