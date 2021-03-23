@@ -54,6 +54,7 @@ enum class OperationType {
   FLOOR_MOD,
   FULLY_CONNECTED,
   FULLY_CONNECTED_INT8,
+  GATHER,
   GREATER,
   GREATER_EQUAL,
   HARD_SWISH,
@@ -574,6 +575,10 @@ struct QuantizeAndDequantizeAttributes {
   float min = 0;
   float max = 0;
   float scale = 0;
+};
+
+struct GatherAttributes {
+  Axis axis = Axis::UNKNOWN;
 };
 
 }  // namespace gpu

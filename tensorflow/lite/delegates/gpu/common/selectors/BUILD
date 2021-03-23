@@ -122,6 +122,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_xy",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_z",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv",
+        "//tensorflow/lite/delegates/gpu/common/tasks:gather",
         "//tensorflow/lite/delegates/gpu/common/tasks:lstm",
         "//tensorflow/lite/delegates/gpu/common/tasks:max_unpooling",
         "//tensorflow/lite/delegates/gpu/common/tasks:padding",
