@@ -1558,6 +1558,7 @@ class OpConverterTest : public ::testing::Test {
         attrs.shape_, converter_->use_implicit_batch(), &trt_dims);
     if (converter_->use_implicit_batch() && !status.ok()) {
       ASSERT_EQ(add_input_status, status);
+      return;
     } else {
       TF_EXPECT_OK(status);
     }
@@ -1910,7 +1911,10 @@ class ParameterizedOpConverterTestBase
       output_data.push_back(data);
     }
     const int batch_size =
-        input_data_.empty() ? 1 : input_data_[0].tensor.shape().dim_size(0);
+        input_data_.empty() ||
+                TensorShapeUtils::IsScalar(input_data_[0].tensor.shape())
+            ? 1
+            : input_data_[0].tensor.shape().dim_size(0);
     Status stat =
         OpConverterTest::BuildAndRun(input_data_, &output_data, batch_size);
     ASSERT_EQ(expected_runtime_status.ok(), stat.ok())
