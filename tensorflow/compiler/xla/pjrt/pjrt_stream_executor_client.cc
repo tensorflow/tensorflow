@@ -576,12 +576,6 @@ bool PjRtStreamExecutorBuffer::IsOnCpu() const {
 }
 
 StatusOr<Shape> PjRtStreamExecutorBuffer::logical_on_device_shape() {
-  if (IsOnCpu() && on_device_shape().is_dynamic()) {
-    // TODO(b/182468546): TransferManager may return corrupted dynamic_shape on
-    // CPU non-deterministically.
-    return Unimplemented(
-        "Gathering DynamicShape is not implemented properly on CPU yet.");
-  }
   if (on_device_shape_.is_static()) {
     return on_device_shape_;
   }
