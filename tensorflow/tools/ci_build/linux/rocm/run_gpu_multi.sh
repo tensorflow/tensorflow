@@ -62,6 +62,7 @@ bazel test \
 //tensorflow/python/distribute:collective_all_reduce_strategy_test_xla_2gpu \
 //tensorflow/python/distribute:custom_training_loop_gradient_test_2gpu \
 //tensorflow/python/distribute:custom_training_loop_input_test_2gpu \
+//tensorflow/python/distribute:distribute_utils_test_2gpu \
 //tensorflow/python/distribute:input_lib_test_2gpu \
 //tensorflow/python/distribute:input_lib_type_spec_test_2gpu \
 //tensorflow/python/distribute:metrics_v1_test_2gpu \
@@ -69,7 +70,9 @@ bazel test \
 //tensorflow/python/distribute:parameter_server_strategy_test_2gpu \
 //tensorflow/python/distribute:ps_values_test_2gpu \
 //tensorflow/python/distribute:random_generator_test_2gpu \
+//tensorflow/python/distribute:test_util_test_2gpu \
 //tensorflow/python/distribute:tf_function_test_2gpu \
+//tensorflow/python/distribute:vars_test_2gpu \
 //tensorflow/python/distribute:warm_starting_util_test_2gpu \
 //tensorflow/python/keras/distribute:collective_all_reduce_strategy_test_2gpu \
 //tensorflow/python/keras/distribute:collective_all_reduce_strategy_test_xla_2gpu \
@@ -78,7 +81,6 @@ bazel test \
 //tensorflow/python/keras/distribute:keras_metrics_test_2gpu \
 //tensorflow/python/keras/distribute:keras_models_test_2gpu \
 //tensorflow/python/keras/distribute:keras_optimizer_v2_test_2gpu \
-//tensorflow/python/keras/distribute:keras_premade_models_test_2gpu \
 //tensorflow/python/keras/distribute:keras_stateful_lstm_model_correctness_test_2gpu \
 //tensorflow/python/keras/distribute:mirrored_strategy_test_2gpu \
 //tensorflow/python/keras/distribute:mirrored_variable_test_2gpu \
@@ -96,36 +98,41 @@ bazel test \
 //tensorflow/python/training:saver_test_2gpu \
 
 
-# no_rocm : //tensorflow/python/distribute:cross_device_ops_test_2gpu \
-# no_rocm : //tensorflow/python/distribute:distribute_utils_test_2gpu \
-# no_rocm : //tensorflow/python/distribute:strategy_common_test_2gpu \
-# no_rocm : //tensorflow/python/distribute:strategy_common_test_xla_2gpu \
-# no_rocm : //tensorflow/python/distribute:strategy_gather_test_2gpu \
-# no_rocm : //tensorflow/python/distribute:strategy_gather_test_xla_2gpu \
-# no_rocm : //tensorflow/python/distribute:test_util_test_2gpu \
-# no_rocm : //tensorflow/python/distribute:values_test_2gpu \
-# no_rocm : //tensorflow/python/distribute:vars_test_2gpu \
-# no_rocm : //tensorflow/python/keras/distribute:custom_training_loop_metrics_test_2gpu \
-# no_rocm : //tensorflow/python/keras/distribute:custom_training_loop_models_test_2gpu \
-# no_rocm : //tensorflow/python/keras/distribute:distribute_strategy_test_2gpu \
+
+
 # no_rocm : //tensorflow/python/keras/distribute:keras_dnn_correctness_test_2gpu \
 # no_rocm : //tensorflow/python/keras/distribute:keras_embedding_model_correctness_test_2gpu \
-# no_rocm : //tensorflow/python/keras/distribute:keras_image_model_correctness_test_2gpu \
-# no_rocm : //tensorflow/python/keras/distribute:keras_rnn_model_correctness_test_2gpu \
-# no_rocm : //tensorflow/python/keras/distribute:keras_save_load_test_2gpu \
-# no_rocm : //tensorflow/python/keras/distribute:keras_utils_test_2gpu \
       
+# TIMEOUT : //tensorflow/python/distribute:values_test_2gpu \
+# TIMEOUT : //tensorflow/python/keras/distribute:keras_image_model_correctness_test_2gpu \
+# TIMEOUT : //tensorflow/python/keras/distribute:keras_rnn_model_correctness_test_2gpu \
 # TIMEOUT : //tensorflow/python/keras/distribute:saved_model_mixed_api_test_2gpu \
 # TIMEOUT : //tensorflow/python/keras/distribute:saved_model_save_load_test_2gpu \
 
+# Started timing-out with ROCm 4.1
+# TIMEOUT : //tensorflow/python/keras/distribute:keras_premade_models_test_2gpu \
+
+# Became FLAKY with  ROCm 4.1
+# FLAKY : //tensorflow/python/distribute:strategy_common_test_2gpu \
+# FLAKY : //tensorflow/python/distribute:strategy_common_test_xla_2gpu \
+# FLAKY : //tensorflow/python/distribute:strategy_gather_test_2gpu \
+# FLAKY : //tensorflow/python/distribute:strategy_gather_test_xla_2gpu \
+# FLAKY : //tensorflow/python/keras/distribute:custom_training_loop_metrics_test_2gpu \
+# FLAKY : //tensorflow/python/keras/distribute:custom_training_loop_models_test_2gpu \
+
 # FAILED : //tensorflow/python/distribute/v1:cross_device_ops_test_2gpu \
+# FAILED : //tensorflow/python/distribute:cross_device_ops_test_2gpu \
 # FAILED : //tensorflow/python/distribute:mirrored_strategy_test_2gpu \
+# FAILED : //tensorflow/python/keras/distribute:distribute_strategy_test_2gpu \
 # FAILED : //tensorflow/python/kernel_tests:collective_ops_test_2gpu \
 # FAILED : //tensorflow/python:collective_ops_gpu_test_2gpu \
 # FAILED : //tensorflow/python:nccl_ops_test_2gpu \
 
 # FAILED ON CI Node only : //tensorflow/python/distribute:collective_all_reduce_strategy_test_2gpu \
 # See run : http://ml-ci.amd.com:21096/job/tensorflow/job/github-prs-rocmfork-develop-upstream/job/rocm-latest-ubuntu-gpu-multi/216/console
+
+# FAILED ON CI Node only : //tensorflow/python/keras/distribute:keras_save_load_test_2gpu \
+# Starting with ROCm 4.1, see run : http://ml-ci.amd.com:21096/job/tensorflow/job/github-prs-rocmfork-develop-upstream/job/rocm-latest-ubuntu-gpu-multi/241/console
 
 # FAILED  //tensorflow/python/keras/distribute:minimize_loss_test_2gpu \
 # potential breaking commit : https://github.com/tensorflow/tensorflow/commit/74e39c8fa60079862597c9db506cd15b2443a5a2
