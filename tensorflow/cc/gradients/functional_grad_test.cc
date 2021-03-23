@@ -26,9 +26,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace tensorflow {
+namespace ops {
 namespace {
-
-using namespace ops;  // NOLINT(build/namespaces)
 
 class FunctionGradTest : public ::testing::Test {
  protected:
@@ -81,4 +80,5 @@ TEST_F(FunctionGradTest, PartitionedCallGrad) {
 }
 
 }  // namespace
+}  // namespace ops
 }  // namespace tensorflow
