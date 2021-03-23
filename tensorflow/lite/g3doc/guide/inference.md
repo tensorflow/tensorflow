@@ -318,8 +318,12 @@ if (error != nil) { /* Error handling... */ }
 NSMutableData *inputData;  // Should be initialized
 // input data preparation...
 
+// Get the input `TFLTensor`
+TFLTensor *inputTensor = [interpreter inputTensorAtIndex:0 error:&error];
+if (error != nil) { /* Error handling... */ }
+
 // Copy the input data to the input `TFLTensor`.
-[interpreter copyData:inputData toInputTensorAtIndex:0 error:&error];
+[inputTensor copyData:inputData error:&error];
 if (error != nil) { /* Error handling... */ }
 
 // Run inference by invoking the `TFLInterpreter`.
