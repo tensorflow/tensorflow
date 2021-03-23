@@ -29,10 +29,10 @@ func @shape_of_nary(%arg0 : tensor<?x32xf16>, %arg1 : tensor<?x32xf16>) {
 
 // -----
 
-// Broadcasts can be moved up over shape-preserving operations.
-// CHECK-LABEL: @bcast
+// Broadcasts can be moved up over unary shape-preserving operations.
+// CHECK-LABEL: @bcast_unary
 // CHECK-SAME: (%[[ARG:.*]]: tensor<?x32xi16>, %[[OUT_DIMS:.*]]: tensor<3xindex>)
-func @bcast(%arg : tensor<?x32xi16>, %out_dims : tensor<3xindex>)
+func @bcast_unary(%arg : tensor<?x32xi16>, %out_dims : tensor<3xindex>)
     -> tensor<?x?x32xf16> {
   // CHECK:      %[[BCASTED_OPERAND:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG]], %[[OUT_DIMS]])
   // CHECK-SAME: broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x32xi16>, tensor<3xindex>) -> tensor<?x?x32xi16>
@@ -42,6 +42,24 @@ func @bcast(%arg : tensor<?x32xi16>, %out_dims : tensor<3xindex>)
       broadcast_dimensions = dense<[0, 1]> : tensor<2xi64> } :
       (tensor<?x32xf16>, tensor<3xindex>) -> tensor<?x?x32xf16>
   return %1 : tensor<?x?x32xf16>
+}
+
+// -----
+
+// Broadcasts can be moved up over n-ary shape-preserving operations.
+// CHECK-LABEL: @bcast_nary
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<?x32xf32>, %[[ARG1:.*]]: tensor<?x32xf32>, %[[OUT_DIMS:.*]]: tensor<3xindex>)
+func @bcast_nary(%arg0 : tensor<?x32xf32>, %arg1 : tensor<?x32xf32>,
+    %out_dims : tensor<3xindex>) -> tensor<?x?x32xf32> {
+  // CHECK-NOT: subtract
+  // CHECK:     %[[BCASTED_ARG0:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG0]], %[[OUT_DIMS]])
+  // CHECK:     %[[BCASTED_ARG1:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG1]], %[[OUT_DIMS]])
+  // CHECK:     %{{.*}} = mhlo.subtract %[[BCASTED_ARG0]], %[[BCASTED_ARG1]] : tensor<?x?x32xf32>
+  %0 = mhlo.subtract %arg0, %arg1 : tensor<?x32xf32>
+  %1 = "mhlo.dynamic_broadcast_in_dim"(%0, %out_dims) {
+      broadcast_dimensions = dense<[0, 1]> : tensor<2xi64> } :
+      (tensor<?x32xf32>, tensor<3xindex>) -> tensor<?x?x32xf32>
+  return %1 : tensor<?x?x32xf32>
 }
 
 // -----

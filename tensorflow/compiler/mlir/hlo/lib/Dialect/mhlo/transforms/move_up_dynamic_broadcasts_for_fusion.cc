@@ -77,14 +77,12 @@ struct ShapeOfOpConversion : public OpConversionPattern<shape::ShapeOfOp> {
 };
 
 // We can only move up broadcasting ops that apply to the result of a
-// shape-preserving operation. For now, we restrict this to unary operations.
-// TODO(frgossen): Generalize this to n-ary operations.
+// shape-preserving operation.
 bool isDynamicBroadcastInDimOpMovable(Value operand) {
   Operation *producer_op = operand.getDefiningOp();
   return producer_op != nullptr &&
          producer_op->hasTrait<OpTrait::SameOperandsAndResultShape>() &&
-         producer_op->hasTrait<OpTrait::Elementwise>() &&
-         producer_op->getNumOperands() == 1;
+         producer_op->hasTrait<OpTrait::Elementwise>();
 }
 
 // TODO(frgossen): Only move up broadcasting operations if there is a consumer.
@@ -96,8 +94,6 @@ struct MoveUpBroadcastInDimOpConversion
   LogicalResult matchAndRewrite(
       DynamicBroadcastInDimOp bcast_op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    // We can only move up broadcasting ops that apply to the result of a
-    // shape-preserving operation.
     DynamicBroadcastInDimOp::Adaptor transformed(operands);
     if (!isDynamicBroadcastInDimOpMovable(transformed.operand()))
       return failure();
