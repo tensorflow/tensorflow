@@ -103,9 +103,6 @@ build --define framework_shared_object=true
 build --java_toolchain=@tf_toolchains//toolchains/java:tf_java_toolchain
 build --host_java_toolchain=@tf_toolchains//toolchains/java:tf_java_toolchain
 
-# Do not enable the mlir generated GPU kernels by default.
-build --//tensorflow/core/kernels/mlir_generated:enable_gpu=false
-
 build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true
 
@@ -230,9 +227,6 @@ build:cuda --repo_env TF_NEED_CUDA=1
 build:cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
 build:cuda --@local_config_cuda//:enable_cuda
 
-# This option overrides the line above for cuda builds.
-build:cuda --//tensorflow/core/kernels/mlir_generated:enable_gpu=true
-
 # This config refers to building CUDA op kernels with clang.
 build:cuda_clang --config=cuda
 build:cuda_clang --repo_env TF_CUDA_CLANG=1
@@ -253,6 +247,8 @@ build:tensorrt --repo_env TF_NEED_TENSORRT=1
 build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
 build:rocm --define=using_rocm=true --define=using_rocm_hipcc=true
 build:rocm --repo_env TF_NEED_ROCM=1
+# Generated kernels are not yet supported on ROCm.
+build:rocm --//tensorflow/core/kernels/mlir_generated:enable_gpu=false
 
 # Options extracted from configure script
 build:numa --define=with_numa_support=true
