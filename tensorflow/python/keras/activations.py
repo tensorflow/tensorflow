@@ -372,6 +372,7 @@ def tanh(x):
 @keras_export('keras.activations.tanhexp')
 @dispatch.add_dispatch_support
 def tanhexp(x):
+  # pylint: disable=line-too-long
   """TanhExp activation function, `tanhexp(x) = x * tanh(exp(x))`.
   TanhExp activation function which returns `x * tanh(exp(x))`.
   It is a smooth, non-monotonic function with high convergence speed and with good accuracy
@@ -391,6 +392,7 @@ def tanhexp(x):
     - [arXiv:2003.09855v2 [cs.LG] 9 Sep 2020]
       (https://arxiv.org/pdf/2003.09855.pdf)
   """
+  # pylint: enable=line-too-long
   return nn.tanhexp(x)
 
 

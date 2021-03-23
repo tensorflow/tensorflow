@@ -549,7 +549,7 @@ def swish(features):
 
   return features * math_ops.sigmoid(features), grad
 
-
+# pylint: disable=line-too-long
 @tf_export("nn.tanhexp")
 @dispatch.add_dispatch_support
 @custom_gradient.custom_gradient
@@ -586,7 +586,7 @@ def tanhexp(features):
     return dy * activation_grad
 
   return features * math_ops.tanh(math_ops.exp(features)) , grad
-
+# pylint: enable=line-too-long
 
 # pylint: disable=redefined-builtin
 @tf_export("linalg.normalize")
