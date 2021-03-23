@@ -5159,14 +5159,14 @@ def _batch_gather(params, indices, batch_dims, axis=None):
   params_shape = shape(params)
   batch_indices = indices
   indices_dtype = indices.dtype.base_dtype
-  accum_dim_value = ones((), dtype=indices_dtype)
+  accum_dim_value = constant(1, dtype=indices_dtype)
   # Use correct type for offset index computation
   casted_params_shape = gen_math_ops.cast(params_shape, indices_dtype)
   for dim in range(batch_dims, 0, -1):
     dim_value = casted_params_shape[dim - 1]
     accum_dim_value *= casted_params_shape[dim]
     start = constant(0, dtype=indices_dtype)
-    step = ones((), dtype=indices_dtype)
+    step = constant(1, dtype=indices_dtype)
     dim_indices = gen_math_ops._range(start, dim_value, step)
     dim_indices *= accum_dim_value
     dim_shape = stack(

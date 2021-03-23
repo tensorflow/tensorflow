@@ -588,12 +588,12 @@ def _GetBatchIndices(params_shape, indices, batch_dims):
   indices_ndims = indices.shape.ndims
   indices_dtype = indices.dtype.base_dtype
   casted_params_shape = math_ops.cast(params_shape, indices_dtype)
-  accum_dim_value = array_ops.ones((), dtype=indices_dtype)
+  accum_dim_value = array_ops.constant(1, dtype=indices_dtype)
   for dim in range(batch_dims, 0, -1):
     dim_value = casted_params_shape[dim - 1]
     accum_dim_value *= casted_params_shape[dim]
     start = array_ops.constant(0, dtype=indices_dtype)
-    step = array_ops.ones((), dtype=indices_dtype)
+    step = array_ops.constant(1, dtype=indices_dtype)
     dim_indices = math_ops.range(start, dim_value, step)
     dim_indices *= accum_dim_value
     dim_shape = array_ops.stack(
