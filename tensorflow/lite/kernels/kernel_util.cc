@@ -30,6 +30,10 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 
+#if defined(__APPLE__)
+#include "TargetConditionals.h"
+#endif
+
 namespace tflite {
 
 namespace {
@@ -509,6 +513,17 @@ int TfLiteTypeGetSize(TfLiteType type) {
     default:
       return 0;
   }
+}
+
+bool IsMobilePlatform() {
+#if defined(ANDROID) || defined(__ANDROID__)
+  return true;
+#elif defined(__APPLE__)
+#if TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE
+  return true;
+#endif
+#endif
+  return false;
 }
 
 }  // namespace tflite

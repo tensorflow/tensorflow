@@ -113,5 +113,12 @@ std::unique_ptr<GPUOperation> SelectFullyConnected(
   }
 }
 
+std::unique_ptr<GPUOperation> SelectFullyConnected(
+    const FullyConnectedInt8Attributes& attr, const GpuInfo& gpu_info,
+    const OperationDef& op_def) {
+  FullyConnected fc = CreateFullyConnected(gpu_info, op_def, attr);
+  return absl::make_unique<FullyConnected>(std::move(fc));
+}
+
 }  // namespace gpu
 }  // namespace tflite

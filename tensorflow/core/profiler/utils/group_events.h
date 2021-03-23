@@ -117,9 +117,9 @@ class EventNode {
     return consumer_context_;
   }
 
-  void SetIsRoot(bool is_root) { is_root_ = is_root; }
+  void SetRootLevel(int root_level) { root_level_ = root_level; }
 
-  bool IsRoot() const { return is_root_; }
+  int RootLevel() const { return root_level_; }
 
   bool IsAsync() const { return is_async_; }
 
@@ -137,7 +137,10 @@ class EventNode {
   absl::optional<int64> group_id_;
   absl::optional<ContextInfo> producer_context_;
   absl::optional<ContextInfo> consumer_context_;
-  bool is_root_ = false;
+  // Root event level.
+  // By default root_level_ is set to 0, which means it is not a root event.
+  // Events with root_level_ greater than 0 are considered as root events.
+  int root_level_ = 0;
   bool is_async_ = false;
 };
 
@@ -176,8 +179,7 @@ class EventForest {
 
   void ConnectTfDataEvents();
 
-  void GroupEvents(
-      const std::vector<int64>& user_defined_root_event_types = {});
+  void GroupEvents();
 
   const EventNodeMap& GetEventNodeMap() const { return event_node_map_; }
 
@@ -198,9 +200,6 @@ class EventForest {
   // Connects events across threads according to connect_info_list.
   void ConnectInterThread(
       const std::vector<InterThreadConnectInfo>& connect_info_list);
-
-  void ProcessUserDefinedRootEvents(
-      const std::vector<int64 /*EventType*/>& user_defined_root_event_types);
 
   // Creates event groups and populates group_metadata_map. If a TF loop is
   // used, each TF loop iteration becomes a root. Otherwise, top root events

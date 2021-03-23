@@ -105,26 +105,26 @@ class InterpreterTest(test_util.TensorFlowTestCase):
               'testdata/permute_float.tflite'),
           num_threads=4.2)
 
-  def testNotSupportedOpResolver(self):
-    with self.assertRaisesRegex(ValueError,
-                                'Unrecognized passed in op resolver: test'):
+  def testNotSupportedOpResolverTypes(self):
+    with self.assertRaisesRegex(
+        ValueError, 'Unrecognized passed in op resolver type: test'):
       interpreter_wrapper.Interpreter(
           model_path=resource_loader.get_path_to_datafile(
               'testdata/permute_float.tflite'),
-          experimental_op_resolver='test')
+          experimental_op_resolver_type='test')
 
-  def testFloatWithDifferentOpResolvers(self):
-    op_resolvers = [
-        interpreter_wrapper.OpResolver.BUILTIN,
-        interpreter_wrapper.OpResolver.BUILTIN_REF,
-        interpreter_wrapper.OpResolver.BUILTIN_WITHOUT_DEFAULT_DELEGATES
+  def testFloatWithDifferentOpResolverTypes(self):
+    op_resolver_types = [
+        interpreter_wrapper.OpResolverType.BUILTIN,
+        interpreter_wrapper.OpResolverType.BUILTIN_REF,
+        interpreter_wrapper.OpResolverType.BUILTIN_WITHOUT_DEFAULT_DELEGATES
     ]
 
-    for op_resolver in op_resolvers:
+    for op_resolver_type in op_resolver_types:
       interpreter = interpreter_wrapper.Interpreter(
           model_path=resource_loader.get_path_to_datafile(
               'testdata/permute_float.tflite'),
-          experimental_op_resolver=op_resolver)
+          experimental_op_resolver_type=op_resolver_type)
       interpreter.allocate_tensors()
 
       input_details = interpreter.get_input_details()

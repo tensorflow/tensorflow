@@ -64,26 +64,18 @@ class InfeedBuffer {
 // Client-side class used to enqueue infeed buffers.
 class InfeedManager : public XfeedQueue<ShapeTree<InfeedBuffer>> {
  public:
-  // Returns a cached stream associated with an executor. Allocates a
-  // new stream on the first invocation. On subsequent invocations, if
-  // the cached executor is not the same as the requested executor,
-  // returns null.
-  se::Stream* GetStream(se::StreamExecutor* executor);
+  explicit InfeedManager(se::StreamExecutor* executor);
+
+  // Returns a stream for this infeed manager.
+  se::Stream* GetStream() const { return stream_.get(); }
 
  private:
-  // Mutex for serializing the creation of host_to_device_stream_.
-  tensorflow::mutex host_to_device_stream_mu_;
-
-  // Cached host to device stream for queuing infeed data.
-  std::unique_ptr<se::Stream> host_to_device_stream_
-      ABSL_GUARDED_BY(host_to_device_stream_mu_);
-
-  // Executor that the host_to_device_stream belongs to. Not owned.
-  se::StreamExecutor* host_to_device_executor_ = nullptr;
+  // Stream used to enqueue infeed device copies.
+  std::unique_ptr<se::Stream> stream_;
 };
 
-// Singleton creator-or-accessor: Returns the GPU infeed manager.
-InfeedManager* GetOrCreateInfeedManager();
+// Returns the GPU infeed manager for the given stream executor,
+InfeedManager* GetOrCreateInfeedManager(se::StreamExecutor* executor);
 
 }  // namespace gpu
 }  // namespace xla

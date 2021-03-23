@@ -81,21 +81,19 @@ class Resizing(PreprocessingLayer):
     interpolation: String, the interpolation method. Defaults to `bilinear`.
       Supports `bilinear`, `nearest`, `bicubic`, `area`, `lanczos3`, `lanczos5`,
       `gaussian`, `mitchellcubic`
-    name: A string, the name of the layer.
   """
 
   def __init__(self,
                height,
                width,
                interpolation='bilinear',
-               name=None,
                **kwargs):
     self.target_height = height
     self.target_width = width
     self.interpolation = interpolation
     self._interpolation_method = get_interpolation(interpolation)
     self.input_spec = InputSpec(ndim=4)
-    super(Resizing, self).__init__(name=name, **kwargs)
+    super(Resizing, self).__init__(**kwargs)
     base_preprocessing_layer.keras_kpl_gauge.get_cell('Resizing').set(True)
 
   def call(self, inputs):
@@ -138,14 +136,13 @@ class CenterCrop(PreprocessingLayer):
   Args:
     height: Integer, the height of the output shape.
     width: Integer, the width of the output shape.
-    name: A string, the name of the layer.
   """
 
-  def __init__(self, height, width, name=None, **kwargs):
+  def __init__(self, height, width, **kwargs):
     self.target_height = height
     self.target_width = width
     self.input_spec = InputSpec(ndim=4)
-    super(CenterCrop, self).__init__(name=name, **kwargs)
+    super(CenterCrop, self).__init__(**kwargs)
     base_preprocessing_layer.keras_kpl_gauge.get_cell('CenterCrop').set(True)
 
   def call(self, inputs):
@@ -211,16 +208,15 @@ class RandomCrop(PreprocessingLayer):
     height: Integer, the height of the output shape.
     width: Integer, the width of the output shape.
     seed: Integer. Used to create a random seed.
-    name: A string, the name of the layer.
   """
 
-  def __init__(self, height, width, seed=None, name=None, **kwargs):
+  def __init__(self, height, width, seed=None, **kwargs):
     self.height = height
     self.width = width
     self.seed = seed
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
-    super(RandomCrop, self).__init__(name=name, **kwargs)
+    super(RandomCrop, self).__init__(**kwargs)
     base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomCrop').set(True)
 
   def call(self, inputs, training=True):
@@ -319,13 +315,12 @@ class Rescaling(PreprocessingLayer):
   Args:
     scale: Float, the scale to apply to the inputs.
     offset: Float, the offset to apply to the inputs.
-    name: A string, the name of the layer.
   """
 
-  def __init__(self, scale, offset=0., name=None, **kwargs):
+  def __init__(self, scale, offset=0., **kwargs):
     self.scale = scale
     self.offset = offset
-    super(Rescaling, self).__init__(name=name, **kwargs)
+    super(Rescaling, self).__init__(**kwargs)
     base_preprocessing_layer.keras_kpl_gauge.get_cell('Rescaling').set(True)
 
   def call(self, inputs):
@@ -373,15 +368,13 @@ class RandomFlip(PreprocessingLayer):
       "horizontal_and_vertical". "horizontal" is a left-right flip and
       "vertical" is a top-bottom flip.
     seed: Integer. Used to create a random seed.
-    name: A string, the name of the layer.
   """
 
   def __init__(self,
                mode=HORIZONTAL_AND_VERTICAL,
                seed=None,
-               name=None,
                **kwargs):
-    super(RandomFlip, self).__init__(name=name, **kwargs)
+    super(RandomFlip, self).__init__(**kwargs)
     base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomFlip').set(True)
     self.mode = mode
     if mode == HORIZONTAL:
@@ -395,7 +388,7 @@ class RandomFlip(PreprocessingLayer):
       self.vertical = True
     else:
       raise ValueError('RandomFlip layer {name} received an unknown mode '
-                       'argument {arg}'.format(name=name, arg=mode))
+                       'argument {arg}'.format(name=self.name, arg=mode))
     self.seed = seed
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
@@ -465,7 +458,6 @@ class RandomTranslation(PreprocessingLayer):
         nearest pixel.
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
-    name: A string, the name of the layer.
     fill_value: a float represents the value to be filled outside the boundaries
       when `fill_mode` is "constant".
   Input shape:
@@ -485,7 +477,6 @@ class RandomTranslation(PreprocessingLayer):
                fill_mode='reflect',
                interpolation='bilinear',
                seed=None,
-               name=None,
                fill_value=0.0,
                **kwargs):
     self.height_factor = height_factor
@@ -524,7 +515,7 @@ class RandomTranslation(PreprocessingLayer):
     self.seed = seed
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
-    super(RandomTranslation, self).__init__(name=name, **kwargs)
+    super(RandomTranslation, self).__init__(**kwargs)
     base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomTranslation').set(
         True)
 
@@ -780,7 +771,6 @@ class RandomRotation(PreprocessingLayer):
         nearest pixel.
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
-    name: A string, the name of the layer.
     fill_value: a float represents the value to be filled outside the boundaries
       when `fill_mode` is "constant".
   Raise:
@@ -793,7 +783,6 @@ class RandomRotation(PreprocessingLayer):
                fill_mode='reflect',
                interpolation='bilinear',
                seed=None,
-               name=None,
                fill_value=0.0,
                **kwargs):
     self.factor = factor
@@ -813,7 +802,7 @@ class RandomRotation(PreprocessingLayer):
     self.seed = seed
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
-    super(RandomRotation, self).__init__(name=name, **kwargs)
+    super(RandomRotation, self).__init__(**kwargs)
     base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomRotation').set(
         True)
 
@@ -890,7 +879,6 @@ class RandomZoom(PreprocessingLayer):
         nearest pixel.
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
-    name: A string, the name of the layer.
     fill_value: a float represents the value to be filled outside the boundaries
       when `fill_mode` is "constant".
   Example:  >>> input_img = np.random.random((32, 224, 224, 3)) >>> layer =
@@ -913,7 +901,6 @@ class RandomZoom(PreprocessingLayer):
                fill_mode='reflect',
                interpolation='bilinear',
                seed=None,
-               name=None,
                fill_value=0.0,
                **kwargs):
     self.height_factor = height_factor
@@ -949,7 +936,7 @@ class RandomZoom(PreprocessingLayer):
     self.seed = seed
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
-    super(RandomZoom, self).__init__(name=name, **kwargs)
+    super(RandomZoom, self).__init__(**kwargs)
     base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomZoom').set(True)
 
   def call(self, inputs, training=True):
@@ -1070,13 +1057,12 @@ class RandomContrast(PreprocessingLayer):
       float, lower = upper. The contrast factor will be randomly picked between
       [1.0 - lower, 1.0 + upper].
     seed: Integer. Used to create a random seed.
-    name: A string, the name of the layer.
   Raise:
     ValueError: if lower bound is not between [0, 1], or upper bound is
       negative.
   """
 
-  def __init__(self, factor, seed=None, name=None, **kwargs):
+  def __init__(self, factor, seed=None, **kwargs):
     self.factor = factor
     if isinstance(factor, (tuple, list)):
       self.lower = factor[0]
@@ -1088,7 +1074,7 @@ class RandomContrast(PreprocessingLayer):
                        ' got {}'.format(factor))
     self.seed = seed
     self.input_spec = InputSpec(ndim=4)
-    super(RandomContrast, self).__init__(name=name, **kwargs)
+    super(RandomContrast, self).__init__(**kwargs)
     base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomContrast').set(
         True)
 
@@ -1139,7 +1125,6 @@ class RandomHeight(PreprocessingLayer):
       Supports `bilinear`, `nearest`, `bicubic`, `area`, `lanczos3`, `lanczos5`,
       `gaussian`, `mitchellcubic`
     seed: Integer. Used to create a random seed.
-    name: A string, the name of the layer.
   Input shape:
     4D tensor with shape: `(samples, height, width, channels)`
       (data_format='channels_last').
@@ -1151,7 +1136,6 @@ class RandomHeight(PreprocessingLayer):
                factor,
                interpolation='bilinear',
                seed=None,
-               name=None,
                **kwargs):
     self.factor = factor
     if isinstance(factor, (tuple, list)):
@@ -1172,7 +1156,7 @@ class RandomHeight(PreprocessingLayer):
     self.input_spec = InputSpec(ndim=4)
     self.seed = seed
     self._rng = make_generator(self.seed)
-    super(RandomHeight, self).__init__(name=name, **kwargs)
+    super(RandomHeight, self).__init__(**kwargs)
     base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomHeight').set(True)
 
   def call(self, inputs, training=True):
@@ -1237,7 +1221,6 @@ class RandomWidth(PreprocessingLayer):
       Supports `bilinear`, `nearest`, `bicubic`, `area`, `lanczos3`, `lanczos5`,
       `gaussian`, `mitchellcubic`
     seed: Integer. Used to create a random seed.
-    name: A string, the name of the layer.
   Input shape:
     4D tensor with shape: `(samples, height, width, channels)`
       (data_format='channels_last').
@@ -1249,7 +1232,6 @@ class RandomWidth(PreprocessingLayer):
                factor,
                interpolation='bilinear',
                seed=None,
-               name=None,
                **kwargs):
     self.factor = factor
     if isinstance(factor, (tuple, list)):
@@ -1269,7 +1251,7 @@ class RandomWidth(PreprocessingLayer):
     self.input_spec = InputSpec(ndim=4)
     self.seed = seed
     self._rng = make_generator(self.seed)
-    super(RandomWidth, self).__init__(name=name, **kwargs)
+    super(RandomWidth, self).__init__(**kwargs)
     base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomWidth').set(True)
 
   def call(self, inputs, training=True):

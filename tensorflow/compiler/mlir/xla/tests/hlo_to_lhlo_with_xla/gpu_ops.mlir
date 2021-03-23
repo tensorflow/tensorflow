@@ -5,9 +5,9 @@
 // CHECK-SAME: %[[ARG1:.*]]: memref<2xi32>
 // CHECK-SAME: %[[ARG2:.*]]: memref<2x3xi32>
 // CHECK-SAME: %[[ARG3:.*]]: memref<36xi8> {lmhlo.alloc = 0
-// CHECK: %[[VIEW0:.*]] = std.view %[[ARG3]]{{.*}} : memref<36xi8> to memref<3x3xi32>
+// CHECK: %[[VIEW0:.*]] = memref.view %[[ARG3]]{{.*}} : memref<36xi8> to memref<3x3xi32>
 // CHECK: "lmhlo.copy"(%[[ARG0]], %[[VIEW0]])
-// CHECK: %[[VIEW1:.*]] = std.view %[[ARG3]]{{.*}} : memref<36xi8> to memref<3x3xi32>
+// CHECK: %[[VIEW1:.*]] = memref.view %[[ARG3]]{{.*}} : memref<36xi8> to memref<3x3xi32>
 // CHECK:  "lmhlo.scatter"(%[[VIEW0]], %[[ARG1]], %[[ARG2]], %[[VIEW1]])
 // CHECK:  mhlo.add
 // CHECK: indices_are_sorted = false

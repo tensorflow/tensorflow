@@ -6,8 +6,8 @@ def repo():
     """Imports absl."""
 
     # Attention: tools parse and update these lines.
-    ABSL_COMMIT = "f1dad1e9b277066d676034d8f2a982b9e64310de"
-    ABSL_SHA256 = "0095ed54f29c629d4a35812597c8e811b73793d852d51cb1b5c00904c3eb3976"
+    ABSL_COMMIT = "6f9d96a1f41439ac172ee2ef7ccd8edf0e5d068c"
+    ABSL_SHA256 = "62c27e7a633e965a2f40ff16b487c3b778eae440bab64cad83b34ef1cbe3aa93"
 
     tf_http_archive(
         name = "com_google_absl",

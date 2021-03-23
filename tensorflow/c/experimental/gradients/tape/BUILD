@@ -17,8 +17,6 @@ cc_library(
     deps = [
         ":tape_operation",
         "//tensorflow/c/eager:abstract_context",
-        "//tensorflow/c/eager:abstract_function",
-        "//tensorflow/c/eager:abstract_operation",
     ],
 )
 
@@ -33,7 +31,6 @@ cc_library(
     ],
     deps = [
         "//tensorflow/c/eager:abstract_context",
-        "//tensorflow/c/eager:abstract_function",
         "//tensorflow/c/eager:abstract_operation",
         "//tensorflow/c/eager:gradients_internal",
     ],
@@ -51,6 +48,9 @@ cc_library(
     deps = [
         ":tape_context",
         ":tape_operation",
+        "//tensorflow/c/eager:abstract_context",
+        "//tensorflow/c/eager:abstract_operation",
+        "//tensorflow/c/eager:gradients_internal",
     ],
 )
 

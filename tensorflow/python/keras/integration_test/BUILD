@@ -123,6 +123,7 @@ tf_py_test(
     shard_count = 3,
     tags = [
         "no_tfrt",  # TODO(b/171765113)
+        "no_windows",  # TODO(b/183102726)
         "noasan",  # TODO(b/156029134)
         "nomac",  # TODO(b/182567880)
         "nomsan",  # TODO(b/156029134)

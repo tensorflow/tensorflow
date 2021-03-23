@@ -96,9 +96,10 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
 
       // Load the initial value and store it to the output.
       for (auto pair : llvm::zip(reduce_op.init_values(), reduce_op.out())) {
-        auto init_value = rewriter.create<mlir::LoadOp>(loc, std::get<0>(pair));
-        rewriter.create<mlir::StoreOp>(loc, init_value, std::get<1>(pair),
-                                       ArrayRef<Value>{index});
+        auto init_value =
+            rewriter.create<mlir::memref::LoadOp>(loc, std::get<0>(pair));
+        rewriter.create<mlir::memref::StoreOp>(
+            loc, init_value, std::get<1>(pair), ArrayRef<Value>{index});
       }
 
       // Insert a loop into the body to compute the reduction. The loop ranges
@@ -128,8 +129,8 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       auto oneAttr = rewriter.getI64IntegerAttr(1);
       OpFoldResult size = oneAttr;
       OpFoldResult stride = oneAttr;
-      auto accumulator = rewriter.create<SubViewOp>(loc, resType, output,
-                                                    offset, size, stride);
+      auto accumulator = rewriter.create<memref::SubViewOp>(
+          loc, resType, output, offset, size, stride);
       llvm::SmallVector<Value, 4> indexings;
       auto input_buffer = *reduce_op.operands().begin();
       auto input_type_rank =
@@ -143,8 +144,8 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
           }));
       SmallVector<OpFoldResult> sizes(input_type_rank, oneAttr);
       SmallVector<OpFoldResult> strides(input_type_rank, oneAttr);
-      auto rhs = rewriter.create<SubViewOp>(loc, accumulator.getType(), input,
-                                            offsets, sizes, strides);
+      auto rhs = rewriter.create<memref::SubViewOp>(
+          loc, accumulator.getType(), input, offsets, sizes, strides);
 
       // Now copy over the actual body of the reduction, leaving out the
       // terminator.
@@ -179,8 +180,9 @@ struct LhloLegalizeToGpuPass
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
-    target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect,
-                           gpu::GPUDialect, scf::SCFDialect, LmhloDialect>();
+    target.addLegalDialect<linalg::LinalgDialect, memref::MemRefDialect,
+                           StandardOpsDialect, gpu::GPUDialect, scf::SCFDialect,
+                           LmhloDialect>();
     target.addIllegalOp<ReduceOp>();
     auto func = getFunction();
     patterns.insert<LhloReduceToGPULaunchConverter>(func.getContext());

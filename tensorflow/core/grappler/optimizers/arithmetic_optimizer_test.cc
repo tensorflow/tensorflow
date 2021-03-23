@@ -173,11 +173,6 @@ TEST_F(ArithmeticOptimizerTest, ReplaceMulWithBroadcastByTilePreserveControl) {
   OptimizeTwiceAndPrune(&optimizer, &item, &g);
   EXPECT_EQ(g.node_size(), 4);
 
-  VLOG(0) << g.node_size();
-  for (auto&& node : g.node()) {
-    VLOG(0) << node.name();
-  }
-
   ASSERT_EQ(CountOpNodes(g, "Mul"), 0);
   ASSERT_EQ(CountOpNodes(g, "Tile"), 1);
 
@@ -278,6 +273,73 @@ TEST_F(ArithmeticOptimizerTest, ReplaceMulWithBroadcastByTileNotOnes) {
   auto result = EvaluateNodes(g, item.fetch, {{"Placeholder", tensor}});
   ASSERT_EQ(result.size(), 1);
   test::ExpectTensorNear<float>(result[0], expected[0], 1e-6);
+}
+
+TEST_F(ArithmeticOptimizerTest, ReduceUpsamplingDims) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT,
+                                  ops::Placeholder::Shape({1, 22, 48, 64}));
+  Output reshape_a = ops::Reshape(
+      s.WithOpName("reshape_a"), input,
+      ops::Const(s.WithOpName("shape_a"), {1, 22, 1, 48, 1, 64}, {6}));
+  Output tile =
+      ops::Tile(s.WithOpName("tile"), reshape_a,
+                ops::Const(s.WithOpName("multiples"), {1, 1, 2, 1, 2, 1}, {6}));
+  Output reshape_b =
+      ops::Reshape(s.WithOpName("reshape_b"), tile,
+                   ops::Const(s.WithOpName("shape_b"), {1, 44, 96, 64}));
+  Output output = ops::Identity(s.WithOpName("output"), reshape_b);
+
+  GrapplerItem item;
+  item.fetch = {"output"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensor = GenerateRandomTensor<DT_FLOAT>(TensorShape({1, 22, 48, 64}));
+  auto expected = EvaluateNodes(item.graph, item.fetch, {{"input", tensor}});
+  ASSERT_EQ(expected.size(), 1);
+
+  GraphDef g;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyReduceUpsamplingDims(&optimizer);
+  OptimizeTwiceAndPrune(&optimizer, &item, &g);
+  EXPECT_EQ(g.node_size(), 8);
+
+  ASSERT_EQ(CountOpNodes(g, "Tile"), 1);
+  ASSERT_EQ(CountOpNodes(g, "Reshape"), 2);
+  ASSERT_EQ(CountOpNodes(g, "Const"), 3);
+
+  NodeMap node_map(&g);
+  const string p = "ArithmeticOptimizer/ReduceUpsamplingDims";
+  const NodeDef* ra =
+      node_map.GetNode(absl::StrCat(p, "_", "Reshape_reshape_b"));
+  const NodeDef* rb = node_map.GetNode("reshape_b");
+  const NodeDef* t = node_map.GetNode(absl::StrCat(p, "_", "Tile_reshape_b"));
+  ASSERT_NE(ra, nullptr);
+  ASSERT_NE(rb, nullptr);
+  ASSERT_NE(t, nullptr);
+
+  ASSERT_EQ(rb->input_size(), 2);
+  EXPECT_EQ(rb->input(0), t->name());
+  ASSERT_EQ(t->input_size(), 2);
+  EXPECT_EQ(t->input(0), ra->name());
+  ASSERT_EQ(ra->input_size(), 2);
+  EXPECT_EQ(ra->input(0), "input");
+
+  {
+    auto result = EvaluateNodes(g, item.fetch, {{"input", tensor}});
+    ASSERT_EQ(result.size(), 1);
+    test::ExpectTensorNear<float>(result[0], expected[0], 1e-6);
+  }
+
+  // Check to make sure the first reshape is removed
+  EnableOnlyRemoveRedundantReshape(&optimizer);
+  OptimizeTwiceAndPrune(&optimizer, &item, &g);
+  EXPECT_EQ(g.node_size(), 6);
+
+  {
+    auto result = EvaluateNodes(g, item.fetch, {{"input", tensor}});
+    ASSERT_EQ(result.size(), 1);
+    test::ExpectTensorNear<float>(result[0], expected[0], 1e-6);
+  }
 }
 
 TEST_F(ArithmeticOptimizerTest, ReplaceMulWithSquare) {

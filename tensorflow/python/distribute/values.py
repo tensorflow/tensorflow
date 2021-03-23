@@ -30,6 +30,7 @@ from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -48,29 +49,77 @@ def _on_write_update_replica(var, update_fn, value, **kwargs):
   if var.aggregation == vs.VariableAggregation.NONE:
     return update_fn(var._get_on_device_or_primary(), value, **kwargs)  # pylint: disable=protected-access
 
-  def merge_fn(strategy, value, **kwargs):
-    """Aggregate values and update all variables in cross replica context."""
+  if not getattr(ds_context.get_strategy().extended, "_use_merge_call", True):
     # Don't allow MEAN with non float dtype, since it may cause unexpected
     # precision loss. Python3 and NumPy automatically upcast integers to
     # float in division, but we should always preserve the type.
-    #
-    # Note that to be backward compatible we allow the case when the value
-    # is *always* the same on each replica. I.E. value is not a
-    # PerReplica. Refer to regroup() to see how values are grouped.
     if var.aggregation == vs.VariableAggregation.MEAN and (
-        not var.dtype.is_floating) and isinstance(value, PerReplica):
+        not var.dtype.is_floating) and tensor_util.is_tf_type(value):
       raise ValueError(
           "Cannot update non-float variables with "
           "tf.VariableAggregation.MEAN aggregation in replica context. "
           "Either change the variable dtype to float or update it in "
           "cross-replica context.")
 
-    assert strategy == var.distribute_strategy
-    v = values_util.apply_aggregation(strategy, value, var.aggregation, var)
-    return var._update_cross_replica(update_fn, v, **kwargs)  # pylint: disable=protected-access
+    aggregated_value = apply_aggregation_replica_context(value, var.aggregation,
+                                                         var)
+    values_util.mark_as_unsaveable()
 
-  return ds_context.get_replica_context().merge_call(
-      merge_fn, args=(value,), kwargs=kwargs)
+    return ds_context.get_replica_context()._update(  # pylint: disable=protected-access
+        var,
+        update_fn,
+        args=(aggregated_value,),
+        kwargs=kwargs, group=True)
+
+  else:
+    def merge_fn(strategy, value, **kwargs):
+      """Aggregate values and update all variables in cross replica context."""
+      # Don't allow MEAN with non float dtype, since it may cause unexpected
+      # precision loss. Python3 and NumPy automatically upcast integers to
+      # float in division, but we should always preserve the type.
+      #
+      # Note that to be backward compatible we allow the case when the value
+      # is *always* the same on each replica. I.E. value is not a
+      # PerReplica. Refer to regroup() to see how values are grouped.
+      if var.aggregation == vs.VariableAggregation.MEAN and (
+          not var.dtype.is_floating) and isinstance(value, PerReplica):
+        raise ValueError(
+            "Cannot update non-float variables with "
+            "tf.VariableAggregation.MEAN aggregation in replica context. "
+            "Either change the variable dtype to float or update it in "
+            "cross-replica context.")
+
+      assert strategy == var.distribute_strategy
+      v = values_util.apply_aggregation(strategy, value, var.aggregation, var)
+      return var._update_cross_replica(update_fn, v, **kwargs)  # pylint: disable=protected-access
+
+    return ds_context.get_replica_context().merge_call(
+        merge_fn, args=(value,), kwargs=kwargs)
+
+
+def apply_aggregation_replica_context(value, aggregation, destinations):
+  """Aggregate `value` to `destinations` as specified by `aggregation`."""
+  # if it is a python literal, return without aggregation
+  if isinstance(value, DistributedValues):
+    raise ValueError("Do not use a DistributedValues update variable in replica"
+                     " context.")
+  if not tensor_util.is_tf_type(value):
+    return value
+
+  if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
+    # Switch to cross-replica context to broadcast
+    def merge_fn(strategy, value):
+      return strategy.extended.broadcast_to(
+          strategy.experimental_local_results(value)[0],
+          destinations=destinations)
+
+    return ds_context.get_replica_context().merge_call(merge_fn, args=(value,))
+
+  else:
+    reduce_op = reduce_util.ReduceOp.from_variable_aggregation(aggregation)
+    aggregated_value = ds_context.get_strategy(  # pylint: disable=protected-access
+    ).extended._replica_ctx_all_reduce(reduce_op, value)
+    return aggregated_value
 
 
 @tf_export("distribute.DistributedValues", v1=[])

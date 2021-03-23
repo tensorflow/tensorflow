@@ -58,6 +58,8 @@ tensorflow::Status SetTpuOpsStructFns(void* library_handle) {
   TFTPU_SET_FN(ops_api_fn, TpuProgram_SerializeCompilerMetadata);
   TFTPU_SET_FN(ops_api_fn,
                TpuProgram_DeserializeFromGetTpuProgramResponseProto);
+  TFTPU_SET_FN(ops_api_fn, TpuProgram_GetFingerprint);
+  TFTPU_SET_FN(ops_api_fn, TpuProgram_DestroyFingerprint);
 
   TFTPU_SET_FN(ops_api_fn, TpuNodeContext_Create);
   TFTPU_SET_FN(ops_api_fn, TpuNodeContext_Free);

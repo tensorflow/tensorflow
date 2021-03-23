@@ -33,6 +33,10 @@ class BufferAssignment;
 class HloExecutionProfile;
 class HloSnapshot;
 
+// Get a timestamp which we can use as a filename prefix specific to this
+// module.
+string TimestampFor(const HloModule& module);
+
 // Create the filename we will use to dump in DumpToFileInDir.
 string FilenameFor(const HloModule& module, absl::string_view prefix,
                    absl::string_view suffix);
@@ -47,6 +51,14 @@ void DumpToFileInDir(const HloModule& module, absl::string_view file_prefix,
 // Like DumpToFileInDir, except if module doesn't have an xla_dump_to directory
 // specified, or if that directory is equal to "-", writes to stdout instead.
 void DumpToFileInDirOrStdout(const HloModule& module,
+                             absl::string_view file_prefix,
+                             absl::string_view file_suffix,
+                             absl::string_view contents);
+
+// Like DumpToFileInDir, except if debug_options doesn't have an xla_dump_to
+// directory specified, or if that directory is equal to "-", writes to stdout
+// instead.
+void DumpToFileInDirOrStdout(const DebugOptions& debug_options, int unique_id,
                              absl::string_view file_prefix,
                              absl::string_view file_suffix,
                              absl::string_view contents);
@@ -69,9 +81,6 @@ void DumpHloModuleIfEnabled(const HloModule& module,
 void DumpHloModuleIfEnabled(const HloModule& module,
                             const HloExecutionProfile& profile,
                             absl::string_view name);
-// Checks provided debug_options instead of the one from module's config.
-void DumpHloModuleIfEnabled(const HloModule& module, absl::string_view name,
-                            const DebugOptions& debug_options);
 
 // Dumps the given HLO module after running one HLO pass and before running
 // another, if that's enabled. Returns the full file paths of all dumps of the

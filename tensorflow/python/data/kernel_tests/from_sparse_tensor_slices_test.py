@@ -20,6 +20,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -48,9 +49,11 @@ class FromSparseTensorSlicesTest(test_base.DatasetTestBase,
       slices = [[1., 2., 3.], [1.], [1.], [1., 2.], [], [1., 2.], [], [], []]
 
       # Test with sparse tensor in the appropriate order.
+      # pylint: disable=g-complex-comprehension
       indices = np.array(
           [[i, j] for i in range(len(slices)) for j in range(len(slices[i]))])
       values = np.array([val for s in slices for val in s])
+      # pylint: enable=g-complex-comprehension
       dense_shape = np.array([len(slices), max(len(s) for s in slices) + 1])
       sparse_feed = sparse_tensor.SparseTensorValue(indices, values,
                                                     dense_shape)
@@ -88,6 +91,32 @@ class FromSparseTensorSlicesTest(test_base.DatasetTestBase,
   def testFromSparseTensorSlicesError(self):
     with self.assertRaises(AttributeError):
       dataset_ops.Dataset.from_sparse_tensor_slices(None)
+
+
+class FromSparseTensorSlicesCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
+
+  def _build_sparse_tensor_slice_dataset(self, slices):
+    # pylint: disable=g-complex-comprehension
+    indices = np.array(
+        [[i, j] for i in range(len(slices)) for j in range(len(slices[i]))],
+        dtype=np.int64)
+    values = np.array([val for s in slices for val in s], dtype=np.float64)
+    # pylint: enable=g-complex-comprehension
+    dense_shape = np.array(
+        [len(slices), max(len(s) for s in slices) + 1], dtype=np.int64)
+    sparse_components = sparse_tensor.SparseTensor(indices, values, dense_shape)
+    return dataset_ops.Dataset.from_sparse_tensor_slices(sparse_components)
+
+  @combinations.generate(
+      combinations.combine(tf_api_version=1, mode=["graph", "eager"]))
+  def testFromSparseTensorSlicesCore(self):
+    slices = [[1., 2., 3.], [1.], [1.], [1., 2.], [], [1., 2.], [], [], []]
+
+    self.run_core_tests(
+        lambda: self._build_sparse_tensor_slice_dataset(slices),
+        9,
+        sparse_tensors=True)
 
 
 if __name__ == "__main__":

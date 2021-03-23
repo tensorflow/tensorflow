@@ -24,6 +24,10 @@ namespace gpu {
 
 absl::Status SplitChannelsTest(TestExecutionEnvironment* env);
 absl::Status SplitChannelsX4Test(TestExecutionEnvironment* env);
+absl::Status SplitWidthTest(TestExecutionEnvironment* env);
+absl::Status SplitHeightTest(TestExecutionEnvironment* env);
+absl::Status SplitBatchTest(TestExecutionEnvironment* env);
+absl::Status SplitDepthTest(TestExecutionEnvironment* env);
 
 }  // namespace gpu
 }  // namespace tflite

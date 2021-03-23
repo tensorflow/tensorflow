@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -48,7 +49,8 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
       hlo_module.entry_computation()->root_instruction();
 
   mlir::MLIRContext context;
-  context.loadDialect<mlir::AffineDialect, mlir::StandardOpsDialect>();
+  context.loadDialect<mlir::AffineDialect, mlir::memref::MemRefDialect,
+                      mlir::StandardOpsDialect>();
   mlir::OwningModuleRef mlir_module(
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context)));
 
@@ -92,7 +94,7 @@ CHECK-NEXT:   affine.for %arg3 = 0 to 128 {
 CHECK-NEXT:     affine.for %arg4 = 0 to 2 {
 CHECK-NEXT:       affine.for %arg5 = 0 to 112 {
 CHECK-NEXT:         affine.for %arg6 = 0 to 7 {
-CHECK-NEXT:           %0 = alloc() : memref<32x16xf32>
+CHECK-NEXT:           %0 = memref.alloc() : memref<32x16xf32>
 CHECK-NEXT:           affine.for %arg7 = 0 to 32 {
 CHECK-NEXT:             affine.for %arg8 = 0 to 16 {
 CHECK-NEXT:               %cst = constant 0.000000e+00 : f32

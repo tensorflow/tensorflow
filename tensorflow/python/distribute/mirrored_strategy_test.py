@@ -70,6 +70,7 @@ GPU_TEST = "test_gpu" in sys.argv[0]
         distribution=[
             strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
             strategy_combinations.mirrored_strategy_with_two_gpus,
+            strategy_combinations.mirrored_strategy_with_two_gpus_no_merge_call,
         ],
         mode=["graph", "eager"]))
 class MirroredTwoDeviceDistributionTest(
@@ -93,6 +94,8 @@ class MirroredTwoDeviceDistributionTest(
     self._test_call_and_merge_exceptions(distribution)
 
   def testRunRegroupError(self, distribution):
+    if not getattr(distribution, "_use_merge_call", True):
+      self.skipTest("Collective all-reduce does not support int32 on GPU.")
     def run_fn():
       replica_id = int(self.evaluate(_replica_id()))
       # Generates a list with different lengths on different devices.
@@ -103,6 +106,9 @@ class MirroredTwoDeviceDistributionTest(
       distribution.extended.call_for_each_replica(run_fn)
 
   def testReduceToCpu(self, distribution):
+    if not getattr(distribution, "_use_merge_call", True):
+      self.skipTest("Collective all-reduce does not support int32 on GPU.")
+
     with distribution.scope():
       result = distribution.extended.call_for_each_replica(_replica_id)
       reduced = distribution.reduce(reduce_util.ReduceOp.SUM, result, axis=None)
@@ -110,6 +116,9 @@ class MirroredTwoDeviceDistributionTest(
       self.assertEqual(expected, self.evaluate(reduced))
 
   def testReduceToCpuNested(self, distribution):
+    if not getattr(distribution, "_use_merge_call", True):
+      self.skipTest("Collective all-reduce does not support int32 on GPU.")
+
     with distribution.scope():
       def replica_fn(input_tensor):
         return input_tensor + constant_op.constant(
@@ -138,6 +147,8 @@ class MirroredTwoDeviceDistributionTest(
       self.assertNear(expected, self.evaluate(reduced), 0.00001)
 
   def testReduceAxisToCpu(self, distribution):
+    if not getattr(distribution, "_use_merge_call", True):
+      self.skipTest("Collective all-reduce does not support int32 on GPU.")
     for dtype in (dtypes.float32, dtypes.int32):
       def replica_squared_fn(dtype=dtype):
         # Lists with different lengths on different replicas.
@@ -154,6 +165,8 @@ class MirroredTwoDeviceDistributionTest(
       tensor_shape.disable_v2_tensorshape()
 
   def testReduceAxisToCpuUnknownShape(self, distribution):
+    if not getattr(distribution, "_use_merge_call", True):
+      self.skipTest("Collective all-reduce does not support int32 on GPU.")
     original_v2 = tensor_shape._TENSORSHAPE_V2_OVERRIDE  # pylint: disable=protected-access
     try:
       for v2 in (False, True):
@@ -721,11 +734,17 @@ class MirroredVariableUpdateTest(test.TestCase):
       def model_fn():
         return mirrored_var.assign(5.0)
 
-      with self.assertRaisesRegex(
-          ValueError, "A non-DistributedValues value 5.0 cannot be reduced "
-          "with the given reduce op ReduceOp.SUM."):
-        self.evaluate(distribution.experimental_local_results(
-            distribution.extended.call_for_each_replica(model_fn)))
+      if getattr(distribution.extended, "_use_merge_call", True):
+        with self.assertRaisesRegex(
+            ValueError, "A non-DistributedValues value 5.0 cannot be reduced "
+            "with the given reduce op ReduceOp.SUM."):
+          self.evaluate(distribution.experimental_local_results(
+              distribution.extended.call_for_each_replica(model_fn)))
+      else:
+        result = self.evaluate(
+            distribution.experimental_local_results(
+                distribution.extended.call_for_each_replica(model_fn)))
+        self.assertAllEqual(result[0], 5.0)
 
   def testAssignMirroredVarCrossDeviceContext(self, distribution):
     def var_fn():

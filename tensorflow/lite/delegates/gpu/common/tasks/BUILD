@@ -282,6 +282,19 @@ cc_library(
 )
 
 cc_library(
+    name = "convolution_transposed_3x3_test_util",
+    testonly = 1,
+    srcs = ["convolution_transposed_3x3_test_util.cc"],
+    hdrs = ["convolution_transposed_3x3_test_util.h"],
+    deps = [
+        ":convolution_transposed_3x3",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "convolution_transposed_3x3_thin",
     srcs = ["convolution_transposed_3x3_thin.cc"],
     hdrs = ["convolution_transposed_3x3_thin.h"],
@@ -535,6 +548,32 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
+    name = "gather",
+    srcs = ["gather.cc"],
+    hdrs = ["gather.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+    ],
+)
+
+cc_library(
+    name = "gather_test_util",
+    testonly = 1,
+    srcs = ["gather_test_util.cc"],
+    hdrs = ["gather_test_util.h"],
+    deps = [
+        ":gather",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -958,6 +997,31 @@ cc_library(
     hdrs = ["strided_slice_test_util.h"],
     deps = [
         ":strided_slice",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
+    name = "tile",
+    srcs = ["tile.cc"],
+    hdrs = ["tile.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "tile_test_util",
+    testonly = 1,
+    srcs = ["tile_test_util.cc"],
+    hdrs = ["tile_test_util.h"],
+    deps = [
+        ":tile",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/task:testing_util",

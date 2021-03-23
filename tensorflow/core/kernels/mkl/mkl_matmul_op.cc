@@ -188,11 +188,9 @@ class MklMatMulOp : public OpKernel {
           .Label(mkl_op_registry::kMklNameChangeOpLabel), \
       MklMatMulOp<CPUDevice, T, false /* cublas, ignored for CPU */>);
 
-#ifdef ENABLE_MKL
 // TODO(inteltf) Consider template specialization when adding/removing
 // additional types
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_bfloat16(REGISTER_CPU);
-#endif  // ENABLE_MKL
 }  // namespace tensorflow
 #endif  // INTEL_MKL

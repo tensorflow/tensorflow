@@ -144,13 +144,18 @@ DOC = """
   - [Identity Mappings in Deep Residual Networks]
     (https://arxiv.org/abs/1603.05027) (CVPR 2016)
 
-  Optionally loads weights pre-trained on ImageNet.
-  Note that the data format convention used by the model is
-  the one specified in your Keras config at `~/.keras/keras.json`.
+  For image classification use cases, see
+  [this page for detailed examples](
+    https://keras.io/api/applications/#usage-examples-for-image-classification-models).
+
+  For transfer learning use cases, make sure to read the
+  [guide to transfer learning & fine-tuning](
+    https://keras.io/guides/transfer_learning/).
 
   Note: each Keras Application expects a specific kind of input preprocessing.
   For ResNetV2, call `tf.keras.applications.resnet_v2.preprocess_input` on your
   inputs before passing them to the model.
+  `resnet_v2.preprocess_input` will scale input pixels between -1 and 1.
 
   Args:
     include_top: whether to include the fully-connected
@@ -184,6 +189,8 @@ DOC = """
     classifier_activation: A `str` or callable. The activation function to use
       on the "top" layer. Ignored unless `include_top=True`. Set
       `classifier_activation=None` to return the logits of the "top" layer.
+      When loading pretrained weights, `classifier_activation` can only
+      be `None` or `"softmax"`.
 
   Returns:
     A `keras.Model` instance.

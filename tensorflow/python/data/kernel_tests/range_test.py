@@ -144,8 +144,8 @@ class RangeTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(output_type, dataset_ops.get_legacy_output_types(dataset))
 
 
-class RangeDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                                 parameterized.TestCase):
+class RangeCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                          parameterized.TestCase):
 
   def _build_range_dataset(self, start, stop):
     return dataset_ops.Dataset.range(start, stop)

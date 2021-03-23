@@ -548,7 +548,7 @@ struct DropAttributes : public OpRewritePattern<Op> {
   // Drop the "output_shapes" attribute.
   LogicalResult matchAndRewrite(Op op,
                                 PatternRewriter &rewriter) const override {
-    bool found = !!op.removeAttr("output_shapes");
+    bool found = !!op->removeAttr("output_shapes");
     return success(found);
   }
 };
@@ -580,4 +580,24 @@ ResourceHandleValueAndId GetResourceHandleValueAndIdBase(
   // New ID created, increment next_id.
   if (emplace_res.second) ++next_id;
   return {resource, emplace_res.first->second};
+}
+
+// Helper function to create TF op while copying all underscore attributes from
+// another TF op.
+// TODO(jpienaar): This is a workaround until behavior is established.
+template <typename OpTy, typename... Args>
+OpTy CreateTfOp(RewriterBase& b, Operation *op, Args &&... args) {
+  auto ret = b.create<OpTy>(op->getLoc(), std::forward<Args>(args)...);
+  CopyDeviceAndUnderscoredAttributes(op, ret.getOperation());
+  return ret;
+}
+
+// Helper function to replace TF op with another op while copying all underscore
+// attributes from the TF op.
+// TODO(jpienaar): This is a workaround until behavior is established.
+template <typename OpTy, typename... Args>
+OpTy ReplaceTfOpWithNewOp(RewriterBase& b, Operation *op, Args &&... args) {
+  auto ret = CreateTfOp<OpTy>(b, op, std::forward<Args>(args)...);
+  b.replaceOp(op, ret.getOperation()->getResults());
+  return ret;
 }

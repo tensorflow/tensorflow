@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -1322,6 +1323,9 @@ string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
     const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
   if (options.print_only_essential_constants()) {
+    if (!literal_.has_value()) {
+      return "{...}";
+    }
     if (literal().IsAll(0)) {
       return "0";
     }
@@ -1396,6 +1400,29 @@ HloFusionInstruction::HloFusionInstruction(
   SetAndSanitizeName("fusion");
   AppendComputation(fusion_computation);
   fusion_computation->SetFusionInstruction(this);
+}
+
+HloFusionInstruction::~HloFusionInstruction() {
+  ClearFusionComputationInstruction();
+}
+
+void HloFusionInstruction::ClearFusionComputationInstruction() {
+  // Each fusion calls a single computation, but we use called_computations()
+  // instead of fused_instructions_computation(), because the order in which
+  // things get destructed can vary; the fusion computation's back-pointer may
+  // already be null, which violates a check in fused_instructions_computation.
+  for (HloComputation* computation : called_computations()) {
+    // Some passes that rewrite fusions may reassign a fusion computation to a
+    // different fusion instruction as this instruction gets destructed.
+    if (computation->FusionInstruction() == this) {
+      computation->SetFusionInstruction(nullptr);
+    }
+  }
+}
+
+void HloFusionInstruction::ClearCalledComputations() {
+  ClearFusionComputationInstruction();
+  HloInstruction::ClearCalledComputations();
 }
 
 string HloFusionInstruction::ToCategory() const {

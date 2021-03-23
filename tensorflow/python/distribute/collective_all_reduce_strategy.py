@@ -312,6 +312,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   # Timeout in seconds the each check health.
   _check_health_timeout = 10
 
+  _use_merge_call = True
+
   def __init__(self, container_strategy, cluster_resolver,
                communication_options):
     if not isinstance(communication_options, collective_util.Options):

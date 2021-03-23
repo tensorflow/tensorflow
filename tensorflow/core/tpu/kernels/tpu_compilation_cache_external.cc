@@ -118,6 +118,11 @@ CompiledSubgraph* TpuCompilationCacheExternal::InitializeEntry(
     TpuProgramGroup sharding_programs;
     sharding_programs.Initialize(
         tpu_program_group.tpu_programs(TpuProgramShardingType::kSharding));
+
+    for (const auto& fingerprint : sharding_programs.fingerprints()) {
+      main_entry->sharding_key.emplace_back(fingerprint);
+    }
+
     PopulateEntry(key, main_entry->sharding_entry.get(),
                   std::move(sharding_programs));
 

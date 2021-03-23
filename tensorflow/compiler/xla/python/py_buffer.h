@@ -107,15 +107,23 @@ class PyBuffer : public DeviceArrayBase {
   pybind11::dtype python_dtype() const;
 
   // Representing the logical view of the underlying dynamic shapes.
-  StatusOr<Shape> xla_dynamic_shape();
+  StatusOr<const Shape*> xla_dynamic_shape();
 
-  void SetStickyDevice(pybind11::object sticky_device);
-  pybind11::object GetStickyDevice() const { return sticky_device_.value(); }
+  Status set_sticky_device(PjRtDevice* sticky_device) {
+    TF_RET_CHECK(sticky_device == nullptr ||
+                 sticky_device == buffer_->device());
+    sticky_device_ = sticky_device;
+    return Status::OK();
+  }
+  PjRtDevice* sticky_device() const { return sticky_device_; }
+
+  void set_weak_type(absl::optional<bool> weak_type) { weak_type_ = weak_type; }
+  absl::optional<bool> weak_type() const { return weak_type_; }
 
   StatusOr<pybind11::object> AsNumPyArray(pybind11::handle this_obj);
 
-  void SetAval(pybind11::object aval);
-  pybind11::object GetAval() const { return aval_.value(); }
+  void SetAval(pybind11::object aval) { aval_ = aval; }
+  pybind11::object GetAval() const { return aval_; }
 
  private:
   friend class PyClient;
@@ -130,10 +138,21 @@ class PyBuffer : public DeviceArrayBase {
   std::shared_ptr<Traceback> traceback_;
   std::shared_ptr<HostValue> host_value_;  // Protected by the GIL.
 
-  absl::optional<pybind11::object> sticky_device_ = absl::nullopt;
-  // TODO(jblespiau): It's currently there for convenience but maybe we can do
-  // without it (adding `weak_type` instead).
-  absl::optional<pybind11::object> aval_ = absl::nullopt;
+  // JAX uses this field to record whether a buffer is committed to a particular
+  // device by the user (https://github.com/google/jax/pull/1916).
+  PjRtDevice* sticky_device_ = nullptr;
+
+  // TODO(phawkins): consider not keeping an explicit aval on C++ buffer
+  // objects.
+  pybind11::object aval_ = pybind11::none();
+
+  // An optional weak type. If absent, the JAX jit code computes the weak_type
+  // from the aval_.weak_type attribute. This is a backwards compatibility
+  // measure for older Python code that does not set weak_type explicitly.
+  // TODO(phawkins): drop support for older jax Python versions and make
+  // weak_type mandatory.
+  absl::optional<bool> weak_type_ = absl::nullopt;
+
   absl::optional<Shape> dynamic_shape_ = absl::nullopt;
   // Doubly-linked list of all PyBuffers known to the client. Protected by the
   // GIL. Since multiple PyBuffers may share the same PjRtBuffer, there may be

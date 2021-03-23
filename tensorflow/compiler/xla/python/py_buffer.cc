@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 
 #include "absl/base/casts.h"
+#include "pybind11/gil.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -59,17 +60,19 @@ PyBuffer::~PyBuffer() {
 StatusOr<int64> PyBuffer::size() {
   Shape max_buffer_shape = buffer()->on_device_shape();
   if (max_buffer_shape.is_dynamic()) {
-    TF_ASSIGN_OR_RETURN(auto dynamic_shape, xla_dynamic_shape());
-    return ShapeUtil::ElementsIn(dynamic_shape);
+    TF_ASSIGN_OR_RETURN(const auto* dynamic_shape, xla_dynamic_shape());
+    return ShapeUtil::ElementsIn(*dynamic_shape);
   }
   return ShapeUtil::ElementsIn(max_buffer_shape);
 }
 
-StatusOr<Shape> PyBuffer::xla_dynamic_shape() {
-  DCHECK(PyGILState_Check());
+StatusOr<const Shape*> PyBuffer::xla_dynamic_shape() {
+  CHECK(PyGILState_Check());
   if (buffer_->on_device_shape().is_static()) {
-    return buffer_->on_device_shape();
+    return &buffer_->on_device_shape();
   }
+  // Python buffer protocol references shape data by pointer, therefore we must
+  // store a valid copy of the shape.
   if (!dynamic_shape_) {
     Shape dynamic_shape;
     {
@@ -78,7 +81,7 @@ StatusOr<Shape> PyBuffer::xla_dynamic_shape() {
     }
     dynamic_shape_ = dynamic_shape;
   }
-  return dynamic_shape_.value();
+  return &dynamic_shape_.value();
 }
 
 pybind11::tuple PyBuffer::python_shape() const {
@@ -128,11 +131,11 @@ Status PyBuffer::CopyToHostAsync() {
     // TODO(b/182461453): This is a blocking call. If we further implemented
     // populating dynamic shape metadata while fetching the literal, we wouldn't
     // need this static approach.
-    TF_ASSIGN_OR_RETURN(Shape dynamic_shape, xla_dynamic_shape());
+    TF_ASSIGN_OR_RETURN(const auto* dynamic_shape, xla_dynamic_shape());
 
     py::gil_scoped_release gil;
     host_value->value = std::make_shared<Literal>(
-        ShapeUtil::DeviceShapeToHostShape(dynamic_shape));
+        ShapeUtil::DeviceShapeToHostShape(*dynamic_shape));
     Literal* literal = host_value->value.get();
     buffer_->ToLiteral(literal,
                        [host_value{std::move(host_value)}](Status status) {
@@ -150,12 +153,9 @@ StatusOr<pybind11::object> PyBuffer::AsNumPyArray(py::handle this_obj) {
   TF_RET_CHECK(buffer_->on_device_shape().IsArray());
   // On CPU, we can return the value in a zero-copy way.
   if (buffer_->IsOnCpu()) {
-    Shape shape = buffer_->on_device_shape();
-    if (shape.is_dynamic()) {
-      return Unimplemented("DynamicShape not implemented for CPU device.");
-    }
+    TF_ASSIGN_OR_RETURN(const auto* shape, xla_dynamic_shape());
     TF_ASSIGN_OR_RETURN(py::dtype dtype,
-                        PrimitiveTypeToDtype(shape.element_type()));
+                        PrimitiveTypeToDtype(shape->element_type()));
     // Objects that must be kept alive while the array is alive.
     struct Hold {
       py::object buffer;
@@ -168,8 +168,8 @@ StatusOr<pybind11::object> PyBuffer::AsNumPyArray(py::handle this_obj) {
     void* data = hold->external_reference_hold->OpaqueDeviceMemoryDataPointer();
     py::capsule hold_capsule(hold.release(),
                              [](void* h) { delete static_cast<Hold*>(h); });
-    py::array array(dtype, shape.dimensions(), ByteStridesForShape(shape), data,
-                    hold_capsule);
+    py::array array(dtype, shape->dimensions(), ByteStridesForShape(*shape),
+                    data, hold_capsule);
     array.attr("flags").attr("writeable") = Py_False;
     {
       py::gil_scoped_release gil;
@@ -211,8 +211,8 @@ StatusOr<py::dict> PyBuffer::CudaArrayInterface() {
       buffer_->on_device_shape().layout()));
 
   py::dict result;
-  TF_ASSIGN_OR_RETURN(Shape dynamic_shape, xla_dynamic_shape());
-  result["shape"] = IntSpanToTuple(dynamic_shape.dimensions());
+  TF_ASSIGN_OR_RETURN(const auto* dynamic_shape, xla_dynamic_shape());
+  result["shape"] = IntSpanToTuple(dynamic_shape->dimensions());
   TF_ASSIGN_OR_RETURN(py::str typestr,
                       TypeDescriptorForPrimitiveType(
                           buffer_->on_device_shape().element_type()));
@@ -250,9 +250,11 @@ struct ExtraBufferInfo {
 };
 
 int PjRtBufferGetBuffer(PyObject* exporter, Py_buffer* view, int flags) {
-  auto& buffer =
-      *py::reinterpret_borrow<py::object>(exporter).cast<PyBuffer&>().buffer();
+  auto& py_buffer =
+      py::reinterpret_borrow<py::object>(exporter).cast<PyBuffer&>();
+  auto& buffer = *py_buffer.buffer();
   Status status = [&]() {
+    TF_ASSIGN_OR_RETURN(const auto* shape, py_buffer.xla_dynamic_shape());
     // Py_buffer objects are POD C structures, so we don't need to hold the GIL.
     // Additionally we call BlockHostUntilReady() below, which may block.
     py::gil_scoped_release gil_release;
@@ -260,10 +262,6 @@ int PjRtBufferGetBuffer(PyObject* exporter, Py_buffer* view, int flags) {
     if (!buffer.IsOnCpu()) {
       return InvalidArgument(
           "Python buffer protocol is only defined for CPU buffers.");
-    }
-    if (buffer.on_device_shape().is_dynamic()) {
-      return InvalidArgument(
-          "Dynamic shape is not supported for Python buffer protocol.");
     }
     if (!buffer.on_device_shape().IsArray()) {
       return InvalidArgument(
@@ -286,17 +284,17 @@ int PjRtBufferGetBuffer(PyObject* exporter, Py_buffer* view, int flags) {
     if (buffer.IsDeleted()) {
       return InvalidArgument("Deleted buffer used in buffer protocol.");
     }
-    const Shape& shape = buffer.on_device_shape();
+
     if (((flags & PyBUF_C_CONTIGUOUS) == PyBUF_C_CONTIGUOUS ||
          (flags & PyBUF_STRIDES) == PyBUF_ND) &&
-        !LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
+        !LayoutUtil::IsMonotonicWithDim0Major(shape->layout())) {
       return InvalidArgument("Buffer is not in C-contiguous layout.");
     } else if ((flags & PyBUF_F_CONTIGUOUS) == PyBUF_F_CONTIGUOUS &&
-               !LayoutUtil::IsMonotonicWithDim0Minor(shape.layout())) {
+               !LayoutUtil::IsMonotonicWithDim0Minor(shape->layout())) {
       return InvalidArgument("Buffer is not in F-contiguous layout.");
     } else if ((flags & PyBUF_ANY_CONTIGUOUS) == PyBUF_ANY_CONTIGUOUS &&
-               !LayoutUtil::IsMonotonicWithDim0Major(shape.layout()) &&
-               !LayoutUtil::IsMonotonicWithDim0Minor(shape.layout())) {
+               !LayoutUtil::IsMonotonicWithDim0Major(shape->layout()) &&
+               !LayoutUtil::IsMonotonicWithDim0Minor(shape->layout())) {
       return InvalidArgument("Buffer is not in contiguous layout.");
     }
     std::memset(view, 0, sizeof(Py_buffer));
@@ -305,23 +303,23 @@ int PjRtBufferGetBuffer(PyObject* exporter, Py_buffer* view, int flags) {
     view->buf = const_cast<void*>(root_ptr);
     auto extra =
         absl::make_unique<ExtraBufferInfo>(std::move(external_reference_hold));
-    view->itemsize = ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type());
-    view->len = ShapeUtil::ByteSizeOf(shape);
+    view->itemsize = ShapeUtil::ByteSizeOfPrimitiveType(shape->element_type());
+    view->len = ShapeUtil::ByteSizeOf(*shape);
     view->readonly = 1;
     if ((flags & PyBUF_FORMAT) == PyBUF_FORMAT) {
       TF_ASSIGN_OR_RETURN(extra->format, FormatDescriptorForPrimitiveType(
-                                             shape.element_type()));
+                                             shape->element_type()));
       view->format = const_cast<char*>(extra->format.c_str());
     }
     if ((flags & PyBUF_ND) == PyBUF_ND) {
-      view->ndim = shape.dimensions_size();
+      view->ndim = shape->dimensions_size();
       static_assert(sizeof(int64) == sizeof(Py_ssize_t),
                     "Py_ssize_t must be 64 bits");
       if (view->ndim != 0) {
         view->shape = reinterpret_cast<Py_ssize_t*>(
-            const_cast<int64*>(shape.dimensions().data()));
+            const_cast<int64*>(shape->dimensions().data()));
         if ((flags & PyBUF_STRIDES) == PyBUF_STRIDES) {
-          extra->strides = ByteStridesForShape(shape);
+          extra->strides = ByteStridesForShape(*shape);
           view->strides = extra->strides.data();
         }
       }
@@ -331,6 +329,9 @@ int PjRtBufferGetBuffer(PyObject* exporter, Py_buffer* view, int flags) {
     return Status::OK();
   }();
   if (!status.ok()) {
+    // numpy.asarray(...) silents the PyExc_BufferError. Adding a log here helps
+    // debugging when the error really occurs.
+    VLOG(1) << "Buffer Protocol Error: " << status;
     PyErr_SetString(PyExc_BufferError, status.ToString().c_str());
     return -1;
   }
@@ -355,24 +356,6 @@ PyBufferProcs PjRtBufferProcs = []() {
 
 /*static*/ PyBufferProcs* PyBuffer::BufferProtocol() {
   return &PjRtBufferProcs;
-}
-
-void PyBuffer::SetStickyDevice(pybind11::object sticky_device) {
-  if (sticky_device_ && !sticky_device_->equal(sticky_device)) {
-    throw std::invalid_argument(
-        "One cannot set again the stickyness of a buffer and needs to create "
-        "a new one or a `_DeviceArray`");
-  }
-  sticky_device_ = sticky_device;
-}
-
-void PyBuffer::SetAval(pybind11::object aval) {
-  if (aval_ && !aval_->equal(aval)) {
-    throw std::invalid_argument(
-        "One cannot set again the aval_ of a buffer and needs to create a "
-        "new one or a `_DeviceArray`");
-  }
-  aval_ = aval;
 }
 
 }  // namespace xla

@@ -74,6 +74,9 @@ class ApproximateOnExtendedF32Lowering : public OpRewritePattern<OpTy> {
   }
 };
 
+// This approximation resembles Eigen and realizes a constant approximation for
+// the +/-1 limits on top.
+// https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Core/MathFunctionsImpl.h
 class ApproximateTanhLowering
     : public ApproximateOnExtendedF32Lowering<math::TanhOp> {
  public:
@@ -83,42 +86,18 @@ class ApproximateTanhLowering
   // Emits the fast tanh approximation that is also used by XLA.
   Value emitApproximation(ValueRange args, Location loc,
                           PatternRewriter &rewriter) const override {
-    // For small values of x, we can approximate tanh(x) = x.  For extremely
-    // small values of x (|x| < 1e-37), the other approximation would evaluate
-    // tanh(x) = 0.
     Value input = args.front();
     assert(input.getType().isF32());
-    constexpr float kCanUseApprox = 0.0004;
-    Value abs_value = rewriter.create<AbsFOp>(loc, input);
-    Value can_use_approx = rewriter.create<ConstantOp>(
-        loc, rewriter.getF32FloatAttr(kCanUseApprox));
-    Value return_input = rewriter.create<CmpFOp>(loc, CmpFPredicate::OLT,
-                                                 abs_value, can_use_approx);
-    // Clamp the input to [-c, c].
-    Value max_clamp = rewriter.create<ConstantOp>(
-        loc, rewriter.getF32FloatAttr(7.90531110763549805f));
-    Value smaller_than_max =
-        rewriter.create<CmpFOp>(loc, CmpFPredicate::ULE, input, max_clamp);
-    Value clamped_half =
-        rewriter.create<SelectOp>(loc, smaller_than_max, input, max_clamp);
-    Value min_clamp = rewriter.create<ConstantOp>(
-        loc, rewriter.getF32FloatAttr(-7.90531110763549805f));
-    Value larger_than_min = rewriter.create<CmpFOp>(loc, CmpFPredicate::UGE,
-                                                    clamped_half, min_clamp);
-    Value input_clamped = rewriter.create<SelectOp>(loc, larger_than_min,
-                                                    clamped_half, min_clamp);
-
     static constexpr std::array<float, 7> numerator_coeffs{
         -2.76076847742355e-16f, 2.00018790482477e-13f, -8.60467152213735e-11f,
         5.12229709037114e-08f,  1.48572235717979e-05f, 6.37261928875436e-04f,
         4.89352455891786e-03f};
-
     static constexpr std::array<float, 4> denominator_coeffs{
         1.19825839466702e-06f, 1.18534705686654e-04f, 2.26843463243900e-03f,
         4.89352518554385e-03f};
 
-    Value input_squared =
-        rewriter.create<MulFOp>(loc, input_clamped, input_clamped);
+    // Materialize polynomial approximation.
+    Value input_squared = rewriter.create<MulFOp>(loc, input, input);
     Value numerator = rewriter.create<ConstantOp>(
         loc, rewriter.getF32FloatAttr(numerator_coeffs[0]));
     for (int i = 1; i < numerator_coeffs.size(); i++) {
@@ -127,9 +106,7 @@ class ApproximateTanhLowering
           rewriter.create<ConstantOp>(
               loc, rewriter.getF32FloatAttr(numerator_coeffs[i])));
     }
-
-    numerator = rewriter.create<MulFOp>(loc, input_clamped, numerator);
-
+    numerator = rewriter.create<MulFOp>(loc, input, numerator);
     Value denominator = rewriter.create<ConstantOp>(
         loc, rewriter.getF32FloatAttr(denominator_coeffs[0]));
     for (int i = 1; i < denominator_coeffs.size(); i++) {
@@ -138,10 +115,38 @@ class ApproximateTanhLowering
           rewriter.create<ConstantOp>(
               loc, rewriter.getF32FloatAttr(denominator_coeffs[i])));
     }
-
     Value approx = rewriter.create<DivFOp>(loc, numerator, denominator);
 
-    return rewriter.create<SelectOp>(loc, return_input, input, approx);
+    // For small values of |x|, we can approximate tanh(x) = x. For extremely
+    // small values of x (|x| < 1e-37), the other approximation would evaluate
+    // tanh(x) = 0.
+    constexpr float kUseIdentityApprox = 0.0004;
+    Value abs_input = rewriter.create<AbsFOp>(loc, input);
+    Value use_identity_approx = rewriter.create<CmpFOp>(
+        loc, CmpFPredicate::OLT, abs_input,
+        rewriter.create<ConstantOp>(
+            loc, rewriter.getF32FloatAttr(kUseIdentityApprox)));
+    approx = rewriter.create<SelectOp>(loc, use_identity_approx, input, approx);
+
+    // For very small/large values, use a constant approximation -1/1.
+    Value too_large_input = rewriter.create<CmpFOp>(
+        loc, CmpFPredicate::UGT, input,
+        rewriter.create<ConstantOp>(
+            loc, rewriter.getF32FloatAttr(7.90531110763549805f)));
+    Value too_small_input = rewriter.create<CmpFOp>(
+        loc, CmpFPredicate::ULT, input,
+        rewriter.create<ConstantOp>(
+            loc, rewriter.getF32FloatAttr(-7.90531110763549805f)));
+    approx = rewriter.create<SelectOp>(
+        loc, too_large_input,
+        rewriter.create<ConstantOp>(loc, rewriter.getF32FloatAttr(1.0)),
+        approx);
+    approx = rewriter.create<SelectOp>(
+        loc, too_small_input,
+        rewriter.create<ConstantOp>(loc, rewriter.getF32FloatAttr(-1.0)),
+        approx);
+
+    return approx;
   }
 };
 
