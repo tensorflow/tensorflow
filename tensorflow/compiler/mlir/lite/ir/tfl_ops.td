@@ -521,8 +521,7 @@ def TFL_AbsOp : TFL_Op<"abs", [
     NoSideEffect,
     SameOperandsAndResultShape,
     SameOperandsAndResultType,
-    SameOperandsAndResultsScale,
-    NoQuantizableResult]> {
+    SameOperandsAndResultsScale]> {
   let summary = "Absolute value operator";
 
   let description = [{
