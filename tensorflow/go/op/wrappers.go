@@ -28016,7 +28016,21 @@ func ExperimentalBytesProducedStatsDataset(scope *Scope, input_dataset tf.Output
 	return op.Output(0)
 }
 
-// Computes exponential linear: `exp(features) - 1` if < 0, `features` otherwise.
+// Computes the exponential linear function.
+//
+// The ELU function is defined as:
+//
+//  * $ e ^ x - 1 $ if $ x < 0 $
+//  * $ x $ if $ x >= 0 $
+//
+// Examples:
+//
+// >>> tf.nn.elu(1.0)
+// <tf.Tensor: shape=(), dtype=float32, numpy=1.0>
+// >>> tf.nn.elu(0.0)
+// <tf.Tensor: shape=(), dtype=float32, numpy=0.0>
+// >>> tf.nn.elu(-1000.0)
+// <tf.Tensor: shape=(), dtype=float32, numpy=-1.0>
 //
 // See [Fast and Accurate Deep Network Learning by Exponential Linear Units (ELUs)
 // ](http://arxiv.org/abs/1511.07289)
