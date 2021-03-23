@@ -28,9 +28,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace tensorflow {
+namespace ops {
 namespace {
-
-using namespace ops;  // NOLINT(build/namespaces)
 
 TEST(ResourceVariableGradTest, ReadVariableOpGrad) {
   TensorShape shape({});
@@ -62,4 +61,5 @@ TEST(ResourceVariableGradTest, ReadVariableOpGrad) {
 }
 
 }  // namespace
+}  // namespace ops
 }  // namespace tensorflow
