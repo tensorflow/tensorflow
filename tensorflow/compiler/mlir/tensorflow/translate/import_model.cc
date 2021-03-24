@@ -3503,15 +3503,9 @@ class SavedModelSignatureDefImporterLite {
   static StatusOr<mlir::OwningModuleRef> Convert(
       SavedModelMLIRImportInput& input, absl::Span<std::string> exported_names,
       mlir::MLIRContext* context, bool import_restore = true) {
-    LoadImporterDialects(*context);
     SavedModelSignatureDefImporterLite importer(input, exported_names, context,
                                                 import_restore);
-    TF_ASSIGN_OR_RETURN(auto module, importer.ConvertSignatures());
-
-    SortSavedModelModule(*module);
-    MarkSavedModelFunctionVisibility(*module);
-
-    return module;
+    return importer.ConvertSignatures();
   }
 
  private:
@@ -3789,6 +3783,8 @@ SavedModelSignatureDefImporterLite::ParseInputArrays(
 
 StatusOr<mlir::OwningModuleRef>
 SavedModelSignatureDefImporterLite::ConvertSignatures() {
+  LoadImporterDialects(*module_->getContext());
+
   const auto& signatures = input_.meta_graph_def().signature_def();
   PopulateTfVersions(module_.get(),
                      input_.meta_graph_def().graph_def().versions());
