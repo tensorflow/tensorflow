@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/FoldInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
@@ -584,9 +585,11 @@ class ShapeInference {
   bool InferShapeForSingleOperation(Operation* op);
 
   // Infers shape on the provided region, including nested ones, iterate until
-  // fix point with a limit of max_iteration. Returns success if fix point is
-  // reached before max_iteration.
-  LogicalResult InferShapeUntilFixPoint(Region* region, int64_t max_iterations);
+  // fix point with a limit of max_iteration.
+  // Returns a failure() on error, otherwise returns true to indicate that it
+  // reached convergence, false otherwise.
+  FailureOr<bool> InferShapeUntilFixPoint(Region* region,
+                                          int64_t max_iterations);
 
   // Updates input types and refine shapes inside body of functions that are
   // attached to ControlFlow ops (If/While) or Calls. These functions include
@@ -597,25 +600,33 @@ class ShapeInference {
   //      like predicate).
   // For calls, functions can be reused across multiple call sites. In this case
   // we propagate the types when all call sites have the same operand types.
-  LogicalResult PropagateShapeToFunctions(ModuleOp module,
-                                          TypeRange input_types,
-                                          ArrayRef<FuncOp> functions,
-                                          int64_t max_iteration);
+  // Returns a failure() on error, otherwise returns true to indicate that it
+  // reached convergence, false otherwise.
+  FailureOr<bool> PropagateShapeToFunctions(ModuleOp module,
+                                            TypeRange input_types,
+                                            ArrayRef<FuncOp> functions,
+                                            int64_t max_iteration);
 
   // Propagates shapes to regions given the shapes of the inputs of the regions.
   // All regions provided in `regions` are assumed to have inputs of type
   // `input_types`.
-  LogicalResult PropagateShapeToRegions(TypeRange input_types,
-                                        ArrayRef<Region*> regions,
-                                        int64_t max_iteration);
+  // Returns a failure() on error, otherwise returns true to indicate that it
+  // reached convergence, false otherwise.
+  FailureOr<bool> PropagateShapeToRegions(TypeRange input_types,
+                                          ArrayRef<Region*> regions,
+                                          int64_t max_iteration);
 
   // Shape propagation for call/control flow ops.
-  LogicalResult PropagateShapeIntoAttachedFunctions(Operation* op,
-                                                    int64_t max_iteration);
+  // Returns a failure() on error, otherwise returns true to indicate that it
+  // reached convergence, false otherwise.
+  FailureOr<bool> PropagateShapeIntoAttachedFunctions(Operation* op,
+                                                      int64_t max_iteration);
 
   // Shape propagation for region based control flow.
-  LogicalResult PropagateShapeIntoAttachedRegions(Operation* op,
-                                                  int64_t max_iterations);
+  // Returns a failure() on error, otherwise returns true to indicate that it
+  // reached convergence, false otherwise.
+  FailureOr<bool> PropagateShapeIntoAttachedRegions(Operation* op,
+                                                    int64_t max_iterations);
 
   // Propagates any constant operand of call_op to the called function body's
   // corresponding argument if the callee has only one use.
@@ -1240,15 +1251,16 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
   return changed;
 }
 
-LogicalResult ShapeInference::PropagateShapeToFunctions(
+FailureOr<bool> ShapeInference::PropagateShapeToFunctions(
     ModuleOp module, TypeRange input_types, ArrayRef<FuncOp> functions,
     int64_t max_iteration) {
-  bool all_succeeded = true;
+  bool any_failure = false;
+  bool any_nonconvergence = false;
   // If shape propagation fails for one function, return failure, but do not
   // early exit and attempt to propagate shapes for all provided functions to
   // have a best-effort propagation.
   for (FuncOp func : functions) {
-    DCOMMENT("Propating shape to" << func.getName());
+    DCOMMENT("Propating shape to " << func.getName());
     ArrayRef<Operation*> callers = GetCallers(func);
     if (!llvm::hasSingleElement(callers) &&
         !llvm::all_of(callers.drop_front(), [&](Operation* caller) {
@@ -1260,7 +1272,6 @@ LogicalResult ShapeInference::PropagateShapeToFunctions(
                             caller->getOperandTypes().end(),
                             callers.front()->getOperandTypes().begin());
         })) {
-      all_succeeded = false;
       if (llvm::any_of(callers, [](Operation* op) {
             return isa<IfOp, WhileOp, CaseOp>(op);
           }))
@@ -1275,23 +1286,24 @@ LogicalResult ShapeInference::PropagateShapeToFunctions(
     func.setType(FunctionType::get(func.getContext(), input_types,
                                    func_type.getResults()));
 
-    auto res =
+    FailureOr<bool> failure_or_converged =
         PropagateShapeToRegions(input_types, {&func.getBody()}, max_iteration);
-    if (failed(res)) {
-      all_succeeded = false;
+    if (failed(failure_or_converged)) {
+      any_failure = true;
       continue;
     }
-
-    if (failed(InferShapeForFunctionReturnType(func))) return failure();
+    any_nonconvergence = any_nonconvergence || !failure_or_converged.getValue();
+    if (failed(InferShapeForFunctionReturnType(func))) any_failure = true;
   }
-  return success(all_succeeded);
+  if (any_failure) return failure();
+  return any_nonconvergence;
 }
 
-LogicalResult ShapeInference::PropagateShapeToRegions(TypeRange input_types,
-                                                      ArrayRef<Region*> regions,
-                                                      int64_t max_iteration) {
+FailureOr<bool> ShapeInference::PropagateShapeToRegions(
+    TypeRange input_types, ArrayRef<Region*> regions, int64_t max_iteration) {
   DCOMMENT("\tPropagating shapes to regions");
-  bool all_succeeded = true;
+  bool any_failure = false;
+  bool any_nonconvergence = false;
   // If shape propagation fails for one region, return failure, but do not
   // early exit and attempt to propagate shapes for all provided regions to
   // have a best-effort propagation.
@@ -1306,10 +1318,15 @@ LogicalResult ShapeInference::PropagateShapeToRegions(TypeRange input_types,
     }
 
     // Propagate shapes into the region.
-    all_succeeded = succeeded(InferShapeUntilFixPoint(region, max_iteration)) &&
-                    all_succeeded;
+    FailureOr<bool> failure_or_converged =
+        InferShapeUntilFixPoint(region, max_iteration);
+    if (failed(failure_or_converged))
+      any_failure = true;
+    else if (!failure_or_converged.getValue())
+      any_nonconvergence = true;
   }
-  return success(all_succeeded);
+  if (any_failure) return failure();
+  return any_nonconvergence;
 }
 
 void ShapeInference::PropagateConstantToCallee(CallOpInterface call_op,
@@ -1424,7 +1441,7 @@ llvm::SmallVector<Type, 4> GetWhileCompatibleTypes(
   return types;
 }
 
-LogicalResult ShapeInference::PropagateShapeIntoAttachedFunctions(
+FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
     Operation* op, int64_t max_iteration) {
   ModuleOp module = op->getParentOfType<ModuleOp>();
   if (auto if_op = dyn_cast<TF::IfOp>(op)) {
@@ -1456,22 +1473,20 @@ LogicalResult ShapeInference::PropagateShapeIntoAttachedFunctions(
   } else if (auto call_op = dyn_cast<CallOpInterface>(op)) {
     if (auto func = dyn_cast<FuncOp>(call_op.resolveCallable())) {
       PropagateConstantToCallee(call_op, func, module);
-      if (failed(PropagateShapeToFunctions(module,
-                                           call_op.getArgOperands().getTypes(),
-                                           {func}, max_iteration))) {
-        return failure();
-      }
+      FailureOr<bool> failure_or_converged = PropagateShapeToFunctions(
+          module, call_op.getArgOperands().getTypes(), {func}, max_iteration);
+      if (failed(failure_or_converged)) return failure();
       PropagateConstantFromCallee(call_op, func, module);
-      return success();
+      return failure_or_converged;
     }
   }
 
   // TODO(ycao): Implement support for Call op, including function reuse.
 
-  return success();
+  return true;
 }
 
-LogicalResult ShapeInference::PropagateShapeIntoAttachedRegions(
+FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedRegions(
     Operation* op, int64_t max_iteration) {
   if (auto while_op = dyn_cast<TF::WhileRegionOp>(op)) {
     // If `shape_invariant` is set, operand shapes cannot be simply propagated
@@ -1490,7 +1505,7 @@ LogicalResult ShapeInference::PropagateShapeIntoAttachedRegions(
                                    {&while_op.cond(), &while_op.body()},
                                    max_iteration);
   }
-  return success();
+  return true;
 }
 
 LogicalResult ShapeInference::TryToFold(Operation* op) {
@@ -1622,8 +1637,8 @@ LogicalResult ShapeInference::InferShapeForFunctionReturnType(FuncOp func) {
   return success();
 }
 
-LogicalResult ShapeInference::InferShapeUntilFixPoint(Region* region,
-                                                      int64_t max_iteration) {
+FailureOr<bool> ShapeInference::InferShapeUntilFixPoint(Region* region,
+                                                        int64_t max_iteration) {
   bool changed = true;
 
   // TODO(aminim): we could have a more efficient traversal by guiding the
@@ -1634,18 +1649,18 @@ LogicalResult ShapeInference::InferShapeUntilFixPoint(Region* region,
     changed = false;
     LLVM_DEBUG(llvm::dbgs()
                << "Shape inference, iteration " << iteration << "\n");
-    region->walk([&](Operation* op) {
+    auto res = region->walk([&](Operation* op) {
       DCOMMENT_OP(op, "Inferring for");
       if (auto infer_ti = dyn_cast<InferTypeOpInterface>(op)) {
         DCOMMENT("\tRefinining with type op interface");
         changed |= RefineWithInferTypeOpInterface(infer_ti);
-        return;
+        return WalkResult::advance();
       }
 
       if (op->getDialect() != tf_dialect_) {
         DCOMMENT("\tInfer non-TF dialect");
         changed |= InferShapeForNonTFDialectOperation(op);
-        return;
+        return WalkResult::advance();
       }
 
       // Before attempting inference, just try to compute the folded
@@ -1654,45 +1669,54 @@ LogicalResult ShapeInference::InferShapeUntilFixPoint(Region* region,
           // Folding can "succeed" and yet not all types be refined. In such
           // cases we still want to give a try at `InferShapeForSingleOperation`
           none_of(op->getResultTypes(), CanBeRefined))
-        return;
+        return WalkResult::advance();
 
       // Best-effort shape inference in attached functions. Do not return
-      // failure even if it doesn't get to fixed point.
+      // failure even if it doesn't get to fixed point, but propagate "real"
+      // failure.
       if (failed(PropagateShapeIntoAttachedFunctions(op, max_iteration))) {
         op->emitWarning() << "unable to refine shape of attached function "
                              "arguments and bodies";
+        return WalkResult::interrupt();
       }
 
       if (failed(PropagateShapeIntoAttachedRegions(op, max_iteration))) {
         op->emitWarning() << "unable to refine shape of attached region "
                              "arguments and bodies";
+        return WalkResult::interrupt();
       }
 
       changed |= InferShapeForSingleOperation(op);
+      return WalkResult::advance();
     });
+    if (res.wasInterrupted()) return failure();
   }
 
   if (changed) {
-    return region->getParentOp()->emitWarning()
-           << "shape inference did not reach stable state after "
-           << max_iteration << " iterations";
+    region->getParentOp()->emitWarning()
+        << "shape inference did not reach stable state after " << max_iteration
+        << " iterations";
   }
-  return success();
+  return !changed;
 }
 
-static LogicalResult InferShapeForFunction(ShapeInference& context, FuncOp func,
-                                           int64_t max_iterations) {
-  if (failed(context.InferShapeUntilFixPoint(&func.getBody(), max_iterations)))
-    return failure();
+static FailureOr<bool> InferShapeForFunction(ShapeInference& context,
+                                             FuncOp func,
+                                             int64_t max_iterations) {
+  FailureOr<bool> failure_or_converged =
+      context.InferShapeUntilFixPoint(&func.getBody(), max_iterations);
+  if (failed(failure_or_converged) || !failure_or_converged.getValue())
+    return failure_or_converged;
   // TODO(b/156276510): Verify that it is always fine to refine a function's
   // return type, as long as we do not change the argument shapes.
-  return context.InferShapeForFunctionReturnType(func);
+  if (failed(context.InferShapeForFunctionReturnType(func))) return failure();
+  return true;
 }
 
-LogicalResult InferShapeForFunction(FuncOp func,
-                                    ArrayRef<ArrayRef<int64_t>> arg_shapes,
-                                    int64_t graph_version,
-                                    int64_t max_iterations) {
+FailureOr<bool> InferShapeForFunction(FuncOp func,
+                                      ArrayRef<ArrayRef<int64_t>> arg_shapes,
+                                      int64_t graph_version,
+                                      int64_t max_iterations) {
   ShapeInference context(graph_version, func->getParentOfType<ModuleOp>(),
                          /*propagate_caller_callee_constants=*/true);
   if (arg_shapes.empty()) {
@@ -1730,26 +1754,28 @@ LogicalResult InferShapeForFunction(FuncOp func,
     new_arg_types.push_back(new_arg_type);
   }
 
-  if (!needs_refinement) return success();
+  if (!needs_refinement) return true;
 
-  if (failed(context.InferShapeUntilFixPoint(&func.getBody(), max_iterations)))
-    return failure();
+  FailureOr<bool> failure_or_converged =
+      context.InferShapeUntilFixPoint(&func.getBody(), max_iterations);
+  if (failed(failure_or_converged) || !failure_or_converged.getValue())
+    return failure_or_converged;
 
   if (failed(context.InferShapeForFunctionReturnType(func))) return failure();
   func.setType(FunctionType::get(func.getContext(), new_arg_types,
                                  func.getType().getResults()));
 
-  return success();
+  return true;
 }
 
-LogicalResult InferModuleShape(ModuleOp module, int64_t max_iterations) {
+FailureOr<bool> InferModuleShape(ModuleOp module, int64_t max_iterations) {
   auto producer_or = tensorflow::GetTfGraphProducerVersion(module);
   if (!producer_or.ok()) {
     // TODO(jpienaar): Keeping the existing behavior for now but this could
     // be relaxed.
     LLVM_DEBUG(llvm::dbgs()
                << "Skipping inference; " << producer_or.status().ToString());
-    return success();
+    return true;
   }
   int64_t producer = producer_or.ValueOrDie();
   // TODO(jpienaar): Clean up propagate_NextIterationSinkOp_callee_constants if
@@ -1764,17 +1790,20 @@ LogicalResult InferModuleShape(ModuleOp module, int64_t max_iterations) {
   auto max_iteration = context.QueueSize() * 4;
   while (!context.EmptyQueue()) {
     FuncOp func = context.front();
-    if (failed(InferShapeForFunction(context, func, max_iterations)))
-      return failure();
+    FailureOr<bool> failure_or_converged =
+        InferShapeForFunction(context, func, max_iterations);
+    if (failed(failure_or_converged) || !failure_or_converged.getValue())
+      return failure_or_converged;
     context.pop_front();
 
     if ((--max_iteration) == 0) {
-      return emitWarning(UnknownLoc::get(module.getContext()))
-             << "shape inference did not reach stable state after "
-             << max_iteration << " iterations";
+      emitWarning(UnknownLoc::get(module.getContext()))
+          << "shape inference did not reach stable state after "
+          << max_iteration << " iterations";
+      return false;
     }
   }
-  return success();
+  return true;
 }
 
 }  // namespace TF
