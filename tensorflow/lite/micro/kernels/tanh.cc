@@ -24,20 +24,17 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
-#include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/micro/kernels/tanh.h"
+#include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
 namespace {
-
 
 void* TanhInit(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
   return context->AllocatePersistentBuffer(context, sizeof(OpDataTanh));
 }
 
-
- 
 }  // namespace
 
 TfLiteRegistration Register_TANH() {

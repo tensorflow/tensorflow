@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 
 namespace tflite {
-	struct OpDataTanh {
+struct OpDataTanh {
   int32_t input_zero_point;
   int32_t input_range_radius;
   int32_t input_multiplier;
@@ -29,7 +29,7 @@ extern const int kTanhInputTensor;
 extern const int kTanhOutputTensor;
 
 TfLiteStatus TanhEvalReference(TfLiteContext* context, TfLiteNode* node);
-TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node);	
-	
-}
-#endif //TENSORFLOW_LITE_MICRO_KERNELS_TANH_H_ 
+TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node);
+
+}  // namespace tflite
+#endif  // TENSORFLOW_LITE_MICRO_KERNELS_TANH_H_

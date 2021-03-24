@@ -107,7 +107,6 @@ TfLiteRegistration Register_SUB();
 TfLiteRegistration Register_UNPACK();
 TfLiteRegistration Register_L2_NORMALIZATION();
 
-
 }  // namespace micro
 }  // namespace ops
 }  // namespace tflite
