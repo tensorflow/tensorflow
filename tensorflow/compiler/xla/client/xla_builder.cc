@@ -4291,6 +4291,20 @@ XlaOp ReduceWindowWithGeneralPadding(
       padding);
 }
 
+XlaOp ReduceWindowWithGeneralPadding(
+    absl::Span<const XlaOp> operands, absl::Span<const XlaOp> init_values,
+    const XlaComputation& computation,
+    absl::Span<const int64> window_dimensions,
+    absl::Span<const int64> window_strides,
+    absl::Span<const int64> base_dilations,
+    absl::Span<const int64> window_dilations,
+    absl::Span<const std::pair<int64, int64>> padding) {
+  CHECK(!operands.empty());
+  return operands[0].builder()->ReduceWindowWithGeneralPadding(
+      operands, init_values, computation, window_dimensions, window_strides,
+      base_dilations, window_dilations, padding);
+}
+
 XlaOp AllGather(const XlaOp operand, int64 all_gather_dimension,
                 int64 shard_count,
                 absl::Span<const ReplicaGroup> replica_groups,
