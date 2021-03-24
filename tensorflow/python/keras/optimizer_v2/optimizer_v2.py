@@ -15,16 +15,10 @@
 """Version 2 of class Optimizer."""
 # pylint: disable=g-bad-name
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import contextlib
 import functools
 import warnings
-
-import six
 
 from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
@@ -117,8 +111,7 @@ def name_scope_only_in_function_or_graph(name):
     return NullContextmanager()
 
 
-@six.add_metaclass(abc.ABCMeta)
-@keras_export("keras.optimizers.Optimizer")
+@keras_export("keras.optimizers.Optimizer", metaclass=abc.ABCMeta)
 class OptimizerV2(trackable.Trackable):
   """Base class for Keras optimizers.
 
@@ -872,7 +865,7 @@ class OptimizerV2(trackable.Trackable):
     slot_dict = self._slots.setdefault(var_key, {})
     weight = slot_dict.get(slot_name, None)
     if weight is None:
-      if isinstance(initializer, six.string_types) or callable(initializer):
+      if isinstance(initializer, str) or callable(initializer):
         initializer = initializers.get(initializer)
         if isinstance(
             initializer,
@@ -1156,7 +1149,7 @@ class OptimizerV2(trackable.Trackable):
 
     if dtype is None:
       dtype = dtypes.float32
-    if isinstance(initializer, six.string_types) or callable(initializer):
+    if isinstance(initializer, str) or callable(initializer):
       initializer = initializers.get(initializer)
 
     if synchronization == tf_variables.VariableSynchronization.ON_READ:

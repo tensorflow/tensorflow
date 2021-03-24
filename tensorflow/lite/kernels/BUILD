@@ -1093,6 +1093,7 @@ cc_test(
     name = "conv_mem_test",
     srcs = ["conv_mem_test.cc"],
     data = [
+        "//tensorflow/lite:testdata/conv3d_huge_im2col.bin",
         "//tensorflow/lite:testdata/conv_huge_im2col.bin",
     ],
     tags = [
@@ -1104,7 +1105,6 @@ cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/profiling:memory_info",
         "//tensorflow/lite/tools:logging",
         "@com_google_googletest//:gtest_main",
     ],

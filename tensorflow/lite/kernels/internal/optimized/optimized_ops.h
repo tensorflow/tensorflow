@@ -7960,6 +7960,98 @@ inline void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
   ArgMax(input1_shape, input1_data, input2_data, output_shape, output_data);
 }
 
+inline void Conv3D(const Conv3DParams& params, const RuntimeShape& input_shape,
+                   const float* input_data, const RuntimeShape& filter_shape,
+                   const float* filter_data, const RuntimeShape& bias_shape,
+                   const float* bias_data, const RuntimeShape& output_shape,
+                   float* output_data, const RuntimeShape& im2col_shape,
+                   float* im2col_data,
+                   const RuntimeShape& transposed_filter_shape,
+                   float* transposed_filter_data,
+                   CpuBackendContext* cpu_backend_context) {
+  const int stride_depth = params.stride_depth;
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
+  const int dilation_depth_factor = params.dilation_depth;
+  const int dilation_height_factor = params.dilation_height;
+  const int dilation_width_factor = params.dilation_width;
+  const float output_activation_min = params.float_activation_min;
+  const float output_activation_max = params.float_activation_max;
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 5);
+  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 5);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 5);
+
+  ruy::profiler::ScopeLabel label("Conv3D");
+
+  // NB: the float 0.0f value is represented by all zero bytes.
+  const uint8 float_zero_byte = 0x00;
+  const float* gemm_input_data = nullptr;
+  const RuntimeShape* gemm_input_shape = nullptr;
+  const int filter_width = filter_shape.Dims(2);
+  const int filter_height = filter_shape.Dims(1);
+  const int filter_depth = filter_shape.Dims(0);
+  const bool need_dilated_im2col = dilation_width_factor != 1 ||
+                                   dilation_height_factor != 1 ||
+                                   dilation_depth_factor != 1;
+  const bool need_im2col = stride_depth != 1 || stride_height != 1 ||
+                           stride_width != 1 || filter_depth != 1 ||
+                           filter_height != 1 || filter_width != 1;
+
+  if (need_dilated_im2col) {
+    DilatedIm2col3D(params, filter_depth, filter_height, filter_width,
+                    float_zero_byte, input_shape, input_data, im2col_shape,
+                    im2col_data);
+    gemm_input_data = im2col_data;
+    gemm_input_shape = &im2col_shape;
+  } else if (need_im2col) {
+    TFLITE_DCHECK(im2col_data);
+    Im2col3D(params, filter_depth, filter_height, filter_width, float_zero_byte,
+             input_shape, input_data, im2col_shape, im2col_data);
+    gemm_input_data = im2col_data;
+    gemm_input_shape = &im2col_shape;
+  } else {
+    TFLITE_DCHECK(!im2col_data);
+    gemm_input_data = input_data;
+    gemm_input_shape = &input_shape;
+  }
+
+  // Transpose the filter tensor.
+  TransposeParams transpose_params;
+  transpose_params.perm_count = 5;
+  transpose_params.perm[0] = 4;
+  transpose_params.perm[1] = 0;
+  transpose_params.perm[2] = 1;
+  transpose_params.perm[3] = 2;
+  transpose_params.perm[4] = 3;
+  Transpose<float, 5>(transpose_params, filter_shape, filter_data,
+                      transposed_filter_shape, transposed_filter_data);
+
+  const int gemm_input_dims = gemm_input_shape->DimensionsCount();
+  int m = FlatSizeSkipDim(*gemm_input_shape, gemm_input_dims - 1);
+  int n = output_shape.Dims(4);
+  int k = gemm_input_shape->Dims(gemm_input_dims - 1);
+
+  cpu_backend_gemm::MatrixParams<float> lhs_params;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.rows = n;
+  lhs_params.cols = k;
+  cpu_backend_gemm::MatrixParams<float> rhs_params;
+  rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  rhs_params.rows = k;
+  rhs_params.cols = m;
+  cpu_backend_gemm::MatrixParams<float> dst_params;
+  dst_params.order = cpu_backend_gemm::Order::kColMajor;
+  dst_params.rows = n;
+  dst_params.cols = m;
+  cpu_backend_gemm::GemmParams<float, float> gemm_params;
+  gemm_params.bias = bias_data;
+  gemm_params.clamp_min = output_activation_min;
+  gemm_params.clamp_max = output_activation_max;
+  cpu_backend_gemm::Gemm(lhs_params, transposed_filter_data, rhs_params,
+                         gemm_input_data, dst_params, output_data, gemm_params,
+                         cpu_backend_context);
+}
+
 }  // namespace optimized_ops
 }  // namespace tflite
 

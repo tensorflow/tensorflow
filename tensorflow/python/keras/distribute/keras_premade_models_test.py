@@ -13,12 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for keras premade models using tf.distribute.Strategy."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from absl.testing import parameterized
 import numpy as np
+
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import multi_process_runner

@@ -59,7 +59,7 @@ compare {
 // CHECK:       declare i32 @llvm.nvvm.read.ptx.sreg.ctaid.x() #0
 // CHECK:       ; Function Attrs: nounwind readnone
 // CHECK:       declare i32 @llvm.nvvm.read.ptx.sreg.tid.x() #0
-// CHECK:       ; Function Attrs: nofree nosync nounwind willreturn
+// CHECK:       ; Function Attrs: inaccessiblememonly nofree nosync nounwind willreturn
 // CHECK:       declare void @llvm.assume(i1 noundef) #1
 
 // CHECK:     define internal void @region_0_4(float* dereferenceable(4) %[[VAL_0:.*]], float* dereferenceable(4) %[[VAL_1:.*]], i8* dereferenceable(1) %[[VAL_2:.*]]) {
@@ -248,7 +248,7 @@ compare {
 // CHECK:       declare i32 @llvm.nvvm.read.ptx.sreg.ctaid.x() #0
 // CHECK:       ; Function Attrs: nounwind readnone
 // CHECK:       declare i32 @llvm.nvvm.read.ptx.sreg.tid.x() #0
-// CHECK:       ; Function Attrs: nofree nosync nounwind willreturn
+// CHECK:       ; Function Attrs: inaccessiblememonly nofree nosync nounwind willreturn
 // CHECK:       declare void @llvm.assume(i1 noundef) #1
 
 // CHECK:     define internal void @region_0_6(i32* dereferenceable(4) %[[VAL_0:.*]], i32* dereferenceable(4) %[[VAL_1:.*]], float* dereferenceable(4) %[[VAL_2:.*]], float* dereferenceable(4) %[[VAL_3:.*]], i8* dereferenceable(1) %[[VAL_4:.*]]) {

@@ -15,11 +15,7 @@
 # pylint: disable=invalid-name
 # pylint: disable=g-import-not-at-top
 # pylint: disable=g-classes-have-attributes
-"""Set of tools for real-time data augmentation on image data.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Set of tools for real-time data augmentation on image data."""
 
 from keras_preprocessing import image
 import numpy as np
@@ -162,13 +158,13 @@ def array_to_img(x, data_format=None, scale=True, dtype=None):
 
 
   Args:
-      x: Input Numpy array.
+      x: Input data, in any form that can be converted to a Numpy array.
       data_format: Image data format, can be either "channels_first" or
         "channels_last". Defaults to `None`, in which case the global setting
         `tf.keras.backend.image_data_format()` is used (unless you changed it,
         it defaults to "channels_last").
-      scale: Whether to rescale image values to be within `[0, 255]`. Defaults
-        to `True`.
+      scale: Whether to rescale the image such that minimum and maximum values
+        are 0 and 255 respectively. Defaults to `True`.
       dtype: Dtype to use. Default to `None`, in which case the global setting
       `tf.keras.backend.floatx()` is used (unless you changed it, it defaults
       to "float32")

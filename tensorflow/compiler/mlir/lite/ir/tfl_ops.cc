@@ -2499,10 +2499,33 @@ OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
 
 OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.empty() && "constant has no operands");
-
   // Return the held attribute value.
   return value();
 }
+
+
+namespace {
+struct FoldPseudoConstOp
+    : public OpRewritePattern<ConstOp> {
+  using OpRewritePattern<ConstOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ConstOp const_op,
+                                PatternRewriter &rewriter) const override {
+    if (!ConstantOp::isBuildableWith(const_op.value(), const_op.getType()))
+      return failure();
+    rewriter.replaceOpWithNewOp<ConstantOp>(const_op, const_op.value());
+    return success();
+  }
+};
+
+}  // namespace
+
+void ConstOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context) {
+  results.insert<FoldPseudoConstOp>(context);
+}
+
+
 
 //===----------------------------------------------------------------------===//
 // CastOp

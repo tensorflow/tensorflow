@@ -12,15 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utilities common to CIFAR10 and CIFAR100 datasets.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Utilities common to CIFAR10 and CIFAR100 datasets."""
 
+import _pickle as cPickle
 import sys
-
-from six.moves import cPickle
 
 
 def load_batch(fpath, label_key='labels'):

@@ -4,12 +4,12 @@
 func @testShape(tensor<f32>, tensor<1x32x32x16xf32>, tensor<*xf32>) -> (tensor<0xi32>, tensor<?xi32>, tensor<?xi32>) {
 ^bb0(%arg0: tensor<f32>, %arg1: tensor<1x32x32x16xf32>, %arg2: tensor<*xf32>):
 
-  // CHECK: tf.Const{{.*}} dense<> : tensor<0xi32>
+  // CHECK-DAG: tf.Const{{.*}} dense<> : tensor<0xi32>
   %0 = "tf.Shape"(%arg0) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<f32>) -> tensor<0xi32>
 
   // Result shape need not be static. Folding harness uses TensorFlow constant
   // in that case.
-  // CHECK: "tf.Const"() {value = dense<[1, 32, 32, 16]> : tensor<4xi32>} : () -> tensor<?xi32>
+  // CHECK-DAG: "tf.Const"() {value = dense<[1, 32, 32, 16]> : tensor<4xi32>} : () -> tensor<?xi32>
   %1 = "tf.Shape"(%arg1) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<1x32x32x16xf32>) -> tensor<?xi32>
 
   // CHECK: "tf.Shape"(%arg2) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<*xf32>) -> tensor<?xi32>
@@ -138,8 +138,8 @@ func @testLeakyRelu(%arg0 : tensor<16xf32>) -> (tensor<16xf32>, tensor<f32>, ten
   %0 = "tf.LeakyRelu"(%pos) {alpha = 0.3 : f32} : (tensor<f32>) -> tensor<f32>
   %1 = "tf.LeakyRelu"(%neg) {alpha = 0.2 : f32} : (tensor<f32>) -> tensor<f32>
   %2 = "tf.LeakyRelu"(%arg0) {alpha = 3.0 : f32} : (tensor<16xf32>) -> tensor<16xf32>
-  // CHECK: [[POS:%.*]] = "tf.Const{{.*}} dense<5.000000e+00> : tensor<f32>
-  // CHECK: [[NEG:%.*]] = "tf.Const{{.*}} dense<-1.000000e+00> : tensor<f32>
+  // CHECK-DAG: [[POS:%.*]] = "tf.Const{{.*}} dense<5.000000e+00> : tensor<f32>
+  // CHECK-DAG: [[NEG:%.*]] = "tf.Const{{.*}} dense<-1.000000e+00> : tensor<f32>
   // CHECK: [[NC1:%.*]] = "tf.LeakyRelu"(%arg0) {alpha = 2.000000e-01 : f32} : (tensor<16xf32>) -> tensor<16xf32>
   // CHECK: [[NC2:%.*]] = "tf.LeakyRelu"(%arg0) {alpha = 3.000000e+00 : f32} : (tensor<16xf32>) -> tensor<16xf32>
   // CHECK: return [[NC1]], [[POS]], [[NEG]], [[NC2]]
@@ -295,8 +295,8 @@ func @testUnimplementedOp() -> (tensor<i32>, tensor<i32>) {
   %3 = "tf.Minimum"(%0, %1) {random_attr = "hello"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
   return %2, %3: tensor<i32>, tensor<i32>
 
-// CHECK-NEXT: %[[CST:.*]] = "tf.Const
-// CHECK-NEXT: %[[CST1:.*]] = "tf.Const
+// CHECK-DAG: %[[CST:.*]] = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
+// CHECK-DAG: %[[CST1:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
 // CHECK-NEXT: return %[[CST]], %[[CST1]]
 }
 

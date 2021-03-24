@@ -45,8 +45,12 @@ exports_files([
     "optimize_dataset_op.h",
     "optional_ops.cc",
     "optional_ops.h",
+    "split_utils.h",
+    "split_utils.cc",
     "stats_utils.cc",
     "stats_utils.h",
+    "tensor_slice_dataset_op.cc",
+    "tensor_slice_dataset_op.h",
     "unbounded_thread_pool.cc",
     "unbounded_thread_pool.h",
 ])

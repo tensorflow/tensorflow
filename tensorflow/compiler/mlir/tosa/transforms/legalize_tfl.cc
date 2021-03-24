@@ -2884,12 +2884,12 @@ LogicalResult ConvertTFLQConstOp::matchAndRewrite(
 }
 
 void LegalizeTFL::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   auto* ctx = &getContext();
   auto func = getFunction();
 
   // Add the generated patterns to the list.
-  populateWithGenerated(ctx, patterns);
+  populateWithGenerated(patterns);
 
 #define DEF_PATTERN_INSERT(PAT) patterns.insert<Convert##PAT##Op>(ctx);
 

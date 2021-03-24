@@ -46,7 +46,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetInterpreterClient() {
       client->backend().stream_executor(0).ValueOrDie();
   auto device_state = absl::make_unique<LocalDeviceState>(
       executor, client, LocalDeviceState::kSynchronous, /*asynchronous=*/false,
-      /*allow_event_reuse=*/false);
+      /*allow_event_reuse=*/false, /*use_callback_stream=*/false);
   auto device =
       absl::make_unique<InterpreterDevice>(0, std::move(device_state));
   devices.push_back(std::move(device));

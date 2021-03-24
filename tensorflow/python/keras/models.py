@@ -13,14 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
-"""Code for model cloning, plus model-related API entries.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Code for model cloning, plus model-related API entries."""
 
 from tensorflow.python.framework import ops
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras.engine import functional
@@ -181,7 +177,7 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
 
       # Cache input layer. Create a new layer if the tensor is originally not
       # from a Keras layer.
-      if not K.is_keras_tensor(input_tensor):
+      if not backend.is_keras_tensor(input_tensor):
         name = original_input_layer.name
         input_tensor = Input(tensor=input_tensor,
                              name='input_wrapper_for_' + name)
@@ -344,7 +340,7 @@ def _clone_sequential_model(model, input_tensors=None, layer_fn=_clone_layer):
     if isinstance(input_tensors, tuple):
       input_tensors = list(input_tensors)
     x = generic_utils.to_list(input_tensors)[0]
-    if K.is_keras_tensor(x):
+    if backend.is_keras_tensor(x):
       origin_layer = x._keras_history.layer
       if isinstance(origin_layer, InputLayer):
         cloned_model = Sequential(
@@ -681,7 +677,7 @@ def clone_and_build_model(
           clone.build(model._build_input_shape)
         else:
           clone._set_inputs(
-              K.placeholder(
+              backend.placeholder(
                   model._build_input_shape, dtype=model.inputs[0].dtype))
     else:
       try:
@@ -711,7 +707,7 @@ def clone_and_build_model(
     if isinstance(orig_optimizer, optimizer_v1.TFOptimizer):
       optimizer = optimizer_v1.TFOptimizer(
           orig_optimizer.optimizer, optimizer_iterations)
-      K.track_tf_optimizer(optimizer)
+      backend.track_tf_optimizer(optimizer)
     else:
       if not isinstance(orig_optimizer, (tuple, list)):
         orig_optimizer = [orig_optimizer]

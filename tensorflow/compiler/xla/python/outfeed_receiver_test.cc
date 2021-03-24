@@ -91,7 +91,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCpuClientWithNonLocalDevice() {
                       platform->GetExecutor(config));
   auto device_state = absl::make_unique<LocalDeviceState>(
       executor, client, LocalDeviceState::kSynchronous, /*asynchronous=*/true,
-      /*allow_event_reuse=*/false);
+      /*allow_event_reuse=*/false, /*use_callback_stream=*/false);
 
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   devices.push_back(absl::make_unique<CpuDevice>(0, std::move(device_state)));
