@@ -33,20 +33,20 @@ namespace {
 
 TEST(ResourceVariableGradTest, ReadVariableOpGrad) {
   TensorShape shape({});
-  auto scope_ = Scope::NewRootScope();
-  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto scope = Scope::NewRootScope();
+  auto x = Placeholder(scope, DT_FLOAT, Placeholder::Shape(shape));
 
-  auto var = VarHandleOp(scope_, DT_FLOAT, shape);
-  auto init = AssignVariableOp(scope_, var, Const(scope_, (float) 2, shape));
+  auto var = VarHandleOp(scope, DT_FLOAT, shape);
+  auto init = AssignVariableOp(scope, var, Const(scope, (float) 2, shape));
 
-  auto temp = ReadVariableOp(scope_, var, DT_FLOAT);
+  auto temp = ReadVariableOp(scope, var, DT_FLOAT);
 
-  auto y = Mul(scope_, temp, x);
+  auto y = Mul(scope, temp, x);
 
-  auto dy = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto dy = Placeholder(scope, DT_FLOAT, Placeholder::Shape(shape));
 
   OutputList dxs;
-  TF_ASSERT_OK(AddSymbolicGradients(scope_, {y}, {var}, {dy}, &dxs));
+  TF_ASSERT_OK(AddSymbolicGradients(scope, {y}, {var}, {dy}, &dxs));
 
 
   ClientSession::FeedType feed_list;
@@ -54,7 +54,7 @@ TEST(ResourceVariableGradTest, ReadVariableOpGrad) {
   feed_list.insert({dy, (float) 1});
 
   std::vector<Tensor> dxout;
-  ClientSession session(scope_);
+  ClientSession session(scope);
   TF_ASSERT_OK(session.Run(feed_list, dxs, &dxout));
 
   auto grad = dxout[0].scalar<float>()();
