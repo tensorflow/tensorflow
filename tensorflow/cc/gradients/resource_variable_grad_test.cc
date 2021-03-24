@@ -33,6 +33,7 @@ namespace {
 
 TEST(ResourceVariableGradTest, ReadVariableOpGrad) {
   TensorShape shape({});
+  auto scope_ = Scope::NewRootScope();
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
 
   auto var = VarHandleOp(scope_, DT_FLOAT, shape);
