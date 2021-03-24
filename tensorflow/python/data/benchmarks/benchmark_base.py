@@ -171,7 +171,7 @@ class DatasetBenchmarkBase(test.Benchmark):
 
     # The options that have been applied to the dataset are preserved so that
     # they are not overwritten while benchmarking.
-    options = dataset.options()
+    options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = (
         apply_default_optimizations)
     dataset = dataset.with_options(options)

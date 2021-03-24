@@ -13,12 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Contains the Policy class for mixed precision training."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import contextlib
-
 import six
 
 from tensorflow.python.framework import dtypes
@@ -70,8 +66,9 @@ class Policy(object):
 
   In the example above, passing `dtype='float32'` to the layer is equivalent to
   passing `dtype=tf.keras.mixed_precision.Policy('float32')`. In general,
-  passing a dtype to a layer is equivalent to passing the corresponding policy,
-  so it is never necessary to explicitly construct a `Policy` object.
+  passing a dtype policy name to a layer is equivalent to passing the
+  corresponding policy, so it is never necessary to explicitly construct a
+  `Policy` object.
 
   Note: `Model.compile` will automatically wrap an optimizer with a
   `tf.keras.mixed_precision.LossScaleOptimizer` if you use the `'mixed_float16'`
@@ -145,8 +142,7 @@ class Policy(object):
   ...     # With mixed precision, self.kernel will be casted to float16
   ...     return tf.linalg.matmul(inputs, self.kernel)
   ...
-  >>> dtype_policy = tf.keras.mixed_precision.Policy('mixed_float16')
-  >>> layer = SimpleDense(dtype=dtype_policy)
+  >>> layer = SimpleDense(dtype='mixed_float16')
   >>> y = layer(tf.ones((10, 10)))
   >>> y.dtype
   tf.float16
@@ -178,9 +174,7 @@ class Policy(object):
   ...     # occur when adding `inputs` to `rand`.
   ...     rand = tf.random.normal(shape=inputs.shape, dtype=inputs.dtype)
   ...     return inputs + rand
-
-  >>> dtype_policy = tf.keras.mixed_precision.Policy('mixed_float16')
-  >>> layer = AddRandom(dtype=dtype_policy)
+  >>> layer = AddRandom(dtype='mixed_float16')
   >>> y = layer(x)
   >>> y.dtype
   tf.float16
@@ -195,7 +189,7 @@ class Policy(object):
     if isinstance(name, dtypes.DType):
       raise TypeError("'name' must be a string, not a DType. "
                       "Instead, pass DType.name. Got: %s" % (name.name,))
-    elif not isinstance(name, six.string_types):
+    elif not isinstance(name, str):
       raise TypeError("'name' must be a string, but got: %s" % (name,))
     self._name = name
     self._compute_dtype, self._variable_dtype = self._parse_name(name)

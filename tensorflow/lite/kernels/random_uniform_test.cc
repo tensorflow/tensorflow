@@ -37,6 +37,11 @@ tflite::TensorType GetTTEnum<double>() {
 }
 
 template <>
+tflite::TensorType GetTTEnum<int8_t>() {
+  return tflite::TensorType_INT8;
+}
+
+template <>
 tflite::TensorType GetTTEnum<int32_t>() {
   return tflite::TensorType_INT32;
 }
@@ -150,7 +155,7 @@ class RandomUniformIntTest : public ::testing::Test {
   using Int = IntType;
 };
 
-using TestTypesInt = ::testing::Types<int32_t, int64_t>;
+using TestTypesInt = ::testing::Types<int8_t, int32_t, int64_t>;
 
 TYPED_TEST_SUITE(RandomUniformIntTest, TestTypesInt);
 

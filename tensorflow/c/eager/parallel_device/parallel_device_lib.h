@@ -130,6 +130,11 @@ class ParallelDevice {
       const std::vector<PartialTensorShape>& expected_output_shapes,
       TF_Status* status) const;
 
+  // Device strings for component devices that only include a
+  // worker/task/replica if any of those differ across components. Useful for
+  // printing debug messages.
+  std::vector<std::string> SummarizeDeviceNames() const;
+
  private:
   // A sequence of device names, indicating which devices replicated operations
   // are forwarded to.
@@ -181,6 +186,10 @@ class ParallelTensor {
   // bad status unless all tensors have the same shape.
   Status Shape(const std::vector<int64_t>** shape) const;
   TF_DataType dtype() const { return dtype_; }
+
+  // Sets its output argument to a summary of the values of this tensor on every
+  // component device.
+  Status SummarizeValue(std::string& summary);
 
  private:
   ParallelTensor(const ParallelDevice& device,

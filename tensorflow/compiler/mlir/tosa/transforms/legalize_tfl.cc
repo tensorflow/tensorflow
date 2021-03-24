@@ -46,12 +46,13 @@ llvm::cl::opt<std::string> tfl_tosa_denylist(
     llvm::cl::value_desc("pattern name"));
 
 namespace mlir {
-
 namespace tosa {
-
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
+
 // Performs lowering to TOSA dialect.
-class LegalizeTFL : public PassWrapper<LegalizeTFL, FunctionPass> {
+class LegalizeTFL : public TosaLegalizeTFLPassBase<LegalizeTFL> {
  public:
   explicit LegalizeTFL() {}
   void runOnFunction() override;
@@ -2883,12 +2884,12 @@ LogicalResult ConvertTFLQConstOp::matchAndRewrite(
 }
 
 void LegalizeTFL::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   auto* ctx = &getContext();
   auto func = getFunction();
 
   // Add the generated patterns to the list.
-  populateWithGenerated(ctx, patterns);
+  populateWithGenerated(patterns);
 
 #define DEF_PATTERN_INSERT(PAT) patterns.insert<Convert##PAT##Op>(ctx);
 

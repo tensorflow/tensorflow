@@ -13,14 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 """Utils related to keras model saving."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import collections.abc as collections_abc
 import copy
 import os
-import six
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.keras import backend as K
@@ -248,7 +244,7 @@ def _deserialize_nested_config(deserialize_fn, config):
   def _is_single_object(obj):
     if isinstance(obj, dict) and 'class_name' in obj:
       return True  # Serialized Keras object.
-    if isinstance(obj, six.string_types):
+    if isinstance(obj, str):
       return True  # Serialized function or string.
     return False
 
@@ -314,8 +310,10 @@ def try_build_compiled_arguments(model):
   if (not version_utils.is_v1_layer_or_model(model) and
       model.outputs is not None):
     try:
-      model.compiled_loss.build(model.outputs)
-      model.compiled_metrics.build(model.outputs, model.outputs)
+      if not model.compiled_loss.built:
+        model.compiled_loss.build(model.outputs)
+      if not model.compiled_metrics.built:
+        model.compiled_metrics.build(model.outputs, model.outputs)
     except:  # pylint: disable=bare-except
       logging.warning(
           'Compiled the loaded model, but the compiled metrics have yet to '

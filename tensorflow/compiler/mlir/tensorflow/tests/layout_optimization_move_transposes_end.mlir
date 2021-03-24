@@ -126,3 +126,20 @@ func @fold_into_fused_batch_norm(%arg0: tensor<1x64x112x112xf32>, %arg1: tensor<
 
   return %2#0 : tensor<1x112x112x64xf32>
 }
+
+// CHECK-LABEL: func @fold_into_pad_with_extra_uses
+func @fold_into_pad_with_extra_uses(%arg0: tensor<1x2x4x4x3xf32>) -> (tensor<1x2x3x4x4xf32>, tensor<1x2x3x6x6xf32>) {
+
+  // CHECK: %[[PERM:[0-9]*]] = "tf.Const"() {value = dense<[0, 1, 4, 2, 3]> : tensor<5xi32>}
+  // CHECK: %[[TRANSPOSE_OP:[0-9]*]] = "tf.Transpose"(%arg0, %[[PERM]])
+  // CHECK: %[[PADDING:[0-9]*]] = "tf.Const"() {value = dense<{{\[\[}}0, 0], [0, 0], [1, 1], [1, 1], [0, 0]]> : tensor<5x2xi32>}
+  // CHECK: %[[PAD_OP:[0-9]*]] = "tf.Pad"(%arg0, %[[PADDING]])
+  // CHECK: %[[DUP_TRANSPOSE_OP:[0-9]*]] = "tf.Transpose"(%[[PAD_OP]], %[[PERM]])
+  // CHECK: return %[[TRANSPOSE_OP]], %[[DUP_TRANSPOSE_OP]]
+
+  %0 = "tf.Const"() {value = dense<[0, 1, 4, 2, 3]> : tensor<5xi32>} : () -> tensor<5xi32>
+  %1 = "tf.Const"() {value = dense<[[0, 0], [0, 0], [0, 0], [1, 1], [1, 1]]> : tensor<5x2xi32>} : () -> tensor<5x2xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<1x2x4x4x3xf32>, tensor<5xi32>) -> tensor<1x2x3x4x4xf32>
+  %3 = "tf.Pad"(%2, %1) : (tensor<1x2x3x4x4xf32>, tensor<5x2xi32>) -> tensor<1x2x3x6x6xf32>
+  return %2, %3 : tensor<1x2x3x4x4xf32>, tensor<1x2x3x6x6xf32>
+}

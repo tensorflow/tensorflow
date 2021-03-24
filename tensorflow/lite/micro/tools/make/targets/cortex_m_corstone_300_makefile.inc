@@ -104,7 +104,7 @@ else
   $(error "TOOLCHAIN=$(TOOLCHAIN) is not supported.")
 endif
 
-# TODO: fix warnings.
+# TODO(#47718): resolve warnings.
 OMIT_ERRORS = \
   -Wno-implicit-fallthrough \
   -Wno-strict-aliasing
@@ -154,15 +154,13 @@ EXCLUDED_TESTS := \
   tensorflow/lite/micro/output_handler_test.cc \
   tensorflow/lite/micro/memory_arena_threshold_test.cc \
   tensorflow/lite/micro/recording_micro_allocator_test.cc \
-  tensorflow/lite/micro/kernels/circular_buffer_test.cc \
-  tensorflow/lite/micro/kernels/pooling_test.cc
+  tensorflow/lite/micro/kernels/circular_buffer_test.cc
 MICROLITE_TEST_SRCS := $(filter-out $(EXCLUDED_TESTS), $(MICROLITE_TEST_SRCS))
 EXCLUDED_EXAMPLE_TESTS := \
   tensorflow/lite/micro/examples/magic_wand/Makefile.inc \
   tensorflow/lite/micro/examples/micro_speech/Makefile.inc \
   tensorflow/lite/micro/examples/person_detection/Makefile.inc \
   tensorflow/lite/micro/examples/hello_world/Makefile.inc \
-  tensorflow/lite/micro/examples/network_tester/Makefile.inc \
   tensorflow/lite/micro/examples/image_recognition_experimental/Makefile.inc
 MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE_EXAMPLE_TESTS))
 

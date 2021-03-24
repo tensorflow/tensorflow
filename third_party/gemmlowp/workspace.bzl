@@ -2,7 +2,7 @@
 
 load("//third_party:repo.bzl", "tf_http_archive")
 
-def repo(name):
+def repo():
     """Imports gemmlowp."""
 
     # Attention: tools parse and update these lines.
@@ -10,7 +10,7 @@ def repo(name):
     GEMMLOWP_SHA256 = "43146e6f56cb5218a8caaab6b5d1601a083f1f31c06ff474a4378a7d35be9cfb"
 
     tf_http_archive(
-        name = name,
+        name = "gemmlowp",
         sha256 = GEMMLOWP_SHA256,
         strip_prefix = "gemmlowp-{commit}".format(commit = GEMMLOWP_COMMIT),
         urls = [

@@ -85,6 +85,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TransformUtils",
+        "@llvm-project//mlir:IR",
     ],
 )
 

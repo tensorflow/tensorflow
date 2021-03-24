@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -257,6 +258,12 @@ Status TpuCompileOpKernelCommon::GetShardingInfo(
     const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes) {
+  arg_core_mapping->clear();
+  arg_core_mapping->resize(metadata_.args_size());
+
+  per_core_arg_shapes->clear();
+  per_core_arg_shapes->resize(metadata_.num_cores_per_replica());
+
   int num_inputs = metadata_.args_size();
   for (int i = 0; i < num_inputs; ++i) {
     const auto& proto_arg = metadata_.args(i);
@@ -600,8 +607,12 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
       ComputeArgumentShapes(metadata_, dynamic_shapes, &arg_shapes));
   Status compile_status;
   if (use_mlir_) {
-    compile_status = Compile(MlirToHloArgs{mlir_module_}, mesh_state->data(),
-                             arg_shapes, tpu_program_group);
+    const ConfigProto* config = flib_runtime->config_proto();
+    ConfigProto::Experimental::MlirBridgeRollout rollout_state =
+        GetMlirBridgeRolloutState(config ? absl::make_optional(*config)
+                                         : absl::nullopt);
+    compile_status = Compile(MlirToHloArgs{mlir_module_, rollout_state},
+                             mesh_state->data(), arg_shapes, tpu_program_group);
   } else {
     compile_status =
         Compile(FunctionToHloArgs{&function_,

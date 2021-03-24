@@ -174,6 +174,10 @@ void ProfileSummarizer::ProcessProfiles(
       const memory::MemoryUsage node_mem_usage =
           event->end_mem_usage - event->begin_mem_usage;
       std::string node_name(event->tag);
+      if (node_name == "Invoke") {
+        // Don't count the overall Invoke for profiling.
+        continue;
+      }
       node_name += "/" + std::to_string(event->extra_event_metadata);
       stats_calculator->AddNodeStats(node_name, event->tag, node_num, start_us,
                                      node_exec_time,

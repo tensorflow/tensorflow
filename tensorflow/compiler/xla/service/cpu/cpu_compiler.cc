@@ -86,6 +86,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/dynamic_padder.h"
+#include "tensorflow/compiler/xla/service/eigh_expander.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -305,6 +306,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<ComparisonExpander>();
   pipeline.AddPass<CholeskyExpander>();
   pipeline.AddPass<QrExpander>();
+  pipeline.AddPass<EighExpander>();
   pipeline.AddPass<TriangularSolveExpander>();
   pipeline.AddPass<AllGatherDecomposer>();
   pipeline.AddPass<AllToAllDecomposer>();

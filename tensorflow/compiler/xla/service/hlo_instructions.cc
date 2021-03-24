@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -1321,19 +1322,33 @@ HloConstantInstruction::CloneWithNewOperandsImpl(
 string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
     const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
-  string operands;
+  if (options.print_only_essential_constants()) {
+    if (!literal_.has_value()) {
+      return "{...}";
+    }
+    if (literal().IsAll(0)) {
+      return "0";
+    }
+    if (literal().IsAll(1)) {
+      return "1";
+    }
+    if (shape().IsInteger()) {
+      return literal_->ToStringWithoutShapeOneline();
+    }
+    return "{...}";
+  }
+
   // For constants, show the actual value in place of an empty operand list.
   if (literal_.has_value() &&
       ((shape().IsArray() && ShapeUtil::ElementsIn(shape()) <= 10) ||
        options.print_large_constants())) {
     // Literal::ToString emits multidimensional arrays over multiple
     // lines. Compact this into one line by stripping out white space.
-    operands = literal_->ToStringWithoutShapeOneline();
+    return literal_->ToStringWithoutShapeOneline();
   } else {
     // Do not show large constants or tuples.
-    operands = "{...}";
+    return "{...}";
   }
-  return operands;
 }
 
 HloTraceInstruction::HloTraceInstruction(const string& tag,
@@ -1385,6 +1400,29 @@ HloFusionInstruction::HloFusionInstruction(
   SetAndSanitizeName("fusion");
   AppendComputation(fusion_computation);
   fusion_computation->SetFusionInstruction(this);
+}
+
+HloFusionInstruction::~HloFusionInstruction() {
+  ClearFusionComputationInstruction();
+}
+
+void HloFusionInstruction::ClearFusionComputationInstruction() {
+  // Each fusion calls a single computation, but we use called_computations()
+  // instead of fused_instructions_computation(), because the order in which
+  // things get destructed can vary; the fusion computation's back-pointer may
+  // already be null, which violates a check in fused_instructions_computation.
+  for (HloComputation* computation : called_computations()) {
+    // Some passes that rewrite fusions may reassign a fusion computation to a
+    // different fusion instruction as this instruction gets destructed.
+    if (computation->FusionInstruction() == this) {
+      computation->SetFusionInstruction(nullptr);
+    }
+  }
+}
+
+void HloFusionInstruction::ClearCalledComputations() {
+  ClearFusionComputationInstruction();
+  HloInstruction::ClearCalledComputations();
 }
 
 string HloFusionInstruction::ToCategory() const {
@@ -2062,7 +2100,7 @@ HloInstructionProto HloInfeedInstruction::ToProto() const {
 
 std::vector<string> HloInfeedInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  if (infeed_config_.empty()) {
+  if (!options.print_infeed_outfeed_config() || infeed_config_.empty()) {
     return {};
   }
   return {StrCat("infeed_config=\"", CEscape(infeed_config_), "\"")};
@@ -2107,7 +2145,7 @@ std::vector<string> HloOutfeedInstruction::ExtraAttributesToStringImpl(
   std::vector<string> extra;
   extra.push_back(StrCat("outfeed_shape=",
                          ShapeUtil::HumanStringWithLayout(outfeed_shape_)));
-  if (!outfeed_config_.empty()) {
+  if (options.print_infeed_outfeed_config() && !outfeed_config_.empty()) {
     extra.push_back(
         StrCat("outfeed_config=\"", CEscape(outfeed_config_), "\""));
   }

@@ -579,8 +579,8 @@ def TF_IntTypeAttr : TypeAttrBase<"IntegerType", "integer type"> {
 // Mixin class defining a builder for binary ops supporting broadcast
 // behavior. The result type has the same element type as both operands.
 class WithBroadcastableBinOpBuilder {
-  list<OpBuilderDAG> builders = [
-    OpBuilderDAG<(ins "Value":$x, "Value":$y),
+  list<OpBuilder> builders = [
+    OpBuilder<(ins "Value":$x, "Value":$y),
     [{
   auto resultType =
       OpTrait::util::getBroadcastedType(x.getType(), y.getType());
@@ -593,8 +593,8 @@ class WithBroadcastableBinOpBuilder {
 // Mixin class defining a builder for comparison ops supporting broadcast
 // behavior. The result type has bool element type.
 class WithBroadcastableCmpOpBuilder {
-  list<OpBuilderDAG> builders = [
-    OpBuilderDAG<(ins "Value":$x, "Value":$y),
+  list<OpBuilder> builders = [
+    OpBuilder<(ins "Value":$x, "Value":$y),
     [{
   Type resultType;
   if (x.getType().isa<UnrankedTensorType>() ||

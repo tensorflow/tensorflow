@@ -522,16 +522,19 @@ class ShardedVariableMixin(trackable.Trackable):
   def assign(self, value, use_locking=None, name=None, read_value=True):
     for i, v in enumerate(self._variables):
       v.assign(array_ops.slice(value, self._var_offsets[i], v.shape.as_list()))
+    return self
 
   def assign_add(self, delta, use_locking=False, name=None, read_value=True):
     for i, v in enumerate(self._variables):
       v.assign_add(
           array_ops.slice(delta, self._var_offsets[i], v.shape.as_list()))
+    return self
 
   def assign_sub(self, delta, use_locking=False, name=None, read_value=True):
     for i, v in enumerate(self._variables):
       v.assign_sub(
           array_ops.slice(delta, self._var_offsets[i], v.shape.as_list()))
+    return self
 
   def _gather_saveables_for_checkpoint(self):
     """Return a `Saveable` for each shard. See `Trackable`."""

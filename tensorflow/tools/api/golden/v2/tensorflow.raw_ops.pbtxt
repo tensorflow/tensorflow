@@ -1641,6 +1641,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'other_arguments\', \'predicate\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "FinalizeDataset"
+    argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'has_captured_ref\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
     name: "Fingerprint"
     argspec: "args=[\'data\', \'method\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1775,6 +1779,10 @@ tf_module {
   member_method {
     name: "GeneratorDataset"
     argspec: "args=[\'init_func_other_args\', \'next_func_other_args\', \'finalize_func_other_args\', \'init_func\', \'next_func\', \'finalize_func\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "GetOptions"
+    argspec: "args=[\'input_dataset\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "GetSessionHandle"
@@ -2715,6 +2723,10 @@ tf_module {
   member_method {
     name: "OptionalNone"
     argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "OptionsDataset"
+    argspec: "args=[\'input_dataset\', \'serialized_options\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "OrderedMapClear"

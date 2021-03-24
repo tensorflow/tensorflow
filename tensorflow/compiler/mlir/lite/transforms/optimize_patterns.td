@@ -46,7 +46,7 @@ class HasRankAtMost<int n> : Constraint<
 //===----------------------------------------------------------------------===//
 // Multi-pattern consisting of matching stand-alone convolution op followed by
 // activation op.
-multiclass FuseActFnIntoConvOpPat<dag ActFnOp, dag ActFnAttr> {
+multiclass FuseActFnIntoConvOpPat<Op ActFnOp, Attr ActFnAttr> {
   def FuseActivationFuncWithConv#ActFnOp#ActFnAttr : Pat<
     (ActFnOp (TFL_Conv2DOp:$conv_out $input, $filter, $bias, $h_factor,
                  $w_factor, TFL_AF_None, $padding, $stride_h, $stride_w)),
@@ -62,7 +62,7 @@ multiclass FuseActFnIntoConvOpPat<dag ActFnOp, dag ActFnAttr> {
     [(HasOneUse $conv_out)]>;
 }
 
-multiclass FuseActFnIntoPoolOpPat<dag ActFnOp, dag ActFnAttr> {
+multiclass FuseActFnIntoPoolOpPat<Op ActFnOp, Attr ActFnAttr> {
   def FuseActivationFuncWithAvgPool#ActFnOp#ActFnAttr : Pat<
     (ActFnOp (TFL_AveragePool2DOp:$pool_out $input, $filter_height,
                   $filter_width, $padding, $stride_h, $stride_w, TFL_AF_None)),
@@ -84,8 +84,8 @@ multiclass FuseActFnIntoPoolOpPat<dag ActFnOp, dag ActFnAttr> {
 foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
                      [TFL_Relu6Op, TFL_AF_Relu6],
                      [TFL_Relu1Op, TFL_AF_Relu1]] in {
-  defm : FuseActFnIntoConvOpPat<actFnPair[0], actFnPair[1]>;
-  defm : FuseActFnIntoPoolOpPat<actFnPair[0], actFnPair[1]>;
+  defm : FuseActFnIntoConvOpPat<!cast<Op>(actFnPair[0]), !cast<Attr>(actFnPair[1])>;
+  defm : FuseActFnIntoPoolOpPat<!cast<Op>(actFnPair[0]), !cast<Attr>(actFnPair[1])>;
 }
 
 class CanFuseConvOrDepthwiseConv<string is_depthwise> : Constraint<
@@ -95,7 +95,7 @@ class CanFuseConvOrDepthwiseConv<string is_depthwise> : Constraint<
 // op with constant bias, we can fuse the binary op into the convolution op by
 // constant folding the bias and the binary op's constant operand. The following
 // pattern restricts to float constant values for now.
-multiclass FuseBinaryOpToPrecedingAffine<dag binaryOp> {
+multiclass FuseBinaryOpToPrecedingAffine<Op binaryOp> {
   def FuseBinaryOpWithConv#binaryOp : Pat<
     (binaryOp (TFL_Conv2DOp:$output $input, $filter,
                 (ConstantOp FloatElementsAttr:$bias), $h_factor, $w_factor,
@@ -143,7 +143,7 @@ multiclass FuseBinaryOpToPrecedingAffine<dag binaryOp> {
      (IsNoneType $bias),
      (HasOneUse $output)]>;
 }
-foreach binaryOp = [TFL_AddOp, TFL_SubOp] in
+foreach binaryOp = [TFL_AddOp, TFL_SubOp]<Op> in
   defm : FuseBinaryOpToPrecedingAffine<binaryOp>;
 
 def ExpandTo4DForConv: NativeCodeCall<"ExpandTo4DForConv($0)">;
@@ -157,7 +157,7 @@ def ExpandTo4DForDepthwiseConv: NativeCodeCall<
 // the filter/bias and the div/mul op's constant operand.
 // The following pattern restricts to float constant values for now.
 
-multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<dag BinaryOp> {
+multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<Op BinaryOp> {
   def FuseMulOrDivWithDepthwiseConv#BinaryOp : Pat<
     (BinaryOp (TFL_DepthwiseConv2DOp:$output $input,
                 (ConstantOp FloatElementsAttr:$filter),
@@ -230,7 +230,7 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<dag BinaryOp> {
      (HasOneUse $output)]>;
 }
 
-foreach BinaryOp = [TFL_DivOp, TFL_MulOp] in
+foreach BinaryOp = [TFL_DivOp, TFL_MulOp]<Op> in
   defm : FuseMulOrDivWithConv2dOrDepthwiseConv2d<BinaryOp>;
 
 
@@ -304,7 +304,7 @@ def L2NormValidReduceIndex : Constraint<CPred<
 // in TFLite.
 // TODO(karimnosseir): Add constraints that the kernel code assumes.
 // constraint on axis and depth.
-multiclass L2NormalizePatterns<dag FirstOp, dag SecondOp> {
+multiclass L2NormalizePatterns<Op FirstOp, Op SecondOp> {
   // This pattern constructs L2NormalizationOp from
   // Mul->Rsqrt->Sum->Square Or
   // Div->sqrt->Sum->Square
@@ -367,9 +367,22 @@ def OperandsBroadcastToOutputType : Constraint<CPred<
 def IsTailOfShape : Constraint<CPred<
   "TFL::IsTailOfShape($0.getType(), $1.getType())">>;
 
+def Flatten : NativeCodeCall<
+  "$0.cast<DenseElementsAttr>()"
+    ".reshape(RankedTensorType::get({$0.getType().cast<ShapedType>().getNumElements()}, "
+                                   "$0.getType().cast<ShapedType>().getElementType()))">;
+
+def IsLastDimEqualToNumElements : Constraint<CPred<
+  "$0.getType().cast<ShapedType>().getRank() >= 1 && "
+  "$0.getType().cast<ShapedType>().getDimSize($0.getType().cast<ShapedType>().getRank() - 1) == "
+  "$1.getType().cast<ShapedType>().getNumElements()">>;
+
+def IsDefinedByFullyConnectedOp : Constraint<CPred<
+  "$0.getDefiningOp<TFL::FullyConnectedOp>() != nullptr">>;
+
 // Pattern for skipping Tile if it is mainly for broadcasting and the
 // Op is already supporting broadcasting.
-multiclass FuseTileBroadcastIntoFollowingBinary<dag BinaryOp> {
+multiclass FuseTileBroadcastIntoFollowingBinary<Op BinaryOp> {
   def FuseTileBroadcastToBinaryOp1#BinaryOp : Pat<
     (BinaryOp:$result (TFL_TileOp $input, (ConstantOp $tile)),
      $operand, $act_func),
@@ -388,7 +401,7 @@ multiclass FuseTileBroadcastIntoFollowingBinary<dag BinaryOp> {
 }
 
 // Multi-pattern consisting of matching stand-alone op or op followed by relu.
-multiclass FusedBinaryActivationFuncOpPat<dag BinaryOp> {
+multiclass FusedBinaryActivationFuncOpPat<Op BinaryOp> {
   foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
                        [TFL_Relu6Op, TFL_AF_Relu6],
                        [TFL_Relu1Op, TFL_AF_Relu1]] in {
@@ -446,6 +459,29 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
        (IsTailOfShape $lhs, $rhs),
        (IsTailOfShape $input1, $input2),
        (IsTailOfShape $input2, $input1)]>;
+
+    // Move binary op before reshape:
+    // binary(reshape(lhs), rhs) => reshape(binary(lhs, flatten(rhs)))
+    // This is valid only when the last dimension of lhs is equal to the
+    // number of elements in constant rhs.
+    // Therefore, after transformation broadcast of binary op is always
+    // applied to the last dimension of $input.
+    def MoveBinaryOpFlattenConstBeforeReshape#BinaryOp : Pat<
+      (BinaryOp (TFL_ReshapeOp:$lhs $input, (ConstantOp:$shape $s)),
+                (ConstantOp:$rhs ElementsAttr:$rhs_attr), $act_fn),
+      (TFL_ReshapeOp (BinaryOp $input, (ConstantOp (Flatten $rhs_attr)),
+                               $act_fn),
+                     $shape),
+      [(AnyStaticShapeTensor $input),
+       (IsTailOfShape $rhs, $lhs),
+       (IsLastDimEqualToNumElements $input, $rhs),
+       (HasOneUse $lhs),
+       // Restrict operands to have at most rank 4 because TFLite binary
+       // kernel supports up to 4D broadcast.
+       (HasRankAtMost<4> $input),
+       (HasRankAtMost<4> $lhs),
+       (HasRankAtMost<4> $rhs),
+       (IsDefinedByFullyConnectedOp $input)]>;
 }
 
 foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
@@ -491,6 +527,28 @@ foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
        (IsTailOfShape $lhs, $rhs),
        (IsTailOfShape $input1, $input2),
        (IsTailOfShape $input2, $input1)]>;
+
+    // Move binary op before reshape:
+    // binary(reshape(lhs), rhs) => reshape(binary(lhs, flatten(rhs)))
+    // This is valid only when the last dimension of lhs is equal to the
+    // number of elements in constant rhs.
+    // Therefore, after transformation broadcast of binary op is always
+    // applied to the last dimension of $input.
+    def MoveBinaryOpFlattenConstBeforeReshape#BinaryOp : Pat<
+      (BinaryOp (TFL_ReshapeOp:$lhs $input, (ConstantOp:$shape $s)),
+                (ConstantOp:$rhs ElementsAttr:$rhs_attr)),
+      (TFL_ReshapeOp (BinaryOp $input, (ConstantOp (Flatten $rhs_attr))),
+                     $shape),
+      [(AnyStaticShapeTensor $input),
+       (IsTailOfShape $rhs, $lhs),
+       (IsLastDimEqualToNumElements $input, $rhs),
+       (HasOneUse $lhs),
+       // Restrict operands to have at most rank 4 because TFLite binary
+       // kernel supports up to 4D broadcast.
+       (HasRankAtMost<4> $input),
+       (HasRankAtMost<4> $lhs),
+       (HasRankAtMost<4> $rhs),
+       (IsDefinedByFullyConnectedOp $input)]>;
 }
 
 // Reorder the element-wise value operations and the element move operations,
@@ -557,9 +615,21 @@ def MatchLeakyRelu : Pat<
   [(ConstDoubleValueLessThan<"1"> $alpha),
    (HasOneUse $mul_out)]>;
 
-def RemoveTrivialCast : Pat<(TFL_CastOp:$output $input),
+// Returns True if all users of this operation are in TF/TFL and don't need
+// shape exact matching. This prevents from removing cast on return values which
+// can break the verifier on function type mismatch.
+def AllUsersInTF : Constraint<CPred<[{
+  llvm::all_of($0.getUsers(), [&](Operation *user) {
+    auto name = user->getName().getDialectNamespace();
+    return name == "tf" || name == "tfl";
+  })
+  }]>, "all users are TF/TFL operations.">;
+
+def RemoveShapeOnlyCast : Pat<(TFL_CastOp:$output $input),
                             (replaceWithValue $input),
-                            [(SameElementType $input, $output)]>;
+                            [(SameElementType $input, $output),
+                             (AllUsersInTF $output)]>;
+
 
 // Checks if the operand0's rank is one less than operand1's rank.
 def PReluAlphaRankCheck : Constraint<
@@ -760,17 +830,11 @@ foreach ArgMinMaxOp = [TFL_ArgMinOp, TFL_ArgMaxOp] in {
      (AxesIsLastDimension $axes, $logits)]>;
 }
 
-class AllElementsAreI64<string val> : Constraint<CPred<
-  "($0.isa<DenseElementsAttr>() && "
-   "$0.cast<DenseElementsAttr>().getType().cast<ShapedType>().getElementType().isInteger(64) && "
-   "std::all_of($0.cast<DenseElementsAttr>().getValues<int64_t>().begin(), "
-               "$0.cast<DenseElementsAttr>().getValues<int64_t>().end(), "
-               "[](int64_t v){ return v == " #val# ";}))">>;
+def CanOptimizeIdentitySliceOp : Constraint<CPred<
+  "TFL::CanOptimizeIdentitySliceOp($0, $1, $2)">>;
 
-// Remove Slice ops slicing the whole input tensor, effectively no-op
+// Remove Slice ops slicing the whole input tensor, effectively no-op.
 def OptimizeSliceOp : Pat<
-  (TFL_SliceOp:$output $input, (ConstantOp $begin), $shape),
+  (TFL_SliceOp:$output $input, (ConstantOp $begin), (ConstantOp $size)),
   (replaceWithValue $input),
-  [(AllElementsAreI64<"0"> $begin),
-   (IsTailOfShape $input, $output),
-   (IsTailOfShape $output, $input)]>;
+  [(CanOptimizeIdentitySliceOp $input, $begin, $size)]>;

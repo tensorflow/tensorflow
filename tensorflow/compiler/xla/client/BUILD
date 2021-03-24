@@ -212,6 +212,26 @@ cc_library(
 )
 
 cc_library(
+    name = "value_inference",
+    srcs = ["value_inference.cc"],
+    hdrs = ["value_inference.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":xla_builder",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_evaluator",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "xla_builder",
     srcs = ["xla_builder.cc"],
     hdrs = ["xla_builder.h"],

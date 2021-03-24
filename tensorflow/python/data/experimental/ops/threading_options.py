@@ -49,7 +49,7 @@ class ThreadingOptions(options.OptionsBase):
       ty=int,
       docstring=
       "If set, the dataset will use a private threadpool of the given size. "
-      "The value 0 can be use to indicate that the threadpool size should be "
+      "The value 0 can be used to indicate that the threadpool size should be "
       "determined at runtime based on the number of available CPU cores.")
 
   def _to_proto(self):

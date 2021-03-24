@@ -28,6 +28,9 @@ namespace lookup {
 class InitializableLookupTable : public LookupInterface {
  public:
   class InitTableIterator;
+  typedef std::function<Status(GraphDefBuilder* builder, Node* table,
+                               Node** out)>
+      InitializerAsGraphDefFunc;
 
   // Performs batch lookups, for every element in the key tensor, Find returns
   // the corresponding value into the values tensor.
@@ -80,7 +83,7 @@ class InitializableLookupTable : public LookupInterface {
   // Initializes the table from the given init table iterator.
   //
   // Atomically, this operation prepares the table, populates it with the given
-  // iterator, and mark the table as initialized.
+  // iterator, and marks the table as initialized.
   //
   // Returns the following statuses:
   // - OK: when the initialization was successful.
@@ -91,6 +94,13 @@ class InitializableLookupTable : public LookupInterface {
   // - In addition, other implementations may provide another non-OK status
   //   specific to their failure modes.
   Status Initialize(InitTableIterator& iter);
+
+  // Initializes the table from the given init table iterator. `func` may
+  // specify how to represent the initializer as a graphdef, so that the table
+  // can be serialized using its metadata (as opposed to serializing a handle to
+  // the table).
+  Status Initialize(InitTableIterator& iter,
+                    absl::optional<InitializerAsGraphDefFunc>&& func);
 
   // Basic iterator to initialize lookup tables.
   // It yields a sequence of pairs of `keys()` and `values()` Tensors, so that
@@ -160,6 +170,9 @@ class InitializableLookupTable : public LookupInterface {
   virtual Status AreEntriesSame(const InitTableIterator& iter, bool* result);
 
   mutex mu_;
+
+ protected:
+  absl::optional<InitializerAsGraphDefFunc> initializer_as_graphdef_func_;
 
  private:
   std::atomic<bool> is_initialized_{false};

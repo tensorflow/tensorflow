@@ -15,13 +15,9 @@
 # ==============================================================================
 # pylint: disable=g-import-not-at-top
 """Utilities for file download and caching."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from abc import abstractmethod
 from contextlib import closing
-import errno
 import functools
 import hashlib
 import multiprocessing
@@ -132,7 +128,7 @@ def _extract_archive(file_path, path='.', archive_format='auto'):
     return False
   if archive_format == 'auto':
     archive_format = ['tar', 'zip']
-  if isinstance(archive_format, six.string_types):
+  if isinstance(archive_format, str):
     archive_format = [archive_format]
 
   file_path = path_to_string(file_path)
@@ -294,15 +290,19 @@ def get_file(fname,
 
 
 def _makedirs_exist_ok(datadir):
-  if six.PY2:
-    # Python 2 doesn't have the exist_ok arg, so we try-except here.
-    try:
-      os.makedirs(datadir)
-    except OSError as e:
-      if e.errno != errno.EEXIST:
-        raise
-  else:
-    os.makedirs(datadir, exist_ok=True)  # pylint: disable=unexpected-keyword-arg
+  os.makedirs(datadir, exist_ok=True)  # pylint: disable=unexpected-keyword-arg
+
+
+def _resolve_hasher(algorithm, file_hash=None):
+  """Returns hash algorithm as hashlib function."""
+  if algorithm == 'sha256':
+    return hashlib.sha256()
+
+  if algorithm == 'auto' and file_hash is not None and len(file_hash) == 64:
+    return hashlib.sha256()
+
+  # This is used only for legacy purposes.
+  return hashlib.md5()
 
 
 def _hash_file(fpath, algorithm='sha256', chunk_size=65535):
@@ -324,10 +324,10 @@ def _hash_file(fpath, algorithm='sha256', chunk_size=65535):
   Returns:
       The file hash
   """
-  if (algorithm == 'sha256') or (algorithm == 'auto' and len(hash) == 64):
-    hasher = hashlib.sha256()
+  if isinstance(algorithm, str):
+    hasher = _resolve_hasher(algorithm)
   else:
-    hasher = hashlib.md5()
+    hasher = algorithm
 
   with open(fpath, 'rb') as fpath_file:
     for chunk in iter(lambda: fpath_file.read(chunk_size), b''):
@@ -350,10 +350,7 @@ def validate_file(fpath, file_hash, algorithm='auto', chunk_size=65535):
   Returns:
       Whether the file is valid
   """
-  if (algorithm == 'sha256') or (algorithm == 'auto' and len(file_hash) == 64):
-    hasher = 'sha256'
-  else:
-    hasher = 'md5'
+  hasher = _resolve_hasher(algorithm, file_hash)
 
   if str(_hash_file(fpath, hasher, chunk_size)) == str(file_hash):
     return True
@@ -695,8 +692,6 @@ class SequenceEnqueuer(object):
 class OrderedEnqueuer(SequenceEnqueuer):
   """Builds a Enqueuer from a Sequence.
 
-  Used in `fit_generator`, `evaluate_generator`, `predict_generator`.
-
   Args:
       sequence: A `tf.keras.utils.data_utils.Sequence` object.
       use_multiprocessing: use multiprocessing if True, otherwise threading
@@ -823,7 +818,7 @@ def next_sample(uid):
   Returns:
       The next value of generator `uid`.
   """
-  return six.next(_SHARED_SEQUENCES[uid])
+  return next(_SHARED_SEQUENCES[uid])
 
 
 @keras_export('keras.utils.GeneratorEnqueuer')
@@ -833,20 +828,17 @@ class GeneratorEnqueuer(SequenceEnqueuer):
   The provided generator can be finite in which case the class will throw
   a `StopIteration` exception.
 
-  Used in `fit_generator`, `evaluate_generator`, `predict_generator`.
-
   Args:
       generator: a generator function which yields data
       use_multiprocessing: use multiprocessing if True, otherwise threading
-      wait_time: time to sleep in-between calls to `put()`
       random_seed: Initial seed for workers,
           will be incremented by one for each worker.
   """
 
-  def __init__(self, sequence,
+  def __init__(self, generator,
                use_multiprocessing=False,
                random_seed=None):
-    super(GeneratorEnqueuer, self).__init__(sequence, use_multiprocessing)
+    super(GeneratorEnqueuer, self).__init__(generator, use_multiprocessing)
     self.random_seed = random_seed
 
   def _get_executor_init(self, workers):

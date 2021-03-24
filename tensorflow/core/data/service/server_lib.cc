@@ -70,11 +70,13 @@ void GrpcDataServerBase::Stop() {
   if (stopped_) {
     return;
   }
-  StopServiceInternal();
-  server_->Shutdown();
+  if (server_) {
+    StopServiceInternal();
+    server_->Shutdown();
+    LOG(INFO) << "Shut down " << server_type_ << " server running at port "
+              << BoundPort();
+  }
   stopped_ = true;
-  LOG(INFO) << "Shut down " << server_type_ << " server running at port "
-            << BoundPort();
 }
 
 void GrpcDataServerBase::Join() { server_->Wait(); }

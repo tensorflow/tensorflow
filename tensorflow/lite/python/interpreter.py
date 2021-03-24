@@ -19,9 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import ctypes
+import enum
+import os
 import platform
 import sys
-import os
 
 import numpy as np
 
@@ -31,13 +32,20 @@ if not os.path.splitext(__file__)[0].endswith(
   # This file is part of tensorflow package.
   from tensorflow.lite.python.interpreter_wrapper import _pywrap_tensorflow_interpreter_wrapper as _interpreter_wrapper
   from tensorflow.python.util.tf_export import tf_export as _tf_export
+  try:
+    from tensorflow.lite.python import metrics_portable as metrics
+  except ImportError:
+    from tensorflow.lite.python import metrics_nonportable as metrics
 else:
   # This file is part of tflite_runtime package.
   from tflite_runtime import _pywrap_tensorflow_interpreter_wrapper as _interpreter_wrapper
+  from tflite_runtime import metrics_portable as metrics
 
   def _tf_export(*x, **kwargs):
     del x, kwargs
     return lambda x: x
+
+# pylint: enable=g-import-not-at-top
 
 
 class Delegate(object):
@@ -231,6 +239,51 @@ class SignatureRunner(object):
     return result
 
 
+@_tf_export('lite.experimental.OpResolverType')
+@enum.unique
+class OpResolverType(enum.Enum):
+  """Different types of op resolvers for Tensorflow Lite.
+
+  * `AUTO`: Indicates the op resolver that is chosen by default in TfLite
+     Python, which is the "BUILTIN" as described below.
+  * `BUILTIN`: Indicates the op resolver for built-in ops with optimized kernel
+    implementation.
+  * `BUILTIN_REF`: Indicates the op resolver for built-in ops with reference
+    kernel implementation. It's generally used for testing and debugging.
+  * `BUILTIN_WITHOUT_DEFAULT_DELEGATES`: Indicates the op resolver for
+    built-in ops with optimized kernel implementation, but it will disable
+    the application of default TfLite delegates (like the XNNPACK delegate) to
+    the model graph. Generally this should not be used unless there are issues
+    with the default configuration.
+  """
+  # Corresponds to an op resolver chosen by default in TfLite Python.
+  AUTO = 0
+
+  # Corresponds to tflite::ops::builtin::BuiltinOpResolver in C++.
+  BUILTIN = 1
+
+  # Corresponds to tflite::ops::builtin::BuiltinRefOpResolver in C++.
+  BUILTIN_REF = 2
+
+  # Corresponds to
+  # tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates in C++.
+  BUILTIN_WITHOUT_DEFAULT_DELEGATES = 3
+
+
+def _get_op_resolver_id(op_resolver_type=OpResolverType.AUTO):
+  """Get a integer identifier for the op resolver."""
+
+  # Note: the integer identifier value needs to be same w/ op resolver ids
+  # defined in interpreter_wrapper/interpreter_wrapper.cc.
+  return {
+      # Note AUTO and BUILTIN currently share the same identifier.
+      OpResolverType.AUTO: 1,
+      OpResolverType.BUILTIN: 1,
+      OpResolverType.BUILTIN_REF: 2,
+      OpResolverType.BUILTIN_WITHOUT_DEFAULT_DELEGATES: 3
+  }.get(op_resolver_type, None)
+
+
 @_tf_export('lite.Interpreter')
 class Interpreter(object):
   """Interpreter interface for TensorFlow Lite Models.
@@ -250,7 +303,9 @@ class Interpreter(object):
                model_path=None,
                model_content=None,
                experimental_delegates=None,
-               num_threads=None):
+               num_threads=None,
+               experimental_op_resolver_type=OpResolverType.AUTO,
+               experimental_preserve_all_tensors=False):
     """Constructor.
 
     Args:
@@ -263,12 +318,25 @@ class Interpreter(object):
         available to CPU kernels. If not set, the interpreter will use an
         implementation-dependent default number of threads. Currently, only a
         subset of kernels, such as conv, support multi-threading.
+      experimental_op_resolver_type: The op resolver used by the interpreter. It
+        must be an instance of OpResolverType. By default, we use the built-in
+        op resolver which corresponds to tflite::ops::builtin::BuiltinOpResolver
+        in C++.
+      experimental_preserve_all_tensors: If true, then intermediate tensors
+        used during computation are preserved for inspection. Otherwise, reading
+        intermediate tensors provides undefined values.
 
     Raises:
       ValueError: If the interpreter was unable to create.
     """
     if not hasattr(self, '_custom_op_registerers'):
       self._custom_op_registerers = []
+
+    op_resolver_id = _get_op_resolver_id(experimental_op_resolver_type)
+    if op_resolver_id is None:
+      raise ValueError('Unrecognized passed in op resolver type: {}'.format(
+          experimental_op_resolver_type))
+
     if model_path and not model_content:
       custom_op_registerers_by_name = [
           x for x in self._custom_op_registerers if isinstance(x, str)
@@ -278,8 +346,9 @@ class Interpreter(object):
       ]
       self._interpreter = (
           _interpreter_wrapper.CreateWrapperFromFile(
-              model_path, custom_op_registerers_by_name,
-              custom_op_registerers_by_func))
+              model_path, op_resolver_id, custom_op_registerers_by_name,
+              custom_op_registerers_by_func,
+              experimental_preserve_all_tensors))
       if not self._interpreter:
         raise ValueError('Failed to open {}'.format(model_path))
     elif model_content and not model_path:
@@ -295,8 +364,9 @@ class Interpreter(object):
       self._model_content = model_content
       self._interpreter = (
           _interpreter_wrapper.CreateWrapperFromBuffer(
-              model_content, custom_op_registerers_by_name,
-              custom_op_registerers_by_func))
+              model_content, op_resolver_id, custom_op_registerers_by_name,
+              custom_op_registerers_by_func,
+              experimental_preserve_all_tensors))
     elif not model_content and not model_path:
       raise ValueError('`model_path` or `model_content` must be specified.')
     else:
@@ -320,6 +390,9 @@ class Interpreter(object):
         self._interpreter.ModifyGraphWithDelegate(
             delegate._get_native_delegate_pointer())  # pylint: disable=protected-access
     self._signature_defs = self.get_signature_list()
+
+    self._metrics = metrics.TFLiteMetrics()
+    self._metrics.increase_counter_interpreter_creation()
 
   def __del__(self):
     # Must make sure the interpreter is destroyed before things that

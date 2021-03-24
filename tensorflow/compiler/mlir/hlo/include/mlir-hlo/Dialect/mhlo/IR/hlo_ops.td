@@ -61,7 +61,7 @@ def HLO_ConstOp : HLO_Op<"constant",
   );
 
   let builders = [
-    OpBuilderDAG<(ins "Attribute":$value)>];
+    OpBuilder<(ins "Attribute":$value)>];
 
   let assemblyFormat = "attr-dict $value";
 
@@ -119,31 +119,30 @@ def HLO_CreateTokenOp : HLO_Op<"create_token", [NoSideEffect]> {
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
 
 class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
-      Type TensorType>: HLO_Op<mnemonic,
-        !listconcat(traits,
-        [InferShapedTypeOpInterface, InferFusibilityOpInterface,
-        SameOperandsAndResultShape])> {
-    let arguments = (ins TensorType:$operand);
-    let results = (outs TensorType);
-    let extraClassDeclaration = [{
-      static  LogicalResult inferReturnTypeComponents(
-          MLIRContext* context, Optional<Location> location,
-          ValueRange operands, DictionaryAttr attributes, RegionRange regions,
-          SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
-        return failure();
-      }
-      LogicalResult reifyReturnTypeShapes(
-          OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
-        return ::mlir::mhlo::deriveShapeFromFirstOperand(&builder, getOperation(),
-                                                         &reifiedReturnShapes);
-      }
-      bool inferInputOutputShapeEquality(int input, int output) {
-        return true;
-      }
-      llvm::Optional<Value> inferEffectiveWorkloadShape() {
-        return getOperation()->getResult(0);
-      }
-    }];
+    Type TensorType> : HLO_Op<mnemonic, traits # [Elementwise,
+    InferShapedTypeOpInterface, InferFusibilityOpInterface,
+    SameOperandsAndResultShape]> {
+  let arguments = (ins TensorType:$operand);
+  let results = (outs TensorType);
+  let extraClassDeclaration = [{
+    static  LogicalResult inferReturnTypeComponents(
+        MLIRContext* context, Optional<Location> location,
+        ValueRange operands, DictionaryAttr attributes, RegionRange regions,
+        SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
+      return failure();
+    }
+    LogicalResult reifyReturnTypeShapes(
+        OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
+      return ::mlir::mhlo::deriveShapeFromFirstOperand(&builder, getOperation(),
+                                                       &reifiedReturnShapes);
+    }
+    bool inferInputOutputShapeEquality(int input, int output) {
+      return true;
+    }
+    llvm::Optional<Value> inferEffectiveWorkloadShape() {
+      return getOperation()->getResult(0);
+    }
+  }];
 }
 
 // Abs supports complex to real, so element type is not guaranteed to match.
@@ -163,7 +162,7 @@ def HLO_ConvertOp : HLO_UnaryElementwiseOp<"convert",
     [NoSideEffect, SameOperandsAndResultShape], HLO_Tensor>,
     BASE_HLO_ConvertOp {
   let builders = [
-    OpBuilderDAG<(ins "Value":$operand, "Type":$result_element_ty)>];
+    OpBuilder<(ins "Value":$operand, "Type":$result_element_ty)>];
 
   let hasFolder = 1;
 
@@ -271,9 +270,8 @@ def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
 class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
-        HLO_Op<mnemonic, !listconcat(traits,
-        [InferShapedTypeOpInterface, InferFusibilityOpInterface,
-        SameOperandsAndResultShape])> {
+    HLO_Op<mnemonic, traits # [InferShapedTypeOpInterface,
+    InferFusibilityOpInterface, SameOperandsAndResultShape, Elementwise]> {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs
@@ -624,7 +622,7 @@ def HLO_ReduceOp: HLO_Op<"reduce", [
   let results = (outs Variadic<HLO_TensorOrTuple>);
 
   let builders = [
-    OpBuilderDAG<(ins "ValueRange":$operands, "ValueRange":$init_values,
+    OpBuilder<(ins "ValueRange":$operands, "ValueRange":$init_values,
       "DenseIntElementsAttr":$dimensions)>];
 
   let extraClassDeclaration = [{
@@ -662,7 +660,7 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]>, BASE_HLO
   let hasFolder = 1;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$value, "int32_t":$index)>];
+    OpBuilder<(ins "Value":$value, "int32_t":$index)>];
 }
 
 def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
@@ -670,7 +668,7 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
   let results = (outs HLO_Tuple);
 
   let builders = [
-    OpBuilderDAG<(ins "ValueRange":$values)>];
+    OpBuilder<(ins "ValueRange":$values)>];
 
   let hasCanonicalizer = 1;
 }
@@ -690,7 +688,7 @@ def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
   let hasFolder = 1;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$lhs, "Value":$rhs,
+    OpBuilder<(ins "Value":$lhs, "Value":$rhs,
       "StringAttr":$comparison_direction, CArg<"StringAttr", "{}">:$compare_type)>,
   ];
 
@@ -826,8 +824,9 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim",
-      [NoSideEffect]> {
+def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim", [
+    NoSideEffect, DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
+    ["reifyReturnTypeShapes"]>]> {
   string summary = "Broadcast a tensor into the given dynamic shape by adding dimensions.";
   string description = [{
     This is a generalization of the BroadcastInDimOp which accepts its output
@@ -888,6 +887,11 @@ def HLO_ConcatenateOp : HLO_Op<"concatenate",
   let hasCanonicalizer = 1;
   let hasFolder = 1;
 
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
+  }];
 }
 
 def HLO_CollectivePermuteOp: HLO_Op<"collective_permute",
@@ -1165,7 +1169,7 @@ def HLO_SortOp : HLO_Op<"sort", [RecursiveSideEffects,
   let regions = (region SizedRegion<1>:$comparator);
 
   let builders = [
-    OpBuilderDAG<(ins "ValueRange":$operands, CArg<"int64_t", "-1">:$dimension,
+    OpBuilder<(ins "ValueRange":$operands, CArg<"int64_t", "-1">:$dimension,
       CArg<"bool", "false">:$is_stable)>];
 
   // TODO(b/129422361): SortOp has special conversion logic to HLO.

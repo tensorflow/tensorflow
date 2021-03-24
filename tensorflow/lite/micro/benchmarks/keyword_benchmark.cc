@@ -37,9 +37,16 @@ namespace tflite {
 using KeywordBenchmarkRunner = MicroBenchmarkRunner<int16_t>;
 using KeywordOpResolver = MicroMutableOpResolver<6>;
 
+#if defined(HEXAGON)
+// TODO(b/174781826): reduce arena usage for optimized Hexagon kernels.
+constexpr int kOptimizedKernelArenaIncrement = 21000;
+#else
+constexpr int kOptimizedKernelArenaIncrement = 0;
+#endif
+
 // Create an area of memory to use for input, output, and intermediate arrays.
 // Align arena to 16 bytes to avoid alignment warnings on certain platforms.
-constexpr int kTensorArenaSize = 21 * 1024;
+constexpr int kTensorArenaSize = 21 * 1024 + kOptimizedKernelArenaIncrement;
 alignas(16) uint8_t tensor_arena[kTensorArenaSize];
 
 uint8_t benchmark_runner_buffer[sizeof(KeywordBenchmarkRunner)];

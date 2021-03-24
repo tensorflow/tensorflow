@@ -130,6 +130,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::DivNoNanOp>(),
     TypeID::get<TF::EluGradOp>(),
     TypeID::get<TF::EluOp>(),
+    TypeID::get<TF::EnsureShapeOp>(),
     TypeID::get<TF::EqualOp>(),
     TypeID::get<TF::ErfcOp>(),
     TypeID::get<TF::ErfinvOp>(),
@@ -599,7 +600,7 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
   LegalizeTF(const LegalizeTF&) {}
 
   void runOnFunction() override {
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     patterns.insert<Tf2XlaRewritePattern>(device_type_);
     if (failed(
             applyPatternsAndFoldGreedily(getFunction(), std::move(patterns))))

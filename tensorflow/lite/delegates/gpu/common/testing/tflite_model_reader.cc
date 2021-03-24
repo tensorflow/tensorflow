@@ -34,13 +34,21 @@ namespace {
 
 class DelegateContext {
  public:
+  struct DelegateData {
+    std::vector<int> input_ids;
+    std::vector<int> output_ids;
+    GraphFloat32* graph;
+  };
   bool Init(TfLiteContext* context,
             const TfLiteDelegateParams* delegate_params) {
-    auto denormalized_graph =
-        reinterpret_cast<GraphFloat32*>(delegate_params->delegate->data_);
-    return denormalized_graph
-               ? BuildModel(context, delegate_params, denormalized_graph).ok()
-               : false;
+    const auto* delegate_data =
+        reinterpret_cast<DelegateData*>(delegate_params->delegate->data_);
+
+    return delegate_data->graph &&
+           BuildModelEnforceIO(context, delegate_params,
+                               delegate_data->input_ids,
+                               delegate_data->output_ids, delegate_data->graph)
+               .ok();
   }
 };
 
@@ -82,7 +90,11 @@ absl::Status BuildFromFlatBuffer(const tflite::FlatBufferModel& flatbuffer,
     return absl::InternalError("Unable to prepare TfLite interpreter.");
   }
   TfLiteDelegate delegate;
-  delegate.data_ = graph;
+
+  DelegateContext::DelegateData delegate_data{interpreter->inputs(),
+                                              interpreter->outputs(), graph};
+
+  delegate.data_ = &delegate_data;
   delegate.flags = kTfLiteDelegateFlagsNone;
   delegate.Prepare = DelegatePrepare;
   delegate.CopyFromBufferHandle = nullptr;

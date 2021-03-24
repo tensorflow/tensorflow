@@ -40,6 +40,10 @@ XlaIfOp::XlaIfOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     has_token_input_output_ = false;
   } else {
     has_token_input_output_ = !token_input_nodes_.empty();
+    if (!ctx->GetAttr(kXlaOriginalOutsideCompilationNodeName,
+                      &original_node_name_)
+             .ok())
+      original_node_name_ = name();
   }
   if (ctx->HasAttr(kPropagateCompileTimeConsts)) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kPropagateCompileTimeConsts,
@@ -326,7 +330,8 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
                 errors::FailedPrecondition(
                     "Token output is not token type: ",
                     xla::ShapeUtil::HumanString(shape_or.ValueOrDie())));
-    OP_REQUIRES_OK(ctx, compiler->SetNodeToken(name(), token_output));
+    OP_REQUIRES_OK(ctx,
+                   compiler->SetNodeToken(original_node_name_, token_output));
   }
 
   // Updates the values of any resource variables modified by the conditional

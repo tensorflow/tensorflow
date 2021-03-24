@@ -223,11 +223,11 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         num_parallel_calls_->value = ctx->runner_threadpool_size();
       }
       cancellation_manager_ = absl::make_unique<CancellationManager>();
-      IteratorContext::Params params(ctx);
-      params.cancellation_manager = cancellation_manager_.get();
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(),
           [this]() { CancelThreads(/*wait=*/false); }, &deregister_fn_));
+      IteratorContext::Params params(ctx);
+      params.cancellation_manager = cancellation_manager_.get();
       TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
           IteratorContext(params), this, prefix(), &input_impl_));
       return dataset()->captured_func_->Instantiate(
@@ -644,9 +644,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     const bool autotune_;
     // Counts the number of outstanding calls.
     int64 num_calls_ TF_GUARDED_BY(*mu_) = 0;
-    // Controls cancellation of `input_impl_`.
-    // Must be ordered before `input_impl_` so that `input_impl_` is destroyed
-    // first.
+    // Controls cancellation of `input_impl_`. Must be ordered before
+    // `input_impl_` so that `input_impl_` is destroyed first.
     std::unique_ptr<CancellationManager> cancellation_manager_;
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     // Must be ordered after `cancellation_manager_` so that `input_impl_` is

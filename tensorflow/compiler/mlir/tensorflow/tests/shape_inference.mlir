@@ -369,8 +369,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // Tests that tensor.cast result shapes are refined.
   // CHECK-LABEL: func @tensor_cast_refine
   func @tensor_cast_refine(%arg0: tensor<4xi32>) -> (tensor<*xi32>) {
-    // CHECK: tensor.cast
-    // CHECK-SAME: tensor<4xi32> to tensor<4xi32>
+    // CHECK-NOT: tensor.cast
     %0 = tensor.cast %arg0 : tensor<4xi32> to tensor<*xi32>
     return %0 : tensor<*xi32>
   }
@@ -470,8 +469,9 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
         // CHECK: tf.TensorListSetItem{{.*}}: (tensor<!tf.variant<tensor<2x2xf32>>>, tensor<i32>, tensor<2x2xf32>) -> tensor<!tf.variant<tensor<2x2xf32>>>
         %6 = "tf.TensorListSetItem"(%3, %4, %5) {device = ""} : (tensor<!tf.variant<tensor<*xf32>>>, tensor<i32>, tensor<2x2xf32>)-> tensor<*x!tf.variant>
         %7 = "tf.Const"() {device = "", value = dense<-1> : tensor<i32>} : () -> tensor<i32>
+        %8 = "tf.StopGradient"(%6) : (tensor<*x!tf.variant>) -> tensor<*x!tf.variant>
         // CHECK: tf.TensorListStack{{.*}}: (tensor<!tf.variant<tensor<2x2xf32>>>, tensor<i32>) -> tensor<?x2x2xf32>
-        %8 = "tf.TensorListStack"(%6, %7) {device = "", num_elements = -1 : i64} : (tensor<*x!tf.variant>, tensor<i32>) -> tensor<*xf32>
+        %9 = "tf.TensorListStack"(%8, %7) {device = "", num_elements = -1 : i64} : (tensor<*x!tf.variant>, tensor<i32>) -> tensor<*xf32>
         tf_executor.yield
       }
       tf_executor.fetch
@@ -787,13 +787,20 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return %3#0, %3#1 : tensor<*xf32>, tensor<*xf32>
   }
 
-  // CHECK-LABEL: func @tensor_cast(%arg0: tensor<1xi32>) -> tensor<1xi32>
-  func @tensor_cast(%arg0: tensor<1xi32>) -> tensor<*xi32> {
+  // CHECK-LABEL: func @tensor_cast_dont_infer
+  func @tensor_cast_dont_infer(%arg0: tensor<?xi32>) -> tensor<1xi32> {
    // CHECK: %[[RESULT:.*]] = tensor.cast
-   // CHECK-SAME: tensor<1xi32> to tensor<1xi32>
+   // CHECK-SAME: tensor<?xi32> to tensor<1xi32>
    // CHECK: return %[[RESULT]] : tensor<1xi32>
-    %1 = tensor.cast %arg0 : tensor<1xi32> to tensor<*xi32>
-    return %1 : tensor<*xi32>
+    %2 = tensor.cast %arg0 : tensor<?xi32> to tensor<1xi32>
+    return %2 : tensor<1xi32>
+  }
+
+  // CHECK-LABEL: func @tensor_cast_partial_infer
+  func @tensor_cast_partial_infer(%arg0: tensor<?x10xi32>) -> tensor<10x?xi32> {
+   // CHECK: return {{.*}} : tensor<10x10xi32>
+    %2 = tensor.cast %arg0 : tensor<?x10xi32> to tensor<10x?xi32>
+    return %2 : tensor<10x?xi32>
   }
 
   // CHECK-LABEL: operand_pack_unranked
@@ -1147,5 +1154,30 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK: SpaceToBatchND{{.*}}-> tensor<4x98x130x128xf32>
     %3 = "tf.SpaceToBatchND"(%arg0, %0, %2) {device = ""} : (tensor<1x192x256x128xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<4x?x?x128xf32>
     return
+  }
+
+  // CHECK-LABEL: check_subtyperefinement
+  func @check_subtyperefinement(%arg0 : tensor<1x192x256x128xf32>, %arg1 :  tensor<i32>, %arg2 :  tensor<!tf.variant>) {
+  // CHECK: TensorListReserve
+  // CHECK-SAME: -> tensor<!tf.variant<tensor<!tf.variant>>>
+    %0 = "tf.TensorListReserve"(%arg1, %arg1) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<!tf.variant<tensor<*x!tf.variant>>>
+    %1 = "tf.TensorListSetItem"(%0, %arg1, %arg2) {device = ""} : (tensor<!tf.variant<tensor<*x!tf.variant>>>, tensor<i32>, tensor<!tf.variant>) -> tensor<!tf.variant<tensor<*x!tf.variant>>>
+    return
+  }
+
+  // CHECK-LABEL: call_partitioned_call_const_index() -> (tensor<index>, tensor<?xindex>)
+  func @call_partitioned_call_const_index() -> (tensor<*xindex>, tensor<?xindex>) {
+    %0 = call @partitioned_called_const_index() : () -> tensor<*xindex>
+    // CHECK: tensor.cast{{.*}} : tensor<index> to tensor<*xindex>
+    %1 = shape.shape_of %0 : tensor<*xindex> -> tensor<?xindex>
+    return %0, %1 : tensor<*xindex>, tensor<?xindex>
+  }
+  // CHECK-LABEL: func @partitioned_called_const_index
+  // CHECK-SAME: -> tensor<index>
+  func @partitioned_called_const_index() -> (tensor<*xindex>) {
+    %0 = constant dense<5> : tensor<index>
+    // CHECK-NOT: tensor.cast
+    %1 = tensor.cast %0 : tensor<index> to tensor<*xindex>
+    return %1 : tensor<*xindex>
   }
 }

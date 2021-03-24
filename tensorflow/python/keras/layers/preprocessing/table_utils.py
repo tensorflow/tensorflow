@@ -13,18 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 """Utilities for working with tf.lookup tables in Keras."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import collections
 import os
 import numpy as np
 
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
@@ -50,7 +46,7 @@ class TableHandler(object):
     # it. However, not all tables have initializers, so we try-except here.
     if use_v1_apis:
       try:
-        K.get_session().run(self.table.initializer)
+        backend.get_session().run(self.table.initializer)
       except AttributeError:
         pass
 
@@ -194,13 +190,13 @@ class TableHandler(object):
 
   def _eval(self, tensor):
     if self.use_v1_apis:
-      return K.get_session().run(tensor)
+      return backend.get_session().run(tensor)
     else:
       return tensor.numpy()
 
   def _run(self, op):
     if self.use_v1_apis:
-      K.get_session().run(op)
+      backend.get_session().run(op)
 
 
 def get_vocabulary_from_file(vocabulary_path, encoding="utf-8"):
@@ -234,21 +230,3 @@ def find_repeated_tokens(vocabulary):
   else:
     return []
 
-
-def assert_same_type(expected_type, values, value_name):
-  """Assert that 'values' is of type 'expected_type'."""
-  if dtypes.as_dtype(expected_type) != dtypes.as_dtype(values.dtype):
-    raise RuntimeError("Expected %s type %s, got %s" %
-                       (value_name, expected_type, values.dtype))
-
-
-def convert_to_ndarray(x, dtype=None):
-  """Convert 'x' to a numpy array."""
-  array = np.array(x) if isinstance(x, (list, tuple)) else x
-  if dtype not in (None, dtypes.string):
-    # If the dtype is an integer, we do permissive casting. This allows
-    # users to examine int32 data if the dtype is int64 without trouble.
-    np_dtype = dtypes.as_dtype(dtype).as_numpy_dtype
-    if np.can_cast(array.dtype, np_dtype):
-      array = array.astype(np_dtype, casting="safe")
-  return array

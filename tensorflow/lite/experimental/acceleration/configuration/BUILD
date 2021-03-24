@@ -180,3 +180,15 @@ cc_library(
     ],
     alwayslink = 1,  # For registration to always run.
 )
+
+cc_library(
+    name = "xnnpack_plugin",
+    srcs = ["xnnpack_plugin.cc"],
+    deps = [
+        ":configuration_fbs",
+        ":delegate_registry",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "@com_google_absl//absl/memory",
+    ],
+    alwayslink = 1,  # For registration to always run.
+)

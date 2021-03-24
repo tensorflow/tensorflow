@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+
 namespace mlir {
 namespace TF {
 
@@ -129,6 +131,10 @@ SymbolRefAttr FuncAttr::GetName() const {
 
 DictionaryAttr FuncAttr::GetAttrs() const {
   return getImpl()->attrs.cast<DictionaryAttr>();
+}
+
+void TensorFlowDialect::registerAttributes() {
+  addAttributes<ShapeAttr, FuncAttr>();
 }
 
 }  // namespace TF

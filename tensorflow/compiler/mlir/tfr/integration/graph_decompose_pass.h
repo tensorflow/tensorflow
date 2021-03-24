@@ -35,12 +35,14 @@ class GraphDecomposePass : public MlirOptimizationPass {
   // to MLIR even no tf composition file is found.
   ::tensorflow::MlirOptimizationPassState GetPassState(
       const DeviceSet* device_set, const ConfigProto& config_proto,
-      const Graph& graph) const override;
+      const Graph& graph,
+      const FunctionLibraryDefinition& function_library) const override;
 
   // This should be used as a thin mapper around mlir::ModulePass::runOnModule
   // API integrated with the Tensorflow runtime.
   Status Run(const ConfigProto& config_proto, mlir::ModuleOp module,
-             const Graph& graph) override;
+             const Graph& graph,
+             const FunctionLibraryDefinition& function_library) override;
 };
 
 }  // namespace tfr

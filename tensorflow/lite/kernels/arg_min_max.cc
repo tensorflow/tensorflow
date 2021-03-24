@@ -119,15 +119,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-template <typename T>
-std::function<bool(T, T)> GetComparefunction(bool is_arg_max) {
-  if (is_arg_max) {
-    return std::greater<T>();
-  } else {
-    return std::less<T>();
-  }
-}
-
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
   const TfLiteTensor* input;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
@@ -144,8 +135,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
   optimized_ops::ArgMinMax(                                    \
       GetTensorShape(input), GetTensorData<data_type>(input),  \
       GetTensorData<axis_type>(axis), GetTensorShape(output),  \
-      GetTensorData<output_type>(output),                      \
-      GetComparefunction<data_type>(is_arg_max))
+      GetTensorData<output_type>(output), is_arg_max)
   if (axis->type == kTfLiteInt32) {
     switch (output->type) {
       case kTfLiteInt32: {

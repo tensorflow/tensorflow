@@ -21,12 +21,18 @@ limitations under the License.
 #include <complex>
 #include <limits>
 #include <memory>
+#ifndef TF_LITE_STATIC_MEMORY
 #include <string>
+#endif  // TF_LITE_STATIC_MEMORY
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+
+#if defined(__APPLE__)
+#include "TargetConditionals.h"
+#endif
 
 namespace tflite {
 
@@ -507,6 +513,17 @@ int TfLiteTypeGetSize(TfLiteType type) {
     default:
       return 0;
   }
+}
+
+bool IsMobilePlatform() {
+#if defined(ANDROID) || defined(__ANDROID__)
+  return true;
+#elif defined(__APPLE__)
+#if TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE
+  return true;
+#endif
+#endif
+  return false;
 }
 
 }  // namespace tflite

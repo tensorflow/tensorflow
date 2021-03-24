@@ -15,6 +15,8 @@
 
 # C API for delegate plugins.
 
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+
 package(
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],  # Apache 2.0
@@ -23,6 +25,7 @@ package(
 cc_library(
     name = "delegate_plugin",
     hdrs = ["delegate_plugin.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/c:common",

@@ -210,7 +210,7 @@ class DecomposeRngReadAndSkipOp : public RewritePattern {
 void PopulateDecomposeResourceOpsPatterns(MLIRContext *context,
                                           OwningRewritePatternList *patterns) {
   patterns->insert<DecomposeRngReadAndSkipOp>(context);
-  populateWithGenerated(context, *patterns);
+  populateWithGenerated(*patterns);
 }
 
 }  // namespace TF

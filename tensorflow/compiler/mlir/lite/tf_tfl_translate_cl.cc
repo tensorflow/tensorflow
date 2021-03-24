@@ -109,3 +109,12 @@ opt<bool> convert_tf_while_to_tfl_while(
     "convert_tf_while_to_tfl_while",
     llvm::cl::desc("Whether to legalize TF While to TFL While."),
     llvm::cl::init(true));
+
+// A list of comma separated TF operators which are created by the user.
+// This must be used with `-emit-select-tf-ops=true`.
+// NOLINTNEXTLINE
+opt<std::string> select_user_tf_ops(
+    "select-user-tf-ops",
+    llvm::cl::desc(
+        "<list of custom tf ops created by the user (comma separated)>"),
+    llvm::cl::init(""));

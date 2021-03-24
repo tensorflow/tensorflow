@@ -30,6 +30,7 @@ limitations under the License.
 namespace tensorflow {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
+using GPUDevice = Eigen::GpuDevice;
 
 template <typename Device>
 class SparseReshapeOp : public OpKernel {
@@ -45,5 +46,14 @@ class SparseReshapeOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("SparseReshape").Device(DEVICE_CPU),
                         SparseReshapeOp<CPUDevice>)
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+REGISTER_KERNEL_BUILDER(Name("SparseReshape")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("input_shape")
+                            .HostMemory("new_shape")
+                            .HostMemory("output_shape"),
+                        SparseReshapeOp<GPUDevice>)
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

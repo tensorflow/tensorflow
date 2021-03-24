@@ -189,7 +189,8 @@ PyTreeDef::Flatten(py::handle x, absl::optional<py::function> leaf_predicate) {
   return true;
 }
 
-py::object PyTreeDef::Unflatten(py::iterable leaves) const {
+template <typename T>
+py::object PyTreeDef::UnflattenImpl(T leaves) const {
   std::vector<py::object> agenda;
   auto it = leaves.begin();
   int leaf_count = 0;
@@ -235,6 +236,14 @@ py::object PyTreeDef::Unflatten(py::iterable leaves) const {
     throw std::logic_error("PyTreeDef traversal did not yield a singleton.");
   }
   return std::move(agenda.back());
+}
+
+py::object PyTreeDef::Unflatten(py::iterable leaves) const {
+  return UnflattenImpl(leaves);
+}
+
+py::object PyTreeDef::Unflatten(absl::Span<const py::object> leaves) const {
+  return UnflattenImpl(leaves);
 }
 
 /*static*/ py::object PyTreeDef::MakeNode(const PyTreeDef::Node& node,
@@ -632,7 +641,9 @@ void BuildPytreeSubmodule(py::module& m) {
   pytree.def("all_leaves", &PyTreeDef::AllLeaves);
 
   py::class_<PyTreeDef>(m, "PyTreeDef")
-      .def("unflatten", &PyTreeDef::Unflatten)
+      .def("unflatten",
+           static_cast<pybind11::object (PyTreeDef::*)(
+               pybind11::iterable leaves) const>(&PyTreeDef::Unflatten))
       .def("flatten_up_to", &PyTreeDef::FlattenUpTo)
       .def("compose", &PyTreeDef::Compose)
       .def("walk", &PyTreeDef::Walk)

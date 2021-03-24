@@ -44,36 +44,71 @@ std::string Split::GetSplitCode() {
   const std::string task_slices =
       attr_.axis == Axis::CHANNELS ? "1" : "args.src_tensor.Slices()";
 
+  std::map<Axis, std::string> axis_to_selector = {
+      {Axis::WIDTH, "Width"}, {Axis::HEIGHT, "Height"},
+      {Axis::DEPTH, "Depth"}, {Axis::CHANNELS, "Slices"},
+      {Axis::BATCH, "Batch"},
+  };
+  std::map<Axis, std::string> axis_to_coord = {
+      {Axis::WIDTH, "X"},    {Axis::HEIGHT, "Y"}, {Axis::DEPTH, "D"},
+      {Axis::CHANNELS, "S"}, {Axis::BATCH, "B"},
+  };
+
   std::string c;
   c += "MAIN_FUNCTION($0) {\n";
-  c += "  int task_width = "
-       ";\n";
   if (definition_.src_tensors[0].HasAxis(Axis::BATCH)) {
     c += "  int linear_id = GLOBAL_ID_0;\n";
     c += "  int X = linear_id / " + task_batch + ";\n";
     c += "  int B = linear_id % " + task_batch + ";\n";
+    c += "  if (X >= " + task_width + ") return;\n";
   } else {
     c += "  int X = GLOBAL_ID_0;\n";
+    c += "  if (X >= " + task_width + ") return;\n";
   }
   if (definition_.src_tensors[0].HasAxis(Axis::DEPTH)) {
     c += "  int linear_id = GLOBAL_ID_1;\n";
     c += "  int Y = linear_id % " + task_height + ";\n";
-    c += "  int B = linear_id / " + task_height + ";\n";
+    c += "  int D = linear_id / " + task_height + ";\n";
+    c += "  if (D >= " + task_depth + ") return;\n";
   } else {
     c += "  int Y = GLOBAL_ID_1;\n";
+    c += "  if (Y >= " + task_height + ") return;\n";
   }
   c += "  int S = GLOBAL_ID_2;\n";
-  c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
-       "S >= args.dst_tensor.Slices()) { \n";
-  c += "    return; \n";
-  c += "  } \n";
+  c += "  if (S >= " + task_slices + ") return;\n";
   c += "  int src_counter = 0;\n";
+  std::vector<std::string> src_coords;
+  for (auto axis :
+       {Axis::WIDTH, Axis::HEIGHT, Axis::DEPTH, Axis::CHANNELS, Axis::BATCH}) {
+    if (definition_.src_tensors[0].HasAxis(axis)) {
+      const std::string coord_name =
+          attr_.axis == axis ? "src_counter" : axis_to_coord[axis];
+      src_coords.push_back(coord_name);
+    }
+  }
+  std::string src_coords_str = src_coords[0];
+  for (int i = 1; i < src_coords.size(); ++i) {
+    src_coords_str += ", " + src_coords[i];
+  }
   for (int i = 0; i < definition_.dst_tensors.size(); ++i) {
+    std::vector<std::string> dst_coords;
+    for (auto axis : {Axis::WIDTH, Axis::HEIGHT, Axis::DEPTH, Axis::CHANNELS,
+                      Axis::BATCH}) {
+      if (definition_.dst_tensors[i].HasAxis(axis)) {
+        const std::string coord_name =
+            attr_.axis == axis ? "i" : axis_to_coord[axis];
+        dst_coords.push_back(coord_name);
+      }
+    }
+    std::string dst_coords_str = dst_coords[0];
+    for (int j = 1; j < dst_coords.size(); ++j) {
+      dst_coords_str += ", " + dst_coords[j];
+    }
     const std::string dst_name = "args.dst_tensor_" + std::to_string(i);
-    c += "  for (int i = 0; i < " + dst_name +
-         ".Slices(); ++i, src_counter++) {\n";
-    c += "    FLT4 result = args.src_tensor.Read(s_x, s_y, src_counter);\n";
-    c += "    " + dst_name + ".Write(result, X, Y, i);\n";
+    c += "  for (int i = 0; i < " + dst_name + "." +
+         axis_to_selector[attr_.axis] + "(); ++i, src_counter++) {\n";
+    c += "    FLT4 result = args.src_tensor.Read(" + src_coords_str + ");\n";
+    c += "    " + dst_name + ".Write(result, " + dst_coords_str + ");\n";
     c += "  }\n";
   }
   c += "}\n";

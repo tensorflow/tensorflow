@@ -816,7 +816,7 @@ struct ConvertIdentity : public OpConversionPattern<TF::IdentityOp> {
       ConversionPatternRewriter &rewriter) const override {
     Value input = operands[0];
     rewriter.replaceOpWithNewOp<TF::IdentityOp>(op, input.getType(), operands,
-                                                op.getAttrs());
+                                                op->getAttrs());
     return success();
   }
 };
@@ -948,8 +948,8 @@ struct ConvertWhile : public OpConversionPattern<TF::WhileOp> {
 
     // Create a new while op with new operands and updated result types.
     auto converted = rewriter.create<TF::WhileOp>(op.getLoc(), result_types,
-                                                  operands, op.getAttrs());
-    converted.removeAttr("T");
+                                                  operands, op->getAttrs());
+    converted->removeAttr("T");
     (void)UpdateFunctionTypes(rewriter, converted, tensor_list_args);
 
     rewriter.replaceOp(op, converted.getResults());
@@ -972,7 +972,7 @@ struct ConvertWhileRegion : public OpConversionPattern<TF::WhileRegionOp> {
 
     // Create a new while op with new operands and updated result types.
     auto converted = rewriter.create<TF::WhileRegionOp>(
-        op.getLoc(), result_types, operands, op.getAttrs());
+        op.getLoc(), result_types, operands, op->getAttrs());
 
     // Inline the regions from the old while into the new one, and apply
     // signature conversion to inlined region.
@@ -1036,8 +1036,8 @@ void LowerStaticTensorListPass::runOnOperation() {
   target.addLegalOp<TFL::UnidirectionalSequenceRNNOp>();
   target.addLegalOp<TFL::BidirectionalSequenceLSTMOp>();
 
-  OwningRewritePatternList patterns;
-  populateWithGenerated(context, patterns);
+  OwningRewritePatternList patterns(&getContext());
+  populateWithGenerated(patterns);
   patterns.insert<ConvertConst, ConvertIdentity, ConvertTensorListGetItem,
                   ConvertTensorListLength, ConvertTensorListPushBack,
                   ConvertTensorListSetItem, ConvertTensorListStack,

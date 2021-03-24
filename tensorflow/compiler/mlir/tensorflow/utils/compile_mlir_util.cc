@@ -148,6 +148,7 @@ Status GetOutputInfo(
 
   outputs->clear();
   outputs->reserve(func_type.getNumResults());
+  resource_updates->clear();
   resource_updates->reserve(func_type.getNumResults());
 
   std::vector<xla::Shape> shapes;
@@ -320,6 +321,7 @@ void CreateConvertMlirToXlaHloPipeline(
   // inside PromoteResourcesToArgs.
   pm.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
 
+  pm.addPass(mlir::mhlo::CreateLegalizeTfTypesPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/true, /*legalize_chlo=*/true,
       /*tf2xla_fallback_device_type=*/device_type));

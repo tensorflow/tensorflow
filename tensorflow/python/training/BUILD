@@ -1382,6 +1382,7 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python/saved_model",
     ],
 )
 

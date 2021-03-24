@@ -178,6 +178,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -433,6 +434,7 @@ cc_library(
     hdrs = ["linear_storage.h"],
     deps = [
         ":cl_context",
+        ":cl_image_format",
         ":gpu_object",
         ":opencl_wrapper",
         ":util",
@@ -556,6 +558,7 @@ cc_library(
     deps = [
         ":cl_command_queue",
         ":cl_context",
+        ":cl_image_format",
         ":gpu_object",
         ":opencl_wrapper",
         ":util",

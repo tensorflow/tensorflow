@@ -15,8 +15,23 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 
+#include "absl/base/casts.h"
+
 namespace xla {
 
 PjRtBuffer::ExternalReference::~ExternalReference() = default;
+
+StatusOr<std::uintptr_t> PjRtClient::UnsafeBufferPointer(PjRtBuffer* buffer) {
+  if (buffer->on_device_shape().IsTuple()) {
+    return Unimplemented(
+        "unsafe_buffer_pointer is not implemented for tuple buffers.");
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold,
+      buffer->AcquireExternalReference());
+  const void* ptr = external_reference_hold->OpaqueDeviceMemoryDataPointer();
+  return absl::bit_cast<std::uintptr_t>(ptr);
+}
 
 }  // namespace xla

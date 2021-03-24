@@ -25,6 +25,11 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/errors.h"
 
+// Note: Most of the operators defined in this module are used by the jax2tf
+// converter (see go/jax2tf for details) and are used in SavedModel produced
+// by jax2tf. Hence, we need to maintain backwards compatibility for these
+// operators. Please reach out to the JAX team if you want to make changes.
+
 namespace tensorflow {
 namespace {
 

@@ -193,6 +193,14 @@ Status RoundRobinTaskRunner::PrepareRound(const GetElementRequest& req) {
   if (current_round_ < req.round_index() && cancelled_) {
     return errors::Cancelled("Worker is shutting down.");
   }
+  if (current_round_ != req.round_index()) {
+    return errors::FailedPrecondition(
+        "Consumer ", req.consumer_index(), " requested data for round ",
+        req.round_index(), ", but the current round has already reached ",
+        current_round_,
+        ". This may indicate that the consumer was restarted with the same job "
+        "name.`");
+  }
   return prefetch_thread_.GetStatus();
 }
 

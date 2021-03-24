@@ -1,6 +1,6 @@
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_cuda_is_configured_compat",
     "tf_copts",
     "tf_cuda_library",
 )
@@ -90,7 +90,7 @@ tf_cuda_cc_test(
 
 tf_cuda_library(
     name = "cupti_interface",
-    hdrs = if_cuda_is_configured_compat(["cupti_interface.h"]),
+    hdrs = if_cuda(["cupti_interface.h"]),
     copts = tf_profiler_copts() + tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -107,8 +107,8 @@ tf_cuda_library(
 # that the wrapper is about the only direct user.
 tf_cuda_library(
     name = "cupti_wrapper",
-    srcs = if_cuda_is_configured_compat(["cupti_wrapper.cc"]),
-    hdrs = if_cuda_is_configured_compat(["cupti_wrapper.h"]),
+    srcs = if_cuda(["cupti_wrapper.cc"]),
+    hdrs = if_cuda(["cupti_wrapper.h"]),
     copts = tf_profiler_copts() + tf_copts(),
     linkstatic = 1,
     visibility = ["//visibility:public"],
@@ -119,8 +119,8 @@ tf_cuda_library(
 
 tf_cuda_library(
     name = "cupti_tracer",
-    srcs = if_cuda_is_configured_compat(["cupti_tracer.cc"]),
-    hdrs = if_cuda_is_configured_compat(["cupti_tracer.h"]),
+    srcs = if_cuda(["cupti_tracer.cc"]),
+    hdrs = if_cuda(["cupti_tracer.h"]),
     copts = tf_profiler_copts() + tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -140,8 +140,8 @@ tf_cuda_library(
 
 tf_cuda_library(
     name = "nvtx_utils",
-    srcs = if_cuda_is_configured_compat(["nvtx_utils.cc"]),
-    hdrs = if_cuda_is_configured_compat(["nvtx_utils.h"]),
+    srcs = if_cuda(["nvtx_utils.cc"]),
+    hdrs = if_cuda(["nvtx_utils.h"]),
     copts = tf_profiler_copts() + tf_copts(),
     deps = [
         "//tensorflow/core:lib",
@@ -150,8 +150,8 @@ tf_cuda_library(
 
 tf_cuda_library(
     name = "cupti_collector",
-    srcs = if_cuda_is_configured_compat(["cupti_collector.cc"]),
-    hdrs = if_cuda_is_configured_compat(["cupti_collector.h"]),
+    srcs = if_cuda(["cupti_collector.cc"]),
+    hdrs = if_cuda(["cupti_collector.h"]),
     copts = tf_profiler_copts() + tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -192,7 +192,7 @@ cc_library(
 
 tf_cuda_library(
     name = "cupti_utils",
-    srcs = if_cuda_is_configured_compat(["cupti_utils.cc"]),
+    srcs = if_cuda(["cupti_utils.cc"]),
     copts = tf_profiler_copts() + tf_copts(),
     cuda_deps = [
         ":cupti_interface",

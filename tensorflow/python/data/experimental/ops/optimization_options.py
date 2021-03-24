@@ -418,3 +418,9 @@ class OptimizationOptions(options.OptionsBase):
       self.reorder_data_discarding_ops = pb.reorder_data_discarding_ops
     if pb.WhichOneof("optional_shuffle_and_repeat_fusion") is not None:
       self.shuffle_and_repeat_fusion = pb.shuffle_and_repeat_fusion
+
+  def _set_mutable(self, mutable):
+    """Change the mutability value to `mutable` on this options and children."""
+    # pylint: disable=protected-access
+    object.__setattr__(self, "_mutable", mutable)
+    self.map_vectorization._set_mutable(mutable)

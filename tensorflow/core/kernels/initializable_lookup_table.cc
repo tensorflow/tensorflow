@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/initializable_lookup_table.h"
+
+#include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
@@ -35,10 +37,35 @@ Status InitializableLookupTable::ImportValues(OpKernelContext* ctx,
                                               const Tensor& keys,
                                               const Tensor& values) {
   lookup::KeyValueTensorIterator iter(&keys, &values);
-  return Initialize(iter);
+  InitializerAsGraphDefFunc func = [keys, values](GraphDefBuilder* builder,
+                                                  Node* table, Node** out) {
+    Node* keys_node =
+        ops::SourceOp("Const", builder->opts()
+                                   .WithAttr("dtype", keys.dtype())
+                                   .WithAttr("value", keys));
+    Node* values_node =
+        ops::SourceOp("Const", builder->opts()
+                                   .WithAttr("dtype", values.dtype())
+                                   .WithAttr("value", values));
+    Node* import_table =
+        ops::TernaryOp("LookupTableImportV2", table, keys_node, values_node,
+                       builder->opts()
+                           .WithAttr("Tin", keys.dtype())
+                           .WithAttr("Tout", values.dtype()));
+    *out = ops::UnaryOp("Identity", table,
+                        builder->opts().WithControlInput(import_table));
+    return Status::OK();
+  };
+
+  return Initialize(iter, std::move(func));
 }
 
 Status InitializableLookupTable::Initialize(InitTableIterator& iter) {
+  return Initialize(iter, absl::nullopt);
+}
+
+Status InitializableLookupTable::Initialize(
+    InitTableIterator& iter, absl::optional<InitializerAsGraphDefFunc>&& func) {
   if (!iter.Valid()) {
     return iter.status();
   }
@@ -68,6 +95,7 @@ Status InitializableLookupTable::Initialize(InitTableIterator& iter) {
     return iter.status();
   }
 
+  initializer_as_graphdef_func_ = std::move(func);
   is_initialized_.store(true, std::memory_order_release);
   return Status::OK();
 }

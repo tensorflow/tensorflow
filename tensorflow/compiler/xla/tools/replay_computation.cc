@@ -61,8 +61,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
-#include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -262,38 +260,14 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
     }
   }
 
+  std::shared_ptr<Literal> infeed_data;
   if (absl::optional<Shape> infeed_shape = GetXfeedShape(
           /*is_infeed=*/true, computation.proto(), opts)) {
-    auto infeed_data = std::make_shared<Literal>(
+    infeed_data = std::make_shared<Literal>(
         std::move(MakeFakeLiteral(*infeed_shape)).ValueOrDie());
-    xla::gpu::GetOrCreateInfeedManager()
-        ->RegisterBeforeGetNextDestinationCallback([infeed_data, client] {
-          TF_CHECK_OK(client->TransferToInfeed(*infeed_data));
-        });
   }
-
-  absl::optional<tensorflow::thread::ThreadPool> outfeed_thread_pool;
-  if (absl::optional<Shape> outfeed_shape = GetXfeedShape(
-          /*is_infeed=*/false, computation.proto(), opts)) {
-    // For each an outfeed that runs, enqueue a task that will consume it.  We
-    // need a thread pool because the act of running an outfeed blocks on there
-    // being a destination available, and the act of making a destination
-    // available blocks on there being outfeed data available.
-    outfeed_thread_pool.emplace(tensorflow::Env::Default(), "infeed",
-                                /*num_threads=*/1);
-    auto consume_outfeed = [client, outfeed_shape] {
-      Literal outfeed(*outfeed_shape);
-      TF_CHECK_OK(
-          client->TransferFromOutfeedLocal(/*device_ordinal=*/0, &outfeed));
-      VLOG(1) << "Received outfeed data of shape "
-              << ShapeUtil::HumanStringWithLayout(*outfeed_shape);
-    };
-    xla::gpu::GetOrCreateOutfeedManager()
-        ->RegisterBeforeGetNextDestinationCallback(
-            [consume_outfeed, &outfeed_thread_pool] {
-              outfeed_thread_pool->Schedule(consume_outfeed);
-            });
-  }
+  absl::optional<Shape> outfeed_shape =
+      GetXfeedShape(/*is_infeed=*/false, computation.proto(), opts);
 
   // Do not attempt to run the executable if num_runs is less than 1.
   if (opts.num_runs < 1) {
@@ -307,6 +281,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
       client->platform(),
       {client->platform()->ExecutorForDevice(0).ValueOrDie()});
   absl::optional<ScopedShapedBuffer> final_result;
+  LOG(ERROR) << "Running " << opts.num_runs << " number of times\n";
   for (int i = 0; i < opts.num_runs; ++i) {
     // If xla_hlo_profile is enabled, print a noisy message before the last run,
     // making it easier to separate this profile from the others in the logspam.
@@ -327,6 +302,23 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
     run_options.set_execution_profile(&profile);
     run_options.set_allocator(&allocator);
     run_options.set_intra_op_thread_pool(&thread_pool);
+
+    if (infeed_data) {
+      TF_CHECK_OK(client->TransferToInfeed(*infeed_data));
+    }
+    std::unique_ptr<tensorflow::Thread> outfeed_drain_thread;
+    if (outfeed_shape) {
+      // TransferFromOutfeedLocal blocks till the outfeed is available, so do
+      // it asynchronously separate thread.
+      outfeed_drain_thread.reset(tensorflow::Env::Default()->StartThread(
+          tensorflow::ThreadOptions(), "outfeed_drain_thread", [&] {
+            Literal outfeed(*outfeed_shape);
+            TF_CHECK_OK(client->TransferFromOutfeedLocal(/*device_ordinal=*/0,
+                                                         &outfeed));
+            VLOG(1) << "Received outfeed data of shape "
+                    << ShapeUtil::HumanStringWithLayout(*outfeed_shape);
+          }));
+    }
 
     TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
                         executable->Run(argument_ptrs, run_options));

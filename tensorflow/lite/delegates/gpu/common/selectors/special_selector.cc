@@ -101,10 +101,13 @@ absl::Status TryFCFCAdd(
   if (fc0_node == nullptr) {
     return absl::NotFoundError("FCFCAdd not suitable.");
   }
-  if (OperationTypeFromString(fc0_node->operation.type) !=
-      OperationType::FULLY_CONNECTED) {
+  auto first_op_type = OperationTypeFromString(fc0_node->operation.type);
+  if (first_op_type != OperationType::FULLY_CONNECTED &&
+      first_op_type != OperationType::FULLY_CONNECTED_INT8) {
     return absl::NotFoundError("FCFCAdd not suitable.");
   }
+  const bool first_quantized =
+      first_op_type == OperationType::FULLY_CONNECTED_INT8;
   auto fc0_inputs = graph.FindInputs(fc0_node->id);
   if (fc0_inputs.size() != 1) {
     return absl::NotFoundError("FCFCAdd not suitable.");
@@ -133,8 +136,16 @@ absl::Status TryFCFCAdd(
   if (fc1_node == nullptr) {
     return absl::NotFoundError("FCFCAdd not suitable.");
   }
-  if (OperationTypeFromString(fc1_node->operation.type) !=
-      OperationType::FULLY_CONNECTED) {
+  auto second_op_type = OperationTypeFromString(fc1_node->operation.type);
+  if (second_op_type != OperationType::FULLY_CONNECTED &&
+      second_op_type != OperationType::FULLY_CONNECTED_INT8) {
+    return absl::NotFoundError("FCFCAdd not suitable.");
+  }
+  const bool second_quantized =
+      second_op_type == OperationType::FULLY_CONNECTED_INT8;
+  const bool both_quantized = first_quantized && second_quantized;
+  const bool both_not_quantized = !first_quantized && !second_quantized;
+  if (!(both_quantized || both_not_quantized)) {
     return absl::NotFoundError("FCFCAdd not suitable.");
   }
   if (consumed_nodes->find(fc1_node->id) != consumed_nodes->end()) {
@@ -142,13 +153,6 @@ absl::Status TryFCFCAdd(
   }
   auto fc1_inputs = graph.FindInputs(fc1_node->id);
   if (fc1_inputs.size() != 1) {
-    return absl::NotFoundError("FCFCAdd not suitable.");
-  }
-  auto fc0_attr =
-      absl::any_cast<FullyConnectedAttributes>(fc0_node->operation.attributes);
-  auto fc1_attr =
-      absl::any_cast<FullyConnectedAttributes>(fc1_node->operation.attributes);
-  if (fc0_attr.weights.shape.o != fc1_attr.weights.shape.o) {
     return absl::NotFoundError("FCFCAdd not suitable.");
   }
   auto add_outputs = graph.FindOutputs(add_node->id);
@@ -173,7 +177,27 @@ absl::Status TryFCFCAdd(
   }
   std::unique_ptr<GPUOperation>* gpu_op =
       InitSingleOpSubgraph(fc0_inputs, add_outputs, gpu_subgraph);
-  FCFCAdd fc = CreateFCFCAdd(gpu_info, op_def, fc0_attr, fc1_attr);
+  FCFCAdd fc;
+  if (both_not_quantized) {
+    auto fc0_attr = absl::any_cast<FullyConnectedAttributes>(
+        fc0_node->operation.attributes);
+    auto fc1_attr = absl::any_cast<FullyConnectedAttributes>(
+        fc1_node->operation.attributes);
+    if (fc0_attr.weights.shape.o != fc1_attr.weights.shape.o) {
+      return absl::NotFoundError("FCFCAdd not suitable.");
+    }
+    fc = CreateFCFCAdd(gpu_info, op_def, fc0_attr, fc1_attr);
+  } else {
+    // both_quantized
+    auto fc0_attr = absl::any_cast<FullyConnectedInt8Attributes>(
+        fc0_node->operation.attributes);
+    auto fc1_attr = absl::any_cast<FullyConnectedInt8Attributes>(
+        fc1_node->operation.attributes);
+    if (fc0_attr.weights.shape.o != fc1_attr.weights.shape.o) {
+      return absl::NotFoundError("FCFCAdd not suitable.");
+    }
+    fc = CreateFCFCAdd(gpu_info, op_def, fc0_attr, fc1_attr);
+  }
   *gpu_op = absl::make_unique<FCFCAdd>(std::move(fc));
   consumed_nodes->insert(fc0_node->id);
   consumed_nodes->insert(fc1_node->id);

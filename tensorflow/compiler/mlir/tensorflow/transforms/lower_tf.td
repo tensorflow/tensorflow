@@ -253,22 +253,34 @@ def LowerRoundOpOnIntTensor : Pat<
 def LowerRoundOpOnFloatTensor : Pat<
   (TF_RoundOp:$res TF_FloatTensor:$input),
   (TF_SelectOp
-    (TF_LessOp
-      (TF_SubOp
-        $input,
-        (TF_FloorOp:$floor $input)
+    (TF_LogicalOrOp
+      (TF_GreaterOp
+        (TF_SubOp:$fraction $input, (TF_FloorOp:$round_val $input)),
+        (TF_ConstOp:$half (GetScalarOfFloatType<"0.5"> $input))
       ),
-      (TF_ConstOp
-        (GetScalarOfFloatType<"0.5"> $input)
+      (TF_LogicalAndOp
+        // If the input is equal to 0.5 ...
+        (TF_EqualOp
+          $fraction,
+          $half,
+          /*incompatible_shape_error*/ConstBoolAttrTrue
+        ),
+        // ... check if the value is odd, so we can round up in that case.
+        (TF_EqualOp
+          (TF_SubOp
+            $round_val,
+            (TF_MulOp
+              (TF_ConstOp (GetScalarOfType<2> $input)),
+              (TF_FloorOp (TF_MulOp $half, $input))
+            )
+          ),
+          (TF_ConstOp:$one (GetScalarOfType<1> $input)),
+          /*incompatible_shape_error*/ConstBoolAttrTrue
+        )
       )
     ),
-    $floor,
-    (TF_AddV2Op
-      (TF_ConstOp
-        (GetScalarOfType<1> $input)
-      ),
-      $floor
-    )
+    (TF_AddV2Op $round_val, $one),
+    $round_val
   )>;
 
 //===----------------------------------------------------------------------===//
@@ -397,3 +409,13 @@ def LowerXlog1pyOp : BinaryXopyPat<
 def LowerXlogyOp : BinaryXopyPat<
   (TF_XlogyOp $x, $y),
   (TF_MulOp $x, (TF_LogOp $y))>;
+
+//===----------------------------------------------------------------------===//
+// IsFinite op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerIsFiniteOp : Pat<(TF_IsFiniteOp $x),
+                       (TF_EqualOp
+                          (TF_SubOp $x, $x),
+                          (TF_ConstOp (GetScalarOfType<0> $x)),
+                          /*incompatible_shape_error*/ConstBoolAttrTrue)>;

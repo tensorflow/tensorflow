@@ -76,6 +76,10 @@ Status TRTOptimizationPass::Init(
   if (params.count("use_implicit_batch")) {
     use_implicit_batch_ = params.at("use_implicit_batch").b();
   }
+  if (params.count("profile_strategy")) {
+    TF_RETURN_IF_ERROR(ProfileStrategyFromName(
+        params.at("profile_strategy").s(), &profile_strategy_));
+  }
   return Status::OK();
 }
 
@@ -242,6 +246,7 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   cp.max_cached_engines = max_cached_batches_;
   cp.use_calibration = use_calibration_;
   cp.use_implicit_batch = use_implicit_batch_;
+  cp.profile_strategy = profile_strategy_;
   cp.allow_build_at_runtime = allow_build_at_runtime_;
   auto status = ConvertAfterShapes(cp);
   VLOG(1) << "Returning from " << name_;

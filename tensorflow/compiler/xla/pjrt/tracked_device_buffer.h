@@ -106,6 +106,12 @@ class BufferSequencingEvent {
   // example because it uses storage borrowed from elsewhere.
   EventPool::Handle event_;
 
+  // Cache of event_->sequence_number that avoids synchronization overhead.
+  // TODO(phawkins): In fact, event_->sequence_number is unused beyond the
+  // initial population of sequence_number_, and we could remove it if we
+  // refactored the EventPool API.
+  std::atomic<uint64_t> sequence_number_{0};
+
   mutable absl::Mutex mu_;
   // A list of all streams for which the buffer's content is known to be defined
   // at the tail of the queue, i.e., for any newly enqueued command.
