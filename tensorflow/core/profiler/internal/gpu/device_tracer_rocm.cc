@@ -64,8 +64,13 @@ void GetDeviceCapabilities(int32 device_ordinal, XPlaneBuilder* device_plane) {
 }
 
 bool IsHostEvent(const RocmTracerEvent& event) {
-  // TODO(rocm)
-  // Classify all events as GPU events for now
+  switch (event.type)
+  {
+  case RocmTracerEventType::StreamSynchronize:
+    return true;
+  default:
+    break;
+  }
   return false;
 }
 
@@ -670,6 +675,7 @@ RocmTracerOptions GpuTracer::GetRocmTracerOptions() {
 
   // clang formatting does not preserve one entry per line
   // clang-format off
+  //TODO(rocm-profiler): we should add stream wait API
   std::vector<uint32_t> hip_api_domain_ops{
       HIP_API_ID_hipExtModuleLaunchKernel,
       HIP_API_ID_hipFree,

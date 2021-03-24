@@ -223,6 +223,10 @@ const char* GetRocmTracerEventTypeName(const RocmTracerEventType& type) {
       return "MemoryAlloc";
     case RocmTracerEventType::Generic:
       return "Generic";
+    case RocmTracerEventType::StreamSynchronize:
+      return "StreamSynchronize";
+    case RocmTracerEventType::Memset:
+      return "Memset";
     default:
       DCHECK(false);
       return "";
