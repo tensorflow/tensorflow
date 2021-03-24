@@ -69,9 +69,11 @@ string PrintName(const string& name, bool print_ids);
 class HloPrintOptions {
  public:
   enum class PrintSubcomputationMode {
-    kOff,         // Do not print anything about subcomputations.
-    kNameOnly,    // Only print the name of subcomputations.
-    kFullBodies,  // Print the full bodies of subcomputations.
+    kOff,                  // Do not print anything about subcomputations.
+    kNameOnly,             // Only print the name of subcomputations.
+    kFullBodies,           // Print the full bodies of subcomputations.
+    kNonSequentialBodies,  // Print the full bodies of subcomputations that are
+                           // not in a sequential context.
   };
 
   // Constructs the default print options: don't print large constants, don't
@@ -132,7 +134,8 @@ class HloPrintOptions {
   // Options to produce a fingerprint of an HLO.
   static HloPrintOptions Fingerprint() {
     return HloPrintOptions()
-        .set_print_subcomputation_mode(PrintSubcomputationMode::kFullBodies)
+        .set_print_subcomputation_mode(
+            PrintSubcomputationMode::kNonSequentialBodies)
         .set_print_metadata(false)
         .set_print_backend_config(false)
         .set_print_infeed_outfeed_config(false)
@@ -1511,7 +1514,7 @@ class HloInstruction {
   // clearing out the computations, we reflect the fact that all side-effecting
   // properties have been reflected in the caller, and make the call HLO
   // removable.
-  void ClearCalledComputations() { called_computations_.clear(); }
+  virtual void ClearCalledComputations() { called_computations_.clear(); }
 
   // Returns true if this instruction performs an elementwise operation on
   // `operand_idx`-th operand. An instruction is elementwise on an operand iff,

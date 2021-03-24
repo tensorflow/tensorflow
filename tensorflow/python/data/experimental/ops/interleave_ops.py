@@ -152,6 +152,29 @@ class _DirectedInterleaveDataset(dataset_ops.DatasetV2):
 def sample_from_datasets_v2(datasets, weights=None, seed=None):
   """Samples elements at random from the datasets in `datasets`.
 
+  Creates a dataset by interleaving elements of `datasets` with the `weight[i]`
+  probability of picking an element from dataset `i`. For example, suppose we
+  have 2 datasets:
+
+  ```python
+  dataset1 = tf.data.Dataset.range(0, 3)
+  dataset2 = tf.data.Dataset.range(100, 103)
+  ```
+
+  Suppose also that we sample from these 2 datasets with the following weights:
+
+  ```python
+  sample_dataset = tf.data.experimental.sample_from_datasets(
+      [dataset1, dataset2], weights=[0.5, 0.5])
+  ```
+
+  One possible outcome of elements in sample_dataset is:
+
+  ```
+  print(list(sample_dataset.as_numpy_iterator()))
+  # [100, 0, 1, 101, 2, 102]
+  ```
+
   Args:
     datasets: A list of `tf.data.Dataset` objects with compatible structure.
     weights: (Optional.) A list of `len(datasets)` floating-point values where

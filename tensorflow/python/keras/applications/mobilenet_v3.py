@@ -58,7 +58,7 @@ BASE_DOCSTRING = """Instantiates the {name} architecture.
   - [Searching for MobileNetV3](
       https://arxiv.org/pdf/1905.02244.pdf) (ICCV 2019)
 
-  The following table describes the performance of MobileNets:
+  The following table describes the performance of MobileNets v3:
   ------------------------------------------------------------------------
   MACs stands for Multiply Adds
 
@@ -71,11 +71,20 @@ BASE_DOCSTRING = """Instantiates the {name} architecture.
   | mobilenet_v3_small_0.75_224             | 44  | 2.4 |   65.4   |   12.8  |
   | mobilenet_v3_small_minimalistic_1.0_224 | 65  | 2.0 |   61.9   |   12.2  |
 
-  The weights for all 6 models are obtained and translated from the Tensorflow
-  checkpoints from TensorFlow checkpoints found [here]
-  (https://github.com/tensorflow/models/tree/master/research/slim/nets/mobilenet/README.md).
+  For image classification use cases, see
+  [this page for detailed examples](
+    https://keras.io/api/applications/#usage-examples-for-image-classification-models).
 
-  Optionally loads weights pre-trained on ImageNet.
+  For transfer learning use cases, make sure to read the
+  [guide to transfer learning & fine-tuning](
+    https://keras.io/guides/transfer_learning/).
+
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For ModelNetV3, input preprocessing is included as part of the model
+  (as a `Rescaling` layer), and thus
+  `tf.keras.applications.mobilenet_v3.preprocess_input` is actually a
+  pass-through function. ModelNetV3 models expect their inputs to be float
+  tensors of pixels with values in the [0-255] range.
 
   Args:
     input_shape: Optional shape tuple, to be specified if you would
@@ -130,6 +139,8 @@ BASE_DOCSTRING = """Instantiates the {name} architecture.
     classifier_activation: A `str` or callable. The activation function to use
       on the "top" layer. Ignored unless `include_top=True`. Set
       `classifier_activation=None` to return the logits of the "top" layer.
+      When loading pretrained weights, `classifier_activation` can only
+      be `None` or `"softmax"`.
 
   Call arguments:
     inputs: A floating point `numpy.array` or a `tf.Tensor`, 4D with 3 color
@@ -137,13 +148,6 @@ BASE_DOCSTRING = """Instantiates the {name} architecture.
 
   Returns:
     A `keras.Model` instance.
-
-  Raises:
-    ValueError: in case of invalid argument for `weights`,
-      or invalid input shape or invalid alpha, rows when
-      weights='imagenet'
-    ValueError: if `classifier_activation` is not `softmax` or `None` when
-      using a pretrained top layer.
 """
 
 
@@ -571,7 +575,6 @@ def preprocess_input(x, data_format=None):  # pylint: disable=unused-argument
   Returns:
     Unchanged `numpy.array` or `tf.Tensor`.
   """
-
   return x
 
 

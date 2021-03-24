@@ -302,8 +302,10 @@ cc_library(
     name = "gpu_device",
     srcs = ["gpu_device.cc"],
     hdrs = ["gpu_device.h"],
+    defines = if_cuda(["GOOGLE_CUDA=1"]),
     deps = [
         ":pjrt_stream_executor_client",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/compiler/xla:statusor",
@@ -315,6 +317,8 @@ cc_library(
         "//tensorflow/core/common_runtime/device:device_mem_allocator",
         "//tensorflow/core/common_runtime/device:device_id",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/stream_executor/cuda:cuda_activation_header",
+        "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:tf_allocator_adapter",
     ] + if_nccl([":nccl_plugin"]),
 )

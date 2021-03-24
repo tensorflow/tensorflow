@@ -518,15 +518,20 @@ class HloDynamicBroadcastInDimConverter
   LogicalResult matchAndRewrite(
       mhlo::DynamicBroadcastInDimOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const final {
-    // Convert only if the producer is an HLO constant. Ideally the pattern
-    // (`mhlo.constant` -> `mhlo.dynamic_broadcast_in_dim`) should be converted
-    // to an Tensor-dialect op similar to TF ConstantLikeOp.
-    if (!op.operand().getDefiningOp<mhlo::ConstOp>()) return failure();
+    // If the input has a static shape we know exactly when the broadcast must
+    // expand (the dimension is 1, which also trivially expands to 1) or will
+    // never expand (the dimension is not 1). This means we can lower the
+    // broadcast just as we would lower a fully static broadcast and go directly
+    // to linalg.generic. This also covers the important case of broadcasting a
+    // scalar.
+
+    // Ideally the pattern (`mhlo.constant` -> `mhlo.dynamic_broadcast_in_dim`)
+    // should be converted to an Tensor-dialect op similar to TF ConstantLikeOp.
 
     mhlo::DynamicBroadcastInDimOp::Adaptor adaptor(op);
     Value operand = adaptor.operand();
     auto operand_type = operand.getType().dyn_cast<RankedTensorType>();
-    if (!operand_type || operand_type.getRank() != 0) return failure();
+    if (!operand_type || !operand_type.hasStaticShape()) return failure();
 
     Value shape = adaptor.output_dimensions();
     auto shape_type = shape.getType().cast<RankedTensorType>();
@@ -544,13 +549,27 @@ class HloDynamicBroadcastInDimConverter
     }
 
     int64_t nloops = result_type.getRank();
+    auto operand_shape = operand_type.getShape();
+    SmallVector<AffineExpr, 4> dim_exprs;
+    dim_exprs.reserve(nloops);
+
+    if (op.broadcast_dimensions()) {
+      for (const auto& broadcast_dim :
+           enumerate(op.broadcast_dimensions().getIntValues())) {
+        int64_t size = broadcast_dim.value().getSExtValue();
+        bool expansion_needed = operand_shape[broadcast_dim.index()] == 1;
+        dim_exprs.push_back(expansion_needed ? rewriter.getAffineConstantExpr(0)
+                                             : rewriter.getAffineDimExpr(size));
+      }
+    }
+
     Value init = rewriter.create<linalg::InitTensorOp>(
         loc, dyn_dims, result_type.getShape(), result_type.getElementType());
     Operation* generic = rewriter.create<linalg::GenericOp>(
         loc, TypeRange{init.getType()}, ValueRange{operand},
         /*outputBuffers=*/ValueRange{init},
         llvm::makeArrayRef(
-            {AffineMap::get(/*dimCount=*/nloops, /*symbolCount=*/0, {},
+            {AffineMap::get(/*dimCount=*/nloops, /*symbolCount=*/0, dim_exprs,
                             rewriter.getContext()),
              rewriter.getMultiDimIdentityMap(nloops)}),
         GetNParallelLoopsAttrs(nloops),
@@ -1773,6 +1792,99 @@ struct ReduceWindowOpOnTensorsConversion
   }
 };
 
+/// Converts xla-hlo.torch_index_select op to a linalg.indexed_generic op.
+struct TorchIndexSelectOpOnTensorsConversion
+    : public OpConversionPattern<mhlo::TorchIndexSelectOp> {
+  using OpConversionPattern<mhlo::TorchIndexSelectOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::TorchIndexSelectOp op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const final {
+    mhlo::TorchIndexSelectOp::Adaptor adaptor(args);
+    int axis = static_cast<int>(op.dim());
+    int batch = static_cast<int>(op.batch_dims());
+    auto index_shaped_type = adaptor.index().getType().cast<ShapedType>();
+    int num_indices = static_cast<int>(index_shaped_type.getRank());
+    auto input_shaped_type = adaptor.input().getType().cast<ShapedType>();
+    if (axis < 0) axis += static_cast<int>(input_shaped_type.getRank());
+    if (batch < 0) batch += num_indices;
+
+    Location loc = op.getLoc();
+    auto result_type = op.getResult().getType().cast<ShapedType>();
+    int rank = static_cast<int>(result_type.getRank());
+
+    SmallVector<AffineMap, 2> indexing_maps;
+    SmallVector<AffineExpr, 4> exprs;
+    for (int i = 0; i < batch; ++i) {
+      exprs.push_back(rewriter.getAffineDimExpr(i));
+    }
+    for (int i = 0, e = num_indices - batch; i < e; ++i) {
+      exprs.push_back(rewriter.getAffineDimExpr(axis + i));
+    }
+    indexing_maps.emplace_back(
+        AffineMap::get(rank, /*symbolCount=*/0, exprs, rewriter.getContext()));
+    indexing_maps.emplace_back(rewriter.getMultiDimIdentityMap(rank));
+
+    // The output shape is
+    //   `params[:axis] + indices[batch_dims:] + params[axis + 1:]`
+    SmallVector<Value, 4> dyn_sizes;
+    for (int i = 0; i < rank; ++i) {
+      if (!result_type.isDynamicDim(i)) continue;
+      if (i < axis) {
+        dyn_sizes.push_back(
+            rewriter.create<memref::DimOp>(loc, adaptor.input(), i));
+      } else if (i < (axis + num_indices - batch)) {
+        int idx = i - axis + batch;
+        dyn_sizes.push_back(
+            rewriter.create<memref::DimOp>(loc, adaptor.index(), idx));
+      } else {
+        int idx = i - (axis + num_indices - batch) + axis + 1;
+        dyn_sizes.push_back(
+            rewriter.create<memref::DimOp>(loc, adaptor.input(), idx));
+      }
+    }
+    Value init_op = rewriter.create<linalg::InitTensorOp>(
+        loc, dyn_sizes, result_type.getShape(), result_type.getElementType());
+    auto linalg_op = rewriter.create<linalg::IndexedGenericOp>(
+        loc, /*resultTensors=*/ArrayRef<Type>{result_type},
+        /*inputs=*/adaptor.index(),
+        /*outputs=*/init_op, indexing_maps, GetNParallelLoopsAttrs(rank));
+
+    SmallVector<Type, 4> body_arg_types;
+    SmallVector<Value, 2> linalg_op_args = {adaptor.index()};
+    // Add a block to the region.
+    auto* region = &linalg_op.region();
+    auto* block = rewriter.createBlock(region, region->end());
+    body_arg_types.append(rank, rewriter.getIndexType());
+    for (auto block_args : linalg_op_args) {
+      body_arg_types.push_back(
+          block_args.getType().cast<ShapedType>().getElementType());
+    }
+    block->addArguments(body_arg_types);
+    block->addArguments(result_type.getElementType());
+    OpBuilder::InsertionGuard guard(rewriter);
+    rewriter.setInsertionPointToEnd(block);
+
+    SmallVector<Value, 4> indices;
+    Value casted_value = rewriter.create<IndexCastOp>(
+        loc, block->getArgument(rank), rewriter.getIndexType());
+    for (int i = 0; i < axis; ++i) {
+      indices.push_back(block->getArgument(i));
+    }
+    indices.push_back(casted_value);
+    for (int i = axis + num_indices - batch; i < rank; ++i) {
+      indices.push_back(block->getArgument(i));
+    }
+
+    Value res =
+        rewriter.create<tensor::ExtractOp>(loc, adaptor.input(), indices);
+    rewriter.create<linalg::YieldOp>(loc, res);
+
+    rewriter.replaceOp(op, linalg_op.getResults());
+    return success();
+  }
+};
+
 void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                                            OwningRewritePatternList* patterns) {
   // clang-format off
@@ -1968,6 +2080,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       DepthwiseConvOpOnTensorsConversion,
       ReduceOnTensorsConversion,
       ReduceWindowOpOnTensorsConversion,
+      TorchIndexSelectOpOnTensorsConversion,
       PadOpOnTensorsConversion>(context);
   // clang-format on
   patterns->insert<ReduceRegionXLAOpConversion<mhlo::AddOp>,

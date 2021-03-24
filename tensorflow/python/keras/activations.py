@@ -45,7 +45,7 @@ _TF_ACTIVATIONS_V2 = {
 @keras_export('keras.activations.softmax')
 @dispatch.add_dispatch_support
 def softmax(x, axis=-1):
-  """Softmax converts a real vector to a vector of categorical probabilities.
+  """Softmax converts a vector of values to a probability distribution.
 
   The elements of the output vector are in range (0, 1) and sum to 1.
 
@@ -62,15 +62,25 @@ def softmax(x, axis=-1):
   The input values in are the log-odds of the resulting probability.
 
   Args:
-      x : Input tensor.
-      axis: Integer, axis along which the softmax normalization is applied.
+    x : Input tensor.
+    axis: Integer, axis along which the softmax normalization is applied.
 
   Returns:
-      Tensor, output of softmax transformation (all values are non-negative
-        and sum to 1).
+    Tensor, output of softmax transformation (all values are non-negative
+      and sum to 1).
 
-  Raises:
-      ValueError: In case `dim(x) == 1`.
+  Examples:
+
+  **Example 1: standalone usage**
+
+  >>> inputs = tf.random.normal(shape=(32, 10))
+  >>> outputs = tf.keras.activations.softmax(inputs)
+  >>> tf.reduce_sum(outputs[0, :])  # Each sample in the batch now sums to 1
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.0000001>
+
+  **Example 2: usage in a `Dense` layer**
+
+  >>> layer = tf.keras.layers.Dense(32, activation=tf.keras.activations.softmax)
   """
   rank = x.shape.rank
   if rank == 2:

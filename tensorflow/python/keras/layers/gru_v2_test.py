@@ -150,12 +150,11 @@ class GRUV2Test(keras_parameterized.TestCase):
       l2 = layer_class.from_config(l1.get_config())
       assert l1.get_config() == l2.get_config()
 
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Skipping as ROCm MIOpen does not support padded input yet.')
   @testing_utils.run_v2_only
   def test_gru_v2_feature_parity_with_canonical_gru(self):
-    if test.is_built_with_rocm():
-      self.skipTest('Skipping the test as ROCm MIOpen does not '
-                    'support padded input yet.')
-
     input_shape = 10
     rnn_state_size = 8
     timestep = 4
@@ -323,11 +322,10 @@ class GRUV2Test(keras_parameterized.TestCase):
 
     self.assertAllClose(y, y_ref)
 
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Skipping as ROCm MIOpen does not support padded input yet.')
   def test_with_masking_layer_GRU(self):
-    if test.is_built_with_rocm():
-      self.skipTest('Skipping the test as ROCm MIOpen does not '
-                    'support padded input yet.')
-
     layer_class = rnn.GRU
     inputs = np.random.random((2, 3, 4))
     targets = np.abs(np.random.random((2, 3, 5)))
@@ -339,11 +337,10 @@ class GRUV2Test(keras_parameterized.TestCase):
                   optimizer=gradient_descent.GradientDescentOptimizer(0.001))
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Skipping as ROCm MIOpen does not support padded input yet.')
   def test_masking_with_stacking_GRU(self):
-    if test.is_built_with_rocm():
-      self.skipTest('Skipping the test as ROCm MIOpen does not '
-                    'support padded input yet.')
-
     inputs = np.random.random((2, 3, 4))
     targets = np.abs(np.random.random((2, 3, 5)))
     targets /= targets.sum(axis=-1, keepdims=True)
@@ -367,11 +364,11 @@ class GRUV2Test(keras_parameterized.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Double type is not yet supported in ROCm')
   @testing_utils.run_v2_only
   def test_float64_GRU(self):
-    if test.is_built_with_rocm():
-      self.skipTest('Double type is yet not supported in ROCm')
-
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
@@ -384,11 +381,10 @@ class GRUV2Test(keras_parameterized.TestCase):
         input_shape=(num_samples, timesteps, embedding_dim),
         input_dtype='float64')
 
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Skipping as ROCm MIOpen does not support padded input yet.')
   def test_return_states_GRU(self):
-    if test.is_built_with_rocm():
-      self.skipTest('Skipping the test as ROCm MIOpen does not '
-                    'support padded input yet.')
-
     layer_class = rnn.GRU
     x = np.random.random((2, 3, 4))
     y = np.abs(np.random.random((2, 5)))
@@ -468,11 +464,10 @@ class GRUV2Test(keras_parameterized.TestCase):
     else:
       self.assertEqual(len(layer.get_losses_for(x)), 1)
 
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Skipping as ROCm MIOpen does not support padded input yet.')
   def test_statefulness_GRU(self):
-    if test.is_built_with_rocm():
-      self.skipTest('Skipping the test as ROCm MIOpen does not '
-                    'support padded input yet.')
-
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
@@ -567,12 +562,11 @@ class GRUV2Test(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
     model.fit(x, y, epochs=1, shuffle=False)
 
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Skipping as ROCm MIOpen does not support padded input yet.')
   @testing_utils.run_v2_only
   def test_explicit_device_with_go_backward_and_mask(self):
-    if test.is_built_with_rocm():
-      self.skipTest('Skipping the test as ROCm MIOpen does not '
-                    'support padded input yet.')
-
     batch_size = 8
     timestep = 7
     masksteps = 5
@@ -749,12 +743,11 @@ class GRUGraphRewriteTest(keras_parameterized.TestCase):
     model = keras.models.Model(inputs=inputs, outputs=[outputs, runtime])
     self._test_runtime_with_model(model)
 
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Skipping as ROCm MIOpen does not support padded input yet.')
   @testing_utils.run_v2_only
   def test_GRU_runtime_with_mask(self):
-    if test.is_built_with_rocm():
-      self.skipTest('Skipping the test as ROCm MIOpen does not '
-                    'support padded input yet.')
-
     # Masking will affect which backend is selected based on whether the mask
     # is strictly right padded.
     layer = rnn.GRU(self.rnn_state_size, return_runtime=True)

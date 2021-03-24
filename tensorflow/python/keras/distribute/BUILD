@@ -165,9 +165,10 @@ distribute_py_test(
     name = "checkpointing_test",
     srcs = ["checkpointing_test.py"],
     main = "checkpointing_test.py",
-    tags = [
-        "multi_and_single_gpu",
-    ],
+    # TODO(b/182978757)
+    # tags = [
+    #     "multi_and_single_gpu",
+    # ],
     deps = [
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
@@ -855,12 +856,13 @@ distribute_py_test(
     ],
 )
 
-tf_py_test(
+distribute_py_test(
     name = "parameter_server_training_test",
     srcs = ["parameter_server_training_test.py"],
     python_version = "PY3",
     shard_count = 1,
     tags = [
+        "multi_and_single_gpu",
         "no_tfrt",  # TODO(b/180537361): Reenable TFRT after the issue is resolved.
     ],
     deps = [
@@ -884,7 +886,6 @@ tf_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras",
         "//tensorflow/python/keras/utils:dataset_creator",
-        "@absl_py//absl/logging",
         "@absl_py//absl/testing:parameterized",
     ],
 )

@@ -3201,8 +3201,8 @@ Status IrEmitterUnnested::EmitNcclThunkFromMlir(MlirEmitterInput input) {
   bool should_use_nccl_thunk =
       !is_degenerate && NcclThunkType::CanImplement(op);
 
-  // Stash relevant information in NcclAllGatherThunk::Buffer even if we may
-  // not generate an NcclAllGatherThunk.
+  // Stash relevant information in NcclCollectiveThunk::Buffer even if we may
+  // not generate an NcclCollectiveThunk.
   std::vector<NcclCollectiveThunk::Buffer> buffers;
   buffers.reserve(op.operands().size());
   for (auto it : llvm::zip(op.operands(), op.results())) {
@@ -5954,8 +5954,14 @@ Status IrEmitterUnnested::EmitOp(MlirEmitterInput mlir_input) {
 }
 
 Status IrEmitterUnnested::EmitLmhloRegion(mlir::Region* region) {
+  Thunk::ThunkInfo thunk_info;
+  auto module = region->getParentOfType<mlir::ModuleOp>();
+  std::string module_name = mlir::GetNameFromLoc(module->getLoc());
   for (mlir::Operation& op : llvm::make_early_inc_range(region->front())) {
-    TF_RETURN_IF_ERROR(EmitOp(MlirEmitterInput{&op}));
+    thunk_info.profile_annotation =
+        absl::StrFormat("Thunk:#hlo_op=%s,hlo_module=%s#",
+                        mlir::GetNameFromLoc(op.getLoc()), module_name);
+    TF_RETURN_IF_ERROR(EmitOp(MlirEmitterInput{&op, thunk_info}));
   }
   return Status::OK();
 }

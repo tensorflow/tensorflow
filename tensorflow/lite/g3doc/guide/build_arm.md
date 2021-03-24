@@ -4,7 +4,7 @@ This page describes how to build the TensorFlow Lite libraries for ARM-based
 computers.
 
 TensorFlow Lite supports two build systems and supported features from each
-build system are not idential. Check the following table to pick a proper build
+build system are not identical. Check the following table to pick a proper build
 system.
 
 Feature                                                                                   | Bazel                        | CMake
@@ -32,7 +32,7 @@ build system. You'll use the integrated
 [ARM GCC 8.3 toolchains](https://github.com/tensorflow/tensorflow/tree/master/third_party/toolchains/embedded/arm-linux)
 with Bazel to build an ARM32/64 shared library.
 
-| Target Architecture | Bazel Configureation    | Compatibile Devices        |
+| Target Architecture | Bazel Configuration     | Compatible Devices         |
 | ------------------- | ----------------------- | -------------------------- |
 | armhf (ARM32)       | --config=elinux_armhf   | RPI3, RPI4 with 32 bit     |
 :                     :                         : Raspberry Pi OS            :

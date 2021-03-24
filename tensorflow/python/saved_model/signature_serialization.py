@@ -22,6 +22,7 @@ from absl import logging
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import resource_variable_ops
@@ -213,14 +214,13 @@ def _normalize_outputs(outputs, function_name, signature_key):
           ("Got a dictionary with a non-string key {!r} in the output of the "
            "function {} used to generate the SavedModel signature {!r}.")
           .format(key, compat.as_str_any(function_name), signature_key))
-    if not isinstance(value, ops.Tensor):
+    if not isinstance(value, (ops.Tensor, composite_tensor.CompositeTensor)):
       raise ValueError(
           ("Got a non-Tensor value `{!r}` for key {!r} in the output of the "
            "function {} used to generate the SavedModel signature {!r}. "
            "Outputs for functions used as signatures must be a single Tensor, "
            "a sequence of Tensors, or a dictionary from string to Tensor.")
           .format(value, key, compat.as_str_any(function_name), signature_key))
-
   return outputs
 
 

@@ -203,13 +203,14 @@ __global__ __launch_bounds__(1024) void ApplyAdamKernel(
     auto g_i = grad[i];
     auto v_i = v[i];
 
-    m_i += one_minus_beta1 * (g_i - m_i);
-    v_i += one_minus_beta2 * (g_i * g_i - v_i);
+    // Avoid += and -= due to std::complex<T> issues on device for MSVC.
+    m_i = m_i + one_minus_beta1 * (g_i - m_i);
+    v_i = v_i + one_minus_beta2 * (g_i * g_i - v_i);
     if (use_nesterov) {
-      var[i] -= mul_factor * (m_i * beta1 + one_minus_beta1 * g_i) /
-                (epsilon + Eigen::numext::sqrt(v_i));
+      var[i] = var[i] - mul_factor * (m_i * beta1 + one_minus_beta1 * g_i) /
+                            (epsilon + Eigen::numext::sqrt(v_i));
     } else {
-      var[i] -= mul_factor * m_i / (epsilon + Eigen::numext::sqrt(v_i));
+      var[i] = var[i] - mul_factor * m_i / (epsilon + Eigen::numext::sqrt(v_i));
     }
 
     m[i] = m_i;
@@ -244,10 +245,11 @@ __global__ __launch_bounds__(1024) void SparseApplyKerasMomentumKernel(
     // Variable update computation.
     accum_i = momentum_t * accum_i - lr_t * grad_i;
     // static branching in cuda does not impact performance.
+    // Avoid += due to std::complex<T> issues on device for MSVC.
     if (use_nesterov) {
-      var_i += (momentum_t * accum_i - lr_t * grad_i);
+      var_i = var_i + (momentum_t * accum_i - lr_t * grad_i);
     } else {
-      var_i += accum_i;
+      var_i = var_i + accum_i;
     }
 
     // Write update back to variables.

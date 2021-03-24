@@ -106,10 +106,6 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   sections.
 
   ```python
-  # Set the environment variable to allow reporting worker and ps failure to the
-  # coordinator. This a short-term workaround.
-  os.environ["GRPC_FAIL_FAST"] = "use_caller"
-
   # Prepare a strategy to use with the cluster and variable partitioning info.
   strategy = tf.distribute.experimental.ParameterServerStrategy(
       cluster_resolver=...,
@@ -161,10 +157,6 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   server, waiting for coordinator's requests:
 
   ```python
-  # Set the environment variable to allow reporting worker and ps failure to the
-  # coordinator.
-  os.environ["GRPC_FAIL_FAST"] = "use_caller"
-
   # Provide a `tf.distribute.cluster_resolver.ClusterResolver` that serves
   # the cluster information. See below "Cluster setup" section.
   cluster_resolver = ...
@@ -225,9 +217,6 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   If you prefer to run the same binary for all tasks, you will need to let the
   binary branch into different roles at the beginning of the program:
   ```python
-  os.environ["GRPC_FAIL_FAST"] = "use_caller"
-  cluster_resolver = tf.distribute.cluster_resolver.TFConfigClusterResolver()
-
   # If coordinator, create a strategy and start the training program.
   if cluster_resolver.task_type == 'chief':
     strategy = tf.distribute.experimental.ParameterServerStrategy(
@@ -539,6 +528,7 @@ class ParameterServerStrategyV2Extended(
     self._cross_device_ops = cross_device_ops_lib.ReductionToOneDevice(
         reduce_to_device="/device:CPU:0")
     self._cross_device_ops._canonicalize_devices = False  # pylint: disable=protected-access
+    self._allow_run_without_coordinator = False
 
   def _set_num_gpus(self):
     devices = config.list_logical_devices("GPU")
@@ -583,20 +573,21 @@ class ParameterServerStrategyV2Extended(
       A `Variable` or `ShardedVariable`.
     """
 
+    var_creator = self._create_var_creator(next_creator, **kwargs)
     if "colocate_with" in kwargs:  # Never partition colocated_with variables.
       colocate_with = kwargs["colocate_with"]
       # Clear the variable scope to avoid possible conflicts between device
       # scope and colocation scope.
       with ops.device(None):
         with ops.colocate_with(colocate_with):
-          var = next_creator(**kwargs)
+          var = var_creator(**kwargs)
           logging.debug(
               "Creating variable (name:%s, shape:%r) that colocates with %s",
               var.name, var.shape, kwargs["colocate_with"].name)
           return var
 
     if self._variable_partitioner is None:
-      return self._create_variable_round_robin(next_creator, **kwargs)
+      return self._create_variable_round_robin(var_creator, **kwargs)
 
     name = kwargs.get("name", None)
     initial_value = kwargs.get("initial_value", None)
@@ -631,7 +622,7 @@ class ParameterServerStrategyV2Extended(
       shape = tensor_shape.as_shape(shape)
 
     if shape.rank == 0:  # Skip partitioning rank-0 variable.
-      return self._create_variable_round_robin(next_creator, **kwargs)
+      return self._create_variable_round_robin(var_creator, **kwargs)
 
     num_partitions = self._variable_partitioner(shape=shape, dtype=dtype)
     if not num_partitions or num_partitions[0] == 0 or any(
@@ -641,7 +632,7 @@ class ParameterServerStrategyV2Extended(
           " besides the first element (non-zero), got: %r" % num_partitions)
 
     if num_partitions[0] == 1:  # no partition
-      return self._create_variable_round_robin(next_creator, **kwargs)
+      return self._create_variable_round_robin(var_creator, **kwargs)
 
     # Use "div" partition strategy to partition the variable.
     num_partitions = min(num_partitions[0], shape[0])
@@ -704,7 +695,7 @@ class ParameterServerStrategyV2Extended(
       kwargs["initial_value"] = lambda: init_shard_fn(i)
       if name is not None:
         kwargs["name"] = "{}/part_{}".format(name, i)
-      var_list.append(self._create_variable_round_robin(next_creator, **kwargs))
+      var_list.append(self._create_variable_round_robin(var_creator, **kwargs))
 
     result = sharded_variable.ShardedVariable(var_list)
     return result
@@ -726,13 +717,14 @@ class ParameterServerStrategyV2Extended(
         return var
 
   def _assert_used_with_cluster_coordinator(self):
-    if not self._used_with_coordinator:
+    if (not self._used_with_coordinator and
+        not self._allow_run_without_coordinator):
       raise NotImplementedError(
           "`tf.distribute.experimental.ParameterServerStrategy` must be used "
           "with `tf.distribute.experimental.coordinator.ClusterCoordinator`.")
 
   def _assert_being_scheduled_by_cluster_coordinator(self):
-    if not self._being_scheduled:
+    if not self._being_scheduled and not self._allow_run_without_coordinator:
       raise NotImplementedError(
           "`tf.distribute.experimental.ParameterServerStrategy`'s `run` or "
           "`reduce` must be used within a function passed to `"
@@ -742,8 +734,9 @@ class ParameterServerStrategyV2Extended(
   # options is not used right now. But we may want to support options while
   # creating InputWorkers in future, similar to MirroredStrategy.
   def _input_workers_with_options(self, options=None):
+    # This is always run only on workers.
     input_workers_devices = (
-        ("/device:CPU:0", self.worker_devices),)
+        ("/job:worker/device:CPU:0", self.worker_devices),)
     return input_lib.InputWorkers(
         input_workers_devices, canonicalize_devices=False)
 
