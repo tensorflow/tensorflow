@@ -2258,9 +2258,14 @@ ops.NotDifferentiable("VariableShape")
 class VariableSpec(tensor_spec.DenseSpec):
   """Describes a tf.Variable."""
 
-  __slots__ = []
+  __slots__ = ["trainable"]
 
   value_type = property(lambda self: BaseResourceVariable)
+
+  def __init__(self, shape, dtype=dtypes.float32,
+               name=None, trainable=True):
+    super(VariableSpec, self).__init__(shape, dtype=dtype, name=name)
+    self.trainable = trainable
 
   def _to_components(self, value):
     raise NotImplementedError
