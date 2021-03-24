@@ -14,21 +14,17 @@
 # ==============================================================================
 """Keras index lookup preprocessing layer."""
 # pylint: disable=g-classes-have-attributes
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import collections
 import json
 import operator
-import os
 
 import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import category_encoding
 from tensorflow.python.keras.layers.preprocessing import table_utils
@@ -169,16 +165,12 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       self._value_dtype = self.dtype
       self._mask_key = 0
       self._mask_value = mask_token
-      key_index = lookup_ops.TextFileIndex.LINE_NUMBER
-      value_index = lookup_ops.TextFileIndex.WHOLE_LINE
       default_value = self.oov_token
       oov_indices = None
     else:
       self._key_dtype = self.dtype
       self._value_dtype = dtypes.int64
       self._mask_key = mask_token
-      key_index = lookup_ops.TextFileIndex.WHOLE_LINE
-      value_index = lookup_ops.TextFileIndex.LINE_NUMBER
       # Masks should map to 0 for int output and be dropped otherwise. Max ints
       # will be dropped from the bincount op.
       self._mask_value = 0 if self.output_mode == INT else dtypes.int64.max
@@ -203,26 +195,13 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
         default_value = -1
         oov_indices = list(range(oov_start, token_start))
 
-    if vocabulary is not None and isinstance(vocabulary, str):
-      if not os.path.exists(vocabulary):
-        raise ValueError("Vocabulary file %s does not exist." % vocabulary)
-
-      total_offset = 0 if mask_token is None else 1
-      total_offset += num_oov_indices
-      initializer = lookup_ops.TextFileInitializer(
-          filename=vocabulary,
-          key_dtype=self._key_dtype,
-          key_index=key_index,
-          value_dtype=self._value_dtype,
-          value_index=value_index,
-          value_index_offset=total_offset)
-
+    if vocabulary is not None and isinstance(vocabulary,
+                                             lookup_ops.TextFileInitializer):
       self._table = self._static_table_class()(
-          initializer, default_value=default_value)
+          vocabulary, default_value=default_value)
       self._table_handler = table_utils.TableHandler(
           table=self._table,
-          mask_token=self._mask_key,
-          mask_value=self._mask_value,
+          mask_token=mask_token,
           oov_tokens=oov_indices,
           use_v1_apis=self._use_v1_apis())
       self.max_tokens = (
@@ -259,7 +238,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       self.tf_idf_weights = self._add_state_variable(
           name="idf",
           shape=tensor_shape.TensorShape(idf_shape),
-          dtype=K.floatx(),
+          dtype=backend.floatx(),
           initializer=initializer)
 
     tracked_table = self._add_trackable(self._table, trainable=False)
@@ -280,7 +259,8 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
 
   def compute_output_signature(self, input_spec):
     output_shape = self.compute_output_shape(input_spec.shape.as_list())
-    output_dtype = self._value_dtype if self.output_mode == INT else K.floatx()
+    output_dtype = (self._value_dtype if self.output_mode == INT
+                    else backend.floatx())
     return tensor_spec.TensorSpec(shape=output_shape, dtype=output_dtype)
 
   def adapt(self, data, reset_state=True):
@@ -502,7 +482,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
           idf_weights, (front_padding, back_padding),
           "constant",
           constant_values=(front_padding_value, back_padding_value))
-      K.set_value(self.tf_idf_weights, idf_weights)
+      backend.set_value(self.tf_idf_weights, idf_weights)
 
   def _set_state_variables(self, updates):
     if not self.built:

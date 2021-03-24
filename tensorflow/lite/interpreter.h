@@ -721,6 +721,10 @@ class Interpreter {
     signature_defs_ = std::move(signature_defs);
   }
 
+  // Enables preserving intermediates for debugging.  Should only be set by
+  // InterpreterBuilder before allocating any tensors.
+  TfLiteStatus PreserveAllTensorsExperimental();
+
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
   // structure to store tensors.

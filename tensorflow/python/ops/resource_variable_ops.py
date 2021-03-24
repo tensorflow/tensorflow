@@ -354,6 +354,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       save_slice_info=None,
       handle_deleter=None,
       caching_device=None,
+      in_graph_mode=None,
       **unused_kwargs):
     """Creates a variable from a handle.
 
@@ -399,9 +400,15 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
         device.  If not `None`, caches on another device.  Typical use is to
         cache on the device where the Ops using the Variable reside, to
         deduplicate copying through `Switch` and other conditional statements.
+      in_graph_mode: whether we are executing in TF1 graph mode. If None, will
+        detect within the function. This is to avoid repeated init_scope()
+        conetxt entrances which can add up.
     """
-    with ops.init_scope():
-      self._in_graph_mode = not context.executing_eagerly()
+    if in_graph_mode is None:
+      with ops.init_scope():
+        self._in_graph_mode = not context.executing_eagerly()
+    else:
+      self._in_graph_mode = in_graph_mode
     synchronization, aggregation, trainable = (
         variables.validate_synchronization_aggregation_trainable(
             synchronization, aggregation, trainable, name))
@@ -1942,8 +1949,9 @@ class UninitializedVariable(BaseResourceVariable):
         created inside of.
     """
     with ops.init_scope():
+      # Here we are detecting eagerness within an init_scope, so this will only
+      # be true when we are running in TF1 graph mode.
       self._in_graph_mode = not context.executing_eagerly()
-    with ops.init_scope():
       with ops.name_scope(name, "Variable", skip_on_eager=False) as name:
         handle_name = ops.name_from_scope_name(name)
         if self._in_graph_mode:
@@ -1959,7 +1967,8 @@ class UninitializedVariable(BaseResourceVariable):
             name=name,
             graph_mode=self._in_graph_mode,
             initial_value=extra_handle_data)
-        if not context.executing_eagerly():
+        if self._in_graph_mode:
+          # We only need to add the read_variable_op in TF1.
           with ops.name_scope("Read"):
             # Manually assign reads to the handle's device to avoid log
             # messages.
@@ -1984,7 +1993,8 @@ class UninitializedVariable(BaseResourceVariable):
         graph_element=graph_element,
         trainable=trainable,
         synchronization=synchronization,
-        aggregation=aggregation)
+        aggregation=aggregation,
+        in_graph_mode=self._in_graph_mode)
 
 
 _pywrap_utils.RegisterType("ResourceVariable", ResourceVariable)

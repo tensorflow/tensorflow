@@ -600,7 +600,7 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
   LegalizeTF(const LegalizeTF&) {}
 
   void runOnFunction() override {
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     patterns.insert<Tf2XlaRewritePattern>(device_type_);
     if (failed(
             applyPatternsAndFoldGreedily(getFunction(), std::move(patterns))))

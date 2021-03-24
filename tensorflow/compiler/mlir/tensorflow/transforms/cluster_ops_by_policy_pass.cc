@@ -321,10 +321,6 @@ static void ClusterOpsInTheBlock(
       members.emplace_back(members.size(), &op, first_user);
     }
 
-  // Operations that are candidates for clustering.
-  llvm::DenseSet<Operation *> member_ops;
-  for (auto &member : members) member_ops.insert(member.op);
-
   // Mapping from the member operation to the id.
   llvm::DenseMap<Operation *, unsigned> member_ids;
   for (auto kv : llvm::enumerate(members))
@@ -354,13 +350,14 @@ static void ClusterOpsInTheBlock(
 
     for (Operation *user : users) {
       // Skip users that are past the first cluster result user in the block,
-      // because after clustering we'll violate dominance property (the cluster
-      // operation will be defined after the first user in the block).
+      // because otherwise after clustering we would violate dominance property
+      // (the cluster operation would be defined after the first user in the
+      // block).
       unsigned root = FindRoot(members, member_id);
       Operation *first_cluster_user = members[root].first_user;
       if (first_cluster_user->isBeforeInBlock(user)) continue;
 
-      Union(members, member_ids.lookup(member.op), member_ids.lookup(user));
+      Union(members, member_id, member_ids.lookup(user));
     }
   }
 

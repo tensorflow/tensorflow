@@ -14,9 +14,6 @@
 # ==============================================================================
 """Keras string lookup preprocessing layer."""
 # pylint: disable=g-classes-have-attributes
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras.engine import base_preprocessing_layer
@@ -282,6 +279,10 @@ class StringLookup(index_lookup.IndexLookup):
 
     if encoding is None:
       encoding = "utf-8"
+
+    if vocabulary is not None:
+      if isinstance(vocabulary, str):
+        vocabulary = table_utils.get_vocabulary_from_file(vocabulary, encoding)
 
     self.encoding = encoding
 

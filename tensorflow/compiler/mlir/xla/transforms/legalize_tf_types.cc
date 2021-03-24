@@ -156,9 +156,9 @@ struct LegalizeTfTypesPass
 
 void LegalizeTfTypesPass::runOnOperation() {
   TfTypeConverter converter;
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   patterns.insert<TfTypePattern>(&getContext(), converter);
-  populateFuncOpTypeConversionPattern(patterns, &getContext(), converter);
+  populateFuncOpTypeConversionPattern(patterns, converter);
   TfTypeConversionTarget target(getContext(), converter);
   if (failed(applyFullConversion(getOperation(), target, std::move(patterns))))
     return signalPassFailure();

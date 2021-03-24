@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Utilities for working with tf.lookup tables in Keras."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import collections
 import os
@@ -23,7 +20,7 @@ import numpy as np
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
@@ -42,7 +39,6 @@ class TableHandler(object):
                table,
                oov_tokens=None,
                mask_token=None,
-               mask_value=0,
                use_v1_apis=False):
     self.table = table
 
@@ -50,13 +46,12 @@ class TableHandler(object):
     # it. However, not all tables have initializers, so we try-except here.
     if use_v1_apis:
       try:
-        K.get_session().run(self.table.initializer)
+        backend.get_session().run(self.table.initializer)
       except AttributeError:
         pass
 
     self.mutable = isinstance(table, lookup_ops.MutableHashTable)
     self.mask_token = mask_token
-    self.mask_value = mask_value
 
     self.use_v1_apis = use_v1_apis
     if oov_tokens is None:
@@ -127,15 +122,15 @@ class TableHandler(object):
     # OOV value, so replace that. (This is inefficient, but we can't adjust
     # the table safely, so we don't have a choice.)
     oov_locations = math_ops.equal(lookups, self.table._default_value)  # pylint: disable=protected-access
-    oov_values = array_ops.fill(
-        array_ops.shape(lookups), value=self.table._default_value)  # pylint: disable=protected-access
+    oov_values = array_ops.ones_like(
+        lookups, dtype=self.table._value_dtype) * self.table._default_value  # pylint: disable=protected-access
     adjusted_lookups = array_ops.where(oov_locations, oov_values, lookups)
 
     # Inject 0s wherever the mask token was in the inputs.
     mask_locations = math_ops.equal(inputs, self.mask_token)
-    return array_ops.where_v2(
+    return array_ops.where(
         mask_locations,
-        math_ops.cast(self.mask_value, self.table._value_dtype),  # pylint: disable=protected-access
+        array_ops.zeros_like(lookups, dtype=self.table._value_dtype),  # pylint: disable=protected-access
         adjusted_lookups)  # pylint: disable=protected-access
 
   def _ragged_lookup(self, inputs):
@@ -195,13 +190,13 @@ class TableHandler(object):
 
   def _eval(self, tensor):
     if self.use_v1_apis:
-      return K.get_session().run(tensor)
+      return backend.get_session().run(tensor)
     else:
       return tensor.numpy()
 
   def _run(self, op):
     if self.use_v1_apis:
-      K.get_session().run(op)
+      backend.get_session().run(op)
 
 
 def get_vocabulary_from_file(vocabulary_path, encoding="utf-8"):
@@ -234,3 +229,4 @@ def find_repeated_tokens(vocabulary):
     ]
   else:
     return []
+

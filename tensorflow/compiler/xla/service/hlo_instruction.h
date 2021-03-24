@@ -69,9 +69,11 @@ string PrintName(const string& name, bool print_ids);
 class HloPrintOptions {
  public:
   enum class PrintSubcomputationMode {
-    kOff,         // Do not print anything about subcomputations.
-    kNameOnly,    // Only print the name of subcomputations.
-    kFullBodies,  // Print the full bodies of subcomputations.
+    kOff,                  // Do not print anything about subcomputations.
+    kNameOnly,             // Only print the name of subcomputations.
+    kFullBodies,           // Print the full bodies of subcomputations.
+    kNonSequentialBodies,  // Print the full bodies of subcomputations that are
+                           // not in a sequential context.
   };
 
   // Constructs the default print options: don't print large constants, don't
@@ -132,7 +134,8 @@ class HloPrintOptions {
   // Options to produce a fingerprint of an HLO.
   static HloPrintOptions Fingerprint() {
     return HloPrintOptions()
-        .set_print_subcomputation_mode(PrintSubcomputationMode::kFullBodies)
+        .set_print_subcomputation_mode(
+            PrintSubcomputationMode::kNonSequentialBodies)
         .set_print_metadata(false)
         .set_print_backend_config(false)
         .set_print_infeed_outfeed_config(false)
@@ -671,7 +674,8 @@ class HloInstruction {
   // except that the order of the group members determines the concatenation
   // order of inputs from different participants.
   static std::unique_ptr<HloInstruction> CreateAllGather(
-      const Shape& shape, HloInstruction* operand, int64 all_gather_dimension,
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      int64 all_gather_dimension,
       const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
       const absl::optional<int64>& channel_id, bool use_global_device_ids);
 

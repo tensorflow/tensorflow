@@ -262,6 +262,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":py_client",
+        ":python_ref_manager",
         ":pytree",
         ":types",
         "//tensorflow/compiler/xla:shape_util",

@@ -686,6 +686,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.TensorScatterMin`
 *   `raw_ops.TensorScatterSub`
 *   `raw_ops.TensorScatterUpdate`
+*   `raw_ops.TensorSliceDataset`
 *   `raw_ops.TensorStridedSliceUpdate`
 *   `raw_ops.Tile`
 *   `raw_ops.TileGrad`

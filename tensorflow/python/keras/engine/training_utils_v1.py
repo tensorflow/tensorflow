@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Training-related utilities."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import abc
 import atexit
@@ -27,7 +24,6 @@ import time
 
 import numpy as np
 import six
-from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
@@ -44,7 +40,7 @@ from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
@@ -72,8 +68,7 @@ def is_composite_or_composite_value(tensor):
        ragged_tensor_value.RaggedTensorValue))
 
 
-@six.add_metaclass(abc.ABCMeta)
-class Aggregator(object):
+class Aggregator(object, metaclass=abc.ABCMeta):
   """Abstract base class used to aggregate batch-level outputs of a loop.
 
   Attributes:
@@ -1038,18 +1033,19 @@ def standardize_weights(y,
       weight_vector[keys] = values
 
       y_classes = smart_cond.smart_cond(
-          len(y.shape.as_list()) == 2 and K.shape(y)[1] > 1,
-          lambda: K.argmax(y, axis=1),
-          lambda: math_ops.cast(K.reshape(y, (-1,)), dtypes.int64))
+          len(y.shape.as_list()) == 2 and backend.shape(y)[1] > 1,
+          lambda: backend.argmax(y, axis=1),
+          lambda: math_ops.cast(backend.reshape(y, (-1,)), dtypes.int64))
       class_sample_weight = array_ops.gather(weight_vector, y_classes)
       gen_array_ops.check_numerics(
           class_sample_weight,
           'Invalid classes or class weights detected. NaN values indicate that '
           'an appropriate class weight could not be determined.')
-      class_sample_weight = math_ops.cast(class_sample_weight, K.floatx())
+      class_sample_weight = math_ops.cast(class_sample_weight, backend.floatx())
       if sample_weight is not None:
         sample_weight = math_ops.cast(
-            ops.convert_to_tensor_v2_with_dispatch(sample_weight), K.floatx())
+            ops.convert_to_tensor_v2_with_dispatch(sample_weight),
+            backend.floatx())
     else:
       y_classes = y
       if len(y.shape) == 2:
@@ -1360,7 +1356,7 @@ def check_steps_argument(input_data, steps, steps_name):
 def cast_single_tensor(x, dtype=None):
   if isinstance(x, np.ndarray):
     x = ops.convert_to_tensor_v2_with_dispatch(x)
-  dtype = dtype or K.floatx()
+  dtype = dtype or backend.floatx()
   if x.dtype.is_floating:
     return math_ops.cast(x, dtype=dtype)
   return x
@@ -1565,7 +1561,7 @@ def get_dataset_graph_def(dataset):
   if context.executing_eagerly():
     graph_def_str = dataset._as_serialized_graph().numpy()
   else:
-    graph_def_str = K.get_value(dataset._as_serialized_graph())
+    graph_def_str = backend.get_value(dataset._as_serialized_graph())
   return graph_pb2.GraphDef().FromString(graph_def_str)
 
 
@@ -1611,7 +1607,7 @@ def get_iterator(dataset):
 def initialize_iterator(iterator):
   if not context.executing_eagerly():
     init_op = iterator.initializer
-    K.get_session((init_op,)).run(init_op)
+    backend.get_session((init_op,)).run(init_op)
 
 
 def extract_tensors_from_dataset(dataset):
@@ -1695,7 +1691,7 @@ def infer_steps_for_dataset(model,
     # steps_per_epoch due to the possible inbalanced sharding between workers.
     return None
 
-  size = K.get_value(cardinality.cardinality(dataset))
+  size = backend.get_value(cardinality.cardinality(dataset))
   if size == cardinality.INFINITE and steps is None:
     raise ValueError('When passing an infinitely repeating dataset, you '
                      'must specify the `%s` argument.' % (steps_name,))
@@ -1773,13 +1769,13 @@ class ModelInputs(object):
           shape = (None, 1)
         dtype = dtypes.as_dtype(v.dtype)
         if dtype.is_floating:
-          dtype = K.floatx()
-        v = K.placeholder(shape=shape, name=k, dtype=dtype)
+          dtype = backend.floatx()
+        v = backend.placeholder(shape=shape, name=k, dtype=dtype)
       elif isinstance(v, tensor_spec.TensorSpec):
         shape = (None,) + tuple(v.shape.as_list()[1:])
         if shape == (None,):
           shape = (None, 1)
-        v = K.placeholder(shape=shape, name=k, dtype=v.dtype)
+        v = backend.placeholder(shape=shape, name=k, dtype=v.dtype)
 
       self._flattened_inputs[i] = v
 

@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
@@ -38,6 +39,13 @@ class SparseToDenseTest(test.TestCase):
   def testFloat(self):
     tf_ans = sparse_ops.sparse_to_dense([1, 3], [5], 1.0, 0.0)
     np_ans = np.array([0, 1, 0, 1, 0]).astype(np.float32)
+    self.assertAllClose(np_ans, tf_ans)
+
+  def testEmptyNonZeros(self):
+    indices = array_ops.constant([], dtype=dtypes.int32)
+    values = array_ops.constant([], dtype=dtypes.float32)
+    tf_ans = sparse_ops.sparse_to_dense(indices, [5], values, 0.0)
+    np_ans = np.array([0, 0, 0, 0, 0]).astype(np.float32)
     self.assertAllClose(np_ans, tf_ans)
 
   def testString(self):
@@ -97,22 +105,33 @@ class SparseToDenseTest(test.TestCase):
       self.evaluate(sparse_ops.sparse_to_dense([1, 3], [5], [1, 2], [0]))
 
   def testOutOfBoundsIndicesWithWithoutValidation(self):
-    with self.assertRaisesRegex(
-        (ValueError, errors.InvalidArgumentError),
-        r"indices\[1\] = \[10\] is out of bounds: need 0 <= index < \[5\]"):
+    # The GPU implementation doesn't print the contents of the invalid inputs,
+    # since the overhead of memory copy between device to host is large.
+    # Therefore, the following three tests on invalid inputs will distinguish
+    # the reference error messages between GPUs and CPUs.
+    error_msg = (r"out of bounds" if test_util.is_gpu_available() else
+                 r"indices\[1\] = \[10\] is out of bounds: need 0 <= "
+                 "index < \[5\]")
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                error_msg):
       self.evaluate(
           sparse_ops.sparse_to_dense([[1], [10]], [5], [1.0, 1.0], 0.0))
-    # Disable checks, the allocation should still fail.
-    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
-                                "out of bounds"):
-      self.evaluate(
-          sparse_ops.sparse_to_dense([[1], [10]], [5], [-1.0, 1.0],
-                                     0.0,
-                                     validate_indices=False))
+    # When validate_indices=False, the GPU kernel won't check out-of-bound
+    # access. Therefore, we skip the following test.
+    if not test_util.is_gpu_available():
+      # Disable checks, the allocation should still fail.
+      with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                  "out of bounds"):
+        self.evaluate(
+            sparse_ops.sparse_to_dense([[1], [10]], [5], [-1.0, 1.0],
+                                       0.0,
+                                       validate_indices=False))
 
   def testRepeatingIndicesWithWithoutValidation(self):
+    error_msg = (r"indices\[1\] is repeated" if test_util.is_gpu_available()
+                 else r"indices\[1\] = \[1\] is repeated")
     with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
-                                r"indices\[1\] = \[1\] is repeated"):
+                                error_msg):
       self.evaluate(
           sparse_ops.sparse_to_dense([[1], [1]], [5], [-1.0, 1.0], 0.0))
     # Disable checks
@@ -122,8 +141,11 @@ class SparseToDenseTest(test.TestCase):
                                    validate_indices=False))
 
   def testUnsortedIndicesWithWithoutValidation(self):
+    error_msg = (r"indices\[1\] is out of order"
+                 if test_util.is_gpu_available() else
+                 r"indices\[1\] = \[1\] is out of order")
     with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
-                                r"indices\[1\] = \[1\] is out of order"):
+                                error_msg):
       self.evaluate(
           sparse_ops.sparse_to_dense([[2], [1]], [5], [-1.0, 1.0], 0.0))
     # Disable checks

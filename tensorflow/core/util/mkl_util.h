@@ -469,7 +469,6 @@ class MklDnnShape {
     } else {
       auto format_tag =
           MklTensorFormatToMklDnnDataFormat(data_.tf_data_format_);
-      DCHECK_NE(format_tag, memory::format_tag::undef);
       return memory::desc(dims, data_.T_, format_tag);
     }
   }

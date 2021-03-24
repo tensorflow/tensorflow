@@ -128,4 +128,10 @@ def FuseInnerParallelLoopsPass
   }];
 }
 
+def ShapeSimplification
+    : FunctionPass<"kernelgen-shape-simplification"> {
+  let summary = "Simplify shape ops";
+  let constructor = "transforms::CreateShapeSimplification()";
+}
+
 #endif // TF_KERNEL_GEN_PASSES

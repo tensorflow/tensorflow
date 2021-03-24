@@ -13,18 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
-"""A `Network` is way to compose layers: the topological form of a `Model`.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""A `Network` is way to compose layers: the topological form of a `Model`."""
 
 import collections
 import copy
 import itertools
 import warnings
-
-from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes

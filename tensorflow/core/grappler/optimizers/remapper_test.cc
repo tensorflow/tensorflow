@@ -461,10 +461,10 @@ class RemapperFuseMatMulWithBiasTest : public RemapperTest {
 TEST_F(RemapperFuseMatMulWithBiasTest, F32) { RunTest<DT_FLOAT>(); }
 
 TEST_F(RemapperFuseMatMulWithBiasTest, Bf16) {
-#if !defined(INTEL_MKL)
+#if !defined(ENABLE_MKL)
   GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
                   "FuseMatMulWithBias with bfloat16.";
-#endif                     // !defined(INTEL_MKL)
+#endif
   RunTest<DT_BFLOAT16>();  // NOLINT
 }
 
@@ -637,7 +637,7 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
   void RunTest() {
     using ::tensorflow::ops::Placeholder;
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
     std::vector<string> activations = {"Relu", "Relu6", "Elu", "Tanh",
                                        "LeakyRelu"};
 #else
@@ -670,7 +670,7 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
           return ops::Identity(fetch, ops::Relu6(activate, bias_add));
         } else if (activation == "Elu") {
           return ops::Identity(fetch, ops::Elu(activate, bias_add));
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
         } else if (activation == "Tanh") {
           return ops::Identity(fetch, ops::Tanh(activate, bias_add));
 #endif
@@ -742,14 +742,14 @@ TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, F32) {
 }
 
 TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, Bf16) {
-#if !defined(INTEL_MKL)
+#if !defined(ENABLE_MKL)
   GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
                   "FuseMatMulWithBiasAndActivation with bfloat16.";
-#endif                     // !defined(INTEL_MKL)
+#endif
   RunTest<DT_BFLOAT16>();  // NOLINT
 }
 
-#ifndef INTEL_MKL
+#ifndef ENABLE_MKL
 TEST_F(RemapperTest, FuseConv2DWithBatchNorm) {
   using ops::Placeholder;
 
@@ -932,7 +932,7 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNormAndActivation) {
     test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
   }
 }
-#endif  // !INTEL_MKL
+#endif  // !ENABLE_MKL
 
 TEST_F(RemapperTest, FuseConv2DWithSqueezeAndBias) {
   using ops::Placeholder;

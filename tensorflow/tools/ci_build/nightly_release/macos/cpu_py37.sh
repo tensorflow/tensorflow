@@ -31,10 +31,12 @@ export PATH=$PATH:/usr/local/bin
 
 ./tensorflow/tools/ci_build/update_version.py --nightly
 
+export PYTHON_BIN_PATH=$(which python3.7)
+
 # Build the pip package
 bazel build \
   --config=release_cpu_macos \
-  --repo_env=PYTHON_BIN_PATH="$(which python3.7)" \
+  --repo_env=PYTHON_BIN_PATH="$PYTHON_BIN_PATH" \
   tensorflow/tools/pip_package:build_pip_package
 
 mkdir pip_pkg

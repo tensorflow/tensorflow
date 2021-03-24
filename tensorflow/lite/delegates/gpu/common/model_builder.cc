@@ -725,6 +725,7 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
       case OperationType::COS:
       case OperationType::ELU:
       case OperationType::EXP:
+      case OperationType::FLOOR:
       case OperationType::LOG:
       case OperationType::NEG:
       case OperationType::RSQRT:
@@ -742,6 +743,8 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
   bool IsTwoArgumentOperation() const {
     switch (operation_type_) {
       case OperationType::DIV:
+      case OperationType::FLOOR_DIV:
+      case OperationType::FLOOR_MOD:
       case OperationType::MAXIMUM:
       case OperationType::MINIMUM:
       case OperationType::POW:
@@ -756,6 +759,8 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
   bool IsTwoArgumentOperationWithConst() const {
     switch (operation_type_) {
       case OperationType::DIV:
+      case OperationType::FLOOR_DIV:
+      case OperationType::FLOOR_MOD:
       case OperationType::MAXIMUM:
       case OperationType::MINIMUM:
       case OperationType::POW:
@@ -2078,6 +2083,27 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
   }
 };
 
+class TileOperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/1, /*outputs=*/1));
+    return absl::OkStatus();
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::TILE);
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+    return absl::OkStatus();
+  }
+};
+
 // Builtin op version of TRANSPOSE_CONV.
 class TransposeConvBuiltinOperationParser : public TFLiteOperationParser {
  public:
@@ -2367,6 +2393,14 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<ElementwiseOperationParser>(OperationType::ELU);
     case kTfLiteBuiltinExp:
       return std::make_unique<ElementwiseOperationParser>(OperationType::EXP);
+    case kTfLiteBuiltinFloor:
+      return std::make_unique<ElementwiseOperationParser>(OperationType::FLOOR);
+    case kTfLiteBuiltinFloorDiv:
+      return std::make_unique<ElementwiseOperationParser>(
+          OperationType::FLOOR_DIV);
+    case kTfLiteBuiltinFloorMod:
+      return std::make_unique<ElementwiseOperationParser>(
+          OperationType::FLOOR_MOD);
     case kTfLiteBuiltinFullyConnected:
       return std::make_unique<FullyConnectedOperationParser>();
     case kTfLiteBuiltinHardSwish:
@@ -2456,6 +2490,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<ReduceOperationParser>(OperationType::REDUCE_SUM);
     case kTfLiteBuiltinTanh:
       return std::make_unique<ElementwiseOperationParser>(OperationType::TANH);
+    case kTfLiteBuiltinTile:
+      return std::make_unique<TileOperationParser>();
     case kTfLiteBuiltinTranspose:
       return std::make_unique<TransposeOperationParser>();
     case kTfLiteBuiltinTransposeConv:

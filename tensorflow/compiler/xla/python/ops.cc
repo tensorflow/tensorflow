@@ -238,11 +238,17 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("computation"), py::arg("dimensions_to_reduce"));
   ops.def("ReducePrecision", &ReducePrecision, py::arg("operand"),
           py::arg("exponent_bits"), py::arg("mantissa_bits"));
-  ops.def("ReduceWindowWithGeneralPadding", &ReduceWindowWithGeneralPadding,
-          py::arg("operand"), py::arg("init_value"), py::arg("computation"),
-          py::arg("window_dimensions"), py::arg("window_strides"),
-          py::arg("base_dilations"), py::arg("window_dilations"),
-          py::arg("padding"));
+  ops.def(
+      "ReduceWindowWithGeneralPadding",
+      static_cast<XlaOp (*)(XlaOp, XlaOp, const XlaComputation&,
+                            absl::Span<const int64>, absl::Span<const int64>,
+                            absl::Span<const int64>, absl::Span<const int64>,
+                            absl::Span<const std::pair<int64, int64>>)>(
+          &ReduceWindowWithGeneralPadding),
+      py::arg("operand"), py::arg("init_value"), py::arg("computation"),
+      py::arg("window_dimensions"), py::arg("window_strides"),
+      py::arg("base_dilations"), py::arg("window_dilations"),
+      py::arg("padding"));
   ops.def("RemoveDynamicDimension", &RemoveDynamicDimension, py::arg("operand"),
           py::arg("dimension"));
   ops.def("ReplicaId", &ReplicaId, py::arg("builder"));
