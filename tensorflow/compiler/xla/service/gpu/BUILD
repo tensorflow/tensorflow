@@ -209,24 +209,6 @@ cc_library(
 )
 
 cc_library(
-    name = "thunk_emitter",
-    srcs = ["thunk_emitter.cc"],
-    hdrs = ["thunk_emitter.h"],
-    deps = [
-        ":backend_configs_cc",
-        ":buffer_allocations",
-        ":gpu_constants",
-        ":gpu_executable",
-        ":ir_emission_utils",
-        ":thunk",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla/service:buffer_assignment",
-        "//tensorflow/compiler/xla/service:hlo_casting_utils",
-    ],
-)
-
-cc_library(
     name = "gpu_device_info",
     hdrs = ["gpu_device_info.h"],
 )
@@ -260,7 +242,6 @@ cc_library(
         ":parallel_loop_emitter",
         ":target_util",
         ":thunk",
-        ":thunk_emitter",
         "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:lhlo",

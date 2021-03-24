@@ -66,6 +66,13 @@ static llvm::cl::opt<bool> enable_log_if_failed(
                    "tolerance. Valid when `-tfl-numeric-verify` is set."),
     llvm::cl::init(false));
 
+// NOLINTNEXTLINE
+static llvm::cl::opt<bool> enable_legacy_quantize(
+    "tfl-legacy-quantize", llvm::cl::value_desc("bool"),
+    llvm::cl::desc("Use legacy quantize mode in test. Valid when"
+                   "`-tfl-legacy-quantize` is set."),
+    llvm::cl::init(false));
+
 namespace mlir {
 namespace TFL {
 
@@ -87,40 +94,31 @@ struct TFLFullQuantization
   static bool AllowHybridResult() { return false; }
 };
 
-struct LegacyQuantizeConstPattern : public OpRewritePattern<QuantizeOp> {
-  // This pattern should be applied before existing quantize pattern in
-  // `quantize_patterns.td`, so the benefit is set to some value larger than 1.
-  explicit LegacyQuantizeConstPattern(MLIRContext* context)
-      : OpRewritePattern<QuantizeOp>(context, /*benefit=*/10) {}
-  LogicalResult matchAndRewrite(QuantizeOp op,
-                                PatternRewriter& rewriter) const override {
-    DenseFPElementsAttr attr;
-    if (matchPattern(op.input(), m_Constant(&attr))) {
-      auto qtype = op.qtypeAttr();
-      if (auto quantized_attr = quant::QuantizeLegacy(attr, qtype.getValue())) {
-        rewriter.replaceOpWithNewOp<QConstOp>(op, qtype, quantized_attr);
-        return success();
-      }
-    }
-    return failure();
-  }
-};
-
 struct QuantizeConstPattern : public OpRewritePattern<QuantizeOp> {
-  explicit QuantizeConstPattern(MLIRContext* context)
-      : OpRewritePattern<QuantizeOp>(context) {}
+  explicit QuantizeConstPattern(MLIRContext* context, bool legacy_float_scale)
+      : OpRewritePattern<QuantizeOp>(context),
+        legacy_float_scale(legacy_float_scale) {}
   LogicalResult matchAndRewrite(QuantizeOp op,
                                 PatternRewriter& rewriter) const override {
     DenseFPElementsAttr attr;
     if (matchPattern(op.input(), m_Constant(&attr))) {
       auto qtype = op.qtypeAttr();
-      if (auto quantized_attr = quant::Quantize(attr, qtype.getValue())) {
+      Attribute quantized_attr;
+      if (legacy_float_scale) {
+        quantized_attr = quant::QuantizeLegacy(attr, qtype.getValue());
+      } else {
+        quantized_attr = quant::Quantize(attr, qtype.getValue());
+      }
+      if (quantized_attr) {
         rewriter.replaceOpWithNewOp<QConstOp>(op, qtype, quantized_attr);
         return success();
       }
     }
     return failure();
   }
+
+ private:
+  bool legacy_float_scale;
 };
 
 // Applies quantization on the model in TFL dialect.
@@ -155,10 +153,8 @@ void QuantizePass::runOnFunction() {
   // Constant quantization is a lossy transformation, so they are applied only
   // after all the other patterns have been aplied.
   OwningRewritePatternList patterns_2(&getContext());
-  if (legacy_float_scale) {
-    patterns_2.insert<LegacyQuantizeConstPattern>(ctx);
-  }
-  patterns_2.insert<QuantizeConstPattern>(ctx);
+  patterns_2.insert<QuantizeConstPattern>(
+      ctx, legacy_float_scale || enable_legacy_quantize);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns_2));
 }
 }  // namespace

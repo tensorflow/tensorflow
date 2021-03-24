@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Contains the loss scaling optimizer class."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribution_strategy_context

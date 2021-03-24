@@ -8,25 +8,20 @@
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY backendIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
 """Built-in activation functions."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
-import six
-
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
+from tensorflow.python.keras.layers import advanced_activations
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import keras_export
-from tensorflow.python.keras.layers import advanced_activations
 
 # b/123041942
 # In TF 2.x, if the `tf.nn.softmax` is used as an activation function in Keras
@@ -34,7 +29,6 @@ from tensorflow.python.keras.layers import advanced_activations
 # internal method name is returned in serialization. This results in errors in
 # model exporting and loading as Keras can't find any activation function with
 # the name of `softmax_v2`.
-
 # This dict maps the activation function name from its v2 version to its
 # canonical name.
 _TF_ACTIVATIONS_V2 = {
@@ -146,7 +140,7 @@ def elu(x, alpha=1.0):
       [Fast and Accurate Deep Network Learning by Exponential Linear Units
       (ELUs) (Clevert et al, 2016)](https://arxiv.org/abs/1511.07289)
   """
-  return K.elu(x, alpha)
+  return backend.elu(x, alpha)
 
 
 @keras_export('keras.activations.selu')
@@ -198,7 +192,7 @@ def selu(x):
         `tf.keras.layers.AlphaDropout` (not regular dropout).
 
   References:
-      - [Klambauer et al., 2017](https://arxiv.org/abs/1706.02515)
+      - [backendlambauer et al., 2017](https://arxiv.org/abs/1706.02515)
   """
   return nn.selu(x)
 
@@ -315,7 +309,7 @@ def relu(x, alpha=0., max_value=None, threshold=0):
       transformed by the relu activation function.
       Tensor will be of the same shape and dtype of input `x`.
   """
-  return K.relu(x, alpha=alpha, max_value=max_value, threshold=threshold)
+  return backend.relu(x, alpha=alpha, max_value=max_value, threshold=threshold)
 
 
 @keras_export('keras.activations.gelu', v1=[])
@@ -458,7 +452,7 @@ def hard_sigmoid(x):
       - `if x > 2.5: return 1`
       - `if -2.5 <= x <= 2.5: return 0.2 * x + 0.5`
   """
-  return K.hard_sigmoid(x)
+  return backend.hard_sigmoid(x)
 
 
 @keras_export('keras.activations.linear')
@@ -588,7 +582,7 @@ def get(identifier):
   """
   if identifier is None:
     return linear
-  if isinstance(identifier, six.string_types):
+  if isinstance(identifier, str):
     identifier = str(identifier)
     return deserialize(identifier)
   elif isinstance(identifier, dict):

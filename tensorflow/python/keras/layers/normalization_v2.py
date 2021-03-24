@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""The V2 implementation of Normalization layers.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""The V2 implementation of Normalization layers."""
 
 from tensorflow.python.distribute import distribution_strategy_context as ds
 from tensorflow.python.distribute import reduce_util

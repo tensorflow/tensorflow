@@ -196,7 +196,7 @@ class ParameterServerStrategyV2Test(test.TestCase):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver)
     strategy.extended._allow_run_without_coordinator = True
-    dataset = dataset_ops.DatasetV2.range(3)
+    dataset = dataset_ops.DatasetV2.range(15)
     with strategy.scope():
       v = variables.Variable(1, dtype=dtypes.int64)
 

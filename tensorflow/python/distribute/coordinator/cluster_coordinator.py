@@ -640,7 +640,11 @@ class WorkerPreemptionHandler(object):
 
   def _validate_preemption_failure(self, e):
     """Validates that the given exception represents worker preemption."""
-    if _is_worker_failure(e):
+
+    # Only categorize the failure as a worker preemption if the cancellation
+    # manager did not attempt to cancel the blocking operations.
+    if _is_worker_failure(e) and (
+        not self._cluster._closure_queue._cancellation_mgr.is_cancelled):  # pylint: disable=protected-access
       return
     raise e
 

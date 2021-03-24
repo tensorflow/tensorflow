@@ -14,9 +14,6 @@
 # ==============================================================================
 """Keras index lookup preprocessing layer."""
 # pylint: disable=g-classes-have-attributes
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import collections
 import json
@@ -27,7 +24,7 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import category_encoding
 from tensorflow.python.keras.layers.preprocessing import table_utils
@@ -241,7 +238,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       self.tf_idf_weights = self._add_state_variable(
           name="idf",
           shape=tensor_shape.TensorShape(idf_shape),
-          dtype=K.floatx(),
+          dtype=backend.floatx(),
           initializer=initializer)
 
     tracked_table = self._add_trackable(self._table, trainable=False)
@@ -262,7 +259,8 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
 
   def compute_output_signature(self, input_spec):
     output_shape = self.compute_output_shape(input_spec.shape.as_list())
-    output_dtype = self._value_dtype if self.output_mode == INT else K.floatx()
+    output_dtype = (self._value_dtype if self.output_mode == INT
+                    else backend.floatx())
     return tensor_spec.TensorSpec(shape=output_shape, dtype=output_dtype)
 
   def adapt(self, data, reset_state=True):
@@ -484,7 +482,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
           idf_weights, (front_padding, back_padding),
           "constant",
           constant_values=(front_padding_value, back_padding_value))
-      K.set_value(self.tf_idf_weights, idf_weights)
+      backend.set_value(self.tf_idf_weights, idf_weights)
 
   def _set_state_variables(self, updates):
     if not self.built:

@@ -13,11 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
-"""Utils related to keras metrics.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Utils related to keras metrics."""
 
 import functools
 import weakref

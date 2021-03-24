@@ -14,9 +14,6 @@
 # ==============================================================================
 # pylint: disable=protected-access
 """Contains the base Layer class, from which all layers inherit."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import collections
 import copy
@@ -27,8 +24,6 @@ import warnings
 import weakref
 
 import numpy as np
-import six
-from six.moves import zip  # pylint: disable=redefined-builtin
 
 from google.protobuf import json_format
 from tensorflow.core.framework import node_def_pb2
@@ -776,12 +771,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         try:
           outputs = self(inputs, training=False)
         except TypeError as e:
-          six.raise_from(
-              NotImplementedError(
-                  'We could not automatically infer the static shape of the '
-                  'layer\'s output. Please implement the '
-                  '`compute_output_shape` method on your layer (%s).' %
-                  self.__class__.__name__), e)
+          raise NotImplementedError(
+              'We could not automatically infer the static shape of the '
+              'layer\'s output. Please implement the '
+              '`compute_output_shape` method on your layer (%s).' %
+              self.__class__.__name__) from e
       return nest.map_structure(lambda t: t.shape, outputs)
     raise NotImplementedError(
         'Please run in eager mode or implement the `compute_output_shape` '

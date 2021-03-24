@@ -12,19 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Training-related part of the Keras engine.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Training-related part of the Keras engine."""
 
 import copy
 import itertools
 import json
 import os
 import warnings
-
-import six
 
 from tensorflow.python.autograph.lang import directives
 from tensorflow.python.data.experimental.ops import distribute_options
@@ -346,11 +340,10 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       try:
         self._base_model_initialized
       except AttributeError:
-        # six.raise_from supresses the original AttributeError from being raised
-        six.raise_from(
-            RuntimeError('It looks like you are subclassing `Model` and you '
-                         'forgot to call `super(YourClass, self).__init__()`.'
-                         ' Always start with this line.'), None)
+        raise RuntimeError(
+            'It looks like you are subclassing `Model` and you '
+            'forgot to call `super(YourClass, self).__init__()`.'
+            ' Always start with this line.')
 
     super(Model, self).__setattr__(name, value)
 
@@ -1815,11 +1808,13 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     """Test the model on a single batch of samples.
 
     Args:
-        x: Input data. It could be: - A Numpy array (or array-like), or a list
-          of arrays (in case the model has multiple inputs). - A TensorFlow
-          tensor, or a list of tensors (in case the model has multiple inputs).
+        x: Input data. It could be:
+          - A Numpy array (or array-like), or a list of arrays (in case the
+              model has multiple inputs).
+          - A TensorFlow tensor, or a list of tensors (in case the model has
+              multiple inputs).
           - A dict mapping input names to the corresponding array/tensors, if
-          the model has named inputs.
+              the model has named inputs.
         y: Target data. Like the input data `x`, it could be either Numpy
           array(s) or TensorFlow tensor(s). It should be consistent with `x`
           (you cannot have Numpy inputs and tensor targets, or inversely).
@@ -1866,9 +1861,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     """Returns predictions for a single batch of samples.
 
     Args:
-        x: Input data. It could be: - A Numpy array (or array-like), or a list
-          of arrays (in case the model has multiple inputs). - A TensorFlow
-          tensor, or a list of tensors (in case the model has multiple inputs).
+        x: Input data. It could be:
+          - A Numpy array (or array-like), or a list of arrays (in case the
+              model has multiple inputs).
+          - A TensorFlow tensor, or a list of tensors (in case the model has
+              multiple inputs).
 
     Returns:
         Numpy array(s) of predictions.

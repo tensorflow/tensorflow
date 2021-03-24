@@ -202,7 +202,7 @@ StatusOr<std::vector<std::unique_ptr<LocalDeviceState>>> BuildLocalDeviceStates(
     addressable_devices.push_back(absl::make_unique<LocalDeviceState>(
         executor, xla_client, LocalDeviceState::kComputeSynchronized,
         asynchronous,
-        /*allow_event_reuse=*/true));
+        /*allow_event_reuse=*/true, /*use_callback_stream=*/true));
   }
   return std::move(addressable_devices);
 }
