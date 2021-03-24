@@ -20,10 +20,12 @@ from __future__ import print_function
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import structure
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("data.experimental.get_single_element")
+@tf_export("data.experimental.get_single_element", "data.get_single_element")
+@deprecation.deprecated_endpoints("data.experimental.get_single_element")
 def get_single_element(dataset):
   """Returns the single element in `dataset` as a nested structure of tensors.
 
