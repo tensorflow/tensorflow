@@ -4728,7 +4728,10 @@ tf_kernel_library(
     prefix = "sparse_to_dense_op",
     deps = SPARSE_DEPS + [
         "//third_party/eigen3",
-    ],
+    ] + if_cuda([
+        ":gpu_utils",
+        "//tensorflow/core/platform:stream_executor",
+    ]),
 )
 
 tf_kernel_library(
