@@ -4571,7 +4571,7 @@ subsequent operation and then be optimized away, however.)
   );
 }
 
-def TFL_RFFT2dOp : TFL_Op<"RFFT2D", [NoSideEffect, NoQuantizableResult]> {
+def TFL_RFFT2dOp : TFL_Op<"rfft2d", [NoSideEffect, NoQuantizableResult]> {
   let summary = "2D real-valued fast Fourier transform.";
 
   let description = [{
