@@ -60,6 +60,9 @@ def call_for_each_replica(strategy, fn, args=None, kwargs=None):
     kwargs = {}
 
   if isinstance(fn, def_function.Function):
+    if fn._jit_compile:  # pylint: disable=protected-access
+      return _call_for_each_replica(strategy, fn, args, kwargs)
+
     if strategy not in _cfer_fn_cache:
       _cfer_fn_cache[strategy] = weakref.WeakKeyDictionary()
     wrapped = _cfer_fn_cache[strategy].get(fn)

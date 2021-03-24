@@ -91,6 +91,8 @@
 *   XLA compilation:
     *   `tf.function(experimental_compile=True)` has become a stable API,
         renamed `tf.function(jit_compile=True)`.
+    *   XLA can now compile MirroredStrategy: the step function passed to
+        `strategy.run` can now be annoted with `jit_compile=True`.
 
 *   `tf.distribute`:
     *   Rename `experimental_prefetch_to_device` in `tf.distribute.InputOptions`
