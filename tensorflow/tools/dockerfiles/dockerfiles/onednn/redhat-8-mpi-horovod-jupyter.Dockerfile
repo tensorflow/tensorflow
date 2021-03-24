@@ -27,11 +27,11 @@ FROM registry.access.redhat.com/ubi8/ubi:${REDHAT_VERSION} as base
 ENV LANG C.UTF-8
 ARG PYTHON=python3
 
-RUN yum --disableplugin=subscription-manager update -y && yum --disableplugin=subscription-manager install -y \
+RUN yum update -y && yum install -y \
     ${PYTHON} \
     ${PYTHON}-pip \
     which && \
-    yum --disableplugin=subscription-manager clean all
+    yum clean all
 
 
 RUN ${PYTHON} -m pip --no-cache-dir install --upgrade \
@@ -54,13 +54,13 @@ ARG TF_PACKAGE=tensorflow
 ARG TF_PACKAGE_VERSION=
 RUN python3 -m pip install --no-cache-dir ${TF_PACKAGE}${TF_PACKAGE_VERSION:+==${TF_PACKAGE_VERSION}}
 
-RUN yum --disableplugin=subscription-manager update -y && yum --disableplugin=subscription-manager install -y \
+RUN yum update -y && yum install -y \
     openmpi \
     openmpi-devel \
     openssh \
     openssh-server \
     which && \
-    yum --disableplugin=subscription-manager clean all
+    yum clean all
 
 ENV PATH="/usr/lib64/openmpi/bin:${PATH}"
 
@@ -87,14 +87,14 @@ ARG HOROVOD_WITHOUT_MXNET=1
 ARG HOROVOD_WITH_TENSORFLOW=1
 ARG HOROVOD_VERSION=v0.21.1
 
-RUN yum --disableplugin=subscription-manager update -y && yum --disableplugin=subscription-manager install -y \
+RUN yum update -y && yum install -y \
     cmake \
     gcc \
     gcc-c++ \
     git \
     make \
     ${PYTHON}-devel && \
-    yum --disableplugin=subscription-manager clean all
+    yum clean all
 
 RUN ${PYTHON} -m pip install git+https://github.com/horovod/horovod.git@${HOROVOD_VERSION}
 

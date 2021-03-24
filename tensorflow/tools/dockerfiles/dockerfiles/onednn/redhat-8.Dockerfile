@@ -27,11 +27,11 @@ FROM registry.access.redhat.com/ubi8/ubi:${REDHAT_VERSION} as base
 ENV LANG C.UTF-8
 ARG PYTHON=python3
 
-RUN yum --disableplugin=subscription-manager update -y && yum --disableplugin=subscription-manager install -y \
+RUN yum update -y && yum install -y \
     ${PYTHON} \
     ${PYTHON}-pip \
     which && \
-    yum --disableplugin=subscription-manager clean all
+    yum clean all
 
 
 RUN ${PYTHON} -m pip --no-cache-dir install --upgrade \

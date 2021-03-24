@@ -26,10 +26,10 @@ FROM registry.access.redhat.com/ubi8/ubi:${REDHAT_VERSION} AS base
 ARG REDHAT_VERSION=latest
 
 # Enable both PowerTools and EPEL otherwise some packages like hdf5-devel fail to install
-RUN dnf --disableplugin=subscription-manager install -y 'dnf-command(config-manager)' && \
-    dnf --disableplugin=subscription-manager config-manager --set-enabled powertools && \
-    dnf --disableplugin=subscription-manager install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-"${REDHAT_VERSION}".noarch.rpm && \
-    dnf --disableplugin=subscription-manager clean all
+# RUN dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
+RUN dnf install -y 'dnf-command(config-manager)' && \
+    dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm && \
+    dnf clean all
 
 RUN yum update -y && \
     yum install -y \
@@ -66,11 +66,11 @@ RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/tensorflow/t
 ENV LANG C.UTF-8
 ARG PYTHON=python3
 
-RUN yum --disableplugin=subscription-manager update -y && yum --disableplugin=subscription-manager install -y \
+RUN yum update -y && yum install -y \
     ${PYTHON} \
     ${PYTHON}-pip \
     which && \
-    yum --disableplugin=subscription-manager clean all
+    yum clean all
 
 
 RUN ${PYTHON} -m pip --no-cache-dir install --upgrade \

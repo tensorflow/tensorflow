@@ -1,12 +1,12 @@
 # install mpich, openssh for MPI to communicate between containers
-RUN yum --disableplugin=subscription-manager update -y && yum --disableplugin=subscription-manager install -y \
+RUN yum update -y && yum install -y \
     mpich \
     mpich-devel \
     openssh \
     openssh-server \
     redhat-rpm-config \
     which && \
-    yum --disableplugin=subscription-manager clean all
+    yum clean all
 
 ENV PATH="/usr/lib64/mpich/bin:${PATH}"
 

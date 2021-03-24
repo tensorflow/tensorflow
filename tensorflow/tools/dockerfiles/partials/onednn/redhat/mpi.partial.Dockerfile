@@ -1,10 +1,10 @@
-RUN yum --disableplugin=subscription-manager update -y && yum --disableplugin=subscription-manager install -y \
+RUN yum update -y && yum install -y \
     openmpi \
     openmpi-devel \
     openssh \
     openssh-server \
     which && \
-    yum --disableplugin=subscription-manager clean all
+    yum clean all
 
 ENV PATH="/usr/lib64/openmpi/bin:${PATH}"
 
