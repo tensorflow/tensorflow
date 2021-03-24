@@ -2893,6 +2893,10 @@ class StrategyExtendedV1(StrategyExtendedV2):
     """
     raise NotImplementedError("must be implemented in descendants")
 
+  def _use_merge_call(self):
+    """Whether to use merge-calls inside the distributed strategy."""
+    return True
+
   @property
   def experimental_between_graph(self):
     """Whether the strategy uses between-graph replication or not.

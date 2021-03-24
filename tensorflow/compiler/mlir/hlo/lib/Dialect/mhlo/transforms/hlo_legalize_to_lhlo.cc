@@ -572,8 +572,8 @@ struct HloLegalizeToLhlo
   HloLegalizeToLhlo(const HloLegalizeToLhlo& o) {}
 
   void runOnOperation() override {
-    OwningRewritePatternList patterns;
     auto& context = getContext();
+    OwningRewritePatternList patterns(&context);
     ConversionTarget target(context);
     target.addLegalDialect<lmhlo::LmhloDialect>();
     target.addLegalDialect<StandardOpsDialect>();
@@ -608,16 +608,14 @@ struct HloLegalizeToLhlo
     });
 
     populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
-    populateFuncOpTypeConversionPattern(patterns, &context, converter);
-    populateCallOpTypeConversionPattern(patterns, &context, converter);
-    populateBranchOpInterfaceTypeConversionPattern(patterns, &context,
-                                                   converter);
-    populateReturnOpTypeConversionPattern(patterns, &context, converter);
-    populateEliminateBufferizeMaterializationsPatterns(&context, converter,
-                                                       patterns);
+    populateFuncOpTypeConversionPattern(patterns, converter);
+    populateCallOpTypeConversionPattern(patterns, converter);
+    populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
+    populateReturnOpTypeConversionPattern(patterns, converter);
+    populateEliminateBufferizeMaterializationsPatterns(converter, patterns);
 
-    populateShapeStructuralTypeConversionsAndLegality(&context, converter,
-                                                      patterns, target);
+    populateShapeStructuralTypeConversionsAndLegality(converter, patterns,
+                                                      target);
 
     // TODO(b/175789537) Remove this pattern.
     patterns.insert<HloToLhloTensorStoreOpLegacyConverter>(&context);

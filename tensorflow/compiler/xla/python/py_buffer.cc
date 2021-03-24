@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 
 #include "absl/base/casts.h"
-#include "pybind11/gil.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"

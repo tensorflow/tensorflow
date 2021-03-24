@@ -2317,5 +2317,54 @@ class CalibrateAndQuantizeWithCustomOpTest(lite_v2_test_util.ModelTest):
       converter.convert()
 
 
+class IntermediatesTest(lite_v2_test_util.ModelTest):
+
+  def _run(self, experimental_preserve_all_tensors):
+
+    @tf.function
+    def f(x):
+      y = tf.add(x, x, name='y')
+      z = tf.add(y, y, name='z')
+      w = tf.add(z, z, name='w')
+      return w
+
+    # NOTE this is exactly representable as a float as are the intermeidates of
+    # f. So direct comparison is ok below.
+
+    input_data = np.array(2.0, np.float32)
+    concrete_func = f.get_concrete_function(input_data)
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    tflite_model = converter.convert()
+    interpreter = Interpreter(
+        model_content=tflite_model,
+        experimental_preserve_all_tensors=experimental_preserve_all_tensors)
+    interpreter.allocate_tensors()
+    interpreter.set_tensor(interpreter.get_input_details()[0]['index'],
+                           input_data)
+    interpreter.invoke()
+    out = interpreter.get_tensor(interpreter.get_output_details()[0]['index'])
+    tensors = {
+        t['name']: interpreter.get_tensor(t['index'])
+        for t in interpreter.get_tensor_details()
+    }
+    return (tensors, out)
+
+  def testPreserve(self):
+    tensors, result = self._run(experimental_preserve_all_tensors=True)
+    # All intermediates should be true and result be true.
+    self.assertAllClose(tensors['x'], 2.0)
+    self.assertAllClose(tensors['y'], 4.0)
+    self.assertAllClose(tensors['z'], 8.0)
+    self.assertAllClose(result, 16.0)
+
+  def testNoPreserve(self):
+    tensors, result = self._run(experimental_preserve_all_tensors=False)
+    # One of them should be wrong if preserve is not true, but result should be
+    # ok. Input should still be ok for repeated invocation.
+    self.assertAllClose(tensors['x'], 2.0)
+    self.assertTrue(tensors['y'] != 4.0 or tensors['z'] != 8.0)
+    self.assertAllClose(result, 16.0)
+
+
 if __name__ == '__main__':
   test.main()

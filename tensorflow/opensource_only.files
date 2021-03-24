@@ -20,6 +20,7 @@ tensorflow/lite/core/shims/cc/kernels/register.h
 tensorflow/lite/core/shims/cc/model.h
 tensorflow/lite/core/shims/cc/model_builder.h
 tensorflow/lite/core/shims/cc/shims_test_util.h
+tensorflow/lite/core/shims/cc_library_with_tflite.bzl
 tensorflow/lite/delegates/gpu/cl/compiled_program_cache_generated.h
 tensorflow/lite/delegates/gpu/cl/serialization_generated.h
 tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h

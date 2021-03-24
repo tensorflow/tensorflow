@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Keras model mode constants."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 # pylint: disable=unused-import
 from tensorflow.python.saved_model.model_utils.mode_keys import KerasModeKeys as ModeKeys

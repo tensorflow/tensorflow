@@ -14,10 +14,6 @@
 # ==============================================================================
 """Keras layers API."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python import tf2
 
 # Generic layers.
@@ -264,7 +260,3 @@ class VersionAwareLayers(object):
     if name in serialization.LOCAL.ALL_OBJECTS:
       return serialization.LOCAL.ALL_OBJECTS[name]
     return super(VersionAwareLayers, self).__getattr__(name)
-
-del absolute_import
-del division
-del print_function

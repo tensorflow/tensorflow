@@ -130,8 +130,8 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // Burst mode allows accelerators to efficiently manage resources, which
     // would significantly reduce overhead especially if the same delegate
     // instance is to be used for multiple inferences.
-    // Default: Enabled.
-    bool use_burst_computation = true;
+    // Default: Disabled.
+    bool use_burst_computation = false;
   };
 
   // Uses default options.
@@ -259,7 +259,7 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // Whether to allow dynamic dimension sizes without re-compilation.
     bool allow_dynamic_dimensions = false;
     // Whether to use NNAPI Burst mode.
-    bool use_burst_computation = true;
+    bool use_burst_computation = false;
 
     explicit Data(const NnApi* nnapi);
     ~Data();

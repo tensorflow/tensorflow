@@ -832,12 +832,6 @@ Status IrEmitterUnnested::EmitConditionalFromMlir(MlirEmitterInput mlir_input) {
   return Status::OK();
 }
 
-Status IrEmitterUnnested::HandleConvolution(HloInstruction* convolution) {
-  AddThunkToThunkSequence(
-      BuildKernelThunk(convolution, /*implements_whole_instruction=*/true));
-  return IrEmitter::HandleConvolution(convolution);
-}
-
 // Input = {dynamic array(with dynamic dimension meta data at the end)}
 // Output = {static array, dynamic_dim0, dynamic_dim1}
 Status IrEmitterUnnested::EmitPadToStaticFromMlir(MlirEmitterInput mlir_input) {
@@ -3552,34 +3546,6 @@ IrEmitterUnnested::BuildKernelThunkFromBufferSlices(
                                         std::string(kernel->getName()));
 }
 
-std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
-    const HloInstruction* inst, bool implements_whole_instruction) {
-  std::vector<HloBufferSlice> hlo_slices =
-      GetHloBufferSlices(inst, ir_emitter_context_->buffer_assignment());
-
-  std::vector<BufferSlice*> slice_ptrs;
-  slice_ptrs.reserve(hlo_slices.size());
-  for (auto& slice : hlo_slices) {
-    slice_ptrs.push_back(&slice);
-  }
-
-  return BuildKernelThunkFromBufferSlices(
-      inst->name(),
-      implements_whole_instruction ? GetThunkInfo(inst) : Thunk::ThunkInfo(),
-      slice_ptrs, [this](const BufferSlice* slice, llvm::Value* value) {
-        const HloBufferSlice* hlo_buffer_slice =
-            static_cast<const HloBufferSlice*>(slice);
-        const HloInstruction* instr = hlo_buffer_slice->instr;
-        const ShapeIndex& index = hlo_buffer_slice->hlo_index;
-        VLOG(3) << "Buffer for " << instr->ToString() << " at "
-                << index.ToString() << " is found in slice "
-                << hlo_buffer_slice->buffer_slice.ToString() << " at GTE index "
-                << hlo_buffer_slice->gte_index.ToString();
-
-        bindings_.BindHloToIrValue(*instr, value, index);
-      });
-}
-
 std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunkForMlirImpl(
     absl::string_view name, Thunk::ThunkInfo thunk_info,
     absl::Span<const MlirBufferSlice> slices,
@@ -5813,7 +5779,10 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
 
 Thunk::ThunkInfo IrEmitterUnnested::GetThunkInfo(
     const HloInstruction* hlo) const {
-  auto info = ThunkEmitter::EmissionContext::GetThunkInfo(hlo);
+  CHECK(hlo);
+  Thunk::ThunkInfo info;
+  info.profile_annotation = absl::StrFormat(
+      "Thunk:#hlo_op=%s,hlo_module=%s#", hlo->name(), hlo->GetModule()->name());
   if (const auto* index_map = ir_emitter_context_->profile_index_map()) {
     info.profile_index.emplace(
         static_cast<int64>(index_map->GetProfileIndexFor(*hlo)));

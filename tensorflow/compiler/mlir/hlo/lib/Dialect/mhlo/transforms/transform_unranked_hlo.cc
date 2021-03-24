@@ -557,7 +557,7 @@ struct TransformUnrankedHloPass
         });
 
     // Populate rewrite patterns.
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&ctx);
     mhlo::PopulateTransformUnrankedHloPatterns(&ctx, &patterns);
 
     // Apply transformation.

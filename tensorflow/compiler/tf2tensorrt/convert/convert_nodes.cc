@@ -589,6 +589,23 @@ Status CreateBroadcastableScalarConstant(OpConverterParams* params, float value,
                               broadcastable_dims);
 }
 
+// The function concatenates tensors on the first axis. This can be used to
+// create a shape tensor from individual dimension sizes.
+StatusOr<nvinfer1::ITensor*> ConcatenateTensors(
+    OpConverterParams* params,
+    const std::vector<nvinfer1::ITensor*> input_tensors,
+    absl::optional<int> op_instance = absl::nullopt) {
+  nvinfer1::IConcatenationLayer* layer =
+      params->converter->network()->addConcatenation(
+          const_cast<nvinfer1::ITensor* const*>(input_tensors.data()),
+          input_tensors.size());
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, params->node_def.op());
+  params->converter->SetLayerName(layer, params->node_def.name(),
+                                  "concat_shapes", op_instance);
+  layer->setAxis(0);
+  return layer->getOutput(0);
+}
+
 // Convert an axis from TF format to TRT format while validating. TF format
 // includes the batch dimension, while TRT does not if implicit batching is used
 // (i.e. for tensors). TF can also use negative indices.
@@ -5944,6 +5961,121 @@ Status ConvertTopK(OpConverterParams* params) {
   return Status::OK();
 }
 
+StatusOr<std::pair<nvinfer1::ITensor*, nvinfer1::ITensor*>>
+CalcDepthSpaceDynamicShape(OpConverterParams* params, int block_size,
+                           string data_format) {
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  // Instead we use a shape layer and shape arithmetic to calculate the reshape
+  // dimensions.
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+
+  const int channels_axis = data_format == "NCHW" ? 1 : 3;
+  const int h_axis = data_format == "NCHW" ? 2 : 1;
+  const int w_axis = data_format == "NCHW" ? 3 : 2;
+
+  // Get shapes.
+  nvinfer1::ITensor* shape = params->converter->network()
+                                 ->addShape(*inputs.at(0).tensor())
+                                 ->getOutput(0);
+  nvinfer1::ITensor* batch_size =
+      params->converter->network()
+          ->addSlice(*shape, {1, {0}}, {1, {1}}, {1, {1}})
+          ->getOutput(0);
+  nvinfer1::ITensor* num_channels =
+      params->converter->network()
+          ->addSlice(*shape, {1, {channels_axis}}, {1, {1}}, {1, {1}})
+          ->getOutput(0);
+  nvinfer1::ITensor* h =
+      params->converter->network()
+          ->addSlice(*shape, {1, {h_axis}}, {1, {1}}, {1, {1}})
+          ->getOutput(0);
+  nvinfer1::ITensor* w =
+      params->converter->network()
+          ->addSlice(*shape, {1, {w_axis}}, {1, {1}}, {1, {1}})
+          ->getOutput(0);
+  nvinfer1::ITensor* r;
+  TF_RETURN_IF_ERROR(CreateScalarConstant(params, block_size, &r));
+  nvinfer1::ITensor* r_squared;
+  TF_RETURN_IF_ERROR(
+      CreateScalarConstant(params, block_size * block_size, &r_squared));
+  // Get shuffle parameters.
+  std::vector<nvinfer1::ITensor*> first_shuffle_tensors(6, nullptr);
+  std::vector<nvinfer1::ITensor*> second_shuffle_tensors(4, nullptr);
+  if (node_def.op() == "DepthToSpace") {
+    // First Reshape [N, C, H, W] - > [N, r, r, C/(r*r), H, W].
+    first_shuffle_tensors[0] = batch_size;
+    first_shuffle_tensors[1] = r;
+    first_shuffle_tensors[2] = r;
+    first_shuffle_tensors[3] =
+        params->converter->network()
+            ->addElementWise(*num_channels, *r_squared,
+                             nvinfer1::ElementWiseOperation::kDIV)
+            ->getOutput(0);
+    first_shuffle_tensors[4] = h;
+    first_shuffle_tensors[5] = w;
+    // Second Reshape [N, C/(r*r), H, r, W, r] -> [N, C/(r*r), H * r, W * r].
+    second_shuffle_tensors[0] = batch_size;
+    second_shuffle_tensors[1] =
+        params->converter->network()
+            ->addElementWise(*num_channels, *r_squared,
+                             nvinfer1::ElementWiseOperation::kDIV)
+            ->getOutput(0);
+    second_shuffle_tensors[2] =
+        params->converter->network()
+            ->addElementWise(*h, *r, nvinfer1::ElementWiseOperation::kPROD)
+            ->getOutput(0);
+    second_shuffle_tensors[3] =
+        params->converter->network()
+            ->addElementWise(*w, *r, nvinfer1::ElementWiseOperation::kPROD)
+            ->getOutput(0);
+  } else if (node_def.op() == "SpaceToDepth") {
+    // First Reshape [N, C, H, W] -> [N, C, H/r, r, W/r, r].
+    first_shuffle_tensors[0] = batch_size;
+    first_shuffle_tensors[1] = num_channels;
+    first_shuffle_tensors[2] =
+        params->converter->network()
+            ->addElementWise(*h, *r, nvinfer1::ElementWiseOperation::kDIV)
+            ->getOutput(0);
+    first_shuffle_tensors[3] = r;
+    first_shuffle_tensors[4] =
+        params->converter->network()
+            ->addElementWise(*w, *r, nvinfer1::ElementWiseOperation::kDIV)
+            ->getOutput(0);
+    first_shuffle_tensors[5] = r;
+
+    // Second Reshape  [N, r, r, C, H/r, W/r] -> [N, C*r*r, H/r, W/r].
+    second_shuffle_tensors[0] = batch_size;
+    second_shuffle_tensors[1] =
+        params->converter->network()
+            ->addElementWise(*num_channels, *r_squared,
+                             nvinfer1::ElementWiseOperation::kPROD)
+            ->getOutput(0);
+    second_shuffle_tensors[2] =
+        params->converter->network()
+            ->addElementWise(*h, *r, nvinfer1::ElementWiseOperation::kDIV)
+            ->getOutput(0);
+    second_shuffle_tensors[3] =
+        params->converter->network()
+            ->addElementWise(*w, *r, nvinfer1::ElementWiseOperation::kDIV)
+            ->getOutput(0);
+  }
+
+  StatusOr<nvinfer1::ITensor*> result =
+      ConcatenateTensors(params, first_shuffle_tensors, 0);
+  TF_RETURN_IF_ERROR(result.status());
+  nvinfer1::ITensor* first_shuffle_shape = result.ValueOrDie();
+
+  result = ConcatenateTensors(params, second_shuffle_tensors, 1);
+  TF_RETURN_IF_ERROR(result.status());
+  nvinfer1::ITensor* second_shuffle_shape = result.ValueOrDie();
+
+  return std::make_pair(first_shuffle_shape, second_shuffle_shape);
+#else
+  return errors::Internal("Dynamic input requires TRT6");
+#endif
+}
+
 Status ConvertDepthSpaceShuffle(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -5961,20 +6093,32 @@ Status ConvertDepthSpaceShuffle(OpConverterParams* params) {
     return errors::Unimplemented("Data format ", data_format,
                                  " is not supported, at ", node_def.name());
   }
+  int idx_offset = params->use_implicit_batch ? 0 : 1;
   nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
-  if (dims.nbDims != 3) {
+  const int required_rank = 3 + idx_offset;
+  if (dims.nbDims != required_rank) {
     return errors::InvalidArgument("The input to ", node_def.op(),
                                    " must be rank 4, at ", node_def.name());
   }
-  const int num_channels = data_format == "NCHW" ? dims.d[0] : dims.d[2];
-  const int h = data_format == "NCHW" ? dims.d[1] : dims.d[0];
-  const int w = data_format == "NCHW" ? dims.d[2] : dims.d[1];
+  const int num_channels =
+      data_format == "NCHW" ? dims.d[0 + idx_offset] : dims.d[2 + idx_offset];
+  const int h =
+      data_format == "NCHW" ? dims.d[1 + idx_offset] : dims.d[0 + idx_offset];
+  const int w =
+      data_format == "NCHW" ? dims.d[2 + idx_offset] : dims.d[1 + idx_offset];
   // Get shuffle parameters.
   nvinfer1::Dims first_shuffle_shape;
   nvinfer1::Permutation transpose_perm;
   nvinfer1::Dims second_shuffle_shape;
+
+  // We define all the shuffle and transpose dimensions assuming implicit batch
+  // mode. Afterwards we will update them to explicit batch mode if needed.
+  // Additionally, an NCHW layout is assumed, and this assumption is corrected
+  // afterwards with an initial transpose op. TODO(tfeher): Get rid of the
+  // layout_transpose ops by defining shuffle shape specifically for NCHW and
+  // NHCW.
   if (node_def.op() == "DepthToSpace") {
-    if (num_channels % (block_size * block_size) != 0) {
+    if (num_channels != -1 && num_channels % (block_size * block_size) != 0) {
       return errors::InvalidArgument(
           "Number of channels must be divisible by block_size*block_size, at ",
           node_def.name());
@@ -5990,8 +6134,10 @@ Status ConvertDepthSpaceShuffle(OpConverterParams* params) {
     second_shuffle_shape =
         nvinfer1::DimsCHW(num_channels / (block_size * block_size),
                           h * block_size, w * block_size);
-  } else if (node_def.op() == "SpaceToDepth") {
-    if (h % block_size != 0 || w % block_size != 0) {
+  } else {
+    if (node_def.op() != "SpaceToDepth")
+      return errors::InvalidArgument("Incorrect op type ", node_def.op());
+    if ((h != -1 && h % block_size != 0) || (w != -1 && w % block_size != 0)) {
       return errors::InvalidArgument(
           "Width and height must be divisible by block_size, at ",
           node_def.name());
@@ -6013,10 +6159,60 @@ Status ConvertDepthSpaceShuffle(OpConverterParams* params) {
   TFTRT_RETURN_ERROR_IF_NULLPTR(first_shuffle, node_def.name());
   params->converter->SetLayerName(first_shuffle, node_def, "shuffle",
                                   /*op_instance=*/0);
-  if (data_format == "NHWC") {
-    first_shuffle->setFirstTranspose({2, 0, 1});
+
+  nvinfer1::ITensor* second_shuffle_shape_tensor;
+
+  if (HasStaticShape(inputs.at(0).GetTrtDims())) {
+    // Adjust a reshape constructed at implicit batch mode for explicit batch
+    // mode. In particular, we need to insert the batch dimension size to the
+    // beginning of all the dimension sizes. Example: reshape {20,10,30} for
+    // implicit batch mode becomes reshape {N,20,10,30} for explicit batch mode.
+    auto adjust_reshape = [](int N, nvinfer1::Dims dims,
+                             bool use_implicit_batch) {
+      if (use_implicit_batch) return dims;
+      for (int i = dims.nbDims; i > 0; i--) {
+        dims.d[i] = dims.d[i - 1];
+      }
+      dims.d[0] = N;
+      dims.nbDims++;
+      return dims;
+    };
+
+    first_shuffle_shape = adjust_reshape(dims.d[0], first_shuffle_shape,
+                                         params->use_implicit_batch);
+    second_shuffle_shape = adjust_reshape(dims.d[0], second_shuffle_shape,
+                                          params->use_implicit_batch);
+
+    first_shuffle->setReshapeDimensions(first_shuffle_shape);
+  } else {
+    StatusOr<std::pair<nvinfer1::ITensor*, nvinfer1::ITensor*>> result =
+        CalcDepthSpaceDynamicShape(params, block_size, data_format);
+    TF_RETURN_IF_ERROR(result.status());
+    first_shuffle->setInput(1, *result.ValueOrDie().first);
+    second_shuffle_shape_tensor = result.ValueOrDie().second;
   }
-  first_shuffle->setReshapeDimensions(first_shuffle_shape);
+
+  // Adjust a transpose constructed assuming implicit batch mode for explicit
+  // batch mode. In particular, we need to add the batch dimension to d0 and
+  // add 1 to all the dimension id in the transpose. Example: permutation
+  // for implicit batch mode becomes permutation {0,3,2,1} for explicit batch
+  // mode.
+  auto adjust_perm = [](int n, nvinfer1::Permutation perm,
+                        bool use_implicit_batch) {
+    if (use_implicit_batch) return perm;
+    for (int i = n; i > 0; i--) {
+      perm.order[i] = perm.order[i - 1] + 1;
+    }
+    perm.order[0] = 0;
+    return perm;
+  };
+  transpose_perm = adjust_perm(5, transpose_perm, params->use_implicit_batch);
+
+  if (data_format == "NHWC") {
+    nvinfer1::Permutation layout_transpose =
+        adjust_perm(3, {2, 0, 1}, params->use_implicit_batch);
+    first_shuffle->setFirstTranspose(layout_transpose);
+  }
   first_shuffle->setSecondTranspose(transpose_perm);
 
   nvinfer1::IShuffleLayer* second_shuffle =
@@ -6024,9 +6220,16 @@ Status ConvertDepthSpaceShuffle(OpConverterParams* params) {
   TFTRT_RETURN_ERROR_IF_NULLPTR(second_shuffle, node_def.name());
   params->converter->SetLayerName(second_shuffle, node_def, "shuffle",
                                   /*op_instance=*/1);
-  second_shuffle->setReshapeDimensions(second_shuffle_shape);
+
+  if (HasStaticShape(inputs.at(0).GetTrtDims())) {
+    second_shuffle->setReshapeDimensions(second_shuffle_shape);
+  } else {
+    second_shuffle->setInput(1, *second_shuffle_shape_tensor);
+  }
   if (data_format == "NHWC") {
-    second_shuffle->setSecondTranspose({1, 2, 0});
+    nvinfer1::Permutation layout_transpose =
+        adjust_perm(3, {1, 2, 0}, params->use_implicit_batch);
+    second_shuffle->setSecondTranspose(layout_transpose);
   }
 
   params->converter->MarkQuantizationRangesAsInferrable(

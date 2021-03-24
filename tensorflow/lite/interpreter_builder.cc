@@ -726,6 +726,10 @@ TfLiteStatus InterpreterBuilder::operator()(
     (*interpreter)->AddSubgraphs(subgraphs->size() - 1);
   }
 
+  if (preserve_all_tensors_) {
+    (*interpreter)->PreserveAllTensorsExperimental();
+  }
+
   (*interpreter)->SetProfiler(tflite::profiling::MaybeCreatePlatformProfiler());
 
   for (int subgraph_index = 0; subgraph_index < subgraphs->size();
@@ -793,6 +797,12 @@ void InterpreterBuilder::AddDelegate(TfLiteDelegate* delegate) {
   } else {
     delegates_.push_back(delegate);
   }
+}
+
+// Enables preserving intermediates for debugging.
+InterpreterBuilder& InterpreterBuilder::PreserveAllTensorsExperimental() {
+  preserve_all_tensors_ = true;
+  return *this;
 }
 
 }  // namespace tflite

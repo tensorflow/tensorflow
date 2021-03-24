@@ -24,10 +24,6 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-struct GatherAttributes {
-  Axis axis;
-};
-
 GPUOperation CreateGather(const OperationDef& op_def,
                           const GatherAttributes& attr);
 

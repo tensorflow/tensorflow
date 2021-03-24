@@ -155,9 +155,9 @@ struct LhloLegalizeToAffinePass
     registry.insert<AffineDialect>();
   }
   void runOnFunction() override {
-    OwningRewritePatternList patterns;
     auto func = getFunction();
-    populateLHLOToAffineConversionPattern(func.getContext(), &patterns);
+    OwningRewritePatternList patterns(&getContext());
+    populateLHLOToAffineConversionPattern(&getContext(), &patterns);
     (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
   }
 };

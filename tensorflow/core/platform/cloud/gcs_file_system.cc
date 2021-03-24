@@ -2134,4 +2134,4 @@ Status GcsFileSystem::CreateHttpRequest(std::unique_ptr<HttpRequest>* request) {
 // system is a child of gcs file system with TPU-pod on GCS optimizations.
 // This option is set ON/OFF in the GCP TPU tensorflow config.
 // Initialize gcs_file_system
-REGISTER_FILE_SYSTEM("gs", ::tensorflow::RetryingGcsFileSystem);
+REGISTER_LEGACY_FILE_SYSTEM("gs", ::tensorflow::RetryingGcsFileSystem);

@@ -13,11 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
-"""Functions that save the model's config into different formats.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Functions that save the model's config into different formats."""
 
 from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.util.tf_export import keras_export

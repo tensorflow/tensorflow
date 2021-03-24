@@ -115,11 +115,11 @@ class AsyncHelper : public core::RefCounted {
  public:
   AsyncHelper(AsyncOpKernel::DoneCallback done) : done_(done) {}
 
-  ~AsyncHelper() override { this->operator()(); }
+  ~AsyncHelper() override { done_(); }
 
-  void operator()() {
-      done_();
-  }
+  // The function call operator is used at error handling. However, the callback
+  // is deferred to destruction.
+  void operator()() {}
 
  private:
   AsyncOpKernel::DoneCallback done_;
@@ -502,8 +502,9 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
                                 allow_soft_placement_, ctx->num_inputs(),
                                 ctx->num_outputs());
     OP_REQUIRES_OK_ASYNC(ctx, status_or_handle.status(), *helper);
-    native_execution_func_handle_ = status_or_handle.ValueOrDie();
+    native_execution_func_handle_ = *status_or_handle;
   }
+
   auto lib = ctx->function_library();
   FunctionLibraryRuntime::Options opts;
   opts.rendezvous = ctx->rendezvous();

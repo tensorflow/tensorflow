@@ -14,9 +14,6 @@
 # ==============================================================================
 """Utilities related to distributed training."""
 # pylint:disable=protected-access
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values as values_lib

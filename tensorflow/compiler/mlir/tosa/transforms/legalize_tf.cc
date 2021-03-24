@@ -2031,12 +2031,12 @@ LogicalResult ConvertTFFakeQuantWithMinMaxVarsOp::matchAndRewrite(
 }
 
 void LegalizeTF::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   auto* ctx = &getContext();
   auto func = getFunction();
 
   // Add the generated patterns to the list.
-  populateWithGenerated(ctx, patterns);
+  populateWithGenerated(patterns);
   patterns.insert<ConvertTFMatMulOp>(ctx);
   patterns.insert<ConvertTFReluOp>(ctx);
   patterns.insert<ConvertTFRelu6Op>(ctx);

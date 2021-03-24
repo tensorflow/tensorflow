@@ -252,9 +252,9 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
     });
 
     // Populate patterns.
-    OwningRewritePatternList patterns;
+    RewritePatternSet patterns(&getContext());
 
-    populateStdExpandOpsPatterns(ctx, patterns);
+    populateStdExpandOpsPatterns(patterns);
     populateStdToLLVMConversionPatterns(type_converter, patterns);
     populateComplexToLLVMConversionPatterns(type_converter, patterns);
     tf_framework::PopulateTFFrameworkToLLVMConversionPatterns(&type_converter,

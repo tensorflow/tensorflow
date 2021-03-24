@@ -64,7 +64,7 @@ std::vector<tstring> SelectOptimizationsHelper(
   // clang-format off
   absl::flat_hash_map<string, uint64> live_experiments = {
     {"enable_gradient_descent", 0},
-    {"use_private_thread_pool", 5}
+    {"use_private_thread_pool", 20}
   };
   // clang-format on
   auto hash_func = [](const string& str) { return Hash64(str); };

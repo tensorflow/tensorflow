@@ -1003,7 +1003,7 @@ lookup operation.
   );
 }
 
-def TF_XlaShardingOp : TF_Op<"XlaSharding", [NoSideEffect]> {
+def TF_XlaShardingOp : TF_Op<"XlaSharding", [NoSideEffect, TF_NoConstantFold]> {
   let summary = [{
 An op which shards the input based on the given sharding attribute.
   }];
