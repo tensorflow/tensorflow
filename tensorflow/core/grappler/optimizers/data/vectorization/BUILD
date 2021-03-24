@@ -52,6 +52,7 @@ cc_library(
 
 tf_cc_test(
     name = "vectorizer_registry_test",
+    size = "small",
     srcs = ["vectorizer_registry_test.cc"],
     tags = [
         "manual",  # TODO(b/159771496)
