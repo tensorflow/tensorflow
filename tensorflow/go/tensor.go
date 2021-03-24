@@ -25,6 +25,10 @@ void toNewTString(_GoString_ gstr, TF_TString *tstr) {
     TF_TString_Init(tstr);
     TF_TString_Copy(tstr, _GoStringPtr(gstr), _GoStringLen(gstr));
 }
+
+void freeTString(TF_TString *tstr) {
+    TF_TString_Dealloc(tstr);
+}
 */
 import "C"
 
@@ -491,6 +495,9 @@ func encodeTensorWithSlices(w *bytes.Buffer, v reflect.Value, shape []int64) (in
 		var tstr C.TF_TString
 		C.toNewTString(s, &tstr)
 		ptr := unsafe.Pointer(&tstr)
+		runtime.SetFinalizer(w, func(s *bytes.Buffer) {
+			C.freeTString(&tstr)
+		})
 		return copyPtr(w, ptr, C.sizeof_TF_TString)
 	} else if v.Kind() != reflect.Array {
 		return 0, fmt.Errorf("unsupported type %v", v.Type())
