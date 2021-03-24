@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import copy
 import functools
 
 from absl.testing import parameterized
@@ -521,11 +520,6 @@ class LocalCollectiveAllReduceStrategy(
     self._test_numpy_dataset(
         strategy, session=self.cached_session(config=config, target=target))
 
-  @combinations.generate(combinations.combine(mode=['graph']))
-  def testDeepCopy(self):
-    distribution, _, _ = self._get_test_object(None, None)
-    copy.deepcopy(distribution)
-
 
 class LogicalDeviceTest(test.TestCase, parameterized.TestCase):
 
@@ -575,15 +569,6 @@ class CollectiveAllReduceStrategyV2Test(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         list(range(len(strategy.extended.worker_devices))) *
         strategy.extended._num_workers, results[1].numpy())
-
-  def test_deep_copy_not_allowed(self, strategy):
-    # Check health is disabled in tests by default.
-    strategy.extended._enable_check_health = True
-    with self.assertRaisesRegex(ValueError, 'cannot be deep copied'):
-      copy.deepcopy(strategy)
-    with self.assertRaisesRegex(ValueError, 'cannot be deep copied'):
-      with ops.Graph().as_default():
-        copy.deepcopy(strategy)
 
 
 class ExperimentalCompatibilityTest(test.TestCase):
