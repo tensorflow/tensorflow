@@ -790,16 +790,22 @@ class KerasObjectLoader(object):
 def _finalize_saved_model_layers(layers):
   """Runs the final steps of loading Keras Layers from SavedModel."""
   # pylint: disable=protected-access
-  # 1. Set up call functions for all layers (skip this step for Sequential and
-  # Functional models).
+  # 1. Set up call functions for all layers initialized from the SavedModel (
+  # and not the config)
   for layer in layers:
     layer.built = True
-    if hasattr(_get_keras_attr(layer), 'call_and_return_conditional_losses'):
+    layer_call = getattr(_get_keras_attr(layer),
+                         'call_and_return_conditional_losses', None)
+    if layer_call and layer_call.concrete_functions:
       layer.call = utils.use_wrapped_call(
-          layer, _get_keras_attr(layer).call_and_return_conditional_losses,
-          return_method=True)
-      layer._init_call_fn_args(
-          layer._serialized_attributes['metadata']['expects_training_arg'])
+          layer, layer_call, return_method=True)
+      expects_training_arg = layer._serialized_attributes['metadata'][
+          'expects_training_arg']
+      if 'training' in layer_call.function_spec.arg_names:
+        # This could change the value of `expects_training_arg` if this layer
+        # doesn't expect a training arg, but has a child layer that does.
+        expects_training_arg = True
+      layer._init_call_fn_args(expects_training_arg)
     else:
       layer.call = types.MethodType(
           _unable_to_call_layer_due_to_serialization_issue, layer)
