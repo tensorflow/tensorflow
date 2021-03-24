@@ -2083,6 +2083,27 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
   }
 };
 
+class TileOperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/1, /*outputs=*/1));
+    return absl::OkStatus();
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::TILE);
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+    return absl::OkStatus();
+  }
+};
+
 // Builtin op version of TRANSPOSE_CONV.
 class TransposeConvBuiltinOperationParser : public TFLiteOperationParser {
  public:
@@ -2469,6 +2490,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<ReduceOperationParser>(OperationType::REDUCE_SUM);
     case kTfLiteBuiltinTanh:
       return std::make_unique<ElementwiseOperationParser>(OperationType::TANH);
+    case kTfLiteBuiltinTile:
+      return std::make_unique<TileOperationParser>();
     case kTfLiteBuiltinTranspose:
       return std::make_unique<TransposeOperationParser>();
     case kTfLiteBuiltinTransposeConv:
