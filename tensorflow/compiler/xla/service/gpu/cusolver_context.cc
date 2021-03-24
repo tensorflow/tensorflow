@@ -59,10 +59,6 @@ using cusolverStatus_t = rocsolver_status;
 #define cusolverDnCreate rocblas_create_handle
 #define cusolverDnSetStream rocblas_set_stream
 #define cusolverDnDestroy rocblas_destroy_handle
-#define cusolverDnSpotrf rocsolver_spotrf
-#define cusolverDnDpotrf rocsolver_dpotrf
-#define cusolverDnCpotrf rocsolver_cpotrf
-#define cusolverDnZpotrf rocsolver_zpotrf
 
 #define CUBLAS_FILL_MODE_UPPER rocblas_fill_upper
 #define CUBLAS_FILL_MODE_LOWER rocblas_fill_lower
@@ -231,11 +227,21 @@ CusolverContext::~CusolverContext() {
   }
 }
 
+#if GOOGLE_CUDA
 #define CALL_LAPACK_TYPES(m) \
   m(float, S) m(double, D) m(std::complex<float>, C) m(std::complex<double>, Z)
 
 #define DN_SOLVER_FN(method, type_prefix) cusolverDn##type_prefix##method
 
+#else
+
+#define CALL_LAPACK_TYPES(m)						\
+  m(float, s) m(double, d) m(std::complex<float>, c) m(std::complex<double>, z)
+
+#define DN_SOLVER_FN(method, type_prefix) \
+  tensorflow::wrap::rocsolver_##type_prefix##method
+
+#endif
 // Note: NVidia have promised that it is safe to pass 'nullptr' as the argument
 // buffers to cuSolver buffer size methods and this will be a documented
 // behavior in a future cuSolver release.
