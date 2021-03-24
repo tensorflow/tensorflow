@@ -537,6 +537,11 @@ void TPUExtractOutsideCompilation::runOnOperation() {
         return signalPassFailure();
     }
   });
+  // No constant should have an "_xla_outside_compilation" attribute left.
+  // TODO(kfranko): We likely should revisit where is the best place for this
+  // logic to live (canonicalization pattern?).
+  module.walk(
+      [&](TF::ConstOp op) { op->removeAttr("_xla_outside_compilation"); });
 }
 
 }  // namespace
