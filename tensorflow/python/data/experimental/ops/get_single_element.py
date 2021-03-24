@@ -68,7 +68,8 @@ def get_single_element(dataset):
   This can be particularly useful when your tensor transformations are
   expressed as `tf.data.Dataset` operations, and you want to use those
   transformations at serving time. Especially, when it comes to serving
-  and inferecing using estimator models.
+  and inferecing using [estimator](https://www.tensorflow.org/guide/estimator)
+  models.
 
   In order to export the saved estimator model, you need to generally define a
   `serving_input_fn` which would require the features to be processed by the
@@ -83,7 +84,7 @@ def get_single_element(dataset):
     # model at serving time is used to get the raw_features and the tensor
     # placeholders.
     #
-    # [Reference](https://www.tensorflow.org/tfx/tutorials/transform/census)
+    # Reference: https://www.tensorflow.org/tfx/tutorials/transform/census
 
     input_fn = ... # estimator based data receiver function
     serving_input_receiver = input_fn()
@@ -100,7 +101,10 @@ def get_single_element(dataset):
     processed_features = tf.data.get_single_element(dataset)
 
     return tf.estimator.export.ServingInputReceiver(
-        processed_features, serving_input_receiver.receiver_tensors)
+        processed_features, serving_input_receiver.receiver_tensors
+        # The `serving_input_receiver.receiver_tensors` are placeholder
+        # for the `processed_features`
+        )
 
   estimator = ... # A pre-built or custom estimator
   estimator.export_saved_model(your_exported_model_dir, serving_input_fn)
