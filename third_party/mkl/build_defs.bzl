@@ -32,7 +32,6 @@ def if_mkl(if_true, if_false = []):
       may need it. It may be deleted in future with refactoring.
     """
     return select({
-        "@org_tensorflow//third_party/mkl:build_with_mkl": if_true,
         "//tensorflow:linux_x86_64": if_true,
         "//tensorflow:windows": if_true,
         "//conditions:default": if_false,
@@ -101,7 +100,6 @@ def mkl_deps():
       inclusion in the deps attribute of rules.
     """
     return select({
-        "@org_tensorflow//third_party/mkl:build_with_mkl": ["@mkl_dnn_v1//:mkl_dnn"],
         "@org_tensorflow//third_party/mkl:build_with_mkl_aarch64": ["@mkl_dnn_v1//:mkl_dnn_aarch64"],
         "//tensorflow:linux_x86_64": ["@mkl_dnn_v1//:mkl_dnn"],
         "//tensorflow:windows": ["@mkl_dnn_v1//:mkl_dnn"],
