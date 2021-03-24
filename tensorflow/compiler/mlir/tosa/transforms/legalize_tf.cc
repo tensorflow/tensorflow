@@ -115,8 +115,6 @@ DECL_CONVERT_OP(StridedSlice);
 DECL_CONVERT_OP(Less);
 DECL_CONVERT_OP(LessEqual);
 DECL_CONVERT_OP(Pad);
-DECL_CONVERT_OP(ResizeBilinear);
-DECL_CONVERT_OP(ResizeNearestNeighbor);
 DECL_CONVERT_OP(Gather);
 DECL_CONVERT_OP(GatherV2);
 DECL_CONVERT_OP(SelectV2);
@@ -1657,44 +1655,6 @@ LogicalResult ConvertTFPadOp::matchAndRewrite(Operation* op,
   return success();
 }
 
-LogicalResult ConvertTFResizeBilinearOp::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto tf_resize_op = cast<TF::ResizeBilinearOp>(op);
-
-  RankedTensorType output_type =
-      tf_resize_op.getResult().getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
-  if (!output_type) return failure();
-
-  llvm::Optional<Value> result = convertResizeOp(
-      rewriter, op, output_type, tf_resize_op.images(), StringRef("BILINEAR"));
-
-  if (!result) return failure();
-
-  rewriter.replaceOp(op, {result.getValue()});
-
-  return success();
-}
-
-LogicalResult ConvertTFResizeNearestNeighborOp::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto tf_resize_op = cast<TF::ResizeNearestNeighborOp>(op);
-
-  RankedTensorType output_type =
-      tf_resize_op.getResult().getType().dyn_cast<RankedTensorType>();
-  // Not a ranked tensor output
-  if (!output_type) return failure();
-
-  llvm::Optional<Value> result = convertResizeOp(
-      rewriter, op, output_type, tf_resize_op.images(), StringRef("NEAREST"));
-
-  if (!result) return failure();
-
-  rewriter.replaceOp(op, {result.getValue()});
-
-  return success();
-}
-
 LogicalResult ConvertTFMatMulOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_matmul_op = cast<TF::MatMulOp>(op);
@@ -2095,8 +2055,6 @@ void LegalizeTF::runOnFunction() {
   patterns.insert<ConvertTFLessOp>(ctx);
   patterns.insert<ConvertTFLessEqualOp>(ctx);
   patterns.insert<ConvertTFPadOp>(ctx);
-  patterns.insert<ConvertTFResizeBilinearOp>(ctx);
-  patterns.insert<ConvertTFResizeNearestNeighborOp>(ctx);
   patterns.insert<ConvertTFGatherOp>(ctx);
   patterns.insert<ConvertTFGatherV2Op>(ctx);
   patterns.insert<ConvertTFSelectV2Op>(ctx);
