@@ -842,7 +842,7 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
                    collective_all_reduce_strategy.CollectiveAllReduceStrategy)
         and mode == "graph"):
       self.skipTest("MWMS combinations tests do not work well in graph mode.")
-    if not distribution.extended._use_merge_call():
+    if not getattr(distribution, "_use_merge_call", True):
       self.skipTest("Unsupported combination.")
     with distribution.scope():
       v = variables_lib.Variable([1., 1.],
@@ -879,7 +879,7 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
     # 2) aggregation is SUM.
     if (synchronization == variables_lib.VariableSynchronization.ON_READ and
         (aggregation == variables_lib.VariableAggregation.SUM or
-         (not distribution.extended._use_merge_call()) or
+         (not getattr(distribution, "_use_merge_call", True)) or
          (isinstance(distribution.extended,
                      collective_all_reduce_strategy.CollectiveAllReduceExtended)
           and aggregation == variables_lib.VariableAggregation.MEAN))):

@@ -49,7 +49,7 @@ def _on_write_update_replica(var, update_fn, value, **kwargs):
   if var.aggregation == vs.VariableAggregation.NONE:
     return update_fn(var._get_on_device_or_primary(), value, **kwargs)  # pylint: disable=protected-access
 
-  if not ds_context.get_strategy().extended._use_merge_call():  # pylint: disable=protected-access
+  if not getattr(ds_context.get_strategy().extended, "_use_merge_call", True):
     # Don't allow MEAN with non float dtype, since it may cause unexpected
     # precision loss. Python3 and NumPy automatically upcast integers to
     # float in division, but we should always preserve the type.

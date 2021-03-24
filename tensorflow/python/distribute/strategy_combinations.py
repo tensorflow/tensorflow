@@ -122,16 +122,16 @@ def _get_tpu_strategy_creator(steps_per_run,
 def _mirrored_strategy_with_collective_key_base(devices):
   mirrored_lib.MirroredStrategyV1._collective_key_base += 100000
   mirrored_lib.MirroredStrategy._collective_key_base += 100000
+  mirrored_lib.MirroredStrategy._use_merge_call = True  # pylint: disable=protected-access
+  mirrored_lib.MirroredStrategyV1._use_merge_call = True  # pylint: disable=protected-access
   return MirroredStrategy(devices)
 
 
 def _mirrored_strategy_with_no_merge_call(devices):
   mirrored_lib.MirroredStrategyV1._collective_key_base += 100000
   mirrored_lib.MirroredStrategy._collective_key_base += 100000
-  out = MirroredStrategy(devices)
-  # Stub out merge call usage.
-  out.extended._use_merge_call = lambda: False  # pylint: disable=protected-access
-  return out
+  mirrored_lib.MirroredStrategy._use_merge_call = False  # pylint: disable=protected-access
+  return MirroredStrategy(devices)
 
 
 def _get_multi_worker_mirrored_creator(required_gpus, use_merge_call=True):
@@ -162,8 +162,7 @@ def _get_multi_worker_mirrored_creator(required_gpus, use_merge_call=True):
     with context.eager_mode():
       strategy = CollectiveAllReduceStrategy(cluster_resolver=resolver)
 
-    if not use_merge_call:
-      strategy.extended._use_merge_call = lambda: False  # pylint: disable=protected-access
+    strategy.extended._use_merge_call = use_merge_call  # pylint: disable=protected-access
     # TODO(b/152320929): Wait for the cluster before proceeding, otherwise
     # collectives may hang if any worker launches collectives before the chief
     # creates the strategy.
