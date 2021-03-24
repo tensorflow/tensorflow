@@ -328,6 +328,29 @@ cc_library(
 )
 
 cc_library(
+    name = "rocsolver_if_static",
+    deps = if_static([
+        "@local_config_rocm//rocm:rocsolver",
+    ]),
+)
+
+cc_library(
+    name = "rocsolver_wrapper",
+    srcs = if_rocm_is_configured(["rocsolver_wrapper.h"]),
+    hdrs = if_rocm_is_configured(["rocsolver_wrapper.h"]),
+    deps = if_rocm_is_configured([
+        ":rocm_gpu_executor",
+        ":rocm_platform_id",
+        ":rocsolver_if_static",
+        "@local_config_rocm//rocm:rocm_headers",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform",
+        "//tensorflow/stream_executor/platform:dso_loader",
+    ]),
+    alwayslink = True,
+)
+
+cc_library(
     name = "roctracer_if_static",
     deps = if_static([
         "@local_config_rocm//rocm:roctracer",
