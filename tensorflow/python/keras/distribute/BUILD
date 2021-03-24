@@ -899,6 +899,7 @@ distribute_py_test(
     shard_count = 50,
     tags = [
         "multi_gpu",
+        "no_oss",  # TODO(b/183640564): Reenable
         "no_tfrt",  # TODO(b/180537361): Reenable TFRT after the issue is resolved.
     ],
     deps = [

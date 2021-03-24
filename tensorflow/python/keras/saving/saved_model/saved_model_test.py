@@ -918,6 +918,30 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
     self.assertAllEqual(self.evaluate(expected_loss),
                         self.evaluate(actual_loss))
 
+  def test_wrapped_layer_training(self):
+    class Custom(keras.models.Model):
+
+      def __init__(self):
+        super(Custom, self).__init__()
+        self.layer = LayerWithLearningPhase()
+
+      def call(self, inputs):
+        return self.layer(inputs)
+    model = Custom()
+    x = constant_op.constant(1., shape=[1, 1])
+    expected_default = model(x)
+    expected_training_true = model(x, training=True)
+    expected_training_false = model(x, training=False)
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+    loaded = keras_load.load(saved_model_dir)
+    actual_default = loaded(x)
+    actual_training_true = loaded(x, training=True)
+    actual_training_false = loaded(x, training=False)
+    self.assertAllClose(
+        [expected_default, expected_training_true, expected_training_false],
+        [actual_default, actual_training_true, actual_training_false])
+
 
 class TestSavedModelFormat(test.TestCase):
 

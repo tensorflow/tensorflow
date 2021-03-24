@@ -320,12 +320,12 @@ class DirectoryIterator(image.DirectoryIterator, Iterator):
           containing images from each class (e.g. `["dogs", "cats"]`).
           It will be computed automatically if not set.
       class_mode: Mode for yielding the targets:
-          `"binary"`: binary targets (if there are only two classes),
-          `"categorical"`: categorical targets,
-          `"sparse"`: integer targets,
-          `"input"`: targets are images identical to input images (mainly
+          - `"binary"`: binary targets (if there are only two classes),
+          - `"categorical"`: categorical targets,
+          - `"sparse"`: integer targets,
+          - `"input"`: targets are images identical to input images (mainly
               used to work with autoencoders),
-          `None`: no targets get yielded (only input images are yielded).
+          - `None`: no targets get yielded (only input images are yielded).
       batch_size: Integer, size of a batch.
       shuffle: Boolean, whether to shuffle the data between epochs.
       seed: Random seed for data shuffling.
@@ -462,15 +462,17 @@ class DataFrameIterator(image.DataFrameIterator, Iterator):
   Args:
       dataframe: Pandas dataframe containing the filepaths relative to
         `directory` (or absolute paths if `directory` is None) of the images in
-        a string column. It should include other column/s
-          depending on the `class_mode`: - if `class_mode` is `"categorical"`
-            (default value) it must include the `y_col` column with the class/es
-            of each image. Values in column can be string/list/tuple if a single
-            class or list/tuple if multiple classes. - if `class_mode` is
-            `"binary"` or `"sparse"` it must include the given `y_col` column
-            with class values as strings. - if `class_mode` is `"raw"` or
-            `"multi_output"` it should contain the columns specified in `y_col`.
-            - if `class_mode` is `"input"` or `None` no extra column is needed.
+        a string column. It should include other column/s depending on the
+        `class_mode`:
+          - if `class_mode` is `"categorical"` (default value) it must include
+              the `y_col` column with the class/es of each image. Values in
+              column can be string/list/tuple if a single class or list/tuple if
+              multiple classes.
+          - if `class_mode` is `"binary"` or `"sparse"` it must include the
+              given `y_col` column with class values as strings.
+          - if `class_mode` is `"raw"` or `"multi_output"` it should contain the
+              columns specified in `y_col`.
+          - if `class_mode` is `"input"` or `None` no extra column is needed.
       directory: string, path to the directory to read images from. If `None`,
         data in `x_col` column should be absolute paths.
       image_data_generator: Instance of `ImageDataGenerator` to use for random
@@ -487,8 +489,8 @@ class DataFrameIterator(image.DataFrameIterator, Iterator):
       classes: Optional list of strings, classes to use (e.g. `["dogs",
         "cats"]`). If None, all classes in `y_col` will be used.
       class_mode: one of "binary", "categorical", "input", "multi_output",
-          "raw", "sparse" or None. Default: "categorical".
-          Mode for yielding the targets:
+        "raw", "sparse" or None. Default: "categorical".
+        Mode for yielding the targets:
           - `"binary"`: 1D numpy array of binary labels,
           - `"categorical"`: 2D numpy array of one-hot encoded labels. Supports
             multi-label output.
@@ -496,9 +498,9 @@ class DataFrameIterator(image.DataFrameIterator, Iterator):
             with autoencoders),
           - `"multi_output"`: list with the values of the different columns,
           - `"raw"`: numpy array of values in `y_col` column(s),
-          - `"sparse"`: 1D numpy array of integer labels, - `None`, no targets
-            are returned (the generator will only yield batches of image data,
-            which is useful to use in `model.predict()`).
+          - `"sparse"`: 1D numpy array of integer labels,
+          - `None`, no targets are returned (the generator will only yield
+            batches of image data, which is useful to use in `model.predict()`).
       batch_size: Integer, size of a batch.
       shuffle: Boolean, whether to shuffle the data between epochs.
       seed: Random seed for data shuffling.
@@ -650,14 +652,14 @@ class ImageDataGenerator(image.ImageDataGenerator):
       validation_split: Float. Fraction of images reserved for validation
           (strictly between 0 and 1).
       dtype: Dtype to use for the generated arrays.
-      
+
   Raises:
     ValueError: If the value of the argument, `data_format` is other than
           `"channels_last"` or `"channels_first"`.
     ValueError: If the value of the argument, `validation_split` > 1
           or `validation_split` < 0.
-    
-  Examples: 
+
+  Examples:
 
   Example of using `.flow(x, y)`:
 
@@ -677,9 +679,9 @@ class ImageDataGenerator(image.ImageDataGenerator):
   # (std, mean, and principal components if ZCA whitening is applied)
   datagen.fit(x_train)
   # fits the model on batches with real-time data augmentation:
-  model.fit(datagen.flow(x_train, y_train, batch_size=32, 
-           subset='training'), 
-           validation_data=datagen.flow(x_train, y_train, 
+  model.fit(datagen.flow(x_train, y_train, batch_size=32,
+           subset='training'),
+           validation_data=datagen.flow(x_train, y_train,
            batch_size=8, subset='validation'),
            steps_per_epoch=len(x_train) / 32, epochs=epochs)
   # here's a more "manual" example
@@ -841,7 +843,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
           generated (useful for visualizing what you are doing).
         save_prefix: Str (default: `''`). Prefix to use for filenames of saved
           pictures (only relevant if `save_to_dir` is set).
-        save_format: one of "png", "jpeg", "bmp", "pdf", "ppm", "gif", 
+        save_format: one of "png", "jpeg", "bmp", "pdf", "ppm", "gif",
             "tif", "jpg"
             (only relevant if `save_to_dir` is set). Default: "png".
         subset: Subset of data (`"training"` or `"validation"`) if
@@ -857,7 +859,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
             the yielded tuples are of the form `(x, y, sample_weight)`.
             If `y` is None, only the numpy array `x` is returned.
     Raises:
-      ValueError: If the Value of the argument, `subset` is other than 
+      ValueError: If the Value of the argument, `subset` is other than
             "training" or "validation".
 
     """
@@ -913,15 +915,17 @@ class ImageDataGenerator(image.ImageDataGenerator):
               indices can be obtained via the attribute `class_indices`.
         class_mode: One of "categorical", "binary", "sparse",
             "input", or None. Default: "categorical".
-            Determines the type of label arrays that are returned: -
-              "categorical" will be 2D one-hot encoded labels, - "binary" will
-              be 1D binary labels, "sparse" will be 1D integer labels, - "input"
-              will be images identical to input images (mainly used to work with
-              autoencoders). - If None, no labels are returned (the generator
-              will only yield batches of image data, which is useful to use with
-              `model.predict()`). Please note that in case of
-              class_mode None, the data still needs to reside in a subdirectory
-              of `directory` for it to work correctly.
+            Determines the type of label arrays that are returned:
+            - "categorical" will be 2D one-hot encoded labels,
+            - "binary" will be 1D binary labels,
+            - "sparse" will be 1D integer labels,
+            - "input"  will be images identical to input images (mainly used to
+              work with autoencoders).
+            - If None, no labels are returned (the generator will only yield
+              batches of image data, which is useful to use with
+              `model.predict()`).
+            Please note that in case of class_mode None, the data still needs to
+            reside in a subdirectory of `directory` for it to work correctly.
         batch_size: Size of the batches of data (default: 32).
         shuffle: Whether to shuffle the data (default: True) If set to False,
           sorts the data in alphanumeric order.
@@ -931,8 +935,8 @@ class ImageDataGenerator(image.ImageDataGenerator):
           generated (useful for visualizing what you are doing).
         save_prefix: Str. Prefix to use for filenames of saved pictures (only
           relevant if `save_to_dir` is set).
-        save_format: one of "png", "jpeg", "bmp", "pdf", "ppm", "gif", 
-            "tif", "jpg" 
+        save_format: one of "png", "jpeg", "bmp", "pdf", "ppm", "gif",
+            "tif", "jpg"
             (only relevant if `save_to_dir` is set). Default: "png".
         follow_links: Whether to follow symlinks inside
             class subdirectories (default: False).
@@ -1000,15 +1004,16 @@ class ImageDataGenerator(image.ImageDataGenerator):
         dataframe: Pandas dataframe containing the filepaths relative to
           `directory` (or absolute paths if `directory` is None) of the images
           in a string column. It should include other column/s
-            depending on the `class_mode`: - if `class_mode` is `"categorical"`
-              (default value) it must include the `y_col` column with the
-              class/es of each image. Values in column can be string/list/tuple
-              if a single class or list/tuple if multiple classes. - if
-              `class_mode` is `"binary"` or `"sparse"` it must include the given
-              `y_col` column with class values as strings. - if `class_mode` is
-              `"raw"` or `"multi_output"` it should contain the columns
-              specified in `y_col`. - if `class_mode` is `"input"` or `None` no
-              extra column is needed.
+            depending on the `class_mode`:
+            - if `class_mode` is `"categorical"` (default value) it must include
+              the `y_col` column with the class/es of each image. Values in
+              column can be string/list/tuple if a single class or list/tuple if
+              multiple classes.
+            - if `class_mode` is `"binary"` or `"sparse"` it must include the
+              given `y_col` column with class values as strings.
+            - if `class_mode` is `"raw"` or `"multi_output"` it should contain
+              the columns specified in `y_col`.
+            - if `class_mode` is `"input"` or `None` no extra column is needed.
         directory: string, path to the directory to read images from. If `None`,
           data in `x_col` column should be absolute paths.
         x_col: string, column in `dataframe` that contains the filenames (or
@@ -1036,9 +1041,10 @@ class ImageDataGenerator(image.ImageDataGenerator):
               with autoencoders),
             - `"multi_output"`: list with the values of the different columns,
             - `"raw"`: numpy array of values in `y_col` column(s),
-            - `"sparse"`: 1D numpy array of integer labels, - `None`, no targets
-              are returned (the generator will only yield batches of image data,
-              which is useful to use in `model.predict()`).
+            - `"sparse"`: 1D numpy array of integer labels,
+            - `None`, no targets are returned (the generator will only yield
+              batches of image data, which is useful to use in
+              `model.predict()`).
         batch_size: size of the batches of data (default: 32).
         shuffle: whether to shuffle the data (default: True)
         seed: optional random seed for shuffling and transformations.
@@ -1047,8 +1053,8 @@ class ImageDataGenerator(image.ImageDataGenerator):
           generated (useful for visualizing what you are doing).
         save_prefix: str. Prefix to use for filenames of saved pictures (only
           relevant if `save_to_dir` is set).
-        save_format: one of "png", "jpeg", "bmp", "pdf", "ppm", "gif", 
-            "tif", "jpg" 
+        save_format: one of "png", "jpeg", "bmp", "pdf", "ppm", "gif",
+            "tif", "jpg"
             (only relevant if `save_to_dir` is set). Default: "png".
         subset: Subset of data (`"training"` or `"validation"`) if
           `validation_split` is set in `ImageDataGenerator`.

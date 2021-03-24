@@ -3525,7 +3525,7 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64 num_partitions,
           }
         }
         return b->AddInstruction(HloInstruction::CreateAllGather(
-            ag_shape, operand, all_gather_dimension, device_groups,
+            ag_shape, {operand}, all_gather_dimension, device_groups,
             /*constrain_layout=*/false, channel_id,
             /*use_global_device_ids=*/true));
       },

@@ -50,6 +50,7 @@ TEST(HloOpcodeTest, OpcodeProperties) {
     }
     switch (opcode) {
       case HloOpcode::kAfterAll:
+      case HloOpcode::kAllGather:
       case HloOpcode::kAllReduce:
       case HloOpcode::kAllToAll:
       case HloOpcode::kCall:

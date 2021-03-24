@@ -2704,9 +2704,10 @@ XlaOp XlaBuilder::AllGather(XlaOp operand, int64 all_gather_dimension,
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
 
-    TF_ASSIGN_OR_RETURN(Shape inferred_shape,
-                        ShapeInference::InferAllGatherShape(
-                            *operand_shape, all_gather_dimension, shard_count));
+    TF_ASSIGN_OR_RETURN(
+        Shape inferred_shape,
+        ShapeInference::InferAllGatherShape({operand_shape},
+                                            all_gather_dimension, shard_count));
     if (layout) {
       *inferred_shape.mutable_layout() = *layout;
       instr.set_constrain_layout(true);

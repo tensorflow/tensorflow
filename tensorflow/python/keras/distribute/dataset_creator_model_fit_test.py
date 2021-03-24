@@ -154,17 +154,19 @@ class DatasetCreatorModelFitTest(DatasetCreatorModelFitTestBase):
     model = self._model_fit(strategy, steps_per_execution=10)
     self.assertEqual(model.optimizer.iterations, 100)
 
+  def testModelFitWithNoStepsPerEpoch(self, strategy):
+    with self.assertRaisesRegex(
+        ValueError, "When using a "
+        "`tf.keras.utils.experimental.DatasetCreator`, "
+        "`steps_per_epoch` argument must be provided in "
+        "`Model.fit`."):
+      self._model_fit(strategy, steps_per_epoch=None)
+
 
 @ds_combinations.generate(
     combinations.combine(strategy=["ParameterServerStrategy"], mode="eager"))
 class DatasetCreatorModelFitParameterServerStrategyOnlyTest(
     DatasetCreatorModelFitTestBase):
-
-  def testModelFitWithNoStepsPerEpoch(self, strategy):
-    with self.assertRaisesRegex(
-        ValueError, "`steps_per_epoch` must be specified with "
-        "`ParameterServerStrategy`."):
-      self._model_fit(strategy, steps_per_epoch=None)
 
   def testModelFitWithRunEagerly(self, strategy):
     with self.assertRaisesRegex(

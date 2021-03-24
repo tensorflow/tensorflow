@@ -501,15 +501,21 @@ class GenericArrayLikeDataAdapter(TensorLikeDataAdapter):
 class DatasetCreatorAdapter(DataAdapter):
   """Adapter that handles dataset functions."""
 
-  def __init__(self, x, *args, **kwargs):
-    super(DatasetCreatorAdapter, self).__init__(x, *args, **kwargs)
+  def __init__(self, x, y, steps=None, distribution_strategy=None, **kwargs):
+    super(DatasetCreatorAdapter, self).__init__(x, **kwargs)
 
     if not isinstance(x, dataset_creator.DatasetCreator):
       raise TypeError("The input of a `DatasetCreatorAdapter` should be a "
                       "`DatasetCreator` but it received type {}.".format(
                           type(x)))
+    if steps is None:
+      raise ValueError("When using a "
+                       "`tf.keras.utils.experimental.DatasetCreator`, "
+                       "`steps_per_epoch` argument must be provided in "
+                       "`Model.fit`.")
     self.dataset_creator = x
-    self.strategy = kwargs.get("distribution_strategy", None)
+    self.steps = steps
+    self.strategy = distribution_strategy
 
   @staticmethod
   def can_handle(x, y=None):
