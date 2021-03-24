@@ -34,6 +34,7 @@ def if_mkl(if_true, if_false = []):
     return select({
         "@org_tensorflow//third_party/mkl:build_with_mkl": if_true,
         "//tensorflow:android_x86": if_false,
+        "//tensorflow:android_x86_64": if_false,
         "//tensorflow:arm_any": if_false,
         "//tensorflow:ios": if_false,
         "//tensorflow:linux_ppc64le": if_false,
@@ -107,6 +108,7 @@ def mkl_deps():
     return select({
         "@org_tensorflow//third_party/mkl:build_with_mkl_aarch64": ["@mkl_dnn_v1//:mkl_dnn_aarch64"],
         "//tensorflow:android_x86": [],
+        "//tensorflow:android_x86_64": [],
         "//tensorflow:arm_any": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
