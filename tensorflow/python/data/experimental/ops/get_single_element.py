@@ -27,26 +27,83 @@ from tensorflow.python.util.tf_export import tf_export
 @tf_export("data.experimental.get_single_element", "data.get_single_element")
 @deprecation.deprecated_endpoints("data.experimental.get_single_element")
 def get_single_element(dataset):
-  """Returns the single element in `dataset` as a nested structure of tensors.
+  """Returns the single element of the `dataset` as a nested structure of tensors.
 
-  This function enables you to use a `tf.data.Dataset` in a stateless
+  The function enables you to use a `tf.data.Dataset` in a stateless
   "tensor-in tensor-out" expression, without creating an iterator.
-  This can be useful when your preprocessing transformations are expressed
-  as a `Dataset`, and you want to use the transformation at serving time.
+  This facilitates the ease of data transformation on tensors using the
+  optimized `tf.data.Dataset` abstraction on top of them.
+
+  For example, lets consider a `preprocessing_fn` which would take as an
+  input the raw features and returns the processed feature along with
+  it's label.
+
+  ```python
+  def preprocessing_fn(raw_feature):
+    # ... the raw+feature is preprocessed as per the use-case
+    return feature
+
+  raw_features = ...  # input batch of BATCH_SIZE elements.
+  dataset = (tf.data.Dataset.from_tensor_slices(raw_features)
+             .map(preprocessing_fn, num_parallel_calls=BATCH_SIZE)
+             .batch(BATCH_SIZE))
+
+  feature_batch = tf.data.get_single_element(dataset)
+  ```
+
+  In the above example, the `raw_features` tensor of length=BATCH_SIZE
+  were converted to a `tf.data.Dataset`. Next, all the raw_features were
+  mapped using the `preprocessing_fn` and the processed features were
+  grouped into a single batch. The final `dataset` contains only one element
+  which is a batch of all the processed features.
+
+  NOTE: The `dataset` should contain only one element. Preferrably, a batch
+    of processed features.
+
+  Now, instead of creating an iterator for the `dataset` and retrieving the
+  batch of features, the `tf.data.get_single_element()` function is used
+  to skip the iterator creation process and directly output the batch of
+  features.
+
+  This can be particularly useful when your tensor transformations are
+  expressed as `tf.data.Dataset` operations, and you want to use those
+  transformations at serving time. Especially, when it comes to serving
+  and inferecing using estimator models.
+
+  In order to export the saved estimator model, you need to generally define a
+  `serving_input_fn` which would require the features to be processed by the
+  model while inferencing.
 
   For example:
 
   ```python
-  def preprocessing_fn(input_str):
-    # ...
-    return image, label
+  def serving_input_fn():
+    # The function transforms the raw features of the data that is fed to
+    # the model. Generally, an input_fn that expects data to be fed to the
+    # model at serving time is used to get the raw_features and the tensor
+    # placeholders.
+    #
+    # [Reference](https://www.tensorflow.org/tfx/tutorials/transform/census)
 
-  input_batch = ...  # input batch of BATCH_SIZE elements
-  dataset = (tf.data.Dataset.from_tensor_slices(input_batch)
-             .map(preprocessing_fn, num_parallel_calls=BATCH_SIZE)
-             .batch(BATCH_SIZE))
+    input_fn = ... # estimator based data receiver function
+    serving_input_receiver = input_fn()
+    raw_features = serving_input_receiver.features
 
-  image_batch, label_batch = tf.data.experimental.get_single_element(dataset)
+    def preprocessing_fn(raw_feature):
+      # ... the raw_feature is preprocessed as per the use-case
+      return feature
+
+    dataset = (tf.data.Dataset.from_tensor_slices(raw_features)
+              .map(preprocessing_fn, num_parallel_calls=BATCH_SIZE)
+              .batch(BATCH_SIZE))
+
+    processed_features = tf.data.get_single_element(dataset)
+
+    return tf.estimator.export.ServingInputReceiver(
+        processed_features, serving_input_receiver.receiver_tensors)
+
+  estimator = ... # A pre-built or custom estimator
+  estimator.export_saved_model(your_exported_model_dir, serving_input_fn)
   ```
 
   Args:
