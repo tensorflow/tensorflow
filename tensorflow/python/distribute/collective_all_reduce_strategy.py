@@ -326,6 +326,11 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     distribute_lib.StrategyExtendedV1.__init__(self, container_strategy)
     self._communication_options = communication_options
     self._collective_key_base = container_strategy._collective_key_base  # pylint: disable=protected-access
+    # Record whether the strategy is created in eager mode. The initialization
+    # differs in eager and graph, and this helps us tell under which mode the
+    # strategy is created. There can be cases when the user create the strategy
+    # in eager but use it in graph, e.g. Estimator users.
+    self._eager_mode = ops.executing_eagerly_outside_functions()
     self._initialize_strategy(self._cluster_resolver)
     self._cfer_fn_cache = weakref.WeakKeyDictionary()
     self.experimental_enable_get_next_as_optional = True
@@ -508,8 +513,10 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._rpc_layer = cluster_resolver.rpc_layer
     self._warn_nccl_no_gpu()
 
-    if self._enable_check_health:
+    if self._enable_check_health and self._eager_mode:
       self._start_check_health_thread()
+    else:
+      logging.info("Check health not enabled.")
 
     logging.info(
         "MultiWorkerMirroredStrategy with cluster_spec = %r, task_type = %r, "
@@ -841,9 +848,6 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       time.sleep(self._check_health_interval)
 
   def _start_check_health_thread(self):
-    if not context.executing_eagerly():
-      logging.info("Check health is only supported in eager.")
-      return
     # Use a dummy all-reduce as a barrier to wait for all workers to be up,
     # otherwise the check health may fail immediately.
 
@@ -936,3 +940,18 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   def _get_local_replica_id(self, replica_id_in_sync_group):
     return (replica_id_in_sync_group -
             self._id_in_cluster * len(self.worker_devices))
+
+  def __deepcopy__(self, memo):
+    if self._eager_mode and self._enable_check_health:
+      raise ValueError(
+          "MultiWorkerMirroredStrategy cannot be deep copied in eager mode. "
+          "If you're using Estimator and see this error message, call "
+          "tf.compat.v1.disable_eager_execution() at the beginning of your "
+          "program")
+    # Otherwise, do a regular deepcopy.
+    cls = self.__class__
+    result = cls.__new__(cls)
+    memo[id(self)] = result
+    for k, v in self.__dict__.items():
+      setattr(result, k, copy.deepcopy(v, memo))
+    return result
