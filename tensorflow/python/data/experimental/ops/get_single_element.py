@@ -40,7 +40,7 @@ def get_single_element(dataset):
 
   ```python
   def preprocessing_fn(raw_feature):
-    # ... the raw+feature is preprocessed as per the use-case
+    # ... the raw_feature is preprocessed as per the use-case
     return feature
 
   raw_features = ...  # input batch of BATCH_SIZE elements.
@@ -48,7 +48,7 @@ def get_single_element(dataset):
              .map(preprocessing_fn, num_parallel_calls=BATCH_SIZE)
              .batch(BATCH_SIZE))
 
-  feature_batch = tf.data.get_single_element(dataset)
+  processed_features = tf.data.get_single_element(dataset)
   ```
 
   In the above example, the `raw_features` tensor of length=BATCH_SIZE
