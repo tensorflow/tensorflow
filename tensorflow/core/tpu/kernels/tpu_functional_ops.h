@@ -69,7 +69,7 @@ Status CreateConcatAndSplitNodesForInputTensor(
 Status CreateConcatAndSplitNodesForOutputTensor(
     Graph* graph, const string& cluster_name, EdgeShapes* tpu_output_shapes,
     GraphShapeInfo* tpu_inferred_info, GroupedEdges shape_to_output,
-    int32_t minimum_output_tensors_packing);
+    int32_t minimimum_output_tensors_packing);
 
 Status InsertReshapeNodePairs(Graph* graph, const string& cluster_name,
                               EdgeShapes* tpu_input_shapes);
