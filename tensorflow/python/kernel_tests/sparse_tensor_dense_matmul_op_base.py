@@ -64,20 +64,15 @@ class SparseTensorDenseMatMulTestBase(test.TestCase):
     x_shape = x.shape
 
     with self.cached_session(use_gpu=True):
-      determinism_required = False
-      if os.getenv('TF_DETERMINISTIC_OPS') in ('1', 'True'):
-        determinism_required = True
 
       sp_x_value = sparse_tensor.SparseTensorValue(
           indices=x_indices, values=x_values, dense_shape=x_shape)
-      gpus = config.list_physical_devices('GPU')
-      if (len(gpus) > 0 and determinism_required and
-          x.dtype in (np.float64, np.complex128)):
 
+      if (self.__class__ !=  SparseTensorDenseMatMulTestBase and
+          x.dtype in self._getGpuDeterminismUnimplementedTypes()):
         with self.assertRaisesRegex(
             errors.UnimplementedError,
-            "No deterministic GPU implementation of sparse_dense_matmul "
-            "available for data of type tf.float64 or tf.complex128"):
+            self._getGpuDeterminismUnimplementedErrorString()):
           tf_value_ans = sparse_ops.sparse_tensor_dense_matmul(
               sp_x_value, y, adjoint_a=adjoint_a, adjoint_b=adjoint_b)
           self.evaluate(tf_value_ans)

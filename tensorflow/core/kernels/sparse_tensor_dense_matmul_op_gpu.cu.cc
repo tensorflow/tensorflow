@@ -62,12 +62,12 @@ __global__ void DownCast(
 }
 
 template <typename Tout, typename Tin>
-__device__ void reduction(Tout* out_location, Tin val){
+__device__ void GpuRecastAtomicAdd(Tout* out_location, Tin val) {
   GpuAtomicAdd(out_location, static_cast<Tout>(val));
 }
 
 template<>
-__device__ void reduction(complex128* out_location, complex64 val){
+__device__ void GpuRecastAtomicAdd(complex128* out_location, complex64 val) {
   GpuAtomicAdd(out_location, complex128(val.real(), val.imag()));
 }
 
@@ -102,7 +102,7 @@ __global__ void SparseTensorDenseMatMulKernel(
     const T b_input = ldg(b + ((ADJ_B) ? j * b_cols + k : k * b_cols + j));
     const T b_value = ADJ_B ? Eigen::numext::conj(b_input) : b_input;
 
-    reduction<Tsum, T>(out_location, a_value * b_value);
+    GpuRecastAtomicAdd<Tsum, T>(out_location, a_value * b_value);
   }
 }
 
@@ -136,15 +136,13 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
     int p = out.dimension(1);
     int b_rows = b.dimension(0);
     int b_cols = b.dimension(1);
+    Tensor temp_out_t;
 
     const GPUDevice& d = ctx->eigen_device<GPUDevice>();
-    Tensor temp_out_t;
-    using Tsum = typename SumType<T>::type;
-    using Tupcast = typename SumType<T>::upcast_type;
-    bool sum_type_is_different = !std::is_same<T, Tsum>::value;
     GpuLaunchConfig config = GetGpuLaunchConfig(p * nnz, d);
 
     if (RequireDeterminism()) {
+      using Tsum = typename SumType<T>::type_for_determinism;
       if (std::is_same<T, double>::value ||
           std::is_same<T, complex128>::value) {
         return errors::Unimplemented(
@@ -152,29 +150,31 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
             "available for data of type tf.float64 or tf.complex128");
       }
 
-      Tupcast* maybe_temp_out_data = nullptr;
+      Tsum* maybe_temp_out_data = nullptr;
       TF_RETURN_IF_ERROR(ctx->allocate_temp(
-          DataTypeToEnum<Tupcast>::value,
+          DataTypeToEnum<Tsum>::value,
           TensorShape({out.dimension(0), out.dimension(1)}), &temp_out_t));
 
-      auto temp_out = temp_out_t.matrix<Tupcast>();
+      auto temp_out = temp_out_t.matrix<Tsum>();
       maybe_temp_out_data = temp_out.data();
       TF_CHECK_OK(GpuLaunchKernel(
-          SetZero<Tupcast>, config.block_count, config.thread_per_block, 0,
+          SetZero<Tsum>, config.block_count, config.thread_per_block, 0,
           d.stream(), m * p, maybe_temp_out_data));
 
       TF_CHECK_OK(GpuLaunchKernel(
-          SparseTensorDenseMatMulKernel<T, Tupcast, Tindices, ADJ_A, ADJ_B>,
+          SparseTensorDenseMatMulKernel<T, Tsum, Tindices, ADJ_A, ADJ_B>,
           config.block_count, config.thread_per_block, 0, d.stream(), nnz, m,
           b_rows, b_cols, p, a_indices.data(), a_values.data(), b.data(),
           maybe_temp_out_data));
 
       TF_CHECK_OK(GpuLaunchKernel(
-          DownCast<Tupcast, T>, config.block_count, config.thread_per_block,
+          DownCast<Tsum, T>, config.block_count, config.thread_per_block,
           0, d.stream(), m * p, maybe_temp_out_data,
           out.data()));
 
     } else {
+      using Tsum = typename SumType<T>::type;
+      bool sum_type_is_different = !std::is_same<T, Tsum>::value;
       Tsum* maybe_temp_out_data = nullptr;
 
       if (sum_type_is_different) {
@@ -183,17 +183,15 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
             TensorShape({out.dimension(0), out.dimension(1)}), &temp_out_t));
         auto temp_out = temp_out_t.matrix<Tsum>();
         maybe_temp_out_data = temp_out.data();
-
-        TF_CHECK_OK(GpuLaunchKernel(
-            SetZero<Tsum>, config.block_count, config.thread_per_block, 0,
-            d.stream(), m * p, maybe_temp_out_data));
-
       } else {
         // Note: The reinterpret cast is only required to avoid a compilation
         // error; it is only used if Tsum == T.
         maybe_temp_out_data = reinterpret_cast<Tsum*>(out.data());
-        out.device(d) = out.constant(T(0));
       }
+
+      TF_CHECK_OK(GpuLaunchKernel(
+          SetZero<Tsum>, config.block_count, config.thread_per_block, 0,
+          d.stream(), m * p, maybe_temp_out_data));
 
       // TODO(ebrevdo): Should this be alpha * nnz instead of
       // out.size()?  Perhaps p * nnz ?

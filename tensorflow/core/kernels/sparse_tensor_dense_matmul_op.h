@@ -72,25 +72,25 @@ class MaybeAdjoint<MATRIX, true> {
 template <typename T>
 struct SumType {
   using type = T;
-  using upcast_type = T;
+  using type_for_determinism = T;
 };
 
 template <>
 struct SumType<Eigen::half> {
   using type = float;  // Use fp32 accumulator for fp16 input values
-  using upcast_type = double;
+  using type_for_determinism = double;
 };
 
 template <>
 struct SumType<float> {
   using type = float;
-  using upcast_type = double;
+  using type_for_determinism = double;
 };
 
 template <>
 struct SumType<complex64> {
   using type = complex64;
-  using upcast_type = complex128;
+  using type_for_determinism = complex128;
 };
 
 }  // end namespace functor

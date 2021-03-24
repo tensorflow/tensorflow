@@ -35,6 +35,13 @@ from tensorflow.python.platform import test
 class SparseTensorDenseMatmulDeterministicTest(
     sparse_tensor_dense_matmul_op_base.SparseTensorDenseMatMulTestBase):
 
+  def _getGpuDeterminismUnimplementedErrorString(self):
+    return ("No deterministic GPU implementation of sparse_dense_matmul "
+            "available for data of type tf.float64 or tf.complex128")
+
+  def _getGpuDeterminismUnimplementedTypes(self):
+    return (np.float64, np.complex128)
+
   def _gen_data(self, m, k, n, nnz, row_occupied_rate, data_type):
 
     occupied_rows = random.sample(range(m), int(m * row_occupied_rate))
@@ -65,20 +72,20 @@ class SparseTensorDenseMatmulDeterministicTest(
   def testDeterministicSparseDenseMatmul(self):
     random.seed(123)
     np.random.seed(123)
-    gpu_determinism_implemented_types = (np.float16, np.float32, np.complex64)
+    gpu_supported_types = (np.float16, np.float32, np.float64, np.complex64,
+                           np.complex128)
 
-    for data_type in gpu_determinism_implemented_types:
+    for data_type in gpu_supported_types:
       sparse_input, dense_input = self._gen_data(
           m=2430, k=615, n=857, nnz=(1<<16)+243, row_occupied_rate=0.02,
           data_type=data_type)
 
       repeat_count = 5
       with self.session(force_gpu=True):
-        if data_type in (np.float64, np.complex128):
+        if data_type in self._getGpuDeterminismUnimplementedTypes():
           with self.assertRaisesRegex(
               errors.UnimplementedError,
-              "No deterministic GPU implementation of sparse_dense_matmul "
-              "available for data of type tf.float64 or tf.complex128"):
+              self._getGpuDeterminismUnimplementedErrorString()):
             result_ = sparse_ops.sparse_tensor_dense_matmul(
                 sparse_input, dense_input)
             self.evaluate(result_)
