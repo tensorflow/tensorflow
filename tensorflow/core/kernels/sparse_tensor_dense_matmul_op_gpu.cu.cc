@@ -125,87 +125,86 @@ bool RequireDeterminism() {
 
 template <typename T, typename Tindices, bool ADJ_A, bool ADJ_B>
 struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
+
+  template <typename Tsum>
   static EIGEN_ALWAYS_INLINE Status
-  Compute(OpKernelContext* ctx, typename TTypes<T>::Matrix out,
-          typename TTypes<Tindices>::ConstMatrix a_indices,
-          typename TTypes<T>::ConstVec a_values,
-          typename TTypes<T>::ConstMatrix b) {
+  GpuSparseTensorDenseMatMulWithRecast(
+      OpKernelContext* ctx, typename TTypes<T>::Matrix &out,
+      typename TTypes<Tindices>::ConstMatrix a_indices,
+      typename TTypes<T>::ConstVec a_values,
+      typename TTypes<T>::ConstMatrix b) {
+
     int nnz = a_values.size();
     // out = A * B, A is [m x n] and B is [n x p], out is [m x p]
     int m = out.dimension(0);
     int p = out.dimension(1);
     int b_rows = b.dimension(0);
     int b_cols = b.dimension(1);
-    Tensor temp_out_t;
-
     const GPUDevice& d = ctx->eigen_device<GPUDevice>();
     GpuLaunchConfig config = GetGpuLaunchConfig(p * nnz, d);
 
-    if (RequireDeterminism()) {
-      using Tsum = typename SumType<T>::type_for_determinism;
-      if (std::is_same<T, double>::value ||
-          std::is_same<T, complex128>::value) {
-        return errors::Unimplemented(
-            "No deterministic GPU implementation of sparse_dense_matmul "
-            "available for data of type tf.float64 or tf.complex128");
-      }
+    Tensor temp_out_t;
+    Tsum* maybe_temp_out_data = nullptr;
+    bool sum_type_is_different = !std::is_same<T, Tsum>::value;
 
-      Tsum* maybe_temp_out_data = nullptr;
+    if (sum_type_is_different) {
       TF_RETURN_IF_ERROR(ctx->allocate_temp(
           DataTypeToEnum<Tsum>::value,
           TensorShape({out.dimension(0), out.dimension(1)}), &temp_out_t));
 
       auto temp_out = temp_out_t.matrix<Tsum>();
       maybe_temp_out_data = temp_out.data();
-      TF_CHECK_OK(GpuLaunchKernel(
-          SetZero<Tsum>, config.block_count, config.thread_per_block, 0,
-          d.stream(), m * p, maybe_temp_out_data));
+    } else {
+      // Note: The reinterpret cast is only required to avoid a compilation
+      // error; it is only used if Tsum == T.
+      maybe_temp_out_data = reinterpret_cast<Tsum*>(out.data());
+    }
 
-      TF_CHECK_OK(GpuLaunchKernel(
-          SparseTensorDenseMatMulKernel<T, Tsum, Tindices, ADJ_A, ADJ_B>,
-          config.block_count, config.thread_per_block, 0, d.stream(), nnz, m,
-          b_rows, b_cols, p, a_indices.data(), a_values.data(), b.data(),
-          maybe_temp_out_data));
+    TF_CHECK_OK(GpuLaunchKernel(
+        SetZero<Tsum>, config.block_count, config.thread_per_block, 0,
+        d.stream(), m * p, maybe_temp_out_data));
 
+    // TODO(ebrevdo): Should this be alpha * nnz instead of
+    // out.size()?  Perhaps p * nnz ?
+
+    TF_CHECK_OK(GpuLaunchKernel(
+        SparseTensorDenseMatMulKernel<T, Tsum, Tindices, ADJ_A, ADJ_B>,
+        config.block_count, config.thread_per_block, 0, d.stream(), nnz, m,
+        b_rows, b_cols, p, a_indices.data(), a_values.data(), b.data(),
+        maybe_temp_out_data));
+
+    if (RequireDeterminism()) {
       TF_CHECK_OK(GpuLaunchKernel(
           DownCast<Tsum, T>, config.block_count, config.thread_per_block,
           0, d.stream(), m * p, maybe_temp_out_data,
           out.data()));
+    }
+    else if (sum_type_is_different) {
+      out.device(d) = temp_out_t.matrix<Tsum>().template cast<T>();
+    }
+    return Status::OK();
+  }
 
+  static EIGEN_ALWAYS_INLINE Status
+  Compute(OpKernelContext* ctx, typename TTypes<T>::Matrix out,
+          typename TTypes<Tindices>::ConstMatrix a_indices,
+          typename TTypes<T>::ConstVec a_values,
+          typename TTypes<T>::ConstMatrix b) {
+
+    if (RequireDeterminism()) {
+      if (std::is_same<T, double>::value ||
+          std::is_same<T, complex128>::value) {
+        return errors::Unimplemented(
+            "No deterministic GPU implementation of sparse_dense_matmul "
+            "available for data of type tf.float64 or tf.complex128");
+      }
+      using Tsum = typename SumType<T>::type_for_determinism;
+      GpuSparseTensorDenseMatMulWithRecast<Tsum>(ctx, out, a_indices,
+                                                 a_values, b);
     } else {
       using Tsum = typename SumType<T>::type;
-      bool sum_type_is_different = !std::is_same<T, Tsum>::value;
-      Tsum* maybe_temp_out_data = nullptr;
-
-      if (sum_type_is_different) {
-        TF_RETURN_IF_ERROR(ctx->allocate_temp(
-            DataTypeToEnum<Tsum>::value,
-            TensorShape({out.dimension(0), out.dimension(1)}), &temp_out_t));
-        auto temp_out = temp_out_t.matrix<Tsum>();
-        maybe_temp_out_data = temp_out.data();
-      } else {
-        // Note: The reinterpret cast is only required to avoid a compilation
-        // error; it is only used if Tsum == T.
-        maybe_temp_out_data = reinterpret_cast<Tsum*>(out.data());
-      }
-
-      TF_CHECK_OK(GpuLaunchKernel(
-          SetZero<Tsum>, config.block_count, config.thread_per_block, 0,
-          d.stream(), m * p, maybe_temp_out_data));
-
-      // TODO(ebrevdo): Should this be alpha * nnz instead of
-      // out.size()?  Perhaps p * nnz ?
-
-      TF_CHECK_OK(GpuLaunchKernel(
-          SparseTensorDenseMatMulKernel<T, Tsum, Tindices, ADJ_A, ADJ_B>,
-          config.block_count, config.thread_per_block, 0, d.stream(), nnz, m,
-          b_rows, b_cols, p, a_indices.data(), a_values.data(), b.data(),
-          maybe_temp_out_data));
-
-      if (sum_type_is_different) {
-        out.device(d) = temp_out_t.matrix<Tsum>().template cast<T>();
-      }
-
+      GpuSparseTensorDenseMatMulWithRecast<Tsum>(ctx, out, a_indices,
+                                                 a_values, b);
     }
     return Status::OK();
   }
