@@ -75,6 +75,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import moving_averages
 from tensorflow.python.training.tracking import util as tracking_util
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import keras_deps
@@ -1933,7 +1934,9 @@ def moving_average_update(x, value, momentum):
   Returns:
       The updated variable.
   """
-  return x.assign(x * momentum + value * (1 - momentum))
+  zero_debias = not tf2.enabled()
+  return moving_averages.assign_moving_average(
+      x, value, momentum, zero_debias=zero_debias)
 
 
 # LINEAR ALGEBRA
