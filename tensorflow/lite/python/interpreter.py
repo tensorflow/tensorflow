@@ -19,11 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 import ctypes
+import enum
+import os
 import platform
 import sys
-import os
 
-import enum
 import numpy as np
 
 # pylint: disable=g-import-not-at-top
@@ -304,7 +304,8 @@ class Interpreter(object):
                model_content=None,
                experimental_delegates=None,
                num_threads=None,
-               experimental_op_resolver_type=OpResolverType.AUTO):
+               experimental_op_resolver_type=OpResolverType.AUTO,
+               experimental_preserve_all_tensors=False):
     """Constructor.
 
     Args:
@@ -321,6 +322,9 @@ class Interpreter(object):
         must be an instance of OpResolverType. By default, we use the built-in
         op resolver which corresponds to tflite::ops::builtin::BuiltinOpResolver
         in C++.
+      experimental_preserve_all_tensors: If true, then intermediate tensors
+        used during computation are preserved for inspection. Otherwise, reading
+        intermediate tensors provides undefined values.
 
     Raises:
       ValueError: If the interpreter was unable to create.
@@ -343,7 +347,8 @@ class Interpreter(object):
       self._interpreter = (
           _interpreter_wrapper.CreateWrapperFromFile(
               model_path, op_resolver_id, custom_op_registerers_by_name,
-              custom_op_registerers_by_func))
+              custom_op_registerers_by_func,
+              experimental_preserve_all_tensors))
       if not self._interpreter:
         raise ValueError('Failed to open {}'.format(model_path))
     elif model_content and not model_path:
@@ -360,7 +365,8 @@ class Interpreter(object):
       self._interpreter = (
           _interpreter_wrapper.CreateWrapperFromBuffer(
               model_content, op_resolver_id, custom_op_registerers_by_name,
-              custom_op_registerers_by_func))
+              custom_op_registerers_by_func,
+              experimental_preserve_all_tensors))
     elif not model_content and not model_path:
       raise ValueError('`model_path` or `model_content` must be specified.')
     else:

@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
-#include "tensorflow/lite/delegates/gpu/metal/common.h"
 
 namespace tflite {
 namespace gpu {
@@ -379,54 +378,6 @@ int MetalSpatialTensor::GetAlignedChannels() const {
              : AlignByN(shape_.c, 4);
 }
 
-absl::Status MetalSpatialTensor::WriteDataBHWDC(id<MTLDevice> device,
-                                                const float* in) {
-  void* data_ptr = nullptr;
-  const int aligned_channels = GetAlignedChannels();
-  const int elements_count =
-      shape_.b * shape_.w * shape_.h * shape_.d * aligned_channels;
-
-  const size_t data_size = elements_count * SizeOf(descriptor_.data_type);
-  std::unique_ptr<float[]> data_f;
-  std::unique_ptr<half[]> data_h;
-  if (descriptor_.data_type == DataType::FLOAT32) {
-    data_f.reset(new float[elements_count]);
-    data_ptr = data_f.get();
-    DataFromBHWDC(in, shape_, descriptor_, data_f.get());
-  } else {
-    data_h.reset(new half[elements_count]);
-    data_ptr = data_h.get();
-    DataFromBHWDC(in, shape_, descriptor_, data_h.get());
-  }
-
-  switch (descriptor_.storage_type) {
-    case TensorStorageType::BUFFER:
-    case TensorStorageType::IMAGE_BUFFER:
-      std::memcpy([memory_ contents], data_ptr, data_size);
-      break;
-    case TensorStorageType::TEXTURE_2D:
-      WriteDataToTexture2D(texture_mem_, device, data_ptr);
-      break;
-    case TensorStorageType::TEXTURE_3D:
-      WriteDataToTexture3D(texture_mem_, device, data_ptr);
-      break;
-    case TensorStorageType::TEXTURE_ARRAY:
-      WriteDataToTexture2DArray(texture_mem_, device, data_ptr);
-      break;
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-    default:
-      return absl::InternalError("Unsupported tensor storage type");
-  }
-
-  return absl::OkStatus();
-}
-
-absl::Status MetalSpatialTensor::WriteData(id<MTLDevice> device,
-                                           const TensorFloat32& src) {
-  RETURN_IF_ERROR(IsValid(src.shape));
-  return WriteDataBHWDC(device, src.data.data());
-}
-
 absl::Status MetalSpatialTensor::WriteData(
     id<MTLDevice> device,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src) {
@@ -437,69 +388,6 @@ absl::Status MetalSpatialTensor::WriteData(
     id<MTLDevice> device,
     const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src) {
   return WriteDataBHWDC(device, src.data.data());
-}
-
-absl::Status MetalSpatialTensor::WriteData(id<MTLDevice> device,
-                                           const Tensor5DFloat32& src) {
-  RETURN_IF_ERROR(IsValid(src.shape));
-  return WriteDataBHWDC(device, src.data.data());
-}
-
-absl::Status MetalSpatialTensor::ReadDataBHWDC(id<MTLDevice> device,
-                                               float* out) const {
-  void* data_ptr = nullptr;
-  const int aligned_channels = GetAlignedChannels();
-  const int elements_count =
-      shape_.b * shape_.w * shape_.h * shape_.d * aligned_channels;
-  const size_t data_size = elements_count * SizeOf(descriptor_.data_type);
-  std::unique_ptr<float[]> data_f;
-  std::unique_ptr<half[]> data_h;
-  if (descriptor_.data_type == DataType::FLOAT32) {
-    data_f.reset(new float[elements_count]);
-    data_ptr = data_f.get();
-  } else {
-    data_h.reset(new half[elements_count]);
-    data_ptr = data_h.get();
-  }
-
-  switch (descriptor_.storage_type) {
-    case TensorStorageType::BUFFER:
-    case TensorStorageType::IMAGE_BUFFER:
-      std::memcpy(data_ptr, [memory_ contents], data_size);
-      break;
-    case TensorStorageType::TEXTURE_2D:
-      ReadDataFromTexture2D(texture_mem_, device, data_ptr);
-      break;
-    case TensorStorageType::TEXTURE_3D:
-      ReadDataFromTexture3D(texture_mem_, device, data_ptr);
-      break;
-    case TensorStorageType::TEXTURE_ARRAY:
-      ReadDataFromTexture2DArray(texture_mem_, device, data_ptr);
-      break;
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-    default:
-      return absl::InternalError("Unsupported tensor storage type");
-  }
-
-  if (descriptor_.data_type == DataType::FLOAT32) {
-    DataToBHWDC(data_f.get(), shape_, descriptor_, out);
-  } else {
-    DataToBHWDC(data_h.get(), shape_, descriptor_, out);
-  }
-
-  return absl::OkStatus();
-}
-
-absl::Status MetalSpatialTensor::ReadData(id<MTLDevice> device,
-                                          TensorFloat32* dst) const {
-  RETURN_IF_ERROR(IsValid(dst->shape));
-  return ReadDataBHWDC(device, dst->data.data());
-}
-
-absl::Status MetalSpatialTensor::ReadData(id<MTLDevice> device,
-                                          Tensor5DFloat32* dst) const {
-  RETURN_IF_ERROR(IsValid(dst->shape));
-  return ReadDataBHWDC(device, dst->data.data());
 }
 
 absl::Status MetalSpatialTensor::CreateFromDescriptor(

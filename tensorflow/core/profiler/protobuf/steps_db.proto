@@ -22,11 +22,13 @@ message DeviceMemoryTransfer {
   uint64 bytes_transferred = 3;
 }
 
-// Next ID: 5
+// Next ID: 6
 // Result proto for StepInfo.
 message StepInfoResult {
   // The step number.
   uint32 step_num = 1;
+  // The step name.
+  string step_name = 5;
   // The step duration in picoseconds.
   uint64 duration_ps = 2;
   // The start time of this step in picoseconds.

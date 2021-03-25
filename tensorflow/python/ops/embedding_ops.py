@@ -525,8 +525,8 @@ def embedding_lookup_sparse(params,
       embeddings = array_ops.gather(embeddings, idx)
 
       # Reshape weights to allow broadcast
-      ones = array_ops.fill(
-          array_ops.expand_dims(array_ops.rank(embeddings) - 1, 0), 1)
+      ones_shape = array_ops.expand_dims(array_ops.rank(embeddings) - 1, 0)
+      ones = array_ops.ones(ones_shape, dtype=dtypes.int32)
       bcast_weights_shape = array_ops.concat([array_ops.shape(weights), ones],
                                              0)
 

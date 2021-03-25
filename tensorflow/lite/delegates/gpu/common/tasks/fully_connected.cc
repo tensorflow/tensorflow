@@ -35,6 +35,36 @@ bool UseBufferForWeights(const GpuInfo& gpu_info) {
   return gpu_info.IsAdreno() || gpu_info.IsAMD() || gpu_info.IsMali() ||
          gpu_info.IsApple();
 }
+
+void RearrangeFCWeightsToOIO4I4(
+    const tflite::gpu::Tensor<OHWI, DataType::INT8>& weights, uint8_t* dst) {
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
+
+  int counter = 0;
+  for (int d = 0; d < dst_depth; ++d) {
+    for (int s = 0; s < src_depth; ++s) {
+      for (int i = 0; i < 4; ++i) {
+        const int src_ch = s * 4 + i;
+        for (int j = 0; j < 4; ++j) {
+          const int dst_ch = d * 4 + j;
+          if (src_ch < weights.shape.i && dst_ch < weights.shape.o) {
+            int t =
+                127 +
+                weights.data[weights.shape.LinearIndex({dst_ch, 0, 0, src_ch})];
+            if (t < 0) {
+              t = 0;
+            }
+            dst[counter++] = t;
+          } else {
+            dst[counter++] = 127;
+          }
+        }
+      }
+    }
+  }
+}
+
 }  // namespace
 
 FullyConnected::FullyConnected(const OperationDef& definition,
@@ -54,7 +84,6 @@ FullyConnected::FullyConnected(const OperationDef& definition,
   } else {
     work_group_size_ = int3(16, 4, 1);
   }
-  code_ = GetFullyConnectedKernelCode(definition_, gpu_info);
 }
 
 FullyConnected::FullyConnected(FullyConnected&& kernel)
@@ -74,7 +103,8 @@ FullyConnected& FullyConnected::operator=(FullyConnected&& kernel) {
 // optimized shaders
 
 std::string FullyConnected::GetFullyConnectedKernelCode(
-    const OperationDef& op_def, const GpuInfo& gpu_info) {
+    const OperationDef& op_def, const GpuInfo& gpu_info,
+    bool weights_are_buffer, bool quantized) {
   const int wg_total_size = work_group_size_.x * work_group_size_.y;
   const std::string barrier =
       wg_total_size == 32 && gpu_info.IsWaveSizeEqualTo32()
@@ -82,8 +112,6 @@ std::string FullyConnected::GetFullyConnectedKernelCode(
           : "LOCAL_MEM_BARRIER";
   AddSrcTensor("src_tensor", op_def.src_tensors[0]);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
-
-  const bool weights_are_buffer = UseBufferForWeights(gpu_info);
 
   std::string c;
   switch (op_def.precision) {
@@ -120,7 +148,15 @@ std::string FullyConnected::GetFullyConnectedKernelCode(
       FLT4 w1 = args.weights.Read(c * 4 + 1, gid);
       FLT4 w2 = args.weights.Read(c * 4 + 2, gid);
       FLT4 w3 = args.weights.Read(c * 4 + 3, gid);
-      FLT4 partial = v.x * w0;
+      )";
+    if (quantized) {
+      c += R"(w0 = w0 * args.q0 + args.q1;
+      w1 = w1 * args.q0 + args.q1;
+      w2 = w2 * args.q0 + args.q1;
+      w3 = w3 * args.q0 + args.q1;
+)";
+    }
+    c += R"(FLT4 partial = v.x * w0;
       partial += v.y * w1;
       partial += v.z * w2;
       partial += v.w * w3;
@@ -154,11 +190,38 @@ int3 FullyConnected::GetGridSize() const {
   return int3(dst_[0]->Slices(), 1, 1);
 }
 
+void FullyConnected::UploadQuantizedWeights(
+    const tflite::gpu::Tensor<OHWI, DataType::INT8>& weights, float scale,
+    float zero_point) {
+  const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
+  Texture2DDescriptor desc;
+  desc.element_type = DataType::UINT8;
+  desc.normalized = true;
+  desc.normalized_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+  desc.size = int2(src_depth * 4, dst_depth);
+  desc.data.resize(src_depth * 4 * dst_depth * 4);
+  RearrangeFCWeightsToOIO4I4(weights, desc.data.data());
+
+  if (definition_.precision == CalculationsPrecision::F32) {
+    args_.AddFloat("q0", scale * 255.0f);
+    args_.AddFloat("q1", -scale * (127.0 + zero_point));
+  } else {
+    args_.AddHalf("q0", half(scale * 255.0f));
+    args_.AddHalf("q1", half(-scale * (127.0 + zero_point)));
+  }
+  args_.AddObject("weights",
+                  absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+}
+
 FullyConnected CreateFullyConnected(const GpuInfo& gpu_info,
                                     const OperationDef& definition,
                                     const FullyConnectedAttributes& attr) {
   FullyConnected result(definition, gpu_info);
   result.UploadWeights(attr.weights, UseBufferForWeights(gpu_info));
+  result.code_ = result.GetFullyConnectedKernelCode(
+      definition, gpu_info, UseBufferForWeights(gpu_info), false);
 
   TensorLinearDescriptor desc;
   desc.storage_type = gpu_info.SupportsImages() ? LinearStorageType::TEXTURE_2D
@@ -171,6 +234,31 @@ FullyConnected CreateFullyConnected(const GpuInfo& gpu_info,
   desc.UploadLinearData(attr.bias);
   result.args_.AddObject(
       "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+
+  return result;
+}
+
+FullyConnected CreateFullyConnected(const GpuInfo& gpu_info,
+                                    const OperationDef& definition,
+                                    const FullyConnectedInt8Attributes& attr) {
+  FullyConnected result(definition, gpu_info);
+  result.UploadQuantizedWeights(attr.weights, attr.scale, attr.zero_point);
+  result.code_ =
+      result.GetFullyConnectedKernelCode(definition, gpu_info, false, true);
+
+  TensorLinearDescriptor desc;
+  desc.storage_type = gpu_info.SupportsImages() ? LinearStorageType::TEXTURE_2D
+                                                : LinearStorageType::BUFFER;
+  if (gpu_info.IsApple()) {
+    desc.storage_type =
+        DeduceLinearStorageType(definition.GetPrimaryStorageType());
+  }
+  desc.element_type = definition.GetDataType();
+  desc.UploadLinearData(attr.bias);
+  result.args_.AddObject(
+      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+
+  return result;
 
   return result;
 }

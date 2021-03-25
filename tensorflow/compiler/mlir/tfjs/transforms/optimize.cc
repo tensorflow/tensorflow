@@ -47,11 +47,10 @@ struct Optimize : public PassWrapper<Optimize, FunctionPass> {
 #include "tensorflow/compiler/mlir/tfjs/transforms/generated_optimize.inc"
 
 void Optimize::runOnFunction() {
-  OwningRewritePatternList patterns;
-  auto *ctx = &getContext();
+  OwningRewritePatternList patterns(&getContext());
   auto func = getFunction();
 
-  populateWithGenerated(ctx, patterns);
+  populateWithGenerated(patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 }  // namespace

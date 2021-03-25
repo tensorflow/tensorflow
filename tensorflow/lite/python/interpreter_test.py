@@ -545,7 +545,7 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegex(
         # Due to exception chaining in PY3, we can't be more specific here and check that
         # the phrase 'Fail argument sent' is present.
-        ValueError,
+        ValueError,  #
         r'Failed to load delegate from'):
       interpreter_wrapper.load_delegate(
           self._delegate_file, options={'fail': 'fail'})

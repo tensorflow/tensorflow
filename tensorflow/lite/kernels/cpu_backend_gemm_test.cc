@@ -504,6 +504,72 @@ void TestSomeGemm(int rows, int depth, int cols,
   }
 }
 
+template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
+          typename DstScalar>
+void TestMaybeValidGemm(int lhs_rows, int lhs_cols, int rhs_rows, int rhs_cols,
+                        int dst_rows, int dst_cols) {
+  CpuBackendContext cpu_backend_context;
+  std::default_random_engine random_engine;
+  cpu_backend_context.SetMaxNumThreads(1 + (random_engine() % 8));
+  bool use_caching = static_cast<bool>(random_engine() % 2);
+  cpu_backend_context.SetUseCaching(use_caching);
+
+  std::vector<LhsScalar> lhs_data;
+  std::vector<RhsScalar> rhs_data;
+  std::vector<AccumScalar> bias_data;
+  std::vector<DstScalar> dst_data;
+  MakeDeterministicPseudoRandomVector(lhs_rows * lhs_cols, &lhs_data);
+  MakeDeterministicPseudoRandomVector(rhs_rows * rhs_cols, &rhs_data);
+  MakeDeterministicPseudoRandomVector(dst_rows, &bias_data);
+  MakeDeterministicPseudoRandomVector(dst_rows * dst_cols, &dst_data);
+
+  MatrixParams<LhsScalar> lhs_params;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.rows = lhs_rows;
+  lhs_params.cols = lhs_cols;
+  if (!std::is_floating_point<LhsScalar>::value) {
+    lhs_params.zero_point = 1;
+  }
+
+  MatrixParams<RhsScalar> rhs_params;
+  rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  rhs_params.rows = rhs_rows;
+  rhs_params.cols = rhs_cols;
+  if (!std::is_floating_point<RhsScalar>::value) {
+    rhs_params.zero_point = 1;
+  }
+
+  MatrixParams<DstScalar> dst_params;
+  dst_params.order = cpu_backend_gemm::Order::kColMajor;
+  dst_params.rows = dst_rows;
+  dst_params.cols = dst_cols;
+  if (!std::is_floating_point<DstScalar>::value) {
+    dst_params.zero_point = 1;
+  }
+
+  GemmParams<AccumScalar, DstScalar> params;
+  params.bias = bias_data.data();
+  static constexpr std::int32_t kMultiplierFixedpointMin = 1234567890;
+  if (!std::is_floating_point<AccumScalar>::value) {
+    // some large int32 value. Not being a multiple of a large
+    // power of two helps testing rounding behavior.
+    params.multiplier_fixedpoint = kMultiplierFixedpointMin;
+    // Now find a suitable value for multiplier_exponent.
+    // It needs to be low enough for a substantial amount of dst values
+    // to avoid getting clamped.
+    int bisect_min = -8 * static_cast<int>(sizeof(AccumScalar));
+    // We don't increase test coverage by using positive multipliers,
+    // and using very large positive multipliers may at the moment
+    // result in overflow in some paths.
+    int bisect_max = 0;
+    params.multiplier_exponent = BisectReasonableMultiplierExponent(
+        bisect_min, bisect_max, lhs_params, lhs_data, rhs_params, rhs_data,
+        dst_params, &dst_data, params, &cpu_backend_context);
+  }
+  Gemm(lhs_params, lhs_data.data(), rhs_params, rhs_data.data(), dst_params,
+       dst_data.data(), params, &cpu_backend_context);
+}
+
 TEST(CpuBackendGemmSimpleTestAgainstGolden, Float) {
   TestSomeGemm<float, float, float, float>(2, 3, 4,
                                            {15, 34, 33, 79, 51, 124, 69, 169});
@@ -517,6 +583,18 @@ TEST(CpuBackendGemmSimpleTestAgainstGolden, Uint8) {
 TEST(CpuBackendGemmSimpleTestAgainstGolden, Int8) {
   TestSomeGemm<std::int8_t, std::int8_t, std::int32_t, std::int8_t>(
       2, 6, 3, {13, 32, 31, 81, 50, 127});
+}
+
+TEST(CpuBackendGemmInvalidGemmTest, Float) {
+  // A standard Gemm operation.
+  TestMaybeValidGemm<float, float, float, float>(2, 3, 3, 4, 2, 4);
+  // An invalid Gemm that will abort in debug mode.
+#if !defined(TARGET_IPHONE_SIMULATOR) && !defined(TARGET_OS_IPHONE)
+  ASSERT_DEBUG_DEATH(
+      (TestMaybeValidGemm<float, float, float, float>(2, 3, 3, 0, 2, 4)), "");
+  ASSERT_DEBUG_DEATH(
+      (TestMaybeValidGemm<float, float, float, float>(2, 3, 9, 4, 2, 4)), "");
+#endif
 }
 
 TEST(CpuBackendGemmSimpleTestAgainstGolden, Int8Int16) {

@@ -32,13 +32,15 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/util.h"
 
-#ifdef INTEL_MKL
+#if defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_MKL)
 #ifdef _OPENMP
 #include <omp.h>
 #endif
+#endif  // defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_MKL)
+#ifdef INTEL_MKL
 #include "tensorflow/core/common_runtime/mkl_cpu_allocator.h"
 #include "tensorflow/core/platform/cpu_info.h"
-#endif
+#endif  // INTEL_MKL
 
 namespace tensorflow {
 
@@ -52,7 +54,7 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
       scoped_allocator_mgr_(new ScopedAllocatorMgr(name)) {
 #if defined(ENABLE_ONEDNN_OPENMP) && defined(INTEL_MKL)
   // Early return when MKL is disabled
-  if (DisableMKL()) return;
+  if (!IsMKLEnabled()) return;
 #ifdef _OPENMP
   const char* user_omp_threads = getenv("OMP_NUM_THREADS");
   static absl::once_flag omp_setting_flag;
@@ -126,10 +128,8 @@ class MklCPUAllocatorFactory : public AllocatorFactory {
   }
 };
 
-#ifdef ENABLE_MKL
-REGISTER_MEM_ALLOCATOR("MklCPUAllocator", (DisableMKL() ? 50 : 200),
+REGISTER_MEM_ALLOCATOR("MklCPUAllocator", (IsMKLEnabled() ? 200 : 50),
                        MklCPUAllocatorFactory);
-#endif  // ENABLE_MKL
 
 }  // namespace
 #endif  // INTEL_MKL

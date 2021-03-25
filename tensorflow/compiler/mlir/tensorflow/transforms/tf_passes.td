@@ -800,6 +800,8 @@ func @cluster_oplist(%arg0: tensor<f32>, %arg1: tensor<i32>) -> tensor<i32> {
                "such that each op's single user is the next op in the list.",
                "llvm::cl::MiscFlags::CommaSeparated">
   ];
+
+  let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
 }
 
 def VerifySuitableForExportPass : Pass<"tf-verify-for-export", "ModuleOp"> {

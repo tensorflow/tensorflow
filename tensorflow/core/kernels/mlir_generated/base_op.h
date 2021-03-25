@@ -189,9 +189,8 @@ class MlirOp : public OpKernel {
   GENERATE_BINARY_KERNEL2(tf_op, platform, input_type, input_type)
 
 #define GENERATE_BINARY_KERNEL2(tf_op, platform, input_type, output_type)      \
-  extern "C" UntypedUnrankedMemRefType MLIR_FUNCTION(tf_op, platform,          \
-                                                     input_type, output_type)( \
-      tensorflow::OpKernelContext * ctx,                                       \
+  extern "C" void MLIR_FUNCTION(tf_op, platform, input_type, output_type)(     \
+      UntypedUnrankedMemRefType * result, tensorflow::OpKernelContext * ctx,   \
       const ::UnrankedMemRefType<typename EnumToDataType<input_type>::Type>*   \
           arg1,                                                                \
       const ::UnrankedMemRefType<typename EnumToDataType<input_type>::Type>*   \
@@ -211,8 +210,10 @@ class MlirOp : public OpKernel {
         llvm::ArrayRef<                                                        \
             ::UnrankedMemRefType<typename EnumToDataType<input_type>::Type>>   \
             args) {                                                            \
-      return ConvertToTyped<ResultDataType>(MLIR_FUNCTION(                     \
-          tf_op, platform, input_type, output_type)(ctx, &args[0], &args[1])); \
+      UntypedUnrankedMemRefType result;                                        \
+      MLIR_FUNCTION(tf_op, platform, input_type, output_type)                  \
+      (&result, ctx, &args[0], &args[1]);                                      \
+      return ConvertToTyped<ResultDataType>(result);                           \
     }                                                                          \
   };                                                                           \
   }
@@ -225,9 +226,8 @@ class MlirOp : public OpKernel {
   GENERATE_UNARY_KERNEL2(tf_op, platform, input_type, input_type)
 
 #define GENERATE_UNARY_KERNEL2(tf_op, platform, input_type, output_type)       \
-  extern "C" UntypedUnrankedMemRefType MLIR_FUNCTION(tf_op, platform,          \
-                                                     input_type, output_type)( \
-      tensorflow::OpKernelContext * ctx,                                       \
+  extern "C" void MLIR_FUNCTION(tf_op, platform, input_type, output_type)(     \
+      UntypedUnrankedMemRefType * result, tensorflow::OpKernelContext * ctx,   \
       const ::UnrankedMemRefType<typename EnumToDataType<input_type>::Type>*   \
           arg);                                                                \
                                                                                \
@@ -245,8 +245,10 @@ class MlirOp : public OpKernel {
         llvm::ArrayRef<                                                        \
             ::UnrankedMemRefType<typename EnumToDataType<input_type>::Type>>   \
             args) {                                                            \
-      return ConvertToTyped<ResultDataType>(MLIR_FUNCTION(                     \
-          tf_op, platform, input_type, output_type)(ctx, &args[0]));           \
+      UntypedUnrankedMemRefType result;                                        \
+      MLIR_FUNCTION(tf_op, platform, input_type, output_type)                  \
+      (&result, ctx, &args[0]);                                                \
+      return ConvertToTyped<ResultDataType>(result);                           \
     }                                                                          \
   };                                                                           \
   }

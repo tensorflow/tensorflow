@@ -148,6 +148,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         strings::StrCat(DebugString(), " does not yet support serialization."));
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->clear();
+    return Status::OK();
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,

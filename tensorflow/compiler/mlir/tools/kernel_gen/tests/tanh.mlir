@@ -1,6 +1,6 @@
 // RUN: tf-opt %s --xla-legalize-tf | \
 // RUN: mlir-hlo-opt --mhlo-transform-unranked-hlo --hlo-legalize-to-linalg  | \
-// RUN: kernel-gen-opt -allow-unregistered-dialect --hlo-bufferize \
+// RUN: kernel-gen-opt -allow-unregistered-dialect --computeop-and-func-bufferize \
 // RUN: --canonicalize --shape-to-descriptors --canonicalize --final-bufferize \
 // RUN: | FileCheck %s
 

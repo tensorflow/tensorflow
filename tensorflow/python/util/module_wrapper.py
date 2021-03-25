@@ -19,8 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 import importlib
-import inspect
 
+from tensorflow.python.eager import monitoring
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import fast_module_type
 from tensorflow.python.util import tf_decorator
@@ -29,6 +29,8 @@ from tensorflow.tools.compatibility import all_renames_v2
 
 FastModuleType = fast_module_type.get_fast_module_type_class()
 _PER_MODULE_WARNING_LIMIT = 1
+compat_v1_usage_gauge = monitoring.BoolGauge('/tensorflow/api/compat/v1',
+                                             'compat.v1 usage')
 
 
 def get_rename_v2(name):
@@ -43,7 +45,7 @@ def _call_location():
   Returns:
     A string describing the caller source location.
   """
-  frame = inspect.currentframe()
+  frame = tf_inspect.currentframe()
   assert frame.f_back.f_code.co_name == '_tfmw_add_deprecation_warning', (
       'This function should be called directly from '
       '_tfmw_add_deprecation_warning, as the caller is identified '
@@ -91,6 +93,8 @@ def has_deprecation_decorator(symbol):
 
 class TFModuleWrapper(FastModuleType):
   """Wrapper for TF modules to support deprecation messages and lazyloading."""
+  # Ensures that compat.v1 API usage is recorded at most once
+  compat_v1_usage_recorded = False
 
   def __init__(
       self,
@@ -111,6 +115,7 @@ class TFModuleWrapper(FastModuleType):
     self._tfmw_public_apis = public_apis
     self._tfmw_print_deprecation_warnings = deprecation
     self._tfmw_has_lite = has_lite
+    self._tfmw_is_compat_v1 = (wrapped.__name__.endswith('.compat.v1'))
     # Set __all__ so that import * work for lazy loaded modules
     if self._tfmw_public_apis:
       self._tfmw_wrapped_module.__all__ = list(self._tfmw_public_apis.keys())
@@ -154,6 +159,14 @@ class TFModuleWrapper(FastModuleType):
 
   def _tfmw_import_module(self, name):
     """Lazily loading the modules."""
+    # We ignore 'app' because it is accessed in __init__.py of tf.compat.v1.
+    # That way, if a user only imports tensorflow.compat.v1, it is not
+    # considered v1 API usage.
+    if (self._tfmw_is_compat_v1 and name != 'app' and
+        not TFModuleWrapper.compat_v1_usage_recorded):
+      TFModuleWrapper.compat_v1_usage_recorded = True
+      compat_v1_usage_gauge.get_cell().set(True)
+
     symbol_loc_info = self._tfmw_public_apis[name]
     if symbol_loc_info[0]:
       module = importlib.import_module(symbol_loc_info[0])

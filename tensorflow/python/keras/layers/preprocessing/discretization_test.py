@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Keras discretization preprocessing layer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 import numpy as np
@@ -127,6 +123,12 @@ class DiscretizationTest(keras_parameterized.TestCase,
     output_dataset = model.predict(input_array, steps=1)
     self.assertAllEqual(indices, output_dataset.indices)
     self.assertAllEqual(expected_output, output_dataset.values)
+
+  def test_output_shape(self):
+    input_data = keras.Input(batch_size=16, shape=(4,), dtype=dtypes.string)
+    layer = discretization.Discretization(bin_boundaries=[-.5, 0.5, 1.5])
+    output = layer(input_data)
+    self.assertAllEqual(output.shape.as_list(), [16, 4])
 
   def test_num_bins_negative_fails(self):
     with self.assertRaisesRegex(ValueError, "`num_bins` must be.*num_bins=-7"):

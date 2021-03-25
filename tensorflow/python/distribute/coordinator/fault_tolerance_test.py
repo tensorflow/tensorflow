@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import gc
-import os
 import sys
 import threading
 import time
@@ -105,11 +104,6 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
 
   def setUp(self, num_workers, num_ps):
     super(BaseFaultToleranceTest, self).setUp()
-
-    # Set the environment variable to prevent hanging upon job failure and
-    # restart. Note that it defaults to 'use_caller' at Google, but defaults
-    # to False in OSS.
-    os.environ["GRPC_FAIL_FAST"] = "use_caller"
 
     self._cluster = multi_worker_test_base.create_multi_process_cluster(
         num_workers=num_workers, num_ps=num_ps, rpc_layer="grpc")

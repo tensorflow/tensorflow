@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for custom training loops that involves advanced optimizer usage."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import strategy_combinations
@@ -55,11 +51,11 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
 
     @def_function.function
     def optimize():
-      grads = values.PerReplica([
-          ops.convert_to_tensor_v2_with_dispatch([1., 1.]),
-          ops.convert_to_tensor_v2_with_dispatch([2., 2.]),
-      ])
-
+      with ops.device(distribution.extended.worker_devices[0]):
+        v1 = ops.convert_to_tensor_v2_with_dispatch([1., 1.])
+      with ops.device(distribution.extended.worker_devices[1]):
+        v2 = ops.convert_to_tensor_v2_with_dispatch([2., 2.])
+      grads = values.PerReplica([v1, v2])
       def step_fn(grads):
         optimizer.apply_gradients(
             [(grads, v)],

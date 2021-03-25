@@ -14,9 +14,6 @@
 # ==============================================================================
 # pylint: disable=protected-access
 """Contains the base Layer class, from which all layers inherit."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import collections
 import copy
@@ -27,8 +24,6 @@ import warnings
 import weakref
 
 import numpy as np
-import six
-from six.moves import zip  # pylint: disable=redefined-builtin
 
 from google.protobuf import json_format
 from tensorflow.core.framework import node_def_pb2
@@ -512,7 +507,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     Returns:
       The TrackableWeightHandler used to track this object.
     """
-    handler = base_layer_utils.TrackableWeightHandler(trackable_object)
+    if isinstance(trackable_object, base_layer_utils.TrackableWeightHandler):
+      handler = trackable_object
+    else:
+      handler = base_layer_utils.TrackableWeightHandler(trackable_object)
     if trainable:
       self._trainable_weights.append(handler)
     else:
@@ -614,7 +612,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       elif dtype.is_integer or dtype.is_unsigned or dtype.is_bool:
         initializer = initializers.get('zeros')
       # NOTES:Do we need to support for handling DT_STRING and DT_COMPLEX here?
-      else:
+      elif 'getter' not in kwargs:
+        # When `getter` is specified, it's possibly fine for `initializer` to be
+        # None since it's up to the custom `getter` to raise error in case it
+        # indeed needs `initializer`.
         raise ValueError('An initializer for variable %s of type %s is required'
                          ' for layer %s' % (name, dtype.base_dtype, self.name))
 
@@ -773,12 +774,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         try:
           outputs = self(inputs, training=False)
         except TypeError as e:
-          six.raise_from(
-              NotImplementedError(
-                  'We could not automatically infer the static shape of the '
-                  'layer\'s output. Please implement the '
-                  '`compute_output_shape` method on your layer (%s).' %
-                  self.__class__.__name__), e)
+          raise NotImplementedError(
+              'We could not automatically infer the static shape of the '
+              'layer\'s output. Please implement the '
+              '`compute_output_shape` method on your layer (%s).' %
+              self.__class__.__name__) from e
       return nest.map_structure(lambda t: t.shape, outputs)
     raise NotImplementedError(
         'Please run in eager mode or implement the `compute_output_shape` '
@@ -1707,48 +1707,48 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           update()  # pylint: disable=not-callable
 
   def set_weights(self, weights):
-    """Sets the weights of the layer, from Numpy arrays.
+    """Sets the weights of the layer, from NumPy arrays.
 
     The weights of a layer represent the state of the layer. This function
     sets the weight values from numpy arrays. The weight values should be
     passed in the order they are created by the layer. Note that the layer's
-    weights must be instantiated before calling this function by calling
+    weights must be instantiated before calling this function, by calling
     the layer.
 
-    For example, a Dense layer returns a list of two values-- per-output
-    weights and the bias value. These can be used to set the weights of another
-    Dense layer:
+    For example, a `Dense` layer returns a list of two values: the kernel matrix
+    and the bias vector. These can be used to set the weights of another
+    `Dense` layer:
 
-    >>> a = tf.keras.layers.Dense(1,
+    >>> layer_a = tf.keras.layers.Dense(1,
     ...   kernel_initializer=tf.constant_initializer(1.))
-    >>> a_out = a(tf.convert_to_tensor([[1., 2., 3.]]))
-    >>> a.get_weights()
+    >>> a_out = layer_a(tf.convert_to_tensor([[1., 2., 3.]]))
+    >>> layer_a.get_weights()
     [array([[1.],
            [1.],
            [1.]], dtype=float32), array([0.], dtype=float32)]
-    >>> b = tf.keras.layers.Dense(1,
+    >>> layer_b = tf.keras.layers.Dense(1,
     ...   kernel_initializer=tf.constant_initializer(2.))
-    >>> b_out = b(tf.convert_to_tensor([[10., 20., 30.]]))
-    >>> b.get_weights()
+    >>> b_out = layer_b(tf.convert_to_tensor([[10., 20., 30.]]))
+    >>> layer_b.get_weights()
     [array([[2.],
            [2.],
            [2.]], dtype=float32), array([0.], dtype=float32)]
-    >>> b.set_weights(a.get_weights())
-    >>> b.get_weights()
+    >>> layer_b.set_weights(layer_a.get_weights())
+    >>> layer_b.get_weights()
     [array([[1.],
            [1.],
            [1.]], dtype=float32), array([0.], dtype=float32)]
 
     Args:
-        weights: a list of Numpy arrays. The number
-            of arrays and their shape must match
-            number of the dimensions of the weights
-            of the layer (i.e. it should match the
-            output of `get_weights`).
+      weights: a list of NumPy arrays. The number
+        of arrays and their shape must match
+        number of the dimensions of the weights
+        of the layer (i.e. it should match the
+        output of `get_weights`).
 
     Raises:
-        ValueError: If the provided weights list does not match the
-            layer's specifications.
+      ValueError: If the provided weights list does not match the
+        layer's specifications.
     """
     params = self.weights
 
@@ -1787,39 +1787,39 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     backend.batch_set_value(weight_value_tuples)
 
   def get_weights(self):
-    """Returns the current weights of the layer.
+    """Returns the current weights of the layer, as NumPy arrays.
 
     The weights of a layer represent the state of the layer. This function
     returns both trainable and non-trainable weight values associated with this
-    layer as a list of Numpy arrays, which can in turn be used to load state
+    layer as a list of NumPy arrays, which can in turn be used to load state
     into similarly parameterized layers.
 
-    For example, a Dense layer returns a list of two values-- per-output
-    weights and the bias value. These can be used to set the weights of another
-    Dense layer:
+    For example, a `Dense` layer returns a list of two values: the kernel matrix
+    and the bias vector. These can be used to set the weights of another
+    `Dense` layer:
 
-    >>> a = tf.keras.layers.Dense(1,
+    >>> layer_a = tf.keras.layers.Dense(1,
     ...   kernel_initializer=tf.constant_initializer(1.))
-    >>> a_out = a(tf.convert_to_tensor([[1., 2., 3.]]))
-    >>> a.get_weights()
+    >>> a_out = layer_a(tf.convert_to_tensor([[1., 2., 3.]]))
+    >>> layer_a.get_weights()
     [array([[1.],
            [1.],
            [1.]], dtype=float32), array([0.], dtype=float32)]
-    >>> b = tf.keras.layers.Dense(1,
+    >>> layer_b = tf.keras.layers.Dense(1,
     ...   kernel_initializer=tf.constant_initializer(2.))
-    >>> b_out = b(tf.convert_to_tensor([[10., 20., 30.]]))
-    >>> b.get_weights()
+    >>> b_out = layer_b(tf.convert_to_tensor([[10., 20., 30.]]))
+    >>> layer_b.get_weights()
     [array([[2.],
            [2.],
            [2.]], dtype=float32), array([0.], dtype=float32)]
-    >>> b.set_weights(a.get_weights())
-    >>> b.get_weights()
+    >>> layer_b.set_weights(layer_a.get_weights())
+    >>> layer_b.get_weights()
     [array([[1.],
            [1.],
            [1.]], dtype=float32), array([0.], dtype=float32)]
 
     Returns:
-        Weights values as a list of numpy arrays.
+        Weights values as a list of NumPy arrays.
     """
     weights = self.weights
     output_weights = []

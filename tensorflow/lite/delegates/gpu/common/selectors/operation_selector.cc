@@ -466,6 +466,17 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
                                      inputs[0]->tensor.shape.b);
       return absl::OkStatus();
     }
+    case OperationType::FULLY_CONNECTED_INT8: {
+      auto attr = absl::any_cast<FullyConnectedInt8Attributes>(
+          node.operation.attributes);
+      *gpu_op = SelectFullyConnected(attr, gpu_info, op_def);
+      return absl::OkStatus();
+    }
+    case OperationType::GATHER: {
+      auto attr = absl::any_cast<GatherAttributes>(node.operation.attributes);
+      RETURN_IF_ERROR(SelectGather(attr, op_def, gpu_op));
+      return absl::OkStatus();
+    }
     case OperationType::LSTM: {
       *gpu_op = SelectLSTM(op_def, gpu_info);
       return absl::OkStatus();
@@ -544,6 +555,10 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     case OperationType::SPLIT: {
       auto attr = absl::any_cast<SplitAttributes>(node.operation.attributes);
       SelectSplit(attr, op_def, gpu_op);
+      return absl::OkStatus();
+    }
+    case OperationType::TILE: {
+      *gpu_op = SelectTile(op_def, inputs[0]->tensor.shape);
       return absl::OkStatus();
     }
     case OperationType::TRANSPOSE: {

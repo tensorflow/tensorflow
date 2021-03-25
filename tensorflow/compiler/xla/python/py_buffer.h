@@ -107,7 +107,7 @@ class PyBuffer : public DeviceArrayBase {
   pybind11::dtype python_dtype() const;
 
   // Representing the logical view of the underlying dynamic shapes.
-  StatusOr<Shape> xla_dynamic_shape();
+  StatusOr<const Shape*> xla_dynamic_shape();
 
   Status set_sticky_device(PjRtDevice* sticky_device) {
     TF_RET_CHECK(sticky_device == nullptr ||

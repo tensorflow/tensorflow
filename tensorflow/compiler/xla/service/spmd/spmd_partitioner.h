@@ -471,7 +471,6 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
                          const std::function<HloInstruction*()>& func) {
     HloInstruction* new_hlo = func();
     new_hlo->set_sharding(hlo->sharding());
-    new_hlo->set_metadata(hlo->metadata());
     SetPartitionedHlo(
         hlo, PartitionedHlo(new_hlo, hlo->shape(), MakePartitioningState()));
     changed_ = true;

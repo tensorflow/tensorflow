@@ -218,9 +218,44 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "category_vocab_file_dense_benchmark",
+    srcs = ["category_vocab_file_dense_benchmark.py"],
+    python_version = "PY3",
+    tags = ["no_windows"],
+    deps = [
+        ":feature_column_benchmark",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/feature_column:feature_column_v2",
+    ],
+)
+
+tf_py_test(
+    name = "category_vocab_file_varlen_benchmark",
+    srcs = ["category_vocab_file_varlen_benchmark.py"],
+    python_version = "PY3",
+    tags = ["no_windows"],
+    deps = [
+        ":feature_column_benchmark",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/feature_column:feature_column_v2",
+    ],
+)
+
+tf_py_test(
     name = "category_vocab_list_dense_benchmark",
     srcs = ["category_vocab_list_dense_benchmark.py"],
     python_version = "PY3",
+    tags = ["no_windows"],
     deps = [
         ":feature_column_benchmark",
         "//tensorflow/python:client_testlib",

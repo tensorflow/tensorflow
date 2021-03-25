@@ -81,7 +81,6 @@ tf_gen_op_libs(
         "random_ops",
         "special_math_ops",
         "stateful_random_ops",
-        "remote_fused_graph_ops",
         "risc_ops",
         "rnn_ops",
         "scoped_allocator_ops",
@@ -281,7 +280,6 @@ cc_library(
         ":rnn_ops_op_lib",
         ":special_math_ops_op_lib",
         ":stateful_random_ops_op_lib",
-        ":remote_fused_graph_ops_op_lib",
         ":resource_variable_ops_op_lib",
         ":scoped_allocator_ops_op_lib",
         ":script_ops_op_lib",
@@ -464,28 +462,6 @@ tf_cc_test(
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:math",
         "//third_party/eigen3",
-    ],
-)
-
-tf_cc_test(
-    name = "ops_remote_fused_graph_ops_test",
-    size = "small",
-    srcs = ["remote_fused_graph_ops_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    deps = [
-        ":ops",
-        "//tensorflow/core",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels:remote_fused_graph_ops",
     ],
 )
 

@@ -51,7 +51,8 @@ StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
     HloAllGatherInstruction* ag = DynCast<HloAllGatherInstruction>(hlo);
     // Only supporting AllGather on dimension 0 as it's the only case currently
     // happening and additional cases needs more complexity.
-    if (!ag || ag->all_gather_dimension() != 0) {
+    // TODO(cjfj): Support all-gathers with more than one operand.
+    if (!ag || ag->all_gather_dimension() != 0 || ag->operand_count() > 1) {
       continue;
     }
     HloInstruction* real_data = ag->mutable_operand(0);
@@ -91,7 +92,7 @@ StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
           comp->AddInstruction(HloInstruction::CreateAllGather(
               ShapeUtil::MakeShape(real_data->shape().element_type(),
                                    new_dimensions),
-              ag_input, /*all_gather_dimension=*/0, ag->replica_groups(),
+              {ag_input}, /*all_gather_dimension=*/0, ag->replica_groups(),
               ag->constrain_layout(), new_channel_id,
               ag->use_global_device_ids()));
       HloInstruction* new_formatting = comp->AddInstruction(
