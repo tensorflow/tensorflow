@@ -28,7 +28,6 @@ include(BuildFlatBuffers)
 set(FLATBUFFERS_FLATC_EXECUTABLE ${CMAKE_BINARY_DIR}/flatbuffers-flatc/bin/flatc)
 set(FLATBUFFERS_FLATC_SCHEMA_EXTRA_ARGS
   -c
-  --no-union-value-namespacing
   --gen-object-api
   --gen-mutable
 )
@@ -227,7 +226,7 @@ set(TEST_LIST
   sub_test.cc
   svdf_test.cc
   # We don't always have the delegate environment(e.g nnapi)
-  # So, skip this test.
+  # So, skip "test_delegate_providers_test.cc".
   #test_delegate_providers_test.cc
   tile_test.cc
   topk_v2_test.cc
