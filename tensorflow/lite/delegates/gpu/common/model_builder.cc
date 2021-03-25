@@ -2856,7 +2856,8 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context, bool allow_quant_ops,
       partition_helper.GetNodesOfFirstNLargestPartitions(
           max_delegated_partitions);
 
-  if (!unsupported_nodes_info.empty()) {
+  if (!unsupported_nodes_info.empty() &&
+      partition_helper.num_total_nodes() > ops_to_replace.size()) {
     std::string unsupported = absl::StrJoin(unsupported_nodes_info, "\n");
     std::string error_message = absl::StrCat(
         "Following operations are not supported by GPU delegate:\n",
