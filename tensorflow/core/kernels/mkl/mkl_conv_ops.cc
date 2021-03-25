@@ -68,6 +68,9 @@ struct MklConvFwdParams {
   MklTensorFormat tf_fmt;
   bool native_format;
   string dtypes = string("");
+#ifdef DNNL_AARCH64_USE_ACL
+  void* filter_address = nullptr;
+#endif
   struct PostOpParam {
     string name;
     mkldnn::algorithm alg;
@@ -468,6 +471,9 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<float> {
     key_creator.AddAsKey(prefix);
     key_creator.AddAsKey(convFwdDims.src_dims);
     key_creator.AddAsKey(convFwdDims.filter_dims);
+#ifdef DNNL_AARCH64_USE_ACL
+    key_creator.AddAsKey(convFwdDims.filter_address);
+#endif
     key_creator.AddAsKey(convFwdDims.bias_dims);
     key_creator.AddAsKey(convFwdDims.dst_dims);
     key_creator.AddAsKey(convFwdDims.strides);
@@ -777,6 +783,11 @@ class MklConvOp : public OpKernel {
 
       // TODO(mdfaijul): Extend the basic parameters for data types and fusions
       this->ExtendConvFwdParams(context, convFwdDims);
+#ifdef DNNL_AARCH64_USE_ACL
+      // Specifics of ACL: a primitive per constant weights ptr
+      convFwdDims.filter_address = const_cast<void*>(
+          static_cast<const void*>(filter_tensor.flat<Tfilter>().data()));
+#endif
 
       conv_fwd =
           MklConvFwdPrimitiveFactory<Tinput, Tfilter, Tbias, Ttemp_output>::Get(
