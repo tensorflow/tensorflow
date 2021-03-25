@@ -556,8 +556,8 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/cc:client_session",
-        "//tensorflow/cc:ops",
         "//tensorflow/cc:gradients",
+        "//tensorflow/cc:ops",
     ],
 )
 
