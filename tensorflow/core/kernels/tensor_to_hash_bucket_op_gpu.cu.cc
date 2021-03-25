@@ -87,11 +87,17 @@ void LaunchTensorToHashBucket<Eigen::GpuDevice, T>::operator()(
          const int num_elems, int64* output) {
   const Eigen::GpuDevice& d = c->eigen_gpu_device();
   if (num_elems > 0) {
-    constexpr int32 kThreadsInBlock = 128;
-    auto shared_memory_bytes =
-        kThreadsInBlock * kSharedMemBufferSizePerThread * sizeof(char);
+    constexpr size_t kThreadsLimitInBlock = 1024;
+    int dev;
+    cudaGetDevice(&dev);
+    cudaDeviceProp deviceProp;
+    cudaGetDeviceProperties(&deviceProp, dev);
+    auto smem_bytes_block = kSharedMemBufferSizePerThread * sizeof(char);
+    size_t thread_per_block = min(
+        kThreadsLimitInBlock, deviceProp.sharedMemPerBlock / smem_bytes_block);
+    auto shared_memory_bytes = thread_per_block * smem_bytes_block;
     GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(
-        num_elems, d, ComputeHashes<T>, shared_memory_bytes, kThreadsInBlock);
+        num_elems, d, ComputeHashes<T>, shared_memory_bytes, thread_per_block);
     OP_REQUIRES_OK(c, GpuLaunchKernel(
         ComputeHashes<T>, config.block_count, config.thread_per_block,
         shared_memory_bytes, d.stream(), input, num_elems, num_buckets,
