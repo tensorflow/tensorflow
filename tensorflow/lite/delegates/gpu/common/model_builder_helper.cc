@@ -304,18 +304,27 @@ absl::Status CheckIfLinearConvertible(const TfLiteIntArray* dimensions) {
   if (dimensions->size <= 0) {
     return absl::InvalidArgumentError("Dimension is empty.");
   }
-  for (int i = 0; i < dimensions->size - 1; ++i) {
+  int num_actual_dimensions = 0;
+  for (int i = 0; i < dimensions->size; ++i) {
     if (dimensions->data[i] != 1) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          GetDimensionString(dimensions), "  cannot be reduced to linear."));
+      num_actual_dimensions++;
     }
+  }
+  if (num_actual_dimensions > 1)
+  {
+    return absl::InvalidArgumentError(absl::StrCat(
+        GetDimensionString(dimensions), "  cannot be reduced to linear."));
   }
   return absl::OkStatus();
 }
 
 absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, Linear* shape) {
   RETURN_IF_ERROR(CheckIfLinearConvertible(dimensions));
-  shape->v = dimensions->data[dimensions->size - 1];
+  int dimensions_size = 1;
+  for (int i = 0; i < dimensions->size; ++i) {
+    dimensions_size *= dimensions->data[i];
+  }
+  shape->v = dimensions_size;
   return absl::OkStatus();
 }
 
