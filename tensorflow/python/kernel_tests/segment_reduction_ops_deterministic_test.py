@@ -48,11 +48,10 @@ class SegmentReductionDeterminismExceptionsTest(test.TestCase):
     return data, segment_ids, num_segments
 
   @test_util.run_cuda_only
-  def DISABLED_testSortedOps(self):
+  def testSortedOps(self):
     op_should_throw_for_float = {
         math_ops.segment_max: False,
         math_ops.segment_min: False,
-        math_ops.segment_mean: False,  # implemented on CPU only
         math_ops.segment_prod: True,
         math_ops.segment_sum: True,
     }
@@ -66,9 +65,11 @@ class SegmentReductionDeterminismExceptionsTest(test.TestCase):
                   errors_impl.UnimplementedError,
                   "Deterministic GPU implementation of sorted segment " +
                   "reduction op not available."):
-                op(data, segment_ids)
+                result = op(data, segment_ids)
+                self.evaluate(result)
             else:
-              op(data, segment_ids)
+              result = op(data, segment_ids)
+              self.evaluate(result)
 
   _UNSORTED_ERROR_MESSAGE = ("Deterministic GPU implementation of unsorted " +
                              "segment reduction op not available.")
@@ -105,10 +106,8 @@ class SegmentReductionDeterminismExceptionsTest(test.TestCase):
               self.evaluate(result)
 
   @test_util.run_cuda_only
-  def DISABLED_testUnsortedOpsComplex(self):
+  def testUnsortedOpsComplex(self):
     for op in [
-        math_ops.unsorted_segment_mean,  # uses unsorted_segment_sum
-        math_ops.unsorted_segment_sqrt_n,  # uses unsorted_segment_sum
         math_ops.unsorted_segment_sum,
     ]:
       for data_type in [dtypes.complex64, dtypes.complex128]:
@@ -118,7 +117,8 @@ class SegmentReductionDeterminismExceptionsTest(test.TestCase):
                 data_type, segment_ids_type)
             with self.assertRaisesRegex(errors_impl.UnimplementedError,
                                         self._UNSORTED_ERROR_MESSAGE):
-              op(data, segment_ids, num_segments)
+              result = op(data, segment_ids, num_segments)
+              self.evaluate(result)
 
   @test_util.run_cuda_only
   @test_util.run_in_graph_and_eager_modes
@@ -139,14 +139,14 @@ class SegmentReductionDeterminismExceptionsTest(test.TestCase):
             self.evaluate(result)
 
   @test_util.run_cuda_only
-  def DISABLED_testGatherBackprop(self):
+  def testGatherBackprop(self):
     for data_type in [
         dtypes.float16, dtypes.float32, dtypes.float64, dtypes.complex64,
         dtypes.complex128
     ]:
       for segment_ids_type in [dtypes.int32, dtypes.int64]:
         with self.cached_session(force_gpu=True):
-          params, indices, _ = self._input(dtypes.float32, dtypes.int32)
+          params, indices, _ = self._input(data_type, segment_ids_type)
           params = variables.Variable(params)
           with backprop.GradientTape() as tape:
             tape.watch(params)
@@ -154,7 +154,8 @@ class SegmentReductionDeterminismExceptionsTest(test.TestCase):
           gradient = tape.gradient(op_output, params)
           with self.assertRaisesRegex(errors_impl.UnimplementedError,
                                       self._UNSORTED_ERROR_MESSAGE):
-            params.assign(gradient)  # convert_to_tensor on IndexedSlices
+            # convert_to_tensor on IndexedSlices
+            self.evaluate(params.assign(gradient))
 
 
 if __name__ == "__main__":
