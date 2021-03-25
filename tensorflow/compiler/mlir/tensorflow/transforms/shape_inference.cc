@@ -249,9 +249,10 @@ RankedTensorType DropFirstDimension(Type type) {
 }
 
 Operation* InsertCast(OpBuilder& b, Location loc, Type dst_type, Value input) {
-  if (getElementTypeOrSelf(dst_type).isa<IndexType>())
+  Type element_type = getElementTypeOrSelf(dst_type);
+  if (element_type.isa<IndexType>())
     return b.create<tensor::CastOp>(loc, dst_type, input);
-  if (isa<TensorFlowDialect, BuiltinDialect>(dst_type.getDialect()))
+  if (isa<TensorFlowDialect, BuiltinDialect>(element_type.getDialect()))
     return b.create<TF::CastOp>(loc, dst_type, input,
                                 /*truncate=*/b.getBoolAttr(false));
   return nullptr;

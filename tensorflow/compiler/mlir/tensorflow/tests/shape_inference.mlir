@@ -1178,4 +1178,18 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %1 = tensor.cast %0 : tensor<index> to tensor<*xindex>
     return %1 : tensor<*xindex>
   }
+
+  func private @quant_fn(%arg0: tensor<*x!quant.uniform<u8:f32, 0.007:128>>) -> () {
+    return
+  }
+  // CHECK-LABEL: unppack_const_quant() -> tensor<!quant.uniform<u8:f32, 7.000000e-03:128>>
+  func @unppack_const_quant() -> (tensor<*x!quant.uniform<u8:f32, 0.007:128>>) {
+    %cst = constant dense<5> : tensor<2xi8>
+    %0 = "quant.scast"(%cst) : (tensor<2xi8>) -> tensor<2x!quant.uniform<u8:f32, 0.007:128>>
+    // CHECK: (tensor<*x!quant.uniform<u8:f32, 7.000000e-03:128>>, tensor<!quant.uniform<u8:f32, 7.000000e-03:128>>)
+    %1:2 = "tfl.unpack"(%0) {axis = 0 : i32, num = 2 : i32} : (tensor<2x!quant.uniform<u8:f32, 0.007:128>>) -> (tensor<*x!quant.uniform<u8:f32, 0.007:128>>, tensor<*x!quant.uniform<u8:f32, 0.007:128>>)
+    call @quant_fn(%1#0) : (tensor<*x!quant.uniform<u8:f32, 0.007:128>>) -> ()
+
+    return %1#1 : tensor<*x!quant.uniform<u8:f32, 0.007:128>>
+  }
 }
