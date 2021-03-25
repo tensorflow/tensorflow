@@ -552,12 +552,12 @@ tf_cc_test(
         ":resource_variable_grad",
         ":resource_variable_ops",
         ":testutil",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:gradients",
         "//tensorflow/cc:ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
