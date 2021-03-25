@@ -80,18 +80,15 @@ def get_single_element(dataset):
       super().__init__(self)
       self.model = model
 
-    @tf.function(input_signature=[
-      tf.TensorSpec([None, 28, 28],dtype=tf.uint8)
-    ])
+    @tf.function(input_signature=[...])
     def serving_fn(self, data):
-      # Strictly speaking, you do not need to use `tf.data` here at all, as simple
-      # `data / 255` would suffice. However, the point here is to illustrate that
-      # `tf.data` can be leveraged for efficient processing of data.
       ds = tf.data.Dataset.from_tensor_slices(data)
-      ds = ds.map(lambda x: x / 255, num_parallel_calls=16)
-      ds = ds.batch(batch_size=16)
-      probabilities = self.model(tf.data.experimental.get_single_element(ds))
-      return tf.argmax(probabilities, axis=-1)
+      ds = ds.map(preprocessing_fn, num_parallel_calls=BATCH_SIZE)
+      ds = ds.batch(batch_size=BATCH_SIZE)
+      return tf.argmax(
+        self.model(tf.data.experimental.get_single_element(ds)),
+        axis=-1
+      )
 
   preprocessing_model = PreprocessingModel(model)
   your_exported_model_dir = ... # save the model to this path.
