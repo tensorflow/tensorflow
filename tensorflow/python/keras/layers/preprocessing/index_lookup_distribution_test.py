@@ -14,6 +14,7 @@
 # ==============================================================================
 """Distribution tests for keras.layers.preprocessing.index_lookup."""
 
+import os
 import numpy as np
 
 from tensorflow.python import keras
@@ -26,6 +27,7 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.distribute.strategy_combinations import all_strategies
 from tensorflow.python.keras.layers.preprocessing import index_lookup
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 
 
@@ -36,6 +38,15 @@ from tensorflow.python.platform import test
 class IndexLookupDistributionTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
+
+  def _write_to_temp_file(self, file_name, vocab_list):
+    vocab_path = os.path.join(self.get_temp_dir(), file_name + ".txt")
+    with gfile.GFile(vocab_path, "w") as writer:
+      for vocab in vocab_list:
+        writer.write(vocab + "\n")
+      writer.flush()
+      writer.close()
+    return vocab_path
 
   def test_tpu_distribution(self, distribution):
     vocab_data = [[
@@ -60,6 +71,34 @@ class IndexLookupDistributionTest(
           oov_token="[OOV]",
           dtype=dtypes.string)
       layer.adapt(vocab_dataset)
+      int_data = layer(input_data)
+      model = keras.Model(inputs=input_data, outputs=int_data)
+    model.compile(loss="mse")
+    output_dataset = model.predict(input_dataset)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  # Disabled due to http://b/180614455
+  def DISABLED_test_tpu_distribution_with_file(self, distribution):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    vocab_file = self._write_to_temp_file("temp", vocab_data)
+
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    input_dataset = dataset_ops.Dataset.from_tensor_slices(input_array).batch(
+        2, drop_remainder=True)
+    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
+
+    config.set_soft_device_placement(True)
+
+    with distribution.scope():
+      input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+      layer = index_lookup.IndexLookup(
+          max_tokens=None,
+          num_oov_indices=1,
+          mask_token="",
+          oov_token="[OOV]",
+          dtype=dtypes.string,
+          vocabulary=vocab_file)
       int_data = layer(input_data)
       model = keras.Model(inputs=input_data, outputs=int_data)
     model.compile(loss="mse")

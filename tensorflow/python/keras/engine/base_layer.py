@@ -507,7 +507,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     Returns:
       The TrackableWeightHandler used to track this object.
     """
-    handler = base_layer_utils.TrackableWeightHandler(trackable_object)
+    if isinstance(trackable_object, base_layer_utils.TrackableWeightHandler):
+      handler = trackable_object
+    else:
+      handler = base_layer_utils.TrackableWeightHandler(trackable_object)
     if trainable:
       self._trainable_weights.append(handler)
     else:

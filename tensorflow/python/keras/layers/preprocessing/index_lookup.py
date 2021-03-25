@@ -18,9 +18,11 @@
 import collections
 import json
 import operator
+import os
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -28,6 +30,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import category_encoding
 from tensorflow.python.keras.layers.preprocessing import table_utils
+from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
@@ -42,6 +45,44 @@ TFIDF = "tf-idf"
 
 _VOCAB_NAME = "vocab"
 _IDF_WEIGHTS_NAME = "idf_weights"
+
+
+class _NullInitializer(lookup_ops.TextFileInitializer):
+  """A placeholder initializer for restoring this layer from a SavedModel."""
+
+  def __init__(self, key_dtype, value_dtype):
+    """Construct a table initializer object.
+
+    Args:
+      key_dtype: Type of the table keys.
+      value_dtype: Type of the table values.
+    """
+    self._key_dtype = dtypes.as_dtype(key_dtype)
+    self._value_dtype = dtypes.as_dtype(value_dtype)
+
+  @property
+  def key_dtype(self):
+    """The expected table key dtype."""
+    return self._key_dtype
+
+  @property
+  def value_dtype(self):
+    """The expected table value dtype."""
+    return self._value_dtype
+
+  def initialize(self, table):
+    """Returns the table initialization op."""
+    pass
+
+  @property
+  def _shared_name(self):
+    """Returns a shared name to be used by the table."""
+    shared_name = "NULL_INITIALIZER_"
+    if context.executing_eagerly():
+      # Ensure a unique name when eager execution is enabled to avoid spurious
+      # sharing issues..
+      shared_name += str(backend.get_uid(shared_name))
+    return shared_name
 
 
 class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
@@ -104,7 +145,6 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
                sparse=False,
                pad_to_max_tokens=False,
                **kwargs):
-
     # If max_tokens is set, the value must be greater than 1 - otherwise we
     # are creating a 0-element vocab, which doesn't make sense.
     if max_tokens is not None and max_tokens <= 1:
@@ -130,12 +170,16 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     self.max_tokens = max_tokens
     self.num_oov_indices = num_oov_indices
     self.oov_token = oov_token
-    self.mask_token = mask_token
     self.output_mode = output_mode
     self.sparse = sparse
     self.pad_to_max_tokens = pad_to_max_tokens
     self._called = False
-    self._vocab_size = 0
+
+    # A note on vocab_size: we need to always keep a non-Tensor representation
+    # of vocab_size around to use in graph building. Because we might be
+    # in a tf.function, we can't rely on evaluating the actual tables to
+    # find the value either.
+    self._vocab_size = None
     # We need to keep track our current vocab size outside of our layer weights
     # to support a static output shape when `output_mode != INT`. The bincount
     # ops do not set shape on their outputs, which means we have to set it
@@ -144,6 +188,18 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     if "vocabulary_size" in kwargs:
       self._vocab_size = kwargs["vocabulary_size"]
       del kwargs["vocabulary_size"]
+
+    restore_from_static_table = kwargs.pop("has_static_table", False)
+
+    # Make sure the mask token is truly of the dtype we want. We can ignore
+    # strings here, because they have only one dtype.
+    if mask_token is not None:
+      dtype = kwargs["dtype"]
+      if dtype == dtypes.int32:
+        mask_token = np.int32(mask_token)
+      elif dtype == dtypes.int64:
+        mask_token = np.int64(mask_token)
+    self.mask_token = mask_token
 
     if max_tokens is not None:
       available_vocab_size = max_tokens - self._token_start_index()
@@ -165,12 +221,16 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       self._value_dtype = self.dtype
       self._mask_key = 0
       self._mask_value = mask_token
+      key_index = lookup_ops.TextFileIndex.LINE_NUMBER
+      value_index = lookup_ops.TextFileIndex.WHOLE_LINE
       default_value = self.oov_token
       oov_indices = None
     else:
       self._key_dtype = self.dtype
       self._value_dtype = dtypes.int64
       self._mask_key = mask_token
+      key_index = lookup_ops.TextFileIndex.WHOLE_LINE
+      value_index = lookup_ops.TextFileIndex.LINE_NUMBER
       # Masks should map to 0 for int output and be dropped otherwise. Max ints
       # will be dropped from the bincount op.
       self._mask_value = 0 if self.output_mode == INT else dtypes.int64.max
@@ -195,19 +255,44 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
         default_value = -1
         oov_indices = list(range(oov_start, token_start))
 
-    if vocabulary is not None and isinstance(vocabulary,
-                                             lookup_ops.TextFileInitializer):
+    self._static_vocabulary_path = None
+    has_vocab_path = (vocabulary is not None and isinstance(vocabulary, str))
+    if has_vocab_path or restore_from_static_table:
+      self._has_static_table = True
+      if vocabulary is None:
+        # If we're restoring a layer that was saved with a static table
+        # initializer, we create a fake initializer object to let the code
+        # progress. The savedmodel restoration code will handle restoring
+        # the actual data.
+        initializer = _NullInitializer(self._key_dtype, self._value_dtype)
+      else:
+        if not os.path.exists(vocabulary):
+          raise ValueError("Vocabulary file %s does not exist." % (vocabulary,))
+        self._static_vocabulary_path = vocabulary
+        num_tokens = table_utils.num_tokens_in_file(vocabulary)
+        self._vocab_size = self._token_start_index() + num_tokens
+
+        initializer = lookup_ops.TextFileInitializer(
+            filename=vocabulary,
+            key_dtype=self._key_dtype,
+            key_index=key_index,
+            value_dtype=self._value_dtype,
+            value_index=value_index,
+            value_index_offset=self._token_start_index())
+
       self._table = self._static_table_class()(
-          vocabulary, default_value=default_value)
+          initializer, default_value=default_value)
       self._table_handler = table_utils.TableHandler(
           table=self._table,
-          mask_token=mask_token,
+          mask_token=self._mask_key,
+          mask_value=self._mask_value,
           oov_tokens=oov_indices,
           use_v1_apis=self._use_v1_apis())
-      self.max_tokens = (
-          self._table_handler.table_size() + self.num_oov_indices +
-          (0 if mask_token is None else 1))
+
+      tracked_table = self._add_trackable(self._table, trainable=False)
+
     else:
+      self._has_static_table = False
       self._table = lookup_ops.MutableHashTable(
           key_dtype=self._key_dtype,
           value_dtype=self._value_dtype,
@@ -219,6 +304,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
           use_v1_apis=self._use_v1_apis())
       if vocabulary is not None:
         self.set_vocabulary(vocabulary)
+      tracked_table = self._add_trackable(self._table, trainable=False)
 
     if self.output_mode == TFIDF:
       # The TF-IDF weight may have a (None,) tensorshape. This creates
@@ -241,7 +327,6 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
           dtype=backend.floatx(),
           initializer=initializer)
 
-    tracked_table = self._add_trackable(self._table, trainable=False)
     # This is a workaround for summary() on this layer. Because the table is
     # not mutable during training, the effective number of parameters (and so
     # the weight shape) is 0; we add this as an attr so that the parameter
@@ -281,7 +366,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     super(IndexLookup, self).adapt(data, reset_state)
 
   def get_vocabulary(self):
-    if self._vocab_size == 0:
+    if self.vocabulary_size() is None:
       return []
 
     # The MutableHashTable data will not be sorted, so we will create a inverted
@@ -292,7 +377,11 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     else:
       index_to_token = zip(values, keys)
     lookup = collections.defaultdict(lambda: self.oov_token, index_to_token)
-    return [lookup[x] for x in range(self._vocab_size)]
+    vocab = [lookup[x] for x in range(self.vocabulary_size())]
+    if self.mask_token is not None and self.output_mode == INT:
+      vocab[0] = self.mask_token
+
+    return vocab
 
   def vocabulary_size(self):
     """Gets the current size of the layer's vocabulary.
@@ -307,6 +396,11 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     return self.vocabulary_size()
 
   def get_config(self):
+    if self._has_static_table:
+      vocabulary_path = self._static_vocabulary_path
+    else:
+      vocabulary_path = None
+
     config = {
         "invert": self.invert,
         "max_tokens": self.max_tokens,
@@ -315,8 +409,12 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
         "mask_token": self.mask_token,
         "output_mode": self.output_mode,
         "pad_to_max_tokens": self.pad_to_max_tokens,
-        "vocabulary_size": self._vocab_size
+        "vocabulary_size": self.vocabulary_size(),
+        "vocabulary": vocabulary_path,
     }
+    if self._has_static_table:
+      config["has_static_table"] = True
+
     base_config = super(IndexLookup, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -349,6 +447,13 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
         if "pad_to_max_tokens" is False and the layer itself has already been
         called.
     """
+    if self._has_static_table:
+      raise RuntimeError("Layer {} was created with a static file-based table "
+                         "because a file path was passed to the layer "
+                         "init. Layers created with static file-based tables "
+                         "do not support changing the vocabulary after "
+                         "creation.".format(self.name))
+
     if self.output_mode != TFIDF and idf_weights is not None:
       raise ValueError("`idf_weights` should only be set if output_mode is "
                        "TFIDF. output_mode is {}.".format(self.output_mode))
@@ -491,7 +596,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
         updates[_VOCAB_NAME], idf_weights=updates[_IDF_WEIGHTS_NAME])
 
   def call(self, inputs):
-    if not self.max_tokens and not self._vocab_size:
+    if not self.max_tokens and self._vocab_size is None:
       raise ValueError("You must set the layer's vocabulary before calling it. "
                        "Either pass a `vocabulary` argument to the layer, or "
                        "call `layer.adapt(dataset)` with some sample data.")
@@ -534,6 +639,10 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
 
   def _token_start_index(self):
     return self._oov_start_index() + self.num_oov_indices
+
+  @property
+  def _trackable_saved_model_saver(self):
+    return layer_serialization.IndexLookupLayerSavedModelSaver(self)
 
 
 class _IndexLookupAccumulator(

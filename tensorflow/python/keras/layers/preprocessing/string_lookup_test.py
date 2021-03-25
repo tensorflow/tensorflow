@@ -24,6 +24,7 @@ from tensorflow.python import keras
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
@@ -248,7 +249,9 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
   def test_non_unique_vocab_from_file_fails(self):
     vocab_list = ["earth", "wind", "and", "fire", "earth"]
     vocab_path = self._write_to_temp_file("repeat_vocab_file", vocab_list)
-    with self.assertRaisesRegex(ValueError, ".*repeated term.*earth.*"):
+    with self.assertRaisesRegex(
+        errors_impl.FailedPreconditionError,
+        "HashTable has different value for same key.*earth"):
       _ = string_lookup.StringLookup(vocabulary=vocab_path)
 
   def test_inverse_layer(self):
@@ -259,6 +262,35 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
     layer = string_lookup.StringLookup(vocabulary=vocab_data, invert=True)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_data = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_data)
+
+  def test_inverse_layer_from_file(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([[2, 3, 4, 5], [5, 4, 2, 1]])
+    expected_output = np.array([["earth", "wind", "and", "fire"],
+                                ["fire", "and", "earth", "[UNK]"]])
+    vocab_path = self._write_to_temp_file("vocab_file", vocab_data)
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
+    layer = string_lookup.StringLookup(vocabulary=vocab_path, invert=True)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_data = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_data)
+
+  def test_inverse_layer_from_file_with_non_default_msk(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([[2, 3, 4, 5], [5, 4, 2, 0]])
+    expected_output = np.array([["earth", "wind", "and", "fire"],
+                                ["fire", "and", "earth", "[M]"]])
+    vocab_path = self._write_to_temp_file("vocab_file", vocab_data)
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64)
+    layer = string_lookup.StringLookup(
+        vocabulary=vocab_path, invert=True, mask_token="[M]")
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_data = model.predict(input_array)
