@@ -5315,6 +5315,7 @@ cc_library(
         ":MemRefDialect",
         ":Pass",
         ":StandardOps",
+        ":TensorDialect",
         ":TosaDialect",
         ":Transforms",
     ],
