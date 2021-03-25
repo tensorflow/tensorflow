@@ -56,6 +56,9 @@
         `DatasetCreator` is intended to work across all `tf.distribute`
         strategies, and is the only input type supported for Parameter Server
         strategy.
+* `tf.distribute`
+    *   `tf.distribute.experimental.ParameterServerStrategy` now supports
+        training with Keras `Model.fit` when used with `DatasetCreator`.
 
 ## Bug Fixes and Other Changes
 
