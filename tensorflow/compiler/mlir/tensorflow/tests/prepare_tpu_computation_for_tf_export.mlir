@@ -14,11 +14,6 @@ func @ShardingAttr(%arg0: tensor<128x10xf32> {mhlo.sharding = "\08\03\1A\02\01\0
   return %arg0, %0, %1 : tensor<128x10xf32>, tensor<10x1024xf32>, tensor<128x1024xf32>
 }
 
-// CHECK-NOT: tf.aliasing_output
-func @main(%arg0: tensor<2xf32> {tf.aliasing_output = 0 : i64}) -> (tensor<2xf32>) {
-  return %arg0 : tensor<2xf32>
-}
-
 // CHECK-LABEL: @RewriteHostComputeMlirOp
 func @RewriteHostComputeMlirOp(%arg0: tensor<2x2xi32>, %arg1: tensor<3x?xf64>) -> (tensor<2x2xf32>) {
 

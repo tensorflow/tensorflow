@@ -103,12 +103,6 @@ void UpdateArgAttributes(mlir::FuncOp func) {
 
       func.removeArgAttr(i, builder.getIdentifier(kShardingAttr));
     }
-
-    // TODO(prakalps, hinsu): Utilize aliasing output attribute instead of
-    // dropping it. This only affects performance and is not required for
-    // correctness.
-    constexpr char kAliasingAttr[] = "tf.aliasing_output";
-    func.removeArgAttr(i, builder.getIdentifier(kAliasingAttr));
   }
 }
 
