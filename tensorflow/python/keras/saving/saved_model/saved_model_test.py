@@ -931,13 +931,17 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
     expected_training_false = model(x, training=False)
     saved_model_dir = self._save_model_dir()
     model.save(saved_model_dir, save_format='tf')
-    loaded = keras_load.load(saved_model_dir)
-    actual_default = loaded(x)
-    actual_training_true = loaded(x, training=True)
-    actual_training_false = loaded(x, training=False)
-    self.assertAllClose(
-        [expected_default, expected_training_true, expected_training_false],
-        [actual_default, actual_training_true, actual_training_false])
+
+    def assert_loaded_model(loaded):
+      actual_default = loaded(x)
+      actual_training_true = loaded(x, training=True)
+      actual_training_false = loaded(x, training=False)
+      self.assertAllClose(
+          [expected_default, expected_training_true, expected_training_false],
+          [actual_default, actual_training_true, actual_training_false])
+
+    assert_loaded_model(keras_load.load(saved_model_dir))
+    assert_loaded_model(tf_load.load(saved_model_dir))
 
 
 class TestSavedModelFormat(test.TestCase):
@@ -1038,8 +1042,8 @@ class TestLayerCallTracing(test.TestCase, parameterized.TestCase):
     layer = Layer()
 
     call_collection = keras_save.LayerCallCollection(layer)
-    fn = call_collection.add_function(layer.call, 'call')
-    fn2 = call_collection.add_function(layer.call2, 'call2')
+    fn = call_collection.add_function(layer.call, 'call', True)
+    fn2 = call_collection.add_function(layer.call2, 'call2', True)
 
     with keras_save.tracing_scope():
       fn(np.ones((2, 3)))
@@ -1061,7 +1065,7 @@ class TestLayerCallTracing(test.TestCase, parameterized.TestCase):
     def assert_num_traces(layer_cls, training_keyword):
       layer = layer_cls()
       call_collection = keras_save.LayerCallCollection(layer)
-      fn = call_collection.add_function(layer.call, 'call')
+      fn = call_collection.add_function(layer.call, 'call', True)
 
       with keras_save.tracing_scope():
         fn(np.ones((2, 3)), training=True)
@@ -1114,7 +1118,7 @@ class TestLayerCallTracing(test.TestCase, parameterized.TestCase):
     previous_losses = layer.losses[:]
 
     call_collection = keras_save.LayerCallCollection(layer)
-    fn = call_collection.add_function(layer.call, 'call')
+    fn = call_collection.add_function(layer.call, 'call', True)
     fn(np.ones((2, 3)))
 
     self.assertAllEqual(previous_losses, layer.losses)

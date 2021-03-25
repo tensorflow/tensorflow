@@ -162,10 +162,18 @@ def wrap_layer_functions(layer, serialization_cache):
   call_collection = LayerCallCollection(layer)
   call_fn_with_losses = call_collection.add_function(
       _wrap_call_and_conditional_losses(layer),
-      '{}_layer_call_and_return_conditional_losses'.format(layer.name))
+      '{}_layer_call_and_return_conditional_losses'.format(layer.name),
+      # If any of this layer's child layers use the training arg, the traced
+      # call functions of this layer will have a training keyword argument. If
+      # the original layer does not expect the training arg, then it will have
+      # to be removed (by setting `match_layer_training_arg`).
+      match_layer_training_arg=True)
   call_fn = call_collection.add_function(
       _extract_outputs_from_fn(layer, call_fn_with_losses),
-      '{}_layer_call_fn'.format(layer.name))
+      '{}_layer_call_fn'.format(layer.name),
+      # Since `call_fn` wraps call_fn_with_losses and not the original call
+      # function, `match_layer_training_arg` should be set to False.
+      match_layer_training_arg=False)
 
   fns = {'call_and_return_conditional_losses': call_fn_with_losses,
          '__call__': call_fn}
@@ -174,11 +182,11 @@ def wrap_layer_functions(layer, serialization_cache):
     fns['activity_regularizer_fn'] = _wrap_activity_regularizer(layer)
     fns['call_and_return_all_conditional_losses'] = (
         call_collection.add_function(
-            _append_activity_regularizer_loss(layer,
-                                              call_fn_with_losses,
-                                              fns['activity_regularizer_fn']),
-            '{}_layer_call_and_return_all_conditional_losses'.format(layer.name)
-            ))
+            _append_activity_regularizer_loss(
+                layer, call_fn_with_losses, fns['activity_regularizer_fn']),
+            '{}_layer_call_and_return_all_conditional_losses'.format(
+                layer.name),
+            match_layer_training_arg=False))
   else:
     fns['activity_regularizer_fn'] = None
     fns['call_and_return_all_conditional_losses'] = call_fn_with_losses
@@ -352,16 +360,16 @@ def tracing_scope():
     _thread_local_data.trace_queue = []
     yield
   finally:
-    _thread_local_data.enable_call_tracing = previous_value
-
     # Run traces from the queue.
-    for fn, args, kwargs, training in _thread_local_data.trace_queue:
+    while _thread_local_data.trace_queue:
+      fn, args, kwargs, training = _thread_local_data.trace_queue.pop()
       if training is not None:
         with K.deprecated_internal_learning_phase_scope(training):
           fn.get_concrete_function(*args, **kwargs)
       else:
         fn.get_concrete_function(*args, **kwargs)
     _thread_local_data.trace_queue = previous_queue
+    _thread_local_data.enable_call_tracing = previous_value
 
 
 def add_trace_to_queue(fn, args, kwargs, training=None):
@@ -498,7 +506,7 @@ class LayerCallCollection(object):
     return self.layer._get_call_arg_value(  # pylint: disable=protected-access
         self._input_arg_name, args, kwargs, inputs_in_args=True)
 
-  def _maybe_wrap_with_training_arg(self, call_fn):
+  def _maybe_wrap_with_training_arg(self, call_fn, match_layer_training_arg):
     """Wraps call function with added training argument if necessary."""
     if not self.layer._expects_training_arg and self._expects_training_arg:  # pylint: disable=protected-access
       # Add training arg to wrapper function.
@@ -521,12 +529,13 @@ class LayerCallCollection(object):
         self._training_arg_index -= 1
 
       def wrap_with_training_arg(*args, **kwargs):
-        # Remove the training value, since the original call_fn does not expect
-        # a training arg. Instead, the training value will be propagated using
-        # the call context created in LayerCall.
-        args = list(args)
-        kwargs = kwargs.copy()
-        utils.remove_training_arg(self._training_arg_index, args, kwargs)
+        if match_layer_training_arg:
+          # Remove the training value, since the original call_fn does not
+          # expect a training arg. Instead, the training value will be
+          # propagated using the call context created in LayerCall.
+          args = list(args)
+          kwargs = kwargs.copy()
+          utils.remove_training_arg(self._training_arg_index, args, kwargs)
         return call_fn(*args, **kwargs)
 
       return tf_decorator.make_decorator(
@@ -536,10 +545,22 @@ class LayerCallCollection(object):
 
     return call_fn
 
-  def add_function(self, call_fn, name):
-    """Adds a layer call function to the collection."""
+  def add_function(self, call_fn, name, match_layer_training_arg):
+    """Adds a layer call function to the collection.
+
+    Args:
+      call_fn: a python function
+      name: Name of call function
+      match_layer_training_arg: If True, removes the `training` from the
+        function arguments when calling `call_fn`.
+
+    Returns:
+      LayerCall (tf.function)
+    """
     fn = LayerCall(
-        self, self._maybe_wrap_with_training_arg(call_fn), name,
+        self,
+        self._maybe_wrap_with_training_arg(call_fn, match_layer_training_arg),
+        name,
         input_signature=self.fn_input_signature)
     self._functions[name] = fn.wrapped_call
     return fn
