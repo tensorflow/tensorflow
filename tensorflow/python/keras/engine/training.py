@@ -954,6 +954,10 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             and need not be passed into `model.fit`.
             `tf.keras.callbacks.ProgbarLogger` is created or not based on
             `verbose` argument to `model.fit`.
+            Callbacks with batch-level calls are currently unsupported with
+            `tf.distribute.experimental.ParameterServerStrategy`, and users are
+            advised to implement epoch-level calls instead with an appropriate
+            `steps_per_epoch` value.
         validation_split: Float between 0 and 1.
             Fraction of the training data to be used as validation data.
             The model will set apart this fraction of the training data,
