@@ -26,11 +26,6 @@ tf_py_test(
     name = "assert_next_test",
     size = "small",
     srcs = ["assert_next_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -45,9 +40,6 @@ tf_py_test(
     size = "small",
     srcs = ["auto_shard_dataset_test.py"],
     shard_count = 4,
-    tags = [
-        "no_pip",
-    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/ops:distribute",
@@ -115,7 +107,6 @@ cuda_py_test(
     name = "copy_to_device_test",
     size = "small",
     srcs = ["copy_to_device_test.py"],
-    tags = ["no_windows_gpu"],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -148,7 +139,6 @@ tf_py_test(
     size = "small",
     srcs = ["csv_dataset_test.py"],
     shard_count = 8,
-    tags = ["no_pip"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -368,7 +358,6 @@ tf_py_test(
     size = "small",
     srcs = ["make_batched_features_dataset_test.py"],
     shard_count = 4,
-    tags = ["no_pip"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -389,7 +378,6 @@ tf_py_test(
     name = "make_csv_dataset_test",
     size = "small",
     srcs = ["make_csv_dataset_test.py"],
-    tags = ["no_pip"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -422,7 +410,6 @@ tf_py_test(
     name = "make_tf_record_dataset_test",
     size = "small",
     srcs = ["make_tf_record_dataset_test.py"],
-    tags = ["no_pip"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -462,7 +449,6 @@ tf_py_test(
     name = "map_defun_op_test",
     size = "small",
     srcs = ["map_defun_op_test.py"],
-    tags = ["no_pip"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
@@ -486,7 +472,6 @@ tf_py_test(
     name = "matching_files_dataset_test",
     size = "small",
     srcs = ["matching_files_dataset_test.py"],
-    tags = ["no_pip"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -505,11 +490,6 @@ tf_py_test(
     name = "model_dataset_test",
     size = "small",
     srcs = ["model_dataset_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -524,11 +504,6 @@ tf_py_test(
     name = "non_serializable_test",
     size = "small",
     srcs = ["non_serializable_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -543,11 +518,6 @@ tf_py_test(
     size = "small",
     srcs = ["optimize_dataset_test.py"],
     shard_count = 2,
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -573,7 +543,6 @@ tf_py_test(
     name = "override_threadpool_test",
     size = "small",
     srcs = ["override_threadpool_test.py"],
-    tags = ["no_pip"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -593,7 +562,6 @@ tf_py_test(
     size = "small",
     srcs = ["parallel_interleave_test.py"],
     shard_count = 8,
-    tags = ["no_pip"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -640,7 +608,6 @@ cuda_py_test(
     name = "prefetch_to_device_test",
     size = "small",
     srcs = ["prefetch_to_device_test.py"],
-    tags = ["no_windows_gpu"],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -706,9 +673,6 @@ tf_py_test(
     size = "small",
     srcs = ["rejection_resample_test.py"],
     shard_count = 5,
-    tags = [
-        "optonly",
-    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -748,7 +712,6 @@ cuda_py_test(
     name = "scan_test",
     size = "small",
     srcs = ["scan_test.py"],
-    tags = ["no_pip"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -774,9 +737,6 @@ tf_py_test(
     name = "shuffle_and_repeat_test",
     size = "small",
     srcs = ["shuffle_and_repeat_test.py"],
-    tags = [
-        "no_pip",
-    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -831,7 +791,6 @@ tf_py_test(
     name = "sql_dataset_test",
     size = "small",
     srcs = ["sql_dataset_test.py"],
-    tags = ["no_pip"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -886,7 +845,6 @@ tf_py_test(
     name = "unique_test",
     size = "small",
     srcs = ["unique_test.py"],
-    tags = ["no_pip"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
