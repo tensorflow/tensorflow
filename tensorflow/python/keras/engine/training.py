@@ -534,7 +534,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         run_eagerly: Bool. Defaults to `False`. If `True`, this `Model`'s
           logic will not be wrapped in a `tf.function`. Recommended to leave
           this as `None` unless your `Model` cannot be run inside a
-          `tf.function`.
+          `tf.function`. `run_eagerly=True` is not supported when using
+          `tf.distribute.experimental.ParameterServerStrategy`.
         steps_per_execution: Int. Defaults to 1. The number of batches to
           run during each `tf.function` call. Running multiple batches
           inside a single `tf.function` call can greatly improve performance
@@ -908,8 +909,17 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             `(inputs, targets, sample_weights)`.
           - A generator or `keras.utils.Sequence` returning `(inputs, targets)`
             or `(inputs, targets, sample_weights)`.
+          - A `tf.keras.utils.experimental.DatasetCreator`, which wraps a
+            callable that takes a single argument of type
+            `tf.distribute.InputContext`, and returns a `tf.data.Dataset`.
+            `DatasetCreator` should be used when users prefer to specify the
+            per-replica batching and sharding logic for the `Dataset`.
+            See `tf.keras.utils.experimental.DatasetCreator` doc for more
+            information.
           A more detailed description of unpacking behavior for iterator types
-          (Dataset, generator, Sequence) is given below.
+          (Dataset, generator, Sequence) is given below. If using
+          `tf.distribute.experimental.ParameterServerStrategy`, only
+          `DatasetCreator` type is supported for `x`.
         y: Target data. Like the input data `x`,
           it could be either Numpy array(s) or TensorFlow tensor(s).
           It should be consistent with `x` (you cannot have Numpy inputs and
@@ -952,6 +962,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             in the `x` and `y` data provided, before shuffling. This argument is
             not supported when `x` is a dataset, generator or
            `keras.utils.Sequence` instance.
+            `validation_split` is not yet supported with
+            `tf.distribute.experimental.ParameterServerStrategy`.
         validation_data: Data on which to evaluate
             the loss and any model metrics at the end of each epoch.
             The model will not be trained on this data. Thus, note the fact
@@ -965,6 +977,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
               - A `tf.data.Dataset`.
               - A Python generator or `keras.utils.Sequence` returning
               `(inputs, targets)` or `(inputs, targets, sample_weights)`.
+            `validation_data` is not yet supported with
+            `tf.distribute.experimental.ParameterServerStrategy`.
         shuffle: Boolean (whether to shuffle the training data
             before each epoch) or str (for 'batch'). This argument is ignored
             when `x` is a generator or an object of tf.data.Dataset.
@@ -1003,7 +1017,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             is None, the epoch will run until the input dataset is exhausted.
             When passing an infinitely repeating dataset, you must specify the
             `steps_per_epoch` argument. This argument is not supported with
-            array inputs.
+            array inputs. `steps_per_epoch=None` is not supported when using
+            `tf.distribute.experimental.ParameterServerStrategy`.
         validation_steps: Only relevant if `validation_data` is provided and
             is a `tf.data` dataset. Total number of steps (batches of
             samples) to draw before stopping when performing validation
@@ -1391,6 +1406,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     See the discussion of `Unpacking behavior for iterator-like inputs` for
     `Model.fit`.
 
+    `Model.evaluate` is not yet supported with
+    `tf.distribute.experimental.ParameterServerStrategy`.
+
     Returns:
         Scalar test loss (if the model has a single output and no metrics)
         or list of scalars (if the model has multiple outputs
@@ -1623,6 +1641,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     `Model.fit`. Note that Model.predict uses the same interpretation rules as
     `Model.fit` and `Model.evaluate`, so inputs must be unambiguous for all
     three methods.
+
+    `Model.predict` is not yet supported with
+    `tf.distribute.experimental.ParameterServerStrategy`.
 
     Returns:
         Numpy array(s) of predictions.
