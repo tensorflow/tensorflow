@@ -210,6 +210,11 @@ InputPipelineAnalysisResult ComputeGenericInputPipelineAnalysisResult(
     // Adds the details for a new step.
     PerGenericStepDetails details;
     details.set_step_number(step_info.step_num());
+    if (step_info.step_name().empty()) {
+      details.set_step_name(absl::StrCat(step_info.step_num()));
+    } else {
+      details.set_step_name(step_info.step_name());
+    }
     details.set_step_time_ms(PicosToMillis(step_info.duration_ps()));
     GenericStepBreakdown generic;
     bool success = step_info.step_breakdown().UnpackTo(&generic);
