@@ -614,14 +614,6 @@ class TupleTests(test.TestCase, parameterized.TestCase):
         v, m._checkpoint_dependencies[0].ref._checkpoint_dependencies[0].ref)
     self.assertEqual(2, m.nt.y)
 
-  def testNamedTupleConflictingAttributes(self):
-    named = collections.namedtuple("Named", ("x", "weights"))
-    v = variables.Variable(2)
-    nt = named(x=v, weights=3)
-    m = module.Module()
-    m.nt = nt
-    self.assertEqual(3, m.nt.weights)
-
   def testNamedSubclassing(self):
     named = collections.namedtuple("Named", ("x", "y"))
     v = variables.Variable(2)
