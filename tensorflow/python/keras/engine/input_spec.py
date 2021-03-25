@@ -13,10 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
+# pylint: disable=g-classes-have-attributes
 """Contains the InputSpec class."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from six.moves import zip  # pylint: disable=redefined-builtin
 

@@ -53,6 +53,7 @@ CreateResourceOpInfoMap() {
   add("AssignAddVariableOp"                  , kReadWrite, kVariable);
   add("AssignSubVariableOp"                  , kReadWrite, kVariable);
   add("AssignVariableOp"                     , kWrite,     kVariable);
+  add("CollectiveReduceV2"                   , kRead,      kVariable);
   add("ReadVariableOp"                       , kRead,      kVariable);
   add("ResourceApplyAdaMax"                  , kReadWrite, kVariable);
   add("ResourceApplyAdadelta"                , kReadWrite, kVariable);

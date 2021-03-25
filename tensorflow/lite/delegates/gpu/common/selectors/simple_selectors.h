@@ -46,6 +46,10 @@ std::unique_ptr<GPUOperation> SelectMaxUnpooling(
 void SelectAdd(const OperationDef& op_def, const std::vector<int>& channels,
                int dst_channels, std::unique_ptr<GPUOperation>* ptr);
 
+absl::Status SelectGather(const GatherAttributes& attr,
+                          const OperationDef& op_def,
+                          std::unique_ptr<GPUOperation>* ptr);
+
 absl::Status SelectResize(const Resize2DAttributes& attr,
                           const OperationDef& op_def,
                           std::unique_ptr<GPUOperation>* ptr);
@@ -84,6 +88,9 @@ void SelectSpaceToDepth(const SpaceToDepthAttributes& attr,
 
 void SelectSplit(const SplitAttributes& attr, const OperationDef& op_def,
                  std::unique_ptr<GPUOperation>* ptr);
+
+std::unique_ptr<GPUOperation> SelectTile(const OperationDef& op_def,
+                                         const BHWC& src_shape);
 
 void SelectTranspose(const TransposeAttributes& attr,
                      const OperationDef& op_def,

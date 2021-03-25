@@ -15,13 +15,9 @@
 # ==============================================================================
 # pylint: disable=g-import-not-at-top
 """Utilities for file download and caching."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from abc import abstractmethod
 from contextlib import closing
-import errno
 import functools
 import hashlib
 import multiprocessing
@@ -132,7 +128,7 @@ def _extract_archive(file_path, path='.', archive_format='auto'):
     return False
   if archive_format == 'auto':
     archive_format = ['tar', 'zip']
-  if isinstance(archive_format, six.string_types):
+  if isinstance(archive_format, str):
     archive_format = [archive_format]
 
   file_path = path_to_string(file_path)
@@ -294,15 +290,7 @@ def get_file(fname,
 
 
 def _makedirs_exist_ok(datadir):
-  if six.PY2:
-    # Python 2 doesn't have the exist_ok arg, so we try-except here.
-    try:
-      os.makedirs(datadir)
-    except OSError as e:
-      if e.errno != errno.EEXIST:
-        raise
-  else:
-    os.makedirs(datadir, exist_ok=True)  # pylint: disable=unexpected-keyword-arg
+  os.makedirs(datadir, exist_ok=True)  # pylint: disable=unexpected-keyword-arg
 
 
 def _resolve_hasher(algorithm, file_hash=None):
@@ -830,7 +818,7 @@ def next_sample(uid):
   Returns:
       The next value of generator `uid`.
   """
-  return six.next(_SHARED_SEQUENCES[uid])
+  return next(_SHARED_SEQUENCES[uid])
 
 
 @keras_export('keras.utils.GeneratorEnqueuer')

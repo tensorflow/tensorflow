@@ -549,4 +549,11 @@ bool IsTPUDevice(llvm::StringRef device) {
   return parsed_device.has_type && parsed_device.type == kDeviceTPU;
 }
 
+bool IsTPUReplicatedCore(llvm::StringRef device) {
+  Device parsed_device;
+  if (!DeviceNameUtils::ParseFullName(mlir::StringRefToView(device),
+                                      &parsed_device))
+    return false;
+  return parsed_device.has_type && parsed_device.type == kTPUReplicatedCore;
+}
 }  // namespace tensorflow

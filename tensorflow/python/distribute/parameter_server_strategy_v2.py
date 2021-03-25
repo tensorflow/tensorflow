@@ -734,8 +734,9 @@ class ParameterServerStrategyV2Extended(
   # options is not used right now. But we may want to support options while
   # creating InputWorkers in future, similar to MirroredStrategy.
   def _input_workers_with_options(self, options=None):
+    # This is always run only on workers.
     input_workers_devices = (
-        ("/device:CPU:0", self.worker_devices),)
+        ("/job:worker/device:CPU:0", self.worker_devices),)
     return input_lib.InputWorkers(
         input_workers_devices, canonicalize_devices=False)
 

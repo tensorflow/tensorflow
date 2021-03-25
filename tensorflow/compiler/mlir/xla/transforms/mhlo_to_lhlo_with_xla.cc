@@ -1713,6 +1713,10 @@ Status HloToLhloModule(const BufferAssignment& assignment,
       ->loadDialect<StandardOpsDialect, memref::MemRefDialect,
                     mhlo::MhloDialect, lmhlo::LmhloDialect,
                     lmhlo_gpu::LmhloGpuDialect>();
+
+  module->setLoc(mlir::NameLoc::get(
+      mlir::Identifier::get(hlo_module.name(), module.getContext())));
+
   const HloComputation* computation = hlo_module.entry_computation();
 
   LhloDialectEmitter emitter(assignment, *computation, module);

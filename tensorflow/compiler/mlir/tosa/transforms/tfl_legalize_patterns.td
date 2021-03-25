@@ -21,7 +21,7 @@ include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "mlir/Dialect/Tosa/IR/TosaOps.td"
 
 // Nullary ops patterns.
-def : Pat<(ConstantOp $value), (Tosa_ConstOp $value)>;
+def : Pat<(ConstantOp ElementsAttr:$value), (Tosa_ConstOp $value)>;
 
 // Unary ops patterns.
 def : Pat<(TFL_AbsOp $arg), (Tosa_AbsOp $arg)>;

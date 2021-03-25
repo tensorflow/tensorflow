@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for `models.py` (model cloning, mainly)."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import os
 
@@ -28,7 +24,7 @@ from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics
 from tensorflow.python.keras import models
@@ -533,7 +529,7 @@ class TestCloneAndBuildModel(keras_parameterized.TestCase):
     out = np.random.random((10, 4))
     clone_model.train_on_batch(inp, out)
 
-    self.assertEqual(K.eval(global_step), 124)
+    self.assertEqual(backend.eval(global_step), 124)
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes

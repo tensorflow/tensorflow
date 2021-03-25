@@ -16,6 +16,7 @@
 
 import csv
 import io
+import re
 
 from unittest import mock
 from absl.testing import parameterized
@@ -143,11 +144,15 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
         'tensor_idx': 7 if quantized_io else 8,
         'scales': [0.15686275],
         'zero_points': [-128],
-        'tensor_name': 'Identity' if quantized_io else 'Identity4'
+        'tensor_name': r'Identity[1-9]?$'
     })
     for key, value in expected_values.items():
       if isinstance(value, str):
-        self.assertEqual(value, actual_values[key])
+        self.assertIsNotNone(
+            re.match(value, actual_values[key]),
+            'String is different from expected string. Please fix test code if'
+            " it's being affected by graph manipulation changes."
+        )
       elif isinstance(value, list):
         self.assertAlmostEqual(
             value[0], float(actual_values[key][1:-1]), places=5)

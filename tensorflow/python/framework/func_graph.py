@@ -103,7 +103,8 @@ def convert_structure_to_signature(structure, arg_names=None):
       return arg._type_spec  # pylint: disable=protected-access
     if isinstance(arg, resource_variable_ops.BaseResourceVariable):
       name = "/".join(str(p) for p in path)
-      return resource_variable_ops.VariableSpec(arg.shape, arg.dtype, name)
+      return resource_variable_ops.VariableSpec(arg.shape, arg.dtype, name,
+                                                trainable=arg.trainable)
     if isinstance(arg, (
         int,
         float,
@@ -1249,7 +1250,8 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
                 shape=arg.shape,
                 dtype=arg.dtype,
                 handle=placeholder,
-                handle_name=name)
+                handle_name=name,
+                trainable=arg.trainable)
         # Capture arg variables to create placeholders for them. These will be
         # removed as captures after the function is traced (since otherwise we'd
         # just add it back with a new placeholder when the variable was

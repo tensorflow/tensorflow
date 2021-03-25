@@ -194,10 +194,12 @@ Status Base64Encode(StringPiece source, bool with_padding, T* encoded) {
   return Status::OK();
 }
 
-template Status Base64Decode<string>(StringPiece data, string* decoded);
-template Status Base64Encode<string>(StringPiece source, string* encoded);
-template Status Base64Encode<string>(StringPiece source, bool with_padding,
-                                     string* encoded);
+template Status Base64Decode<std::string>(StringPiece data,
+                                          std::string* decoded);
+template Status Base64Encode<std::string>(StringPiece source,
+                                          std::string* encoded);
+template Status Base64Encode<std::string>(StringPiece source, bool with_padding,
+                                          std::string* encoded);
 
 template Status Base64Decode<tstring>(StringPiece data, tstring* decoded);
 template Status Base64Encode<tstring>(StringPiece source, tstring* encoded);

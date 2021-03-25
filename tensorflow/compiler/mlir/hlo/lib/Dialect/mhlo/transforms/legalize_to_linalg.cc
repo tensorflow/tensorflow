@@ -1969,7 +1969,7 @@ struct LhloLegalizeToLinalgPass
   }
 
   void runOnFunction() override {
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     ConversionTarget target(getContext());
     target.addLegalDialect<complex::ComplexDialect, linalg::LinalgDialect,
                            math::MathDialect, memref::MemRefDialect,
@@ -1991,7 +1991,7 @@ struct HloLegalizeToLinalgPass
   }
 
   void runOnFunction() override {
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     ConversionTarget target(getContext());
     target.addLegalDialect<complex::ComplexDialect, linalg::LinalgDialect,
                            math::MathDialect, StandardOpsDialect,

@@ -13,12 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Contains the Policy class for mixed precision training."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import contextlib
-
 import six
 
 from tensorflow.python.framework import dtypes
@@ -193,7 +189,7 @@ class Policy(object):
     if isinstance(name, dtypes.DType):
       raise TypeError("'name' must be a string, not a DType. "
                       "Instead, pass DType.name. Got: %s" % (name.name,))
-    elif not isinstance(name, six.string_types):
+    elif not isinstance(name, str):
       raise TypeError("'name' must be a string, but got: %s" % (name,))
     self._name = name
     self._compute_dtype, self._variable_dtype = self._parse_name(name)

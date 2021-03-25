@@ -29,8 +29,8 @@ namespace {
 struct ParallelLoopsToSequentialPass
     : public ParallelLoopsToSequentialBase<ParallelLoopsToSequentialPass> {
   void runOnFunction() override {
-    mlir::OwningRewritePatternList patterns;
-    mlir::populateLoopToStdConversionPatterns(patterns, &getContext());
+    mlir::RewritePatternSet patterns(&getContext());
+    mlir::populateLoopToStdConversionPatterns(patterns);
 
     mlir::ConversionTarget target(getContext());
     target.addIllegalOp<mlir::scf::ParallelOp>();

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/concat_xy.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/concat_z.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/gather.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/lstm.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/max_unpooling.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/padding.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/space_to_depth.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/split.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/strided_slice.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/tile.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/transpose.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/winograd.h"
 
@@ -76,6 +78,18 @@ void SelectAdd(const OperationDef& op_def, const std::vector<int>& channels,
                int dst_channels, std::unique_ptr<GPUOperation>* ptr) {
   GPUOperation operation = CreateAdd(op_def, channels, dst_channels);
   *ptr = absl::make_unique<GPUOperation>(std::move(operation));
+}
+
+absl::Status SelectGather(const GatherAttributes& attr,
+                          const OperationDef& op_def,
+                          std::unique_ptr<GPUOperation>* ptr) {
+  if (attr.axis != Axis::WIDTH) {
+    return absl::UnimplementedError(
+        "No gather for this axis. Only Width axis supported.");
+  }
+  GPUOperation operation = CreateGather(op_def, attr);
+  *ptr = absl::make_unique<GPUOperation>(std::move(operation));
+  return absl::OkStatus();
 }
 
 absl::Status SelectResize(const Resize2DAttributes& attr,
@@ -171,6 +185,11 @@ void SelectSoftmax(const BHWC& shape, const OperationDef& op_def,
     GPUOperation operation = CreateSoftmax(op_def);
     *ptr = absl::make_unique<GPUOperation>(std::move(operation));
   }
+}
+
+std::unique_ptr<GPUOperation> SelectTile(const OperationDef& op_def,
+                                         const BHWC& src_shape) {
+  return absl::make_unique<GPUOperation>(CreateTile(op_def, src_shape.c));
 }
 
 void SelectTranspose(const TransposeAttributes& attr,
