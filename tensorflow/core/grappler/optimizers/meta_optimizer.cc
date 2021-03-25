@@ -488,21 +488,29 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
       return;
     }
     user_cfg.disable_model_pruning = cfg_.disable_model_pruning();
-#define PRINT_CFG(CFG) user_cfg.toggle_config[#CFG] = cfg_.CFG();
-    PRINT_CFG(implementation_selector)
-    PRINT_CFG(function_optimization)
-    PRINT_CFG(common_subgraph_elimination)
-    PRINT_CFG(arithmetic_optimization)
-    PRINT_CFG(debug_stripper)
-    PRINT_CFG(constant_folding)
-    PRINT_CFG(shape_optimization)
-    PRINT_CFG(pin_to_host_optimization)
-    PRINT_CFG(layout_optimizer)
-    PRINT_CFG(remapping)
-    PRINT_CFG(loop_optimization)
-    PRINT_CFG(dependency_optimization)
-    PRINT_CFG(scoped_allocator_optimization)
-#undef PRINT_CFG
+#define PRINT_CFG_IS_ON(CFG)                                        \
+  user_cfg.toggle_config[#CFG] = (cfg_.CFG() == RewriterConfig::ON) \
+                                     ? RewriterConfig::ON           \
+                                     : RewriterConfig::OFF;
+#define PRINT_CFG_NOT_OFF(CFG)                                       \
+  user_cfg.toggle_config[#CFG] = (cfg_.CFG() != RewriterConfig::OFF) \
+                                     ? RewriterConfig::ON            \
+                                     : RewriterConfig::OFF;
+    PRINT_CFG_NOT_OFF(implementation_selector)
+    PRINT_CFG_NOT_OFF(function_optimization)
+    PRINT_CFG_NOT_OFF(common_subgraph_elimination)
+    PRINT_CFG_NOT_OFF(arithmetic_optimization)
+    PRINT_CFG_IS_ON(debug_stripper)
+    PRINT_CFG_NOT_OFF(constant_folding)
+    PRINT_CFG_NOT_OFF(shape_optimization)
+    PRINT_CFG_IS_ON(pin_to_host_optimization)
+    PRINT_CFG_NOT_OFF(layout_optimizer)
+    PRINT_CFG_NOT_OFF(remapping)
+    PRINT_CFG_NOT_OFF(loop_optimization)
+    PRINT_CFG_NOT_OFF(dependency_optimization)
+    PRINT_CFG_IS_ON(scoped_allocator_optimization)
+#undef PRINT_CFG_IS_ON
+#undef PRINT_CFG_NOT_OFF
     user_cfg.toggle_config["auto_mixed_precision"] =
         AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision())
             ? RewriterConfig::ON
@@ -550,10 +558,7 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
     }
   }
 
-  // Print logs only when plugin config has conflict with user config.
-  if (!PluginGraphOptimizerRegistry::IsConfigsConflict(user_cfg, plugin_cfg))
-    return;
-
+  bool config_has_conflict = false;
   ConfigList final_cfg = user_cfg;
   // If plugin turns on `disable_model_pruning`, then `disable_model_pruning`
   // should be true;
@@ -569,24 +574,22 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
   string logs =
       "\nConfig of optimizers\t\tUser's config\tPlugin's config\tFinal "
       "config(User & Plugin)\n";
-  strings::StrAppend(&logs, "disable_model_pruning\t\t",
-                     user_cfg.disable_model_pruning, "\t\t",
-                     plugin_cfg.disable_model_pruning, "\t\t",
-                     final_cfg.disable_model_pruning, "\n");
+
+  // Print configs if disable_model_pruning is off in user_cfg when it is on in
+  // plugin_cfg.
+  if (!user_cfg.disable_model_pruning && plugin_cfg.disable_model_pruning) {
+    config_has_conflict = true;
+    strings::StrAppend(&logs, "disable_model_pruning\t\t",
+                       user_cfg.disable_model_pruning, "\t\t",
+                       plugin_cfg.disable_model_pruning, "\t\t",
+                       final_cfg.disable_model_pruning, "\n");
+  }
   for (auto& pair : user_cfg.toggle_config) {
-    if (pair.first == "debug_stripper" ||
-        pair.first == "auto_mixed_precision" ||
-        pair.first == "auto_mixed_precision_mkl" ||
-        pair.first == "pin_to_host_optimization" ||
-        pair.first == "scoped_allocator_optimization") {
-      // These optimizers are turned off by default.
-      strings::StrAppend(
-          &logs, pair.first, string(32 - pair.first.size(), ' '),
-          (pair.second == RewriterConfig::ON), "\t\t",
-          (plugin_cfg.toggle_config[pair.first] == RewriterConfig::ON), "\t\t",
-          (final_cfg.toggle_config[pair.first] == RewriterConfig::ON), "\n");
-    } else {
-      // These optimizers are turned on by default.
+    if ((pair.second == RewriterConfig::ON) &&
+        (plugin_cfg.toggle_config[pair.first] == RewriterConfig::OFF)) {
+      // Print configs if toggle_config is on in user_cfg when it is off in
+      // plugin_cfg.
+      config_has_conflict = true;
       strings::StrAppend(
           &logs, pair.first, string(32 - pair.first.size(), ' '),
           (pair.second != RewriterConfig::OFF), "\t\t",
@@ -594,6 +597,8 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
           (final_cfg.toggle_config[pair.first] != RewriterConfig::OFF), "\n");
     }
   }
+
+  if (!config_has_conflict) return;
   LOG(WARNING) << "User's config has been changed based on plugin's config.";
   LOG(WARNING) << logs;
 }
