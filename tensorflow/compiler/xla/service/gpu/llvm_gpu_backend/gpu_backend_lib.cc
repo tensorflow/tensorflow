@@ -810,9 +810,9 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
 // upstream commit), the following mapping will need to change
 std::string MapGCNArchNameTokenToFeatureStr(const std::string& token) {
   if (token == "sramecc+") {
-    return "+sram-ecc";
+    return "+sramecc";
   } else if (token == "sramecc-") {
-    return "-sram-ecc";
+    return "-sramecc";
   } else if (token == "xnack+") {
     return "+xnack";
   } else if (token == "xnack-") {
