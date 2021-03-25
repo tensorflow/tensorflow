@@ -22,8 +22,6 @@ import threading
 import warnings
 
 import numpy as np
-import six
-from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
@@ -570,12 +568,11 @@ class Layer(base_layer.Layer):
           try:
             outputs = self(inputs, training=False)
           except TypeError as e:
-            six.raise_from(
-                NotImplementedError(
-                    'We could not automatically infer the static shape of the '
-                    'layer\'s output. Please implement the '
-                    '`compute_output_shape` method on your layer (%s).' %
-                    self.__class__.__name__), e)
+            raise NotImplementedError(
+                'We could not automatically infer the static shape of the '
+                'layer\'s output. Please implement the '
+                '`compute_output_shape` method on your layer (%s).' %
+                self.__class__.__name__) from e
       return nest.map_structure(lambda t: t.shape, outputs)
     raise NotImplementedError
 

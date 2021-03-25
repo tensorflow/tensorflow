@@ -546,8 +546,6 @@ class _KerasTensorIterator(object):
     self._index += 1
     return result
 
-  next = __next__  # python2.x compatibility.
-
 
 # Specify the mappings of tensor class to KerasTensor class.
 # This is specifically a list instead of a dict for now because

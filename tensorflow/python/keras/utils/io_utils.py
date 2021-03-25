@@ -18,9 +18,6 @@
 import os
 import sys
 
-import six
-
-
 if sys.version_info >= (3, 6):
 
   def _path_to_string(path):
@@ -72,11 +69,11 @@ def ask_to_proceed_with_overwrite(filepath):
   Returns:
       True if we can proceed with overwrite, False otherwise.
   """
-  overwrite = six.moves.input('[WARNING] %s already exists - overwrite? '
-                              '[y/n]' % (filepath)).strip().lower()
+  overwrite = input('[WARNING] %s already exists - overwrite? '
+                    '[y/n]' % (filepath)).strip().lower()
   while overwrite not in ('y', 'n'):
-    overwrite = six.moves.input('Enter "y" (overwrite) or "n" '
-                                '(cancel).').strip().lower()
+    overwrite = input('Enter "y" (overwrite) or "n" '
+                      '(cancel).').strip().lower()
   if overwrite == 'n':
     return False
   print('[TIP] Next time specify overwrite=True!')

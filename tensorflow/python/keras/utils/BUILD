@@ -94,9 +94,6 @@ py_library(
     name = "io_utils",
     srcs = ["io_utils.py"],
     srcs_version = "PY3",
-    deps = [
-        "@six_archive//:six",
-    ],
 )
 
 py_library(
@@ -114,7 +111,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
-        "@six_archive//:six",
     ],
 )
 

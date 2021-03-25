@@ -17,8 +17,6 @@
 import os
 import warnings
 
-import six
-
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
@@ -345,7 +343,7 @@ def _create_signature_def_map(model, mode):
   local_vars = set(ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES))
   vars_to_add = set()
   if metrics is not None:
-    for key, value in six.iteritems(metrics):
+    for key, value in metrics.items():
       if isinstance(value, metrics_lib.Metric):
         vars_to_add.update(value.variables)
         # Convert Metric instances to (value_tensor, update_op) tuple.

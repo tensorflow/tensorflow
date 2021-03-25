@@ -15,14 +15,13 @@
 """Microbenchmarks for Keras components in eager mode."""
 
 import time
-import six
 
 import tensorflow as tf
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager.context import get_executor
 from tensorflow.python.keras.utils import tf_inspect
-from tensorflow.python.platform import benchmark
+from tensorflow.python.platform import benchmark  # pylint: disable=unused-import
 
 
 def _run_benchmark(func, num_iters, execution_mode=None):
@@ -144,8 +143,8 @@ class MicroBenchmarksBase(tf.test.Benchmark):
     self._run(fn, 10000)
 
 
-class KerasLayerCallOverheadBenchmarks(
-    six.with_metaclass(benchmark.ParameterizedBenchmark, MicroBenchmarksBase)):
+class KerasLayerCallOverheadBenchmarks(  # pylint: disable=undefined-variable
+    MicroBenchmarksBase, metaclass=benchmark.ParameterizedBenchmark):
 
   # The set of layers for benchmarking. To add benchmarks for new layers,
   # please add the parameter configs to "_benchmark_paramters".

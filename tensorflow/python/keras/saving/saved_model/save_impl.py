@@ -17,9 +17,6 @@
 TODO (kathywu): Move to layer_serialization.py. Some model-specific logic should
 go to model_serialization.py.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import functools
 import threading

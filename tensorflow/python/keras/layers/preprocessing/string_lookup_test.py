@@ -15,10 +15,8 @@
 """Tests for Keras text vectorization preprocessing layer."""
 
 import os
-
 from absl.testing import parameterized
 import numpy as np
-import six
 
 from tensorflow.python import keras
 
@@ -202,13 +200,13 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     layer = string_lookup.StringLookup(vocabulary=vocab_data)
     layer_vocab = layer.get_vocabulary()
     self.assertAllEqual(expected_vocab, layer_vocab)
-    self.assertIsInstance(layer_vocab[0], six.text_type)
+    self.assertIsInstance(layer_vocab[0], str)
 
     inverse_layer = string_lookup.StringLookup(
         vocabulary=layer.get_vocabulary(), invert=True)
     layer_vocab = inverse_layer.get_vocabulary()
     self.assertAllEqual(expected_vocab, layer_vocab)
-    self.assertIsInstance(layer_vocab[0], six.text_type)
+    self.assertIsInstance(layer_vocab[0], str)
 
   def test_int_output_explicit_vocab_from_file(self):
     vocab_list = ["earth", "wind", "and", "fire"]

@@ -265,7 +265,6 @@ py_library(
         "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras/engine:input_spec",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
