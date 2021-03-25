@@ -73,44 +73,8 @@ def get_single_element(dataset):
   --------
 
   ```python
-  import tensorflow as tf
 
-  # Load data
-  (x_train, y_train), (x_test, y_test) = (tf.keras.datasets.
-                                        fashion_mnist.load_data())
-  CLASSES = [
-    "T-shirt/top", "Trouser", "Pullover", "Dress", "Coat", "Sandal",
-    "Shirt", "Sneaker", "Bag", "Ankle Boot"
-  ]
-
-  def make_dataset(images, labels):
-    ds = tf.data.Dataset.from_tensor_slices((images, labels))
-    ds = ds.shuffle(buffer_size=1024)
-    ds = ds.map(lambda x, y: (x / 255, y))
-    return ds.batch(batch_size=128)
-
-  def make_model():
-    # Add the layers
-    model = tf.keras.Sequential([
-      tf.keras.layers.Flatten(),
-      tf.keras.layers.Dense(10)
-    ])
-    # Compile the model
-    model.compile( optimizer='adam', metrics=['accuracy'],
-      loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
-    )
-    return model
-
-  model = make_model()
-  train_data = make_dataset(x_train, y_train)
-  test_data = make_dataset(x_test, y_test)
-  model.fit(train_data, validation_data=test_data, epochs=10)
-
-  # There is a need to pre-process the data before inference as the model
-  # will throw exceptions if the input is not of the desired shape. Thus, to
-  # serialize and save the pre-processing functionality along with the model,
-  # a `PreprocessingModel` is defined with a custom serving function called
-  # `serving_fn`.
+  model = ... # A pre-built or custom model
 
   class PreprocessingModel(tf.keras.Model):
     def __init__(self, model):
@@ -123,7 +87,7 @@ def get_single_element(dataset):
     def serving_fn(self, data):
       # Strictly speaking, you do not need to use `tf.data` here at all, as simple
       # `data / 255` would suffice. However, the point here is to illustrate that
-      # `tf.data` can be leveraged for optimized processing operations.
+      # `tf.data` can be leveraged for efficient processing of data.
       ds = tf.data.Dataset.from_tensor_slices(data)
       ds = ds.map(lambda x: x / 255, num_parallel_calls=16)
       ds = ds.batch(batch_size=16)
@@ -131,14 +95,13 @@ def get_single_element(dataset):
       return tf.argmax(probabilities, axis=-1)
 
   preprocessing_model = PreprocessingModel(model)
-  fmnist_save_path = "fmnist"
-
-  tf.saved_model.save(preprocessing_model, fmnist_save_path,
+  your_exported_model_dir = ... # save the model to this path.
+  tf.saved_model.save(preprocessing_model, your_exported_model_dir,
                 signatures={'serving_default': preprocessing_model.serving_fn})
   ```
 
-  Estimators
-  -----------
+  tf.estimator
+  ------------
 
   In the case of estimators, you need to generally define a `serving_input_fn`
   which would require the features to be processed by the model while
@@ -146,21 +109,11 @@ def get_single_element(dataset):
 
   ```python
   def serving_input_fn():
-    # The function transforms the raw features of the data that is fed to
-    # the model. Generally, an input_fn that expects data to be fed to the
-    # model at serving time is used to get the raw_features and the tensor
-    # placeholders.
 
     raw_feature_spec = ... # Spec for the raw_features
     input_fn = tf.estimator.export.build_parsing_serving_input_receiver_fn(
         raw_feature_spec, default_batch_size=None)
     )
-    # the `input_fn` is an estimator based data receiver function. The above
-    # `tf.estimator.export.build_parsing_serving_input_receiver_fn()` function
-    # expects features in the form of `tf.Example`s to be fed directly. Additionally,
-    # API's such as `tf.estimator.export.build_raw_serving_input_receiver_fn()` are
-    # also available which enables you to pass the features directly while serving.
-
     serving_input_receiver = input_fn()
     raw_features = serving_input_receiver.features
 
