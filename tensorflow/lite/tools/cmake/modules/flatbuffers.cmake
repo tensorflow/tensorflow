@@ -43,6 +43,12 @@ add_subdirectory(
 )
 remove_definitions(-DNOMINMAX)
 
+# For BuildFlatBuffers.cmake
+set(CMAKE_MODULE_PATH
+  "${flatbuffers_SOURCE_DIR}/CMake"
+  ${CMAKE_MODULE_PATH}
+)
+
 # The host-side flatc binary
 include(ExternalProject)
 

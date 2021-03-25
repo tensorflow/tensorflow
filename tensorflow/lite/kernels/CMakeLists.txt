@@ -18,25 +18,31 @@ find_package(nsync REQUIRED)
 find_package(re2 REQUIRED)
 
 # Generate the mutable schema_generated.h header for tests.
-set(FLATC_PATH ${CMAKE_BINARY_DIR}/flatbuffers-flatc/bin/flatc)
-set(FLATC_OPTION
+set(SCHEMA_FILE ${TFLITE_SOURCE_DIR}/schema/schema.fbs)
+set(SCHEMA_GENERATED_ROOT ${CMAKE_CURRENT_BINARY_DIR}/schema)
+set(SCHEMA_GENERATED_PATH ${SCHEMA_GENERATED_ROOT}/tensorflow/lite/schema/mutable)
+set(SCHEMA_GENERATED_FILE ${SCHEMA_GENERATED_PATH}/schema_generated.h)
+
+# Use the util function in flatbuffer to generate the schema header.
+include(BuildFlatBuffers)
+set(FLATBUFFERS_FLATC_EXECUTABLE ${CMAKE_BINARY_DIR}/flatbuffers-flatc/bin/flatc)
+set(FLATBUFFERS_FLATC_SCHEMA_EXTRA_ARGS
   -c
   --no-union-value-namespacing
   --gen-object-api
   --gen-mutable
 )
-set(SCHEMA_FILE ${TFLITE_SOURCE_DIR}/schema/schema.fbs)
-set(SCHEMA_GENERATED_ROOT ${CMAKE_CURRENT_BINARY_DIR}/schema)
-set(SCHEMA_GENERATED_PATH ${SCHEMA_GENERATED_ROOT}/tensorflow/lite/schema/mutable)
-set(SCHEMA_GENERATED_FILE ${SCHEMA_GENERATED_PATH}/schema_generated.h)
-add_custom_command(
-  OUTPUT ${SCHEMA_GENERATED_FILE}
-  COMMAND ${FLATC_PATH} ${FLATC_OPTION} -o ${SCHEMA_GENERATED_PATH} ${SCHEMA_FILE}
-  DEPENDS flatbuffers-flatc ${SCHEMA_FILE}
+build_flatbuffers(
+  "${SCHEMA_FILE}"
+  ""
+  mutable_schema_file
+  flatbuffers-flatc
+  "${SCHEMA_GENERATED_PATH}"
+  ""
+  ""
 )
 
 set(TEST_FRAMEWORK_SRC
-  ${SCHEMA_GENERATED_FILE}
   ${TFLITE_SOURCE_DIR}/delegates/nnapi/acceleration_test_list.cc
   ${TFLITE_SOURCE_DIR}/delegates/nnapi/acceleration_test_util.cc
   ${TFLITE_SOURCE_DIR}/profiling/memory_info.cc
@@ -74,6 +80,7 @@ target_link_libraries(tensorflow-lite-test
   tensorflow-lite
   ${CMAKE_DL_LIBS}
 )
+add_dependencies(tensorflow-lite-test mutable_schema_file)
 target_include_directories(tensorflow-lite-test PUBLIC ${SCHEMA_GENERATED_ROOT})
 
 add_library(tensorflow-lite-test-with-main ${TEST_FRAMEWORK_MAIN_SRC})
