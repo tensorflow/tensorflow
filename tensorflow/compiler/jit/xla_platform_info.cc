@@ -60,6 +60,11 @@ Status BuildXlaCompilationCache(DeviceBase* device,
   client_options.set_platform(platform.ValueOrDie());
   client_options.set_intra_op_parallelism_threads(
       device->tensorflow_cpu_worker_threads()->num_threads);
+  auto dev_info = device->tensorflow_gpu_device_info();
+  if (dev_info != nullptr) {
+    std::set<int> allowed_device = {dev_info->gpu_id};
+    client_options.set_allowed_devices(allowed_device);
+  }
   auto client = xla::ClientLibrary::GetOrCreateLocalClient(client_options);
   if (!client.ok()) {
     return client.status();
