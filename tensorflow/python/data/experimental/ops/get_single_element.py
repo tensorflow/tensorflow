@@ -147,7 +147,7 @@ def get_single_element(dataset):
 
   Raises:
     TypeError: if `dataset` is not a `tf.data.Dataset` object.
-    InvalidArgumentError (at runtime): if `dataset` does not contain exactly
+    InvalidArgumentError: (at runtime) if `dataset` does not contain exactly
       one element.
   """
   if not isinstance(dataset, dataset_ops.DatasetV2):
