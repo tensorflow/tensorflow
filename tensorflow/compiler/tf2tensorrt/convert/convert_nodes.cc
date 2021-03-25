@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/op_types.h"
+#include "tensorflow/core/kernels/linalg/einsum_op_impl.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -5561,21 +5562,17 @@ Status ConvertGather(OpConverterParams* params) {
 }
 
 // Converts the input matrix multiplication node to a fully connected (FC) layer
-// if possible, as the FC layer has more tactics and INT implementations. Set
-// *converted true if the node is converted. Otherwise, *converted==false and
-// Status::OK indicates the node can't be converted to an FC layer. An error
-// Status indicates internal problems during conversion.
-Status ConvertFullyConnectedHelper(OpConverterParams* params,
-                                   TRT_TensorOrWeights input_a,
-                                   TRT_TensorOrWeights input_b,
-                                   bool transpose_a, bool transpose_b,
-                                   bool* converted) {
-  *converted = false;
-
+// if possible, as the FC layer has more tactics and INT implementations.
+// Returns the output ITensor* if the node is converted or nullptr if conversion
+// is not possible. An error status indicates internal problems during
+// conversion.
+StatusOr<nvinfer1::ITensor*> ConvertFullyConnectedImpl(
+    OpConverterParams* params, TRT_TensorOrWeights input_a,
+    TRT_TensorOrWeights input_b, bool transpose_a, bool transpose_b) {
   if (!(!transpose_a && input_a.is_tensor() && input_b.is_weights())) {
     VLOG(2) << "Not FC compatible, A must be non transposed tensor, and B "
                "must be constant.";
-    return Status::OK();
+    return nullptr;
   }
 
   if (!params->use_implicit_batch && input_b.GetTrtDims().nbDims > 2 &&
@@ -5586,18 +5583,18 @@ Status ConvertFullyConnectedHelper(OpConverterParams* params,
     // The weight (input_b) must have batch size 1 in implicit batch mode.
     VLOG(2) << "Not FC compatible, if B has an explicit batch dimension, then "
                "it must be 1.";
-    return Status::OK();
+    return nullptr;
   }
 
   nvinfer1::Dims input_dim = input_a.GetTrtDims();
   if (input_dim.d[input_dim.nbDims - 1] == -1) {
     VLOG(2) << "Not FC compatible, last dim of A must be static.";
-    return Status::OK();
+    return nullptr;
   }
 
   if (input_dim.nbDims + 2 > nvinfer1::Dims::MAX_DIMS) {
     VLOG(2) << "Not FC compatible, cannot expand A's shape.";
-    return Status::OK();
+    return nullptr;
   }
 
   // Add two trailing 1's because FC layer combines the last three dims.
@@ -5659,15 +5656,14 @@ Status ConvertFullyConnectedHelper(OpConverterParams* params,
       params->converter, TRT_TensorOrWeights(output_tensor), output_dim,
       /*validation_only=*/false, &output_tensor, node_def,
       /*op_instance=*/1));
-  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
-  *converted = true;
-  return Status::OK();
+  return output_tensor;
 }
 
-Status ConvertMatMulHelper(OpConverterParams* params,
-                           TRT_TensorOrWeights input_a,
-                           TRT_TensorOrWeights input_b, bool transpose_a,
-                           bool transpose_b) {
+StatusOr<nvinfer1::ITensor*> ConvertMatMulImpl(OpConverterParams* params,
+                                               TRT_TensorOrWeights input_a,
+                                               TRT_TensorOrWeights input_b,
+                                               bool transpose_a,
+                                               bool transpose_b) {
   if (params->use_implicit_batch) {
     // In implicit batch mode we are very limited when can we multiply 2D
     // matrices. If input_A is a 2D tensor, then nbDims==1 (implicit batch dim
@@ -5683,13 +5679,16 @@ Status ConvertMatMulHelper(OpConverterParams* params,
     }
   }
 
-  if (params->validation_only) return Status::OK();
+  if (params->validation_only) return nullptr;
 
-  bool converted = false;
-  TF_RETURN_IF_ERROR(ConvertFullyConnectedHelper(
-      params, input_a, input_b, transpose_a, transpose_b, &converted));
-  if (converted == true) return Status::OK();
-
+  StatusOr<nvinfer1::ITensor*> result = ConvertFullyConnectedImpl(
+      params, input_a, input_b, transpose_a, transpose_b);
+  TF_RETURN_IF_ERROR(result.status());
+  nvinfer1::ITensor* output = result.ValueOrDie();
+  if (output) {
+    // FC conversion was successful, we can return.
+    return output;
+  }
   const auto convert_to_itensor =
       [&params](TRT_TensorOrWeights operand) -> nvinfer1::ITensor* {
     if (operand.is_tensor()) {
@@ -5732,8 +5731,19 @@ Status ConvertMatMulHelper(OpConverterParams* params,
   const auto& node_def = params->node_def;
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   params->converter->SetLayerName(layer, node_def);
-  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
-  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return layer->getOutput(0);
+}
+
+Status ConvertMatMulHelper(OpConverterParams* params,
+                           TRT_TensorOrWeights input_a,
+                           TRT_TensorOrWeights input_b, bool transpose_a,
+                           bool transpose_b) {
+  StatusOr<nvinfer1::ITensor*> result =
+      ConvertMatMulImpl(params, input_a, input_b, transpose_a, transpose_b);
+  TF_RETURN_IF_ERROR(result.status());
+  if (!params->validation_only) {
+    params->outputs->push_back(TRT_TensorOrWeights(result.ValueOrDie()));
+  }
   return Status::OK();
 }
 
@@ -5821,6 +5831,570 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
   return ConvertMatMulHelper(params, *input_l, *input_r, transpose_a,
                              transpose_b);
 }
+
+// Finds the indices of elements in [begin, end) in array
+// [array_begin, array_end), and appends the indices to permute. This is used to
+// construct the permutation sequence for the operand with input labels
+// [array_begin, array_end) to the desired permuted labels [begin, end).
+template <typename Iterator>
+Status FindIndices(Iterator begin, Iterator end, Iterator array_begin,
+                   Iterator array_end, std::vector<int>* permute) {
+  const int n = array_end - array_begin;
+  if (n < end - begin) {
+    return errors::Internal("Incorrect array size");
+  }
+  for (auto i = begin; i < end; i++) {
+    int idx = std::find(array_begin, array_end, *i) - array_begin;
+    if (idx >= n) {
+      return errors::Internal("Label not found");
+    }
+    permute->push_back(idx);
+  }
+  return Status::OK();
+}
+
+#if IS_TRT_VERSION_GE(7, 1, 3, 0)
+// Layout of the einsum dimensions: Batch, Free and Contraction indices.
+// Example: abcd,adef -> abde. The first tensor has layout BFC, the second BCF.
+enum class EinsumLayout { BFC, BCF, MIX };
+
+// Describes an operand: input shape, number of batch, free and contract
+// dimensions, and the permutation that is needed to bring it to a matmul
+// compatible form.
+struct EinsumDescriptor {
+  EinsumDescriptor() : b(0), f(0), c(0) {}
+
+  // Deduces the number of batch, free, contract dimensions from the input
+  // labels, decides what layout to use, and determines permutation indices for
+  // that layout.
+  Status InitDescriptor(const TRT_TensorOrWeights& operand, Labels input_labels,
+                        std::vector<EinsumHelper::DimensionType>& label_types,
+                        EinsumLayout preferred_layout,
+                        EinsumDescriptor* other = nullptr) {
+    if (preferred_layout == EinsumLayout::MIX)
+      return errors::Internal("Preferred einsum layout cannot be MIX");
+    const EinsumHelper::DimensionType kBatch =
+        EinsumHelper::DimensionType::kBatch;
+    const EinsumHelper::DimensionType kFree =
+        EinsumHelper::DimensionType::kFree;
+    const EinsumHelper::DimensionType kContract =
+        EinsumHelper::DimensionType::kContract;
+
+    // Map label indices to label types.
+    std::vector<EinsumHelper::DimensionType> types;  // Input label types.
+    std::transform(input_labels.begin(), input_labels.end(),
+                   std::back_inserter(types),
+                   [&label_types, kBatch](int i) { return label_types.at(i); });
+
+    using label_t_iterator = std::vector<EinsumHelper::DimensionType>::iterator;
+    auto count_labels = [](label_t_iterator begin, label_t_iterator end,
+                           EinsumHelper::DimensionType val) {
+      return std::count_if(begin, end, [val](EinsumHelper::DimensionType t) {
+        return t == val;
+      });
+    };
+
+    b = count_labels(types.begin(), types.end(), kBatch);
+    f = count_labels(types.begin(), types.end(), kFree);
+    c = count_labels(types.begin(), types.end(), kContract);
+
+    if (c == 0 || f == 0) {
+      VLOG(2) << "Einsum equation needs to have at least one free and one "
+                 "contract dimension";
+      return errors::Unimplemented("No conversion for einsum equation.");
+    }
+
+    // Checks whether input_labels[offset:offset+m] matches labels from other.
+    auto order_matches = [other, &input_labels, kBatch, kFree, kContract](
+                             int offset, int m,
+                             EinsumHelper::DimensionType dim_type) {
+      if (!other) return true;
+      int offset_other = 0;
+      if (dim_type == kFree)
+        offset = other->offset_f;
+      else if (dim_type == kContract)
+        offset = other->offset_c;
+      return std::equal(input_labels.begin() + offset,
+                        input_labels.begin() + offset + m,
+                        other->permuted_labels.begin() + offset_other);
+    };
+
+    // Check if the current layout is BFC or BCF. In that case we could avoid
+    // transpose.
+    layout = EinsumLayout::MIX;
+    if (count_labels(types.begin(), types.begin() + b, kBatch) == b &&
+        order_matches(0, b, kBatch)) {
+      // Batch dims are the leading dims. They have the same order as other.
+      if (count_labels(types.begin() + b, types.begin() + b + f, kFree) == f) {
+        // All the free dims are placed consecutively after the batch dims.
+        // Their order is arbitrary. The final transpose will ensure that the
+        // output has correct order. We still have to check that the contract
+        // indices have correct order.
+        if (order_matches(b + f, c, kContract)) {
+          layout = EinsumLayout::BFC;
+        }
+      } else if (count_labels(types.begin() + b, types.begin() + b + c,
+                              kContract) == c) {
+        // All the contract dims are placed consecutively after the batch
+        // dims. Check whether the contract dims have the same order as the
+        // contract dims in other.
+        if (order_matches(b, c, kContract)) {
+          layout = EinsumLayout::BCF;
+        }
+      }
+    }
+
+    if (layout == EinsumLayout::MIX) {
+      // Input label types are mixed. Calculate a permutation that maps them
+      // to the preferred layout (BCF or BFC).
+      layout = preferred_layout;
+      if (!other) {
+        AppendMatchingIndicesToPermute(types, kBatch);
+      } else {
+        TF_RETURN_IF_ERROR(
+            FindIndices(other->permuted_labels.begin(),
+                        other->permuted_labels.begin() + other->b,
+                        input_labels.begin(), input_labels.end(), &permute));
+      }
+      if (layout == EinsumLayout::BFC) {
+        AppendMatchingIndicesToPermute(types, kFree);
+        if (!other) {
+          AppendMatchingIndicesToPermute(types, kContract);
+        } else {
+          TF_RETURN_IF_ERROR(FindIndices(
+              other->permuted_labels.begin() + other->offset_c,
+              other->permuted_labels.begin() + other->offset_c + other->c,
+              input_labels.begin(), input_labels.end(), &permute));
+        }
+      } else {
+        if (!other) {
+          AppendMatchingIndicesToPermute(types, kContract);
+        } else {
+          TF_RETURN_IF_ERROR(FindIndices(
+              other->permuted_labels.begin() + other->offset_c,
+              other->permuted_labels.begin() + other->offset_c + other->c,
+              input_labels.begin(), input_labels.end(), &permute));
+        }
+        AppendMatchingIndicesToPermute(types, kFree);
+      }
+    }
+
+    if (layout == EinsumLayout::BFC) {
+      offset_f = b;
+      offset_c = f + b;
+    } else {
+      offset_f = b + c;
+      offset_c = b;
+    }
+
+    dims = operand.GetTrtDims();
+    for (int i = 0; i < b; i++) {
+      // Set unknown batch dims to zero. These dims will be used in reshape op,
+      // where zero is a special value for retaining the original dim size.
+      if (dims.d[i] == -1) dims.d[i] = 0;
+    }
+    permuted_labels = input_labels;
+    if (!permute.empty()) {
+      // Apply the permutation on the dimension array.
+      nvinfer1::Dims orig_dims = dims;
+      for (int i = 0; i < permute.size(); i++) {
+        dims.d[i] = orig_dims.d[permute[i]];
+        permuted_labels[i] = input_labels[permute[i]];
+      }
+    }
+    size_tensors.resize(dims.nbDims, nullptr);
+
+    VLOG(2) << "Set up descriptor with "
+            << (layout == EinsumLayout::BFC ? "BFC" : "BCF")
+            << " layout, b=" << b << ", f=" << f << ", c=" << c;
+    return Status::OK();
+  }
+
+  // Appends indices where types maches value.
+  void AppendMatchingIndicesToPermute(
+      const std::vector<EinsumHelper::DimensionType>& types,
+      EinsumHelper::DimensionType val) {
+    for (int i = 0; i < types.size(); i++) {
+      if (types[i] == val) {
+        permute.push_back(i);
+      }
+    }
+  }
+
+  // Returns whether the free and contract dimension have static shape.
+  bool HasStaticShape() {
+    return !std::any_of(dims.d + b, dims.d + dims.nbDims,
+                        [](int k) { return k == -1; });
+  }
+
+  nvinfer1::Permutation GetPermutation() {
+    nvinfer1::Permutation p;
+    std::copy(permute.begin(), permute.end(), p.order);
+    return p;
+  }
+
+  Status SetDynamicSize(OpConverterParams* params,
+                        const TRT_TensorOrWeights& operand) {
+    if (operand.GetTrtDims().nbDims != dims.nbDims)
+      return errors::Internal("Operand dims must agree with descirptor dims");
+
+    if (operand.is_weights()) {
+      for (int i = 0; i < operand.GetTrtDims().nbDims; i++) {
+        // dims.d stores the permuted dims.
+        TF_RETURN_IF_ERROR(
+            CreateScalarConstant(params, dims.d[i], &size_tensors[i]));
+      }
+      return Status::OK();
+    }
+    auto* shape_layer =
+        params->converter->network()->addShape(*operand.tensor());
+    TFTRT_RETURN_ERROR_IF_NULLPTR(shape_layer, params->node_def.name());
+    nvinfer1::ITensor* shape = shape_layer->getOutput(0);
+    for (int i = 0; i < operand.GetTrtDims().nbDims; i++) {
+      int idx = permute.empty() ? i : permute.at(i);
+      auto* layer = params->converter->network()->addSlice(*shape, {1, {idx}},
+                                                           {1, {1}}, {1, {1}});
+      TFTRT_RETURN_ERROR_IF_NULLPTR(layer, params->node_def.name());
+      size_tensors[i] = layer->getOutput(0);
+      TFTRT_RETURN_ERROR_IF_NULLPTR(size_tensors[i], "error, slice is nullptr");
+    }
+    return Status::OK();
+  }
+
+  EinsumLayout layout;
+  int b;  // number of batch dims
+  int f;  // number of free dims
+  int c;  // number of conraction dims
+  int offset_f;
+  int offset_c;
+  nvinfer1::Dims dims;
+  std::vector<int> permute;
+  std::vector<nvinfer1::ITensor*> size_tensors;
+  Labels permuted_labels;
+};
+
+Status GetDimsProd(nvinfer1::Dims dims, int offset, int n, int32_t* out) {
+  size_t prod = std::accumulate(dims.d + offset, dims.d + offset + n, size_t(1),
+                                std::multiplies<size_t>());
+  if (prod > std::numeric_limits<int32_t>::max()) {
+    return errors::Internal("Matrix too large");
+  } else {
+    *out = prod;
+  }
+  return Status::OK();
+}
+
+Status GetDimsProdDynamic(OpConverterParams* params,
+                          std::vector<nvinfer1::ITensor*>::const_iterator begin,
+                          std::vector<nvinfer1::ITensor*>::const_iterator end,
+                          nvinfer1::ITensor** out) {
+  *out = *begin;
+  begin++;
+  while (begin != end) {
+    nvinfer1::IElementWiseLayer* layer =
+        params->converter->network()->addElementWise(
+            **out, **begin, nvinfer1::ElementWiseOperation::kPROD);
+    TFTRT_RETURN_ERROR_IF_NULLPTR(layer, params->node_def.name());
+    *out = layer->getOutput(0);
+    begin++;
+  }
+  return Status::OK();
+}
+
+Status ConcatenateShape(OpConverterParams* params,
+                        const std::vector<nvinfer1::ITensor*> size_tensors,
+                        nvinfer1::ITensor** new_shape) {
+  nvinfer1::IConcatenationLayer* layer =
+      params->converter->network()->addConcatenation(
+          const_cast<nvinfer1::ITensor* const*>(size_tensors.data()),
+          size_tensors.size());
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, params->node_def.name());
+  layer->setAxis(0);
+  *new_shape = layer->getOutput(0);
+  return Status::OK();
+}
+
+// Reshapes operand so that the free dimensions are combined into a single dim,
+// and the contract dimensions are combined into another single dim.
+Status GetEinsumNewDynamicShape(OpConverterParams* params,
+                                const EinsumDescriptor& desc,
+                                nvinfer1::ITensor** new_shape) {
+  std::vector<nvinfer1::ITensor*> size(desc.size_tensors.begin(),
+                                       desc.size_tensors.begin() + desc.b + 2);
+
+  int idx_f = desc.layout == EinsumLayout::BFC ? desc.b : desc.b + 1;
+  int idx_c = desc.layout == EinsumLayout::BFC ? desc.b + 1 : desc.b;
+
+  TF_RETURN_IF_ERROR(GetDimsProdDynamic(
+      params, desc.size_tensors.begin() + desc.offset_f,
+      desc.size_tensors.begin() + desc.offset_f + desc.f, &size[idx_f]));
+
+  TF_RETURN_IF_ERROR(GetDimsProdDynamic(
+      params, desc.size_tensors.begin() + desc.offset_c,
+      desc.size_tensors.begin() + desc.offset_c + desc.c, &size[idx_c]));
+
+  TF_RETURN_IF_ERROR(ConcatenateShape(params, size, new_shape));
+  return Status::OK();
+}
+
+// Reshapes operand so that the free dimensions are combined into a single dim,
+// and the contract dimensions are combined into another single dim.
+Status GetEinsumNewStaticShape(const EinsumDescriptor& desc,
+                               nvinfer1::Dims* new_dims) {
+  new_dims->nbDims = desc.b + 2;
+  // Copy batch dims.
+  std::copy(desc.dims.d, desc.dims.d + desc.b, new_dims->d);
+  // Combine free dims and contract dims.
+  int idx_f = desc.layout == EinsumLayout::BFC ? desc.b : desc.b + 1;
+  int idx_c = desc.layout == EinsumLayout::BFC ? desc.b + 1 : desc.b;
+  TF_RETURN_IF_ERROR(
+      GetDimsProd(desc.dims, desc.offset_f, desc.f, new_dims->d + idx_f));
+  TF_RETURN_IF_ERROR(
+      GetDimsProd(desc.dims, desc.offset_c, desc.c, new_dims->d + idx_c));
+  return Status::OK();
+}
+
+// Adds shuffle layer (if needed) to bring einsum operand to a matmul compatible
+// format.
+Status ShuffleEinsumTensor(OpConverterParams* params,
+                           std::unique_ptr<TRT_TensorOrWeights>* operand,
+                           EinsumDescriptor* desc, int op_instance) {
+  if (params->validation_only) return Status::OK();
+  TF_RETURN_IF_ERROR(desc->SetDynamicSize(params, **operand));
+  bool need_reshape = (desc->f != 1 || desc->c != 1);
+  bool need_transpose = !desc->permute.empty();
+  if ((*operand)->is_weights()) {
+    nvinfer1::Dims new_dims;
+    TF_RETURN_IF_ERROR(GetEinsumNewStaticShape(*desc, &new_dims));
+    if (!need_transpose) {
+      TRT_ShapedWeights weights((*operand)->weights());
+      TF_RETURN_IF_ERROR(weights.SetShape(new_dims));
+      operand->reset(new TRT_TensorOrWeights(weights));
+      return Status::OK();
+    }
+    // TODO(tfeher): Instead of creating a tensor that will be transposed,
+    // transpose the weight itself. Keeping it weight could enable FC layer.
+    nvinfer1::ITensor* tensor = params->converter->CreateConstantLayer(
+        (*operand)->weights(), (*operand)->GetTrtDims());
+    operand->reset(new TRT_TensorOrWeights(tensor));
+  }
+
+  if (!need_transpose && !need_reshape) return Status::OK();
+  nvinfer1::ITensor* operand_tensor = (*operand)->tensor();
+  TFTRT_RETURN_ERROR_IF_NULLPTR(operand_tensor, "Null tensor at Einsum");
+  nvinfer1::IShuffleLayer* layer =
+      params->converter->network()->addShuffle(*operand_tensor);
+
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, params->node_def.name());
+  params->converter->SetLayerName(layer, params->node_def, "shuffle",
+                                  /*op_instance=*/op_instance);
+  // Set new shape.
+  if (need_reshape) {
+    if (desc->HasStaticShape()) {
+      nvinfer1::Dims new_dims;
+      TF_RETURN_IF_ERROR(GetEinsumNewStaticShape(*desc, &new_dims));
+      layer->setReshapeDimensions(new_dims);
+    } else {
+      nvinfer1::ITensor* new_shape;
+      TF_RETURN_IF_ERROR(GetEinsumNewDynamicShape(params, *desc, &new_shape));
+      layer->setInput(1, *new_shape);
+    }
+  }
+
+  if (need_transpose) {
+    layer->setFirstTranspose(desc->GetPermutation());
+  }
+  operand->reset(new TRT_TensorOrWeights(layer->getOutput(0)));
+  return Status::OK();
+}
+
+// Combines output dims/labels by copying batch and free dims/labels from input
+// A, and concatenating free values from input B.
+template <typename InputIterator, typename OutputIterator>
+void AssembleOutput(InputIterator begin_a, InputIterator begin_b,
+                    const EinsumDescriptor& desc_a,
+                    const EinsumDescriptor& desc_b, OutputIterator out) {
+  std::copy(begin_a, begin_a + desc_a.b, out);
+  begin_a += desc_a.offset_f;
+  std::copy(begin_a, begin_a + desc_a.f, out + desc_a.b);
+  begin_b += desc_b.offset_f;
+  std::copy(begin_b, begin_b + desc_b.f, out + desc_a.b + desc_a.f);
+}
+
+// Restores free dimensions and sets final index order. Consider C = A * B,
+// batched MatMul op, where A.shape = [B, x, k] and B.shape = [B, k, y]. Then
+// C.shape = [B, x, y]. Here B can denote multiple batch indices while x, y, k
+// are single indices. The original inputs to Einsum can have multiple free
+// indices. These were combined into a singe free dimension x and y, for example
+// x = f_a1 * f_a2 * f_a3, y = f_b1 * f_b2. This routine creates a shuffle layer
+// to expand x into and y the original free dims, e.g. C is reshaped to
+// [B, f_a1, f_a2, f_a3, f_b1, f_b2]. Finally, a permutation is applied to
+// transform the shape to the shape of the original Einsum output.
+Status ShuffleEinsumOutput(OpConverterParams* params, EinsumDescriptor desc_a,
+                           EinsumDescriptor desc_b,
+                           const std::vector<int>& permutation,
+                           nvinfer1::ITensor** output) {
+  if (permutation.empty() && (desc_a.f == 1 && desc_b.f == 1))
+    return Status::OK();
+
+  nvinfer1::IShuffleLayer* layer =
+      params->converter->network()->addShuffle(**output);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, params->node_def.name());
+  params->converter->SetLayerName(layer, params->node_def, "shuffle",
+                                  /*op_instance=*/2);
+
+  int output_rank = desc_a.b + desc_a.f + desc_b.f;
+  if (desc_a.f != 1 || desc_b.f != 1) {
+    if (desc_a.HasStaticShape() && desc_b.HasStaticShape()) {
+      nvinfer1::Dims dims_out = {output_rank, {}};
+      AssembleOutput(desc_a.dims.d, desc_b.dims.d, desc_a, desc_b, dims_out.d);
+      layer->setReshapeDimensions(dims_out);
+    } else {
+      std::vector<nvinfer1::ITensor*> size_tensors(output_rank);
+      AssembleOutput(desc_a.size_tensors.begin(), desc_b.size_tensors.begin(),
+                     desc_a, desc_b, size_tensors.begin());
+      nvinfer1::ITensor* new_shape;
+      TF_RETURN_IF_ERROR(ConcatenateShape(params, size_tensors, &new_shape));
+      layer->setInput(1, *new_shape);
+    }
+  }
+
+  if (!permutation.empty()) {
+    nvinfer1::Permutation p;
+    std::copy(permutation.begin(), permutation.end(), p.order);
+    layer->setSecondTranspose(p);
+  }
+  *output = layer->getOutput(0);
+  return Status::OK();
+}
+
+// Prepares EinsumDescriptors after parsing the equation and determines the
+// final transpose.
+Status ParseEquation(OpConverterParams* params,
+                     std::unique_ptr<TRT_TensorOrWeights>* input_a,
+                     std::unique_ptr<TRT_TensorOrWeights>* input_b,
+                     EinsumDescriptor* descriptor_a,
+                     EinsumDescriptor* descriptor_b,
+                     std::vector<int>* final_transpose) {
+  TFAttrs attrs(params->node_def);
+  std::string equation = attrs.get<string>("equation");
+  VLOG(2) << "Einsum equation " << equation;
+
+  OperandLabels input_labels;
+  Labels output_labels;
+  std::vector<EinsumHelper::DimensionType> label_types;
+  OperandLabelCounts input_label_counts;
+  LabelCounts output_label_counts;
+  absl::InlinedVector<bool, 2> input_has_ellipsis;
+  bool output_has_ellipsis;
+  TF_RETURN_IF_ERROR(EinsumHelper::ParseEquation(
+      equation, &input_labels, &output_labels, &label_types,
+      &input_label_counts, &output_label_counts, &input_has_ellipsis,
+      &output_has_ellipsis));
+
+  if (input_has_ellipsis[0] || input_has_ellipsis[1] || output_has_ellipsis) {
+    // TODO(tfeher): Handle ellipsis like EinsumHelper::ProcessDimensions.
+    // Note: ProcessDimensions would introduce kBroadcasting labels, which we
+    // need to replace with kBatch before we call InitDescriptor.
+    VLOG(2) << "Ellipsis not yet supported";
+    return errors::Unimplemented("No conversion for einsum equation.");
+  }
+  if (absl::c_any_of(label_types, [](auto l) {
+        return l == EinsumHelper::DimensionType::kReduce ||
+               l == EinsumHelper::DimensionType::kBroadcasting;
+      })) {
+    VLOG(2) << "Einsum reductions not implemented";
+    return errors::Unimplemented("No conversion for einsum equation.");
+  }
+
+  auto no_duplicated_labels = [](const LabelCounts& label_counts) {
+    return absl::c_any_of(label_counts, [](int i) { return i > 1; });
+  };
+  if (no_duplicated_labels(input_label_counts[0]) ||
+      no_duplicated_labels(input_label_counts[1]) ||
+      no_duplicated_labels(output_label_counts)) {
+    VLOG(2) << "Einsum invalid label count";
+    return errors::Unimplemented("No conversion for einsum equation.");
+  }
+
+  if ((*input_a)->is_weights() && (*input_b)->is_tensor()) {
+    // We prefer to use FC layer, needs A as tensor and B as weight.
+    std::swap(*input_a, *input_b);
+    std::swap(input_labels[0], input_labels[1]);
+    std::swap(input_label_counts[0], input_label_counts[1]);
+  }
+
+  TF_RETURN_IF_ERROR(descriptor_a->InitDescriptor(
+      **input_a, input_labels[0], label_types, EinsumLayout::BFC));
+  TF_RETURN_IF_ERROR(
+      descriptor_b->InitDescriptor(**input_b, input_labels[1], label_types,
+                                   EinsumLayout::BCF, descriptor_a));
+  // TODO(tfeher): Update the permutation in the descriptors to avoid final
+  // transpose (if possible). Consider swapping the input if it eliminates
+  // final transpose.
+
+  // Get final transpose.
+  Labels matmul_output_labels(descriptor_a->b + descriptor_a->f +
+                              descriptor_b->f);
+  AssembleOutput(descriptor_a->permuted_labels.begin(),
+                 descriptor_b->permuted_labels.begin(), *descriptor_a,
+                 *descriptor_b, matmul_output_labels.begin());
+  TF_RETURN_IF_ERROR(FindIndices(output_labels.begin(), output_labels.end(),
+                                 matmul_output_labels.begin(),
+                                 matmul_output_labels.end(), final_transpose));
+  // Clear identity transpose.
+  bool identity_transpose = true;
+  for (int i = 0; i < final_transpose->size() && identity_transpose; i++) {
+    identity_transpose &= final_transpose->at(i) == i;
+  }
+  if (identity_transpose) {
+    final_transpose->clear();
+  }
+  return Status::OK();
+}
+
+Status ConvertEinsum(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  if (params->use_implicit_batch) {
+    return errors::Unimplemented(
+        "Einsum converter requires dynamic shape mode");
+  }
+
+  if (inputs.size() != 2) {
+    VLOG(2) << "Einsum converter supports two operands at " << node_def.name()
+            << " got " << inputs.size();
+    return errors::Unimplemented("No conversion for einsum equation.");
+  }
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+
+  auto input_a = std::make_unique<TRT_TensorOrWeights>(inputs.at(0));
+  auto input_b = std::make_unique<TRT_TensorOrWeights>(inputs.at(1));
+  EinsumDescriptor descriptor_a;
+  EinsumDescriptor descriptor_b;
+  std::vector<int> final_transpose;
+  TF_RETURN_IF_ERROR(ParseEquation(params, &input_a, &input_b, &descriptor_a,
+                                   &descriptor_b, &final_transpose));
+
+  TF_RETURN_IF_ERROR(ShuffleEinsumTensor(params, &input_a, &descriptor_a,
+                                         /*op_instance=*/0));
+  TF_RETURN_IF_ERROR(ShuffleEinsumTensor(params, &input_b, &descriptor_b,
+                                         /*op_instance=*/1));
+  if (params->validation_only) return Status::OK();
+
+  StatusOr<nvinfer1::ITensor*> result = ConvertMatMulImpl(
+      params, *input_a, *input_b, descriptor_a.layout == EinsumLayout::BCF,
+      descriptor_b.layout == EinsumLayout::BFC);
+  TF_RETURN_IF_ERROR(result.status());
+  nvinfer1::ITensor* output = result.ValueOrDie();
+
+  TF_RETURN_IF_ERROR(ShuffleEinsumOutput(params, descriptor_a, descriptor_b,
+                                         final_transpose, &output));
+  params->outputs->push_back(TRT_TensorOrWeights(output));
+  return Status::OK();
+}
+#endif  // IS_TRT_VERSION_GE(7, 1, 3, 0)
 
 Status ConvertSoftmax(OpConverterParams* params) {
   const auto& inputs = params->inputs;
@@ -6642,6 +7216,9 @@ static void RegisterValidatableOpConverters(
   (*registration)["Conv2DBackpropInput"] = ConvertConv2DBackpropInput;
   (*registration)["DepthToSpace"] = ConvertDepthSpaceShuffle;
   (*registration)["DepthwiseConv2dNative"] = ConvertConv2DDepthwise;
+#if IS_TRT_VERSION_GE(7, 1, 3, 0)
+  (*registration)["Einsum"] = ConvertEinsum;
+#endif
   (*registration)["ExpandDims"] = ConvertExpandDims;
   (*registration)["FusedConv2DBiasActivation"] =
       ConvertFusedConv2DBiasActivation;
