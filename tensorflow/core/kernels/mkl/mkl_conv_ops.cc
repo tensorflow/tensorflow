@@ -64,6 +64,7 @@ struct MklConvFwdParams {
   memory::dims dilations;
   memory::dims padding_left;
   memory::dims padding_right;
+  memory::dims fuse_bn_dims;
   MklTensorFormat tf_fmt;
   bool native_format;
   string dtypes = string("");
@@ -79,7 +80,8 @@ struct MklConvFwdParams {
                    memory::dims bias_dims, memory::dims dst_dims,
                    memory::dims strides, memory::dims dilations,
                    memory::dims padding_left, memory::dims padding_right,
-                   MklTensorFormat tf_fmt, bool native_format)
+                   memory::dims fuse_bn_dims, MklTensorFormat tf_fmt,
+                   bool native_format)
       : src_dims(src_dims),
         filter_dims(filter_dims),
         bias_dims(bias_dims),
@@ -88,6 +90,7 @@ struct MklConvFwdParams {
         dilations(dilations),
         padding_left(padding_left),
         padding_right(padding_right),
+        fuse_bn_dims(fuse_bn_dims),
         tf_fmt(tf_fmt),
         native_format(native_format) {}
 };
@@ -114,6 +117,15 @@ class MklConvFwdPrimitive : public MklPrimitive {
   void Execute(const Tinput* src_data, const Tfilter* filter_data,
                const Tbias* bias_data, const Toutput* dst_data,
                std::shared_ptr<stream> fwd_stream) {
+    Execute(src_data, filter_data, bias_data, dst_data, nullptr, nullptr,
+            nullptr, nullptr, fwd_stream);
+  }
+
+  void Execute(const Tinput* src_data, const Tfilter* filter_data,
+               const Tbias* bias_data, const Toutput* dst_data,
+               const Tinput* bn_scale_data, const Tinput* bn_mean_data,
+               const Tinput* bn_offset_data, const Tinput* bn_rsqrt_data,
+               std::shared_ptr<stream> fwd_stream) {
 #ifndef ENABLE_ONEDNN_OPENMP
     // TODO: Create a common function and avoid the duplicate code
     context_.src_mem->set_data_handle(
@@ -123,6 +135,16 @@ class MklConvFwdPrimitive : public MklPrimitive {
     if (bias_data != nullptr) {
       context_.bias_mem->set_data_handle(
           static_cast<void*>(const_cast<Tbias*>(bias_data)), *fwd_stream);
+    }
+    if (bn_scale_data != nullptr) {
+      context_.bn_scale_mem->set_data_handle(
+          static_cast<void*>(const_cast<Tinput*>(bn_scale_data)), *fwd_stream);
+      context_.bn_mean_mem->set_data_handle(
+          static_cast<void*>(const_cast<Tinput*>(bn_mean_data)), *fwd_stream);
+      context_.bn_rsqrt_mem->set_data_handle(
+          static_cast<void*>(const_cast<Tinput*>(bn_rsqrt_data)), *fwd_stream);
+      context_.bn_offset_mem->set_data_handle(
+          static_cast<void*>(const_cast<Tinput*>(bn_offset_data)), *fwd_stream);
     }
     context_.dst_mem->set_data_handle(
         static_cast<void*>(const_cast<Toutput*>(dst_data)), *fwd_stream);
@@ -134,6 +156,16 @@ class MklConvFwdPrimitive : public MklPrimitive {
     if (bias_data != nullptr) {
       context_.bias_mem->set_data_handle(
           static_cast<void*>(const_cast<Tbias*>(bias_data)));
+    }
+    if (bn_scale_data != nullptr) {
+      context_.bn_scale_mem->set_data_handle(
+          static_cast<void*>(const_cast<Tinput*>(bn_scale_data)));
+      context_.bn_mean_mem->set_data_handle(
+          static_cast<void*>(const_cast<Tinput*>(bn_mean_data)));
+      context_.bn_rsqrt_mem->set_data_handle(
+          static_cast<void*>(const_cast<Tinput*>(bn_rsqrt_data)));
+      context_.bn_offset_mem->set_data_handle(
+          static_cast<void*>(const_cast<Tinput*>(bn_offset_data)));
     }
     context_.dst_mem->set_data_handle(
         static_cast<void*>(const_cast<Toutput*>(dst_data)));
@@ -152,6 +184,12 @@ class MklConvFwdPrimitive : public MklPrimitive {
     if (bias_data != nullptr) {
       context_.bias_mem->set_data_handle(DummyData);
     }
+    if (bn_scale_data != nullptr) {
+      context_.bn_scale_mem->set_data_handle(DummyData);
+      context_.bn_mean_mem->set_data_handle(DummyData);
+      context_.bn_rsqrt_mem->set_data_handle(DummyData);
+      context_.bn_offset_mem->set_data_handle(DummyData);
+    }
     context_.dst_mem->set_data_handle(DummyData);
   }
 
@@ -161,7 +199,8 @@ class MklConvFwdPrimitive : public MklPrimitive {
   //   dst_data:    output data buffer of dst
   void Execute(const Tinput* src_data, const Tfilter* filter_data,
                const Toutput* dst_data, std::shared_ptr<stream> fwd_stream) {
-    Execute(src_data, filter_data, nullptr, dst_data, fwd_stream);
+    Execute(src_data, filter_data, nullptr, dst_data, nullptr, nullptr, nullptr,
+            nullptr, fwd_stream);
   }
 
   std::shared_ptr<ConvFwdPd> GetPrimitiveDesc() const {
@@ -177,6 +216,12 @@ class MklConvFwdPrimitive : public MklPrimitive {
     std::shared_ptr<mkldnn::memory> bias_mem;
     std::shared_ptr<mkldnn::memory> dst_mem;
 
+    // FusedBatchNorm related memory
+    std::shared_ptr<mkldnn::memory> bn_scale_mem;
+    std::shared_ptr<mkldnn::memory> bn_mean_mem;
+    std::shared_ptr<mkldnn::memory> bn_rsqrt_mem;
+    std::shared_ptr<mkldnn::memory> bn_offset_mem;
+
     // Desc & primitive desc
     std::shared_ptr<mkldnn::convolution_forward::desc> fwd_desc;
 
@@ -185,6 +230,12 @@ class MklConvFwdPrimitive : public MklPrimitive {
     std::shared_ptr<mkldnn::memory::desc> filter_md;
     std::shared_ptr<mkldnn::memory::desc> bias_md;
     std::shared_ptr<mkldnn::memory::desc> dst_md;
+
+    // TODO(intel-tf, yimeisun123): Only need one? FusedBatchNorm related.
+    std::shared_ptr<mkldnn::memory::desc> bn_scale_md;
+    std::shared_ptr<mkldnn::memory::desc> bn_mean_md;
+    std::shared_ptr<mkldnn::memory::desc> bn_rsqrt_md;
+    std::shared_ptr<mkldnn::memory::desc> bn_offset_md;
 
     // Convolution primitive
     std::shared_ptr<ConvFwdPd> fwd_pd;
@@ -198,10 +249,19 @@ class MklConvFwdPrimitive : public MklPrimitive {
           filter_mem(nullptr),
           bias_mem(nullptr),
           dst_mem(nullptr),
+          bn_scale_mem(nullptr),
+          bn_mean_mem(nullptr),
+          bn_rsqrt_mem(nullptr),
+          bn_offset_mem(nullptr),
           fwd_desc(nullptr),
           src_md(nullptr),
           filter_md(nullptr),
           bias_md(nullptr),
+          dst_md(nullptr),
+          bn_scale_md(nullptr),
+          bn_mean_md(nullptr),
+          bn_rsqrt_md(nullptr),
+          bn_offset_md(nullptr),
           fwd_pd(nullptr),
           conv_fwd(nullptr) {}
   };
@@ -224,13 +284,11 @@ class MklConvFwdPrimitive : public MklPrimitive {
     context_.dst_md.reset(new memory::desc(
         {convFwdDims.dst_dims}, MklDnnType<Toutput>(), user_data_fmt));
 
-    if (!convFwdDims.bias_dims.empty())
+    if (!convFwdDims.bias_dims.empty()) {
       context_.bias_md.reset(new memory::desc({convFwdDims.bias_dims},
                                               MklDnnType<Tbias>(),
                                               memory::format_tag::any));
-
-    // Create a convolution descriptor
-    if (!convFwdDims.bias_dims.empty()) {
+      // Create a convolution descriptor
       context_.fwd_desc.reset(new convolution_forward::desc(
           prop_kind::forward, mkldnn::algorithm::convolution_direct,
           *context_.src_md, *context_.filter_md, *context_.bias_md,
@@ -244,7 +302,21 @@ class MklConvFwdPrimitive : public MklPrimitive {
           convFwdDims.padding_right));
     }
 
-    context_.fwd_pd.reset(new ConvFwdPd(*context_.fwd_desc, cpu_engine_));
+    if (!convFwdDims.fuse_bn_dims.empty()) {
+      const memory::format_tag fused_bn_arg_fmt =
+          convFwdDims.native_format
+              ? user_data_fmt
+              : MklTensorFormatToMklDnnDataFormat(convFwdDims.tf_fmt);
+
+      context_.bn_scale_md.reset(new memory::desc(
+          {convFwdDims.fuse_bn_dims}, MklDnnType<Tinput>(), fused_bn_arg_fmt));
+      context_.bn_mean_md.reset(new memory::desc(
+          {convFwdDims.fuse_bn_dims}, MklDnnType<Tinput>(), fused_bn_arg_fmt));
+      context_.bn_rsqrt_md.reset(new memory::desc(
+          {convFwdDims.fuse_bn_dims}, MklDnnType<Tinput>(), fused_bn_arg_fmt));
+      context_.bn_offset_md.reset(new memory::desc(
+          {convFwdDims.fuse_bn_dims}, MklDnnType<Tinput>(), fused_bn_arg_fmt));
+    }
 
     // Check if there is any fusions as post-ops
     auto const& post_op_params = convFwdDims.post_op_params;
@@ -269,10 +341,20 @@ class MklConvFwdPrimitive : public MklPrimitive {
           } else {
             post_ops_attr.set_output_scales(2, post_op_param.param);
           }
+        } else if (post_op_param.name == "fuse_bn") {
+          post_ops.append_binary(mkldnn::algorithm::binary_sub,
+                                 *context_.bn_mean_md);
+          post_ops.append_binary(mkldnn::algorithm::binary_mul,
+                                 *context_.bn_rsqrt_md);
+          post_ops.append_binary(mkldnn::algorithm::binary_mul,
+                                 *context_.bn_scale_md);
+          post_ops.append_binary(mkldnn::algorithm::binary_add,
+                                 *context_.bn_offset_md);
         } else {
           DCHECK((post_op_param.name == "activation") ||
                  (post_op_param.name == "sum") ||
-                 (post_op_param.name == "output_scale"));
+                 (post_op_param.name == "output_scale") ||
+                 (post_op_param.name == "fuse_bn"));
         }
       }
       post_ops_attr.set_post_ops(post_ops);
@@ -290,19 +372,41 @@ class MklConvFwdPrimitive : public MklPrimitive {
     context_.dst_mem.reset(
         new memory(context_.fwd_pd.get()->dst_desc(), cpu_engine_, DummyData));
 
+    context_.conv_fwd.reset(new convolution_forward(*context_.fwd_pd));
+
     // Create convolution primitive and add it to net
     if (!convFwdDims.bias_dims.empty()) {
       context_.bias_mem.reset(new memory(
           {{convFwdDims.bias_dims}, MklDnnType<Tbias>(), memory::format_tag::x},
           cpu_engine_, DummyData));
-      context_.conv_fwd.reset(new convolution_forward(*context_.fwd_pd));
       context_.fwd_primitives_args.push_back(
           {{MKLDNN_ARG_SRC, *context_.src_mem},
            {MKLDNN_ARG_WEIGHTS, *context_.filter_mem},
            {MKLDNN_ARG_BIAS, *context_.bias_mem},
            {MKLDNN_ARG_DST, *context_.dst_mem}});
+    } else if (!convFwdDims.fuse_bn_dims.empty()) {
+      context_.bn_scale_mem.reset(
+          new memory(*context_.bn_scale_md, cpu_engine_, DummyData));
+      context_.bn_mean_mem.reset(
+          new memory(*context_.bn_mean_md, cpu_engine_, DummyData));
+      context_.bn_offset_mem.reset(
+          new memory(*context_.bn_offset_md, cpu_engine_, DummyData));
+      context_.bn_rsqrt_mem.reset(
+          new memory(*context_.bn_rsqrt_md, cpu_engine_, DummyData));
+
+      context_.fwd_primitives_args.push_back(
+          {{MKLDNN_ARG_SRC, *context_.src_mem},
+           {MKLDNN_ARG_WEIGHTS, *context_.filter_mem},
+           {MKLDNN_ARG_DST, *context_.dst_mem},
+           {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | MKLDNN_ARG_SRC_1,
+            *context_.bn_mean_mem},
+           {DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | MKLDNN_ARG_SRC_1,
+            *context_.bn_rsqrt_mem},
+           {DNNL_ARG_ATTR_MULTIPLE_POST_OP(2) | MKLDNN_ARG_SRC_1,
+            *context_.bn_scale_mem},
+           {DNNL_ARG_ATTR_MULTIPLE_POST_OP(3) | MKLDNN_ARG_SRC_1,
+            *context_.bn_offset_mem}});
     } else {
-      context_.conv_fwd.reset(new convolution_forward(*context_.fwd_pd));
       context_.fwd_primitives_args.push_back(
           {{MKLDNN_ARG_SRC, *context_.src_mem},
            {MKLDNN_ARG_WEIGHTS, *context_.filter_mem},
@@ -390,6 +494,9 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<float> {
         }
       } else if (post_op_param.name == "output_scale") {
         key_creator.AddAsKey(post_op_param.partial_key);
+      } else if (post_op_param.name == "fuse_bn") {
+        key_creator.AddAsKey(post_op_param.name);
+        key_creator.AddAsKey(convFwdDims.fuse_bn_dims);
       } else {
         return string("not_a_key");
       }
@@ -650,13 +757,27 @@ class MklConvOp : public OpKernel {
       if (fuse_biasadd_) {
         conv_utl.GetBiasSizeInMklOrder(kInputIndex_Bias, &bias_dims);
       }
+      memory::dims fuse_bn_dims = {};
+      TensorShape fuse_bn_shape;
+      if (fuse_bn_) {
+        // Inputs to FusedBatchNorm have same 1D shape
+        fuse_bn_shape = MklGetInput(context, kInputIndex_BN_Mean).shape();
+        OP_REQUIRES(context, fuse_bn_shape.dims() == 1,
+                    errors::InvalidArgument("FusedBatchNorm must be 1D, not: ",
+                                            fuse_bn_shape.DebugString()));
+
+        // Note - MKL-DNN expects {1, C, 1, 1} for binary post-op even for NHWC
+        fuse_bn_dims = {1, fuse_bn_shape.dim_size(0), 1, 1};
+      }
+
       MklConvFwdParams convFwdDims(
           src_dims, filter_dims, fuse_biasadd_ ? bias_dims : NONE_DIMS,
           dst_dims_mkl_order, strides, dilations, padding_left, padding_right,
-          tf_fmt, native_format);
+          fuse_bn_dims, tf_fmt, native_format);
 
       // TODO(mdfaijul): Extend the basic parameters for data types and fusions
       this->ExtendConvFwdParams(context, convFwdDims);
+
       conv_fwd =
           MklConvFwdPrimitiveFactory<Tinput, Tfilter, Tbias, Ttemp_output>::Get(
               convFwdDims, do_not_cache);
@@ -732,6 +853,31 @@ class MklConvOp : public OpKernel {
             this->GetBiasHandle(context, conv_fwd_pd, bias_tensor);
         conv_fwd->Execute(src_data, filter_data, bias_data, dst_data,
                           fwd_cpu_stream);
+      } else if (fuse_bn_) {
+        const Tensor& bn_scale_tensor =
+            MklGetInput(context, kInputIndex_BN_Scale);
+        Tinput* bn_scale_data = static_cast<Tinput*>(
+            const_cast<Tinput*>(bn_scale_tensor.flat<Tinput>().data()));
+        const Tensor& bn_mean_tensor =
+            MklGetInput(context, kInputIndex_BN_Mean);
+        Tinput* bn_mean_data = static_cast<Tinput*>(
+            const_cast<Tinput*>(bn_mean_tensor.flat<Tinput>().data()));
+        const Tensor& bn_offset_tensor =
+            MklGetInput(context, kInputIndex_BN_Offset);
+        Tinput* bn_offset_data = static_cast<Tinput*>(
+            const_cast<Tinput*>(bn_offset_tensor.flat<Tinput>().data()));
+
+        Tensor bn_rsqrt_tensor;
+        OP_REQUIRES_OK(context,
+                       context->allocate_temp(DataTypeToEnum<Tinput>::v(),
+                                              fuse_bn_shape, &bn_rsqrt_tensor));
+        Tinput* bn_rsqrt_data = static_cast<Tinput*>(
+            const_cast<Tinput*>(bn_rsqrt_tensor.flat<Tinput>().data()));
+        this->ComputeBNScale(context, epsilon_, kInputIndex_BN_Variance,
+                             bn_rsqrt_data);
+        conv_fwd->Execute(src_data, filter_data, nullptr, dst_data,
+                          bn_scale_data, bn_mean_data, bn_offset_data,
+                          bn_rsqrt_data, fwd_cpu_stream);
       } else {
         conv_fwd->Execute(src_data, filter_data, dst_data, fwd_cpu_stream);
       }
@@ -807,10 +953,30 @@ class MklConvOp : public OpKernel {
   }
   void set_fuse_pad(bool fuse_pad) {
     fuse_pad_ = fuse_pad;
-    // In PadwithFusedConv OP, pad is the fourth index.
-    input_index_pad_ = 3;
+    if (fuse_bn_) {
+      // If FusedBatchNorm is fused in PadWithFusedConv2D, pad is the 7th input
+      input_index_pad_ = 6;
+    } else if (fuse_add_ && fuse_biasadd_) {
+      // If Bias and Add are fused in PadWithFusedConv2D, pad is the 5th input
+      input_index_pad_ = 4;
+    } else {
+      // Case of Bias is fused in PadwithFusedConv OP, pad is the fourth input
+      input_index_pad_ = 3;
+    }
   }
   void set_fuse_add(bool fuse_add) { fuse_add_ = fuse_add; }
+  void set_fuse_bn(bool fuse_bn, float epsilon) {
+    fuse_bn_ = fuse_bn;
+    epsilon_ = epsilon;
+  }
+
+  virtual void ComputeBNScale(OpKernelContext* context, float epsilon,
+                              int bn_variance_index, Tinput* scale_buf_ptr) {
+    OP_REQUIRES(
+        context, false,
+        errors::Unimplemented("Compute BN scale not expected in base class"));
+    return;
+  }
 
   // This method is for the base class MklConvOp, which handles the
   // floating point implementation of Conv. The quantized conv implementations
@@ -829,6 +995,11 @@ class MklConvOp : public OpKernel {
     if (fuse_add_) {
       params.post_op_params.push_back(
           {"sum", mkldnn::algorithm::undef, {1.0}, ""});
+    }
+    // NOTE - fuse_bn post_op entry must be before fuse_activation
+    if (fuse_bn_) {
+      params.post_op_params.push_back(
+          {"fuse_bn", mkldnn::algorithm::undef, {1.0}, ""});
     }
     if (fuse_activation_) {
       params.post_op_params.push_back(
@@ -951,6 +1122,8 @@ class MklConvOp : public OpKernel {
   bool fuse_activation_ = false;
   bool fuse_pad_ = pad_enabled;
   bool fuse_add_ = false;
+  bool fuse_bn_ = false;
+  float epsilon_ = 0.0001;
 
   // This variable is used for alpha in leakyrelu or upper bound in relu6
   // depending on the context
@@ -963,6 +1136,10 @@ class MklConvOp : public OpKernel {
   const int kInputIndex_Add = 3;
   const int kOutputIndex_Dst = 0, kOutputIndex_Filter = 1;
   const int kDilationH = 0, kDilationW = 1;
+
+  // Input indices for FusedBatchNorm
+  const int kInputIndex_BN_Scale = 2, kInputIndex_BN_Offset = 3;
+  const int kInputIndex_BN_Mean = 4, kInputIndex_BN_Variance = 5;
 
   MklTensorFormat GetFilterTfDataFormat(const MklDnnShape* filter_mkl_shape,
                                         const ConvFwdPd& conv_prim_desc) const {
@@ -1175,6 +1352,7 @@ class MklFusedConvOp
                 errors::InvalidArgument(
                     "Fused Conv2D must have at least one fused op."));
 
+    // TODO: Compact the code for activation checking
     if (fused_ops == std::vector<string>{"BiasAdd"}) {
       this->set_fuse_biasadd(true);
       OP_REQUIRES(context, num_args == 1,
@@ -1193,6 +1371,14 @@ class MklFusedConvOp
                      context->GetAttr("leakyrelu_alpha", &leakyrelu_alpha));
       this->set_fuse_activation(true, mkldnn::algorithm::eltwise_relu,
                                 leakyrelu_alpha);
+    } else if (fused_ops == std::vector<string>{"FusedBatchNorm"}) {
+      float epsilon;
+      OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
+      OP_REQUIRES(
+          context, num_args == 4,
+          errors::InvalidArgument(
+              "Fused Conv2D with batchnorm must have 4 extra argument"));
+      this->set_fuse_bn(true, epsilon);
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_activation(true, mkldnn::algorithm::eltwise_relu);
@@ -1229,6 +1415,47 @@ class MklFusedConvOp
           context, num_args == 2,
           errors::InvalidArgument(
               "Fused Conv2D must have two extra arguments: bias and add."));
+    } else if (fused_ops == std::vector<string>{"FusedBatchNorm", "Relu"}) {
+      float epsilon;
+      OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
+      OP_REQUIRES(
+          context, num_args == 4,
+          errors::InvalidArgument(
+              "Fused Conv2D with batchnorm must have 4 extra argument"));
+      this->set_fuse_bn(true, epsilon);
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_relu);
+    } else if (fused_ops == std::vector<string>{"FusedBatchNorm", "Relu6"}) {
+      float epsilon;
+      OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
+      OP_REQUIRES(
+          context, num_args == 4,
+          errors::InvalidArgument(
+              "Fused Conv2D with batchnorm must have 4 extra argument"));
+      this->set_fuse_bn(true, epsilon);
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_bounded_relu,
+                                6.0);
+    } else if (fused_ops == std::vector<string>{"FusedBatchNorm", "Elu"}) {
+      float epsilon;
+      OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
+      OP_REQUIRES(
+          context, num_args == 4,
+          errors::InvalidArgument(
+              "Fused Conv2D with batchnorm must have 4 extra argument"));
+      this->set_fuse_bn(true, epsilon);
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_elu, 1.0);
+    } else if (fused_ops ==
+               std::vector<string>{"FusedBatchNorm", "LeakyRelu"}) {
+      float epsilon, leakyrelu_alpha;
+      OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
+      OP_REQUIRES_OK(context,
+                     context->GetAttr("leakyrelu_alpha", &leakyrelu_alpha));
+      OP_REQUIRES(
+          context, num_args == 4,
+          errors::InvalidArgument(
+              "Fused Conv2D with batchnorm must have 4 extra argument"));
+      this->set_fuse_bn(true, epsilon);
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_relu,
+                                leakyrelu_alpha);
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_add(true);
@@ -1276,6 +1503,20 @@ class MklFusedConvOp
     if (pad_enabled) {
       this->set_fuse_pad(true);
     }
+  }
+
+  void ComputeBNScale(OpKernelContext* context, float epsilon,
+                      int bn_variance_index, Tinput* scale_buf_ptr) override {
+    const Tensor& bn_var_tensor = MklGetInput(context, bn_variance_index);
+
+    Eigen::Tensor<Tinput, 1, Eigen::RowMajor> bn_rsqrt =
+        (bn_var_tensor.flat<Tinput>() + static_cast<Tinput>(epsilon)).rsqrt();
+    Tinput* bn_rsqrt_data = bn_rsqrt.data();
+    size_t num_elem = bn_var_tensor.shape().dim_size(0);
+    for (size_t i = 0; i < num_elem; i++) {
+      scale_buf_ptr[i] = bn_rsqrt_data[i];
+    }
+    return;
   }
 
   virtual ~MklFusedConvOp() {}

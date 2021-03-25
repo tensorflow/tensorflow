@@ -1843,7 +1843,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         continue;
       }
     }
-#endif  //! INTEL_MKL
+#endif  // INTEL_MKL
 
     // Infer properties lazily in case they are not needed.
     if (!ctx.inferred_graph_properties && RequiresInferredShapes(ctx, i)) {
@@ -1892,17 +1892,9 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       continue;
     }
 
-    // TODO(intel-tf):
-    // Remove this once TF-MKL supports _FusedConv2D with these operations.
     // Remap Conv2D+FusedBatchNorm into the _FusedConv2D;
-    // TODO(intel-tf): Clean up #ifdef.
-#ifdef INTEL_MKL
-    bool is_onednn_enabled = IsMKLEnabled();
-#else
-    bool is_onednn_enabled = false;
-#endif
     ContractionWithBatchNorm contract_with_batch_norm;
-    if (!is_onednn_enabled && allow_non_differentiable_rewrites &&
+    if (allow_non_differentiable_rewrites &&
         FindConv2DWithBatchNorm(ctx, i, &contract_with_batch_norm)) {
       TF_RETURN_IF_ERROR(AddFusedConv2DNode(&ctx, contract_with_batch_norm,
                                             &invalidated_nodes,
@@ -1913,7 +1905,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     // Remap Conv2D+FusedBatchNorm+Activation into the _FusedConv2D;
     ContractionWithBatchNormAndActivation
         contract_with_batch_norm_and_activation;
-    if (!is_onednn_enabled && allow_non_differentiable_rewrites &&
+    if (allow_non_differentiable_rewrites &&
         FindConv2DWithBatchNormAndActivation(
             ctx, i, &contract_with_batch_norm_and_activation)) {
       TF_RETURN_IF_ERROR(
