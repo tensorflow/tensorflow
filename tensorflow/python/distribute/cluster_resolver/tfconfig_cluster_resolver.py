@@ -40,7 +40,17 @@ def format_master_url(master, rpc_layer=None):
 
 
 def _load_tf_config():
-  return json.loads(os.environ.get(_TF_CONFIG_ENV, '{}'))
+  tf_config = json.loads(os.environ.get(_TF_CONFIG_ENV, '{}'))
+  if 'cluster' in tf_config:
+    cluster = tf_config['cluster']
+    to_overwrite = {}
+    for job_name, tasks in cluster.items():
+      if isinstance(tasks, dict):
+        # In Json, the type of dictionary key is always `string`. Thus, task index
+        # should be casted to integer for compatibility with `tf.train.ClusterSpec`.
+        cluster[job_name] = {int(i): task for i, task in tasks.items()}
+    cluster.update(to_overwrite)
+  return tf_config
 
 
 def _get_value_in_tfconfig(key, default=None):
