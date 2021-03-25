@@ -76,7 +76,8 @@ def get_single_element(dataset):
   import tensorflow as tf
 
   # Load data
-  (x_train, y_train), (x_test, y_test) = tf.keras.datasets.fashion_mnist.load_data()
+  (x_train, y_train), (x_test, y_test) = (tf.keras.datasets.
+                                        fashion_mnist.load_data())
   CLASSES = [
     "T-shirt/top", "Trouser", "Pullover", "Dress", "Coat", "Sandal",
     "Shirt", "Sneaker", "Bag", "Ankle Boot"
@@ -116,7 +117,9 @@ def get_single_element(dataset):
       super().__init__(self)
       self.model = model
 
-    @tf.function(input_signature=[tf.TensorSpec([None, 28, 28], dtype=tf.uint8)])
+    @tf.function(input_signature=[
+      tf.TensorSpec([None, 28, 28],dtype=tf.uint8)
+    ])
     def serving_fn(self, data):
       # Strictly speaking, you do not need to use `tf.data` here at all, as simple
       # `data / 255` would suffice. However, the point here is to illustrate that
@@ -134,25 +137,12 @@ def get_single_element(dataset):
                 signatures={'serving_default': preprocessing_model.serving_fn})
   ```
 
-  The saved model can now be served using `tensorflow-serving`.
-
-  ```console
-  $ apt-get install tensorflow-model-server
-  $ nohup tensorflow_model_server \
-    --rest_api_port=8501 \
-    --model_name=fashion_model \
-    --model_base_path="fmnist" >server.log 2>&1
-  ```
-  For additional details, refer: https://www.tensorflow.org/tfx/serving/serving_basic.
-
-  Estimators:
+  Estimators
   -----------
 
   In the case of estimators, you need to generally define a `serving_input_fn`
   which would require the features to be processed by the model while
   inferencing.
-
-  For example:
 
   ```python
   def serving_input_fn():
