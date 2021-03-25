@@ -104,6 +104,7 @@ class SparseToDenseTest(test.TestCase):
                                 "default_value should be a scalar"):
       self.evaluate(sparse_ops.sparse_to_dense([1, 3], [5], [1, 2], [0]))
 
+  @test_util.disable_xla("XLA does not check validity for SparseToDense")
   def testOutOfBoundsIndicesWithWithoutValidation(self):
     # The GPU implementation doesn't print the contents of the invalid inputs,
     # since the overhead of memory copy between device to host is large.
@@ -127,6 +128,7 @@ class SparseToDenseTest(test.TestCase):
                                        0.0,
                                        validate_indices=False))
 
+  @test_util.disable_xla("XLA does not check validity for SparseToDense")
   def testRepeatingIndicesWithWithoutValidation(self):
     error_msg = (r"indices\[1\] is repeated" if test_util.is_gpu_available()
                  else r"indices\[1\] = \[1\] is repeated")
@@ -140,6 +142,7 @@ class SparseToDenseTest(test.TestCase):
                                    0.0,
                                    validate_indices=False))
 
+  @test_util.disable_xla("XLA does not check validity for SparseToDense")
   def testUnsortedIndicesWithWithoutValidation(self):
     error_msg = (r"indices\[1\] is out of order"
                  if test_util.is_gpu_available() else
