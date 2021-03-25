@@ -134,6 +134,7 @@ cc_library(
     ),
     copts = _COPTS_LIST,
     includes = _INCLUDES_LIST,
+    linkopts = ["-lrt"],
     textual_hdrs = _TEXTUAL_HDRS_LIST,
     visibility = ["//visibility:public"],
     deps = [":onednn_autogen"] + if_mkl_ml(
