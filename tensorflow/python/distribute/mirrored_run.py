@@ -39,10 +39,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
 
 
-def _is_gpu_device(device):
-  return tf_device.DeviceSpec.from_string(device).device_type == "GPU"
-
-
 def call_for_each_replica(strategy, fn, args=None, kwargs=None):
   """Call `fn` on each worker devices(replica).
 
@@ -64,11 +60,7 @@ def call_for_each_replica(strategy, fn, args=None, kwargs=None):
     kwargs = {}
 
   if isinstance(fn, def_function.Function):
-    # Don't lift up the tf.function decoration if `fn` is compiled with XLA
-    # and all devices are GPU. In this case we will use collectives to do
-    # cross-device communication, thus no merge_call is in the path.
-    if fn._jit_compile and all(  # pylint: disable=protected-access
-        [_is_gpu_device(d) for d in strategy.extended.worker_devices]):
+    if fn._jit_compile:  # pylint: disable=protected-access
       return _call_for_each_replica(strategy, fn, args, kwargs)
 
     if strategy not in _cfer_fn_cache:
