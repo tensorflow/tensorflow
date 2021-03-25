@@ -681,7 +681,7 @@ TEST(TrtNodeValidator, IsTensorRTCandidate) {
                                          feed, const_1, matmul_attrs);
 
   // Unsupported op.
-  auto unsupported_op = ops::Erf(s.WithOpName("sin"), feed);
+  auto unsupported_op = ops::Erfc(s.WithOpName("sin"), feed);
 
   // Incompatible input.
   auto incompatible_feed = ops::Placeholder(s.WithOpName("feed"), DT_DOUBLE);
@@ -716,7 +716,7 @@ TEST(TrtNodeValidator, IsTensorRTCandidate) {
         "MatMul with 2D tensors requires explicit batch mode, or that tensor A "
         "is not transposed and B is a constant tensor.");
     ExpectStatus(validator.IsTensorRTCandidate(unsupported_op.operation.node()),
-                 error::UNIMPLEMENTED, "Op type Erf is not supported");
+                 error::UNIMPLEMENTED, "Op type Erfc is not supported");
     ExpectStatus(validator.IsTensorRTCandidate(
                      matmul_with_incompatible_input.operation.node()),
                  error::INTERNAL,
@@ -6199,6 +6199,7 @@ TEST_P(OpConverter_FP32_Test, ConvertUnary) {
   ADD_OP("Cos", ops::Cos, std::cos);
   ADD_OP("Cosh", ops::Cosh, std::cosh);
   ADD_OP("Exp", ops::Exp, std::exp);
+  ADD_OP("Erf", ops::Erf, std::erf);
   ADD_OP("Floor", ops::Floor, std::floor);
   ADD_OP("Log", ops::Log, std::log);
   ADD_OP("Neg", ops::Neg, [](float x) { return -x; });

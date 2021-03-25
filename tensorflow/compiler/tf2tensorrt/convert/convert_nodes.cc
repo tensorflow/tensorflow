@@ -4721,6 +4721,9 @@ UnaryOperationMap() {
             {"Ceil", nvinfer1::UnaryOperation::kCEIL},
             {"Floor", nvinfer1::UnaryOperation::kFLOOR},
 #endif
+#if IS_TRT_VERSION_GE(7, 0, 0, 0)
+            {"Erf", nvinfer1::UnaryOperation::kERF},
+#endif
       });
   return m;
 }
