@@ -179,6 +179,60 @@ absl::Status ParseInputsWithConstTensor(Node* node, ObjectReader* reader,
   return absl::OkStatus();
 }
 
+struct TensorInfo {
+  std::vector<std::pair<TfLiteNode*, TfLiteRegistration*>> producers;
+  std::vector<std::pair<TfLiteNode*, TfLiteRegistration*>> consumers;
+};
+
+absl::Status GetTensorInfo(const TfLiteContext* context, int tensor_id,
+                           TensorInfo* result) {
+  TfLiteIntArray* execution_plan = nullptr;
+  if (context->GetExecutionPlan(const_cast<TfLiteContext*>(context),
+                                &execution_plan) != kTfLiteOk) {
+    return absl::UnavailableError("Unable to get graph execution plan.");
+  }
+  for (int i = 0; i < execution_plan->size; ++i) {
+    const int node_index = execution_plan->data[i];
+    TfLiteNode* node = nullptr;
+    TfLiteRegistration* registration = nullptr;
+    if (context->GetNodeAndRegistration(const_cast<TfLiteContext*>(context),
+                                        node_index, &node,
+                                        &registration) != kTfLiteOk) {
+      return absl::UnavailableError(
+          "Unable to get node and registration for node.");
+    }
+    for (int j = 0; j < node->inputs->size; ++j) {
+      if (tensor_id == node->inputs->data[j]) {
+        result->consumers.push_back({node, registration});
+      }
+    }
+    for (int j = 0; j < node->outputs->size; ++j) {
+      if (tensor_id == node->outputs->data[j]) {
+        result->producers.push_back({node, registration});
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
+bool IsLogicalCode(int32_t builtin_code) {
+  return builtin_code == kTfLiteBuiltinGreater ||
+         builtin_code == kTfLiteBuiltinGreaterEqual ||
+         builtin_code == kTfLiteBuiltinLess ||
+         builtin_code == kTfLiteBuiltinLessEqual ||
+         builtin_code == kTfLiteBuiltinEqual ||
+         builtin_code == kTfLiteBuiltinNotEqual;
+}
+
+bool IsLogicalOp(tflite::gpu::OperationType op_type) {
+  return op_type == tflite::gpu::OperationType::GREATER ||
+         op_type == tflite::gpu::OperationType::GREATER_EQUAL ||
+         op_type == tflite::gpu::OperationType::LESS ||
+         op_type == tflite::gpu::OperationType::LESS_EQUAL ||
+         op_type == tflite::gpu::OperationType::EQUAL ||
+         op_type == tflite::gpu::OperationType::NOT_EQUAL;
+}
+
 class AddOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
@@ -230,6 +284,51 @@ class BatchedMatMulOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->AddInput(node, 0));
     RETURN_IF_ERROR(reader->AddInput(node, 1));
     RETURN_IF_ERROR(reader->AddOutputs(node));
+    return absl::OkStatus();
+  }
+};
+
+class CastOperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/1, /*outputs=*/1));
+    TensorInfo input_tensor_info;
+    RETURN_IF_ERROR(GetTensorInfo(context, tflite_node->inputs->data[0],
+                                  &input_tensor_info));
+    if (input_tensor_info.producers.size() != 1 ||
+        input_tensor_info.consumers.size() != 1) {
+      return absl::UnavailableError("Not supported cast case");
+    }
+    if (IsLogicalCode(input_tensor_info.producers[0].second->builtin_code)) {
+      const TfLiteTensor* input_tensor = GetInput(context, tflite_node, 0);
+      const TfLiteTensor* output_tensor =
+          GetOutput(const_cast<TfLiteContext*>(context), tflite_node, 0);
+      if (input_tensor->type == kTfLiteBool &&
+          (output_tensor->type == kTfLiteFloat16 ||
+           output_tensor->type == kTfLiteFloat32)) {
+        return absl::OkStatus();
+      } else {
+        return absl::UnimplementedError("Not supported Cast case.");
+      }
+    }
+    return absl::UnimplementedError("Not supported Cast case.");
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    // Adding Identity reshape that will be removed.
+    node->operation.type = ToString(OperationType::RESHAPE);
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+    // New shape comes from output shape.
+    ReshapeAttributes attr;
+    attr.new_shape = graph->FindOutputs(node->id)[0]->tensor.shape;
+    node->operation.attributes = attr;
     return absl::OkStatus();
   }
 };
@@ -611,6 +710,21 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
+    if (IsLogicalOp(operation_type_)) {
+      TensorInfo output_tensor_info;
+      RETURN_IF_ERROR(GetTensorInfo(context, tflite_node->outputs->data[0],
+                                    &output_tensor_info));
+      if (output_tensor_info.producers.size() != 1 ||
+          output_tensor_info.consumers.size() != 1) {
+        return absl::UnavailableError("Not supported logical op case");
+      }
+      if (output_tensor_info.consumers[0].second->builtin_code ==
+          kTfLiteBuiltinCast) {
+        return absl::OkStatus();
+      } else {
+        return absl::UnimplementedError("Not supported logical op case.");
+      }
+    }
     if (IsOneArgumentOperation()) {
       RETURN_IF_ERROR(CheckInputsConstsOutputs(context, tflite_node,
                                                /*runtime_inputs=*/1,
@@ -753,10 +867,16 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
   bool IsTwoArgumentOperation() const {
     switch (operation_type_) {
       case OperationType::DIV:
+      case OperationType::EQUAL:
       case OperationType::FLOOR_DIV:
       case OperationType::FLOOR_MOD:
+      case OperationType::GREATER:
+      case OperationType::GREATER_EQUAL:
+      case OperationType::LESS:
+      case OperationType::LESS_EQUAL:
       case OperationType::MAXIMUM:
       case OperationType::MINIMUM:
+      case OperationType::NOT_EQUAL:
       case OperationType::POW:
       case OperationType::SQUARED_DIFF:
       case OperationType::SUB:
@@ -769,10 +889,16 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
   bool IsTwoArgumentOperationWithConst() const {
     switch (operation_type_) {
       case OperationType::DIV:
+      case OperationType::EQUAL:
       case OperationType::FLOOR_DIV:
       case OperationType::FLOOR_MOD:
+      case OperationType::GREATER:
+      case OperationType::GREATER_EQUAL:
+      case OperationType::LESS:
+      case OperationType::LESS_EQUAL:
       case OperationType::MAXIMUM:
       case OperationType::MINIMUM:
+      case OperationType::NOT_EQUAL:
       case OperationType::POW:
       case OperationType::SQUARED_DIFF:
       case OperationType::SUB:
@@ -2487,6 +2613,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<Pooling2DOperationParser>(PoolingType::AVERAGE);
     case kTfLiteBuiltinBatchMatmul:
       return std::make_unique<BatchedMatMulOperationParser>();
+    case kTfLiteBuiltinCast:
+      return std::make_unique<CastOperationParser>();
     case kTfLiteBuiltinConcatenation:
       return std::make_unique<ConcatenationOperationParser>();
     case kTfLiteBuiltinConv2d:
@@ -2502,6 +2630,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       break;
     case kTfLiteBuiltinDiv:
       return std::make_unique<ElementwiseOperationParser>(OperationType::DIV);
+    case kTfLiteBuiltinEqual:
+      return std::make_unique<ElementwiseOperationParser>(OperationType::EQUAL);
     case kTfLiteBuiltinElu:
       return std::make_unique<ElementwiseOperationParser>(OperationType::ELU);
     case kTfLiteBuiltinExp:
@@ -2516,8 +2646,19 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
           OperationType::FLOOR_MOD);
     case kTfLiteBuiltinFullyConnected:
       return std::make_unique<FullyConnectedOperationParser>();
+    case kTfLiteBuiltinGreater:
+      return std::make_unique<ElementwiseOperationParser>(
+          OperationType::GREATER);
+    case kTfLiteBuiltinGreaterEqual:
+      return std::make_unique<ElementwiseOperationParser>(
+          OperationType::GREATER_EQUAL);
     case kTfLiteBuiltinHardSwish:
       return std::make_unique<HardSwishOperationParser>();
+    case kTfLiteBuiltinLess:
+      return std::make_unique<ElementwiseOperationParser>(OperationType::LESS);
+    case kTfLiteBuiltinLessEqual:
+      return std::make_unique<ElementwiseOperationParser>(
+          OperationType::LESS_EQUAL);
     case kTfLiteBuiltinLogistic:
       return std::make_unique<ElementwiseOperationParser>(
           OperationType::SIGMOID);
@@ -2541,6 +2682,9 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<MulOperationParser>();
     case kTfLiteBuiltinNeg:
       return std::make_unique<ElementwiseOperationParser>(OperationType::NEG);
+    case kTfLiteBuiltinNotEqual:
+      return std::make_unique<ElementwiseOperationParser>(
+          OperationType::NOT_EQUAL);
     case kTfLiteBuiltinPack:
       return std::make_unique<PackOperationParser>();
     case kTfLiteBuiltinPad:
@@ -2635,17 +2779,17 @@ absl::Status IsSupported(const TfLiteContext* context, TfLiteNode* node,
 
 bool IsAllAllowedTensors(TfLiteContext* context,
                          const TfLiteIntArray* tensor_indices,
-                         bool allow_quant_ops = false) {
+                         const std::vector<TfLiteType>& allowed_types) {
   for (int i = 0; i < tensor_indices->size; ++i) {
     int tensor_idx = tensor_indices->data[i];
     if (tensor_idx == kTfLiteOptionalTensor) continue;
     const TfLiteTensor* t = &context->tensors[tensor_idx];
-    bool type_supported =
-        (t->type == kTfLiteFloat32 || t->type == kTfLiteFloat16);
-    if (allow_quant_ops) {
-      // Since we only check non-constant tensors, type cannot be Int32.
-      type_supported =
-          type_supported || t->type == kTfLiteInt8 || t->type == kTfLiteUInt8;
+    bool type_supported = false;
+    for (auto allowed_type : allowed_types) {
+      if (t->type == allowed_type) {
+        type_supported = true;
+        break;
+      }
     }
     if (t->allocation_type == kTfLiteArenaRw && !type_supported) {
       return false;
@@ -2672,8 +2816,24 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context, bool allow_quant_ops,
       return false;
     }
 
-    if (!IsAllAllowedTensors(context, node->inputs, allow_quant_ops) ||
-        !IsAllAllowedTensors(context, node->outputs, allow_quant_ops)) {
+    std::vector<TfLiteType> allowed_in_types = {kTfLiteFloat32, kTfLiteFloat16};
+    std::vector<TfLiteType> allowed_out_types = {kTfLiteFloat32,
+                                                 kTfLiteFloat16};
+    if (allow_quant_ops) {
+      // Since we only check non-constant tensors, type cannot be Int32.
+      allowed_in_types.push_back(kTfLiteInt8);
+      allowed_in_types.push_back(kTfLiteUInt8);
+      allowed_out_types.push_back(kTfLiteInt8);
+      allowed_out_types.push_back(kTfLiteUInt8);
+    }
+    if (IsLogicalCode(registration->builtin_code)) {
+      allowed_out_types.push_back(kTfLiteBool);
+    }
+    if (registration->builtin_code == kTfLiteBuiltinCast) {
+      allowed_in_types.push_back(kTfLiteBool);
+    }
+    if (!IsAllAllowedTensors(context, node->inputs, allowed_in_types) ||
+        !IsAllAllowedTensors(context, node->outputs, allowed_out_types)) {
       if (unsupported_details) {
         *unsupported_details =
             "OP is supported, but tensor type isn't matched!";
