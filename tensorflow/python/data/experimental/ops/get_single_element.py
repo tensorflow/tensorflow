@@ -66,8 +66,7 @@ def get_single_element(dataset):
 
   This can be particularly useful when your tensor transformations are
   expressed as `tf.data.Dataset` operations, and you want to use those
-  transformations while serving your model. Especially, when it comes to
-  serving `tf.keras` models using a `SavedModel`.
+  transformations while serving your model.
 
   tf.keras
   --------
@@ -126,6 +125,11 @@ def get_single_element(dataset):
               .batch(BATCH_SIZE))
 
     processed_features = tf.data.get_single_element(dataset)
+
+    # Please note that the value of `BATCH_SIZE` should be equal to
+    # the size of the leading dimension of `raw_features`. This ensures
+    # that `dataset` has only element, which is a pre-requisite for
+    # using `tf.data.get_single_element(dataset)`.
 
     return tf.estimator.export.ServingInputReceiver(
         processed_features, serving_input_receiver.receiver_tensors)
