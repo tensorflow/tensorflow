@@ -125,7 +125,14 @@ namespace {
 struct GlobalJitState {
   bool disable_jit = false;
   bool enable_x64 = false;
+
+  // Extra context that should be included in the JIT cache key. Must be
+  // hashable and have an equality defined.
   py::object extra_jit_context = py::none();
+
+  // A callback that, if present, is called when a JITted function is executed
+  // from cache.
+  absl::optional<py::function> post_hook;
 };
 
 // Protected by the GIL.
@@ -144,6 +151,7 @@ struct ThreadLocalJitState {
   absl::optional<bool> disable_jit;
   absl::optional<bool> enable_x64;
   absl::optional<py::object> extra_jit_context;
+  absl::optional<py::function> post_hook;
 };
 
 // TODO(phawkins): Google style guide forbids thread-local values with
@@ -159,6 +167,10 @@ py::object ExtraJitContext() {
       global_state.extra_jit_context);
 }
 
+absl::optional<py::object> PostHook() {
+  return thread_local_state.post_hook.has_value() ? thread_local_state.post_hook
+                                                  : global_state.post_hook;
+}
 }  // namespace
 
 bool GetEnableX64() {
@@ -539,6 +551,8 @@ class CompiledFunction {
   int cache_size() const { return executables_.size(); }
   void ClearCache() { executables_.clear(); }
 
+  const py::function& cache_miss() const { return cache_miss_; }
+
  private:
   // Returns nullptr if not present in the cache.
   CacheEntry* GetCacheEntryIfPresent(const CallSignature& signature);
@@ -902,7 +916,12 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::args args,
           out_lazy_exprs[i], py::cast(std::move(outputs[i]))));
     }
   }
-  return cache_entry->out_pytree_def.Unflatten(flat_device_arrays);
+  py::object out = cache_entry->out_pytree_def.Unflatten(flat_device_arrays);
+  absl::optional<py::object> post_hook = PostHook();
+  if (post_hook) {
+    (*post_hook)(this, args, kwargs, out);
+  }
+  return out;
 }
 
 }  // namespace
@@ -915,12 +934,14 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
   cfun.def("__call__", &CompiledFunction::Call);
   cfun.def_property_readonly("__signature__",
                              &CompiledFunction::PythonSignature);
+  cfun.def_property_readonly("_cache_miss", &CompiledFunction::cache_miss);
 
   py::class_<GlobalJitState> global_state_(jitlib, "GlobalJitState");
   global_state_.def_readwrite("disable_jit", &GlobalJitState::disable_jit);
   global_state_.def_readwrite("enable_x64", &GlobalJitState::enable_x64);
   global_state_.def_readwrite("extra_jit_context",
                               &GlobalJitState::extra_jit_context);
+  global_state_.def_readwrite("post_hook", &GlobalJitState::post_hook);
 
   py::class_<ThreadLocalJitState> thread_local_state_(jitlib,
                                                       "ThreadLocalJitState");
@@ -930,6 +951,8 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
                                     &ThreadLocalJitState::enable_x64);
   thread_local_state_.def_readwrite("extra_jit_context",
                                     &ThreadLocalJitState::extra_jit_context);
+  thread_local_state_.def_readwrite("post_hook",
+                                    &ThreadLocalJitState::post_hook);
 
   jitlib.def(
       "global_state", [&]() { return &global_state; },
