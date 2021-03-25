@@ -40,7 +40,6 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -252,7 +251,7 @@ def _replace_child_layer_functions(layer, serialization_cache):
         'call': child_layer.call,
         '_activity_regularizer': child_layer._activity_regularizer
     }
-    with trackable.no_automatic_dependency_tracking_scope(child_layer):
+    with utils.no_automatic_dependency_tracking_scope(child_layer):
       try:
         child_layer._activity_regularizer = serialized_fns.get(
             'activity_regularizer_fn')
@@ -271,7 +270,7 @@ def _replace_child_layer_functions(layer, serialization_cache):
         'result': child_layer.result,
         'update_state': child_layer.update_state
     }
-    with trackable.no_automatic_dependency_tracking_scope(child_layer):
+    with utils.no_automatic_dependency_tracking_scope(child_layer):
       child_layer.__call__ = serialized_fns['__call__']
       child_layer.result = serialized_fns['result']
       child_layer.update_state = serialized_fns['update_state']
@@ -308,7 +307,7 @@ def _replace_child_layer_functions(layer, serialization_cache):
 def _restore_child_layer_functions(original_fns):
   """Restores attributes replaced with `_replace_child_layer_functions`."""
   for child_layer, fns in original_fns.items():
-    with trackable.no_automatic_dependency_tracking_scope(child_layer):
+    with utils.no_automatic_dependency_tracking_scope(child_layer):
       for fn_name, fn in fns.items():
         try:
           setattr(child_layer, fn_name, fn)  # pylint: disable=protected-access
@@ -324,7 +323,7 @@ def _reset_layer_losses(parent_layer):
   for layer in utils.list_all_layers_and_sublayers(parent_layer):
     losses_dict[layer] = {'losses': layer._losses[:],
                           'eager_losses': layer._eager_losses[:]}
-    with trackable.no_automatic_dependency_tracking_scope(layer):
+    with utils.no_automatic_dependency_tracking_scope(layer):
       layer._losses = []
       layer._eager_losses = []
   return losses_dict
@@ -332,7 +331,7 @@ def _reset_layer_losses(parent_layer):
 
 def _restore_layer_losses(losses_dict):
   for layer in losses_dict:
-    with trackable.no_automatic_dependency_tracking_scope(layer):
+    with utils.no_automatic_dependency_tracking_scope(layer):
       layer._losses = losses_dict[layer]['losses']
       layer._eager_losses = losses_dict[layer]['eager_losses']
 # pylint: enable=protected-access
