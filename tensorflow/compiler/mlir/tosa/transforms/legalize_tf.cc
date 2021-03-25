@@ -115,8 +115,6 @@ DECL_CONVERT_OP(StridedSlice);
 DECL_CONVERT_OP(Less);
 DECL_CONVERT_OP(LessEqual);
 DECL_CONVERT_OP(Pad);
-DECL_CONVERT_OP(Gather);
-DECL_CONVERT_OP(GatherV2);
 DECL_CONVERT_OP(SelectV2);
 DECL_CONVERT_OP(SpaceToDepth);
 DECL_CONVERT_OP(DepthToSpace);
@@ -1679,55 +1677,6 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
   return success();
 }
 
-LogicalResult ConvertTFGatherOp::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto tf_gather_op = cast<TF::GatherOp>(op);
-
-  RankedTensorType output_type =
-      tf_gather_op.getResult().getType().dyn_cast<RankedTensorType>();
-  if (!output_type) return failure();
-
-  IntegerAttr axis_attr = rewriter.getI32IntegerAttr(0);
-
-  // TODO: batchdim_attr handling to be implemented with a revised
-  // defintion of the TOSA operator.
-  rewriter.replaceOpWithNewOp<tosa::GatherOp>(
-      op, output_type, tf_gather_op.params(), tf_gather_op.indices(),
-      axis_attr);
-
-  return success();
-}
-
-LogicalResult ConvertTFGatherV2Op::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto tf_gather_op = cast<TF::GatherV2Op>(op);
-
-  RankedTensorType output_type =
-      tf_gather_op.getResult().getType().dyn_cast<RankedTensorType>();
-  if (!output_type) return failure();
-
-  // Axis is a tensor in TF. Convert to I64Attr for TOSA
-  ElementsAttr axis_elem;
-  if (!matchPattern(tf_gather_op.axis(), m_Constant(&axis_elem)))
-    return failure();
-  assert(axis_elem.getType().getRank() == 0 && "expected 0D tensor");
-
-  IntegerAttr batchdim_attr;
-  {
-    auto tmpAttr = tf_gather_op.batch_dimsAttr();
-    if (!tmpAttr) tmpAttr = rewriter.getI64IntegerAttr(0);
-    batchdim_attr = tmpAttr;
-  }
-
-  // TODO: batchdim_attr handling to be implemented with a revised
-  // defintion of the TOSA operator.
-  rewriter.replaceOpWithNewOp<tosa::GatherOp>(
-      op, output_type, tf_gather_op.params(), tf_gather_op.indices(),
-      rewriter.getI32IntegerAttr(axis_elem.getValue<IntegerAttr>({}).getInt()));
-
-  return success();
-}
-
 LogicalResult ConvertTFSelectV2Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_sel_op = cast<TF::SelectV2Op>(op);
@@ -2055,8 +2004,6 @@ void LegalizeTF::runOnFunction() {
   patterns.insert<ConvertTFLessOp>(ctx);
   patterns.insert<ConvertTFLessEqualOp>(ctx);
   patterns.insert<ConvertTFPadOp>(ctx);
-  patterns.insert<ConvertTFGatherOp>(ctx);
-  patterns.insert<ConvertTFGatherV2Op>(ctx);
   patterns.insert<ConvertTFSelectV2Op>(ctx);
   patterns.insert<ConvertTFSpaceToDepthOp>(ctx);
   patterns.insert<ConvertTFDepthToSpaceOp>(ctx);
