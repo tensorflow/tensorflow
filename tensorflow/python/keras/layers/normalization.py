@@ -14,16 +14,13 @@
 # ==============================================================================
 """Normalization layers."""
 # pylint: disable=g-classes-have-attributes
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
@@ -417,7 +414,7 @@ class BatchNormalizationBase(Layer):
     else:
       self.gamma = None
       if self.fused:
-        self._gamma_const = K.constant(
+        self._gamma_const = backend.constant(
             1.0, dtype=self._param_dtype, shape=param_shape)
 
     if self.center:
@@ -433,7 +430,7 @@ class BatchNormalizationBase(Layer):
     else:
       self.beta = None
       if self.fused:
-        self._beta_const = K.constant(
+        self._beta_const = backend.constant(
             0.0, dtype=self._param_dtype, shape=param_shape)
 
     try:
@@ -527,10 +524,10 @@ class BatchNormalizationBase(Layer):
       update_delta = (variable - math_ops.cast(value, variable.dtype)) * decay
       if inputs_size is not None:
         update_delta = array_ops.where(inputs_size > 0, update_delta,
-                                       K.zeros_like(update_delta))
+                                       backend.zeros_like(update_delta))
       return update_delta
 
-    with K.name_scope('AssignMovingAvg') as scope:
+    with backend.name_scope('AssignMovingAvg') as scope:
       if ops.executing_eagerly_outside_functions():
         return variable.assign_sub(calculate_update_delta(), name=scope)
       else:
@@ -539,7 +536,7 @@ class BatchNormalizationBase(Layer):
               variable, calculate_update_delta(), name=scope)
 
   def _assign_new_value(self, variable, value):
-    with K.name_scope('AssignNewValue') as scope:
+    with backend.name_scope('AssignNewValue') as scope:
       if ops.executing_eagerly_outside_functions():
         return variable.assign(value, name=scope)
       else:
@@ -731,14 +728,15 @@ class BatchNormalizationBase(Layer):
     # code as well.
     if self._support_zero_size_input():
       input_batch_size = array_ops.shape(inputs)[0]
-      mean = array_ops.where(input_batch_size > 0, mean, K.zeros_like(mean))
+      mean = array_ops.where(
+          input_batch_size > 0, mean, backend.zeros_like(mean))
       variance = array_ops.where(input_batch_size > 0, variance,
-                                 K.zeros_like(variance))
+                                 backend.zeros_like(variance))
     return mean, variance
 
   def _get_training_value(self, training=None):
     if training is None:
-      training = K.learning_phase()
+      training = backend.learning_phase()
     if self._USE_V2_BEHAVIOR:
       if isinstance(training, int):
         training = bool(training)
@@ -895,7 +893,7 @@ class BatchNormalizationBase(Layer):
               self.moving_variance,
               # Apply relu in case floating point rounding causes it to go
               # negative.
-              K.relu(moving_stddev * moving_stddev - self.epsilon))
+              backend.relu(moving_stddev * moving_stddev - self.epsilon))
 
         if self.renorm:
           true_branch = true_branch_renorm

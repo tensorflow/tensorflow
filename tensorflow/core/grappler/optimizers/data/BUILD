@@ -86,6 +86,7 @@ cc_library(
 
 tf_cc_test(
     name = "autotune_buffer_sizes_test",
+    size = "small",
     srcs = ["autotune_buffer_sizes_test.cc"],
     deps = [
         ":autotune_buffer_sizes",
@@ -124,6 +125,7 @@ cc_library(
 
 tf_cc_test(
     name = "batch_parallelization_test",
+    size = "small",
     srcs = ["batch_parallelization_test.cc"],
     deps = [
         ":batch_parallelization",
@@ -159,6 +161,7 @@ cc_library(
 
 tf_cc_test(
     name = "disable_intra_op_parallelism_test",
+    size = "small",
     srcs = ["disable_intra_op_parallelism_test.cc"],
     deps = [
         ":disable_intra_op_parallelism",
@@ -194,6 +197,7 @@ cc_library(
 
 tf_cc_test(
     name = "disable_prefetch_legacy_autotune_test",
+    size = "small",
     srcs = ["disable_prefetch_legacy_autotune_test.cc"],
     deps = [
         ":disable_prefetch_legacy_autotune",
@@ -229,6 +233,7 @@ cc_library(
 
 tf_cc_test(
     name = "enable_gradient_descent_test",
+    size = "small",
     srcs = ["enable_gradient_descent_test.cc"],
     deps = [
         ":enable_gradient_descent",
@@ -268,6 +273,7 @@ cc_library(
 
 tf_cc_test(
     name = "filter_fusion_test",
+    size = "small",
     srcs = ["filter_fusion_test.cc"],
     deps = [
         ":filter_fusion",
@@ -304,6 +310,7 @@ cc_library(
 
 tf_cc_test(
     name = "filter_with_random_uniform_fusion_test",
+    size = "small",
     srcs = ["filter_with_random_uniform_fusion_test.cc"],
     visibility = ["//visibility:public"],
     deps = [
@@ -343,6 +350,7 @@ cc_library(
 
 tf_cc_test(
     name = "fusion_utils_test",
+    size = "small",
     srcs = ["fusion_utils_test.cc"],
     deps = [
         ":function_utils",
@@ -374,6 +382,7 @@ cc_library(
 
 tf_cc_test(
     name = "function_utils_test",
+    size = "small",
     srcs = ["function_utils_test.cc"],
     deps = [
         ":function_utils",
@@ -409,6 +418,7 @@ cc_library(
 
 tf_cc_test(
     name = "graph_utils_test",
+    size = "small",
     srcs = ["graph_utils_test.cc"],
     deps = [
         ":graph_utils",
@@ -464,6 +474,7 @@ cc_library(
 
 tf_cc_test(
     name = "hoist_random_uniform_test",
+    size = "small",
     srcs = ["hoist_random_uniform_test.cc"],
     deps = [
         ":graph_test_utils",
@@ -500,6 +511,7 @@ cc_library(
 
 tf_cc_test(
     name = "latency_all_edges_test",
+    size = "small",
     srcs = ["latency_all_edges_test.cc"],
     deps = [
         ":graph_utils",
@@ -529,6 +541,7 @@ cc_library(
 
 tf_cc_test(
     name = "make_sloppy_test",
+    size = "small",
     srcs = ["make_sloppy_test.cc"],
     deps = [
         ":graph_test_utils",
@@ -565,6 +578,7 @@ cc_library(
 
 tf_cc_test(
     name = "map_and_batch_fusion_test",
+    size = "small",
     srcs = ["map_and_batch_fusion_test.cc"],
     deps = [
         ":graph_utils",
@@ -605,6 +619,7 @@ cc_library(
 
 tf_cc_test(
     name = "map_and_filter_fusion_test",
+    size = "small",
     srcs = ["map_and_filter_fusion_test.cc"],
     deps = [
         ":graph_test_utils",
@@ -644,6 +659,7 @@ cc_library(
 
 tf_cc_test(
     name = "map_fusion_test",
+    size = "small",
     srcs = ["map_fusion_test.cc"],
     deps = [
         ":graph_test_utils",
@@ -684,6 +700,7 @@ cc_library(
 
 tf_cc_test(
     name = "map_parallelization_test",
+    size = "small",
     srcs = ["map_parallelization_test.cc"],
     deps = [
         ":graph_test_utils",
@@ -725,6 +742,7 @@ cc_library(
 
 tf_cc_test(
     name = "map_vectorization_test",
+    size = "small",
     srcs = ["map_vectorization_test.cc"],
     deps = [
         ":function_utils",
@@ -790,6 +808,7 @@ cc_library(
 
 tf_cc_test(
     name = "noop_elimination_test",
+    size = "small",
     srcs = ["noop_elimination_test.cc"],
     deps = [
         ":graph_utils",
@@ -830,6 +849,7 @@ cc_library(
 
 tf_cc_test(
     name = "parallel_batch_test",
+    size = "small",
     srcs = ["parallel_batch_test.cc"],
     deps = [
         ":graph_test_utils",
@@ -868,6 +888,7 @@ cc_library(
 
 tf_cc_test(
     name = "reorder_data_discarding_ops_test",
+    size = "small",
     srcs = ["reorder_data_discarding_ops_test.cc"],
     deps = [
         ":graph_test_utils",
@@ -905,6 +926,7 @@ cc_library(
 
 tf_cc_test(
     name = "shuffle_and_repeat_fusion_test",
+    size = "small",
     srcs = ["shuffle_and_repeat_fusion_test.cc"],
     deps = [
         ":graph_utils",
@@ -940,6 +962,7 @@ cc_library(
 
 tf_cc_test(
     name = "slack_test",
+    size = "small",
     srcs = ["slack_test.cc"],
     deps = [
         ":function_utils",
@@ -977,6 +1000,7 @@ cc_library(
 
 tf_cc_test(
     name = "use_private_thread_pool_test",
+    size = "small",
     srcs = ["use_private_thread_pool_test.cc"],
     deps = [
         ":graph_test_utils",
@@ -1015,6 +1039,7 @@ cc_library(
 
 tf_cc_test(
     name = "vectorization_utils_test",
+    size = "small",
     srcs = ["vectorization_utils_test.cc"],
     deps = [
         ":graph_utils",

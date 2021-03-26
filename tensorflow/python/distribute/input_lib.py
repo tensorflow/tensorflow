@@ -2007,13 +2007,21 @@ class _SingleWorkerDatasetIteratorSpec(type_spec.TypeSpec):
     return (self._worker, self._devices, self._element_spec, self._options,
             self._canonicalize_devices)
 
+  def _get_multi_device_iterator_spec(self, specs):
+    device_scope = device_util.canonicalize(self._worker, device_util.current())
+    host_device = device_util.get_host_for_device(device_scope)
+    # source_device while creating iterator governs the worker device in
+    # iterator spec.
+    worker = host_device
+    specs.append(
+        multi_device_iterator_ops.MultiDeviceIteratorSpec(
+            self._devices, worker, element_spec=self._element_spec))
+
   @property
   def _component_specs(self):
     specs = []
     if _should_use_multi_device_iterator(self._options):
-      specs.append(
-          multi_device_iterator_ops.MultiDeviceIteratorSpec(
-              self._devices, self._worker, element_spec=self._element_spec))
+      self._get_multi_device_iterator_spec(specs)
     else:
       specs.append(iterator_ops.IteratorSpec(element_spec=self._element_spec))
     return specs
@@ -2079,6 +2087,7 @@ class _SingleWorkerOwnedDatasetIterator(_SingleWorkerDatasetIteratorBase,
                      "need to be provided.")
 
     self._options = options
+    self._canonicalize_devices = canonicalize_devices
     if dataset is None:
       if (components is None or element_spec is None):
         raise ValueError(error_message)
@@ -2091,28 +2100,36 @@ class _SingleWorkerOwnedDatasetIterator(_SingleWorkerDatasetIteratorBase,
         raise ValueError(error_message)
       super(_SingleWorkerOwnedDatasetIterator,
             self).__init__(dataset, worker, devices, self._options)
-    self._canonicalize_devices = canonicalize_devices
+
+  def _create_owned_multi_device_iterator(self):
+    # If the worker devices are already canonicalized, canonicalizing again
+    # would have no impact.
+    # For strategies running on remote workers such as PS Strategy, the device
+    # scope will be derived from current worker, if used under init_scope().
+    device_scope = device_util.canonicalize(self._worker,
+                                            device_util.current())
+    host_device = device_util.get_host_for_device(device_scope)
+    with ops.device(device_scope):
+      if self._options is not None:
+        self._iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
+            self._dataset,
+            self._devices,
+            source_device=host_device,
+            max_buffer_size=self._options
+            .experimental_per_replica_buffer_size,
+            prefetch_buffer_size=self._options
+            .experimental_per_replica_buffer_size)
+      else:
+        self._iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
+            self._dataset, self._devices, source_device=host_device)
 
   def _make_iterator(self):
     """Make appropriate iterator on the dataset."""
     if not self._worker:
-      raise ValueError("Worked device must be specified when creating an "
+      raise ValueError("Worker device must be specified when creating an "
                        "owned iterator.")
     if _should_use_multi_device_iterator(self._options):
-      host_device = device_util.get_host_for_device(self._worker)
-      with ops.device(self._worker):
-        if self._options is not None:
-          self._iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
-              self._dataset,
-              self._devices,
-              source_device=host_device,
-              max_buffer_size=self._options
-              .experimental_per_replica_buffer_size,
-              prefetch_buffer_size=self._options
-              .experimental_per_replica_buffer_size)
-        else:
-          self._iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
-              self._dataset, self._devices, source_device=host_device)
+      self._create_owned_multi_device_iterator()
     else:
       with ops.device(self._worker):
         self._iterator = iter(self._dataset)

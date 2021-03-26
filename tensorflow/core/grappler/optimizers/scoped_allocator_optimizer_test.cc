@@ -356,6 +356,7 @@ class ScopedAllocatorOptimizerTest : public ::testing::Test {
     return num_control_inputs;
   }
 };
+#ifndef ENABLE_MKL
 
 TEST_F(ScopedAllocatorOptimizerTest, UnaryRewriteOnly) {
   // Tests that Rewrite of program with parallel unary Ops is done as
@@ -595,6 +596,7 @@ TEST_F(ScopedAllocatorOptimizerTest, ConstInput) {
   }
   EXPECT_EQ(num_identity_ops, 2);
 }
+#endif  // ENABLE_MKL
 
 }  // namespace
 }  // namespace grappler

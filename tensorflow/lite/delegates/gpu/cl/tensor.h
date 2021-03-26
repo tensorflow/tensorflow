@@ -81,16 +81,24 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
   // memory ptr.
   cl_mem GetMemoryPtrForWriting() const;
 
-  absl::Status WriteData(CLCommandQueue* queue, const TensorFloat32& src);
   absl::Status WriteData(
       CLCommandQueue* queue,
       const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src);
   absl::Status WriteData(
       CLCommandQueue* queue,
       const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src);
-  absl::Status WriteData(CLCommandQueue* queue, const Tensor5DFloat32& src);
-  absl::Status ReadData(CLCommandQueue* queue, TensorFloat32* dst) const;
-  absl::Status ReadData(CLCommandQueue* queue, Tensor5DFloat32* dst) const;
+  template <DataType T>
+  absl::Status WriteData(CLCommandQueue* queue,
+                         const tflite::gpu::Tensor<BHWC, T>& src);
+  template <DataType T>
+  absl::Status WriteData(CLCommandQueue* queue,
+                         const tflite::gpu::Tensor<BHWDC, T>& src);
+  template <DataType T>
+  absl::Status ReadData(CLCommandQueue* queue,
+                        tflite::gpu::Tensor<BHWC, T>* dst) const;
+  template <DataType T>
+  absl::Status ReadData(CLCommandQueue* queue,
+                        tflite::gpu::Tensor<BHWDC, T>* dst) const;
 
   absl::Status CreateFromDescriptor(const TensorDescriptor& desc,
                                     CLContext* context);
@@ -102,8 +110,10 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
   int GetChannelsAlignment() const;
   int GetAlignedChannels() const;
 
-  absl::Status WriteDataBHWDC(const float* in, CLCommandQueue* queue);
-  absl::Status ReadDataBHWDC(float* out, CLCommandQueue* queue) const;
+  template <typename T>
+  absl::Status WriteDataBHWDC(const T* in, CLCommandQueue* queue);
+  template <typename T>
+  absl::Status ReadDataBHWDC(T* out, CLCommandQueue* queue) const;
 
   int3 GetFullTensorRegion() const;
   void Release();
@@ -140,6 +150,112 @@ absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
                                 const BHWDC& shape,
                                 const TensorDescriptor& descriptor,
                                 Tensor* result);
+
+template <DataType T>
+absl::Status Tensor::WriteData(CLCommandQueue* queue,
+                               const tflite::gpu::Tensor<BHWC, T>& src) {
+  RETURN_IF_ERROR(IsValid(src.shape));
+  return WriteDataBHWDC(src.data.data(), queue);
+}
+
+template <DataType T>
+absl::Status Tensor::WriteData(CLCommandQueue* queue,
+                               const tflite::gpu::Tensor<BHWDC, T>& src) {
+  RETURN_IF_ERROR(IsValid(src.shape));
+  return WriteDataBHWDC(src.data.data(), queue);
+}
+
+template <DataType T>
+absl::Status Tensor::ReadData(CLCommandQueue* queue,
+                              tflite::gpu::Tensor<BHWC, T>* dst) const {
+  RETURN_IF_ERROR(IsValid(dst->shape));
+  return ReadDataBHWDC(dst->data.data(), queue);
+}
+
+template <DataType T>
+absl::Status Tensor::ReadData(CLCommandQueue* queue,
+                              tflite::gpu::Tensor<BHWDC, T>* dst) const {
+  RETURN_IF_ERROR(IsValid(dst->shape));
+  return ReadDataBHWDC(dst->data.data(), queue);
+}
+
+template <typename T>
+absl::Status Tensor::WriteDataBHWDC(const T* in, CLCommandQueue* queue) {
+  const int aligned_channels = GetAlignedChannels();
+  const int elements_count =
+      shape_.b * shape_.w * shape_.h * shape_.d * aligned_channels;
+
+  const size_t data_size = elements_count * SizeOf(descriptor_.data_type);
+  std::unique_ptr<uint8_t[]> data_copy;
+  data_copy.reset(new uint8_t[data_size]);
+  if (descriptor_.data_type == DataType::FLOAT16) {
+    // rearrangement and conversion from float32 to float16
+    DataFromBHWDC(reinterpret_cast<const float*>(in), shape_, descriptor_,
+                  reinterpret_cast<half*>(data_copy.get()));
+  } else {
+    // rearrangement
+    DataFromBHWDC(in, shape_, descriptor_,
+                  reinterpret_cast<T*>(data_copy.get()));
+  }
+
+  switch (descriptor_.storage_type) {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
+      RETURN_IF_ERROR(
+          queue->EnqueueWriteBuffer(memory_, data_size, data_copy.get()));
+      break;
+    case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::TEXTURE_3D:
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      RETURN_IF_ERROR(queue->EnqueueWriteImage(memory_, GetFullTensorRegion(),
+                                               data_copy.get()));
+      break;
+    default:
+      return absl::InternalError("Unsupported tensor storage type");
+  }
+
+  return absl::OkStatus();
+}
+
+template <typename T>
+absl::Status Tensor::ReadDataBHWDC(T* out, CLCommandQueue* queue) const {
+  const int aligned_channels = GetAlignedChannels();
+  const int elements_count =
+      shape_.b * shape_.w * shape_.h * shape_.d * aligned_channels;
+  const size_t data_size = elements_count * SizeOf(descriptor_.data_type);
+  std::unique_ptr<uint8_t[]> data_copy;
+  data_copy.reset(new uint8_t[data_size]);
+
+  switch (descriptor_.storage_type) {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
+      RETURN_IF_ERROR(
+          queue->EnqueueReadBuffer(memory_, data_size, data_copy.get()));
+      break;
+    case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::TEXTURE_3D:
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      RETURN_IF_ERROR(queue->EnqueueReadImage(memory_, GetFullTensorRegion(),
+                                              data_copy.get()));
+      break;
+    default:
+      return absl::InternalError("Unsupported tensor storage type");
+  }
+
+  if (descriptor_.data_type == DataType::FLOAT16) {
+    // rearrangement and conversion from float32 to float16
+    DataToBHWDC(reinterpret_cast<half*>(data_copy.get()), shape_, descriptor_,
+                reinterpret_cast<float*>(out));
+  } else {
+    // rearrangement
+    DataToBHWDC(reinterpret_cast<T*>(data_copy.get()), shape_, descriptor_,
+                out);
+  }
+
+  return absl::OkStatus();
+}
 
 }  // namespace cl
 }  // namespace gpu

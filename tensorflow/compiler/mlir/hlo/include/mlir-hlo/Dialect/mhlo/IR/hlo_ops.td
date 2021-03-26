@@ -217,6 +217,7 @@ def HLO_LogisticOp: HLO_UnaryElementwiseOp<"logistic",
 def HLO_NotOp: HLO_UnaryElementwiseOp<"not",
     [NoSideEffect, SameOperandsAndResultType], HLO_PredOrIntTensor>,
     BASE_HLO_NotOp {
+    let hasFolder = 1;
 }
 
 def HLO_NegOp: HLO_UnaryElementwiseOp<"negate",
@@ -270,9 +271,8 @@ def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
 class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
-        HLO_Op<mnemonic, !listconcat(traits,
-        [InferShapedTypeOpInterface, InferFusibilityOpInterface,
-        SameOperandsAndResultShape])> {
+    HLO_Op<mnemonic, traits # [InferShapedTypeOpInterface,
+    InferFusibilityOpInterface, SameOperandsAndResultShape, Elementwise]> {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs

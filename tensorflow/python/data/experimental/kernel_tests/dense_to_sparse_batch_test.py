@@ -33,7 +33,7 @@ from tensorflow.python.platform import test
 class DenseToSparseBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
-  def testDenseToSparseBatchDataset(self):
+  def testBasic(self):
     components = np.random.randint(12, size=(100,)).astype(np.int32)
     dataset = dataset_ops.Dataset.from_tensor_slices(
         components).map(lambda x: array_ops.fill([x], x)).apply(
@@ -56,7 +56,7 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.evaluate(get_next())
 
   @combinations.generate(test_base.default_test_combinations())
-  def testDenseToSparseBatchDatasetWithUnknownShape(self):
+  def testWithUnknownShape(self):
     components = np.random.randint(5, size=(40,)).astype(np.int32)
     dataset = dataset_ops.Dataset.from_tensor_slices(
         components).map(lambda x: array_ops.fill([x, x], x)).apply(
@@ -84,14 +84,14 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.evaluate(get_next())
 
   @combinations.generate(test_base.default_test_combinations())
-  def testDenseToSparseBatchDatasetWithInvalidShape(self):
+  def testWithInvalidShape(self):
     input_tensor = array_ops.constant([[1]])
     with self.assertRaisesRegex(ValueError, "Dimension -2 must be >= 0"):
       dataset_ops.Dataset.from_tensors(input_tensor).apply(
           batching.dense_to_sparse_batch(4, [-2]))
 
   @combinations.generate(test_base.default_test_combinations())
-  def testDenseToSparseBatchDatasetShapeErrors(self):
+  def testShapeErrors(self):
 
     def dataset_fn(input_tensor):
       return dataset_ops.Dataset.from_tensors(input_tensor).apply(

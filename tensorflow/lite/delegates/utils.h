@@ -89,6 +89,7 @@ class GraphPartitionHelper {
   }
 
   int num_total_nodes() const { return num_total_nodes_; }
+  int num_supported_nodes() const { return num_supported_nodes_; }
   int num_partitions() const { return partitions_.size(); }
 
  protected:
@@ -120,6 +121,8 @@ class GraphPartitionHelper {
   // The number of total nodes passed in for partitioning (i.e. the
   // execution_plan size associated w/ 'context_')
   int num_total_nodes_ = 0;
+
+  int num_supported_nodes_ = 0;
 
   // Tells if a node is supported as it could be delegated.
   const IsNodeSupportedFn is_node_supported_fn_ = nullptr;
@@ -172,8 +175,6 @@ class FP16GraphPartitionHelper : public GraphPartitionHelper {
   std::unordered_map<int, int> constant_dequant_nodes_;
   // Mapping of DEQUANTIZE node's output (fp32) to its input (fp16).
   std::unordered_map<int, int> constant_dequant_map_;
-  // mapping of DEQUANTIZE output tensor-id to its number of consumers.
-  std::unordered_map<int, int> constant_dequant_consumers_;
 };
 
 }  // namespace delegates

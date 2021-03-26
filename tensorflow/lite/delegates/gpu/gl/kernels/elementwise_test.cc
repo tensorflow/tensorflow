@@ -103,6 +103,20 @@ TEST(ElementwiseOneArgumentTest, Exp) {
                          std::exp(-0.01f)}));
 }
 
+TEST(ElementwiseOneArgumentTest, Floor) {
+  OperationType op_type = OperationType::FLOOR;
+  const BHWC shape(1, 1, 1, 7);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
+  ASSERT_TRUE(
+      model.PopulateTensor(0, {-4.5f, -3.0f, -1.5f, 0.0f, 1.5f, 3.0f, 4.5f}));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6),
+                        {-5.0f, -3.0f, -2.0f, 0.0f, 1.0f, 3.0f, 4.0f}));
+}
+
 TEST(ElementwiseOneArgumentTest, HardSwish) {
   OperationType op_type = OperationType::HARD_SWISH;
   const BHWC shape(1, 1, 1, 7);
@@ -274,6 +288,53 @@ TEST(ElementwiseTwoArgumentsTest, DivConstVector) {
   ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {0.0, 2.0, 5.0, 6.0}));
+}
+
+TEST(ElementwiseTwoArgumentsTest, FloorDiv) {
+  OperationType op_type = OperationType::FLOOR_DIV;
+  const BHWC shape0(1, 1, 1, 7);
+
+  float scalar = 2.7f;
+  ElementwiseAttributes attr;
+  attr.param = scalar;
+
+  SingleOpModel model({/*type=*/ToString(op_type), attr},
+                      /*inputs=*/{GetTensorRef(0, shape0)},
+                      /*outputs=*/{GetTensorRef(2, shape0)});
+  ASSERT_TRUE(
+      model.PopulateTensor(0, {-4.5f, -3.0f, -1.5f, 0.0f, 1.5f, 3.0f, 4.5f}));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6),
+                        {std::floor(-4.5f / scalar), std::floor(-3.0f / scalar),
+                         std::floor(-1.5f / scalar), std::floor(0.0f / scalar),
+                         std::floor(1.5f / scalar), std::floor(3.0f / scalar),
+                         std::floor(4.5f / scalar)}));
+}
+
+TEST(ElementwiseTwoArgumentsTest, FloorMod) {
+  OperationType op_type = OperationType::FLOOR_MOD;
+  const BHWC shape0(1, 1, 1, 7);
+
+  float scalar = 2.7f;
+  ElementwiseAttributes attr;
+  attr.param = scalar;
+
+  SingleOpModel model({/*type=*/ToString(op_type), attr},
+                      /*inputs=*/{GetTensorRef(0, shape0)},
+                      /*outputs=*/{GetTensorRef(2, shape0)});
+  ASSERT_TRUE(
+      model.PopulateTensor(0, {-4.5f, -3.0f, -1.5f, 0.0f, 1.5f, 3.0f, 4.5f}));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  EXPECT_THAT(
+      model.GetOutput(0),
+      Pointwise(FloatNear(1e-6), {-4.5f - std::floor(-4.5f / scalar) * scalar,
+                                  -3.0f - std::floor(-3.0f / scalar) * scalar,
+                                  -1.5f - std::floor(-1.5f / scalar) * scalar,
+                                  0.0f - std::floor(0.0f / scalar) * scalar,
+                                  1.5f - std::floor(1.5f / scalar) * scalar,
+                                  3.0f - std::floor(3.0f / scalar) * scalar,
+                                  4.5f - std::floor(4.5f / scalar) * scalar}));
 }
 
 TEST(ElementwiseTwoArgumentsTest, MaximumElementwise) {

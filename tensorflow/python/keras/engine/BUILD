@@ -89,7 +89,6 @@ py_library(
         "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
-        "@six_archive//:six",
     ],
 )
 
@@ -126,7 +125,6 @@ py_library(
         ":input_spec",
         ":node",
         "//third_party/py/numpy",
-        "@six_archive//:six",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:auto_control_deps",
         "//tensorflow/python:constant_op",
@@ -201,7 +199,6 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/keras:backend",
-        "@six_archive//:six",
     ],
 )
 
@@ -214,7 +211,6 @@ py_library(
         "//tensorflow/python:lib",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/keras/utils:object_identity",
-        "@six_archive//:six",
     ],
 )
 
@@ -479,7 +475,6 @@ tf_py_test(
         "//tensorflow/python/keras/layers",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@six_archive//:six",
     ],
 )
 

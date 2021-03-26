@@ -13,13 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Utilites for `Model.compile`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import copy
-
-import six
 
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.keras import losses as losses_mod
@@ -536,7 +531,7 @@ class MetricsContainer(Container):
       metric_obj._allow_sum_over_batch_size = True  # pylint: disable=protected-access
 
     if not isinstance(metric_obj, metrics_mod.Metric):
-      if isinstance(metric, six.string_types):
+      if isinstance(metric, str):
         metric_name = metric
       else:
         metric_name = get_custom_object_name(metric)

@@ -110,16 +110,27 @@ struct Options {
 };
 
 StatusOr<std::unique_ptr<LocalExecutable>> CompileExecutable(
-    const HloSnapshot& module, LocalClient* client) {
+    const HloSnapshot& module, LocalClient* client, const Options& opts) {
   XlaComputation computation(module.hlo().hlo_module());
   std::vector<Shape> argument_layouts;
   argument_layouts.reserve(
       computation.proto().host_program_shape().parameters_size());
   std::vector<const Shape*> argument_layout_ptrs;
-  for (const ShapeProto& param :
-       computation.proto().host_program_shape().parameters()) {
-    argument_layouts.push_back(Shape(param));
-    argument_layout_ptrs.push_back(&argument_layouts.back());
+  if (opts.use_fake_data) {
+    for (const ShapeProto& param :
+         computation.proto().host_program_shape().parameters()) {
+      argument_layouts.push_back(Shape(param));
+      argument_layout_ptrs.push_back(&argument_layouts.back());
+    }
+  } else {
+    for (const auto& proto : module.arguments()) {
+      if (!proto.has_shape()) {
+        return InvalidArgument("LiteralProto has no shape");
+      }
+      Shape shape(proto.shape());
+      argument_layouts.push_back(shape);
+      argument_layout_ptrs.push_back(&argument_layouts.back());
+    }
   }
   ExecutableBuildOptions exec_build_options;
   *exec_build_options.mutable_debug_options() = GetDebugOptionsFromFlags();
@@ -452,8 +463,8 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
         /*low_latency_hint=*/false);
     executables.resize(snapshots.size());
     for (int64 i = 0; i < snapshots.size(); ++i) {
-      thread_pool.Schedule([&snapshots, &executables, client, i] {
-        executables[i] = CompileExecutable(snapshots[i], client);
+      thread_pool.Schedule([&snapshots, &executables, client, i, &opts] {
+        executables[i] = CompileExecutable(snapshots[i], client, opts);
       });
     }
   }

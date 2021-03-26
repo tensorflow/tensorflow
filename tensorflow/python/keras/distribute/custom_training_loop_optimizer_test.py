@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for custom training loops that involves advanced optimizer usage."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import strategy_combinations

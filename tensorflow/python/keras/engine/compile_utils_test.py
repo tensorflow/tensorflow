@@ -14,15 +14,11 @@
 # ==============================================================================
 """Tests for compile utitilies."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.distribute import one_device_strategy
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import losses as losses_mod
 from tensorflow.python.keras import metrics as metrics_mod
@@ -270,7 +266,7 @@ class LossesContainerTest(keras_parameterized.TestCase):
       self.assertEqual(labels.dtype, dtypes.int32)
       self.assertEqual(preds.dtype, dtypes.float32)
       labels = math_ops.cast(labels, preds.dtype)
-      return K.mean(math_ops.abs(preds - labels), axis=-1)
+      return backend.mean(math_ops.abs(preds - labels), axis=-1)
 
     loss_container = compile_utils.LossesContainer(my_mae)
     total_loss = loss_container(y_t, y_p)
@@ -283,7 +279,7 @@ class LossesContainerTest(keras_parameterized.TestCase):
     def my_mae(labels, preds):
       self.assertEqual(labels.dtype, dtypes.int64)
       self.assertEqual(preds.dtype, dtypes.int64)
-      return K.mean(math_ops.abs(preds - labels), axis=-1)
+      return backend.mean(math_ops.abs(preds - labels), axis=-1)
 
     loss_container = compile_utils.LossesContainer(my_mae)
     total_loss = loss_container(y_t, y_p)
@@ -300,7 +296,7 @@ class LossesContainerTest(keras_parameterized.TestCase):
     def my_mae(labels, preds):
       self.assertEqual(labels.dtype, dtypes.float64)
       self.assertEqual(preds.dtype, dtypes.float64)
-      return K.mean(math_ops.abs(preds - labels), axis=-1)
+      return backend.mean(math_ops.abs(preds - labels), axis=-1)
 
     loss_container = compile_utils.LossesContainer(my_mae)
     total_loss = loss_container(y_t, y_p)
@@ -372,14 +368,14 @@ class LossesContainerTest(keras_parameterized.TestCase):
     self.assertEqual(loss_container._losses[1].name, 'custom_loss_class')
 
   def test_ragged_tensor_output(self):
-    """ Ensure that ragged tensors can be passed as targets and predictions."""
+    """Ensure that ragged tensors can be passed as targets and predictions."""
 
     def custom_loss_fn(y_true, y_pred):
-      """ MSE supports RaggedTensors directly."""
+      """MSE supports RaggedTensors directly."""
       return losses_mod.mse(y_true, y_pred)
 
     class CustomLossClass(losses_mod.Loss):
-      """ User defined loss function must implement RaggedTensor support."""
+      """User defined loss function must implement RaggedTensor support."""
 
       def call(self, y_true, y_pred):
         losses = ragged_functional_ops.map_flat_values(

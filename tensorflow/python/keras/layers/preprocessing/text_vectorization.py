@@ -14,9 +14,6 @@
 # ==============================================================================
 """Keras text vectorization preprocessing layer."""
 # pylint: disable=g-classes-have-attributes
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import numpy as np
 
@@ -25,7 +22,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import index_lookup
 from tensorflow.python.keras.layers.preprocessing import string_lookup
@@ -367,7 +364,8 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
 
   def compute_output_signature(self, input_spec):
     output_shape = self.compute_output_shape(input_spec.shape.as_list())
-    output_dtype = dtypes.int64 if self._output_mode == INT else K.floatx()
+    output_dtype = (dtypes.int64 if self._output_mode == INT
+                    else backend.floatx())
     return tensor_spec.TensorSpec(shape=output_shape, dtype=output_dtype)
 
   def adapt(self, data, reset_state=True):
@@ -573,7 +571,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
       if self._output_sequence_length is None:
         return dense_data
       else:
-        sequence_len = K.shape(dense_data)[1]
+        sequence_len = backend.shape(dense_data)[1]
         pad_amt = self._output_sequence_length - sequence_len
         pad_fn = lambda: array_ops.pad(dense_data, [[0, 0], [0, pad_amt]])
         slice_fn = lambda: dense_data[:, :self._output_sequence_length]

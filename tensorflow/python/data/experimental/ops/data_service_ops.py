@@ -569,6 +569,7 @@ def _register_dataset(service, dataset, compression):
   dataset = dataset.prefetch(dataset_ops.AUTOTUNE)
   # Apply options so that the dataset executed in the tf.data service will
   # be optimized and support autotuning.
+  # TODO(b/183497230): Move options application after deserialization.
   dataset = dataset._apply_options()  # pylint: disable=protected-access
 
   dataset_id = gen_experimental_dataset_ops.register_dataset(

@@ -341,9 +341,7 @@ def replicate(dataset, devices):
     # thus an explicit application of options here is needed to avoid losing
     # `dataset` options.
     #
-    # TODO(b/147325552): Propagating options to C++ upon their setting would
-    # allow us to preserve the options across both variant and GraphDef based
-    # serialization, avoiding the need to explicitly apply options here.
+    # TODO(b/183497230): Move options application after deserialization.
     dataset = dataset._apply_options()
     if tf_compat.forward_compatible(2021, 4, 12):
       policy = ExternalStatePolicy.WARN

@@ -743,7 +743,7 @@ gentbl(
 
 gentbl(
     name = "omp_gen_impl",
-    tbl_outs = [("--gen-directive-impl", "include/llvm/Frontend/OpenMP/OMP.cpp")],
+    tbl_outs = [("--gen-directive-impl", "include/llvm/Frontend/OpenMP/OMP.inc")],
     tblgen = ":llvm-tblgen",
     td_file = "include/llvm/Frontend/OpenMP/OMP.td",
     td_srcs = [
@@ -2188,7 +2188,7 @@ cc_library(
         "lib/Frontend/OpenMP/*.cpp",
         "lib/Frontend/OpenMP/*.inc",
         "lib/Frontend/OpenMP/*.h",
-    ]) + ["include/llvm/Frontend/OpenMP/OMP.cpp"],
+    ]),
     hdrs = glob([
         "include/llvm/Frontend/OpenMP/*.h",
         "include/llvm/Frontend/OpenMP/*.def",
@@ -2228,8 +2228,7 @@ gentbl(
     name = "acc_gen_impl",
     library = False,
     tbl_outs = [
-        ("--gen-directive-gen", "include/llvm/Frontend/OpenACC/ACC.cpp.inc"),
-        ("--gen-directive-impl", "lib/Frontend/OpenACC/ACC.cpp"),
+        ("--gen-directive-impl", "include/llvm/Frontend/OpenACC/ACC.inc"),
     ],
     tblgen = ":llvm-tblgen",
     td_file = "include/llvm/Frontend/OpenACC/ACC.td",
@@ -2241,12 +2240,13 @@ cc_library(
     srcs = glob([
         "lib/Frontend/OpenACC/*.cpp",
     ]) + [
-        "include/llvm/Frontend/OpenACC/ACC.cpp.inc",
-        "lib/Frontend/OpenACC/ACC.cpp",
+        "include/llvm/Frontend/OpenACC/ACC.inc",
     ],
     hdrs = glob([
         "include/llvm/Frontend/OpenACC/*.h",
-    ]) + ["include/llvm/Frontend/OpenACC/ACC.h.inc"],
+    ]) + [
+        "include/llvm/Frontend/OpenACC/ACC.h.inc",
+    ],
     copts = llvm_copts,
     deps = [
         ":Analysis",
