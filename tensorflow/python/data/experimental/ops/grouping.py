@@ -148,7 +148,7 @@ def bucket_by_sequence_length(element_length_func,
   ...     lambda: elements, tf.int64, output_shapes=[None])
 
   >>> dataset = dataset.apply(
-  ...     tf.data.experimental.bucket_by_sequence_length(
+  ...     tf.data.bucket_by_sequence_length(
   ...         element_length_func=lambda elem: tf.shape(elem)[0],
   ...         bucket_boundaries=[3, 5],
   ...         bucket_batch_sizes=[2, 2, 2]))
@@ -175,7 +175,7 @@ def bucket_by_sequence_length(element_length_func,
   ...   lambda: elements, tf.int32, output_shapes=[None])
 
   >>> dataset = dataset.apply(
-  ...     tf.data.experimental.bucket_by_sequence_length(
+  ...     tf.data.bucket_by_sequence_length(
   ...         element_length_func=lambda elem: tf.shape(elem)[0],
   ...         bucket_boundaries=[4, 7],
   ...         bucket_batch_sizes=[2, 2, 2],
@@ -205,7 +205,7 @@ def bucket_by_sequence_length(element_length_func,
   ...   lambda: elements, tf.int32, output_shapes=[None])
 
   >>> dataset = dataset.apply(
-  ...     tf.data.experimental.bucket_by_sequence_length(
+  ...     tf.data.bucket_by_sequence_length(
   ...         element_length_func=lambda elem: tf.shape(elem)[0],
   ...         bucket_boundaries=[4, 7],
   ...         bucket_batch_sizes=[2, 2, 2],
