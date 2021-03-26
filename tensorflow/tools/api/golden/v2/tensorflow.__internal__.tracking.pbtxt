@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "ObjectGraphView"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Trackable"
     mtype: "<type \'type\'>"
   }
