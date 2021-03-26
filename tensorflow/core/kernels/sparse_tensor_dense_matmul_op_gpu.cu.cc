@@ -140,12 +140,12 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
             "available for data of type tf.float64 or tf.complex128");
       }
       using Tsum = typename SumType<T>::type_for_determinism;
-      ComputeWithPossiblyHigherPrecisionAccumulator <Tsum>(ctx, out, a_indices,
-                                                 a_values, b);
+      ComputeWithPossiblyHigherPrecisionAccumulator<Tsum>(
+          ctx, out, a_indices, a_values, b);
     } else {
       using Tsum = typename SumType<T>::type;
-      ComputeWithPossiblyHigherPrecisionAccumulator <Tsum>(ctx, out, a_indices,
-                                                 a_values, b);
+      ComputeWithPossiblyHigherPrecisionAccumulator<Tsum>(
+          ctx, out, a_indices, a_values, b);
     }
     return Status::OK();
   }
@@ -153,7 +153,7 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
   private:
     template <typename Tsum>
     static EIGEN_ALWAYS_INLINE Status
-    ComputeWithPossiblyHigherPrecisionAccumulator (
+    ComputeWithPossiblyHigherPrecisionAccumulator(
         OpKernelContext* ctx, typename TTypes<T>::Matrix &out,
         typename TTypes<Tindices>::ConstMatrix a_indices,
         typename TTypes<T>::ConstVec a_values,
@@ -188,9 +188,6 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
       TF_CHECK_OK(GpuLaunchKernel(
           SetZero<Tsum>, config.block_count, config.thread_per_block, 0,
           d.stream(), m * p, maybe_temp_out_data));
-
-      // TODO(ebrevdo): Should this be alpha * nnz instead of
-      // out.size()?  Perhaps p * nnz ?
 
       TF_CHECK_OK(GpuLaunchKernel(
           SparseTensorDenseMatMulKernel<T, Tsum, Tindices, ADJ_A, ADJ_B>,
