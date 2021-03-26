@@ -929,12 +929,28 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::args args,
 void BuildJaxjitSubmodule(pybind11::module& m) {
   py::module jitlib = m.def_submodule("jax_jit", "Jax C++ jit library");
 
+  // We allow dynamic attributes on compiled functions because they are often
+  // passed to @wraps(...).
   py::class_<CompiledFunction, std::unique_ptr<CompiledFunction>> cfun(
-      jitlib, "CompiledFunction");
+      jitlib, "CompiledFunction", py::dynamic_attr());
   cfun.def("__call__", &CompiledFunction::Call);
   cfun.def_property_readonly("__signature__",
                              &CompiledFunction::PythonSignature);
   cfun.def_property_readonly("_cache_miss", &CompiledFunction::cache_miss);
+
+  // Implements the Python descriptor protocol so JIT-compiled functions can be
+  // used as bound methods. See:
+  // https://docs.python.org/3/howto/descriptor.html#functions-and-methods
+  py::object method_type = py::module::import("types").attr("MethodType");
+  cfun.def(
+      "__get__",
+      [method_type](py::object self, py::object obj, py::object objtype) {
+        if (obj.is_none()) {
+          return self;
+        }
+        return method_type(self, obj);
+      },
+      py::arg("obj"), py::arg("objtype") = py::none());
 
   py::class_<GlobalJitState> global_state_(jitlib, "GlobalJitState");
   global_state_.def_readwrite("disable_jit", &GlobalJitState::disable_jit);
