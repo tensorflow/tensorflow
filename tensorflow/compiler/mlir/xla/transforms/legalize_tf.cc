@@ -6318,7 +6318,7 @@ LogicalResult legalizeTF(
   // Add TF->HLO legalization patterns via TF2XLA fallback.
   if (tf2xla_fallback_device_type.hasValue()) {
     PopulateLegalizeTfWithTf2XlaPatterns(tf2xla_fallback_device_type.getValue(),
-                                         patterns);
+                                         patterns, context);
   }
 
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to

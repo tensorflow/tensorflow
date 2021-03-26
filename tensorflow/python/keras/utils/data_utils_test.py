@@ -17,11 +17,10 @@
 from itertools import cycle
 import os
 import tarfile
+import urllib
 import zipfile
 
 import numpy as np
-from six.moves.urllib.parse import urljoin
-from six.moves.urllib.request import pathname2url
 
 from tensorflow.python import keras
 from tensorflow.python.keras.utils import data_utils
@@ -49,7 +48,8 @@ class TestGetFileAndValidateIt(test.TestCase):
     with zipfile.ZipFile(zip_file_path, 'w') as zip_file:
       zip_file.write(text_file_path)
 
-    origin = urljoin('file://', pathname2url(os.path.abspath(tar_file_path)))
+    origin = urllib.parse.urljoin(
+        'file://', urllib.request.pathname2url(os.path.abspath(tar_file_path)))
 
     path = keras.utils.data_utils.get_file('test.txt', origin,
                                            untar=True, cache_subdir=dest_dir)
@@ -68,7 +68,8 @@ class TestGetFileAndValidateIt(test.TestCase):
     self.assertTrue(keras.utils.data_utils.validate_file(filepath, hashval_md5))
     os.remove(filepath)
 
-    origin = urljoin('file://', pathname2url(os.path.abspath(zip_file_path)))
+    origin = urllib.parse.urljoin(
+        'file://', urllib.request.pathname2url(os.path.abspath(zip_file_path)))
 
     hashval_sha256 = keras.utils.data_utils._hash_file(zip_file_path)
     hashval_md5 = keras.utils.data_utils._hash_file(zip_file_path,

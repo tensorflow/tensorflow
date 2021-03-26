@@ -14,8 +14,6 @@
 # ==============================================================================
 """Keras model saving code."""
 
-import six
-
 from tensorflow.python import tf2
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.saving import saving_utils
@@ -204,7 +202,7 @@ def load_model(filepath, custom_objects=None, compile=True, options=None):  # py
                                                   compile)
 
         filepath = path_to_string(filepath)
-        if isinstance(filepath, six.string_types):
+        if isinstance(filepath, str):
           return saved_model_load.load(filepath, compile, options)
 
   raise IOError(

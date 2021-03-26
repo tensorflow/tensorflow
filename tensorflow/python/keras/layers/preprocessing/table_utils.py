@@ -39,6 +39,7 @@ class TableHandler(object):
                table,
                oov_tokens=None,
                mask_token=None,
+               mask_value=0,
                use_v1_apis=False):
     self.table = table
 
@@ -52,6 +53,7 @@ class TableHandler(object):
 
     self.mutable = isinstance(table, lookup_ops.MutableHashTable)
     self.mask_token = mask_token
+    self.mask_value = mask_value
 
     self.use_v1_apis = use_v1_apis
     if oov_tokens is None:
@@ -117,21 +119,12 @@ class TableHandler(object):
     if self.mask_token is None:
       return lookups
 
-    # If we do need to handle masking, increment all the lookup values by 1
-    # to account for the mask value at location 0. This also increments the
-    # OOV value, so replace that. (This is inefficient, but we can't adjust
-    # the table safely, so we don't have a choice.)
-    oov_locations = math_ops.equal(lookups, self.table._default_value)  # pylint: disable=protected-access
-    oov_values = array_ops.ones_like(
-        lookups, dtype=self.table._value_dtype) * self.table._default_value  # pylint: disable=protected-access
-    adjusted_lookups = array_ops.where(oov_locations, oov_values, lookups)
-
     # Inject 0s wherever the mask token was in the inputs.
     mask_locations = math_ops.equal(inputs, self.mask_token)
-    return array_ops.where(
+    return array_ops.where_v2(
         mask_locations,
-        array_ops.zeros_like(lookups, dtype=self.table._value_dtype),  # pylint: disable=protected-access
-        adjusted_lookups)  # pylint: disable=protected-access
+        math_ops.cast(self.mask_value, self.table._value_dtype),  # pylint: disable=protected-access
+        lookups)  # pylint: disable=protected-access
 
   def _ragged_lookup(self, inputs):
     """Perform a table lookup on a ragged tensor."""
@@ -178,8 +171,7 @@ class TableHandler(object):
     if tf_utils.is_ragged(inputs):
       if isinstance(inputs, ragged_tensor_value.RaggedTensorValue):
         flat_values = ops.convert_to_tensor_v2_with_dispatch(
-            value=inputs.flat_values,
-            name="flat_values")
+            value=inputs.flat_values, name="flat_values")
         inputs = ragged_tensor.RaggedTensor.from_nested_row_splits(
             flat_values, inputs.nested_row_splits, validate=False)
       return self._ragged_lookup(inputs)
@@ -197,6 +189,18 @@ class TableHandler(object):
   def _run(self, op):
     if self.use_v1_apis:
       backend.get_session().run(op)
+
+
+def num_tokens_in_file(vocabulary_path):
+  """Count the number of lines in a vocab file to get the number of tokens."""
+  num_tokens = 0
+  with gfile.GFile(vocabulary_path, "r") as reader:
+    text = reader.readline()
+    while text:
+      num_tokens += 1
+      text = reader.readline()
+
+  return num_tokens
 
 
 def get_vocabulary_from_file(vocabulary_path, encoding="utf-8"):
@@ -229,4 +233,3 @@ def find_repeated_tokens(vocabulary):
     ]
   else:
     return []
-

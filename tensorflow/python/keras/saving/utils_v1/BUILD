@@ -49,6 +49,5 @@ py_library(
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/saved_model:utils",
-        "@six_archive//:six",
     ],
 )

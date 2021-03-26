@@ -23,7 +23,6 @@ import warnings
 
 from absl.testing import parameterized
 import numpy as np
-from six import string_types
 
 from tensorflow.python import keras
 from tensorflow.python import tf2
@@ -993,7 +992,7 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
           yield key
         for key in _get_all_keys_recursive(dict_or_iterable.values()):
           yield key
-      elif isinstance(dict_or_iterable, string_types):
+      elif isinstance(dict_or_iterable, str):
         return
       else:
         try:

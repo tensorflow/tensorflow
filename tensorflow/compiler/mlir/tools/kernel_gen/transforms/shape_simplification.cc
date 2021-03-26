@@ -153,6 +153,11 @@ struct BroadcastRemoveSubsumedOperandsPattern
 
 struct ShapeSimplification
     : public ShapeSimplificationBase<ShapeSimplification> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<mhlo::MhloDialect>();
+    registry.insert<shape::ShapeDialect>();
+  }
+
   void runOnFunction() override {
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(&getContext());

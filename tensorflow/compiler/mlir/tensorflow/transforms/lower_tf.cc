@@ -179,8 +179,8 @@ Value ValuesToRank1(PatternRewriter &rewriter, Location loc, Type dtype,
 class LowerAddNOp : public RewritePattern {
  public:
   explicit LowerAddNOp(MLIRContext *context)
-      : RewritePattern(AddNOp::getOperationName(),
-                       {AddV2Op::getOperationName()}, 1, context) {}
+      : RewritePattern(AddNOp::getOperationName(), 1, context,
+                       {AddV2Op::getOperationName()}) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -243,10 +243,9 @@ class LowerDynamicStitchOp : public RewritePattern {
  public:
   explicit LowerDynamicStitchOp(MLIRContext *context)
       : RewritePattern(
-            OpT::getOperationName(),
+            OpT::getOperationName(), 1, context,
             {ConstOp::getOperationName(), ReshapeOp::getOperationName(),
-             UnpackOp::getOperationName(), PackOp::getOperationName()},
-            1, context) {}
+             UnpackOp::getOperationName(), PackOp::getOperationName()}) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -326,12 +325,11 @@ class ConvertFakeQuantWithMinMaxVarsOp : public RewritePattern {
  public:
   explicit ConvertFakeQuantWithMinMaxVarsOp(MLIRContext *context)
       : RewritePattern(
-            FakeQuantWithMinMaxVarsOp::getOperationName(),
+            FakeQuantWithMinMaxVarsOp::getOperationName(), 1, context,
             {AddV2Op::getOperationName(), SubOp::getOperationName(),
              ConstOp::getOperationName(), MulOp::getOperationName(),
              FloorOp::getOperationName(), ClipByValueOp::getOperationName(),
-             DivOp::getOperationName(), RoundOp::getOperationName()},
-            1, context) {}
+             DivOp::getOperationName(), RoundOp::getOperationName()}) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -455,11 +453,10 @@ class LowerInvertPermutationOp : public RewritePattern {
  public:
   explicit LowerInvertPermutationOp(MLIRContext *context)
       : RewritePattern(
-            InvertPermutationOp::getOperationName(),
+            InvertPermutationOp::getOperationName(), 1, context,
             {ConstOp::getOperationName(), RangeOp::getOperationName(),
              ReshapeOp::getOperationName(),
-             TensorScatterUpdateOp::getOperationName()},
-            1, context) {}
+             TensorScatterUpdateOp::getOperationName()}) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -520,7 +517,7 @@ static constexpr std::array<double, 8> kLanczosCoefficients = {
 class LowerLgammaOp : public RewritePattern {
  public:
   explicit LowerLgammaOp(MLIRContext *context)
-      : RewritePattern(LgammaOp::getOperationName(),
+      : RewritePattern(LgammaOp::getOperationName(), 1, context,
                        {
                            CastOp::getOperationName(),
                            ConstOp::getOperationName(),
@@ -540,8 +537,7 @@ class LowerLgammaOp : public RewritePattern {
                            GreaterOp::getOperationName(),
                            SinOp::getOperationName(),
                            IsFiniteOp::getOperationName(),
-                       },
-                       1, context) {}
+                       }) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -734,10 +730,9 @@ class LowerPackOp : public RewritePattern {
  public:
   explicit LowerPackOp(MLIRContext *context)
       : RewritePattern(
-            PackOp::getOperationName(),
+            PackOp::getOperationName(), 1, context,
             {ConstOp::getOperationName(), ConcatV2Op::getOperationName(),
-             ExpandDimsOp::getOperationName()},
-            1, context) {}
+             ExpandDimsOp::getOperationName()}) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -800,7 +795,7 @@ class LowerPackOp : public RewritePattern {
 class LowerSpaceToBatchNDOp : public RewritePattern {
  public:
   explicit LowerSpaceToBatchNDOp(MLIRContext *context)
-      : RewritePattern(SpaceToBatchNDOp::getOperationName(),
+      : RewritePattern(SpaceToBatchNDOp::getOperationName(), 1, context,
                        {
                            CastOp::getOperationName(),
                            ConstOp::getOperationName(),
@@ -813,8 +808,7 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
                            MulOp::getOperationName(),
                            ReshapeOp::getOperationName(),
                            TransposeOp::getOperationName(),
-                       },
-                       1, context) {}
+                       }) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -1017,14 +1011,13 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
 class LowerBatchToSpaceND : public RewritePattern {
  public:
   explicit LowerBatchToSpaceND(MLIRContext *context)
-      : RewritePattern(BatchToSpaceNDOp::getOperationName(),
+      : RewritePattern(BatchToSpaceNDOp::getOperationName(), 1, context,
                        {
                            ConstOp::getOperationName(),
                            ReshapeOp::getOperationName(),
                            SliceOp::getOperationName(),
                            TransposeOp::getOperationName(),
-                       },
-                       1, context) {}
+                       }) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -1193,9 +1186,8 @@ class LowerSparseMatMulOp : public RewritePattern {
  public:
   explicit LowerSparseMatMulOp(MLIRContext *context)
       : RewritePattern(
-            SparseMatMulOp::getOperationName(),
-            {CastOp::getOperationName(), MatMulOp::getOperationName()}, 1,
-            context) {}
+            SparseMatMulOp::getOperationName(), 1, context,
+            {CastOp::getOperationName(), MatMulOp::getOperationName()}) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -1277,7 +1269,7 @@ class Lower_UnaryOpsComposition
 class LowerResizeNearestNeighbor : public RewritePattern {
  public:
   explicit LowerResizeNearestNeighbor(MLIRContext *context)
-      : RewritePattern(ResizeNearestNeighborOp::getOperationName(),
+      : RewritePattern(ResizeNearestNeighborOp::getOperationName(), 1, context,
                        {
                            BroadcastToOp::getOperationName(),
                            ConstOp::getOperationName(),
@@ -1288,8 +1280,7 @@ class LowerResizeNearestNeighbor : public RewritePattern {
                            ShapeOp::getOperationName(),
                            SplitOp::getOperationName(),
                            TransposeOp::getOperationName(),
-                       },
-                       1, context) {}
+                       }) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {

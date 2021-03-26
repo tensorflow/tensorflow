@@ -90,20 +90,30 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   periodically reads the checkpoints saved by the coordinator and runs
   evaluations against each checkpoint.
 
-  `tf.distribute.experimental.ParameterServerStrategy` has to work in
-  conjunction with a `tf.distribute.experimental.coordinator.ClusterCoordinator`
-  object. Standalone usage of
-  `tf.distribute.experimental.ParameterServerStrategy` without central
-  coordination is not supported at this time.
+  `ParameterServerStrategy` is supported with two training APIs: [Custom
+  Training Loop (CTL)]
+  (https://www.tensorflow.org/tutorials/distribute/custom_training)
+  and [Keras Training API, also known as `Model.fit`]
+  (https://www.tensorflow.org/tutorials/distribute/keras). CTL is recommended
+  when users prefer to define the details of their training loop, and
+  `Model.fit` is recommended when users prefer a high-level abstraction and
+  handling of training.
+
+  When using a CTL, `ParameterServerStrategy` has to work in conjunction with a
+  `tf.distribute.experimental.coordinator.ClusterCoordinator` object.
+
+  When using `Model.fit`, currently only the
+  `tf.keras.utils.experimental.DatasetCreator` input type is supported.
 
   __Example code for coordinator__
 
-  Here's an example usage of the API, with a custom training loop to train a
-  model. This code snippet is intended to be run on (the only) one task that
-  is designated as the coordinator. Note that `cluster_resolver`,
+  This section provides code snippets that are intended to be run on (the only)
+  one task that is designated as the coordinator. Note that `cluster_resolver`,
   `variable_partitioner`, and `dataset_fn` arguments are explained in the
   following "Cluster setup", "Variable partitioning", and "Dataset preparation"
   sections.
+
+  With a CTL,
 
   ```python
   # Prepare a strategy to use with the cluster and variable partitioning info.
@@ -148,6 +158,33 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
     logging.info('Metric result: %r', metrics.result())
     train_accuracy.reset_states()
     checkpoint_manager.save()
+  ```
+
+  With `Model.fit`,
+
+  ```python
+  # Prepare a strategy to use with the cluster and variable partitioning info.
+  strategy = tf.distribute.experimental.ParameterServerStrategy(
+      cluster_resolver=...,
+      variable_partitioner=...)
+
+  # A dataset function takes a `input_context` and returns a `Dataset`
+  def dataset_fn(input_context):
+    dataset = tf.data.Dataset.from_tensors(...)
+    return dataset.repeat().shard(...).batch(...).prefetch(...)
+
+  # With `Model.fit`, a `DatasetCreator` needs to be used.
+  input = tf.keras.utils.experimental.DatasetCreator(dataset_fn=...)
+
+  with strategy.scope():
+    model = ...  # Make sure the `Model` is created within scope.
+  model.compile(optimizer="rmsprop", loss="mse", steps_per_execution=..., ...)
+
+  # Optional callbacks to checkpoint the model, back up the progress, etc.
+  callbacks = [tf.keras.callbacks.ModelCheckpoint(...), ...]
+
+  # `steps_per_epoch` is required with `ParameterServerStrategy`.
+  model.fit(input, epochs=..., steps_per_epoch=..., callbacks=callbacks)
   ```
 
   __Example code for worker and parameter servers__
@@ -373,14 +410,12 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   * `tf.distribute.experimental.ParameterServerStrategy` does not yet support
   training with GPU(s). This is a feature request being developed.
 
-  * `tf.distribute.experimental.ParameterServerStrategy` only supports
-  [custom training loop
-  API](https://www.tensorflow.org/tutorials/distribute/custom_training)
-  currently in TF2. Usage of it with Keras `compile`/`fit` API is being
-  developed.
+  * When using `Model.fit`, `tf.distribute.experimental.ParameterServerStrategy`
+  must be used with a `tf.keras.utils.experimental.DatasetCreator`, and
+  `steps_per_epoch` must be specified.
 
-  * `tf.distribute.experimental.ParameterServerStrategy` must be used with
-  `tf.distribute.experimental.coordinator.ClusterCoordinator`.
+  * `tf.distribute.experimental.ParameterServerStrategy` does not yet support
+  `Model.evaluate` and `Model.predict`.
   """
 
   # pyformat: disable

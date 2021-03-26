@@ -2195,6 +2195,12 @@ struct round {
   }
 };
 
+struct logical_not {
+  APInt operator()(const APInt& i) {
+    return APInt(i.getBitWidth(), static_cast<uint64_t>(!i));
+  }
+};
+
 #define UNARY_FOLDER(Op, Func)                                                \
   OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                          \
     if (getElementTypeOrSelf(getType()).isa<FloatType>())                     \
@@ -2202,6 +2208,13 @@ struct round {
     if (getElementTypeOrSelf(getType()).isa<IntegerType>())                   \
       return UnaryFolder<Op, IntegerType, APInt, Func<APInt>>(this, attrs);   \
     return {};                                                                \
+  }
+
+#define UNARY_FOLDER_INT(Op, Func)                                   \
+  OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                 \
+    if (getElementTypeOrSelf(getType()).isa<IntegerType>())          \
+      return UnaryFolder<Op, IntegerType, APInt, Func>(this, attrs); \
+    return {};                                                       \
   }
 
 #define UNARY_FOLDER_FLOAT(Op, Func)                                 \
@@ -2212,7 +2225,12 @@ struct round {
   }
 
 UNARY_FOLDER(NegOp, std::negate);
+UNARY_FOLDER_INT(NotOp, logical_not);
 UNARY_FOLDER_FLOAT(RoundOp, round);
+
+#undef UNARY_FOLDER
+#undef UNARY_FOLDER_INT
+#undef UNARY_FOLDER_FLOAT
 
 //===----------------------------------------------------------------------===//
 // BinaryOps

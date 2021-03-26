@@ -534,7 +534,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         run_eagerly: Bool. Defaults to `False`. If `True`, this `Model`'s
           logic will not be wrapped in a `tf.function`. Recommended to leave
           this as `None` unless your `Model` cannot be run inside a
-          `tf.function`.
+          `tf.function`. `run_eagerly=True` is not supported when using
+          `tf.distribute.experimental.ParameterServerStrategy`.
         steps_per_execution: Int. Defaults to 1. The number of batches to
           run during each `tf.function` call. Running multiple batches
           inside a single `tf.function` call can greatly improve performance
@@ -878,7 +879,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           y=None,
           batch_size=None,
           epochs=1,
-          verbose=1,
+          verbose='auto',
           callbacks=None,
           validation_split=0.,
           validation_data=None,
@@ -908,8 +909,17 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             `(inputs, targets, sample_weights)`.
           - A generator or `keras.utils.Sequence` returning `(inputs, targets)`
             or `(inputs, targets, sample_weights)`.
+          - A `tf.keras.utils.experimental.DatasetCreator`, which wraps a
+            callable that takes a single argument of type
+            `tf.distribute.InputContext`, and returns a `tf.data.Dataset`.
+            `DatasetCreator` should be used when users prefer to specify the
+            per-replica batching and sharding logic for the `Dataset`.
+            See `tf.keras.utils.experimental.DatasetCreator` doc for more
+            information.
           A more detailed description of unpacking behavior for iterator types
-          (Dataset, generator, Sequence) is given below.
+          (Dataset, generator, Sequence) is given below. If using
+          `tf.distribute.experimental.ParameterServerStrategy`, only
+          `DatasetCreator` type is supported for `x`.
         y: Target data. Like the input data `x`,
           it could be either Numpy array(s) or TensorFlow tensor(s).
           It should be consistent with `x` (you cannot have Numpy inputs and
@@ -930,11 +940,13 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             The model is not trained for a number of iterations
             given by `epochs`, but merely until the epoch
             of index `epochs` is reached.
-        verbose: 0, 1, or 2. Verbosity mode.
+        verbose: 'auto', 0, 1, or 2. Verbosity mode.
             0 = silent, 1 = progress bar, 2 = one line per epoch.
-            Note that the progress bar is not particularly useful when
-            logged to a file, so verbose=2 is recommended when not running
-            interactively (eg, in a production environment).
+            'auto' defaults to 1 for most cases, but 2 when used with
+            `ParameterServerStrategy`. Note that the progress bar is not
+            particularly useful when logged to a file, so verbose=2 is
+            recommended when not running interactively (eg, in a production
+            environment).
         callbacks: List of `keras.callbacks.Callback` instances.
             List of callbacks to apply during training.
             See `tf.keras.callbacks`. Note `tf.keras.callbacks.ProgbarLogger`
@@ -942,6 +954,10 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             and need not be passed into `model.fit`.
             `tf.keras.callbacks.ProgbarLogger` is created or not based on
             `verbose` argument to `model.fit`.
+            Callbacks with batch-level calls are currently unsupported with
+            `tf.distribute.experimental.ParameterServerStrategy`, and users are
+            advised to implement epoch-level calls instead with an appropriate
+            `steps_per_epoch` value.
         validation_split: Float between 0 and 1.
             Fraction of the training data to be used as validation data.
             The model will set apart this fraction of the training data,
@@ -952,6 +968,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             in the `x` and `y` data provided, before shuffling. This argument is
             not supported when `x` is a dataset, generator or
            `keras.utils.Sequence` instance.
+            `validation_split` is not yet supported with
+            `tf.distribute.experimental.ParameterServerStrategy`.
         validation_data: Data on which to evaluate
             the loss and any model metrics at the end of each epoch.
             The model will not be trained on this data. Thus, note the fact
@@ -965,6 +983,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
               - A `tf.data.Dataset`.
               - A Python generator or `keras.utils.Sequence` returning
               `(inputs, targets)` or `(inputs, targets, sample_weights)`.
+            `validation_data` is not yet supported with
+            `tf.distribute.experimental.ParameterServerStrategy`.
         shuffle: Boolean (whether to shuffle the training data
             before each epoch) or str (for 'batch'). This argument is ignored
             when `x` is a generator or an object of tf.data.Dataset.
@@ -1003,7 +1023,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             is None, the epoch will run until the input dataset is exhausted.
             When passing an infinitely repeating dataset, you must specify the
             `steps_per_epoch` argument. This argument is not supported with
-            array inputs.
+            array inputs. `steps_per_epoch=None` is not supported when using
+            `tf.distribute.experimental.ParameterServerStrategy`.
         validation_steps: Only relevant if `validation_data` is provided and
             is a `tf.data` dataset. Total number of steps (batches of
             samples) to draw before stopping when performing validation
@@ -1085,6 +1106,12 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     self._check_call_args('fit')
     _disallow_inside_tf_function('fit')
 
+    if verbose == 'auto':
+      if self.distribute_strategy._should_use_with_coordinator:  # pylint: disable=protected-access
+        verbose = 2  # Default to epoch-level logging for PSStrategy.
+      else:
+        verbose = 1  # Default to batch-level logging otherwise.
+
     if validation_split:
       # Create the validation data using the training data. Only supported for
       # `Tensor` and `NumPy` input.
@@ -1162,7 +1189,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
               if self.stop_training:
                 break
 
-        logs = data_handler.resolve_logs(logs)
+        logs = tf_utils.sync_to_numpy_or_python_type(logs)
         if logs is None:
           raise ValueError('Expect x to be a non-empty array or dataset.')
         epoch_logs = copy.copy(logs)
@@ -1391,6 +1418,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     See the discussion of `Unpacking behavior for iterator-like inputs` for
     `Model.fit`.
 
+    `Model.evaluate` is not yet supported with
+    `tf.distribute.experimental.ParameterServerStrategy`.
+
     Returns:
         Scalar test loss (if the model has a single output and no metrics)
         or list of scalars (if the model has multiple outputs
@@ -1462,7 +1492,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
               logs = tmp_logs  # No error, now safe to assign to logs.
               end_step = step + data_handler.step_increment
               callbacks.on_test_batch_end(end_step, logs)
-      logs = tf_utils.to_numpy_or_python_type(logs)
+      logs = tf_utils.sync_to_numpy_or_python_type(logs)
       callbacks.on_test_end(logs=logs)
 
       if return_dict:
@@ -1624,6 +1654,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     `Model.fit` and `Model.evaluate`, so inputs must be unambiguous for all
     three methods.
 
+    `Model.predict` is not yet supported with
+    `tf.distribute.experimental.ParameterServerStrategy`.
+
     Returns:
         Numpy array(s) of predictions.
 
@@ -1709,7 +1742,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         raise ValueError('Expect x to be a non-empty array or dataset.')
       callbacks.on_predict_end()
     all_outputs = nest.map_structure_up_to(batch_outputs, concat, outputs)
-    return tf_utils.to_numpy_or_python_type(all_outputs)
+    return tf_utils.sync_to_numpy_or_python_type(all_outputs)
 
   def reset_metrics(self):
     """Resets the state of all the metrics in the model.
@@ -1793,7 +1826,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
     if reset_metrics:
       self.reset_metrics()
-    logs = tf_utils.to_numpy_or_python_type(logs)
+    logs = tf_utils.sync_to_numpy_or_python_type(logs)
     if return_dict:
       return logs
     else:
@@ -1851,7 +1884,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
     if reset_metrics:
       self.reset_metrics()
-    logs = tf_utils.to_numpy_or_python_type(logs)
+    logs = tf_utils.sync_to_numpy_or_python_type(logs)
     if return_dict:
       return logs
     else:
@@ -1881,7 +1914,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       iterator = data_adapter.single_batch_iterator(self.distribute_strategy, x)
       self.predict_function = self.make_predict_function()
       outputs = self.predict_function(iterator)
-    return tf_utils.to_numpy_or_python_type(outputs)
+    return tf_utils.sync_to_numpy_or_python_type(outputs)
 
   def fit_generator(self,
                     generator,

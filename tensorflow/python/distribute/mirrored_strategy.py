@@ -345,8 +345,11 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._use_var_policy = False
 
   def _use_merge_call(self):
+    # We currently only disable merge_call when XLA is used to compile the `fn`
+    # passed to `strategy.run` and all devices are GPU.
     return not control_flow_util.GraphOrParentsInXlaContext(
-        ops.get_default_graph())
+        ops.get_default_graph()) or not all(
+            [_is_gpu_device(d) for d in self._devices])
 
   def _initialize_strategy(self, devices):
     # The _initialize_strategy method is intended to be used by distribute

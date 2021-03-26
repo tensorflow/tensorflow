@@ -258,9 +258,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // CHECK-LABEL: func @invalid_function_reused_by_control_flows
   func @invalid_function_reused_by_control_flows(%arg0: tensor<i1>, %arg1: tensor<1x2x3xf32>, %arg2: tensor<3xf32>) -> (tensor<1x2x3xf32>, tensor<3xf32>) {
-    // expected-warning @+1 {{unable to refine shape}}
     %0 = "tf.If"(%arg0, %arg1) {Tcond = i1, Tin = ["tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"], _xla_propagate_compile_time_consts = true, device = "", else_branch = @reused_if_else_branch, is_stateless = true, name = "if", then_branch = @reused_if_then_branch} : (tensor<i1>, tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
-    // expected-warning @+1 {{unable to refine shape}}
     %1 = "tf.If"(%arg0, %arg2) {Tcond = i1, Tin = ["tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"], _xla_propagate_compile_time_consts = true, device = "", else_branch = @reused_if_else_branch, is_stateless = true, name = "if", then_branch = @reused_if_then_branch} : (tensor<i1>, tensor<3xf32>) -> tensor<3xf32>
     return %0, %1 : tensor<1x2x3xf32>, tensor<3xf32>
   }
@@ -1179,5 +1177,19 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-NOT: tensor.cast
     %1 = tensor.cast %0 : tensor<index> to tensor<*xindex>
     return %1 : tensor<*xindex>
+  }
+
+  func private @quant_fn(%arg0: tensor<*x!quant.uniform<u8:f32, 0.007:128>>) -> () {
+    return
+  }
+  // CHECK-LABEL: unppack_const_quant() -> tensor<!quant.uniform<u8:f32, 7.000000e-03:128>>
+  func @unppack_const_quant() -> (tensor<*x!quant.uniform<u8:f32, 0.007:128>>) {
+    %cst = constant dense<5> : tensor<2xi8>
+    %0 = "quant.scast"(%cst) : (tensor<2xi8>) -> tensor<2x!quant.uniform<u8:f32, 0.007:128>>
+    // CHECK: (tensor<*x!quant.uniform<u8:f32, 7.000000e-03:128>>, tensor<!quant.uniform<u8:f32, 7.000000e-03:128>>)
+    %1:2 = "tfl.unpack"(%0) {axis = 0 : i32, num = 2 : i32} : (tensor<2x!quant.uniform<u8:f32, 0.007:128>>) -> (tensor<*x!quant.uniform<u8:f32, 0.007:128>>, tensor<*x!quant.uniform<u8:f32, 0.007:128>>)
+    call @quant_fn(%1#0) : (tensor<*x!quant.uniform<u8:f32, 0.007:128>>) -> ()
+
+    return %1#1 : tensor<*x!quant.uniform<u8:f32, 0.007:128>>
   }
 }

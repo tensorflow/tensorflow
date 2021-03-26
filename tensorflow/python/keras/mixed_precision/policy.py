@@ -15,7 +15,6 @@
 """Contains the Policy class for mixed precision training."""
 
 import contextlib
-import six
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import backend
@@ -241,8 +240,7 @@ class Policy(object):
       error = ("Cannot convert value %s to a mixed precision Policy. "
                "Valid policies include 'mixed_float16', 'mixed_bfloat16', "
                "and the name of any dtype such as 'float32'." % (name,))
-      # six.raise_from suppresses the original TypeError from being raised
-      six.raise_from(ValueError(error), None)
+      raise ValueError(error)
     return dtype, dtype
 
   @property
