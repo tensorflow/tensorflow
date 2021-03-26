@@ -238,7 +238,8 @@ H AbslHashValue(H h, const CallSignature& s) {
     }
     h = H::combine(std::move(h), hash);
   }
-  h = H::combine(std::move(h), py::hash(s.extra_jit_context));
+  // We do not hash extra_jit_context since its current hash function costs
+  // ~300ns and we don't expect a large number of different contexts.
   return h;
 }
 
