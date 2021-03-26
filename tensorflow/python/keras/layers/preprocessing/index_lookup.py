@@ -18,7 +18,6 @@
 import collections
 import json
 import operator
-import os
 
 import numpy as np
 
@@ -35,6 +34,7 @@ from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 
@@ -266,7 +266,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
         # the actual data.
         initializer = _NullInitializer(self._key_dtype, self._value_dtype)
       else:
-        if not os.path.exists(vocabulary):
+        if not gfile.Exists(vocabulary):
           raise ValueError("Vocabulary file %s does not exist." % (vocabulary,))
         self._static_vocabulary_path = vocabulary
         num_tokens = table_utils.num_tokens_in_file(vocabulary)
