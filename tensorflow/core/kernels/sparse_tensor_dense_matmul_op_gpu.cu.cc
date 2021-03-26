@@ -43,7 +43,7 @@ struct OutOfBoundsValue<std::complex<T>> {
 };
 
 template <typename Tsrc, typename Tdst>
-__global__ void DownCast(
+__global__ void CastCopy(
     const int size, const Tsrc* __restrict__  src, Tdst* __restrict__ dst) {
 
   GPU_1D_KERNEL_LOOP(index, size) {
@@ -52,7 +52,7 @@ __global__ void DownCast(
 }
 
 template<>
-__global__ void DownCast(
+__global__ void CastCopy(
     const int size, const complex128* __restrict__  src,
     complex64* __restrict__ dst) {
 
@@ -62,12 +62,12 @@ __global__ void DownCast(
 }
 
 template <typename Tout, typename Tin>
-__device__ void GpuRecastAtomicAdd(Tout* out_location, Tin val) {
+__device__ void GpuCastAtomicAdd(Tout* out_location, Tin val) {
   GpuAtomicAdd(out_location, static_cast<Tout>(val));
 }
 
 template<>
-__device__ void GpuRecastAtomicAdd(complex128* out_location, complex64 val) {
+__device__ void GpuCastAtomicAdd(complex128* out_location, complex64 val) {
   GpuAtomicAdd(out_location, complex128(val.real(), val.imag()));
 }
 
@@ -102,7 +102,7 @@ __global__ void SparseTensorDenseMatMulKernel(
     const T b_input = ldg(b + ((ADJ_B) ? j * b_cols + k : k * b_cols + j));
     const T b_value = ADJ_B ? Eigen::numext::conj(b_input) : b_input;
 
-    GpuRecastAtomicAdd<Tsum, T>(out_location, a_value * b_value);
+    GpuCastAtomicAdd<Tsum, T>(out_location, a_value * b_value);
   }
 }
 
@@ -126,65 +126,6 @@ bool RequireDeterminism() {
 template <typename T, typename Tindices, bool ADJ_A, bool ADJ_B>
 struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
 
-  template <typename Tsum>
-  static EIGEN_ALWAYS_INLINE Status
-  GpuSparseTensorDenseMatMulWithRecast(
-      OpKernelContext* ctx, typename TTypes<T>::Matrix &out,
-      typename TTypes<Tindices>::ConstMatrix a_indices,
-      typename TTypes<T>::ConstVec a_values,
-      typename TTypes<T>::ConstMatrix b) {
-
-    int nnz = a_values.size();
-    // out = A * B, A is [m x n] and B is [n x p], out is [m x p]
-    int m = out.dimension(0);
-    int p = out.dimension(1);
-    int b_rows = b.dimension(0);
-    int b_cols = b.dimension(1);
-    const GPUDevice& d = ctx->eigen_device<GPUDevice>();
-    GpuLaunchConfig config = GetGpuLaunchConfig(p * nnz, d);
-
-    Tensor temp_out_t;
-    Tsum* maybe_temp_out_data = nullptr;
-    bool sum_type_is_different = !std::is_same<T, Tsum>::value;
-
-    if (sum_type_is_different) {
-      TF_RETURN_IF_ERROR(ctx->allocate_temp(
-          DataTypeToEnum<Tsum>::value,
-          TensorShape({out.dimension(0), out.dimension(1)}), &temp_out_t));
-
-      auto temp_out = temp_out_t.matrix<Tsum>();
-      maybe_temp_out_data = temp_out.data();
-    } else {
-      // Note: The reinterpret cast is only required to avoid a compilation
-      // error; it is only used if Tsum == T.
-      maybe_temp_out_data = reinterpret_cast<Tsum*>(out.data());
-    }
-
-    TF_CHECK_OK(GpuLaunchKernel(
-        SetZero<Tsum>, config.block_count, config.thread_per_block, 0,
-        d.stream(), m * p, maybe_temp_out_data));
-
-    // TODO(ebrevdo): Should this be alpha * nnz instead of
-    // out.size()?  Perhaps p * nnz ?
-
-    TF_CHECK_OK(GpuLaunchKernel(
-        SparseTensorDenseMatMulKernel<T, Tsum, Tindices, ADJ_A, ADJ_B>,
-        config.block_count, config.thread_per_block, 0, d.stream(), nnz, m,
-        b_rows, b_cols, p, a_indices.data(), a_values.data(), b.data(),
-        maybe_temp_out_data));
-
-    if (RequireDeterminism()) {
-      TF_CHECK_OK(GpuLaunchKernel(
-          DownCast<Tsum, T>, config.block_count, config.thread_per_block,
-          0, d.stream(), m * p, maybe_temp_out_data,
-          out.data()));
-    }
-    else if (sum_type_is_different) {
-      out.device(d) = temp_out_t.matrix<Tsum>().template cast<T>();
-    }
-    return Status::OK();
-  }
-
   static EIGEN_ALWAYS_INLINE Status
   Compute(OpKernelContext* ctx, typename TTypes<T>::Matrix out,
           typename TTypes<Tindices>::ConstMatrix a_indices,
@@ -199,15 +140,72 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
             "available for data of type tf.float64 or tf.complex128");
       }
       using Tsum = typename SumType<T>::type_for_determinism;
-      GpuSparseTensorDenseMatMulWithRecast<Tsum>(ctx, out, a_indices,
+      ComputeWithPossiblyHigherPrecisionAccumulator <Tsum>(ctx, out, a_indices,
                                                  a_values, b);
     } else {
       using Tsum = typename SumType<T>::type;
-      GpuSparseTensorDenseMatMulWithRecast<Tsum>(ctx, out, a_indices,
+      ComputeWithPossiblyHigherPrecisionAccumulator <Tsum>(ctx, out, a_indices,
                                                  a_values, b);
     }
     return Status::OK();
   }
+
+  private:
+    template <typename Tsum>
+    static EIGEN_ALWAYS_INLINE Status
+    ComputeWithPossiblyHigherPrecisionAccumulator (
+        OpKernelContext* ctx, typename TTypes<T>::Matrix &out,
+        typename TTypes<Tindices>::ConstMatrix a_indices,
+        typename TTypes<T>::ConstVec a_values,
+        typename TTypes<T>::ConstMatrix b) {
+
+      int nnz = a_values.size();
+      // out = A * B, A is [m x n] and B is [n x p], out is [m x p]
+      int m = out.dimension(0);
+      int p = out.dimension(1);
+      int b_rows = b.dimension(0);
+      int b_cols = b.dimension(1);
+      const GPUDevice& d = ctx->eigen_device<GPUDevice>();
+      GpuLaunchConfig config = GetGpuLaunchConfig(p * nnz, d);
+
+      Tensor temp_out_t;
+      Tsum* maybe_temp_out_data = nullptr;
+      bool sum_type_is_different = !std::is_same<T, Tsum>::value;
+
+      if (sum_type_is_different) {
+        TF_RETURN_IF_ERROR(ctx->allocate_temp(
+            DataTypeToEnum<Tsum>::value,
+            TensorShape({out.dimension(0), out.dimension(1)}), &temp_out_t));
+
+        auto temp_out = temp_out_t.matrix<Tsum>();
+        maybe_temp_out_data = temp_out.data();
+      } else {
+        // Note: The reinterpret cast is only required to avoid a compilation
+        // error; it is only used if Tsum == T.
+        maybe_temp_out_data = reinterpret_cast<Tsum*>(out.data());
+      }
+
+      TF_CHECK_OK(GpuLaunchKernel(
+          SetZero<Tsum>, config.block_count, config.thread_per_block, 0,
+          d.stream(), m * p, maybe_temp_out_data));
+
+      // TODO(ebrevdo): Should this be alpha * nnz instead of
+      // out.size()?  Perhaps p * nnz ?
+
+      TF_CHECK_OK(GpuLaunchKernel(
+          SparseTensorDenseMatMulKernel<T, Tsum, Tindices, ADJ_A, ADJ_B>,
+          config.block_count, config.thread_per_block, 0, d.stream(), nnz, m,
+          b_rows, b_cols, p, a_indices.data(), a_values.data(), b.data(),
+          maybe_temp_out_data));
+
+      if (sum_type_is_different) {
+        TF_CHECK_OK(GpuLaunchKernel(
+            CastCopy<Tsum, T>, config.block_count, config.thread_per_block,
+            0, d.stream(), m * p, maybe_temp_out_data,
+            out.data()));
+      }
+      return Status::OK();
+    }
 };
 
 }  // namespace functor
