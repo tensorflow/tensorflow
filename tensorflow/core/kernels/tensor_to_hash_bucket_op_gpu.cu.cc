@@ -23,7 +23,9 @@ namespace tensorflow {
 
 namespace {
 
-constexpr int kSharedMemBufferSizePerThread = 64;
+// We set the buffer size to 32 as it is sufficient to cover the number of
+// digits in any integer type.
+constexpr int kSharedMemBufferSizePerThread = 32;
 
 template<typename T>
 __device__ __forceinline__ void FillDigits(T val, int num_digits, int* i,
@@ -85,22 +87,23 @@ template <typename T>
 void LaunchTensorToHashBucket<Eigen::GpuDevice, T>::operator()(
          OpKernelContext* c, const int64 num_buckets, const T* input,
          const int num_elems, int64* output) {
+  auto* stream = c->op_device_context()->stream();
   const Eigen::GpuDevice& d = c->eigen_gpu_device();
   if (num_elems > 0) {
     constexpr size_t kThreadsLimitInBlock = 1024;
-    int dev;
-    cudaGetDevice(&dev);
-    cudaDeviceProp deviceProp;
-    cudaGetDeviceProperties(&deviceProp, dev);
-    auto smem_bytes_block = kSharedMemBufferSizePerThread * sizeof(char);
-    size_t thread_per_block = min(
-        kThreadsLimitInBlock, deviceProp.sharedMemPerBlock / smem_bytes_block);
-    auto shared_memory_bytes = thread_per_block * smem_bytes_block;
+
+    size_t smem_bytes_allowed =
+        stream->parent()->GetDeviceDescription().shared_memory_per_block();
+    auto smem_bytes_per_thread = kSharedMemBufferSizePerThread * sizeof(char);
+    size_t thread_per_block =
+        min(kThreadsLimitInBlock, smem_bytes_allowed / smem_bytes_per_thread);
+
+    auto smem_bytes_per_block = thread_per_block * smem_bytes_per_thread ;
     GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(
-        num_elems, d, ComputeHashes<T>, shared_memory_bytes, thread_per_block);
+        num_elems, d, ComputeHashes<T>, smem_bytes_per_block, thread_per_block);
     OP_REQUIRES_OK(c, GpuLaunchKernel(
         ComputeHashes<T>, config.block_count, config.thread_per_block,
-        shared_memory_bytes, d.stream(), input, num_elems, num_buckets,
+        smem_bytes_per_block, d.stream(), input, num_elems, num_buckets,
         output));
   }
 }
