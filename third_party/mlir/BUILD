@@ -63,6 +63,7 @@ td_library(
     deps = [
         ":CallInterfacesTdFiles",
         ":CastInterfacesTdFiles",
+        ":DataLayoutInterfacesTdFiles",
         ":OpBaseTdFiles",
         ":SideEffectInterfacesTdFiles",
     ],
@@ -166,6 +167,7 @@ cc_library(
         "include/mlir/Interfaces/CallInterfaces.h",
         "include/mlir/Interfaces/CastInterfaces.h",
         "include/mlir/Interfaces/SideEffectInterfaces.h",
+        "include/mlir/Interfaces/DataLayoutInterfaces.h",
         "include/mlir/Interfaces/DecodeAttributesInterfaces.h",
         "include/mlir/Interfaces/FoldInterfaces.h",
     ],
@@ -178,6 +180,7 @@ cc_library(
         ":BuiltinTypesIncGen",
         ":CallOpInterfacesIncGen",
         ":CastOpInterfacesIncGen",
+        ":DataLayoutInterfacesIncGen",
         ":InferTypeOpInterfaceIncGen",
         ":OpAsmInterfaceIncGen",
         ":RegionKindInterfaceIncGen",
@@ -1876,6 +1879,8 @@ td_library(
     ],
     includes = ["include"],
     deps = [
+        ":DLTIDialectTdFiles",
+        ":DataLayoutInterfacesTdFiles",
         ":LLVMOpsTdFiles",
         ":OpBaseTdFiles",
         ":SideEffectInterfacesTdFiles",
@@ -1945,7 +1950,10 @@ gentbl(
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/GPU/GPUOps.td",
-    deps = [":GPUOpsTdFiles"],
+    deps = [
+        ":DLTIDialectTdFiles",
+        ":GPUOpsTdFiles",
+    ],
 )
 
 cc_library(
@@ -1959,6 +1967,7 @@ cc_library(
     hdrs = ["include/mlir/Dialect/GPU/GPUDialect.h"],
     includes = ["include"],
     deps = [
+        ":DLTIDialect",
         ":GPUBaseIncGen",
         ":GPUOpsIncGen",
         ":IR",
@@ -3190,6 +3199,12 @@ cc_library(
     ],
 )
 
+td_library(
+    name = "DataLayoutInterfacesTdFiles",
+    srcs = ["include/mlir/Interfaces/DataLayoutInterfaces.td"],
+    includes = ["include"],
+)
+
 gentbl(
     name = "DataLayoutInterfacesIncGen",
     tbl_outs = [
@@ -3489,6 +3504,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":ConversionPassIncGen",
+        ":DataLayoutInterfaces",
         ":IR",
         ":LLVMDialect",
         ":MathDialect",
@@ -5679,6 +5695,16 @@ cc_library(
         ":ViewLikeInterface",
         "@llvm-project//llvm:Support",
     ],
+)
+
+td_library(
+    name = "DLTIDialectTdFiles",
+    srcs = [
+        "include/mlir/Dialect/DLTI/DLTI.td",
+        "include/mlir/Dialect/DLTI/DLTIBase.td",
+    ],
+    includes = ["include"],
+    deps = [":OpBaseTdFiles"],
 )
 
 gentbl(

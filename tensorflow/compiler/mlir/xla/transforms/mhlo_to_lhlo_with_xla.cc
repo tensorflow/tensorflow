@@ -141,7 +141,6 @@ Status ConvertModule(std::unique_ptr<HloModule> hlo_module, ModuleOp module,
   // conversion.
   module.getBody()->clear();
   OpBuilder builder(module);
-  module.ensureTerminator(module.getBodyRegion(), builder, module.getLoc());
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       HloToLhloModule(*assignment, *optimized_hlo_module, module),

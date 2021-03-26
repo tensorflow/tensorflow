@@ -269,7 +269,7 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
                              math::MathDialect>();
     target.addIllegalOp<LLVM::DialectCastOp>();
     // Mark modules as legal.
-    target.addLegalOp<ModuleOp, ModuleTerminatorOp, gpu::GPUModuleOp>();
+    target.addLegalOp<ModuleOp, gpu::GPUModuleOp>();
     // Do not look into gpu modules, only consider host-side.
     target.markOpRecursivelyLegal<gpu::GPUModuleOp>();
 

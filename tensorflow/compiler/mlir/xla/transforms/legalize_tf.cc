@@ -4529,9 +4529,9 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
       // applying negative padding on the right/bottom.
       const int64_t pad_before = padding == tensorflow::Padding::EXPLICIT
                                      ? explicit_paddings[2 * dim]
-                                     : padding == tensorflow::Padding::SAME
-                                           ? std::max<int64_t>(pad_total / 2, 0)
-                                           : 0;
+                                 : padding == tensorflow::Padding::SAME
+                                     ? std::max<int64_t>(pad_total / 2, 0)
+                                     : 0;
       paddings.push_back(pad_before);
       paddings.push_back(pad_total - pad_before);
     }
@@ -6345,7 +6345,7 @@ LogicalResult legalizeTF(
 
   if (!allow_partial_conversion) {
     // Fully qualify ReturnOp here as mhlo dialect also defines a ReturnOp.
-    target.addLegalOp<ModuleOp, FuncOp, ModuleTerminatorOp, ::mlir::ReturnOp>();
+    target.addLegalOp<ModuleOp, FuncOp, ::mlir::ReturnOp>();
     DenseSet<Operation *> nonlegalized_ops;
     LogicalResult result = applyPartialConversion(
         op, target, std::move(patterns), &nonlegalized_ops);
