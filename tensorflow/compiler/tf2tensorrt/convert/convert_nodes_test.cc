@@ -1690,6 +1690,7 @@ class OpConverterTest : public ::testing::Test {
       const std::vector<std::vector<int>>& exp_out_dims) {
     RunValidationAndConversion(node_def, status.code(),
                                status.error_message().c_str(), true);
+
     if (status.ok()) {
       // TODO(tfeher): Enable this check in explicit_batch_mode.
       // In dynamic shape mode the output dims cannot be tested here. In that
@@ -1926,7 +1927,7 @@ class ParameterizedOpConverterTestBase
         TF_EXPECT_OK(
             TensorShapeUtils::MakeShape(expected_output_dims[i], &shape));
         EXPECT_TRUE(output_data[i].tensor.shape() == shape)
-            << "Expected shape: " << shape.DebugString() << ", actual shape"
+            << "Expected shape: " << shape.DebugString() << ", actual shape: "
             << output_data[i].tensor.shape().DebugString();
         EXPECT_THAT(GetDataAsFloat(output_data[i]), matcher[i]);
       }
@@ -6567,7 +6568,7 @@ TEST_F(OpConverterTest, ConvertSplit) {
     AddTestTensor("value", {1, 2, 3});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "Dimension 3 of size 3 is not evenly divisble by 2, at my_split");
+        "Dimension 3 of size 3 is not evenly divisible by 2, at my_split");
   }
   {
     // num_split > dim size, should fail.
@@ -6577,7 +6578,7 @@ TEST_F(OpConverterTest, ConvertSplit) {
     AddTestTensor("value", {1, 2, 3});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "Dimension 3 of size 3 is not evenly divisble by 4, at my_split");
+        "Dimension 3 of size 3 is not evenly divisible by 4, at my_split");
   }
 
   TestConvertSplit<DT_FLOAT>(this);
@@ -6597,156 +6598,173 @@ auto get_unpack_nodedef = [](DataType dtype, int num, int axis) -> NodeDef {
   return unstack.operation.node()->def();
 };
 
-template <DataType dtype>
-void TestConvertUnpack(OpConverterTest* test) {
-  typedef typename EnumToDataType<dtype>::Type CType;
+struct UnpackTestParams {
+  std::vector<int> input_shape;
+  std::vector<float> input_value;
+  int axis;
+  int num;
+  std::vector<int> expected_output_dims;
+  std::vector<std::vector<float>> expected_outputs;
+  Status run_status;
+};
 
-  struct TestParams {
-    std::vector<int> input_shape;
-    std::vector<CType> value;
-    int axis;
-    int num;
-    std::vector<int> expected_output_dims;
-    std::vector<std::vector<CType>> expected_outputs;
-  };
+void TestConvertUnpack(ParameterizedOpConverterTestBase* test,
+                       UnpackTestParams& p) {
+  test->Reset();
+  NodeDef node_def = get_unpack_nodedef(test->get_tf_type(), p.num, p.axis);
+  // Create inputs.
+  test->AddTestTensor("value", p.input_shape, test->get_tf_type(),
+                      p.input_value);
 
-  const std::vector<CType> common_input = InitTestVector<CType>(6);
-  std::vector<TestParams> ok_params = {
-      {/*input_shape=*/{1, 2, 3}, /*value=*/common_input, /*axis=*/1,
-       /*num=*/1, /*expected_output_dims=*/{2, 3},
-       /*expected_outputs=*/{InitTestVector<CType>(6)}},
-      {/*input_shape=*/{1, 2, 3},
-       /*value=*/common_input,
-       /*axis=*/3,
-       /*num=*/3,
-       /*expected_output_dims=*/{1, 2},
-       /*expected_outputs=*/
-       {{CType(0), CType(3)}, {CType(1), CType(4)}, {CType(2), CType(5)}}},
-      {/*input_shape=*/{6, 1},
-       /*value=*/common_input,
-       /*axis=*/-2,
-       /*num=*/6,
-       /*expected_output_dims=*/{1},
-       /*expected_outputs=*/
-       {{CType(0)},
-        {CType(1)},
-        {CType(2)},
-        {CType(3)},
-        {CType(4)},
-        {CType(5)}}},
-      {/*input_shape=*/{6},
-       /*value=*/common_input,
-       /*axis=*/1,
-       /*num=*/6,
-       /*expected_output_dims=*/{},
-       /*expected_outputs=*/
-       {{CType(0)},
-        {CType(1)},
-        {CType(2)},
-        {CType(3)},
-        {CType(4)},
-        {CType(5)}}},
-  };
+  std::vector<Matcher<std::vector<float>>> matcher_vec;
+  std::vector<DataType> datatype_vec;
+  std::vector<std::vector<int>> expected_output_dims;
 
-  for (int i = 0; i < ok_params.size(); ++i) {
-    test->Reset();
-    NodeDef node_def =
-        get_unpack_nodedef(dtype, ok_params[i].num, ok_params[i].axis);
-    // Create inputs.
-    nvinfer1::DataType trt_type;
-    TF_ASSERT_OK(TfTypeToTrtType(dtype, &trt_type));
-    test->AddTestTensor("value", ok_params[i].input_shape, 1, trt_type);
-    // Convert.
-    test->RunValidationAndConversion(node_def);
-
-    // Get output tensors and verify output dims.
-    EXPECT_EQ(ok_params[i].expected_outputs.size(), ok_params[i].num);
-    std::vector<TRT_TensorOrWeights> outputs(ok_params[i].num);
-    DataVec output_data;
-    for (int j = 0; j < outputs.size(); ++j) {
-      const string name = j == 0 ? "my_unpack" : StrCat("my_unpack:", j);
-      TF_EXPECT_OK(test->GetTensorOrWeights(name, &outputs[j]));
-      EXPECT_TRUE(outputs[j].is_tensor());
-      ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
-                               outputs[j].tensor()->getDimensions());
-      // Create buffer to store output.
-      output_data.push_back(
-          {name, test->ConstructTensor<CType>(
-                     ok_params[i].expected_outputs[j].size())});
-    }
-
-    // Verify output values are correct.
-    const DataVec input_data{
-        {"value", test->AsTensor<CType>(ok_params[i].value)}};
-    TF_EXPECT_OK(test->BuildAndRun(input_data, &output_data));
-    for (int j = 0; j < outputs.size(); ++j) {
-      EXPECT_THAT(GetSpanForData<CType>(output_data[j]),
-                  ElementsAreArray(ok_params[i].expected_outputs[j]));
-    }
+  for (int j = 0; j < p.expected_outputs.size(); ++j) {
+    matcher_vec.push_back(ElementsAreArray(p.expected_outputs[j]));
+    datatype_vec.push_back(test->get_tf_type());
+    expected_output_dims.push_back(p.expected_output_dims);
   }
+
+  test->TestOpConverterMultiOut(/*name=*/"my_unpack",
+                                /*node_def=*/node_def,
+                                /*expected_output_dims=*/expected_output_dims,
+                                /*expected_conversion_status=*/p.run_status,
+                                /*expected_runtime_status=*/p.run_status,
+                                /*matcher=*/matcher_vec,
+                                /*out_tf_type=*/datatype_vec);
 }
 
-TEST_F(OpConverterTest, ConvertUnpack) {
-  {
-    // Value is weights, should fail.
-    Reset();
-    NodeDef node_def = get_unpack_nodedef(DT_FLOAT, /*num=*/3, /*axis=*/3);
-    AddTestWeights<float>("value", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "The input \"value\" for Unpack must be a tensor, at my_unpack");
-  }
-  {
-    // Axis is out of bounds, should fail.
-    Reset();
-    NodeDef node_def = get_unpack_nodedef(DT_FLOAT, /*num=*/1, /*axis=*/4);
-    AddTestTensor("value", {1, 2, 3});
-    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
-                               "Axis value of 4 is out of bounds, must be in "
-                               "range [-4, 4), at my_unpack");
-  }
-  {
-    // Axis is out of bounds (negative), should fail.
-    Reset();
-    NodeDef node_def = get_unpack_nodedef(DT_FLOAT, /*num=*/1, /*axis=*/-5);
-    AddTestTensor("value", {1, 2, 3});
-    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
-                               "Axis value of -5 is out of bounds, must be in "
-                               "range [-4, 4), at my_unpack");
-  }
-  {
-    // Axis is batch dimension, should fail.
-    Reset();
-    NodeDef node_def = get_unpack_nodedef(DT_FLOAT, /*num=*/1, /*axis=*/0);
-    AddTestTensor("value", {1, 2, 3});
-    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                               "TensorRT does not allow manipulation of the "
-                               "batch dimension, at my_unpack");
-  }
-  {
-    // Dim size does not match num, should fail.
-    Reset();
-    NodeDef node_def = get_unpack_nodedef(DT_FLOAT, /*num=*/5, /*axis=*/2);
-    AddTestTensor("value", {1, 6});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Dimension 2 has size 6 which is not equal to num of 5, at my_unpack");
-  }
-  {
-    // Output would be TF scalar, should fail.
-    Reset();
-    NodeDef node_def = get_unpack_nodedef(DT_FLOAT, /*num=*/1, /*axis=*/0);
-    AddTestTensor("value", {});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "Input \"value\" for Unpack must be rank 2 or greater, at my_unpack");
+// TODO: Reactivate when INT32 Segfault fixed
+#if IS_TRT_VERSION_GE(5, 1, 3, 1)
+TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertUnpack) {
+#else
+TEST_P(OpConverter_FP32_FP16_Test, ConvertUnpack) {
+#endif
+  // We need to skip error testing for Dynamic Shape mode, as it is impossible
+  // to convert Unpack in Dynamic Shape Mode.
+  if (trt_mode_ != TrtTestMode::kDynamicShape) {
+    {
+      // Value is weights, should fail.
+      Reset();
+      NodeDef node_def = get_unpack_nodedef(tf_type_, /*num=*/3, /*axis=*/3);
+      AddTestWeights<float>("value", {1, 1, 2, 3}, {1, 2, 3, 4, 5, 6});
+      RunValidationAndConversion(
+          node_def, error::UNIMPLEMENTED,
+          "The input \"value\" for Unpack must be a tensor, at my_unpack");
+    }
+    {
+      // Axis is out of bounds, should fail.
+      Reset();
+      NodeDef node_def = get_unpack_nodedef(tf_type_, /*num=*/1, /*axis=*/4);
+      AddTestTensor("value", {1, 1, 2, 3});
+      RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                                 "Axis value of 4 is out of bounds, must be in "
+                                 "range [-4, 4), at my_unpack");
+    }
+    {
+      // Axis is out of bounds (negative), should fail.
+      Reset();
+      NodeDef node_def = get_unpack_nodedef(tf_type_, /*num=*/1, /*axis=*/-5);
+      AddTestTensor("value", {1, 1, 2, 3});
+      RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                                 "Axis value of -5 is out of bounds, must be "
+                                 "in range [-4, 4), at my_unpack");
+    }
+    {
+      if (trt_mode_ != TrtTestMode::kExplicitBatch) {
+        // Axis is batch dimension, should fail.
+        Reset();
+        NodeDef node_def = get_unpack_nodedef(tf_type_, /*num=*/1, /*axis=*/0);
+        AddTestTensor("value", {1, 2, 3});
+        RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                                   "TensorRT does not allow manipulation of "
+                                   "the batch dimension, at my_unpack");
+      }
+    }
+    {
+      // Dim size does not match num, should fail.
+      Reset();
+      NodeDef node_def = get_unpack_nodedef(tf_type_, /*num=*/5, /*axis=*/2);
+      AddTestTensor("value", {1, 1, 6});
+      RunValidationAndConversion(
+          node_def, error::INVALID_ARGUMENT,
+          "Dimension 2 has size 6 which is not equal to num of 5, at "
+          "my_unpack");
+    }
+    {
+      // Output would be TF scalar, should fail.
+      Reset();
+      NodeDef node_def = get_unpack_nodedef(tf_type_, /*num=*/1, /*axis=*/0);
+      AddTestTensor("value", {}, tf_type_, {}, {},
+                    trt_mode_ == TrtTestMode::kImplicitBatch
+                        ? errors::Internal("Scalars cannot be represented in "
+                                           "implicit batch mode")
+                        : Status::OK());
+
+      if (trt_mode_ == TrtTestMode::kImplicitBatch) {
+        RunValidationAndConversion(
+            node_def, error::INTERNAL,
+            "Failed to convert input value to a TRT_TensorOrWeights: Scalar "
+            "input tensor is not supported since the first dimension is "
+            "treated "
+            "as batch dimension by TRT");
+      } else {
+        RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                                   "Input \"value\" for Unpack must be rank 2 "
+                                   "or greater, at my_unpack");
+      }
+    }
   }
 
-  TestConvertUnpack<DT_FLOAT>(this);
-  TestConvertUnpack<DT_HALF>(this);
-#if IS_TRT_VERSION_GE(5, 1, 3, 1)
-  TestConvertUnpack<DT_INT32>(this);
-#endif
+  const std::vector<float> common_input = InitTestVector<float>(6);
+
+  Status run_status = trt_mode_ == TrtTestMode::kDynamicShape
+                          ? errors::Unimplemented(
+                                "Strided slice op not implemented for dynamic "
+                                "shape input")
+                          : Status::OK();
+
+  std::vector<UnpackTestParams> params = {
+      {/*input_shape=*/{1, 1, 2, 1, 3, 1},
+       /*input_value=*/common_input,
+       /*axis=*/4,
+       /*num=*/3,
+       /*expected_output_dims=*/{1, 1, 2, 1, 1},
+       /*expected_outputs=*/{{0, 3}, {1, 4}, {2, 5}},
+       /*run_status=*/run_status},
+      {/*input_shape=*/{1, 1, 2, 1, 3},
+       /*input_value=*/common_input,
+       /*axis=*/4,
+       /*num=*/3,
+       /*expected_output_dims=*/{1, 1, 2, 1},
+       /*expected_outputs=*/{{0, 3}, {1, 4}, {2, 5}},
+       /*run_status=*/run_status},
+      {/*input_shape=*/{1, 1, 2, 3},
+       /*input_value=*/common_input,
+       /*axis=*/1,
+       /*num=*/1,
+       /*expected_output_dims=*/{1, 2, 3},
+       /*expected_outputs=*/{InitTestVector<float>(6)},
+       /*run_status=*/run_status},
+      {/*input_shape=*/{1, 6, 1},
+       /*input_value=*/common_input,
+       /*axis=*/-2,
+       /*num=*/6,
+       /*expected_output_dims=*/{1, 1},
+       /*expected_outputs=*/{{0}, {1}, {2}, {3}, {4}, {5}},
+       /*run_status=*/run_status},
+      {/*input_shape=*/{1, 6},
+       /*input_value=*/common_input,
+       /*axis=*/1,
+       /*num=*/6,
+       /*expected_output_dims=*/{1},
+       /*expected_outputs=*/{{0}, {1}, {2}, {3}, {4}, {5}},
+       /*run_status=*/run_status},
+  };
+  for (auto p : params) {
+    TestConvertUnpack(this, p);
+  }
 }
 
 // Get the NodeDef for Pack.
@@ -7178,7 +7196,7 @@ void TestConvertDepthSpaceShuffle(
                                        "Number of channels must be divisible by"
                                        " block_size*block_size, at my_shuffle");
     } else {
-      {  // Width not divisble by block_size, should fail.
+      {  // Width not divisible by block_size, should fail.
         test->Reset();
         NodeDef node_def = GetDepthSpaceShuffleNodeDef<ops::SpaceToDepth>(
             test->get_tf_type(), 3, "NCHW");
@@ -7188,7 +7206,7 @@ void TestConvertDepthSpaceShuffle(
                                          " block_size, at my_shuffle");
       }
       {
-        // Height not divisble by block_size, should fail.
+        // Height not divisible by block_size, should fail.
         test->Reset();
         NodeDef node_def = GetDepthSpaceShuffleNodeDef<ops::SpaceToDepth>(
             test->get_tf_type(), 3, "NCHW");
