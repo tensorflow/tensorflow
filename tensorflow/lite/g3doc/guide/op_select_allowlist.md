@@ -430,6 +430,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.Relu6Grad`
 *   `raw_ops.ReluGrad`
 *   `raw_ops.RemoteCall`
+*   `raw_ops.RepeatDataset`
 *   `raw_ops.RequantizationRange`
 *   `raw_ops.Requantize`
 *   `raw_ops.Reshape`

@@ -448,6 +448,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "Relu6Grad",
           "ReluGrad",
           "RemoteCall",
+          "RepeatDataset",
           "RequantizationRange",
           "Requantize",
           "Reshape",
