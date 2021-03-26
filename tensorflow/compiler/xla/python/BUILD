@@ -512,12 +512,11 @@ pybind_extension(
     srcs = [
         "xla.cc",
     ],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
     module_name = "xla_extension",
+    pytype_deps = [
+        "//third_party/py/numpy",
+    ],
+    pytype_srcs = glob(["xla_extension/*.pyi"]),
     deps = [
         ":dlpack",
         ":jax_jit",

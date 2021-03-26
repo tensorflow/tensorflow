@@ -2621,9 +2621,11 @@ def pybind_extension(
         compatible_with = None,
         restricted_to = None,
         deprecation = None,
-        link_in_framework = False):
+        link_in_framework = False,
+        pytype_deps = [],
+        pytype_srcs = []):
     """Builds a generic Python extension module."""
-    _ignore = [module_name]
+    _ignore = [module_name, pytype_deps, pytype_srcs]
     p = name.rfind("/")
     if p == -1:
         sname = name
