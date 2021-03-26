@@ -538,16 +538,15 @@ bool ROCMFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT hipfftExec,
         if (stream->ThenMemcpy(&allocated.ValueOrDie(), input, input.size())
                 .ok()) {
           input_maybe_copy = DeviceMemory<InputT>(allocated.ValueOrDie());
-	} else {
-	LOG(ERROR) << "failed to copy input buffer for rocFFT.";
+        } else {
+          LOG(ERROR) << "failed to copy input buffer for rocFFT.";
         }
       }
     }
   }
 
-  InputT* ip = const_cast<InputT *>(GpuMemory(input_maybe_copy));
-  auto ret = hipfftExec(parent_, rocm_fft_plan->GetPlan(),
-                        GpuComplex(ip),
+  InputT *ip = const_cast<InputT *>(GpuMemory(input_maybe_copy));
+  auto ret = hipfftExec(parent_, rocm_fft_plan->GetPlan(), GpuComplex(ip),
                         GpuComplex(GpuMemoryMutable(output)));
 
   if (ret != HIPFFT_SUCCESS) {

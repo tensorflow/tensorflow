@@ -341,8 +341,8 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
   # is of the form that is a valid output from the rfft transform
   # (i.e. it cannot be a set of random numbers)
   # So for ROCm, call rfft and use its output as the input for testing irfft
-  def _generate_valid_irfft_input(self, c2r, np_ctype,
-                                  r2c, np_rtype, rank, fft_length):
+  def _generate_valid_irfft_input(self, c2r, np_ctype, r2c, np_rtype, rank,
+                                  fft_length):
     if test.is_built_with_rocm():
       return self._np_fft(r2c.astype(np_rtype), rank, fft_length)
     else:
@@ -369,12 +369,12 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     r2c = np.mod(np.arange(np.power(size, dims)), 10).reshape(
         (size,) * dims)
     fft_length = (size,) * rank
-    self._compare_forward(r2c.astype(np_rtype), rank, fft_length,
-                          rtol=tol, atol=tol)
+    self._compare_forward(
+        r2c.astype(np_rtype), rank, fft_length, rtol=tol, atol=tol)
     c2r = np.mod(np.arange(np.power(size, dims - 1) * inner_dim),
                  10).reshape((size,) * (dims - 1) + (inner_dim,))
-    c2r = self._generate_valid_irfft_input(c2r, np_ctype,
-                                           r2c, np_rtype, rank, fft_length)
+    c2r = self._generate_valid_irfft_input(c2r, np_ctype, r2c, np_rtype, rank,
+                                           fft_length)
     self._compare_backward(c2r, rank, fft_length, rtol=tol, atol=tol)
 
   @parameterized.parameters(itertools.product(
@@ -387,12 +387,12 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     r2c = np.mod(np.arange(np.power(size, dims)), 10).reshape(
         (size,) * dims)
     fft_length = (size,) * rank
-    self._compare_forward(r2c.astype(np_rtype), rank, fft_length,
-                          rtol=tol, atol=tol)
+    self._compare_forward(
+        r2c.astype(np_rtype), rank, fft_length, rtol=tol, atol=tol)
     c2r = np.mod(np.arange(np.power(size, dims - 1) * inner_dim),
                  10).reshape((size,) * (dims - 1) + (inner_dim,))
-    c2r = self._generate_valid_irfft_input(c2r, np_ctype,
-                                           r2c, np_rtype, rank, fft_length)
+    c2r = self._generate_valid_irfft_input(c2r, np_ctype, r2c, np_rtype, rank,
+                                           fft_length)
     self._compare_backward(c2r, rank, fft_length, rtol=tol, atol=tol)
 
   @parameterized.parameters(itertools.product(
@@ -409,15 +409,17 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     fft_length = (size,) * rank
     self._compare_forward(
         r2c.astype(np_rtype),
-        rank, fft_length,
+        rank,
+        fft_length,
         use_placeholder=True,
-        rtol=tol, atol=tol)
+        rtol=tol,
+        atol=tol)
     c2r = np.mod(np.arange(np.power(size, dims - 1) * inner_dim),
                  10).reshape((size,) * (dims - 1) + (inner_dim,))
-    c2r = self._generate_valid_irfft_input(c2r, np_ctype,
-                                           r2c, np_rtype, rank, fft_length)
-    self._compare_backward(c2r, rank, fft_length, use_placeholder=True,
-                           rtol=tol, atol=tol)
+    c2r = self._generate_valid_irfft_input(c2r, np_ctype, r2c, np_rtype, rank,
+                                           fft_length)
+    self._compare_backward(
+        c2r, rank, fft_length, use_placeholder=True, rtol=tol, atol=tol)
 
   @parameterized.parameters(itertools.product(
       VALID_FFT_RANKS, range(3), (5, 6), (np.float32, np.float64)))
@@ -438,8 +440,8 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     fft_length = (size - 2,) * rank
     self._compare_forward(r2c.astype(np_rtype), rank, fft_length,
                           rtol=tol, atol=tol)
-    c2r = self._generate_valid_irfft_input(c2r, np_ctype,
-                                           r2c, np_rtype, rank, fft_length)
+    c2r = self._generate_valid_irfft_input(c2r, np_ctype, r2c, np_rtype, rank,
+                                           fft_length)
     self._compare_backward(c2r, rank, fft_length, rtol=tol, atol=tol)
     # Confirm it works with unknown shapes as well.
     if not context.executing_eagerly():
@@ -450,11 +452,7 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
           use_placeholder=True,
           rtol=tol, atol=tol)
       self._compare_backward(
-          c2r,
-          rank,
-          fft_length,
-          use_placeholder=True,
-          rtol=tol, atol=tol)
+          c2r, rank, fft_length, use_placeholder=True, rtol=tol, atol=tol)
 
   @parameterized.parameters(itertools.product(
       VALID_FFT_RANKS, range(3), (5, 6), (np.float32, np.float64)))
@@ -471,8 +469,8 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     fft_length = (size + 2,) * rank
     self._compare_forward(r2c.astype(np_rtype), rank, fft_length,
                           rtol=tol, atol=tol)
-    c2r = self._generate_valid_irfft_input(c2r, np_ctype,
-                                           r2c, np_rtype, rank, fft_length)
+    c2r = self._generate_valid_irfft_input(c2r, np_ctype, r2c, np_rtype, rank,
+                                           fft_length)
     self._compare_backward(c2r.astype(np_ctype), rank, fft_length,
                            rtol=tol, atol=tol)
     # Confirm it works with unknown shapes as well.
@@ -511,12 +509,12 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     r2c = gen_real((size,) * dims)
     inner_dim = size // 2 + 1
     fft_length = (size,) * rank
-    self._compare_forward(r2c.astype(np_rtype), rank, fft_length,
-                          rtol=tol, atol=tol)
+    self._compare_forward(
+        r2c.astype(np_rtype), rank, fft_length, rtol=tol, atol=tol)
     complex_dims = (size,) * (dims - 1) + (inner_dim,)
     c2r = gen_complex(complex_dims)
-    c2r = self._generate_valid_irfft_input(c2r, np_ctype,
-                                           r2c, np_rtype, rank, fft_length)
+    c2r = self._generate_valid_irfft_input(c2r, np_ctype, r2c, np_rtype, rank,
+                                           fft_length)
     self._compare_backward(c2r, rank, fft_length, rtol=tol, atol=tol)
 
   def test_error(self):
