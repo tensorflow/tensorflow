@@ -117,7 +117,9 @@ def group_by_window(key_func,
   return _apply_fn
 
 
-@tf_export("data.experimental.bucket_by_sequence_length")
+@tf_export("data.experimental.bucket_by_sequence_length",
+           "data.bucket_by_sequence_length")
+@deprecation.deprecated_endpoints("data.experimental.bucket_by_sequence_length")
 def bucket_by_sequence_length(element_length_func,
                               bucket_boundaries,
                               bucket_batch_sizes,
