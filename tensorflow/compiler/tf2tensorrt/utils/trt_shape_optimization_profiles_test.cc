@@ -162,7 +162,7 @@ TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
   nvinfer1::Dims3 dims(-1, -1, 10);
   DefineNetwork(network_.get(), dims);
 
-  TrtShapeOptimizationProfile profile(ProfileStrategy::kOptimal);
+  TrtShapeOptimizationProfile profile;
   std::vector<std::vector<nvinfer1::Dims3>> input_profiles{
       {nvinfer1::Dims3(2, 2, 10), nvinfer1::Dims3(2, 2, 10)},
       {nvinfer1::Dims3(3, 3, 10), nvinfer1::Dims3(3, 3, 10)},
@@ -176,7 +176,7 @@ TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
   }
   std::vector<PartialTensorShape> input_partial_shapes;
   TF_CHECK_OK(GetNetworkInputShapes(network_.get(), &input_partial_shapes));
-  profile.InitProfiles(input_partial_shapes);
+  profile.InitProfiles(input_partial_shapes, ProfileStrategy::kOptimal);
 
   // Configure and build engine.
   TF_CHECK_OK(profile.ConfigureBuilder(builder_.get(), builder_config_.get(),
