@@ -2875,7 +2875,7 @@ class MeanIoU(Metric):
     y_pred = math_ops.cast(y_pred, self._dtype)
 
     # If y_pred is passed as a logits tensor, or a probability tensor
-    if len(K.int_shape(y_true)) == len(K.int_shape(y_pred)) - 1:
+    if len(backend.int_shape(y_true)) == len(backend.int_shape(y_pred)) - 1:
       y_pred = math_ops.argmax(y_pred, axis=-1)
 
     # Flatten the input if its rank > 1.
