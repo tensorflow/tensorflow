@@ -25,7 +25,7 @@ namespace cl {
 
 cl_channel_order ToChannelOrder(int num_channels);
 
-cl_channel_type ToImageChannelType(DataType data_type);
+cl_channel_type DataTypeToChannelType(DataType type, bool normalized = false);
 
 }  // namespace cl
 }  // namespace gpu

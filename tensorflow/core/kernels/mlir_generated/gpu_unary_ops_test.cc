@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <limits>
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/kernels/mlir_generated/base_ops_test.h"
@@ -718,6 +720,28 @@ GENERATE_DEFAULT_TEST(Tanh, DT_DOUBLE, DT_DOUBLE, std::tanh,
 
 GENERATE_DEFAULT_TEST_2(Tanh, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::tanh,
                         test::OpsTestConfig())
+
+// Test small/large input values to be approximated as constant -1/1.
+template <typename T>
+T baseline_tanh_limits(T x) {
+  assert((x < -10 || x > 10) &&
+         "baseline_tanh_limits is only applicable to small/large values");
+  return x < 0.0 ? -1.0 : 1.0;
+}
+TEST_F(UnaryOpsTest, TanhSmallAndLarge) {
+  Test<float, float, float, float>(
+      "Tanh", test::DefaultInputShape(),
+      test::InputAsVector<float>({-100.0, -10.5, 12.0, 123.0, 10000.0}),
+      baseline_tanh_limits,
+      test::OpsTestConfig().ExpectStrictlyEqual().SuppressTolerance());
+}
+
+TEST_F(UnaryOpsTest, TanhNaN) {
+  Test<float, float, float, float>(
+      "Tanh", test::DefaultInputShape(),
+      test::InputAsVector<float>({std::numeric_limits<float>::quiet_NaN()}),
+      std::tanh, test::OpsTestConfig().ExpectStrictlyEqual());
+}
 
 /// Test `tf.Square`.
 

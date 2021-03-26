@@ -465,6 +465,11 @@ class ShapeUtil {
                                    int64 element_size_in_bits = 0,
                                    int64 memory_space = 0);
 
+  // Constructs a new shape with the given dimension `dim` as the most major
+  // dimension in the layout. If the shape does not have a layout, assumes a
+  // default layout.
+  static Shape MoveDimToMajor(const Shape& shape, int64 dim);
+
   // Returns the same shape except with all dimensions set to be static.
   static Shape MakeShapeWithStaticDimensions(const Shape& shape);
 

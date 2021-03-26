@@ -15,6 +15,7 @@
 """Python TF-Lite QuantizationDebugger."""
 import collections
 import csv
+
 from typing import (Any, Callable, Dict, IO, Iterable, List, Mapping, Optional,
                     Sequence, Tuple)
 
@@ -22,6 +23,13 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.python.util import tf_export
+
+# pylint: disable=g-import-not-at-top
+try:
+  from tensorflow.lite.python import metrics_portable as metrics_stub  # type: ignore
+except ImportError:
+  from tensorflow.lite.python import metrics_nonportable as metrics_stub  # type: ignore
+# pylint: enable=g-import-not-at-top
 
 # Returns metrics based on difference of values for quantized/float ops.
 _DEFAULT_LAYER_DEBUG_METRICS = {
@@ -31,6 +39,8 @@ _DEFAULT_LAYER_DEBUG_METRICS = {
     'max_abs_error': lambda diffs: np.max(np.abs(diffs)),
     'mean_square_error': lambda diffs: np.average(diffs**2),
 }
+
+_NUMERIC_VERIFY_OP_NAME = 'NumericVerify'
 
 
 def _get_quant_params(
@@ -140,6 +150,9 @@ class QuantizationDebugger:
     self.layer_statistics = None
     self.model_statistics = None
 
+    self._metrics = metrics_stub.TFLiteMetrics()
+    self._metrics.increase_counter_debugger_creation()
+
   def run(self) -> None:
     """Runs models and gets metrics."""
     self.layer_statistics = self._collect_layer_statistics()
@@ -225,8 +238,7 @@ class QuantizationDebugger:
         for metric_name, metric in model_statistics.items()
     }
 
-  def _set_input_tensors(self,
-                         interpreter: tf.lite.Interpreter,
+  def _set_input_tensors(self, interpreter: tf.lite.Interpreter,
                          tensor_data: Sequence[np.ndarray],
                          initialize: bool) -> None:
     """Sets input tensors into TFLite model Interpreter.
@@ -286,17 +298,30 @@ class QuantizationDebugger:
 
   def _get_numeric_verify_tensor_details(self) -> List[str]:
     """Returns all names of all tensors from NumericVerify op."""
+    # pylint: disable=protected-access
     if not self._numeric_verify_tensor_details:
-      self._numeric_verify_tensor_details = [
-          detail for detail in self._quant_interpreter.get_tensor_details()
-          if detail['name'].startswith('NumericVerify')
-      ]
+      self._numeric_verify_tensor_details = []
+      for op_info in self._quant_interpreter._get_ops_details():
+        if op_info['op_name'] == _NUMERIC_VERIFY_OP_NAME:
+          self._numeric_verify_tensor_details.append(
+              self._quant_interpreter._get_tensor_details(
+                  op_info['outputs'][0]))
+    # pylint: enable=protected-access
     return self._numeric_verify_tensor_details
 
-  def _get_operand_index(self, numeric_verify_name: str) -> int:
-    """Gets the index of NumericVerify Op's quantized input tensor."""
-    tensor_idx = numeric_verify_name.rsplit(':', 1)[-1]
-    return int(tensor_idx)
+  def _get_operand_name_and_index(self,
+                                  numeric_verify_name: str) -> Tuple[str, int]:
+    """Gets the index and name of NumericVerify Op's quantized input tensor.
+
+    Args:
+      numeric_verify_name: name of the NumericVerify op's output tensor. It has
+        format of `NumericVerify/{quantized_tensor_name}:{quantized_tensor_idx}`
+
+    Returns:
+      Tuple of (tensor_name, tensor_idx) for quantized op's output tensor.
+    """
+    tensor_name, tensor_idx = numeric_verify_name.rsplit(':', 1)
+    return (tensor_name[len(_NUMERIC_VERIFY_OP_NAME) + 1:], int(tensor_idx))
 
   def layer_statistics_dump(self, file: IO[str]) -> None:
     """Dumps layer statistics into file, in csv format.
@@ -304,15 +329,17 @@ class QuantizationDebugger:
     Args:
       file: file, or file-like object to write.
     """
-    fields = ['op_name', 'op_idx'] + list(
-        self._layer_debug_metrics.keys()) + ['scales', 'zero_points']
+    # order of `fields` is the order of fields in csv.
+    fields = ['op_name', 'tensor_idx'] + list(self._layer_debug_metrics.keys(
+    )) + ['scales', 'zero_points', 'tensor_name']
     writer = csv.DictWriter(file, fields)
     writer.writeheader()
     for name, metrics in self.layer_statistics.items():
       data = metrics.copy()
-      data['op_idx'] = self._get_operand_index(name)
-      data['op_name'] = self._defining_op[data['op_idx']]
-      details = self._quant_interpreter._get_tensor_details(data['op_idx'])  # pylint: disable=protected-access
+      (data['tensor_name'],
+       data['tensor_idx']) = self._get_operand_name_and_index(name)
+      data['op_name'] = self._defining_op[data['tensor_idx']]
+      details = self._quant_interpreter._get_tensor_details(data['tensor_idx'])  # pylint: disable=protected-access
       data['scales'], data['zero_points'] = (
           details['quantization_parameters']['scales'],
           details['quantization_parameters']['zero_points'])

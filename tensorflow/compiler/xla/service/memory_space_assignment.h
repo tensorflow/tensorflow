@@ -302,14 +302,19 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
 // duration) / (independent computation duration) ratios to guide whether the
 // prefetch is within those bounds. It starts with the preferred ratio in
 // Begin() and works its way for alternately earlier and later prefetches until
-// hitting min and max ratios.
+// hitting min and max ratios. The value for buffer size for max async copy is a
+// mechanism to prevent copying small buffers between the two memories
+// unnecessarily. For calculating the max time that the buffer can reside in
+// alternate memory, we use the larger of this value and the actual size of the
+// buffer.
 class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
  public:
   CostAnalysisPrefetchIntervalPicker(
       const MemorySpaceAssignmentCostAnalysis& cost_analysis,
       float min_async_copy_to_overlap_ratio,
       float max_async_copy_to_overlap_ratio,
-      float preferred_async_copy_to_overlap_ratio);
+      float preferred_async_copy_to_overlap_ratio,
+      int64_t buffer_size_for_max_async_copy);
 
   bool CanAllocateInAlternateMemoryNoCopy(const Shape& shape, int64 start_time,
                                           int64 end_time) const override;
@@ -352,6 +357,10 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   // Finds the minimum nest level in the given interval.
   int GetMinWhileNestLevel(int64 start_time, int64 end_time) const;
 
+  // Given the elapsed time to copy this buffer to the alternate memory, returns
+  // the longest time that this buffer may reside in the alternate memory space.
+  float GetMaxElapsedInAlternateMemory(float async_copy_elapsed) const;
+
   // For each instruction in the flattened schedule, maintain their elapsed time
   // (in cumulative sum) and while nesting level.
   std::vector<float> elapsed_time_cumsum_;
@@ -366,6 +375,7 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   float min_async_copy_to_overlap_ratio_;
   float max_async_copy_to_overlap_ratio_;
   float preferred_async_copy_to_overlap_ratio_;
+  int64_t buffer_size_for_max_async_copy_;
   float max_overlap_multiplier_ = 1.0;
 
   float async_copy_elapsed_;
@@ -749,7 +759,10 @@ class MemorySpaceAssignment {
 
     AllocationValue(const HloValue* value, const HloPosition& position,
                     int64 size)
-        : value_(value), defining_position_(position), size_(size) {}
+        : value_(value),
+          defining_position_(position),
+          size_(size),
+          requires_contiguous_allocation_(false) {}
 
     const HloPosition& defining_position() const { return defining_position_; }
     const HloInstruction* defining_instruction() const {
@@ -764,6 +777,16 @@ class MemorySpaceAssignment {
     }
     AllocationSequence* allocation_sequence() { return &allocation_sequence_; }
 
+    // Sets/gets whether this AllocationValue requires allocating it
+    // contiguously throughout its live range (without any copies).
+    bool requires_contiguous_allocation() const {
+      return requires_contiguous_allocation_;
+    }
+    void set_requires_contiguous_allocation(
+        bool requires_contiguous_allocation) {
+      requires_contiguous_allocation_ = requires_contiguous_allocation;
+    }
+
     void AddUse(const HloUse& use, int64 use_time) {
       uses_.push_back({use, use_time, {}});
     }
@@ -775,6 +798,9 @@ class MemorySpaceAssignment {
     const HloValue* value_;
     HloPosition defining_position_;
     int64 size_;
+    // If true, there must be a contiguous allocation for this buffer without
+    // any copies.
+    bool requires_contiguous_allocation_;
     std::vector<Use> uses_;
     AllocationSequence allocation_sequence_;
   };
@@ -1045,6 +1071,7 @@ class AlternateMemoryBestFitHeap
     AliasedOffset* preferred_offset;
     const MemorySpaceAssignment::AllocationValue::Use* use;
     MemorySpaceAssignment::AllocationValue* allocation_value;
+    absl::Span<const int64_t> all_use_times;
   };
 
   // This struct contains mandatory memory assignments at a given time. E.g., an

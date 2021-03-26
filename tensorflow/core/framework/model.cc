@@ -114,7 +114,6 @@ inline void UpdateParameterValues(
 // the state values (which are for the input pipeline to follow).
 inline void UpdateStateValues(
     absl::flat_hash_map<string, std::shared_ptr<Parameter>>* parameters) {
-  VLOG(2) << "Number of tunable parameters: " << parameters->size();
   for (auto& pair : *parameters) {
     auto& parameter = pair.second;
     VLOG(2) << "Setting tunable parameter " << pair.first << " to "
@@ -1637,7 +1636,8 @@ void Model::FlushMetrics() {
 }
 
 void Model::Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget,
-                     int64 ram_budget, double model_input_time) {
+                     int64 ram_budget, double model_input_time,
+                     CancellationManager* cancellation_manager) {
   std::shared_ptr<Node> snapshot;
   {
     tf_shared_lock lock(mu_);
@@ -1650,10 +1650,11 @@ void Model::Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget,
   optimization_params.set_model_input_time(model_input_time);
   switch (algorithm) {
     case AutotuneAlgorithm::HILL_CLIMB:
-      OptimizeHillClimb(snapshot, optimization_params);
+      OptimizeHillClimb(snapshot, optimization_params, cancellation_manager);
       break;
     case AutotuneAlgorithm::GRADIENT_DESCENT:
-      OptimizeGradientDescent(snapshot, optimization_params);
+      OptimizeGradientDescent(snapshot, optimization_params,
+                              cancellation_manager);
       break;
     default:
       VLOG(2) << "Autotuning algorithm was not recognized. Aborting "
@@ -1754,10 +1755,11 @@ Status Model::OptimizeLoop(AutotuneAlgorithm algorithm, int64 cpu_budget,
       }
     }
 
-    int64 optimization_start_us = EnvTime::NowMicros();
-    Optimize(algorithm, cpu_budget, ram_budget, /*model_input_time=*/0);
-    VLOG(2) << "Optimized for "
-            << (EnvTime::NowMicros() - optimization_start_us) << " us.";
+    int64 start_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
+    Optimize(algorithm, cpu_budget, ram_budget, /*model_input_time=*/0,
+             cancellation_manager);
+    int64 end_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
+    VLOG(2) << "Optimized for " << end_ms - start_ms << " ms.";
 
     // Exponentially increase the period of running the optimization
     // until a threshold is reached.
@@ -1774,7 +1776,8 @@ Status Model::OptimizeLoop(AutotuneAlgorithm algorithm, int64 cpu_budget,
 
 void Model::OptimizeGradientDescent(
     std::shared_ptr<Node> snapshot,
-    const OptimizationParams& optimization_params) {
+    const OptimizationParams& optimization_params,
+    CancellationManager* cancellation_manager) {
   VLOG(2) << "Starting optimization of tunable parameters with Gradient "
              "Descent.";
   auto parameters = CollectTunableParameters(snapshot);
@@ -1783,6 +1786,7 @@ void Model::OptimizeGradientDescent(
                "with tunable parameters has recorded elements.";
     return;
   }
+  VLOG(2) << "Number of tunable parameters: " << parameters.size();
 
   // The maps of "essential" parallelism parameters and buffer size parameters.
   absl::flat_hash_map<string, std::shared_ptr<Parameter>>
@@ -1809,12 +1813,14 @@ void Model::OptimizeGradientDescent(
   // and we only increase the buffer size parameters.
   bool cpu_budget_reached = false;
 
-  for (int i = 0; i < kMaxIterations &&
-                  !ShouldStop(optimization_params.cpu_budget(),
-                              optimization_params.ram_budget(), parameters,
-                              parallelism_parameters, buffer_size_parameters,
-                              snapshot, &cpu_budget_reached);
-       ++i) {
+  for (int i = 0; i < kMaxIterations; ++i) {
+    if (cancellation_manager->IsCancelled() ||
+        ShouldStop(optimization_params.cpu_budget(),
+                   optimization_params.ram_budget(), parameters,
+                   parallelism_parameters, buffer_size_parameters, snapshot,
+                   &cpu_budget_reached)) {
+      break;
+    }
     absl::flat_hash_map<string, double> gradients;
     new_output_time = OutputTime(
         snapshot, optimization_params.model_input_time(), &gradients);
@@ -1836,7 +1842,8 @@ void Model::OptimizeGradientDescent(
 }
 
 void Model::OptimizeHillClimb(std::shared_ptr<Node> snapshot,
-                              const OptimizationParams& optimization_params) {
+                              const OptimizationParams& optimization_params,
+                              CancellationManager* cancellation_manager) {
   VLOG(2) << "Starting optimization of tunable parameters with Hill Climb.";
   const double processing_time = TotalProcessingTime(snapshot);
   auto parameters = CollectTunableParameters(snapshot);
@@ -1845,6 +1852,7 @@ void Model::OptimizeHillClimb(std::shared_ptr<Node> snapshot,
                "tunable parameters has recorded elements.";
     return;
   }
+  VLOG(2) << "Number of tunable parameters: " << parameters.size();
 
   // Buffer size parameter will only be incremented if the output latency
   // improvement is greater than this constant.
@@ -1854,7 +1862,7 @@ void Model::OptimizeHillClimb(std::shared_ptr<Node> snapshot,
   for (auto& pair : parameters) {
     pair.second->value = pair.second->min;
   }
-  while (true) {
+  while (!cancellation_manager->IsCancelled()) {
     const double output_time =
         OutputTime(snapshot, optimization_params.model_input_time(),
                    /*gradients=*/nullptr);

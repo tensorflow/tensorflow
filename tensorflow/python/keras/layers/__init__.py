@@ -14,10 +14,6 @@
 # ==============================================================================
 """Keras layers API."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python import tf2
 
 # Generic layers.
@@ -43,36 +39,14 @@ from tensorflow.python.keras.layers.preprocessing.image_preprocessing import Res
 from tensorflow.python.keras.layers.preprocessing.image_preprocessing import Rescaling
 
 # Preprocessing layers.
-if tf2.enabled():
-  from tensorflow.python.keras.layers.preprocessing.integer_lookup import IntegerLookup
-  from tensorflow.python.keras.layers.preprocessing.integer_lookup_v1 import IntegerLookup as IntegerLookupV1
-  IntegerLookupV2 = IntegerLookup
-  from tensorflow.python.keras.layers.preprocessing.normalization import Normalization
-  from tensorflow.python.keras.layers.preprocessing.normalization_v1 import Normalization as NormalizationV1
-  NormalizationV2 = Normalization
-  from tensorflow.python.keras.layers.preprocessing.string_lookup import StringLookup
-  from tensorflow.python.keras.layers.preprocessing.string_lookup_v1 import StringLookup as StringLookupV1
-  StringLookupV2 = StringLookup
-  from tensorflow.python.keras.layers.preprocessing.text_vectorization import TextVectorization
-  from tensorflow.python.keras.layers.preprocessing.text_vectorization_v1 import TextVectorization as TextVectorizationV1
-  TextVectorizationV2 = TextVectorization
-else:
-  from tensorflow.python.keras.layers.preprocessing.integer_lookup_v1 import IntegerLookup
-  from tensorflow.python.keras.layers.preprocessing.integer_lookup import IntegerLookup as IntegerLookupV2
-  IntegerLookupV1 = IntegerLookup
-  from tensorflow.python.keras.layers.preprocessing.normalization_v1 import Normalization
-  from tensorflow.python.keras.layers.preprocessing.normalization import Normalization as NormalizationV2
-  NormalizationV1 = Normalization
-  from tensorflow.python.keras.layers.preprocessing.string_lookup_v1 import StringLookup
-  from tensorflow.python.keras.layers.preprocessing.string_lookup import StringLookup as StringLookupV2
-  StringLookupV1 = StringLookup
-  from tensorflow.python.keras.layers.preprocessing.text_vectorization_v1 import TextVectorization
-  from tensorflow.python.keras.layers.preprocessing.text_vectorization import TextVectorization as TextVectorizationV2
-  TextVectorizationV1 = TextVectorization
 from tensorflow.python.keras.layers.preprocessing.category_crossing import CategoryCrossing
 from tensorflow.python.keras.layers.preprocessing.category_encoding import CategoryEncoding
 from tensorflow.python.keras.layers.preprocessing.discretization import Discretization
 from tensorflow.python.keras.layers.preprocessing.hashing import Hashing
+from tensorflow.python.keras.layers.preprocessing.integer_lookup import IntegerLookup
+from tensorflow.python.keras.layers.preprocessing.normalization import Normalization
+from tensorflow.python.keras.layers.preprocessing.string_lookup import StringLookup
+from tensorflow.python.keras.layers.preprocessing.text_vectorization import TextVectorization
 
 # Advanced activations.
 from tensorflow.python.keras.layers.advanced_activations import LeakyReLU
@@ -286,7 +260,3 @@ class VersionAwareLayers(object):
     if name in serialization.LOCAL.ALL_OBJECTS:
       return serialization.LOCAL.ALL_OBJECTS[name]
     return super(VersionAwareLayers, self).__getattr__(name)
-
-del absolute_import
-del division
-del print_function

@@ -19,8 +19,7 @@ namespace tensorflow {
 REGISTER6(BinaryOp, CPU, "Add", functor::add, float, Eigen::half, double, int32,
           int64, bfloat16);
 
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER6(BinaryOp, CPU, "AddV2", functor::add, float, Eigen::half, double,
           int32, int64, bfloat16);
 #else
@@ -29,8 +28,7 @@ REGISTER(BinaryOp, CPU, "AddV2", functor::add, bfloat16);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER3(BinaryOp, GPU, "Add", functor::add, float, Eigen::half, double);
 REGISTER3(BinaryOp, GPU, "AddV2", functor::add, float, Eigen::half, double);
 #endif

@@ -48,6 +48,7 @@ add_mlir_library(ChloPasses
 )
 
 add_mlir_library(MhloPasses
+  move_up_dynamic_broadcasts_for_fusion.cc
   legalize_gather_to_torch_index_select.cc
   legalize_trigonometric_to_approximation.cc
   lower_complex.cc

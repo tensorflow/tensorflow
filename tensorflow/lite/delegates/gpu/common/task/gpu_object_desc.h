@@ -32,6 +32,10 @@ namespace gpu {
 
 struct GPUImage2DDescriptor {
   DataType data_type;
+  bool normalized = false;   // used with INT data types, if normalized, we read
+                             // in kernel float data.
+  DataType normalized_type;  // can be FLOAT32 or FLOAT16, using with normalized
+                             // = true
   AccessType access_type;
 };
 

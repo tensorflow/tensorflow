@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
@@ -300,6 +301,50 @@ OpFoldResult PackOp::fold(ArrayRef<Attribute> operands) {
 
   // Replace %pack with %shape.
   return slice_op.input();
+}
+
+// Convert Pack to Reshape when there is only one operand to be packed.
+// For example,
+//
+//   %0 = tf.Pack(%input) {axis = 0} // %input : tensor<2x3xf32>
+//
+// can be canonicalized to
+//
+//   %shape = "tf.Const"() {value = dense<[1, 2, 3]> : tensor<3xi64>}
+//   %0 = tf.Reshape(%input, %shape)
+struct ConvertPackToReshape : public OpRewritePattern<PackOp> {
+  using OpRewritePattern<PackOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(PackOp pack_op,
+                                PatternRewriter &rewriter) const override {
+    // Check if there is only one operand to be packed.
+    if (pack_op.N() != 1) {
+      return failure();
+    }
+
+    // Check if input and output are static.
+    auto input_ty = pack_op.getOperand(0).getType().cast<ShapedType>();
+    auto output_ty = pack_op.output().getType().cast<ShapedType>();
+    if (!input_ty.hasStaticShape() || !output_ty.hasStaticShape()) {
+      return failure();
+    }
+
+    // Create constant shape for reshape.
+    auto type =
+        RankedTensorType::get(output_ty.getRank(), rewriter.getIntegerType(64));
+    auto shape_attr = DenseIntElementsAttr::get(type, output_ty.getShape());
+    auto shape = rewriter.create<ConstOp>(pack_op.getLoc(), shape_attr);
+
+    // TODO(b/173622615): Remove after fixed.
+    ReplaceTfOpWithNewOp<ReshapeOp>(rewriter, pack_op, output_ty,
+                                    pack_op.getOperand(0), shape);
+    return success();
+  }
+};
+
+void PackOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                         MLIRContext *context) {
+  results.insert<ConvertPackToReshape>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -720,11 +765,6 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 // SelectOp
 //===----------------------------------------------------------------------===//
-
-void SelectOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                           MLIRContext *context) {
-  results.insert<SelectToSelectV2>(context);
-}
 
 // Verifies a few extra requirements on SelectOp:
 // (1) `then` and `else` must have same shape
@@ -2587,7 +2627,7 @@ class ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
                              TF::FusedBatchNormV3Op::getOperationName(),
                              tf_fused_batch_norm_op.getOperands(),
                              new_result_types,
-                             tf_fused_batch_norm_op.getAttrs());
+                             tf_fused_batch_norm_op->getAttrs());
     Operation *tf_fused_batch_norm_op_v3 = rewriter.createOperation(new_state);
 
     rewriter.replaceOp(tf_fused_batch_norm_op,
@@ -2880,16 +2920,17 @@ static LogicalResult VerifyWhileTypes(Operation *op, TypeRange cond_input,
   return success();
 }
 
-static LogicalResult Verify(WhileOp op) {
-  auto cond_fn = op.cond_function();
-  auto body_fn = op.body_function();
+LogicalResult WhileOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
+  // TODO(jpienaar): Remove.
+  if (failed(WhileOpAdaptor(*this).verify(getLoc()))) return failure();
+
+  auto cond_fn = symbol_table.lookupNearestSymbolFrom<FuncOp>(*this, cond());
+  auto body_fn = symbol_table.lookupNearestSymbolFrom<FuncOp>(*this, body());
   if (!cond_fn) {
-    return op.emitOpError("cond refers to an undefined function : ")
-           << op.cond();
+    return emitOpError("cond refers to an undefined function : ") << cond();
   }
   if (!body_fn) {
-    return op.emitOpError("body refers to an undefined function : ")
-           << op.body();
+    return emitOpError("body refers to an undefined function : ") << body();
   }
 
   auto cond_fn_type = cond_fn.getType();
@@ -2897,14 +2938,12 @@ static LogicalResult Verify(WhileOp op) {
 
   // Verify that the cond function has exactly one result.
   if (cond_fn_type.getNumResults() != 1)
-    return op.emitOpError("requires cond function to have exactly one result");
+    return emitOpError("requires cond function to have exactly one result");
 
-  if (failed(VerifyWhileTypes(op, /*cond_input=*/cond_fn_type.getInputs(),
-                              /*body_input=*/body_fn_type.getInputs(),
-                              /*body_result=*/body_fn_type.getResults(),
-                              op.shape_invariant())))
-    return failure();
-  return success();
+  return VerifyWhileTypes(*this, /*cond_input=*/cond_fn_type.getInputs(),
+                          /*body_input=*/body_fn_type.getInputs(),
+                          /*body_result=*/body_fn_type.getResults(),
+                          shape_invariant());
 }
 
 //===----------------------------------------------------------------------===//
@@ -2978,7 +3017,7 @@ struct WhileRegionEliminatePassThrough
     auto &yield = *body_block.getTerminator();
 
     // Bit mask indicating which operands will be removed.
-    SmallVector<bool, 16> removed_operand(old_num_operands, false);
+    llvm::BitVector removed_operand(old_num_operands);
 
     for (int op_idx : llvm::seq<int>(0, old_num_operands)) {
       auto body_arg = body_block.getArgument(op_idx);
@@ -3006,7 +3045,7 @@ struct WhileRegionEliminatePassThrough
       if (body_block.getArgument(op_idx).use_empty() &&
           cond_block.getArgument(op_idx).use_empty() &&
           while_op.getResult(op_idx).use_empty()) {
-        removed_operand[op_idx] = true;
+        removed_operand.set(op_idx);
         new_num_operands--;
       }
     }
@@ -3020,18 +3059,16 @@ struct WhileRegionEliminatePassThrough
     new_result_types.reserve(new_num_operands);
 
     // Build new operands and result type.
-    int next_idx = 0;
     for (int op_idx : llvm::seq<int>(0, old_num_operands)) {
-      if (removed_operand[op_idx]) continue;
+      if (removed_operand.test(op_idx)) continue;
       new_while_operands.push_back(while_op.getOperand(op_idx));
       new_result_types.push_back(while_op.getResult(op_idx).getType());
-      next_idx++;
     }
 
     // Create the new while operation.
-    auto new_while_op =
-        rewriter.create<WhileRegionOp>(while_op.getLoc(), new_result_types,
-                                       new_while_operands, while_op.getAttrs());
+    auto new_while_op = rewriter.create<WhileRegionOp>(
+        while_op.getLoc(), new_result_types, new_while_operands,
+        while_op->getAttrs());
 
     // Move region bodies to the new while.
     rewriter.inlineRegionBefore(while_op.cond(), new_while_op.cond(),
@@ -3043,20 +3080,18 @@ struct WhileRegionEliminatePassThrough
     auto &new_body_block = new_while_op.body().front();
     auto &new_yield = *new_body_block.getTerminator();
 
+    // Patch up the region bodies and yield.
+    new_cond_block.eraseArguments(removed_operand);
+    new_body_block.eraseArguments(removed_operand);
+    new_yield.eraseOperands(removed_operand);
+
     // Build a vector of new results. Also patch up the region bodies and
     // yield.
-    SmallVector<Value, 4> new_results;
-    next_idx = 0;
-    for (int op_idx : llvm::seq<int>(0, old_num_operands)) {
-      if (removed_operand[op_idx]) {
-        new_cond_block.eraseArgument(next_idx);
-        new_body_block.eraseArgument(next_idx);
-        new_yield.eraseOperand(next_idx);
-        new_results.push_back(nullptr);
-      } else {
-        new_results.push_back(new_while_op.getResult(next_idx++));
-      }
-    }
+    SmallVector<Value, 4> new_results(old_num_operands);
+    int next_idx = 0;
+    for (int op_idx : llvm::seq<int>(0, old_num_operands))
+      if (!removed_operand.test(op_idx))
+        new_results[op_idx] = new_while_op.getResult(next_idx++);
 
     rewriter.replaceOp(while_op, new_results);
     return success();

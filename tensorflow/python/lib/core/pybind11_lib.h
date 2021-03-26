@@ -55,12 +55,12 @@ inline py::object PyoOrThrow(PyObject* ptr) {
   return Pyo(ptr);
 }
 
-[[noreturn]] void ThrowTypeError(const char* error_message) {
+[[noreturn]] inline void ThrowTypeError(const char* error_message) {
   PyErr_SetString(PyExc_TypeError, error_message);
   throw pybind11::error_already_set();
 }
 
-[[noreturn]] void ThrowValueError(const char* error_message) {
+[[noreturn]] inline void ThrowValueError(const char* error_message) {
   PyErr_SetString(PyExc_ValueError, error_message);
   throw pybind11::error_already_set();
 }

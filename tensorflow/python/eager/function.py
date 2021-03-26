@@ -2296,16 +2296,21 @@ class ConcreteFunction(object):
     # are simply dropped from the signature.
     # TODO(b/159639913) Look into whether dropping arguments with default values
     # from the signature is the right thing to do.
-    names = names[:len(arg_specs)]
 
-    names.extend(sorted(kwarg_specs))
-    specs = list(arg_specs) + list(kwarg_specs.values())
-    # note: we can skip bound args, since we already displayed thier bound
+    # Note: we can skip bound args, since we already displayed their bound
     # value in the signature summary.
     arg_details = []
-    for (name, spec) in zip(names, specs):
+    for (name, spec) in zip(names[:len(arg_specs)], list(arg_specs)):
       if _contains_type_spec(spec):
         arg_details.append("    {}: {}".format(name, pretty_print_spec(spec)))
+
+    if kwarg_specs:
+      for kwarg in sorted(kwarg_specs):
+        spec = kwarg_specs[kwarg]
+        if _contains_type_spec(spec):
+          arg_details.append("    {}: {}".format(
+              kwarg, pretty_print_spec(spec)))
+
     if arg_details:
       lines.append("  Args:")
       lines.extend(arg_details)

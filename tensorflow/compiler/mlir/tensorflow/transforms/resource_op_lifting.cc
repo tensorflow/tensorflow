@@ -931,7 +931,7 @@ LogicalResult HandleWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
       while_op.getLoc(), body.getType().getResults(),
       FilterRange<Value, OperandRange>(while_op.getOperands(),
                                        resource_arg_uses),
-      while_op.getAttrs());
+      while_op->getAttrs());
   // Prepare for AddLoadsStoresOutsideControlFlowOp().
   llvm::SmallDenseMap<int64_t, std::pair<Type, int64_t>>
       arg_data_type_and_updated_output_index;
@@ -1035,7 +1035,7 @@ LogicalResult HandleCaseOrIfOp(CaseOrIfOp op, ArrayRef<FuncOp> branches) {
   FuncOp first_func = branches.front();
   auto new_op =
       builder.create<CaseOrIfOp>(op.getLoc(), first_func.getType().getResults(),
-                                 new_operands, op.getAttrs());
+                                 new_operands, op->getAttrs());
   // Prepare for AddLoadsStoresOutsideControlFlowOp()
   llvm::SmallDenseMap<int64_t, std::pair<Type, int64_t>>
       arg_data_type_and_updated_output_index;
@@ -1179,7 +1179,7 @@ void UpdatePartitionedCallOpWithNewCallee(
       FilterRange<Value, OperandRange>(call_op.args(), lifting_info.use_info);
   auto new_call = builder.create<CallOpType>(
       call_op.getLoc(), lifting_info.lifted_callee.getType().getResults(),
-      new_operands, call_op.getAttrs());
+      new_operands, call_op->getAttrs());
   new_call->setAttr(
       "f", builder.getSymbolRefAttr(lifting_info.lifted_callee.getName()));
   AddLoadsStoresOutsideControlFlowOp(

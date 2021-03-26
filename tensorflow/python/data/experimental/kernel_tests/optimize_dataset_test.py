@@ -19,17 +19,18 @@ from __future__ import print_function
 
 import functools
 import os
-import warnings
 
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import grouping
+from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import scan_ops
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.experimental.ops import threadpool
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -138,7 +139,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = self.getNext(dataset)
     self.evaluate(get_next())
 
-  # TODO(b/123902160)
+  # TODO(b/123354468)
   @combinations.generate(test_base.graph_only_combinations())
   def testOptimizationLargeInputFromTensor(self):
     input_t = array_ops.placeholder(dtypes.int32, (None, None, None))
@@ -154,7 +155,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       sess.run(init_op, {input_t: np.ones([512, 1024, 1025], np.int32)})
       self.evaluate(get_next)
 
-  # TODO(b/123902160)
+  # TODO(b/123354468)
   @combinations.generate(test_base.graph_only_combinations())
   def testOptimizationLargeInputFromTensorSlices(self):
     input_t = array_ops.placeholder(dtypes.int32, (None, None, None, None))
@@ -317,6 +318,29 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, expected_output=list(range(1, 6)))
 
   @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(set_env=[True, False])))
+  def testOptimizationUsePrivateThreadPool(self, set_env):
+    if set_env:
+      os.environ["TF_DATA_EXPERIMENT_OPT_IN"] = "use_private_thread_pool"
+      os.environ["TF_JOB_NAME"] = "test_job"
+
+    dataset = dataset_ops.Dataset.range(6)
+    if set_env:
+      dataset = dataset.apply(
+          testing.assert_next(
+              ["MaxIntraOpParallelism", "PrivateThreadPool", "Model"]))
+    else:
+      dataset = dataset.apply(
+          testing.assert_next(["MaxIntraOpParallelism", "Model"]))
+
+    self.assertDatasetProduces(dataset, expected_output=list(range(6)))
+
+    if set_env:
+      del os.environ["TF_DATA_EXPERIMENT_OPT_IN"]
+      del os.environ["TF_JOB_NAME"]
+
+  @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(autotune=False, autotune_buffers=False) +
@@ -369,29 +393,14 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     variable = variable_scope.get_variable(
         "v", initializer=0, use_resource=False)
     assign_op = variable.assign_add(1)
+    unoptimized_dataset = dataset_fn(variable)
 
-    # Check that warning is logged.
-    warnings.simplefilter("always")
-    with warnings.catch_warnings(record=True) as w:
-      unoptimized_dataset = dataset_fn(variable)
-
-      options = dataset_ops.Options()
-      options.experimental_optimization.apply_default_optimizations = False
-      options.experimental_optimization.noop_elimination = True
-      options.experimental_optimization.map_and_batch_fusion = True
-      optimized_dataset = unoptimized_dataset.with_options(options)
-      optimized_it = dataset_ops.make_initializable_iterator(optimized_dataset)
-
-    self.assertGreaterEqual(len(w), 1)
-    graph_rewrites = options._graph_rewrites()
-    expected = (
-        "tf.data graph rewrites are not compatible with "
-        "tf.Variable. The following rewrites will be disabled: %s."
-        " To enable rewrites, use resource variables instead by "
-        "calling `tf.enable_resource_variables()` at the start of the "
-        "program." %
-        (", ".join(graph_rewrites.enabled + graph_rewrites.default)))
-    self.assertTrue(any(expected in str(warning) for warning in w))
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.noop_elimination = True
+    options.experimental_optimization.map_and_batch_fusion = True
+    optimized_dataset = unoptimized_dataset.with_options(options)
+    optimized_it = dataset_ops.make_initializable_iterator(optimized_dataset)
 
     # Check that outputs are the same in the optimized and unoptimized cases,
     # when the variable value is changing.
@@ -618,6 +627,36 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     else:
       self.assertEqual(cpu_budget, 0)
       self.assertEqual(ram_budget, 0)
+
+
+class OptimizeDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                    parameterized.TestCase):
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCore(self):
+
+    def build_dataset(num_elements, batch_size):
+      return dataset_ops.Dataset.range(num_elements).map(lambda x: x * x).batch(
+          batch_size).apply(
+              optimization.optimize(["map_and_batch_fusion"], None, None))
+
+    self.run_core_tests(lambda: build_dataset(200, 10), 20)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testWithNewFunction(self):
+    """Tests that optimized datasets with new functions work."""
+
+    def build_dataset():
+      dataset = dataset_ops.Dataset.range(100)
+      dataset = dataset.map(lambda x: x)
+      dataset = dataset.batch(5)
+      # map_vectorization adds a new vectorized function to the function
+      # library.
+      dataset = dataset.apply(
+          optimization.optimize(["map_vectorization"], None, None))
+      return dataset
+
+    self.run_core_tests(build_dataset, 20)
 
 
 if __name__ == "__main__":

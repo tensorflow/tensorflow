@@ -72,7 +72,6 @@ tf_cuda_library(
             "//tensorflow/core/common_runtime/eager:context_distributed_manager",
             "//tensorflow/core/common_runtime/eager:core",
             "//tensorflow/core/common_runtime/eager:custom_device",
-            "//tensorflow/core/common_runtime/eager:custom_device_op_handler",
             "//tensorflow/core/common_runtime/eager:eager_executor",
             "//tensorflow/core/common_runtime/eager:execute",
             "//tensorflow/core/common_runtime/eager:tensor_handle",
@@ -283,7 +282,6 @@ tf_cuda_cc_test(
         "//tensorflow/c/experimental/gradients:not_differentiable",
         "//tensorflow/c/experimental/gradients/tape:tape_context",
         "//tensorflow/c/experimental/ops",
-        "//tensorflow/cc/profiler",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -388,6 +386,7 @@ cc_library(
 
 cc_library(
     name = "immediate_execution_tensor_handle",
+    srcs = ["immediate_execution_tensor_handle.cc"],
     hdrs = ["immediate_execution_tensor_handle.h"],
     visibility = [
         "//tensorflow:internal",
@@ -662,6 +661,7 @@ tf_cuda_cc_test(
         "c_api_test.cc",
     ],
     tags = [
+        "no_cuda_asan",  # TODO(b/181771536)
         "guitar",
         # "multi_gpu",  b/180748118
     ],
@@ -909,7 +909,6 @@ tf_cuda_cc_test(
         ":c_api_experimental",
         ":c_api_test_util",
         "//tensorflow/c:c_test_util",
-        "//tensorflow/cc/profiler",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -935,7 +934,6 @@ tf_cuda_cc_test(
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
         "//tensorflow/c:tf_status_helper",
-        "//tensorflow/cc/profiler",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -974,7 +972,6 @@ tf_cc_test(
         ":custom_device_testutil",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
-        "//tensorflow/cc/profiler",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",

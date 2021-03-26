@@ -348,7 +348,7 @@ class Env {
   /// \brief starts a new transaction on the filesystem that handles filename
   Status StartTransaction(const std::string& filename,
                           TransactionToken** token) {
-    token = nullptr;
+    *token = nullptr;
     return Status::OK();
   }
 
@@ -369,7 +369,7 @@ class Env {
   /// \brief Returns the transaction for `path` or nullptr in `token`
   Status GetTransactionForPath(const std::string& path,
                                TransactionToken** token) {
-    token = nullptr;
+    *token = nullptr;
     return Status::OK();
   }
 
@@ -604,6 +604,10 @@ Status ReadBinaryProto(Env* env, const std::string& fname,
                        protobuf::MessageLite* proto);
 
 /// Write the text representation of "proto" to the named file.
+inline Status WriteTextProto(Env* /* env */, const std::string& /* fname */,
+                             const protobuf::MessageLite& /* proto */) {
+  return errors::Unimplemented("Can't write text protos with protolite.");
+}
 Status WriteTextProto(Env* env, const std::string& fname,
                       const protobuf::Message& proto);
 

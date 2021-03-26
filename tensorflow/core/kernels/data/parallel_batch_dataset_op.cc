@@ -196,10 +196,14 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       if (num_parallel_calls_->value == model::kAutotune) {
         num_parallel_calls_->value = ctx->runner_threadpool_size();
       }
+      cancellation_manager_ = absl::make_unique<CancellationManager>();
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(),
           [this]() { CancelThreads(/*wait=*/false); }, &deregister_fn_));
-      return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
+      IteratorContext::Params params(ctx);
+      params.cancellation_manager = cancellation_manager_.get();
+      return dataset()->input_->MakeIterator(IteratorContext(params), this,
+                                             prefix(), &input_impl_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -367,7 +371,6 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
 
       if (batch_elements->empty()) {
         CallCompleted(ctx, result);
-        DCHECK(end_of_input);
         return;
       }
 
@@ -388,6 +391,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     }
 
     void CancelThreads(bool wait) TF_LOCKS_EXCLUDED(mu_) {
+      cancellation_manager_->StartCancel();
       mutex_lock l(*mu_);
       cancelled_ = true;
       cond_var_->notify_all();
@@ -548,6 +552,9 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     const std::shared_ptr<model::SharedState> num_parallel_calls_;
     const bool deterministic_;
 
+    // Controls cancellation of `input_impl_`. Must be ordered before
+    // `input_impl_` so that `input_impl_` is destroyed first.
+    std::unique_ptr<CancellationManager> cancellation_manager_;
     // Counts the number of outstanding calls for this batch.
     int64 num_calls_ TF_GUARDED_BY(*mu_) = 0;
     std::unique_ptr<IteratorBase> input_impl_;

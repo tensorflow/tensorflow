@@ -760,7 +760,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     dataset = iter(
         strategy.distribute_datasets_from_function(
             dataset_fn,
-            distribute_lib.InputOptions(experimental_prefetch_to_device=False)))
+            distribute_lib.InputOptions(experimental_fetch_to_device=False)))
 
     sparse, result = sparse_lookup(dataset)
 
@@ -810,7 +810,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     dataset = iter(
         strategy.distribute_datasets_from_function(
             dataset_fn,
-            distribute_lib.InputOptions(experimental_prefetch_to_device=False)))
+            distribute_lib.InputOptions(experimental_fetch_to_device=False)))
 
     output = sparse_lookup(dataset)
 
@@ -866,7 +866,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
         strategy.distribute_datasets_from_function(
             dataset_fn,
             options=distribute_lib.InputOptions(
-                experimental_prefetch_to_device=False)))
+                experimental_fetch_to_device=False)))
 
     result = sparse_lookup(dataset)
     self.assertAllEqual(result, [[0.0, 2.0], [1.5, 5.0]])
@@ -916,7 +916,7 @@ class TPUStrategyDataPrefetchTest(test.TestCase):
         output_type=dtypes.float32).batch(strategy.num_replicas_in_sync)
 
     input_options = distribute_lib.InputOptions(
-        experimental_prefetch_to_device=True)
+        experimental_fetch_to_device=True)
     dataset_item = next(iter(strategy.experimental_distribute_dataset(
         dataset, options=input_options)))
     dataset_location = tf_device.DeviceSpec.from_string(
@@ -931,7 +931,7 @@ class TPUStrategyDataPrefetchTest(test.TestCase):
 
     # Should be CPU when prefetch_to_device is False.
     input_options = distribute_lib.InputOptions(
-        experimental_prefetch_to_device=False)
+        experimental_fetch_to_device=False)
     dataset_item = next(iter(strategy.experimental_distribute_dataset(
         dataset, options=input_options)))
     dataset_location = tf_device.DeviceSpec.from_string(

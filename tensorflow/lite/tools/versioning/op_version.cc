@@ -177,6 +177,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_GATHER:
+      if (op_sig.options.gather.batch_dims != 0) {
+        return 5;
+      }
+
       if (op_sig.input_types.at(0) == TensorType_INT16) {
         return 4;
       }
@@ -832,6 +836,11 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       auto batch_matmul_option = op->builtin_options_as_BatchMatMulOptions();
       op_sig.options.input_quantization.asymmetric_quantize_inputs =
           batch_matmul_option->asymmetric_quantize_inputs();
+    } break;
+
+    case BuiltinOperator_GATHER: {
+      auto gather_option = op->builtin_options_as_GatherOptions();
+      op_sig.options.gather.batch_dims = gather_option->batch_dims();
     } break;
 
     default:

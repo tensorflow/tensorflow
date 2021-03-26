@@ -32,16 +32,18 @@ namespace tfr {
 
 MlirOptimizationPassState GraphDecomposePass::GetPassState(
     const DeviceSet* device_set, const ConfigProto& config_proto,
-    const Graph& graph) const {
+    const Graph& graph,
+    const FunctionLibraryDefinition& function_library) const {
   const char* tfr_lib_env_val = getenv(std::string(kTFRLibEnv).c_str());
   return tfr_lib_env_val != nullptr ? MlirOptimizationPassState::Enabled
                                     : MlirOptimizationPassState::Disabled;
 }
 
-Status GraphDecomposePass::Run(const ConfigProto& config_proto,
-                               mlir::ModuleOp module, const Graph& graph) {
-  if (GetPassState(/*device_set=*/nullptr, config_proto, graph) ==
-      MlirOptimizationPassState::Disabled) {
+Status GraphDecomposePass::Run(
+    const ConfigProto& config_proto, mlir::ModuleOp module, const Graph& graph,
+    const FunctionLibraryDefinition& function_library) {
+  if (GetPassState(/*device_set=*/nullptr, config_proto, graph,
+                   function_library) == MlirOptimizationPassState::Disabled) {
     LOG_FIRST_N(INFO, 1) << "Skipping Graph Decomposition Pass, decomposition"
                             " library was not found";
     return Status::OK();

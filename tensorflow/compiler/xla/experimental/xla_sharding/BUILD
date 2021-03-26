@@ -19,3 +19,16 @@ py_library(
         "//third_party/py/numpy",
     ],
 )
+
+py_test(
+    name = "xla_sharding_test",
+    srcs = ["xla_sharding_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":xla_sharding",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:absltest",
+    ],
+)

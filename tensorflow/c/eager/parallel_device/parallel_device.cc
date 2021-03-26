@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/c/eager/parallel_device/parallel_device.h"
 
+#include <cstring>
 #include <memory>
 
 #include "absl/strings/str_cat.h"
@@ -181,13 +182,13 @@ absl::optional<std::vector<MaybeParallelTensorOwned>> ExecuteWithSpecialOps(
 // Used as an argument to TFE_NewCustomDeviceTensorHandle, indicating how
 // ParallelTensors wrapped in TFE_TensorHandles should be cleaned up once their
 // reference counts drop to zero.
-void ParallelTensorDeallocator(void* data, void* arg) {
+void ParallelTensorDeallocator(void* data) {
   delete reinterpret_cast<ParallelTensor*>(data);
 }
 
 // Used as an argument to TFE_NewCustomDeviceTensorHandle, for computing the
 // number of dimensions of a parallel tensor.
-int ParallelTensorNumDims(void* data, void* arg, TF_Status* status) {
+int ParallelTensorNumDims(void* data, TF_Status* status) {
   const std::vector<int64_t>* shape;
   Status s = reinterpret_cast<ParallelTensor*>(data)->Shape(&shape);
   if (!s.ok()) {
@@ -199,8 +200,7 @@ int ParallelTensorNumDims(void* data, void* arg, TF_Status* status) {
 
 // Used as an argument to TFE_NewCustomDeviceTensorHandle, for computing a
 // dimension of a parallel tensor.
-int64_t ParallelTensorDim(void* data, int dim_index, void* arg,
-                          TF_Status* status) {
+int64_t ParallelTensorDim(void* data, int dim_index, TF_Status* status) {
   const std::vector<int64_t>* shape;
   Status s = reinterpret_cast<ParallelTensor*>(data)->Shape(&shape);
   if (!s.ok()) {
@@ -210,6 +210,17 @@ int64_t ParallelTensorDim(void* data, int dim_index, void* arg,
   return (*shape)[dim_index];
 }
 
+TF_Buffer* ParallelTensorSummarize(void* data, TF_Status* status) {
+  ParallelTensor* parallel_tensor = reinterpret_cast<ParallelTensor*>(data);
+  std::string summary;
+  Status cpp_status = parallel_tensor->SummarizeValue(summary);
+  if (!cpp_status.ok()) {
+    Set_TF_Status_from_Status(status, cpp_status);
+    return nullptr;
+  }
+  return TF_NewBufferFromString(summary.data(), summary.size());
+}
+
 TensorHandlePtr ParallelTensorToTensorHandle(
     const std::string& parallel_device_name, TFE_Context* context,
     std::unique_ptr<ParallelTensor> t, TF_Status* status) {
@@ -217,10 +228,14 @@ TensorHandlePtr ParallelTensorToTensorHandle(
   // for a ParallelDevice is really a ParallelTensor. When the TensorHandle is
   // deleted, it will call ParallelTensorDeallocator to free the struct.
   ParallelTensor* t_released = t.release();
+  TFE_CustomDeviceTensorHandleMethods handle_methods;
+  handle_methods.num_dims = &ParallelTensorNumDims;
+  handle_methods.dim = &ParallelTensorDim;
+  handle_methods.deallocator = &ParallelTensorDeallocator;
+  handle_methods.summarize = &ParallelTensorSummarize;
   return TensorHandlePtr(TFE_NewCustomDeviceTensorHandle(
       context, parallel_device_name.c_str(), t_released->dtype(), t_released,
-      &ParallelTensorNumDims, &ParallelTensorDim, &ParallelTensorDeallocator,
-      nullptr, status));
+      handle_methods, status));
 }
 
 // For TFE_CustomDevice::copy_tensor_to_device in the parallel device

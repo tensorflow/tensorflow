@@ -31,6 +31,35 @@ namespace {
 bool UseBufferForWeights(const GpuInfo& gpu_info) {
   return gpu_info.IsAdreno() || gpu_info.IsAMD() || gpu_info.IsMali();
 }
+
+void RearrangeFCWeightsToOIO4I4(
+    const tflite::gpu::Tensor<OHWI, DataType::INT8>& weights, uint8_t* dst) {
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
+
+  int counter = 0;
+  for (int d = 0; d < dst_depth; ++d) {
+    for (int s = 0; s < src_depth; ++s) {
+      for (int i = 0; i < 4; ++i) {
+        const int src_ch = s * 4 + i;
+        for (int j = 0; j < 4; ++j) {
+          const int dst_ch = d * 4 + j;
+          if (src_ch < weights.shape.i && dst_ch < weights.shape.o) {
+            int t =
+                127 +
+                weights.data[weights.shape.LinearIndex({dst_ch, 0, 0, src_ch})];
+            if (t < 0) {
+              t = 0;
+            }
+            dst[counter++] = t;
+          } else {
+            dst[counter++] = 127;
+          }
+        }
+      }
+    }
+  }
+}
 }  // namespace
 
 FCFCAdd::FCFCAdd(const OperationDef& definition, const GpuInfo& gpu_info)
@@ -52,7 +81,6 @@ FCFCAdd::FCFCAdd(const OperationDef& definition, const GpuInfo& gpu_info)
   } else {
     work_group_size_ = int3(16, 4, 1);
   }
-  code_ = GetFCFCAddKernelCode(definition_, gpu_info);
 }
 
 FCFCAdd::FCFCAdd(FCFCAdd&& kernel) : GPUOperation(std::move(kernel)) {}
@@ -71,12 +99,12 @@ FCFCAdd& FCFCAdd::operator=(FCFCAdd&& kernel) {
 // optimized shaders
 
 std::string FCFCAdd::GetFCFCAddKernelCode(const OperationDef& op_def,
-                                          const GpuInfo& gpu_info) {
+                                          const GpuInfo& gpu_info,
+                                          bool weights_are_buffer,
+                                          bool quantized_0, bool quantized_1) {
   AddSrcTensor("src_tensor_0", op_def.src_tensors[0]);
   AddSrcTensor("src_tensor_1", op_def.src_tensors[1]);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
-
-  const bool weights_are_buffer = UseBufferForWeights(gpu_info);
 
   std::string c;
   switch (op_def.precision) {
@@ -115,7 +143,15 @@ std::string FCFCAdd::GetFCFCAddKernelCode(const OperationDef& op_def,
       FLT4 w1 = args.weights0.Read(c * 4 + 1, gid);
       FLT4 w2 = args.weights0.Read(c * 4 + 2, gid);
       FLT4 w3 = args.weights0.Read(c * 4 + 3, gid);
-      FLT4 partial = v.x * w0;
+      )";
+    if (quantized_0) {
+      c += R"(w0 = w0 * args.q0_m + args.q0_a;
+      w1 = w1 * args.q0_m + args.q0_a;
+      w2 = w2 * args.q0_m + args.q0_a;
+      w3 = w3 * args.q0_m + args.q0_a;
+)";
+    }
+    c += R"(FLT4 partial = v.x * w0;
       partial += v.y * w1;
       partial += v.z * w2;
       partial += v.w * w3;
@@ -139,7 +175,15 @@ std::string FCFCAdd::GetFCFCAddKernelCode(const OperationDef& op_def,
       FLT4 w1 = args.weights1.Read(c * 4 + 1, gid);
       FLT4 w2 = args.weights1.Read(c * 4 + 2, gid);
       FLT4 w3 = args.weights1.Read(c * 4 + 3, gid);
-      FLT4 partial = v.x * w0;
+      )";
+    if (quantized_1) {
+      c += R"(w0 = w0 * args.q1_m + args.q1_a;
+      w1 = w1 * args.q1_m + args.q1_a;
+      w2 = w2 * args.q1_m + args.q1_a;
+      w3 = w3 * args.q1_m + args.q1_a;
+)";
+    }
+    c += R"(FLT4 partial = v.x * w0;
       partial += v.y * w1;
       partial += v.z * w2;
       partial += v.w * w3;
@@ -170,14 +214,69 @@ std::string FCFCAdd::GetFCFCAddKernelCode(const OperationDef& op_def,
 
 int3 FCFCAdd::GetGridSize() const { return int3(dst_[0]->Slices(), 1, 1); }
 
+void FCFCAdd::UploadQuantizedWeights(
+    const tflite::gpu::Tensor<OHWI, DataType::INT8>& weights, float scale,
+    float zero_point, int index) {
+  const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
+  Texture2DDescriptor desc;
+  desc.element_type = DataType::UINT8;
+  desc.normalized = true;
+  desc.normalized_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+  desc.size = int2(src_depth * 4, dst_depth);
+  desc.data.resize(src_depth * 4 * dst_depth * 4);
+  RearrangeFCWeightsToOIO4I4(weights, desc.data.data());
+
+  std::string q_name = "q" + std::to_string(index) + "_";
+  if (definition_.precision == CalculationsPrecision::F32) {
+    args_.AddFloat(q_name + "m", scale * 255.0f);
+    args_.AddFloat(q_name + "a", -scale * (127.0 + zero_point));
+  } else {
+    args_.AddHalf(q_name + "m", half(scale * 255.0f));
+    args_.AddHalf(q_name + "a", half(-scale * (127.0 + zero_point)));
+  }
+  args_.AddObject("weights" + std::to_string(index),
+                  absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+}
+
 FCFCAdd CreateFCFCAdd(const GpuInfo& gpu_info, const OperationDef& definition,
                       const FullyConnectedAttributes& attr0,
                       const FullyConnectedAttributes& attr1) {
   FCFCAdd result(definition, gpu_info);
-  result.UploadWeights(attr0.weights, "weights0",
-                       UseBufferForWeights(gpu_info));
-  result.UploadWeights(attr1.weights, "weights1",
-                       UseBufferForWeights(gpu_info));
+  bool weights_are_buffer = UseBufferForWeights(gpu_info);
+  result.UploadWeights(attr0.weights, "weights0", weights_are_buffer);
+  result.UploadWeights(attr1.weights, "weights1", weights_are_buffer);
+  result.code_ = result.GetFCFCAddKernelCode(definition, gpu_info,
+                                             weights_are_buffer, false, false);
+
+  TensorLinearDescriptor desc0;
+  desc0.storage_type = LinearStorageType::TEXTURE_2D;
+  desc0.element_type = definition.GetDataType();
+  desc0.UploadLinearData(attr0.bias);
+  result.args_.AddObject(
+      "biases0", absl::make_unique<TensorLinearDescriptor>(std::move(desc0)));
+
+  TensorLinearDescriptor desc1;
+  desc1.storage_type = LinearStorageType::TEXTURE_2D;
+  desc1.element_type = definition.GetDataType();
+  desc1.UploadLinearData(attr1.bias);
+  result.args_.AddObject(
+      "biases1", absl::make_unique<TensorLinearDescriptor>(std::move(desc1)));
+
+  return result;
+}
+
+FCFCAdd CreateFCFCAdd(const GpuInfo& gpu_info, const OperationDef& definition,
+                      const FullyConnectedInt8Attributes& attr0,
+                      const FullyConnectedInt8Attributes& attr1) {
+  FCFCAdd result(definition, gpu_info);
+  result.UploadQuantizedWeights(attr0.weights, attr0.scale, attr0.zero_point,
+                                0);
+  result.UploadQuantizedWeights(attr1.weights, attr1.scale, attr1.zero_point,
+                                1);
+  result.code_ =
+      result.GetFCFCAddKernelCode(definition, gpu_info, false, true, true);
 
   TensorLinearDescriptor desc0;
   desc0.storage_type = LinearStorageType::TEXTURE_2D;

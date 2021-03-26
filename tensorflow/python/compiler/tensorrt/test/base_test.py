@@ -94,6 +94,8 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
     q = math_ops.div(conv, c2, name="div")
 
     edge = self.trt_incompatible_op(q, name="incompatible")
+    one = constant_op.constant(1, name="one", dtype=dtype)
+    edge = math_ops.sub(one, edge, name="one_sub")
     edge = math_ops.div(edge, edge, name="div1")
     r = math_ops.add(edge, edge, name="add")
 
@@ -112,7 +114,8 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
     """Return the expected engines to build."""
     return {
         "TRTEngineOp_0": [
-            "add", "add1", "c1", "div1", "mul", "mul1", "sub", "sub1"
+            "add", "add1", "c1", "div1", "mul", "mul1", "sub", "sub1", "one",
+            "one_sub"
         ],
         "TRTEngineOp_1": ["c2", "conv", "div", "weights"]
     }

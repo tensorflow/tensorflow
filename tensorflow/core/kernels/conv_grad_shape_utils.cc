@@ -53,7 +53,7 @@ namespace {
 Status ConvBackpropExtractAndVerifyDimension(
     StringPiece label, const TensorShape& input_shape,
     const TensorShape& filter_shape, const TensorShape& output_shape,
-    const gtl::ArraySlice<int32>& dilations, const std::vector<int32>& strides,
+    const gtl::ArraySlice<int32> dilations, const std::vector<int32>& strides,
     Padding padding, int64 padding_before, int64 padding_after, int spatial_dim,
     int filter_spatial_dim, ConvBackpropSpatialDimension* dim) {
   dim->input_size = input_shape.dim_size(spatial_dim);

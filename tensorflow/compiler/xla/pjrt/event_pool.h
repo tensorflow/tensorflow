@@ -42,6 +42,7 @@ class EventPool {
     // useful aspect of this total order is that two events returned by
     // ThenAllocateAndRecordEvent on the same stream can be compared to see
     // which was recorded earlier on that stream.
+    // Valid sequence numbers are > 0.
     inline bool operator<(const Handle& rhs) const {
       return sequence_number_ < rhs.sequence_number_;
     }

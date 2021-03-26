@@ -10,6 +10,7 @@ tf_kernel_library(
     name = "xla_ops",
     srcs = [
         "aggregate_ops.cc",
+        "all_reduce_op.cc",
         "arg_op.cc",
         "batch_matmul_op.cc",
         "batch_norm_op.cc",

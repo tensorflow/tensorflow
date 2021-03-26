@@ -138,7 +138,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'factor\', \'interpolation\', \'seed\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'bilinear\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'factor\', \'interpolation\', \'seed\'], varargs=None, keywords=kwargs, defaults=[\'bilinear\', \'None\'], "
   }
   member_method {
     name: "adapt"

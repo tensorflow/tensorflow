@@ -337,6 +337,26 @@ static LogicalResult Verify(ConstantLikeOp op) {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// MinimumBroadcastShapesOp
+//===----------------------------------------------------------------------===//
+static LogicalResult Verify(MinimumBroadcastShapesOp op) {
+  // Check that the number of operands matches the number of outputs.
+  unsigned result_shapes_count = op.results().size();
+  unsigned operand_shapes_count = op.shapes().size();
+  if (operand_shapes_count != result_shapes_count) {
+    return op.emitOpError()
+           << "number of operand shapes (" << operand_shapes_count
+           << ") does not match number of result shapes ("
+           << result_shapes_count << ")";
+  }
+  if (operand_shapes_count < 2) {
+    return op.emitOpError() << "number of operand shapes ("
+                            << operand_shapes_count << ") should be >= 2";
+  }
+  return success();
+}
+
 LogicalResult ConstantLikeOp::inferReturnTypeComponents(
     MLIRContext* context, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,

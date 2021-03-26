@@ -1,3 +1,8 @@
+"""Rules and macros for MLIR"""
+
+def if_cuda_available(if_true, if_false = []):
+    return if_false
+
 def _cc_headers_only_impl(ctx):
     return CcInfo(compilation_context = ctx.attr.src[CcInfo].compilation_context)
 

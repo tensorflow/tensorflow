@@ -140,7 +140,7 @@ TfLiteStatus EvalInt(TfLiteContext* context, TfLiteNode* node) {
   size_t output_size = tflite::NumElements(output);
   switch (output->type) {
     case kTfLiteInt8:
-      RandomUniformSample<int8_t, std::uniform_int_distribution<int8_t>>(
+      RandomUniformSample<int8_t, std::uniform_int_distribution<int32_t>>(
           params->rng, GetTensorData<int8_t>(output), output_size, min_value,
           max_value);
       break;

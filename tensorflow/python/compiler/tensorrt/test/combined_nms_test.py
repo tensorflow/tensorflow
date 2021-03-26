@@ -31,6 +31,10 @@ from tensorflow.python.platform import test
 class CombinedNmsTest(trt_test.TfTrtIntegrationTestBase):
   """Test for CombinedNMS op in TF-TRT."""
 
+  def setUp(self):
+    super().setUp()
+    self.num_boxes = 200
+
   def GraphFn(self, boxes, scores):
     max_output_size_per_class = 3
     max_total_size = 3
@@ -64,12 +68,11 @@ class CombinedNmsTest(trt_test.TfTrtIntegrationTestBase):
     # Parameters
     q = 1
     batch_size = 2
-    num_boxes = 200
     num_classes = 2
     max_total_size = 3
 
-    boxes_shape = [batch_size, num_boxes, q, 4]
-    scores_shape = [batch_size, num_boxes, num_classes]
+    boxes_shape = [batch_size, self.num_boxes, q, 4]
+    scores_shape = [batch_size, self.num_boxes, num_classes]
     nmsed_boxes_shape = [batch_size, max_total_size, 4]
     nmsed_scores_shape = [batch_size, max_total_size]
     nmsed_classes_shape = [batch_size, max_total_size]
@@ -198,6 +201,24 @@ class CombinedNmsTestTopK(CombinedNmsTest):
                                 nmsed_boxes_shape, nmsed_scores_shape,
                                 nmsed_classes_shape, valid_detections_shape
                             ])
+
+
+class CombinedNmsTopKOverride(CombinedNmsTest):
+
+  def setUp(self):
+    super().setUp()
+    self.num_boxes = 5000
+    os.environ['TF_TRT_ALLOW_NMS_TOPK_OVERRIDE'] = '1'
+
+  def tearDown(self):
+    super().tearDown()
+    os.environ['TF_TRT_ALLOW_NMS_TOPK_OVERRIDE'] = '0'
+
+  def GetMaxBatchSize(self, run_params):
+    """Returns the max_batch_size that the converter should use for tests."""
+    if run_params.dynamic_engine:
+      return None
+    return super().GetMaxBatchSize(run_params)
 
 
 if __name__ == '__main__':

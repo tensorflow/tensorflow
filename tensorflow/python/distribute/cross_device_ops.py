@@ -81,8 +81,11 @@ def validate_destinations(destinations):
     raise ValueError("destinations can not be empty")
 
 
-def reduce_non_distributed_value(
-    reduce_op, value, destinations, num_replicas_in_graph):
+def reduce_non_distributed_value(reduce_op,
+                                 value,
+                                 destinations,
+                                 num_replicas_in_graph,
+                                 canonicalize_devices=True):
   """Reduce a non-DistributedValue `value` to `destinations`."""
   if isinstance(value, value_lib.DistributedValues):
     raise ValueError("You are passing a `DistributedValues` to "
@@ -107,7 +110,8 @@ def reduce_non_distributed_value(
                      "the given reduce op %s." % (value, reduce_op))
   else:
     validate_destinations(destinations)
-    return simple_broadcast(value, destinations)
+    return simple_broadcast(
+        value, destinations, canonicalize_devices=canonicalize_devices)
 
 
 def _make_tensor_into_per_replica(input_tensor):
@@ -161,31 +165,44 @@ def _validate_value_destination_pairs(value_destination_pairs):
 
 # TODO(yuefengz): consider calling this function in the caller of
 # CrossDeviceOps.
-def get_devices_from(destinations):
+def get_devices_from(destinations, canonicalize_devices=True):
   if isinstance(destinations, value_lib.DistributedValues):
     return destinations._devices  # pylint: disable=protected-access
-  elif isinstance(destinations, six.string_types):
-    return (device_util.resolve(destinations),)
-  return (device_util.resolve(destinations.device),)
+  if canonicalize_devices:
+    if isinstance(destinations, six.string_types):
+      return (device_util.resolve(destinations),)
+    return (device_util.resolve(destinations.device),)
+
+  # Let placer canonicalize and resolve destination devices.
+  if isinstance(destinations, six.string_types):
+    return (device_util.canonicalize_without_job_and_task(destinations),)
+  return (device_util.canonicalize_without_job_and_task(destinations.device),)
 
 
-def _devices_match(left, right):
-  return left is right or set(get_devices_from(left)) == set(
-      get_devices_from(right))
+def _devices_match(left, right, canonicalize_devices=True):
+  return left is right or set(get_devices_from(
+      left, canonicalize_devices)) == set(
+          get_devices_from(right, canonicalize_devices))
 
 
-def _all_devices_match(value_destination_pairs):
-  if not all(_devices_match(v, d) for v, d in value_destination_pairs):
+def _all_devices_match(value_destination_pairs, canonicalize_devices=True):
+  if not all(
+      _devices_match(v, d, canonicalize_devices)
+      for v, d in value_destination_pairs):
     return False
-  if not all(_devices_match(v, value_destination_pairs[0][0])
-             for v, _ in value_destination_pairs[1:]):
+  if not all(
+      _devices_match(v, value_destination_pairs[0][0], canonicalize_devices)
+      for v, _ in value_destination_pairs[1:]):
     return False
   return True
 
 
-def simple_broadcast(value, destinations, always_mirrored=False):
+def simple_broadcast(value,
+                     destinations,
+                     always_mirrored=False,
+                     canonicalize_devices=True):
   """Broadcast `value` to `destinations` using simple copies."""
-  devices = get_devices_from(destinations)
+  devices = get_devices_from(destinations, canonicalize_devices)
   if len(devices) == 1 and not always_mirrored:
     return cross_device_utils.copy_tensor_or_indexed_slices_to_device(
         value, devices[0])
@@ -246,6 +263,7 @@ class CrossDeviceOps(object):
   """
 
   def __init__(self):
+    self._canonicalize_devices = True
     pass
 
   @property
@@ -291,7 +309,7 @@ class CrossDeviceOps(object):
     # Shortcut if `per_replica_value` only contains one value.
     if self._num_between_graph_workers == 1 and len(
         per_replica_value.values) == 1 and _devices_match(
-            per_replica_value, destinations):
+            per_replica_value, destinations, self._canonicalize_devices):
       with ops.device(per_replica_value.values[0].device):
         v = array_ops.identity(per_replica_value.values[0])
       return distribute_utils.regroup((v,), wrap_class=value_lib.Mirrored)
@@ -340,7 +358,7 @@ class CrossDeviceOps(object):
     # Shortcut if `per_replica_value` only contains one value.
     if self._num_between_graph_workers == 1 and len(
         per_replica_value.values) == 1 and _devices_match(
-            per_replica_value, destinations):
+            per_replica_value, destinations, self._canonicalize_devices):
       with ops.device(per_replica_value.values[0].device):
         v = array_ops.identity(per_replica_value.values[0])
       return distribute_utils.regroup((v,), wrap_class=value_lib.Mirrored)
@@ -416,7 +434,7 @@ class CrossDeviceOps(object):
 
     # Shortcut all PerReplica objects only contain one value.
     if self._num_between_graph_workers == 1 and _all_devices_match(
-        value_destination_pairs) and len(
+        value_destination_pairs, self._canonicalize_devices) and len(
             value_destination_pairs[0][0].values) == 1:
       return [
           distribute_utils.regroup(v.values, wrap_class=value_lib.Mirrored)
@@ -522,7 +540,11 @@ class CrossDeviceOps(object):
     Returns:
       A `tf.Tensor` or `tf.distribute.DistributedValues`.
     """
-    return simple_broadcast(tensor, destinations, always_mirrored=True)
+    return simple_broadcast(
+        tensor,
+        destinations,
+        always_mirrored=True,
+        canonicalize_devices=self._canonicalize_devices)
 
   # ========================== Collective APIs ================================
   #
@@ -590,9 +612,9 @@ class ReductionToOneDevice(CrossDeviceOps):
                             options):
     del options  # Unused.
     if check_destinations(destinations):
-      devices = get_devices_from(destinations)
+      devices = get_devices_from(destinations, self._canonicalize_devices)
     else:
-      devices = get_devices_from(per_replica_value)
+      devices = get_devices_from(per_replica_value, self._canonicalize_devices)
     reduce_to_device = self.reduce_to_device or devices[0]
     logging.log_first_n(
         logging.INFO,
@@ -605,9 +627,9 @@ class ReductionToOneDevice(CrossDeviceOps):
                              options):
     del options  # Unused.
     if check_destinations(destinations):
-      devices = get_devices_from(destinations)
+      devices = get_devices_from(destinations, self._canonicalize_devices)
     else:
-      devices = get_devices_from(per_replica_value)
+      devices = get_devices_from(per_replica_value, self._canonicalize_devices)
     reduce_to_device = self.reduce_to_device or devices[0]
     logging.log_first_n(
         logging.INFO,
@@ -1026,7 +1048,11 @@ class CollectiveAllReduce(CrossDeviceOps):
   all workers and then put results on the right destinations.
   """
 
-  def __init__(self, devices, group_size, collective_keys=None):
+  def __init__(self,
+               devices,
+               group_size,
+               collective_keys=None,
+               canonicalize_devices=True):
     """Initializes the object.
 
     Args:
@@ -1034,6 +1060,7 @@ class CollectiveAllReduce(CrossDeviceOps):
       group_size: the global group size. For between-graph replicated training
         it's the total number of devices across all workers.
       collective_keys: an optional CollectiveKey object.
+      canonicalize_devices: Whether to canonicalize devices for workers or not.
     """
     if group_size % len(devices) > 0:
       raise ValueError("group_size must be divisible by the number of devices.")
@@ -1056,7 +1083,11 @@ class CollectiveAllReduce(CrossDeviceOps):
     # This deadlocks since neither collective is able to finish.
     self._lock = threading.Lock()
 
-    self._devices = tuple(device_util.canonicalize(d) for d in devices)
+    if canonicalize_devices:
+      self._devices = tuple(device_util.canonicalize(d) for d in devices)
+    else:
+      self._devices = tuple(
+          device_util.canonicalize_without_job_and_task(d) for d in devices)
     group_key = self._collective_keys.get_group_key(self._devices)
     self._launchers = []
     # Whether to only use NCCL for batched all-reduce when NCCL is requested.
@@ -1073,6 +1104,7 @@ class CollectiveAllReduce(CrossDeviceOps):
     self._pool = multiprocessing.pool.ThreadPool(len(self._devices))
 
     super(CollectiveAllReduce, self).__init__()
+    self._canonicalize_devices = canonicalize_devices
 
   @property
   def _num_between_graph_workers(self):
@@ -1191,9 +1223,10 @@ class CollectiveAllReduce(CrossDeviceOps):
     all_reduced = self._all_reduce_per_replica_values(reduce_op,
                                                       [per_replica_value],
                                                       options)[0]
-    devices = get_devices_from(destinations)
+    devices = get_devices_from(destinations, self._canonicalize_devices)
 
-    if _devices_match(per_replica_value, destinations):
+    if _devices_match(per_replica_value, destinations,
+                      self._canonicalize_devices):
       return all_reduced
 
     # Convert `all_reduced` to a `Mirrored` object, as a simple and uniform
@@ -1221,7 +1254,8 @@ class CollectiveAllReduce(CrossDeviceOps):
   def batch_reduce_implementation(self, reduce_op, value_destination_pairs,
                                   options):
     values_util.mark_as_unsaveable()
-    all_devices_match = _all_devices_match(value_destination_pairs)
+    all_devices_match = _all_devices_match(value_destination_pairs,
+                                           self._canonicalize_devices)
     if all_devices_match:
       return self._all_reduce_per_replica_values(
           reduce_op, [v[0] for v in value_destination_pairs], options)
@@ -1240,9 +1274,10 @@ class CollectiveAllReduce(CrossDeviceOps):
                              options):
     all_gathered = self._batch_all_gather([per_replica_value], axis, options)[0]
     values_util.mark_as_unsaveable()
-    devices = get_devices_from(destinations)
+    devices = get_devices_from(destinations, self._canonicalize_devices)
 
-    if _devices_match(per_replica_value, destinations):
+    if _devices_match(per_replica_value, destinations,
+                      self._canonicalize_devices):
       return all_gathered
 
     # Convert `all_gathered` to a `Mirrored` object, as a simple and uniform
@@ -1310,7 +1345,8 @@ class CollectiveAllReduce(CrossDeviceOps):
     # distribute_coordinator deep-copies the strategy object, so
     # CollectiveAllReduce needs to support deep copy as well.
     collective_keys = copy.deepcopy(self._collective_keys, memo)
-    return CollectiveAllReduce(self._devices, self._group_size, collective_keys)
+    return CollectiveAllReduce(self._devices, self._group_size, collective_keys,
+                               self._canonicalize_devices)
 
 
 def select_cross_device_ops(devices, session_config=None):

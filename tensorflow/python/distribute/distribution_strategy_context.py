@@ -273,12 +273,12 @@ def experimental_set_strategy(strategy):
 
 @contextlib.contextmanager
 def enter_or_assert_strategy(strategy):
-  if not has_strategy():
-    with strategy.scope():
-      yield
-  else:
+  if has_strategy():
     _assert_strategy(strategy)
     yield
+  else:
+    with strategy.scope():
+      yield
 
 
 # ------------------------------------------------------------------------------

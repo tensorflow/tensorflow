@@ -807,7 +807,7 @@ Status XlaCompiler::CompileFunction(
   MlirBridgeRolloutPolicy policy = MlirBridgeRolloutPolicy::kDisabledByUser;
   if (options.is_entry_computation) {
     policy = GetMlirBridgeRolloutPolicy(
-        *graph, config_proto,
+        *graph, /*function_library=*/nullptr, config_proto,
         /*uses_uninitialized_resource_args=*/AnyUninitializedResourceArg(args));
   }
   if (policy == MlirBridgeRolloutPolicy::kEnabledByUser) {
@@ -1323,7 +1323,6 @@ Status XlaCompiler::CompileGraph(
   // FunctionalizeControlFlow may remove some nodes from the graph.
   TF_RETURN_IF_ERROR(ValidateGraph(graph.get(), *options_.flib_def,
                                    options_.device_type, name));
-
   xla::XlaBuilder builder(name);
   XlaContext* context = new XlaContext(this, &builder, graph.get());
   core::ScopedUnref context_unref(context);
@@ -1414,6 +1413,7 @@ Status XlaCompiler::CompileGraph(
           << " nonconstant: " << num_nonconst_outputs;
   VLOG(2) << "XLA output shape: "
           << xla::ShapeUtil::HumanStringWithLayout(result->xla_output_shape);
+  result->collective_reduce_info = context->GetCollectiveReduceV2OpInfo();
   return Status::OK();
 }
 

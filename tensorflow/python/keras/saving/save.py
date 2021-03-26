@@ -14,12 +14,6 @@
 # ==============================================================================
 """Keras model saving code."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import six
-
 from tensorflow.python import tf2
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.saving import saving_utils
@@ -28,7 +22,6 @@ from tensorflow.python.keras.saving.saved_model import load_context
 from tensorflow.python.keras.saving.saved_model import save as saved_model_save
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.io_utils import path_to_string
-from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.util import keras_deps
 from tensorflow.python.util.tf_export import keras_export
 
@@ -132,6 +125,11 @@ def save_model(model,
 
   filepath = path_to_string(filepath)
 
+  # If the user has not already called fit or built the underlying metrics, we
+  # should do that before saving to ensure the metric names have all
+  # appropriate name transformations applied.
+  saving_utils.try_build_compiled_arguments(model)
+
   if (save_format == 'h5' or
       (h5py is not None and isinstance(filepath, h5py.File)) or
       saving_utils.is_hdf5_filepath(filepath)):
@@ -204,8 +202,7 @@ def load_model(filepath, custom_objects=None, compile=True, options=None):  # py
                                                   compile)
 
         filepath = path_to_string(filepath)
-        if isinstance(filepath, six.string_types):
-          loader_impl.parse_saved_model(filepath)
+        if isinstance(filepath, str):
           return saved_model_load.load(filepath, compile, options)
 
   raise IOError(

@@ -112,9 +112,9 @@ class DistributedIteratorTestBase(test.TestCase):
     if input_type == "dataset":
       if tf2.enabled():
         return input_lib.DistributedDataset(
-            dataset,
             input_workers,
             strategy,
+            dataset,
             num_replicas_in_sync=num_replicas_in_sync,
             input_context=input_context)
       else:
@@ -515,7 +515,10 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
           input_type=["input_fn", "dataset"],
           api_type=["wrap_into_dataset"],
           iteration_type=["get_next", "for_loop"],
-          distribution=[strategy_combinations.multi_worker_mirrored_2x2_gpu],
+          distribution=[
+              strategy_combinations.multi_worker_mirrored_2x2_gpu,
+              strategy_combinations.multi_worker_mirrored_2x2_gpu_no_merge_call
+          ],
           enable_get_next_as_optional=[True, False]))
   def testTupleDatasetMultiworker(self, input_type, api_type, iteration_type,
                                   distribution, enable_get_next_as_optional):
@@ -667,6 +670,7 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
           drop_remainder=[True, False],
           distribution=[
               strategy_combinations.multi_worker_mirrored_2x2_gpu,
+              strategy_combinations.multi_worker_mirrored_2x2_gpu_no_merge_call
           ]))
   def testUnevenDatasetBatchesMultiWorkerFourReplicas(self, input_type,
                                                       api_type, iteration_type,
@@ -770,6 +774,7 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
           num_replicas_in_sync=[None, 2],
           distribution=[
               strategy_combinations.multi_worker_mirrored_2x2_gpu,
+              strategy_combinations.multi_worker_mirrored_2x2_gpu_no_merge_call
           ],
           enable_get_next_as_optional=[True, False]))
   def testBatchSplittingMultiWorker(self, input_type, api_type, iteration_type,
@@ -821,6 +826,7 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
               strategy_combinations.tpu_strategy,
               strategy_combinations.central_storage_strategy_with_two_gpus,
               strategy_combinations.multi_worker_mirrored_2x2_gpu,
+              strategy_combinations.multi_worker_mirrored_2x2_gpu_no_merge_call,
               strategy_combinations.multi_worker_mirrored_2x1_cpu,
           ],
       ))
@@ -848,6 +854,7 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
               strategy_combinations.tpu_strategy,
               strategy_combinations.central_storage_strategy_with_two_gpus,
               strategy_combinations.multi_worker_mirrored_2x2_gpu,
+              strategy_combinations.multi_worker_mirrored_2x2_gpu_no_merge_call,
               strategy_combinations.multi_worker_mirrored_2x1_cpu,
           ],
           reshuffle=[True, False]))
@@ -882,6 +889,7 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
               strategy_combinations.tpu_strategy,
               strategy_combinations.central_storage_strategy_with_two_gpus,
               strategy_combinations.multi_worker_mirrored_2x2_gpu,
+              strategy_combinations.multi_worker_mirrored_2x2_gpu_no_merge_call,
               strategy_combinations.multi_worker_mirrored_2x1_cpu,
           ]))
   def testGetNextOptionalShape(self, distribution):
@@ -1467,18 +1475,20 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
           input_options=[
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=True,
+                  experimental_fetch_to_device=True,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_WORKER),
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=True,
+                  experimental_fetch_to_device=True,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_REPLICA),
           ],
           mode=["eager"],
           distribution=[
               strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations
+              .mirrored_strategy_with_two_gpus_no_merge_call,
               strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ]))
@@ -1503,13 +1513,15 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
       combinations.combine(
           distribution=[
               strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations
+              .mirrored_strategy_with_two_gpus_no_merge_call,
               strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ],
           input_options=[
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=False,
+                  experimental_fetch_to_device=False,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_WORKER)
           ],
@@ -1541,18 +1553,20 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
           input_options=[
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=True,
-                  experimental_prefetch_to_device=False,
+                  experimental_fetch_to_device=False,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_WORKER),
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=True,
-                  experimental_prefetch_to_device=True,
+                  experimental_fetch_to_device=True,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_REPLICA)
           ],
           mode=["eager"],
           distribution=[
               strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations
+              .mirrored_strategy_with_two_gpus_no_merge_call,
               strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ]))
@@ -1572,16 +1586,18 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
           input_options=[
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=False,
+                  experimental_fetch_to_device=False,
                   experimental_per_replica_buffer_size=2),
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=True,
+                  experimental_fetch_to_device=True,
                   experimental_per_replica_buffer_size=2),
           ],
           mode=["eager"],
           distribution=[
               strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations
+              .mirrored_strategy_with_two_gpus_no_merge_call,
               strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ]))
@@ -1605,18 +1621,20 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
           input_options=[
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=False,
+                  experimental_fetch_to_device=False,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_WORKER),
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=True,
+                  experimental_fetch_to_device=True,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_WORKER),
           ],
           mode=["eager"],
           distribution=[
               strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations
+              .mirrored_strategy_with_two_gpus_no_merge_call,
               strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ]))
@@ -1641,23 +1659,25 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
           input_options=[
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=True,
-                  experimental_prefetch_to_device=False,
+                  experimental_fetch_to_device=False,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_REPLICA),
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=False,
+                  experimental_fetch_to_device=False,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_REPLICA),
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=True,
+                  experimental_fetch_to_device=True,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_REPLICA),
           ],
           mode=["eager"],
           distribution=[
               strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations
+              .mirrored_strategy_with_two_gpus_no_merge_call,
               strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ]))
@@ -1708,6 +1728,7 @@ class DistributedIteratorTfDataServiceTest(DistributedIteratorTestBase,
               strategy_combinations.tpu_strategy,
               strategy_combinations.central_storage_strategy_with_two_gpus,
               strategy_combinations.multi_worker_mirrored_2x2_gpu,
+              strategy_combinations.multi_worker_mirrored_2x2_gpu_no_merge_call,
               strategy_combinations.multi_worker_mirrored_2x1_cpu,
           ]))
   def testTfDataService(self, distribution):

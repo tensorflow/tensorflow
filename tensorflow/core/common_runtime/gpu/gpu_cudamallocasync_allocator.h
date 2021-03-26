@@ -64,7 +64,7 @@ namespace tensorflow {
 // driver can return the excess memory to other processes.
 class GpuCudaMallocAsyncAllocator : public Allocator {
  public:
-  explicit GpuCudaMallocAsyncAllocator(PlatformGpuId platform_gpu_id,
+  explicit GpuCudaMallocAsyncAllocator(PlatformDeviceId platform_device_id,
                                        size_t pool_size,
                                        bool reserve_memory = false,
                                        bool compute_stats = false);
@@ -106,8 +106,8 @@ class GpuCudaMallocAsyncAllocator : public Allocator {
   // Stats.
   // Structures mutable after construction
   mutable mutex lock_;
-  std::unique_ptr<AllocatorStats> stats_ PT_GUARDED_BY(lock_);
-  absl::flat_hash_map<const void*, size_t> size_map_ GUARDED_BY(lock_);
+  std::unique_ptr<AllocatorStats> stats_ TF_PT_GUARDED_BY(lock_);
+  absl::flat_hash_map<const void*, size_t> size_map_ TF_GUARDED_BY(lock_);
 };
 
 }  // namespace tensorflow

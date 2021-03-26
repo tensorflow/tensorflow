@@ -377,6 +377,7 @@ def remove_training_nodes(input_graph, protected_nodes=None):
   return output_graph
 
 
+@tf_export("__internal__.graph_util.graph_defs_equal", v1=[])
 def graph_defs_equal(graph_def_1: graph_pb2.GraphDef,
                      graph_def_2: graph_pb2.GraphDef,
                      treat_nan_as_equal: bool = False) -> bool:
@@ -386,6 +387,25 @@ def graph_defs_equal(graph_def_1: graph_pb2.GraphDef,
   the GraphDef's function library and main graph body are identical.
   Additionally, it checks that the functions in the function library are equal
   as sets.
+
+  Example usage:
+
+  ```
+  with tf.Graph().as_default() as g1:
+    tf.constant(1)
+
+  with tf.Graph().as_default() as g2:
+    tf.constant(2)
+
+  with tf.Graph().as_default() as g3:
+    tf.constant(1)
+
+  assert tf.__internal__.graph_util.graph_defs_equal(g1.as_graph_def(),
+                                                     g3.as_graph_def())
+
+  assert not tf.__internal__.graph_util.graph_defs_equal(g1.as_graph_def(),
+                                                         g2.as_graph_def())
+  ```
 
   Args:
     graph_def_1: Instance of `graph_pb2.GraphDef` to compare.

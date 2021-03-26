@@ -157,10 +157,14 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       if (buffer_size_->value == model::kAutotune) {
         buffer_size_->value = buffer_size_min_;
       }
+      cancellation_manager_ = absl::make_unique<CancellationManager>();
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(), [this]() { CancelThreads(); },
           &deregister_fn_));
-      return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
+      IteratorContext::Params params(ctx);
+      params.cancellation_manager = cancellation_manager_.get();
+      return dataset()->input_->MakeIterator(IteratorContext(params), this,
+                                             prefix(), &input_impl_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -360,6 +364,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     }
 
     void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {
+      cancellation_manager_->StartCancel();
       mutex_lock l(*mu_);
       cancelled_ = true;
       cond_var_->notify_all();
@@ -558,6 +563,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     // accessing the input iterator. We keep this separate from `mu_` to allow
     // prefetching to run in parallel with GetNext calls.
     mutex input_mu_ TF_ACQUIRED_BEFORE(*mu_);
+    // Controls cancellation of `input_impl_`. Must be ordered before
+    // `input_impl_` so that `input_impl_` is destroyed first.
+    std::unique_ptr<CancellationManager> cancellation_manager_;
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(input_mu_);
     const std::shared_ptr<condition_variable> cond_var_;
     const int64 buffer_size_min_;

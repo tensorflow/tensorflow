@@ -54,10 +54,6 @@ from tensorflow.python.util.tf_export import tf_export
 # as a legacy API for tf.contrib.summary in TF 1.x.
 _SUMMARY_WRITER_INIT_COLLECTION_NAME = "_SUMMARY_WRITER_V2"
 
-_EXPERIMENT_NAME_PATTERNS = re.compile(r"^[^\x00-\x1F<>]{0,256}$")
-_RUN_NAME_PATTERNS = re.compile(r"^[^\x00-\x1F<>]{0,512}$")
-_USER_NAME_PATTERNS = re.compile(r"^[a-z]([-a-z0-9]{0,29}[a-z0-9])?$", re.I)
-
 
 class _SummaryState(threading.local):
 
@@ -976,14 +972,8 @@ def graph(graph_data):
 
   Usage Example:
   ```py
-  graph = tf.Graph()
-  with graph.as_default():
-    c = tf.constant(30.0)
   writer = tf.summary.create_file_writer("/tmp/mylogs")
-  with writer.as_default():
-    tf.summary.graph(graph)
 
-  # Another example; must attain the concrete function graph manually.
   @tf.function
   def f():
     x = constant_op.constant(2)
@@ -992,6 +982,14 @@ def graph(graph_data):
 
   with writer.as_default():
     tf.summary.graph(f.get_concrete_function().graph)
+
+  # Another example: in a very rare use case, when you are dealing with a TF v1
+  # graph.
+  graph = tf.Graph()
+  with graph.as_default():
+    c = tf.constant(30.0)
+  with writer.as_default():
+    tf.summary.graph(graph)
   ```
 
   Args:

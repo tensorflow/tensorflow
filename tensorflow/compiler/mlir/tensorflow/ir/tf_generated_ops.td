@@ -2227,7 +2227,7 @@ of `data_format`, see below for details.}]>:$input,
     StringRef GetOptimalLayout(const RuntimeDevices& devices);
     LogicalResult UpdateDataFormat(StringRef data_format);
     // InferTypeOpInterface:
-    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       return ArraysAreCastCompatible(l, r);
     }
   }];
@@ -2348,7 +2348,7 @@ out_channels]`. `in_channels` must match between `input` and `filter`.}]>:$filte
 
   let extraClassDeclaration = [{
     // InferTypeOpInterface:
-    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       return ArraysAreCastCompatible(l, r);
     }
   }];
@@ -3887,6 +3887,8 @@ Returns the input tensor otherwise.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasFolder = 1;
 }
 
 def TF_EqualOp : TF_Op<"Equal", [Commutative, NoSideEffect]> {
@@ -3921,7 +3923,7 @@ tf.math.equal(x, y) ==> array([True,  True])
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$x, "Value":$y,
+    OpBuilder<(ins "Value":$x, "Value":$y,
       "BoolAttr":$incompatible_shape_error)>
   ];
 
@@ -4071,7 +4073,7 @@ dimension of size 1 added.}]>:$output
   TF_DerivedOperandTypeAttr Tdim = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$condition, "Value":$dim)>
+    OpBuilder<(ins "Value":$condition, "Value":$dim)>
   ];
 }
 
@@ -4458,7 +4460,7 @@ Equivalent to np.full
   let hasFolder = 1;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$dims, "Value":$value)>
+    OpBuilder<(ins "Value":$dims, "Value":$value)>
   ];
 }
 
@@ -8040,7 +8042,7 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$input, "Value":$reduction_indices,
+    OpBuilder<(ins "Value":$input, "Value":$reduction_indices,
       "BoolAttr":$keep_dims)>
   ];
 }
@@ -9058,7 +9060,7 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Commutative, NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$x, "Value":$y,
+    OpBuilder<(ins "Value":$x, "Value":$y,
       "BoolAttr":$incompatible_shape_error)>
   ];
 
@@ -9177,7 +9179,7 @@ output =
   TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$indices, "Value":$depth, "Value":$on_value,
+    OpBuilder<(ins "Value":$indices, "Value":$depth, "Value":$on_value,
       "Value":$off_value, "IntegerAttr":$axis)>
   ];
 
@@ -9351,6 +9353,8 @@ This is the opposite of `unpack`.
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasCanonicalizer = 1;
 
   let hasFolder = 1;
 }
@@ -10390,7 +10394,7 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$start, "Value":$limit, "Value":$delta)>
+    OpBuilder<(ins "Value":$start, "Value":$limit, "Value":$delta)>
   ];
 }
 
@@ -10443,7 +10447,7 @@ of the tensor. Rank is also known as "order", "degree", or "ndims."
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$input)>
+    OpBuilder<(ins "Value":$input)>
   ];
 
   let hasFolder = 1;
@@ -10714,6 +10718,25 @@ def TF_RemoteCallOp : TF_Op<"RemoteCall", []> {
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
 }
 
+def TF_RepeatDatasetOp : TF_Op<"RepeatDataset", [NoSideEffect]> {
+  let summary = [{
+Creates a dataset that emits the outputs of `input_dataset` `count` times.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    Arg<TF_Int64Tensor, [{A scalar representing the number of times that `input_dataset` should
+be repeated. A value of `-1` indicates that it should be repeated infinitely.}]>:$count,
+
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+}
+
 def TF_ReshapeOp : TF_Op<"Reshape", [NoSideEffect]> {
   let summary = "Reshapes a tensor.";
 
@@ -10792,7 +10815,7 @@ reshape(t, []) ==> 7
   TF_DerivedOperandTypeAttr Tshape = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$tensor, "Value":$shape)>
+    OpBuilder<(ins "Value":$tensor, "Value":$shape)>
   ];
 
   let verifier = [{
@@ -13271,8 +13294,6 @@ but its first dimension must match the size of `condition`.}]>:$t,
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 
-  let hasCanonicalizer = 1;
-
   let verifier = [{
     return Verify(*this);
   }];
@@ -13294,7 +13315,7 @@ def TF_SelectV2Op : TF_Op<"SelectV2", [NoSideEffect, ResultsBroadcastableShape]>
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$condition, "Value":$e, "Value":$t)>
+    OpBuilder<(ins "Value":$condition, "Value":$e, "Value":$t)>
   ];
 }
 
@@ -13457,7 +13478,7 @@ shape(t) ==> [2, 2, 3]
   }];
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$input, "BoolAttr":$use32Bit)>
+    OpBuilder<(ins "Value":$input, "BoolAttr":$use32Bit)>
   ];
 
   let hasFolder = 1;
@@ -14133,7 +14154,7 @@ regular convolution.}]>:$paddings
   let verifier = [{ return Verify(*this); }];
 
   let extraClassDeclaration = [{
-    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       return ArraysAreCastCompatible(l, r);
     }
   }];
@@ -15604,7 +15625,7 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$input, "Value":$reduction_indices,
+    OpBuilder<(ins "Value":$input, "Value":$reduction_indices,
       "BoolAttr":$keep_dims)>
   ];
 
@@ -15670,7 +15691,7 @@ Computes the gradient function for function f via backpropagation.
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
 }
 
-def TF_TPUCompilationResultOp : TF_Op<"TPUCompilationResult", [NoSideEffect]> {
+def TF_TPUCompilationResultOp : TF_Op<"TPUCompilationResult", []> {
   let summary = "Returns the result of a TPU compilation.";
 
   let description = [{
@@ -16797,7 +16818,7 @@ to the indices.}]>:$output
   let verifier = [{ return Verify(*this); }];
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$tensor, "Value":$indices, "Value":$updates),
+    OpBuilder<(ins "Value":$tensor, "Value":$indices, "Value":$updates),
     [{build($_builder, $_state, tensor.getType(), tensor, indices, updates);}]>
   ];
 }
@@ -16995,7 +17016,7 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
   TF_DerivedOperandTypeAttr Tperm = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$x, "Value":$perm)>
+    OpBuilder<(ins "Value":$x, "Value":$perm)>
   ];
 
   let verifier = [{
@@ -17666,7 +17687,7 @@ for binary operators.
 
   let extraClassDeclaration = [{
     // InferTypeOpInterface:
-    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       return ArraysAreCastCompatible(l, r);
     }
   }];
@@ -17903,30 +17924,6 @@ https://www.tensorflow.org/xla/operation_semantics#gather
 
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
-def TF_XlaHostComputeOp : TF_Op<"XlaHostCompute", []> {
-  let summary = [{
-A pseudo-op to represent host-side computation in an XLA program.
-  }];
-
-  let arguments = (ins
-    Arg<Variadic<TF_Tensor>, [{A list of tensors that will be sent to the host.}]>:$inputs,
-
-    StrArrayAttr:$ancestors,
-    TF_ShapeAttrArray:$shapes,
-    SymbolRefAttr:$shape_inference_graph,
-    StrAttr:$key,
-    DefaultValuedAttr<I64Attr, "1000000">:$cost_estimate_ns,
-    DefaultValuedAttr<I64Attr, "0">:$tpu_core
-  );
-
-  let results = (outs
-    Res<Variadic<TF_Tensor>, [{A list of tensors that will be returned to the device.}]>:$outputs
-  );
-
-  TF_DerivedOperandTypeListAttr Tinputs = TF_DerivedOperandTypeListAttr<0>;
-  TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
 }
 
 def TF_XlaKeyValueSortOp : TF_Op<"XlaKeyValueSort", [NoSideEffect]> {

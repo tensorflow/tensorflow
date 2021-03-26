@@ -33,6 +33,7 @@ limitations under the License.
 #ifndef LHLO_OPS
 #define LHLO_OPS
 
+include "mlir/Dialect/MemRef/IR/MemRefBase.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/CopyOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
@@ -232,34 +233,21 @@ def LHLO_ReduceWindowOp: LHLO_Op<"reduce_window", []>, BASE_HLO_ReduceWindowOp {
   let regions = (region SizedRegion<1>:$body);
 }
 
-// TODO(timshen): Add a custom parser to hide operand_segment_sizes. For example,
-// A tuple-like pattern match syntax could work:
-// lmhlo.case %index, (%input0, %input1, %input2), (%output0, %output1) {
-//   ...
-// }, {
-//   ...
-// } : (type_input0, type_input1, type_input2, type_output0, type_output1) -> ()
+// TODO(timshen): Add a custom syntax for this.
 def LHLO_CaseOp: LHLO_Op<"case", [
-      AttrSizedOperandSegments,
       SingleBlockImplicitTerminator<"TerminatorOp">
     ]>, BASE_HLO_CaseOp {
 
-  let arguments = (ins
-    Arg<LHLO_Buffer, "", [MemRead]>:$index,
-    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$branch_operands,
-    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$out
-  );
+  let arguments = (ins Arg<LHLO_PredOrIntBuffer, "", [MemRead]>:$index);
 
   let regions = (region VariadicRegion<SizedRegion<1>>:$branches);
 }
 
 // TODO(timshen): Add a custom syntax for this.
-def LHLO_WhileOp: LHLO_Op<"while", [SameVariadicOperandSize]>,
-                  BASE_HLO_WhileOp {
+def LHLO_WhileOp: LHLO_Op<"while", []>, BASE_HLO_WhileOp {
   let arguments = (ins
-    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$val,
-    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$output
-  );
+    Arg<Variadic<LHLO_PredBuffer>, "", [MemWrite]>:$cond_val,
+    OptionalAttr<I64Attr>:$trip_count);
 
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
 }
@@ -584,6 +572,7 @@ def LHLO_CollectivePermuteOp: LHLO_Op<"collective_permute", [SameTypeOperands]>,
     I64ElementsAttr:$source_target_pairs,
     OptionalAttr<ChannelHandle>:$channel_id
   );
+  let verifier = [{ return Verify(*this); }];
 }
 
 def LHLO_FftOp: LHLO_Op<"fft", []>, BASE_HLO_FftOp {
@@ -691,13 +680,13 @@ def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]
 
   let skipDefaultBuilders = 1;
   let builders = [
-     OpBuilderDAG<(ins CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes)>
+     OpBuilder<(ins CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes)>
   ];
 
   let extraClassDeclaration = [{
     SmallVector<Value, 4> getInputBuffers() {
       SmallVector<Value, 4> buffers;
-      this->region().walk([&](TensorLoadOp load) {
+      this->region().walk([&](memref::TensorLoadOp load) {
         if (load.memref().getParentRegion()->isProperAncestor(&region()))
           buffers.push_back(load.memref());
       });
@@ -706,7 +695,7 @@ def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]
 
     SmallVector<Value, 4> getOutputBuffers() {
       SmallVector<Value, 4> buffers;
-      this->region().walk([&](TensorStoreOp store) {
+      this->region().walk([&](memref::TensorStoreOp store) {
         if (store.memref().getParentRegion()->isProperAncestor(&region()))
           buffers.push_back(store.memref());
       });
@@ -715,7 +704,7 @@ def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]
 
     SmallVector<Value, 4> getFusionParameters() {
       SmallVector<Value, 4> buffers;
-      this->region().walk([&](TensorLoadOp load) {
+      this->region().walk([&](memref::TensorLoadOp load) {
         if (load.memref().getParentRegion()->isProperAncestor(&region()))
           buffers.push_back(load);
       });
@@ -724,7 +713,7 @@ def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]
 
     SmallVector<Value, 4> getFusionResults() {
       SmallVector<Value, 4> buffers;
-      this->region().walk([&](TensorStoreOp store) {
+      this->region().walk([&](memref::TensorStoreOp store) {
         if (store.memref().getParentRegion()->isProperAncestor(&region()))
           buffers.push_back(store.tensor());
       });
@@ -740,7 +729,7 @@ def TerminatorOp :
     Terminator operation for the LHLO dialect.
   }];
   let builders = [
-    OpBuilderDAG<(ins "ValueRange":$operands),
+    OpBuilder<(ins "ValueRange":$operands),
     [{ build($_builder, $_state, llvm::None, operands, llvm::None); }]>];
 }
 

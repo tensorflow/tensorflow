@@ -29,6 +29,11 @@ from tensorflow.python.ops import control_flow_ops
 # CHECK-NOT: tf_executor.Switch
 # CHECK-NOT: tf_executor.Merge
 # CHECK: "tf.If"
+# CHECK-SAME: else_branch = @"key/[[else:[a-zA-Z_0-9]+]]"
+# CHECK-SAME: then_branch = @"key/[[then:[a-zA-Z_0-9]+]]"
+
+# CHECK: func private @"key/[[else]]"(
+# CHECK: func private @"key/[[then]]"(
 
 
 def Test():

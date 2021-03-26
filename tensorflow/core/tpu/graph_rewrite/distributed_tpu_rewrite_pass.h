@@ -362,7 +362,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
       int num_cores_per_replica, const string& compile_device,
       const xla::DeviceAssignment* xla_device_assignment,
       const std::vector<Node*>& dynamic_shape_nodes, Graph* graph,
-      Node** compile_node, int64 autotuner_thresh);
+      Node** compile_node, int64 autotuner_thresh, int num_tasks);
 
   // Builds a TPUCompileSucceededAssert node that verifies that compilation
   // succeeded and replaces the TPUCompilationStatus node in the graph.

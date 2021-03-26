@@ -226,8 +226,7 @@ bool OpIsKnownToHaveNoSideEffect(Operation* op) {
   if (isa<IdentityOp>(op)) return true;
 
   // For op's in the Tensorflow dialect, query the dialect.
-  if (op->getName().getDialect() ==
-      TF::TensorFlowDialect::getDialectNamespace())
+  if (isa_and_nonnull<TF::TensorFlowDialect>(op->getDialect()))
     return !TensorFlowDialect::CanHaveSideEffects(op);
 
   // Otherwise, conservatively assume that there can be side effects.

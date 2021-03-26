@@ -1851,19 +1851,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
           name="my_var",
           container="my_container")
 
-    class MyResourceDeleter(tracking.CapturableResourceDeleter):
-
-      def destroy_resource(self):
-        handle = get_handle()
-        resource_variable_ops.destroy_resource_op(
-            handle, ignore_lookup_error=True)
-
     class MyResource(tracking.TrackableResource):
-
-      def __init__(self):
-        # Set the resource deleter, so when the resource object goes out of
-        # scope it will be deleted automatically.
-        super(MyResource, self).__init__(deleter=MyResourceDeleter())
 
       def _create_resource(self):
         return get_handle()
@@ -1871,6 +1859,11 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       def _initialize(self):
         resource_variable_ops.assign_variable_op(
             self.resource_handle, 1.0, name="assign")
+
+      def _destroy_resource(self):
+        handle = get_handle()
+        resource_variable_ops.destroy_resource_op(
+            handle, ignore_lookup_error=True)
 
     class MyModel(tracking.AutoTrackable):
 
@@ -1967,6 +1960,35 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     imported = cycle(root, cycles)
     self.assertEqual(self.evaluate(imported.lookup("foo")), 15)
     self.assertEqual(self.evaluate(imported.lookup("idk")), -1)
+
+  def test_load_resource_with_dependency(self, cycles):
+    # Test with StaticHashTable, which has a _initializer attribute that tracks
+    # the Asset vocab table.
+
+    class MyLookupModel(tracking.AutoTrackable):
+
+      def __init__(self, vocab_file):
+
+        vocab_initializer = lookup_ops.TextFileInitializer(
+            vocab_file,
+            key_dtype=dtypes.string,
+            key_index=lookup_ops.TextFileIndex.WHOLE_LINE,
+            value_dtype=dtypes.int64,
+            value_index=lookup_ops.TextFileIndex.LINE_NUMBER)
+        self._vocab_table = lookup_ops.StaticHashTable(vocab_initializer,
+                                                       default_value=-1)
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec((None,), dtypes.string)])
+      def __call__(self, inputs):
+        return self._vocab_table.lookup(inputs)
+
+    vocab_file = self._make_asset("\n".join(["a", "b", "c", "d"]))
+    root = MyLookupModel(vocab_file)
+    imported = cycle(root, cycles)
+    file_io.delete_file(vocab_file)
+    self.assertAllEqual(imported(constant_op.constant(["d", "b"])),
+                        [3, 1])
 
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):

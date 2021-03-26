@@ -177,13 +177,10 @@ upper_tabs:
         path: /lite/guide/build_android
       - title: "Build for iOS"
         path: /lite/guide/build_ios
-      - title: "Build for ARM64"
-        path: /lite/guide/build_arm64
-      - title: "Build for Raspberry Pi"
-        path: /lite/guide/build_rpi
+      - title: "Build for ARM"
+        path: /lite/guide/build_arm
       - title: "Build with CMake"
         path: /lite/guide/build_cmake
-        status: experimental
         section:
         - title: "Cross compilation for ARM"
           path: /lite/guide/build_cmake_arm

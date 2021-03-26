@@ -261,7 +261,7 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
     self._input_device = device_util.get_host_for_device(self._device)
 
   def _input_workers_with_options(self, options=None):
-    if not options or options.experimental_prefetch_to_device:
+    if not options or options.experimental_fetch_to_device:
       return input_lib.InputWorkers([(self._input_device, (self._device,))])
     else:
       return input_lib.InputWorkers([(self._input_device,

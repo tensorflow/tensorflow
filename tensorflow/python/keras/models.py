@@ -13,14 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
-"""Code for model cloning, plus model-related API entries.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Code for model cloning, plus model-related API entries."""
 
 from tensorflow.python.framework import ops
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras.engine import functional
@@ -181,7 +177,7 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
 
       # Cache input layer. Create a new layer if the tensor is originally not
       # from a Keras layer.
-      if not K.is_keras_tensor(input_tensor):
+      if not backend.is_keras_tensor(input_tensor):
         name = original_input_layer.name
         input_tensor = Input(tensor=input_tensor,
                              name='input_wrapper_for_' + name)
@@ -344,7 +340,7 @@ def _clone_sequential_model(model, input_tensors=None, layer_fn=_clone_layer):
     if isinstance(input_tensors, tuple):
       input_tensors = list(input_tensors)
     x = generic_utils.to_list(input_tensors)[0]
-    if K.is_keras_tensor(x):
+    if backend.is_keras_tensor(x):
       origin_layer = x._keras_history.layer
       if isinstance(origin_layer, InputLayer):
         cloned_model = Sequential(
@@ -387,22 +383,23 @@ def _clone_sequential_model(model, input_tensors=None, layer_fn=_clone_layer):
 
 @keras_export('keras.models.clone_model')
 def clone_model(model, input_tensors=None, clone_function=None):
-  """Clone any `Model` instance.
+  """Clone a Functional or Sequential `Model` instance.
 
   Model cloning is similar to calling a model on new inputs,
   except that it creates new layers (and thus new weights) instead
   of sharing the weights of the existing layers.
 
+  Note that
   `clone_model` will not preserve the uniqueness of shared objects within the
   model (e.g. a single variable attached to two distinct layers will be
   restored as two separate variables).
 
   Args:
       model: Instance of `Model`
-          (could be a functional model or a Sequential model).
+          (could be a Functional model or a Sequential model).
       input_tensors: optional list of input tensors or InputLayer objects
           to build the model upon. If not provided,
-          placeholders will be created.
+          new `Input` objects will be created.
       clone_function: Callable to be used to clone each layer in the target
           model (except `InputLayer` instances). It takes as argument the layer
           instance to be cloned, and returns the corresponding layer instance to
@@ -415,14 +412,34 @@ def clone_model(model, input_tensors=None, clone_function=None):
           `Bidirectional(LSTM(...))` instances, for example).
 
   Returns:
-      An instance of `Model` reproducing the behavior
-      of the original model, on top of new inputs tensors,
-      using newly instantiated weights. The cloned model might behave
-      differently from the original model if a custom clone_function
-      modifies the layer.
+    An instance of `Model` reproducing the behavior
+    of the original model, on top of new inputs tensors,
+    using newly instantiated weights. The cloned model may behave
+    differently from the original model if a custom `clone_function`
+    modifies the layer.
 
-  Raises:
-      ValueError: in case of invalid `model` argument value.
+  Example:
+
+  ```python
+  # Create a test Sequential model.
+  model = keras.Sequential([
+      keras.Input(shape=(728,)),
+      keras.layers.Dense(32, activation='relu'),
+      keras.layers.Dense(1, activation='sigmoid'),
+  ])
+  # Create a copy of the test model (with freshly initialized weights).
+  new_model = clone_model(model)
+  ```
+
+  Note that subclassed models cannot be cloned, since their internal
+  layer structure is not known. To achieve equivalent functionality
+  as `clone_model` in the case of a subclassed model, simply make sure
+  that the model class implements `get_config()`
+  (and optionally `from_config()`), and call:
+
+  ```python
+  new_model = model.__class__.from_config(model.get_config())
+  ```
   """
   with generic_utils.DisableSharedObjectScope():
     if clone_function is None:
@@ -660,7 +677,7 @@ def clone_and_build_model(
           clone.build(model._build_input_shape)
         else:
           clone._set_inputs(
-              K.placeholder(
+              backend.placeholder(
                   model._build_input_shape, dtype=model.inputs[0].dtype))
     else:
       try:
@@ -690,7 +707,7 @@ def clone_and_build_model(
     if isinstance(orig_optimizer, optimizer_v1.TFOptimizer):
       optimizer = optimizer_v1.TFOptimizer(
           orig_optimizer.optimizer, optimizer_iterations)
-      K.track_tf_optimizer(optimizer)
+      backend.track_tf_optimizer(optimizer)
     else:
       if not isinstance(orig_optimizer, (tuple, list)):
         orig_optimizer = [orig_optimizer]

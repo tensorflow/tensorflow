@@ -50,6 +50,8 @@ exports_files([
     "adjust_saturation_op.h",
     "crop_and_resize_op.cc",
     "crop_and_resize_op.h",
+    "colorspace_op.cc",
+    "colorspace_op.h",
     "extract_image_patches_op.cc",
     "extract_image_patches_op.h",
     "image_ops.h",

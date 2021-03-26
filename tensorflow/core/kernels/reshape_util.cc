@@ -32,15 +32,17 @@ limitations under the License.
 namespace tensorflow {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
+using GPUDevice = Eigen::GpuDevice;
 
 namespace functor {
 
 template <>
 struct ReshapeSparseTensorFunctor<CPUDevice> {
-  Status operator()(const TensorShape &input_shape,
+  Status operator()(OpKernelContext *context, const TensorShape &input_shape,
                     const TensorShape &output_shape,
                     typename TTypes<int64>::ConstMatrix input_indices,
                     typename TTypes<int64>::Matrix output_indices) const {
+    (void)context;  // Unused (only used in GPU implementation)
     const int64 input_rank = input_shape.dims();
     const int64 output_rank = output_shape.dims();
     const int64 nnz = input_indices.dimension(0);
@@ -173,7 +175,7 @@ void ReshapeSparseTensor(OpKernelContext *context,
                                           &result_indices));
   if (nnz > 0) {
     OP_REQUIRES_OK(context, functor::ReshapeSparseTensorFunctor<Device>()(
-                                input_shape, output_shape,
+                                context, input_shape, output_shape,
                                 input_indices_in.matrix<int64>(),
                                 result_indices->matrix<int64>()));
   }
@@ -185,6 +187,10 @@ void ReshapeSparseTensor(OpKernelContext *context,
       const Tensor &input_shape_in, const Tensor &target_shape_in, \
       int output_indices_idx, int output_shape_idx)
 EXPLICITLY_INSTANTIATE_FUNCTION(CPUDevice);
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+EXPLICITLY_INSTANTIATE_FUNCTION(GPUDevice);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #undef EXPLICITLY_INSTANTIATE_FUNCTION
 
 }  // namespace tensorflow

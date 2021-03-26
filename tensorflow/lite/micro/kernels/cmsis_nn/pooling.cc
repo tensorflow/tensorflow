@@ -40,6 +40,8 @@ struct OpData {
 
   int32_t activation_min;
   int32_t activation_max;
+  float activation_min_f32;
+  float activation_max_f32;
 };
 
 TfLiteStatus CalculateOpData(TfLiteContext* context,
@@ -58,7 +60,10 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
       /*dilation_rate_width=*/1, height, width, params->filter_height,
       params->filter_width, params->padding, &out_height, &out_width);
 
-  if (input->type != kTfLiteFloat32) {
+  if (input->type == kTfLiteFloat32) {
+    CalculateActivationRange(params->activation, &data->activation_min_f32,
+                             &data->activation_max_f32);
+  } else {
     TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
         context, params->activation, output, &data->activation_min,
         &data->activation_max));
@@ -178,8 +183,8 @@ void MaxEvalFloat(TfLiteContext* context, TfLiteNode* node,
   op_params.filter_width = params->filter_width;
   op_params.padding_values.height = data.padding.height;
   op_params.padding_values.width = data.padding.width;
-  op_params.float_activation_min = activation_min;
-  op_params.float_activation_max = activation_max;
+  op_params.float_activation_min = data.activation_min_f32;
+  op_params.float_activation_max = data.activation_max_f32;
   reference_ops::MaxPool(op_params, tflite::micro::GetTensorShape(input),
                          tflite::micro::GetTensorData<float>(input),
                          tflite::micro::GetTensorShape(output),
@@ -271,7 +276,9 @@ TfLiteStatus MaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLitePoolParams*>(node->builtin_data);
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  TF_LITE_ENSURE(context, input != nullptr);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TF_LITE_ENSURE(context, output != nullptr);
 
   TF_LITE_ENSURE_STATUS(CalculateOpData(context, params, input, output, data));
 
@@ -314,8 +321,10 @@ TfLiteStatus AveragePrepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus AverageEval(TfLiteContext* context, TfLiteNode* node) {
+  TFLITE_DCHECK(node->builtin_data != nullptr);
   auto* params = reinterpret_cast<TfLitePoolParams*>(node->builtin_data);
 
+  TFLITE_DCHECK(node->user_data != nullptr);
   const OpData& data = *(static_cast<const OpData*>(node->user_data));
 
   const TfLiteEvalTensor* input =
@@ -341,8 +350,10 @@ TfLiteStatus AverageEval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus MaxEval(TfLiteContext* context, TfLiteNode* node) {
+  TFLITE_DCHECK(node->builtin_data != nullptr);
   auto* params = reinterpret_cast<TfLitePoolParams*>(node->builtin_data);
 
+  TFLITE_DCHECK(node->user_data != nullptr);
   const OpData& data = *(static_cast<const OpData*>(node->user_data));
 
   const TfLiteEvalTensor* input =

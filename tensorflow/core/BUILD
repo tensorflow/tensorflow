@@ -68,7 +68,6 @@ load(
     "if_ios",
     "if_libtpu",
     "if_mobile",
-    "if_not_windows",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -205,7 +204,6 @@ FRAMEWORK_PROTO_SRCS = [
     "//tensorflow/core/framework:op_def.proto",
     "//tensorflow/core/framework:dataset_options.proto",
     "//tensorflow/core/framework:reader_base.proto",
-    "//tensorflow/core/framework:remote_fused_graph_execute_info.proto",
     "//tensorflow/core/framework:resource_handle.proto",
     "//tensorflow/core/framework:step_stats.proto",
     "//tensorflow/core/framework:summary.proto",
@@ -246,6 +244,7 @@ tf_proto_library(
         "//tensorflow/core/protobuf:for_core_protos",
         "//tensorflow/core/util:protos_all",
         "//tensorflow/core/util:test_log_proto_impl",
+        "//tensorflow/core/grappler/costs:op_performance_data",
     ],
     visibility = ["//visibility:public"],
 )
@@ -638,7 +637,6 @@ cc_library(
         "//tensorflow/core/kernels:stateful_random_ops",
         "//tensorflow/core/kernels:random_binomial_op",
         "//tensorflow/core/kernels:random_poisson_op",
-        "//tensorflow/core/kernels:remote_fused_graph_ops",
         "//tensorflow/core/kernels:required",
         "//tensorflow/core/kernels:resource_variable_ops",
         "//tensorflow/core/kernels:rnn_ops",
@@ -657,9 +655,7 @@ cc_library(
         "//tensorflow/core/kernels/linalg:linalg",
         "//tensorflow/core/kernels/image:image",
         "//tensorflow/core/kernels/sparse:kernels",
-    ] + if_not_windows([
-        "//tensorflow/core/kernels/neon:neon_depthwise_conv_op",
-    ]) + if_mkl([
+    ] + if_mkl([
         "//tensorflow/core/kernels/mkl:mkl_aggregate_ops",
         "//tensorflow/core/kernels/mkl:mkl_concat_op",
         "//tensorflow/core/kernels/mkl:mkl_dequantize_op",
@@ -974,7 +970,6 @@ filegroup(
         "ragged_ops",
         "random_grad_op_lib",
         "random_ops_op_lib",
-        "remote_fused_graph_ops_op_lib",
         "resource_variable_ops_op_lib",
         "risc_ops_op_lib",
         "rnn_ops_op_lib",
@@ -1658,7 +1653,9 @@ tf_cuda_library(
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/core/util:tensor_format",
         "//tensorflow/compiler/jit:common",
-    ] + if_static(
+    ] + if_cuda([
+        "@local_config_cuda//cuda:cudnn_header",
+    ]) + if_static(
         extra_deps = ["@com_google_protobuf//:protobuf"],
         otherwise = ["@com_google_protobuf//:protobuf_headers"],
     ),

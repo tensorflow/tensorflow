@@ -69,7 +69,7 @@ class ReduceWindowTest : public ::testing::WithParamInterface<bool>,
  public:
   ReduceWindowTest() : builder_(TestName()) { set_use_bfloat16(GetParam()); }
 
-  void ReduceWindowAdd(const XlaOp& input,
+  void ReduceWindowAdd(const XlaOp input,
                        absl::Span<const int64> window_dimensions,
                        absl::Span<const int64> window_strides,
                        Padding padding) {
@@ -80,7 +80,7 @@ class ReduceWindowTest : public ::testing::WithParamInterface<bool>,
                  window_dimensions, window_strides, padding);
   }
 
-  void ReduceWindowMax(const XlaOp& input,
+  void ReduceWindowMax(const XlaOp input,
                        absl::Span<const int64> window_dimensions,
                        absl::Span<const int64> window_strides,
                        Padding padding) {
@@ -91,7 +91,7 @@ class ReduceWindowTest : public ::testing::WithParamInterface<bool>,
                  window_dimensions, window_strides, padding);
   }
 
-  void ReduceWindowMin(const XlaOp& input,
+  void ReduceWindowMin(const XlaOp input,
                        absl::Span<const int64> window_dimensions,
                        absl::Span<const int64> window_strides,
                        Padding padding) {
