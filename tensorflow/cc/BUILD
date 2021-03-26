@@ -160,6 +160,7 @@ cc_library(
     deps = [
         ":array_grad",
         ":data_flow_grad",
+        ":functional_grad",
         ":image_grad",
         ":manip_grad",
         ":math_grad",
@@ -519,6 +520,40 @@ tf_cc_test(
         ":gradient_checker",
         ":manip_grad",
         ":testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "functional_grad",
+    srcs = ["gradients/functional_grad.cc"],
+    deps = [
+        ":cc_ops",
+        ":cc_ops_internal",
+        ":functional_ops",
+        ":grad_op_registry",
+        ":gradients",
+        "//tensorflow/core:lib_proto_parsing",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "gradients_functional_grad_test",
+    srcs = ["gradients/functional_grad_test.cc"],
+    deps = [
+        ":cc_ops",
+        ":cc_ops_internal",
+        ":functional_grad",
+        ":functional_ops",
+        ":grad_op_registry",
+        ":grad_testutil",
+        ":gradient_checker",
+        ":math_grad",
+        ":testutil",
+        "//tensorflow/cc:ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
