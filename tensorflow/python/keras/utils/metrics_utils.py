@@ -363,13 +363,16 @@ def update_confusion_matrix_variables(variables_to_update,
       y_pred, y_true, sample_weight = (
           losses_utils.squeeze_or_expand_dimensions(
               y_pred, y_true, sample_weight=sample_weight))
-  y_pred.shape.assert_is_compatible_with(y_true.shape)
 
   if top_k is not None:
     y_pred = _filter_top_k(y_pred, top_k)
   if class_id is not None:
-    y_true = y_true[..., class_id]
+    if y_true.shape.ndims == 1:
+      y_true = math_ops.equal(y_true, class_id)
+    else:
+      y_true = y_true[..., class_id]
     y_pred = y_pred[..., class_id]
+  y_pred.shape.assert_is_compatible_with(y_true.shape)
 
   pred_shape = array_ops.shape(y_pred)
   num_predictions = pred_shape[0]

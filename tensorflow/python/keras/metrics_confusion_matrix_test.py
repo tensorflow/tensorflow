@@ -492,6 +492,22 @@ class PrecisionTest(test.TestCase, parameterized.TestCase):
     self.assertAlmostEqual(1, self.evaluate(p_obj.true_positives))
     self.assertAlmostEqual(1, self.evaluate(p_obj.false_positives))
 
+  @parameterized.parameters([{'sparse_labels': True}, {'sparse_labels': False}])
+  def test_unweighted_class_id_multi_class(self, sparse_labels):
+    p_obj = metrics.Precision(class_id=2)
+    self.evaluate(variables.variables_initializer(p_obj.variables))
+
+    y_pred = constant_op.constant([[0.2, 0.0, 0.6, 0, 0.2]]*3)
+    if sparse_labels:
+      y_true = constant_op.constant([0, 1, 2])
+    else:
+      y_true = array_ops.one_hot([0, 1, 2], depth=3)
+
+    result = p_obj(y_true, y_pred)
+    self.assertAlmostEqual(0.33333334, self.evaluate(result))
+    self.assertAlmostEqual(1, self.evaluate(p_obj.true_positives))
+    self.assertAlmostEqual(2, self.evaluate(p_obj.false_positives))
+
   def test_unweighted_top_k_and_class_id(self):
     p_obj = metrics.Precision(class_id=2, top_k=2)
     self.evaluate(variables.variables_initializer(p_obj.variables))
@@ -696,6 +712,22 @@ class RecallTest(test.TestCase, parameterized.TestCase):
     self.assertAlmostEqual(1, self.evaluate(r_obj.true_positives))
     self.assertAlmostEqual(1, self.evaluate(r_obj.false_negatives))
 
+  @parameterized.parameters([{'sparse_labels': True}, {'sparse_labels': False}])
+  def test_unweighted_class_id_multi_class(self, sparse_labels):
+    p_obj = metrics.Recall(class_id=2)
+    self.evaluate(variables.variables_initializer(p_obj.variables))
+
+    y_pred = constant_op.constant([[0.2, 0.0, 0.6, 0, 0.2]]*3)
+    if sparse_labels:
+      y_true = constant_op.constant([0, 1, 2])
+    else:
+      y_true = array_ops.one_hot([0, 1, 2], depth=3)
+
+    result = p_obj(y_true, y_pred)
+    self.assertAlmostEqual(1, self.evaluate(result))
+    self.assertAlmostEqual(1, self.evaluate(p_obj.true_positives))
+    self.assertAlmostEqual(0, self.evaluate(p_obj.false_negatives))
+
   def test_unweighted_top_k_and_class_id(self):
     r_obj = metrics.Recall(class_id=2, top_k=2)
     self.evaluate(variables.variables_initializer(r_obj.variables))
@@ -805,12 +837,27 @@ class SensitivityAtSpecificityTest(test.TestCase, parameterized.TestCase):
     self.assertAlmostEqual(0.6, self.evaluate(result))
 
   def test_unweighted_class_id(self):
-    s_obj = metrics.SpecificityAtSensitivity(0.4, class_id=2)
+    s_obj = metrics.SensitivityAtSpecificity(0.4, class_id=2)
     pred_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.01, 0.02, 0.25, 0.26, 0.26]
     label_values = [0, 0, 0, 0, 0, 2, 2, 2, 2, 2]
 
     y_pred = array_ops.transpose([pred_values] * 3)
     y_true = array_ops.one_hot(label_values, depth=3)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+    result = s_obj(y_true, y_pred)
+    self.assertAlmostEqual(0.6, self.evaluate(result))
+
+  @parameterized.parameters([{'sparse_labels': True}, {'sparse_labels': False}])
+  def test_unweighted_class_id_multi_class(self, sparse_labels):
+    s_obj = metrics.SensitivityAtSpecificity(0.4, class_id=2)
+    pred_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.01, 0.02, 0.25, 0.26, 0.26]
+    label_values = [0, 0, 1, 1, 1, 2, 2, 2, 2, 2]
+
+    y_pred = array_ops.transpose([pred_values] * 3)
+    if sparse_labels:
+      y_true = constant_op.constant(label_values)
+    else:
+      y_true = array_ops.one_hot(label_values, depth=3)
     self.evaluate(variables.variables_initializer(s_obj.variables))
     result = s_obj(y_true, y_pred)
     self.assertAlmostEqual(0.6, self.evaluate(result))
@@ -927,6 +974,21 @@ class SpecificityAtSensitivityTest(test.TestCase, parameterized.TestCase):
     result = s_obj(y_true, y_pred)
     self.assertAlmostEqual(0.6, self.evaluate(result))
 
+  @parameterized.parameters([{'sparse_labels': True}, {'sparse_labels': False}])
+  def test_unweighted_class_id_multi_class(self, sparse_labels):
+    s_obj = metrics.SpecificityAtSensitivity(0.4, class_id=2)
+    pred_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.01, 0.02, 0.25, 0.26, 0.26]
+    label_values = [0, 0, 1, 1, 1, 2, 2, 2, 2, 2]
+
+    y_pred = array_ops.transpose([pred_values] * 3)
+    if sparse_labels:
+      y_true = constant_op.constant(label_values)
+    else:
+      y_true = array_ops.one_hot(label_values, depth=3)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+    result = s_obj(y_true, y_pred)
+    self.assertAlmostEqual(0.6, self.evaluate(result))
+
   @parameterized.parameters([dtypes.bool, dtypes.int32, dtypes.float32])
   def test_weighted(self, label_dtype):
     s_obj = metrics.SpecificityAtSensitivity(0.4)
@@ -1033,6 +1095,23 @@ class PrecisionAtRecallTest(test.TestCase, parameterized.TestCase):
     label_values = [0, 0, 0, 0, 0, 2, 2, 2, 2, 2]
 
     y_pred = array_ops.transpose([pred_values] * 3)
+    y_true = array_ops.one_hot(label_values, depth=3)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+    result = s_obj(y_true, y_pred)
+    # For 0.2 < decision threshold < 0.5.
+    self.assertAlmostEqual(0.75, self.evaluate(result))
+
+  @parameterized.parameters([{'sparse_labels': True}, {'sparse_labels': False}])
+  def test_unweighted_class_id_multi_class(self, sparse_labels):
+    s_obj = metrics.PrecisionAtRecall(0.6, class_id=2)
+    pred_values = [0.0, 0.1, 0.2, 0.5, 0.6, 0.2, 0.5, 0.6, 0.8, 0.9]
+    label_values = [0, 0, 1, 1, 1, 2, 2, 2, 2, 2]
+
+    y_pred = array_ops.transpose([pred_values] * 3)
+    if sparse_labels:
+      y_true = constant_op.constant(label_values)
+    else:
+      y_true = array_ops.one_hot(label_values, depth=3)
     y_true = array_ops.one_hot(label_values, depth=3)
     self.evaluate(variables.variables_initializer(s_obj.variables))
     result = s_obj(y_true, y_pred)
@@ -1146,7 +1225,8 @@ class RecallAtPrecisionTest(test.TestCase, parameterized.TestCase):
     # The precision 5/7 can be reached at thresholds 00.3<=t<0.35.
     self.assertAlmostEqual(5. / 6, self.evaluate(result))
 
-  def test_unweighted_class_id(self):
+  @parameterized.parameters([{'sparse_labels': True}, {'sparse_labels': False}])
+  def test_unweighted_class_id(self, sparse_labels):
     s_obj = metrics.RecallAtPrecision(2.0 / 3, class_id=2)
     pred_values = [
         0.05, 0.1, 0.2, 0.3, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 0.9, 0.95
@@ -1155,7 +1235,10 @@ class RecallAtPrecisionTest(test.TestCase, parameterized.TestCase):
     # precisions: [1/2, 6/11, 1/2, 5/9, 5/8, 5/7, 2/3, 3/5, 3/5, 2/3, 1/2, 1].
     # recalls:    [1,   1,    5/6, 5/6, 5/6, 5/6, 2/3, 1/2, 1/2, 1/3, 1/6, 1/6].
     y_pred = array_ops.transpose([pred_values] * 3)
-    y_true = array_ops.one_hot(label_values, depth=3)
+    if sparse_labels:
+      y_true = constant_op.constant(label_values)
+    else:
+      y_true = array_ops.one_hot(label_values, depth=3)
     self.evaluate(variables.variables_initializer(s_obj.variables))
     result = s_obj(y_true, y_pred)
     # The precision 5/7 can be reached at thresholds 00.3<=t<0.35.
