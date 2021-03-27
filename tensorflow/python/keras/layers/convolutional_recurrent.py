@@ -13,16 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
-"""Convolutional-recurrent layers.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+# pylint: disable=g-classes-have-attributes
+"""Convolutional-recurrent layers."""
 
 import numpy as np
 
 from tensorflow.python.keras import activations
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
@@ -155,33 +152,28 @@ class ConvRNN(RNN):
     a.k.a. an attention mechanism.
   """
 
-  def __init__(
-    self,
-    rank,
-    cell,
-    return_sequences=False,
-    return_state=False,
-    go_backwards=False,
-    stateful=False,
-    unroll=False,
-    **kwargs
-  ):
+  def __init__(self,
+               rank,
+               cell,
+               return_sequences=False,
+               return_state=False,
+               go_backwards=False,
+               stateful=False,
+               unroll=False,
+               **kwargs):
     if unroll:
-      raise TypeError('Unrolling isn\'t possible with ' 'convolutional RNNs.')
+      raise TypeError('Unrolling isn\'t possible with convolutional RNNs.')
     if isinstance(cell, (list, tuple)):
       # The StackedConvRNN3DCells isn't implemented yet.
-      raise TypeError(
-          'It is not possible at the moment to' 'stack convolutional cells.'
-      )
-    super(ConvRNN, self).__init__(
-      cell,
-      return_sequences,
-      return_state,
-      go_backwards,
-      stateful,
-      unroll,
-      **kwargs
-    )
+      raise TypeError('It is not possible at the moment to'
+                      'stack convolutional cells.')
+    super(ConvRNN, self).__init__(cell,
+                                  return_sequences,
+                                  return_state,
+                                  go_backwards,
+                                  stateful,
+                                  unroll,
+                                  **kwargs)
     self.rank = rank
     self.input_spec = [InputSpec(ndim=rank+3)]
     self.states = None
@@ -199,15 +191,12 @@ class ConvRNN(RNN):
       img_dims = input_shape[2:-1]
 
     norm_img_dims = tuple([
-      conv_utils.conv_output_length(
-        img_dims[idx],
-        cell.kernel_size[idx],
-        padding=cell.padding,
-        stride=cell.strides[idx],
-        dilation=cell.dilation_rate[idx]
-      )
-      for idx in range(len(img_dims))
-    ])
+        conv_utils.conv_output_length(img_dims[idx],
+                                      cell.kernel_size[idx],
+                                      padding=cell.padding,
+                                      stride=cell.strides[idx],
+                                      dilation=cell.dilation_rate[idx])
+        for idx in range(len(img_dims))])
 
     if cell.data_format == 'channels_first':
       output_shape = input_shape[:2] + (cell.filters,) + norm_img_dims
@@ -220,13 +209,11 @@ class ConvRNN(RNN):
     if self.return_state:
       output_shape = [output_shape]
       if cell.data_format == 'channels_first':
-        output_shape += [
-          (input_shape[0], cell.filters) + norm_img_dims for _ in range(2)
-        ]
+        output_shape += [(input_shape[0], cell.filters) +
+                          norm_img_dims for _ in range(2)]
       elif cell.data_format == 'channels_last':
-        output_shape += [
-          (input_shape[0],) + norm_img_dims + (cell.filters,) for _ in range(2)
-        ]
+        output_shape += [(input_shape[0],) + norm_img_dims +
+                         (cell.filters,) for _ in range(2)]
     return output_shape
 
   @tf_utils.shape_type_conversion
@@ -242,9 +229,8 @@ class ConvRNN(RNN):
       input_shape = input_shape[0]
 
     batch_size = input_shape[0] if self.stateful else None
-    self.input_spec[0] = InputSpec(
-      shape=(batch_size, None) + input_shape[2:self.rank+3]
-    )
+    self.input_spec[0] = InputSpec(shape=(batch_size, None) +
+                                   input_shape[2:self.rank+3])
 
     # allow cell (if layer) to build before we set or validate state_spec
     if isinstance(self.cell, Layer):
@@ -268,57 +254,54 @@ class ConvRNN(RNN):
         ch_dim = self.rank + 1
       if [spec.shape[ch_dim] for spec in self.state_spec] != state_size:
         raise ValueError(
-          'An initial_state was passed that is not compatible with '
-          '`cell.state_size`. Received `state_spec`={}; '
-          'However `cell.state_size` is '
-          '{}'.format(
-            [spec.shape for spec in self.state_spec], self.cell.state_size
-          )
-        )
+            'An initial_state was passed that is not compatible with '
+            '`cell.state_size`. Received `state_spec`={}; '
+            'However `cell.state_size` is '
+            '{}'.format([spec.shape for spec in self.state_spec],
+                         self.cell.state_size))
     else:
       img_dims = tuple((None for _ in range(self.rank)))
       if self.cell.data_format == 'channels_first':
-        self.state_spec = [
-          InputSpec(shape=(None, dim) + img_dims) for dim in state_size
-        ]
+        self.state_spec = [InputSpec(shape=(None, dim) + img_dims)
+                           for dim in state_size]
       elif self.cell.data_format == 'channels_last':
-        self.state_spec = [
-          InputSpec(shape=(None,) + img_dims + (dim,)) for dim in state_size
-        ]
+        self.state_spec = [InputSpec(shape=(None,) + img_dims + (dim,))
+                           for dim in state_size]
     if self.stateful:
       self.reset_states()
     self.built = True
 
   def get_initial_state(self, inputs):
     # (samples, timesteps, img_dims..., filters)
-    initial_state = K.zeros_like(inputs)
+    initial_state = backend.zeros_like(inputs)
     # (samples, img_dims..., filters)
-    initial_state = K.sum(initial_state, axis=1)
+    initial_state = backend.sum(initial_state, axis=1)
     shape = list(self.cell.kernel_shape)
     shape[-1] = self.cell.filters
-    initial_state = self.cell.input_conv(
-      initial_state,
-      array_ops.zeros(tuple(shape), initial_state.dtype),
-      padding=self.cell.padding,
-    )
+    initial_state = self.cell.input_conv(initial_state,
+                                         array_ops.zeros(tuple(shape),
+                                                         initial_state.dtype),
+                                         padding=self.cell.padding)
 
     if hasattr(self.cell.state_size, '__len__'):
       return [initial_state for _ in self.cell.state_size]
     else:
       return [initial_state]
 
-  def call(
-    self, inputs, mask=None, training=None, initial_state=None, constants=None
-  ):
+  def call(self,
+           inputs,
+           mask=None,
+           training=None,
+           initial_state=None,
+           constants=None):
     # note that the .build() method of subclasses MUST define
     # self.input_spec and self.state_spec with complete input shapes.
     inputs, initial_state, constants = self._process_inputs(
-      inputs, initial_state, constants
-    )
+        inputs, initial_state, constants)
 
     if isinstance(mask, list):
       mask = mask[0]
-    timesteps = K.int_shape(inputs)[1]
+    timesteps = backend.int_shape(inputs)[1]
 
     kwargs = {}
     if generic_utils.has_arg(self.cell.call, 'training'):
@@ -336,18 +319,16 @@ class ConvRNN(RNN):
       def step(inputs, states):
         return self.cell.call(inputs, states, **kwargs)
 
-    last_output, outputs, states = K.rnn(
-      step,
-      inputs,
-      initial_state,
-      constants=constants,
-      go_backwards=self.go_backwards,
-      mask=mask,
-      input_length=timesteps,
-    )
+    last_output, outputs, states = backend.rnn(step,
+                                               inputs,
+                                               initial_state,
+                                               constants=constants,
+                                               go_backwards=self.go_backwards,
+                                               mask=mask,
+                                               input_length=timesteps)
     if self.stateful:
       updates = [
-        K.update(self_state, state)
+        backend.update(self_state, state)
         for self_state, state in zip(self.states, states)
       ]
       self.add_update(updates)
@@ -370,26 +351,23 @@ class ConvRNN(RNN):
       raise AttributeError('Layer must be stateful.')
     input_shape = self.input_spec[0].shape
     state_shape = self.compute_output_shape(input_shape)
-
     if self.return_state:
       state_shape = state_shape[0]
     if self.return_sequences:
       state_shape = state_shape[:1].concatenate(state_shape[2:])
     if None in state_shape:
-      raise ValueError(
-        'If a RNN is stateful, it needs to know '
-        'its batch size. Specify the batch size '
-        'of your input tensors: \n'
-        '- If using a Sequential model, '
-        'specify the batch size by passing '
-        'a `batch_input_shape` '
-        'argument to your first layer.\n'
-        '- If using the functional API, specify '
-        'the time dimension by passing a '
-        '`batch_shape` argument to your Input layer.\n'
-        'The same thing goes for the number of rows and '
-        'columns.'
-      )
+      raise ValueError('If a RNN is stateful, it needs to know '
+                       'its batch size. Specify the batch size '
+                       'of your input tensors: \n'
+                       '- If using a Sequential model, '
+                       'specify the batch size by passing '
+                       'a `batch_input_shape` '
+                       'argument to your first layer.\n'
+                       '- If using the functional API, specify '
+                       'the time dimension by passing a '
+                       '`batch_shape` argument to your Input layer.\n'
+                       'The same thing goes for the number of rows and '
+                       'columns.')
 
     # helper function
     def get_tuple_shape(nb_channels):
@@ -405,53 +383,38 @@ class ConvRNN(RNN):
     # initialize state if None
     if self.states[0] is None:
       if hasattr(self.cell.state_size, '__len__'):
-        self.states = [
-          K.zeros(
-            get_tuple_shape(dim)) for dim in self.cell.state_size
-        ]
+        self.states = [backend.zeros(get_tuple_shape(dim))
+                       for dim in self.cell.state_size]
       else:
-        self.states = [K.zeros(get_tuple_shape(self.cell.state_size))]
+        self.states = [backend.zeros(get_tuple_shape(self.cell.state_size))]
     elif states is None:
       if hasattr(self.cell.state_size, '__len__'):
         for state, dim in zip(self.states, self.cell.state_size):
-          K.set_value(state, np.zeros(get_tuple_shape(dim)))
+          backend.set_value(state, np.zeros(get_tuple_shape(dim)))
       else:
-        K.set_value(
-          self.states[0], np.zeros(get_tuple_shape(self.cell.state_size))
-        )
+        backend.set_value(self.states[0],
+                          np.zeros(get_tuple_shape(self.cell.state_size)))
     else:
       if not isinstance(states, (list, tuple)):
         states = [states]
       if len(states) != len(self.states):
-        raise ValueError(
-          'Layer '
-          + self.name
-          + ' expects '
-          + str(len(self.states))
-          + ' states, '
-          + 'but it received '
-          + str(len(states))
-          + ' state values. Input received: '
-          + str(states)
-        )
+        raise ValueError('Layer ' + self.name + ' expects ' +
+                         str(len(self.states)) + ' states, ' +
+                         'but it received ' + str(len(states)) +
+                         ' state values. Input received: ' + str(states))
       for index, (value, state) in enumerate(zip(states, self.states)):
         if hasattr(self.cell.state_size, '__len__'):
           dim = self.cell.state_size[index]
         else:
           dim = self.cell.state_size
         if value.shape != get_tuple_shape(dim):
-          raise ValueError(
-            'State '
-            + str(index)
-            + ' is incompatible with layer '
-            + self.name
-            + ': expected shape='
-            + str(get_tuple_shape(dim))
-            + ', found shape='
-            + str(value.shape)
-          )
+          raise ValueError('State ' + str(index) +
+                           ' is incompatible with layer ' +
+                           self.name + ': expected shape=' +
+                           str(get_tuple_shape(dim)) +
+                           ', found shape=' + str(value.shape))
         # TODO(anjalisridhar): consider batch calls to `set_value`.
-        K.set_value(state, value)
+        backend.set_value(state, value)
 
 
 class ConvLSTMCell(DropoutRNNCellMixin, Layer):
@@ -521,48 +484,43 @@ class ConvLSTMCell(DropoutRNNCellMixin, Layer):
       `recurrent_dropout` is used.
   """
 
-  def __init__(
-    self,
-    rank,
-    filters,
-    kernel_size,
-    strides=1,
-    padding='valid',
-    data_format=None,
-    dilation_rate=1,
-    activation='tanh',
-    recurrent_activation='hard_sigmoid',
-    use_bias=True,
-    kernel_initializer='glorot_uniform',
-    recurrent_initializer='orthogonal',
-    bias_initializer='zeros',
-    unit_forget_bias=True,
-    kernel_regularizer=None,
-    recurrent_regularizer=None,
-    bias_regularizer=None,
-    kernel_constraint=None,
-    recurrent_constraint=None,
-    bias_constraint=None,
-    dropout=0.0,
-    recurrent_dropout=0.0,
-    **kwargs
-  ):
+  def __init__(self,
+               rank,
+               filters,
+               kernel_size,
+               strides=1,
+               padding='valid',
+               data_format=None,
+               dilation_rate=1,
+               activation='tanh',
+               recurrent_activation='hard_sigmoid',
+               use_bias=True,
+               kernel_initializer='glorot_uniform',
+               recurrent_initializer='orthogonal',
+               bias_initializer='zeros',
+               unit_forget_bias=True,
+               kernel_regularizer=None,
+               recurrent_regularizer=None,
+               bias_regularizer=None,
+               kernel_constraint=None,
+               recurrent_constraint=None,
+               bias_constraint=None,
+               dropout=0.0,
+               recurrent_dropout=0.0,
+               **kwargs):
     super(ConvLSTMCell, self).__init__(**kwargs)
     self.rank = rank
     if self.rank > 3:
-      raise ValueError(
-        'Rank ' + str(self.rank) + ' convolutions not currently implemented.'
-      )
+      raise ValueError('Rank ' + str(self.rank) +
+                       ' convolutions not currently implemented.')
     self.filters = filters
-    self.kernel_size = conv_utils.normalize_tuple(
-      kernel_size, self.rank, 'kernel_size'
-    )
+    self.kernel_size = conv_utils.normalize_tuple(kernel_size, self.rank,
+                                                  'kernel_size')
     self.strides = conv_utils.normalize_tuple(strides, self.rank, 'strides')
     self.padding = conv_utils.normalize_padding(padding)
     self.data_format = conv_utils.normalize_data_format(data_format)
-    self.dilation_rate = conv_utils.normalize_tuple(
-      dilation_rate, self.rank, 'dilation_rate'
-    )
+    self.dilation_rate = conv_utils.normalize_tuple(dilation_rate, self.rank,
+                                                    'dilation_rate')
     self.activation = activations.get(activation)
     self.recurrent_activation = activations.get(recurrent_activation)
     self.use_bias = use_bias
@@ -585,53 +543,47 @@ class ConvLSTMCell(DropoutRNNCellMixin, Layer):
     self.state_size = (self.filters, self.filters)
 
   def build(self, input_shape):
+
     if self.data_format == 'channels_first':
       channel_axis = 1
     else:
       channel_axis = -1
     if input_shape[channel_axis] is None:
-      raise ValueError(
-        'The channel dimension of the inputs '
-        'should be defined. Found `None`.'
-      )
+      raise ValueError('The channel dimension of the inputs '
+                       'should be defined. Found `None`.')
     input_dim = input_shape[channel_axis]
     self.kernel_shape = self.kernel_size + (input_dim, self.filters * 4)
     recurrent_kernel_shape = self.kernel_size + (self.filters, self.filters * 4)
 
-    self.kernel = self.add_weight(
-      shape=self.kernel_shape,
-      initializer=self.kernel_initializer,
-      name='kernel',
-      regularizer=self.kernel_regularizer,
-      constraint=self.kernel_constraint,
-    )
+    self.kernel = self.add_weight(shape=self.kernel_shape,
+                                  initializer=self.kernel_initializer,
+                                  name='kernel',
+                                  regularizer=self.kernel_regularizer,
+                                  constraint=self.kernel_constraint)
     self.recurrent_kernel = self.add_weight(
-      shape=recurrent_kernel_shape,
-      initializer=self.recurrent_initializer,
-      name='recurrent_kernel',
-      regularizer=self.recurrent_regularizer,
-      constraint=self.recurrent_constraint,
-    )
+        shape=recurrent_kernel_shape,
+        initializer=self.recurrent_initializer,
+        name='recurrent_kernel',
+        regularizer=self.recurrent_regularizer,
+        constraint=self.recurrent_constraint)
 
     if self.use_bias:
       if self.unit_forget_bias:
+
         def bias_initializer(_, *args, **kwargs):
-          return K.concatenate(
-            [
+          return backend.concatenate([
               self.bias_initializer((self.filters,), *args, **kwargs),
               initializers.get('ones')((self.filters,), *args, **kwargs),
               self.bias_initializer((self.filters * 2,), *args, **kwargs),
-            ]
-          )
+          ])
       else:
         bias_initializer = self.bias_initializer
       self.bias = self.add_weight(
-        shape=(self.filters * 4,),
-        name='bias',
-        initializer=bias_initializer,
-        regularizer=self.bias_regularizer,
-        constraint=self.bias_constraint,
-      )
+          shape=(self.filters * 4,),
+          name='bias',
+          initializer=bias_initializer,
+          regularizer=self.bias_regularizer,
+          constraint=self.bias_constraint)
     else:
       self.bias = None
     self.built = True
@@ -644,10 +596,9 @@ class ConvLSTMCell(DropoutRNNCellMixin, Layer):
     dp_mask = self.get_dropout_mask_for_cell(inputs, training, count=4)
     # dropout matrices for recurrent units
     rec_dp_mask = self.get_recurrent_dropout_mask_for_cell(
-      h_tm1, training, count=4
-    )
+        h_tm1, training, count=4)
 
-    if 0 < self.dropout < 1.0:
+    if 0 < self.dropout < 1.:
       inputs_i = inputs * dp_mask[0]
       inputs_f = inputs * dp_mask[1]
       inputs_c = inputs * dp_mask[2]
@@ -658,7 +609,7 @@ class ConvLSTMCell(DropoutRNNCellMixin, Layer):
       inputs_c = inputs
       inputs_o = inputs
 
-    if 0 < self.recurrent_dropout < 1.0:
+    if 0 < self.recurrent_dropout < 1.:
       h_tm1_i = h_tm1 * rec_dp_mask[0]
       h_tm1_f = h_tm1 * rec_dp_mask[1]
       h_tm1_c = h_tm1 * rec_dp_mask[2]
@@ -669,15 +620,13 @@ class ConvLSTMCell(DropoutRNNCellMixin, Layer):
       h_tm1_c = h_tm1
       h_tm1_o = h_tm1
 
-    (kernel_i, kernel_f, kernel_c, kernel_o) = array_ops.split(
-      self.kernel, 4, axis=self.rank+1
-    )
-    (
-      recurrent_kernel_i,
-      recurrent_kernel_f,
-      recurrent_kernel_c,
-      recurrent_kernel_o,
-    ) = array_ops.split(self.recurrent_kernel, 4, axis=self.rank+1)
+    (kernel_i, kernel_f,
+     kernel_c, kernel_o) = array_ops.split(self.kernel, 4, axis=self.rank+1)
+    (recurrent_kernel_i,
+     recurrent_kernel_f,
+     recurrent_kernel_c,
+     recurrent_kernel_o) = array_ops.split(self.recurrent_kernel, 4,
+                                           axis=self.rank+1)
 
     if self.use_bias:
       bias_i, bias_f, bias_c, bias_o = array_ops.split(self.bias, 4)
@@ -703,23 +652,19 @@ class ConvLSTMCell(DropoutRNNCellMixin, Layer):
   @property
   def _conv_func(self):
     if self.rank == 1:
-      return K.conv1d
+      return backend.conv1d
     if self.rank == 2:
-      return K.conv2d
+      return backend.conv2d
     if self.rank == 3:
-      return K.conv3d
+      return backend.conv3d
 
   def input_conv(self, x, w, b=None, padding='valid'):
-    conv_out = self._conv_func(
-      x,
-      w,
-      strides=self.strides,
-      padding=padding,
-      data_format=self.data_format,
-      dilation_rate=self.dilation_rate,
-    )
+    conv_out = self._conv_func(x, w, strides=self.strides,
+                               padding=padding,
+                               data_format=self.data_format,
+                               dilation_rate=self.dilation_rate)
     if b is not None:
-      conv_out = K.bias_add(conv_out, b, data_format=self.data_format)
+      conv_out = backend.bias_add(conv_out, b, data_format=self.data_format)
     return conv_out
 
   def recurrent_conv(self, x, w):
@@ -730,32 +675,34 @@ class ConvLSTMCell(DropoutRNNCellMixin, Layer):
     return conv_out
 
   def get_config(self):
-    config = {
-      'filters': self.filters,
-      'kernel_size': self.kernel_size,
-      'strides': self.strides,
-      'padding': self.padding,
-      'data_format': self.data_format,
-      'dilation_rate': self.dilation_rate,
-      'activation': activations.serialize(self.activation),
-      'recurrent_activation': activations.serialize(self.recurrent_activation),
-      'use_bias': self.use_bias,
-      'kernel_initializer': initializers.serialize(self.kernel_initializer),
-      'recurrent_initializer': initializers.serialize(
-        self.recurrent_initializer
-      ),
-      'bias_initializer': initializers.serialize(self.bias_initializer),
-      'unit_forget_bias': self.unit_forget_bias,
-      'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
-      'recurrent_regularizer': regularizers.serialize(
-        self.recurrent_regularizer
-      ),
-      'bias_regularizer': regularizers.serialize(self.bias_regularizer),
-      'kernel_constraint': constraints.serialize(self.kernel_constraint),
-      'recurrent_constraint': constraints.serialize(self.recurrent_constraint),
-      'bias_constraint': constraints.serialize(self.bias_constraint),
-      'dropout': self.dropout,
-      'recurrent_dropout': self.recurrent_dropout,
+    config = {'filters': self.filters,
+              'kernel_size': self.kernel_size,
+              'strides': self.strides,
+              'padding': self.padding,
+              'data_format': self.data_format,
+              'dilation_rate': self.dilation_rate,
+              'activation': activations.serialize(self.activation),
+              'recurrent_activation': activations.serialize(
+                  self.recurrent_activation),
+              'use_bias': self.use_bias,
+              'kernel_initializer': initializers.serialize(
+                  self.kernel_initializer),
+              'recurrent_initializer': initializers.serialize(
+                  self.recurrent_initializer),
+              'bias_initializer': initializers.serialize(self.bias_initializer),
+              'unit_forget_bias': self.unit_forget_bias,
+              'kernel_regularizer': regularizers.serialize(
+                  self.kernel_regularizer),
+              'recurrent_regularizer': regularizers.serialize(
+                  self.recurrent_regularizer),
+              'bias_regularizer': regularizers.serialize(self.bias_regularizer),
+              'kernel_constraint': constraints.serialize(
+                  self.kernel_constraint),
+              'recurrent_constraint': constraints.serialize(
+                  self.recurrent_constraint),
+              'bias_constraint': constraints.serialize(self.bias_constraint),
+              'dropout': self.dropout,
+              'recurrent_dropout': self.recurrent_dropout,
     }
     base_config = super(ConvLSTMCell, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -840,77 +787,72 @@ class ConvLSTM(ConvRNN):
       the linear transformation of the recurrent state.
   """
 
-  def __init__(
-    self,
-    rank,
-    filters,
-    kernel_size,
-    strides=1,
-    padding='valid',
-    data_format=None,
-    dilation_rate=1,
-    activation='tanh',
-    recurrent_activation='hard_sigmoid',
-    use_bias=True,
-    kernel_initializer='glorot_uniform',
-    recurrent_initializer='orthogonal',
-    bias_initializer='zeros',
-    unit_forget_bias=True,
-    kernel_regularizer=None,
-    recurrent_regularizer=None,
-    bias_regularizer=None,
-    activity_regularizer=None,
-    kernel_constraint=None,
-    recurrent_constraint=None,
-    bias_constraint=None,
-    return_sequences=False,
-    return_state=False,
-    go_backwards=False,
-    stateful=False,
-    dropout=0.0,
-    recurrent_dropout=0.0,
-    **kwargs
-  ):
-    cell = ConvLSTMCell(
-      rank=rank,
-      filters=filters,
-      kernel_size=kernel_size,
-      strides=strides,
-      padding=padding,
-      data_format=data_format,
-      dilation_rate=dilation_rate,
-      activation=activation,
-      recurrent_activation=recurrent_activation,
-      use_bias=use_bias,
-      kernel_initializer=kernel_initializer,
-      recurrent_initializer=recurrent_initializer,
-      bias_initializer=bias_initializer,
-      unit_forget_bias=unit_forget_bias,
-      kernel_regularizer=kernel_regularizer,
-      recurrent_regularizer=recurrent_regularizer,
-      bias_regularizer=bias_regularizer,
-      kernel_constraint=kernel_constraint,
-      recurrent_constraint=recurrent_constraint,
-      bias_constraint=bias_constraint,
-      dropout=dropout,
-      recurrent_dropout=recurrent_dropout,
-      dtype=kwargs.get('dtype'),
-    )
-    super(ConvLSTM, self).__init__(
-      rank,
-      cell,
-      return_sequences=return_sequences,
-      return_state=return_state,
-      go_backwards=go_backwards,
-      stateful=stateful,
-      **kwargs
-    )
+  def __init__(self,
+               rank,
+               filters,
+               kernel_size,
+               strides=1,
+               padding='valid',
+               data_format=None,
+               dilation_rate=1,
+               activation='tanh',
+               recurrent_activation='hard_sigmoid',
+               use_bias=True,
+               kernel_initializer='glorot_uniform',
+               recurrent_initializer='orthogonal',
+               bias_initializer='zeros',
+               unit_forget_bias=True,
+               kernel_regularizer=None,
+               recurrent_regularizer=None,
+               bias_regularizer=None,
+               activity_regularizer=None,
+               kernel_constraint=None,
+               recurrent_constraint=None,
+               bias_constraint=None,
+               return_sequences=False,
+               return_state=False,
+               go_backwards=False,
+               stateful=False,
+               dropout=0.0,
+               recurrent_dropout=0.0,
+               **kwargs):
+    cell = ConvLSTMCell(rank=rank,
+                        filters=filters,
+                        kernel_size=kernel_size,
+                        strides=strides,
+                        padding=padding,
+                        data_format=data_format,
+                        dilation_rate=dilation_rate,
+                        activation=activation,
+                        recurrent_activation=recurrent_activation,
+                        use_bias=use_bias,
+                        kernel_initializer=kernel_initializer,
+                        recurrent_initializer=recurrent_initializer,
+                        bias_initializer=bias_initializer,
+                        unit_forget_bias=unit_forget_bias,
+                        kernel_regularizer=kernel_regularizer,
+                        recurrent_regularizer=recurrent_regularizer,
+                        bias_regularizer=bias_regularizer,
+                        kernel_constraint=kernel_constraint,
+                        recurrent_constraint=recurrent_constraint,
+                        bias_constraint=bias_constraint,
+                        dropout=dropout,
+                        recurrent_dropout=recurrent_dropout,
+                        dtype=kwargs.get('dtype'))
+    super(ConvLSTM, self).__init__(rank,
+                                   cell,
+                                   return_sequences=return_sequences,
+                                   return_state=return_state,
+                                   go_backwards=go_backwards,
+                                   stateful=stateful,
+                                   **kwargs)
     self.activity_regularizer = regularizers.get(activity_regularizer)
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    return super(ConvLSTM, self).call(
-      inputs, mask=mask, training=training, initial_state=initial_state
-    )
+    return super(ConvLSTM, self).call(inputs,
+                                      mask=mask,
+                                      training=training,
+                                      initial_state=initial_state)
 
   @property
   def filters(self):
@@ -997,34 +939,36 @@ class ConvLSTM(ConvRNN):
     return self.cell.recurrent_dropout
 
   def get_config(self):
-    config = {
-      'filters': self.filters,
-      'kernel_size': self.kernel_size,
-      'strides': self.strides,
-      'padding': self.padding,
-      'data_format': self.data_format,
-      'dilation_rate': self.dilation_rate,
-      'activation': activations.serialize(self.activation),
-      'recurrent_activation': activations.serialize(self.recurrent_activation),
-      'use_bias': self.use_bias,
-      'kernel_initializer': initializers.serialize(self.kernel_initializer),
-      'recurrent_initializer': initializers.serialize(
-        self.recurrent_initializer
-      ),
-      'bias_initializer': initializers.serialize(self.bias_initializer),
-      'unit_forget_bias': self.unit_forget_bias,
-      'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
-      'recurrent_regularizer': regularizers.serialize(
-        self.recurrent_regularizer
-      ),
-      'bias_regularizer': regularizers.serialize(self.bias_regularizer),
-      'activity_regularizer': regularizers.serialize(self.activity_regularizer),
-      'kernel_constraint': constraints.serialize(self.kernel_constraint),
-      'recurrent_constraint': constraints.serialize(self.recurrent_constraint),
-      'bias_constraint': constraints.serialize(self.bias_constraint),
-      'dropout': self.dropout,
-      'recurrent_dropout': self.recurrent_dropout,
-    }
+    config = {'filters': self.filters,
+              'kernel_size': self.kernel_size,
+              'strides': self.strides,
+              'padding': self.padding,
+              'data_format': self.data_format,
+              'dilation_rate': self.dilation_rate,
+              'activation': activations.serialize(self.activation),
+              'recurrent_activation': activations.serialize(
+                  self.recurrent_activation),
+              'use_bias': self.use_bias,
+              'kernel_initializer': initializers.serialize(
+                  self.kernel_initializer),
+              'recurrent_initializer': initializers.serialize(
+                  self.recurrent_initializer),
+              'bias_initializer': initializers.serialize(self.bias_initializer),
+              'unit_forget_bias': self.unit_forget_bias,
+              'kernel_regularizer': regularizers.serialize(
+                  self.kernel_regularizer),
+              'recurrent_regularizer': regularizers.serialize(
+                  self.recurrent_regularizer),
+              'bias_regularizer': regularizers.serialize(self.bias_regularizer),
+              'activity_regularizer': regularizers.serialize(
+                  self.activity_regularizer),
+              'kernel_constraint': constraints.serialize(
+                  self.kernel_constraint),
+              'recurrent_constraint': constraints.serialize(
+                  self.recurrent_constraint),
+              'bias_constraint': constraints.serialize(self.bias_constraint),
+              'dropout': self.dropout,
+              'recurrent_dropout': self.recurrent_dropout}
     base_config = super(ConvLSTM, self).get_config()
     del base_config['cell']
     return dict(list(base_config.items()) + list(config.items()))
@@ -1162,66 +1106,63 @@ class ConvLSTM1D(ConvLSTM):
     cells output).
   """
 
-  def __init__(
-    self,
-    filters,
-    kernel_size,
-    strides=1,
-    padding='valid',
-    data_format=None,
-    dilation_rate=1,
-    activation='tanh',
-    recurrent_activation='hard_sigmoid',
-    use_bias=True,
-    kernel_initializer='glorot_uniform',
-    recurrent_initializer='orthogonal',
-    bias_initializer='zeros',
-    unit_forget_bias=True,
-    kernel_regularizer=None,
-    recurrent_regularizer=None,
-    bias_regularizer=None,
-    activity_regularizer=None,
-    kernel_constraint=None,
-    recurrent_constraint=None,
-    bias_constraint=None,
-    return_sequences=False,
-    return_state=False,
-    go_backwards=False,
-    stateful=False,
-    dropout=0.0,
-    recurrent_dropout=0.0,
-    **kwargs
-  ):
+  def __init__(self,
+               filters,
+               kernel_size,
+               strides=1,
+               padding='valid',
+               data_format=None,
+               dilation_rate=1,
+               activation='tanh',
+               recurrent_activation='hard_sigmoid',
+               use_bias=True,
+               kernel_initializer='glorot_uniform',
+               recurrent_initializer='orthogonal',
+               bias_initializer='zeros',
+               unit_forget_bias=True,
+               kernel_regularizer=None,
+               recurrent_regularizer=None,
+               bias_regularizer=None,
+               activity_regularizer=None,
+               kernel_constraint=None,
+               recurrent_constraint=None,
+               bias_constraint=None,
+               return_sequences=False,
+               return_state=False,
+               go_backwards=False,
+               stateful=False,
+               dropout=0.0,
+               recurrent_dropout=0.0,
+               **kwargs):
     super(ConvLSTM1D, self).__init__(
-      rank=1,
-      filters=filters,
-      kernel_size=kernel_size,
-      strides=strides,
-      padding=padding,
-      data_format=data_format,
-      dilation_rate=dilation_rate,
-      activation=activation,
-      recurrent_activation=recurrent_activation,
-      use_bias=use_bias,
-      kernel_initializer=kernel_initializer,
-      recurrent_initializer=recurrent_initializer,
-      bias_initializer=bias_initializer,
-      unit_forget_bias=unit_forget_bias,
-      kernel_regularizer=kernel_regularizer,
-      recurrent_regularizer=recurrent_regularizer,
-      bias_regularizer=bias_regularizer,
-      activity_regularizer=activity_regularizer,
-      kernel_constraint=kernel_constraint,
-      recurrent_constraint=recurrent_constraint,
-      bias_constraint=bias_constraint,
-      return_sequences=return_sequences,
-      return_state=return_state,
-      go_backwards=go_backwards,
-      stateful=stateful,
-      dropout=dropout,
-      recurrent_dropout=recurrent_dropout,
-      **kwargs
-    )
+        rank=1,
+        filters=filters,
+        kernel_size=kernel_size,
+        strides=strides,
+        padding=padding,
+        data_format=data_format,
+        dilation_rate=dilation_rate,
+        activation=activation,
+        recurrent_activation=recurrent_activation,
+        use_bias=use_bias,
+        kernel_initializer=kernel_initializer,
+        recurrent_initializer=recurrent_initializer,
+        bias_initializer=bias_initializer,
+        unit_forget_bias=unit_forget_bias,
+        kernel_regularizer=kernel_regularizer,
+        recurrent_regularizer=recurrent_regularizer,
+        bias_regularizer=bias_regularizer,
+        activity_regularizer=activity_regularizer,
+        kernel_constraint=kernel_constraint,
+        recurrent_constraint=recurrent_constraint,
+        bias_constraint=bias_constraint,
+        return_sequences=return_sequences,
+        return_state=return_state,
+        go_backwards=go_backwards,
+        stateful=stateful,
+        dropout=dropout,
+        recurrent_dropout=recurrent_dropout,
+        **kwargs)
 
 
 @keras_export('keras.layers.ConvLSTM2D')
@@ -1352,66 +1293,63 @@ class ConvLSTM2D(ConvLSTM):
     cells output).
   """
 
-  def __init__(
-    self,
-    filters,
-    kernel_size,
-    strides=(1, 1),
-    padding='valid',
-    data_format=None,
-    dilation_rate=(1, 1),
-    activation='tanh',
-    recurrent_activation='hard_sigmoid',
-    use_bias=True,
-    kernel_initializer='glorot_uniform',
-    recurrent_initializer='orthogonal',
-    bias_initializer='zeros',
-    unit_forget_bias=True,
-    kernel_regularizer=None,
-    recurrent_regularizer=None,
-    bias_regularizer=None,
-    activity_regularizer=None,
-    kernel_constraint=None,
-    recurrent_constraint=None,
-    bias_constraint=None,
-    return_sequences=False,
-    return_state=False,
-    go_backwards=False,
-    stateful=False,
-    dropout=0.0,
-    recurrent_dropout=0.0,
-    **kwargs
-  ):
+  def __init__(self,
+               filters,
+               kernel_size,
+               strides=(1, 1),
+               padding='valid',
+               data_format=None,
+               dilation_rate=(1, 1),
+               activation='tanh',
+               recurrent_activation='hard_sigmoid',
+               use_bias=True,
+               kernel_initializer='glorot_uniform',
+               recurrent_initializer='orthogonal',
+               bias_initializer='zeros',
+               unit_forget_bias=True,
+               kernel_regularizer=None,
+               recurrent_regularizer=None,
+               bias_regularizer=None,
+               activity_regularizer=None,
+               kernel_constraint=None,
+               recurrent_constraint=None,
+               bias_constraint=None,
+               return_sequences=False,
+               return_state=False,
+               go_backwards=False,
+               stateful=False,
+               dropout=0.0,
+               recurrent_dropout=0.0,
+               **kwargs):
     super(ConvLSTM2D, self).__init__(
-      rank=2,
-      filters=filters,
-      kernel_size=kernel_size,
-      strides=strides,
-      padding=padding,
-      data_format=data_format,
-      dilation_rate=dilation_rate,
-      activation=activation,
-      recurrent_activation=recurrent_activation,
-      use_bias=use_bias,
-      kernel_initializer=kernel_initializer,
-      recurrent_initializer=recurrent_initializer,
-      bias_initializer=bias_initializer,
-      unit_forget_bias=unit_forget_bias,
-      kernel_regularizer=kernel_regularizer,
-      recurrent_regularizer=recurrent_regularizer,
-      bias_regularizer=bias_regularizer,
-      activity_regularizer=activity_regularizer,
-      kernel_constraint=kernel_constraint,
-      recurrent_constraint=recurrent_constraint,
-      bias_constraint=bias_constraint,
-      return_sequences=return_sequences,
-      return_state=return_state,
-      go_backwards=go_backwards,
-      stateful=stateful,
-      dropout=dropout,
-      recurrent_dropout=recurrent_dropout,
-      **kwargs
-    )
+        rank=2,
+        filters=filters,
+        kernel_size=kernel_size,
+        strides=strides,
+        padding=padding,
+        data_format=data_format,
+        dilation_rate=dilation_rate,
+        activation=activation,
+        recurrent_activation=recurrent_activation,
+        use_bias=use_bias,
+        kernel_initializer=kernel_initializer,
+        recurrent_initializer=recurrent_initializer,
+        bias_initializer=bias_initializer,
+        unit_forget_bias=unit_forget_bias,
+        kernel_regularizer=kernel_regularizer,
+        recurrent_regularizer=recurrent_regularizer,
+        bias_regularizer=bias_regularizer,
+        activity_regularizer=activity_regularizer,
+        kernel_constraint=kernel_constraint,
+        recurrent_constraint=recurrent_constraint,
+        bias_constraint=bias_constraint,
+        return_sequences=return_sequences,
+        return_state=return_state,
+        go_backwards=go_backwards,
+        stateful=stateful,
+        dropout=dropout,
+        recurrent_dropout=recurrent_dropout,
+        **kwargs)
 
 
 @keras_export('keras.layers.ConvLSTM3D')
@@ -1542,63 +1480,60 @@ class ConvLSTM3D(ConvLSTM):
     cells output).
   """
 
-  def __init__(
-    self,
-    filters,
-    kernel_size,
-    strides=(1, 1, 1),
-    padding='valid',
-    data_format=None,
-    dilation_rate=(1, 1, 1),
-    activation='tanh',
-    recurrent_activation='hard_sigmoid',
-    use_bias=True,
-    kernel_initializer='glorot_uniform',
-    recurrent_initializer='orthogonal',
-    bias_initializer='zeros',
-    unit_forget_bias=True,
-    kernel_regularizer=None,
-    recurrent_regularizer=None,
-    bias_regularizer=None,
-    activity_regularizer=None,
-    kernel_constraint=None,
-    recurrent_constraint=None,
-    bias_constraint=None,
-    return_sequences=False,
-    return_state=False,
-    go_backwards=False,
-    stateful=False,
-    dropout=0.0,
-    recurrent_dropout=0.0,
-    **kwargs
-  ):
+  def __init__(self,
+               filters,
+               kernel_size,
+               strides=(1, 1, 1),
+               padding='valid',
+               data_format=None,
+               dilation_rate=(1, 1, 1),
+               activation='tanh',
+               recurrent_activation='hard_sigmoid',
+               use_bias=True,
+               kernel_initializer='glorot_uniform',
+               recurrent_initializer='orthogonal',
+               bias_initializer='zeros',
+               unit_forget_bias=True,
+               kernel_regularizer=None,
+               recurrent_regularizer=None,
+               bias_regularizer=None,
+               activity_regularizer=None,
+               kernel_constraint=None,
+               recurrent_constraint=None,
+               bias_constraint=None,
+               return_sequences=False,
+               return_state=False,
+               go_backwards=False,
+               stateful=False,
+               dropout=0.0,
+               recurrent_dropout=0.0,
+               **kwargs):
     super(ConvLSTM3D, self).__init__(
-      rank=3,
-      filters=filters,
-      kernel_size=kernel_size,
-      strides=strides,
-      padding=padding,
-      data_format=data_format,
-      dilation_rate=dilation_rate,
-      activation=activation,
-      recurrent_activation=recurrent_activation,
-      use_bias=use_bias,
-      kernel_initializer=kernel_initializer,
-      recurrent_initializer=recurrent_initializer,
-      bias_initializer=bias_initializer,
-      unit_forget_bias=unit_forget_bias,
-      kernel_regularizer=kernel_regularizer,
-      recurrent_regularizer=recurrent_regularizer,
-      bias_regularizer=bias_regularizer,
-      activity_regularizer=activity_regularizer,
-      kernel_constraint=kernel_constraint,
-      recurrent_constraint=recurrent_constraint,
-      bias_constraint=bias_constraint,
-      return_sequences=return_sequences,
-      return_state=return_state,
-      go_backwards=go_backwards,
-      stateful=stateful,
-      dropout=dropout,
-      recurrent_dropout=recurrent_dropout,
-      **kwargs
-    )
+        rank=3,
+        filters=filters,
+        kernel_size=kernel_size,
+        strides=strides,
+        padding=padding,
+        data_format=data_format,
+        dilation_rate=dilation_rate,
+        activation=activation,
+        recurrent_activation=recurrent_activation,
+        use_bias=use_bias,
+        kernel_initializer=kernel_initializer,
+        recurrent_initializer=recurrent_initializer,
+        bias_initializer=bias_initializer,
+        unit_forget_bias=unit_forget_bias,
+        kernel_regularizer=kernel_regularizer,
+        recurrent_regularizer=recurrent_regularizer,
+        bias_regularizer=bias_regularizer,
+        activity_regularizer=activity_regularizer,
+        kernel_constraint=kernel_constraint,
+        recurrent_constraint=recurrent_constraint,
+        bias_constraint=bias_constraint,
+        return_sequences=return_sequences,
+        return_state=return_state,
+        go_backwards=go_backwards,
+        stateful=stateful,
+        dropout=dropout,
+        recurrent_dropout=recurrent_dropout,
+        **kwargs)
