@@ -1244,12 +1244,6 @@ class TrtGraphConverterV2(object):
     """
     assert self._converted
 
-    if self._need_trt_profiles() and not self._build_called_once:
-      raise NotImplementedError(
-          "build() is not called . Explicit batch mode "
-          "(use_implicit_batch=False) requires generating TensorRT optimization"
-          " profiles which is done by calling build().")
-
     # Serialize the TRT engines in the cache if any, and create trackable
     # resource to track them.
     engine_asset_dir = tempfile.mkdtemp()
