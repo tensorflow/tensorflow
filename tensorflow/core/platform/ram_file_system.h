@@ -173,11 +173,12 @@ class RamFileSystem : public FileSystem {
     mutex_lock m(mu_);
     auto dir = StripRamFsPrefix(dir_);
 
+    std::string separator(1, this->Separator());
     auto it = fs_.lower_bound(dir);
     while (it != fs_.end() && StartsWith(it->first, dir)) {
-      auto filename = StripPrefix(StripPrefix(it->first, dir), "/");
+      auto filename = StripPrefix(StripPrefix(it->first, dir), separator);
       // It is not either (a) the parent directory itself or (b) a subdirectory
-      if (!filename.empty() && filename.find("/") == std::string::npos) {
+      if (!filename.empty() && filename.find(separator) == std::string::npos) {
         result->push_back(filename);
       }
       ++it;
@@ -312,6 +313,14 @@ class RamFileSystem : public FileSystem {
     }
     return errors::NotFound("");
   }
+  
+  char Separator() const override { 
+    #ifdef _WIN32
+      return '\\'; 
+    #else
+      return  '/';
+    #endif
+    };
 
   RamFileSystem() {}
   ~RamFileSystem() override {}

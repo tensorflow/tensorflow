@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import numpy as np
 
 from tensorflow.python.eager import def_function
@@ -47,13 +48,15 @@ class RamFilesystemTest(test_util.TensorFlowTestCase):
 
   def test_create_and_delete_directory_tree_recursive(self):
     file_io.create_dir_v2('ram://testdirectory')
-    file_io.create_dir_v2('ram://testdirectory/subdir1')
-    file_io.create_dir_v2('ram://testdirectory/subdir2')
-    file_io.create_dir_v2('ram://testdirectory/subdir1/subdir3')
-    with gfile.GFile('ram://testdirectory/subdir1/subdir3/a.txt', 'w') as f:
+    file_io.create_dir_v2('ram://testdirectory{0}subdir1'.format(os.sep))
+    file_io.create_dir_v2('ram://testdirectory{0}subdir2'.format(os.sep))
+    file_io.create_dir_v2('ram://testdirectory{0}'\
+                          'subdir1{0}subdir3'.format(os.sep))
+    with gfile.GFile('ram://testdirectory{0}'\
+                    'subdir1{0}subdir3{0}a.txt'.format(os.sep), 'w') as f:
       f.write('Hello, world.')
     file_io.delete_recursively_v2('ram://testdirectory')
-    self.assertEqual(gfile.Glob('ram://testdirectory/*'), [])
+    self.assertEqual(gfile.Glob('ram://testdirectory{0}*'.format(os.sep)), [])
 
   def test_write_file(self):
     with gfile.GFile('ram://a.txt', 'w') as f:
@@ -76,40 +79,41 @@ class RamFilesystemTest(test_util.TensorFlowTestCase):
 
   def test_list_dir(self):
     for i in range(10):
-      with gfile.GFile('ram://a/b/%d.txt' % i, 'w') as f:
+      with gfile.GFile('ram://a{0}b{0}{1}.txt'.format(os.sep,  i), 'w') as f:
         f.write('')
-      with gfile.GFile('ram://c/b/%d.txt' % i, 'w') as f:
+      with gfile.GFile('ram://c{0}b{0}{1}.txt'.format(os.sep,  i), 'w') as f:
         f.write('')
 
     matches = ['%d.txt' % i for i in range(10)]
-    self.assertEqual(gfile.ListDirectory('ram://a/b/'), matches)
+    self.assertEqual(gfile.ListDirectory('ram://a{0}b{0}'.format(os.sep)),
+                                          matches)
 
   def test_glob(self):
     for i in range(10):
-      with gfile.GFile('ram://a/b/%d.txt' % i, 'w') as f:
+      with gfile.GFile('ram://a{0}b{0}{1}.txt'.format(os.sep, i), 'w') as f:
         f.write('')
-      with gfile.GFile('ram://c/b/%d.txt' % i, 'w') as f:
+      with gfile.GFile('ram://c{0}b{0}{1}.txt'.format(os.sep, i), 'w') as f:
         f.write('')
 
-    matches = ['ram://a/b/%d.txt' % i for i in range(10)]
-    self.assertEqual(gfile.Glob('ram://a/b/*'), matches)
+    matches = ['ram://a{0}b{0}%d.txt'.format(os.sep) % i for i in range(10)]
+    self.assertEqual(gfile.Glob('ram://a{0}b{0}*'.format(os.sep)), matches)
 
     matches = []
-    self.assertEqual(gfile.Glob('ram://b/b/*'), matches)
+    self.assertEqual(gfile.Glob('ram://b{0}b{0}*'.format(os.sep)), matches)
 
-    matches = ['ram://c/b/%d.txt' % i for i in range(10)]
-    self.assertEqual(gfile.Glob('ram://c/b/*'), matches)
+    matches = ['ram://c{0}b{0}%d.txt'.format(os.sep) % i for i in range(10)]
+    self.assertEqual(gfile.Glob('ram://c{0}b{0}*'.format(os.sep)), matches)
 
   def test_file_exists(self):
-    with gfile.GFile('ram://exists/a/b/c.txt', 'w') as f:
+    with gfile.GFile('ram://exists{0}a{0}b{0}c.txt'.format(os.sep), 'w') as f:
       f.write('')
-    self.assertTrue(gfile.Exists('ram://exists/a'))
-    self.assertTrue(gfile.Exists('ram://exists/a/b'))
-    self.assertTrue(gfile.Exists('ram://exists/a/b/c.txt'))
+    self.assertTrue(gfile.Exists('ram://exists{0}a'.format(os.sep)))
+    self.assertTrue(gfile.Exists('ram://exists{0}a{0}b'.format(os.sep)))
+    self.assertTrue(gfile.Exists('ram://exists{0}a{0}b{0}c.txt'.format(os.sep)))
 
-    self.assertFalse(gfile.Exists('ram://exists/b'))
-    self.assertFalse(gfile.Exists('ram://exists/a/c'))
-    self.assertFalse(gfile.Exists('ram://exists/a/b/k'))
+    self.assertFalse(gfile.Exists('ram://exists{0}b'.format(os.sep)))
+    self.assertFalse(gfile.Exists('ram://exists{0}a{0}c'.format(os.sep)))
+    self.assertFalse(gfile.Exists('ram://exists{0}a{0}b{0}k'.format(os.sep)))
 
   def test_estimator(self):
 
@@ -135,7 +139,8 @@ class RamFilesystemTest(test_util.TensorFlowTestCase):
                                    dtype=dtypes.float32))
 
     config = RunConfig(
-        model_dir='ram://estimator-0/', save_checkpoints_steps=1)
+        model_dir='ram://estimator-0',
+                  save_checkpoints_steps=1)
     estimator = Estimator(config=config, model_fn=model_fn)
 
     estimator.train(input_fn=input_fn, steps=10)
@@ -153,6 +158,11 @@ class RamFilesystemTest(test_util.TensorFlowTestCase):
     saved_model.save(MyModule(), 'ram://my_module')
 
     loaded = saved_model.load('ram://my_module')
+
+    for root, _, filenames in gfile.Walk("ram://my_module"):
+      for filename in filenames:
+        self.assertTrue(gfile.Exists(os.path.join(root, filename)))
+
     self.assertAllEqual(loaded.foo(), [1])
 
 

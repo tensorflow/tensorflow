@@ -237,6 +237,16 @@ tf_py_test(
     ],
 )
 
+py_test(
+    name = "ram_file_system_test",
+    size = "small",
+    srcs = ["ram_file_system_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 pybind_extension(
     name = "_pywrap_tf2",
     srcs = ["enable_tf2.cc"],
