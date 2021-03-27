@@ -93,8 +93,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_domain_isolator.h"
-#include "tensorflow/compiler/xla/service/hlo_domain_remover.h"
 #include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -160,14 +158,6 @@ Status GpuCompiler::OptimizeHloModule(
   const int64 num_partitions = hlo_module->config().num_partitions();
   const bool use_spmd =
       hlo_module->config().use_spmd_partitioning() && num_partitions > 1;
-
-  if (use_spmd) {
-    HloPassPipeline pipeline("pre-spmd-passes");
-    // TODO(jurahul): Check if this depends on FlattenCallGraph.
-    pipeline.AddPass<HloDomainIsolator>(
-        []() { return ShardingDomainCreator{}; });
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-  }
 
   {
     HloPassPipeline pipeline("optimization");
@@ -300,8 +290,6 @@ Status GpuCompiler::OptimizeHloModule(
 
   if (use_spmd) {
     HloPassPipeline spmd_pipeline("spmd-partitioner");
-    spmd_pipeline.AddPass<HloDomainRemover>(
-        ShardingMetadata::KindName(), ShardingPropagation::NormalizeDomain);
     spmd_pipeline.AddPass<ShardingPropagation>(true);
     spmd::SpmdPartitionerOptions default_options;
     default_options.allow_module_signature_change = true;

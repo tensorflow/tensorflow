@@ -28,6 +28,8 @@ from tensorflow.python.util.tf_export import tf_export
 _DEFAULT_MAX_QUEUE = 10
 
 
+# TODO(b/147325552): Remove this API after we switch to using C++ based
+# implementation for tf.data options (on 4/12/2021).
 @tf_export("data.experimental.StatsAggregator", v1=[])
 @deprecation.deprecated_endpoints("data.experimental.StatsAggregator")
 class StatsAggregatorV2(object):
@@ -86,6 +88,8 @@ class StatsAggregatorV2(object):
                                                 self._summary_writer._resource)  # pylint: disable=protected-access
 
 
+# TODO(b/147325552): Remove this API after we switch to using C++ based
+# implementation for tf.data options (on 4/12/2021).
 @tf_export(v1=["data.experimental.StatsAggregator"])
 @deprecation.deprecated_endpoints("data.experimental.StatsAggregator")
 class StatsAggregatorV1(object):

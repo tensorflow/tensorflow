@@ -576,12 +576,6 @@ bool PjRtStreamExecutorBuffer::IsOnCpu() const {
 }
 
 StatusOr<Shape> PjRtStreamExecutorBuffer::logical_on_device_shape() {
-  if (IsOnCpu() && on_device_shape().is_dynamic()) {
-    // TODO(b/182468546): TransferManager may return corrupted dynamic_shape on
-    // CPU non-deterministically.
-    return Unimplemented(
-        "Gathering DynamicShape is not implemented properly on CPU yet.");
-  }
   if (on_device_shape_.is_static()) {
     return on_device_shape_;
   }
@@ -839,10 +833,8 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
         local_device, std::move(device_buffer), event,
         local_device->host_to_device_stream()));
 
-    local_device->callback_stream()->ThenWaitFor(
-        local_device->host_to_device_stream());
-    local_device->ThenExecuteOnCallbackThread(
-        local_device->callback_stream(),
+    local_device->ThenExecuteCallback(
+        local_device->host_to_device_stream(),
         [staging_buffer{std::move(staging_buffer)},
          on_done_with_host_buffer{std::move(on_done_with_host_buffer)}]() {
           if (on_done_with_host_buffer) {
@@ -1134,7 +1126,7 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
       }
       if (block_stream != nullptr) {
         se::Stream* block_stream_ptr = block_stream.release();
-        local_device_state->ThenExecuteOnCallbackThread(
+        local_device_state->ThenExecuteCallback(
             block_stream_ptr,
             [device_buffer, block_stream_ptr, local_device_state]() {
               local_device_state->ReturnStreamToPool(
@@ -2003,11 +1995,9 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
   }
 
   if (!compute_callbacks.empty()) {
-    device_state->callback_stream()->ThenWaitFor(stream);
-    device_state->ThenExecuteOnCallbackThread(
-        device_state->callback_stream(),
-        [callbacks{std::move(compute_callbacks)},
-         buffers_to_release{std::move(buffers_to_release)}]() {
+    device_state->ThenExecuteCallback(
+        stream, [callbacks{std::move(compute_callbacks)},
+                 buffers_to_release{std::move(buffers_to_release)}]() {
           for (auto& fn : callbacks) {
             fn();
           }

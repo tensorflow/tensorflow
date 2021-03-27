@@ -30,7 +30,7 @@ namespace {
 struct TestUnfuseBatchNormPass
     : public PassWrapper<TestUnfuseBatchNormPass, OperationPass<>> {
   void runOnOperation() override {
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     PopulateUnfuseBatchNormPatterns(&getContext(), &patterns);
     (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }

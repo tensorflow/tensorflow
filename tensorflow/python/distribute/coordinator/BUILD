@@ -42,7 +42,6 @@ distribute_py_test(
     shard_count = 50,
     tags = [
         "multi_gpu",
-        "no_oss",
         "no_pip",
         "notpu",
         "notsan",  # TODO(b/171040359): Flaky timeout, even if maximum shards

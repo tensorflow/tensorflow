@@ -141,7 +141,6 @@ Status ConvertModule(std::unique_ptr<HloModule> hlo_module, ModuleOp module,
   // conversion.
   module.getBody()->clear();
   OpBuilder builder(module);
-  module.ensureTerminator(module.getBodyRegion(), builder, module.getLoc());
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       HloToLhloModule(*assignment, *optimized_hlo_module, module),
@@ -157,8 +156,8 @@ class XlaHloToLhloPass
     : public PassWrapper<XlaHloToLhloPass, OperationPass<ModuleOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry
-        .insert<mlir::StandardOpsDialect, mlir::mhlo::MhloDialect,
-                mlir::lmhlo::LmhloDialect, mlir::lmhlo_gpu::LmhloGpuDialect>();
+        .insert<StandardOpsDialect, memref::MemRefDialect, mhlo::MhloDialect,
+                lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
   }
 
  public:
@@ -1713,6 +1712,10 @@ Status HloToLhloModule(const BufferAssignment& assignment,
       ->loadDialect<StandardOpsDialect, memref::MemRefDialect,
                     mhlo::MhloDialect, lmhlo::LmhloDialect,
                     lmhlo_gpu::LmhloGpuDialect>();
+
+  module->setLoc(mlir::NameLoc::get(
+      mlir::Identifier::get(hlo_module.name(), module.getContext())));
+
   const HloComputation* computation = hlo_module.entry_computation();
 
   LhloDialectEmitter emitter(assignment, *computation, module);

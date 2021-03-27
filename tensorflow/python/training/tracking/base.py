@@ -498,6 +498,7 @@ _SlotVariableRestoration = collections.namedtuple(
     ])
 
 
+@tf_export("__internal__.tracking.no_automatic_dependency_tracking", v1=[])
 def no_automatic_dependency_tracking(method):
   """Disables automatic dependency tracking on attribute assignment.
 

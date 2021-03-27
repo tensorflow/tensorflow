@@ -34,54 +34,60 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
   // constructor to call.
   m.def("CreateWrapperFromFile",
         [](const std::string& model_path, int op_resolver_id,
-           const std::vector<std::string>& registerers) {
+           const std::vector<std::string>& registerers,
+           bool preserve_all_tensors) {
           std::string error;
           auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromFile(
-              model_path.c_str(), op_resolver_id, registerers, &error);
+              model_path.c_str(), op_resolver_id, registerers, &error,
+              preserve_all_tensors);
           if (!wrapper) {
             throw std::invalid_argument(error);
           }
           return wrapper;
         });
-  m.def("CreateWrapperFromFile",
-        [](const std::string& model_path, int op_resolver_id,
-           const std::vector<std::string>& registerers_by_name,
-           const std::vector<std::function<void(uintptr_t)>>&
-               registerers_by_func) {
-          std::string error;
-          auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromFile(
-              model_path.c_str(), op_resolver_id, registerers_by_name,
-              registerers_by_func, &error);
-          if (!wrapper) {
-            throw std::invalid_argument(error);
-          }
-          return wrapper;
-        });
+  m.def(
+      "CreateWrapperFromFile",
+      [](const std::string& model_path, int op_resolver_id,
+         const std::vector<std::string>& registerers_by_name,
+         const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
+         bool preserve_all_tensors) {
+        std::string error;
+        auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromFile(
+            model_path.c_str(), op_resolver_id, registerers_by_name,
+            registerers_by_func, &error, preserve_all_tensors);
+        if (!wrapper) {
+          throw std::invalid_argument(error);
+        }
+        return wrapper;
+      });
   m.def("CreateWrapperFromBuffer",
         [](const py::bytes& data, int op_resolver_id,
-           const std::vector<std::string>& registerers) {
+           const std::vector<std::string>& registerers,
+           bool preserve_all_tensors) {
           std::string error;
           auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromBuffer(
-              data.ptr(), op_resolver_id, registerers, &error);
+              data.ptr(), op_resolver_id, registerers, &error,
+              preserve_all_tensors);
           if (!wrapper) {
             throw std::invalid_argument(error);
           }
           return wrapper;
         });
-  m.def("CreateWrapperFromBuffer",
-        [](const py::bytes& data, int op_resolver_id,
-           const std::vector<std::string>& registerers_by_name,
-           const std::vector<std::function<void(uintptr_t)>>&
-               registerers_by_func) {
-          std::string error;
-          auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromBuffer(
-              data.ptr(), op_resolver_id, registerers_by_name,
-              registerers_by_func, &error);
-          if (!wrapper) {
-            throw std::invalid_argument(error);
-          }
-          return wrapper;
-        });
+  m.def(
+      "CreateWrapperFromBuffer",
+      [](const py::bytes& data, int op_resolver_id,
+         const std::vector<std::string>& registerers_by_name,
+         const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
+         bool preserve_all_tensors) {
+        std::string error;
+        auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromBuffer(
+            data.ptr(), op_resolver_id, registerers_by_name,
+            registerers_by_func, &error, preserve_all_tensors);
+        if (!wrapper) {
+          throw std::invalid_argument(error);
+        }
+        return wrapper;
+      });
   py::class_<InterpreterWrapper>(m, "InterpreterWrapper")
       .def("AllocateTensors",
            [](InterpreterWrapper& self) {

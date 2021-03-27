@@ -14,9 +14,6 @@
 # ==============================================================================
 # pylint: disable=protected-access
 """Contains the base Layer class, from which all layers inherit."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import collections
 import copy
@@ -27,8 +24,6 @@ import warnings
 import weakref
 
 import numpy as np
-import six
-from six.moves import zip  # pylint: disable=redefined-builtin
 
 from google.protobuf import json_format
 from tensorflow.core.framework import node_def_pb2
@@ -512,7 +507,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     Returns:
       The TrackableWeightHandler used to track this object.
     """
-    handler = base_layer_utils.TrackableWeightHandler(trackable_object)
+    if isinstance(trackable_object, base_layer_utils.TrackableWeightHandler):
+      handler = trackable_object
+    else:
+      handler = base_layer_utils.TrackableWeightHandler(trackable_object)
     if trainable:
       self._trainable_weights.append(handler)
     else:
@@ -614,7 +612,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       elif dtype.is_integer or dtype.is_unsigned or dtype.is_bool:
         initializer = initializers.get('zeros')
       # NOTES:Do we need to support for handling DT_STRING and DT_COMPLEX here?
-      else:
+      elif 'getter' not in kwargs:
+        # When `getter` is specified, it's possibly fine for `initializer` to be
+        # None since it's up to the custom `getter` to raise error in case it
+        # indeed needs `initializer`.
         raise ValueError('An initializer for variable %s of type %s is required'
                          ' for layer %s' % (name, dtype.base_dtype, self.name))
 
@@ -773,12 +774,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         try:
           outputs = self(inputs, training=False)
         except TypeError as e:
-          six.raise_from(
-              NotImplementedError(
-                  'We could not automatically infer the static shape of the '
-                  'layer\'s output. Please implement the '
-                  '`compute_output_shape` method on your layer (%s).' %
-                  self.__class__.__name__), e)
+          raise NotImplementedError(
+              'We could not automatically infer the static shape of the '
+              'layer\'s output. Please implement the '
+              '`compute_output_shape` method on your layer (%s).' %
+              self.__class__.__name__) from e
       return nest.map_structure(lambda t: t.shape, outputs)
     raise NotImplementedError(
         'Please run in eager mode or implement the `compute_output_shape` '

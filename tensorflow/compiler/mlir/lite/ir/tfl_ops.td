@@ -521,8 +521,7 @@ def TFL_AbsOp : TFL_Op<"abs", [
     NoSideEffect,
     SameOperandsAndResultShape,
     SameOperandsAndResultType,
-    SameOperandsAndResultsScale,
-    NoQuantizableResult]> {
+    SameOperandsAndResultsScale]> {
   let summary = "Absolute value operator";
 
   let description = [{
@@ -816,6 +815,7 @@ def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [ConstantLike, NoSideEffect,
   let results = (outs AnyTensor:$output);
 
   let hasFolder = 1;
+  let hasCanonicalizer = 1;
 
   let builders = [
     OpBuilder<(ins "Attribute":$value),
@@ -4571,7 +4571,7 @@ subsequent operation and then be optimized away, however.)
   );
 }
 
-def TFL_RFFT2dOp : TFL_Op<"RFFT2D", [NoSideEffect, NoQuantizableResult]> {
+def TFL_RFFT2dOp : TFL_Op<"rfft2d", [NoSideEffect, NoQuantizableResult]> {
   let summary = "2D real-valued fast Fourier transform.";
 
   let description = [{

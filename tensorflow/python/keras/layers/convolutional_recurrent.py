@@ -328,8 +328,8 @@ class ConvRNN(RNN):
                                                input_length=timesteps)
     if self.stateful:
       updates = [
-        backend.update(self_state, state)
-        for self_state, state in zip(self.states, states)
+          backend.update(self_state, state)
+          for self_state, state in zip(self.states, states)
       ]
       self.add_update(updates)
 
@@ -669,9 +669,8 @@ class ConvLSTMCell(DropoutRNNCellMixin, Layer):
 
   def recurrent_conv(self, x, w):
     strides = conv_utils.normalize_tuple(1, self.rank, 'strides')
-    conv_out = self._conv_func(
-      x, w, strides=strides, padding='same', data_format=self.data_format
-    )
+    conv_out = self._conv_func(x, w, strides=strides, padding='same',
+                               data_format=self.data_format)
     return conv_out
 
   def get_config(self):

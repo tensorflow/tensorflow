@@ -103,18 +103,12 @@ void UpdateArgAttributes(mlir::FuncOp func) {
 
       func.removeArgAttr(i, builder.getIdentifier(kShardingAttr));
     }
-
-    // TODO(prakalps, hinsu): Utilize aliasing output attribute instead of
-    // dropping it. This only affects performance and is not required for
-    // correctness.
-    constexpr char kAliasingAttr[] = "tf.aliasing_output";
-    func.removeArgAttr(i, builder.getIdentifier(kAliasingAttr));
   }
 }
 
 LogicalResult RewriteCommunicationOps(ModuleOp module) {
   MLIRContext* ctx = module.getContext();
-  mlir::OwningRewritePatternList patterns;
+  mlir::OwningRewritePatternList patterns(ctx);
   patterns.insert<RewriteXlaHostComputeMlir>(ctx);
   if (failed(mlir::applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
     return module.emitError("failed to apply tf export preparation patterns");
