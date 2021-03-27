@@ -573,7 +573,7 @@ class Loader(object):
     return _UserObject(), setattr
 
   def _recreate_asset(self, proto):
-    filename = os.path.join(
+    filename = file_io.join(
         saved_model_utils.get_assets_dir(self._export_dir),
         self._asset_file_def[proto.asset_file_def_index].filename)
     asset = tracking.Asset(filename)

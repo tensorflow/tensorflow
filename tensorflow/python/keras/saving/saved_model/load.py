@@ -38,6 +38,7 @@ from tensorflow.python.keras.saving.saved_model.serialized_attributes import Com
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import metrics_utils
 from tensorflow.python.keras.utils.generic_utils import LazyLoader
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
@@ -120,7 +121,7 @@ def load(path, compile=True, options=None):  # pylint: disable=redefined-builtin
   metadata = saved_metadata_pb2.SavedMetadata()
   meta_graph_def = loader_impl.parse_saved_model(path).meta_graphs[0]
   object_graph_def = meta_graph_def.object_graph_def
-  path_to_metadata_pb = os.path.join(path, constants.SAVED_METADATA_PATH)
+  path_to_metadata_pb = file_io.join(path, constants.SAVED_METADATA_PATH)
   if gfile.Exists(path_to_metadata_pb):
     try:
       with gfile.GFile(path_to_metadata_pb, 'rb') as f:

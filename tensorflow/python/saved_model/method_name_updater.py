@@ -128,7 +128,7 @@ class MethodNameUpdater(object):
       errors.OpError: If there are errors during the file save operation.
     """
 
-    is_input_text_proto = file_io.file_exists(os.path.join(
+    is_input_text_proto = file_io.file_exists(file_io.join(
         compat.as_bytes(self._export_dir),
         compat.as_bytes(constants.SAVED_MODEL_FILENAME_PBTXT)))
     if not new_export_dir:
@@ -136,12 +136,12 @@ class MethodNameUpdater(object):
 
     if is_input_text_proto:
       # TODO(jdchung): Add a util for the path creation below.
-      path = os.path.join(
+      path = file_io.join(
           compat.as_bytes(new_export_dir),
           compat.as_bytes(constants.SAVED_MODEL_FILENAME_PBTXT))
       file_io.write_string_to_file(path, str(self._saved_model))
     else:
-      path = os.path.join(
+      path = file_io.join(
           compat.as_bytes(new_export_dir),
           compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
       file_io.write_string_to_file(

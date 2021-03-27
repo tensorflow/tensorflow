@@ -875,7 +875,7 @@ def _export_debug_info(exported_graph, export_dir):
   graph_debug_info = error_interpolation.create_graph_debug_info_def(
       exported_operations)
   file_io.atomic_write_string_to_file(
-      os.path.join(
+      file_io.join(
           utils_impl.get_or_create_debug_dir(export_dir),
           constants.DEBUG_INFO_FILENAME_PB),
       graph_debug_info.SerializeToString(deterministic=True))
@@ -1128,7 +1128,7 @@ def save_and_return_nodes(obj,
           "to the io_device such as '/job:localhost'."
       )
 
-  path = os.path.join(
+  path = file_io.join(
       compat.as_str(export_dir),
       compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
   file_io.atomic_write_string_to_file(

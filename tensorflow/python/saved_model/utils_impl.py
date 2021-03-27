@@ -223,14 +223,14 @@ def get_or_create_variables_dir(export_dir):
 
 def get_variables_dir(export_dir):
   """Return variables sub-directory in the SavedModel."""
-  return os.path.join(
+  return file_io.join(
       compat.as_text(export_dir),
       compat.as_text(constants.VARIABLES_DIRECTORY))
 
 
 def get_variables_path(export_dir):
   """Return the variables path, used as the prefix for checkpoint files."""
-  return os.path.join(
+  return file_io.join(
       compat.as_text(get_variables_dir(export_dir)),
       compat.as_text(constants.VARIABLES_FILENAME))
 
@@ -247,7 +247,7 @@ def get_or_create_assets_dir(export_dir):
 
 def get_assets_dir(export_dir):
   """Return path to asset directory in the SavedModel."""
-  return os.path.join(
+  return file_io.join(
       compat.as_text(export_dir),
       compat.as_text(constants.ASSETS_DIRECTORY))
 
@@ -263,20 +263,20 @@ def get_or_create_debug_dir(export_dir):
 
 
 def get_saved_model_pbtxt_path(export_dir):
-  return os.path.join(
+  return file_io.join(
       compat.as_bytes(compat.path_to_str(export_dir)),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_PBTXT))
 
 
 def get_saved_model_pb_path(export_dir):
-  return os.path.join(
+  return file_io.join(
       compat.as_bytes(compat.path_to_str(export_dir)),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
 
 
 def get_debug_dir(export_dir):
   """Returns path to the debug sub-directory in the SavedModel."""
-  return os.path.join(
+  return file_io.join(
       compat.as_text(export_dir), compat.as_text(constants.DEBUG_DIRECTORY))
 
 # Based on tensor_bundle/byte_swap.cc

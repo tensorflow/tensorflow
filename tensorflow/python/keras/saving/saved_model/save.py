@@ -25,6 +25,7 @@ from tensorflow.python.keras.saving.saved_model import save_impl
 from tensorflow.python.keras.saving.saved_model import utils
 from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import save as save_lib
 
@@ -93,7 +94,7 @@ def save(model, filepath, overwrite, include_optimizer, signatures=None,
     metadata = generate_keras_metadata(saved_nodes, node_paths)
 
   with gfile.GFile(
-      os.path.join(filepath, constants.SAVED_METADATA_PATH), "wb") as w:
+      file_io.join(filepath, constants.SAVED_METADATA_PATH), "wb") as w:
     w.write(metadata.SerializeToString(deterministic=True))
 
   if not include_optimizer:
