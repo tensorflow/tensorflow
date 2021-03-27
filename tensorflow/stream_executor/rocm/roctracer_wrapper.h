@@ -23,6 +23,7 @@ limitations under the License.
 #include "rocm/include/roctracer/roctracer.h"
 #include "rocm/include/roctracer/roctracer_hcc.h"
 #include "rocm/include/roctracer/roctracer_hip.h"
+#include "rocm/include/roctracer/roctracer_roctx.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "tensorflow/stream_executor/platform/port.h"
@@ -60,6 +61,7 @@ namespace CachedDsoLoader = stream_executor::internal::CachedDsoLoader;
 
 #endif
 
+//BUG(rocm-profiler): roctracer_enable_op_activity does not exist in rocm-4.0.1
 // clang-format off
 #define FOREACH_ROCTRACER_API(__macro)			\
   __macro(roctracer_default_pool_expl)			\
@@ -70,6 +72,7 @@ namespace CachedDsoLoader = stream_executor::internal::CachedDsoLoader;
   __macro(roctracer_enable_domain_activity_expl)	\
   __macro(roctracer_enable_domain_callback)		\
   __macro(roctracer_enable_op_activity)			\
+  __macro(roctracer_enable_op_activity_expl)			\
   __macro(roctracer_enable_op_callback)			\
   __macro(roctracer_error_string)			\
   __macro(roctracer_flush_activity_expl)		\

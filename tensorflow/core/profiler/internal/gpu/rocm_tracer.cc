@@ -65,12 +65,8 @@ const char* GetActivityDomainName(uint32_t domain) {
       return "HSA API";
     case ACTIVITY_DOMAIN_HSA_OPS:
       return "HSA OPS";
-    // case ACTIVITY_DOMAIN_HIP_OPS:
-    //   return "HIP OPS";
-    case ACTIVITY_DOMAIN_HCC_OPS:
-      return "HCC OPS";
-    // case ACTIVITY_DOMAIN_HIP_VDI:
-    //   return "HIP VDI";
+    case ACTIVITY_DOMAIN_HIP_OPS:
+      return "HIP OPS/HCC OPS/HIP VDI";
     case ACTIVITY_DOMAIN_HIP_API:
       return "HIP API";
     case ACTIVITY_DOMAIN_KFD_API:
@@ -178,7 +174,11 @@ inline void DumpApiCallbackData(uint32_t domain, uint32_t cbid,
         DCHECK(false);
         break;
     }
-  } else {
+  }else if (domain == ACTIVITY_DOMAIN_ROCTX){
+    const roctx_api_data_t* data = reinterpret_cast<const roctx_api_data_t*>(cbdata);
+    oss << ", message=" << data->args.message << ", id=" << data->args.id; 
+  }
+  else {
     oss << ": " << cbid;
   }
   VLOG(3) << oss.str();
@@ -187,7 +187,7 @@ inline void DumpApiCallbackData(uint32_t domain, uint32_t cbid,
 void DumpActivityRecord(const roctracer_record_t* record) {
   std::ostringstream oss;
   oss << "Activity callback for " << GetActivityDomainName(record->domain);
-  oss << wrap::roctracer_op_string(record->domain, record->op, record->kind);
+  oss << " "<< wrap::roctracer_op_string(record->domain, record->op, record->kind);
   oss << ", correlation_id=" << record->correlation_id;
   oss << ", begin_ns=" << record->begin_ns;
   oss << ", end_ns=" << record->end_ns;
@@ -197,6 +197,9 @@ void DumpActivityRecord(const roctracer_record_t* record) {
   oss << ", thread_id=" << record->thread_id;
   oss << ", external_id=" << record->external_id;
   oss << ", bytes=" << record->bytes;
+  oss << ", domain=" << record->domain;
+  oss << ", op=" << record->op;
+  oss << ", kind=" << record->kind;
   VLOG(3) << oss.str();
 }
 
@@ -220,6 +223,10 @@ const char* GetRocmTracerEventTypeName(const RocmTracerEventType& type) {
       return "MemoryAlloc";
     case RocmTracerEventType::Generic:
       return "Generic";
+    case RocmTracerEventType::StreamSynchronize:
+      return "StreamSynchronize";
+    case RocmTracerEventType::Memset:
+      return "Memset";
     default:
       DCHECK(false);
       return "";
@@ -242,6 +249,7 @@ const char* GetRocmTracerEventSourceName(const RocmTracerEventSource& source) {
   return "";
 }
 
+//FIXME(rocm-profiler): These domain names are not consistent with the GetActivityDomainName function
 const char* GetRocmTracerEventDomainName(const RocmTracerEventDomain& domain) {
   switch (domain) {
     case RocmTracerEventDomain::HIP_API:
@@ -584,7 +592,9 @@ class RocmApiCallbackImpl {
     event.name = wrap::roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cbid, 0);
     event.thread_id = GetCachedTID();
     event.correlation_id = data->correlation_id;
-
+    // We retrieve the DeviceID here for this event type.  
+    const hipStream_t& stream = data->args.hipStreamSynchronize.stream;
+    event.device_id = hipGetStreamDeviceId(stream);
     collector_->AddEvent(std::move(event));
   }
 
@@ -837,7 +847,7 @@ class RocmActivityCallbackImpl {
     event.correlation_id = record->correlation_id;
     event.annotation =
         collector_->annotation_map()->LookUp(event.correlation_id);
-
+    event.stream_id = record->queue_id;
     event.start_time_ns = record->begin_ns;
     event.end_time_ns = record->end_ns;
 
@@ -913,8 +923,9 @@ absl::string_view AnnotationMap::LookUp(uint32 correlation_id) {
   return singleton;
 }
 
+//FIXME(rocm-profiler): we should also check if we have AMD GPUs
 bool RocmTracer::IsAvailable() const {
-  return !activity_tracing_enabled_ && !api_tracing_enabled_;
+  return !activity_tracing_enabled_ && !api_tracing_enabled_; // &&NumGpus()
 }
 
 int RocmTracer::NumGpus() {
@@ -1079,8 +1090,9 @@ Status RocmTracer::EnableActivityTracing() {
       for (auto& op : ops) {
         VLOG(3) << "Enabling Activity tracing for "
                 << GetActivityDomainOpName(domain, op);
+        // roctracer library has not exported "roctracer_enable_op_activity"         
         RETURN_IF_ROCTRACER_ERROR(
-            wrap::roctracer_enable_op_activity(domain, op));
+            wrap::roctracer_enable_op_activity_expl(domain, op, nullptr));
       }
     }
   }
@@ -1111,6 +1123,7 @@ Status RocmTracer::DisableActivityTracing() {
     }
   }
 
+  //TODO(rocm-profiler): this stopping mechanism needs improvement.
   // Flush the activity buffer BEFORE setting the activity_tracing_enable_
   // flag to FALSE. This is because the activity record callback routine is
   // gated by the same flag
