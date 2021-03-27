@@ -84,6 +84,7 @@ py_strict_library(
         ":export_output",
         ":mode_keys",
         "//tensorflow/python:platform",
+        "//tensorflow/python/lib/io:lib",
         "//tensorflow/python:util",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:signature_def_utils",
