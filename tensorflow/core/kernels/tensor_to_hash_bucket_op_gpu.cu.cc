@@ -23,9 +23,9 @@ namespace tensorflow {
 
 namespace {
 
-// We set the buffer size to 32 as it is sufficient to cover the number of
+// We set the buffer size to 20 as it is sufficient to cover the number of
 // digits in any integer type.
-constexpr int kSharedMemBufferSizePerThread = 32;
+constexpr int kSharedMemBufferSizePerThread = 20;
 
 template<typename T>
 __device__ __forceinline__ void FillDigits(T val, int num_digits, int* i,
