@@ -318,11 +318,17 @@ struct storage_type<std::complex<T2>> {
 
 // Works only if there are <= 16 columns
 // each warps sums over multiple rows at once
-template <typename T, typename OUT_T, typename Op, int WARPSIZE>
+template <typename T, typename OUT_T, typename Op, int _WARPSIZE>
 __global__ __launch_bounds__(1024) void ColumnReduceMax16ColumnsKernel(
     T in, OUT_T out, int num_rows, int num_cols, Op op,
     typename std::iterator_traits<T>::value_type initVal) {
+  // must resort to this trick because, at least on ROCm, the compiler
+  // tries to instantiate the template with _WARPSIZE=64 for all types,
+  // resulting in an "insufficient shared memory" error,
+  // even if runtime logic prevents the version with complex128,64 from
+  // ever being called,
   typedef typename std::iterator_traits<T>::value_type value_type;
+  constexpr int WARPSIZE = sizeof(value_type)>=16 ? 32 : _WARPSIZE;
   int rows_per_warp = WARPSIZE / num_cols;
 
   const int lane = threadIdx.x % WARPSIZE;
@@ -388,12 +394,13 @@ __global__ __launch_bounds__(1024) void ColumnReduceMax16ColumnsKernel(
   }
 }
 
-// Maps each block to a column range TF_RED_WARPSIZE wide
-template <typename T, typename OUT_T, typename Op, int WARPSIZE>
+// Maps each block to a column range WARPSIZE wide
+template <typename T, typename OUT_T, typename Op, int _WARPSIZE>
 __global__ __launch_bounds__(1024) void ColumnReduceKernel(
     T in, OUT_T out, int num_rows, int num_cols, Op op,
     typename std::iterator_traits<T>::value_type initVal) {
   typedef typename std::iterator_traits<T>::value_type value_type;
+  constexpr int WARPSIZE = sizeof(value_type)>=16 ? 32 : _WARPSIZE;
   int row = blockIdx.y * blockDim.y + threadIdx.y;
   int col = blockIdx.x * WARPSIZE + threadIdx.x;
 
@@ -403,8 +410,8 @@ __global__ __launch_bounds__(1024) void ColumnReduceKernel(
     // 1D array necessary due to bug in CUDA 9 compiler.
     // TODO(nluehr) revert to 2D array when compiler is ready.
     // This is to mimic the following, but without constructors:
-    //     __shared__ storage_type<value_type> partial_sums[TF_RED_WARPSIZE *
-    //     (TF_RED_WARPSIZE + 1)];
+    //     __shared__ storage_type<value_type> partial_sums[WARPSIZE *
+    //     (WARPSIZE + 1)];
 #if GOOGLE_CUDA
   __shared__ __align__(alignof(value_type)) char
       partial_sums_raw[WARPSIZE * (WARPSIZE + 1) *
@@ -699,10 +706,29 @@ struct GatherOp {
   int group_size_;
 };
 
+#if TENSORFLOW_USE_ROCM
+inline bool isGfx10(OpKernelContext* ctx) {
+  hipDeviceProp_t props;
+  int dev = 0;
+  hipError_t result = hipGetDevice(&dev);
+  result = hipGetDeviceProperties(&props, dev);
+  if (result == hipSuccess) {
+    std::string gcnArchName = props.gcnArchName;
+    return (gcnArchName.substr(0,5)=="gfx10");
+  }
+  return false;
+}
+#endif
+
 template <typename T, typename Op, typename OUT_T, typename IN_T>
 void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
                            int in_size, Op op, T init,
                            const gpuStream_t& cu_stream) {
+#if TENSORFLOW_USE_ROCM
+  int WARPSIZE = isGfx10(ctx) ? 32 : 64;
+#else
+  constexpr int WARPSIZE = TF_RED_WARPSIZE;
+#endif
   // handle situations where low latency is important better than CUB
   if (in_size <= 4096) {
     const int num_blocks = 1;
@@ -714,7 +740,7 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
   } else if (in_size <= 1 << 18) {
     const int num_threads = 256;
     const int num_blocks =
-        std::min(TF_RED_WARPSIZE, Eigen::divup(in_size, num_threads));
+        std::min(WARPSIZE, Eigen::divup(in_size, num_threads));
     // it seems like tailoring this to the GPU
     // would be more effective, but all attempts
     // at making this a multiple of the number of
@@ -739,7 +765,7 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
     // requires it to be used with a full warp.  Can reduce TF_RED_WARPSIZE ->
     // num_blocks when this is fixed.
     TF_CHECK_OK(GpuLaunchKernel(CleanupSegments<T*, OUT_T, Op>, 1,
-                                TF_RED_WARPSIZE, 0, cu_stream,
+                                WARPSIZE==32 ? 32 : 64, 0, cu_stream,
                                 (T*)temp_storage.flat<int8_t>().data(), out, 1,
                                 1, num_blocks, op, init));
     return;
@@ -770,12 +796,19 @@ template <typename T, typename Op, typename OUT_T, typename IN_T>
 void LaunchRowReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int num_rows,
                         int num_cols, Op op, T init,
                         const gpuStream_t& cu_stream) {
+#if TENSORFLOW_USE_ROCM
+  int WARPSIZE = isGfx10(ctx) ? 32 : 64;
+#else
+  constexpr int WARPSIZE = TF_RED_WARPSIZE;
+#endif
   if (num_cols < 1024) {
     const int threads_per_block = 128;
-    const int warps_per_block = threads_per_block / TF_RED_WARPSIZE;
+    const int warps_per_block = threads_per_block / WARPSIZE;
     int num_blocks = (num_rows + warps_per_block - 1) / warps_per_block;
-
-    TF_CHECK_OK(GpuLaunchKernel(RowReduceKernel<IN_T, OUT_T, Op, TF_RED_WARPSIZE>, num_blocks,
+    auto fun = WARPSIZE==32 
+         ? RowReduceKernel<IN_T, OUT_T, Op, 32>
+         : RowReduceKernel<IN_T, OUT_T, Op, 64>;
+    TF_CHECK_OK(GpuLaunchKernel(fun, num_blocks,
                                 threads_per_block, 0, cu_stream, in, out,
                                 num_rows, num_cols, op, init));
     return;
@@ -813,10 +846,9 @@ template <typename T, typename Op, typename OUT_T, typename IN_T>
 void LaunchColumnReduction_LTE16Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                      int extent_x, int extent_y, Op op, T init,
                                      const gpuStream_t& cu_stream) {
-#if TENSORFLOW_USE_ROCM  
-  constexpr int WARPSIZE = std::is_same<T, hipDoubleComplex>::value 
-      ? (TF_RED_WARPSIZE/2) 
-      : TF_RED_WARPSIZE;
+#if TENSORFLOW_USE_ROCM
+  int WARPSIZE = (std::is_same<T, hipDoubleComplex>::value || isGfx10(ctx))
+      ? 32 : 64;
 #else
   constexpr int WARPSIZE = TF_RED_WARPSIZE;
 #endif
@@ -838,8 +870,10 @@ void LaunchColumnReduction_LTE16Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
   }
 
   if (grid_dim.y == 1) {
-    TF_CHECK_OK(GpuLaunchKernel(ColumnReduceMax16ColumnsKernel<IN_T, OUT_T, Op, WARPSIZE>,
-                                grid_dim, block_dim, 0, cu_stream, in, out,
+    auto fun = WARPSIZE==32
+              ? ColumnReduceMax16ColumnsKernel<IN_T, OUT_T, Op, 32>
+              : ColumnReduceMax16ColumnsKernel<IN_T, OUT_T, Op, 64>;
+    TF_CHECK_OK(GpuLaunchKernel(fun, grid_dim, block_dim, 0, cu_stream, in, out,
                                 extent_x, extent_y, op, init));
   } else {
     Tensor temp_storage;
@@ -848,8 +882,10 @@ void LaunchColumnReduction_LTE16Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                       TensorShape({static_cast<int64>(
                                           sizeof(T) * extent_y * grid_dim.y)}),
                                       &temp_storage));
-    TF_CHECK_OK(GpuLaunchKernel(ColumnReduceMax16ColumnsKernel<IN_T, T*, Op, WARPSIZE>,
-                                grid_dim, block_dim, 0, cu_stream, in,
+    auto fun = WARPSIZE==32
+            ? ColumnReduceMax16ColumnsKernel<IN_T, T*, Op, 32>
+            : ColumnReduceMax16ColumnsKernel<IN_T, T*, Op, 64>;
+    TF_CHECK_OK(GpuLaunchKernel(fun, grid_dim, block_dim, 0, cu_stream, in,
                                 (T*)temp_storage.flat<int8_t>().data(),
                                 extent_x, extent_y, op, init));
 
@@ -872,9 +908,8 @@ void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
   // On ROCm, TF_RED_WARPSIZE is 64 and the default value would require
   // 66 kB of shared memory with double complex - more than actually
   // available in the GPU.
-  constexpr int WARPSIZE = std::is_same<T, hipDoubleComplex>::value 
-    ? (TF_RED_WARPSIZE/2) 
-    : TF_RED_WARPSIZE;
+  int WARPSIZE = (std::is_same<T, hipDoubleComplex>::value || isGfx10(ctx))
+      ? 32 : 64;
 #else
   constexpr int WARPSIZE = TF_RED_WARPSIZE;
 #endif
@@ -892,7 +927,10 @@ void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
   }
 
   if (grid_dim.y == 1) {
-    TF_CHECK_OK(GpuLaunchKernel(ColumnReduceKernel<IN_T, OUT_T, Op, WARPSIZE>, grid_dim,
+    auto fun = WARPSIZE==32
+               ? ColumnReduceKernel<IN_T, OUT_T, Op, 32>
+               : ColumnReduceKernel<IN_T, OUT_T, Op, 64>;
+    TF_CHECK_OK(GpuLaunchKernel(fun, grid_dim,
                                 block_dim, 0, cu_stream, in, out, extent_x,
                                 extent_y, op, init));
   } else {
@@ -903,8 +941,11 @@ void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                           sizeof(T) * extent_y * grid_dim.y)}),
                                       &temp_storage));
 
+    auto fun = WARPSIZE==32
+               ? ColumnReduceKernel<IN_T, T*, Op, 32>
+               : ColumnReduceKernel<IN_T, T*, Op, 64>;
     TF_CHECK_OK(GpuLaunchKernel(
-        ColumnReduceKernel<IN_T, T*, Op, WARPSIZE>, grid_dim, block_dim, 0, cu_stream, in,
+        fun, grid_dim, block_dim, 0, cu_stream, in,
         (T*)temp_storage.flat<int8_t>().data(), extent_x, extent_y, op, init));
 
     dim3 new_grid_dim(
