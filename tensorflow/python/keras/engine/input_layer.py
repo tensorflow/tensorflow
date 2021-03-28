@@ -44,7 +44,7 @@ class InputLayer(base_layer.Layer):
   or create a placeholder tensor (pass arguments `input_shape`, and
   optionally, `dtype`).
 
-  It is generally recommend to use the functional layer API via `Input`,
+  It is generally recommended to use the functional layer API via `Input`,
   (which creates an `InputLayer`) without directly using `InputLayer`.
 
   When using InputLayer with Keras Sequential model, it can be skipped by
