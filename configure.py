@@ -184,7 +184,7 @@ def get_python_path(environ_cp, python_bin_path):
     ]
 
   all_paths = set(python_paths + library_paths)
-  # Sort set so order is deterministic
+  # Sort set so order is deterministic.
   all_paths = sorted(all_paths)
 
   paths = []
@@ -523,7 +523,7 @@ def set_cc_opt_flags(environ_cp):
     environ_cp: copy of the os.environ.
   """
   if is_ppc64le():
-    # gcc on ppc64le does not support -march, use mcpu instead
+    # gcc on ppc64le does not support -march, use mcpu instead.
     default_cc_opt_flags = '-mcpu=native'
   elif is_windows():
     default_cc_opt_flags = '/arch:AVX'
@@ -618,11 +618,11 @@ def set_clang_cuda_compiler_path(environ_cp):
     if os.path.exists(clang_cuda_compiler_path):
       break
 
-    # Reset and retry
+    # Reset and retry.
     print('Invalid clang path: %s cannot be found.' % clang_cuda_compiler_path)
     environ_cp['CLANG_CUDA_COMPILER_PATH'] = ''
 
-  # Set CLANG_CUDA_COMPILER_PATH
+  # Set CLANG_CUDA_COMPILER_PATH.
   environ_cp['CLANG_CUDA_COMPILER_PATH'] = clang_cuda_compiler_path
   write_action_env_to_bazelrc('CLANG_CUDA_COMPILER_PATH',
                               clang_cuda_compiler_path)
