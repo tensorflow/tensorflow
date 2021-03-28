@@ -379,6 +379,8 @@ class TransposeTest(test.TestCase):
         np.arange(0, 16).reshape([1, 2, 1, 2, 1, 2, 1, 2]).astype(np.float64))
 
   def testComplex64(self):
+    self._testBoth(np.array(np.complex(1, 2)).astype(np.complex64))
+    self._testBoth(np.complex(1, 2) * np.arange(0, 21).astype(np.complex64))
     self._testBoth(
         np.complex(1, 2) *
         np.arange(0, 21).reshape([3, 7]).astype(np.complex64))
@@ -390,6 +392,8 @@ class TransposeTest(test.TestCase):
         np.arange(0, 1260).reshape([2, 3, 5, 7, 2, 3]).astype(np.complex64))
 
   def testComplex128(self):
+    self._testBoth(np.array(np.complex(1, 2)).astype(np.complex128))
+    self._testBoth(np.complex(1, 2) * np.arange(0, 21).astype(np.complex128))
     self._testBoth(
         np.complex(1, 2) *
         np.arange(0, 21).reshape([3, 7]).astype(np.complex128))
@@ -530,22 +534,6 @@ class TransposeTest(test.TestCase):
       array_ops.transpose(np.arange(0., 30).reshape([2, 3, 5]), [0, 1, 3])
     self._testError(
         np.arange(0., 30).reshape([2, 3, 5]), [0, 1, 1], "2 is missing")
-
-  @test_util.run_v1_only("b/120545219")
-  def testComplexScaler(self):
-    # Test case for GitHub issue 46891.
-    for dtype in [np.complex64, np.complex128]:
-      x = np.asarray(1+1j, dtype=dtype)
-      xt = self.evaluate(array_ops.transpose(x, conjugate=True))
-      self.assertAllEqual(xt, np.transpose(x).conj())
-
-  @test_util.run_v1_only("b/120545219")
-  def testComplex1D(self):
-    # Test case for GitHub issue 46891.
-    for dtype in [np.complex64, np.complex128]:
-      x = np.asarray([1+1j], dtype=dtype)
-      xt = self.evaluate(array_ops.transpose(x, conjugate=True))
-      self.assertAllEqual(xt, np.transpose(x).conj())
 
 
 if __name__ == "__main__":
