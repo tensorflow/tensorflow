@@ -793,7 +793,7 @@ def join(path, *paths):
   Returns:
     path: the joined path.
   """
-  # os.path.join won't take mixed bytes/str, so don't overwrite the incoming data
+  # os.path.join won't take mixed bytes/str, so don't overwrite the incoming `path` var
   path_ = compat.as_str_any(compat.path_to_str(path))
   if "://" in path_[1:] and not path_.startswith("file://"):
     return urljoin(path, *paths)
