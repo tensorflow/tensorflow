@@ -191,8 +191,9 @@ if hasattr(_current_module, 'keras'):
 # Delete modules that should be hidden from dir().
 # Don't fail if these modules are not available.
 # For e.g. this file will be originally placed under tensorflow/_api/v1 which
-# does not have 'python', 'core' directories. Then, it will be copied
-# to tensorflow/ which does have these two directories.
+# does not have 'python' or 'core' directories. Then, it will be copied
+# to the tensorflow/ folder which does have either
+# of these two directories.
 # pylint: disable=undefined-variable
 try:
   del python
