@@ -57,6 +57,10 @@ tf_module {
     argspec: "args=[\'dataset_or_iterator\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "get_single_element"
+    argspec: "args=[\'dataset\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "make_initializable_iterator"
     argspec: "args=[\'dataset\', \'shared_name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
