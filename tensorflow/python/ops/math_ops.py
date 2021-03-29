@@ -593,9 +593,15 @@ def _neg(x, name=None):
 def scalar_mul(scalar, x, name=None):
   """Multiplies a scalar times a `Tensor` or `IndexedSlices` object.
 
-  Intended for use in gradient code which might deal with `IndexedSlices`
-  objects, which are easy to multiply by a scalar but more expensive to
-  multiply with arbitrary tensors.
+  This is a special case of `tf.math.multiply`, where the first value must be a
+  `scalar`. Unlike the general form of `tf.math.multiply`, this is operation is
+  guaranteed to be efficient for `tf.IndexedSlices`.
+
+  >>> x = tf.reshape(tf.range(30, dtype=tf.float32), [10, 3])
+  >>> with tf.GradientTape() as g:
+  ...   g.watch(x)
+  ...   y = tf.gather(x, [1, 2])  # IndexedSlices
+  ...   z = tf.math.scalar_mul(10.0, y)
 
   Args:
     scalar: A 0-D scalar `Tensor`. Must have known shape.
@@ -619,6 +625,31 @@ def scalar_mul(scalar, x, name=None):
       return gen_math_ops.mul(scalar, x, name)
   else:
     raise ValueError("Only scalar multiply works, got shape %s" % shape)
+
+
+@tf_export("math.softplus", "nn.softplus", v1=["math.softplus", "nn.softplus"])
+@dispatch.add_dispatch_support
+def softplus(features, name=None):
+  """Computes elementwise softplus: `softplus(x) = log(exp(x) + 1)`.
+
+  `softplus` is a smooth approximation of `relu`. Like `relu`, `softplus` always
+  takes on positive values.
+
+  <img style="width:100%" src="https://www.tensorflow.org/images/softplus.png">
+
+  Example:
+
+  >>> import tensorflow as tf
+  >>> tf.math.softplus(tf.range(0, 2, dtype=tf.float32)).numpy()
+  array([0.6931472, 1.3132616], dtype=float32)
+
+  Args:
+    features: `Tensor`
+    name: Optional: name to associate with this operation.
+  Returns:
+    `Tensor`
+  """
+  return gen_nn_ops.softplus(features, name)
 
 
 @tf_export("math.scalar_mul", "scalar_mul", v1=[])

@@ -252,7 +252,6 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/eager/memory_tests:memory_test_util",
         "//tensorflow/python/keras",
-        "@six_archive//:six",
     ],
 )
 

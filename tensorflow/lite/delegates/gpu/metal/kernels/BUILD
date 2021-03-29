@@ -183,6 +183,29 @@ ios_unit_test(
 )
 
 objc_library(
+    name = "gather_test_lib",
+    testonly = 1,
+    srcs = ["gather_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:gather_test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "gather_test",
+    testonly = 1,
+    minimum_os_version = "11.4",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
+    tags = tf_gpu_tests_tags() + [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":gather_test_lib"],
+)
+
+objc_library(
     name = "lstm_test_lib",
     testonly = 1,
     srcs = ["lstm_test.mm"],
@@ -395,6 +418,31 @@ ios_unit_test(
 )
 
 objc_library(
+    name = "resampler_test_lib",
+    testonly = 1,
+    srcs = ["resampler_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common/tasks:resampler_test_util",
+        "//tensorflow/lite/delegates/gpu/metal/kernels:test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "resampler_test",
+    testonly = 1,
+    minimum_os_version = "11.4",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
+    tags = [
+        "no_mac",  # TODO(b/183905399)
+        "notap",
+        "tflite_mobile_test_jet",
+        "tflite_not_portable_android",
+    ],
+    deps = [":resampler_test_lib"],
+)
+
+objc_library(
     name = "resize_test_lib",
     testonly = 1,
     srcs = ["resize_test.mm"],
@@ -533,6 +581,29 @@ ios_unit_test(
 )
 
 objc_library(
+    name = "tile_test_lib",
+    testonly = 1,
+    srcs = ["tile_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:tile_test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "tile_test",
+    testonly = 1,
+    minimum_os_version = "11.4",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
+    tags = tf_gpu_tests_tags() + [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":tile_test_lib"],
+)
+
+objc_library(
     name = "transpose_conv_test_lib",
     testonly = 1,
     srcs = ["transpose_conv_test.mm"],
@@ -652,6 +723,7 @@ objc_library(
         "depthwise_conv_test.mm",
         "elementwise_test.mm",
         "fully_connected_test.mm",
+        "gather_test.mm",
         "lstm_test.mm",
         "max_unpooling_test.mm",
         "mean_stddev_normalization_test.mm",
@@ -661,12 +733,14 @@ objc_library(
         "quantize_and_dequantize_test.mm",
         "reduce_test.mm",
         "relu_test.mm",
+        "resampler_test.mm",
         "reshape_test.mm",
         "resize_test.mm",
         "slice_test.mm",
         "softmax_test.mm",
         "space_to_depth_test.mm",
         "split_test.mm",
+        "tile_test.mm",
         "transpose_conv_test.mm",
         "transpose_test.mm",
         "winograd_test.mm",
@@ -698,6 +772,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:elementwise_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:fully_connected_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:gather_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:lstm_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:max_unpooling_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:mean_stddev_normalization_test_util",
@@ -707,12 +782,14 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:quantize_and_dequantize_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:reduce_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:relu_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:resampler_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:reshape_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:resize_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:softmax_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:split_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:tile_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:transpose_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd",
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd_test_util",

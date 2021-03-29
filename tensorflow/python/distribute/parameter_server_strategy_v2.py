@@ -90,20 +90,30 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   periodically reads the checkpoints saved by the coordinator and runs
   evaluations against each checkpoint.
 
-  `tf.distribute.experimental.ParameterServerStrategy` has to work in
-  conjunction with a `tf.distribute.experimental.coordinator.ClusterCoordinator`
-  object. Standalone usage of
-  `tf.distribute.experimental.ParameterServerStrategy` without central
-  coordination is not supported at this time.
+  `ParameterServerStrategy` is supported with two training APIs: [Custom
+  Training Loop (CTL)]
+  (https://www.tensorflow.org/tutorials/distribute/custom_training)
+  and [Keras Training API, also known as `Model.fit`]
+  (https://www.tensorflow.org/tutorials/distribute/keras). CTL is recommended
+  when users prefer to define the details of their training loop, and
+  `Model.fit` is recommended when users prefer a high-level abstraction and
+  handling of training.
+
+  When using a CTL, `ParameterServerStrategy` has to work in conjunction with a
+  `tf.distribute.experimental.coordinator.ClusterCoordinator` object.
+
+  When using `Model.fit`, currently only the
+  `tf.keras.utils.experimental.DatasetCreator` input type is supported.
 
   __Example code for coordinator__
 
-  Here's an example usage of the API, with a custom training loop to train a
-  model. This code snippet is intended to be run on (the only) one task that
-  is designated as the coordinator. Note that `cluster_resolver`,
+  This section provides code snippets that are intended to be run on (the only)
+  one task that is designated as the coordinator. Note that `cluster_resolver`,
   `variable_partitioner`, and `dataset_fn` arguments are explained in the
   following "Cluster setup", "Variable partitioning", and "Dataset preparation"
   sections.
+
+  With a CTL,
 
   ```python
   # Prepare a strategy to use with the cluster and variable partitioning info.
@@ -148,6 +158,33 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
     logging.info('Metric result: %r', metrics.result())
     train_accuracy.reset_states()
     checkpoint_manager.save()
+  ```
+
+  With `Model.fit`,
+
+  ```python
+  # Prepare a strategy to use with the cluster and variable partitioning info.
+  strategy = tf.distribute.experimental.ParameterServerStrategy(
+      cluster_resolver=...,
+      variable_partitioner=...)
+
+  # A dataset function takes a `input_context` and returns a `Dataset`
+  def dataset_fn(input_context):
+    dataset = tf.data.Dataset.from_tensors(...)
+    return dataset.repeat().shard(...).batch(...).prefetch(...)
+
+  # With `Model.fit`, a `DatasetCreator` needs to be used.
+  input = tf.keras.utils.experimental.DatasetCreator(dataset_fn=...)
+
+  with strategy.scope():
+    model = ...  # Make sure the `Model` is created within scope.
+  model.compile(optimizer="rmsprop", loss="mse", steps_per_execution=..., ...)
+
+  # Optional callbacks to checkpoint the model, back up the progress, etc.
+  callbacks = [tf.keras.callbacks.ModelCheckpoint(...), ...]
+
+  # `steps_per_epoch` is required with `ParameterServerStrategy`.
+  model.fit(input, epochs=..., steps_per_epoch=..., callbacks=callbacks)
   ```
 
   __Example code for worker and parameter servers__
@@ -373,14 +410,12 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   * `tf.distribute.experimental.ParameterServerStrategy` does not yet support
   training with GPU(s). This is a feature request being developed.
 
-  * `tf.distribute.experimental.ParameterServerStrategy` only supports
-  [custom training loop
-  API](https://www.tensorflow.org/tutorials/distribute/custom_training)
-  currently in TF2. Usage of it with Keras `compile`/`fit` API is being
-  developed.
+  * When using `Model.fit`, `tf.distribute.experimental.ParameterServerStrategy`
+  must be used with a `tf.keras.utils.experimental.DatasetCreator`, and
+  `steps_per_epoch` must be specified.
 
-  * `tf.distribute.experimental.ParameterServerStrategy` must be used with
-  `tf.distribute.experimental.coordinator.ClusterCoordinator`.
+  * `tf.distribute.experimental.ParameterServerStrategy` does not yet support
+  `Model.evaluate` and `Model.predict`.
   """
 
   # pyformat: disable
@@ -528,6 +563,7 @@ class ParameterServerStrategyV2Extended(
     self._cross_device_ops = cross_device_ops_lib.ReductionToOneDevice(
         reduce_to_device="/device:CPU:0")
     self._cross_device_ops._canonicalize_devices = False  # pylint: disable=protected-access
+    self._allow_run_without_coordinator = False
 
   def _set_num_gpus(self):
     devices = config.list_logical_devices("GPU")
@@ -572,20 +608,21 @@ class ParameterServerStrategyV2Extended(
       A `Variable` or `ShardedVariable`.
     """
 
+    var_creator = self._create_var_creator(next_creator, **kwargs)
     if "colocate_with" in kwargs:  # Never partition colocated_with variables.
       colocate_with = kwargs["colocate_with"]
       # Clear the variable scope to avoid possible conflicts between device
       # scope and colocation scope.
       with ops.device(None):
         with ops.colocate_with(colocate_with):
-          var = next_creator(**kwargs)
+          var = var_creator(**kwargs)
           logging.debug(
               "Creating variable (name:%s, shape:%r) that colocates with %s",
               var.name, var.shape, kwargs["colocate_with"].name)
           return var
 
     if self._variable_partitioner is None:
-      return self._create_variable_round_robin(next_creator, **kwargs)
+      return self._create_variable_round_robin(var_creator, **kwargs)
 
     name = kwargs.get("name", None)
     initial_value = kwargs.get("initial_value", None)
@@ -620,7 +657,7 @@ class ParameterServerStrategyV2Extended(
       shape = tensor_shape.as_shape(shape)
 
     if shape.rank == 0:  # Skip partitioning rank-0 variable.
-      return self._create_variable_round_robin(next_creator, **kwargs)
+      return self._create_variable_round_robin(var_creator, **kwargs)
 
     num_partitions = self._variable_partitioner(shape=shape, dtype=dtype)
     if not num_partitions or num_partitions[0] == 0 or any(
@@ -630,7 +667,7 @@ class ParameterServerStrategyV2Extended(
           " besides the first element (non-zero), got: %r" % num_partitions)
 
     if num_partitions[0] == 1:  # no partition
-      return self._create_variable_round_robin(next_creator, **kwargs)
+      return self._create_variable_round_robin(var_creator, **kwargs)
 
     # Use "div" partition strategy to partition the variable.
     num_partitions = min(num_partitions[0], shape[0])
@@ -693,7 +730,7 @@ class ParameterServerStrategyV2Extended(
       kwargs["initial_value"] = lambda: init_shard_fn(i)
       if name is not None:
         kwargs["name"] = "{}/part_{}".format(name, i)
-      var_list.append(self._create_variable_round_robin(next_creator, **kwargs))
+      var_list.append(self._create_variable_round_robin(var_creator, **kwargs))
 
     result = sharded_variable.ShardedVariable(var_list)
     return result
@@ -715,13 +752,14 @@ class ParameterServerStrategyV2Extended(
         return var
 
   def _assert_used_with_cluster_coordinator(self):
-    if not self._used_with_coordinator:
+    if (not self._used_with_coordinator and
+        not self._allow_run_without_coordinator):
       raise NotImplementedError(
           "`tf.distribute.experimental.ParameterServerStrategy` must be used "
           "with `tf.distribute.experimental.coordinator.ClusterCoordinator`.")
 
   def _assert_being_scheduled_by_cluster_coordinator(self):
-    if not self._being_scheduled:
+    if not self._being_scheduled and not self._allow_run_without_coordinator:
       raise NotImplementedError(
           "`tf.distribute.experimental.ParameterServerStrategy`'s `run` or "
           "`reduce` must be used within a function passed to `"
@@ -731,8 +769,9 @@ class ParameterServerStrategyV2Extended(
   # options is not used right now. But we may want to support options while
   # creating InputWorkers in future, similar to MirroredStrategy.
   def _input_workers_with_options(self, options=None):
+    # This is always run only on workers.
     input_workers_devices = (
-        ("/device:CPU:0", self.worker_devices),)
+        ("/job:worker/device:CPU:0", self.worker_devices),)
     return input_lib.InputWorkers(
         input_workers_devices, canonicalize_devices=False)
 

@@ -79,6 +79,15 @@ TfLiteStatus SelectPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_TYPES_EQ(context, input_x->type, input_y->type);
   output->type = input_x->type;
 
+  // Respect the original output shape when there are mixed shapes to represent
+  // a scalar data.
+  if (GetTensorShape(input_condition).FlatSize() == 1 &&
+      GetTensorShape(input_x).FlatSize() == 1 &&
+      GetTensorShape(input_y).FlatSize() == 1 &&
+      GetTensorShape(output).FlatSize() == 1) {
+    return kTfLiteOk;
+  }
+
   bool same_shape = HaveSameShapes(input_condition, input_x) &&
                     HaveSameShapes(input_x, input_y);
   TfLiteIntArray* output_size;

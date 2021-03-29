@@ -11,6 +11,7 @@ package(
 XLA_OPS_DEPS = [
     "@com_google_absl//absl/container:flat_hash_map",
     "@com_google_absl//absl/memory",
+    "@com_google_absl//absl/synchronization",
     "//tensorflow/compiler/jit:common",
     "//tensorflow/compiler/jit:compilation_passes",
     "//tensorflow/compiler/jit:flags",

@@ -115,11 +115,11 @@ class AsyncHelper : public core::RefCounted {
  public:
   AsyncHelper(AsyncOpKernel::DoneCallback done) : done_(done) {}
 
-  ~AsyncHelper() override { this->operator()(); }
+  ~AsyncHelper() override { done_(); }
 
-  void operator()() {
-      done_();
-  }
+  // The function call operator is used at error handling. However, the callback
+  // is deferred to destruction.
+  void operator()() {}
 
  private:
   AsyncOpKernel::DoneCallback done_;
@@ -224,6 +224,9 @@ class TRTEngineOp : public AsyncOpKernel {
   // Whether to collect optimization profiles for TensorRT, only used when
   // use_implicit_batch_=false.
   bool profile_generation_mode_;
+
+  // Optimization profile generation strategy.
+  ProfileStrategy profile_strategy_;
 
   // Whether the TRTEngineOp has any input with unknown dimensions.
   bool has_dynamic_shape_input_;
@@ -481,6 +484,17 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     OP_REQUIRES(context, !calibration_mode_,
                 errors::InvalidArgument(
                     "Explicit batch mode does not support calibration"));
+
+    string profile_strategy_name;
+    status = context->GetAttr("profile_strategy", &profile_strategy_name);
+    if (status.code() == tensorflow::error::NOT_FOUND) {
+      VLOG(2) << "Not found strategy in " << context->device()->name()
+              << ", thus setting profile_strategy='Range'";
+      profile_strategy_ = ProfileStrategy::kRange;
+    } else {
+      OP_REQUIRES_OK(context, ProfileStrategyFromName(profile_strategy_name,
+                                                      &profile_strategy_));
+    }
   }
   has_dynamic_shape_input_ = absl::c_any_of(
       input_partial_shapes_,
@@ -502,8 +516,9 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
                                 allow_soft_placement_, ctx->num_inputs(),
                                 ctx->num_outputs());
     OP_REQUIRES_OK_ASYNC(ctx, status_or_handle.status(), *helper);
-    native_execution_func_handle_ = status_or_handle.ValueOrDie();
+    native_execution_func_handle_ = *status_or_handle;
   }
+
   auto lib = ctx->function_library();
   FunctionLibraryRuntime::Options opts;
   opts.rendezvous = ctx->rendezvous();
@@ -742,7 +757,8 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
         cache_res->profiles_.AddShape(input_concrete_shapes);
       }
       // Create profiles out of collected shapes during profile generation.
-      cache_res->profiles_.InitProfiles(input_partial_shapes_);
+      cache_res->profiles_.InitProfiles(input_partial_shapes_,
+                                        profile_strategy_);
     }
   }
   StatusOr<std::pair<EngineContext*, int>> status =
@@ -887,17 +903,19 @@ StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> TRTEngineOp::BuildEngine(
     const std::vector<TensorShape>& input_concrete_shapes, int batch_size,
     bool use_calibration, TRTInt8Calibrator* calibrator,
     TRTEngineCacheResource* cache_resource) {
-  VLOG(1) << "Building a new TensorRT engine for " << name()
-          << " with input shapes: "
-          << TensorShapeUtils::ShapeListString(input_concrete_shapes);
-
   // Use concrete shapes for implicit batch mode and partial shapes for
   // explicit batch mode.
+  bool use_concrete_shapes =
+      use_implicit_batch_ || cache_resource->profiles_.IsStaticCompatible();
   const std::vector<PartialTensorShape>& conversion_input_shapes =
-      use_implicit_batch_
+      use_concrete_shapes
           ? std::vector<PartialTensorShape>(input_concrete_shapes.begin(),
                                             input_concrete_shapes.end())
           : input_partial_shapes_;
+
+  VLOG(1) << "Building a new TensorRT engine for " << name()
+          << " with input shapes: " << DebugString(conversion_input_shapes);
+
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
   auto status = convert::ConvertGraphDefToEngine(
       segment_graph_def_, precision_mode_, batch_size, workspace_size_,
@@ -990,18 +1008,12 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     for (int i = 0; i < engine_input_shapes.size(); i++) {
       engine_input_shapes[i].set_dim(0, max_batch_size);
     }
-    auto exec_context_status =
-        ExecutionContext::Create(raw_static_engine, allocator);
-    if (!exec_context_status.ok()) {
-      return std::pair<EngineContext*, int>(&empty_context, 0);
-    }
-
+    ExecutionContext context = ExecutionContext::Create(raw_static_engine);
     // TODO(laigd): here we assume engine_input_shapes matches the actual input
     // shapes of the engine, we should verify that.
     cache.emplace(engine_input_shapes,
-                  absl::make_unique<EngineContext>(
-                      std::move(static_engine),
-                      std::move(exec_context_status.ValueOrDie())));
+                  absl::make_unique<EngineContext>(std::move(static_engine),
+                                                   std::move(context)));
     // Runtime is safe to delete after engine creation
     VLOG(1) << "Size of serialized TRT engine: "
             << serialized_segment_.capacity();
@@ -1057,7 +1069,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
         std::move(result.ValueOrDie());
     std::vector<ExecutionContext> exec_contexts;
     TF_RETURN_IF_ERROR(cache_res->profiles_.CreateExecutionContexts(
-        engine.get(), exec_contexts, allocator));
+        engine.get(), &exec_contexts));
     cache.emplace(input_concrete_shapes,
                   absl::make_unique<EngineContext>(std::move(engine),
                                                    std::move(exec_contexts)));
@@ -1149,17 +1161,10 @@ Status TRTEngineOp::AllocateCalibrationResources(
       // dump it out during conversion for TF 2.0.
       mutex_lock lock(this->engine_mutex_);
       this->calibrator_ = std::move(cres->calibrator_);
-      auto exec_context_status = ExecutionContext::Create(
-          cres->engine_.get(), cache_res->allocator_.get());
-      if (!exec_context_status.ok()) {
-        LOG(ERROR) << "Calibration failed: " << s;
-        cres->calibrator_->setDone();  // Ignore further pushes
-      } else {
-        cache_res->cache_.emplace(
-            shapes, absl::make_unique<EngineContext>(
-                        std::move(cres->engine_),
-                        std::move(exec_context_status.ValueOrDie())));
-      }
+      ExecutionContext context = ExecutionContext::Create(cres->engine_.get());
+      cache_res->cache_.emplace(
+          shapes, absl::make_unique<EngineContext>(std::move(cres->engine_),
+                                                   std::move(context)));
     }
 
     VLOG(1) << "Calibration loop terminated " << this->name();

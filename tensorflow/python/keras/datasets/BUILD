@@ -35,6 +35,5 @@ py_library(
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras/utils:engine_utils",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )

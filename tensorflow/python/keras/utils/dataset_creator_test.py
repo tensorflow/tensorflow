@@ -14,9 +14,6 @@
 # ==============================================================================
 """Tests for dataset_creator."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import multi_worker_test_base

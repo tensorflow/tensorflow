@@ -198,7 +198,9 @@ bool AlreadyCollected(const std::vector<std::vector<nvinfer1::Dims>>& values,
 }
 
 void TrtShapeOptimizationProfile::InitProfiles(
-    const std::vector<PartialTensorShape>& input_partial_shapes) {
+    const std::vector<PartialTensorShape>& input_partial_shapes,
+    ProfileStrategy strategy) {
+  strategy_ = strategy;
   if (input_shapes_.size() == 0) {
     VLOG(1) << "Not creating profiles without input_shapes. "
                "You have to enable profile generation mode first (build).";
@@ -375,19 +377,15 @@ int TrtShapeOptimizationProfile::GetProfileNumber(
 }
 
 Status TrtShapeOptimizationProfile::CreateExecutionContexts(
-    nvinfer1::ICudaEngine* engine, std::vector<ExecutionContext>& exec_context,
-    TRTBaseAllocator* memory_allocator) {
+    nvinfer1::ICudaEngine* engine,
+    std::vector<ExecutionContext>* exec_contexts) {
   int i = 0;
   // The following loop runs once if we have static shapes, to create a single
   // execution context without profiles. In dynamic mode we create one context
   // for each profile and set the corresponding optimization profile.
   do {
     VLOG(1) << "Creating execution context " << i;
-    auto exec_context_status =
-        ExecutionContext::Create(engine, memory_allocator);
-    if (!exec_context_status.ok()) {
-      return errors::Internal("Failed to create execution context");
-    }
+    ExecutionContext context = ExecutionContext::Create(engine);
     if (i > 0) {
       // This condition is needed for two reasons:
       // - using static shapes we do not have any profiles so we cannot call
@@ -395,15 +393,12 @@ Status TrtShapeOptimizationProfile::CreateExecutionContexts(
       // - The 0th profile is set implicitly for the first execution context
       //   therefore we do not need to set.
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-      bool stat = exec_context_status.ValueOrDie()
-                      .GetIExecutionContext()
-                      ->setOptimizationProfile(i);
-      if (!stat) {
+      if (!context->setOptimizationProfile(i)) {
         return errors::Internal("Could not set TRT optimization profile.");
       }
 #endif
     }
-    exec_context.push_back(std::move(exec_context_status.ValueOrDie()));
+    exec_contexts->push_back(std::move(context));
     i++;
   } while (i < profiles_.size());
 

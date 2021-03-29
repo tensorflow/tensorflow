@@ -945,19 +945,27 @@ static void BuildArgMinMaxReductionBody(Type input_element_type,
   Block *block = builder->createBlock(body);
   block->addArguments({input_type, index_type, input_type, index_type});
 
-  Location loc = body->getLoc();
-  StringAttr compare_direction =
-      StringAttr::get(builder->getContext(), direction);
-  Value compare = builder->create<CompareOp>(
-      loc, block->getArgument(0), block->getArgument(2), compare_direction);
+  Value lhs_val = block->getArgument(0);
+  Value lhs_index = block->getArgument(1);
+  Value rhs_val = block->getArgument(2);
+  Value rhs_index = block->getArgument(3);
 
-  Value selected_input = builder->create<SelectOp>(
-      loc, input_type, compare, block->getArgument(0), block->getArgument(2));
-  Value selected_index = builder->create<SelectOp>(
-      loc, index_type, compare, block->getArgument(1), block->getArgument(3));
+  ImplicitLocOpBuilder b(body->getLoc(), *builder);
+  StringAttr compare_direction = StringAttr::get(b.getContext(), direction);
+  Value compare_dt = b.create<CompareOp>(lhs_val, rhs_val, compare_direction);
+  Value selected_input =
+      b.create<SelectOp>(input_type, compare_dt, lhs_val, rhs_val);
+
+  Value compare_eq = b.create<CompareOp>(lhs_val, rhs_val,
+                                         StringAttr::get(b.getContext(), "EQ"));
+  Value min_index = b.create<MinOp>(lhs_index, rhs_index);
+  Value min_val_index =
+      b.create<SelectOp>(index_type, compare_dt, lhs_index, rhs_index);
+  Value selected_index =
+      b.create<SelectOp>(index_type, compare_eq, min_index, min_val_index);
 
   Value return_values[] = {selected_input, selected_index};
-  builder->create<ReturnOp>(loc, return_values);
+  b.create<ReturnOp>(return_values);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3945,7 +3953,7 @@ class ConvertArgMinMaxOp : public OpRewritePattern<OpTy> {
     RankedTensorType output_type =
         op.output().getType().template dyn_cast<RankedTensorType>();
     if (!output_type) {
-      return failure();
+      return rewriter.notifyMatchFailure(op, "requires known rank");
     }
 
     Type index_element_type = output_type.getElementType();
@@ -3957,9 +3965,8 @@ class ConvertArgMinMaxOp : public OpRewritePattern<OpTy> {
 
     llvm::Optional<int64_t> optional_axis =
         GetIntegerHLOAxisFromTFAxis(op.dimension(), input_type.getRank());
-    if (!optional_axis.hasValue()) {
-      return failure();
-    }
+    if (!optional_axis.hasValue())
+      return rewriter.notifyMatchFailure(op, "required axis");
     int64_t axis = optional_axis.getValue();
 
     IntegerAttr iota_dimension =
@@ -4006,7 +4013,7 @@ class ConvertArgMaxOp
                                      hlo::kInfinityLowest, &rewriter);
   }
 
-  static StringRef GetDirection() { return "GT"; }
+  static StringRef GetDirection() { return "GE"; }
 };
 
 // Converts TF TensorScatterUpdate op into Scatter Op with assignment:
@@ -4522,9 +4529,9 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
       // applying negative padding on the right/bottom.
       const int64_t pad_before = padding == tensorflow::Padding::EXPLICIT
                                      ? explicit_paddings[2 * dim]
-                                     : padding == tensorflow::Padding::SAME
-                                           ? std::max<int64_t>(pad_total / 2, 0)
-                                           : 0;
+                                 : padding == tensorflow::Padding::SAME
+                                     ? std::max<int64_t>(pad_total / 2, 0)
+                                     : 0;
       paddings.push_back(pad_before);
       paddings.push_back(pad_total - pad_before);
     }
@@ -6291,7 +6298,7 @@ LogicalResult legalizeTF(
     Operation *op, bool allow_partial_conversion, bool legalize_chlo,
     llvm::Optional<StringRef> tf2xla_fallback_device_type) {
   MLIRContext *context = op->getContext();
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(context);
   // Note that the `OperationConverter` orders patterns lexicographically by:
   // 1) Ascending legalization depth (i.e., minimum number of patterns necessary
   //    to arrive at conversion target). This requires relevant patterns to
@@ -6311,7 +6318,7 @@ LogicalResult legalizeTF(
   // Add TF->HLO legalization patterns via TF2XLA fallback.
   if (tf2xla_fallback_device_type.hasValue()) {
     PopulateLegalizeTfWithTf2XlaPatterns(tf2xla_fallback_device_type.getValue(),
-                                         patterns);
+                                         patterns, context);
   }
 
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
@@ -6338,7 +6345,7 @@ LogicalResult legalizeTF(
 
   if (!allow_partial_conversion) {
     // Fully qualify ReturnOp here as mhlo dialect also defines a ReturnOp.
-    target.addLegalOp<ModuleOp, FuncOp, ModuleTerminatorOp, ::mlir::ReturnOp>();
+    target.addLegalOp<ModuleOp, FuncOp, ::mlir::ReturnOp>();
     DenseSet<Operation *> nonlegalized_ops;
     LogicalResult result = applyPartialConversion(
         op, target, std::move(patterns), &nonlegalized_ops);
@@ -6356,13 +6363,12 @@ LogicalResult legalizeTF(
 
 void PopulateLegalizeTfPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
-  populateWithGenerated(context, *patterns);
+  populateWithGenerated(*patterns);
   // clang-format off
   patterns->insert<
     ConvertAllOp,
     ConvertAnyOp,
-    // TODO(b/162271237): Re-enable once fixed.
-    // ConvertArgMaxOp,
+    ConvertArgMaxOp,
     ConvertBatchMatMulV2Op,
     ConvertBiasAddOp,
     ConvertBroadcastToOp,

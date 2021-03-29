@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <limits>
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/kernels/mlir_generated/base_ops_test.h"
@@ -732,6 +734,13 @@ TEST_F(UnaryOpsTest, TanhSmallAndLarge) {
       test::InputAsVector<float>({-100.0, -10.5, 12.0, 123.0, 10000.0}),
       baseline_tanh_limits,
       test::OpsTestConfig().ExpectStrictlyEqual().SuppressTolerance());
+}
+
+TEST_F(UnaryOpsTest, TanhNaN) {
+  Test<float, float, float, float>(
+      "Tanh", test::DefaultInputShape(),
+      test::InputAsVector<float>({std::numeric_limits<float>::quiet_NaN()}),
+      std::tanh, test::OpsTestConfig().ExpectStrictlyEqual());
 }
 
 /// Test `tf.Square`.

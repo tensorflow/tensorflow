@@ -108,3 +108,23 @@ func @inline_into_island() -> (tensor<2xi32>, tensor<2xi32>) {
   return %0#1, %0#1 : tensor<2xi32>, tensor<2xi32>
 }
 
+// Test that stateful TF ops that don't have do not duplicate trait can be
+// inlined.
+
+func private @simple_callee_var() -> tensor<2xi32>  {
+  %cst = "tf.Const"() { value = dense<2> : tensor<2xi32> } : () -> tensor<2xi32>
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<!tf.resource<tensor<2xi32>>>
+  "tf.AssignVariableOp"(%0, %cst) {device = ""} : (tensor<!tf.resource<tensor<2xi32>>>, tensor<2xi32>) -> ()
+  return %cst : tensor<2xi32>
+}
+
+// CHECK-LABEL: func @inline_simple_var(
+func @inline_simple_var() -> tensor<2xi32> {
+  // CHECK-NEXT: %[[CST:.*]] = "tf.Const"
+  // CHECK-NEXT: %[[VAR:.*]] = "tf.VarHandleOp"
+  // CHECK-NEXT: "tf.AssignVariableOp"(%[[VAR]], %[[CST]]
+  // CHECK-NEXT: return %[[CST]]
+  %result = "tf.StatefulPartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @simple_callee_var} : () -> tensor<2xi32>
+  return %result : tensor<2xi32>
+}
+

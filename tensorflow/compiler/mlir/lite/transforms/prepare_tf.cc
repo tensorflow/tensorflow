@@ -979,9 +979,8 @@ struct ConvertTFBroadcastTo : public RewritePattern {
 struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
   explicit FusedBatchNormV3Pat(::mlir::MLIRContext *context)
       : ::mlir::RewritePattern(
-            "tf.FusedBatchNormV3",
-            {"tf.Add", "tf.Const", "tf.Mul", "tf.Rsqrt", "tf.Sub"}, 1,
-            context) {}
+            "tf.FusedBatchNormV3", 1, context,
+            {"tf.Add", "tf.Const", "tf.Mul", "tf.Rsqrt", "tf.Sub"}) {}
 
   ::mlir::LogicalResult matchAndRewrite(
       ::mlir::Operation *fused_batch_norm,
@@ -1326,8 +1325,8 @@ LogicalResult ConvertTf2XlaOps(FuncOp func, MLIRContext *context) {
   target.addIllegalOp<TF::XlaConvOp>();
   target.addIllegalOp<TF::XlaGatherOp>();
 
-  OwningRewritePatternList patterns;
-  mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns);
+  OwningRewritePatternList patterns(context);
+  mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns, context);
   mhlo::PopulateLegalizeTfPatterns(context, &patterns);
   TF::PopulateLegalizeHloToTfPatterns(&patterns, context);
   mhlo::GatherOp::getCanonicalizationPatterns(patterns, context);
@@ -1432,9 +1431,10 @@ struct ConvertRfftToRfft2d : public RewritePattern {
 };
 
 void PrepareTFPass::runOnFunction() {
-  OwningRewritePatternList patterns, phase_2_patterns;
-  auto func = getFunction();
   MLIRContext *ctx = &getContext();
+  OwningRewritePatternList patterns(ctx);
+  OwningRewritePatternList phase_2_patterns(ctx);
+  auto func = getFunction();
 
   // Check illegal ops in a TFLite pipeline (e.g. trainning only ops) , since
   // PrepareTFPass is the very first TFLite pass in the pipeline.
@@ -1464,7 +1464,7 @@ void PrepareTFPass::runOnFunction() {
   patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>, FusedBatchNormV3Pat,
                   ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(ctx);
 
-  TFL::populateWithGenerated(ctx, patterns);
+  TFL::populateWithGenerated(patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.
   // This will allow optimizing any TF_Mul->TF_Conv in the graph
@@ -1474,7 +1474,7 @@ void PrepareTFPass::runOnFunction() {
 
   // Load the generated pattern again, so new quantization pass-through
   // will be applied.
-  TFL::populateWithGenerated(ctx, phase_2_patterns);
+  TFL::populateWithGenerated(phase_2_patterns);
   if (unfold_batch_matmul_) {
     phase_2_patterns.insert<TF::ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
                             TF::ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(

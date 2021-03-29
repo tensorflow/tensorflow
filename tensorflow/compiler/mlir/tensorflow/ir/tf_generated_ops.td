@@ -10718,6 +10718,25 @@ def TF_RemoteCallOp : TF_Op<"RemoteCall", []> {
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
 }
 
+def TF_RepeatDatasetOp : TF_Op<"RepeatDataset", [NoSideEffect]> {
+  let summary = [{
+Creates a dataset that emits the outputs of `input_dataset` `count` times.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    Arg<TF_Int64Tensor, [{A scalar representing the number of times that `input_dataset` should
+be repeated. A value of `-1` indicates that it should be repeated infinitely.}]>:$count,
+
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+}
+
 def TF_ReshapeOp : TF_Op<"Reshape", [NoSideEffect]> {
   let summary = "Reshapes a tensor.";
 

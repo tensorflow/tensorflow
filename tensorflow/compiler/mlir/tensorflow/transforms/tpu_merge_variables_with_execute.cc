@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
@@ -78,6 +79,12 @@ constexpr char kFuncDeviceAttr[] = "tf.device";
 
 struct TPUMergeVariablesWithExecutePass
     : public PassWrapper<TPUMergeVariablesWithExecutePass, FunctionPass> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    // We need this here because at the moment we deserialize the TPUCompileMlir
+    // operation which contains annotation like `mhlo.sharding` attributes.
+    registry.insert<mhlo::MhloDialect>();
+  }
+
   void runOnFunction() override;
 };
 

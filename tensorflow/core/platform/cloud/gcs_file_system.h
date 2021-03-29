@@ -40,11 +40,23 @@ class GcsFileSystem;
 // The environment variable that overrides the block size for aligned reads from
 // GCS. Specified in MB (e.g. "16" = 16 x 1024 x 1024 = 16777216 bytes).
 constexpr char kBlockSize[] = "GCS_READ_CACHE_BLOCK_SIZE_MB";
+#if defined(LIBTPU_ON_GCE)
+// Overwrite the default max block size for `libtpu` BUILDs which do not
+// offer a mechanism to override the default through environment variable.
+constexpr size_t kDefaultBlockSize = 512 * 1024 * 1024;
+#else
 constexpr size_t kDefaultBlockSize = 64 * 1024 * 1024;
+#endif
 // The environment variable that overrides the max size of the LRU cache of
 // blocks read from GCS. Specified in MB.
 constexpr char kMaxCacheSize[] = "GCS_READ_CACHE_MAX_SIZE_MB";
+#if defined(LIBTPU_ON_GCE)
+// Overwrite the default max cache size for `libtpu` BUILDs which do not
+// offer a mechanism to override the default through environment variable.
+constexpr size_t kDefaultMaxCacheSize = 163840LL * 1024LL * 1024LL;
+#else
 constexpr size_t kDefaultMaxCacheSize = 0;
+#endif
 // The environment variable that overrides the maximum staleness of cached file
 // contents. Once any block of a file reaches this staleness, all cached blocks
 // will be evicted on the next read.
@@ -408,6 +420,8 @@ class GcsFileSystem : public FileSystem {
   mutex block_cache_lock_;
   std::unique_ptr<FileBlockCache> file_block_cache_
       TF_GUARDED_BY(block_cache_lock_);
+
+  bool cache_enabled_;
   std::unique_ptr<GcsDnsCache> dns_cache_;
   GcsThrottle throttle_;
 

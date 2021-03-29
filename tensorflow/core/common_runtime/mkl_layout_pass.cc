@@ -1763,7 +1763,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // it includes those we support.
     DataType T;
     if (!TryGetNodeAttr(n->def(), "T", &T) ||
-        !mkl_op_registry::IsMklLayoutDependentOp(csinfo_.mkl_fused_conv2d, T)) {
+        !mkl_op_registry::IsMklOp(NativeFormatEnabled()
+                                      ? csinfo_.mkl_native_fused_conv2d
+                                      : csinfo_.mkl_fused_conv2d,
+                                  T)) {
       return false;
     }
 
@@ -1782,7 +1785,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
             fused_ops == std::vector<string>{"BiasAdd", "Add", "Elu"} ||
             fused_ops == std::vector<string>{"LeakyRelu"} ||
             fused_ops == std::vector<string>{"BiasAdd", "LeakyRelu"} ||
-            fused_ops == std::vector<string>{"BiasAdd", "Add", "LeakyRelu"});
+            fused_ops == std::vector<string>{"BiasAdd", "Add", "LeakyRelu"} ||
+            fused_ops == std::vector<string>{"FusedBatchNorm"} ||
+            fused_ops == std::vector<string>{"FusedBatchNorm", "Relu"} ||
+            fused_ops == std::vector<string>{"FusedBatchNorm", "Relu6"} ||
+            fused_ops == std::vector<string>{"FusedBatchNorm", "Elu"} ||
+            fused_ops == std::vector<string>{"FusedBatchNorm", "LeakyRelu"});
   }
 
   static bool FusedDepthwiseConv2DRewrite(const Node* n) {
@@ -1791,8 +1799,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // _FusedDepthwiseConv2DNative only if it includes those we support.
     DataType T;
     if (!TryGetNodeAttr(n->def(), "T", &T) ||
-        !mkl_op_registry::IsMklLayoutDependentOp(
-            csinfo_.mkl_fused_depthwise_conv2d, T)) {
+        !mkl_op_registry::IsMklOp(
+            NativeFormatEnabled() ? csinfo_.mkl_native_fused_depthwise_conv2d
+                                  : csinfo_.mkl_fused_depthwise_conv2d,
+            T)) {
       return false;
     }
 
@@ -2049,9 +2059,7 @@ MklLayoutRewritePass::ConstStringsInfo MklLayoutRewritePass::csinfo_;
 // nodes. Do not change the ordering of the Mkl passes.
 const OptimizationPassRegistry::Grouping kMklLayoutRewritePassGroup =
     OptimizationPassRegistry::POST_PARTITIONING;
-#ifdef ENABLE_MKL
 REGISTER_OPTIMIZATION(kMklLayoutRewritePassGroup, 1, MklLayoutRewritePass);
-#endif  // ENABLE_MKL
 
 //////////////////////////////////////////////////////////////////////////
 //           Helper functions for creating new node
@@ -3207,7 +3215,11 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
   if (is_fused_conv2d) {
     // FusedConv2D has one additional input, args
     std::vector<NodeBuilder::NodeOut> args;
-    args.emplace_back(succ_in[2].first, succ_in[2].second);
+    int num_args = 1;
+    GetNodeAttr(succ->def(), "num_args", &num_args);
+    for (int i = 0; i < num_args; i++) {
+      args.emplace_back(succ_in[2 + i].first, succ_in[2 + i].second);
+    }
     nb.Input(gtl::ArraySlice<NodeBuilder::NodeOut>{
         args});                                     // In3 (args) of FusedConv2D
     nb.Input(pred_in[1].first, pred_in[1].second);  // In2 (paddings) of Pad
@@ -4091,8 +4103,8 @@ Status MklLayoutRewritePass::Run(const GraphOptimizationPassOptions& options) {
   if (options.graph == nullptr && options.partition_graphs == nullptr) {
     return Status::OK();
   }
-  if (DisableMKL()) {
-    VLOG(2) << "TF-MKL: Disabling MKL";
+  if (!IsMKLEnabled()) {
+    VLOG(2) << "TF-MKL: MKL is not enabled";
     return Status::OK();
   }
 
@@ -4121,4 +4133,4 @@ Status MklLayoutRewritePass::Run(const GraphOptimizationPassOptions& options) {
 
 }  // namespace tensorflow
 
-#endif
+#endif  // INTEL_MKL

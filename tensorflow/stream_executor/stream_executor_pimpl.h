@@ -365,6 +365,15 @@ class StreamExecutor {
   bool GetConvolveAlgorithms(bool with_winograd_nonfused,
                              std::vector<dnn::AlgorithmDesc> *out_algorithms);
 
+  // Returns the supported execution plans for the convolution operation.
+  bool GetConvolveExecutionPlans(
+      dnn::ConvolutionKind kind, dnn::DataType element_type, Stream *stream,
+      const dnn::BatchDescriptor &input_descriptor,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>> *out_exec_plans);
+
   // Returns the list of supported algorithms for the forward convolution
   // operation.
   bool GetMIOpenConvolveAlgorithms(

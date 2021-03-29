@@ -16,10 +16,6 @@
 """Utils for managing different mode strings used by Keras and Estimator models.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.util.compat import collections_abc
 
 
