@@ -1127,65 +1127,15 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
                                               &enable_spmd_xla_partitioning),
                          done);
 
-    std::map<std::string, std::vector<int>> named_input_shapes;
-
     VLOG(1) << DumpGraphToFile("before_input_output_optimizations", *graph,
                                flib_def_.get());
 
-    // Input and output optimizations.
-    GraphShapeInfo tpu_inferred_info;
-    std::map<int, InferredShape> arg_shapes;
-    EdgeShapes tpu_input_shapes;
-    absl::flat_hash_map<const Edge*, DataType> tpu_input_dtypes;
-
-    // Contains attrs "T", "sharding", "_tpu_replicate" for each XlaSharding op.
-    XlaShardingInfoMap xla_sharding_ops;
-
-    // Contains attrs "T", and a pointer to tpu_replicated_metadata for ctrl dep
-    TpuReplicatedInputInfoMap tpu_replicated_input_ops;
-
-    bool xla_spmd_input_sharded = false;
-
-    if (enable_spmd_xla_partitioning && num_cores_per_replica > 1) {
-      xla_spmd_input_sharded = FindTpuReplicatedInputAndXlaSharding(
-          graph.get(), xla_sharding_ops, tpu_replicated_input_ops);
-    }
-
-    if (!enable_spmd_xla_partitioning || num_cores_per_replica == 1 ||
-        (xla_spmd_input_sharded &&
-         runtime_params_.minimum_input_tensors_packing > 1)) {
-      if (xla_spmd_input_sharded) {
-        // We are setting must_be_child_of_arg == true because we do not want
-        // to remove other XlaSharding ops that might be in the graph. We only
-        // want the XlaSharding ops that are directly attached to the input
-        // arguments to be removed.
-        RemoveDescendantNodeOfArg(graph.get(), "XlaSharding",
-                                  /*must_be_child_of_arg=*/true);
-      }
-
-      RemoveDescendantNodeOfArg(graph.get(), "TPUReplicatedInput",
-                                /*must_be_child_of_arg=*/false);
-
-      VLOG(1) << DumpGraphToFile("before_get_input_output_info", *graph,
-                                 flib_def_.get());
-
-      OP_REQUIRES_OK_ASYNC(
-          ctx,
-          GetInputOutputInfo(graph.get(), tpu_inferred_info, arg_shapes,
-                             tpu_input_shapes, tpu_input_dtypes, ctx),
-          done);
-
-      VLOG(1) << DumpGraphToFile("before_optimize_tpu_input_output_tensors",
-                                 *graph, flib_def_.get());
-
-      OP_REQUIRES_OK_ASYNC(
-          ctx,
-          OptimizeTpuInputOutputTensors(
-              graph.get(), tpu_inferred_info, arg_shapes, tpu_input_shapes,
-              tpu_input_dtypes, named_input_shapes, xla_spmd_input_sharded,
-              xla_sharding_ops, tpu_replicated_input_ops, ctx),
-          done);
-    }
+    std::map<std::string, std::vector<int>> named_input_shapes;
+    OP_REQUIRES_OK_ASYNC(
+        ctx,
+        OptimizeTpuInputOutputTensors(graph.get(), enable_spmd_xla_partitioning,
+                                      named_input_shapes, ctx),
+        done);
 
     VLOG(1) << DumpGraphToFile(
         "before_replace_resource_args_with_var_handle_ops", *graph,
@@ -1897,24 +1847,61 @@ Status TPUPartitionedCallOp::InferShapesWithResourceVar(
 // and --input_shape_opt, respectively, while (3) is controlled by
 // --minimum_output_tensors_packing.
 Status TPUPartitionedCallOp::OptimizeTpuInputOutputTensors(
-    Graph* graph, GraphShapeInfo& tpu_inferred_info,
-    std::map<int, InferredShape>& arg_shapes, EdgeShapes& tpu_input_shapes,
-    absl::flat_hash_map<const Edge*, DataType>& tpu_input_dtypes,
+    Graph* graph, bool enable_spmd_xla_partitioning,
     std::map<std::string, std::vector<int>>& named_input_shapes,
-    bool enable_xla_spmd_partitioning,
-    const XlaShardingInfoMap& xla_sharding_info,
-    const TpuReplicatedInputInfoMap& tpu_replicated_input_info,
     OpKernelContext* ctx) {
+  GraphShapeInfo tpu_inferred_info;
+  std::map<int, InferredShape> arg_shapes;
+  EdgeShapes tpu_input_shapes;
+  absl::flat_hash_map<const Edge*, DataType> tpu_input_dtypes;
+
+  // Contains attrs "T", "sharding", "_tpu_replicate" for each XlaSharding op.
+  XlaShardingInfoMap xla_sharding_ops;
+
+  // Contains attrs "T", and a pointer to tpu_replicated_metadata for ctrl dep
+  TpuReplicatedInputInfoMap tpu_replicated_input_ops;
+
+  bool xla_spmd_input_sharded = false;
+
+  if (enable_spmd_xla_partitioning) {
+    xla_spmd_input_sharded = FindTpuReplicatedInputAndXlaSharding(
+        graph, xla_sharding_ops, tpu_replicated_input_ops);
+  }
+
+  VLOG(3) << "xla_spmd_input_sharded: " << xla_spmd_input_sharded;
+  VLOG(1) << DumpGraphToFile("before_get_input_output_info1", *graph,
+                             flib_def_.get());
+  if (xla_spmd_input_sharded) {
+    // We are setting must_be_child_of_arg == true because we do not want
+    // to remove other XlaSharding ops that might be in the graph. We only
+    // want the XlaSharding ops that are directly attached to the input
+    // arguments to be removed.
+    RemoveDescendantNodeOfArg(graph, "XlaSharding",
+                              /*must_be_child_of_arg=*/true);
+  }
+
+  if (!xla_spmd_input_sharded ||
+      runtime_params_.minimum_input_tensors_packing > 1) {
+    // Currently we remove `TPUReplicatedInput` nodes when the input tensors are
+    // not sharded or input tensors packing optimization is enabled.
+    RemoveDescendantNodeOfArg(graph, "TPUReplicatedInput",
+                              /*must_be_child_of_arg=*/false);
+  }
+
+  VLOG(1) << DumpGraphToFile("before_get_input_output_info2", *graph,
+                             flib_def_.get());
+
+  TF_RETURN_IF_ERROR(GetInputOutputInfo(graph, tpu_inferred_info, arg_shapes,
+                                        tpu_input_shapes, tpu_input_dtypes,
+                                        ctx));
+
+  VLOG(1) << DumpGraphToFile("before_optimize_tpu_input_output_tensors", *graph,
+                             flib_def_.get());
+
   string cluster_name;
   TF_RETURN_IF_ERROR(GetClusterName(graph, &cluster_name));
 
   if (runtime_params_.minimum_output_tensors_packing > 1) {
-    if (enable_xla_spmd_partitioning) {
-      return errors::Unimplemented(
-          "minimum_output_tensors_packing > 1 is not implemented for XLA SPMD "
-          "partitioning.");
-    }
-
     // Copy graph to shape_inference_graph
     EdgeShapes tpu_output_shapes;
     TF_RETURN_IF_ERROR(
@@ -1940,8 +1927,8 @@ Status TPUPartitionedCallOp::OptimizeTpuInputOutputTensors(
         tpu_functional_internal::CreateConcatAndSplitNodesForInputTensor(
             graph, cluster_name, &tpu_input_shapes, grouped_input_edges,
             runtime_params_.minimum_input_tensors_packing,
-            enable_xla_spmd_partitioning, xla_sharding_info,
-            tpu_replicated_input_info));
+            xla_spmd_input_sharded, xla_sharding_ops,
+            tpu_replicated_input_ops));
   }
   if (runtime_params_.input_shape_opt) {
     TF_RETURN_IF_ERROR(tpu_functional_internal::InsertReshapeNodePairs(

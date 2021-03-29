@@ -69,7 +69,7 @@ Status CreateConcatAndSplitNodesForInputTensor(
 Status CreateConcatAndSplitNodesForOutputTensor(
     Graph* graph, const string& cluster_name, EdgeShapes* tpu_output_shapes,
     GraphShapeInfo* tpu_inferred_info, GroupedEdges shape_to_output,
-    int32_t minimimum_output_tensors_packing);
+    int32_t minimum_output_tensors_packing);
 
 Status InsertReshapeNodePairs(Graph* graph, const string& cluster_name,
                               EdgeShapes* tpu_input_shapes);
@@ -183,13 +183,8 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   // Rewrite the graph for input and output optimiazations.
   // TODO(ylc): Move this function to Graph optimization pass.
   Status OptimizeTpuInputOutputTensors(
-      Graph* graph, GraphShapeInfo& tpu_inferred_info,
-      std::map<int, InferredShape>& arg_shapes, EdgeShapes& tpu_input_shapes,
-      absl::flat_hash_map<const Edge*, DataType>& tpu_input_dtypes,
+      Graph* graph, bool enable_spmd_xla_partitioning,
       std::map<std::string, std::vector<int>>& named_input_shapes,
-      bool enable_xla_spmd_partitioning,
-      const XlaShardingInfoMap& xla_sharding_info,
-      const TpuReplicatedInputInfoMap& tpu_replicated_input_info,
       OpKernelContext* ctx) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   Status InferShapesWithResourceVar(Graph* graph, OpKernelContext* ctx,
