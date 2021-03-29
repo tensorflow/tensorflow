@@ -155,6 +155,49 @@ class RamFilesystemTest(test_util.TensorFlowTestCase):
     loaded = saved_model.load('ram://my_module')
     self.assertAllEqual(loaded.foo(), [1])
 
+  def test_join(self):
+
+    def check():
+      self.assertTrue(gfile.Exists('ram://exists/a'))
+      self.assertTrue(gfile.Exists('ram://exists/a/b'))
+      self.assertTrue(gfile.Exists('ram://exists/a/b/c.txt'))
+
+    path = gfile.join('ram://', 'exists', 'a', 'b', 'c.txt')
+    with gfile.GFile(path, 'w') as f:
+      f.write('')
+    check()
+    gfile.rmtree('ram://exists')
+    
+    path = gfile.join('ram://exists', 'a', 'b', 'c.txt')
+    with gfile.GFile(path, 'w') as f:
+      f.write('')
+    check()
+    gfile.rmtree('ram://exists')
+
+    path = gfile.join('ram://', 'exists/a', 'b', 'c.txt')
+    with gfile.GFile(path, 'w') as f:
+      f.write('')
+    check()
+    gfile.rmtree('ram://exists')
+
+    path = gfile.join('ram://', 'exists', 'a', 'b/c.txt')
+    with gfile.GFile(path, 'w') as f:
+      f.write('')
+    check()
+    gfile.rmtree('ram://exists')
+
+  def test_walk(self):
+    with gfile.GFile('ram://exists/a/b/c.txt', 'w') as f:
+      f.write('')
+    res = list(gfile.walk('ram://exists'))
+    expected = [('ram://exists', ['a'], []), ('ram://exists/a', ['b'], []), ('ram://exists/a/b', [], ['c.txt'])]
+    self.assertEqual(res, expected)
+  
+  def test_makedirs(self):
+    gfile.makedirs('ram://exists/a/b')
+    res = list(gfile.walk('ram://exists'))
+    expected = [('ram://exists', ['a'], []), ('ram://exists/a', ['b'], [])]
+    self.assertEqual(res, expected)
 
 if __name__ == '__main__':
   test.main()
