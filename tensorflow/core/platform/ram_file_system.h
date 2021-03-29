@@ -255,14 +255,14 @@ class RamFileSystem : public FileSystem {
   Status RecursivelyCreateDir(const std::string& dirname_,
                               TransactionToken* token) override {
     auto dirname = StripRamFsPrefix(dirname_);
-
-    std::vector<std::string> dirs = StrSplit(dirname, "/");
+    std:string separator(1, this->Separator());
+    std::vector<std::string> dirs = StrSplit(dirname, separator);
     Status last_status;
     std::string dir = dirs[0];
     last_status = CreateDir(dir, token);
 
     for (int i = 1; i < dirs.size(); ++i) {
-      dir = dir + "/" + dirs[i];
+      dir = dir + separator + dirs[i];
       last_status = CreateDir(dir, token);
     }
     return last_status;
@@ -313,7 +313,7 @@ class RamFileSystem : public FileSystem {
     }
     return errors::NotFound("");
   }
-  
+
   char Separator() const override { 
     #ifdef _WIN32
       return '\\'; 
@@ -353,7 +353,7 @@ class RamFileSystem : public FileSystem {
 
   string StripRamFsPrefix(std::string name) {
     std::string s = StripPrefix(name, "ram://");
-    if (*(s.rbegin()) == '/') {
+    if (*(s.rbegin()) == this->Separator()) {
       s.pop_back();
     }
     return s;
