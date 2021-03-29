@@ -111,7 +111,8 @@ class PadOpTest(test.TestCase):
 
     with self.cached_session():
       jacob_t, jacob_n = gradient_checker_v2.compute_gradient(pad, [x])
-      self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
+      tol = 1e-3 if x.dtype == np.float16 else 4e-5
+      self.assertAllClose(jacob_t, jacob_n, rtol=tol, atol=tol)
 
   def _testAll(self, np_inputs, paddings, constant_values):
     for mode in ("CONSTANT", "REFLECT", "SYMMETRIC", "reflect", "symmetric",
@@ -257,10 +258,12 @@ class PadOpTest(test.TestCase):
           [[0, 0], [0, 0], [0, 0], [0, 0]], -123)
 
   def testFloatTypes(self):
-    for t in [np.float32, np.float64]:
+    for t in [np.float16, np.float32, np.float64]:
       self._testAll(np.random.rand(2, 5).astype(t), [[1, 0], [2, 0]], 0.0)
-      self._testAll(np.random.rand(2, 3, 4).astype(t),
-                    [[0, 0], [0, 0], [0, 0]], -1234.0)
+      self._testAll(
+          np.random.rand(2, 3, 4).astype(t), [[0, 0], [0, 0], [0, 0]], -12.34)
+      self._testAll(
+          np.random.rand(12, 13, 14).astype(t), [[0, 0], [3, 3], [3, 3]], 1.41)
       self._testAll(np.random.rand(0, 3, 4).astype(t),
                     [[0, 0], [2, 1], [2, 3]], 0.0)
 

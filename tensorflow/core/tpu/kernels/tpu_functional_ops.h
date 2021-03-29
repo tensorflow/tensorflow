@@ -36,6 +36,18 @@ using EdgeShapes = absl::flat_hash_map<const Edge*, std::vector<int>>;
 using GroupedEdges =
     absl::flat_hash_map<std::string, std::vector<const Edge*>>;
 
+// Contains attrs "T", "sharding", "_tpu_replicate" for each XlaSharding op that
+// we find as part of searching for inputs to models that are replicated.
+using XlaShardingInfoMap = absl::flat_hash_map<
+    std::string, std::tuple<tensorflow::DataType, std::string, std::string>>;
+
+// Contains attrs "T", and a pointer to tpu_replicated_metadata for ctrl dep
+// for each TpuReplicatedInput op that we find as part of searching for inputs
+// to models that are replicated.
+using TpuReplicatedInputInfoMap =
+    absl::flat_hash_map<std::string,
+                           std::tuple<tensorflow::DataType, Node*>>;
+
 namespace tpu_functional_internal {
 
 // Helper functions for graph rewrites.
@@ -51,11 +63,13 @@ Status CreateConcatAndSplitNodesForInputTensor(
     Graph* graph, const string& cluster_name, EdgeShapes* tpu_input_shapes,
     const absl::flat_hash_map<std::string, std::vector<const Edge*>>&
         grouped_input_edges,
-    int32_t minimum_input_tensors_packing);
+    int32_t minimum_input_tensors_packing, bool xla_spmd_input_sharded,
+    const XlaShardingInfoMap& xla_sharding_info,
+    const TpuReplicatedInputInfoMap& tpu_replicated_input_info);
 Status CreateConcatAndSplitNodesForOutputTensor(
     Graph* graph, const string& cluster_name, EdgeShapes* tpu_output_shapes,
     GraphShapeInfo* tpu_inferred_info, GroupedEdges shape_to_output,
-    int32_t minimimum_output_tensors_packing);
+    int32_t minimum_output_tensors_packing);
 
 Status InsertReshapeNodePairs(Graph* graph, const string& cluster_name,
                               EdgeShapes* tpu_input_shapes);
@@ -169,9 +183,7 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   // Rewrite the graph for input and output optimiazations.
   // TODO(ylc): Move this function to Graph optimization pass.
   Status OptimizeTpuInputOutputTensors(
-      Graph* graph, GraphShapeInfo& tpu_inferred_info,
-      std::map<int, InferredShape>& arg_shapes, EdgeShapes& tpu_input_shapes,
-      absl::flat_hash_map<const Edge*, DataType>& tpu_input_dtypes,
+      Graph* graph, bool enable_spmd_xla_partitioning,
       std::map<std::string, std::vector<int>>& named_input_shapes,
       OpKernelContext* ctx) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 

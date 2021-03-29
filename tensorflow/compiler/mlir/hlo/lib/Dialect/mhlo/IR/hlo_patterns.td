@@ -36,11 +36,12 @@ def DynamicBroadcastToOwnShape_4 : Pat<
   (HLO_DynamicBroadcastInDimOp:$op $x, (Tensor_CastOp (Shape_ShapeOfOp $x)), $attr),
   (Tensor_CastOp $x)>;
 
-def ShapeOfDynamicReshape : Pat<
-  (Shape_ShapeOfOp (HLO_DynamicReshapeOp $x, $shape)),
-  (replaceWithValue $shape)>;
-
 def HasSameType : Constraint<CPred<"$0.getType() == $1.getType()">>;
+
+def ShapeOfDynamicReshape : Pat<
+  (Shape_ShapeOfOp:$op (HLO_DynamicReshapeOp $x, $shape)),
+  (replaceWithValue $shape),
+  [(HasSameType $shape, $op)]>;
 
 def IdentityBroadcastReshape : Pat<
   (HLO_ReshapeOp:$op (HLO_BroadcastOp $input, $dims)),

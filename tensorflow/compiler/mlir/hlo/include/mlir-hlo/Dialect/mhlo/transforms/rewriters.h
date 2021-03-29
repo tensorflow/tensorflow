@@ -24,8 +24,6 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
-class OwningRewritePatternList;
-
 namespace mhlo {
 
 // Collection of rewrite patterns for lowering a general dot product.

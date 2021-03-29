@@ -434,6 +434,7 @@ cc_library(
     hdrs = ["linear_storage.h"],
     deps = [
         ":cl_context",
+        ":cl_image_format",
         ":gpu_object",
         ":opencl_wrapper",
         ":util",
@@ -557,6 +558,7 @@ cc_library(
     deps = [
         ":cl_command_queue",
         ":cl_context",
+        ":cl_image_format",
         ":gpu_object",
         ":opencl_wrapper",
         ":util",

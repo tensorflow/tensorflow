@@ -225,8 +225,8 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, expected_output=range(10))
 
 
-class UnbatchDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                                   parameterized.TestCase):
+class UnbatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                            parameterized.TestCase):
 
   def build_dataset(self, multiplier=15.0, tensor_slice_len=2, batch_size=2):
     components = (np.arange(tensor_slice_len), np.array([[1, 2, 3]]) *

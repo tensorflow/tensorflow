@@ -282,6 +282,21 @@ static py::object TF_ListPhysicalDevices() {
   return tensorflow::PyoOrThrow(result);
 }
 
+static py::object TF_ListPluggablePhysicalDevices() {
+  std::vector<string> devices;
+  tensorflow::Status s =
+      tensorflow::DeviceFactory::ListPluggablePhysicalDevices(&devices);
+  MaybeRaiseRegisteredFromStatus(s);
+  Safe_PyObjectPtr result(PyList_New(devices.size()));
+  int i = 0;
+  for (auto& dev : devices) {
+    PyObject* dev_obj = PyBytes_FromStringAndSize(dev.data(), dev.size());
+    PyList_SetItem(result.get(), i, dev_obj);
+    ++i;
+  }
+  return tensorflow::PyoOrThrow(result.release());
+}
+
 static std::unordered_map<string, string> TF_GetDeviceDetails(int index) {
   tensorflow::Safe_TF_StatusPtr status = tensorflow::make_safe(TF_NewStatus());
   std::unordered_map<string, string> device_details;
@@ -524,68 +539,64 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         TFE_Py_RegisterFallbackExceptionClass(e.ptr()));
   });
 
-  m.def(
-      "TFE_GetMemoryInfo", [](py::handle& ctx, const char* device_name) {
-        auto* context =
-            reinterpret_cast<tensorflow::ImmediateExecutionContext*>(
-                tensorflow::InputTFE_Context(ctx));
+  m.def("TFE_GetMemoryInfo", [](py::handle& ctx, const char* device_name) {
+    auto* context = reinterpret_cast<tensorflow::ImmediateExecutionContext*>(
+        tensorflow::InputTFE_Context(ctx));
 
-        tensorflow::DeviceNameUtils::ParsedName input_device_name;
-        if (!tensorflow::DeviceNameUtils::ParseFullOrLocalName(
-                device_name, &input_device_name)) {
+    tensorflow::DeviceNameUtils::ParsedName input_device_name;
+    if (!tensorflow::DeviceNameUtils::ParseFullOrLocalName(
+            device_name, &input_device_name)) {
+      tensorflow::ThrowValueError(
+          absl::StrFormat("Failed parsing device name: '%s'", device_name)
+              .c_str());
+    }
+
+    std::vector<tensorflow::Device*> devices = context->ListLocalTfDevices();
+
+    tensorflow::Device* matched_device = nullptr;
+    for (int device_idx = 0; device_idx < devices.size(); device_idx++) {
+      tensorflow::Device* device = devices[device_idx];
+
+      if (tensorflow::DeviceNameUtils::AreCompatibleDevNames(
+              input_device_name, device->parsed_name())) {
+        if (device->device_type() == tensorflow::DEVICE_CPU) {
           tensorflow::ThrowValueError(
-              absl::StrFormat("Failed parsing device name: '%s'", device_name)
+              "CPU does not support getting allocator information");
+        }
+
+        if (matched_device != nullptr) {
+          tensorflow::ThrowValueError(
+              absl::StrFormat("Multiple devices matching the provided string "
+                              "'%s': '%s' and "
+                              "'%s' ",
+                              device_name, matched_device->name(),
+                              device->name())
                   .c_str());
         }
+        matched_device = device;
+      }
+    }
 
-        std::vector<tensorflow::Device*> devices =
-            context->ListLocalTfDevices();
+    if (matched_device == nullptr) {
+      tensorflow::ThrowValueError(
+          absl::StrFormat("No matching devices found for '%s'", device_name)
+              .c_str());
+    }
 
-        tensorflow::Device* matched_device = nullptr;
-        for (int device_idx = 0; device_idx < devices.size(); device_idx++) {
-          tensorflow::Device* device = devices[device_idx];
+    tensorflow::AllocatorAttributes attrs;
+    tensorflow::Allocator* allocator = matched_device->GetAllocator(attrs);
 
-          if (tensorflow::DeviceNameUtils::AreCompatibleDevNames(
-                  input_device_name, device->parsed_name())) {
-            if (device->device_type() == tensorflow::DEVICE_CPU) {
-              tensorflow::ThrowValueError(
-                  "CPU does not support getting allocator information");
-            }
+    if (absl::optional<tensorflow::AllocatorStats> stats =
+            allocator->GetStats()) {
+      return std::map<std::string, int64_t>{{"current", stats->bytes_in_use},
+                                            {"peak", stats->peak_bytes_in_use}};
+    }
 
-            if (matched_device != nullptr) {
-              tensorflow::ThrowValueError(
-                  absl::StrFormat(
-                      "Multiple devices matching the provided string "
-                      "'%s': '%s' and "
-                      "'%s' ",
-                      device_name, matched_device->name(), device->name())
-                      .c_str());
-            }
-            matched_device = device;
-          }
-        }
-
-        if (matched_device == nullptr) {
-          tensorflow::ThrowValueError(
-              absl::StrFormat("No matching devices found for '%s'", device_name)
-                  .c_str());
-        }
-
-        tensorflow::AllocatorAttributes attrs;
-        tensorflow::Allocator* allocator = matched_device->GetAllocator(attrs);
-
-        if (absl::optional<tensorflow::AllocatorStats> stats =
-                allocator->GetStats()) {
-          return std::map<std::string, int64_t>{
-              {"current", stats->bytes_in_use},
-              {"peak", stats->peak_bytes_in_use}};
-        }
-
-        tensorflow::ThrowTypeError(
-            absl::StrFormat("Allocator stats not available for device '%s'",
-                            matched_device->name())
-                .c_str());
-      });
+    tensorflow::ThrowTypeError(
+        absl::StrFormat("Allocator stats not available for device '%s'",
+                        matched_device->name())
+            .c_str());
+  });
 
   // XLA Eager Logic
   m.def("TF_SetXlaEnableLazyCompilation", &TF_SetXlaEnableLazyCompilation);
@@ -1082,6 +1093,8 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         });
   m.def("TF_ListPhysicalDevices", &tensorflow::TF_ListPhysicalDevices);
+  m.def("TF_ListPluggablePhysicalDevices",
+        &tensorflow::TF_ListPluggablePhysicalDevices);
   m.def("TF_GetDeviceDetails", &tensorflow::TF_GetDeviceDetails);
   m.def("TF_DeleteDeviceList", &TF_DeleteDeviceList,
         py::return_value_policy::reference);

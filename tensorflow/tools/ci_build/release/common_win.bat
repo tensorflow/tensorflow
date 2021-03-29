@@ -59,7 +59,7 @@ SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
 
 :: Set cuda related environment variables. If we are not using CUDA, these are not used.
 IF NOT DEFINED TF_CUDA_VERSION (
-  SET TF_CUDA_VERSION=11.0
+  SET TF_CUDA_VERSION=11.2
 )
 IF NOT DEFINED TF_CUDNN_VERSION (
   SET TF_CUDNN_VERSION=8

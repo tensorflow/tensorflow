@@ -967,10 +967,10 @@ func @unpack_repack_same_tuple_single_element(%arg0: tuple<tensor<i32>>) -> tupl
 
 // CHECK-LABEL: func @erase_dead_lhlo_constant
 func @erase_dead_lhlo_constant() {
-  %M = alloc() : memref<256x1024xf32>
+  %M = memref.alloc() : memref<256x1024xf32>
   // CHECK-NEXT: return
   "lmhlo.constant"(%M) {value = dense<0.0> : tensor<f32>} : (memref<256x1024xf32>) -> ()
-  dealloc %M : memref<256x1024xf32>
+  memref.dealloc %M : memref<256x1024xf32>
   return
 }
 
@@ -979,9 +979,9 @@ func @erase_dead_lhlo_constant() {
 func @erase_dead_lhlo_constant_negative(%M : memref<4xf32>) -> memref<256x1024xf32> {
   // CHECK-NEXT: lmhlo.constant
   "lmhlo.constant"(%M) {value = dense<0.0> : tensor<f32>} : (memref<4xf32>) -> ()
-  // CHECK-NEXT: alloc
+  // CHECK-NEXT: memref.alloc
   // CHECK-NEXT: lmhlo.constant
-  %N = alloc() : memref<256x1024xf32>
+  %N = memref.alloc() : memref<256x1024xf32>
   "lmhlo.constant"(%N) {value = dense<0.0> : tensor<f32>} : (memref<256x1024xf32>) -> ()
   return %N : memref<256x1024xf32>
 }
@@ -1235,6 +1235,22 @@ func @fold_negate_float() -> tensor<4xf32> {
   // CHECK: mhlo.constant dense<[-0.000000e+00, -1.000000e+00, -6.000000e+00, 3.000000e+00]>
   %1 = "mhlo.negate"(%0) : (tensor<4xf32>) -> tensor<4xf32>
   return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL func @fold_not()
+func @fold_not() -> tensor<2x2xi1> {
+  %0 = mhlo.constant dense<[[true, false], [true, false]]> : tensor<2x2xi1>
+  // CHECK{LITERAL}: mhlo.constant dense<[[false, true], [false, true]]> : tensor<2x2xi1>
+  %1 = "mhlo.not"(%0) : (tensor<2x2xi1>) -> tensor<2x2xi1>
+  return %1 : tensor<2x2xi1>
+}
+
+// CHECK-LABEL func @fold_not_i32()
+func @fold_not_i32() -> tensor<2x2xi32> {
+  %0 = mhlo.constant dense<[[42, -12], [1, 0]]> : tensor<2x2xi32>
+  // CHECK-LITERAL: mhlo.constant dense<[[0, 0], [0, 1]]> : tensor<2x2xi32>
+  %1 = "mhlo.not"(%0) : (tensor<2x2xi32>) -> tensor<2x2xi32>
+  return %1 : tensor<2x2xi32>
 }
 
 // CHECK-LABEL: func @fold_sqrt_f32_constants

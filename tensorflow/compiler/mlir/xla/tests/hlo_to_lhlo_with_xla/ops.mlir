@@ -681,8 +681,8 @@ func @main(%value0: tensor<2x2xi32>, %value1: tensor<2x2xi32>) -> tensor<2x2xi32
 // CHECK-SAME: %[[ARG1:.*]]: memref<5x5xf32>
 // CHECK-SAME: %[[ARG2:.*]]: memref<100xi8> {lmhlo.alloc = 0
 // CHECK-SAME: %[[ARG3:.*]]: memref<100xi8> {lmhlo.alloc = 1
-// CHECK: %[[VIEW0:.*]] = std.view %[[ARG2]]{{.*}} : memref<100xi8> to memref<5x5xi32>
-// CHECK: %[[VIEW1:.*]] = std.view %[[ARG3]]{{.*}} : memref<100xi8> to memref<5x5xf32>
+// CHECK: %[[VIEW0:.*]] = memref.view %[[ARG2]]{{.*}} : memref<100xi8> to memref<5x5xi32>
+// CHECK: %[[VIEW1:.*]] = memref.view %[[ARG3]]{{.*}} : memref<100xi8> to memref<5x5xf32>
 // CHECK: "lmhlo.sort"(%[[ARG0]], %[[ARG1]], %[[VIEW0]], %[[VIEW1]])
 func @main(%key: tensor<5x5xi32>, %value: tensor<5x5xf32>) -> (tensor<5x5xi32>, tensor<5x5xf32>) {
   %res:2 = "mhlo.sort"(%key, %value) ({
@@ -701,8 +701,8 @@ func @main(%key: tensor<5x5xi32>, %value: tensor<5x5xf32>) -> (tensor<5x5xi32>, 
 // CHECK-SAME: %[[ARG1:.*]]: memref<f32> {{.*}}lmhlo.params = 1
 // CHECK-SAME: %[[ARG2:.*]]: memref<4xi8>
 // CHECK: "lmhlo.fusion"() ( {
-// CHECK:   %[[VAR0:.*]] = tensor_load %[[ARG0]] : memref<f32>
-// CHECK:   %[[VAR1:.*]] = tensor_load %[[ARG1]] : memref<f32>
+// CHECK:   %[[VAR0:.*]] = memref.tensor_load %[[ARG0]] : memref<f32>
+// CHECK:   %[[VAR1:.*]] = memref.tensor_load %[[ARG1]] : memref<f32>
 // CHECK:   %[[VAR2:.*]] = mhlo.add %[[VAR0]], %[[VAR1]] : tensor<f32>
 // CHECK:   tensor_store %[[VAR2]], %[[MEMREF:.*]] : memref<f32>
 // CHECK:   "lmhlo.terminator"() : () -> ()
@@ -721,9 +721,9 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 
 // CHECK-LABEL: func @main
 // CHECK: "lmhlo.fusion"() ( {
-// CHECK:   %[[VAL0:.*]] = tensor_load %{{.*}} : memref<f32>
-// CHECK:   %[[VAL1:.*]] = tensor_load %{{.*}} : memref<f32>
-// CHECK:   %[[VAL2:.*]] = tensor_load %{{.*}} : memref<f32>
+// CHECK:   %[[VAL0:.*]] = memref.tensor_load %{{.*}} : memref<f32>
+// CHECK:   %[[VAL1:.*]] = memref.tensor_load %{{.*}} : memref<f32>
+// CHECK:   %[[VAL2:.*]] = memref.tensor_load %{{.*}} : memref<f32>
 // CHECK:   tensor_store %[[VAL0]], %{{.*}} : memref<f32>
 // CHECK:   tensor_store %[[VAL1]], %{{.*}} : memref<f32>
 // CHECK:   tensor_store %[[VAL2]], %{{.*}} : memref<f32>

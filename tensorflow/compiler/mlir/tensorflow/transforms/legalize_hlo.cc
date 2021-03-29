@@ -1418,7 +1418,7 @@ void LegalizeHloToTf::runOnFunction() {
   MLIRContext &context = getContext();
 
   // Add legalization patterns to the list.
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   PopulateLegalizeHloToTfPatterns(&patterns, &context);
 
   ConversionTarget target(context);
@@ -1446,7 +1446,7 @@ void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList *patterns,
                    ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
                    ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
                    ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
-  populateWithGenerated(context, *patterns);
+  populateWithGenerated(*patterns);
 }
 
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass() {

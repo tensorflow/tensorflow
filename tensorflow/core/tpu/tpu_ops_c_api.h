@@ -37,6 +37,11 @@ typedef struct XLA_TpuProgram XLA_TpuProgram;
 // Enum for choosing sharding/unsharding program from a `XLA_TpuProgram` obj.
 enum TpuProgramShardingType { kInvalid = 0, kMain, kSharding, kUnsharding };
 
+struct TpuProgramFingerprint {
+  const char* bytes;
+  size_t size;
+};
+
 struct TpuExecutableSerializedProto {
   const char* bytes;
   size_t size;
@@ -410,6 +415,12 @@ TFTPU_CAPI_EXPORT void TpuProgram_DeserializeFromGetTpuProgramResponseProto(
     TpuSerializedProto get_tpu_program_response, XLA_TpuProgram* tpu_program,
     TF_Status* status);
 
+TFTPU_CAPI_EXPORT TpuProgramFingerprint
+TpuProgram_GetFingerprint(const XLA_TpuProgram* tpu_program);
+
+TFTPU_CAPI_EXPORT void TpuProgram_DestroyFingerprint(
+    TpuProgramFingerprint fingerprint);
+
 // Checks if whether a TPU compilation is enabled.
 TFTPU_CAPI_EXPORT bool TpuCompile_IsTpuCompilationEnabled();
 
@@ -510,6 +521,8 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuProgram_SerializeTpuExecutable);
   TFTPU_ADD_FN_IN_STRUCT(TpuProgram_SerializeCompilerMetadata);
   TFTPU_ADD_FN_IN_STRUCT(TpuProgram_DeserializeFromGetTpuProgramResponseProto);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProgram_GetFingerprint);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProgram_DestroyFingerprint);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_IsTpuCompilationEnabled);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_ShouldTpuCompileOpIgnoreCancellation);

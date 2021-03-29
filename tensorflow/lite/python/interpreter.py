@@ -19,11 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 import ctypes
+import enum
+import os
 import platform
 import sys
-import os
 
-import enum
 import numpy as np
 
 # pylint: disable=g-import-not-at-top
@@ -32,19 +32,19 @@ if not os.path.splitext(__file__)[0].endswith(
   # This file is part of tensorflow package.
   from tensorflow.lite.python.interpreter_wrapper import _pywrap_tensorflow_interpreter_wrapper as _interpreter_wrapper
   from tensorflow.python.util.tf_export import tf_export as _tf_export
+  try:
+    from tensorflow.lite.python import metrics_portable as metrics
+  except ImportError:
+    from tensorflow.lite.python import metrics_nonportable as metrics
 else:
   # This file is part of tflite_runtime package.
   from tflite_runtime import _pywrap_tensorflow_interpreter_wrapper as _interpreter_wrapper
+  from tflite_runtime import metrics_portable as metrics
 
   def _tf_export(*x, **kwargs):
     del x, kwargs
     return lambda x: x
 
-
-try:
-  from tensorflow.lite.python import metrics_portable as metrics
-except ImportError:
-  from tensorflow.lite.python import metrics_nonportable as metrics
 # pylint: enable=g-import-not-at-top
 
 
@@ -239,9 +239,9 @@ class SignatureRunner(object):
     return result
 
 
-@_tf_export('lite.experimental.OpResolver')
+@_tf_export('lite.experimental.OpResolverType')
 @enum.unique
-class OpResolver(enum.Enum):
+class OpResolverType(enum.Enum):
   """Different types of op resolvers for Tensorflow Lite.
 
   * `AUTO`: Indicates the op resolver that is chosen by default in TfLite
@@ -270,17 +270,18 @@ class OpResolver(enum.Enum):
   BUILTIN_WITHOUT_DEFAULT_DELEGATES = 3
 
 
-def _get_op_resolver_id(op_resolver=OpResolver.AUTO):
+def _get_op_resolver_id(op_resolver_type=OpResolverType.AUTO):
   """Get a integer identifier for the op resolver."""
 
   # Note: the integer identifier value needs to be same w/ op resolver ids
   # defined in interpreter_wrapper/interpreter_wrapper.cc.
   return {
-      OpResolver.AUTO: 1,  # Note the identifier is same with that of BUILTIN
-      OpResolver.BUILTIN: 1,
-      OpResolver.BUILTIN_REF: 2,
-      OpResolver.BUILTIN_WITHOUT_DEFAULT_DELEGATES: 3
-  }.get(op_resolver, None)
+      # Note AUTO and BUILTIN currently share the same identifier.
+      OpResolverType.AUTO: 1,
+      OpResolverType.BUILTIN: 1,
+      OpResolverType.BUILTIN_REF: 2,
+      OpResolverType.BUILTIN_WITHOUT_DEFAULT_DELEGATES: 3
+  }.get(op_resolver_type, None)
 
 
 @_tf_export('lite.Interpreter')
@@ -303,7 +304,8 @@ class Interpreter(object):
                model_content=None,
                experimental_delegates=None,
                num_threads=None,
-               experimental_op_resolver=OpResolver.AUTO):
+               experimental_op_resolver_type=OpResolverType.AUTO,
+               experimental_preserve_all_tensors=False):
     """Constructor.
 
     Args:
@@ -316,10 +318,13 @@ class Interpreter(object):
         available to CPU kernels. If not set, the interpreter will use an
         implementation-dependent default number of threads. Currently, only a
         subset of kernels, such as conv, support multi-threading.
-      experimental_op_resolver: The op resolver used by the interpreter. It must
-        be an instance of OpResolver. By default, we use the built-in op
-        resolver which corresponds to tflite::ops::builtin::BuiltinOpResolver
+      experimental_op_resolver_type: The op resolver used by the interpreter. It
+        must be an instance of OpResolverType. By default, we use the built-in
+        op resolver which corresponds to tflite::ops::builtin::BuiltinOpResolver
         in C++.
+      experimental_preserve_all_tensors: If true, then intermediate tensors
+        used during computation are preserved for inspection. Otherwise, reading
+        intermediate tensors provides undefined values.
 
     Raises:
       ValueError: If the interpreter was unable to create.
@@ -327,10 +332,10 @@ class Interpreter(object):
     if not hasattr(self, '_custom_op_registerers'):
       self._custom_op_registerers = []
 
-    op_resolver_id = _get_op_resolver_id(experimental_op_resolver)
+    op_resolver_id = _get_op_resolver_id(experimental_op_resolver_type)
     if op_resolver_id is None:
-      raise ValueError('Unrecognized passed in op resolver: {}'.format(
-          experimental_op_resolver))
+      raise ValueError('Unrecognized passed in op resolver type: {}'.format(
+          experimental_op_resolver_type))
 
     if model_path and not model_content:
       custom_op_registerers_by_name = [
@@ -342,7 +347,8 @@ class Interpreter(object):
       self._interpreter = (
           _interpreter_wrapper.CreateWrapperFromFile(
               model_path, op_resolver_id, custom_op_registerers_by_name,
-              custom_op_registerers_by_func))
+              custom_op_registerers_by_func,
+              experimental_preserve_all_tensors))
       if not self._interpreter:
         raise ValueError('Failed to open {}'.format(model_path))
     elif model_content and not model_path:
@@ -359,7 +365,8 @@ class Interpreter(object):
       self._interpreter = (
           _interpreter_wrapper.CreateWrapperFromBuffer(
               model_content, op_resolver_id, custom_op_registerers_by_name,
-              custom_op_registerers_by_func))
+              custom_op_registerers_by_func,
+              experimental_preserve_all_tensors))
     elif not model_content and not model_path:
       raise ValueError('`model_path` or `model_content` must be specified.')
     else:

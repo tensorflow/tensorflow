@@ -738,8 +738,7 @@ class FunctionLibraryRuntime {
     // Graph. Otherwise, the unoptimized function Graph will be returned.
     bool include_optimized_graph_in_debug_string = false;
 
-    // If true, the function library runtime will use a cache to enable re-use
-    // of function instantiations.
+    // If true, the function library runtime cache the function instantiation.
     bool use_function_cache = false;
   };
   typedef uint64 Handle;

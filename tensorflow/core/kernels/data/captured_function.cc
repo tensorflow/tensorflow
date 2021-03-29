@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
@@ -569,13 +570,7 @@ Status CapturedFunction::AddToGraph(
   other_arguments_types->reserve(captured_inputs_.size());
   for (const Tensor& t : captured_inputs_) {
     Node* node;
-    DatasetBase* input;
-    Status s = GetDatasetFromVariantTensor(t, &input);
-    if (s.ok()) {
-      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
-    } else {
-      TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-    }
+    TF_RETURN_IF_ERROR(b->AddDatasetOrTensor(ctx, t, &node));
     other_arguments->emplace_back(node);
     other_arguments_types->emplace_back(t.dtype());
   }
@@ -599,10 +594,10 @@ Status CapturedFunction::Instantiate(
     inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
   }
   inst_opts.is_multi_device_function = metadata_->use_multi_device_function();
-  // Enable caching of function instantiations to avoid redundant (and
-  // potentially expensive) instantiation of user-defined functions of a
-  // repeatedly executed input pipeline.
-  inst_opts.use_function_cache = true;
+  if (!ctx->function_handle_cache()) {
+    // If the caller does not provide a cache, we use the FLR cache.
+    inst_opts.use_function_cache = true;
+  }
 
   // We infer the target device from the function library runtime.
   DCHECK(lib->device() != nullptr);
@@ -705,9 +700,15 @@ Status CapturedFunction::Instantiate(
   }
 
   FunctionLibraryRuntime::Handle f_handle;
-  TF_RETURN_IF_ERROR(lib->Instantiate(metadata_->func().name(),
-                                      AttrSlice(&metadata_->func().attr()),
-                                      inst_opts, &f_handle));
+  if (ctx->function_handle_cache()) {
+    TF_RETURN_IF_ERROR(ctx->function_handle_cache()->Instantiate(
+        metadata_->func().name(), AttrSlice(&metadata_->func().attr()),
+        inst_opts, &f_handle));
+  } else {
+    TF_RETURN_IF_ERROR(lib->Instantiate(metadata_->func().name(),
+                                        AttrSlice(&metadata_->func().attr()),
+                                        inst_opts, &f_handle));
+  }
 
   DataTypeVector ret_types;
   TF_RETURN_IF_ERROR(lib->GetRetTypes(f_handle, &ret_types));

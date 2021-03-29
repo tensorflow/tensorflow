@@ -14,9 +14,6 @@
 # ==============================================================================
 """Keras text vectorization preprocessing layer."""
 # pylint: disable=g-classes-have-attributes
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import numpy as np
 
@@ -25,7 +22,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import index_lookup
 from tensorflow.python.keras.layers.preprocessing import string_lookup
@@ -318,13 +315,13 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
 
     self._output_mode = output_mode
     self._output_sequence_length = output_sequence_length
-    vocab_size = 0
+    vocabulary_size = 0
     # IndexLookup needs to keep track the current vocab size outside of its
     # layer weights. We persist it as a hidden part of the config during
     # serialization.
-    if "vocab_size" in kwargs:
-      vocab_size = kwargs["vocab_size"]
-      del kwargs["vocab_size"]
+    if "vocabulary_size" in kwargs:
+      vocabulary_size = kwargs["vocabulary_size"]
+      del kwargs["vocabulary_size"]
 
     super(TextVectorization, self).__init__(
         combiner=None,
@@ -337,7 +334,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
         vocabulary=vocabulary,
         pad_to_max_tokens=pad_to_max_tokens,
         output_mode=output_mode if output_mode is not None else INT,
-        vocab_size=vocab_size)
+        vocabulary_size=vocabulary_size)
 
   def _get_index_lookup_class(self):
     return string_lookup.StringLookup
@@ -367,7 +364,8 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
 
   def compute_output_signature(self, input_spec):
     output_shape = self.compute_output_shape(input_spec.shape.as_list())
-    output_dtype = dtypes.int64 if self._output_mode == INT else K.floatx()
+    output_dtype = (dtypes.int64 if self._output_mode == INT
+                    else backend.floatx())
     return tensor_spec.TensorSpec(shape=output_shape, dtype=output_dtype)
 
   def adapt(self, data, reset_state=True):
@@ -420,6 +418,14 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
   def get_vocabulary(self):
     return self._index_lookup_layer.get_vocabulary()
 
+  def vocabulary_size(self):
+    """Gets the current size of the layer's vocabulary.
+
+    Returns:
+      The integer size of the voculary, including optional mask and oov indices.
+    """
+    return self._index_lookup_layer.vocabulary_size()
+
   def get_config(self):
     # This does not include the 'vocabulary' arg, since if the vocab was passed
     # at init time it's now stored in variable state - we don't need to
@@ -432,7 +438,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
         "output_mode": self._output_mode,
         "output_sequence_length": self._output_sequence_length,
         "pad_to_max_tokens": self._index_lookup_layer.pad_to_max_tokens,
-        "vocab_size": self._index_lookup_layer.vocab_size(),
+        "vocabulary_size": self._index_lookup_layer.vocabulary_size(),
     }
     base_config = super(TextVectorization, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -444,7 +450,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     # abstraction for ease of saving!) we return 0.
     return 0
 
-  def set_vocabulary(self, vocab, idf_weights=None):
+  def set_vocabulary(self, vocabulary, idf_weights=None):
     """Sets vocabulary (and optionally document frequency) data for this layer.
 
     This method sets the vocabulary and idf weights for this layer directly,
@@ -454,7 +460,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     it.
 
     Args:
-      vocab: An array of string tokens, or a path to a file containing one
+      vocabulary: An array of string tokens, or a path to a file containing one
         token per line.
       idf_weights: An array of document frequency data with equal length to
         vocab. Only necessary if the layer output_mode is TFIDF.
@@ -467,7 +473,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
         if "pad_to_max_tokens" is False and the layer itself has already been
         called.
     """
-    self._index_lookup_layer.set_vocabulary(vocab, idf_weights=idf_weights)
+    self._index_lookup_layer.set_vocabulary(vocabulary, idf_weights=idf_weights)
 
   def build(self, input_shape):
     # We have to use 'and not ==' here, because input_shape[1] !/== 1 can result
@@ -565,7 +571,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
       if self._output_sequence_length is None:
         return dense_data
       else:
-        sequence_len = K.shape(dense_data)[1]
+        sequence_len = backend.shape(dense_data)[1]
         pad_amt = self._output_sequence_length - sequence_len
         pad_fn = lambda: array_ops.pad(dense_data, [[0, 0], [0, pad_amt]])
         slice_fn = lambda: dense_data[:, :self._output_sequence_length]

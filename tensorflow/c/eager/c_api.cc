@@ -537,8 +537,7 @@ class CAPICustomDeviceTensorHandle
 TFE_TensorHandle* TFE_NewCustomDeviceTensorHandle(
     TFE_Context* ctx, const char* device_name, TF_DataType dtype, void* data,
     TFE_CustomDeviceTensorHandleMethods methods, TF_Status* status) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
+  tensorflow::ImmediateExecutionContext* context = tensorflow::unwrap(ctx);
   tensorflow::CustomDevice* device = nullptr;
   if (!context->GetCustomDeviceOpHandler().FindCustomDeviceFromName(device_name,
                                                                     &device)) {

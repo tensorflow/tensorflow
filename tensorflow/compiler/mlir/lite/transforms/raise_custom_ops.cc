@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -34,7 +36,16 @@ namespace {
 // wrap it by a TFL::CustomTfOp.
 struct RaiseCustomOpsPass
     : public PassWrapper<RaiseCustomOpsPass, FunctionPass> {
+ public:
+  explicit RaiseCustomOpsPass() : target_op_names({}) {}
+  explicit RaiseCustomOpsPass(const std::vector<std::string> &target_ops)
+      : target_op_names(target_ops.begin(), target_ops.end()) {}
+
   void runOnFunction() override;
+
+ private:
+  // If this set is empty, then all the qualified ops will be wrapped.
+  const absl::flat_hash_set<std::string> target_op_names;
 };
 
 void RaiseCustomOpsPass::runOnFunction() {
@@ -49,7 +60,11 @@ void RaiseCustomOpsPass::runOnFunction() {
     if (op.getParentOfType<CustomTfOp>()) continue;
     if (llvm::isa<TFL::CustomTfOp>(op) || llvm::isa<TFL::CustomOp>(op))
       continue;
-    custom_ops.push_back(&op);
+
+    auto op_name = op.getName().getIdentifier().str();
+    if (target_op_names.empty() || target_op_names.contains(op_name)) {
+      custom_ops.push_back(&op);
+    }
   }
 
   for (auto *op : custom_ops) {
@@ -78,8 +93,9 @@ void RaiseCustomOpsPass::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect raise custom op pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateRaiseCustomOpsPass() {
-  return std::make_unique<RaiseCustomOpsPass>();
+std::unique_ptr<OperationPass<FuncOp>> CreateRaiseCustomOpsPass(
+    const std::vector<std::string> &target_ops) {
+  return std::make_unique<RaiseCustomOpsPass>(target_ops);
 }
 
 static PassRegistration<RaiseCustomOpsPass> pass(

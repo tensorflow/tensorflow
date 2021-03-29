@@ -174,8 +174,8 @@ class FlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
 
-class FlatMapDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                                   parameterized.TestCase):
+class FlatMapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                            parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testCore(self):

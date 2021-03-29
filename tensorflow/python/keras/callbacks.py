@@ -14,11 +14,7 @@
 # ==============================================================================
 # pylint: disable=g-import-not-at-top
 # pylint: disable=g-classes-have-attributes
-"""Callbacks: utilities called at certain points during model training.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Callbacks: utilities called at certain points during model training."""
 
 import collections
 import copy
@@ -31,11 +27,11 @@ import sys
 import time
 
 import numpy as np
-import six
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
+from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
@@ -43,7 +39,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.distribute import distributed_file_utils
 from tensorflow.python.keras.distribute import worker_training_state
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
@@ -203,7 +199,7 @@ def make_logs(model, logs, outputs, mode, prefix=''):
 
 
 @keras_export('keras.callbacks.CallbackList')
-class CallbackList(object):
+class CallbackList:
   """Container abstracting a list of callbacks."""
 
   def __init__(self,
@@ -245,6 +241,8 @@ class CallbackList(object):
     self._should_call_predict_batch_hooks = any(
         cb._implements_predict_batch_hooks() for cb in self.callbacks)
     # pylint: enable=protected-access
+
+    self._disallow_batch_hooks_in_ps_strategy()
 
     # Performance check: Check batch hooks for slowness compared to batch time.
     # Only run check for custom callbacks (i.e. not present in this file).
@@ -360,7 +358,7 @@ class CallbackList(object):
         hook(batch, logs)
       else:
         if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
+          numpy_logs = tf_utils.sync_to_numpy_or_python_type(logs)
         hook(batch, numpy_logs)
 
     if self._check_timing:
@@ -411,7 +409,7 @@ class CallbackList(object):
         callback.on_epoch_begin(epoch, logs)
       else:
         if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
+          numpy_logs = tf_utils.sync_to_numpy_or_python_type(logs)
         callback.on_epoch_begin(epoch, numpy_logs)
 
   def on_epoch_end(self, epoch, logs=None):
@@ -432,7 +430,7 @@ class CallbackList(object):
         callback.on_epoch_end(epoch, logs)
       else:
         if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
+          numpy_logs = tf_utils.sync_to_numpy_or_python_type(logs)
         callback.on_epoch_end(epoch, numpy_logs)
 
   def on_train_batch_begin(self, batch, logs=None):
@@ -515,7 +513,7 @@ class CallbackList(object):
         callback.on_train_begin(logs)
       else:
         if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
+          numpy_logs = tf_utils.sync_to_numpy_or_python_type(logs)
         callback.on_train_begin(numpy_logs)
 
   def on_train_end(self, logs=None):
@@ -532,7 +530,7 @@ class CallbackList(object):
         callback.on_train_end(logs)
       else:
         if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
+          numpy_logs = tf_utils.sync_to_numpy_or_python_type(logs)
         callback.on_train_end(numpy_logs)
 
   def on_test_begin(self, logs=None):
@@ -549,7 +547,7 @@ class CallbackList(object):
         callback.on_test_begin(logs)
       else:
         if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
+          numpy_logs = tf_utils.sync_to_numpy_or_python_type(logs)
         callback.on_test_begin(numpy_logs)
 
   def on_test_end(self, logs=None):
@@ -566,7 +564,7 @@ class CallbackList(object):
         callback.on_test_end(logs)
       else:
         if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
+          numpy_logs = tf_utils.sync_to_numpy_or_python_type(logs)
         callback.on_test_end(numpy_logs)
 
   def on_predict_begin(self, logs=None):
@@ -583,7 +581,7 @@ class CallbackList(object):
         callback.on_predict_begin(logs)
       else:
         if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
+          numpy_logs = tf_utils.sync_to_numpy_or_python_type(logs)
         callback.on_predict_begin(numpy_logs)
 
   def on_predict_end(self, logs=None):
@@ -600,16 +598,57 @@ class CallbackList(object):
         callback.on_predict_end(logs)
       else:
         if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
+          numpy_logs = tf_utils.sync_to_numpy_or_python_type(logs)
         callback.on_predict_end(numpy_logs)
 
   def __iter__(self):
     return iter(self.callbacks)
 
+  def _disallow_batch_hooks_in_ps_strategy(self):
+    """Error out if batch-level callbacks are passed with PSStrategy."""
+    # pylint: disable=protected-access
+    strategy = ds_context.get_strategy()
+    if strategy._should_use_with_coordinator:
+      unsupported_callbacks = []
+      for cb in self.callbacks:
+        # These Callbacks can accept RemoteValues directly.
+        if getattr(cb, '_supports_tf_logs', False):
+          continue
+        if (cb._implements_train_batch_hooks() or
+            cb._implements_test_batch_hooks() or
+            cb._implements_predict_batch_hooks()):
+          unsupported_callbacks.append(cb)
+      if unsupported_callbacks:
+        raise ValueError('Batch-level `Callback`s are not supported with '
+                         '`ParameterServerStrategy`. Found unsupported '
+                         'callbacks: {}'.format(unsupported_callbacks))
+    # pylint: enable=protected-access
+
 
 @keras_export('keras.callbacks.Callback')
-class Callback(object):
+class Callback:
   """Abstract base class used to build new callbacks.
+
+  Callbacks can be passed to keras methods such as `fit`, `evaluate`, and
+  `predict` in order to hook into the various stages of the model training and
+  inference lifecycle.
+
+  To create a custom callback, subclass `keras.callbacks.Callback` and override
+  the method associated with the stage of interest. See
+  https://www.tensorflow.org/guide/keras/custom_callback for more information.
+
+  Example:
+
+  >>> training_finished = False
+  >>> class MyCallback(tf.keras.callbacks.Callback):
+  ...   def on_train_end(self, logs=None):
+  ...     global training_finished
+  ...     training_finished = True
+  >>> model = tf.keras.Sequential([tf.keras.layers.Dense(1, input_shape=(1,))])
+  >>> model.compile(loss='mean_squared_error')
+  >>> model.fit(tf.constant([[1.0]]), tf.constant([[1.0]]),
+  ...           callbacks=[MyCallback()])
+  >>> assert training_finished == True
 
   Attributes:
       params: Dict. Training parameters
@@ -936,7 +975,7 @@ class TerminateOnNaN(Callback):
     logs = logs or {}
     loss = logs.get('loss')
     if loss is not None:
-      loss = tf_utils.to_numpy_or_python_type(loss)
+      loss = tf_utils.sync_to_numpy_or_python_type(loss)
       if np.isnan(loss) or np.isinf(loss):
         print('Batch %d: Invalid loss, terminating training' % (batch))
         self.model.stop_training = True
@@ -1086,11 +1125,11 @@ class ProgbarLogger(Callback):
 
     if self.verbose == 1:
       # Only block async when verbose = 1.
-      logs = tf_utils.to_numpy_or_python_type(logs)
+      logs = tf_utils.sync_to_numpy_or_python_type(logs)
       self.progbar.update(self.seen, list(logs.items()), finalize=False)
 
   def _finalize_progbar(self, logs, counter):
-    logs = tf_utils.to_numpy_or_python_type(logs or {})
+    logs = tf_utils.sync_to_numpy_or_python_type(logs or {})
     if self.target is None:
       if counter is not None:
         counter = counter.numpy()
@@ -1385,7 +1424,7 @@ class ModelCheckpoint(Callback):
     if isinstance(self.save_freq,
                   int) or self.epochs_since_last_save >= self.period:
       # Block only when saving interval is reached.
-      logs = tf_utils.to_numpy_or_python_type(logs)
+      logs = tf_utils.sync_to_numpy_or_python_type(logs)
       self.epochs_since_last_save = 0
       filepath = self._get_file_path(epoch, logs)
 
@@ -1423,7 +1462,7 @@ class ModelCheckpoint(Callback):
         self._maybe_remove_file()
       except IOError as e:
         # `e.errno` appears to be `None` so checking the content of `e.args[0]`.
-        if 'is a directory' in six.ensure_str(e.args[0]).lower():
+        if 'is a directory' in str(e.args[0]).lower():
           raise IOError('Please specify a non-directory filepath for '
                         'ModelCheckpoint. Filepath used is an existing '
                         'directory: {}'.format(filepath))
@@ -1921,7 +1960,7 @@ class LearningRateScheduler(Callback):
     if not hasattr(self.model.optimizer, 'lr'):
       raise ValueError('Optimizer must have a "lr" attribute.')
     try:  # new API
-      lr = float(K.get_value(self.model.optimizer.lr))
+      lr = float(backend.get_value(self.model.optimizer.lr))
       lr = self.schedule(epoch, lr)
     except TypeError:  # Support for old API for backward compatibility
       lr = self.schedule(epoch)
@@ -1930,14 +1969,14 @@ class LearningRateScheduler(Callback):
                        'should be float.')
     if isinstance(lr, ops.Tensor) and not lr.dtype.is_floating:
       raise ValueError('The dtype of Tensor should be float')
-    K.set_value(self.model.optimizer.lr, K.get_value(lr))
+    backend.set_value(self.model.optimizer.lr, backend.get_value(lr))
     if self.verbose > 0:
       print('\nEpoch %05d: LearningRateScheduler reducing learning '
             'rate to %s.' % (epoch + 1, lr))
 
   def on_epoch_end(self, epoch, logs=None):
     logs = logs or {}
-    logs['lr'] = K.get_value(self.model.optimizer.lr)
+    logs['lr'] = backend.get_value(self.model.optimizer.lr)
 
 
 def keras_model_summary(name, data, step=None):
@@ -2328,7 +2367,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
         'to profile. Found: {}'.format(profile_batch))
 
     # Support legacy way of specifying "start,stop" or "start" as str.
-    if isinstance(profile_batch, six.string_types):
+    if isinstance(profile_batch, str):
       profile_batch = str(profile_batch).split(',')
       profile_batch = nest.map_structure(int, profile_batch)
 
@@ -2499,23 +2538,23 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
   def _log_weight_as_image(self, weight, weight_name, epoch):
     """Logs a weight as a TensorBoard image."""
     w_img = array_ops.squeeze(weight)
-    shape = K.int_shape(w_img)
+    shape = backend.int_shape(w_img)
     if len(shape) == 1:  # Bias case
       w_img = array_ops.reshape(w_img, [1, shape[0], 1, 1])
     elif len(shape) == 2:  # Dense layer kernel case
       if shape[0] > shape[1]:
         w_img = array_ops.transpose(w_img)
-        shape = K.int_shape(w_img)
+        shape = backend.int_shape(w_img)
       w_img = array_ops.reshape(w_img, [1, shape[0], shape[1], 1])
     elif len(shape) == 3:  # ConvNet case
-      if K.image_data_format() == 'channels_last':
+      if backend.image_data_format() == 'channels_last':
         # Switch to channels_first to display every kernel as a separate
         # image.
         w_img = array_ops.transpose(w_img, perm=[2, 0, 1])
-        shape = K.int_shape(w_img)
+        shape = backend.int_shape(w_img)
       w_img = array_ops.reshape(w_img, [shape[0], shape[1], shape[2], 1])
 
-    shape = K.int_shape(w_img)
+    shape = backend.int_shape(w_img)
     # Not possible to handle 3D convnets etc.
     if len(shape) == 4 and shape[-1] in [1, 3, 4]:
       summary_ops_v2.image(weight_name, w_img, step=epoch)
@@ -2648,7 +2687,7 @@ class ReduceLROnPlateau(Callback):
 
   def on_epoch_end(self, epoch, logs=None):
     logs = logs or {}
-    logs['lr'] = K.get_value(self.model.optimizer.lr)
+    logs['lr'] = backend.get_value(self.model.optimizer.lr)
     current = logs.get(self.monitor)
     if current is None:
       logging.warning('Learning rate reduction is conditioned on metric `%s` '
@@ -2666,11 +2705,11 @@ class ReduceLROnPlateau(Callback):
       elif not self.in_cooldown():
         self.wait += 1
         if self.wait >= self.patience:
-          old_lr = K.get_value(self.model.optimizer.lr)
+          old_lr = backend.get_value(self.model.optimizer.lr)
           if old_lr > np.float32(self.min_lr):
             new_lr = old_lr * self.factor
             new_lr = max(new_lr, self.min_lr)
-            K.set_value(self.model.optimizer.lr, new_lr)
+            backend.set_value(self.model.optimizer.lr, new_lr)
             if self.verbose > 0:
               print('\nEpoch %05d: ReduceLROnPlateau reducing learning '
                     'rate to %s.' % (epoch + 1, new_lr))
@@ -2709,12 +2748,8 @@ class CSVLogger(Callback):
     self.writer = None
     self.keys = None
     self.append_header = True
-    if six.PY2:
-      self.file_flags = 'b'
-      self._open_args = {}
-    else:
-      self.file_flags = ''
-      self._open_args = {'newline': '\n'}
+    self.file_flags = ''
+    self._open_args = {'newline': '\n'}
     super(CSVLogger, self).__init__()
 
   def on_train_begin(self, logs=None):
@@ -2734,7 +2769,7 @@ class CSVLogger(Callback):
 
     def handle_value(k):
       is_zero_dim_ndarray = isinstance(k, np.ndarray) and k.ndim == 0
-      if isinstance(k, six.string_types):
+      if isinstance(k, str):
         return k
       elif isinstance(k, collections.abc.Iterable) and not is_zero_dim_ndarray:
         return '"[%s]"' % (', '.join(map(str, k)))

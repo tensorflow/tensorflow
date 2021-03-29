@@ -119,31 +119,30 @@ def HLO_CreateTokenOp : HLO_Op<"create_token", [NoSideEffect]> {
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
 
 class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
-      Type TensorType>: HLO_Op<mnemonic,
-        !listconcat(traits,
-        [InferShapedTypeOpInterface, InferFusibilityOpInterface,
-        SameOperandsAndResultShape])> {
-    let arguments = (ins TensorType:$operand);
-    let results = (outs TensorType);
-    let extraClassDeclaration = [{
-      static  LogicalResult inferReturnTypeComponents(
-          MLIRContext* context, Optional<Location> location,
-          ValueRange operands, DictionaryAttr attributes, RegionRange regions,
-          SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
-        return failure();
-      }
-      LogicalResult reifyReturnTypeShapes(
-          OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
-        return ::mlir::mhlo::deriveShapeFromFirstOperand(&builder, getOperation(),
-                                                         &reifiedReturnShapes);
-      }
-      bool inferInputOutputShapeEquality(int input, int output) {
-        return true;
-      }
-      llvm::Optional<Value> inferEffectiveWorkloadShape() {
-        return getOperation()->getResult(0);
-      }
-    }];
+    Type TensorType> : HLO_Op<mnemonic, traits # [Elementwise,
+    InferShapedTypeOpInterface, InferFusibilityOpInterface,
+    SameOperandsAndResultShape]> {
+  let arguments = (ins TensorType:$operand);
+  let results = (outs TensorType);
+  let extraClassDeclaration = [{
+    static  LogicalResult inferReturnTypeComponents(
+        MLIRContext* context, Optional<Location> location,
+        ValueRange operands, DictionaryAttr attributes, RegionRange regions,
+        SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
+      return failure();
+    }
+    LogicalResult reifyReturnTypeShapes(
+        OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
+      return ::mlir::mhlo::deriveShapeFromFirstOperand(&builder, getOperation(),
+                                                       &reifiedReturnShapes);
+    }
+    bool inferInputOutputShapeEquality(int input, int output) {
+      return true;
+    }
+    llvm::Optional<Value> inferEffectiveWorkloadShape() {
+      return getOperation()->getResult(0);
+    }
+  }];
 }
 
 // Abs supports complex to real, so element type is not guaranteed to match.
@@ -218,6 +217,7 @@ def HLO_LogisticOp: HLO_UnaryElementwiseOp<"logistic",
 def HLO_NotOp: HLO_UnaryElementwiseOp<"not",
     [NoSideEffect, SameOperandsAndResultType], HLO_PredOrIntTensor>,
     BASE_HLO_NotOp {
+    let hasFolder = 1;
 }
 
 def HLO_NegOp: HLO_UnaryElementwiseOp<"negate",
@@ -271,9 +271,8 @@ def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
 class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
-        HLO_Op<mnemonic, !listconcat(traits,
-        [InferShapedTypeOpInterface, InferFusibilityOpInterface,
-        SameOperandsAndResultShape])> {
+    HLO_Op<mnemonic, traits # [InferShapedTypeOpInterface,
+    InferFusibilityOpInterface, SameOperandsAndResultShape, Elementwise]> {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs
@@ -826,8 +825,9 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim",
-      [NoSideEffect]> {
+def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim", [
+    NoSideEffect, DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
+    ["reifyReturnTypeShapes"]>]> {
   string summary = "Broadcast a tensor into the given dynamic shape by adding dimensions.";
   string description = [{
     This is a generalization of the BroadcastInDimOp which accepts its output

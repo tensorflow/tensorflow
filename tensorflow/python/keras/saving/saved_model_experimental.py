@@ -13,18 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 """Deprecated experimental Keras SavedModel implementation."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import os
 import warnings
 
-import six
-
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving import model_config
@@ -59,6 +54,10 @@ sequential = LazyLoader(
     "sequential", globals(),
     "tensorflow.python.keras.engine.sequential")
 # pylint:enable=g-inconsistent-quotes
+
+
+# File name for json format of SavedModel.
+SAVED_MODEL_FILENAME_JSON = 'saved_model.json'
 
 
 @keras_export(v1=['keras.experimental.export_saved_model'])
@@ -151,7 +150,7 @@ def _export_model_json(model, saved_model_path):
   model_json = model.to_json()
   model_json_filepath = os.path.join(
       _get_or_create_assets_dir(saved_model_path),
-      compat.as_text(constants.SAVED_MODEL_FILENAME_JSON))
+      compat.as_text(SAVED_MODEL_FILENAME_JSON))
   with gfile.Open(model_json_filepath, 'w') as f:
     f.write(model_json)
 
@@ -229,7 +228,7 @@ def _get_var_list(model):
 
 
 def create_placeholder(spec):
-  return K.placeholder(shape=spec.shape, dtype=spec.dtype, name=spec.name)
+  return backend.placeholder(shape=spec.shape, dtype=spec.dtype, name=spec.name)
 
 
 def _export_mode(
@@ -259,7 +258,7 @@ def _export_mode(
         'Model does not have an optimizer. Cannot export mode %s' % mode)
 
   model_graph = ops.get_default_graph()
-  with ops.Graph().as_default() as g, K.learning_phase_scope(
+  with ops.Graph().as_default() as g, backend.learning_phase_scope(
       mode == mode_keys.ModeKeys.TRAIN):
 
     if input_signature is None:
@@ -344,7 +343,7 @@ def _create_signature_def_map(model, mode):
   local_vars = set(ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES))
   vars_to_add = set()
   if metrics is not None:
-    for key, value in six.iteritems(metrics):
+    for key, value in metrics.items():
       if isinstance(value, metrics_lib.Metric):
         vars_to_add.update(value.variables)
         # Convert Metric instances to (value_tensor, update_op) tuple.
@@ -416,7 +415,7 @@ def load_from_saved_model(saved_model_path, custom_objects=None):
   model_json_filepath = os.path.join(
       compat.as_bytes(saved_model_path),
       compat.as_bytes(constants.ASSETS_DIRECTORY),
-      compat.as_bytes(constants.SAVED_MODEL_FILENAME_JSON))
+      compat.as_bytes(SAVED_MODEL_FILENAME_JSON))
   with gfile.Open(model_json_filepath, 'r') as f:
     model_json = f.read()
   model = model_config.model_from_json(

@@ -55,6 +55,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@dense_to_ragged_batch
 @@dense_to_sparse_batch
 @@distribute
+@@enable_debug_mode
 @@enumerate_dataset
 @@from_variant
 @@get_next_as_optional
@@ -148,6 +149,7 @@ from tensorflow.python.data.experimental.ops.unique import unique
 from tensorflow.python.data.experimental.ops.writers import TFRecordWriter
 from tensorflow.python.data.ops.dataset_ops import AUTOTUNE
 from tensorflow.python.data.ops.dataset_ops import DatasetSpec as DatasetStructure
+from tensorflow.python.data.ops.dataset_ops import enable_debug_mode
 from tensorflow.python.data.ops.dataset_ops import from_variant
 from tensorflow.python.data.ops.dataset_ops import get_structure
 from tensorflow.python.data.ops.dataset_ops import to_variant

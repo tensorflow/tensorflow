@@ -14,13 +14,9 @@
 # ==============================================================================
 """Tests for training routines."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer
@@ -41,22 +37,23 @@ class TrainingGPUTest(test.TestCase, parameterized.TestCase):
     or `channels_last` image_data_format.
     """
     def prepare_simple_model(input_tensor, loss_name, target):
-      axis = 1 if K.image_data_format() == 'channels_first' else -1
+      axis = 1 if backend.image_data_format() == 'channels_first' else -1
       loss = None
       num_channels = None
       activation = None
       if loss_name == 'sparse_categorical_crossentropy':
-        loss = lambda y_true, y_pred: K.sparse_categorical_crossentropy(  # pylint: disable=g-long-lambda
+        loss = lambda y_true, y_pred: backend.sparse_categorical_crossentropy(  # pylint: disable=g-long-lambda
             y_true, y_pred, axis=axis)
         num_channels = int(np.amax(target) + 1)
         activation = 'softmax'
       elif loss_name == 'categorical_crossentropy':
-        loss = lambda y_true, y_pred: K.categorical_crossentropy(  # pylint: disable=g-long-lambda
+        loss = lambda y_true, y_pred: backend.categorical_crossentropy(  # pylint: disable=g-long-lambda
             y_true, y_pred, axis=axis)
         num_channels = target.shape[axis]
         activation = 'softmax'
       elif loss_name == 'binary_crossentropy':
-        loss = lambda y_true, y_pred: K.binary_crossentropy(y_true, y_pred)  # pylint: disable=unnecessary-lambda
+        loss = lambda y_true, y_pred: backend.binary_crossentropy(  # pylint: disable=g-long-lambda, unnecessary-lambda
+            y_true, y_pred)
         num_channels = target.shape[axis]
         activation = 'sigmoid'
 
@@ -89,11 +86,11 @@ class TrainingGPUTest(test.TestCase, parameterized.TestCase):
         loss_channels_last = [0., 0., 0.]
         loss_channels_first = [0., 0., 0.]
 
-        old_data_format = K.image_data_format()
+        old_data_format = backend.image_data_format()
 
         # Evaluate a simple network with channels last, with all three loss
         # functions:
-        K.set_image_data_format('channels_last')
+        backend.set_image_data_format('channels_last')
         data = np.moveaxis(data_channels_first, 1, -1)
         for index, loss_function in enumerate(losses_to_test):
           labels = np.moveaxis(labels_channels_first[index], 1, -1)
@@ -104,7 +101,7 @@ class TrainingGPUTest(test.TestCase, parameterized.TestCase):
 
         # Evaluate the same network with channels first, with all three loss
         # functions:
-        K.set_image_data_format('channels_first')
+        backend.set_image_data_format('channels_first')
         data = data_channels_first
         for index, loss_function in enumerate(losses_to_test):
           labels = labels_channels_first[index]
@@ -113,7 +110,7 @@ class TrainingGPUTest(test.TestCase, parameterized.TestCase):
           loss_channels_first[index] = model.evaluate(x=data, y=labels,
                                                       batch_size=1, verbose=0)
 
-        K.set_image_data_format(old_data_format)
+        backend.set_image_data_format(old_data_format)
 
         np.testing.assert_allclose(
             loss_channels_first,

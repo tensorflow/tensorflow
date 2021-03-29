@@ -61,7 +61,8 @@ class MemorySpaceAssignmentTest : public HloTestBase,
         CostAnalysisPrefetchIntervalPicker(
             *cost_analysis, /*min_async_copy_to_overlap_ratio=*/0.8,
             /*max_async_copy_to_overlap_ratio=*/10.0,
-            /*preferred_async_copy_to_overlap_ratio=*/1.5));
+            /*preferred_async_copy_to_overlap_ratio=*/1.5,
+            /*buffer_size_for_max_async_copy=*/0));
     return AssignMemorySpace(
         module, /*max_outstanding_async_copies=*/-1,
         MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
@@ -4119,7 +4120,8 @@ TEST_P(MemorySpaceAssignmentTest, MoveCopyDoneEarlier) {
       *cost_analysis,
       /*min_async_copy_to_overlap_ratio=*/1.0,
       /*max_async_copy_to_overlap_ratio=*/4.0,
-      /*preferred_async_copy_to_overlap_ratio=*/1.5);
+      /*preferred_async_copy_to_overlap_ratio=*/1.5,
+      /*buffer_size_for_max_async_copy=*/0);
   AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
                     buffer_interval_compare, &interval_picker);
 
@@ -5423,7 +5425,8 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrder) {
       *cost_analysis,
       /*min_async_copy_to_overlap_ratio=*/1.0,
       /*max_async_copy_to_overlap_ratio=*/4.0,
-      /*preferred_async_copy_to_overlap_ratio=*/2.0);
+      /*preferred_async_copy_to_overlap_ratio=*/2.0,
+      /*buffer_size_for_max_async_copy=*/0);
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   const HloUse use{root, /*operand_number=*/1, /*operand_index=*/{}};
@@ -5520,7 +5523,8 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrderWhile) {
       *cost_analysis,
       /*min_async_copy_to_overlap_ratio=*/1.0,
       /*max_async_copy_to_overlap_ratio=*/12.0,
-      /*preferred_async_copy_to_overlap_ratio=*/2.0);
+      /*preferred_async_copy_to_overlap_ratio=*/2.0,
+      /*buffer_size_for_max_async_copy=*/0);
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   const HloUse use{root, /*operand_number=*/1, /*operand_index=*/{}};
@@ -5600,7 +5604,8 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, NestedWhile) {
       *cost_analysis,
       /*min_async_copy_to_overlap_ratio=*/1.0,
       /*max_async_copy_to_overlap_ratio=*/12.0,
-      /*preferred_async_copy_to_overlap_ratio=*/2.0);
+      /*preferred_async_copy_to_overlap_ratio=*/2.0,
+      /*buffer_size_for_max_async_copy=*/0);
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   const HloUse use{root, /*operand_number=*/1, /*operand_index=*/{}};
@@ -5666,7 +5671,8 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, ConsecutiveConditionals) {
       *cost_analysis,
       /*min_async_copy_to_overlap_ratio=*/1.0,
       /*max_async_copy_to_overlap_ratio=*/12.0,
-      /*preferred_async_copy_to_overlap_ratio=*/2.0);
+      /*preferred_async_copy_to_overlap_ratio=*/2.0,
+      /*buffer_size_for_max_async_copy=*/0);
 
   LOG(INFO) << module->ToString();
 

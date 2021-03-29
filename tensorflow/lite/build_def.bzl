@@ -115,6 +115,7 @@ def tflite_symbol_opts():
     """Defines linker flags whether to include symbols or not."""
     return select({
         clean_dep("//tensorflow:debug"): [],
+        clean_dep("//tensorflow/lite:tflite_keep_symbols"): [],
         "//conditions:default": [
             "-s",  # Omit symbol table, for all non debug builds
         ],

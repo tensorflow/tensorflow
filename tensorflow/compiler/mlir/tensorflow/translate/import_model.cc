@@ -149,7 +149,8 @@ void LoadImporterDialects(mlir::MLIRContext& context) {
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
   context.appendDialectRegistry(registry);
-  context.loadAllAvailableDialects();
+  for (llvm::StringRef name : registry.getDialectNames())
+    context.getOrLoadDialect(name);
 }
 
 // This class is used to generate new MLIR function name strings that are both
@@ -557,7 +558,7 @@ Status ImporterBase::RemoveBackedges(const Graph& graph) {
   graph_ = absl::make_unique<Graph>(graph.flib_def());
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
-  opts.add_default_attributes = false;
+  opts.add_default_attributes = true;
   TF_RETURN_IF_ERROR(::tensorflow::ConvertGraphDefToGraph(
       opts, std::move(graph_def), graph_.get()));
 
@@ -3502,15 +3503,9 @@ class SavedModelSignatureDefImporterLite {
   static StatusOr<mlir::OwningModuleRef> Convert(
       SavedModelMLIRImportInput& input, absl::Span<std::string> exported_names,
       mlir::MLIRContext* context, bool import_restore = true) {
-    LoadImporterDialects(*context);
     SavedModelSignatureDefImporterLite importer(input, exported_names, context,
                                                 import_restore);
-    TF_ASSIGN_OR_RETURN(auto module, importer.ConvertSignatures());
-
-    SortSavedModelModule(*module);
-    MarkSavedModelFunctionVisibility(*module);
-
-    return module;
+    return importer.ConvertSignatures();
   }
 
  private:
@@ -3694,6 +3689,7 @@ SavedModelSignatureDefImporterLite::ConvertGraph(
   specs.inputs = ParseInputArrays(inputs);
   for (auto& output : outputs) specs.outputs.push_back(output.second.name());
   specs.control_outputs = control_outputs;
+  specs.enable_shape_inference = false;
 
   TF_ASSIGN_OR_RETURN(const auto* subgraph, input_.GetSubGraph(name, specs));
 
@@ -3787,6 +3783,8 @@ SavedModelSignatureDefImporterLite::ParseInputArrays(
 
 StatusOr<mlir::OwningModuleRef>
 SavedModelSignatureDefImporterLite::ConvertSignatures() {
+  LoadImporterDialects(*module_->getContext());
+
   const auto& signatures = input_.meta_graph_def().signature_def();
   PopulateTfVersions(module_.get(),
                      input_.meta_graph_def().graph_def().versions());

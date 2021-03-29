@@ -324,8 +324,8 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
                                                           [4, 4, 4, 4]])])
 
 
-class PaddedBatchDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                                       parameterized.TestCase):
+class PaddedBatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testPaddedBatch(self):

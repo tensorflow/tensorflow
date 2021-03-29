@@ -258,9 +258,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // CHECK-LABEL: func @invalid_function_reused_by_control_flows
   func @invalid_function_reused_by_control_flows(%arg0: tensor<i1>, %arg1: tensor<1x2x3xf32>, %arg2: tensor<3xf32>) -> (tensor<1x2x3xf32>, tensor<3xf32>) {
-    // expected-warning @+1 {{unable to refine shape}}
     %0 = "tf.If"(%arg0, %arg1) {Tcond = i1, Tin = ["tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"], _xla_propagate_compile_time_consts = true, device = "", else_branch = @reused_if_else_branch, is_stateless = true, name = "if", then_branch = @reused_if_then_branch} : (tensor<i1>, tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
-    // expected-warning @+1 {{unable to refine shape}}
     %1 = "tf.If"(%arg0, %arg2) {Tcond = i1, Tin = ["tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"], _xla_propagate_compile_time_consts = true, device = "", else_branch = @reused_if_else_branch, is_stateless = true, name = "if", then_branch = @reused_if_then_branch} : (tensor<i1>, tensor<3xf32>) -> tensor<3xf32>
     return %0, %1 : tensor<1x2x3xf32>, tensor<3xf32>
   }
@@ -369,8 +367,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // Tests that tensor.cast result shapes are refined.
   // CHECK-LABEL: func @tensor_cast_refine
   func @tensor_cast_refine(%arg0: tensor<4xi32>) -> (tensor<*xi32>) {
-    // CHECK: tensor.cast
-    // CHECK-SAME: tensor<4xi32> to tensor<4xi32>
+    // CHECK-NOT: tensor.cast
     %0 = tensor.cast %arg0 : tensor<4xi32> to tensor<*xi32>
     return %0 : tensor<*xi32>
   }
@@ -788,13 +785,20 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return %3#0, %3#1 : tensor<*xf32>, tensor<*xf32>
   }
 
-  // CHECK-LABEL: func @tensor_cast(%arg0: tensor<1xi32>) -> tensor<1xi32>
-  func @tensor_cast(%arg0: tensor<1xi32>) -> tensor<*xi32> {
+  // CHECK-LABEL: func @tensor_cast_dont_infer
+  func @tensor_cast_dont_infer(%arg0: tensor<?xi32>) -> tensor<1xi32> {
    // CHECK: %[[RESULT:.*]] = tensor.cast
-   // CHECK-SAME: tensor<1xi32> to tensor<1xi32>
+   // CHECK-SAME: tensor<?xi32> to tensor<1xi32>
    // CHECK: return %[[RESULT]] : tensor<1xi32>
-    %1 = tensor.cast %arg0 : tensor<1xi32> to tensor<*xi32>
-    return %1 : tensor<*xi32>
+    %2 = tensor.cast %arg0 : tensor<?xi32> to tensor<1xi32>
+    return %2 : tensor<1xi32>
+  }
+
+  // CHECK-LABEL: func @tensor_cast_partial_infer
+  func @tensor_cast_partial_infer(%arg0: tensor<?x10xi32>) -> tensor<10x?xi32> {
+   // CHECK: return {{.*}} : tensor<10x10xi32>
+    %2 = tensor.cast %arg0 : tensor<?x10xi32> to tensor<10x?xi32>
+    return %2 : tensor<10x?xi32>
   }
 
   // CHECK-LABEL: operand_pack_unranked
@@ -1157,5 +1161,35 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %0 = "tf.TensorListReserve"(%arg1, %arg1) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<!tf.variant<tensor<*x!tf.variant>>>
     %1 = "tf.TensorListSetItem"(%0, %arg1, %arg2) {device = ""} : (tensor<!tf.variant<tensor<*x!tf.variant>>>, tensor<i32>, tensor<!tf.variant>) -> tensor<!tf.variant<tensor<*x!tf.variant>>>
     return
+  }
+
+  // CHECK-LABEL: call_partitioned_call_const_index() -> (tensor<index>, tensor<?xindex>)
+  func @call_partitioned_call_const_index() -> (tensor<*xindex>, tensor<?xindex>) {
+    %0 = call @partitioned_called_const_index() : () -> tensor<*xindex>
+    // CHECK: tensor.cast{{.*}} : tensor<index> to tensor<*xindex>
+    %1 = shape.shape_of %0 : tensor<*xindex> -> tensor<?xindex>
+    return %0, %1 : tensor<*xindex>, tensor<?xindex>
+  }
+  // CHECK-LABEL: func @partitioned_called_const_index
+  // CHECK-SAME: -> tensor<index>
+  func @partitioned_called_const_index() -> (tensor<*xindex>) {
+    %0 = constant dense<5> : tensor<index>
+    // CHECK-NOT: tensor.cast
+    %1 = tensor.cast %0 : tensor<index> to tensor<*xindex>
+    return %1 : tensor<*xindex>
+  }
+
+  func private @quant_fn(%arg0: tensor<*x!quant.uniform<u8:f32, 0.007:128>>) -> () {
+    return
+  }
+  // CHECK-LABEL: unppack_const_quant() -> tensor<!quant.uniform<u8:f32, 7.000000e-03:128>>
+  func @unppack_const_quant() -> (tensor<*x!quant.uniform<u8:f32, 0.007:128>>) {
+    %cst = constant dense<5> : tensor<2xi8>
+    %0 = "quant.scast"(%cst) : (tensor<2xi8>) -> tensor<2x!quant.uniform<u8:f32, 0.007:128>>
+    // CHECK: (tensor<*x!quant.uniform<u8:f32, 7.000000e-03:128>>, tensor<!quant.uniform<u8:f32, 7.000000e-03:128>>)
+    %1:2 = "tfl.unpack"(%0) {axis = 0 : i32, num = 2 : i32} : (tensor<2x!quant.uniform<u8:f32, 0.007:128>>) -> (tensor<*x!quant.uniform<u8:f32, 0.007:128>>, tensor<*x!quant.uniform<u8:f32, 0.007:128>>)
+    call @quant_fn(%1#0) : (tensor<*x!quant.uniform<u8:f32, 0.007:128>>) -> ()
+
+    return %1#1 : tensor<*x!quant.uniform<u8:f32, 0.007:128>>
   }
 }

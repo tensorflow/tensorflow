@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM || INTEL_MKL
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM || ENABLE_MKL
 
 #include "tensorflow/core/grappler/optimizers/auto_mixed_precision.h"
 
@@ -1176,7 +1176,7 @@ TEST_F(AutoMixedPrecisionTest, TanhOp) {
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#if INTEL_MKL
+#if ENABLE_MKL
 
 class AutoMixedPrecisionMklTest : public GrapplerTest {
  protected:
@@ -1352,10 +1352,10 @@ TEST_F(AutoMixedPrecisionMklTest, TensorListSetGet) {
   }
 }
 
-#endif  // INTEL_MKL
+#endif  // ENABLE_MKL
 
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM || INTEL_MKL
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM || ENABLE_MKL

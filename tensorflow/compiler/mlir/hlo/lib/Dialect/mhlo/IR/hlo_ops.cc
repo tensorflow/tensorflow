@@ -597,12 +597,18 @@ OpFoldResult GetTupleElementOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(TupleOp op) {
-  SmallVector<Type, 8> operandTypes = {op.operand_type_begin(),
-                                       op.operand_type_end()};
-  auto expectedType = TupleType::get(op.getContext(), operandTypes);
-  if (op.getType() != expectedType) {
-    return op.emitOpError(llvm::formatv("has return type {0}, but expected {1}",
-                                        op.getType(), expectedType));
+  auto opType = op.getType().dyn_cast<TupleType>();
+  if (!opType) return op.emitOpError("tuple op with non-tuple result");
+  if (op.getNumOperands() != opType.size())
+    return op.emitOpError(
+        "number of operands to tuple expected to match number of types in "
+        "resultant tuple type");
+  for (auto it : llvm::enumerate(
+           llvm::zip_first(op.getOperandTypes(), opType.getTypes()))) {
+    if (std::get<0>(it.value()) != std::get<1>(it.value()))
+      return op.emitOpError("has return type mismatch at ")
+             << it.index() << "th value (" << std::get<0>(it.value())
+             << " != " << std::get<1>(it.value()) << ")";
   }
   return success();
 }
@@ -900,6 +906,18 @@ void DynamicBroadcastInDimOp::getCanonicalizationPatterns(
                  DynamicBroadcastToOwnShape_1, DynamicBroadcastToOwnShape_2,
                  DynamicBroadcastToOwnShape_3, DynamicBroadcastToOwnShape_4>(
       context);
+}
+
+LogicalResult DynamicBroadcastInDimOp::inferReturnTypeComponents(
+    MLIRContext*, llvm::Optional<mlir::Location>, ValueRange, DictionaryAttr,
+    RegionRange, llvm::SmallVectorImpl<mlir::ShapedTypeComponents>&) {
+  return failure();
+}
+
+LogicalResult DynamicBroadcastInDimOp::reifyReturnTypeShapes(
+    OpBuilder&, SmallVectorImpl<Value>& reifiedReturnShapes) {
+  reifiedReturnShapes.push_back(output_dimensions());
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -2177,6 +2195,12 @@ struct round {
   }
 };
 
+struct logical_not {
+  APInt operator()(const APInt& i) {
+    return APInt(i.getBitWidth(), static_cast<uint64_t>(!i));
+  }
+};
+
 #define UNARY_FOLDER(Op, Func)                                                \
   OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                          \
     if (getElementTypeOrSelf(getType()).isa<FloatType>())                     \
@@ -2184,6 +2208,13 @@ struct round {
     if (getElementTypeOrSelf(getType()).isa<IntegerType>())                   \
       return UnaryFolder<Op, IntegerType, APInt, Func<APInt>>(this, attrs);   \
     return {};                                                                \
+  }
+
+#define UNARY_FOLDER_INT(Op, Func)                                   \
+  OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                 \
+    if (getElementTypeOrSelf(getType()).isa<IntegerType>())          \
+      return UnaryFolder<Op, IntegerType, APInt, Func>(this, attrs); \
+    return {};                                                       \
   }
 
 #define UNARY_FOLDER_FLOAT(Op, Func)                                 \
@@ -2194,7 +2225,12 @@ struct round {
   }
 
 UNARY_FOLDER(NegOp, std::negate);
+UNARY_FOLDER_INT(NotOp, logical_not);
 UNARY_FOLDER_FLOAT(RoundOp, round);
+
+#undef UNARY_FOLDER
+#undef UNARY_FOLDER_INT
+#undef UNARY_FOLDER_FLOAT
 
 //===----------------------------------------------------------------------===//
 // BinaryOps

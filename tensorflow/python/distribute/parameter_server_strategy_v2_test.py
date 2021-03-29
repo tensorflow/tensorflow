@@ -24,18 +24,26 @@ import functools
 import os
 
 from absl.testing import parameterized
+import numpy as np
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
+from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import linalg_ops_impl
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.training.tracking import tracking
@@ -67,12 +75,92 @@ class ParameterServerStrategyV2Test(test.TestCase):
       v4 = variables.Variable(initial_value=3.0)
       v5 = variables.Variable(initial_value=4.0)
     # v1 was created outside scope so should be on client.
-    self.assertEqual(v1.device, "/job:chief/replica:0/task:0/device:CPU:0")
+    gpu_devices = context.num_gpus()
+    if gpu_devices:
+      # For tests with GPUs
+      self.assertEqual(v1.device, "/job:chief/replica:0/task:0/device:GPU:0")
+    else:
+      self.assertEqual(v1.device, "/job:chief/replica:0/task:0/device:CPU:0")
     # v2 through v5 are created in scope and in a round-robin manner.
     self.assertEqual(v2.device, "/job:ps/replica:0/task:0/device:CPU:0")
     self.assertEqual(v3.device, "/job:ps/replica:0/task:1/device:CPU:0")
     self.assertEqual(v4.device, "/job:ps/replica:0/task:2/device:CPU:0")
     self.assertEqual(v5.device, "/job:ps/replica:0/task:0/device:CPU:0")
+
+  def testInteractionWithDeviceScope(self):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+
+    # The strategy scope always wins.
+    with strategy.scope():
+      with ops.device("/job:ps/replica:0/task:1"):
+        v0 = variables.Variable(initial_value=0.0)
+      self.assertEqual(v0.device, "/job:ps/replica:0/task:0/device:CPU:0")
+
+      with ops.device("/job:ps/replica:0/task:0"):
+        v1 = variables.Variable(initial_value=0.0)
+      self.assertEqual(v1.device, "/job:ps/replica:0/task:1/device:CPU:0")
+
+    with ops.device("/job:ps/replica:0/task:1"):
+      with strategy.scope():
+        v2 = variables.Variable(initial_value=0.0)
+        self.assertEqual(v2.device, "/job:ps/replica:0/task:2/device:CPU:0")
+
+        v3 = variables.Variable(initial_value=0.0)
+        self.assertEqual(v3.device, "/job:ps/replica:0/task:0/device:CPU:0")
+
+  def testInteractionWithVariableCreatorScope(self):
+
+    def var_creator(next_creator, **kwargs):
+      if "colocate_with" in kwargs:
+        with ops.device(None):
+          with ops.colocate_with(kwargs["colocate_with"]):
+            return next_creator(**kwargs)
+
+      self.assertIn("ps1", kwargs["name"])
+      with ops.device("/job:ps/task:1"):
+        return next_creator(**kwargs)
+
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+
+    # variable_creator_scope itself will work.
+    with variable_scope.variable_creator_scope(var_creator):
+      v0 = variables.Variable(initial_value=0.0, name="ps1_0")
+    self.assertEqual(v0.device, "/job:ps/replica:0/task:1/device:CPU:0")
+
+    # variable_creator_scope inside strategy.scope will not work.
+    with strategy.scope():
+      with variable_scope.variable_creator_scope(var_creator):
+        v1 = variables.Variable(initial_value=0.0, name="ps1_1")
+    self.assertEqual(v1.device, "/job:ps/replica:0/task:0/device:CPU:0")
+
+    # strategy.scope still assigns variables in a round robin fashion.
+    with strategy.scope():
+      v2 = variables.Variable(initial_value=0.0, name="ps1_2")
+    self.assertEqual(v2.device, "/job:ps/replica:0/task:1/device:CPU:0")
+
+    with strategy.scope():
+      v3 = variables.Variable(initial_value=0.0, name="ps1_3")
+    self.assertEqual(v3.device, "/job:ps/replica:0/task:2/device:CPU:0")
+
+    # variable_creator_scope outside strategy.scope will work.
+    with variable_scope.variable_creator_scope(var_creator):
+      with strategy.scope():
+        v4 = variables.Variable(initial_value=0.0, name="ps1_4")
+    self.assertEqual(v4.device, "/job:ps/replica:0/task:1/device:CPU:0")
+
+    with variable_scope.variable_creator_scope(var_creator):
+      with strategy.scope():
+        v5 = variables.Variable(initial_value=0.0, name="ps1_5")
+    self.assertEqual(v5.device, "/job:ps/replica:0/task:1/device:CPU:0")
+
+    # variable_creator_scope can be made to respect "colocate_with" as well.
+    with variable_scope.variable_creator_scope(var_creator):
+      with strategy.scope():
+        with strategy.extended.colocate_vars_with(v1):
+          v6 = variables.Variable(initial_value=0.0, name="ps1_6")
+    self.assertEqual(v6.device, "/job:ps/replica:0/task:0/device:CPU:0")
 
   @contextlib.contextmanager
   def _assertRaisesUsageError(self):
@@ -103,6 +191,19 @@ class ParameterServerStrategyV2Test(test.TestCase):
 
     with self._assertRaisesUsageErrorWithSchedule():
       strategy.run(step_fn, args=(iter(dataset),))
+
+  def testRunUsedWithTestOnlyMode(self):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+    strategy.extended._allow_run_without_coordinator = True
+    dataset = dataset_ops.DatasetV2.range(15)
+    with strategy.scope():
+      v = variables.Variable(1, dtype=dtypes.int64)
+
+    def step_fn(iterator):
+      return next(iterator) + v
+
+    strategy.run(step_fn, args=(iter(dataset),))
 
   def testReduceNotUsedWithClusterCoordinator(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
@@ -192,6 +293,72 @@ class VariablePartitioningTest(test.TestCase, parameterized.TestCase):
     self.assertRegex(v2.variables[1].device, "/job:ps/replica:0/task:1")
     self.assertAllEqual(v2.variables[0], [[0], [1], [2]])
     self.assertAllEqual(v2.variables[1], [[3], [4], [5]])
+
+  def testBasicVariableWithAggregation(self):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+    strategy.extended._allow_run_without_coordinator = True
+    with strategy.scope():
+      v = variables.Variable(
+          initial_value=[0, 0, 0, 0, 0, 0, 0, 0],
+          dtype=dtypes.float32,
+          aggregation=variable_scope.VariableAggregation.SUM)
+
+    if strategy.num_replicas_in_sync > 1:
+      self.assertIsInstance(v, ps_values.AggregatingVariable)
+    else:
+      self.assertIsInstance(v, variables.Variable)
+
+    def replica_fn():
+      replica_id = distribution_strategy_context.get_replica_context(
+      ).replica_id_in_sync_group
+      val = array_ops.reshape(
+          math_ops.cast(replica_id + 10, dtype=v.dtype), [1])
+      v.assign(
+          array_ops.concat(
+              [val, constant_op.constant([1., 2., 3., 4., 5., 6., 7.])], 0))
+
+    strategy.run(replica_fn)
+
+    expected_result = np.arange(8.) * strategy.num_replicas_in_sync
+    for i in range(strategy.num_replicas_in_sync):
+      expected_result[0] = expected_result[0] + i + 10
+    self.assertAllEqual(v, expected_result)
+
+  def testBasicShardedVariableWithAggregation(self):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver, sharded_variable.FixedShardsPartitioner(2))
+    strategy.extended._allow_run_without_coordinator = True
+    with strategy.scope():
+      v = variables.Variable(
+          initial_value=[0, 0, 0, 0, 0, 0, 0, 0],
+          dtype=dtypes.float32,
+          aggregation=variable_scope.VariableAggregation.SUM)
+
+    self.assertIsInstance(v, sharded_variable.ShardedVariable)
+    self.assertLen(v.variables, 2)
+    if strategy.num_replicas_in_sync > 1:
+      self.assertIsInstance(v.variables[0], ps_values.AggregatingVariable)
+    else:
+      self.assertIsInstance(v.variables[0], variables.Variable)
+
+    def replica_fn():
+      replica_id = distribution_strategy_context.get_replica_context(
+      ).replica_id_in_sync_group
+      val = array_ops.reshape(
+          math_ops.cast(replica_id + 10, dtype=v.dtype), [1])
+      v.assign(
+          array_ops.concat(
+              [val, constant_op.constant([1., 2., 3., 4., 5., 6., 7.])], 0))
+
+    strategy.run(replica_fn)
+
+    expected_result = np.arange(8.) * strategy.num_replicas_in_sync
+    for i in range(strategy.num_replicas_in_sync):
+      expected_result[0] = expected_result[0] + i + 10
+    expected_result = np.array_split(expected_result, 2)
+    self.assertAllEqual(expected_result[0], v.variables[0])
+    self.assertAllEqual(expected_result[1], v.variables[1])
 
   def testNonCallableInitialValue(self):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
@@ -513,4 +680,5 @@ class ClusterTypeNameTest(test.TestCase):
 
 
 if __name__ == "__main__":
+  v2_compat.enable_v2_behavior()
   test.main()

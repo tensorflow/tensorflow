@@ -81,6 +81,7 @@ class ProcessState : public ProcessStateInterface {
   ProcessState();
   virtual ~ProcessState() {}
   friend class GPUProcessState;
+  friend class PluggableDeviceProcessState;
 
   // If these flags need to be runtime configurable consider adding
   // them to ConfigProto.

@@ -43,7 +43,7 @@ struct ChloLegalizeToHloPass
 
   void runOnFunction() override {
     ConversionTarget conversionTarget(getContext());
-    OwningRewritePatternList conversionPatterns;
+    OwningRewritePatternList conversionPatterns(&getContext());
     conversionTarget.addIllegalDialect<chlo::HloClientDialect>();
 
     // Consider the mhlo dialect legal for tests. Also add helper dialects

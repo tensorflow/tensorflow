@@ -96,8 +96,8 @@ class ShardTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, expected_output=[5])
 
 
-class ShardDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                                 parameterized.TestCase):
+class ShardCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                          parameterized.TestCase):
 
   def _build_dataset(self, num_elements, num_shards, index):
     return dataset_ops.Dataset.range(num_elements).shard(num_shards, index)

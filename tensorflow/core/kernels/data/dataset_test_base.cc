@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
@@ -352,6 +353,8 @@ Status DatasetOpsTestBase::CreateIteratorContext(
     std::unique_ptr<IteratorContext>* iterator_context) {
   IteratorContext::Params params(op_context);
   params.resource_mgr = op_context->resource_manager();
+  function_handle_cache_ = absl::make_unique<FunctionHandleCache>(flr_);
+  params.function_handle_cache = function_handle_cache_.get();
   params.cancellation_manager = cancellation_manager_.get();
   *iterator_context = absl::make_unique<IteratorContext>(params);
   return Status::OK();

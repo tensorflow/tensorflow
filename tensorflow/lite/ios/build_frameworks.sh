@@ -161,15 +161,10 @@ if ! grep -q "3.4.0" ".bazelversion"; then
   echo "3.4.0" > .bazelversion
 fi
 
-# Check if users already run configure
-if [ ! -f "$ROOT_DIR/.tf_configure.bazelrc" ]; then
-  echo "ERROR: Please run ./configure first."
+# Check if users ran configure with iOS enabled.
+if [ ! -f "$ROOT_DIR/TensorFlowLiteObjC.podspec" ]; then
+  echo "ERROR: Please run ./configure with iOS config."
   exit 1
-else
-  if ! grep -q "TF_CONFIGURE_IOS=\"1\"" "$ROOT_DIR/.tf_configure.bazelrc"; then
-    echo "ERROR: Please run ./configure with iOS config."
-    exit 1
-  fi
 fi
 
 # Prepare the tmp directory.

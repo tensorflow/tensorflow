@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -201,7 +202,9 @@ class ConvolutionVisitor {
 
   ~ConvolutionVisitor() = default;
 
-  explicit ConvolutionVisitor(int64 limit_on_batch_size,
+  explicit ConvolutionVisitor(bool enable_propagations_on_base_dilations,
+                              bool enable_propagations_on_window_dilations,
+                              int64 limit_on_batch_size,
                               HloComputation* computation);
 
   int64 get_chosen_spatial_dim(HloInstruction* convolution) {
@@ -258,6 +261,10 @@ class ConvolutionVisitor {
   // Limit on batch size to apply this technique on.
   int64 limit_on_batch_size_;
 
+  // Controller flags for backprop space-to-batch propagations.
+  bool enable_propagations_on_base_dilations_;
+  bool enable_propagations_on_window_dilations_;
+
   // We choose the new batch size to be kNumSplits times that of the old batch
   // so that space-to-batch propagation through several convolutional layers is
   // consistent.
@@ -267,10 +274,16 @@ class ConvolutionVisitor {
   static constexpr int64 kReduceWindowSearchDepth = 10;
 };
 
-ConvolutionVisitor::ConvolutionVisitor(int64 limit_on_batch_size,
-                                       HloComputation* computation) {
+ConvolutionVisitor::ConvolutionVisitor(
+    bool enable_propagations_on_base_dilations,
+    bool enable_propagations_on_window_dilations, int64 limit_on_batch_size,
+    HloComputation* computation) {
   computation_ = computation;
   limit_on_batch_size_ = limit_on_batch_size;
+  enable_propagations_on_base_dilations_ =
+      enable_propagations_on_base_dilations;
+  enable_propagations_on_window_dilations_ =
+      enable_propagations_on_window_dilations;
   for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
     if (inst->opcode() != HloOpcode::kConvolution) {
       continue;
@@ -320,6 +333,9 @@ bool ConvolutionVisitor::IsConvSuitableForSpaceToBatch(
 
   // TODO(b/168316428): Support base dilations more generically.
   if (c.base_dilation_factor != 1) {
+    if (!enable_propagations_on_base_dilations_) {
+      return false;
+    }
     if (c.stride != 1) {
       return false;
     }
@@ -826,6 +842,11 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
   }
 
   if (consumer->opcode() == HloOpcode::kConvolution) {
+    if (!ConsumeFuel("space-to-batch-converter", [&] {
+          return "Skipping space-to-batch propagation because fuel over\n";
+        })) {
+      return false;
+    }
     // Lambda that checks basic sanity of dimension propagation on convolutions.
     // This includes: the split dimension from the previous convolution should
     // remain the same. No feature/batch dimension should be turned into a
@@ -884,6 +905,9 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
       return true;
     }
 
+    if (!enable_propagations_on_window_dilations_) {
+      return false;
+    }
     // Check for space-to-depth readiness here. Note this is not done in
     // SupportedOpForPropagation because the readiness is dependent upon
     // space-to-batchedness of the operands.
@@ -2075,8 +2099,6 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
   // Create the new convolution dim numbers.
   auto new_dim_numbers = permuted_conv_dims_numbers;
 
-  VLOG(1) << "spatial size " << c.spatial_size;
-
   const int64 num_splits = kNumSplits;
   const int64 output_offsets = convolution->shape().dimensions(
       permuted_conv_dims_numbers.output_spatial_dimensions(
@@ -2087,6 +2109,8 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
   int64 spatial_split_size =
       CeilOfRatio(output_offsets_per_split, c.base_dilation_factor) * c.stride;
 
+  VLOG(1) << "spatial size " << c.spatial_size << " halo size " << c.halo_size
+          << " spatial_split_size " << spatial_split_size;
   // Keep increasing the split size so that overall size isn't smaller than the
   // original spatial dimension. Unlike for the first space-to-batch'ed
   // convolution, while propagating, we can use the last halo_size as available
@@ -2094,7 +2118,7 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
   while (spatial_split_size * num_splits + c.halo_size - c.spatial_size < 0) {
     spatial_split_size += c.stride;
   }
-
+  VLOG(1) << "Modified spatial_split_size " << spatial_split_size;
   const int64 new_space_size =
       activations_new->shape().dimensions(c.spatial_dimension_to_split);
 
@@ -2108,23 +2132,14 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
             activations_new, activations_batch_dim, old_batch_size,
             c.spatial_dimension_to_split, spatial_split_size));
 
-    TF_ASSIGN_OR_RETURN(
-        activations_new,
-        HaloDuplicateWithSlice(activations_new, c.spatial_dimension_to_split,
-                               activations_batch_dim, old_batch_size,
-                               /*low_padding=*/c.base_dilation_factor != 1 &&
-                                       c.inherent_low_padding != 0
-                                   ? c.base_dilation_factor - 1
-                                   : c.inherent_low_padding,
-                               c.inherent_high_padding,
-                               slice_size - spatial_split_size,
-                               old_split_dim_size));
   } else {
     // If the ideal spatial_split_size was smaller than the incoming spatial
     // dimension size, we don't need reshaping. Instead, we determine the
     // additional space available, and adjust the required slice size (and
     // thereby the halo size).
-    VLOG(3) << "Decreasing the spatial size while propagating";
+    VLOG(3)
+        << "Decreasing the spatial size while propagating spatial_split_size "
+        << spatial_split_size << " new_space_size " << new_space_size;
     if (spatial_split_size < new_space_size) {
       // If there's a stride mismatch, we change the new_space_size be
       // smaller (equal to spatial_split_size).
@@ -2143,19 +2158,20 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
                                           static_cast<int64>(0));
       }
     }
-
-    TF_ASSIGN_OR_RETURN(
-        activations_new,
-        HaloDuplicateWithSlice(activations_new, c.spatial_dimension_to_split,
-                               activations_batch_dim, old_batch_size,
-                               /*low_padding=*/c.base_dilation_factor != 1 &&
-                                       c.inherent_low_padding != 0
-                                   ? c.base_dilation_factor - 1
-                                   : c.inherent_low_padding,
-                               c.inherent_high_padding,
-                               slice_size - spatial_split_size,
-                               old_split_dim_size));
   }
+
+  // For space-to-batch supported base-dilated convolutions, the low padding is
+  // is passed on to the new convolutions. Halo does not have to account for it.
+  TF_ASSIGN_OR_RETURN(activations_new,
+                      HaloDuplicateWithSlice(
+                          activations_new, c.spatial_dimension_to_split,
+                          activations_batch_dim, old_batch_size,
+                          /*low_padding=*/c.base_dilation_factor != 1 &&
+                                  c.inherent_low_padding != 0
+                              ? 0
+                              : c.inherent_low_padding,
+                          c.inherent_high_padding,
+                          slice_size - spatial_split_size, old_split_dim_size));
 
   // We will generate output such that batch is followed by the split spatial
   // dimension.
@@ -2848,6 +2864,11 @@ ConvolutionVisitor::ConvDetails ConvolutionVisitor::GetConvolutionDetails(
 
 Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
     HloInstruction* convolution) {
+  if (!ConsumeFuel("space-to-batch-converter", [&] {
+        return "Skipping space-to-batch propagation because fuel over\n";
+      })) {
+    return Status::OK();
+  }
   VLOG(1) << "Handling conv " << convolution->ToString();
 
   changed_ = false;
@@ -3036,20 +3057,22 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
 
 }  // namespace
 
-StatusOr<bool> ConvolutionSpaceToBatchConverter::Run(HloModule* module) {
-  XLA_VLOG_LINES(2, "ConvolutionSpaceToBatchConverter::Run(), before:\n" +
-                        module->ToString());
+StatusOr<bool> SpaceToBatchConverter::Run(HloModule* module) {
+  XLA_VLOG_LINES(
+      2, "SpaceToBatchConverter::Run(), before:\n" + module->ToString());
   bool changed = false;
 
   for (auto* comp : module->MakeNonfusionComputations()) {
-    ConvolutionVisitor visitor(limit_on_batch_size_, comp);
+    ConvolutionVisitor visitor(enable_propagations_on_base_dilations_,
+                               enable_propagations_on_window_dilations_,
+                               limit_on_batch_size_, comp);
     if (visitor.Run().ValueOrDie()) {
       changed = true;
     }
     VLOG(1) << "Done operating on computation";
   }
-  XLA_VLOG_LINES(2, "ConvolutionSpaceToBatchConverter::Run(), after:\n" +
-                        module->ToString());
+  XLA_VLOG_LINES(2,
+                 "SpaceToBatchConverter::Run(), after:\n" + module->ToString());
   return changed;
 }
 

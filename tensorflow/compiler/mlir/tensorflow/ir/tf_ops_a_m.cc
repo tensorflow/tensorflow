@@ -739,11 +739,9 @@ LogicalResult FoldConstantCaseOp::matchAndRewrite(
 
   auto func = op.branches()[index].cast<SymbolRefAttr>();
   auto empty = rewriter.getStringAttr("");
-  auto call_op = rewriter.create<PartitionedCallOp>(
-      op.getLoc(), op.getResultTypes(), op.getOperands().drop_front(), func,
+  ReplaceTfOpWithNewOp<PartitionedCallOp>(
+      rewriter, op, op.getResultTypes(), op.getOperands().drop_front(), func,
       /*config=*/empty, /*config_proto=*/empty, /*executor_type=*/empty);
-  CopyDeviceAndUnderscoredAttributes(op.getOperation(), call_op);
-  rewriter.replaceOp(op, call_op.getResults());
   return success();
 }
 
@@ -2510,11 +2508,9 @@ LogicalResult FoldConstantIfOp::matchAndRewrite(
   // Replace IfOp with PartitionedCallOp or StatefulPartitionedCallOp.
   auto rewrite = [&](auto op_type) {
     auto empty = rewriter.getStringAttr("");
-    auto call_op = rewriter.create<typename decltype(op_type)::CallOp>(
-        op.getLoc(), op.getResultTypes(), op.input(), func,
+    ReplaceTfOpWithNewOp<typename decltype(op_type)::CallOp>(
+        rewriter, op, op.getResultTypes(), op.input(), func,
         /*config=*/empty, /*config_proto=*/empty, /*executor_type=*/empty);
-    CopyDeviceAndUnderscoredAttributes(op.getOperation(), call_op);
-    rewriter.replaceOp(op, call_op.getResults());
   };
 
   if (op.is_stateless())

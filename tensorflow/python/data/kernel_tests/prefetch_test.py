@@ -76,8 +76,8 @@ class PrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
       thread.join()
 
 
-class PrefetchDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                                    parameterized.TestCase):
+class PrefetchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                             parameterized.TestCase):
 
   def build_dataset(self, seed):
     return dataset_ops.Dataset.range(100).prefetch(10).shuffle(

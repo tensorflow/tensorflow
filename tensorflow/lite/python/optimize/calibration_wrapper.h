@@ -55,7 +55,10 @@ PyObject* AddIntermediateTensors(PyObject* data);
 class CalibrationWrapper {
  public:
   // SWIG caller takes ownership of pointer.
-  static CalibrationWrapper* CreateWrapperCPPFromBuffer(PyObject* data);
+  static CalibrationWrapper* CreateWrapperCPPFromBuffer(
+      PyObject* data, const std::vector<std::string>& registerers_by_name,
+      const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
+      std::string* error_msg);
   ~CalibrationWrapper();
 
   PyObject* Prepare();

@@ -972,14 +972,8 @@ def graph(graph_data):
 
   Usage Example:
   ```py
-  graph = tf.Graph()
-  with graph.as_default():
-    c = tf.constant(30.0)
   writer = tf.summary.create_file_writer("/tmp/mylogs")
-  with writer.as_default():
-    tf.summary.graph(graph)
 
-  # Another example; must attain the concrete function graph manually.
   @tf.function
   def f():
     x = constant_op.constant(2)
@@ -988,6 +982,14 @@ def graph(graph_data):
 
   with writer.as_default():
     tf.summary.graph(f.get_concrete_function().graph)
+
+  # Another example: in a very rare use case, when you are dealing with a TF v1
+  # graph.
+  graph = tf.Graph()
+  with graph.as_default():
+    c = tf.constant(30.0)
+  with writer.as_default():
+    tf.summary.graph(graph)
   ```
 
   Args:

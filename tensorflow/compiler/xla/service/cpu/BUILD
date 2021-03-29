@@ -237,6 +237,9 @@ cc_library(
         "//tensorflow:linux_ppc64le": [
             "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
         ],
+        "//tensorflow:macos_arm64": [
+            "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
+        ],
         "//conditions:default": [
         ],
     }) + if_llvm_system_z_available([

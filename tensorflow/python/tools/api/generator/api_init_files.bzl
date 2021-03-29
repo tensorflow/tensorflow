@@ -21,6 +21,7 @@ TENSORFLOW_API_INIT_FILES = [
     "__internal__/test/__init__.py",
     "__internal__/test/combinations/__init__.py",
     "__internal__/tf2/__init__.py",
+    "__internal__/train/__init__.py",
     "__internal__/types/__init__.py",
     "__internal__/saved_model/__init__.py",
     "__internal__/tracking/__init__.py",
@@ -159,6 +160,7 @@ KERAS_API_INIT_FILES = [
     "keras/preprocessing/text/__init__.py",
     "keras/regularizers/__init__.py",
     "keras/utils/__init__.py",
+    "keras/utils/experimental/__init__.py",
     "keras/wrappers/__init__.py",
     "keras/wrappers/scikit_learn/__init__.py",
 ]

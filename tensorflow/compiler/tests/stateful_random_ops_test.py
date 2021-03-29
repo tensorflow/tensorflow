@@ -77,7 +77,6 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       gen.uniform_full_int(shape=(3,))
 
   @parameterized.parameters(ALGS)
-  @test_util.disable_mlir_bridge("TODO(b/180412889): Crashes with MLIR bridge.")
   def testDefun(self, alg):
     """Test for defun."""
     with ops.device(xla_device_name()):
