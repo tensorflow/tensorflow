@@ -81,6 +81,7 @@ enum class OperationType {
   REDUCE_PRODUCT,
   REDUCE_SUM,
   RELU,
+  RESAMPLER,
   RESHAPE,
   RESIZE,
   RSQRT,

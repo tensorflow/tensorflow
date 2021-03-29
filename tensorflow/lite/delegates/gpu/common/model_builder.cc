@@ -1673,6 +1673,35 @@ class ReLUOperationParser : public TFLiteOperationParser {
   const int clip_;
 };
 
+class ResamplerOperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    return CheckInputsOutputs(context, tflite_node,
+                              /*runtime_inputs=*/2, /*outputs=*/1);
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    RETURN_IF_ERROR(reader->AddInput(node, 0));  // src
+    RETURN_IF_ERROR(reader->AddInput(node, 1));  // warp
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+
+    node->operation.type = ToString(OperationType::RESAMPLER);
+
+    auto src_shape = graph->FindInputs(node->id)[0]->tensor.shape;
+    auto warp_shape = graph->FindInputs(node->id)[1]->tensor.shape;
+
+    auto output_value = graph->FindOutputs(node->id)[0];
+    output_value->tensor.shape =
+        BHWC(src_shape.b, warp_shape.h, warp_shape.w, src_shape.c);
+    return absl::OkStatus();
+  }
+};
+
 class ReshapeOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
@@ -2815,6 +2844,9 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       }
       if (custom_name == "MaxUnpooling2D") {
         return std::make_unique<Unpooling2DOperationParser>();
+      }
+      if (custom_name == "Resampler") {
+        return std::make_unique<ResamplerOperationParser>();
       }
       return NewCustomOperationParser(registration->custom_name);
     }
