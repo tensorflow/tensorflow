@@ -54,6 +54,12 @@ TfLiteStatus AllocateOutputDimensionsFromInput(TfLiteContext* context,
                                                const TfLiteTensor* input2,
                                                TfLiteTensor* output);
 
+// Relocate tensor dims from FlatBuffer to the persistent storage arena.
+// The old dims data is copied to the new storage area.
+// The tensor and eval_tensor must be the same tensor.
+TfLiteStatus RelocateTensorDims(TfLiteContext* context, TfLiteTensor* tensor,
+                                TfLiteEvalTensor* eval_tensor);
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_MICRO_MEMORY_HELPERS_H_
