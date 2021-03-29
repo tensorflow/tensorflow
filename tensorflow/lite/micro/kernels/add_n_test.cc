@@ -28,7 +28,7 @@ namespace {
 constexpr int kMaxInputTensors = 3;
 constexpr int kMaxOutputTensors = 1;
 
-void ExecuteAddN(TfLiteTensor* tensors, const int tensors_count) {
+void ExecuteAddN(TfLiteTensor* tensors, int tensors_count) {
   int input_array_data[kMaxInputTensors + kMaxOutputTensors] = {tensors_count -
                                                                 1};
   for (int i = 1; i < tensors_count; i++) {
