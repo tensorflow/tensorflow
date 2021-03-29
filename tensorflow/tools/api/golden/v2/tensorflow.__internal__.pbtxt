@@ -73,6 +73,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "train"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "types"
     mtype: "<type \'module\'>"
   }
