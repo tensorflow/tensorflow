@@ -23,6 +23,9 @@
 *<SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 *<IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 *<NOTES SHOULD BE GROUPED PER AREA>
+*   TF Core:
+    *   Added `tf.saved_model.experimental.TrackableResource`, which allows the
+        creation of custom wrapper objects for resource tensors.
 
 ## Thanks to our Contributors
 
