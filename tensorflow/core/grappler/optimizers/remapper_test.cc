@@ -433,7 +433,7 @@ class RemapperTensorToHashBucketTest : public RemapperTest {
     GraphDef output;
     TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
 
-	  int found = 0;
+    int found = 0;
     for (const NodeDef& node : output.node()) {
       if (node.name() == "to_bucket") {
         EXPECT_EQ(node.op(), "_TensorToHashBucketFast");

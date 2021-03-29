@@ -983,7 +983,7 @@ bool FindTensorToHashBucket(const RemapperContext& ctx, int node_index,
     return false;
   }
 
-	// Input to the StringToHashBucketFast must be AsString.
+  // Input to the StringToHashBucketFast must be AsString.
   if (node_view->NumRegularFanins() < 1) return false;
 
   const auto& regular_fanin_0 = node_view->GetRegularFanin(0);
@@ -1014,7 +1014,7 @@ bool FindTensorToHashBucket(const RemapperContext& ctx, int node_index,
     return false;
   }
 
-	// An input to the AsString must exist to determine the device.
+  // An input to the AsString must exist to determine the device.
   if (as_string_node_view->NumRegularFanins() < 1) return false;
 
   const auto& fanin_0 = as_string_node_view->GetRegularFanin(0);
@@ -1719,11 +1719,11 @@ Status AddTensorToHashBucketNode(RemapperContext* ctx,
           << " string_to_hash_bucket=" << string_to_hash_bucket.name()
           << " on device=" << pre_as_string.device();
 
-	NodeDef fused_op;
+  NodeDef fused_op;
   fused_op.set_name(string_to_hash_bucket.name());
   fused_op.set_device(pre_as_string.device());
   fused_op.add_input(as_string.input(0));  // 0: input
-	fused_op.set_op(kTensorToHashBucket);
+  fused_op.set_op(kTensorToHashBucket);
 
   auto* attr = fused_op.mutable_attr();
   auto& src_attr0 = as_string.attr();
