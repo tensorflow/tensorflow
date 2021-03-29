@@ -247,7 +247,8 @@ TF::_XlaHostComputeMlirOp CreateHostCompute(
       loc_op->getLoc(), device_output_types, inputs.getArrayRef(),
       builder.getStringAttr(args_communication_key),
       builder.getStringAttr(retvals_communication_key),
-      /*tpu_core=*/builder.getI64IntegerAttr(0));
+      /*tpu_core=*/builder.getI64IntegerAttr(0),
+      /*host_mlir_module=*/builder.getStringAttr(""));
   return host_compute;
 }
 
