@@ -181,21 +181,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "parallel_interleave_benchmark",
-    srcs = ["parallel_interleave_benchmark.py"],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:session",
-        "//tensorflow/python/data/benchmarks:benchmark_base",
-        "//tensorflow/python/data/experimental/ops:interleave_ops",
-        "//tensorflow/python/data/experimental/ops:testing",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
     name = "rejection_resample_benchmark",
     srcs = ["rejection_resample_benchmark.py"],
     tags = ["no_pip"],

@@ -12,16 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Benchmarks for `tf.data.experimental.parallel_interleave()`."""
+"""Benchmarks for `tf.data.Dataset.interleave()`."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 
+from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.experimental.ops import testing
-from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.ops import dataset_ops
 
 NON_PARALLEL = "non_parallel"
@@ -100,6 +100,8 @@ class ParallelInterleaveBenchmark(benchmark_base.DatasetBenchmarkBase):
   def _benchmark(self,
                  interleave_version,
                  num_elements,
+                 benchmark_id,
+                 benchmark_label,
                  initial_delay_us=0,
                  remainder_delay_us=0,
                  cycle_length=10,
@@ -124,33 +126,47 @@ class ParallelInterleaveBenchmark(benchmark_base.DatasetBenchmarkBase):
         num_elements=num_elements,
         iters=iters,
         warmup=True,
+        extras={
+            "model_name":
+                "interleave.benchmark.%s.%d" % (benchmark_label, benchmark_id),
+            "parameters":
+                "%d.%d.%d.%s" %
+                (num_elements, cycle_length, iters, str(num_parallel_calls)),
+        },
         name=name)
 
   def benchmark_remote_file_simulation(self):
-    for version in [EXPERIMENTAL_PARALLEL, CORE_PARALLEL]:
+    for i, version in enumerate([EXPERIMENTAL_PARALLEL, CORE_PARALLEL]):
       self._benchmark(
           interleave_version=version,
           initial_delay_us=100 * 1000,
           remainder_delay_us=1000,
           num_elements=5000,
-          name="remote_file_simulation_" + version)
+          name="remote_file_simulation_" + version,
+          benchmark_id=i,
+          benchmark_label="remote_file")
 
   def benchmark_fast_input(self):
-    for version in [EXPERIMENTAL_PARALLEL, CORE_PARALLEL]:
+    for i, version in enumerate([EXPERIMENTAL_PARALLEL, CORE_PARALLEL]):
       self._benchmark(
           interleave_version=version,
           num_elements=200000,
-          name="fast_input_" + version)
+          name="fast_input_" + version,
+          benchmark_id=i,
+          benchmark_label="fast_input")
 
   # Measure the overhead of parallel interleaves compared to non-parallel
   # interleave.
   def benchmark_single_cycle(self):
-    for version in [NON_PARALLEL, EXPERIMENTAL_PARALLEL, CORE_PARALLEL]:
+    for i, version in enumerate(
+        [NON_PARALLEL, EXPERIMENTAL_PARALLEL, CORE_PARALLEL]):
       self._benchmark(
           interleave_version=version,
           cycle_length=1,
           num_elements=200000,
-          name="single_cycle_" + version)
+          name="single_cycle_" + version,
+          benchmark_id=i,
+          benchmark_label="single_cycle")
 
   # Compare with a more reasonable cycle length. Experimental interleave
   # cannot be compared here because it sets num_parallel_calls = cycle_length.
@@ -159,15 +175,19 @@ class ParallelInterleaveBenchmark(benchmark_base.DatasetBenchmarkBase):
         interleave_version=CORE_PARALLEL,
         num_elements=200000,
         num_parallel_calls=1,
-        name="single_parallel_call_" + CORE_PARALLEL)
+        name="single_parallel_call_" + CORE_PARALLEL,
+        benchmark_id=1,
+        benchmark_label="single_parallel_call")
 
   def benchmark_long_cycle(self):
-    for version in [EXPERIMENTAL_PARALLEL, CORE_PARALLEL]:
+    for i, version in enumerate([EXPERIMENTAL_PARALLEL, CORE_PARALLEL]):
       self._benchmark(
           interleave_version=version,
           cycle_length=1000,
           num_elements=100000,
-          name="long_cycle_" + version)
+          name="long_cycle_" + version,
+          benchmark_id=i,
+          benchmark_label="long_cycle")
 
   def benchmark_stats(self):
     self._benchmark(
@@ -175,7 +195,9 @@ class ParallelInterleaveBenchmark(benchmark_base.DatasetBenchmarkBase):
         cycle_length=50,
         num_elements=1000,
         name="stats",
-        attach_stats_aggregator=True)
+        attach_stats_aggregator=True,
+        benchmark_id=1,
+        benchmark_label="stats")
 
 
 if __name__ == "__main__":
