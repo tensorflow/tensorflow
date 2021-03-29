@@ -1,15 +1,16 @@
 diff --git a/algo/kernels/cnn/hifi4/xa_nn_conv2d_depthwise.c b/algo/kernels/cnn/hifi4/xa_nn_conv2d_depthwise.c
-index 3e29856..e550ebf 100644
+index 3e29856..320987b 100644
 --- a/algo/kernels/cnn/hifi4/xa_nn_conv2d_depthwise.c
 +++ b/algo/kernels/cnn/hifi4/xa_nn_conv2d_depthwise.c
-@@ -249,7 +249,6 @@ WORD32 xa_nn_conv2d_depthwise_getsize
+@@ -249,8 +249,6 @@ WORD32 xa_nn_conv2d_depthwise_getsize
      XA_NNLIB_CHK_COND((kernel_height <= 0), -1);
      XA_NNLIB_CHK_COND((kernel_width <= 0), -1);
      XA_NNLIB_CHK_COND((channels_multiplier <= 0), -1);
 -    XA_NNLIB_CHK_COND((x_stride <= 0 || x_stride > kernel_width), -1);
-     XA_NNLIB_CHK_COND((y_stride <= 0 || y_stride > kernel_height), -1);
+-    XA_NNLIB_CHK_COND((y_stride <= 0 || y_stride > kernel_height), -1);
      XA_NNLIB_CHK_COND((x_padding < 0), -1);
      XA_NNLIB_CHK_COND((y_padding < 0), -1);
+     XA_NNLIB_CHK_COND((output_height <= 0), -1);
 diff --git a/algo/kernels/cnn/hifi4/xa_nn_conv2d_depthwise_sym8sxasym8s.c b/algo/kernels/cnn/hifi4/xa_nn_conv2d_depthwise_sym8sxasym8s.c
 index e719da1..5b7390f 100644
 --- a/algo/kernels/cnn/hifi4/xa_nn_conv2d_depthwise_sym8sxasym8s.c
