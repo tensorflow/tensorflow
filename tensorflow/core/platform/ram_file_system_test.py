@@ -157,49 +157,33 @@ class RamFilesystemTest(test_util.TensorFlowTestCase):
 
   def test_join(self):
 
-    def check():
+    def check(path):
+      with gfile.GFile(path, 'w') as f:
+        f.write('')
       self.assertTrue(gfile.Exists('ram://exists/a'))
       self.assertTrue(gfile.Exists('ram://exists/a/b'))
       self.assertTrue(gfile.Exists('ram://exists/a/b/c.txt'))
+      file_io.delete_recursively_v2('ram://exists')
 
-    path = gfile.join('ram://', 'exists', 'a', 'b', 'c.txt')
-    with gfile.GFile(path, 'w') as f:
-      f.write('')
-    check()
-    gfile.rmtree('ram://exists')
-    
-    path = gfile.join('ram://exists', 'a', 'b', 'c.txt')
-    with gfile.GFile(path, 'w') as f:
-      f.write('')
-    check()
-    gfile.rmtree('ram://exists')
-
-    path = gfile.join('ram://', 'exists/a', 'b', 'c.txt')
-    with gfile.GFile(path, 'w') as f:
-      f.write('')
-    check()
-    gfile.rmtree('ram://exists')
-
-    path = gfile.join('ram://', 'exists', 'a', 'b/c.txt')
-    with gfile.GFile(path, 'w') as f:
-      f.write('')
-    check()
-    gfile.rmtree('ram://exists')
+    check(file_io.join('ram://', 'exists', 'a', 'b', 'c.txt'))
+    check(file_io.join('ram://exists', 'a', 'b', 'c.txt'))
+    check(file_io.join('ram://', 'exists/a', 'b', 'c.txt'))
+    check(file_io.join('ram://', 'exists', 'a', 'b/c.txt'))
 
   def test_walk(self):
     with gfile.GFile('ram://exists/a/b/c.txt', 'w') as f:
       f.write('')
-    res = list(gfile.walk('ram://exists'))
+    res = list(file_io.walk_v2('ram://exists'))
     expected = [
       ('ram://exists', ['a'], []),
       ('ram://exists/a', ['b'], []),
       ('ram://exists/a/b', [], ['c.txt'])
     ]
     self.assertEqual(res, expected)
-  
+
   def test_makedirs(self):
-    gfile.makedirs('ram://exists/a/b')
-    res = list(gfile.walk('ram://exists'))
+    file_io.recursive_create_dir_v2('ram://exists/a/b')
+    res = list(file_io.walk_v2('ram://exists'))
     expected = [('ram://exists', ['a'], []), ('ram://exists/a', ['b'], [])]
     self.assertEqual(res, expected)
 
