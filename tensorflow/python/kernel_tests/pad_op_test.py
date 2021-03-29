@@ -258,6 +258,7 @@ class PadOpTest(test.TestCase):
           [[0, 0], [0, 0], [0, 0], [0, 0]], -123)
 
   def testFloatTypes(self):
+    self.skipTest("b/183965033")
     for t in [np.float16, np.float32, np.float64]:
       self._testAll(np.random.rand(2, 5).astype(t), [[1, 0], [2, 0]], 0.0)
       self._testAll(
