@@ -2625,7 +2625,7 @@ def pybind_extension(
         pytype_deps = [],
         pytype_srcs = []):
     """Builds a generic Python extension module."""
-    _ignore = [module_name, pytype_deps, pytype_srcs]
+    _ignore = [module_name]
     p = name.rfind("/")
     if p == -1:
         sname = name
@@ -2727,7 +2727,8 @@ def pybind_extension(
         data = select({
             "@org_tensorflow//tensorflow:windows": [pyd_file],
             "//conditions:default": [so_file],
-        }),
+        }) + pytype_srcs,
+        deps = pytype_deps,
         srcs_version = srcs_version,
         licenses = licenses,
         testonly = testonly,
