@@ -83,13 +83,13 @@ TfLiteStatus Gather(const TfLiteGatherParams* params,
       for (int coord = 0; coord < coord_size; ++coord) {
         TFLITE_DCHECK_GE(coords_data[coord], 0);
         TFLITE_DCHECK_LT(coords_data[coord], axis_size);
-        std::memcpy(
-            output_data +
-                (((batch * outer_size) + outer) * coord_size + coord) * inner_size,
-            input_data + (((batch * outer_size) + outer) * axis_size +
-                          coords_data[batch * coord_size + coord]) *
-                             inner_size,
-            sizeof(InputT) * inner_size);
+        std::memcpy(output_data +
+                        (((batch * outer_size) + outer) * coord_size + coord) *
+                            inner_size,
+                    input_data + (((batch * outer_size) + outer) * axis_size +
+                                  coords_data[batch * coord_size + coord]) *
+                                     inner_size,
+                    sizeof(InputT) * inner_size);
       }
     }
   }
