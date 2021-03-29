@@ -511,7 +511,13 @@ cuda_py_test(
     size = "small",
     srcs = ["memory_cleanup_test.py"],
     shard_count = 2,
-    tags = ["notsan"],  # TODO(b/144706539)
+    tags = [
+        "no_cuda_asan",  # TODO(b/183963686)
+        "notsan",  # TODO(b/144706539)
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # TODO(b/183963686)
+    ],
     deps = [
         ":test_base",
         "//tensorflow/core:protos_all_py",
