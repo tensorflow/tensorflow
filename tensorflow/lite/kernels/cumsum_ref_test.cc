@@ -68,8 +68,8 @@ class CumSumOpModel {
   std::vector<int32_t> input_shape_;
   std::vector<int32_t> axis_;
   std::vector<T> output_;
-  bool reverse_;
   bool exclusive_;
+  bool reverse_;
 };
 
 TEST(CumSumOpTest, SimpleIntTest) {
