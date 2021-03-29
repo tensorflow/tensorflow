@@ -121,14 +121,16 @@ class Masking(Layer):
     self._compute_output_and_mask_jointly = True
 
   def compute_mask(self, inputs, mask=None):
-    return K.any(math_ops.not_equal(inputs, self.mask_value), axis=-1)
+    return K.any(math_ops.not_equal(inputs, self.mask_value),
+                 axis=list(range(2, len(inputs.shape))))
 
   def call(self, inputs):
+    axes = list(range(2, len(inputs.shape)))
     boolean_mask = K.any(
-        math_ops.not_equal(inputs, self.mask_value), axis=-1, keepdims=True)
+        math_ops.not_equal(inputs, self.mask_value), axis=axes, keepdims=True)
     outputs = inputs * math_ops.cast(boolean_mask, inputs.dtype)
     # Compute the mask and outputs simultaneously.
-    outputs._keras_mask = array_ops.squeeze(boolean_mask, axis=-1)  # pylint: disable=protected-access
+    outputs._keras_mask = array_ops.squeeze(boolean_mask, axis=axes)  # pylint: disable=protected-access
     return outputs
 
   def compute_output_shape(self, input_shape):
