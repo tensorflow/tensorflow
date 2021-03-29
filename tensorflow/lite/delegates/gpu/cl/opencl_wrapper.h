@@ -21,7 +21,6 @@ limitations under the License.
 #include <CL/cl_ext.h>
 #include <CL/cl_gl.h>
 #include <CL/cl_platform.h>
-#include "tensorflow/lite/delegates/gpu/cl/default/qcom_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
