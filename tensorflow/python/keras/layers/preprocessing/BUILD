@@ -535,6 +535,7 @@ tf_py_test(
     size = "medium",
     srcs = ["index_lookup_test.py"],
     python_version = "PY3",
+    tags = ["noasan"],  # TODO(b/183961255)
     deps = [
         ":index_lookup",
         ":preprocessing_test_utils",
@@ -613,6 +614,7 @@ tf_py_test(
     size = "medium",
     srcs = ["integer_lookup_test.py"],
     python_version = "PY3",
+    tags = ["noasan"],  # TODO(b/183961255)
     deps = [
         ":integer_lookup",
         ":preprocessing_test_utils",
