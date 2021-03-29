@@ -65,7 +65,7 @@ string FileSystem::TranslateName(const string& name) const {
   this->ParseURI(name, &scheme, &host, &path);
 
   // If `path` becomes empty, return `/` (`file://` should be `/`), not `.`.
-  if (path.empty()) return "/";
+  if (path.empty()) return string(1,this->Separator());
 
   return this->CleanPath(path);
 }
@@ -204,7 +204,7 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname,
       return exists_status;
     }
     // Basename returns "" for / ending dirs.
-    if (!str_util::EndsWith(remaining_dir, "/")) {
+    if (!str_util::EndsWith(remaining_dir, string(1,this->Separator()))) {
       sub_dirs.push_back(this->Basename(remaining_dir));
     }
     remaining_dir = this->Dirname(remaining_dir);
