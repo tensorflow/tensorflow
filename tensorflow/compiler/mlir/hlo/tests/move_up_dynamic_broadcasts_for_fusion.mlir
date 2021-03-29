@@ -97,3 +97,18 @@ func @cast_sub(%arg0: tensor<?x32xi16>, %arg1: tensor<?x?x32xf16>)
   }
   return %4 : tensor<?x?x32xf16>
 }
+
+// -----
+
+// CHECK-LABEL: @inline_bcasted_shape_operands
+// CHECK-SAME: (%[[A:.*]]: tensor<?xindex>, %[[B:.*]]: tensor<?xindex>, %[[C:.*]]: tensor<?xindex>)
+func @inline_bcasted_shape_operands(%a : tensor<?xindex>, %b : tensor<?xindex>,
+    %c : tensor<?xindex>) -> !shape.witness {
+  // CHECK-NOT: shape.broadcast
+  // CHECK:     %[[WITNESS:.*]] = shape.cstr_broadcastable %[[A]], %[[B]], %[[C]]
+  // CHECK:     return %[[WITNESS]] : !shape.witness
+  %0 = shape.broadcast %a, %b : tensor<?xindex>, tensor<?xindex>
+      -> tensor<?xindex>
+  %1 = shape.cstr_broadcastable %0, %c : tensor<?xindex>, tensor<?xindex>
+  return %1 : !shape.witness
+}

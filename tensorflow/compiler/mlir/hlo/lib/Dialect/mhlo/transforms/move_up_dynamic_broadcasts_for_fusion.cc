@@ -69,6 +69,33 @@ struct ShapeReificationPattern : public OpRewritePattern<shape::ShapeOfOp> {
   }
 };
 
+template <typename OpTy>
+struct InlineBroadcastedShapeOperandsPattern : public OpRewritePattern<OpTy> {
+  using OpRewritePattern<OpTy>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(OpTy op,
+                                PatternRewriter &rewriter) const override {
+    // Find all the shape operands, direct and indirect.
+    SmallVector<Value, 8> inlined_operands;
+    for (Value direct : op->getOperands()) {
+      if (auto bcast_op = direct.getDefiningOp<shape::BroadcastOp>()) {
+        for (Value indirect : bcast_op->getOperands())
+          inlined_operands.push_back(indirect);
+      } else {
+        inlined_operands.push_back(direct);
+      }
+    }
+
+    // Only rewrite if it makes a difference.
+    if (inlined_operands.size() == op.getNumOperands()) return failure();
+
+    // Inline shape operands.
+    rewriter.replaceOpWithNewOp<OpTy>(op, op->getResultTypes(),
+                                      inlined_operands, op->getAttrs());
+    return success();
+  }
+};
+
 // TODO(frgossen): Only move up broadcasting operations if there is a consumer.
 struct MoveUpBroadcastInDimOpPattern
     : public OpRewritePattern<DynamicBroadcastInDimOp> {
@@ -124,12 +151,9 @@ struct MoveUpDynamicBroadcastsForFusionPass
   }
 
   void runOnFunction() override {
-    // Populate rewrite patterns.
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
     mhlo::PopulateMoveUpDynamicBroadcastsForFusionPatterns(ctx, &patterns);
-
-    // Apply transformation.
     if (failed(
             applyPatternsAndFoldGreedily(getFunction(), std::move(patterns)))) {
       return signalPassFailure();
@@ -142,8 +166,10 @@ struct MoveUpDynamicBroadcastsForFusionPass
 void PopulateMoveUpDynamicBroadcastsForFusionPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns) {
   // clang-format off
-  patterns->insert<ShapeReificationPattern,
-                   MoveUpBroadcastInDimOpPattern>(context);
+  patterns->insert<
+      InlineBroadcastedShapeOperandsPattern<shape::CstrBroadcastableOp>,
+      MoveUpBroadcastInDimOpPattern,
+      ShapeReificationPattern>(context);
   // clang-format on
 }
 
