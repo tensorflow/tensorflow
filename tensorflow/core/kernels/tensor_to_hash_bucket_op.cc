@@ -29,9 +29,9 @@ class TensorToHashBucketOp : public OpKernel {
   explicit TensorToHashBucketOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_buckets", &num_buckets_));
 
-		DataType dtype;
+    DataType dtype;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype));
-	  OP_REQUIRES(ctx, dtype == DT_INT8 || dtype == DT_UINT8 ||
+    OP_REQUIRES(ctx, dtype == DT_INT8 || dtype == DT_UINT8 ||
                      dtype == DT_INT16 || dtype == DT_UINT16 ||
                      dtype == DT_INT32 || dtype == DT_UINT32 ||
                      dtype == DT_INT64 || dtype == DT_UINT64,
