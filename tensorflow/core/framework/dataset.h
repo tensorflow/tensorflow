@@ -929,13 +929,8 @@ class DatasetBase : public core::RefCounted {
   // state. Otherwise, the method returns `Status::OK()`.
   virtual Status CheckExternalState() const = 0;
 
- protected:
-  friend Status AsGraphDef(
-      OpKernelContext* ctx, const DatasetBase* dataset,
-      SerializationContext&& serialization_ctx,
-      GraphDef* graph_def);  // For access to graph related members.
-  friend class CapturedFunction;
-
+  // Wrapper around a GraphDefBuilder which provides support for serializing
+  // Datasets as GraphDefs.
   class DatasetGraphDefBuilder : public GraphDefBuilderWrapper {
    public:
     explicit DatasetGraphDefBuilder(GraphDefBuilder* b)
@@ -951,6 +946,13 @@ class DatasetBase : public core::RefCounted {
     Status AddResourceHelper(SerializationContext* ctx, const Tensor& val,
                              Node** output);
   };
+
+ protected:
+  friend Status AsGraphDef(
+      OpKernelContext* ctx, const DatasetBase* dataset,
+      SerializationContext&& serialization_ctx,
+      GraphDef* graph_def);  // For access to graph related members.
+  friend class CapturedFunction;
 
   // Serializes the dataset into a `GraphDef`, which has two uses:
   //
