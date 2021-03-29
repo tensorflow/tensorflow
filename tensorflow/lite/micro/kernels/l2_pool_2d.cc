@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
-#include "tensorflow/lite/micro/memory_helpers.h"
 
 namespace tflite {
 namespace {
@@ -76,7 +75,8 @@ TfLiteStatus L2Prepare(TfLiteContext* context, TfLiteNode* node) {
   // from the FlatBuffer to the persistant storage arena.
   TfLiteEvalTensor* output_eval =
       tflite::micro::GetEvalOutput(context, node, kOutputTensor);
-  TF_LITE_ENSURE_OK(context, RelocateTensorDims(context, output, output_eval));
+  TF_LITE_ENSURE_OK(context, tflite::micro::CreateWritableTensorDimsWithCopy(
+                                 context, output, output_eval));
   output->dims->data[kBatchRank] = batches;
   output->dims->data[kHeightRank] = out_height;
   output->dims->data[kWidthRank] = out_width;
