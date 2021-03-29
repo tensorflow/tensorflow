@@ -21,8 +21,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import constants

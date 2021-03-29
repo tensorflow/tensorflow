@@ -190,7 +190,11 @@ class RamFilesystemTest(test_util.TensorFlowTestCase):
     with gfile.GFile('ram://exists/a/b/c.txt', 'w') as f:
       f.write('')
     res = list(gfile.walk('ram://exists'))
-    expected = [('ram://exists', ['a'], []), ('ram://exists/a', ['b'], []), ('ram://exists/a/b', [], ['c.txt'])]
+    expected = [
+      ('ram://exists', ['a'], []),
+      ('ram://exists/a', ['b'], []),
+      ('ram://exists/a/b', [], ['c.txt'])
+    ]
     self.assertEqual(res, expected)
   
   def test_makedirs(self):

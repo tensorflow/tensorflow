@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
-import os
 import sys
 
 from tensorflow.core.protobuf import graph_debug_info_pb2
