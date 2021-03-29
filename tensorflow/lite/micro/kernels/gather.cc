@@ -80,14 +80,14 @@ TfLiteStatus Gather(const TfLiteGatherParams* params,
 
   for (int batch = 0; batch < batch_size; ++batch) {
     for (int outer = 0; outer < outer_size; ++outer) {
-      for (int i = 0; i < coord_size; ++i) {
-        TFLITE_DCHECK_GE(coords_data[i], 0);
-        TFLITE_DCHECK_LT(coords_data[i], axis_size);
+      for (int coord = 0; coord < coord_size; ++coord) {
+        TFLITE_DCHECK_GE(coords_data[coord], 0);
+        TFLITE_DCHECK_LT(coords_data[coord], axis_size);
         std::memcpy(
             output_data +
-                (((batch * outer_size) + outer) * coord_size + i) * inner_size,
+                (((batch * outer_size) + outer) * coord_size + coord) * inner_size,
             input_data + (((batch * outer_size) + outer) * axis_size +
-                          coords_data[batch * coord_size + i]) *
+                          coords_data[batch * coord_size + coord]) *
                              inner_size,
             sizeof(InputT) * inner_size);
       }
