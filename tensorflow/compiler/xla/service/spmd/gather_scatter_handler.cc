@@ -624,7 +624,7 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
           operand.hlo()->shape(), operand.hlo(), indices.hlo(), updates.hlo(),
           scatter->to_apply(), dnums, scatter->indices_are_sorted(),
           scatter->unique_indices()));
-      pscatter->set_sharding(*maybe_passthrough);
+      pscatter->set_sharding(operand.sharding());
       SetPartitionedHlo(hlo, [&]() {
         return PartitionedHlo(pscatter, hlo->shape(), MakePartitioningState())
             .Reshard(hlo->sharding())

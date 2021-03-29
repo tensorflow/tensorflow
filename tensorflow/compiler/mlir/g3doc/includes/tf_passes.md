@@ -80,6 +80,30 @@ Prepares TPU computation module attached to _TPUCompileMlir op for
 TensorFlow graph export by making transformation such as replacing or
 removing MLIR or XLA specific attributes that are not legal in TensorFlow
 graph.
+### `-tf-device-attribute-to-launch`: Wraps each TF op which has a non-empty device attribute in a tf_device.launch.
+This pass wraps TF ops which have a non-empty device attribute in a tf_device.lauch with
+the same device attribute.
+
+For example, the following:
+
+```mlir
+func @single_op_launch() {
+  %a = "tf.opA"() {device = "CPU:0"} : () -> tensor<i1>
+  return %a
+}
+```
+
+will be transformed into:
+
+```mlir
+func @single_op_launch() {
+  %1 = tf_device.launch() ( {
+    %a = "tf.opA"() : () -> tensor<i1>
+    tf_device.return %a
+  }) {device = "CPU:0"} : () -> tensor<i1>
+  return %1
+}
+```
 ### `-tf-device-cluster-outlining`: Outlines regions of tf_device.cluster operations
 This pass outlines the body of a `tf_device.cluster` into a function and
 replaces the `tf_device.cluster` op with an equivalent `tf_device.cluster_func`

@@ -521,8 +521,7 @@ def TFL_AbsOp : TFL_Op<"abs", [
     NoSideEffect,
     SameOperandsAndResultShape,
     SameOperandsAndResultType,
-    SameOperandsAndResultsScale,
-    NoQuantizableResult]> {
+    SameOperandsAndResultsScale]> {
   let summary = "Absolute value operator";
 
   let description = [{
@@ -816,6 +815,7 @@ def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [ConstantLike, NoSideEffect,
   let results = (outs AnyTensor:$output);
 
   let hasFolder = 1;
+  let hasCanonicalizer = 1;
 
   let builders = [
     OpBuilder<(ins "Attribute":$value),
@@ -1057,13 +1057,14 @@ def TFL_GatherOp : TFL_Op<"gather", [
   let arguments = (ins
     TFL_TensorOf<[F32, I1, I8, I32, I64, TFL_Str, UI8, QI8, QUI8, QI16]>:$params,
     TFL_TensorOf<[I32, I64]>:$indices,
-    I32Attr:$axis
+    I32Attr:$axis,
+    DefaultValuedAttr<I32Attr, "0">:$batch_dims
   );
 
   let builders =
   [
-    OpBuilder<(ins "Value":$params, "Value":$indices, "IntegerAttr":$axis),
-    [{ BuildGatherOp(&$_builder, $_state, params, indices, axis); }]>
+    OpBuilder<(ins "Value":$params, "Value":$indices, "IntegerAttr":$axis, "IntegerAttr":$batch_dims),
+    [{ BuildGatherOp(&$_builder, $_state, params, indices, axis, batch_dims); }]>
   ];
 
   let results = (outs
@@ -4498,6 +4499,7 @@ def TFL_CustomTfOp : Op<TFL_Dialect, "custom_tf", [
   // TODO(karimnosseir): Revisit if this needs updating.
   NoSideEffect,
   NoQuantizableResult,
+  IsolatedFromAbove,
   SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = "Wrapper Op for TF custom ops.";
 
@@ -4569,7 +4571,7 @@ subsequent operation and then be optimized away, however.)
   );
 }
 
-def TFL_RFFT2dOp : TFL_Op<"RFFT2D", [NoSideEffect, NoQuantizableResult]> {
+def TFL_RFFT2dOp : TFL_Op<"rfft2d", [NoSideEffect, NoQuantizableResult]> {
   let summary = "2D real-valued fast Fourier transform.";
 
   let description = [{

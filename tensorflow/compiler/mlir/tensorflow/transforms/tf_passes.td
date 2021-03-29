@@ -800,6 +800,8 @@ func @cluster_oplist(%arg0: tensor<f32>, %arg1: tensor<i32>) -> tensor<i32> {
                "such that each op's single user is the next op in the list.",
                "llvm::cl::MiscFlags::CommaSeparated">
   ];
+
+  let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
 }
 
 def VerifySuitableForExportPass : Pass<"tf-verify-for-export", "ModuleOp"> {
@@ -822,4 +824,36 @@ def PrepareTpuComputationForTfExportPass : Pass<"prepare-tpu-computation-for-tf-
   }];
 
   let constructor = "TF::CreatePrepareTpuComputationForTfExportPass()";
+}
+
+def DeviceAttributeToLaunchPass : FunctionPass<"tf-device-attribute-to-launch"> {
+  let summary = "Wraps each TF op which has a non-empty device attribute in a tf_device.launch.";
+
+  let description = [{
+This pass wraps TF ops which have a non-empty device attribute in a tf_device.lauch with
+the same device attribute.
+
+For example, the following:
+
+```mlir
+func @single_op_launch() {
+  %a = "tf.opA"() {device = "CPU:0"} : () -> tensor<i1>
+  return %a
+}
+```
+
+will be transformed into:
+
+```mlir
+func @single_op_launch() {
+  %1 = tf_device.launch() ( {
+    %a = "tf.opA"() : () -> tensor<i1>
+    tf_device.return %a
+  }) {device = "CPU:0"} : () -> tensor<i1>
+  return %1
+}
+```
+  }];
+
+  let constructor = "TFDevice::CreateDeviceAttributeToLaunchPass()";
 }

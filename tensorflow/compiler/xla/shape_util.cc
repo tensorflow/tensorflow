@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
@@ -78,6 +79,7 @@ constexpr uint8 primitive_byte_size[PrimitiveType_ARRAYSIZE] = {
     0,                  // TOKEN = 17
     sizeof(complex128)  // C128 = 18
 };
+constexpr int64 kAnnotationPrintInterval = 5;
 }  // namespace
 
 string ShapeIndex::ToString() const { return ShapeIndexView(*this).ToString(); }
@@ -315,6 +317,23 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
                                   tiles, element_size_in_bits, memory_space);
   if (!ret.ok()) LOG(ERROR) << ret.status();
   return ret.ValueOrDie();
+}
+
+/* static */ Shape ShapeUtil::MoveDimToMajor(const Shape& shape, int64 dim) {
+  Shape ret = shape;
+  if (!ret.has_layout()) {
+    LayoutUtil::SetToDefaultLayout(&ret);
+  }
+  *ret.mutable_layout() = LayoutUtil::MoveDimToMajor(ret.layout(), dim);
+  DimensionVector minor_to_major;
+  for (int64 d : LayoutUtil::MinorToMajor(ret)) {
+    if (d != dim) {
+      minor_to_major.push_back(d);
+    }
+  }
+  minor_to_major.push_back(dim);
+  *ret.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
+  return ret;
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithDescendingLayout(
@@ -580,10 +599,16 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 /* static */ string ShapeUtil::HumanString(const Shape& shape) {
   if (shape.IsTuple()) {
     string text = "(";
-    const char* prefix = "";
-    for (const Shape& elem_shape : shape.tuple_shapes()) {
-      StrAppend(&text, prefix, HumanString(elem_shape));
-      prefix = ", ";
+    const auto& tuple_shapes = shape.tuple_shapes();
+    for (int64 i = 0; i < tuple_shapes.size(); ++i) {
+      const Shape& elem_shape = tuple_shapes[i];
+      if (i != 0) {
+        StrAppend(&text, ", ");
+        if (i % kAnnotationPrintInterval == 0) {
+          StrAppend(&text, absl::StrFormat("/*index=%lld*/", i));
+        }
+      }
+      StrAppend(&text, HumanString(elem_shape));
     }
     text += ")";
     return text;
@@ -604,10 +629,16 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 /* static */ string ShapeUtil::HumanStringWithLayout(const Shape& shape) {
   if (shape.IsTuple()) {
     string text = "(";
-    const char* prefix = "";
-    for (const Shape& elem_shape : shape.tuple_shapes()) {
-      StrAppend(&text, prefix, HumanStringWithLayout(elem_shape));
-      prefix = ", ";
+    const auto& tuple_shapes = shape.tuple_shapes();
+    for (int64 i = 0; i < tuple_shapes.size(); ++i) {
+      const Shape& elem_shape = tuple_shapes[i];
+      if (i != 0) {
+        StrAppend(&text, ", ");
+        if (i % kAnnotationPrintInterval == 0) {
+          StrAppend(&text, absl::StrFormat("/*index=%lld*/", i));
+        }
+      }
+      StrAppend(&text, HumanStringWithLayout(elem_shape));
     }
     text += ")";
     return text;

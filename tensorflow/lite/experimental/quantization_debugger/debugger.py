@@ -15,6 +15,7 @@
 """Python TF-Lite QuantizationDebugger."""
 import collections
 import csv
+
 from typing import (Any, Callable, Dict, IO, Iterable, List, Mapping, Optional,
                     Sequence, Tuple)
 
@@ -22,6 +23,13 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.python.util import tf_export
+
+# pylint: disable=g-import-not-at-top
+try:
+  from tensorflow.lite.python import metrics_portable as metrics_stub  # type: ignore
+except ImportError:
+  from tensorflow.lite.python import metrics_nonportable as metrics_stub  # type: ignore
+# pylint: enable=g-import-not-at-top
 
 # Returns metrics based on difference of values for quantized/float ops.
 _DEFAULT_LAYER_DEBUG_METRICS = {
@@ -141,6 +149,9 @@ class QuantizationDebugger:
 
     self.layer_statistics = None
     self.model_statistics = None
+
+    self._metrics = metrics_stub.TFLiteMetrics()
+    self._metrics.increase_counter_debugger_creation()
 
   def run(self) -> None:
     """Runs models and gets metrics."""

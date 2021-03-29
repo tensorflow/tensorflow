@@ -10718,6 +10718,25 @@ def TF_RemoteCallOp : TF_Op<"RemoteCall", []> {
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
 }
 
+def TF_RepeatDatasetOp : TF_Op<"RepeatDataset", [NoSideEffect]> {
+  let summary = [{
+Creates a dataset that emits the outputs of `input_dataset` `count` times.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    Arg<TF_Int64Tensor, [{A scalar representing the number of times that `input_dataset` should
+be repeated. A value of `-1` indicates that it should be repeated infinitely.}]>:$count,
+
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+}
+
 def TF_ReshapeOp : TF_Op<"Reshape", [NoSideEffect]> {
   let summary = "Reshapes a tensor.";
 
@@ -13274,8 +13293,6 @@ but its first dimension must match the size of `condition`.}]>:$t,
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
-
-  let hasCanonicalizer = 1;
 
   let verifier = [{
     return Verify(*this);
@@ -17907,30 +17924,6 @@ https://www.tensorflow.org/xla/operation_semantics#gather
 
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
-def TF_XlaHostComputeOp : TF_Op<"XlaHostCompute", []> {
-  let summary = [{
-A pseudo-op to represent host-side computation in an XLA program.
-  }];
-
-  let arguments = (ins
-    Arg<Variadic<TF_Tensor>, [{A list of tensors that will be sent to the host.}]>:$inputs,
-
-    StrArrayAttr:$ancestors,
-    TF_ShapeAttrArray:$shapes,
-    SymbolRefAttr:$shape_inference_graph,
-    StrAttr:$key,
-    DefaultValuedAttr<I64Attr, "1000000">:$cost_estimate_ns,
-    DefaultValuedAttr<I64Attr, "0">:$tpu_core
-  );
-
-  let results = (outs
-    Res<Variadic<TF_Tensor>, [{A list of tensors that will be returned to the device.}]>:$outputs
-  );
-
-  TF_DerivedOperandTypeListAttr Tinputs = TF_DerivedOperandTypeListAttr<0>;
-  TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
 }
 
 def TF_XlaKeyValueSortOp : TF_Op<"XlaKeyValueSort", [NoSideEffect]> {

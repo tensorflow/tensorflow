@@ -221,7 +221,8 @@ void SseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch, int32_t* scratch,
     float* __restrict__ result, CpuBackendContext* context) {
-  if (m_rows % 4 == 0) {
+  // TODO(b/183178387): Use a proper query to detect AVX/optimized paths.
+  if (m_rows % 4 == 0 && !context->PreferGemmlowpOnX86()) {
     const int32_t* bias = static_cast<const int32_t*>(nullptr);
     SseCpuBackendGemm(vectors, bias, matrix, n_batch, m_cols, m_rows,
                       /*output_zp=*/0, scratch, context);

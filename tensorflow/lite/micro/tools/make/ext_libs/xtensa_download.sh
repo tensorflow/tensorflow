@@ -65,6 +65,16 @@ else
   fi
 
   unzip -qo /tmp/${TMP_ZIP_ARCHIVE_NAME} -d ${DOWNLOADS_DIR} >&2
+
+  pushd ${DOWNLOADS_DIR}/xa_nnlib_hifi4/
+  git init .
+  git config user.email "tflm@google.com"
+  git config user.name "TensorflowLite Micro"
+  git add *
+  git commit -a -m "Commit for a temporary repository." > /dev/null
+  git apply ../../ext_libs/xtensa_patch.patch
+  popd
+
 fi
 
 echo "SUCCESS"

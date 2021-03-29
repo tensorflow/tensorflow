@@ -13,11 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
-"""Recurrent layers and their base classes.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+# pylint: disable=g-classes-have-attributes
+"""Recurrent layers and their base classes."""
 
 import collections
 import warnings
@@ -29,7 +26,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import activations
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
@@ -166,7 +163,7 @@ class StackedRNNCells(Layer):
       input_shape = input_shape[0]
     for cell in self.cells:
       if isinstance(cell, Layer) and not cell.built:
-        with K.name_scope(cell.name):
+        with backend.name_scope(cell.name):
           cell.build(input_shape)
           cell.built = True
       if getattr(cell, 'output_size', None) is not None:
@@ -370,8 +367,8 @@ class RNN(Layer):
 
       def call(self, inputs, states):
           prev_output = states[0]
-          h = K.dot(inputs, self.kernel)
-          output = h + K.dot(prev_output, self.recurrent_kernel)
+          h = backend.dot(inputs, self.kernel)
+          output = h + backend.dot(prev_output, self.recurrent_kernel)
           return output, [output]
 
   # Let's use this cell in a RNN layer:
@@ -585,7 +582,7 @@ class RNN(Layer):
 
     # allow cell (if layer) to build before we set or validate state_spec.
     if isinstance(self.cell, Layer) and not self.cell.built:
-      with K.name_scope(self.cell.name):
+      with backend.name_scope(self.cell.name):
         self.cell.build(step_input_shape)
         self.cell.built = True
 
@@ -679,22 +676,22 @@ class RNN(Layer):
     if initial_state is not None:
       additional_inputs += initial_state
       self.state_spec = nest.map_structure(
-          lambda s: InputSpec(shape=K.int_shape(s)), initial_state)
+          lambda s: InputSpec(shape=backend.int_shape(s)), initial_state)
       additional_specs += self.state_spec
     if constants is not None:
       additional_inputs += constants
       self.constants_spec = [
-          InputSpec(shape=K.int_shape(constant)) for constant in constants
+          InputSpec(shape=backend.int_shape(constant)) for constant in constants
       ]
       self._num_constants = len(constants)
       additional_specs += self.constants_spec
     # additional_inputs can be empty if initial_state or constants are provided
     # but empty (e.g. the cell is stateless).
     flat_additional_inputs = nest.flatten(additional_inputs)
-    is_keras_tensor = K.is_keras_tensor(
+    is_keras_tensor = backend.is_keras_tensor(
         flat_additional_inputs[0]) if flat_additional_inputs else True
     for tensor in flat_additional_inputs:
-      if K.is_keras_tensor(tensor) != is_keras_tensor:
+      if backend.is_keras_tensor(tensor) != is_keras_tensor:
         raise ValueError('The initial state or constants of an RNN'
                          ' layer cannot be specified with a mix of'
                          ' Keras tensors and non-Keras tensors'
@@ -735,7 +732,7 @@ class RNN(Layer):
            constants=None):
     # The input should be dense, padded with zeros. If a ragged input is fed
     # into the layer, it is padded and the row lengths are used for masking.
-    inputs, row_lengths = K.convert_inputs_if_ragged(inputs)
+    inputs, row_lengths = backend.convert_inputs_if_ragged(inputs)
     is_ragged_input = (row_lengths is not None)
     self._validate_args_if_ragged(is_ragged_input, mask)
 
@@ -754,9 +751,9 @@ class RNN(Layer):
 
     if nest.is_nested(inputs):
       # In the case of nested input, use the first element for shape check.
-      input_shape = K.int_shape(nest.flatten(inputs)[0])
+      input_shape = backend.int_shape(nest.flatten(inputs)[0])
     else:
-      input_shape = K.int_shape(inputs)
+      input_shape = backend.int_shape(inputs)
     timesteps = input_shape[0] if self.time_major else input_shape[1]
     if self.unroll and timesteps is None:
       raise ValueError('Cannot unroll a RNN if the '
@@ -802,7 +799,7 @@ class RNN(Layer):
         if not nest.is_nested(new_states):
           new_states = [new_states]
         return output, new_states
-    last_output, outputs, states = K.rnn(
+    last_output, outputs, states = backend.rnn(
         step,
         inputs,
         initial_state,
@@ -822,7 +819,8 @@ class RNN(Layer):
       self.add_update(updates)
 
     if self.return_sequences:
-      output = K.maybe_convert_to_ragged(is_ragged_input, outputs, row_lengths)
+      output = backend.maybe_convert_to_ragged(
+          is_ragged_input, outputs, row_lengths)
     else:
       output = last_output
 
@@ -937,12 +935,12 @@ class RNN(Layer):
       if getattr(self.cell, 'get_initial_state', None):
         flat_init_state_values = nest.flatten(self.cell.get_initial_state(
             inputs=None, batch_size=batch_size,
-            dtype=self.dtype or K.floatx()))
+            dtype=self.dtype or backend.floatx()))
       else:
         flat_init_state_values = nest.flatten(_generate_zero_filled_state(
-            batch_size, self.cell.state_size, self.dtype or K.floatx()))
+            batch_size, self.cell.state_size, self.dtype or backend.floatx()))
       flat_states_variables = nest.map_structure(
-          K.variable, flat_init_state_values)
+          backend.variable, flat_init_state_values)
       self.states = nest.pack_sequence_as(self.cell.state_size,
                                           flat_states_variables)
       if not nest.is_nested(self.states):
@@ -950,8 +948,9 @@ class RNN(Layer):
     elif states is None:
       for state, size in zip(nest.flatten(self.states),
                              nest.flatten(self.cell.state_size)):
-        K.set_value(state, np.zeros([batch_size] +
-                                    tensor_shape.TensorShape(size).as_list()))
+        backend.set_value(
+            state,
+            np.zeros([batch_size] + tensor_shape.TensorShape(size).as_list()))
     else:
       flat_states = nest.flatten(self.states)
       flat_input_states = nest.flatten(states)
@@ -969,7 +968,7 @@ class RNN(Layer):
               self.name + ': expected shape=' + str(
                   (batch_size, state)) + ', found shape=' + str(value.shape))
         set_value_tuples.append((state, value))
-      K.batch_set_value(set_value_tuples)
+      backend.batch_set_value(set_value_tuples)
 
   def get_config(self):
     config = {
@@ -1040,8 +1039,8 @@ class AbstractRNNCell(Layer):
 
       def call(self, inputs, states):
         prev_output = states[0]
-        h = K.dot(inputs, self.kernel)
-        output = h + K.dot(prev_output, self.recurrent_kernel)
+        h = backend.dot(inputs, self.kernel)
+        output = h + backend.dot(prev_output, self.recurrent_kernel)
         return output, output
   ```
 
@@ -1131,8 +1130,9 @@ class DropoutRNNCellMixin(object):
     by python when deepcopy, we don't want `layer._obj_reference_counts_dict`
     to track it by default.
     """
-    self._dropout_mask_cache = K.ContextValueCache(self._create_dropout_mask)
-    self._recurrent_dropout_mask_cache = K.ContextValueCache(
+    self._dropout_mask_cache = backend.ContextValueCache(
+        self._create_dropout_mask)
+    self._recurrent_dropout_mask_cache = backend.ContextValueCache(
         self._create_recurrent_dropout_mask)
 
   def reset_dropout_mask(self):
@@ -1222,9 +1222,9 @@ class DropoutRNNCellMixin(object):
     return state
 
   def __setstate__(self, state):
-    state['_dropout_mask_cache'] = K.ContextValueCache(
+    state['_dropout_mask_cache'] = backend.ContextValueCache(
         self._create_dropout_mask)
-    state['_recurrent_dropout_mask_cache'] = K.ContextValueCache(
+    state['_recurrent_dropout_mask_cache'] = backend.ContextValueCache(
         self._create_recurrent_dropout_mask)
     super(DropoutRNNCellMixin, self).__setstate__(state)
 
@@ -1377,15 +1377,15 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
         prev_output, training)
 
     if dp_mask is not None:
-      h = K.dot(inputs * dp_mask, self.kernel)
+      h = backend.dot(inputs * dp_mask, self.kernel)
     else:
-      h = K.dot(inputs, self.kernel)
+      h = backend.dot(inputs, self.kernel)
     if self.bias is not None:
-      h = K.bias_add(h, self.bias)
+      h = backend.bias_add(h, self.bias)
 
     if rec_dp_mask is not None:
       prev_output = prev_output * rec_dp_mask
-    output = h + K.dot(prev_output, self.recurrent_kernel)
+    output = h + backend.dot(prev_output, self.recurrent_kernel)
     if self.activation is not None:
       output = self.activation(output)
 
@@ -1849,14 +1849,14 @@ class GRUCell(DropoutRNNCellMixin, Layer):
         inputs_r = inputs
         inputs_h = inputs
 
-      x_z = K.dot(inputs_z, self.kernel[:, :self.units])
-      x_r = K.dot(inputs_r, self.kernel[:, self.units:self.units * 2])
-      x_h = K.dot(inputs_h, self.kernel[:, self.units * 2:])
+      x_z = backend.dot(inputs_z, self.kernel[:, :self.units])
+      x_r = backend.dot(inputs_r, self.kernel[:, self.units:self.units * 2])
+      x_h = backend.dot(inputs_h, self.kernel[:, self.units * 2:])
 
       if self.use_bias:
-        x_z = K.bias_add(x_z, input_bias[:self.units])
-        x_r = K.bias_add(x_r, input_bias[self.units: self.units * 2])
-        x_h = K.bias_add(x_h, input_bias[self.units * 2:])
+        x_z = backend.bias_add(x_z, input_bias[:self.units])
+        x_r = backend.bias_add(x_r, input_bias[self.units: self.units * 2])
+        x_h = backend.bias_add(x_h, input_bias[self.units * 2:])
 
       if 0. < self.recurrent_dropout < 1.:
         h_tm1_z = h_tm1 * rec_dp_mask[0]
@@ -1867,26 +1867,28 @@ class GRUCell(DropoutRNNCellMixin, Layer):
         h_tm1_r = h_tm1
         h_tm1_h = h_tm1
 
-      recurrent_z = K.dot(h_tm1_z, self.recurrent_kernel[:, :self.units])
-      recurrent_r = K.dot(h_tm1_r,
-                          self.recurrent_kernel[:, self.units:self.units * 2])
+      recurrent_z = backend.dot(h_tm1_z, self.recurrent_kernel[:, :self.units])
+      recurrent_r = backend.dot(
+          h_tm1_r, self.recurrent_kernel[:, self.units:self.units * 2])
       if self.reset_after and self.use_bias:
-        recurrent_z = K.bias_add(recurrent_z, recurrent_bias[:self.units])
-        recurrent_r = K.bias_add(recurrent_r,
-                                 recurrent_bias[self.units:self.units * 2])
+        recurrent_z = backend.bias_add(recurrent_z, recurrent_bias[:self.units])
+        recurrent_r = backend.bias_add(
+            recurrent_r, recurrent_bias[self.units:self.units * 2])
 
       z = self.recurrent_activation(x_z + recurrent_z)
       r = self.recurrent_activation(x_r + recurrent_r)
 
       # reset gate applied after/before matrix multiplication
       if self.reset_after:
-        recurrent_h = K.dot(h_tm1_h, self.recurrent_kernel[:, self.units * 2:])
+        recurrent_h = backend.dot(
+            h_tm1_h, self.recurrent_kernel[:, self.units * 2:])
         if self.use_bias:
-          recurrent_h = K.bias_add(recurrent_h, recurrent_bias[self.units * 2:])
+          recurrent_h = backend.bias_add(
+              recurrent_h, recurrent_bias[self.units * 2:])
         recurrent_h = r * recurrent_h
       else:
-        recurrent_h = K.dot(r * h_tm1_h,
-                            self.recurrent_kernel[:, self.units * 2:])
+        recurrent_h = backend.dot(
+            r * h_tm1_h, self.recurrent_kernel[:, self.units * 2:])
 
       hh = self.activation(x_h + recurrent_h)
     else:
@@ -1894,21 +1896,22 @@ class GRUCell(DropoutRNNCellMixin, Layer):
         inputs = inputs * dp_mask[0]
 
       # inputs projected by all gate matrices at once
-      matrix_x = K.dot(inputs, self.kernel)
+      matrix_x = backend.dot(inputs, self.kernel)
       if self.use_bias:
         # biases: bias_z_i, bias_r_i, bias_h_i
-        matrix_x = K.bias_add(matrix_x, input_bias)
+        matrix_x = backend.bias_add(matrix_x, input_bias)
 
       x_z, x_r, x_h = array_ops.split(matrix_x, 3, axis=-1)
 
       if self.reset_after:
         # hidden state projected by all gate matrices at once
-        matrix_inner = K.dot(h_tm1, self.recurrent_kernel)
+        matrix_inner = backend.dot(h_tm1, self.recurrent_kernel)
         if self.use_bias:
-          matrix_inner = K.bias_add(matrix_inner, recurrent_bias)
+          matrix_inner = backend.bias_add(matrix_inner, recurrent_bias)
       else:
         # hidden state projected separately for update/reset and new
-        matrix_inner = K.dot(h_tm1, self.recurrent_kernel[:, :2 * self.units])
+        matrix_inner = backend.dot(
+            h_tm1, self.recurrent_kernel[:, :2 * self.units])
 
       recurrent_z, recurrent_r, recurrent_h = array_ops.split(
           matrix_inner, [self.units, self.units, -1], axis=-1)
@@ -1919,8 +1922,8 @@ class GRUCell(DropoutRNNCellMixin, Layer):
       if self.reset_after:
         recurrent_h = r * recurrent_h
       else:
-        recurrent_h = K.dot(r * h_tm1,
-                            self.recurrent_kernel[:, 2 * self.units:])
+        recurrent_h = backend.dot(
+            r * h_tm1, self.recurrent_kernel[:, 2 * self.units:])
 
       hh = self.activation(x_h + recurrent_h)
     # previous and candidate state mixed by update gate
@@ -2367,7 +2370,7 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
       if self.unit_forget_bias:
 
         def bias_initializer(_, *args, **kwargs):
-          return K.concatenate([
+          return backend.concatenate([
               self.bias_initializer((self.units,), *args, **kwargs),
               initializers.get('ones')((self.units,), *args, **kwargs),
               self.bias_initializer((self.units * 2,), *args, **kwargs),
@@ -2390,13 +2393,13 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
     x_i, x_f, x_c, x_o = x
     h_tm1_i, h_tm1_f, h_tm1_c, h_tm1_o = h_tm1
     i = self.recurrent_activation(
-        x_i + K.dot(h_tm1_i, self.recurrent_kernel[:, :self.units]))
-    f = self.recurrent_activation(x_f + K.dot(
+        x_i + backend.dot(h_tm1_i, self.recurrent_kernel[:, :self.units]))
+    f = self.recurrent_activation(x_f + backend.dot(
         h_tm1_f, self.recurrent_kernel[:, self.units:self.units * 2]))
-    c = f * c_tm1 + i * self.activation(x_c + K.dot(
+    c = f * c_tm1 + i * self.activation(x_c + backend.dot(
         h_tm1_c, self.recurrent_kernel[:, self.units * 2:self.units * 3]))
     o = self.recurrent_activation(
-        x_o + K.dot(h_tm1_o, self.recurrent_kernel[:, self.units * 3:]))
+        x_o + backend.dot(h_tm1_o, self.recurrent_kernel[:, self.units * 3:]))
     return c, o
 
   def _compute_carry_and_output_fused(self, z, c_tm1):
@@ -2429,17 +2432,17 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
         inputs_o = inputs
       k_i, k_f, k_c, k_o = array_ops.split(
           self.kernel, num_or_size_splits=4, axis=1)
-      x_i = K.dot(inputs_i, k_i)
-      x_f = K.dot(inputs_f, k_f)
-      x_c = K.dot(inputs_c, k_c)
-      x_o = K.dot(inputs_o, k_o)
+      x_i = backend.dot(inputs_i, k_i)
+      x_f = backend.dot(inputs_f, k_f)
+      x_c = backend.dot(inputs_c, k_c)
+      x_o = backend.dot(inputs_o, k_o)
       if self.use_bias:
         b_i, b_f, b_c, b_o = array_ops.split(
             self.bias, num_or_size_splits=4, axis=0)
-        x_i = K.bias_add(x_i, b_i)
-        x_f = K.bias_add(x_f, b_f)
-        x_c = K.bias_add(x_c, b_c)
-        x_o = K.bias_add(x_o, b_o)
+        x_i = backend.bias_add(x_i, b_i)
+        x_f = backend.bias_add(x_f, b_f)
+        x_c = backend.bias_add(x_c, b_c)
+        x_o = backend.bias_add(x_o, b_o)
 
       if 0 < self.recurrent_dropout < 1.:
         h_tm1_i = h_tm1 * rec_dp_mask[0]
@@ -2457,10 +2460,10 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
     else:
       if 0. < self.dropout < 1.:
         inputs = inputs * dp_mask[0]
-      z = K.dot(inputs, self.kernel)
-      z += K.dot(h_tm1, self.recurrent_kernel)
+      z = backend.dot(inputs, self.kernel)
+      z += backend.dot(h_tm1, self.recurrent_kernel)
       if self.use_bias:
-        z = K.bias_add(z, self.bias)
+        z = backend.bias_add(z, self.bias)
 
       z = array_ops.split(z, num_or_size_splits=4, axis=1)
       c, o = self._compute_carry_and_output_fused(z, c_tm1)
@@ -2610,15 +2613,15 @@ class PeepholeLSTMCell(LSTMCell):
     x_i, x_f, x_c, x_o = x
     h_tm1_i, h_tm1_f, h_tm1_c, h_tm1_o = h_tm1
     i = self.recurrent_activation(
-        x_i + K.dot(h_tm1_i, self.recurrent_kernel[:, :self.units]) +
+        x_i + backend.dot(h_tm1_i, self.recurrent_kernel[:, :self.units]) +
         self.input_gate_peephole_weights * c_tm1)
-    f = self.recurrent_activation(x_f + K.dot(
+    f = self.recurrent_activation(x_f + backend.dot(
         h_tm1_f, self.recurrent_kernel[:, self.units:self.units * 2]) +
                                   self.forget_gate_peephole_weights * c_tm1)
-    c = f * c_tm1 + i * self.activation(x_c + K.dot(
+    c = f * c_tm1 + i * self.activation(x_c + backend.dot(
         h_tm1_c, self.recurrent_kernel[:, self.units * 2:self.units * 3]))
     o = self.recurrent_activation(
-        x_o + K.dot(h_tm1_o, self.recurrent_kernel[:, self.units * 3:]) +
+        x_o + backend.dot(h_tm1_o, self.recurrent_kernel[:, self.units * 3:]) +
         self.output_gate_peephole_weights * c)
     return c, o
 
@@ -2911,14 +2914,14 @@ class LSTM(RNN):
 
 def _generate_dropout_mask(ones, rate, training=None, count=1):
   def dropped_inputs():
-    return K.dropout(ones, rate)
+    return backend.dropout(ones, rate)
 
   if count > 1:
     return [
-        K.in_train_phase(dropped_inputs, ones, training=training)
+        backend.in_train_phase(dropped_inputs, ones, training=training)
         for _ in range(count)
     ]
-  return K.in_train_phase(dropped_inputs, ones, training=training)
+  return backend.in_train_phase(dropped_inputs, ones, training=training)
 
 
 def _standardize_args(inputs, initial_state, constants, num_constants):

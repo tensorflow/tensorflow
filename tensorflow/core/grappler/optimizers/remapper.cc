@@ -76,16 +76,19 @@ constexpr char kIsTraining[] = "is_training";
 constexpr int kMissingIndex = -1;
 
 struct RemapperContext {
-  explicit RemapperContext(GrapplerItem* item, Status* status)
+  explicit RemapperContext(GrapplerItem* item, Status* status,
+                           bool xla_auto_clustering_on)
       : nodes_to_preserve(item->NodesToPreserve()),
         graph_view(&item->graph, status),
         graph_properties(*item),
-        inferred_graph_properties(false) {}
+        inferred_graph_properties(false),
+        xla_auto_clustering_on(xla_auto_clustering_on) {}
 
   std::unordered_set<string> nodes_to_preserve;
   utils::MutableGraphView graph_view;
   GraphProperties graph_properties;
   bool inferred_graph_properties;
+  bool xla_auto_clustering_on;
 };
 
 // FusedBatchNorm that can be replaced with a cheaper set of primitives.
@@ -229,16 +232,21 @@ bool HasDataType(const NodeDef* node, const DataType& expected,
 bool IsCpuCompatibleDataType(const NodeDef* contraction,
                              const string& type_attr = "T") {
   DataType dtype = GetDataTypeFromAttr(*contraction, type_attr);
-#if defined(INTEL_MKL)
-  if (IsConv2D(*contraction) || IsDepthwiseConv2dNative(*contraction) ||
-      IsMatMul(*contraction)) {
-    return dtype == DT_FLOAT || dtype == DT_BFLOAT16;
+  // TODO(intel-tf): Clean up #ifdef.
+#ifdef INTEL_MKL
+  bool is_one_dnn_enabled = IsMKLEnabled();
 #else
+  bool is_one_dnn_enabled = false;
+#endif
+  if (is_one_dnn_enabled) {
+    return (IsConv2D(*contraction) || IsDepthwiseConv2dNative(*contraction) ||
+            IsMatMul(*contraction)) &&
+           (dtype == DT_FLOAT || dtype == DT_BFLOAT16);
+  }
   if (IsConv2D(*contraction)) {
     return dtype == DT_FLOAT || dtype == DT_DOUBLE;
   } else if (IsMatMul(*contraction)) {
     return dtype == DT_FLOAT;
-#endif  // INTEL_MKL
   } else {
     return false;
   }
@@ -260,7 +268,7 @@ bool IsCpuCompatibleDataFormat(const NodeDef* conv2d) {
 #ifndef INTEL_MKL
   return data_format == "NHWC";
 #else
-  return data_format == "NHWC" || data_format == "NCHW";
+  return data_format == "NHWC" || (IsMKLEnabled() && data_format == "NCHW");
 #endif  // !INTEL_MKL
 }
 
@@ -301,7 +309,7 @@ bool IsCpuCompatible(const RemapperContext& ctx, const Pattern& matched) {
     return IsCpuCompatibleConv2D(&node);
   } else if (IsDepthwiseConv2dNative(node)) {
 #ifdef INTEL_MKL
-    if (DisableMKL()) {
+    if (!IsMKLEnabled()) {
       return false;
     }
     return IsCpuCompatibleDepthwiseConv2dNative(&node);
@@ -322,6 +330,12 @@ bool IsGpuCompatible(const RemapperContext& ctx,
   // ROCm does not support _FusedConv2D
   return false;
 #endif
+  // The TF->XLA bridge does not support `_FusedConv2D` so we avoid creating
+  // this op.  Furthermore, XLA already does this fusion internally so there
+  // is no true benefit from doing this optimization if XLA is going to compile
+  // the unfused operations anyway.
+  if (ctx.xla_auto_clustering_on) return false;
+
   const GraphDef* graph = ctx.graph_view.graph();
   const NodeDef& contraction_node = graph->node(matched.contraction);
   if (!IsConv2D(contraction_node)) return false;
@@ -365,7 +379,7 @@ bool IsDeviceCompatible(const RemapperContext& ctx, Pattern& matched) {
 bool IsSupportedActivation(const NodeDef& node) {
 #ifdef INTEL_MKL
   return IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node) ||
-         IsTanh(node);
+         (IsMKLEnabled() && IsTanh(node));
 #else
   return IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node);
 #endif
@@ -660,7 +674,7 @@ bool IsAddWithNoBroadcast(const RemapperContext& ctx, const NodeDef& node) {
 bool FindContractionWithBiasAddAndAdd(const RemapperContext& ctx,
                                       const utils::MutableNodeView& node_view,
                                       ContractionWithBiasAddAndAdd* matched) {
-  if (DisableMKL()) return false;
+  if (!IsMKLEnabled()) return false;
   // Fusion with AddN is supported only when it has two inputs.
   // TODO(lyandy): Forward controls for patterns with control dependencies.
   if (HasControlFaninOrFanout(node_view) || node_view.NumRegularFanins() != 2)
@@ -706,7 +720,7 @@ bool FindContractionWithBiasAddAndAdd(const RemapperContext& ctx,
 bool FindContractionWithBiasAndAddActivation(
     const RemapperContext& ctx, int node_index,
     ContractionWithBiasAndAddActivation* matched) {
-  if (DisableMKL()) return false;
+  if (!IsMKLEnabled()) return false;
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   // TODO(lyandy): Forward controls for patterns with control dependencies.
   if (HasControlFaninOrFanout(*node_view)) return false;
@@ -827,18 +841,25 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
     const auto* fused_batch_norm_node_def = fused_batch_norm.node();
     if (!IsFusedBatchNorm(*fused_batch_norm_node_def)) return false;
 
+      // TODO(intel-tf): Clean up #ifndef.
 #ifndef INTEL_MKL
-    // We fuse FusedBatchNorm on GPU or MKL CPU.
+    // We fuse FusedBatchNorm on GPU or oneDNN CPU.
     if (!NodeIsOnGpu(fused_batch_norm_node_def)) return false;
 #else
-    if (DisableMKL()) return false;
+    if (!NodeIsOnGpu(fused_batch_norm_node_def) && !IsMKLEnabled())
+      return false;
 #endif
 
     DataType t_dtype = GetDataTypeFromAttr(*fused_batch_norm_node_def, "T");
+    // Bfloat16 is available only with oneDNN.
+    // Half is not available with oneDNN
+    // TODO(intel-tf): Clean up #ifndef.
 #ifndef INTEL_MKL
     if (t_dtype != DT_FLOAT && t_dtype != DT_HALF) return false;
 #else
-    if (t_dtype != DT_FLOAT && t_dtype != DT_BFLOAT16) return false;
+    if (t_dtype != DT_FLOAT && t_dtype != DT_HALF &&
+        (!IsMKLEnabled() || t_dtype != DT_BFLOAT16))
+      return false;
 #endif
 
     // Get the FusedBatchNorm training mode.
@@ -903,8 +924,9 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
   if (IsAdd(*relu_fanin_0_node_def)) {
     // Currently no CPU implementation for "FusedBatchNorm + SideInput +
     // <Activation>""
+    // TODO(intel-tf): Clean up #ifdef.
 #ifdef INTEL_MKL
-    return false;
+    if (!NodeIsOnGpu(node_def)) return false;
 #endif
 
     // Check that only Relu node consumes the output of an Add node.
@@ -1742,10 +1764,15 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     return false;
   };
 
+  // TODO(intel-tf): Clean up #ifdef.
 #ifdef INTEL_MKL
   (void)is_relu_biasadd_conv2d_candidate;  // To fix unused variable error.
-  return is_batch_norm_candidate() || is_batch_norm_fusion_candidate() ||
-         IsContractionWithAdd(ctx, node_index);
+  if (IsMKLEnabled())
+    return is_batch_norm_candidate() || is_batch_norm_fusion_candidate() ||
+           IsContractionWithAdd(ctx, node_index);
+  else
+    return is_relu_biasadd_conv2d_candidate() || is_batch_norm_candidate() ||
+           is_batch_norm_fusion_candidate();
 #else
   return is_relu_biasadd_conv2d_candidate() || is_batch_norm_candidate() ||
          is_batch_norm_fusion_candidate();
@@ -1758,7 +1785,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
                           GraphDef* optimized_graph) {
   GrapplerItem mutable_item = item;
   Status status;
-  RemapperContext ctx(&mutable_item, &status);
+  RemapperContext ctx(&mutable_item, &status, xla_auto_clustering_on_);
   TF_RETURN_IF_ERROR(status);
   // Processing graph in reverse-topological sorted order allows to remap
   // longer chains of dependent ops in one pass.
@@ -1797,7 +1824,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     ContractionWithBiasAddAndAdd contract_with_bias_and_add;
     ContractionWithBiasAndAddActivation contract_with_bias_and_add_activation;
 
-    if (!item.optimization_options().is_eager_mode) {
+    if (IsMKLEnabled() && !item.optimization_options().is_eager_mode) {
       // Remap Conv2D+BiasAdd+Add+relu into the _FusedConv2D.
       if (FindContractionWithBiasAndAddActivation(
               ctx, i, &contract_with_bias_and_add_activation)) {
@@ -1816,7 +1843,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         continue;
       }
     }
-#endif  //! INTEL_MKL
+#endif  // INTEL_MKL
 
     // Infer properties lazily in case they are not needed.
     if (!ctx.inferred_graph_properties && RequiresInferredShapes(ctx, i)) {
@@ -1865,9 +1892,6 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       continue;
     }
 
-// TODO(intel-tf):
-// Remove this once TF-MKL supports _FusedConv2D with these operations.
-#ifndef INTEL_MKL
     // Remap Conv2D+FusedBatchNorm into the _FusedConv2D;
     ContractionWithBatchNorm contract_with_batch_norm;
     if (allow_non_differentiable_rewrites &&
@@ -1889,7 +1913,6 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
                              &invalidated_nodes, &nodes_to_delete));
       continue;
     }
-#endif  // !INTEL_MKL
 
     // Remap FusedBatchNorm+<SideInput>+<Activation> into the _FusedBatchNormEx.
     FusedBatchNormEx fused_batch_norm_ex;

@@ -363,6 +363,7 @@ cc_library(
     ],
     hdrs = [
         "ir/tf_attributes.h",
+        "ir/tf_dialect.h",
     ],
     deps = [
         "@llvm-project//llvm:Support",
@@ -389,6 +390,7 @@ cc_library(
     cc_library(
         name = "tensorflow_" + target["name"],
         srcs = [
+            "ir/tf_dialect.h",
             "ir/tf_ops.h",
             "ir/tfrt_ops.h",
             "ir/tf_remaining_ops.h",
@@ -433,6 +435,7 @@ cc_library(
 cc_library(
     name = "tensorflow_remaining_ops",
     srcs = [
+        "ir/tf_dialect.h",
         "ir/tf_ops.h",
         "ir/tf_remaining_ops.h",
         "ir/tf_remaining_ops.cc",
@@ -476,6 +479,7 @@ cc_library(
 cc_library(
     name = "tensorflow_tfrt_ops",
     srcs = [
+        "ir/tf_dialect.h",
         "ir/tf_ops.h",
         "ir/tfrt_ops.h",
         "ir/tfrt_ops.cc",
@@ -519,6 +523,7 @@ cc_library(
 cc_library(
     name = "tensorflow_ops",
     srcs = [
+        "ir/tf_dialect.h",
         "ir/tf_ops.cc",
         "ir/tf_ops.h",
     ],
@@ -592,6 +597,7 @@ cc_library(
         "ir/tf_types.cc",
     ],
     hdrs = [
+        "ir/tf_dialect.h",
         "ir/tf_types.h",
     ],
     textual_hdrs = [
@@ -616,6 +622,7 @@ cc_library(
     hdrs = [
         "dialect_registration.h",
         "ir/tf_device.h",
+        "ir/tf_dialect.h",
         "ir/tf_executor.h",
         "ir/tf_ops.h",
         "ir/tf_saved_model.h",
@@ -896,6 +903,7 @@ cc_library(
         "transforms/constant_op_device_assignment.cc",
         "transforms/cross_host_transfer.cc",
         "transforms/decompose_resource_ops_pass.cc",
+        "transforms/device_attribute_to_launch.cc",
         "transforms/device_index_selector.cc",
         "transforms/drop_while_shape_invariant.cc",
         "transforms/einsum.cc",
@@ -1017,9 +1025,11 @@ cc_library(
         ":visitor_util",
         ":xla_sharding_util",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
+        "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf_with_tf2xla",
+        "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/client:sharding_builder",
@@ -1031,6 +1041,7 @@ cc_library(
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_cc",
         "//tensorflow/core/tpu:tpu_embedding_optimization_parameters_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",

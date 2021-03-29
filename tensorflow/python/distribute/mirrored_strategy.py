@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import copy
 
+from tensorflow.python import tf2
 from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import cross_device_utils
@@ -44,6 +45,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
@@ -329,14 +331,11 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     assert devices, ("Got an empty `devices` list and unable to recognize "
                      "any local devices.")
     self._cross_device_ops = cross_device_ops
-    if self._prefer_collective_ops:
-      self._communication_options = collective_util.Options(
-          implementation=collective_util.CommunicationImplementation.NCCL)
-    else:
-      self._communication_options = collective_util.Options()
     self._collective_ops_in_use = False
     self._collective_key_base = container_strategy._collective_key_base
     self._initialize_strategy(devices)
+    self._communication_options = collective_util.Options(
+        implementation=collective_util.CommunicationImplementation.NCCL)
 
     # TODO(b/128995245): Enable last partial batch support in graph mode.
     if ops.executing_eagerly_outside_functions():
@@ -344,6 +343,13 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
     # Flag to turn on VariablePolicy.
     self._use_var_policy = False
+
+  def _use_merge_call(self):
+    # We currently only disable merge_call when XLA is used to compile the `fn`
+    # passed to `strategy.run` and all devices are GPU.
+    return not control_flow_util.GraphOrParentsInXlaContext(
+        ops.get_default_graph()) or not all(
+            [_is_gpu_device(d) for d in self._devices])
 
   def _initialize_strategy(self, devices):
     # The _initialize_strategy method is intended to be used by distribute
@@ -354,17 +360,18 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         "No duplicates allowed in `devices` argument: %s" % (devices,))
     if _is_device_list_single_worker(devices):
       self._initialize_single_worker(devices)
+      self._collective_ops = self._make_collective_ops(devices)
       if self._prefer_collective_ops and (
           isinstance(self._cross_device_ops, cross_device_ops_lib.NcclAllReduce)
           or isinstance(self._inferred_cross_device_ops,
                         cross_device_ops_lib.NcclAllReduce)):
-        self._use_collective_ops(devices)
+        self._collective_ops_in_use = True
         self._inferred_cross_device_ops = None
       logging.info("Using MirroredStrategy with devices %r", devices)
     else:
       self._initialize_multi_worker(devices)
 
-  def _use_collective_ops(self, devices):
+  def _make_collective_ops(self, devices):
     if ops.executing_eagerly_outside_functions():
       try:
         context.context().configure_collective_ops(
@@ -375,11 +382,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
     self._collective_keys = cross_device_utils.CollectiveKeys(
         group_key_start=1 + self._collective_key_base)  # pylint: disable=protected-access
-    self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
+    return cross_device_ops_lib.CollectiveAllReduce(
         devices=self._devices,
         group_size=len(self._devices),
         collective_keys=self._collective_keys)
-    self._collective_ops_in_use = True
 
   def _initialize_single_worker(self, devices):
     """Initializes the object for single-worker training."""
@@ -697,6 +703,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     return updated_config
 
   def _get_cross_device_ops(self, value):
+    if not self._use_merge_call():
+      return self._collective_ops
+
     if self._collective_ops_in_use:
       if isinstance(value, values.DistributedValues):
         value_int32 = True in {
@@ -706,6 +715,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         value_int32 = dtypes.as_dtype(value.dtype) == dtypes.int32
       if value_int32:
         return cross_device_ops_lib.ReductionToOneDevice()
+      else:
+        return self._collective_ops
 
     return self._cross_device_ops or self._inferred_cross_device_ops
 
@@ -724,24 +735,27 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         reduce_op == reduce_util.ReduceOp.MEAN):
       return value
     assert not distribute_utils.is_mirrored(value)
-    if not isinstance(value, values.DistributedValues):
-      # This function handles reducing values that are not PerReplica or
-      # Mirrored values. For example, the same value could be present on all
-      # replicas in which case `value` would be a single value or value could
-      # be 0.
-      return cross_device_ops_lib.reduce_non_distributed_value(
-          reduce_op, value, destinations, self._num_replicas_in_sync)
-    if self._collective_ops_in_use and (
-        (not cross_device_ops_lib._devices_match(value, destinations) or  # pylint: disable=protected-access
-         any("cpu" in d.lower()
-             for d in cross_device_ops_lib.get_devices_from(destinations)))):
-      return cross_device_ops_lib.ReductionToOneDevice().reduce(
-          reduce_op, value, destinations)
-    return self._get_cross_device_ops(value).reduce(
-        reduce_op,
-        value,
-        destinations=destinations,
-        options=self._communication_options.merge(options))
+    def get_values(value):
+      if not isinstance(value, values.DistributedValues):
+        # This function handles reducing values that are not PerReplica or
+        # Mirrored values. For example, the same value could be present on all
+        # replicas in which case `value` would be a single value or value could
+        # be 0.
+        return cross_device_ops_lib.reduce_non_distributed_value(
+            reduce_op, value, destinations, self._num_replicas_in_sync)
+      if self._use_merge_call() and self._collective_ops_in_use and ((
+          not cross_device_ops_lib._devices_match(value, destinations) or  # pylint: disable=protected-access
+          any("cpu" in d.lower()
+              for d in cross_device_ops_lib.get_devices_from(destinations)))):
+        return cross_device_ops_lib.ReductionToOneDevice().reduce(
+            reduce_op, value, destinations)
+      return self._get_cross_device_ops(value).reduce(
+          reduce_op,
+          value,
+          destinations=destinations,
+          options=self._communication_options.merge(options))
+
+    return nest.map_structure(get_values, value)
 
   def _batch_reduce_to(self, reduce_op, value_destination_pairs, options):
     cross_device_ops = None
@@ -775,7 +789,35 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
                **distribute_utils.select_replica(i, kwargs)))
     return distribute_utils.update_regroup(self, updates, group)
 
-  def _replica_ctx_update(self, var, fn, args, kwargs):
+  def _replica_ctx_all_reduce(self, reduce_op, value, options=None):
+    """Implements `StrategyExtendedV2._replica_ctx_all_reduce`."""
+    # This implementation avoids using `merge_call` and just launches collective
+    # ops in one replica.
+    if options is None:
+      options = collective_util.Options()
+
+    if context.executing_eagerly() or (
+        not tf2.enabled()) or self._use_merge_call():
+      # In eager mode, falls back to the default implementation that uses
+      # `merge_call`. Replica functions are running sequentially in eager mode,
+      # and due to the blocking nature of collective ops, execution will hang if
+      # collective ops are to be launched sequentially.
+      return super()._replica_ctx_all_reduce(reduce_op, value, options)
+
+    replica_context = distribution_strategy_context.get_replica_context()
+    assert replica_context, (
+        "`StrategyExtended._replica_ctx_all_reduce` must be called in a "
+        "replica context")
+    return self._get_cross_device_ops(value)._all_reduce(  # pylint: disable=protected-access
+        reduce_op,
+        value,
+        replica_context._replica_id,  # pylint: disable=protected-access
+        options)
+
+  def _replica_ctx_update(self, var, fn, args, kwargs, group):
+    if self._use_merge_call():
+      return super()._replica_ctx_update(var, fn, args, kwargs, group)
+
     replica_context = distribution_strategy_context.get_replica_context()
     assert replica_context
     replica_id = values_util.get_current_replica_id_as_int()

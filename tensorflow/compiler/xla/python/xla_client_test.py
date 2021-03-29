@@ -143,6 +143,18 @@ def TestFactory(xla_backend, cloud_tpu=False):
       self.assertIn("fusion", hlo_text)
 
     @unittest.skipIf(cloud_tpu, "not implemented")
+    def testCompiledHloModuleAsSerializedProto(self):
+      computation = self.ExampleComputation()
+      executable = self.backend.compile(computation)
+      hlo_modules = executable.hlo_modules()
+      self.assertLen(hlo_modules, 1)
+      hlo_text = hlo_modules[0].to_string()
+      proto = hlo_modules[0].as_serialized_hlo_module_proto()
+      hlo_module_roundtrip = xla_client.XlaComputation(proto).get_hlo_module()
+      hlo_text_roundtrip = hlo_module_roundtrip.to_string()
+      self.assertEqual(hlo_text, hlo_text_roundtrip)
+
+    @unittest.skipIf(cloud_tpu, "not implemented")
     def testFlopEstimate(self):
       computation = self.ExampleComputation()
       properties = xla_client._xla.hlo_module_cost_analysis(
@@ -568,6 +580,22 @@ def TestFactory(xla_backend, cloud_tpu=False):
       self.assertGreaterEqual(arg0_buffer.unsafe_buffer_pointer(), 0)
       self.assertGreaterEqual(arg1_buffer.unsafe_buffer_pointer(), 0)
       self.assertGreaterEqual(arg2_buffer.unsafe_buffer_pointer(), 0)
+
+    @unittest.skipIf(cloud_tpu, "not implemented")
+    def testClone(self):
+      x = np.array([[3., 4., 5.]], np.float32)
+      y = self.backend.buffer_from_pyval(x)
+      z = y.clone()
+      self.assertNotEqual(id(x), id(y))
+      np.testing.assert_array_equal(y.to_py(), z.to_py())
+      self.assertEqual(y.unsafe_buffer_pointer(), z.unsafe_buffer_pointer())
+
+    @unittest.skipIf(cloud_tpu, "not implemented")
+    def testJaxAttributesHaveCorrectDefaults(self):
+      x = np.array([[3., 4., 5.]], np.float32)
+      y = self.backend.buffer_from_pyval(x)
+      self.assertIsNone(y.aval)
+      self.assertIsNone(y._device)
 
   tests.append(BufferTest)
 
@@ -2162,6 +2190,106 @@ def TestFactory(xla_backend, cloud_tpu=False):
         self.assertEqual(version, "<unknown>")
 
   tests.append(ClientTest)
+
+  # TODO(b/182461453): Add TFRT and cloud TPU implementation of
+  # ReadDynamicShapes
+  class DynamicReshapeTest(ComputationTest):
+    """Tests related to DynamicReshape."""
+
+    def _CompareToPyAndBufferProtocol(self, builder, args, expected_results,
+                                      test_fn):
+      compiled = self.backend.compile(builder.build())
+      output_buffers = compiled.execute([
+          self.backend.buffer_from_pyval(
+              arg, device=compiled.local_devices()[0]) for arg in args
+      ])
+      self.assertLen(output_buffers, len(expected_results))
+      for buf, expected in zip(output_buffers, expected_results):
+        to_py_result = buf.to_py()
+        self.assertEqual(expected.shape, to_py_result.shape)
+        test_fn(expected, to_py_result)
+        if self.backend.platform == "cpu" and buf.dtype != bfloat16:
+          mview = memoryview(buf)
+          self.assertEqual(expected.shape, mview.shape)
+          test_fn(expected, np.asarray(mview))
+        else:
+          # Buffer protocol expected to fail on non-cpu platforms and bfloat16
+          # Note that np.asarray(buf) doesn't throw an exception. To test if the
+          # error was thrown properly we must use memoryview(buf).
+          with self.assertRaises(BufferError):
+            memoryview(buf)
+
+    # 1D reshape of full size, half size, and size of 0.
+    @unittest.skipIf(cloud_tpu, "not implemented")
+    @parameterized.parameters((5), (3), (0))
+    def testReshape1D(self, reshape_size):
+      full_size = 5
+      c = self._NewComputation()
+      arg = np.array(reshape_size, dtype=np.int32)
+      expected = np.array(range(reshape_size), dtype=np.int32)
+      p = ops.Parameter(c, 0, xla_client.shape_from_pyval(arg))
+      ops.DynamicReshape(
+          ops.Constant(c, NumpyArrayS32(range(full_size))), [p], [full_size],
+          [True])
+      self._CompareToPyAndBufferProtocol(c, [arg], [expected],
+                                         np.testing.assert_equal)
+
+    # 2D reshape with an slice on the minor dimension.  We test different types
+    # where the strides may differ between the host and devices. The reshaped
+    # physical memory layout is not consecutive, and we test if the program can
+    # return the correct logical view of the data.
+    @unittest.skipIf(cloud_tpu, "not implemented")
+    @parameterized.named_parameters({
+        "testcase_name": "_{}".format(dtype.__name__),
+        "dtype": dtype,
+    } for dtype in int_dtypes + float_dtypes)
+    def testReshape2D(self, dtype):
+      arg0 = np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype)
+      arg1 = np.array(2, dtype=np.int32)
+      expected = np.array([[1, 2], [4, 5]], dtype=np.int32)
+      c = self._NewComputation()
+      p0 = ops.Parameter(c, 0, xla_client.shape_from_pyval(arg0))
+      p1 = ops.Parameter(c, 1, xla_client.shape_from_pyval(arg1))
+      ops.DynamicReshape(p0, [p1, p1], [2, 3], [False, True])
+      self._CompareToPyAndBufferProtocol(c, [arg0, arg1], [expected],
+                                         np.testing.assert_equal)
+
+    @unittest.skipIf(cloud_tpu, "not implemented")
+    @parameterized.named_parameters({
+        "testcase_name": "_{}".format(dtype.__name__),
+        "dtype": dtype,
+    } for dtype in int_dtypes + float_dtypes)
+    def testDynamicShapeArgs(self, dtype):
+      full_size = 10
+      dynamic_shape_size = 4
+      # subcomputation 1
+      binary_add_builder = self._NewComputation()
+      scalar_shape = xla_client.Shape.scalar_shape(np.dtype(dtype))
+      ops.Add(
+          ops.Parameter(binary_add_builder, 0, scalar_shape),
+          ops.Parameter(binary_add_builder, 1, scalar_shape))
+      # subcomputation 2
+      reshape_reduce_builder = self._NewComputation()
+      dshape = xla_client.Shape.array_shape(
+          np.dtype(dtype), dims=[full_size], dynamic_dimensions=[True])
+      reshape_reduce_p = ops.Parameter(reshape_reduce_builder, 0, dshape)
+      ops.Reduce(
+          reshape_reduce_builder,
+          operands=[reshape_reduce_p],
+          init_values=[ops.Constant(reshape_reduce_builder, dtype(0))],
+          computation=binary_add_builder.build(),
+          dimensions_to_reduce=[0])
+      # main computation: sum(range(full_size)[:dynamic_shape_size])
+      c = self._NewComputation()
+      arg = np.array(dynamic_shape_size, dtype=np.int32)
+      p = ops.Parameter(c, 0, xla_client.shape_from_pyval(arg))
+      reshaped = ops.DynamicReshape(
+          ops.Constant(c, np.array(range(full_size), dtype=dtype)), [p],
+          [full_size], [True])
+      ops.Call(c, reshape_reduce_builder.build(), operands=(reshaped,))
+      self._ExecuteAndCompareClose(c, [arg], [dtype(6)])
+
+  tests.append(DynamicReshapeTest)
 
   return tests
 

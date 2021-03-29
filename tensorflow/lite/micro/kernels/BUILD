@@ -228,7 +228,7 @@ cc_library(
     ],
     hdrs = ["kernel_runner.h"],
     visibility = [
-        "//learning/brain/contrib/micro/tflite:__pkg__",
+        "//visibility:public",
     ],
     deps = [
         "//tensorflow/lite/c:common",
@@ -268,12 +268,15 @@ cc_library(
         "concatenation.cc",
         "dequantize.cc",
         "detection_postprocess.cc",
+        "div.cc",
         "elementwise.cc",
         "elu.cc",
         "exp.cc",
+        "expand_dims.cc",
         "fill.cc",
         "floor.cc",
         "l2norm.cc",
+        "l2_pool_2d.cc",
         "leaky_relu.cc",
         "logical.cc",
         "logistic.cc",
@@ -579,6 +582,19 @@ cc_test(
 )
 
 cc_test(
+    name = "div_test",
+    srcs = ["div_test.cc"],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
     name = "elementwise_test",
     srcs = ["elementwise_test.cc"],
     deps = [
@@ -609,6 +625,19 @@ cc_test(
 cc_test(
     name = "exp_test",
     srcs = ["exp_test.cc"],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "expand_dims_test",
+    srcs = ["expand_dims_test.cc"],
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
@@ -682,6 +711,21 @@ cc_test(
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "l2_pool_2d_test",
+    srcs = [
+        "l2_pool_2d_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",

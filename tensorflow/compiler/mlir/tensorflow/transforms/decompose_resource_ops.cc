@@ -85,7 +85,7 @@ static Type GetResourceSubtype(Value resource) {
 class DecomposeRngReadAndSkipOp : public RewritePattern {
  public:
   explicit DecomposeRngReadAndSkipOp(MLIRContext *context)
-      : RewritePattern(RngReadAndSkipOp::getOperationName(),
+      : RewritePattern(RngReadAndSkipOp::getOperationName(), 1, context,
                        {
                            AddV2Op::getOperationName(),
                            AssignVariableOp::getOperationName(),
@@ -98,8 +98,7 @@ class DecomposeRngReadAndSkipOp : public RewritePattern {
                            ReadVariableOp::getOperationName(),
                            SelectV2Op::getOperationName(),
                            UnpackOp::getOperationName(),
-                       },
-                       1, context) {}
+                       }) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -210,7 +209,7 @@ class DecomposeRngReadAndSkipOp : public RewritePattern {
 void PopulateDecomposeResourceOpsPatterns(MLIRContext *context,
                                           OwningRewritePatternList *patterns) {
   patterns->insert<DecomposeRngReadAndSkipOp>(context);
-  populateWithGenerated(context, *patterns);
+  populateWithGenerated(*patterns);
 }
 
 }  // namespace TF

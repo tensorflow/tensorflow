@@ -325,6 +325,7 @@ class Subgraph {
   bool HasDynamicTensors() { return has_dynamic_tensors_; }
 
   // Assigns (or reassigns) a custom memory allocation for the given tensor.
+  // `flags` is a bitmask, see TfLiteCustomAllocationFlags.
   // The runtime does NOT take ownership of the underlying memory.
   //
   // NOTE: User needs to call AllocateTensors() after this. In case of input
@@ -340,11 +341,14 @@ class Subgraph {
   //    This condition is checked again if any tensors are resized.
   // 4. allocation->data should be aligned to kDefaultTensorAlignment
   //    defined in lite/util.h. (Currently 64 bytes)
+  //    This check is skipped if kTfLiteCustomAllocationFlagsSkipAlignCheck is
+  //    set through `flags`.
   // TODO(b/182215910): Expand on this documentation in a g3doc.
   //
   // WARNING: This is an experimental interface that is subject to change.
   TfLiteStatus SetCustomAllocationForTensor(
-      int tensor_index, const TfLiteCustomAllocation& allocation);
+      int tensor_index, const TfLiteCustomAllocation& allocation,
+      int64_t flags = kTfLiteCustomAllocationFlagsNone);
 
   void SetName(const char* name);
   const std::string& GetName() const;
@@ -608,6 +612,9 @@ class Subgraph {
   // Returns true if cancellation function returns true.
   bool IsCancelled();
 
+  // Enables preserving intermediates for debugging.
+  TfLiteStatus PreserveAllTensorsExperimental();
+
   // The state of the Interpreter.
   enum State {
     // The interpreter isn't ready to be invoked.
@@ -740,7 +747,12 @@ class Subgraph {
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap* resources_ = nullptr;
 
+  // Name of the subgraph (analogous to function name).
   std::string name_;
+
+  // Whether memory planner should be instantiated to retain intermediates for
+  // debugging.
+  bool preserve_all_tensors_ = false;
 };
 
 }  // namespace tflite

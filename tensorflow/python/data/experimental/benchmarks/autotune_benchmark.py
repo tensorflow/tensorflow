@@ -64,9 +64,9 @@ class AutotuneBenchmark(benchmark_base.DatasetBenchmarkBase):
     dataset = dataset.batch(
         batch_size=batch_size, num_parallel_calls=dataset_ops.AUTOTUNE)
     return self._run_benchmark(
-        dataset,
-        autotune,
-        autotune_buffers,
+        dataset=dataset,
+        autotune=autotune,
+        autotune_buffers=autotune_buffers,
         benchmark_iters=10000,
         benchmark_label="batch")
 

@@ -51,8 +51,11 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
+#include "tensorflow/core/tpu/kernels/tpu_fingerprint_lookup.h"
+#include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_util.h"
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
+#include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/dump_graph.h"
 
@@ -264,26 +267,42 @@ Status GetClusterName(Graph* graph, string* cluster_name) {
   return Status::OK();
 }
 
-// Removes TPUReplicatedInput nodes that has no effect.
-// A TPUReplicatedInput node is always a descendant of _Arg node. During
-// optimization, we try to insert nodes in between _Arg and _Arg's children,
-// where some of the nodes inserted are TPU nodes. It will be fatal if
-// TPUReplicatedInput is a descendant of a TPU node. Therefore we must remove
-// TPUReplicatedInput nodes in the graph.
-// E.g. _Arg(CPU) -> Reshape(CPU) -> Reshape(TPU) -> TPUReplicatedInput -> ...
-// In this case, edge [Reshape(TPU) -> TPUReplicatedInput] is a fatal error.
-Status RemoveReplicatedInput(Graph* graph) {
+// Removes nodes that has no effect that directly descends from _Arg node.
+//
+// This is currently used for removing TPUReplicatedInput and XlaSharding node
+// are always descendants of _Arg node. During optimization, we try to insert
+// nodes in between _Arg and _Arg's children, where some of the nodes inserted
+// are TPU nodes. We will add the TPUReplicatedInput and XlaSharding op nodes
+// back where necessary.
+//
+// Returns the number of nodes that were removed.
+int64 RemoveDescendantNodeOfArg(Graph* graph,
+                                const std::string& node_type_to_remove,
+                                bool must_be_child_of_arg) {
+  int64 nodes_removed = 0;
   std::vector<std::pair<const Edge*, std::vector<const Edge*>>> edges_to_remove;
-  for (Node* replicated_input : graph->nodes()) {
-    if (replicated_input->type_string() != "TPUReplicatedInput") continue;
+
+  for (Node* node : graph->nodes()) {
+    if (node_type_to_remove != node->type_string()) continue;
+    if (must_be_child_of_arg) {
+      bool has_arg_parent = false;
+      for (const Edge* edge : node->in_edges()) {
+        if (edge->src()->type_string() == "_Arg") {
+          has_arg_parent = true;
+        }
+      }
+      if (!has_arg_parent) continue;
+    }
+    nodes_removed++;
+
     const Edge* input_edge = nullptr;
     std::vector<const Edge*> output_edges;
-    for (const Edge* edge : replicated_input->in_edges())
+    for (const Edge* edge : node->in_edges())
       if (!edge->IsControlEdge()) {
         input_edge = edge;
         break;
       }
-    for (const Edge* edge : replicated_input->out_edges())
+    for (const Edge* edge : node->out_edges())
       if (!edge->IsControlEdge()) {
         output_edges.push_back(edge);
       }
@@ -298,7 +317,7 @@ Status RemoveReplicatedInput(Graph* graph) {
     }
     graph->RemoveNode(it.first->dst());
   }
-  return Status::OK();
+  return nodes_removed;
 }
 
 uint64 GetInputHash(OpKernelContext* ctx) {
@@ -402,10 +421,10 @@ Status ConvertEdgeShapesToTensorShapes(
 }
 
 // Get the TF fingerprint with the information from the TPUCompileOp.
-Status MaybeGetFingerprint(
+Status MaybeRegisterFingerprint(
     Graph* graph,
     const std::map<std::string, std::vector<int>>& named_input_shapes,
-    uint64_t* fingerprint, bool& fingerprint_success) {
+    uint64 input_hash) {
   // Find the compiler metadata.
   tpu::TPUCompileMetadataProto metadata_proto;
   std::map<std::string, std::vector<int>> inputs_to_keep;
@@ -464,10 +483,64 @@ Status MaybeGetFingerprint(
   uint64 tf_fingerprint = tpu::CreateFingerprintWithNameAndShapes(
       metadata_proto.function_library_fingerprint(), arg_shapes);
   VLOG(2) << "TF fingerprint: " << tf_fingerprint;
-  *fingerprint = tf_fingerprint;
-  fingerprint_success = true;
+
+  ResourceMgr* rm = GetTPUConfigResourceMgr();
+  tpu::TpuFingerprintLookup* fingerprint_lookup;
+  TF_RETURN_IF_ERROR(rm->Lookup<tpu::TpuFingerprintLookup>(
+      rm->default_container(), tpu::kFingerprintLookupResourceName,
+      &fingerprint_lookup));
+  fingerprint_lookup->RegisterKeyAndIntermediatePair(input_hash,
+                                                     tf_fingerprint);
   return Status::OK();
 }
+
+bool FindTpuReplicatedInputAndXlaSharding(
+    const Graph* graph, XlaShardingInfoMap& xla_sharding_ops,
+    TpuReplicatedInputInfoMap& tpu_replicated_input_ops) {
+  bool xla_spmd_input_sharded = false;
+  // Detect whether there are XLA Sharding on the inputs, if there are, then
+  // we cannot remove the replicated inputs or the xla sharding ops.
+  for (Node* xla_sharding_node : graph->nodes()) {
+    if (xla_sharding_node->type_string() == "XlaSharding") {
+      for (const Edge* edge : xla_sharding_node->in_edges()) {
+        if (edge->src()->type_string() == "TPUReplicatedInput") {
+          Node* tpu_replicated_input_node = edge->src();
+          Node* tpu_replicated_metadata_node = nullptr;
+          for (const Edge* input_edge : tpu_replicated_input_node->in_edges()) {
+            if (input_edge->IsControlEdge()) {
+              tpu_replicated_metadata_node = input_edge->src();
+            }
+          }
+
+          for (const Edge* input_edge : tpu_replicated_input_node->in_edges()) {
+            if (input_edge->src()->type_string() == "_Arg") {
+              Node* arg_node = input_edge->src();
+
+              xla_sharding_ops[arg_node->name()] = std::make_tuple(
+                  xla_sharding_node->attrs().Find("T")->type(),
+                  xla_sharding_node->attrs().Find("sharding")->s(),
+                  xla_sharding_node->attrs().Find("_tpu_replicate")->s());
+
+              tpu_replicated_input_ops[arg_node->name()] = std::make_tuple(
+                  tpu_replicated_input_node->attrs().Find("T")->type(),
+                  tpu_replicated_metadata_node);
+
+              VLOG(2) << "Detected input is sharded. XlaSharding node: "
+                      << xla_sharding_node->DebugString()
+                      << ", TPUReplicatedInput node: "
+                      << edge->src()->DebugString()
+                      << ", _Arg node: " << arg_node->DebugString();
+              xla_spmd_input_sharded = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+  return xla_spmd_input_sharded;
+}
+
 }  // end namespace
 
 namespace tpu_functional_internal {
@@ -583,14 +656,18 @@ Status CreateConcatAndSplitNodesForInputTensor(
     Graph* graph, const string& cluster_name, EdgeShapes* tpu_input_shapes,
     const absl::flat_hash_map<std::string, std::vector<const Edge*>>&
         grouped_input_edges,
-    int32_t minimum_input_tensors_packing) {
+    int32_t minimum_input_tensors_packing, bool xla_spmd_input_sharded,
+    const XlaShardingInfoMap& xla_sharding_info,
+    const TpuReplicatedInputInfoMap& tpu_replicated_input_info) {
   for (const auto& iter : grouped_input_edges) {
     std::vector<int> last_dim_vec;
     std::vector<NodeBuilder::NodeOut> concat_nodeouts;
     absl::flat_hash_map<std::string, int> tensor_to_split_output;
     int rank;
     DataType dtype = DT_INVALID;
+    std::string src_name;
     for (const Edge* edge : iter.second) {
+      src_name = edge->src()->name();
       string tensor_name =
           absl::StrCat(edge->src()->name(), ":", edge->src_output());
       // Create Concat / Split pair for a tensor if not exist yet.
@@ -658,9 +735,52 @@ Status CreateConcatAndSplitNodesForInputTensor(
             .Finalize(graph, &split_vec_node));
 
     Node* split_node = nullptr;
+    Node* input_to_split_node = concat_node;
+    Node* output_from_concat_node = nullptr;
+    if (xla_spmd_input_sharded) {
+      // Create new TPUReplicatedInput and XLAShardingOp nodes
+      //
+      // Rewrite the graph from:
+      //   Concat -> Split
+      // to
+      //   Concat -> TPUReplicatedInput -> XlaSharding -> Split
+      Node* tpu_replicated_input = nullptr;
+      Node* xla_sharding_op = nullptr;
+
+      std::vector<NodeBuilder::NodeOut> replicated_input;
+      replicated_input.push_back(NodeBuilder::NodeOut(concat_node));
+
+      // TODO(b/183060455): Add TPUReplicatedInput to all graphs.
+      TF_RETURN_IF_ERROR(
+          NodeBuilder(strings::StrCat(iter.first, "/TPUReplicatedInput"),
+                      "TPUReplicatedInput")
+              .Input(replicated_input)
+              .ControlInput(std::get<1>(tpu_replicated_input_info.at(src_name)))
+              .Attr("N", 1)
+              .Attr("T", std::get<0>(tpu_replicated_input_info.at(src_name)))
+              .Attr("index", -1)
+              .Attr("is_mirrored_variable", false)
+              .Attr("is_packed", false)
+              .Finalize(graph, &tpu_replicated_input));
+      TF_RETURN_IF_ERROR(
+          NodeBuilder(strings::StrCat(iter.first, "/XlaSharding"),
+                      "XlaSharding")
+              .Input(tpu_replicated_input)
+              .Attr("T", std::get<0>(xla_sharding_info.at(src_name)))
+              .Attr("sharding", std::get<1>(xla_sharding_info.at(src_name)))
+              .Attr("_XlaSharding", std::get<1>(xla_sharding_info.at(src_name)))
+              .Attr("_tpu_replicate",
+                    std::get<2>(xla_sharding_info.at(src_name)))
+              .Finalize(graph, &xla_sharding_op));
+
+      input_to_split_node = xla_sharding_op;
+      output_from_concat_node = tpu_replicated_input;
+    }
+    // Update the `tpu_input_shapes` mapping: Add the new edge
+    // from concat to split.
     TF_RETURN_IF_ERROR(
         NodeBuilder(strings::StrCat(iter.first, "/split"), "SplitV")
-            .Input(concat_node)
+            .Input(input_to_split_node)
             .Input(split_vec_node)
             .Input(split_dim_node)
             .Attr("T", dtype)
@@ -668,11 +788,12 @@ Status CreateConcatAndSplitNodesForInputTensor(
             .Attr(kTpuReplicateAttr, cluster_name)
             .Finalize(graph, &split_node));
 
-    // Update the `tpu_input_shapes` mapping: Add the new edge
-    // from concat to split.
+    if (output_from_concat_node == nullptr)
+      output_from_concat_node = split_node;
+
     const Edge* concat_to_split;
     for (const Edge* edge : concat_node->out_edges())
-      if (edge->dst() == split_node) {
+      if (edge->dst() == output_from_concat_node) {
         concat_to_split = edge;
         break;
       }
@@ -991,8 +1112,6 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
   uint64 cache_hash = Hash64Combine(input_hash, device_ordinal);
 
   const std::vector<DeviceAndFHandle>* functions;
-  uint64 fingerprint_hash;
-  bool fingerprint_success = false;
 
   bool cache_miss = !partition_cache_.count(cache_hash);
   if (cache_miss) {
@@ -1010,27 +1129,61 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
 
     std::map<std::string, std::vector<int>> named_input_shapes;
 
-    // TODO(b/181295284): Consider support input/output optimizations in model
-    // parallelism case.
-    if (!enable_spmd_xla_partitioning || num_cores_per_replica == 1) {
-      // Input and output optimizations.
-      GraphShapeInfo tpu_inferred_info;
-      std::map<int, InferredShape> arg_shapes;
-      EdgeShapes tpu_input_shapes;
-      absl::flat_hash_map<const Edge*, DataType> tpu_input_dtypes;
+    VLOG(1) << DumpGraphToFile("before_input_output_optimizations", *graph,
+                               flib_def_.get());
 
-      OP_REQUIRES_OK_ASYNC(ctx, RemoveReplicatedInput(graph.get()), done);
+    // Input and output optimizations.
+    GraphShapeInfo tpu_inferred_info;
+    std::map<int, InferredShape> arg_shapes;
+    EdgeShapes tpu_input_shapes;
+    absl::flat_hash_map<const Edge*, DataType> tpu_input_dtypes;
+
+    // Contains attrs "T", "sharding", "_tpu_replicate" for each XlaSharding op.
+    XlaShardingInfoMap xla_sharding_ops;
+
+    // Contains attrs "T", and a pointer to tpu_replicated_metadata for ctrl dep
+    TpuReplicatedInputInfoMap tpu_replicated_input_ops;
+
+    bool xla_spmd_input_sharded = false;
+
+    if (enable_spmd_xla_partitioning && num_cores_per_replica > 1) {
+      xla_spmd_input_sharded = FindTpuReplicatedInputAndXlaSharding(
+          graph.get(), xla_sharding_ops, tpu_replicated_input_ops);
+    }
+
+    if (!enable_spmd_xla_partitioning || num_cores_per_replica == 1 ||
+        (xla_spmd_input_sharded &&
+         runtime_params_.minimum_input_tensors_packing > 1)) {
+      if (xla_spmd_input_sharded) {
+        // We are setting must_be_child_of_arg == true because we do not want
+        // to remove other XlaSharding ops that might be in the graph. We only
+        // want the XlaSharding ops that are directly attached to the input
+        // arguments to be removed.
+        RemoveDescendantNodeOfArg(graph.get(), "XlaSharding",
+                                  /*must_be_child_of_arg=*/true);
+      }
+
+      RemoveDescendantNodeOfArg(graph.get(), "TPUReplicatedInput",
+                                /*must_be_child_of_arg=*/false);
+
+      VLOG(1) << DumpGraphToFile("before_get_input_output_info", *graph,
+                                 flib_def_.get());
 
       OP_REQUIRES_OK_ASYNC(
           ctx,
           GetInputOutputInfo(graph.get(), tpu_inferred_info, arg_shapes,
                              tpu_input_shapes, tpu_input_dtypes, ctx),
           done);
+
+      VLOG(1) << DumpGraphToFile("before_optimize_tpu_input_output_tensors",
+                                 *graph, flib_def_.get());
+
       OP_REQUIRES_OK_ASYNC(
           ctx,
           OptimizeTpuInputOutputTensors(
               graph.get(), tpu_inferred_info, arg_shapes, tpu_input_shapes,
-              tpu_input_dtypes, named_input_shapes, ctx),
+              tpu_input_dtypes, named_input_shapes, xla_spmd_input_sharded,
+              xla_sharding_ops, tpu_replicated_input_ops, ctx),
           done);
     }
 
@@ -1069,8 +1222,7 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
     if (!enable_spmd_xla_partitioning || num_cores_per_replica == 1) {
       OP_REQUIRES_OK_ASYNC(
           ctx,
-          MaybeGetFingerprint(graph.get(), named_input_shapes,
-                              &fingerprint_hash, fingerprint_success),
+          MaybeRegisterFingerprint(graph.get(), named_input_shapes, input_hash),
           done);
     }
     // `subgraphs` maps from device names to functions.
@@ -1095,17 +1247,6 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
 
   ExecuteFunctions(*functions, ctx, device_ordinal, ordinal_selector_req_id,
                    std::move(done));
-
-  // Register fingerprint when the functions are successfully executed.
-  if (cache_miss) {
-    absl::ReleasableMutexLock lock(&mu_);
-    if (fingerprint_success) {
-      VLOG(2) << "(input_hash, TF Fingerprint): (" << input_hash << ", "
-              << fingerprint_hash << ")";
-      inputs_to_fingerprint_.try_emplace(input_hash, fingerprint_hash);
-    }
-    lock.Release();
-  }
 }
 
 Status TPUPartitionedCallOp::GetTpuCoreOrdinal(OpKernelContext* ctx,
@@ -1117,13 +1258,8 @@ Status TPUPartitionedCallOp::GetTpuCoreOrdinal(OpKernelContext* ctx,
   TF_RETURN_IF_ERROR(ctx->input(kDeviceOrdinalAttr, &device_ordinal_t));
   int device_ordinal = device_ordinal_t->scalar<int>()();
   if (device_ordinal == tpu::kDeferredCoreSelectionReserved) {
-    auto it = inputs_to_fingerprint_.find(input_hash);
-    absl::optional<uint64> key;
-    if (it != inputs_to_fingerprint_.end()) {
-      key = it->second;
-    }
     device_ordinal =
-        ordinal_selector_->GetOrdinal(key, ordinal_selector_req_id);
+        ordinal_selector_->GetOrdinal(input_hash, ordinal_selector_req_id);
   }
   *core_ordinal = device_ordinal;
   return Status::OK();
@@ -1169,7 +1305,7 @@ Status TPUPartitionedCallOp::InitializeVarOnTPU(
       strings::StrCat(ndef->name(), "_init_ord_", device_ordinal);
 
   TF_RETURN_IF_ERROR(
-      InstantiatePartition(*init_graph, fname, device, &fhandle));
+      InstantiatePartition(*init_graph, fname, device, &fhandle, nullptr));
 
   FunctionLibraryRuntime::Options opts;
   opts.step_container = ctx->step_container();
@@ -1330,9 +1466,9 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
         strings::StrCat(func_.name(), "_hash_", pair.first));
     function_names.push_back(function_name);
     FHandle handle;
-    TF_RETURN_IF_ERROR(
-        InstantiatePartition(*subgraph, function_name, target, &handle));
-    functions.push_back(DeviceAndFHandle(target, handle));
+    TF_RETURN_IF_ERROR(InstantiatePartition(*subgraph, function_name, target,
+                                            &handle, nullptr));
+    functions.push_back(DeviceAndFHandle{.device = target, .handle = handle});
   }
 
   FunctionLibraryRuntime::Options opts;
@@ -1357,9 +1493,9 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
   opts.rendezvous = rendez;
 
   BlockingCounter bcount(functions.size());
-  for (const DeviceAndFHandle& pair : functions) {
-    const string& target_device = pair.first;
-    FHandle handle = pair.second;
+  for (const DeviceAndFHandle& entry : functions) {
+    const string& target_device = entry.device;
+    FHandle handle = entry.handle;
 
     TF_RETURN_IF_ERROR(
         ShouldUseRemoteExecutionForFn(target_device, &(opts.remote_execution)));
@@ -1381,7 +1517,7 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
 
   for (int i = 0; i < functions.size(); i++) {
     TF_RETURN_IF_ERROR(flib_def_->RemoveFunction(function_names[i]));
-    TF_RETURN_IF_ERROR(library_runtime_->ReleaseHandle(functions[i].second));
+    TF_RETURN_IF_ERROR(library_runtime_->ReleaseHandle(functions[i].handle));
   }
   return Status::OK();
 }
@@ -1765,11 +1901,20 @@ Status TPUPartitionedCallOp::OptimizeTpuInputOutputTensors(
     std::map<int, InferredShape>& arg_shapes, EdgeShapes& tpu_input_shapes,
     absl::flat_hash_map<const Edge*, DataType>& tpu_input_dtypes,
     std::map<std::string, std::vector<int>>& named_input_shapes,
+    bool enable_xla_spmd_partitioning,
+    const XlaShardingInfoMap& xla_sharding_info,
+    const TpuReplicatedInputInfoMap& tpu_replicated_input_info,
     OpKernelContext* ctx) {
   string cluster_name;
   TF_RETURN_IF_ERROR(GetClusterName(graph, &cluster_name));
 
   if (runtime_params_.minimum_output_tensors_packing > 1) {
+    if (enable_xla_spmd_partitioning) {
+      return errors::Unimplemented(
+          "minimum_output_tensors_packing > 1 is not implemented for XLA SPMD "
+          "partitioning.");
+    }
+
     // Copy graph to shape_inference_graph
     EdgeShapes tpu_output_shapes;
     TF_RETURN_IF_ERROR(
@@ -1794,7 +1939,9 @@ Status TPUPartitionedCallOp::OptimizeTpuInputOutputTensors(
     TF_RETURN_IF_ERROR(
         tpu_functional_internal::CreateConcatAndSplitNodesForInputTensor(
             graph, cluster_name, &tpu_input_shapes, grouped_input_edges,
-            runtime_params_.minimum_input_tensors_packing));
+            runtime_params_.minimum_input_tensors_packing,
+            enable_xla_spmd_partitioning, xla_sharding_info,
+            tpu_replicated_input_info));
   }
   if (runtime_params_.input_shape_opt) {
     TF_RETURN_IF_ERROR(tpu_functional_internal::InsertReshapeNodePairs(
@@ -1972,16 +2119,21 @@ Status TPUPartitionedCallOp::PartitionHelper(
   return Status::OK();
 }
 
-Status TPUPartitionedCallOp::InstantiatePartition(const Graph& graph,
-                                                  const string& function_name,
-                                                  const string& target_device,
-                                                  FHandle* handle) {
+Status TPUPartitionedCallOp::InstantiatePartition(
+    const Graph& graph, const string& function_name,
+    const string& target_device, FHandle* handle,
+    std::unique_ptr<FunctionLibraryDefinition>* out_flib_def) {
   FunctionDef shard;
   TF_RETURN_IF_ERROR(GraphToFunctionDef(graph, function_name, &shard));
   TF_RETURN_IF_ERROR(flib_def_->AddFunctionDef(shard));
   FunctionLibraryRuntime::InstantiateOptions opts;
   opts.target = target_device;
-  opts.lib_def = flib_def_.get();
+  if (out_flib_def) {
+    *out_flib_def = std::make_unique<FunctionLibraryDefinition>(*flib_def_);
+    opts.lib_def = out_flib_def->get();
+  } else {
+    opts.lib_def = flib_def_.get();
+  }
   return library_runtime_->Instantiate(function_name, AttrSlice(&shard.attr()),
                                        opts, handle);
 }
@@ -2107,10 +2259,16 @@ Status TPUPartitionedCallOp::InstantiateFunctionsFromSubgraphs(
     TF_RETURN_IF_ERROR(
         UpdateTPUDeviceOrdinal(device_ordinal, &target, &rewritten));
     FHandle handle;
-    TF_RETURN_IF_ERROR(
-        InstantiatePartition(*subgraph, function_name, target, &handle));
+    // Use a copy of the current `flib_def_` to instantiate the function to
+    // avoid races.
+    std::unique_ptr<FunctionLibraryDefinition> sub_flib_def;
+    TF_RETURN_IF_ERROR(InstantiatePartition(*subgraph, function_name, target,
+                                            &handle, &sub_flib_def));
     // Add handle to the cache entry.
-    entry.first->second.push_back(DeviceAndFHandle(target, handle));
+    entry.first->second.push_back(
+        DeviceAndFHandle{.device = target,
+                         .handle = handle,
+                         .flib_def = std::move(sub_flib_def)});
   }
 
   if (!rewritten) {
@@ -2214,9 +2372,9 @@ void TPUPartitionedCallOp::ExecuteFunctions(
   for (int i = 1; i < functions.size(); ++i) {
     refcounted_done->Ref();
   }
-  for (const DeviceAndFHandle& pair : functions) {
-    const string& target_device = pair.first;
-    FHandle handle = pair.second;
+  for (const DeviceAndFHandle& entry : functions) {
+    const string& target_device = entry.device;
+    FHandle handle = entry.handle;
     VLOG(3) << "Running function shard on device " << target_device
             << " with local device name " << local_device_name_;
     if (target_device == local_device_name_) {

@@ -256,6 +256,9 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
         "unsafe_buffer_pointer is not implemented for tuple "
         "buffers.");
   }
+  if (buffer->buffer()->on_device_shape().is_dynamic()) {
+    return Unimplemented("DynamicShape is not implemented in DLPack.");
+  }
 
   DLTensor& dt = pack->tensor.dl_tensor;
   if (take_ownership) {

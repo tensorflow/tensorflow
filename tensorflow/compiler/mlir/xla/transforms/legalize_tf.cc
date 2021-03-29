@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -48,6 +49,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
@@ -55,6 +57,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/lib/conv_grad_size_util.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
@@ -62,8 +65,10 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/platform/bfloat16.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
 
 namespace mlir {
 namespace mhlo {
@@ -940,19 +945,27 @@ static void BuildArgMinMaxReductionBody(Type input_element_type,
   Block *block = builder->createBlock(body);
   block->addArguments({input_type, index_type, input_type, index_type});
 
-  Location loc = body->getLoc();
-  StringAttr compare_direction =
-      StringAttr::get(builder->getContext(), direction);
-  Value compare = builder->create<CompareOp>(
-      loc, block->getArgument(0), block->getArgument(2), compare_direction);
+  Value lhs_val = block->getArgument(0);
+  Value lhs_index = block->getArgument(1);
+  Value rhs_val = block->getArgument(2);
+  Value rhs_index = block->getArgument(3);
 
-  Value selected_input = builder->create<SelectOp>(
-      loc, input_type, compare, block->getArgument(0), block->getArgument(2));
-  Value selected_index = builder->create<SelectOp>(
-      loc, index_type, compare, block->getArgument(1), block->getArgument(3));
+  ImplicitLocOpBuilder b(body->getLoc(), *builder);
+  StringAttr compare_direction = StringAttr::get(b.getContext(), direction);
+  Value compare_dt = b.create<CompareOp>(lhs_val, rhs_val, compare_direction);
+  Value selected_input =
+      b.create<SelectOp>(input_type, compare_dt, lhs_val, rhs_val);
+
+  Value compare_eq = b.create<CompareOp>(lhs_val, rhs_val,
+                                         StringAttr::get(b.getContext(), "EQ"));
+  Value min_index = b.create<MinOp>(lhs_index, rhs_index);
+  Value min_val_index =
+      b.create<SelectOp>(index_type, compare_dt, lhs_index, rhs_index);
+  Value selected_index =
+      b.create<SelectOp>(index_type, compare_eq, min_index, min_val_index);
 
   Value return_values[] = {selected_input, selected_index};
-  builder->create<ReturnOp>(loc, return_values);
+  b.create<ReturnOp>(return_values);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1081,6 +1094,32 @@ GatherDimensionNumbers GetGatherDimNumsAttr(StringAttr attr, Builder *builder) {
   ::xla::GatherDimensionNumbers dims;
   if (!dims.ParseFromString(attr.getValue().str())) return {};
   return ::xla::ConvertGatherDimensionNumbers(dims, builder);
+}
+
+//===----------------------------------------------------------------------===//
+// XlaDot op utilities.
+//===----------------------------------------------------------------------===//
+
+bool HasValidDotDims(StringAttr attr) {
+  ::xla::DotDimensionNumbers dims;
+  return dims.ParseFromString(attr.getValue().str());
+}
+
+DotDimensionNumbers GetDotDimNumsAttr(StringAttr attr, Builder *builder) {
+  ::xla::DotDimensionNumbers dims;
+  if (!dims.ParseFromString(attr.getValue().str())) return {};
+  return ::xla::ConvertDotDimensionNumbers(dims, builder);
+}
+
+bool HasValidPrecisionConfig(StringAttr attr) {
+  ::xla::PrecisionConfig precision;
+  return precision.ParseFromString(attr.getValue().str());
+}
+
+mlir::ArrayAttr GetPrecisionConfigAttr(StringAttr attr, Builder *builder) {
+  ::xla::PrecisionConfig precision;
+  if (!precision.ParseFromString(attr.getValue().str())) return {};
+  return ::xla::ConvertPrecisionConfig(&precision, builder);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2625,6 +2664,72 @@ class ConvertMaxPoolOp : public OpRewritePattern<OpTy> {
 using ConvertMaxPool2DOp = ConvertMaxPoolOp<TF::MaxPoolOp, /*num_dims=*/4>;
 using ConvertMaxPool3DOp = ConvertMaxPoolOp<TF::MaxPool3DOp, /*num_dims=*/5>;
 
+// Converts tf.Select (SelectV1) to mhlo.select. It has optional broadcasting on
+// the condition only.
+class ConvertSelectOp : public OpRewritePattern<TF::SelectOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::SelectOp op,
+                                PatternRewriter &rewriter) const override {
+    // This lowering only works on ranked types.
+    auto cond_type = op.condition().getType().dyn_cast<RankedTensorType>();
+    auto then_type = op.t().getType().dyn_cast<RankedTensorType>();
+    auto else_type = op.e().getType().dyn_cast<RankedTensorType>();
+    if (!cond_type || !then_type || !else_type) {
+      return failure();
+    }
+
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    Value cond_shape = b.createOrFold<shape::ShapeOfOp>(op.condition());
+    Value then_shape = b.createOrFold<shape::ShapeOfOp>(op.t());
+    Value else_shape = b.createOrFold<shape::ShapeOfOp>(op.e());
+
+    // First check that the `then` and `else` shapes are the equal.
+    Value assumption =
+        b.createOrFold<shape::CstrEqOp>(ValueRange{then_shape, else_shape});
+    // For a vector cond we also verify that the majormost dim of `then` matches
+    // the vector size. To do that split off the first dim of `then`.
+    bool needs_broadcast = cond_type.getRank() == 1 && then_type.getRank() != 1;
+    Value then_shape_split = then_shape;
+    if (needs_broadcast) {
+      Value const_one = b.create<ConstantIndexOp>(1);
+      Type extents = shape::getExtentTensorType(b.getContext());
+      SmallVector<Value, 2> then_split;
+      b.createOrFold<shape::SplitAtOp>(then_split, TypeRange{extents, extents},
+                                       then_shape, const_one);
+      then_shape_split = then_split[0];
+    }
+    // If the condition is not a scalar, check that it matches the other shapes.
+    if (cond_type.getRank() > 0) {
+      Value eq_cstr = b.createOrFold<shape::CstrEqOp>(
+          ValueRange{cond_shape, then_shape_split});
+      auto witness = shape::WitnessType::get(b.getContext());
+      assumption = b.createOrFold<shape::AssumingAllOp>(
+          witness, ValueRange{assumption, eq_cstr});
+    }
+    auto result_type = op.getResult().getType().cast<TensorType>();
+    auto assuming_op =
+        b.create<shape::AssumingOp>(ArrayRef<Type>{result_type}, assumption);
+
+    OpBuilder::InsertionGuard guard(b);
+    b.createBlock(&assuming_op.doRegion());
+
+    // Broadcast the cond if necessary.
+    Value cond = op.condition();
+    if (needs_broadcast) {
+      Value result_extents = b.create<shape::ToExtentTensorOp>(
+          GetExtentsTensorTypeFor(result_type), then_shape);
+      cond = b.create<mhlo::DynamicBroadcastInDimOp>(
+          RankedTensorType::get(result_type.getShape(), b.getI1Type()), cond,
+          result_extents, GetI64ElementsAttrForSeq(0, cond_type.getRank(), &b));
+    }
+    Value select = b.create<mhlo::SelectOp>(result_type, cond, op.t(), op.e());
+    b.create<shape::AssumingYieldOp>(select);
+    rewriter.replaceOp(op, {assuming_op.getResult(0)});
+    return success();
+  }
+};
 
 // Converts Sigmoid op to HLO ops computing sigmoid with the following formula:
 //
@@ -3848,7 +3953,7 @@ class ConvertArgMinMaxOp : public OpRewritePattern<OpTy> {
     RankedTensorType output_type =
         op.output().getType().template dyn_cast<RankedTensorType>();
     if (!output_type) {
-      return failure();
+      return rewriter.notifyMatchFailure(op, "requires known rank");
     }
 
     Type index_element_type = output_type.getElementType();
@@ -3860,9 +3965,8 @@ class ConvertArgMinMaxOp : public OpRewritePattern<OpTy> {
 
     llvm::Optional<int64_t> optional_axis =
         GetIntegerHLOAxisFromTFAxis(op.dimension(), input_type.getRank());
-    if (!optional_axis.hasValue()) {
-      return failure();
-    }
+    if (!optional_axis.hasValue())
+      return rewriter.notifyMatchFailure(op, "required axis");
     int64_t axis = optional_axis.getValue();
 
     IntegerAttr iota_dimension =
@@ -3909,7 +4013,7 @@ class ConvertArgMaxOp
                                      hlo::kInfinityLowest, &rewriter);
   }
 
-  static StringRef GetDirection() { return "GT"; }
+  static StringRef GetDirection() { return "GE"; }
 };
 
 // Converts TF TensorScatterUpdate op into Scatter Op with assignment:
@@ -4425,9 +4529,9 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
       // applying negative padding on the right/bottom.
       const int64_t pad_before = padding == tensorflow::Padding::EXPLICIT
                                      ? explicit_paddings[2 * dim]
-                                     : padding == tensorflow::Padding::SAME
-                                           ? std::max<int64_t>(pad_total / 2, 0)
-                                           : 0;
+                                 : padding == tensorflow::Padding::SAME
+                                     ? std::max<int64_t>(pad_total / 2, 0)
+                                     : 0;
       paddings.push_back(pad_before);
       paddings.push_back(pad_total - pad_before);
     }
@@ -4574,6 +4678,29 @@ class ConvertInfeedDequeueTupleOp
  public:
   using OpRewritePattern::OpRewritePattern;
 
+  FailureOr<std::vector<int64_t>> GetTPUInfeedLayoutFromAPI(
+      RankedTensorType t) const {
+    // Call the TPU API to determine the right infeed layout. Note that
+    // this can fail if we're not running on a TPU-enabled node.
+    // TODO(kramm): Move this into a separate pass. See b/181724526
+    xla::Shape old_shape = xla::TypeToShape(t);
+    XLA_Shape old_shape_c = {};
+    XLA_Shape new_shape_c = {};
+    TfTpu_ExecutorApiFn *executor = tensorflow::tpu::ExecutorApiFn();
+    if (!tensorflow::tpu::IsInitialized(executor)) {
+      return failure();
+    }
+    ApiConverter::ToC(old_shape, &old_shape_c);
+    executor->TpuTransferManager_GetInfeedLayoutFn(&old_shape_c, &new_shape_c);
+    xla::Shape new_shape = ApiConverter::FromC(&new_shape_c);
+    ApiConverter::Free(&old_shape_c);
+    ApiConverter::Free(&new_shape_c);
+
+    xla::Layout layout = new_shape.layout();
+    auto minor_to_major = layout.minor_to_major();
+    return std::vector<int64_t>(minor_to_major.begin(), minor_to_major.end());
+  }
+
   FailureOr<Attribute> GetLayout(const Type &type,
                                  PatternRewriter &rewriter) const {
     auto i64_type = rewriter.getIntegerType(64);
@@ -4588,23 +4715,33 @@ class ConvertInfeedDequeueTupleOp
       ArrayRef<Attribute> shape(v);
       return rewriter.getArrayAttr(shape);
     } else if (RankedTensorType t = type.dyn_cast<RankedTensorType>()) {
-      // Create a layout that sorts the dimensions descending by size,
-      // which tends to minimize padding on TPUs.
-      // TODO(kramm): This doesn't always match the layout generated by
-      //              GetInfeedLayout(), which is what outfeed uses.
-      //              Either attach a layout to OutfeedEnqueueTuple as well,
-      //              or call GetInfeedLayout() here.
       if (!t.hasStaticShape()) return failure();
-      std::vector<int64_t> minor_to_major(t.getRank());
-      std::iota(minor_to_major.begin(), minor_to_major.end(), 0);
-      std::sort(minor_to_major.begin(), minor_to_major.end(),
-                [=](int64_t a, int64_t b) {
-                  int da = t.getDimSize(a);
-                  int db = t.getDimSize(b);
-                  return da > db || (da == db && a > b);
-                });
+      auto layout = GetTPUInfeedLayoutFromAPI(t);
+      std::vector<int64_t> minor_to_major;
+      if (succeeded(layout)) {
+        minor_to_major = layout.getValue();
+      } else {
+        /* If we're not running on a TPU node, we might not be able to
+         * actually call the part of the TPU API that gives us layout.
+         * This happens e.g. for unit tests. Below we just create a reasonable
+         * layout.  We sort by dimension size, which makes the layout agree with
+         * the "correct" TPU layout in surprisingly many cases.
+         * Note that the corresponding InfeedEnqueue op will be generated
+         * through another path, and might still generate an (incompatible)
+         * layout using the TPU API. Running legalize_tf.cc on non-TPU nodes
+         * thus is a potential source of bugs.
+         */
+        minor_to_major.resize(t.getRank());
+        std::iota(minor_to_major.begin(), minor_to_major.end(), 0);
+        std::sort(minor_to_major.begin(), minor_to_major.end(),
+                  [=](int64_t a, int64_t b) {
+                    int da = t.getDimSize(a);
+                    int db = t.getDimSize(b);
+                    return da > db || (da == db && a > b);
+                  });
+      }
       std::vector<Attribute> elements;
-      for (int64_t i = 0; i < t.getRank(); i++) {
+      for (int64_t i = 0; i < minor_to_major.size(); i++) {
         elements.push_back(
             rewriter.getIntegerAttr(i64_type, minor_to_major[i]));
       }
@@ -6161,7 +6298,7 @@ LogicalResult legalizeTF(
     Operation *op, bool allow_partial_conversion, bool legalize_chlo,
     llvm::Optional<StringRef> tf2xla_fallback_device_type) {
   MLIRContext *context = op->getContext();
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(context);
   // Note that the `OperationConverter` orders patterns lexicographically by:
   // 1) Ascending legalization depth (i.e., minimum number of patterns necessary
   //    to arrive at conversion target). This requires relevant patterns to
@@ -6181,7 +6318,7 @@ LogicalResult legalizeTF(
   // Add TF->HLO legalization patterns via TF2XLA fallback.
   if (tf2xla_fallback_device_type.hasValue()) {
     PopulateLegalizeTfWithTf2XlaPatterns(tf2xla_fallback_device_type.getValue(),
-                                         patterns);
+                                         patterns, context);
   }
 
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
@@ -6208,7 +6345,7 @@ LogicalResult legalizeTF(
 
   if (!allow_partial_conversion) {
     // Fully qualify ReturnOp here as mhlo dialect also defines a ReturnOp.
-    target.addLegalOp<ModuleOp, FuncOp, ModuleTerminatorOp, ::mlir::ReturnOp>();
+    target.addLegalOp<ModuleOp, FuncOp, ::mlir::ReturnOp>();
     DenseSet<Operation *> nonlegalized_ops;
     LogicalResult result = applyPartialConversion(
         op, target, std::move(patterns), &nonlegalized_ops);
@@ -6226,35 +6363,84 @@ LogicalResult legalizeTF(
 
 void PopulateLegalizeTfPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
-  populateWithGenerated(context, *patterns);
+  populateWithGenerated(*patterns);
+  // clang-format off
   patterns->insert<
-      ConvertAllOp, ConvertAnyOp, ConvertArgMaxOp, ConvertBatchMatMulV2Op,
-      ConvertBiasAddOp, ConvertBroadcastToOp, ConvertBF16FloorDivOp,
-      ConvertClipByValueOp, ConvertConv2DOp, ConvertConv3DOp,
-      ConvertDepthConv2DOp, ConvertConv2DBackpropFilterOp,
-      ConvertConv3DBackpropFilterOp, ConvertConv2DBackpropInputOp,
-      ConvertConv3DBackpropInputOp, ConvertCumprodOp, ConvertCumsumOp,
-      ConvertDiagPartOp, ConvertDynamicExpandDimsOp, ConvertDynamicReshapeOp,
-      ConvertEinsumOp, ConvertRFFTOp, ConvertIRFFTOp,
-      ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
-      ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV2Op,
-      ConvertFusedBatchNormV3Op, ConvertInfeedDequeueTupleOp,
-      ConvertIdentityNOp, ConvertInplaceUpdateOp, ConvertLinSpaceOp,
-      ConvertMaxOp, ConvertMinOp, ConvertAvgPool2DOp, ConvertAvgPool3DOp,
-      ConvertAvgPool2DGradOp, ConvertAvgPool3DGradOp, ConvertMaxPool2DOp,
-      ConvertMaxPool3DOp, ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp,
-      ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
-      ConvertProdOp, ConvertQrOp, ConvertDynamicRangeOp,
-      ConvertMatrixDiagPartV3Op, ConvertRangeOp, ConvertSigmoidOp,
-      ConvertShapeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
-      ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
-      ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
-      ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,
-      ConvertUnpackOp, ConvertUnsortedSegmentMaxOp, ConvertUnsortedSegmentMinOp,
-      ConvertUnsortedSegmentProdOp, ConvertUnsortedSegmentSumOp,
-      ConvertRandomShuffleOp, ConvertXlaShardingOp,
-      ConvertXlaDynamicUpdateSliceOp, ConvertXlaAllReduceOp, ConvertLeakyReluOp,
-      ConvertLeakyReluGradOp>(context);
+    ConvertAllOp,
+    ConvertAnyOp,
+    ConvertArgMaxOp,
+    ConvertBatchMatMulV2Op,
+    ConvertBiasAddOp,
+    ConvertBroadcastToOp,
+    ConvertBF16FloorDivOp,
+    ConvertClipByValueOp,
+    ConvertConv2DOp,
+    ConvertConv3DOp,
+    ConvertDepthConv2DOp,
+    ConvertConv2DBackpropFilterOp,
+    ConvertConv3DBackpropFilterOp,
+    ConvertConv2DBackpropInputOp,
+    ConvertConv3DBackpropInputOp,
+    ConvertCumprodOp,
+    ConvertCumsumOp,
+    ConvertDiagPartOp,
+    ConvertDynamicExpandDimsOp,
+    ConvertDynamicReshapeOp,
+    ConvertEinsumOp,
+    ConvertRFFTOp,
+    ConvertIRFFTOp,
+    ConvertFusedBatchNormGradOp,
+    ConvertFusedBatchNormGradV2Op,
+    ConvertFusedBatchNormGradV3Op,
+    ConvertFusedBatchNormV2Op,
+    ConvertFusedBatchNormV3Op,
+    ConvertInfeedDequeueTupleOp,
+    ConvertIdentityNOp,
+    ConvertInplaceUpdateOp,
+    ConvertLinSpaceOp,
+    ConvertMaxOp,
+    ConvertMinOp,
+    ConvertAvgPool2DOp,
+    ConvertAvgPool3DOp,
+    ConvertAvgPool2DGradOp,
+    ConvertAvgPool3DGradOp,
+    ConvertMaxPool2DOp,
+    ConvertMaxPool3DOp,
+    ConvertMaxPool2DGradOp,
+    ConvertMaxPool3DGradOp,
+    ConvertMeanOp,
+    ConvertOneHotOp,
+    ConvertOutfeedEnqueueTupleOp,
+    ConvertProdOp,
+    ConvertQrOp,
+    ConvertDynamicRangeOp,
+    ConvertMatrixDiagPartV3Op,
+    ConvertRangeOp,
+    ConvertSelectOp,
+    ConvertSigmoidOp,
+    ConvertShapeOp,
+    ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
+    ConvertSoftmaxOp<TF::SoftmaxOp, false>,
+    ConvertSplitOp,
+    ConvertSplitVOp,
+    ConvertStridedSliceOp,
+    ConvertStridedSliceGradOp,
+    ConvertSumOp,
+    ConvertTensorScatterUpdateOp,
+    ConvertTileOp,
+    ConvertTopKV2Op,
+    ConvertUnpackOp,
+    ConvertUnsortedSegmentMaxOp,
+    ConvertUnsortedSegmentMinOp,
+    ConvertUnsortedSegmentProdOp,
+    ConvertUnsortedSegmentSumOp,
+    ConvertRandomShuffleOp,
+    ConvertXlaShardingOp,
+    ConvertXlaDynamicUpdateSliceOp,
+    ConvertXlaAllReduceOp,
+    ConvertLeakyReluOp,
+    ConvertLeakyReluGradOp>(context);
+  // clang-format on
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(

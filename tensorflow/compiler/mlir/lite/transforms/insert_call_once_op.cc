@@ -27,6 +27,10 @@ namespace {
 class InsertCallOnceOpFromSessionInitializerPass
     : public mlir::PassWrapper<InsertCallOnceOpFromSessionInitializerPass,
                                OperationPass<ModuleOp>> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<TensorFlowLiteDialect>();
+  }
+
  private:
   void runOnOperation() override;
 };

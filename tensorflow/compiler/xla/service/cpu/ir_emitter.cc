@@ -872,7 +872,8 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
   auto rhs = convolution->operand(1);
   TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
       /*instruction=*/*convolution, /*operands=*/{lhs, rhs},
-      /*supported_types=*/{F16, F32, F64, C64, C128}));
+      /*supported_types=*/
+      {PRED, S8, U8, S16, U16, S32, U32, S64, U64, F16, F32, F64, C64, C128}));
 
   // TODO(tonywy): Add PotentiallyImplementedAsMKLConvolution to support
   // different data layouts.

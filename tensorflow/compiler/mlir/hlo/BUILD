@@ -51,6 +51,7 @@ td_library(
     compatible_with = get_compatible_with_cloud(),
     includes = ["include"],
     deps = [
+        "@llvm-project//mlir:MemRefOpsTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:SideEffectTdFiles",
     ],
@@ -168,6 +169,7 @@ gentbl(
     deps = [
         ":hlo_ops_td_files",
         "@llvm-project//mlir:StdOpsTdFiles",
+        "@llvm-project//mlir:TensorOpsTdFiles",
     ],
 )
 
@@ -221,6 +223,17 @@ gentbl(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_enums.td",
     deps = [":hlo_ops_td_files"],
+)
+
+cc_library(
+    name = "hlo_ops_common",
+    srcs = ["lib/Dialect/mhlo/IR/hlo_ops_common.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"],
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
 )
 
 cc_library(
@@ -381,14 +394,15 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
-        "hlo_ops_pattern_gen",
         ":canonicalize_inc_gen",
         ":chlo_ops_inc_gen",
         ":convert_op_folder",
         ":hlo_ops_base_enums",
         ":hlo_ops_base_inc_gen",
         ":hlo_ops_base_structs",
+        ":hlo_ops_common",
         ":hlo_ops_inc_gen",
+        ":hlo_ops_pattern_gen",
         ":infer_fusibility_op_interface",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
@@ -425,12 +439,14 @@ cc_library(
         ":hlo_ops_base_enums",
         ":hlo_ops_base_inc_gen",
         ":hlo_ops_base_structs",
+        ":hlo_ops_common",
         ":lhlo_ops_inc_gen",
         ":lhlo_ops_structs_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:CopyOpInterface",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SideEffects",
         "@llvm-project//mlir:StandardOps",
@@ -584,6 +600,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgOps",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:StandardOps",
@@ -641,6 +658,29 @@ cc_library(
 )
 
 cc_library(
+    name = "move_up_dynamic_broadcasts_for_fusion",
+    srcs = ["lib/Dialect/mhlo/transforms/move_up_dynamic_broadcasts_for_fusion.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
+    deps = [
+        ":hlo",
+        ":map_chlo_to_hlo_op",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "lhlo_legalize_to_gpu",
     srcs = ["lib/Dialect/mhlo/transforms/lhlo_legalize_to_gpu.cc"],
     deps = [
@@ -670,6 +710,7 @@ cc_library(
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:StandardOps",
@@ -902,6 +943,7 @@ cc_library(
         ":hlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
@@ -1012,6 +1054,7 @@ cc_library(
         ":mhlo_control_flow_to_scf",
         ":mhlo_fusion",
         ":mhlo_to_mhlo_lowering_patterns",
+        ":move_up_dynamic_broadcasts_for_fusion",
         ":sink_constants_to_control_flow",
         ":test_passes",
         ":transform_unranked_hlo",

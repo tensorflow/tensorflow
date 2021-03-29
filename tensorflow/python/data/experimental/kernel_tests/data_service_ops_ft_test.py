@@ -350,7 +350,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     ds = range_dataset.apply(
         data_service_ops.distribute(
             processing_mode="parallel_epochs",
-            service=cluster.target,
+            service=cluster.dispatcher_address(),
             job_name="test"))
     iterator = iter(ds)
     for i in range(num_elements // 2):
@@ -359,7 +359,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     ds = range_dataset.apply(
         data_service_ops.distribute(
             processing_mode="distributed_epoch",
-            service=cluster.target,
+            service=cluster.dispatcher_address(),
             job_name="test"))
     with self.assertRaisesOpError("already an existing job with that name "
                                   "using processing mode <parallel_epochs>"):

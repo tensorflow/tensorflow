@@ -1390,6 +1390,33 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     # Unchanged value.
     self.assertAllEqual(st_updated.field_value(("b", "c")), 23)
 
+  def test_from_pyval_list_of_empty(self):
+    """See b/183245576."""
+    st = structured_tensor.StructuredTensor.from_pyval([{}])
+    self.assertAllEqual([1], st.shape.as_list())
+
+  def test_from_pyval_list_of_empty_three(self):
+    """See b/183245576."""
+    st = structured_tensor.StructuredTensor.from_pyval([{}, {}, {}])
+    self.assertAllEqual([3], st.shape.as_list())
+    self.assertEmpty(st.field_names())
+
+  def test_from_pyval_deep_list_of_empty(self):
+    """See b/183245576."""
+    st = structured_tensor.StructuredTensor.from_pyval([[{
+        "a": {},
+        "b": [3, 4]
+    }, {
+        "a": {},
+        "b": [5]
+    }], [{
+        "a": {},
+        "b": [7, 8, 9]
+    }]])
+    self.assertAllEqual(2, st.rank)
+    self.assertEqual(2, st.shape[0])
+    self.assertEmpty(st.field_value("a").field_names())
+
   def testWithUpdatesChecks(self):
     pyval = {"a": 12, "b": {"c": 23, "d": {"e": 11}}}
     st = StructuredTensor.from_pyval(pyval)

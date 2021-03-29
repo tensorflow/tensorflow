@@ -20,6 +20,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
@@ -176,6 +177,83 @@ class ChooseFastestBranchDatasetTest(test_base.DatasetTestBase,
             errors.InvalidArgumentError,
             "Cannot create more than one WrapperIterator per WrapperDataset."),
         expected_error_iter=2)
+
+
+class ChooseFastestBranchDatasetCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCore(self):
+
+    def build_ds(size):
+      dataset = dataset_ops.Dataset.range(size)
+
+      def branch_0(dataset):
+        return dataset.map(lambda x: x).batch(10)
+
+      def branch_1(dataset):
+        return dataset.batch(10).map(lambda x: x)
+
+      return optimization._ChooseFastestBranchDataset(  # pylint: disable=protected-access
+          dataset, [branch_0, branch_1],
+          ratio_numerator=10)
+
+    for size in [100, 1000]:
+      self.run_core_tests(lambda: build_ds(size), size // 10)  # pylint: disable=cell-var-from-loop
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testWithCapture(self):
+
+    def build_ds():
+      dataset = dataset_ops.Dataset.range(10)
+      const_64 = constant_op.constant(1, dtypes.int64)
+      const_32 = constant_op.constant(1, dtypes.int32)
+
+      def branch_0(dataset):
+        return dataset.map(lambda x: x + const_64)
+
+      def branch_1(dataset):
+        return dataset.map(lambda x: x + math_ops.cast(const_32, dtypes.int64))
+
+      return optimization._ChooseFastestBranchDataset(
+          dataset, [branch_0, branch_1], num_elements_per_branch=3)
+
+    self.run_core_tests(build_ds, 10)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testWithPrefetch(self):
+
+    def build_ds():
+      dataset = dataset_ops.Dataset.range(10)
+      const_64 = constant_op.constant(1, dtypes.int64)
+      const_32 = constant_op.constant(1, dtypes.int32)
+
+      def branch_0(dataset):
+        return dataset.map(lambda x: x + const_64)
+
+      def branch_1(dataset):
+        return dataset.map(lambda x: x + math_ops.cast(const_32, dtypes.int64))
+
+      return optimization._ChooseFastestBranchDataset(
+          dataset, [branch_0, branch_1], num_elements_per_branch=3)
+
+    self.run_core_tests(build_ds, 10)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testWithMoreOutputThanInput(self):
+
+    def build_ds():
+      dataset = dataset_ops.Dataset.from_tensors(0).repeat(1000).batch(100)
+
+      def branch(dataset):
+        return dataset.unbatch()
+
+      return optimization._ChooseFastestBranchDataset(
+          dataset, [branch, branch],
+          ratio_denominator=10,
+          num_elements_per_branch=100)
+
+    self.run_core_tests(build_ds, 1000)
 
 
 if __name__ == "__main__":

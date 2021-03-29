@@ -5,12 +5,36 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "ObjectGraphView"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Trackable"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TrackableDataStructure"
     mtype: "<type \'type\'>"
   }
   member {
     name: "TrackableReference"
     mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "no_automatic_dependency_tracking"
+    argspec: "args=[\'method\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "register_session_provider"
+    argspec: "args=[\'session_provider\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "sticky_attribute_assignment"
+    argspec: "args=[\'trackable\', \'name\', \'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "streaming_restore"
+    argspec: "args=[\'status\', \'session\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "wrap"

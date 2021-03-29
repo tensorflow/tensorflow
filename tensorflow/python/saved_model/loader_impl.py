@@ -110,10 +110,10 @@ def parse_saved_model(export_dir):
     except text_format.ParseError as e:
       raise IOError("Cannot parse file %s: %s." % (path_to_pbtxt, str(e)))
   else:
-    raise IOError("SavedModel file does not exist at: %s/{%s|%s}" %
-                  (export_dir,
-                   constants.SAVED_MODEL_FILENAME_PBTXT,
-                   constants.SAVED_MODEL_FILENAME_PB))
+    raise IOError(
+        "SavedModel file does not exist at: %s%s{%s|%s}" %
+        (export_dir, os.path.sep, constants.SAVED_MODEL_FILENAME_PBTXT,
+         constants.SAVED_MODEL_FILENAME_PB))
 
 
 # TODO(b/120594573): Make this symbol also available as private, so that

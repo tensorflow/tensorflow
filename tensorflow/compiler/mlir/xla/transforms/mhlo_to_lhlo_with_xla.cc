@@ -20,6 +20,7 @@ limitations under the License.
 #include <tuple>
 
 #include "absl/algorithm/container.h"
+#include "absl/types/optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -140,7 +141,6 @@ Status ConvertModule(std::unique_ptr<HloModule> hlo_module, ModuleOp module,
   // conversion.
   module.getBody()->clear();
   OpBuilder builder(module);
-  module.ensureTerminator(module.getBodyRegion(), builder, module.getLoc());
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       HloToLhloModule(*assignment, *optimized_hlo_module, module),
@@ -156,8 +156,8 @@ class XlaHloToLhloPass
     : public PassWrapper<XlaHloToLhloPass, OperationPass<ModuleOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry
-        .insert<mlir::StandardOpsDialect, mlir::mhlo::MhloDialect,
-                mlir::lmhlo::LmhloDialect, mlir::lmhlo_gpu::LmhloGpuDialect>();
+        .insert<StandardOpsDialect, memref::MemRefDialect, mhlo::MhloDialect,
+                lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
   }
 
  public:
@@ -252,6 +252,12 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return CreateOpWithoutAttrs<lmhlo::AbsOp>(instr);
     case HloOpcode::kAdd:
       return CreateOpWithoutAttrs<lmhlo::AddOp>(instr);
+    case HloOpcode::kAddDependency:
+      return nullptr;
+    case HloOpcode::kAfterAll:
+      // LMHLO is already ordered. This assumption may be broken after
+      // introducing async regions and partial orders.
+      return nullptr;
     case HloOpcode::kAllToAll:
       return EmitAllToAllOp(instr);
     case HloOpcode::kAllGather:
@@ -263,7 +269,7 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
     case HloOpcode::kAtan2:
       return CreateOpWithoutAttrs<lmhlo::Atan2Op>(instr);
     case HloOpcode::kBitcast:
-      return nullptr;
+      return EmitBitcast(instr);
     case HloOpcode::kBitcastConvert:
       return CreateOpWithoutAttrs<lmhlo::BitcastConvertOp>(instr);
     case HloOpcode::kBroadcast:
@@ -276,6 +282,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return CreateOpWithoutAttrs<lmhlo::ClampOp>(instr);
     case HloOpcode::kCollectivePermute:
       return EmitCollectivePermuteOp(instr);
+    case HloOpcode::kConditional:
+      return EmitCaseOp(instr);
     case HloOpcode::kClz:
       return CreateOpWithoutAttrs<lmhlo::ClzOp>(instr);
     case HloOpcode::kCompare:
@@ -308,6 +316,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return CreateOpWithoutAttrs<lmhlo::FloorOp>(instr);
     case HloOpcode::kGather:
       return EmitGatherOp(instr);
+    case HloOpcode::kGetTupleElement:
+      return nullptr;
     case HloOpcode::kImag:
       return CreateOpWithoutAttrs<lmhlo::ImagOp>(instr);
     case HloOpcode::kInfeed:
@@ -386,6 +396,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return EmitTransposeOp(instr);
     case HloOpcode::kTriangularSolve:
       return EmitTriangularSolveOp(instr);
+    case HloOpcode::kTuple:
+      return nullptr;
     case HloOpcode::kXor:
       return CreateOpWithoutAttrs<lmhlo::XorOp>(instr);
     case HloOpcode::kSort:
@@ -404,6 +416,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return EmitReduceOp(instr);
     case HloOpcode::kRngGetAndUpdateState:
       return EmitRngGetAndUpdateStateOp(instr);
+    case HloOpcode::kWhile:
+      return EmitWhileOp(instr);
     default:
       llvm::errs() << instr->ToString();
       return tensorflow::errors::Internal(
@@ -463,7 +477,7 @@ StatusOr<Value> LhloDialectEmitter::RewriteFusionOperand(
   }
   TF_ASSIGN_OR_RETURN(Value memref,
                       GetOrCreateArrayView(root, shape, *shape_index));
-  auto load = b->create<TensorLoadOp>(loc, memref);
+  auto load = b->create<memref::TensorLoadOp>(loc, memref);
   if (shape.layout() !=
       xla::LayoutUtil::MakeDescendingLayout(shape.dimensions().size())) {
     llvm::SmallVector<int64_t, 4> minor_to_major(
@@ -482,6 +496,8 @@ StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
 
   auto fusion = builder_.create<lmhlo::FusionOp>(getLocation(instr));
   auto after_fusion = builder_.saveInsertionPoint();
+  auto reverter = xla::MakeCleanup(
+      [this, after_fusion] { builder_.restoreInsertionPoint(after_fusion); });
   builder_ = mlir::OpBuilder(fusion);
 
   auto region_builder = OpBuilder::atBlockBegin(&fusion.region().front());
@@ -500,13 +516,12 @@ StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
                       xla::HloFunctionImporter::ImportInstructions(
                           *fusion_instr->fused_instructions_computation(),
                           arguments, &region_builder));
-
   {
     int i = 0;
     llvm::SmallVector<Value, 4> output;
     TF_RETURN_IF_ERROR(GetOrCreateView(instr, &output));
     TF_RETURN_IF_ERROR(WalkTuplePostOrder(result, [&](Value v) mutable {
-      region_builder.create<TensorStoreOp>(loc, v, output[i++]);
+      region_builder.create<memref::TensorStoreOp>(loc, v, output[i++]);
       return Status::OK();
     }));
     if (i != output.size()) {
@@ -539,22 +554,28 @@ StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
     }
   }
 
-  builder_.restoreInsertionPoint(after_fusion);
   return fusion;
 }
 
 StatusOr<mhlo::ScatterDimensionNumbers>
-LhloDialectEmitter::GetScatterDimensionNumbers(const HloInstruction* instr) {
+LhloDialectEmitter::GetScatterDimensionNumbers(const HloInstruction* instr,
+                                               mlir::MLIRContext* context) {
   auto* scatter_instr = xla::Cast<xla::HloScatterInstruction>(instr);
 
   const xla::ScatterDimensionNumbers& xla_scatter_dim =
       scatter_instr->scatter_dimension_numbers();
+
+  mlir::Builder builder(context);
+  auto get_i64_array_attr =
+      [builder](absl::Span<const xla::int64> container) mutable {
+        return builder.getI64TensorAttr(
+            {container.data(), static_cast<size_t>(container.size())});
+      };
   auto scatter_dimension_numbers = mhlo::ScatterDimensionNumbers::get(
-      GetI64DenseElementsAttr(xla_scatter_dim.update_window_dims()),
-      GetI64DenseElementsAttr(xla_scatter_dim.inserted_window_dims()),
-      GetI64DenseElementsAttr(xla_scatter_dim.scatter_dims_to_operand_dims()),
-      builder_.getI64IntegerAttr(xla_scatter_dim.index_vector_dim()),
-      module_.getContext());
+      get_i64_array_attr(xla_scatter_dim.update_window_dims()),
+      get_i64_array_attr(xla_scatter_dim.inserted_window_dims()),
+      get_i64_array_attr(xla_scatter_dim.scatter_dims_to_operand_dims()),
+      builder.getI64IntegerAttr(xla_scatter_dim.index_vector_dim()), context);
   return scatter_dimension_numbers;
 }
 
@@ -567,7 +588,7 @@ StatusOr<lmhlo::ScatterOp> LhloDialectEmitter::EmitScatterOp(
   auto* scatter_instr = xla::Cast<xla::HloScatterInstruction>(instr);
 
   TF_ASSIGN_OR_RETURN(auto scatter_dimension_numbers,
-                      GetScatterDimensionNumbers(instr));
+                      GetScatterDimensionNumbers(instr, builder_.getContext()));
   scatter.scatter_dimension_numbersAttr(scatter_dimension_numbers);
   scatter.indices_are_sortedAttr(
       builder_.getBoolAttr(scatter_instr->indices_are_sorted()));
@@ -943,7 +964,7 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnBatchNorm(
 }
 
 // Convert an XLA HLO constant to a global_memref + get_global_memref pair.
-StatusOr<mlir::GetGlobalMemrefOp> LhloDialectEmitter::EmitConstant(
+StatusOr<mlir::memref::GetGlobalOp> LhloDialectEmitter::EmitConstant(
     const HloInstruction* instr) {
   // Insert a global_memref in the module.
   Location loc = getLocation(instr);
@@ -967,7 +988,7 @@ StatusOr<mlir::GetGlobalMemrefOp> LhloDialectEmitter::EmitConstant(
   {
     OpBuilder::InsertionGuard guard(builder_);
     builder_.clearInsertionPoint();
-    auto global_var = builder_.create<GlobalMemrefOp>(
+    auto global_var = builder_.create<memref::GlobalOp>(
         loc, constant_name, builder_.getStringAttr("private"), memref_type,
         initial_value, true);
     SymbolTable(module_).insert(global_var);
@@ -987,7 +1008,7 @@ StatusOr<mlir::GetGlobalMemrefOp> LhloDialectEmitter::EmitConstant(
   }
 
   auto get_global_memref =
-      builder_.create<GetGlobalMemrefOp>(loc, memref_type, constant_name);
+      builder_.create<memref::GetGlobalOp>(loc, memref_type, constant_name);
 
   // Update the cache to remember this value.
   auto& cached_value = slices_[std::make_pair(instr, xla::ShapeIndex())];
@@ -1373,11 +1394,93 @@ LhloDialectEmitter::EmitTriangularSolveOp(const xla::HloInstruction* instr) {
   return triangular_solve;
 }
 
+xla::StatusOr<Operation*> LhloDialectEmitter::EmitBitcast(
+    const xla::HloInstruction* instr) {
+  // XLA buffer assignment should assign the same slice to a bitcast input and
+  // output.
+  const xla::ShapeIndex top_index;
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
+                      assignment_.GetUniqueSlice(instr, top_index));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice input_slice,
+                      assignment_.GetUniqueSlice(instr->operand(0), top_index));
+
+  if (input_slice != result_slice) {
+    return xla::InvalidArgument(
+        "Bitcast input and result slice should be same");
+  }
+  return nullptr;
+}
+
 mlir::DenseIntElementsAttr LhloDialectEmitter::GetLayoutAttribute(
     const xla::Layout& layout, Builder* builder) {
   llvm::SmallVector<int64_t, 4> minor_to_major(layout.minor_to_major().begin(),
                                                layout.minor_to_major().end());
   return builder->getIndexTensorAttr(minor_to_major);
+}
+
+Status LhloDialectEmitter::ImportAsLmhloRegion(xla::HloComputation* computation,
+                                               mlir::Region* region) {
+  auto after = builder_.saveInsertionPoint();
+  auto reverter = xla::MakeCleanup(
+      [this, after] { builder_.restoreInsertionPoint(after); });
+
+  builder_ = OpBuilder(region);
+  const xla::HloInstructionSequence* schedule =
+      assignment_.hlo_ordering().SequentialOrder(*computation);
+  if (!schedule)
+    return xla::Unimplemented("Missing sequential order for the computation");
+  TF_RETURN_IF_ERROR(
+      computation->AcceptOrdered(this, schedule->instructions()));
+  builder_.create<lmhlo::TerminatorOp>(builder_.getUnknownLoc());
+  return Status::OK();
+}
+
+StatusOr<lmhlo::CaseOp> LhloDialectEmitter::EmitCaseOp(
+    const HloInstruction* instr) {
+  Location loc = getLocation(instr);
+  llvm::SmallVector<Value, 4> operands;
+  size_t num_arguments, num_results;
+  TF_RETURN_IF_ERROR(CreateOperands(instr, 1, TokenLoweringMode::kUseNull,
+                                    operands, num_arguments, num_results));
+
+  auto case_op =
+      builder_.create<lmhlo::CaseOp>(loc, operands[0], instr->branch_count());
+
+  for (int i = 0; i < instr->branch_count(); i++) {
+    case_op.branches()[i].push_back(new mlir::Block());
+    TF_RETURN_IF_ERROR(ImportAsLmhloRegion(instr->called_computations()[i],
+                                           &case_op.branches()[i]));
+  }
+
+  return case_op;
+}
+
+xla::StatusOr<lmhlo::WhileOp> LhloDialectEmitter::EmitWhileOp(
+    const xla::HloInstruction* instr) {
+  Location loc = getLocation(instr);
+  SmallVector<Value, 1> operands;
+  TF_RETURN_IF_ERROR(GetOrCreateView(
+      instr->called_computations()[1]->root_instruction(), &operands));
+  TF_RET_CHECK(operands.size() == 1);
+
+  TF_ASSIGN_OR_RETURN(auto config,
+                      instr->backend_config<xla::WhileLoopBackendConfig>());
+  mlir::IntegerAttr trip_count;
+  if (config.has_known_trip_count()) {
+    trip_count = builder_.getI64IntegerAttr(config.known_trip_count().n());
+  }
+  lmhlo::WhileOp while_op =
+      builder_.create<lmhlo::WhileOp>(loc, operands[0], trip_count);
+
+  while_op.cond().push_back(new mlir::Block());
+  while_op.body().push_back(new mlir::Block());
+  TF_RETURN_IF_ERROR(
+      ImportAsLmhloRegion(instr->called_computations()[1], &while_op.cond()));
+
+  TF_RETURN_IF_ERROR(
+      ImportAsLmhloRegion(instr->called_computations()[0], &while_op.body()));
+
+  return while_op;
 }
 
 StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
@@ -1434,15 +1537,15 @@ StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
   // then follow up with a MemRefReinterpretCast to cast the resulting memref to
   // the original layout.
   Value result =
-      builder_.create<ViewOp>(loc, physical_out_type, alloc, byte_shift,
-                              /*sizes=*/ValueRange{});
+      builder_.create<memref::ViewOp>(loc, physical_out_type, alloc, byte_shift,
+                                      /*sizes=*/ValueRange{});
   if (physical_out_type != out_type) {
     int64_t out_offset;
     SmallVector<int64_t, 4> out_strides;
     if (failed(getStridesAndOffset(out_memref_type, out_strides, out_offset)))
       return tensorflow::errors::Internal(
           "Failed to get strides and offset from the output type.");
-    result = builder_.create<MemRefReinterpretCastOp>(
+    result = builder_.create<memref::ReinterpretCastOp>(
         loc, out_memref_type, result, out_offset, out_memref_type.getShape(),
         out_strides);
   }
@@ -1592,7 +1695,8 @@ Status LhloDialectEmitter::Initialize() {
   symbol_table.insert(func_op);
   builder_.setInsertionPointToEnd(block);
 
-  auto return_op = builder_.create<ReturnOp>(builder_.getUnknownLoc());
+  auto return_op =
+      builder_.create<lmhlo::TerminatorOp>(builder_.getUnknownLoc());
   builder_ = OpBuilder(return_op);
 
   return Status::OK();
@@ -1605,8 +1709,13 @@ std::unique_ptr<OperationPass<ModuleOp>> createXlaHloToLhloWithXlaPass() {
 Status HloToLhloModule(const BufferAssignment& assignment,
                        const HloModule& hlo_module, ModuleOp module) {
   module.getContext()
-      ->loadDialect<StandardOpsDialect, mhlo::MhloDialect, lmhlo::LmhloDialect,
+      ->loadDialect<StandardOpsDialect, memref::MemRefDialect,
+                    mhlo::MhloDialect, lmhlo::LmhloDialect,
                     lmhlo_gpu::LmhloGpuDialect>();
+
+  module->setLoc(mlir::NameLoc::get(
+      mlir::Identifier::get(hlo_module.name(), module.getContext())));
+
   const HloComputation* computation = hlo_module.entry_computation();
 
   LhloDialectEmitter emitter(assignment, *computation, module);

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 
+#include <cstdint>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -134,6 +136,7 @@ GPUResources TensorDescriptor::GetGPUResources() const {
              storage_type == TensorStorageType::TEXTURE_2D) {
     GPUImage2DDescriptor desc;
     desc.data_type = data_type;
+    desc.normalized = false;
     desc.access_type = access_type_;
     resources.images2d.push_back({"image2d", desc});
   } else if (storage_type == TensorStorageType::TEXTURE_ARRAY) {
@@ -986,9 +989,9 @@ int GetChannelsAlignment(const TensorDescriptor& desc, const BHWDC& shape) {
 }
 }  // namespace
 
-template <typename T>
-void DataFromBHWDC(const float* src, const BHWDC& shape,
-                   const TensorDescriptor& desc, T* dst) {
+template <typename FromType, typename ToType>
+void DataFromBHWDC(const FromType* src, const BHWDC& shape,
+                   const TensorDescriptor& desc, ToType* dst) {
   const int channels_alignment = GetChannelsAlignment(desc, shape);
   const int slices = DivideRoundUp(shape.c, 4);
   for (int b = 0; b < shape.b; ++b) {
@@ -997,13 +1000,13 @@ void DataFromBHWDC(const float* src, const BHWDC& shape,
         for (int x = 0; x < shape.w; ++x) {
           for (int d = 0; d < shape.d; ++d) {
             for (int c = 0; c < channels_alignment; ++c) {
-              float value;
+              FromType value;
               if (s * 4 + c < shape.c) {
                 const int cpu_index =
                     shape.LinearIndex({b, y, x, d, s * 4 + c});
                 value = src[cpu_index];
               } else {
-                value = 0.0f;
+                value = 0;
               }
               int gpu_index = GetLinearIndex(desc, shape, b, x, y, d, s, c);
               dst[gpu_index] = value;
@@ -1015,14 +1018,40 @@ void DataFromBHWDC(const float* src, const BHWDC& shape,
   }
 }
 
-template void DataFromBHWDC<float>(const float* src, const BHWDC& shape,
-                                   const TensorDescriptor& desc, float* dst);
-template void DataFromBHWDC<half>(const float* src, const BHWDC& shape,
-                                  const TensorDescriptor& desc, half* dst);
+template void DataFromBHWDC<float, float>(const float* src, const BHWDC& shape,
+                                          const TensorDescriptor& desc,
+                                          float* dst);
+template void DataFromBHWDC<float, half>(const float* src, const BHWDC& shape,
+                                         const TensorDescriptor& desc,
+                                         half* dst);
+template void DataFromBHWDC<int32_t, int32_t>(const int32_t* src,
+                                              const BHWDC& shape,
+                                              const TensorDescriptor& desc,
+                                              int32_t* dst);
+template void DataFromBHWDC<int16_t, int16_t>(const int16_t* src,
+                                              const BHWDC& shape,
+                                              const TensorDescriptor& desc,
+                                              int16_t* dst);
+template void DataFromBHWDC<int8_t, int8_t>(const int8_t* src,
+                                            const BHWDC& shape,
+                                            const TensorDescriptor& desc,
+                                            int8_t* dst);
+template void DataFromBHWDC<uint32_t, uint32_t>(const uint32_t* src,
+                                                const BHWDC& shape,
+                                                const TensorDescriptor& desc,
+                                                uint32_t* dst);
+template void DataFromBHWDC<uint16_t, uint16_t>(const uint16_t* src,
+                                                const BHWDC& shape,
+                                                const TensorDescriptor& desc,
+                                                uint16_t* dst);
+template void DataFromBHWDC<uint8_t, uint8_t>(const uint8_t* src,
+                                              const BHWDC& shape,
+                                              const TensorDescriptor& desc,
+                                              uint8_t* dst);
 
-template <typename T>
-void DataToBHWDC(const T* src, const BHWDC& shape, const TensorDescriptor& desc,
-                 float* dst) {
+template <typename FromType, typename ToType>
+void DataToBHWDC(const FromType* src, const BHWDC& shape,
+                 const TensorDescriptor& desc, ToType* dst) {
   const int channels_alignment = GetChannelsAlignment(desc, shape);
   const int slices = DivideRoundUp(shape.c, 4);
   for (int b = 0; b < shape.b; ++b) {
@@ -1045,10 +1074,35 @@ void DataToBHWDC(const T* src, const BHWDC& shape, const TensorDescriptor& desc,
   }
 }
 
-template void DataToBHWDC<float>(const float* src, const BHWDC& shape,
-                                 const TensorDescriptor& desc, float* dst);
-template void DataToBHWDC<half>(const half* src, const BHWDC& shape,
-                                const TensorDescriptor& desc, float* dst);
+template void DataToBHWDC<float, float>(const float* src, const BHWDC& shape,
+                                        const TensorDescriptor& desc,
+                                        float* dst);
+template void DataToBHWDC<half, float>(const half* src, const BHWDC& shape,
+                                       const TensorDescriptor& desc,
+                                       float* dst);
+template void DataToBHWDC<int32_t, int32_t>(const int32_t* src,
+                                            const BHWDC& shape,
+                                            const TensorDescriptor& desc,
+                                            int32_t* dst);
+template void DataToBHWDC<int16_t, int16_t>(const int16_t* src,
+                                            const BHWDC& shape,
+                                            const TensorDescriptor& desc,
+                                            int16_t* dst);
+template void DataToBHWDC<int8_t, int8_t>(const int8_t* src, const BHWDC& shape,
+                                          const TensorDescriptor& desc,
+                                          int8_t* dst);
+template void DataToBHWDC<uint32_t, uint32_t>(const uint32_t* src,
+                                              const BHWDC& shape,
+                                              const TensorDescriptor& desc,
+                                              uint32_t* dst);
+template void DataToBHWDC<uint16_t, uint16_t>(const uint16_t* src,
+                                              const BHWDC& shape,
+                                              const TensorDescriptor& desc,
+                                              uint16_t* dst);
+template void DataToBHWDC<uint8_t, uint8_t>(const uint8_t* src,
+                                            const BHWDC& shape,
+                                            const TensorDescriptor& desc,
+                                            uint8_t* dst);
 
 }  // namespace gpu
 }  // namespace tflite

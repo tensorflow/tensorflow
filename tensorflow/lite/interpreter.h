@@ -599,6 +599,7 @@ class Interpreter {
                           TfLiteExternalContext* ctx);
 
   // Assigns (or reassigns) a custom memory allocation for the given tensor.
+  // `flags` is a bitmask, see TfLiteCustomAllocationFlags.
   // The runtime does NOT take ownership of the underlying memory.
   //
   // NOTE: User needs to call AllocateTensors() after this. In case of input
@@ -614,10 +615,13 @@ class Interpreter {
   //    This condition is checked again if any tensors are resized.
   // 4. allocation->data should be aligned to kDefaultTensorAlignment
   //    defined in lite/util.h. (Currently 64 bytes)
+  //    This check is skipped if kTfLiteCustomAllocationFlagsSkipAlignCheck is
+  //    set through `flags`.
   //
   // WARNING: This is an experimental interface that is subject to change.
   TfLiteStatus SetCustomAllocationForTensor(
-      int tensor_index, const TfLiteCustomAllocation& allocation);
+      int tensor_index, const TfLiteCustomAllocation& allocation,
+      int64_t flags = kTfLiteCustomAllocationFlagsNone);
 
 #ifndef DOXYGEN_SKIP
   /// Adds `subgraphs_to_add` subgraphs, preserving pre-existing Subgraph
@@ -716,6 +720,10 @@ class Interpreter {
   void SetSignatureDef(std::vector<SignatureDef> signature_defs) {
     signature_defs_ = std::move(signature_defs);
   }
+
+  // Enables preserving intermediates for debugging.  Should only be set by
+  // InterpreterBuilder before allocating any tensors.
+  TfLiteStatus PreserveAllTensorsExperimental();
 
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive

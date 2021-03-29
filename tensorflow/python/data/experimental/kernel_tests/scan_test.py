@@ -292,8 +292,8 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertIn(b"GPU:0", self.evaluate(get_next()))
 
 
-class ScanDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                                parameterized.TestCase):
+class ScanCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                         parameterized.TestCase):
 
   def _build_dataset(self, num_elements):
     return dataset_ops.Dataset.from_tensors(1).repeat(num_elements).apply(

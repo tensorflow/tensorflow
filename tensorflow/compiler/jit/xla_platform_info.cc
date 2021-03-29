@@ -79,7 +79,7 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
   auto device = static_cast<Device*>(device_base);
   se::Platform::Id platform_id = nullptr;
   const XlaDevice::Metadata* xla_device_metadata = nullptr;
-  se::DeviceMemoryAllocator* custom_allocator = nullptr;
+  std::shared_ptr<se::DeviceMemoryAllocator> custom_allocator;
 
   if (device->device_type() == DEVICE_CPU) {
     platform_id = se::host::kHostPlatformId;
@@ -101,37 +101,35 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
     // allocator to allocate real buffers.
     platform_id = xla_device_metadata->platform()->id();
     custom_allocator =
-        xla_device_metadata->client()->backend().memory_allocator();
+        xla_device_metadata->client()->backend().shared_memory_allocator();
   }
 
   return XlaPlatformInfo(DeviceType(device->device_type()), platform_id,
                          xla_device_metadata, custom_allocator);
 }
 
-se::DeviceMemoryAllocator* GetAllocator(
-    absl::optional<se::TfAllocatorAdapter>* tf_allocator_adapter,
+std::shared_ptr<se::DeviceMemoryAllocator> GetAllocator(
     DeviceBase* device, se::Stream* stream,
     const XlaPlatformInfo& platform_info) {
   if (platform_info.custom_allocator()) {
     return platform_info.custom_allocator();
   }
+  auto* alloc = device->GetAllocator({});
   if (!stream) {
     // Stream is not set for the host platform.
     se::Platform* platform =
         se::MultiPlatformManager::PlatformWithId(platform_info.platform_id())
             .ValueOrDie();
-    tf_allocator_adapter->emplace(device->GetAllocator({}), platform);
-    return &tf_allocator_adapter->value();
+    return std::make_shared<se::TfAllocatorAdapter>(alloc, platform);
   }
-  tf_allocator_adapter->emplace(device->GetAllocator({}), stream);
-  return &tf_allocator_adapter->value();
+  return std::make_shared<se::TfAllocatorAdapter>(alloc, stream);
 }
 
 XlaCompiler::Options GenerateCompilerOptions(
     const XlaCompilationCache& cache,
     const FunctionLibraryRuntime& function_library, DeviceBase* device,
-    se::Stream* stream, const XlaPlatformInfo& platform_info, bool has_ref_vars,
-    absl::optional<se::TfAllocatorAdapter>* tf_allocator_adapter) {
+    se::Stream* stream, const XlaPlatformInfo& platform_info,
+    bool has_ref_vars) {
   XlaCompiler::Options options;
   options.client = static_cast<xla::LocalClient*>(cache.client());
   if (stream != nullptr) {
@@ -142,8 +140,7 @@ XlaCompiler::Options GenerateCompilerOptions(
   options.graph_def_version = function_library.graph_def_version();
   options.allow_cpu_custom_calls =
       (platform_info.platform_id() == se::host::kHostPlatformId);
-  options.device_allocator =
-      GetAllocator(tf_allocator_adapter, device, stream, platform_info);
+  options.device_allocator = GetAllocator(device, stream, platform_info);
   if (platform_info.xla_device_metadata()) {
     options.shape_representation_fn =
         platform_info.xla_device_metadata()->shape_representation_fn();

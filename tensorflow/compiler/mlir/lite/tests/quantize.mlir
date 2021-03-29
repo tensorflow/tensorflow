@@ -1,5 +1,6 @@
 // RUN: tf-opt %s -tfl-prepare-quantize -tfl-quantize | FileCheck %s
 // RUN: tf-opt %s -tfl-prepare-quantize -tfl-quantize -tfl-numeric-verify -tfl-log-if-failed | FileCheck --check-prefix=DEBUG %s
+// RUN: tf-opt %s -tfl-quantize -tfl-legacy-quantize | FileCheck --check-prefix=LEGACY %s
 
 // CHECK-LABEL: QuantizeFloatConst
 func @QuantizeFloatConst() -> tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>> {
@@ -71,8 +72,8 @@ func @QuantizeConv2D(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>
 // CHECK: %[[conv:.*]] = "tfl.conv_2d"(%arg0, %[[cst1]], %[[cst0]])
 // CHECK: return %[[conv]] : tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>
 
-// DEBUG: %[[wt:.*]] = constant dense<-1.000000e+00> : tensor<32x3x3x3xf32>
-// DEBUG: %[[bias:.*]] = constant dense<-1.23697901> : tensor<32xf32>
+// DEBUG-DAG: %[[wt:.*]] = constant dense<-1.000000e+00> : tensor<32x3x3x3xf32>
+// DEBUG-DAG: %[[bias:.*]] = constant dense<-1.23697901> : tensor<32xf32>
 // DEBUG: %[[act:.*]] = "tfl.dequantize"(%arg0) : (tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x224x224x3xf32>
 // DEBUG: %[[f_conv:.*]] = "tfl.conv_2d"(%[[act]], %[[wt]], %[[bias]])
 // DEBUG: %[[q_conv:.*]] = "tfl.conv_2d"
@@ -81,6 +82,7 @@ func @QuantizeConv2D(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>
 }
 
 // CHECK-LABEL: QuantizeDepthwiseConv2D
+// DEBUG-LABEL: QuantizeDepthwiseConv2D
 func @QuantizeDepthwiseConv2D(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>> {
 ^bb0(%arg0: tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>):
   %cst = constant dense<-1.23697901> : tensor<32xf32>
@@ -98,6 +100,7 @@ func @QuantizeDepthwiseConv2D(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500
 }
 
 // CHECK-LABEL: QuantizeFullyConnected
+// DEBUG-LABEL: QuantizeFullyConnected
 func @QuantizeFullyConnected(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>> {
 ^bb0(%arg0: tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>):
   %cst = constant dense<-1.23697901> : tensor<32xf32>
@@ -304,4 +307,64 @@ func @NotQuantizePow(%arg0: tensor<4x!quant.uniform<u8:f32, 1.0>>,
 // CHECK-NEXT: return %[[q]]
 
 // DEBUG-NOT: "tfl.NumericVerify"
+}
+
+// CHECK-LABEL: QuantizeCustomTfOp
+// DEBUG-LABEL: QuantizeCustomTfOp
+func @QuantizeCustomTfOp(%arg0: tensor<128x128x!quant.uniform<u8:f32, 0.1:127>>,
+    %arg1: tensor<1x!quant.uniform<u8:f32, 0.2:127>>, %arg2: tensor<1x!quant.uniform<u8:f32, 0.4:127>>,
+    %arg3: tensor<1xi32>) -> (tensor<128x128x!quant.uniform<u8:f32, 0.2:125>>) {
+  %0 = "tfl.dequantize"(%arg0) : (tensor<128x128x!quant.uniform<u8:f32, 0.1:127>>) -> tensor<128x128xf32>
+  %1 = "tfl.dequantize"(%arg1) : (tensor<1x!quant.uniform<u8:f32, 0.2:127>>) -> tensor<1xf32>
+  %2 = "tfl.dequantize"(%arg2) : (tensor<1x!quant.uniform<u8:f32, 0.4:127>>) -> tensor<1xf32>
+  %3 = "tfl.custom_tf"(%0, %1, %2, %arg3) ( {
+  ^bb0(%a1: tensor<128x128xf32>, %a2: tensor<1xf32>, %a3: tensor<1xf32>, %a4: tensor<1xi32>):  // no predecessors
+    %4 = "tf.LayerNorm"(%a1, %a2, %a3, %a4) {_tfl_quant_trait = "fully_quantizable", device = ""} : (tensor<128x128xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xi32>) -> tensor<128x128xf32>
+   "tfl.yield"(%4) : (tensor<128x128xf32>) -> ()
+  }) {_tfl_quant_trait = "fully_quantizable", device = ""} : (tensor<128x128xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xi32>) -> tensor<128x128xf32>
+  %4 = "tfl.quantize"(%3) {qtype = tensor<128x128x!quant.uniform<u8:f32, 0.2:125>>} : (tensor<128x128xf32>) -> tensor<128x128x!quant.uniform<u8:f32, 0.2:125>>
+  return %4 : tensor<128x128x!quant.uniform<u8:f32, 0.2:125>>
+
+// CHECK: %4 = "tfl.custom_tf"(%arg0, %arg1, %arg2, %arg3) ( {
+// CHECK-NEXT: ^bb0(%arg4: tensor<128x128xf32>, %arg5: tensor<1xf32>, %arg6: tensor<1xf32>, %arg7: tensor<1xi32>):  // no predecessors
+// CHECK-NEXT:   "tf.LayerNorm"(%arg4, %arg5, %arg6, %arg7) {_tfl_quant_trait = "fully_quantizable", device = ""} : (tensor<128x128xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xi32>) -> tensor<128x128xf32>
+// CHECK-NEXT:   "tfl.yield"
+// CHECK-NEXT: }) {_tfl_quant_trait = "fully_quantizable", device = ""} :
+// CHECK-SAME: (tensor<128x128x!quant.uniform<u8:f32, 1.000000e-01:127>>, tensor<1x!quant.uniform<u8:f32, 2.000000e-01:127>>, tensor<1x!quant.uniform<u8:f32, 4.000000e-01:127>>, tensor<1xi32>)
+// CHECK-SAME: -> tensor<128x128x!quant.uniform<u8:f32, 2.000000e-01:125>>
+}
+
+
+// CHECK-LABEL: NotQuantizeCustomTfOp
+// DEBUG-LABEL: NotQuantizeCustomTfOp
+func @NotQuantizeCustomTfOp(%arg0: tensor<128x128x!quant.uniform<u8:f32, 0.1:127>>,
+    %arg1: tensor<1x!quant.uniform<u8:f32, 0.2:127>>, %arg2: tensor<1x!quant.uniform<u8:f32, 0.4:127>>,
+    %arg3: tensor<1xi32>) -> (tensor<128x128x!quant.uniform<u8:f32, 0.2:125>>) {
+  %0 = "tfl.dequantize"(%arg0) : (tensor<128x128x!quant.uniform<u8:f32, 0.1:127>>) -> tensor<128x128xf32>
+  %1 = "tfl.dequantize"(%arg1) : (tensor<1x!quant.uniform<u8:f32, 0.2:127>>) -> tensor<1xf32>
+  %2 = "tfl.dequantize"(%arg2) : (tensor<1x!quant.uniform<u8:f32, 0.4:127>>) -> tensor<1xf32>
+  %3 = "tfl.custom_tf"(%0, %1, %2, %arg3) ( {
+  ^bb0(%a1: tensor<128x128xf32>, %a2: tensor<1xf32>, %a3: tensor<1xf32>, %a4: tensor<1xi32>):  // no predecessors
+    %4 = "tf.LayerNorm"(%a1, %a2, %a3, %a4) {device = ""} : (tensor<128x128xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xi32>) -> tensor<128x128xf32>
+   "tfl.yield"(%4) : (tensor<128x128xf32>) -> ()
+  }) {device = ""} : (tensor<128x128xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xi32>) -> tensor<128x128xf32>
+  %4 = "tfl.quantize"(%3) {qtype = tensor<128x128x!quant.uniform<u8:f32, 0.2:125>>} : (tensor<128x128xf32>) -> tensor<128x128x!quant.uniform<u8:f32, 0.2:125>>
+  return %4 : tensor<128x128x!quant.uniform<u8:f32, 0.2:125>>
+
+// CHECK: "tfl.custom_tf"
+// CHECK-NEXT: ^bb0(%arg4: tensor<128x128xf32>, %arg5: tensor<1xf32>, %arg6: tensor<1xf32>, %arg7: tensor<1xi32>):  // no predecessors
+// CHECK-NEXT:   "tf.LayerNorm"(%arg4, %arg5, %arg6, %arg7) {device = ""} : (tensor<128x128xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xi32>) -> tensor<128x128xf32>
+// CHECK-NEXT:   "tfl.yield"
+// CHECK-NEXT: }) {device = ""} : (tensor<128x128xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xi32>) -> tensor<128x128xf32>
+}
+
+
+// Checks that legacy path correctly handles asymmetric quantized values.
+// LEGACY-LABEL: CheckLegacyQuantizeAdd
+func @CheckLegacyQuantizeAdd() -> tensor<1x2x!quant.uniform<i8:f32, 0.0078431372549019607:-128>> {
+  %cst = constant dense<[[1.000000e+00, 2.000000e+00]]> : tensor<1x2xf32>
+  %0 = "tfl.quantize"(%cst) {qtype = tensor<1x2x!quant.uniform<i8:f32, 0.0078431372549019607:-128>>, volatile} : (tensor<1x2xf32>) -> tensor<1x2x!quant.uniform<i8:f32, 0.0078431372549019607:-128>>
+  return %0 : tensor<1x2x!quant.uniform<i8:f32, 0.0078431372549019607:-128>>
+
+// LEGACY:  "tfl.pseudo_qconst"() {qtype = tensor<1x2x!quant.uniform<i8:f32, 0.0078431372549019607:-128>>, value = dense<{{\[\[}}-1, 127]]> : tensor<1x2xi8>}
 }

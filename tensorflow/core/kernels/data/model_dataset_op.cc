@@ -39,6 +39,8 @@ constexpr double kRamBudgetShare = 0.5;
 
 }  // namespace
 
+/* static */ constexpr const char* const ModelDatasetOp::kDatasetType;
+/* static */ constexpr const char* const ModelDatasetOp::kDatasetOp;
 /* static */ constexpr const char* const ModelDatasetOp::kAlgorithm;
 /* static */ constexpr const char* const ModelDatasetOp::kCpuBudget;
 /* static */ constexpr const char* const ModelDatasetOp::kRamBudget;
@@ -48,7 +50,13 @@ class ModelDatasetOp::Dataset : public DatasetBase {
   Dataset(OpKernelContext* ctx, const DatasetBase* input,
           model::AutotuneAlgorithm algorithm, int64 cpu_budget,
           int64 ram_budget)
-      : DatasetBase(DatasetContext(ctx)),
+      : Dataset(DatasetContext(ctx), input, algorithm, cpu_budget, ram_budget) {
+  }
+
+  Dataset(DatasetContext&& ctx, const DatasetBase* input,
+          model::AutotuneAlgorithm algorithm, int64 cpu_budget,
+          int64 ram_budget)
+      : DatasetBase(std::move(ctx)),
         input_(input),
         algorithm_(algorithm),
         cpu_budget_(cpu_budget),
@@ -242,6 +250,18 @@ class ModelDatasetOp::Dataset : public DatasetBase {
   const TraceMeMetadata traceme_metadata_;
 };
 
+// static
+void ModelDatasetOp::MakeDatasetFromOptions(OpKernelContext* ctx,
+                                            DatasetBase* input,
+                                            model::AutotuneAlgorithm algorithm,
+                                            bool cpu_budget, bool ram_budget,
+                                            DatasetBase** output) {
+  *output = new ModelDatasetOp::Dataset(
+      DatasetContext(DatasetContext::Params(
+          {ModelDatasetOp::kDatasetType, ModelDatasetOp::kDatasetOp})),
+      input, algorithm, cpu_budget, ram_budget);
+}
+
 ModelDatasetOp::ModelDatasetOp(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx) {
   if (ctx->HasAttr(kAlgorithm)) {
@@ -277,9 +297,18 @@ REGISTER_KERNEL_BUILDER(Name("ModelDataset").Device(DEVICE_CPU),
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow
-#else  // !IS_MOBILE_PLATFORM
+#else   // !IS_MOBILE_PLATFORM
 namespace tensorflow {
 namespace data {
+// static
+void ModelDatasetOp::MakeDatasetFromOptions(OpKernelContext* ctx,
+                                            DatasetBase* input,
+                                            model::AutotuneAlgorithm algorithm,
+                                            bool cpu_budget, bool ram_budget,
+                                            DatasetBase** output) {
+  input->Ref();
+  *output = input;
+}
 
 ModelDatasetOp::ModelDatasetOp(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx) {}

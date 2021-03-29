@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Keras model saving code."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import os
 import shutil
@@ -27,7 +23,6 @@ import warnings
 
 from absl.testing import parameterized
 import numpy as np
-from six import string_types
 
 from tensorflow.python import keras
 from tensorflow.python import tf2
@@ -43,6 +38,7 @@ from tensorflow.python.keras import losses
 from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import functional
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.feature_column import dense_features
 from tensorflow.python.keras.feature_column import sequence_feature_column as ksfc
@@ -875,7 +871,7 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
     self.assertAllEqual(model(args), expected)
     self.assertAllEqual(model.predict(args, batch_size=batch_size), expected)
 
-    # Make sure it can be successfully saved and loaded
+    # Make sure it can be successfully saved and loaded.
     save_format = testing_utils.get_save_format()
     saved_model_dir = self._save_model_dir()
     keras.models.save_model(model, saved_model_dir, save_format=save_format)
@@ -885,6 +881,46 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
     self.assertAllEqual(loaded_model(args), expected)
     self.assertAllEqual(loaded_model.predict(args, batch_size=batch_size),
                         expected)
+
+  @combinations.generate(combinations.combine(mode=['eager', 'graph']))
+  def test_custom_functional_registered(self):
+
+    def _get_cls_definition():
+      class CustomModel(keras.Model):
+
+        def c(self):
+          return 'c'
+
+      return CustomModel
+
+    cls = _get_cls_definition()
+    self.assertEqual(cls.__bases__[0], keras.Model)
+
+    with self.cached_session() as sess:
+      input_ = keras.layers.Input(shape=(1,))
+      output = keras.layers.Dense(1)(input_)
+      model = cls(input_, output)
+      # `cls` now inherits from `Functional` class.
+      self.assertEqual(cls.__bases__[0], functional.Functional)
+
+      if not context.executing_eagerly():
+        sess.run([v.initializer for v in model.variables])
+
+      save_format = testing_utils.get_save_format()
+      saved_model_dir = self._save_model_dir()
+      keras.models.save_model(model, saved_model_dir, save_format=save_format)
+
+    loaded_model = keras.models.load_model(
+        saved_model_dir, custom_objects={'CustomModel': cls})
+    self.assertIsInstance(loaded_model, cls)
+
+    # Check with "new" `CustomModel` class definition.
+    new_cls = _get_cls_definition()
+    # The new `CustomModel` class is *not* derived from `Functional`.
+    self.assertEqual(new_cls.__bases__[0], keras.Model)
+    reloaded_model = keras.models.load_model(
+        saved_model_dir, custom_objects={'CustomModel': new_cls})
+    self.assertIsInstance(reloaded_model, new_cls)
 
   @combinations.generate(combinations.combine(mode=['eager']))
   def test_shared_objects(self):
@@ -956,7 +992,7 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
           yield key
         for key in _get_all_keys_recursive(dict_or_iterable.values()):
           yield key
-      elif isinstance(dict_or_iterable, string_types):
+      elif isinstance(dict_or_iterable, str):
         return
       else:
         try:

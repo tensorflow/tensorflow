@@ -161,9 +161,9 @@ void Interpreter::SetExternalContext(TfLiteExternalContextType type,
 }
 
 TfLiteStatus Interpreter::SetCustomAllocationForTensor(
-    int tensor_index, const TfLiteCustomAllocation& allocation) {
+    int tensor_index, const TfLiteCustomAllocation& allocation, int64_t flags) {
   return primary_subgraph().SetCustomAllocationForTensor(tensor_index,
-                                                         allocation);
+                                                         allocation, flags);
 }
 
 TfLiteStatus Interpreter::SetInputs(std::vector<int> inputs) {
@@ -467,6 +467,15 @@ void Interpreter::SetSubgraphProfiler() {
 
 Profiler* Interpreter::GetProfiler() {
   return primary_subgraph().GetProfiler();
+}
+
+TfLiteStatus Interpreter::PreserveAllTensorsExperimental() {
+  for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
+       ++subgraph_index) {
+    TF_LITE_ENSURE_STATUS(
+        subgraphs_[subgraph_index]->PreserveAllTensorsExperimental());
+  }
+  return kTfLiteOk;
 }
 
 }  // namespace tflite

@@ -517,6 +517,8 @@ class FunctionDeleter(object):
       pass
 
 
+# TODO(mdan): Consider expose this type for instance type checking.
+@tf_export("__internal__.function.Function", v1=[])
 class Function(object):
   """Wrapper class for the graph functions defined for a Python function.
 
@@ -524,6 +526,9 @@ class Function(object):
   of defined functions.
 
   `Function` is thread-compatible.
+
+  Currently, individual methods/attributes under this class are not guaranteed
+  by the TF API contract, and are subject to future changes.
   """
 
   def __init__(self,

@@ -209,6 +209,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/python/lib/core:numpy_lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
@@ -261,6 +262,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":py_client",
+        ":python_ref_manager",
         ":pytree",
         ":types",
         "//tensorflow/compiler/xla:shape_util",
@@ -270,6 +272,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/profiler/lib:traceme",
         "//third_party/python_runtime:headers",  # build_cleaner: keep
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -450,9 +453,15 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
+        ":types",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/profiler/lib:profiler_backends",
         "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/rpc:profiler_server_impl",
+        "//tensorflow/core/profiler/rpc/client:capture_profile",
+        "//tensorflow/core/profiler/rpc/client:profiler_client",
         "//tensorflow/python/profiler/internal:traceme_wrapper",
         "@pybind11",
     ],
@@ -503,12 +512,11 @@ pybind_extension(
     srcs = [
         "xla.cc",
     ],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
     module_name = "xla_extension",
+    pytype_deps = [
+        "//third_party/py/numpy",
+    ],
+    pytype_srcs = glob(["xla_extension/*.pyi"]),
     deps = [
         ":dlpack",
         ":jax_jit",

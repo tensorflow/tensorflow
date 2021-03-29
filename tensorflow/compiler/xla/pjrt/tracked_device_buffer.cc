@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 
+#include <atomic>
 #include <iterator>
 #include <memory>
 
@@ -36,6 +37,7 @@ void BufferSequencingEvent::SetSequencingEvent(EventPool::Handle event,
   event_ = std::move(event);
   CHECK(streams_defined_on_.empty());
   streams_defined_on_.push_back(stream);
+  sequence_number_.store(event_.sequence_number(), std::memory_order_seq_cst);
 }
 
 bool BufferSequencingEvent::EventHasBeenRecorded() const {
@@ -43,9 +45,9 @@ bool BufferSequencingEvent::EventHasBeenRecorded() const {
 }
 
 uint64 BufferSequencingEvent::sequence_number() const {
-  absl::MutexLock lock(&mu_);
-  CHECK(EventHasBeenRecorded());
-  return event_.sequence_number();
+  uint64_t seq = sequence_number_.load(std::memory_order_seq_cst);
+  CHECK_NE(seq, 0);
+  return seq;
 }
 
 void BufferSequencingEvent::WaitForEventOnStream(se::Stream* stream) {

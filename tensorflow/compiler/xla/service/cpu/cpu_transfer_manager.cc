@@ -229,6 +229,11 @@ Status CpuTransferManager::TransferLiteralFromOutfeed(
 Status CpuTransferManager::ReadDynamicShapes(se::Stream* stream,
                                              ShapedBuffer* device_buffer,
                                              Shape* device_shape) {
+  if (stream != nullptr) {
+    // When a stream is presented, respect the stream dependency.
+    return TransferManager::ReadDynamicShapes(stream, device_buffer,
+                                              device_shape);
+  }
   TF_RET_CHECK(device_shape->is_dynamic());
   Shape original_device_shape = *device_shape;
   TF_ASSIGN_OR_RETURN(auto platform,

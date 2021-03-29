@@ -58,7 +58,7 @@ namespace {
               sep fn(SinhOp) sep fn(TanOp)
 
 // TODO(herhut): Generate these out of op definitions.
-#define MAP_CHLO_OPERATION_CWISE_BINARY(fn, sep) fn(ZetaOp)
+#define MAP_CHLO_OPERATION_CWISE_BINARY(fn, sep) fn(PolygammaOp) sep fn(ZetaOp)
 
 template <typename OpTy>
 inline void AddLegalOpOnRankedTensor(ConversionTarget *target) {
@@ -557,7 +557,7 @@ struct TransformUnrankedHloPass
         });
 
     // Populate rewrite patterns.
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&ctx);
     mhlo::PopulateTransformUnrankedHloPatterns(&ctx, &patterns);
 
     // Apply transformation.

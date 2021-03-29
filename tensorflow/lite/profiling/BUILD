@@ -55,6 +55,17 @@ cc_test(
     ],
 )
 
+objc_library(
+    name = "signpost_profiler",
+    hdrs = ["signpost_profiler.h"],
+    copts = common_copts,
+    non_arc_srcs = ["signpost_profiler.mm"],
+    tags = ["apple"],
+    deps = [
+        "//tensorflow/lite/core/api",
+    ],
+)
+
 cc_library(
     name = "platform_profiler",
     srcs = ["platform_profiler.cc"],
@@ -65,6 +76,7 @@ cc_library(
         "//tensorflow/lite/core/api",
     ] + select({
         "//tensorflow:android": [":atrace_profiler"],
+        "//tensorflow:ios": [":signpost_profiler"],
         "//conditions:default": [],
     }),
 )

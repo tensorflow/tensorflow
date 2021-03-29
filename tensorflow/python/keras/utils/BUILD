@@ -94,9 +94,6 @@ py_library(
     name = "io_utils",
     srcs = ["io_utils.py"],
     srcs_version = "PY3",
-    deps = [
-        "@six_archive//:six",
-    ],
 )
 
 py_library(
@@ -113,8 +110,8 @@ py_library(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute/coordinator:cluster_coordinator",
         "//tensorflow/python/eager:context",
-        "@six_archive//:six",
     ],
 )
 
@@ -267,6 +264,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
