@@ -438,7 +438,10 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
-    tpu_tags = ["no_oss"],
+    tpu_tags = [
+        "no_oss",
+        "noguitar",  # TODO(b/183957207)
+    ],
     deps = [
         ":image_preprocessing",
         ":preprocessing_test_utils",
