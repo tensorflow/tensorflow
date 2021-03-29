@@ -230,7 +230,13 @@ Status FileSystem::CopyFile(const string& src, const string& target,
   return FileSystemCopyFile(this, src, this, target);
 }
 
-char FileSystem::Separator() const { return '/'; }
+char FileSystem::Separator() const { 
+  #ifdef _WIN32
+    return '\\'; 
+  #else
+    return  '/';
+  #endif
+};
 
 string FileSystem::JoinPathImpl(std::initializer_list<StringPiece> paths) {
   string result;
@@ -243,7 +249,7 @@ string FileSystem::JoinPathImpl(std::initializer_list<StringPiece> paths) {
       continue;
     }
 
-    if (result[result.size() - 1] == '/') {
+    if (result[result.size() - 1] == this->Separator()) {
       if (this->IsAbsolutePath(path)) {
         strings::StrAppend(&result, path.substr(1));
       } else {
@@ -253,7 +259,7 @@ string FileSystem::JoinPathImpl(std::initializer_list<StringPiece> paths) {
       if (this->IsAbsolutePath(path)) {
         strings::StrAppend(&result, path);
       } else {
-        strings::StrAppend(&result, "/", path);
+        strings::StrAppend(&result, string(1,this->Separator()), path);
       }
     }
   }
@@ -299,7 +305,7 @@ std::pair<StringPiece, StringPiece> FileSystem::SplitPath(
 }
 
 bool FileSystem::IsAbsolutePath(StringPiece path) const {
-  return !path.empty() && path[0] == '/';
+  return !path.empty() && path[0] == this->Separator();
 }
 
 StringPiece FileSystem::Dirname(StringPiece path) const {
@@ -327,10 +333,10 @@ string FileSystem::CleanPath(StringPiece unclean_path) const {
   string::iterator dst = path.begin();
 
   // Check for absolute path and determine initial backtrack limit.
-  const bool is_absolute_path = *src == '/';
+  const bool is_absolute_path = *src == this->Separator();
   if (is_absolute_path) {
     *dst++ = *src++;
-    while (*src == '/') ++src;
+    while (*src == this->Separator()) ++src;
   }
   string::const_iterator backtrack_limit = dst;
 
@@ -340,17 +346,19 @@ string FileSystem::CleanPath(StringPiece unclean_path) const {
 
     if (src[0] == '.') {
       //  1dot ".<whateverisnext>", check for END or SEP.
-      if (src[1] == '/' || !src[1]) {
+      if (src[1] == this->Separator() || !src[1]) {
         if (*++src) {
           ++src;
         }
         parsed = true;
-      } else if (src[1] == '.' && (src[2] == '/' || !src[2])) {
+      } else if (src[1] == '.' && 
+                (src[2] == this->Separator() || !src[2])) {
         // 2dot END or SEP (".." | "../<whateverisnext>").
         src += 2;
         if (dst != backtrack_limit) {
           // We can backtrack the previous part
-          for (--dst; dst != backtrack_limit && dst[-1] != '/'; --dst) {
+          for (--dst; dst != backtrack_limit && 
+              dst[-1] != this->Separator(); --dst) {
             // Empty.
           }
         } else if (!is_absolute_path) {
@@ -373,7 +381,7 @@ string FileSystem::CleanPath(StringPiece unclean_path) const {
 
     // If not parsed, copy entire part until the next SEP or EOS.
     if (!parsed) {
-      while (*src && *src != '/') {
+      while (*src && *src != this->Separator()) {
         *dst++ = *src++;
       }
       if (*src) {
@@ -382,7 +390,7 @@ string FileSystem::CleanPath(StringPiece unclean_path) const {
     }
 
     // Skip consecutive SEP occurrences
-    while (*src == '/') {
+    while (*src == this->Separator()) {
       ++src;
     }
   }
@@ -391,7 +399,7 @@ string FileSystem::CleanPath(StringPiece unclean_path) const {
   string::difference_type path_length = dst - path.begin();
   if (path_length != 0) {
     // Remove trailing '/' except if it is root path ("/" ==> path_length := 1)
-    if (path_length > 1 && path[path_length - 1] == '/') {
+    if (path_length > 1 && path[path_length - 1] == this->Separator()) {
       --path_length;
     }
     path.resize(path_length);

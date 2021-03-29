@@ -314,14 +314,6 @@ class RamFileSystem : public FileSystem {
     return errors::NotFound("");
   }
 
-  char Separator() const override { 
-    #ifdef _WIN32
-      return '\\'; 
-    #else
-      return  '/';
-    #endif
-    };
-
   RamFileSystem() {}
   ~RamFileSystem() override {}
 
