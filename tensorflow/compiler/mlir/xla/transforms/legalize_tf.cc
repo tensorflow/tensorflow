@@ -2751,12 +2751,21 @@ class ConvertSelectOp : public OpRewritePattern<TF::SelectOp> {
 //    %halved_tanh = mhlo.multiply %tanh, %half : tensor<2xf32>
 //    %sigmoid = mhlo.add %halved_tanh, %half : tensor<2xf32>
 //
-class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
+class ConvertSigmoidOp : public RewritePattern {
  public:
-  using OpRewritePattern::OpRewritePattern;
+  explicit ConvertSigmoidOp(MLIRContext *context)
+      : RewritePattern(
+            TF::SigmoidOp::getOperationName(), 0, context,
+            {mhlo::ConstOp::getOperationName(),
+             shape::ShapeOfOp::getOperationName(),
+             shape::ToExtentTensorOp::getOperationName(),
+             mhlo::DynamicBroadcastInDimOp::getOperationName(),
+             mhlo::MulOp::getOperationName(), mhlo::TanhOp::getOperationName(),
+             mhlo::AddOp::getOperationName()}) {}
 
-  LogicalResult matchAndRewrite(TF::SigmoidOp op,
+  LogicalResult matchAndRewrite(Operation *sigmoid_op,
                                 PatternRewriter &rewriter) const override {
+    auto op = cast<TF::SigmoidOp>(sigmoid_op);
     Location loc = op.getLoc();
 
     // Create constant half with shape and element type same as the operand.
