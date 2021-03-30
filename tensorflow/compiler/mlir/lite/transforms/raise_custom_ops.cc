@@ -29,6 +29,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
+// NOLINTNEXTLINE
+static llvm::cl::list<std::string> target_ops(
+    "tfl-test-raise-tf-targets", llvm::cl::value_desc("list"),
+    llvm::cl::desc("comma separated list of target op names to be wrapped. Only"
+                   " used in tests"),
+    llvm::cl::CommaSeparated);
+
 namespace mlir {
 namespace TFL {
 namespace {
@@ -37,7 +44,8 @@ namespace {
 struct RaiseCustomOpsPass
     : public PassWrapper<RaiseCustomOpsPass, FunctionPass> {
  public:
-  explicit RaiseCustomOpsPass() : target_op_names({}) {}
+  explicit RaiseCustomOpsPass()
+      : target_op_names(target_ops.begin(), target_ops.end()) {}
   explicit RaiseCustomOpsPass(const std::vector<std::string> &target_ops)
       : target_op_names(target_ops.begin(), target_ops.end()) {}
 
@@ -53,19 +61,20 @@ void RaiseCustomOpsPass::runOnFunction() {
   OpBuilder builder(fn.getContext());
 
   llvm::SmallVector<Operation *, 4> custom_ops;
-  for (Operation &op : fn.getOps()) {
-    // Skips the ops with known op property.
-    if (op.getAbstractOperation()) continue;
+  fn.walk([&](Operation *op) {
     // Skips already imported ops that are imported as CustomTfOp.
-    if (op.getParentOfType<CustomTfOp>()) continue;
-    if (llvm::isa<TFL::CustomTfOp>(op) || llvm::isa<TFL::CustomOp>(op))
-      continue;
+    if (op->getParentOfType<CustomTfOp>()) return;
+    if (llvm::isa<TFL::CustomTfOp>(op) || llvm::isa<TFL::CustomOp>(op)) return;
 
-    auto op_name = op.getName().getIdentifier().str();
-    if (target_op_names.empty() || target_op_names.contains(op_name)) {
-      custom_ops.push_back(&op);
+    auto op_name = op->getName().getIdentifier().str();
+    // Wrap the operation, if
+    // - the op is targeted explicitly, or
+    // - the op isn't registered when there are no target list.
+    if (target_op_names.contains(op_name) ||
+        (target_op_names.empty() && !op->getAbstractOperation())) {
+      custom_ops.push_back(op);
     }
-  }
+  });
 
   for (auto *op : custom_ops) {
     builder.setInsertionPoint(op);
