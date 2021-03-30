@@ -342,9 +342,9 @@ string BufferAllocation::ToString() const {
   }
   if (is_entry_computation_parameter()) {
     const HloInstruction* param = GetEntryParameterInstruction(*this);
-    CHECK(param);
     StrAppend(&output, ", parameter ", parameter_number(), ", shape |",
-              param->shape().ToString(/*print_layout=*/false),
+              param ? param->shape().ToString(/*print_layout=*/false)
+                    : "<unknown shape>",
               "| at ShapeIndex ", param_shape_index().ToString());
   }
   if (const HloInstruction* instr = GetOutputInstruction(*this)) {

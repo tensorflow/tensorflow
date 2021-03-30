@@ -605,9 +605,9 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
 }
 
 StatusOr<BufferAllocation::Slice> IrEmitterUnnested::GetAllocationSliceForMlir(
-    mlir::Value v) {
+    mlir::Value v, std::string* constant_name) {
   return xla::gpu::GetAllocationSliceForMlir(
-      v, ir_emitter_context_->allocations());
+      v, ir_emitter_context_->allocations(), constant_name);
 }
 
 Status IrEmitterUnnested::DefaultAction(HloInstruction* hlo) {
@@ -3511,12 +3511,12 @@ IrEmitterUnnested::BuildKernelThunkFromBufferSlices(
     const ShapeIndex& gte_index = slice->gte_index;
 
     llvm::Value* loc;
-    if (buffer_slice.allocation()->is_constant()) {
+    if (!slice->constant_name.empty()) {
       loc = ir_emitter_context_->llvm_module()->getGlobalVariable(
-          llvm_ir::ConstantBufferAllocationToGlobalName(
-              *buffer_slice.allocation()));
+          slice->constant_name);
       CHECK_NE(loc, nullptr);
     } else {
+      CHECK(!buffer_slice.allocation()->is_constant());
       loc = InBoundsGEP(kernel_args.at(buffer_slice.allocation()),
                         {b_.getInt64(buffer_slice.offset())});
     }
@@ -3586,7 +3586,8 @@ IrEmitterUnnested::BuildKernelThunkForMlir(
   for (mlir::Value operand : operands) {
     slices.emplace_back();
     auto& slice = slices.back();
-    TF_ASSIGN_OR_RETURN(slice.buffer_slice, GetAllocationSliceForMlir(operand));
+    TF_ASSIGN_OR_RETURN(slice.buffer_slice, GetAllocationSliceForMlir(
+                                                operand, &slice.constant_name));
     slice.written = WritesMlirBuffer(op, operand);
     slice.shape = TypeToShape(operand.getType());
   }
@@ -3606,16 +3607,18 @@ IrEmitterUnnested::BuildKernelThunkForMlir(
     for (auto operand : operands) {
       slices.emplace_back();
       auto& slice = slices.back();
-      TF_ASSIGN_OR_RETURN(slice.buffer_slice,
-                          GetAllocationSliceForMlir(operand));
+      TF_ASSIGN_OR_RETURN(
+          slice.buffer_slice,
+          GetAllocationSliceForMlir(operand, &slice.constant_name));
       slice.written = false;
       slice.shape = TypeToShape(operand.getType());
     }
     for (auto output : outputs) {
       slices.emplace_back();
       auto& slice = slices.back();
-      TF_ASSIGN_OR_RETURN(slice.buffer_slice,
-                          GetAllocationSliceForMlir(output));
+      TF_ASSIGN_OR_RETURN(
+          slice.buffer_slice,
+          GetAllocationSliceForMlir(output, &slice.constant_name));
       slice.written = true;
       slice.shape = TypeToShape(output.getType());
     }
