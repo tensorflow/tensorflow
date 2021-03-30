@@ -2814,7 +2814,7 @@ tf_module {
   }
   member_method {
     name: "ParallelBatchDataset"
-    argspec: "args=[\'input_dataset\', \'batch_size\', \'num_parallel_calls\', \'drop_remainder\', \'output_types\', \'output_shapes\', \'deterministic\', \'name\'], varargs=None, keywords=None, defaults=[\'default\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'batch_size\', \'num_parallel_calls\', \'drop_remainder\', \'output_types\', \'output_shapes\', \'parallel_copy\', \'deterministic\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'default\', \'None\'], "
   }
   member_method {
     name: "ParallelConcat"
