@@ -181,7 +181,6 @@ absl::Status InferenceContext::InitFromGraph(
   }
   RETURN_IF_ERROR(
       Tune(tuning_type, env->device().GetInfo(), env->profiling_queue()));
-  InitRecordableQueue(env);
 
   if (serialized_model) {
     for (auto& node : nodes_) {
@@ -224,17 +223,8 @@ absl::Status InferenceContext::RestoreDeserialized(
     RETURN_IF_ERROR(node.cl_operation.CompileDeserialized(creation_context));
   }
   RETURN_IF_ERROR(UpdateParams());
-  InitRecordableQueue(env);
   ReleaseCPURepresentation();
   return absl::OkStatus();
-}
-
-void InferenceContext::InitRecordableQueue(Environment* env) {
-  std::vector<ClOperation*> ops(nodes_.size());
-  for (int i = 0; i < nodes_.size(); ++i) {
-    ops[i] = &nodes_[i].cl_operation;
-  }
-  recordable_queue_ = CreateRecordableQueue(ops, env->device(), env->context());
 }
 
 absl::Status InferenceContext::InitFromGraphWithTransforms(
@@ -662,9 +652,6 @@ absl::Status InferenceContext::UpdateParams() {
 }
 
 absl::Status InferenceContext::AddToQueue(CLCommandQueue* queue) {
-  if (recordable_queue_->IsSupported()) {
-    return recordable_queue_->Execute(queue);
-  }
   if (need_manual_release_) {
     if (prev_enqueue_start_point_.is_valid()) {
       prev_enqueue_start_point_.Wait();

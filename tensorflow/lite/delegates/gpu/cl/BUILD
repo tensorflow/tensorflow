@@ -396,7 +396,6 @@ cc_library(
         ":environment",
         ":gpu_object",
         ":opencl_wrapper",
-        ":recordable_queue_builder",
         ":serialization_cc_fbs",
         ":tensor",
         "//tensorflow/lite/delegates/gpu/common:data_type",
@@ -485,31 +484,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@farmhash_archive//:farmhash",
         "@flatbuffers",
-    ],
-)
-
-cc_library(
-    name = "recordable_queue",
-    hdrs = ["recordable_queue.h"],
-    deps = [
-        ":cl_command_queue",
-        ":cl_context",
-        ":cl_device",
-        ":cl_operation",
-        ":opencl_wrapper",
-        "//tensorflow/lite/delegates/gpu/common:status",
-    ],
-)
-
-cc_library(
-    name = "recordable_queue_builder",
-    hdrs = ["recordable_queue_builder.h"],
-    deps = [
-        ":cl_context",
-        ":cl_device",
-        ":cl_operation",
-        ":recordable_queue",
-        "//tensorflow/lite/delegates/gpu/cl/" + if_google("google", "default") + ":recordable_queue",
     ],
 )
 
