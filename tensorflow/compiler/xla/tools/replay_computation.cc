@@ -522,7 +522,7 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
 
 int main(int argc, char** argv) {
   xla::tools::Options opts;
-  const std::vector<tensorflow::Flag> flag_list = {
+  std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("use_fake_data", &opts.use_fake_data,
                        "Replay computation using fake data"),
       tensorflow::Flag("print_result", &opts.print_result,
@@ -547,6 +547,7 @@ int main(int argc, char** argv) {
                        "Whether the input should only be compiled, as opposed "
                        "to compiled and executed."),
   };
+  xla::AppendDebugOptionsFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
   tensorflow::port::InitMain(argv[0], &argc, &argv);
