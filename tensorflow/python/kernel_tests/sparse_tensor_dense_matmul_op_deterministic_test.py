@@ -68,7 +68,6 @@ class SparseTensorDenseMatmulDeterministicTest(
 
     return sparse_input, dense_input
 
-  # @test_util.run_cuda_only
   @test_util.run_in_graph_and_eager_modes
   def testDeterministicSparseDenseMatmul(self):
     random.seed(123)
@@ -105,5 +104,7 @@ if __name__ == "__main__":
   # environment variables, it would require this file to be made into a base
   # and then two more test files to be created.
   os.environ['TF_DETERMINISTIC_OPS'] = '1'
+
+  # Only run the tests in this class and its parent class when GPUs are present.
   if len(config.list_physical_devices('GPU')) > 0:
     test.main()
