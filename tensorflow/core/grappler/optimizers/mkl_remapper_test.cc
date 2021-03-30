@@ -524,6 +524,95 @@ TEST_F(MklRemapperTest, FuseMatMulWithBiasAddAndAdd) {
   test::ExpectClose(tensors_expected[0], tensors[0], 0, 1e-6);
 }
 
+class FusedMatMulBiasAddAndGeluTest : public GrapplerTest {
+ public:
+  template <DataType DTYPE>
+  void RunTest() {
+    using ::tensorflow::ops::Placeholder;
+
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+    auto lhs_shape = ops::Placeholder::Shape({8, 32});
+    auto rhs_shape = ops::Placeholder::Shape({32, 64});
+    auto bias_shape = ops::Placeholder::Shape({64});
+
+    auto lhs = Placeholder(s.WithOpName("lhs"), DTYPE, lhs_shape);
+    auto rhs = Placeholder(s.WithOpName("rhs"), DTYPE, rhs_shape);
+    auto bias = Placeholder(s.WithOpName("bias"), DTYPE, bias_shape);
+
+    auto matmul = ops::MatMul(s.WithOpName("matmul"), lhs, rhs);
+    auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), matmul, bias);
+
+    // Add Gelu approximate with smaller ops
+    auto square_root_one_half =
+        ops::Const(s.WithOpName("square_root_one_half"), {0.707106f}, {});
+    auto bias_add_times_square_root_one_half =
+        ops::Mul(s.WithOpName("bias_add_times_square_root_one_half"), bias_add,
+                 square_root_one_half);
+    auto erf =
+        ops::Erf(s.WithOpName("erf"), bias_add_times_square_root_one_half);
+    auto one = ops::Const(s.WithOpName("one"), {1.0f}, {});
+    auto erf_plus_one = ops::AddV2(s.WithOpName("one_plus_erf"), erf, one);
+    auto one_half = ops::Const(s.WithOpName("one_half"), {0.5f}, {});
+    auto erf_plus_one_times_one_half = ops::Mul(
+        s.WithOpName("erf_plus_one_times_one_half"), erf_plus_one, one_half);
+    auto gelu = ops::Mul(s.WithOpName("fusion_output"),
+                         erf_plus_one_times_one_half, bias_add);
+    auto fetch = ops::Identity(s.WithOpName("fetch"), gelu);
+
+    auto lhs_t = GenerateTensorWithSetRandom<DTYPE>({8, 32});
+    auto rhs_t = GenerateTensorWithSetRandom<DTYPE>({32, 64});
+    auto bias_t = GenerateTensorWithSetRandom<DTYPE>({64});
+
+    GrapplerItem item;
+    item.fetch = {"fetch"};
+    item.feed = {{"lhs", lhs_t}, {"rhs", rhs_t}, {"bias", bias_t}};
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+    // Place all nodes on CPU.
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      item.graph.mutable_node(i)->set_device("/device:CPU:0");
+    }
+
+    Remapper optimizer(RewriterConfig::ON);
+    GraphDef optimized_graph;
+    TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &optimized_graph));
+    int found = 0;
+    for (const NodeDef& node : optimized_graph.node()) {
+      if (node.name() == "fusion_output") {
+        EXPECT_EQ(node.op(), "_FusedMatMul");
+        ASSERT_GE(node.input_size(), 3);
+        EXPECT_EQ(node.input(0), "lhs");
+        EXPECT_EQ(node.input(1), "rhs");
+        EXPECT_EQ(node.input(2), "bias");
+        EXPECT_EQ(node.attr().at("num_args").i(), 1);
+        const auto fused_ops = node.attr().at("fused_ops").list().s();
+        ASSERT_EQ(fused_ops.size(), 2);
+        EXPECT_EQ(fused_ops[0], "BiasAdd");
+        EXPECT_EQ(fused_ops[1], "GeluExact");
+        found++;
+      }
+    }
+    EXPECT_EQ(1, found);
+
+    // Evaluate result without remapper fusion
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    ASSERT_EQ(tensors_expected.size(), 1);
+
+    auto tensors_evaluated =
+        EvaluateNodes(optimized_graph, item.fetch, item.feed);
+    ASSERT_EQ(tensors_evaluated.size(), 1);
+    test::ExpectClose(tensors_evaluated[0], tensors_expected[0], 1e-6);
+  }
+};
+
+// Gelu has two implementations (1) exact and (2) approximate. Exact cannot be
+// used with bfloat16 numeric since the Erf is not supported in bfloat16 yet.
+// Here gelu-exact is tested for float32 numeric only. Gelu-approximate test
+// is added in tensorflow/python/grappler/remapper_test.py, since the pattern is
+// changed by other optimizers before the remapper optimizer.
+TEST_F(FusedMatMulBiasAddAndGeluTest, Float32GeluExact) { RunTest<DT_FLOAT>(); }
+
 }  // namespace grappler
 }  // namespace tensorflow
 #endif  // INTEL_MKL && ENABLE_MKL
