@@ -39,7 +39,11 @@ namespace io {
 namespace internal {
 namespace {
 
-const char kPathSep[] = "/";
+#ifdef PLATFORM_WINDOWS
+  const char kPathSep = '\\';
+#else
+  const char kPathSep = '/';
+#endif
 
 bool FixBazelEnvPath(const char* path, string* out) {
   if (path == nullptr) return false;
@@ -55,7 +59,7 @@ bool FixBazelEnvPath(const char* path, string* out) {
 
   for (size_t pos = out->find('/'); pos != string::npos;
        pos = out->find('/', pos + 1)) {
-    (*out)[pos] = kPathSep[0];
+    (*out)[pos] = kPathSep;
   }
 #endif
 
@@ -77,10 +81,10 @@ string JoinPathImpl(std::initializer_list<StringPiece> paths) {
 
     if (IsAbsolutePath(path)) path = path.substr(1);
 
-    if (result[result.size() - 1] == kPathSep[0]) {
+    if (result[result.size() - 1] == kPathSep) {
       strings::StrAppend(&result, path);
     } else {
-      strings::StrAppend(&result, kPathSep, path);
+      strings::StrAppend(&result, std::string(1, kPathSep), path);
     }
   }
 
@@ -132,7 +136,7 @@ std::pair<StringPiece, StringPiece> SplitBasename(StringPiece path) {
 }  // namespace internal
 
 bool IsAbsolutePath(StringPiece path) {
-  return !path.empty() && path[0] == '/';
+  return !path.empty() && path[0] == internal::kPathSep;
 }
 
 StringPiece Dirname(StringPiece path) {
@@ -153,10 +157,10 @@ string CleanPath(StringPiece unclean_path) {
   string::iterator dst = path.begin();
 
   // Check for absolute path and determine initial backtrack limit.
-  const bool is_absolute_path = *src == '/';
+  const bool is_absolute_path = *src == internal::kPathSep;
   if (is_absolute_path) {
     *dst++ = *src++;
-    while (*src == '/') ++src;
+    while (*src == internal::kPathSep) ++src;
   }
   string::const_iterator backtrack_limit = dst;
 
@@ -166,17 +170,17 @@ string CleanPath(StringPiece unclean_path) {
 
     if (src[0] == '.') {
       //  1dot ".<whateverisnext>", check for END or SEP.
-      if (src[1] == '/' || !src[1]) {
+      if (src[1] == internal::kPathSep || !src[1]) {
         if (*++src) {
           ++src;
         }
         parsed = true;
-      } else if (src[1] == '.' && (src[2] == '/' || !src[2])) {
+      } else if (src[1] == '.' && (src[2] == internal::kPathSep || !src[2])) {
         // 2dot END or SEP (".." | "../<whateverisnext>").
         src += 2;
         if (dst != backtrack_limit) {
           // We can backtrack the previous part
-          for (--dst; dst != backtrack_limit && dst[-1] != '/'; --dst) {
+          for (--dst; dst != backtrack_limit && dst[-1] != internal::kPathSep; --dst) {
             // Empty.
           }
         } else if (!is_absolute_path) {
@@ -199,7 +203,7 @@ string CleanPath(StringPiece unclean_path) {
 
     // If not parsed, copy entire part until the next SEP or EOS.
     if (!parsed) {
-      while (*src && *src != '/') {
+      while (*src && *src != internal::kPathSep) {
         *dst++ = *src++;
       }
       if (*src) {
@@ -208,7 +212,7 @@ string CleanPath(StringPiece unclean_path) {
     }
 
     // Skip consecutive SEP occurrences
-    while (*src == '/') {
+    while (*src == internal::kPathSep) {
       ++src;
     }
   }
@@ -217,7 +221,7 @@ string CleanPath(StringPiece unclean_path) {
   string::difference_type path_length = dst - path.begin();
   if (path_length != 0) {
     // Remove trailing '/' except if it is root path ("/" ==> path_length := 1)
-    if (path_length > 1 && path[path_length - 1] == '/') {
+    if (path_length > 1 && path[path_length - 1] == internal::kPathSep) {
       --path_length;
     }
     path.resize(path_length);
