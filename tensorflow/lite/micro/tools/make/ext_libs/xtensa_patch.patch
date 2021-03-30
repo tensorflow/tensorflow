@@ -32,15 +32,3 @@ index e719da1..5b7390f 100644
  
      if(inp_data_format == 0)
      {
-diff --git a/algo/kernels/cnn/hifi4/xa_nn_conv2d_std_sym8sxasym8s.c b/algo/kernels/cnn/hifi4/xa_nn_conv2d_std_sym8sxasym8s.c
-index b16b9fc..38e69d3 100644
---- a/algo/kernels/cnn/hifi4/xa_nn_conv2d_std_sym8sxasym8s.c
-+++ b/algo/kernels/cnn/hifi4/xa_nn_conv2d_std_sym8sxasym8s.c
-@@ -198,7 +198,6 @@ WORD32 xa_nn_conv2d_std_per_chan_sym8sxasym8s(
-   XA_NNLIB_ARG_CHK_COND((input_channels <= 0), -1);
-   XA_NNLIB_ARG_CHK_COND((kernel_height <= 0 || kernel_width <= 0), -1);
-   XA_NNLIB_ARG_CHK_COND((kernel_height > input_height), -1);
--  XA_NNLIB_ARG_CHK_COND((kernel_width > input_width), -1);
-   XA_NNLIB_ARG_CHK_COND((out_channels <= 0), -1);
-   XA_NNLIB_ARG_CHK_COND((y_stride <= 0 || x_stride <= 0), -1);
-   XA_NNLIB_ARG_CHK_COND((y_padding < 0 || x_padding < 0), -1);
