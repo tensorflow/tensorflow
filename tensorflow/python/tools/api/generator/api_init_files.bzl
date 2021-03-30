@@ -15,6 +15,7 @@ TENSORFLOW_API_INIT_FILES = [
     "__internal__/feature_column/__init__.py",
     "__internal__/function/__init__.py",
     "__internal__/graph_util/__init__.py",
+    "__internal__/mixed_precision/__init__.py",
     "__internal__/monitoring/__init__.py",
     "__internal__/nest/__init__.py",
     "__internal__/ops/__init__.py",
