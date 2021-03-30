@@ -284,7 +284,11 @@ bool register_gcs_for_tpu = RegisterGcsFileSystemForTpu();
 #endif
 
 Env* Env::Default() {
-  static Env* default_env = new PosixEnv;
+  #ifdef PLATFORM_WINDOWS
+    static Env* default_env = new WindowsEnv;
+  #else
+    static Env* default_env = new PosixEnv;
+  #endif
   return default_env;
 }
 #endif

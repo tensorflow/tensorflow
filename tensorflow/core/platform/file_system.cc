@@ -231,7 +231,7 @@ Status FileSystem::CopyFile(const string& src, const string& target,
 }
 
 char FileSystem::Separator() const { 
-  #ifdef _WIN32
+  #ifdef PLATFORM_WINDOWS
     return '\\'; 
   #else
     return  '/';
