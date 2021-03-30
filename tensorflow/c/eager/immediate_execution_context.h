@@ -107,6 +107,9 @@ class ImmediateExecutionContext : public AbstractContext {
   // List attributes of available devices
   virtual void ListDevices(std::vector<DeviceAttributes>* devices) = 0;
 
+  // Add logical CPU devices.
+  virtual Status AddDevices(std::vector<std::unique_ptr<Device>> devices) = 0;
+
   // Block until all pending nodes are finished.
   virtual Status AsyncWait() = 0;
 

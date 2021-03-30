@@ -1524,6 +1524,29 @@ class Context(object):
 
     self._virtual_device_map[dev] = virtual_devices
 
+  def set_locigal_cpu_devices(self, num_cpus, prefix=""):
+    """Set virtual CPU devices in context.
+
+    If virtual CPU devices are already configured at context initialization
+    by tf.config.set_logical_device_configuration(), this method should not be
+    called.
+
+    Args:
+      num_cpus: Number of virtual CPUs.
+      prefix: Device name prefix.
+
+    Raises:
+     RuntimeError: If virtual CPUs are already configured at context
+     initialization.
+    """
+    self.ensure_initialized()
+    # Error out if there are already multiple logical CPU in the context.
+    if len(self.list_logical_devices("CPU")) > 1:
+      raise RuntimeError("Virtual CPUs already set, cannot modify again.")
+
+    pywrap_tfe.TFE_SetLogicalCpuDevices(self._context_handle, num_cpus, prefix)
+    self._initialize_logical_devices()
+
   def get_compiler_ir(self, device_name, function_name, args, stage="hlo"):
     return pywrap_tfe.TF_GetCompilerIr(self._context_handle, function_name,
                                        stage, device_name, args)
@@ -1865,6 +1888,11 @@ def context_safe():
 def ensure_initialized():
   """Initialize the context."""
   context().ensure_initialized()
+
+
+def initialize_logical_devices():
+  """Initialize the virtual devices."""
+  context()._initialize_logical_devices()  # pylint: disable=protected-access
 
 
 def set_global_seed(seed):

@@ -521,7 +521,7 @@ std::unique_ptr<Master> GrpcServer::CreateMaster(MasterEnv* master_env) {
 
 /* static */
 Status GrpcServer::Create(const ServerDef& server_def, Env* env,
-                          const DeviceMgr* local_device_mgr,
+                          DeviceMgr* local_device_mgr,
                           std::unique_ptr<ServerInterface>* out_server) {
   std::unique_ptr<GrpcServer> ret(
       new GrpcServer(server_def, env == nullptr ? Env::Default() : env));
