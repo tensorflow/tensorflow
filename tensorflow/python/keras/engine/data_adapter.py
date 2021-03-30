@@ -442,7 +442,7 @@ class GenericArrayLikeDataAdapter(TensorLikeDataAdapter):
       return False
 
   def __init__(self, *args, **kwargs):
-    logging.warn(
+    logging.warning(
         "Keras is training/fitting/evaluating on array-like data. Keras may "
         "not be optimized for this format, so if your input data format is "
         "supported by TensorFlow I/O (https://github.com/tensorflow/io) we "

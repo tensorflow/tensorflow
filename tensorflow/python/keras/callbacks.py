@@ -2013,7 +2013,7 @@ def keras_model_summary(name, data, step=None):
     json_string = data.to_json()
   except Exception as exc:  # pylint: disable=broad-except
     # An exception should not break a model code.
-    logging.warn('Model failed to serialize as JSON. Ignoring... %s', exc)
+    logging.warning('Model failed to serialize as JSON. Ignoring... %s', exc)
     return False
 
   with summary_ops_v2.summary_scope(name, 'graph_keras_model',

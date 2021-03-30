@@ -3043,22 +3043,23 @@ def _caching_device(rnn_cell):
   # prevents forward computations in loop iterations from re-reading the
   # updated weights.
   if control_flow_util.IsInWhileLoop(ops.get_default_graph()):
-    logging.warn('Variable read device caching has been disabled because the '
-                 'RNN is in tf.while_loop loop context, which will cause '
-                 'reading stalled value in forward path. This could slow down '
-                 'the training due to duplicated variable reads. Please '
-                 'consider updating your code to remove tf.while_loop if '
-                 'possible.')
+    logging.warning(
+        'Variable read device caching has been disabled because the '
+        'RNN is in tf.while_loop loop context, which will cause '
+        'reading stalled value in forward path. This could slow down '
+        'the training due to duplicated variable reads. Please '
+        'consider updating your code to remove tf.while_loop if possible.')
     return None
   if (rnn_cell._dtype_policy.compute_dtype !=
       rnn_cell._dtype_policy.variable_dtype):
-    logging.warn('Variable read device caching has been disabled since it '
-                 'doesn\'t work with the mixed precision API. This is '
-                 'likely to cause a slowdown for RNN training due to '
-                 'duplicated read of variable for each timestep, which '
-                 'will be significant in a multi remote worker setting. '
-                 'Please consider disabling mixed precision API if '
-                 'the performance has been affected.')
+    logging.warning(
+        'Variable read device caching has been disabled since it '
+        'doesn\'t work with the mixed precision API. This is '
+        'likely to cause a slowdown for RNN training due to '
+        'duplicated read of variable for each timestep, which '
+        'will be significant in a multi remote worker setting. '
+        'Please consider disabling mixed precision API if '
+        'the performance has been affected.')
     return None
   # Cache the value on the device that access the variable.
   return lambda op: op.device
