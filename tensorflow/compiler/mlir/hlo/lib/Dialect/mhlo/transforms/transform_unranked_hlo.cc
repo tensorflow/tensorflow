@@ -528,7 +528,7 @@ struct ConvertUnrankedDynamicBroadcastSelectOp
 struct TransformUnrankedHloPass
     : public PassWrapper<TransformUnrankedHloPass, FunctionPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<chlo::HloClientDialect, mhlo::MhloDialect,
+    registry.insert<chlo::HloClientDialect, mhlo::MhloDialect, scf::SCFDialect,
                     shape::ShapeDialect>();
   }
 
