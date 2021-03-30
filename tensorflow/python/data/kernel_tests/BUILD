@@ -475,6 +475,7 @@ tf_py_test(
     size = "small",
     srcs = ["map_test.py"],
     shard_count = 16,
+    tags = ["notsan"],  # TODO(b/183962015)
     deps = [
         ":checkpoint_test_base",
         ":test_base",

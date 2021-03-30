@@ -568,6 +568,7 @@ tf_py_test(
     # TODO(b/127881287): Re-enable.
     tags = [
         "no_windows_gpu",
+        "notsan",  # TODO(b/183962355)
     ],
     deps = [
         "//tensorflow/python:client_testlib",
