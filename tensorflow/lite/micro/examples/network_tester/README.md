@@ -5,8 +5,11 @@ It contains one testcase and a default network model (network_model.h), default
 input data (input_data.h) and default expected output data
 (expected_output_data.h). The header files were created using the `xxd` command.
 
-The default model is a single MaxPool2D operator, with an input shape of {1, 4,
-4, 1} and an output shape of {1, 2, 2, 1}.
+The default model is the person detect model.
+See tensorflow/lite/micro/examples/person_detection/README.md for more info.
+
+When building for Ethos-U (CO_PROCESSOR=ethos_u), the downloaded default model is optimized for Ethos-U with Ethos-U Vela,
+For more info see: tensorflow/lite/micro/kernels/ethos_u/README.md.
 
 In order to use another model, input data, or expected output data, simply
 specify the path to the new header files when running make as seen below.
