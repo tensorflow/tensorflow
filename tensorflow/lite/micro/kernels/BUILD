@@ -268,7 +268,6 @@ cc_library(
         "concatenation.cc",
         "dequantize.cc",
         "detection_postprocess.cc",
-        "div.cc",
         "elementwise.cc",
         "elu.cc",
         "exp.cc",
@@ -578,19 +577,6 @@ cc_test(
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
         "@flatbuffers",
-    ],
-)
-
-cc_test(
-    name = "div_test",
-    srcs = ["div_test.cc"],
-    deps = [
-        ":kernel_runner",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/micro:debug_log",
-        "//tensorflow/lite/micro:op_resolvers",
-        "//tensorflow/lite/micro:test_helpers",
-        "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
 
