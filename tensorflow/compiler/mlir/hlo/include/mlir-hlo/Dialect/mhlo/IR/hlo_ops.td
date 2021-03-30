@@ -677,7 +677,8 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
 def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
     SameOperandsAndResultShape,
     DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-    ["reifyReturnTypeShapes"]>]>, BASE_HLO_CompareOp {
+        ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>]>,
+    BASE_HLO_CompareOp {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,
@@ -827,7 +828,7 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
 
 def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim", [
     NoSideEffect, DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-    ["reifyReturnTypeShapes"]>]> {
+    ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
   string summary = "Broadcast a tensor into the given dynamic shape by adding dimensions.";
   string description = [{
     This is a generalization of the BroadcastInDimOp which accepts its output
@@ -1114,7 +1115,8 @@ def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]>,
 // TODO(jpienaar): Add broadcastable trait.
 def HLO_SelectOp: HLO_Op<"select", [NoSideEffect,
     DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-    ["reifyReturnTypeShapes"]>, DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
     ]>, BASE_HLO_SelectOp {
   let arguments = (ins
     HLO_PredTensor:$pred,
