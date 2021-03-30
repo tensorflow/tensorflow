@@ -656,10 +656,11 @@ static Status CompileModuleToLlvmIrImpl(
   CHECK(!results->allocations.empty());
 
   IrEmitterContext ir_emitter_context(
-      /*hlo_module=*/nullptr,
-      /*buffer_assignment=*/results->buffer_assignment.get(), platform_name,
+      /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
       gpu_device_info, cuda_compute_capability, profile_index_map,
       &mlir_context, results->llvm_module.get());
+
+  ir_emitter_context.set_allocations(results->allocations);
 
   TF_ASSIGN_OR_RETURN(
       auto ir_emitter,
@@ -950,14 +951,8 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
                             compile_module_results.thunk_schedule->ToString());
   }
 
-  TF_ASSIGN_OR_RETURN(
-      OutputInfoMap output_info,
-      GetOutputInfo(*module, *compile_module_results.buffer_assignment));
   auto buffer_assignment_proto = std::make_unique<BufferAssignmentProto>(
       compile_module_results.buffer_assignment->ToProto());
-  std::vector<BufferAllocation> allocations =
-      compile_module_results.buffer_assignment->ReleaseAllocations();
-  Shape output_shape = module->entry_computation()->root_instruction()->shape();
 
   size_t profile_index = 0;
   if (profile_index_map) {
@@ -969,8 +964,10 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   auto* gpu_executable = new GpuExecutable(
       {std::move(backend_result.first), std::move(backend_result.second),
        gpu_version, std::move(compile_module_results.thunk_schedule),
-       std::move(compile_module_results.constants), std::move(output_info),
-       compile_module_results.module_name, output_shape, std::move(allocations),
+       std::move(compile_module_results.constants),
+       std::move(compile_module_results.output_info),
+       compile_module_results.module_name, compile_module_results.output_shape,
+       std::move(compile_module_results.allocations),
        std::move(buffer_assignment_proto), std::move(module), profile_index,
        std::move(profile_printer), std::move(profile_index_map)});
   if (embed_ir_in_executable) {
