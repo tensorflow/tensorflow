@@ -259,7 +259,8 @@ class KPLMultiWorkerTest(test.TestCase,
           use_adapt=[False],  # TODO(b/180742437): Add tests for using adapt.
           strategy=[
               strategy_combinations.multi_worker_mirrored_2x1_gpu,
-              strategy_combinations.multi_worker_mirrored_2x2_gpu,
+              # TODO(b/183956672): Re-enable
+              # strategy_combinations.multi_worker_mirrored_2x2_gpu,
           ]))
   def testTrainAndServeWithKPL(self, use_adapt, strategy):
     test_utils_obj = kpl_test_utils.DistributeKplTestUtils()

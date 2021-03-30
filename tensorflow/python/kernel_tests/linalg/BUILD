@@ -409,6 +409,7 @@ cuda_py_test(
     srcs = ["linear_operator_tridiag_test.py"],
     shard_count = 5,
     tags = [
+        "no_windows_gpu",
         "noasan",
         "optonly",
     ],

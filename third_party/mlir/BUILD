@@ -4739,6 +4739,7 @@ td_library(
     includes = ["include"],
     deps = [
         ":ControlFlowInterfacesTdFiles",
+        ":InferTypeOpInterfaceTdFiles",
         ":LoopLikeInterfaceTdFiles",
         ":OpBaseTdFiles",
         ":SideEffectInterfacesTdFiles",
@@ -5006,6 +5007,7 @@ cc_library(
         ":CopyOpInterface",
         ":DialectUtils",
         ":IR",
+        ":InferTypeOpInterface",
         ":LinalgInterfaces",
         ":LinalgInterfacesIncGen",
         ":LinalgNamedStructuredOpsTcIncGen",
@@ -5688,6 +5690,7 @@ cc_library(
     deps = [
         ":EDSC",
         ":IR",
+        ":InferTypeOpInterface",
         ":MemRefBaseIncGen",
         ":MemRefOpsIncGen",
         ":StandardOps",

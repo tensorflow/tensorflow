@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import time
 
 from absl.testing import parameterized
@@ -107,22 +106,13 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertAllEqual(results[2], [[0, 1, 2, 3, 4, 5, 6, 7]])
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(init_from_file=[True, False])))
-  def testDistributeLookupTable(self, init_from_file):
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              init_source=["textfile", "keyvaluetensor", "dataset"])))
+  def testDistributeLookupTable(self, init_source):
     cluster = data_service_test_base.TestCluster(num_workers=1)
-    if init_from_file:
-      file = os.path.join(self.get_temp_dir(), "distribute_lookup_table")
-      with open(file, "w") as f:
-        f.write("10\n11\n")
-      initializer = lookup_ops.TextFileInitializer(
-          file, dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER,
-          dtypes.int64, lookup_ops.TextFileIndex.WHOLE_LINE)
-    else:
-      keys_tensor = constant_op.constant([0, 1], dtype=dtypes.int64)
-      vals_tensor = constant_op.constant([10, 11])
-      initializer = lookup_ops.KeyValueTensorInitializer(
-          keys_tensor, vals_tensor)
+    initializer = self.lookupTableInitializer(init_source, [10, 11])
     table = lookup_ops.StaticHashTable(initializer, -1)
     ds = dataset_ops.Dataset.range(3)
     ds = ds.map(table.lookup)

@@ -1061,7 +1061,7 @@ class LossScaleOptimizerV1(LossScaleOptimizer):
       loss_scale = keras_loss_scale_module.deserialize(loss_scale)
 
     if isinstance(loss_scale, (int, float)):
-      tf_logging.warn(
+      tf_logging.warning(
           warn_msg_prefix + 'For example:\n'
           '  opt = tf.keras.mixed_precision.LossScaleOptimizer('
           'opt, dynamic=False, initial_scale={})'.format(loss_scale))
@@ -1069,14 +1069,14 @@ class LossScaleOptimizerV1(LossScaleOptimizer):
                                                  initial_scale=loss_scale)
     elif isinstance(loss_scale, loss_scale_module.FixedLossScale):
       ls_val = loss_scale._loss_scale_value  # pylint: disable=protected-access
-      tf_logging.warn(
+      tf_logging.warning(
           warn_msg_prefix + 'For example:\n'
           '  opt = tf.keras.mixed_precision.LossScaleOptimizer('
           'opt, dynamic=False, initial_scale={})'.format(ls_val))
       super(LossScaleOptimizerV1, self).__init__(optimizer, dynamic=False,
                                                  initial_scale=ls_val)
     elif loss_scale == 'dynamic':
-      tf_logging.warn(
+      tf_logging.warning(
           warn_msg_prefix + 'For example:\n'
           '  opt = tf.keras.mixed_precision.LossScaleOptimizer('
           'opt)')
@@ -1096,7 +1096,7 @@ class LossScaleOptimizerV1(LossScaleOptimizer):
         raise ValueError('When passing a DynamicLossScale to "loss_scale", '
                          'DynamicLossScale.multiplier must be 2. Got: %s'
                          % (loss_scale,))
-      tf_logging.warn(
+      tf_logging.warning(
           warn_msg_prefix +
           'Note that the non-experimental LossScaleOptimizer does not take a '
           'DynamicLossScale but instead takes the dynamic configuration '

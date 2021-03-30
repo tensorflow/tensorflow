@@ -438,7 +438,10 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
-    tpu_tags = ["no_oss"],
+    tpu_tags = [
+        "no_oss",
+        "noguitar",  # TODO(b/183957207)
+    ],
     deps = [
         ":image_preprocessing",
         ":preprocessing_test_utils",
@@ -532,6 +535,7 @@ tf_py_test(
     size = "medium",
     srcs = ["index_lookup_test.py"],
     python_version = "PY3",
+    tags = ["noasan"],  # TODO(b/183961255)
     deps = [
         ":index_lookup",
         ":preprocessing_test_utils",
@@ -610,6 +614,7 @@ tf_py_test(
     size = "medium",
     srcs = ["integer_lookup_test.py"],
     python_version = "PY3",
+    tags = ["noasan"],  # TODO(b/183961255)
     deps = [
         ":integer_lookup",
         ":preprocessing_test_utils",

@@ -779,6 +779,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["lib/debug_v2_ops_test.py"],
     python_version = "PY3",
+    tags = ["no_windows_gpu"],
     deps = [
         ":debug_events_reader",
         ":debug_events_writer",

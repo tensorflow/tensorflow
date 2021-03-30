@@ -64,6 +64,21 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "interleave_benchmark",
+    srcs = ["interleave_benchmark.py"],
+    deps = [
+        ":benchmark_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python/data/experimental/ops:interleave_ops",
+        "//tensorflow/python/data/experimental/ops:testing",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
     name = "list_files_benchmark",
     srcs = ["list_files_benchmark.py"],
     deps = [

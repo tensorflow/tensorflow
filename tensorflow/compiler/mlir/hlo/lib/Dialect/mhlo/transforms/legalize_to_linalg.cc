@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -1965,7 +1966,9 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
 struct LhloLegalizeToLinalgPass
     : public PassWrapper<LhloLegalizeToLinalgPass, FunctionPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<AffineDialect, linalg::LinalgDialect, math::MathDialect>();
+    registry
+        .insert<AffineDialect, complex::ComplexDialect, linalg::LinalgDialect,
+                math::MathDialect, memref::MemRefDialect>();
   }
 
   void runOnFunction() override {
@@ -1986,8 +1989,9 @@ struct LhloLegalizeToLinalgPass
 struct HloLegalizeToLinalgPass
     : public PassWrapper<HloLegalizeToLinalgPass, FunctionPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<linalg::LinalgDialect, scf::SCFDialect,
-                    complex::ComplexDialect, math::MathDialect>();
+    registry
+        .insert<linalg::LinalgDialect, scf::SCFDialect, complex::ComplexDialect,
+                math::MathDialect, memref::MemRefDialect>();
   }
 
   void runOnFunction() override {

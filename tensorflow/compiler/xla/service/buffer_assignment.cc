@@ -584,7 +584,7 @@ void BufferAssignment::AddAssignment(BufferAllocation* allocation,
   }
 
   if (alias_analysis().BufferLivesOut(buffer)) {
-    VLOG(3) << "HloBuffer lives out" << buffer.ToString();
+    VLOG(3) << "HloBuffer lives out: " << buffer.ToString();
     VLOG(3) << "Set maybe live out: " << allocation->ToString();
     allocation->set_maybe_live_out(true);
   }

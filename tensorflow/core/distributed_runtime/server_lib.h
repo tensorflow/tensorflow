@@ -67,7 +67,7 @@ class ServerFactory {
  public:
   struct Options {
     // Local DeviceMgr to use.
-    const tensorflow::DeviceMgr* local_device_mgr;
+    tensorflow::DeviceMgr* local_device_mgr;
   };
   // Creates a new server based on the given `server_def`, and stores
   // it in `*out_server`. Returns OK on success, otherwise returns an

@@ -556,9 +556,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     base_layer.keras_api_gauge.get_cell('compile').set(True)
     with self.distribute_strategy.scope():
       if 'experimental_steps_per_execution' in kwargs:
-        logging.warn('The argument `steps_per_execution` is no longer '
-                     'experimental. Pass `steps_per_execution` instead of '
-                     '`experimental_steps_per_execution`.')
+        logging.warning('The argument `steps_per_execution` is no longer '
+                        'experimental. Pass `steps_per_execution` instead of '
+                        '`experimental_steps_per_execution`.')
         if not steps_per_execution:
           steps_per_execution = kwargs.pop('experimental_steps_per_execution')
 

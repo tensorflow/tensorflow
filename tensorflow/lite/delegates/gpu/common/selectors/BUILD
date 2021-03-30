@@ -131,6 +131,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:quantize_and_dequantize",
         "//tensorflow/lite/delegates/gpu/common/tasks:reduce",
         "//tensorflow/lite/delegates/gpu/common/tasks:relu",
+        "//tensorflow/lite/delegates/gpu/common/tasks:resampler",
         "//tensorflow/lite/delegates/gpu/common/tasks:reshape",
         "//tensorflow/lite/delegates/gpu/common/tasks:reshapex4",
         "//tensorflow/lite/delegates/gpu/common/tasks:resize",
