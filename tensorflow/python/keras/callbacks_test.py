@@ -2824,7 +2824,7 @@ class SummaryOpsTest(test.TestCase):
         return self.activation(x)
 
     model = SimpleSubclass()
-    with test.mock.patch.object(logging, 'warn') as mock_log:
+    with test.mock.patch.object(logging, 'warning') as mock_log:
       self.assertFalse(
           keras.callbacks.keras_model_summary(
               name='my_name', data=model, step=1))
@@ -2836,7 +2836,7 @@ class SummaryOpsTest(test.TestCase):
     model = keras.Sequential()
 
     with test.mock.patch.object(model, 'to_json') as mock_to_json:
-      with test.mock.patch.object(logging, 'warn') as mock_log:
+      with test.mock.patch.object(logging, 'warning') as mock_log:
         mock_to_json.side_effect = Exception('oops')
         self.assertFalse(
             keras.callbacks.keras_model_summary(
