@@ -23,6 +23,7 @@ import random
 
 import numpy as np
 
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
@@ -67,7 +68,7 @@ class SparseTensorDenseMatmulDeterministicTest(
 
     return sparse_input, dense_input
 
-  @test_util.run_cuda_only
+  # @test_util.run_cuda_only
   @test_util.run_in_graph_and_eager_modes
   def testDeterministicSparseDenseMatmul(self):
     random.seed(123)
@@ -104,4 +105,5 @@ if __name__ == "__main__":
   # environment variables, it would require this file to be made into a base
   # and then two more test files to be created.
   os.environ['TF_DETERMINISTIC_OPS'] = '1'
-  test.main()
+  if len(config.list_physical_devices('GPU')) > 0:
+    test.main()

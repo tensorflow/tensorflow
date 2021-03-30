@@ -67,10 +67,10 @@ class SparseTensorDenseMatMulTestBase(test.TestCase):
 
       sp_x_value = sparse_tensor.SparseTensorValue(
           indices=x_indices, values=x_values, dense_shape=x_shape)
-      gpus = config.list_physical_devices('GPU')
+      # gpus = config.list_physical_devices('GPU')
       if (self.__class__.__name__ == "SparseTensorDenseMatmulDeterministicTest"
-          and x.dtype in self._getGpuDeterminismUnimplementedTypes() and
-          len(gpus) > 0):
+          and x.dtype in self._getGpuDeterminismUnimplementedTypes()):
+          # len(gpus) > 0):
         with self.assertRaisesRegex(
             errors.UnimplementedError,
             self._getGpuDeterminismUnimplementedErrorString()):
