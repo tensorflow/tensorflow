@@ -233,6 +233,7 @@ This release contains contributions from many people at Google, as well as:
         its subclasses to support more detailed error reporting.
         This is inspired from Abseil Status payloads:
         https://github.com/abseil/abseil-cpp/blob/master/absl/status/status.h
+    *   Extended `tf.matmul` to support output_type and mixed input types.
 
 *   `tf.summary`:
   *   New `tf.summary.graph` allows manual write of TensorFlow graph

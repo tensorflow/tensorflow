@@ -3305,6 +3305,7 @@ def matmul(a,
            adjoint_b=False,
            a_is_sparse=False,
            b_is_sparse=False,
+           output_type=None,
            name=None):
   """Multiplies matrix `a` by matrix `b`, producing `a` * `b`.
 
@@ -3398,6 +3399,9 @@ def matmul(a,
       that assume most values in `a` are zero.
       See `tf.sparse.sparse_dense_matmul`
       for some support for `tf.sparse.SparseTensor` multiplication.
+    output_type: The output datatype if needed. Defaults to None in which case
+      the output_type is the same as input type. Currently only works when input
+      tensors are type int8 and output_type can be int32.
     name: Name for the operation (optional).
 
   Returns:
@@ -3414,7 +3418,10 @@ def matmul(a,
   Raises:
     ValueError: If `transpose_a` and `adjoint_a`, or `transpose_b` and
       `adjoint_b` are both set to `True`.
+    TypeError: If output_type is specified but the types of `a`, `b` and
+      `output_type` is not int8, int8 and int32.
   """
+
   with ops.name_scope(name, "MatMul", [a, b]) as name:
     if transpose_a and adjoint_a:
       raise ValueError("Only one of transpose_a and adjoint_a can be True.")
@@ -3438,6 +3445,13 @@ def matmul(a,
         (a_shape is None or len(a_shape) > 2) or
         (b_shape is None or len(b_shape) > 2))
 
+    # TODO(b/178749687): remove this boolean and all related branches once the
+    # bridges are ready.
+    # batch_matmul_v3 is for when input type is different from output type.
+    use_batch_matmul_v3 = False
+    if output_type and (output_type != a.dtype or output_type != b.dtype):
+      use_batch_matmul_v3 = True
+
     if (not a_is_sparse and
         not b_is_sparse) and output_may_have_non_empty_batch_shape:
       # BatchMatmul does not support transpose, so we conjugate the matrix and
@@ -3448,8 +3462,12 @@ def matmul(a,
       if transpose_b:
         b = conj(b)
         adjoint_b = True
-      return gen_math_ops.batch_mat_mul_v2(
-          a, b, adj_x=adjoint_a, adj_y=adjoint_b, name=name)
+      if use_batch_matmul_v3:
+        return gen_math_ops.batch_mat_mul_v3(
+            a, b, adj_x=adjoint_a, adj_y=adjoint_b, Tout=output_type, name=name)
+      else:
+        return gen_math_ops.batch_mat_mul_v2(
+            a, b, adj_x=adjoint_a, adj_y=adjoint_b, name=name)
 
     # Neither matmul nor sparse_matmul support adjoint, so we conjugate
     # the matrix and use transpose instead. Conj() is a noop for real
@@ -3466,9 +3484,11 @@ def matmul(a,
       sparse_matmul_types = [dtypes.bfloat16, dtypes.float32]
       use_sparse_matmul = (
           a.dtype in sparse_matmul_types and b.dtype in sparse_matmul_types)
-    if ((a.dtype == dtypes.bfloat16 or b.dtype == dtypes.bfloat16) and
+    if (((a.dtype == dtypes.bfloat16 and b.dtype != dtypes.int8) or
+         (b.dtype == dtypes.bfloat16 and a.dtype != dtypes.int8)) and
         a.dtype != b.dtype):
-      # matmul currently doesn't handle mixed-precision inputs.
+      # matmul currently doesn't handle mixed-precision inputs other than
+      # fp16 * int8 which is supported in BatchMatMulV3.
       use_sparse_matmul = True
     if use_sparse_matmul:
       ret = sparse_matmul(
@@ -3486,8 +3506,14 @@ def matmul(a,
         ret = cast(ret, dtypes.bfloat16)
       return ret
     else:
-      return gen_math_ops.mat_mul(
-          a, b, transpose_a=transpose_a, transpose_b=transpose_b, name=name)
+      if use_batch_matmul_v3:
+        adjoint_a = adjoint_a or transpose_a
+        adjoint_b = adjoint_b or transpose_b
+        return gen_math_ops.batch_mat_mul_v3(
+            a, b, adj_x=adjoint_a, adj_y=adjoint_b, Tout=output_type, name=name)
+      else:
+        return gen_math_ops.mat_mul(
+            a, b, transpose_a=transpose_a, transpose_b=transpose_b, name=name)
 
 
 @tf_export("linalg.matvec")
@@ -3623,6 +3649,7 @@ def _calc_mat_mul_flops(graph, node):
 
 @ops.RegisterStatistics("BatchMatMul", "flops")
 @ops.RegisterStatistics("BatchMatMulV2", "flops")
+@ops.RegisterStatistics("BatchMatMulV3", "flops")
 def _calc_batch_mat_mul_flops(graph, node):
   """Calculates the compute resources needed for BatchMatMul."""
   transpose_a = node.attr["transpose_a"].b
