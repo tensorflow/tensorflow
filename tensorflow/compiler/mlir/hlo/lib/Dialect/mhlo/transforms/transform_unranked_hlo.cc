@@ -463,7 +463,7 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
     OpBuilder if_eq_shapes_builder =
         if_eq_shapes_op.getThenBodyBuilder(rewriter.getListener());
     Value non_broadcast_op =
-        Adaptor::CreateOp(op, result_type, lhs, rhs, if_eq_shapes_builder);
+        Adaptor::CreateOp(op, result_type, {lhs, rhs}, if_eq_shapes_builder);
     if_eq_shapes_builder.create<scf::YieldOp>(loc, non_broadcast_op);
 
     // If shapes do not have exactly one element, nor are equal

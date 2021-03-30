@@ -1119,9 +1119,8 @@ struct ConvertTrivialNonBroadcastBinaryOp
       }
     }
 
-    rewriter.replaceOp(
-        op, {Adaptor::CreateOp(op, op.getResult().getType(), operands[0],
-                               operands[1], rewriter)});
+    rewriter.replaceOp(op, {Adaptor::CreateOp(op, op.getResult().getType(),
+                                              operands, rewriter)});
     return success();
   }
 };
@@ -1214,8 +1213,8 @@ struct ConvertRankedDynamicBroadcastBinaryOp
         rewriter.getI64TensorAttr(rhs_broadcast_dimensions));
 
     // And generate the final non-broadcasted binary op.
-    Value final_result = Adaptor::CreateOp(op, result_type, broadcasted_lhs,
-                                           broadcasted_rhs, rewriter);
+    Value final_result = Adaptor::CreateOp(
+        op, result_type, {broadcasted_lhs, broadcasted_rhs}, rewriter);
     rewriter.create<shape::AssumingYieldOp>(loc, final_result);
     rewriter.replaceOp(op, {assuming_op.getResult(0)});
     return success();
