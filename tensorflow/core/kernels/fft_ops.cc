@@ -531,8 +531,10 @@ class FFTGPUBase : public FFTBase {
                      Tensor* out) {
     const TensorShape& input_shape = in.shape();
     const TensorShape& output_shape = out->shape();
-    auto src = AsDeviceMemory<InT>(in.flat<InT>().data(), input_shape.num_elements());
-    auto dst = AsDeviceMemory<OutT>(out->flat<OutT>().data(), output_shape.num_elements());
+    auto src =
+        AsDeviceMemory<InT>(in.flat<InT>().data(), input_shape.num_elements());
+    auto dst = AsDeviceMemory<OutT>(out->flat<OutT>().data(),
+                                    output_shape.num_elements());
     OP_REQUIRES(
         ctx, stream->ThenFft(plan, src, &dst).ok(),
         errors::Internal("fft failed : type=", static_cast<int>(fft_type),
