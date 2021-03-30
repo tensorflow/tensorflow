@@ -683,6 +683,7 @@ cc_library(
         "//tensorflow/core/kernels/mkl:mkl_fused_batch_norm_op",
         "//tensorflow/core/kernels/mkl:mkl_identity_op",
         "//tensorflow/core/kernels/mkl:mkl_input_conversion_op",
+        "//tensorflow/core/kernels/mkl:mkl_layer_norm_op",
         "//tensorflow/core/kernels/mkl:mkl_lrn_op",
         "//tensorflow/core/kernels/mkl:mkl_pooling_ops",
         "//tensorflow/core/kernels/mkl:mkl_qmatmul_op",
