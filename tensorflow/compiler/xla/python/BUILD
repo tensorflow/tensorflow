@@ -402,7 +402,6 @@ cc_library(
     ],
 )
 
-# TODO(phawkins): this library is really part of JAX. Find a better home for it.
 cc_library(
     name = "pytree",
     srcs = ["pytree.cc"],
@@ -415,6 +414,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":absl_casters",
+        "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
