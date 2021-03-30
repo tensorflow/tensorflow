@@ -3355,6 +3355,7 @@ tf_kernel_library(
         "//conditions:default": [],
     }) + mkl_deps() + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
+        "//tensorflow/core/platform:tensor_float_32_utils",
     ]) + if_cuda_or_rocm([":gpu_utils"]),
 )
 
@@ -3434,6 +3435,7 @@ tf_kernel_library(
     prefix = "fft_ops",
     deps = MATH_DEPS + [
     ] + if_cuda([
+        "//tensorflow/core/kernels:gpu_utils",
         "//tensorflow/core/platform/default/build_config:cufft_plugin",
     ]),
 )

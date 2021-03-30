@@ -48,4 +48,22 @@ bool MatmulDoFP32ComputationFP16Input() {
   return value;
 }
 
+int MatmulMaxAutotuneAlgorithmCount() {
+  int64 value;
+  // In CUDA 11, cublasLtMatmulAlgoGetHeuristic typically returns <= 4
+  // algorithms for a given configuration, so 10 seems like a reasonable default
+  // here.
+  Status status =
+      ReadInt64FromEnvVar("TF_MATMUL_AUTOTUNE_MAX_ALGORITHMS", 10, &value);
+  if (!status.ok()) {
+    LOG(ERROR) << status.error_message();
+  }
+  static constexpr const int kMaxValue = std::numeric_limits<int>::max();
+  if (value < 1 || value > kMaxValue) {
+    LOG(ERROR) << "Invalid value for TF_MATMUL_AUTOTUNE_MAX_ALGORITHMS: "
+               << value << " is not in range [1, " << kMaxValue << "]";
+  }
+  return value;
+}
+
 }  // namespace tensorflow
