@@ -61,7 +61,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/unroll_batch_matmul.h"
@@ -188,13 +187,20 @@ struct FetchMinMaxAttrs {
 //
 
 template <typename TFFakeQuantOp, bool PerAxis, class FetchMinMax>
-class InsertTFLQuantOpsAfterTFFakeQuantOp {
- public:
-  FetchMinMax fetch_min_max_;
+struct InsertTFLQuantOpsAfterTFFakeQuantOp
+    : public OpRewritePattern<TFFakeQuantOp> {
+  using BaseType =
+      InsertTFLQuantOpsAfterTFFakeQuantOp<TFFakeQuantOp, PerAxis, FetchMinMax>;
+
+  explicit InsertTFLQuantOpsAfterTFFakeQuantOp<TFFakeQuantOp, PerAxis,
+                                               FetchMinMax>(MLIRContext *ctx)
+      : OpRewritePattern<TFFakeQuantOp>(ctx) {}
+
+  FetchMinMax fetchMinMax;
 
   using FetchAttrType = typename FetchMinMax::AttrType;
   LogicalResult matchAndRewrite(TFFakeQuantOp tf_op,
-                                OpBuilder &rewriter) const {
+                                PatternRewriter &rewriter) const override {
     // We don't want to insert quantize/dequantize if the quantize op exists.
     auto res = tf_op.outputs();
     if (!res.hasOneUse() || isa<QuantizeOp>(*res.user_begin())) {
@@ -206,7 +212,7 @@ class InsertTFLQuantOpsAfterTFFakeQuantOp {
     // constants and the tf.FakeQuantWithMinMaxVarsOp.
 
     FetchAttrType min_value, max_value;
-    if (!fetch_min_max_(tf_op, min_value, max_value)) {
+    if (!fetchMinMax(tf_op, min_value, max_value)) {
       return failure();
     }
 
@@ -1328,25 +1334,6 @@ LogicalResult ConvertTf2XlaOps(FuncOp func, MLIRContext *context) {
   return applyPartialConversion(func, target, std::move(patterns));
 }
 
-// Converts tf.FakeQuant* ops to tfl.quantize and tfl.dequantize ops.
-LogicalResult ConvertFakeQuantOps(FuncOp func, MLIRContext *ctx) {
-  OpBuilder builder(func);
-  func.walk([&](Operation *op) {
-    if (auto fake_quant = llvm::dyn_cast<TF::FakeQuantWithMinMaxArgsOp>(op)) {
-      (void)PreparePerTensorFakeQuantWithMinMaxArgs().matchAndRewrite(
-          fake_quant, builder);
-    } else if (auto fake_quant =
-                   llvm::dyn_cast<TF::FakeQuantWithMinMaxVarsOp>(op)) {
-      (void)PreparePerTensorFakeQuant().matchAndRewrite(fake_quant, builder);
-    } else if (auto fake_quant =
-                   llvm::dyn_cast<TF::FakeQuantWithMinMaxVarsPerChannelOp>(
-                       op)) {
-      (void)PreparePerChannelFakeQuant().matchAndRewrite(fake_quant, builder);
-    }
-  });
-  return success();
-}
-
 // Convert rfft to rfft2d.
 // The transformation pattern looks like below:
 //
@@ -1464,12 +1451,12 @@ void PrepareTFPass::runOnFunction() {
     return;
   }
 
-  // Before the tf.FakeQuant* ops being folded, tfl.quantize and tfl.dequantize
-  // ops are created to preserve the quantization parameters.
-  if (failed(ConvertFakeQuantOps(func, ctx))) {
-    signalPassFailure();
-    return;
-  }
+  // This pattern was intented to uses TFL QDQs to preserve the quantization
+  // parameters from the TF Quant ops, thus this pattern should run with the
+  // first `applyPatternsGreedily` method, which would otherwise removes the
+  // TF FakeQuant ops by the constant folding.
+  patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant,
+                  PreparePerTensorFakeQuantWithMinMaxArgs>(ctx);
 
   // This pattern will try to identify and optimize for dilated convolution.
   // e.g. Patterns like "SpaceToBatchND -> Conv2D -> BatchToSpaceND" will be

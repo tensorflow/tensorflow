@@ -75,8 +75,7 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
   // folded before being converted to tfl.quantize and tfl.dequantize ops.
   std::vector<std::string> wrapped_ops = {
       mlir::TF::FakeQuantWithMinMaxVarsOp::getOperationName().str(),
-      mlir::TF::FakeQuantWithMinMaxVarsPerChannelOp::getOperationName().str(),
-      mlir::TF::FakeQuantWithMinMaxArgsOp::getOperationName().str()};
+      mlir::TF::FakeQuantWithMinMaxVarsPerChannelOp::getOperationName().str()};
   pass_manager->addNestedPass<mlir::FuncOp>(
       mlir::TFL::CreateRaiseCustomOpsPass(wrapped_ops));
 

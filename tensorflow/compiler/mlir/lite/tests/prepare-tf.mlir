@@ -188,20 +188,6 @@ func @fakeQuantFolded() -> (tensor<8xf32>) {
 // CHECK: return %[[DEQUANTIZE]] : tensor<8xf32>
 }
 
-// CHECK-LABEL: fakeQuantFoldedWithoutIdentity
-func @fakeQuantFoldedWithoutIdentity() -> (tensor<8xf32>) {
-  %in = constant dense<0.0> : tensor<8xf32>
-  %min = constant dense<0.0> : tensor<f32>
-  %max = constant dense<255.0> : tensor<f32>
-  %rst = "tf.FakeQuantWithMinMaxVars"(%in, %min, %max) {num_bits = 3, narrow_range = false} : (tensor<8xf32>, tensor<f32>, tensor<f32>) -> tensor<8xf32>
-  return %rst : tensor<8xf32>
-
-// CHECK: %[[CONSTANT:.*]] = constant dense<0.000000e+00> : tensor<8xf32>
-// CHECK: %[[QUANTIZE:.*]] = "tfl.quantize"(%[[CONSTANT]]) {qtype = tensor<8x!quant.uniform<u8:f32, 1.000000e+00>>}
-// CHECK: %[[DEQUANTIZE:.*]] = "tfl.dequantize"(%[[QUANTIZE]])
-// CHECK: return %[[DEQUANTIZE]] : tensor<8xf32>
-}
-
 // CHECK-LABEL: fakeQuantNotFolded
 func @fakeQuantNotFolded(tensor<8xf32>, tensor<f32>, tensor<f32>) -> (tensor<8xf32>) {
 ^bb0(%arg0: tensor<8xf32>, %arg3: tensor<f32>, %arg4: tensor<f32>):
