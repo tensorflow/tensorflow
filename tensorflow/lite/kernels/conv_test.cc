@@ -1752,58 +1752,6 @@ TEST_P(ConvolutionOpTest, SimpleTestHybridWithPaddingPerChannel) {
                                  0.16)));
 }
 
-TEST_P(ConvolutionOpTest, SimpleTestHybridWithDilationPerChannel) {
-  const int stride_width = 1;
-  const int stride_height = 1;
-  const Padding padding = Padding_VALID;
-  const int dilation_width_factor = 2;
-  const int dilation_height_factor = 1;
-
-  float scale = 4.0 / 127.0;
-  float scale2 = 1.0 / 127.0;
-  HybridPerChannelConvolutionOpModel m(
-      GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 1}},
-      {TensorType_INT8,
-       {3, 2, 2, 1},
-       0,
-       0,
-       0,
-       0,
-       /*per_channel_quantization=*/true,
-       /*per_channel_quantization_scales=*/{scale, scale2, scale2},
-       /*per_channel_quantization_offsets=*/{0, 0, 0},
-       /*channel_index=*/0},
-      {TensorType_FLOAT32, {}}, stride_width, stride_height, padding,
-      ActivationFunctionType_NONE, dilation_width_factor,
-      dilation_height_factor);
-
-  m.SetInput({
-      // First batch
-      1, 1, 1, 1,  // row = 1
-      2, 2, 2, 2,  // row = 2
-      // Second batch
-      1, 2, 3, 4,  // row = 1
-      1, 2, 3, 4,  // row = 2
-  });
-  m.SetSignedFilter({
-      1, 2, 3, 4,    // first 2x2 filter
-      -1, 1, -1, 1,  // second 2x2 filter
-      -1, -1, 1, 1,  // third 2x2 filter
-  });
-  m.SetBias({1, 2, 3});
-
-  m.Invoke();
-
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
-                                 {
-                                     18, 2, 5,  // first batch, left
-                                     18, 2, 5,  // first batch, right
-                                     23, 6, 3,  // second batch, left
-                                     33, 6, 3,  // second batch, right
-                                 },
-                                 0.16)));
-}
-
 const auto kQuantizedKernelMap = new std::map<string, TfLiteRegistration*>({
     {"GenericOptimized", ops::builtin::Register_CONV_2D_UINT8()},
 });
