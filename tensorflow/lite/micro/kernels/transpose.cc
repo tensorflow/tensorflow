@@ -23,9 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/transpose.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
-namespace transpose {
+namespace {
 
 constexpr int kInputTensor = 0;
 constexpr int kPermTensor = 1;
@@ -115,14 +113,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 TfLiteRegistration Register_TRANSPOSE() {
   return {/*init=*/nullptr,
           /*free=*/nullptr,
-          /*prepare=*/transpose::Prepare,
-          /*invoke=*/transpose::Eval,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,
           /*custom_name=*/nullptr,
           /*version=*/2};
 }
 
-} // namespace micro
-} // namespace ops
 } // namespace tflite
