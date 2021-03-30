@@ -28,29 +28,11 @@ namespace tensorflow {
 
 DynamicDeviceMgr::DynamicDeviceMgr() : cpu_device_(nullptr) {}
 
-DynamicDeviceMgr::DynamicDeviceMgr(
-    std::vector<std::unique_ptr<Device>> devices) {
-  Status status = AddDevices(std::move(devices));
-  DCHECK(status.ok());
-  mutex_lock l(devices_mu_);
-  // Initialize cpu_device_.
-  for (int i = 0, n = dynamic_devices_.size(); i < n; ++i) {
-    auto* d = dynamic_devices_[i].get();
-    if (d->device_type() == DEVICE_CPU && d->parsed_name().id == 0) {
-      cpu_device_ = d;
-      break;
-    }
-  }
-}
-
 DynamicDeviceMgr::~DynamicDeviceMgr() {
   // Release resources ahead of destroying the device manager as the resource
   // destructors (e.g. ~IteratorResource) assume devices still exist.
-  mutex_lock l(devices_mu_);
-  for (const auto& d : dynamic_devices_) {
-    // TODO(tf-runtime-team): clear devices' resource mgr in devices'
-    // destructor.
-    d->ClearResourceMgr();
+  for (auto& pair : dynamic_devices_) {
+    pair.first->ClearResourceMgr();
   }
 }
 
@@ -58,8 +40,8 @@ void DynamicDeviceMgr::ListDeviceAttributes(
     std::vector<DeviceAttributes>* devices) const {
   tf_shared_lock l(devices_mu_);
   devices->reserve(dynamic_devices_.size());
-  for (const auto& d : dynamic_devices_) {
-    devices->emplace_back(d->attributes());
+  for (const auto& pair : dynamic_devices_) {
+    devices->emplace_back(pair.first->attributes());
   }
 }
 
@@ -67,8 +49,8 @@ std::vector<Device*> DynamicDeviceMgr::ListDevices() const {
   tf_shared_lock l(devices_mu_);
   std::vector<Device*> devices;
   devices.reserve(dynamic_devices_.size());
-  for (const auto& d : dynamic_devices_) {
-    devices.emplace_back(d.get());
+  for (const auto& pair : dynamic_devices_) {
+    devices.emplace_back(pair.first);
   }
   return devices;
 }
@@ -76,8 +58,8 @@ std::vector<Device*> DynamicDeviceMgr::ListDevices() const {
 string DynamicDeviceMgr::DebugString() const {
   string out;
   tf_shared_lock l(devices_mu_);
-  for (const auto& d : dynamic_devices_) {
-    strings::StrAppend(&out, d->name(), "\n");
+  for (const auto& pair : dynamic_devices_) {
+    strings::StrAppend(&out, pair.first->name(), "\n");
   }
   return out;
 }
@@ -85,10 +67,10 @@ string DynamicDeviceMgr::DebugString() const {
 string DynamicDeviceMgr::DeviceMappingString() const {
   string out;
   tf_shared_lock l(devices_mu_);
-  for (const auto& d : dynamic_devices_) {
-    if (!d->attributes().physical_device_desc().empty()) {
-      strings::StrAppend(&out, d->name(), " -> ",
-                         d->attributes().physical_device_desc(), "\n");
+  for (const auto& pair : dynamic_devices_) {
+    if (!pair.first->attributes().physical_device_desc().empty()) {
+      strings::StrAppend(&out, pair.first->name(), " -> ",
+                         pair.first->attributes().physical_device_desc(), "\n");
     }
   }
   return out;
@@ -119,13 +101,13 @@ void DynamicDeviceMgr::ClearContainers(
     gtl::ArraySlice<string> containers) const {
   Status s;
   tf_shared_lock l(devices_mu_);
-  for (const auto& d : dynamic_devices_) {
+  for (const auto& pair : dynamic_devices_) {
     if (containers.empty()) {
-      s.Update(d->resource_manager()->Cleanup(
-          d->resource_manager()->default_container()));
+      s.Update(pair.first->resource_manager()->Cleanup(
+          pair.first->resource_manager()->default_container()));
     } else {
       for (const string& c : containers) {
-        s.Update(d->resource_manager()->Cleanup(c));
+        s.Update(pair.first->resource_manager()->Cleanup(c));
       }
     }
     if (!s.ok()) {
@@ -162,7 +144,7 @@ Status DynamicDeviceMgr::AddDevices(
     }
     device_type_counts_[d->device_type()]++;
     device_incarnation_set_.insert(d->attributes().incarnation());
-    dynamic_devices_.push_back(std::move(d));
+    dynamic_devices_.emplace(d.get(), std::move(d));
   }
   return Status::OK();
 }
@@ -175,14 +157,15 @@ Status DynamicDeviceMgr::RemoveDevices(std::vector<Device*> devices) {
       TF_RETURN_IF_ERROR(
           errors::InvalidArgument("Can not remove HostCPU device ", d->name()));
     }
-    int i = 0, n = dynamic_devices_.size();
-    for (; i < n; ++i) {
-      if (d == dynamic_devices_[i].get()) break;
+    auto it = dynamic_devices_.find(d);
+    if (it == dynamic_devices_.end()) {
+      TF_RETURN_IF_ERROR(errors::InvalidArgument("Unknown device ", d->name()));
     }
-    if (i >= n) return errors::InvalidArgument("Unknown device ", d->name());
   }
 
   for (const auto& d : devices) {
+    auto it = dynamic_devices_.find(d);
+
     // Clear registration of (1) full name and (2) canonical name
     for (const string& name :
          DeviceNameUtils::GetNamesForDeviceMappings(d->parsed_name())) {
@@ -195,14 +178,8 @@ Status DynamicDeviceMgr::RemoveDevices(std::vector<Device*> devices) {
     }
     device_type_counts_[d->device_type()]--;
     device_incarnation_set_.erase(d->attributes().incarnation());
-
-    int i = 0, n = dynamic_devices_.size();
-    for (; i < n; ++i) {
-      if (d == dynamic_devices_[i].get()) break;
-    }
-    DCHECK(i < n);  // There shouldn't be unknown devices.
-    stale_devices_.add(std::move(dynamic_devices_[i]));
-    dynamic_devices_.erase(dynamic_devices_.begin() + i);
+    stale_devices_.add(std::move(it->second));
+    dynamic_devices_.erase(it);
   }
   return Status::OK();
 }
@@ -220,13 +197,15 @@ Status DynamicDeviceMgr::RemoveDevicesByName(
 
 Device* DynamicDeviceMgr::HostCPU() const {
   mutex_lock l(devices_mu_);
-  if (cpu_device_ == nullptr) {
-    for (int i = 0; i < dynamic_devices_.size(); ++i) {
-      auto* d = dynamic_devices_[i].get();
-      if (d->device_type() == DEVICE_CPU && d->parsed_name().id == 0) {
-        cpu_device_ = d;
-        break;
-      }
+  if (dynamic_devices_.find(cpu_device_) != dynamic_devices_.end()) {
+    return cpu_device_;
+  }
+  cpu_device_ = nullptr;
+  for (const auto& pair : dynamic_devices_) {
+    if (pair.first->device_type() == DEVICE_CPU &&
+        pair.first->parsed_name().id == 0) {
+      cpu_device_ = pair.first;
+      break;
     }
   }
   return cpu_device_;

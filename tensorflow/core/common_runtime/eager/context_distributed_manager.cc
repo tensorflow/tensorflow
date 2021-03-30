@@ -423,7 +423,7 @@ tensorflow::Status UpdateContextWithServerDef(
   std::unique_ptr<tensorflow::ServerInterface> new_server;
   tensorflow::GrpcServer* grpc_server;
   if (reset_context) {
-    tensorflow::DeviceMgr* device_mgr =
+    const tensorflow::DeviceMgr* device_mgr =
         AreLocalDevicesCompatible(context, server_def)
             ? context->local_device_mgr()
             : nullptr;

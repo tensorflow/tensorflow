@@ -650,16 +650,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         return output;
       },
       py::return_value_policy::reference);
-  m.def(
-      "TFE_SetLogicalCpuDevices",
-      [](py::handle& ctx, int num_cpus, const char* prefix) {
-        tensorflow::Safe_TF_StatusPtr status =
-            tensorflow::make_safe(TF_NewStatus());
-        TFE_SetLogicalCpuDevices(tensorflow::InputTFE_Context(ctx), num_cpus,
-                                 prefix, status.get());
-        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-      },
-      py::return_value_policy::reference);
   m.def("TFE_HostAddressSpace", [](py::handle& o, TF_Buffer& buf) {
     TFE_HostAddressSpace(tensorflow::InputTFE_Context(o), &buf);
   });

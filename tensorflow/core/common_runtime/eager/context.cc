@@ -77,7 +77,7 @@ auto* eager_context_created =
 EagerContext::EagerContext(
     const SessionOptions& opts,
     ContextDevicePlacementPolicy default_device_placement_policy, bool async,
-    DeviceMgr* device_mgr, bool device_mgr_owned, Rendezvous* rendezvous,
+    const DeviceMgr* device_mgr, bool device_mgr_owned, Rendezvous* rendezvous,
     DistributedFunctionLibraryRuntime* cluster_flr)
     : ImmediateExecutionContext(kEager),
       opts_(opts),
@@ -601,22 +601,6 @@ void EagerContext::ListDevices(
   }
 }
 
-Status EagerContext::AddDevices(std::vector<std::unique_ptr<Device>> devices) {
-  if (!devices.empty() && devices[0]->device_type() != "CPU")
-    return errors::InvalidArgument(
-        "Device: ", devices[0]->device_type(), " is not allowed to be added ",
-        "after the context is initialized. Currently allowed device: CPU. ",
-        "May update this API to allow adding more types of devices.");
-  TF_RETURN_IF_ERROR(
-      reinterpret_cast<DynamicDeviceMgr*>(local_device_manager_.Get())
-          ->AddDevices(std::move(devices)));
-
-  // Add the devices to pflr's device set.
-  pflr_->InitializeDeviceAndFlr();
-  InitPrioritizedDeviceTypeList();
-  return Status::OK();
-}
-
 void EagerContext::StartStep() {
   mutex_lock ml(metadata_mu_);
   num_active_steps_++;
@@ -1086,7 +1070,7 @@ void EagerContext::IncrementContextViewId() {
 // Set collective ops related state in the context. Passing nullptr to
 // `new_server` will reuse the existing GRPC server in context.
 Status EagerContext::StoreCollectiveOpsServer(
-    std::unique_ptr<ServerInterface> new_server, DeviceMgr* device_mgr,
+    std::unique_ptr<ServerInterface> new_server, const DeviceMgr* device_mgr,
     CollectiveExecutorMgrInterface* rpc_collective_executor_mgr) {
   collective_executor_mgr_.Reset(rpc_collective_executor_mgr);
 
@@ -1219,7 +1203,7 @@ Status EagerContext::InitializeRemoteMaster(
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     std::unique_ptr<DynamicDeviceMgr> remote_device_manager,
     const std::vector<string>& remote_contexts, uint64 context_id,
-    Rendezvous* r, DeviceMgr* local_device_mgr, int keep_alive_secs,
+    Rendezvous* r, const DeviceMgr* local_device_mgr, int keep_alive_secs,
     DistributedFunctionLibraryRuntime* cluster_flr,
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
         remote_mgr) {
@@ -1316,7 +1300,7 @@ Status EagerContext::SetMasterContextState(
     std::shared_ptr<WorkerSession> worker_session,
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     std::unique_ptr<DynamicDeviceMgr> remote_device_manager, uint64 context_id,
-    uint64 context_view_id, Rendezvous* r, DeviceMgr* local_device_mgr,
+    uint64 context_view_id, Rendezvous* r, const DeviceMgr* local_device_mgr,
     int keep_alive_secs, DistributedFunctionLibraryRuntime* cluster_flr,
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
         remote_mgr) {

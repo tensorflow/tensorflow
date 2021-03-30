@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <vector>
 
-#include "absl/strings/match.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
@@ -682,29 +681,4 @@ void TFE_GetExecutedOpNames(TFE_Context* ctx, TF_Buffer* buf,
     tensorflow::port::Free(data);
   };
   status->status = tensorflow::Status::OK();
-}
-
-void TFE_SetLogicalCpuDevices(TFE_Context* ctx, int num_cpus,
-                              const char* prefix, TF_Status* status) {
-  std::vector<std::unique_ptr<tensorflow::Device>> devices;
-
-  if (prefix == nullptr || strlen(prefix) == 0)
-    prefix = "/job:localhost/replica:0/task:0";
-
-  tensorflow::SessionOptions sess_options;
-  (*sess_options.config.mutable_device_count())["CPU"] = num_cpus;
-  status->status =
-      tensorflow::DeviceFactory::AddCpuDevices(sess_options, prefix, &devices);
-
-  // Remove the device that has the host device name since host device is alreay
-  // in an initialized context.
-  for (auto d = devices.begin(); d != devices.end();) {
-    if (absl::StrContains(d->get()->name(), "CPU:0")) {
-      d = devices.erase(d);
-    } else {
-      ++d;
-    }
-  }
-
-  status->status = tensorflow::unwrap(ctx)->AddDevices(std::move(devices));
 }

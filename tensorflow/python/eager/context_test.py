@@ -161,15 +161,6 @@ class ContextTest(test.TestCase):
     self.assertIn(concrete.name.decode(),
                   context.context().list_function_names())
 
-  def testSetLogicalDeviceAfterContextInitialization(self):
-    ctx = context.Context()
-    ctx.set_locigal_cpu_devices(4)
-    self.assertIs(len(ctx.list_logical_devices('CPU')), 4)
-
-    # Cannot set logical device twice.
-    with self.assertRaisesRegex(RuntimeError, 'Virtual CPUs already set'):
-      ctx.set_locigal_cpu_devices(8)
-
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
