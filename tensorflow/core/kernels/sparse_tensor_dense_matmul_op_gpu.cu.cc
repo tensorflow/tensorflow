@@ -66,10 +66,12 @@ __device__ void GpuCastAtomicAdd(Tout* out_location, Tin val) {
   GpuAtomicAdd(out_location, static_cast<Tout>(val));
 }
 
+#ifndef TENSORFLOW_USE_ROCM
 template<>
 __device__ void GpuCastAtomicAdd(complex128* out_location, complex64 val) {
   GpuAtomicAdd(out_location, complex128(val.real(), val.imag()));
 }
+#endif
 
 template <typename T, typename Tsum, typename Tindices, bool ADJ_A, bool ADJ_B>
 __global__ void SparseTensorDenseMatMulKernel(
