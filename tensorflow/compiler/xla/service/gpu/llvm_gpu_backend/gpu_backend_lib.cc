@@ -874,6 +874,14 @@ void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
   LLVMInitializeAMDGPUTargetInfo();
   LLVMInitializeAMDGPUTargetMC();
   LLVMInitializeAMDGPUAsmPrinter();
+
+#if TF_ROCM_VERSION < 40100
+  // Use code-object-v3 for ROCm versions 4.0.1 and lower, since the
+  // HIP runtime for those ROCm versions expects the v3 HSACO objects
+  // Default is now v4 for newer LLVM versions (starting around 210326)
+  FeedLLVMWithFlags({"--amdhsa-code-object-version=3"});
+#endif
+
 #endif
 
   llvm::PassRegistry* registry = llvm::PassRegistry::getPassRegistry();
