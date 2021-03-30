@@ -323,7 +323,6 @@ cc_library(
         "quantize.h",
         "softmax.h",
         "svdf.h",
-        "kernel_utils.h",
     ],
     copts = micro_copts(),
     visibility = [

@@ -475,7 +475,7 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     }
 
     case BuiltinOperator_TRANSPOSE: {
-      return ParseTranspose(op, op_type, error_reporter, allocator, builtin_data);
+      return ParseTranspose(op, error_reporter, allocator, builtin_data);
     }
 
     case BuiltinOperator_TRANSPOSE_CONV: {
@@ -2062,7 +2062,7 @@ TfLiteStatus ParseTanh(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
 // We have this parse function instead of directly returning kTfLiteOk from the
 // switch-case in ParseOpData because this function is used as part of the
 // selective registration for the OpResolver implementation in micro.
-TfLiteStatus ParseTranspose(const Operator* op, BuiltinOperator op_type,
+TfLiteStatus ParseTranspose(const Operator* op,
                             ErrorReporter* error_reporter,
                             BuiltinDataAllocator* allocator,
                             void** builtin_data) {
