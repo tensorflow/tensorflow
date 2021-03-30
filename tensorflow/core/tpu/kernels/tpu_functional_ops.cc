@@ -1868,8 +1868,8 @@ Status TPUPartitionedCallOp::OptimizeTpuInputOutputTensors(
         graph, xla_sharding_ops, tpu_replicated_input_ops);
   }
 
-  VLOG(3) << "xla_spmd_input_sharded: " << xla_spmd_input_sharded;
-  VLOG(1) << DumpGraphToFile("before_get_input_output_info1", *graph,
+  VLOG(1) << "xla_spmd_input_sharded: " << xla_spmd_input_sharded;
+  VLOG(2) << DumpGraphToFile("before_remove_descendant_nodes", *graph,
                              flib_def_.get());
   if (xla_spmd_input_sharded) {
     // We are setting must_be_child_of_arg == true because we do not want
@@ -1888,14 +1888,14 @@ Status TPUPartitionedCallOp::OptimizeTpuInputOutputTensors(
                               /*must_be_child_of_arg=*/false);
   }
 
-  VLOG(1) << DumpGraphToFile("before_get_input_output_info2", *graph,
+  VLOG(2) << DumpGraphToFile("before_get_input_output_info", *graph,
                              flib_def_.get());
 
   TF_RETURN_IF_ERROR(GetInputOutputInfo(graph, tpu_inferred_info, arg_shapes,
                                         tpu_input_shapes, tpu_input_dtypes,
                                         ctx));
 
-  VLOG(1) << DumpGraphToFile("before_optimize_tpu_input_output_tensors", *graph,
+  VLOG(2) << DumpGraphToFile("before_optimize_tpu_input_output_tensors", *graph,
                              flib_def_.get());
 
   string cluster_name;
