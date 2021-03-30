@@ -766,6 +766,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     """The logic for one training step.
 
     This method can be overridden to support custom training logic.
+    For concrete examples of how to override this method see
+    [Customizing what happends in fit](https://www.tensorflow.org/guide/keras/customizing_what_happens_in_fit).
     This method is called by `Model.make_train_function`.
 
     This method should contain the mathematical logic for one step of training.
