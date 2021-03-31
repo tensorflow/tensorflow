@@ -14,7 +14,6 @@
 # ==============================================================================
 """Keras SavedModel deserialization."""
 
-import os
 import re
 import types
 
