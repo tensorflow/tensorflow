@@ -4663,17 +4663,11 @@ def tensordot(a, b, axes, name=None):
   r"""Tensor contraction of a and b along specified axes and outer product.
 
   Tensordot (also known as tensor contraction) sums the product of elements
-  from `a` and `b` over the indices specified by `a_axes` and `b_axes`.
-  The lists `a_axes` and `b_axes` specify those pairs of axes along which to
-  contract the tensors. The axis `a_axes[i]` of `a` must have the same dimension
-  as axis `b_axes[i]` of `b` for all `i` in `range(0, len(a_axes))`. The lists
-  `a_axes` and `b_axes` must have identical length and consist of unique
-  integers that specify valid axes for each of the tensors. Additionally
-  outer product is supported by passing `axes=0`.
+  from `a` and `b` over the indices specified by `axes`.
 
   This operation corresponds to `numpy.tensordot(a, b, axes)`.
 
-  Example 1: When `a` and `b` are matrices (order 2), the case `axes = 1`
+  Example 1: When `a` and `b` are matrices (order 2), the case `axes=1`
   is equivalent to matrix multiplication.
 
   Example 2: When `a` and `b` are matrices (order 2), the case
