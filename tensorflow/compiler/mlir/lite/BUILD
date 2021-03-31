@@ -17,7 +17,7 @@ package(
         ":friends",
         "//tensorflow/lite/experimental/tf_runtime:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
