@@ -644,7 +644,7 @@ struct Register {
       string load_plugin = env_value ? absl::AsciiStrToLower(env_value) : "";
       if (load_plugin == "true" || load_plugin == "1") {
         // We don't register the static filesystem and wait for SIG IO one
-        LOG(WARNING) << "Using modular file system for '" << scheme << "."
+        LOG(WARNING) << "Using modular file system for '" << scheme << "'."
                      << " Please switch to tensorflow-io"
                      << " (https://github.com/tensorflow/io) for file system"
                      << " support of '" << scheme << "'.";
