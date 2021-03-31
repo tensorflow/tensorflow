@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -2085,41 +2086,67 @@ LogicalResult ReplicaIdOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
+// If Op
+//===----------------------------------------------------------------------===//
+
+static LogicalResult VerifyConditionalBranch(Operation* op, Region& region,
+                                             Value operand,
+                                             llvm::Twine branchName,
+                                             llvm::Twine operandName) {
+  mlir::Block& entryBlock = region.front();
+  if (entryBlock.getNumArguments() != 1)
+    return op->emitOpError()
+           << branchName << " block should have single argument, but found "
+           << entryBlock.getNumArguments();
+
+  Type operandType = operand.getType();
+  Type branchArgType = entryBlock.getArgument(0).getType();
+  if (branchArgType != operandType)
+    return op->emitOpError()
+           << operandName << " type (" << operandType << ") does not match "
+           << branchName << " block arg type (" << branchArgType << ")";
+  TypeRange branchReturnTypes = entryBlock.getTerminator()->getOperandTypes();
+  if (branchReturnTypes != op->getResultTypes())
+    return op->emitOpError()
+           << branchName << " returned types (" << branchReturnTypes
+           << ") do not match op result types (" << op->getResultTypes() << ")";
+
+  return success();
+}
+
+static LogicalResult Verify(IfOp op) {
+  if (failed(VerifyConditionalBranch(op, op.true_branch(), op.true_arg(),
+                                     /*branchName=*/"true_branch",
+                                     /*operandName=*/"true_arg"))) {
+    return failure();
+  }
+
+  if (failed(VerifyConditionalBranch(op, op.false_branch(), op.false_arg(),
+                                     /*branchName=*/"false_branch",
+                                     /*operandName=*/"false_arg"))) {
+    return failure();
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // Case Op
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(CaseOp op) {
   auto num_branches = op.branches().size();
   if (op.branch_operands().size() != num_branches)
-    return op.emitOpError() << "expects number of branches " << num_branches
-                            << " to be same as number of branch operands "
-                            << op.branch_operands().size();
+    return op.emitOpError() << " number of branches (" << num_branches
+                            << ") does not match number of branch operands ("
+                            << op.branch_operands().size() << ")";
 
-  MutableArrayRef<Region> branches = op.branches();
-  OperandRange branch_operands = op.branch_operands();
-  for (unsigned i = 0; i < num_branches; ++i) {
-    mlir::Region& branch_region = branches[i];
-    mlir::Block& entry_block = branch_region.front();
-    if (entry_block.getNumArguments() != 1)
-      return op.emitOpError()
-             << "expects branch regions to have single argument, but found "
-             << entry_block.getNumArguments() << " for branch " << i;
-    auto operand = branch_operands[i];
-    if (entry_block.getArgument(0).getType() != operand.getType())
-      return op.emitOpError()
-             << "expects operand " << i + 1 << " to be of type "
-             << entry_block.getArgument(0).getType() << ", but found "
-             << operand.getType();
-    WalkResult walker = branch_region.walk([&](ReturnOp return_op) {
-      if (return_op.getOperands().getTypes() != op.getResultTypes())
-        return WalkResult::interrupt();
-      return WalkResult::advance();
-    });
-    if (walker.wasInterrupted())
-      return op.emitOpError()
-             << "branch " << i
-             << " returned values do not match op result types";
-  }
+  for (unsigned i = 0; i < num_branches; ++i)
+    if (failed(VerifyConditionalBranch(
+            op, op.branches()[i], op.branch_operands()[i],
+            /*branchName=*/"branch " + Twine(i),
+            /*operandName=*/"branch_operand " + Twine(i))))
+      return failure();
+
   return success();
 }
 

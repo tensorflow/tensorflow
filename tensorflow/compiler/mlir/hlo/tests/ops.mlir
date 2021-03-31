@@ -204,8 +204,89 @@ func @broadcast_in_dim_unranked_operand(%arg0 : tensor<*xf32>) -> tensor<2xf32> 
 
 // -----
 
+// CHECK-LABEL: @if_nested_different_return_types(
+func @if_nested_different_return_types(%pred : tensor<i1>, %branch_operand : tensor<f32>) {
+  %0 = "mhlo.if"(%pred, %branch_operand, %branch_operand) ({
+    ^bb0(%arg0 : tensor<f32>):
+      "mhlo.return"(%arg0) : (tensor<f32>) -> ()
+  }, {
+    ^bb1(%arg1 : tensor<f32>):
+      %2 = "mhlo.if"(%pred, %arg1, %arg1) ({
+        ^bb0 (%arg2 : tensor<f32>):
+          "mhlo.return"(%pred) : (tensor<i1>) -> ()
+      }, {
+        ^bb1 (%arg3 : tensor<f32>):
+          "mhlo.return"(%pred) : (tensor<i1>) -> ()
+      }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<i1>
+      "mhlo.return"(%arg1) : (tensor<f32>) -> ()
+  }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  return
+}
+
+// -----
+
+func @if_mismatch_arg_type(%pred : tensor<i1>, %branch_operand : tensor<f32>, %wrong_type : tensor<3xf32>) {
+  // @expected-error@+1 {{true_arg type ('tensor<3xf32>') does not match true_branch block arg type ('tensor<f32>')}}
+  %0 = "mhlo.if"(%pred, %wrong_type, %branch_operand) ({
+    ^bb0(%arg0 : tensor<f32>):
+      "mhlo.return"(%arg0) : (tensor<f32>) -> ()
+    }, {
+    ^bb0(%arg1 : tensor<f32>):
+      "mhlo.return"(%arg1) : (tensor<f32>) -> ()
+    }) : (tensor<i1>, tensor<3xf32>, tensor<f32>) -> tensor<f32>
+  return
+}
+
+// -----
+
+func @if_mismatch_return_type(%pred : tensor<i1>, %branch_operand : tensor<f32>, %wrong_type : tensor<3xf32>) {
+  // @expected-error@+1 {{true_branch returned types ('tensor<3xf32>') do not match op result types ('tensor<f32>')}}
+  %0 = "mhlo.if"(%pred, %branch_operand, %branch_operand) ({
+    ^bb0(%arg0 : tensor<f32>):
+      "mhlo.return"(%wrong_type) : (tensor<3xf32>) -> ()
+    }, {
+    ^bb0(%arg1 : tensor<f32>):
+      "mhlo.return"(%arg1) : (tensor<f32>) -> ()
+    }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  return
+}
+
+// -----
+
+func @if_mismatch_num_return_types(%pred : tensor<i1>, %branch_operand : tensor<f32>) {
+  // @expected-error@+1 {{true_branch returned types ('tensor<f32>', 'tensor<f32>') do not match op result types ('tensor<f32>')}}
+  %0 = "mhlo.if"(%pred, %branch_operand, %branch_operand) ({
+    ^bb0(%arg0 : tensor<f32>):
+      "mhlo.return"(%branch_operand, %branch_operand) : (tensor<f32>, tensor<f32>) -> ()
+    }, {
+    ^bb0(%arg1 : tensor<f32>):
+      "mhlo.return"(%arg1) : (tensor<f32>) -> ()
+    }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: @case_nested_different_return_types(
+func @case_nested_different_return_types(%index : tensor<i32>, %branch_operand : tensor<f32>) {
+  %0 = "mhlo.case"(%index, %branch_operand, %branch_operand) ({
+    ^bb0(%arg0 : tensor<f32>):
+      "mhlo.return"(%arg0) : (tensor<f32>) -> ()
+  }, {
+    ^bb1(%arg1 : tensor<f32>):
+      %2 = "mhlo.case"(%index, %arg1) ({
+        ^bb0 (%arg2 : tensor<f32>):
+          "mhlo.return"(%index) : (tensor<i32>) -> ()
+      }) : (tensor<i32>, tensor<f32>) -> tensor<i32>
+      "mhlo.return"(%arg1) : (tensor<f32>) -> ()
+  }) : (tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  return
+}
+
+// -----
+
 func @case_mismatch_num_args(%index: tensor<i32>, %operand_1: tensor<f32>, %operand_2: tensor<f32>, %operand_3: tensor<f32>) -> tensor<f32> {
-  // expected-error@+1 {{expects branch regions to have single argument, but found 2 for branch 1}}
+  // expected-error@+1 {{branch 1 block should have single argument, but found 2}}
   %0 = "mhlo.case"(%index, %operand_1, %operand_2, %operand_3) ( {
     ^bb0(%arg0: tensor<f32>):
       %1 = "mhlo.negate"(%arg0) : (tensor<f32>) -> tensor<f32>
@@ -226,7 +307,7 @@ func @case_mismatch_num_args(%index: tensor<i32>, %operand_1: tensor<f32>, %oper
 // -----
 
 func @case_mismatch_num_results(%index: tensor<i32>, %operand_1: tensor<f32>, %operand_2: tensor<f32>, %operand_3: tensor<f32>) -> tensor<f32> {
-  // expected-error@+1 {{branch 1 returned values do not match op result types}}
+  // expected-error@+1 {{branch 1 returned types ('tensor<f32>', 'tensor<f32>') do not match op result types ('tensor<f32>')}}
   %0 = "mhlo.case"(%index, %operand_1, %operand_2, %operand_3) ( {
     ^bb0(%arg0: tensor<f32>):
       %1 = "mhlo.negate"(%arg0) : (tensor<f32>) -> tensor<f32>
@@ -247,7 +328,7 @@ func @case_mismatch_num_results(%index: tensor<i32>, %operand_1: tensor<f32>, %o
 // -----
 
 func @case_mismatch_arg_type(%index: tensor<i32>, %operand_1: tensor<f32>, %operand_2: tensor<f32>, %operand_3: tensor<f32>) -> tensor<f32> {
-  // expected-error@+1 {{expects operand 2 to be of type 'tensor<i32>', but found 'tensor<f32>'}}
+  // expected-error@+1 {{branch_operand 1 type ('tensor<f32>') does not match branch 1 block arg type ('tensor<i32>')}}
   %0 = "mhlo.case"(%index, %operand_1, %operand_2, %operand_3) ( {
     ^bb0(%arg0: tensor<f32>):
       %1 = "mhlo.negate"(%arg0) : (tensor<f32>) -> tensor<f32>
@@ -268,7 +349,7 @@ func @case_mismatch_arg_type(%index: tensor<i32>, %operand_1: tensor<f32>, %oper
 // -----
 
 func @case_mismatch_return_type(%index: tensor<i32>, %operand_1: tensor<f32>, %operand_2: tensor<f32>, %operand_3: tensor<f32>) -> tensor<f32> {
-  // expected-error@+1 {{branch 1 returned values do not match op result types}}
+  // expected-error@+1 {{branch 1 returned types ('tensor<i32>') do not match op result types ('tensor<f32>')}}
   %0 = "mhlo.case"(%index, %operand_1, %operand_2, %operand_3) ( {
     ^bb0(%arg0: tensor<f32>):
       %1 = "mhlo.negate"(%arg0) : (tensor<f32>) -> tensor<f32>
