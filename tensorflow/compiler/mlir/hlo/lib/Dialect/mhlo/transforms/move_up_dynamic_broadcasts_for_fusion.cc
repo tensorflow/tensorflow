@@ -162,6 +162,36 @@ struct MoveIntoAssumingOpPattern : public OpRewritePattern<OpTy> {
   }
 };
 
+/// Move operation out of assuming op. This is only valid for
+/// constraint-independent ops, like `cstr_broadcastable` and `shape_of`. It
+/// will eventually allow to make assuming regions' constraints independent from
+/// each other.
+template <typename OpTy>
+struct MoveOutOfAssumingOpPattern : public OpRewritePattern<OpTy> {
+  using OpRewritePattern<OpTy>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(OpTy op,
+                                PatternRewriter &rewriter) const override {
+    // Must be inside of an assuming op.
+    auto assuming_op = op->template getParentOfType<shape::AssumingOp>();
+    if (!assuming_op) return failure();
+
+    // Operands must not be defined within the assuming op.
+    Block *body = assuming_op.getBody();
+    auto is_available = [&](Value v) {
+      Operation *def = v.getDefiningOp();
+      return def == nullptr || def->getBlock() != body;
+    };
+    if (!llvm::all_of(op->getOperands(), is_available)) return failure();
+
+    OpBuilder::InsertionGuard guard(rewriter);
+    rewriter.setInsertionPoint(assuming_op);
+    rewriter.replaceOpWithNewOp<OpTy>(op, op->getResultTypes(),
+                                      op->getOperands(), op->getAttrs());
+    return success();
+  }
+};
+
 // TODO(frgossen): Only move up broadcasting operations if there is a consumer.
 struct MoveUpBroadcastInDimOpPattern
     : public OpRewritePattern<DynamicBroadcastInDimOp> {
@@ -236,6 +266,8 @@ void PopulateMoveUpDynamicBroadcastsForFusionPatterns(
       InlineBroadcastedShapeOperandsPattern<shape::CstrBroadcastableOp>,
       MoveIntoAssumingOpPattern<shape::ShapeOfOp>,
       MoveIntoAssumingOpPattern<shape::CstrBroadcastableOp>,
+      MoveOutOfAssumingOpPattern<shape::CstrBroadcastableOp>,
+      MoveOutOfAssumingOpPattern<shape::ShapeOfOp>,
       MoveUpBroadcastInDimOpPattern,
       ShapeReificationPattern>(context);
   // clang-format on
