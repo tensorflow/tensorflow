@@ -642,16 +642,16 @@ struct Register {
     if (try_modular_filesystems) {
       const char* env_value = getenv("TF_USE_MODULAR_FILESYSTEM");
       string load_plugin = env_value ? absl::AsciiStrToLower(env_value) : "";
-      if (!(load_plugin == "true" || load_plugin == "1")) {
+      if (load_plugin == "true" || load_plugin == "1") {
         // We don't register the static filesystem and wait for SIG IO one
-        LOG(WARNING) << "Using modular file system for '" << scheme << "."
-                     << " Please switch to tensorflow-io"
-                     << " (https://github.com/tensorflow/io) for file system"
-                     << " support of '" << scheme << "'.";
         return;
       }
       // If the envvar is missing or not "true"/"1", then fall back to legacy
       // implementation to be backwards compatible.
+      LOG(WARNING) << "Using modular file system for '" << scheme << "."
+                   << " Please switch to tensorflow-io"
+                   << " (https://github.com/tensorflow/io) for file system"
+                   << " support of '" << scheme << "'.";
     }
     // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
     env->RegisterFileSystem(scheme, []() -> FileSystem* { return new Factory; })
