@@ -315,7 +315,7 @@ class BatchNormalizationV2Test(keras_parameterized.TestCase):
     self.assertIsNone(norm.fused)
     inp = keras.layers.Input(shape=(4, 4, 4, 4))
     norm(inp)
-    self.assertEqual(norm.fused, False)
+    self.assertEqual(norm.fused, True)
 
     norm = normalization_v2.BatchNormalization(virtual_batch_size=2)
     self.assertEqual(norm.fused, False)
