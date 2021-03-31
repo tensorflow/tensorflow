@@ -37,7 +37,7 @@ TEST(ResourceVariableGradTest, ReadVariableOpGrad) {
   auto x = Placeholder(scope, DT_FLOAT, Placeholder::Shape(shape));
 
   auto var = VarHandleOp(scope, DT_FLOAT, shape);
-  auto init = AssignVariableOp(scope, var, Const(scope, (float) 2, shape));
+  auto init = AssignVariableOp(scope, var, Const(scope, 2.0f, shape));
 
   auto temp = ReadVariableOp(scope, var, DT_FLOAT);
 
@@ -50,15 +50,15 @@ TEST(ResourceVariableGradTest, ReadVariableOpGrad) {
 
 
   ClientSession::FeedType feed_list;
-  feed_list.insert({x, (float) 5});
-  feed_list.insert({dy, (float) 1});
+  feed_list.insert({x, 5.0f});
+  feed_list.insert({dy, 1.0f});
 
   std::vector<Tensor> dxout;
   ClientSession session(scope);
   TF_ASSERT_OK(session.Run(feed_list, dxs, &dxout));
 
   auto grad = dxout[0].scalar<float>()();
-  EXPECT_EQ(grad, 5);
+  EXPECT_EQ(grad, 5.0f);
 }
 
 }  // namespace
