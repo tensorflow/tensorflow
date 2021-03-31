@@ -19,7 +19,7 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrappers_cc")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
