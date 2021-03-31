@@ -291,7 +291,9 @@ TEST(BasicFlatBufferModel, TestWithNumThreads) {
   ASSERT_EQ(interpreter->subgraph(0)->context()->recommended_num_threads, -1);
 
   ASSERT_EQ(reporter.num_calls(), 0);
+  interpreter.reset(new Interpreter);
   ASSERT_EQ(builder(&interpreter, -2), kTfLiteError);
+  ASSERT_EQ(interpreter, nullptr);
   ASSERT_EQ(reporter.num_calls(), 1);
   ASSERT_PRED_FORMAT2(testing::IsSubstring,
                       "num_threads should be >= 0 or just -1",

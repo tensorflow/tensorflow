@@ -670,19 +670,19 @@ TfLiteStatus InterpreterBuilder::operator()(
     return kTfLiteError;
   }
 
-  if (num_threads < -1) {
-    error_reporter_->Report(
-        "num_threads should be >= 0 or just -1 to let TFLite runtime set the "
-        "value.");
-    return kTfLiteError;
-  }
-
   // Safe exit by deleting partially created interpreter, to reduce verbosity
   // on error conditions. Use by return cleanup_on_error();
   auto cleanup_and_error = [&interpreter]() {
     interpreter->reset();
     return kTfLiteError;
   };
+
+  if (num_threads < -1) {
+    error_reporter_->Report(
+        "num_threads should be >= 0 or just -1 to let TFLite runtime set the "
+        "value.");
+    return cleanup_and_error();
+  }
 
   if (!model_) {
     error_reporter_->Report("Null pointer passed in as model.");
