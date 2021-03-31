@@ -2530,6 +2530,19 @@ name=None))
     You may provide either a constant `window_size` or a window size determined
     by the key through `window_size_func`.
 
+    >>> dataset = tf.data.Dataset.range(10)
+    >>> window_size = 5
+    >>> key_func = lambda x: x%2
+    >>> reduce_func = reduce_func=lambda key, dataset: dataset.batch(window_size)
+    >>> dataset = dataset.group_by_window(
+    ...           key_func=key_func,
+    ...           reduce_func=reduce_func,
+    ...           window_size=window_size)
+    >>> for elem in dataset.as_numpy_iterator():
+    ...   print(elem)
+    [0 2 4 6 8]
+    [1 3 5 7 9]
+
     Args:
       key_func: A function mapping a nested structure of tensors
         (having shapes and types defined by `self.output_shapes` and
