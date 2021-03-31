@@ -578,8 +578,7 @@ def HLO_CaseOp: HLO_Op<"case", [
 
 def HLO_WhileOp: HLO_Op<"while", [
       RecursiveSideEffects,
-      SameOperandsAndResultType,
-      SingleBlockImplicitTerminator<"ReturnOp">
+      SameOperandsAndResultType
     ]>, BASE_HLO_WhileOp {
   let arguments = (ins HLO_TensorOrTuple:$val);
 
