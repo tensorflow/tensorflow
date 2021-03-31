@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Location.h"
@@ -129,6 +130,19 @@ DenseIntElementsAttr BuildSliceLimits(DenseIntElementsAttr start_indices,
     slice_limits.push_back(start_index + slice_size);
   }
   return GetI64ElementsAttr(slice_limits, builder);
+}
+
+/// Replaces the given op with the contents of the given single-block region,
+/// using the operands of the block terminator to replace operation results.
+static void ReplaceOpWithRegion(PatternRewriter& rewriter, Operation* op,
+                                Region& region, ValueRange blockArgs = {}) {
+  assert(llvm::hasSingleElement(region) && "expected single-block region");
+  Block* block = &region.front();
+  Operation* terminator = block->getTerminator();
+  ValueRange results = terminator->getOperands();
+  rewriter.mergeBlockBefore(block, op, blockArgs);
+  rewriter.replaceOp(op, results);
+  rewriter.eraseOp(terminator);
 }
 
 #include "mhlo_canonicalize.inc"
@@ -2129,6 +2143,24 @@ static LogicalResult Verify(IfOp op) {
   return success();
 }
 
+static LogicalResult InlineIfConstantCondition(IfOp ifOp,
+                                               PatternRewriter& rewriter) {
+  DenseIntElementsAttr pred_attr;
+  if (!matchPattern(ifOp.pred(), m_Constant(&pred_attr))) return failure();
+
+  if (pred_attr.getSplatValue<BoolAttr>().getValue()) {
+    ReplaceOpWithRegion(rewriter, ifOp, ifOp.true_branch(), ifOp.true_arg());
+  } else {
+    ReplaceOpWithRegion(rewriter, ifOp, ifOp.false_branch(), ifOp.false_arg());
+  }
+  return success();
+}
+
+void IfOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                       MLIRContext* context) {
+  results.add(&InlineIfConstantCondition);
+}
+
 //===----------------------------------------------------------------------===//
 // Case Op
 //===----------------------------------------------------------------------===//
@@ -2148,6 +2180,31 @@ static LogicalResult Verify(CaseOp op) {
       return failure();
 
   return success();
+}
+
+static LogicalResult InlineCaseConstantCondition(CaseOp caseOp,
+                                                 PatternRewriter& rewriter) {
+  DenseIntElementsAttr index_attr;
+  if (!matchPattern(caseOp.index(), m_Constant(&index_attr))) {
+    return failure();
+  }
+  int64_t index =
+      index_attr.getSplatValue<IntegerAttr>().getValue().getSExtValue();
+  // For an OOB index, the last branch is executed as the default branch:
+  // https://www.tensorflow.org/xla/operation_semantics#conditional
+  if (index < 0 || index >= caseOp.getNumRegions())
+    index = caseOp.getNumRegions() - 1;
+
+  Region& region = caseOp.getRegion(index);
+  if (!llvm::hasSingleElement(region)) return failure();
+  ReplaceOpWithRegion(rewriter, caseOp, region,
+                      caseOp.branch_operands()[index]);
+  return success();
+}
+
+void CaseOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                         MLIRContext* context) {
+  results.add(&InlineCaseConstantCondition);
 }
 
 //===----------------------------------------------------------------------===//

@@ -549,6 +549,8 @@ def HLO_IfOp: HLO_Op<"if", [
 
   // TODO(b/129422361): ConditionalOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
+
+  let hasCanonicalizer = 1;
 }
 
 // Xla Client API has two separate calls for indexed and predicated conditional,
@@ -569,6 +571,8 @@ def HLO_CaseOp: HLO_Op<"case", [
   let results = (outs Variadic<HLO_TensorOrTuple>);
 
   let hasCustomHLOConverter = 1;
+
+  let hasCanonicalizer = 1;
 }
 
 
