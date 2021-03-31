@@ -62,10 +62,10 @@ from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import resource_variable_ops
-
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.saved_model import save_context
+from tensorflow.python.types import core
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
@@ -1512,12 +1512,8 @@ class _ForwardBackwardCall(object):
 _BOUND_VALUE = object()
 
 
-class ConcreteFunction(object):
-  """Callable object encapsulating a function definition and its gradient.
-
-  `ConcreteFunction` is a callable that encapsulates a function definition and
-  is differentiable under `tf.GradientTape` objects.
-  """
+class ConcreteFunction(core.ConcreteFunction):
+  """A `tf.types.experimental.ConcreteFunction` created from `tf.function`."""
 
   def __init__(self,
                func_graph,
@@ -2934,6 +2930,8 @@ class FunctionCache(object):
         v for v in self.arg_relaxed.values() if v not in primary_functions]
 
 
+# TODO(mdan): Refactor this and clarify relationship with def_function.Function.
+# Right now, def_function.Function is the higher level implementation.
 class Function(object):
   """Wrapper class for the graph functions defined for a Python function.
 

@@ -220,6 +220,15 @@ This release contains contributions from many people at Google, as well as:
        `converter.target_spec._experimental_custom_op_registerers`.
       used in Python Interpreter API.
 *   TF Core:
+    *   Several new types have been introduced to describe the return types of
+        `tf.function` and related APIs:
+          * `tf.types.experimental.Callable` is intended to represent TensorFlow
+            callables in general.
+          * `tf.types.experimental.ConcreteFunction` represents a callable
+            TensofFlow graph function specialized to a particular input.
+          * `tf.types.experimental.GenericFunction` is the output of
+            `tf.function` and represents a callble that can be backed by
+            multiple `ConcreteFunction`s (commonly known as traces).
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,
         `tf.while_loop`, and compositions like `tf.foldl`) computed with
         `tf.GradientTape` inside a `tf.function`.
