@@ -3205,11 +3205,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:sparse_ops",
         "//third_party/py/numpy",
@@ -3221,6 +3217,10 @@ cuda_py_test(
     size = "medium",
     srcs = ["sparse_tensor_dense_matmul_op_test.py"],
     deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
         ":sparse_tensor_dense_matmul_op_base",
     ],
 )
