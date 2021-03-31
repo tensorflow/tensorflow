@@ -14,7 +14,7 @@ package(
         "//tensorflow/tools/pip_package:__pkg__",
         "//tensorflow_models/official/vision/beta/projects/residual_mobilenet/modeling/backbones:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(

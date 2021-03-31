@@ -9,7 +9,7 @@ package(
     default_visibility = [
         "//tensorflow/tools/pip_package:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_py_test(

@@ -14,7 +14,7 @@ package(
         "//tensorflow/python/feature_column:__pkg__",
         "//tensorflow/python/keras:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
