@@ -26,7 +26,7 @@ package(
     default_visibility = [
         "//tensorflow/core/kernels:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 bool_flag(
@@ -1038,6 +1038,24 @@ gpu_kernel_library(
     ],
     # TODO(b/178388085): Enable unrolling after vectorization is fixed.
     # unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_select_v2_kernels",
+    op = "select_v2",
+    tile_size = "256",
+    types = [
+        "i1",
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        "f16",
+        "f32",
+        "f64",
+        "c64",
+        "c128",
+    ],
 )
 
 cpu_kernel_library(

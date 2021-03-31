@@ -1934,9 +1934,13 @@ def moving_average_update(x, value, momentum):
   Returns:
       The updated variable.
   """
-  zero_debias = not tf2.enabled()
-  return moving_averages.assign_moving_average(
-      x, value, momentum, zero_debias=zero_debias)
+  if tf2.enabled():
+    momentum = math_ops.cast(momentum, x.dtype)
+    value = math_ops.cast(value, x.dtype)
+    return x.assign(x * momentum + value * (1 - momentum))
+  else:
+    return moving_averages.assign_moving_average(
+        x, value, momentum, zero_debias=True)
 
 
 # LINEAR ALGEBRA

@@ -27,7 +27,7 @@ func @RewriteHostComputeMlirOp(%arg0: tensor<2x2xi32>, %arg1: tensor<3x?xf64>) -
   // CHECK-SAME-DAG: shapes = [#tf.shape<2x2>, #tf.shape<2x3>]
   // CHECK-SAME-DAG: tpu_core = 0 : i64
 
-  %0:2 = "tf._XlaHostComputeMlir"(%arg0, %arg1) {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0} : (tensor<2x2xi32>, tensor<3x?xf64>) -> (tensor<2x2xf32>, tensor<2x3xf64>)
+  %0:2 = "tf._XlaHostComputeMlir"(%arg0, %arg1) {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0, host_mlir_module = ""} : (tensor<2x2xi32>, tensor<3x?xf64>) -> (tensor<2x2xf32>, tensor<2x3xf64>)
   return %0#0 : tensor<2x2xf32>
 }
 
@@ -51,7 +51,7 @@ func @CommunicateOpTokenAttrs() -> () {
   "tf.XlaSendToHost"(%0) {key = "send_key"} : (tensor<i32>) -> ()
 
   // CHECK: _xla_original_oc_node_name = [[NODE_NAME3:.*]], _xla_token_input_nodes = {{\[}}[[NODE_NAME2]]{{\]}}
-  %1 = "tf._XlaHostComputeMlir"(%0) {recv_key = "host_compute_channel_recv1", send_key = "host_compute_channel_send1", tpu_core = 0} : (tensor<i32>) -> (tensor<f32>)
+  %1 = "tf._XlaHostComputeMlir"(%0) {recv_key = "host_compute_channel_recv1", send_key = "host_compute_channel_send1", tpu_core = 0, host_mlir_module = ""} : (tensor<i32>) -> (tensor<f32>)
   return
 }
 

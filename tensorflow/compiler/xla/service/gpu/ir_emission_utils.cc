@@ -727,9 +727,16 @@ static int64_t GetMemRefSizeInBytes(mlir::MemRefType type) {
   }
 }
 
-static int64_t GetAllocationIndex(mlir::BlockArgument func_arg) {
+static int64_t GetAllocationIndex(mlir::BlockArgument func_arg,
+                                  std::string* constant_name) {
   auto func_op =
       mlir::cast<mlir::FuncOp>(func_arg.getParentRegion()->getParentOp());
+  if (constant_name) {
+    if (auto constant_name_attr = func_op.getArgAttrOfType<mlir::StringAttr>(
+            func_arg.getArgNumber(), "lmhlo.constant_name")) {
+      *constant_name = constant_name_attr.getValue().str();
+    }
+  }
   return func_op
       .getArgAttrOfType<mlir::IntegerAttr>(func_arg.getArgNumber(),
                                            "lmhlo.alloc")
@@ -738,12 +745,17 @@ static int64_t GetAllocationIndex(mlir::BlockArgument func_arg) {
 }
 
 StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
-    mlir::Value v, absl::Span<const BufferAllocation> allocations) {
+    mlir::Value v, absl::Span<const BufferAllocation> allocations,
+    std::string* constant_name) {
+  if (constant_name) {
+    constant_name->clear();
+  }
+
   int64 size = GetMemRefSizeInBytes(v.getType().cast<mlir::MemRefType>());
 
   if (auto arg = v.dyn_cast<mlir::BlockArgument>()) {
-    return BufferAllocation::Slice(&allocations[GetAllocationIndex(arg)], 0,
-                                   size);
+    return BufferAllocation::Slice(
+        &allocations[GetAllocationIndex(arg, constant_name)], 0, size);
   }
 
   // We match the following patterns here:
@@ -761,7 +773,7 @@ StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
     if (auto view = mlir::dyn_cast<mlir::memref::ViewOp>(op)) {
       return BufferAllocation::Slice(
           &allocations[GetAllocationIndex(
-              view.source().cast<mlir::BlockArgument>())],
+              view.source().cast<mlir::BlockArgument>(), constant_name)],
           mlir::cast<mlir::ConstantOp>(view.byte_shift().getDefiningOp())
               .value()
               .cast<mlir::IntegerAttr>()
@@ -771,6 +783,9 @@ StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
     } else if (auto get_global =
                    mlir::dyn_cast<mlir::memref::GetGlobalOp>(op)) {
       auto module = get_global->getParentOfType<mlir::ModuleOp>();
+      if (constant_name) {
+        *constant_name = get_global.name().str();
+      }
       auto global = mlir::cast<mlir::memref::GlobalOp>(
           module.lookupSymbol(get_global.name()));
       int64_t index =

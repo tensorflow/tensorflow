@@ -36,7 +36,7 @@ class DeviceCompatibilityCheckTest(test.TestCase):
 
   def _test_compat_check(self, device_attr_list, should_warn, expected_regex,
                          policy_name='mixed_float16'):
-    with test.mock.patch.object(tf_logging, 'warn') as mock_warn, \
+    with test.mock.patch.object(tf_logging, 'warning') as mock_warn, \
          test.mock.patch.object(tf_logging, 'info') as mock_info:
       device_compatibility_check._log_device_compatibility_check(
           policy_name, device_attr_list)

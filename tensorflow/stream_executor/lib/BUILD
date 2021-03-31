@@ -5,7 +5,7 @@ load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(

@@ -506,6 +506,12 @@ Attribute ComputeOutputComponent(const ValuePort& value_port,
     return nullptr;
   }
 
+  if (auto id = dyn_cast<IdentityOp>(op)) {
+    if (port.size() == 1 && port[0] == 0)
+      return ComputeOutputComponent(ValuePort(id.input()), values);
+    return nullptr;
+  }
+
   // Note: this focusses only on the trivial pack op case and this could be
   // generalized.
   if (auto pack_op = dyn_cast<TF::PackOp>(op)) {

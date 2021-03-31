@@ -302,6 +302,7 @@ cc_library(
         ":CAPIIR",
         ":ExecutionEngine",
         ":LLVMToLLVMIRTranslation",
+        "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -4739,6 +4740,7 @@ td_library(
     includes = ["include"],
     deps = [
         ":ControlFlowInterfacesTdFiles",
+        ":InferTypeOpInterfaceTdFiles",
         ":LoopLikeInterfaceTdFiles",
         ":OpBaseTdFiles",
         ":SideEffectInterfacesTdFiles",
@@ -5006,6 +5008,7 @@ cc_library(
         ":CopyOpInterface",
         ":DialectUtils",
         ":IR",
+        ":InferTypeOpInterface",
         ":LinalgInterfaces",
         ":LinalgInterfacesIncGen",
         ":LinalgNamedStructuredOpsTcIncGen",
@@ -5634,6 +5637,7 @@ td_library(
     includes = ["include"],
     deps = [
         ":CastInterfacesTdFiles",
+        ":CopyOpInterfaceTdFiles",
         ":OpBaseTdFiles",
         ":SideEffectInterfacesTdFiles",
         ":ViewLikeInterfaceTdFiles",
@@ -5678,16 +5682,20 @@ cc_library(
         [
             "lib/Dialect/MemRef/IR/*.cpp",
             "lib/Dialect/MemRef/IR/*.h",
+            "lib/Dialect/MemRef/Utils/*.cpp",
         ],
     ),
     hdrs = [
         "include/mlir/Dialect/MemRef/EDSC/Intrinsics.h",
         "include/mlir/Dialect/MemRef/IR/MemRef.h",
+        "include/mlir/Dialect/MemRef/Utils/MemRefUtils.h",
     ],
     includes = ["include"],
     deps = [
+        ":CopyOpInterface",
         ":EDSC",
         ":IR",
+        ":InferTypeOpInterface",
         ":MemRefBaseIncGen",
         ":MemRefOpsIncGen",
         ":StandardOps",

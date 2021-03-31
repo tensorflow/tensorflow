@@ -63,7 +63,7 @@ visibility = [
 
 package(
     default_visibility = visibility,
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Description:

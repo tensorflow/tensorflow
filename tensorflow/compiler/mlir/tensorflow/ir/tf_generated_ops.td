@@ -14015,7 +14015,8 @@ regular convolution.}]>:$paddings,
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_SpaceToBatchNDOp : TF_Op<"SpaceToBatchND", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect]> {
+// TODO(jpienaar): Update to re-add type inference function.
+def TF_SpaceToBatchNDOp : TF_Op<"SpaceToBatchND", [NoSideEffect]> {
   let summary = "SpaceToBatch for N-D tensors of type T.";
 
   let description = [{
@@ -18682,7 +18683,8 @@ A pseudo-op to represent host-side computation in an XLA program.
 
     StrAttr:$send_key,
     StrAttr:$recv_key,
-    DefaultValuedAttr<I64Attr, "0">:$tpu_core
+    DefaultValuedAttr<I64Attr, "0">:$tpu_core,
+    DefaultValuedAttr<StrAttr, "">:$host_mlir_module
   );
 
   let results = (outs

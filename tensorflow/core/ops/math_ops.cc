@@ -137,6 +137,23 @@ REGISTER_OP("BatchMatMulV2")
     .Attr("adj_y: bool = false")
     .SetShapeFn(shape_inference::BatchMatMulV2Shape);
 
+REGISTER_OP("BatchMatMulV3")
+    .Input("x: Ta")
+    .Input("y: Tb")
+    .Output("output: Tout")
+    .Attr(
+        "Ta: {bfloat16, half, float, double, int8, int16, int32, int64, "
+        "complex64, complex128}")
+    .Attr(
+        "Tb: {bfloat16, half, float, double, int8, int16, int32, int64, "
+        "complex64, complex128}")
+    .Attr(
+        "Tout: {bfloat16, half, float, double, int16, int32, int64, complex64, "
+        "complex128}")
+    .Attr("adj_x: bool = false")
+    .Attr("adj_y: bool = false")
+    .SetShapeFn(shape_inference::BatchMatMulV2Shape);
+
 #ifdef INTEL_MKL
 REGISTER_OP("_MklBatchMatMul")
     .Input("x: T")

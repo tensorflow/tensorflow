@@ -528,9 +528,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
               ],
               dtype=dtype))
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/155501444): Handle _UnaryOpsComposition ops from Grappler")
-  def testFloatOpsDisabledOnMlirBridge(self):
+  def testSigmoidNumericalStability(self):
     for dtype in self.float_types:
       if dtype != np.float16:
         self._assertOpOutputMatchesExpected(

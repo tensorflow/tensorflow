@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import re
 
 from tensorflow.python.data.ops import dataset_ops
@@ -25,6 +26,7 @@ from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import config
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -32,6 +34,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
@@ -296,6 +299,44 @@ class DatasetTestBase(test.TestCase):
               self.structuredDataset(substructure, shape, dtype)
               for substructure in dataset_structure
           ]))
+
+  def textFileInitializer(self, vals):
+    file = os.path.join(self.get_temp_dir(), "text_file_initializer")
+    with open(file, "w") as f:
+      f.write("\n".join(str(v) for v in vals) + "\n")
+    return lookup_ops.TextFileInitializer(file, dtypes.int64,
+                                          lookup_ops.TextFileIndex.LINE_NUMBER,
+                                          dtypes.int64,
+                                          lookup_ops.TextFileIndex.WHOLE_LINE)
+
+  def keyValueTensorInitializer(self, vals):
+    keys_tensor = constant_op.constant(
+        list(range(len(vals))), dtype=dtypes.int64)
+    vals_tensor = constant_op.constant(vals)
+    return lookup_ops.KeyValueTensorInitializer(keys_tensor, vals_tensor)
+
+  def datasetInitializer(self, vals):
+    keys = dataset_ops.Dataset.range(len(vals))
+    values = dataset_ops.Dataset.from_tensor_slices(vals)
+    ds = dataset_ops.Dataset.zip((keys, values))
+    return lookup_ops.DatasetInitializer(ds)
+
+  def lookupTableInitializer(self, init_source, vals):
+    """Returns a lookup table initializer for the given source and values.
+
+    Args:
+      init_source: One of ["textfile", "keyvalue", "dataset"], indicating what
+        type of initializer to use.
+      vals: The initializer values. The keys will be `range(len(vals))`.
+    """
+    if init_source == "textfile":
+      return self.textFileInitializer(vals)
+    elif init_source == "keyvaluetensor":
+      return self.keyValueTensorInitializer(vals)
+    elif init_source == "dataset":
+      return self.datasetInitializer(vals)
+    else:
+      raise ValueError("Unrecognized init_source: " + init_source)
 
   def graphRoundTrip(self, dataset, allow_stateful=False):
     """Converts a dataset to a graph and back."""

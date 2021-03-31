@@ -100,6 +100,24 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
     self.assertFalse(config.get_optimizer_experimental_options()
                      .get('auto_mixed_precision', False))
 
+  @test_util.run_in_graph_and_eager_modes()
+  def test_register_loss_scale_wrapper(self):
+    class MyOptimizer:
+      pass
+
+    class MyLossScaleOptimizer(MyOptimizer):
+
+      def __init__(self, inner_optimizer, loss_scale):
+        self.inner_optimizer = inner_optimizer
+        self.loss_scale = loss_scale
+
+    mixed_precision.register_loss_scale_wrapper(MyOptimizer,
+                                                MyLossScaleOptimizer)
+    opt = MyOptimizer()
+    opt = enable_mixed_precision_graph_rewrite(opt, 123.)
+    self.assertIsInstance(opt, MyLossScaleOptimizer)
+    self.assertEqual(opt.loss_scale, 123.)
+
   @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
   @test_util.disable_tfrt('Grappler rewrite doesn\'t apply to tfrt.')

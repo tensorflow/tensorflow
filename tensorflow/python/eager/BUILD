@@ -21,7 +21,7 @@ load(
 )
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -421,6 +421,7 @@ cuda_py_test(
     size = "small",
     srcs = ["core_test.py"],
     python_version = "PY3",
+    tags = ["notsan"],  # TODO(b/183962087)
     deps = [
         ":context",
         ":core",

@@ -410,7 +410,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
       if self._could_use_gpu_kernel:
         logging.debug(_CUDNN_AVAILABLE_MSG % self.name)
       else:
-        logging.warn(_CUDNN_NOT_AVAILABLE_MSG % self.name)
+        logging.warning(_CUDNN_NOT_AVAILABLE_MSG % self.name)
 
     if _use_new_code():
       self._defun_wrapper = _DefunWrapper(time_major, go_backwards, 'gru')
@@ -1137,7 +1137,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
       if self._could_use_gpu_kernel:
         logging.debug(_CUDNN_AVAILABLE_MSG % self.name)
       else:
-        logging.warn(_CUDNN_NOT_AVAILABLE_MSG % self.name)
+        logging.warning(_CUDNN_NOT_AVAILABLE_MSG % self.name)
 
     if _use_new_code():
       self._defun_wrapper = _DefunWrapper(time_major, go_backwards, 'lstm')

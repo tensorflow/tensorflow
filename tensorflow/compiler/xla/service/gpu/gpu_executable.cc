@@ -509,7 +509,8 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
         // the indices to drop the addresses from its own ScopedShapedBuffer
         // result, if the ExecutionOutput is not committed.
         result.AddAliasedIndex(index);
-      } else if (!output_info.passthrough) {
+      } else if (!output_info.passthrough &&
+                 !ShapeUtil::GetSubshape(output_shape_, index).IsTuple()) {
         // The guard is above is not to insert copy-protection when aliasing
         // pass-through params, as we do not need to write into the output
         // buffer.

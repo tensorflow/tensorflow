@@ -807,6 +807,9 @@ TF_LITE_MICRO_TEST(Int8Input32x4Filter32x4ShouldMatchGolden) {
       kTensorsSize, tensors);
 }
 
+#if !defined(HIFIMINI)
+// TODO(b/184087246): Remove this ifdef once the hifimini implementation is
+// updated to be more general.
 TF_LITE_MICRO_TEST(Int8Input32x1Filter32x1ShouldMatchGolden) {
   const int input_elements = 32 * 1;
   const int filter_elements = 32 * 1;
@@ -935,4 +938,6 @@ TF_LITE_MICRO_TEST(Int8Input32x1Filter32x1ShouldMatchGolden) {
                               golden_quantized, output_elements, &conv_params,
                               kQuantizationTolerance, kTensorsSize, tensors));
 }
+#endif  // !defined(HIFIMINI)
+
 TF_LITE_MICRO_TESTS_END
