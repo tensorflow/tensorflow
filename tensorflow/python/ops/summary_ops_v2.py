@@ -371,7 +371,8 @@ class ResourceSummaryWriter(SummaryWriter):
     """Flushes any buffered data."""
     if self._v2 and context.executing_eagerly() and self._closed:
       return
-    return _flush_fn(writer=self)
+    with ops.device("cpu:0"):
+      return gen_summary_ops.flush_summary_writer(self._resource)
 
   def close(self):
     """Flushes and closes the summary writer."""
@@ -1046,10 +1047,10 @@ def flush(writer=None, name=None):
   This operation blocks until that finishes.
 
   Args:
-    writer: The `tf.summary.SummaryWriter` resource to flush.
-      The thread default will be used if this parameter is None.
-      Otherwise a `tf.no_op` is returned.
-    name: A name for the operation (optional).
+    writer: The `tf.summary.SummaryWriter` to flush. If None, the current
+      default writer will be used instead; if there is no current writer, this
+      returns `tf.no_op`.
+    name: Ignored legacy argument for a name for the operation.
 
   Returns:
     The created `tf.Operation`.
@@ -1058,16 +1059,12 @@ def flush(writer=None, name=None):
     writer = _summary_state.writer
     if writer is None:
       return control_flow_ops.no_op()
-  if isinstance(writer, ResourceSummaryWriter):
-    resource = writer._resource  # pylint: disable=protected-access
+  if isinstance(writer, SummaryWriter):
+    return writer.flush()
   else:
-    # Assume we were passed a raw resource tensor.
-    resource = writer
-  with ops.device("cpu:0"):
-    return gen_summary_ops.flush_summary_writer(resource, name=name)
-
-
-_flush_fn = flush  # for within SummaryWriter.flush()
+    # Legacy fallback in case we were passed a raw resource tensor.
+    with ops.device("cpu:0"):
+      return gen_summary_ops.flush_summary_writer(writer, name=name)
 
 
 def eval_dir(model_dir, name=None):
