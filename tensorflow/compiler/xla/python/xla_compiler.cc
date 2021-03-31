@@ -80,6 +80,15 @@ StatusOr<py::bytes> GetComputationSerializedProto(
   return py::bytes(result);
 }
 
+// Converts a hlo module to a serialized HloModuleProto.
+StatusOr<py::bytes> GetHloModuleSerializedProto(const HloModule& module) {
+  std::string result;
+  if (!module.ToProto().SerializeToString(&result)) {
+    return Unknown("Failed to serialize the HloModuleProto.");
+  }
+  return py::bytes(result);
+}
+
 StatusOr<std::shared_ptr<HloModule>> GetHloModule(
     const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
@@ -384,11 +393,13 @@ void BuildXlaCompilerSubmodule(py::module& m) {
 
   py::class_<HloModule, std::shared_ptr<HloModule>> hlo_module_class(
       m, "HloModule");
-  hlo_module_class.def(
-      "to_string",
-      static_cast<std::string (HloModule::*)(const HloPrintOptions&) const>(
-          &HloModule::ToString),
-      py::arg("options") = HloPrintOptions());
+  hlo_module_class
+      .def(
+          "to_string",
+          static_cast<std::string (HloModule::*)(const HloPrintOptions&) const>(
+              &HloModule::ToString),
+          py::arg("options") = HloPrintOptions())
+      .def("as_serialized_hlo_module_proto", &GetHloModuleSerializedProto);
 
   m.def("hlo_module_to_dot_graph",
         [](const HloModule& hlo_module) -> StatusOr<std::string> {

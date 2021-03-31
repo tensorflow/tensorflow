@@ -215,7 +215,8 @@ build:mkl_threadpool --define=tensorflow_mkldnn_contraction_kernel=0
 build:mkl_threadpool --define=build_with_mkl_opensource=true
 build:mkl_threadpool -c opt
 
-# Config setting to build with oneDNN for Arm.
+# Config setting to build oneDNN with Compute Library for the Arm Architecture (ACL).
+# This build is for the inference regime only.
 build:mkl_aarch64 --define=build_with_mkl_aarch64=true --define=enable_mkl=true
 build:mkl_aarch64 --define=tensorflow_mkldnn_contraction_kernel=0
 build:mkl_aarch64 --define=build_with_mkl_opensource=true
@@ -336,7 +337,6 @@ build:windows --linkopt=/OPT:REF
 build:windows --host_linkopt=/OPT:REF
 build:windows --linkopt=/OPT:ICF
 build:windows --host_linkopt=/OPT:ICF
-build:windows --experimental_strict_action_env=true
 
 # Verbose failure logs when something goes wrong
 build:windows --verbose_failures
@@ -500,6 +500,7 @@ build:rbe_win --extra_execution_platforms="@org_tensorflow//third_party/toolchai
 build:rbe_win --host_platform="@org_tensorflow//third_party/toolchains/preconfig/win:rbe_windows_ltsc2019"
 build:rbe_win --platforms="@org_tensorflow//third_party/toolchains/preconfig/win:rbe_windows_ltsc2019"
 build:rbe_win --shell_executable=C:\\tools\\msys64\\usr\\bin\\bash.exe
+build:rbe_win --experimental_strict_action_env=true
 
 # TODO(gunan): Remove once we use MSVC 2019 with latest patches.
 build:rbe_win --define=override_eigen_strong_inline=true

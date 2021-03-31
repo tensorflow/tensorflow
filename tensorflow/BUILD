@@ -39,7 +39,7 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     default_visibility = [":internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files([

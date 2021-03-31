@@ -6,7 +6,7 @@ package(
     default_visibility = [
         "//tensorflow/core/platform:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_binary(

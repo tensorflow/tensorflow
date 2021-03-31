@@ -36,5 +36,5 @@ int main(int argc, char **argv) {
 
   return failed(mlir::MlirOptMain(argc, argv, "MLIR HLO pass driver\n",
                                   registry,
-                                  /*preloadDialectsInContext=*/true));
+                                  /*preloadDialectsInContext=*/false));
 }

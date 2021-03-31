@@ -17,7 +17,13 @@ limitations under the License.
 
 #include <ceva-time.h>
 
+#include "tensorflow/lite/micro/micro_time.h"
+
 namespace tflite {
+
+int32_t ticks_per_second() { return 100e6; }
+
+int32_t GetCurrentTimeTicks() { return clock(); }
 
 void InitializeTarget() {
   // start clock for profiler

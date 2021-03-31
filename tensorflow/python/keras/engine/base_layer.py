@@ -507,7 +507,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     Returns:
       The TrackableWeightHandler used to track this object.
     """
-    handler = base_layer_utils.TrackableWeightHandler(trackable_object)
+    if isinstance(trackable_object, base_layer_utils.TrackableWeightHandler):
+      handler = trackable_object
+    else:
+      handler = base_layer_utils.TrackableWeightHandler(trackable_object)
     if trainable:
       self._trainable_weights.append(handler)
     else:
@@ -629,8 +632,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       # disable it if it is specified.
       # TODO(b/142020079): Reenable it once the bug is fixed.
       if caching_device is not None:
-        tf_logging.warn('`caching_device` does not work with mixed precision '
-                        'API. Ignoring user specified `caching_device`.')
+        tf_logging.warning(
+            '`caching_device` does not work with mixed precision API. Ignoring '
+            'user specified `caching_device`.')
         caching_device = None
 
     variable = self._add_variable_with_custom_getter(

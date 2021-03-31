@@ -13,14 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#ifndef TENSORFLOW_CORE_KERNELS_UNIQUE_OP_GPU_CU_H_
+#define TENSORFLOW_CORE_KERNELS_UNIQUE_OP_GPU_CU_H_
+
+#if GOOGLE_CUDA
 
 #define EIGEN_USE_GPU
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/kernels/gpu_prim_helpers.h"
@@ -40,7 +42,7 @@ namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-namespace {
+namespace unique_op_gpu {
 
 // Returns true iff index is at the end of a segment (which is equivalent to the
 // beginning of the next segment).
@@ -169,7 +171,7 @@ Status LookupAndScatterUniqueIds(const GPUDevice& d, int64 input_size,
                          sorted_input_unique_ids, inv_sorted_unique_perm, idx);
 }
 
-}  // namespace
+}  // namespace unique_op_gpu
 
 // This only supports Unique[WithCounts], not Unique[WithCounts]V2.
 template <typename T, typename TIndex>
@@ -287,6 +289,8 @@ class UniqueOpGPU : public AsyncOpKernel {
                      /*indices_in=*/static_cast<const TIndex*>(nullptr),
                      /*indices_out=*/sorted_input_inds_ptr),
         done);
+
+    using namespace unique_op_gpu;
 
     // Create a fancy input iterator to indicate segment boundaries.
     gpuprim::TransformInputIterator<TIndex, SegmentIndicatorFunctor<T, TIndex>,
@@ -441,33 +445,8 @@ class UniqueOpGPU : public AsyncOpKernel {
   }
 };
 
-#define REGISTER_UNIQUE_GPU(type)                                \
-  REGISTER_KERNEL_BUILDER(Name("Unique")                         \
-                              .Device(DEVICE_GPU)                \
-                              .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int32>("out_idx"), \
-                          UniqueOpGPU<type, int32>);             \
-  REGISTER_KERNEL_BUILDER(Name("Unique")                         \
-                              .Device(DEVICE_GPU)                \
-                              .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int64>("out_idx"), \
-                          UniqueOpGPU<type, int64>);             \
-  REGISTER_KERNEL_BUILDER(Name("UniqueWithCounts")               \
-                              .Device(DEVICE_GPU)                \
-                              .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int32>("out_idx"), \
-                          UniqueOpGPU<type, int32>);             \
-  REGISTER_KERNEL_BUILDER(Name("UniqueWithCounts")               \
-                              .Device(DEVICE_GPU)                \
-                              .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int64>("out_idx"), \
-                          UniqueOpGPU<type, int64>)
-
-TF_CALL_REAL_NUMBER_TYPES(REGISTER_UNIQUE_GPU);
-REGISTER_UNIQUE_GPU(bool);
-
-#undef REGISTER_UNIQUE_GPU
-
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#endif  // GOOGLE_CUDA
+
+#endif  // TENSORFLOW_CORE_KERNELS_UNIQUE_OP_GPU_CU_H_

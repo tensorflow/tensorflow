@@ -499,7 +499,7 @@ Status GetOrCreateKernelAndDevice(
     FunctionLibraryRuntime* flr =
         device == nullptr ? nullptr : ctx.func_lib(device);
     if (device != nullptr && flr == nullptr) {
-      return errors::Unavailable(
+      return errors::NotFound(
           "Unable to find a FunctionLibraryRuntime corresponding to device ",
           device->name());
     }

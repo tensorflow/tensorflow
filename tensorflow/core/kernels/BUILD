@@ -79,7 +79,7 @@ load(
 #
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -384,6 +384,7 @@ cc_library(
     hdrs = ["lookup_util.h"],
     deps = [
         ":initializable_lookup_table",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -517,6 +518,7 @@ cc_library(
 tf_cuda_only_cc_test(
     name = "gpu_prim_helpers_test",
     srcs = ["gpu_prim_helpers_test.cu.cc"],
+    tags = ["no_cuda_asan"],  # TODO(b/183963619)
     deps = [
         ":gpu_prim_helpers",
         ":ops_testutil",
@@ -6036,6 +6038,7 @@ filegroup(
         "//tensorflow/core/kernels/data:batch_dataset_op.h",
         "//tensorflow/core/kernels/data:iterator_ops.h",
         "//tensorflow/core/kernels/data:map_dataset_op.h",
+        "//tensorflow/core/kernels/data:repeat_dataset_op.h",
         "//tensorflow/core/kernels/data:split_utils.h",
         "//tensorflow/core/kernels/data:tensor_slice_dataset_op.h",
         "//tensorflow/core/kernels/data:dataset_utils.h",
@@ -6367,6 +6370,7 @@ filegroup(
         "//tensorflow/core/kernels/data:batch_dataset_op.cc",
         "//tensorflow/core/kernels/data:iterator_ops.cc",
         "//tensorflow/core/kernels/data:map_dataset_op.cc",
+        "//tensorflow/core/kernels/data:repeat_dataset_op.cc",
         "//tensorflow/core/kernels/data:split_utils.cc",
         "//tensorflow/core/kernels/data:tensor_slice_dataset_op.cc",
         "//tensorflow/core/kernels/data:model_dataset_op.cc",

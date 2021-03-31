@@ -1785,7 +1785,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
             fused_ops == std::vector<string>{"BiasAdd", "Add", "Elu"} ||
             fused_ops == std::vector<string>{"LeakyRelu"} ||
             fused_ops == std::vector<string>{"BiasAdd", "LeakyRelu"} ||
-            fused_ops == std::vector<string>{"BiasAdd", "Add", "LeakyRelu"});
+            fused_ops == std::vector<string>{"BiasAdd", "Add", "LeakyRelu"} ||
+            fused_ops == std::vector<string>{"FusedBatchNorm"} ||
+            fused_ops == std::vector<string>{"FusedBatchNorm", "Relu"} ||
+            fused_ops == std::vector<string>{"FusedBatchNorm", "Relu6"} ||
+            fused_ops == std::vector<string>{"FusedBatchNorm", "Elu"} ||
+            fused_ops == std::vector<string>{"FusedBatchNorm", "LeakyRelu"});
   }
 
   static bool FusedDepthwiseConv2DRewrite(const Node* n) {
@@ -3210,7 +3215,11 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
   if (is_fused_conv2d) {
     // FusedConv2D has one additional input, args
     std::vector<NodeBuilder::NodeOut> args;
-    args.emplace_back(succ_in[2].first, succ_in[2].second);
+    int num_args = 1;
+    GetNodeAttr(succ->def(), "num_args", &num_args);
+    for (int i = 0; i < num_args; i++) {
+      args.emplace_back(succ_in[2 + i].first, succ_in[2 + i].second);
+    }
     nb.Input(gtl::ArraySlice<NodeBuilder::NodeOut>{
         args});                                     // In3 (args) of FusedConv2D
     nb.Input(pred_in[1].first, pred_in[1].second);  // In2 (paddings) of Pad

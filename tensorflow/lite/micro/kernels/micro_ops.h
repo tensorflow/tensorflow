@@ -41,6 +41,7 @@ TfLiteRegistration Register_ELU();
 TfLiteRegistration Register_EXP();
 TfLiteRegistration Register_EXPAND_DIMS();
 TfLiteRegistration Register_FILL();
+TfLiteRegistration Register_FLOOR_DIV();
 TfLiteRegistration Register_L2_POOL_2D();
 TfLiteRegistration Register_LEAKY_RELU();
 TfLiteRegistration Register_QUANTIZE();

@@ -113,6 +113,9 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
                                          use_device_step_events),
                         event.GetTimespan()));
     }
+    if (!step_name.empty()) {
+      result[group_id].SetStepName(std::string(step_name));
+    }
   });
   return result;
 }

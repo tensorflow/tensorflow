@@ -89,6 +89,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/protocol.pb.h"
 #include "tensorflow/compiler/xla/pjrt/event_pool.h"
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
+#include "tensorflow/compiler/xla/pjrt/metrics.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 #include "tensorflow/compiler/xla/pjrt/utils.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -103,6 +104,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mem.h"
@@ -1914,6 +1916,7 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
     const RunId& run_id, const ExecuteOptions& options,
     PjRtDevice* device) const {
+  const uint64 start_time_usecs = tensorflow::Env::Default()->NowMicros();
   std::shared_ptr<DeviceAssignment> device_assignment;
   if (device == nullptr) {
     CHECK(device_assignment_ != nullptr);
@@ -2003,6 +2006,8 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
           }
         });
   }
+  ReportExecutableEnqueueTime(tensorflow::Env::Default()->NowMicros() -
+                              start_time_usecs);
   return outputs;
 }
 

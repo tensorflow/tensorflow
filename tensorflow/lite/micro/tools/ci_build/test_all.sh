@@ -33,6 +33,21 @@ if [ -d tensorflow/lite/micro/tools/make/downloads ]; then
   exit 1
 fi
 
+# Check that an incorrect optimized kernel directory results in an error.
+# Without such an error, an incorrect optimized kernel directory can result in
+# an unexpected fallback to reference kernels and which can be hard to debug. We
+# add some complexity to the CI to make sure that we do not repeat the same
+# mistake as described in http://b/183546742.
+INCORRECT_CMD="make -f tensorflow/lite/micro/tools/make/Makefile OPTIMIZED_KERNEL_DIR=does_not_exist clean"
+EXT_LIBS_INC=tensorflow/lite/micro/tools/make/ext_libs/does_not_exist.inc
+touch ${EXT_LIBS_INC}
+if ${INCORRECT_CMD} &> /dev/null ; then
+  echo "'${INCORRECT_CMD}' should have failed but it did not have any errors."
+  rm -f ${EXT_LIBS_INC}
+  exit 1
+fi
+rm -f ${EXT_LIBS_INC}
+
 echo "Running code style checks at `date`"
 tensorflow/lite/micro/tools/ci_build/test_code_style.sh PRESUBMIT
 

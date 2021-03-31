@@ -37,6 +37,7 @@ from tensorflow.python.keras.layers import core as core_layers
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.utils import dataset_creator
 from tensorflow.python.ops import random_ops
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 
 
@@ -109,10 +110,16 @@ class DatasetCreatorModelFitTestBase(test.TestCase, parameterized.TestCase):
                  x=None,
                  steps_per_epoch=10,
                  run_eagerly=False,
-                 with_normalization_layer=False):
-    model, callbacks = self._model_compile(strategy, steps_per_execution,
-                                           run_eagerly,
-                                           with_normalization_layer)
+                 with_normalization_layer=False,
+                 callbacks=None):
+    if callbacks is None:
+      callbacks = []
+
+    model, default_callbacks = self._model_compile(strategy,
+                                                   steps_per_execution,
+                                                   run_eagerly,
+                                                   with_normalization_layer)
+    callbacks += default_callbacks
 
     def dataset_fn(input_context):
       del input_context
@@ -127,7 +134,6 @@ class DatasetCreatorModelFitTestBase(test.TestCase, parameterized.TestCase):
         x,
         epochs=10,
         steps_per_epoch=steps_per_epoch,
-        verbose=0,
         callbacks=callbacks,
         validation_data=validation_data)
     return model
@@ -208,6 +214,53 @@ class DatasetCreatorModelFitParameterServerStrategyOnlyTest(
     strategy = model.distribute_strategy
     self.assertIs(strategy._cluster_coordinator,
                   coordinator_lib.ClusterCoordinator(strategy))
+
+  def testModelFitErrorOnBatchLevelCallbacks(self, strategy):
+
+    class BatchLevelCallback(callbacks_lib.Callback):
+
+      def on_train_batch_end(self, batch, logs=None):
+        pass
+
+    with self.assertRaisesRegex(ValueError,
+                                "Batch-level `Callback`s are not supported"):
+      callbacks = [BatchLevelCallback()]
+      self._model_fit(strategy, callbacks=callbacks)
+
+  def testModelFitCallbackSupportsTFLogs(self, strategy):
+
+    class MyCallback(callbacks_lib.Callback):
+
+      def __init__(self):
+        super(MyCallback, self).__init__()
+        # Fetches the RemoteValues if necessary.
+        self._supports_tf_logs = True
+
+      def on_train_batch_end(self, batch, logs=None):
+        assert isinstance(logs, coordinator_lib.RemoteValue)
+
+    my_callback = MyCallback()
+    callbacks = [my_callback]
+    self._model_fit(strategy, callbacks=callbacks)
+
+  def testModelFitVerbosity(self, strategy):
+
+    class MyCallback(callbacks_lib.Callback):
+      pass
+
+    my_callback = MyCallback()
+    callbacks = [my_callback]
+    self._model_fit(strategy, callbacks=callbacks)
+    # PSStrategy should default to epoch-level logging.
+    self.assertEqual(my_callback.params["verbose"], 2)
+
+  def testModelFitTensorBoardEpochLevel(self, strategy):
+    log_dir = self.get_temp_dir()
+    callbacks = [callbacks_lib.TensorBoard(log_dir)]
+    self._model_fit(strategy, callbacks=callbacks)
+    self.assertTrue(gfile.Exists(log_dir))
+    files = gfile.ListDirectory(log_dir)
+    self.assertGreaterEqual(len(files), 1)
 
 
 if __name__ == "__main__":

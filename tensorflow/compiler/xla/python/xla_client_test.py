@@ -143,6 +143,18 @@ def TestFactory(xla_backend, cloud_tpu=False):
       self.assertIn("fusion", hlo_text)
 
     @unittest.skipIf(cloud_tpu, "not implemented")
+    def testCompiledHloModuleAsSerializedProto(self):
+      computation = self.ExampleComputation()
+      executable = self.backend.compile(computation)
+      hlo_modules = executable.hlo_modules()
+      self.assertLen(hlo_modules, 1)
+      hlo_text = hlo_modules[0].to_string()
+      proto = hlo_modules[0].as_serialized_hlo_module_proto()
+      hlo_module_roundtrip = xla_client.XlaComputation(proto).get_hlo_module()
+      hlo_text_roundtrip = hlo_module_roundtrip.to_string()
+      self.assertEqual(hlo_text, hlo_text_roundtrip)
+
+    @unittest.skipIf(cloud_tpu, "not implemented")
     def testFlopEstimate(self):
       computation = self.ExampleComputation()
       properties = xla_client._xla.hlo_module_cost_analysis(

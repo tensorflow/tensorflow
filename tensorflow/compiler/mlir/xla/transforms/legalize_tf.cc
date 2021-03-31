@@ -2751,12 +2751,21 @@ class ConvertSelectOp : public OpRewritePattern<TF::SelectOp> {
 //    %halved_tanh = mhlo.multiply %tanh, %half : tensor<2xf32>
 //    %sigmoid = mhlo.add %halved_tanh, %half : tensor<2xf32>
 //
-class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
+class ConvertSigmoidOp : public RewritePattern {
  public:
-  using OpRewritePattern::OpRewritePattern;
+  explicit ConvertSigmoidOp(MLIRContext *context)
+      : RewritePattern(
+            TF::SigmoidOp::getOperationName(), 0, context,
+            {mhlo::ConstOp::getOperationName(),
+             shape::ShapeOfOp::getOperationName(),
+             shape::ToExtentTensorOp::getOperationName(),
+             mhlo::DynamicBroadcastInDimOp::getOperationName(),
+             mhlo::MulOp::getOperationName(), mhlo::TanhOp::getOperationName(),
+             mhlo::AddOp::getOperationName()}) {}
 
-  LogicalResult matchAndRewrite(TF::SigmoidOp op,
+  LogicalResult matchAndRewrite(Operation *sigmoid_op,
                                 PatternRewriter &rewriter) const override {
+    auto op = cast<TF::SigmoidOp>(sigmoid_op);
     Location loc = op.getLoc();
 
     // Create constant half with shape and element type same as the operand.
@@ -4529,9 +4538,9 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
       // applying negative padding on the right/bottom.
       const int64_t pad_before = padding == tensorflow::Padding::EXPLICIT
                                      ? explicit_paddings[2 * dim]
-                                     : padding == tensorflow::Padding::SAME
-                                           ? std::max<int64_t>(pad_total / 2, 0)
-                                           : 0;
+                                 : padding == tensorflow::Padding::SAME
+                                     ? std::max<int64_t>(pad_total / 2, 0)
+                                     : 0;
       paddings.push_back(pad_before);
       paddings.push_back(pad_total - pad_before);
     }
@@ -6318,7 +6327,7 @@ LogicalResult legalizeTF(
   // Add TF->HLO legalization patterns via TF2XLA fallback.
   if (tf2xla_fallback_device_type.hasValue()) {
     PopulateLegalizeTfWithTf2XlaPatterns(tf2xla_fallback_device_type.getValue(),
-                                         patterns);
+                                         patterns, context);
   }
 
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
@@ -6345,7 +6354,7 @@ LogicalResult legalizeTF(
 
   if (!allow_partial_conversion) {
     // Fully qualify ReturnOp here as mhlo dialect also defines a ReturnOp.
-    target.addLegalOp<ModuleOp, FuncOp, ModuleTerminatorOp, ::mlir::ReturnOp>();
+    target.addLegalOp<ModuleOp, FuncOp, ::mlir::ReturnOp>();
     DenseSet<Operation *> nonlegalized_ops;
     LogicalResult result = applyPartialConversion(
         op, target, std::move(patterns), &nonlegalized_ops);

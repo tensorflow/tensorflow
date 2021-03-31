@@ -216,7 +216,7 @@ def softplus(x):
   Returns:
       The softplus activation: `log(exp(x) + 1)`.
   """
-  return nn.softplus(x)
+  return math_ops.softplus(x)
 
 
 @keras_export('keras.activations.softsign')

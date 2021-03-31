@@ -45,6 +45,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "mixed_precision"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "monitoring"
     mtype: "<type \'module\'>"
   }
@@ -70,6 +74,10 @@ tf_module {
   }
   member {
     name: "tracking"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "train"
     mtype: "<type \'module\'>"
   }
   member {

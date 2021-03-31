@@ -8,7 +8,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # CPU-only tests should use tf_py_test, GPU tests use cuda_py_test
@@ -2935,6 +2935,7 @@ cuda_py_test(
     tags = [
         "manual",
         "no_cuda_asan",
+        "no_gpu",  # flaky b/181717600
     ],
     deps = [
         "//tensorflow/python:array_ops",

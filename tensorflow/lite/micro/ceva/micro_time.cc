@@ -12,15 +12,3 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-#include "tensorflow/lite/micro/micro_time.h"
-
-#include <ceva-time.h>
-
-namespace tflite {
-
-int32_t ticks_per_second() { return 100e6; }
-
-int32_t GetCurrentTimeTicks() { return clock(); }
-
-}  // namespace tflite

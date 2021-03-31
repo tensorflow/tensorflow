@@ -60,6 +60,15 @@ Status BuildXlaCompilationCache(DeviceBase* device,
   client_options.set_platform(platform.ValueOrDie());
   client_options.set_intra_op_parallelism_threads(
       device->tensorflow_cpu_worker_threads()->num_threads);
+  // Initialize allowed_devices to the selected incoming device.
+  // Without this, allowed_devices is empty, resulting in the device
+  // initialization in GetStreamExecutors to initialize _all_ visible
+  // devices. Not only is that wasteful, in can result in OOMs.
+  auto dev_info = device->tensorflow_gpu_device_info();
+  if (dev_info != nullptr) {
+    std::set<int> allowed_device = {dev_info->gpu_id};
+    client_options.set_allowed_devices(allowed_device);
+  }
   auto client = xla::ClientLibrary::GetOrCreateLocalClient(client_options);
   if (!client.ok()) {
     return client.status();

@@ -48,7 +48,7 @@ default_package_visibility = [
 
 package(
     default_visibility = default_package_visibility,
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_cuda_library(

@@ -233,6 +233,7 @@ def numpy_text(tensor, is_repr=False):
     text = "\n" + text
   return text
 
+
 @tf_export(v1=["enable_tensor_equality"])
 def enable_tensor_equality():
   """Compare Tensors with element-wise comparison and thus be unhashable.
@@ -242,6 +243,7 @@ def enable_tensor_equality():
   unhashable. Thus tensors can no longer be directly used in sets or as a key in
   a dictionary.
   """
+  logging.info("Enabling tensor equality")
   _tensor_equality_api_usage_gauge.get_cell().set(True)
   Tensor._USE_EQUALITY = True  # pylint: disable=protected-access
 
@@ -252,6 +254,7 @@ def disable_tensor_equality():
 
   This is a legacy behaviour of TensorFlow and is highly discouraged.
   """
+  logging.info("Disabling tensor equality")
   _tensor_equality_api_usage_gauge.get_cell().set(False)
   Tensor._USE_EQUALITY = False  # pylint: disable=protected-access
 
@@ -5887,6 +5890,7 @@ def enable_eager_execution(config=None, device_policy=None,
      to this function.
   """
   _api_usage_gauge.get_cell().set(True)
+  logging.info("Enabling eager execution")
   if context.default_execution_mode != context.EAGER_MODE:
     return enable_eager_execution_internal(
         config=config,
@@ -5904,6 +5908,7 @@ def disable_eager_execution():
   projects from TensorFlow 1.x to 2.x.
   """
   _api_usage_gauge.get_cell().set(False)
+  logging.info("Disabling eager execution")
   context.default_execution_mode = context.GRAPH_MODE
   c = context.context_safe()
   if c is not None:

@@ -355,6 +355,7 @@ cc_library(
         # See the comment inside class CpuBackendContext on the
         # gemmlowp_context_ and ruy_context_ members.
         "@ruy//ruy:context",
+        "@ruy//ruy:path",
         "@gemmlowp",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:macros",

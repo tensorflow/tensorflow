@@ -758,7 +758,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
   def test_sparse_tensors(self):
-    shape = tensor_shape.TensorShape([None, None])
+    shape = tensor_shape.TensorShape([3, 4])
 
     def true_fn():
       return [

@@ -293,7 +293,8 @@ message CoralSettings {
 }
 
 message CPUSettings {
-  optional int32 num_threads = 1;
+  // Set to -1 to let the interpreter choose. Otherwise, must be > 0.
+  optional int32 num_threads = 1 [default = -1];
 }
 
 // How to configure TFLite.

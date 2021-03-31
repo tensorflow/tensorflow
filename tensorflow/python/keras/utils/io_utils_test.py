@@ -14,9 +14,8 @@
 # ==============================================================================
 """Tests for io_utils."""
 
+import builtins
 import sys
-
-import six
 
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.utils import io_utils
@@ -26,7 +25,7 @@ from tensorflow.python.platform import test
 class TestIOUtils(keras_parameterized.TestCase):
 
   def test_ask_to_proceed_with_overwrite(self):
-    with test.mock.patch.object(six.moves, 'input') as mock_log:
+    with test.mock.patch.object(builtins, 'input') as mock_log:
       mock_log.return_value = 'y'
       self.assertTrue(io_utils.ask_to_proceed_with_overwrite('/tmp/not_exists'))
 

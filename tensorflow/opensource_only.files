@@ -25,6 +25,7 @@ tensorflow/lite/delegates/gpu/cl/compiled_program_cache_generated.h
 tensorflow/lite/delegates/gpu/cl/serialization_generated.h
 tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h
 tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h
+tensorflow/lite/java/src/main/native/BUILD
 tensorflow/lite/java/src/main/native/nativeinterpreterwrapper_jni.cc
 tensorflow/lite/micro/build_def.bzl
 tensorflow/lite/schema/schema_generated.h
@@ -57,6 +58,8 @@ tensorflow/third_party/clang_toolchain/cc_configure_clang.bzl
 tensorflow/third_party/clang_toolchain/download_clang.bzl
 tensorflow/third_party/codegen.BUILD
 tensorflow/third_party/common.bzl
+tensorflow/third_party/compute_library/BUILD
+tensorflow/third_party/compute_library/LICENSE
 tensorflow/third_party/coremltools.BUILD
 tensorflow/third_party/cub.BUILD
 tensorflow/third_party/curl.BUILD
@@ -149,6 +152,7 @@ tensorflow/third_party/mkl/build_defs.bzl
 tensorflow/third_party/mkl_dnn/LICENSE
 tensorflow/third_party/mkl_dnn/build_defs.bzl
 tensorflow/third_party/mkl_dnn/mkldnn.BUILD
+tensorflow/third_party/mkl_dnn/mkldnn_acl.BUILD
 tensorflow/third_party/mkl_dnn/mkldnn_v1.BUILD
 tensorflow/third_party/mpi/.gitignore
 tensorflow/third_party/nanopb.BUILD

@@ -114,8 +114,10 @@ class PrintOpFilegroupTest(test.TestCase):
         [
             ('AccumulateNV2', None),  #
             ('BiasAdd', 'BiasOp<CPUDevice, float>'),  #
-            ('MatMul', matmul_prefix + 'MatMulOp<CPUDevice, double, true>'),  #
-            ('MatMul', matmul_prefix + 'MatMulOp<CPUDevice, float, true>'),  #
+            ('MatMul', matmul_prefix +
+             'MatMulOp<CPUDevice, double, double, double, true>'),  #
+            ('MatMul', matmul_prefix +
+             'MatMulOp<CPUDevice, float, float, float, true>'),  #
             ('NoOp', 'NoOp'),  #
             ('Reshape', 'ReshapeOp'),  #
             ('_Recv', 'RecvOp'),  #
@@ -131,8 +133,10 @@ class PrintOpFilegroupTest(test.TestCase):
         [
             ('AccumulateNV2', None),  #
             ('BiasAdd', 'BiasOp<CPUDevice, float>'),  #
-            ('MatMul', matmul_prefix + 'MatMulOp<CPUDevice, double, true>'),  #
-            ('MatMul', matmul_prefix + 'MatMulOp<CPUDevice, float, true>'),  #
+            ('MatMul', matmul_prefix +
+             'MatMulOp<CPUDevice, double, double, double, true>'),  #
+            ('MatMul', matmul_prefix +
+             'MatMulOp<CPUDevice, float, float, float, true>'),  #
             ('NoOp', 'NoOp'),  #
             ('Reshape', 'ReshapeOp'),  #
             ('_Recv', 'RecvOp'),  #

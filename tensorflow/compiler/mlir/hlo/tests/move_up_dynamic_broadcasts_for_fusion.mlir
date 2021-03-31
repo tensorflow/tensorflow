@@ -4,7 +4,7 @@
 // CHECK-LABEL: @shape_of_unary
 // CHECK-SAME: (%[[ARG:.*]]: tensor<?x32xi16>)
 func @shape_of_unary(%arg : tensor<?x32xi16>) {
-  // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[ARG]] : tensor<?x32xi16> -> tensor<2xindex>
+  // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[ARG]] : tensor<?x32xi16> -> tensor<?xindex>
   // CHECK: "use"(%[[SHAPE]])
   %0 = "mhlo.convert"(%arg) : (tensor<?x32xi16>) -> tensor<?x32xf16>
   %1 = shape.shape_of %0 : tensor<?x32xf16> -> tensor<?xindex>
@@ -18,7 +18,7 @@ func @shape_of_unary(%arg : tensor<?x32xi16>) {
 // CHECK-LABEL: @shape_of_nary
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<?x32xf16>, %[[ARG1:.*]]: tensor<?x32xf16>)
 func @shape_of_nary(%arg0 : tensor<?x32xf16>, %arg1 : tensor<?x32xf16>) {
-  // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[ARG0]] : tensor<?x32xf16> -> tensor<2xindex>
+  // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[ARG0]] : tensor<?x32xf16> -> tensor<?xindex>
   // CHECK: "use"(%[[SHAPE]])
   %0 = mhlo.subtract %arg0, %arg1 : tensor<?x32xf16>
   %1 = mhlo.subtract %0, %arg1 : tensor<?x32xf16>
@@ -94,4 +94,194 @@ func @cast_sub(%arg0: tensor<?x32xi16>, %arg1: tensor<?x?x32xf16>)
     shape.assuming_yield %11 : tensor<?x?x32xf16>
   }
   return %4 : tensor<?x?x32xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @inline_bcasted_shape_operands
+// CHECK-SAME: (%[[A:.*]]: tensor<?xindex>, %[[B:.*]]: tensor<?xindex>, %[[C:.*]]: tensor<?xindex>)
+func @inline_bcasted_shape_operands(%a : tensor<?xindex>, %b : tensor<?xindex>,
+    %c : tensor<?xindex>) -> !shape.witness {
+  // CHECK-NOT: shape.broadcast
+  // CHECK:     %[[WITNESS:.*]] = shape.cstr_broadcastable %[[A]], %[[B]], %[[C]]
+  // CHECK:     return %[[WITNESS]] : !shape.witness
+  %0 = shape.broadcast %a, %b : tensor<?xindex>, tensor<?xindex>
+      -> tensor<?xindex>
+  %1 = shape.cstr_broadcastable %0, %c : tensor<?xindex>, tensor<?xindex>
+  return %1 : !shape.witness
+}
+
+// -----
+
+// CHECK-LABEL: @move_shape_of_into_assuming
+// CHECK-SAME: (%[[ARG0:.*]]: !shape.witness, %[[ARG1:.*]]: tensor<?x32xf32>)
+func @move_shape_of_into_assuming(%arg0 : !shape.witness,
+    %arg1 : tensor<?x32xf32>) -> tensor<3xindex> {
+  // CHECK:     %[[ASSUMING_RESULTS:.*]]:3 = shape.assuming %[[ARG0]] -> (tensor<?x32xf32>, tensor<?x32xf32>, tensor<3xindex>) {
+  // CHECK:       %[[DUMMY_TENSOR:.*]] = "dummy.tensor"() : () -> tensor<?x32xf32>
+  // CHECK:       %[[SHAPE:.*]] = shape.shape_of %[[DUMMY_TENSOR]]
+  // CHECK:       shape.assuming_yield %[[ARG1]], %[[DUMMY_TENSOR]], %[[SHAPE]]
+  // CHECK:     }
+  // CHECK-NOT: shape_of
+  // CHECK:     return %[[ASSUMING_RESULTS]]#2
+  %0:2 = shape.assuming %arg0 -> (tensor<?x32xf32>, tensor<?x32xf32>) {
+    %1 = "dummy.tensor"() : () -> tensor<?x32xf32>
+    shape.assuming_yield %arg1, %1 : tensor<?x32xf32>, tensor<?x32xf32>
+  }
+  %2 = shape.shape_of %0#1 : tensor<?x32xf32> -> tensor<3xindex>
+  return %2 : tensor<3xindex>
+}
+
+// -----
+
+// CHECK-LABEL: @move_cstr_broadcastable_into_assuming
+// CHECK-SAME: (%[[ARG0:.*]]: !shape.witness, %[[ARG1:.*]]: tensor<2xindex>)
+func @move_cstr_broadcastable_into_assuming(%arg0 : !shape.witness,
+    %arg1 : tensor<2xindex>) -> !shape.witness {
+  // CHECK:     %[[ASSUMING_RESULTS:.*]]:3 = shape.assuming %[[ARG0]] -> (tensor<2xindex>, tensor<3xindex>, !shape.witness) {
+  // CHECK:       %[[DUMMY_TENSOR:.*]] = "dummy.tensor"() : () -> tensor<3xindex>
+  // CHECK:       %[[WITNESS:.*]] = shape.cstr_broadcastable %[[ARG1]], %[[DUMMY_TENSOR]]
+  // CHECK:       shape.assuming_yield %[[ARG1]], %[[DUMMY_TENSOR]], %[[WITNESS]]
+  // CHECK:     }
+  // CHECK-NOT: cstr_broadcastable
+  // CHECK:     return %[[ASSUMING_RESULTS]]#2
+  %0:2 = shape.assuming %arg0 -> (tensor<2xindex>, tensor<3xindex>) {
+    %1 = "dummy.tensor"() : () -> tensor<3xindex>
+    shape.assuming_yield %arg1, %1 : tensor<2xindex>, tensor<3xindex>
+  }
+  %1 = shape.cstr_broadcastable %arg1, %0#1 : tensor<2xindex>, tensor<3xindex>
+  return %1 : !shape.witness
+}
+
+// -----
+
+// CHECK-LABEL: @not_move_shape_of_into_assuming
+func @not_move_shape_of_into_assuming(%arg0 : !shape.witness,
+    %arg1 : tensor<?x32xf32>, %arg2 : tensor<?x32xf32>) -> tensor<3xindex> {
+  // CHECK:      shape.assuming
+  // CHECK-SAME: {
+  // CHECK-NOT:    shape_of
+  // CHECK:      }
+  // CHECK:     "some.other.op"
+  // CHECK:     shape_of
+  %0:2 = shape.assuming %arg0 -> (tensor<?x32xf32>, tensor<?x32xf32>) {
+    shape.assuming_yield %arg1, %arg2 : tensor<?x32xf32>, tensor<?x32xf32>
+  }
+  "some.other.op"() : () -> ()
+  %2 = shape.shape_of %0#1 : tensor<?x32xf32> -> tensor<3xindex>
+  return %2 : tensor<3xindex>
+}
+
+// -----
+
+// CHECK-LABEL: @move_cstr_broadcastable_out_of_assuming
+// CHECK-SAME: (%[[ARG0:.*]]: !shape.witness, %[[ARG1:.*]]: tensor<2xindex>, %[[ARG2:.*]]: tensor<3xindex>)
+func @move_cstr_broadcastable_out_of_assuming(%arg0 : !shape.witness,
+    %arg1 : tensor<2xindex>, %arg2 : tensor<3xindex>) -> !shape.witness {
+  // CHECK:     %[[WITNESS:.*]] = shape.cstr_broadcastable %[[ARG1]], %[[ARG2]]
+  // CHECK-NOT: assuming
+  // CHECK-NOT: cstr_broadcastable
+  // CHECK:     return %[[WITNESS]]
+  %0 = shape.assuming %arg0 -> (!shape.witness) {
+    %1 = shape.cstr_broadcastable %arg1, %arg2 : tensor<2xindex>, tensor<3xindex>
+    shape.assuming_yield %1 : !shape.witness
+  }
+  return %0 : !shape.witness
+}
+
+// -----
+
+// CHECK-LABEL: @move_shape_of_out_of_assuming
+// CHECK-SAME: (%[[ARG0:.*]]: !shape.witness, %[[ARG1:.*]]: tensor<2x?xf32>)
+func @move_shape_of_out_of_assuming(%arg0 : !shape.witness,
+    %arg1 : tensor<2x?xf32>) -> tensor<2xindex> {
+  // CHECK:     %[[SHAPE:.*]] = shape.shape_of %[[ARG1]]
+  // CHECK-NOT: assuming
+  // CHECK-NOT: cstr_broadcastable
+  // CHECK:     return %[[SHAPE]]
+    %0 = shape.assuming %arg0 -> (tensor<2xindex>) {
+    %1 = shape.shape_of %arg1 : tensor<2x?xf32> -> tensor<2xindex>
+    shape.assuming_yield %1 : tensor<2xindex>
+  }
+  return %0 : tensor<2xindex>
+}
+
+// -----
+
+// CHECK-LABEL: @move_shape_of_out_of_assuming
+// CHECK-SAME: (%[[ARG0:.*]]: !shape.witness, %[[ARG1:.*]]: tensor<2x?xf32>)
+func @move_shape_of_out_of_assuming(%arg0 : !shape.witness,
+    %arg1 : tensor<2x?xf32>) -> tensor<2xindex> {
+  // CHECK:     %[[SHAPE:.*]] = shape.shape_of %[[ARG1]]
+  // CHECK:     %{{.*}} = shape.assuming %[[ARG0]] -> (tensor<2x?xf32>) {
+  // CHECK:       %[[SOME_VAL:.*]] = "some.op"() : () -> tensor<2x?xf32>
+  // CHECK:       shape.assuming_yield %[[SOME_VAL]] : tensor<2x?xf32>
+  // CHECK:     }
+  // CHECK:     return %[[SHAPE]]
+  %0:2 = shape.assuming %arg0 -> (tensor<2x?xf32>, tensor<2xindex>) {
+    %1 = "some.op"() : () -> (tensor<2x?xf32>)
+    %2 = shape.shape_of %arg1 : tensor<2x?xf32> -> tensor<2xindex>
+    shape.assuming_yield %1, %2 : tensor<2x?xf32>, tensor<2xindex>
+  }
+  return %0#1 : tensor<2xindex>
+}
+
+// -----
+
+// CHECK-LABEL: @not_move_shape_of_out_of_assuming
+// CHECK-SAME: (%[[ARG0:.*]]: !shape.witness, %[[ARG1:.*]]: tensor<2x?xf32>)
+func @not_move_shape_of_out_of_assuming(%arg0 : !shape.witness,
+    %arg1 : tensor<2x?xf32>) -> tensor<2xindex> {
+  // CHECK-NOT:  shape_of
+  // CHECK:      shape.assuming
+  // CHECK-SAME: {
+  // CHECK:        "some.tensor"
+  // CHECK:        shape_of
+  // CHECK:      }
+  %0 = shape.assuming %arg0 -> (tensor<2xindex>) {
+    %1 = "some.tensor"() : () -> tensor<2x?xf32>
+    %2 = shape.shape_of %1 : tensor<2x?xf32> -> tensor<2xindex>
+    shape.assuming_yield %2 : tensor<2xindex>
+  }
+  return %0 : tensor<2xindex>
+}
+
+// -----
+
+// CHECK: @merge_assuming_ops
+// CHECK: (%[[ARG0:.*]]: tensor<?x32xf16>, %[[ARG1:.*]]: tensor<?x32xf16>, %[[ARG2:.*]]: tensor<?x?x32xf16>)
+func @merge_assuming_ops(%arg0: tensor<?x32xf16>, %arg1 : tensor<?x32xf16>,
+    %arg2: tensor<?x?x32xf16>) -> tensor<?x?x32xf16> {
+  // CHECK:      %[[SHAPE0:.*]] = shape.shape_of %[[ARG0]]
+  // CHECK:      %[[SHAPE1:.*]] = shape.shape_of %[[ARG1]]
+  // CHECK:      %[[SHAPE2:.*]] = shape.shape_of %[[ARG2]]
+  // CHECK:      %[[WITNESS0:.*]] = shape.cstr_broadcastable %[[SHAPE0]], %[[SHAPE1]]
+  // CHECK:      %[[WITNESS1:.*]] = shape.cstr_broadcastable %[[SHAPE0]], %[[SHAPE1]], %[[SHAPE2]]
+  // CHECK:      %[[WITNESS_MERGED:.*]] = shape.cstr_broadcastable %[[SHAPE0]], %[[SHAPE1]], %[[SHAPE2]]
+  // CHECK:      %[[MERGED:.*]]:2 = shape.assuming %[[WITNESS_MERGED]]
+  // CHECK-SAME: {
+  // CHECK:        "some.op"
+  // CHECK:        %[[RESULT0:.*]] = "some.producer"
+  // CHECK:        "another.op"
+  // CHECK:        %[[RESULT1:.*]] = "another.producer"
+  // CHECK:        shape.assuming_yield %[[RESULT0]], %[[RESULT1]]
+  // CHECK:      }
+  // CHECK:      return %[[MERGED]]#1
+  %0 = shape.shape_of %arg0 : tensor<?x32xf16> -> tensor<2xindex>
+  %1 = shape.shape_of %arg1 : tensor<?x32xf16> -> tensor<2xindex>
+  %2 = shape.shape_of %arg2 : tensor<?x?x32xf16> -> tensor<3xindex>
+  %3 = shape.cstr_broadcastable %0, %1 : tensor<2xindex>, tensor<2xindex>
+  %4 = shape.cstr_broadcastable %0, %1, %2 : tensor<2xindex>, tensor<2xindex>,
+      tensor<3xindex>
+  %5 = shape.assuming %3 -> (tensor<?x32xf16>) {
+    "some.op"() : () -> ()
+    %6 = "some.producer"() : () -> tensor<?x32xf16>
+    shape.assuming_yield %6 : tensor<?x32xf16>
+  }
+  %7 = shape.assuming %4 -> (tensor<?x?x32xf16>) {
+    "another.op"() : () -> ()
+    %8 = "another.producer"() : () -> tensor<?x?x32xf16>
+    shape.assuming_yield %8 : tensor<?x?x32xf16>
+  }
+  return %7 : tensor<?x?x32xf16>
 }

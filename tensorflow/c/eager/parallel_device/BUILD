@@ -6,7 +6,7 @@ load(
 )
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Currently pybind extension shared objects must use only C API headers since
