@@ -381,7 +381,12 @@ class UniqueOpGPU : public AsyncOpKernel {
                        /*keys_out=*/sorted_unique_input_inds_ptr,
                        /*indices_in=*/static_cast<const TIndex*>(nullptr),
                        /*indices_out=*/sorted_unique_perm_ptr,
+#if GOOGLE_CUDA
                        /*num_bits=*/Log2Ceiling(input_size)),
+#else
+                       // rocprim can't handle num_bits=0
+                       /*num_bits=*/Log2Ceiling(input_size<=2 ? 2 : input_size)),
+#endif
           done);
 
       // Free temporary tensor that is no longer needed.
