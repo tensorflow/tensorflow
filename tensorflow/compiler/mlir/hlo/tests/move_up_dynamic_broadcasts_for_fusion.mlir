@@ -245,3 +245,43 @@ func @not_move_shape_of_out_of_assuming(%arg0 : !shape.witness,
   }
   return %0 : tensor<2xindex>
 }
+
+// -----
+
+// CHECK: @merge_assuming_ops
+// CHECK: (%[[ARG0:.*]]: tensor<?x32xf16>, %[[ARG1:.*]]: tensor<?x32xf16>, %[[ARG2:.*]]: tensor<?x?x32xf16>)
+func @merge_assuming_ops(%arg0: tensor<?x32xf16>, %arg1 : tensor<?x32xf16>,
+    %arg2: tensor<?x?x32xf16>) -> tensor<?x?x32xf16> {
+  // CHECK:      %[[SHAPE0:.*]] = shape.shape_of %[[ARG0]]
+  // CHECK:      %[[SHAPE1:.*]] = shape.shape_of %[[ARG1]]
+  // CHECK:      %[[SHAPE2:.*]] = shape.shape_of %[[ARG2]]
+  // CHECK:      %[[WITNESS0:.*]] = shape.cstr_broadcastable %[[SHAPE0]], %[[SHAPE1]]
+  // CHECK:      %[[WITNESS1:.*]] = shape.cstr_broadcastable %[[SHAPE0]], %[[SHAPE1]], %[[SHAPE2]]
+  // CHECK:      %[[WITNESS_MERGED:.*]] = shape.cstr_broadcastable %[[SHAPE0]], %[[SHAPE1]], %[[SHAPE2]]
+  // CHECK:      %[[MERGED:.*]]:2 = shape.assuming %[[WITNESS_MERGED]]
+  // CHECK-SAME: {
+  // CHECK:        "some.op"
+  // CHECK:        %[[RESULT0:.*]] = "some.producer"
+  // CHECK:        "another.op"
+  // CHECK:        %[[RESULT1:.*]] = "another.producer"
+  // CHECK:        shape.assuming_yield %[[RESULT0]], %[[RESULT1]]
+  // CHECK:      }
+  // CHECK:      return %[[MERGED]]#1
+  %0 = shape.shape_of %arg0 : tensor<?x32xf16> -> tensor<2xindex>
+  %1 = shape.shape_of %arg1 : tensor<?x32xf16> -> tensor<2xindex>
+  %2 = shape.shape_of %arg2 : tensor<?x?x32xf16> -> tensor<3xindex>
+  %3 = shape.cstr_broadcastable %0, %1 : tensor<2xindex>, tensor<2xindex>
+  %4 = shape.cstr_broadcastable %0, %1, %2 : tensor<2xindex>, tensor<2xindex>,
+      tensor<3xindex>
+  %5 = shape.assuming %3 -> (tensor<?x32xf16>) {
+    "some.op"() : () -> ()
+    %6 = "some.producer"() : () -> tensor<?x32xf16>
+    shape.assuming_yield %6 : tensor<?x32xf16>
+  }
+  %7 = shape.assuming %4 -> (tensor<?x?x32xf16>) {
+    "another.op"() : () -> ()
+    %8 = "another.producer"() : () -> tensor<?x?x32xf16>
+    shape.assuming_yield %8 : tensor<?x?x32xf16>
+  }
+  return %7 : tensor<?x?x32xf16>
+}
