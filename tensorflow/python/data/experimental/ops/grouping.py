@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
