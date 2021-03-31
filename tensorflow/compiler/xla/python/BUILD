@@ -11,7 +11,7 @@ package(
         "//learning/pathways/data_parallel/jax:__subpackages__",
         "//tensorflow:internal",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_library(
