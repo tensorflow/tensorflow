@@ -14,16 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include <iostream>
-#include "tensorflow/cc/framework/ops.h"
-#include "tensorflow/cc/ops/array_ops.h"
-#include "tensorflow/cc/ops/resource_variable_ops.h"
-#include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/gradient_checker.h"
 #include "tensorflow/cc/framework/gradients.h"
-#include "tensorflow/cc/client/client_session.h"
+#include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/testutil.h"
 #include "tensorflow/cc/gradients/grad_testutil.h"
+#include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/cc/ops/resource_variable_ops.h"
+#include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
@@ -47,7 +47,6 @@ TEST(ResourceVariableGradTest, ReadVariableOpGrad) {
 
   OutputList dxs;
   TF_ASSERT_OK(AddSymbolicGradients(scope, {y}, {var}, {dy}, &dxs));
-
 
   ClientSession::FeedType feed_list;
   feed_list.insert({x, 5.0f});
