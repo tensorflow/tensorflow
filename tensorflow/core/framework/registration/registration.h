@@ -27,15 +27,15 @@ limitations under the License.
 // 'available' definitions (from the REGISTER_*' macros) are added to the global
 // registries on startup / library load.
 
-#ifndef TENSORFLOW_CORE_FRAMEWORK_SELECTIVE_REGISTRATION_H_
-#define TENSORFLOW_CORE_FRAMEWORK_SELECTIVE_REGISTRATION_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_REGISTRATION_REGISTRATION_H_
+#define TENSORFLOW_CORE_FRAMEWORK_REGISTRATION_REGISTRATION_H_
 
 #include <string.h>
 
 #include <type_traits>
 #include <utility>
 
-#include "tensorflow/core/framework/registration_options.h"
+#include "tensorflow/core/framework/registration/options.h"
 
 #if !TF_OPTION_REGISTRATION_V2()
 
@@ -149,4 +149,4 @@ struct InitOnStartupMarker {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_FRAMEWORK_SELECTIVE_REGISTRATION_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_REGISTRATION_REGISTRATION_H_
