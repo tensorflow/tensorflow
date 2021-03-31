@@ -84,7 +84,9 @@ void TestL2Pool2D(const L2Pool2DTestParams& params, const int* input_dims_data,
                               params.compare_tolerance);
   }
   for (int i = 0; i < expected_dims->size; i++) {
-    TF_LITE_MICRO_EXPECT_EQ(expected_dims->data[i], output_dims->data[i]);
+    // output dims will have been relocated during prepare phase,
+    // so use the tensor dims pointer.
+    TF_LITE_MICRO_EXPECT_EQ(expected_dims->data[i], tensors[1].dims->data[i]);
   }
 }
 
