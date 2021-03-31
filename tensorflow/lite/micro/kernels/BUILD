@@ -274,6 +274,7 @@ cc_library(
         "expand_dims.cc",
         "fill.cc",
         "floor.cc",
+        "floor_div.cc",
         "l2norm.cc",
         "l2_pool_2d.cc",
         "leaky_relu.cc",
@@ -642,6 +643,19 @@ cc_test(
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "floor_div_test",
+    srcs = ["floor_div_test.cc"],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
