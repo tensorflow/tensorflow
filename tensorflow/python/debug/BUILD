@@ -13,7 +13,7 @@ load("//tensorflow:tensorflow.bzl", "if_not_v2", "if_not_windows", "py_binary", 
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files(["LICENSE"])
