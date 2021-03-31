@@ -69,6 +69,36 @@ class _SummaryState(threading.local):
 _summary_state = _SummaryState()
 
 
+class _SummaryContextManager:
+  """Context manager to implement SummaryWriter.as_default()."""
+  # Note: this is a class so that it's possible to implement `set_as_default()`
+  # simply via `as_default().__enter__()`. We can't do that with @contextmanager
+  # because the `finally` block will be executed when the generator is GCed.
+
+  def __init__(self, writer, step=None):
+    self._writer = writer
+    self._step = step
+    self._old_writer = None
+    self._old_step = None
+
+  def __enter__(self):
+    self._old_writer = _summary_state.writer
+    _summary_state.writer = self._writer
+    if self._step is not None:
+      self._old_step = _summary_state.step
+      _summary_state.step = self._step
+    return self._writer
+
+  def __exit__(self, *exc):
+    # Flushes the summary writer in eager mode or in graph functions, but
+    # not in legacy graph mode (you're on your own there).
+    _summary_state.writer.flush()
+    _summary_state.writer = self._old_writer
+    if self._step is not None:
+      _summary_state.step = self._old_step
+    return False
+
+
 def _should_record_summaries_internal(default_state):
   """Returns boolean Tensor if summaries should/shouldn't be recorded.
 
@@ -202,7 +232,6 @@ def set_step(step):
 class SummaryWriter(object):
   """Interface representing a stateful summary writer object."""
 
-  @abc.abstractmethod
   def set_as_default(self, step=None):
     """Enables this summary writer for the current thread.
 
@@ -221,10 +250,8 @@ class SummaryWriter(object):
         the current step is modified to the given value. When `None`, the
         current step is not modified.
     """
-    raise NotImplementedError()
+    self.as_default(step).__enter__()
 
-  @abc.abstractmethod
-  @tf_contextlib.contextmanager
   def as_default(self, step=None):
     """Returns a context manager that enables summary writing.
 
@@ -253,8 +280,11 @@ class SummaryWriter(object):
         the current step is captured, replaced by a given one, and the original
         one is restored when the context manager exits. When `None`, the current
         step is not modified (and not restored when the context manager exits).
+
+    Returns:
+      The context manager.
     """
-    raise NotImplementedError()
+    return _SummaryContextManager(self, step)
 
   def init(self):
     """Initializes the summary writer."""
@@ -287,79 +317,19 @@ class ResourceSummaryWriter(SummaryWriter):
       ops.add_to_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME, self._init_op)
 
   def set_as_default(self, step=None):
-    """Enables this summary writer for the current thread.
-
-    For convenience, if `step` is not None, this function also sets a default
-    value for the `step` parameter used in summary-writing functions elsewhere
-    in the API so that it need not be explicitly passed in every such
-    invocation. The value can be a constant or a variable.
-
-    Note: when setting `step` in a @tf.function, the step value will be
-    captured at the time the function is traced, so changes to the step outside
-    the function will not be reflected inside the function unless using
-    a `tf.Variable` step.
-
-    Args:
-      step: An `int64`-castable default step value, or `None`. When not `None`,
-        the current step is modified to the given value. When `None`, the
-        current step is not modified.
-    """
+    """See `SummaryWriter.set_as_default`."""
     if self._v2 and context.executing_eagerly() and self._closed:
       raise RuntimeError("SummaryWriter is already closed")
-    _summary_state.writer = self
-    if step is not None:
-      _summary_state.step = step
+    super().set_as_default(step)
 
-  @tf_contextlib.contextmanager
   def as_default(self, step=None):
-    """Returns a context manager that enables summary writing.
-
-    For convenience, if `step` is not None, this function also sets a default
-    value for the `step` parameter used in summary-writing functions elsewhere
-    in the API so that it need not be explicitly passed in every such
-    invocation. The value can be a constant or a variable.
-
-    Note: when setting `step` in a @tf.function, the step value will be
-    captured at the time the function is traced, so changes to the step outside
-    the function will not be reflected inside the function unless using
-    a `tf.Variable` step.
-
-    For example, `step` can be used as:
-
-    ```python
-    with writer_a.as_default(step=10):
-      tf.summary.scalar(tag, value)   # Logged to writer_a with step 10
-      with writer_b.as_default(step=20):
-        tf.summary.scalar(tag, value) # Logged to writer_b with step 20
-      tf.summary.scalar(tag, value)   # Logged to writer_a with step 10
-    ```
-
-    Args:
-      step: An `int64`-castable default step value, or `None`. When not `None`,
-        the current step is captured, replaced by a given one, and the original
-        one is restored when the context manager exits. When `None`, the current
-        step is not modified (and not restored when the context manager exits).
-    """
+    """See `SummaryWriter.as_default`."""
     if self._v2 and context.executing_eagerly() and self._closed:
       raise RuntimeError("SummaryWriter is already closed")
-    old = _summary_state.writer
-    if step is not None:
-      old_step = _summary_state.step
-    try:
-      _summary_state.writer = self
-      if step is not None:
-        _summary_state.step = step
-      yield self
-      # Flushes the summary writer in eager mode or in graph functions, but
-      # not in legacy graph mode (you're on your own there).
-      self.flush()
-    finally:
-      _summary_state.writer = old
-      if step is not None:
-        _summary_state.step = old_step
+    return super().as_default(step)
 
   def init(self):
-    """Initializes the summary writer."""
+    """See `SummaryWriter.init`."""
     if self._v2:
       if context.executing_eagerly() and self._closed:
         raise RuntimeError("SummaryWriter is already closed")
@@ -368,14 +338,14 @@ class ResourceSummaryWriter(SummaryWriter):
     return self._init_op_fn(self._resource)
 
   def flush(self):
-    """Flushes any buffered data."""
+    """See `SummaryWriter.flush`."""
     if self._v2 and context.executing_eagerly() and self._closed:
       return
     with ops.device("cpu:0"):
       return gen_summary_ops.flush_summary_writer(self._resource)
 
   def close(self):
-    """Flushes and closes the summary writer."""
+    """See `SummaryWriter.close`."""
     if self._v2 and context.executing_eagerly() and self._closed:
       return
     try:
