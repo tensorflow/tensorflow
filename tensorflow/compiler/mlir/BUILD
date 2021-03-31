@@ -14,7 +14,7 @@ package(
         "//tensorflow/compiler/tf2xla:__subpackages__",
         "@llvm-project//mlir:friends",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(

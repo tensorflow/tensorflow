@@ -69,7 +69,13 @@ class InterpreterBuilder {
   InterpreterBuilder(const InterpreterBuilder&) = delete;
   InterpreterBuilder& operator=(const InterpreterBuilder&) = delete;
 
+  /// Builds an interpreter and stores it in `*interpreter`.
+  /// On success, returns kTfLiteOk and sets `*interpreter` to a valid
+  /// Interpreter.
+  /// On failure, returns an error status and sets `*interpreter` to nullptr.
   TfLiteStatus operator()(std::unique_ptr<Interpreter>* interpreter);
+
+  /// Same as above, but also sets the number of CPU threads to use.
   TfLiteStatus operator()(std::unique_ptr<Interpreter>* interpreter,
                           int num_threads);
 

@@ -824,6 +824,28 @@ cc_library(
 )
 
 cc_library(
+    name = "resampler",
+    srcs = ["resampler.cc"],
+    hdrs = ["resampler.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+    ],
+)
+
+cc_library(
+    name = "resampler_test_util",
+    testonly = 1,
+    srcs = ["resampler_test_util.cc"],
+    hdrs = ["resampler_test_util.h"],
+    deps = [
+        ":resampler",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "reshape",
     srcs = ["reshape.cc"],
     hdrs = ["reshape.h"],

@@ -89,6 +89,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.types import core
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
@@ -519,13 +520,8 @@ class FunctionDeleter(object):
 
 # TODO(mdan): Consider expose this type for instance type checking.
 @tf_export("__internal__.function.Function", v1=[])
-class Function(object):
-  """Wrapper class for the graph functions defined for a Python function.
-
-  See the documentation for `tf.function` for more information on the semantics
-  of defined functions.
-
-  `Function` is thread-compatible.
+class Function(core.GenericFunction):
+  """A `tf.types.experimental.GenericFunction` created by `tf.function`.
 
   Currently, individual methods/attributes under this class are not guaranteed
   by the TF API contract, and are subject to future changes.
@@ -862,7 +858,7 @@ class Function(object):
     return RUN_FUNCTIONS_EAGERLY
 
   def __call__(self, *args, **kwds):
-    """Calls the graph function and warn too frequent tracings."""
+    # Implements GenericFunction.__call__.
     if self._run_functions_eagerly:
       with trace.Trace(self._name, tf_function_call="eager"):
         return self._python_function(*args, **kwds)
@@ -1272,81 +1268,7 @@ class Function(object):
       return concrete
 
   def get_concrete_function(self, *args, **kwargs):
-    """Returns a `ConcreteFunction` specialized to inputs and execution context.
-
-    If this `Function` was created with an `input_signature`, `args` and
-    `kwargs` may be omitted. With an input signature there is only one
-    concrete function associated with this `Function`.
-
-    If there is no fixed `input_signature` associated with this
-    `Function`, positional and keyword arguments to `get_concrete_function`
-    follow the same rules as input signature specification, with `tf.TensorSpec`
-    objects describing `tf.Tensor`s which will be passed to the concrete
-    function.
-
-    Each `tf.Tensor` argument to the concrete function must have a unique name,
-    either because it is the only one associated with a named argument of the
-    Python function or because an explicit `name=` was passed to its
-    `tf.TensorSpec` object. These names become the argument names for the
-    concrete function.
-
-    Arguments to the concrete function may always be specified as keyword
-    arguments, naming the Tensor input. Positional arguments may be used instead
-    when each preceding argument to the Python function is a Tensor.
-
-    ```python
-    @tf.function
-    def f(x):
-      return x
-
-    f_concrete = f.get_concrete_function(tf.TensorSpec([], tf.float64))
-    f_concrete(tf.constant(1.))
-    f_concrete(x=tf.constant(1.))
-    ```
-
-    Nested structures containing Tensors may be specified when retrieving
-    concrete functions. Structures with multiple Tensors are expanded into
-    multiple arguments of the concrete function. Since multiple concrete
-    function arguments are associated with one argument to the original
-    function, these Tensors must be named explicitly. Tensors in nested
-    structures may not be passed using positional arguments when calling the
-    concrete function.
-
-    ```python
-    f_concrete2 = f.get_concrete_function(
-        (tf.TensorSpec(None, tf.float64, name="first"),
-         tf.TensorSpec([], tf.float32, name="second")))
-    # Keyword arguments are required when identifying Tensors in nested
-    # structures.
-    f_concrete2(first=tf.constant([1.]), second=tf.constant(0.))
-    ```
-
-    Functions with fixed input signatures have only one concrete function
-    associated with them, which can be retrieved without specifying any
-    arguments. As before Tensors must have unique names, either inferred from
-    the argument names in the original Python function or specified
-    explicitly.
-
-    ```python
-    @tf.function(input_signature=(tf.TensorSpec(None, tf.float32)))
-    def f_sig(y):
-      return y
-
-    f_sig_concrete = f.get_concrete_function()
-    f_sig_concrete(tf.constant(1.))
-    f_sig_concrete(y=tf.constant(1.))
-    ```
-
-    Args:
-      *args: inputs to specialize on.
-      **kwargs: inputs to specialize on.
-
-    Returns:
-      A TensorFlow function which takes exactly one `tf.Tensor` per argument.
-
-    Raises:
-      ValueError: if this object has not yet been called on concrete values.
-    """
+    # Implements GenericFunction.get_concrete_function.
     concrete = self._get_concrete_function_garbage_collected(*args, **kwargs)
     concrete._garbage_collector.release()  # pylint: disable=protected-access
     return concrete

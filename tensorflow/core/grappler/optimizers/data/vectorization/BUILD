@@ -4,7 +4,7 @@ load("//tensorflow/core/platform:build_config.bzl", "tf_protos_all")
 
 package(
     default_visibility = ["//visibility:private"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 VECTORIZER_DEPS = [

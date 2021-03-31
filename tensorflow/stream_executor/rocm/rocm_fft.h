@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/scratch_allocator.h"
+#include "tensorflow/stream_executor/stream.h"
 
 namespace stream_executor {
 
@@ -79,8 +80,11 @@ class ROCMFftPlan : public fft::Plan {
   port::Status UpdateScratchAllocator(Stream *stream,
                                       ScratchAllocator *scratch_allocator);
 
+  ScratchAllocator *GetScratchAllocator() const { return scratch_allocator_; }
+
  protected:
   bool IsInitialized() const { return is_initialized_; }
+  ScratchAllocator *scratch_allocator_;
 
  private:
   GpuExecutor *parent_;

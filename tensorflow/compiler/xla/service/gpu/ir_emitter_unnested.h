@@ -33,6 +33,9 @@ struct BufferSlice {
   // The root buffer to look at.
   BufferAllocation::Slice buffer_slice;
 
+  // The global constant name of the buffer, if it's a constant.
+  std::string constant_name;
+
   // Describes how to dereference starting at that buffer to get to the buffer
   // in question.
   ShapeIndex gte_index;
@@ -339,7 +342,8 @@ class IrEmitterUnnested : public IrEmitter {
     return MaybeGetAllocationSlice(hlo, index).ConsumeValueOrDie();
   }
 
-  StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(mlir::Value v);
+  StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
+      mlir::Value v, std::string* constant_name = nullptr);
 
   int64 ByteSizeOf(const Shape& shape) const {
     return llvm_ir::ByteSizeOf(

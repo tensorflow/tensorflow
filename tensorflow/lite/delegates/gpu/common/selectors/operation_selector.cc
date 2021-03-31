@@ -527,6 +527,10 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       *gpu_op = SelectReLU(attr, op_def);
       return absl::OkStatus();
     }
+    case OperationType::RESAMPLER: {
+      *gpu_op = SelectResampler(op_def);
+      return absl::OkStatus();
+    }
     case OperationType::RESHAPE: {
       const int src_channels = inputs[0]->tensor.shape.c;
       auto attr = absl::any_cast<ReshapeAttributes>(node.operation.attributes);

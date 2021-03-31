@@ -268,7 +268,7 @@ Status DataServiceDispatcherClient::EnsureInitialized() {
         }
         return Status::OK();
       },
-      "checking service version",
+      "check service version",
       /*deadline_micros=*/kint64max));
   if (resp.version() != kDataServiceVersion) {
     return errors::FailedPrecondition(

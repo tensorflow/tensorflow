@@ -970,9 +970,8 @@ TEST_P(TestFP16Delegation, DelegationWorks) {
   ASSERT_EQ(
       interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
       kTfLiteOk);
-  // Should have 5 nodes: delegate, mul, add2 & 2 dequantize (one for mul &
-  // add2).
-  ASSERT_EQ(interpreter_->execution_plan().size(), 5);
+  // Should have 7 nodes: delegate, mul, add2 & 4 dequantize ops.
+  ASSERT_EQ(interpreter_->execution_plan().size(), 7);
   VerifyInvoke();
 }
 

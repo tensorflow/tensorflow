@@ -442,7 +442,7 @@ class GenericArrayLikeDataAdapter(TensorLikeDataAdapter):
       return False
 
   def __init__(self, *args, **kwargs):
-    logging.warn(
+    logging.warning(
         "Keras is training/fitting/evaluating on array-like data. Keras may "
         "not be optimized for this format, so if your input data format is "
         "supported by TensorFlow I/O (https://github.com/tensorflow/io) we "
@@ -1329,9 +1329,6 @@ class DataHandler(object):
           "`steps_per_execution > 1`, you must specify the number of steps "
           "to run.")
 
-  def resolve_logs(self, logs):
-    return logs
-
 
 class _ClusterCoordinatorDataHandler(DataHandler):
   """A `DataHandler` that is compatible with `ClusterCoordinator`."""
@@ -1359,9 +1356,6 @@ class _ClusterCoordinatorDataHandler(DataHandler):
 
   def sync(self):
     self._model._cluster_coordinator.join()  # pylint: disable=protected-access
-
-  def resolve_logs(self, logs):
-    return logs.fetch()
 
 
 def get_data_handler(*args, **kwargs):

@@ -979,9 +979,8 @@ struct ConvertTFBroadcastTo : public RewritePattern {
 struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
   explicit FusedBatchNormV3Pat(::mlir::MLIRContext *context)
       : ::mlir::RewritePattern(
-            "tf.FusedBatchNormV3",
-            {"tf.Add", "tf.Const", "tf.Mul", "tf.Rsqrt", "tf.Sub"}, 1,
-            context) {}
+            "tf.FusedBatchNormV3", 1, context,
+            {"tf.Add", "tf.Const", "tf.Mul", "tf.Rsqrt", "tf.Sub"}) {}
 
   ::mlir::LogicalResult matchAndRewrite(
       ::mlir::Operation *fused_batch_norm,
@@ -1326,8 +1325,8 @@ LogicalResult ConvertTf2XlaOps(FuncOp func, MLIRContext *context) {
   target.addIllegalOp<TF::XlaConvOp>();
   target.addIllegalOp<TF::XlaGatherOp>();
 
-  OwningRewritePatternList patterns(func.getContext());
-  mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns);
+  OwningRewritePatternList patterns(context);
+  mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns, context);
   mhlo::PopulateLegalizeTfPatterns(context, &patterns);
   TF::PopulateLegalizeHloToTfPatterns(&patterns, context);
   mhlo::GatherOp::getCanonicalizationPatterns(patterns, context);
@@ -1471,9 +1470,7 @@ void PrepareTFPass::runOnFunction() {
   // This will allow optimizing any TF_Mul->TF_Conv in the graph
   // and any expanded from FusedBatchNorm. We need to do this
   // before converting TF_Conv to TFL_Conv
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns),
-      // TODO(fengliuai): Fix the logic to work without this flag
-      /*useTopDownTraversal=*/false);
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Load the generated pattern again, so new quantization pass-through
   // will be applied.

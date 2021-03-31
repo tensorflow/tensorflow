@@ -9,7 +9,7 @@ DEFAULT_VISIBILITY = [
 
 package(
     default_visibility = DEFAULT_VISIBILITY,
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_proto_library(

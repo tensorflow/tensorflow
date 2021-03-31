@@ -11,7 +11,7 @@ package(
         "//learning/pathways/data_parallel/jax:__subpackages__",
         "//tensorflow:internal",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_library(
@@ -402,7 +402,6 @@ cc_library(
     ],
 )
 
-# TODO(phawkins): this library is really part of JAX. Find a better home for it.
 cc_library(
     name = "pytree",
     srcs = ["pytree.cc"],
@@ -415,6 +414,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":absl_casters",
+        "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
@@ -512,12 +512,11 @@ pybind_extension(
     srcs = [
         "xla.cc",
     ],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
     module_name = "xla_extension",
+    pytype_deps = [
+        "//third_party/py/numpy",
+    ],
+    pytype_srcs = glob(["xla_extension/*.pyi"]),
     deps = [
         ":dlpack",
         ":jax_jit",

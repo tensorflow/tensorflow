@@ -575,8 +575,9 @@ tensorflow::XlaExpression Tf2XlaRewriter::GetExprForOperand(Value operand,
 
 class Tf2XlaRewritePattern : public RewritePattern {
  public:
-  explicit Tf2XlaRewritePattern(const std::string& device_type)
-      : RewritePattern(/*benefit=*/1, MatchAnyOpTypeTag()),
+  explicit Tf2XlaRewritePattern(MLIRContext* ctx,
+                                const std::string& device_type)
+      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, ctx),
         device_type_(device_type) {}
 
   LogicalResult matchAndRewrite(Operation* op,
@@ -601,7 +602,7 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
 
   void runOnFunction() override {
     OwningRewritePatternList patterns(&getContext());
-    patterns.insert<Tf2XlaRewritePattern>(device_type_);
+    patterns.insert<Tf2XlaRewritePattern>(&getContext(), device_type_);
     if (failed(
             applyPatternsAndFoldGreedily(getFunction(), std::move(patterns))))
       signalPassFailure();
@@ -622,8 +623,9 @@ static PassRegistration<LegalizeTF> pass(
 }  // end namespace
 
 void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
-                                          OwningRewritePatternList& patterns) {
-  patterns.insert<Tf2XlaRewritePattern>(device_type.str());
+                                          OwningRewritePatternList& patterns,
+                                          MLIRContext* ctx) {
+  patterns.insert<Tf2XlaRewritePattern>(ctx, device_type.str());
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTfWithTf2XlaPass(
