@@ -1040,6 +1040,24 @@ gpu_kernel_library(
     # unroll_factors = "4",
 )
 
+gpu_kernel_library(
+    name = "gpu_select_v2_kernels",
+    op = "select_v2",
+    tile_size = "256",
+    types = [
+        "i1",
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        "f16",
+        "f32",
+        "f64",
+        "c64",
+        "c128",
+    ],
+)
+
 cpu_kernel_library(
     name = "cpu_abs_kernels",
     op = "abs",
