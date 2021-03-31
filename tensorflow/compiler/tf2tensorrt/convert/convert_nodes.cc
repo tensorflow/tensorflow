@@ -266,7 +266,7 @@ void GetOutputProperties(const grappler::GraphProperties& graph_properties,
     *dtype = out_shape.dtype();
     *shape = out_shape.shape();
   } else {
-    LOG(INFO) << "Unknown output shape" << node->name();
+    LOG(INFO) << "Unknown output shape at: " << node->name();
     *dtype = node->output_type(out_port);
   }
 }
@@ -2761,7 +2761,8 @@ Status Converter::DynamicExpandDims(ITensorProxyPtr input,
 Status Converter::SqueezeTensor(ITensorProxyPtr input,
                                 std::vector<int>* input_dims,
                                 OpConverterParams* params,
-                                ITensorProxyPtr* output) {
+                                ITensorProxyPtr* output,
+                                absl::optional<int> op_instance) {
   // If the remaining dimensions of a squeeze operation have dynamic sizes, we
   // need to use TRT ops to build the result shape for the squeeze operation.
   // This is because IShuffleLayer::setReshapeDimensions treats -1 as a special
@@ -2773,7 +2774,7 @@ Status Converter::SqueezeTensor(ITensorProxyPtr input,
         slices.push_back(std::pair<int, int>(i, i + 1));
       }
     }
-    return DynamicReshape(input, slices, params, output);
+    return DynamicReshape(input, slices, params, output, {}, op_instance);
   }
   // Remove all dims which are equal to 0.
   input_dims->erase(std::remove(input_dims->begin(), input_dims->end(), 0),
@@ -4801,7 +4802,7 @@ Status ConvertSplitHelper(OpConverterParams* params,
       input_dims[trt_axis] = 0;
       TF_RETURN_IF_ERROR(params->converter->SqueezeTensor(
           params->outputs->at(i).tensor(), &input_dims, params,
-          &output_tensor));
+          &output_tensor, /*op_instance=*/i));
       (*params->outputs)[i] = TRT_TensorOrWeights(output_tensor);
     }
   }
