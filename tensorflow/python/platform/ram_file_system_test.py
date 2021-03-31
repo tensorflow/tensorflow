@@ -157,10 +157,22 @@ class RamFilesystemTest(test_util.TensorFlowTestCase):
 
   def test_join(self):
     expected = 'ram://exists/a/b/c.txt'
-    self.assertEqual(file_io.join('ram://', 'exists', 'a', 'b', 'c.txt'), expected)
-    self.assertEqual(file_io.join('ram://exists', 'a', 'b', 'c.txt'), expected)
-    self.assertEqual(file_io.join('ram://', 'exists/a', 'b', 'c.txt'), expected)
-    self.assertEqual(file_io.join('ram://', 'exists', 'a', 'b/c.txt'), expected)
+    self.assertEqual(
+      file_io.join('ram://', 'exists', 'a', 'b', 'c.txt'),
+      expected
+    )
+    self.assertEqual(
+      file_io.join('ram://exists', 'a', 'b', 'c.txt'),
+      expected
+    )
+    self.assertEqual(
+      file_io.join('ram://', 'exists/a', 'b', 'c.txt'),
+      expected
+    )
+    self.assertEqual(
+      file_io.join('ram://', 'exists', 'a', 'b/c.txt'),
+      expected
+    )
 
 if __name__ == '__main__':
   test.main()
