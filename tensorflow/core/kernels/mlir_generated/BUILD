@@ -26,7 +26,7 @@ package(
     default_visibility = [
         "//tensorflow/core/kernels:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 bool_flag(
