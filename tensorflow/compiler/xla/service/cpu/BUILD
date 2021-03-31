@@ -16,7 +16,7 @@ load("//tensorflow/core/platform:build_config.bzl", "if_llvm_system_z_available"
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -236,6 +236,9 @@ cc_library(
         ],
         "//tensorflow:linux_ppc64le": [
             "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
+        ],
+        "//tensorflow:macos_arm64": [
+            "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
         ],
         "//conditions:default": [
         ],

@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/framework/allocator.h"
@@ -197,5 +197,7 @@ TEST_F(QuantizedPoolingTest, SmallMaxPooling) {
 
   test::ExpectTensorNear<float>(expected_float, output_float, 0.2);
 }
+
 }  // namespace tensorflow
-#endif
+
+#endif  // defined(INTEL_MKL) && defined(ENABLE_MKL)

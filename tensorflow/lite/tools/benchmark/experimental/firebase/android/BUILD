@@ -10,8 +10,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 android_binary(
     name = "benchmark_model_firebase",
     srcs = glob([

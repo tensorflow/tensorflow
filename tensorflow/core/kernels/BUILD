@@ -16,7 +16,8 @@ load(
 )
 load(
     "//tensorflow/core/kernels/mlir_generated:build_defs.bzl",
-    "if_mlir_experimental_kernels_enabled",
+    "if_mlir_generated_cpu_kernels_enabled",
+    "if_mlir_generated_experimental_kernels_enabled",
     "if_mlir_generated_gpu_kernels_enabled",
 )
 
@@ -78,7 +79,7 @@ load(
 #
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -383,6 +384,7 @@ cc_library(
     hdrs = ["lookup_util.h"],
     deps = [
         ":initializable_lookup_table",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -516,6 +518,7 @@ cc_library(
 tf_cuda_only_cc_test(
     name = "gpu_prim_helpers_test",
     srcs = ["gpu_prim_helpers_test.cu.cc"],
+    tags = ["no_cuda_asan"],  # TODO(b/183963619)
     deps = [
         ":gpu_prim_helpers",
         ":ops_testutil",
@@ -558,7 +561,9 @@ tf_cuda_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
-    ],
+    ] + if_cuda([
+        "@local_config_cuda//cuda:cudnn_header",
+    ]),
 )
 
 tf_cc_test(
@@ -813,6 +818,7 @@ cc_library(
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
         "//tensorflow:linux_s390x": [],
+        "//tensorflow:macos_arm64": [],
         "//conditions:default": [
             "TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL",
             "TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL",
@@ -828,6 +834,7 @@ cc_library(
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
         "//tensorflow:linux_s390x": [],
+        "//tensorflow:macos_arm64": [],
         "//conditions:default": ["@mkl_dnn_v1//:mkl_dnn"],
     }),
 )
@@ -890,7 +897,6 @@ cc_library(
         "eigen_cuboid_convolution.h",
         "eigen_pooling.h",
         "eigen_spatial_convolutions.h",
-        "eigen_volume_patch.h",
     ],
     deps = [
         ":eigen_contraction_kernel",
@@ -910,7 +916,6 @@ cc_library(
         "eigen_cuboid_convolution.h",
         "eigen_pooling.h",
         "eigen_spatial_convolutions.h",
-        "eigen_volume_patch.h",
     ],
     deps = [
         ":eigen_convolution_helpers",
@@ -3368,10 +3373,13 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "cast_op",
-    copts = if_mlir_generated_gpu_kernels_enabled(if_true = ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED=1"]) +
-            if_mlir_experimental_kernels_enabled(if_true = ["-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED=1"]),
+    copts = if_mlir_generated_experimental_kernels_enabled([
+        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
+    ]),
     prefix = "cast_op",
-    deps = MATH_DEPS + if_mlir_experimental_kernels_enabled(if_true = ["//tensorflow/core/kernels/mlir_generated:cast_op"]),
+    deps = MATH_DEPS + [
+        "//tensorflow/core/kernels/mlir_generated:cast_op",
+    ],
 )
 
 tf_kernel_library(
@@ -3388,12 +3396,25 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "cwise_op",
-    copts = if_mlir_generated_gpu_kernels_enabled(if_true = ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED=1"]) +
-            if_mlir_experimental_kernels_enabled(if_true = ["-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED=1"]),
-    gpu_copts = if_mlir_generated_gpu_kernels_enabled(if_true = ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED=1"]) +
-                if_mlir_experimental_kernels_enabled(if_true = ["-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED=1"]),
+    copts = if_mlir_generated_cpu_kernels_enabled(
+        ["-DMLIR_GENERATED_CPU_KERNELS_ENABLED"],
+    ) + if_mlir_generated_experimental_kernels_enabled([
+        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
+    ]) + if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
+    # *.cu.cc sources are compiled with gpu_copts instead of copts.
+    gpu_copts = if_mlir_generated_cpu_kernels_enabled(
+        ["-DMLIR_GENERATED_CPU_KERNELS_ENABLED"],
+    ) + if_mlir_generated_experimental_kernels_enabled([
+        "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
+    ]) + if_mlir_generated_gpu_kernels_enabled(
+        ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
+    ),
     prefix = "cwise_op",
-    deps = MATH_DEPS + if_mlir_generated_gpu_kernels_enabled(if_true = ["//tensorflow/core/kernels/mlir_generated:cwise_op"]),
+    deps = MATH_DEPS + [
+        "//tensorflow/core/kernels/mlir_generated:cwise_op",
+    ],
 )
 
 tf_kernel_library(
@@ -4709,7 +4730,10 @@ tf_kernel_library(
     prefix = "sparse_to_dense_op",
     deps = SPARSE_DEPS + [
         "//third_party/eigen3",
-    ],
+    ] + if_cuda([
+        ":gpu_utils",
+        "//tensorflow/core/platform:stream_executor",
+    ]),
 )
 
 tf_kernel_library(
@@ -5774,7 +5798,6 @@ filegroup(
         "eigen_pooling.h",
         "eigen_spatial_convolutions.h",
         "eigen_spatial_convolutions-inl.h",
-        "eigen_volume_patch.h",
         "fifo_queue.h",
         "maxpooling_op.h",
         "ops_util.h",
@@ -6015,6 +6038,9 @@ filegroup(
         "//tensorflow/core/kernels/data:batch_dataset_op.h",
         "//tensorflow/core/kernels/data:iterator_ops.h",
         "//tensorflow/core/kernels/data:map_dataset_op.h",
+        "//tensorflow/core/kernels/data:repeat_dataset_op.h",
+        "//tensorflow/core/kernels/data:split_utils.h",
+        "//tensorflow/core/kernels/data:tensor_slice_dataset_op.h",
         "//tensorflow/core/kernels/data:dataset_utils.h",
         "//tensorflow/core/kernels/data:unbounded_thread_pool.h",
         "//tensorflow/core/kernels/data:model_dataset_op.h",
@@ -6344,6 +6370,9 @@ filegroup(
         "//tensorflow/core/kernels/data:batch_dataset_op.cc",
         "//tensorflow/core/kernels/data:iterator_ops.cc",
         "//tensorflow/core/kernels/data:map_dataset_op.cc",
+        "//tensorflow/core/kernels/data:repeat_dataset_op.cc",
+        "//tensorflow/core/kernels/data:split_utils.cc",
+        "//tensorflow/core/kernels/data:tensor_slice_dataset_op.cc",
         "//tensorflow/core/kernels/data:model_dataset_op.cc",
         "//tensorflow/core/kernels/data:optimize_dataset_op.cc",
         "//tensorflow/core/kernels/data:dataset_utils.cc",

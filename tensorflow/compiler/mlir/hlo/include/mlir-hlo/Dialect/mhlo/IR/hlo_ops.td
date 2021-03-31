@@ -217,6 +217,7 @@ def HLO_LogisticOp: HLO_UnaryElementwiseOp<"logistic",
 def HLO_NotOp: HLO_UnaryElementwiseOp<"not",
     [NoSideEffect, SameOperandsAndResultType], HLO_PredOrIntTensor>,
     BASE_HLO_NotOp {
+    let hasFolder = 1;
 }
 
 def HLO_NegOp: HLO_UnaryElementwiseOp<"negate",
@@ -270,9 +271,8 @@ def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
 class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
-        HLO_Op<mnemonic, !listconcat(traits,
-        [InferShapedTypeOpInterface, InferFusibilityOpInterface,
-        SameOperandsAndResultShape])> {
+    HLO_Op<mnemonic, traits # [InferShapedTypeOpInterface,
+    InferFusibilityOpInterface, SameOperandsAndResultShape, Elementwise]> {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs
@@ -524,7 +524,9 @@ def HLO_AfterAllOp : HLO_Op<"after_all", [NoSideEffect]> {
 // Xla Client API has two separate calls for indexed and predicated conditional,
 // although both eventually map to kConditional HLO. IfOp maps to predicated
 // conditional use of kConditional HLO.
-def HLO_IfOp: HLO_Op<"if", [RecursiveSideEffects]> {
+def HLO_IfOp: HLO_Op<"if", [
+    RecursiveSideEffects,
+    SingleBlockImplicitTerminator<"ReturnOp">]> {
   string summary = "If operator";
 
   string description = [{
@@ -540,40 +542,47 @@ def HLO_IfOp: HLO_Op<"if", [RecursiveSideEffects]> {
     HLO_TensorOrTuple:$false_arg
   );
 
-  let regions = (region AnyRegion:$true_branch,
-                        AnyRegion:$false_branch);
+  let regions = (region SizedRegion<1>:$true_branch,
+                        SizedRegion<1>:$false_branch);
 
   let results = (outs HLO_TensorOrTuple);
 
   // TODO(b/129422361): ConditionalOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
+
+  let hasCanonicalizer = 1;
 }
 
 // Xla Client API has two separate calls for indexed and predicated conditional,
 // although both eventually map to kConditional HLO. CaseOp maps to indexed
 // conditional use of kConditional HLO.
-def HLO_CaseOp: HLO_Op<"case", [RecursiveSideEffects]>,
-      BASE_HLO_CaseOp {
+def HLO_CaseOp: HLO_Op<"case", [
+      RecursiveSideEffects,
+      SingleBlockImplicitTerminator<"ReturnOp">
+    ]>, BASE_HLO_CaseOp {
 
   let arguments = (ins
     I32Tensor:$index,
     Variadic<HLO_TensorOrTuple>:$branch_operands
   );
 
-  let regions = (region VariadicRegion<AnyRegion>:$branches);
+  let regions = (region VariadicRegion<SizedRegion<1>>:$branches);
 
   let results = (outs Variadic<HLO_TensorOrTuple>);
 
   let hasCustomHLOConverter = 1;
+
+  let hasCanonicalizer = 1;
 }
 
 
-def HLO_WhileOp: HLO_Op<"while", [RecursiveSideEffects,
-                                  SameOperandsAndResultType]>,
-                 BASE_HLO_WhileOp {
+def HLO_WhileOp: HLO_Op<"while", [
+      RecursiveSideEffects,
+      SameOperandsAndResultType
+    ]>, BASE_HLO_WhileOp {
   let arguments = (ins HLO_TensorOrTuple:$val);
 
-  let regions = (region AnyRegion:$cond, AnyRegion:$body);
+  let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
 
   let results = (outs HLO_TensorOrTuple);
 
@@ -677,7 +686,8 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
 def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
     SameOperandsAndResultShape,
     DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-    ["reifyReturnTypeShapes"]>]>, BASE_HLO_CompareOp {
+        ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>]>,
+    BASE_HLO_CompareOp {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,
@@ -827,7 +837,7 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
 
 def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim", [
     NoSideEffect, DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-    ["reifyReturnTypeShapes"]>]> {
+    ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
   string summary = "Broadcast a tensor into the given dynamic shape by adding dimensions.";
   string description = [{
     This is a generalization of the BroadcastInDimOp which accepts its output
@@ -1114,7 +1124,8 @@ def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]>,
 // TODO(jpienaar): Add broadcastable trait.
 def HLO_SelectOp: HLO_Op<"select", [NoSideEffect,
     DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-    ["reifyReturnTypeShapes"]>, DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
     ]>, BASE_HLO_SelectOp {
   let arguments = (ins
     HLO_PredTensor:$pred,

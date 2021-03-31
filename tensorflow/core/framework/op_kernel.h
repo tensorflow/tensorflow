@@ -33,8 +33,8 @@ limitations under the License.
 #include "tensorflow/core/framework/node_properties.h"
 #include "tensorflow/core/framework/op.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/framework/rendezvous.h"
-#include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"

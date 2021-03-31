@@ -518,6 +518,12 @@ ElementsAttr QuantizeLegacy(Attribute real_value, Type tensor_type) {
                      return APInt(8, value, /*isSigned=*/true);
                    });
     return DenseElementsAttr::get(new_dense_type, quantized_attr);
+  } else if (width == 8) {
+    // This can be a state tensor, or an actual constant tensor with
+    // asymmetric range. For a state tensor, assigining correct quantization
+    // parameters is sufficient, and for constants with asymmetric range it's
+    // not correctly quantized by legacy quantizer so call the new Quantize.
+    return Quantize(real_value, tensor_type);
   } else if (width == 16) {
     if (auto uniform_type = q_type.dyn_cast<UniformQuantizedType>()) {
       auto quantized_values =

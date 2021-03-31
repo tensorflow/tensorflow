@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests mixed precision works correctly with Keras layers and models."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import os
 

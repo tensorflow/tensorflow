@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/process_util.h"
 
-#ifdef INTEL_MKL
+#if defined(ENABLE_MKL) && defined(ENABLE_ONEDNN_OPENMP)
 #ifdef _OPENMP
 #include <omp.h>
 #endif  // _OPENMP
-#endif  // INTEL_MKL
+#endif  // defined(ENABLE_MKL) && defined(ENABLE_ONEDNN_OPENMP)
 #include <string.h>
 
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -101,7 +101,7 @@ int32 NumIntraOpThreadsFromEnvironment() {
   const char* val = std::getenv("TF_NUM_INTRAOP_THREADS");
   return (val && strings::safe_strto32(val, &num)) ? num : 0;
 }
-#if defined(ENABLE_ONEDNN_OPENMP) && defined(INTEL_MKL)
+#if defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_MKL)
 int32 OMPThreadsFromEnvironment() {
   // 1) std::getenv is thread-safe (as long as no other function modifies the
   // host env) from C++11 onward. 2) Most of TF code (except tests and
@@ -121,15 +121,15 @@ int32 DefaultNumIntraOpThreads() {
   // Default to the maximum parallelism for the current process.
   return port::MaxParallelism();
 }
-#endif  // defined(ENABLE_ONEDNN_OPENMP) && defined(INTEL_MKL)
+#endif  // defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_MKL)
 int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
   const int32 inter_op = options.config.inter_op_parallelism_threads();
   if (inter_op > 0) return inter_op;
   const int32 env_inter_op = GetEnvNumInterOpThreads();
   if (env_inter_op > 0) return env_inter_op;
 
-#if defined(ENABLE_ONEDNN_OPENMP) && defined(INTEL_MKL)
-  if (!DisableMKL()) {
+#if defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_MKL)
+  if (IsMKLEnabled()) {
     // MKL library executes ops in parallel using OMP threads.
     // Setting inter_op conservatively to avoid thread oversubscription that
     // could lead to severe perf degradations and OMP resource exhaustion.
@@ -149,7 +149,7 @@ int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
         << ". Tune using inter_op_parallelism_threads for best performance.";
     return mkl_inter_op;
   }
-#endif  // defined(ENABLE_ONEDNN_OPENMP) && defined(INTEL_MKL)
+#endif  // defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_MKL)
   return DefaultNumInterOpThreads();
 }
 

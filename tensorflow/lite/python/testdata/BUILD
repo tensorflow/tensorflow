@@ -149,6 +149,8 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:tensor",
     ],
     alwayslink = 1,
 )

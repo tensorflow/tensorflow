@@ -1273,6 +1273,15 @@ class XlaBuilder {
       absl::Span<const int64> base_dilations,
       absl::Span<const int64> window_dilations,
       absl::Span<const std::pair<int64, int64>> padding);
+  friend XlaOp ReduceWindowWithGeneralPadding(
+      absl::Span<const XlaOp> operands, absl::Span<const XlaOp> init_values,
+      const XlaComputation& computation,
+      absl::Span<const int64> window_dimensions,
+      absl::Span<const int64> window_strides,
+      absl::Span<const int64> base_dilations,
+      absl::Span<const int64> window_dilations,
+      absl::Span<const std::pair<int64, int64>> padding);
+
   friend XlaOp CrossReplicaSum(XlaOp operand,
                                absl::Span<const ReplicaGroup> replica_groups);
   friend XlaOp AllGather(XlaOp operand, int64 all_gather_dimension,
@@ -2156,6 +2165,14 @@ XlaOp ReduceWindow(absl::Span<const XlaOp> operands,
 // returned by MakePadding().
 XlaOp ReduceWindowWithGeneralPadding(
     XlaOp operand, XlaOp init_value, const XlaComputation& computation,
+    absl::Span<const int64> window_dimensions,
+    absl::Span<const int64> window_strides,
+    absl::Span<const int64> base_dilations,
+    absl::Span<const int64> window_dilations,
+    absl::Span<const std::pair<int64, int64>> padding);
+XlaOp ReduceWindowWithGeneralPadding(
+    absl::Span<const XlaOp> operands, absl::Span<const XlaOp> init_values,
+    const XlaComputation& computation,
     absl::Span<const int64> window_dimensions,
     absl::Span<const int64> window_strides,
     absl::Span<const int64> base_dilations,

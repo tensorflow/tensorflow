@@ -1454,7 +1454,9 @@ def main():
         'adding "--config=<>" to your build command. See .bazelrc for more '
         'details.')
   config_info_line('mkl', 'Build with MKL support.')
-  config_info_line('mkl_aarch64', 'Build with oneDNN support for Aarch64.')
+  config_info_line(
+      'mkl_aarch64',
+      'Build with oneDNN and Compute Library for the Arm Architecture (ACL).')
   config_info_line('monolithic', 'Config for mostly static monolithic build.')
   config_info_line('numa', 'Build with NUMA support.')
   config_info_line(

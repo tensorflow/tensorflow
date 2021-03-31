@@ -12,14 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras initializer serialization / deserialization.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Keras initializer serialization / deserialization."""
 
 import threading
-import six
 
 from tensorflow.python import tf2
 from tensorflow.python.keras.initializers import initializers_v1
@@ -184,7 +179,7 @@ def get(identifier):
     return None
   if isinstance(identifier, dict):
     return deserialize(identifier)
-  elif isinstance(identifier, six.string_types):
+  elif isinstance(identifier, str):
     identifier = str(identifier)
     return deserialize(identifier)
   elif callable(identifier):

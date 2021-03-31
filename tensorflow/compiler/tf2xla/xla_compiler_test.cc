@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -1018,6 +1019,72 @@ TEST_F(XlaCompilerTest, LocalFunctionWithWrongArgumentsFail) {
   // Local flib lookup failure.
   EXPECT_TRUE(absl::StrContains(status.error_message(), "Attr T is not found"))
       << status.error_message();
+}
+
+FunctionDef SliceFn() {
+  return FunctionDefHelper::Define(
+      // Name
+      "SliceFn",
+      // Args
+      {"x: T", "begin: Index", "size: Index"},
+      // Return values
+      {"y: T"},
+      // Attr def
+      {"T: {float, double, int32, int64}", "Index: {int32,int64}"},
+      // Nodes
+      {{{"y"},
+        "Slice",
+        {"x", "begin", "size"},
+        {{"T", "$T"}, {"Index", "$Index"}}}});
+}
+
+TEST_F(XlaCompilerTest, SliceWithDynamicBegins) {
+  // Certain operations in a function, "Slice" for example, support both dynamic
+  // inputs and static inputs. This test checks that dynamic inputs can also
+  // be supported in a function call.
+  XlaCompiler compiler(DefaultOptions());
+
+  FunctionDefLibrary flib;
+  *flib.add_function() = SliceFn();
+
+  TF_ASSERT_OK(flib_def_->AddFunctionDef(SliceFn()));
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto value = ops::Const<int32>(scope.WithOpName("shape"), {5}, {1});
+  auto begin = ops::_Arg(scope.WithOpName("arg"), DT_INT32, 0);
+  auto size = ops::Const<int32>(scope.WithOpName("value"), {1}, {1});
+
+  TF_EXPECT_OK(scope.graph()->AddFunctionLibrary(flib));
+
+  NodeDef def;
+  TF_ASSERT_OK(NodeDefBuilder("slice", "SliceFn", flib_def_.get())
+                   .Input(value.name(), 0, DT_INT32)
+                   .Input(begin.node()->name(), 1, DT_INT32)
+                   .Input(size.name(), 2, DT_INT32)
+                   .Finalize(&def));
+  Status status;
+  Node* slice = scope.graph()->AddNode(def, &status);
+  TF_ASSERT_OK(status);
+  TF_ASSERT_OK(scope.DoShapeInference(slice));
+  scope.graph()->AddEdge(value.node(), 0, slice, 0);
+  scope.graph()->AddEdge(begin.node(), 0, slice, 1);
+  scope.graph()->AddEdge(size.node(), 0, slice, 2);
+
+  auto retval = ops::_Retval(scope.WithOpName("retval"), Output(slice), 0);
+
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  // Builds a description of the argument.
+  std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({1});
+
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "slice",
+                                     std::move(graph), args, &result));
 }
 
 void RunAndCheckVariablesComputation(

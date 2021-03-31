@@ -212,6 +212,8 @@ def LHLO_ReduceOp: LHLO_Op<"reduce", [SameVariadicOperandSize]>, BASE_HLO_Reduce
   );
 
   let regions = (region SizedRegion<1>:$body);
+
+  let hasCanonicalizer = 1;
 }
 
 def LHLO_ReduceWindowOp: LHLO_Op<"reduce_window", []>, BASE_HLO_ReduceWindowOp {

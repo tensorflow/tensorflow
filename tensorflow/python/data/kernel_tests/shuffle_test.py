@@ -355,20 +355,18 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCheckpointLargeShuffleBuffer(self):
-    # Tensor of size 100M
+    # Tensor of size 512M
     dataset = dataset_ops.Dataset.from_tensors(
-        array_ops.ones((25, 1000, 1000), dtype=dtypes.float32))
+        array_ops.ones((128, 1024, 1024), dtype=dtypes.float32))
     dataset = dataset.repeat()
-    # Shuffle 25 tensors to exceed the 2GB protocol buffer limit
-    dataset = dataset.shuffle(25)
-
+    # Set shuffle buffer size to 5 to exceed the 2GB protobuf limit.
+    dataset = dataset.shuffle(5)
     iterator = iter(dataset)
     next(iterator)  # request an element to fill the shuffle buffer
     ckpt = trackable_utils.Checkpoint(iterator=iterator)
     manager = checkpoint_management.CheckpointManager(
         ckpt, self.get_temp_dir(), max_to_keep=1)
     manager.save()
-    ckpt.restore(manager.latest_checkpoint)
 
 
 class ShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,

@@ -4,8 +4,8 @@
 // another one for the output, an no returned values.
 // CHECK-LABEL: func @main
 // CHECK-SAME:  %[[ARG0:.*]]: memref<2x2xf32> {lmhlo.alloc = 1 : index, lmhlo.params = 0 : index},
-// CHECK-SAME:  %[[ARG1:.*]]: memref<16xi8> {lmhlo.alloc = 0 : index, lmhlo.liveout = true}
-// CHECK-SAME: ) {
+// CHECK-SAME:  %[[ARG1:.*]]: memref<16xi8> {lmhlo.alloc = 0 : index, lmhlo.output_index = dense<> : tensor<0xi64>}
+// CHECK-SAME: ) {{.*}} {
 func @main(%value: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // The only expected instruction is a copy from the input into the output.
   // CHECK: %[[C0:.*]] = constant 0 : index

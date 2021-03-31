@@ -75,7 +75,9 @@ class TestDelegate;  // Class for friend declarations.
 /// if (InterpreterBuilder(*model, resolver)(&interpreter) != kTfLiteOk) {
 ///   // Return failure.
 /// }
-/// interpreter->AllocateTensors();
+/// if (interpreter->AllocateTensors() != kTfLiteOk) {
+///   // Return failure.
+/// }
 ///
 /// auto input = interpreter->typed_tensor<float>(0);
 /// for (int i = 0; i < input_size; i++) {
@@ -428,7 +430,9 @@ class Interpreter {
   // expensive. This *must be* called after the interpreter has been created
   // and before running inference (and accessing tensor buffers), and *must be*
   // called again if (and only if) an input tensor is resized. Returns status of
-  // success or failure.
+  // success or failure.  Will fail if any of the ops in the model (other than
+  // those which were rewritten by delegates, if any) are not supported by the
+  // Interpreter's OpResolver.
   TfLiteStatus AllocateTensors();
 
   /// Invoke the interpreter (run the whole graph in dependency order).
@@ -720,6 +724,10 @@ class Interpreter {
   void SetSignatureDef(std::vector<SignatureDef> signature_defs) {
     signature_defs_ = std::move(signature_defs);
   }
+
+  // Enables preserving intermediates for debugging.  Should only be set by
+  // InterpreterBuilder before allocating any tensors.
+  TfLiteStatus PreserveAllTensorsExperimental();
 
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive

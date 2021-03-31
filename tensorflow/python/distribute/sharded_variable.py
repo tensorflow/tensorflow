@@ -299,15 +299,16 @@ class ShardedVariableMixin(trackable.Trackable):
       raise ValueError(
           'All `Variables`s must have the same shapes except for the first '
           'axis, found {}'.format([v.shape for v in variables]))
-    first_dim = sum(int(v.shape[0]) for v in variables)
-    self._shape = tensor_shape.TensorShape([first_dim] + first_var.shape[1:])
+    first_dim = sum(int(v.shape.as_list()[0]) for v in variables)
+    self._shape = tensor_shape.TensorShape([first_dim] +
+                                           first_var.shape.as_list()[1:])
     self._var_offsets = [
         [0 for _ in range(len(first_var.shape))] for _ in range(len(variables))
     ]
     for i in range(1, len(variables)):
       # Always partition on the first axis. Offsets on other axes are 0.
       self._var_offsets[i][0] += (
-          self._var_offsets[i - 1][0] + variables[i - 1].shape[0])
+          self._var_offsets[i - 1][0] + variables[i - 1].shape.as_list()[0])
 
     save_slice_info = [v._get_save_slice_info() for v in variables]  # pylint: disable=protected-access
     if any(slice_info is not None for slice_info in save_slice_info):

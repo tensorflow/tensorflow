@@ -138,8 +138,8 @@ func @equal() -> (i1, i1, i1, i1) {
   %diff_str = tfr.equal %3,%5 -> i1
   return %same_type, %diff_type, %same_str, %diff_str  : i1, i1, i1, i1
 
-// CANON-NEXT: %true = constant true
-// CANON-NEXT: %false = constant false
+// CANON-DAG: %true = constant true
+// CANON-DAG: %false = constant false
 // CANON-NEXT: return %true, %false, %true, %false : i1, i1, i1, i1
 }
 

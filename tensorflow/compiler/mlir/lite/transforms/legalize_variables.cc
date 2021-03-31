@@ -144,7 +144,7 @@ class LegalizeVariables
 
     SymbolTable symbol_table(module);
     ConversionTarget target(getContext());
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     patterns.insert<LegalizeVariablesPattern<TF::ReadVariableOp>,
                     LegalizeVariablesPattern<TF::AssignVariableOp>>(
         &getContext(), &global_tensor_id, symbol_table);

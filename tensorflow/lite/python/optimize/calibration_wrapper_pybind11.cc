@@ -12,8 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+#include "pybind11/functional.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
+#include "pybind11/stl.h"
 #include "tensorflow/lite/python/optimize/calibration_wrapper.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
@@ -30,9 +33,13 @@ PYBIND11_MODULE(_pywrap_tensorflow_lite_calibration_wrapper, m) {
     return tensorflow::PyoOrThrow(AddIntermediateTensors(data.ptr()));
   });
   py::class_<CalibrationWrapper>(m, "CalibrationWrapper")
-      .def(py::init([](py::handle& data) {
-        auto* wrapper =
-            ::CalibrationWrapper::CreateWrapperCPPFromBuffer(data.ptr());
+      .def(py::init([](py::handle& data,
+                       const std::vector<std::string>& registerers_by_name,
+                       const std::vector<std::function<void(uintptr_t)>>&
+                           registerers_by_func) {
+        std::string error;
+        auto* wrapper = ::CalibrationWrapper::CreateWrapperCPPFromBuffer(
+            data.ptr(), registerers_by_name, registerers_by_func, &error);
         if (PyErr_Occurred()) {
           throw py::error_already_set();
         }

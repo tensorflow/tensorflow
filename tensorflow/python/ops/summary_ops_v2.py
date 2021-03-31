@@ -272,19 +272,13 @@ class SummaryWriter(object):
 class ResourceSummaryWriter(SummaryWriter):
   """Implementation of SummaryWriter using a SummaryWriterInterface resource."""
 
-  def __init__(self,
-               shared_name,
-               init_op_fn,
-               name=None,
-               v2=False,
-               metadata=None):
+  def  __init__(self, shared_name, init_op_fn, name=None, v2=False):
     self._resource = gen_summary_ops.summary_writer(
         shared_name=shared_name, name=name)
     # TODO(nickfelt): cache other constructed ops in graph mode
     self._init_op_fn = init_op_fn
     self._init_op = init_op_fn(self._resource)
     self._v2 = v2
-    self._metadata = {} if metadata is None else metadata
     self._closed = False
     if context.executing_eagerly():
       self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
@@ -377,7 +371,8 @@ class ResourceSummaryWriter(SummaryWriter):
     """Flushes any buffered data."""
     if self._v2 and context.executing_eagerly() and self._closed:
       return
-    return _flush_fn(writer=self)
+    with ops.device("cpu:0"):
+      return gen_summary_ops.flush_summary_writer(self._resource)
 
   def close(self):
     """Flushes and closes the summary writer."""
@@ -512,8 +507,7 @@ def create_file_writer_v2(logdir,
               flush_millis=flush_millis,
               filename_suffix=filename_suffix),
           name=name,
-          v2=True,
-          metadata={"logdir": logdir})
+          v2=True)
 
 
 def create_file_writer(logdir,
@@ -1053,10 +1047,10 @@ def flush(writer=None, name=None):
   This operation blocks until that finishes.
 
   Args:
-    writer: The `tf.summary.SummaryWriter` resource to flush.
-      The thread default will be used if this parameter is None.
-      Otherwise a `tf.no_op` is returned.
-    name: A name for the operation (optional).
+    writer: The `tf.summary.SummaryWriter` to flush. If None, the current
+      default writer will be used instead; if there is no current writer, this
+      returns `tf.no_op`.
+    name: Ignored legacy argument for a name for the operation.
 
   Returns:
     The created `tf.Operation`.
@@ -1065,16 +1059,12 @@ def flush(writer=None, name=None):
     writer = _summary_state.writer
     if writer is None:
       return control_flow_ops.no_op()
-  if isinstance(writer, ResourceSummaryWriter):
-    resource = writer._resource  # pylint: disable=protected-access
+  if isinstance(writer, SummaryWriter):
+    return writer.flush()
   else:
-    # Assume we were passed a raw resource tensor.
-    resource = writer
-  with ops.device("cpu:0"):
-    return gen_summary_ops.flush_summary_writer(resource, name=name)
-
-
-_flush_fn = flush  # for within SummaryWriter.flush()
+    # Legacy fallback in case we were passed a raw resource tensor.
+    with ops.device("cpu:0"):
+      return gen_summary_ops.flush_summary_writer(writer, name=name)
 
 
 def eval_dir(model_dir, name=None):
@@ -1277,15 +1267,15 @@ def trace_export(name, step=None, profiler_outdir=None):
     step: Explicit `int64`-castable monotonic step value for this summary. If
       omitted, this defaults to `tf.summary.experimental.get_step()`, which must
       not be None.
-    profiler_outdir: Output directory for profiler. This is only used when the
-      profiler was enabled when the trace was started. In that case, if there is
-      a logdir-based default SummaryWriter, this defaults to the same directory,
-      but otherwise the argument must be passed.
+    profiler_outdir: Output directory for profiler. It is required when profiler
+      is enabled when trace was started. Otherwise, it is ignored.
 
   Raises:
     ValueError: if a default writer exists, but no step was provided and
       `tf.summary.experimental.get_step()` is None.
   """
+  # TODO(stephanlee): See if we can remove profiler_outdir and infer it from
+  # the SummaryWriter's logdir.
   global _current_trace_context
 
   if ops.inside_function():
@@ -1299,14 +1289,8 @@ def trace_export(name, step=None, profiler_outdir=None):
     if _current_trace_context is None:
       raise ValueError("Must enable trace before export.")
     graph, profiler = _current_trace_context  # pylint: disable=redefined-outer-name
-    if profiler_outdir is None \
-        and isinstance(_summary_state.writer, ResourceSummaryWriter):
-      logdir = _summary_state.writer._metadata.get("logdir")  # pylint: disable=protected-access
-      if logdir is not None:
-        profiler_outdir = logdir
     if profiler and profiler_outdir is None:
-      raise ValueError("Must set profiler_outdir or "
-                       "enable summary writer with logdir.")
+      raise ValueError("Required profiler_outdir is not specified")
 
   run_meta = context.context().export_run_metadata()
 

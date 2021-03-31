@@ -35,6 +35,7 @@ class RangeBenchmark(benchmark_base.DatasetBenchmarkBase):
         num_elements=num_elements,
         extras={
             "model_name": "range.benchmark.%d" % benchmark_id,
+            "parameters": "%d.%s" % (num_elements, autotune),
         },
         name="modeling_%s" % ("on" if autotune else "off"))
 

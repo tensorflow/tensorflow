@@ -302,8 +302,10 @@ message DebugOptions {
   // reached.
   int32 xla_multiheap_size_constraint_per_heap = 142;
 
-  // Enable detailed logging into vlog.
-  bool xla_detailed_logging = 143;
+  // Enable detailed logging into vlog and xla dumping. If this is disabled, no
+  // compilation summary will be printed in the end of computation and no hlo
+  // modules will be dumped.
+  bool xla_detailed_logging_and_dumping = 143;
 
   // Overrides normal multi-threaded compilation settting to use this many
   // threads. Setting to 0 (the default value) means no enforcement.

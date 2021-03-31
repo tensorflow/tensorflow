@@ -8,7 +8,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # CPU-only tests should use tf_py_test, GPU tests use cuda_py_test
@@ -1121,7 +1121,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "sparse_to_dense_op_py_test",
     size = "small",
     srcs = ["sparse_to_dense_op_py_test.py"],

@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/map_hlo_to_lhlo_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
@@ -564,7 +565,8 @@ class HloToLhloTensorStoreOpLegacyConverter
 struct HloLegalizeToLhlo
     : public PassWrapper<HloLegalizeToLhlo, OperationPass<ModuleOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<lmhlo::LmhloDialect>();
+    registry.insert<lmhlo::LmhloDialect, memref::MemRefDialect,
+                    shape::ShapeDialect>();
   }
 
  public:
@@ -572,8 +574,8 @@ struct HloLegalizeToLhlo
   HloLegalizeToLhlo(const HloLegalizeToLhlo& o) {}
 
   void runOnOperation() override {
-    OwningRewritePatternList patterns;
     auto& context = getContext();
+    OwningRewritePatternList patterns(&context);
     ConversionTarget target(context);
     target.addLegalDialect<lmhlo::LmhloDialect>();
     target.addLegalDialect<StandardOpsDialect>();
@@ -608,16 +610,14 @@ struct HloLegalizeToLhlo
     });
 
     populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
-    populateFuncOpTypeConversionPattern(patterns, &context, converter);
-    populateCallOpTypeConversionPattern(patterns, &context, converter);
-    populateBranchOpInterfaceTypeConversionPattern(patterns, &context,
-                                                   converter);
-    populateReturnOpTypeConversionPattern(patterns, &context, converter);
-    populateEliminateBufferizeMaterializationsPatterns(&context, converter,
-                                                       patterns);
+    populateFuncOpTypeConversionPattern(patterns, converter);
+    populateCallOpTypeConversionPattern(patterns, converter);
+    populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
+    populateReturnOpTypeConversionPattern(patterns, converter);
+    populateEliminateBufferizeMaterializationsPatterns(converter, patterns);
 
-    populateShapeStructuralTypeConversionsAndLegality(&context, converter,
-                                                      patterns, target);
+    populateShapeStructuralTypeConversionsAndLegality(converter, patterns,
+                                                      target);
 
     // TODO(b/175789537) Remove this pattern.
     patterns.insert<HloToLhloTensorStoreOpLegacyConverter>(&context);

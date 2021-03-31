@@ -14,7 +14,7 @@ package(
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/tools/pip_package:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -856,12 +856,13 @@ distribute_py_test(
     ],
 )
 
-tf_py_test(
+distribute_py_test(
     name = "parameter_server_training_test",
     srcs = ["parameter_server_training_test.py"],
     python_version = "PY3",
     shard_count = 1,
     tags = [
+        "multi_and_single_gpu",
         "no_tfrt",  # TODO(b/180537361): Reenable TFRT after the issue is resolved.
     ],
     deps = [
@@ -898,6 +899,7 @@ distribute_py_test(
     shard_count = 50,
     tags = [
         "multi_gpu",
+        "no_oss",  # TODO(b/183640564): Reenable
         "no_tfrt",  # TODO(b/180537361): Reenable TFRT after the issue is resolved.
     ],
     deps = [
