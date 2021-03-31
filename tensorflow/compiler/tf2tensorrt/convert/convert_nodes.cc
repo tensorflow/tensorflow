@@ -2990,7 +2990,7 @@ Status Converter::SqueezeTensor(nvinfer1::ITensor* input,
                     input_dims->end());
   // Reshape tensor.
   nvinfer1::Dims new_dims;
-  VLOG(2) << "input_dims" << input_dims;
+  VLOG(2) << "input_dims: " << input_dims;
   TF_RETURN_IF_ERROR(ContainerToTrtDims(*input_dims, &new_dims));
   TF_RETURN_IF_ERROR(PrepareTensorForShape(
       params->converter, TRT_TensorOrWeights(input), new_dims,
@@ -5117,6 +5117,13 @@ Status ConvertSplitHelper(OpConverterParams* params,
   int trt_axis;
   TF_RETURN_IF_ERROR(ConvertAxis(tf_axis, dims.nbDims, node_def.name(),
                                  params->use_implicit_batch, &trt_axis));
+
+  if (dims.d[trt_axis] < 0) {
+    return errors::InvalidArgument(
+        "Dimension ", tf_axis, " must have statically defined dimensions, at ",
+        node_def.name());
+  }
+
   // Dimension must equal num_splits for Unstack (when squeeze_after is true)
   if (squeeze_after && dims.d[trt_axis] != num_splits) {
     return errors::InvalidArgument(
@@ -5127,7 +5134,7 @@ Status ConvertSplitHelper(OpConverterParams* params,
   if (dims.d[trt_axis] % num_splits != 0) {
     return errors::InvalidArgument(
         "Dimension ", tf_axis, " of size ", dims.d[trt_axis],
-        " is not evenly divisble by ", num_splits, ", at ", node_def.name());
+        " is not evenly divisible by ", num_splits, ", at ", node_def.name());
   }
 
   // Create parameters for StridedSliceHelper.
@@ -5135,33 +5142,59 @@ Status ConvertSplitHelper(OpConverterParams* params,
   // will change.
   std::vector<int> begin(dims.nbDims, 0);
   // Determine size of split. Slice will get the full length of all dims, except
-  // the one being split.
+  // the one being split. Undefined dims (-1) will translate to a size of -1
+  // which will tell StridedSlice to take full length of that dim.
   std::vector<int> size(dims.d, dims.d + dims.nbDims);
   const int split_size_on_axis = dims.d[trt_axis] / num_splits;
   size[trt_axis] = split_size_on_axis;
   // Stride will always be 1
   std::vector<int> stride(dims.nbDims, 1);
   // Add dummy batch dimension
-  begin.insert(begin.begin(), 0);
-  size.insert(size.begin(), 1);
-  stride.insert(stride.begin(), 1);
+  if (params->use_implicit_batch) {
+    begin.insert(begin.begin(), 0);
+    size.insert(size.begin(), 1);
+    stride.insert(stride.begin(), 1);
+  }
   // Create final shape for Unpack/Unstack, where split axis is squeezed.
   nvinfer1::Dims final_shape_for_unpack;
   nvinfer1::Dims* final_shape_for_unpack_ptr = nullptr;
-  if (squeeze_after) {
+
+  // We can't use final_shape_for_unpack_ptr when input dimensions are not
+  // fully defined.
+  const bool is_dynamic_shape = !HasStaticShape(dims);
+  if (squeeze_after && !is_dynamic_shape) {
     std::vector<int> size_after_squeeze(size);
-    size_after_squeeze.erase(size_after_squeeze.begin() + trt_axis + 1);
-    TF_RETURN_IF_ERROR(ContainerToTrtDims(
-        size_after_squeeze, &final_shape_for_unpack, /*ignore_frst_dim=*/true));
+    const int tf_axis = trt_axis + (params->use_implicit_batch ? 1 : 0);
+    size_after_squeeze.erase(size_after_squeeze.begin() + tf_axis);
+    TF_RETURN_IF_ERROR(ContainerToTrtDims(size_after_squeeze,
+                                          &final_shape_for_unpack,
+                                          /*ignore_first_dim=*/
+                                          params->use_implicit_batch));
     final_shape_for_unpack_ptr = &final_shape_for_unpack;
   }
 
   // Slice the input. ConvertStridedSliceHelper will push the outputs onto
   // params->outputs.
   for (int i = 0; i < num_splits; ++i) {
-    begin[trt_axis + 1] = i * split_size_on_axis;
+    const int tf_axis = trt_axis + (params->use_implicit_batch ? 1 : 0);
+    begin[tf_axis] = i * split_size_on_axis;
     TF_RETURN_IF_ERROR(ConvertStridedSliceHelper(
-        params, input, begin, size, stride, final_shape_for_unpack_ptr, i));
+        params, input, begin, size, stride, final_shape_for_unpack_ptr,
+        /*op_instance=*/i));
+  }
+  if (params->validation_only) return Status::OK();
+
+  // Squeeze for dynamic shapes
+  if (squeeze_after && is_dynamic_shape) {
+    for (int i = 0; i < params->outputs->size(); i++) {
+      nvinfer1::ITensor* output_tensor = nullptr;
+      std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
+      input_dims[trt_axis] = 0;
+      TF_RETURN_IF_ERROR(params->converter->SqueezeTensor(
+          params->outputs->at(i).tensor(), &input_dims, params,
+          &output_tensor));
+      (*params->outputs)[i] = TRT_TensorOrWeights(output_tensor);
+    }
   }
   return Status::OK();
 }

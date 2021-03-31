@@ -363,10 +363,11 @@ class PolicyV1(Policy):
     else:
       self._using_default_loss_scale = False
     if loss_scale and self._compute_dtype not in (None, 'float16'):
-      tf_logging.warn('Creating a Policy with a loss scale is only useful for '
-                      'float16 policies. You passed loss_scale=%r for policy '
-                      '%s. Consider not passing any loss_scale instead.' %
-                      (loss_scale, name))
+      tf_logging.warning(
+          'Creating a Policy with a loss scale is only useful for '
+          'float16 policies. You passed loss_scale=%r for policy '
+          '%s. Consider not passing any loss_scale instead.' %
+          (loss_scale, name))
     self._loss_scale = keras_loss_scale_module.get(loss_scale)
 
   @property

@@ -791,6 +791,7 @@ tf_py_test(
     name = "sql_dataset_test",
     size = "small",
     srcs = ["sql_dataset_test.py"],
+    shard_count = 4,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",

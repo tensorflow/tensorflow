@@ -10,7 +10,6 @@ load(
     "tf_cc_tests",
     "tf_copts",
     "tf_cuda_library",
-    "tf_gen_options_header",
 )
 
 # buildifier: disable=same-origin-load
@@ -23,7 +22,6 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_generate_proto_text_sources")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_selective_registration_deps")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -157,8 +155,6 @@ exports_files(
         "op.h",
         "op_def_builder.h",
         "op_def_util.h",
-        "registration_options",
-        "selective_registration.h",
         "shape_inference.h",
     ],
     visibility = ["//tensorflow/core:__subpackages__"],
@@ -218,7 +214,6 @@ filegroup(
         "reader_op_kernel.h",
         "register_types.h",
         "register_types_traits.h",
-        "registration_options.h",
         "rendezvous.h",
         "resource_handle.h",
         "resource_mgr.h",
@@ -226,7 +221,6 @@ filegroup(
         "resource_var.h",
         "run_handler.h",
         "run_handler_util.h",
-        "selective_registration.h",
         "session_state.h",
         "shape_inference.h",
         "shared_ptr_variant.h",
@@ -249,6 +243,8 @@ filegroup(
         "variant_op_registry.h",
         "variant_tensor_data.h",
         "versions.h",
+        "//tensorflow/core/framework/registration:options.h",
+        "//tensorflow/core/framework/registration:registration.h",
     ],
 )
 
@@ -405,7 +401,6 @@ filegroup(
         "reader_interface.h",
         "reader_op_kernel.h",
         "register_types_traits.h",
-        "registration_options.h",
         "rendezvous.cc",
         "rendezvous.h",
         "resource_mgr.cc",
@@ -417,7 +412,6 @@ filegroup(
         "run_handler.h",
         "run_handler_util.cc",
         "run_handler_util.h",
-        "selective_registration.h",
         "session_state.h",
         "shape_inference.cc",
         "shape_inference.h",
@@ -430,6 +424,8 @@ filegroup(
         "thread_factory.h",
         "versions.cc",
         "versions.h",
+        "//tensorflow/core/framework/registration:options.h",
+        "//tensorflow/core/framework/registration:registration.h",
     ],
 )
 
@@ -982,24 +978,6 @@ cc_library(
     ],
 )
 
-tf_gen_options_header(
-    name = "gen_registration_options",
-    build_settings = {
-        "//tensorflow:enable_registration_v2": "REGISTRATION_V2",
-    },
-    output_header = "registration_options.h",
-    template = "registration_options.h.tpl",
-)
-
-cc_library(
-    name = "selective_registration",
-    hdrs = [
-        "registration_options.h",
-        "selective_registration.h",
-    ],
-    deps = tf_selective_registration_deps(),
-)
-
 cc_library(
     name = "op",
     srcs = ["op.cc"],
@@ -1007,7 +985,7 @@ cc_library(
     deps = [
         ":op_def_builder",
         ":op_def_util",
-        ":selective_registration",
+        "//tensorflow/core/framework/registration",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/gtl:map_util",
@@ -1197,7 +1175,6 @@ tf_cc_tests(
         "rendezvous_test.cc",
         "resource_mgr_test.cc",
         "resource_op_kernel_test.cc",
-        "selective_registration_test.cc",
         "shape_inference_test.cc",
         "shape_inference_testutil_test.cc",
         "tensor_shape_test.cc",

@@ -216,6 +216,10 @@ if(TFLITE_ENABLE_GPU)
     FILTER "(_test|gl_interop|gpu_api_delegate|egl_sync)\\.(cc|h)$"
   )
   populate_tflite_source_vars(
+    "delegates/gpu/cl/default" TFLITE_DELEGATES_GPU_CL_DEFAULT_SRCS
+    FILTER "(_test)\\.(cc|h)$"
+  )
+  populate_tflite_source_vars(
     "delegates/gpu/cl/kernels" TFLITE_DELEGATES_GPU_CL_KERNELS_SRCS
     FILTER "(_test)\\.(cc|h)$"
   )
@@ -265,6 +269,7 @@ if(TFLITE_ENABLE_GPU)
     ${TFLITE_SOURCE_DIR}/delegates/gpu/delegate.cc
     ${TFLITE_SOURCE_DIR}/experimental/acceleration/compatibility/android_info.cc
     ${TFLITE_DELEGATES_GPU_CL_SRCS}
+    ${TFLITE_DELEGATES_GPU_CL_DEFAULT_SRCS}
     ${TFLITE_DELEGATES_GPU_CL_KERNELS_SRCS}
     ${TFLITE_DELEGATES_GPU_COMMON_DEFAULT_SRCS}
     ${TFLITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_SRCS}

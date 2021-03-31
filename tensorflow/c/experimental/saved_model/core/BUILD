@@ -16,7 +16,7 @@ package(
         "//tensorflow/c/experimental/saved_model/internal:__pkg__",
         "//tensorflow/core:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(

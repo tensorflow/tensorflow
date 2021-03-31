@@ -172,10 +172,10 @@ def _log_signature_report(signature_def_map, excluded_signatures):
       logging.info('\'{}\' : {}'.format(signature_name, message))
 
   if not signature_def_map:
-    logging.warn('Export includes no signatures!')
+    logging.warning('Export includes no signatures!')
   elif (signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY not in
         signature_def_map):
-    logging.warn('Export includes no default signature!')
+    logging.warning('Export includes no default signature!')
 
 
 # When we create a timestamped directory, there is a small chance that the
@@ -217,8 +217,10 @@ def get_timestamped_export_dir(export_dir_base):
       return result_dir
     time.sleep(1)
     attempts += 1
-    logging.warn('Directory {} already exists; retrying (attempt {}/{})'.format(
-        compat.as_str(result_dir), attempts, MAX_DIRECTORY_CREATION_ATTEMPTS))
+    logging.warning(
+        'Directory {} already exists; retrying (attempt {}/{})'.format(
+            compat.as_str(result_dir), attempts,
+            MAX_DIRECTORY_CREATION_ATTEMPTS))
   raise RuntimeError('Failed to obtain a unique export directory name after '
                      '{} attempts.'.format(MAX_DIRECTORY_CREATION_ATTEMPTS))
 

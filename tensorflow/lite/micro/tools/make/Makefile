@@ -278,7 +278,6 @@ tensorflow/lite/micro/kernels/conv_test.cc \
 tensorflow/lite/micro/kernels/depthwise_conv_test.cc \
 tensorflow/lite/micro/kernels/dequantize_test.cc \
 tensorflow/lite/micro/kernels/detection_postprocess_test.cc \
-tensorflow/lite/micro/kernels/div_test.cc \
 tensorflow/lite/micro/kernels/elementwise_test.cc \
 tensorflow/lite/micro/kernels/elu_test.cc \
 tensorflow/lite/micro/kernels/exp_test.cc \
@@ -338,7 +337,6 @@ tensorflow/lite/micro/kernels/depthwise_conv.cc \
 tensorflow/lite/micro/kernels/depthwise_conv_common.cc \
 tensorflow/lite/micro/kernels/dequantize.cc \
 tensorflow/lite/micro/kernels/detection_postprocess.cc \
-tensorflow/lite/micro/kernels/div.cc \
 tensorflow/lite/micro/kernels/elementwise.cc \
 tensorflow/lite/micro/kernels/elu.cc \
 tensorflow/lite/micro/kernels/ethosu.cc \
@@ -432,7 +430,6 @@ tensorflow/lite/kernels/internal/reference/conv.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h \
 tensorflow/lite/kernels/internal/reference/dequantize.h \
-tensorflow/lite/kernels/internal/reference/div.h \
 tensorflow/lite/kernels/internal/reference/elu.h \
 tensorflow/lite/kernels/internal/reference/exp.h \
 tensorflow/lite/kernels/internal/reference/fill.h \
@@ -601,6 +598,14 @@ ifeq ($(findstring $(TARGET),$(TARGETS_WITHOUT_MAKEFILES)),)
 endif
 
 ifneq ($(OPTIMIZED_KERNEL_DIR),)
+  # Check that OPTIMIZED_KERNEL_DIR is valid to avoid unexpected fallback to
+	# reference kernels. See http://b/183546742 for more context.
+  PATH_TO_OPTIMIZED_KERNELS := tensorflow/lite/micro/kernels/$(OPTIMIZED_KERNEL_DIR)
+  RESULT := $(shell $(MAKEFILE_DIR)/check_optimized_kernel_dir.sh $(PATH_TO_OPTIMIZED_KERNELS))
+  ifneq ($(RESULT), SUCCESS)
+    $(error Incorrect OPTIMIZED_KERNEL_DIR: $(RESULT))
+  endif
+
   include $(MAKEFILE_DIR)/ext_libs/$(OPTIMIZED_KERNEL_DIR).inc
   # Specialize for the optimized kernels
   MICROLITE_CC_KERNEL_SRCS := $(call substitute_specialized_implementations,$(MICROLITE_CC_KERNEL_SRCS),$(OPTIMIZED_KERNEL_DIR))

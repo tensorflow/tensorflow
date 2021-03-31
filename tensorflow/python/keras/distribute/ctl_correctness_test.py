@@ -308,13 +308,9 @@ class TestDistributionStrategyDnnCorrectness(test.TestCase,
         sync_batchnorm=sync_batchnorm,
         jit_compile=False)
 
-    error_margin = 1e-2 if jit_compile else 1e-3
-    loss_error_margin = 5e-2 if jit_compile else 1e-3
-
-    self.assertAllClose(wts, wts_with_ds, atol=error_margin, rtol=error_margin)
-    self.assertAllClose(
-        loss, loss_with_ds, atol=loss_error_margin, rtol=loss_error_margin)
-    self.assertAllClose(acc, acc_with_ds, atol=error_margin, rtol=error_margin)
+    self.assertAllClose(wts, wts_with_ds, atol=1e-3, rtol=1e-3)
+    self.assertAllClose(loss, loss_with_ds, atol=1e-3, rtol=1e-3)
+    self.assertAllClose(acc, acc_with_ds, atol=1e-3, rtol=1e-3)
 
 
 if __name__ == '__main__':

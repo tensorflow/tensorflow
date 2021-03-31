@@ -80,7 +80,7 @@ class HLOClient_BroadcastBinaryElementwiseOp<
         HLOClient_Op<mnemonic,
             !listconcat(traits, [
               DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-              ["reifyReturnTypeShapes"]>])> {
+              ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>])> {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,
@@ -558,7 +558,8 @@ def HLOClient_TanOp : HLOClient_UnaryElementwiseOp<"tan",
 def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like",
     [NoSideEffect, SameOperandsAndResultShape,
      InferTypeOpInterface,
-     DeclareOpInterfaceMethods<InferShapedTypeOpInterface>,
+     DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
+         ["inferReturnTypeComponents"]>,
      NativeOpTrait<"InferTensorType">]> {
   let summary = "Constant like operator";
 
@@ -684,7 +685,9 @@ def HLOClient_BroadcastCompareOp : HLOClient_BroadcastBinaryElementwiseOp<
 
 def HLOClient_BroadcastSelectOp : HLOClient_Op<
     "broadcast_select",
-    [NoSideEffect, DeclareOpInterfaceMethods<InferShapedTypeOpInterface>]> {
+    [NoSideEffect,
+     DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
+         ["inferReturnTypeComponents"]>]> {
   string summary = "Select operator (with optional numpy-style broadcasting)";
 
   string description = [{

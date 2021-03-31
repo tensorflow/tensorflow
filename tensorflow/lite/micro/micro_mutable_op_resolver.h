@@ -193,10 +193,6 @@ class MicroMutableOpResolver : public MicroOpResolver {
                      tflite::Register_DETECTION_POSTPROCESS());
   }
 
-  TfLiteStatus AddDiv() {
-    return AddBuiltin(BuiltinOperator_DIV, tflite::Register_DIV(), ParseDiv);
-  }
-
   TfLiteStatus AddElu() {
     return AddBuiltin(BuiltinOperator_ELU, tflite::Register_ELU(), ParseElu);
   }
@@ -221,6 +217,10 @@ class MicroMutableOpResolver : public MicroOpResolver {
   TfLiteStatus AddExpandDims() {
     return AddBuiltin(BuiltinOperator_EXPAND_DIMS, Register_EXPAND_DIMS(),
                       ParseExpandDims);
+  }
+
+  TfLiteStatus AddFill() {
+    return AddBuiltin(BuiltinOperator_FILL, tflite::Register_FILL(), ParseFill);
   }
 
   TfLiteStatus AddFloor() {

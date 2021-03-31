@@ -16,7 +16,9 @@ limitations under the License.
 // This file contains the patterns to simplify shape ops that were deemed not
 // suitable for shape op canonicalization in MLIR Core.
 
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -151,6 +153,40 @@ struct BroadcastRemoveSubsumedOperandsPattern
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
+// Resolve shape of result of an operation in terms of shape of its operands
+// using the `InferShapedTypeOpInterface`. Most Linalg operations implement this
+// interface.
+struct ShapeOfOpWithReifyPerDim : public OpRewritePattern<shape::ShapeOfOp> {
+  using OpRewritePattern<shape::ShapeOfOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(shape::ShapeOfOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!op.arg().getType().isa<ShapedType>()) return failure();
+    auto arg = op.arg().dyn_cast<OpResult>();
+    if (!arg) return failure();
+    auto defining_op = dyn_cast<InferShapedTypeOpInterface>(arg.getOwner());
+    if (!defining_op) return failure();
+
+    SmallVector<SmallVector<Value>> reified_result_shape_per_dim;
+    if (failed(defining_op.reifyReturnTypeShapesPerResultDim(
+            rewriter, reified_result_shape_per_dim)))
+      return failure();
+    Value reified_result_shape = rewriter.create<tensor::FromElementsOp>(
+        op.getLoc(), reified_result_shape_per_dim[arg.getResultNumber()]);
+    rewriter.replaceOp(op, reified_result_shape);
+    return success();
+  }
+};
+
+// Simplify the shape expressions involving results of the operation. This makes
+// the operations that are still not DCE-ed because of their use in shape
+// expression dead.
+LogicalResult simplifyShapeExprs(FuncOp func, MLIRContext *context) {
+  RewritePatternSet patterns(context);
+  patterns.insert<ShapeOfOpWithReifyPerDim>(context);
+  return applyPatternsAndFoldGreedily(func, std::move(patterns));
+}
+
 struct ShapeSimplification
     : public ShapeSimplificationBase<ShapeSimplification> {
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -175,6 +211,8 @@ struct ShapeSimplification
     auto func = getFunction();
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
       return signalPassFailure();
+
+    if (failed(simplifyShapeExprs(func, context))) return signalPassFailure();
   }
 };
 

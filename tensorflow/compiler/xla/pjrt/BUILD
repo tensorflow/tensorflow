@@ -173,6 +173,16 @@ cc_library(
 )
 
 cc_library(
+    name = "metrics",
+    srcs = ["metrics.cc"],
+    hdrs = ["metrics.h"],
+    deps = [
+        "//tensorflow/core/lib/monitoring:counter",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "pjrt_stream_executor_client",
     srcs = ["pjrt_stream_executor_client.cc"],
     hdrs = ["pjrt_stream_executor_client.h"],
@@ -180,6 +190,7 @@ cc_library(
     deps = [
         ":event_pool",
         ":local_device_state",
+        ":metrics",
         ":pjrt_client",
         ":tracked_device_buffer",
         ":utils",

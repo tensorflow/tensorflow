@@ -5,7 +5,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files(["data/grace_hopper.jpg"])

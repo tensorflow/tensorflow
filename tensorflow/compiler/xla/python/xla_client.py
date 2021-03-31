@@ -415,6 +415,7 @@ def window_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
 
 XlaBuilder = _xla.XlaBuilder
 XlaComputation = _xla.XlaComputation
+XlaOp = _xla.XlaOp
 FftType = _xla.FftType
 Client = _xla.Client
 Buffer = _xla.Buffer
@@ -682,6 +683,7 @@ def make_replica_groups(replica_groups):
 
 
 Traceback = _xla.Traceback
+Frame = _xla.Frame
 
 
 @contextlib.contextmanager

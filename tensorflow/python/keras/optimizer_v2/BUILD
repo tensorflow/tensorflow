@@ -11,7 +11,7 @@ package(
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/python/training/tracking:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(

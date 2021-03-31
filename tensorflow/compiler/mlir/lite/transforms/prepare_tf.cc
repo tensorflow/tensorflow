@@ -1470,9 +1470,7 @@ void PrepareTFPass::runOnFunction() {
   // This will allow optimizing any TF_Mul->TF_Conv in the graph
   // and any expanded from FusedBatchNorm. We need to do this
   // before converting TF_Conv to TFL_Conv
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns),
-      // TODO(fengliuai): Fix the logic to work without this flag
-      /*useTopDownTraversal=*/false);
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Load the generated pattern again, so new quantization pass-through
   // will be applied.

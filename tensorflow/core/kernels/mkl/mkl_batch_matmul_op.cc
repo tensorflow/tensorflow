@@ -153,7 +153,7 @@ class BatchMatMulMkl : public OpKernel {
  private:
   bool adj_x_;
   bool adj_y_;
-  BatchMatMulV2Op<CPUDevice, Scalar> eigen_batch_mm_v2_;
+  BatchMatMulV2Op<CPUDevice, Scalar, Scalar, Scalar> eigen_batch_mm_v2_;
 
   using dims = dnnl::memory::dims;
 

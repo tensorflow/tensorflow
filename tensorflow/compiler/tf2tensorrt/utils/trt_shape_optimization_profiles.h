@@ -173,9 +173,7 @@ struct OptimizationProfileConfig {
 // before the engine is created.
 class TrtShapeOptimizationProfile {
  public:
-  TrtShapeOptimizationProfile(
-      ProfileStrategy strategy = ProfileStrategy::kImplicitBatchModeCompatible)
-      : strategy_(strategy) {}
+  TrtShapeOptimizationProfile() {}
 
   // Stores input shape information during profile_generation_mode.
   void AddShape(const std::vector<TensorShape>& shapes) {
@@ -217,8 +215,8 @@ class TrtShapeOptimizationProfile {
   // shapes collected in input_shapes_. The input_partial_shapes of the network
   // is used to ensure that the created optimization profiles are compatible
   // with the network.
-  void InitProfiles(
-      const std::vector<PartialTensorShape>& input_partial_shapes);
+  void InitProfiles(const std::vector<PartialTensorShape>& input_partial_shapes,
+                    ProfileStrategy strategy);
 
   // Returns number of created profiles.
   int GetNumProfiles() const;
@@ -233,6 +231,15 @@ class TrtShapeOptimizationProfile {
   bool HasShapeTensor() const { return has_shape_tensor_; }
 
   void SetShapeTensorMask(const nvinfer1::INetworkDefinition* network);
+
+  // Whether the optimization profiles describe input that can be handled with
+  // a static engine (only 1 profile with min=max).
+  bool IsStaticCompatible() {
+    return strategy_ == ProfileStrategy::kOptimal && profiles_.size() == 1 &&
+           !HasShapeTensor();
+    // TODO(tfeher): remove !HasShapeTensor() condition once the
+    // FixShapeValueProfile workaround is turned off.
+  }
 
  private:
   // Set of input shape vetors that we collect during profile_generation_mode.

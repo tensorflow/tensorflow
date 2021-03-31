@@ -32,7 +32,7 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
         "@FP16",
-        "@XNNPACK//:xnnpack_f32",
+        "@XNNPACK//:xnnpack_for_tflite",
     ],
 )
 

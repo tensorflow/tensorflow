@@ -463,7 +463,7 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
     OpBuilder if_eq_shapes_builder =
         if_eq_shapes_op.getThenBodyBuilder(rewriter.getListener());
     Value non_broadcast_op =
-        Adaptor::CreateOp(op, result_type, lhs, rhs, if_eq_shapes_builder);
+        Adaptor::CreateOp(op, result_type, {lhs, rhs}, if_eq_shapes_builder);
     if_eq_shapes_builder.create<scf::YieldOp>(loc, non_broadcast_op);
 
     // If shapes do not have exactly one element, nor are equal
@@ -528,7 +528,7 @@ struct ConvertUnrankedDynamicBroadcastSelectOp
 struct TransformUnrankedHloPass
     : public PassWrapper<TransformUnrankedHloPass, FunctionPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<chlo::HloClientDialect, mhlo::MhloDialect,
+    registry.insert<chlo::HloClientDialect, mhlo::MhloDialect, scf::SCFDialect,
                     shape::ShapeDialect>();
   }
 
