@@ -31,7 +31,7 @@ from tensorflow.python import _dtypes
 from tensorflow.python.util.tf_export import tf_export
 
 _np_bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
-_np_cus = _pywrap_cus.TF_cus()
+_np_cus = _pywrap_cus.TF_cus_type()
 
 
 # pylint: disable=slots-on-old-class

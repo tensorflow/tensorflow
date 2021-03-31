@@ -127,7 +127,6 @@ extern const char* const kAllToAllSymbolName = "__xla_cpu_runtime_AllToAll";
 extern const char* const kCollectivePermuteSymbolName =
     "__xla_cpu_runtime_CollectivePermute";
 extern const char* const kReplicaIdSymbolName = "__xla_cpu_runtime_ReplicaId";
-
 }  // namespace runtime
 }  // namespace cpu
 }  // namespace xla

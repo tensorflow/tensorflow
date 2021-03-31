@@ -41,8 +41,9 @@ int SignificandWidth(PrimitiveType type) {
   }
 }
 
+// todo(chenhao)
 bool IsFloatingPointType(PrimitiveType type) {
-  return type == F16 || type == F32 || type == F64 || type == BF16;
+  return type == F16 || type == F32 || type == F64 || type == BF16 || type == CUS;
 }
 
 bool IsComplexType(PrimitiveType type) { return type == C64 || type == C128; }
@@ -52,7 +53,7 @@ bool IsSignedIntegralType(PrimitiveType type) {
 }
 
 bool IsUnsignedIntegralType(PrimitiveType type) {
-  return type == U8 || type == U16 || type == U32 || type == U64;
+  return type == U8 || type == U16 || type == U32 || type == U64 || type == CUS;
 }
 
 bool IsIntegralType(PrimitiveType type) {
@@ -77,6 +78,7 @@ int BitWidth(PrimitiveType type) {
     case U32:
     case S32:
     case F32:
+    case CUS:
       return 32;
 
     case U64:

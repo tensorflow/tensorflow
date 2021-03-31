@@ -791,8 +791,6 @@ Status TensorsAreEqualImplBfloat16(const Tensor& x, const Tensor& y) {
   return Status::OK();
 }
 
-// todo(chenhao) could add test for cus
-
 // Tests if "x" and "y" are tensors of the same type, same shape, and with
 // close values. For floating-point tensors, the element-wise difference between
 // x and y must no more than atol + rtol * abs(x). For non-floating-point

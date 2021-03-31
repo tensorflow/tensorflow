@@ -74,7 +74,7 @@ limitations under the License.
   SPECIALIZE_CAST(devname, Eigen::half, std::complex<double>)         \
   SPECIALIZE_CAST(devname, Eigen::half, std::complex<float>)          \
   SPECIALIZE_CAST(devname, bfloat16, float)                           \
-  SPECIALIZE_CAST(devname, cus, float)                           \
+  SPECIALIZE_CAST(devname, cus, float)                                \
   template <typename OUT_TYPE, typename IN_OUT>                       \
   struct CastFunctor<devname, OUT_TYPE, IN_OUT> {                     \
     void operator()(const devname& d,                                 \

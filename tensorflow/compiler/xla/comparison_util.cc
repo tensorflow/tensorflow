@@ -97,11 +97,11 @@ Comparison::Type Comparison::DefaultComparisonType(PrimitiveType type) {
     case U16:
     case U32:
     case U64:
+    case CUS:
       return Type::kUnsigned;
     case F16:
     case F32:
     case BF16:
-    case CUS:
     case F64:
     case C64:
     case C128:

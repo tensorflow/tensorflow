@@ -109,9 +109,9 @@ DEFINE_PROTO_FIELD_HELPER(quint8, int);
 DEFINE_PROTO_FIELD_HELPER(qint16, int);
 DEFINE_PROTO_FIELD_HELPER(quint16, int);
 DEFINE_PROTO_FIELD_HELPER(qint32, int);
+DEFINE_PROTO_FIELD_HELPER(cus, uint32);
 DEFINE_PROTO_FIELD_HELPER(Eigen::half, half);
 DEFINE_PROTO_FIELD_HELPER(bfloat16, half);
-DEFINE_PROTO_FIELD_HELPER(cus, half);
 DEFINE_PROTO_FIELD_HELPER(complex64, scomplex);
 DEFINE_PROTO_FIELD_HELPER(complex128, dcomplex);
 
@@ -173,6 +173,23 @@ struct CopyHelper<bfloat16> {
     });
   }
 };
+
+template <>
+struct CopyHelper<cus> {
+  template <typename SrcIter>
+  static void ToArray(SrcIter begin, SrcIter end, cus* dst) {
+    std::transform(begin, end, dst, [](int x) -> cus {
+      return cus(static_cast<uint32>(x));
+    });
+  }
+  template <typename SrcIter, typename DstIter>
+  static void FromArray(SrcIter begin, SrcIter end, DstIter dst) {
+    std::transform(begin, end, dst, [](cus c) -> int {
+      return static_cast<int>(c.value);
+    });
+  }
+};
+
 
 // Overloads for complex types that store real and imaginary parts
 // at indices 2*i and 2*i+1 in float or double field.

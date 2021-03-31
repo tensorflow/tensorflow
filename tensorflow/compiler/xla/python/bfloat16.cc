@@ -343,7 +343,7 @@ PyTypeObject PyBfloat16_Type = {
     0,                                             // tp_itemsize
     nullptr,                                       // tp_dealloc
 #if PY_VERSION_HEX < 0x03080000
-    nullptr,  // tp_print
+    0,  // tp_print
 #else
     0,  // tp_vectorcall_offset
 #endif

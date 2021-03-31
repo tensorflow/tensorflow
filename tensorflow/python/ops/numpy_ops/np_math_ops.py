@@ -741,7 +741,7 @@ def rad2deg(x):
 
 
 _tf_float_types = [
-    dtypes.bfloat16, dtypes.float16, dtypes.float32, dtypes.float64
+    dtypes.bfloat16, dtypes.float16, dtypes.float32, dtypes.float64, dtypes.cus
 ]
 
 

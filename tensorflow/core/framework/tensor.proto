@@ -46,8 +46,6 @@ message TensorProto {
   // have some pointless zero padding for each value here.
   repeated int32 half_val = 13 [packed = true];
 
-  // DT_CUS todo(chenhao)
-
   // DT_FLOAT.
   repeated float float_val = 5 [packed = true];
 
@@ -85,6 +83,9 @@ message TensorProto {
 
   // DT_UINT64
   repeated uint64 uint64_val = 17 [packed = true];
+
+  // DT_CUS 
+  repeated uint32 cus_val = 18 [packed = true];
 }
 
 // Protocol buffer representing the serialization format of DT_VARIANT tensors.

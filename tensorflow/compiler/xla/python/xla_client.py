@@ -194,7 +194,7 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.U32: np.dtype('uint32'),
     PrimitiveType.U64: np.dtype('uint64'),
     PrimitiveType.BF16: np.dtype(bfloat16),
-    PrimitiveType.BF16: np.dtype(cus),
+    PrimitiveType.CUS: np.dtype(cus),
     PrimitiveType.F16: np.dtype('float16'),
     PrimitiveType.F32: np.dtype('float32'),
     PrimitiveType.F64: np.dtype('float64'),

@@ -304,7 +304,7 @@ def TF_Bfloat16 : AnyTypeOf<[BF16, TF_Bfloat16Ref], "bfloat16">;
 def TF_F32OrF64 : AnyTypeOf<[TF_Float32, TF_Float64], "32/64-bit float">;
 
 def TF_Float : AnyTypeOf<
-  [TF_Float16, TF_Float32, TF_Float64, TF_Bfloat16,
+  [TF_Float16, TF_Float32, TF_Float64, TF_Bfloat16, 
    TF_Float16Ref, TF_Float32Ref, TF_Float64Ref, TF_Bfloat16Ref],
   "floating-point">;
 

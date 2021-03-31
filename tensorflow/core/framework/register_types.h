@@ -113,7 +113,7 @@ limitations under the License.
 #define TF_CALL_quint8(m) m(::tensorflow::quint8)
 #define TF_CALL_qint32(m) m(::tensorflow::qint32)
 #define TF_CALL_bfloat16(m)
-#define TF_CALL_bfloat16(m) 
+#define TF_CALL_cus(m)
 #define TF_CALL_qint16(m) m(::tensorflow::qint16)
 
 #define TF_CALL_quint16(m) m(::tensorflow::quint16)

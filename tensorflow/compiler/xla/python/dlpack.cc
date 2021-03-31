@@ -99,6 +99,8 @@ StatusOr<DLDataType> PrimitiveTypeToDLDataType(PrimitiveType type) {
       return DLDataType{kDLFloat, 64, 1};
     case BF16:
       return DLDataType{kDLBfloat, 16, 1};
+    case CUS:
+      return DLDataType{kDLCus, 32, 1};
     case PRED:
     case C64:
     case C128:

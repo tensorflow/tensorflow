@@ -8,7 +8,6 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-// todo(chenhao) neglect cpu for now
 CastFunctorType GetCpuCastFromCus(DataType dst_dtype) {
   CURRY_TYPES3(CAST_CASE, CPUDevice, cus);
   return nullptr;

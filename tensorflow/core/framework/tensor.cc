@@ -492,10 +492,16 @@ struct ProtoHelper<bfloat16> {
 
 template <>
 struct ProtoHelper<cus> {
+  static const cus* Begin(const TensorProto& proto) {
+    return reinterpret_cast<const cus*>(proto.cus_val().begin());
+  }
+  static size_t NumElements(const TensorProto& proto) {
+    return proto.cus_val().size();
+  }
   static void Fill(const cus* data, size_t n, TensorProto* proto) {
-    proto->mutable_half_val()->Reserve(n);
+    proto->mutable_cus_val()->Reserve(n);
     for (size_t i = 0; i < n; ++i) {
-      proto->mutable_half_val()->AddAlreadyReserved(data[i].value);
+      proto->mutable_cus_val()->AddAlreadyReserved(data[i].value);
     }
   }
 };
@@ -821,7 +827,7 @@ bool Tensor::RefCountIsOne() const {
     CASE(quint16, SINGLE_ARG(STMTS))                           \
     CASE(qint16, SINGLE_ARG(STMTS))                            \
     CASE(bfloat16, SINGLE_ARG(STMTS))                          \
-    CASE(cus, SINGLE_ARG(STMTS))                          \
+    CASE(cus, SINGLE_ARG(STMTS))                               \
     CASE(Eigen::half, SINGLE_ARG(STMTS))                       \
     CASE(ResourceHandle, SINGLE_ARG(STMTS))                    \
     CASE(Variant, SINGLE_ARG(STMTS))                           \
@@ -1086,10 +1092,6 @@ inline float PrintOneElement(const Eigen::half& h, bool print_v2) {
 }
 
 inline float PrintOneElement(bfloat16 f, bool print_v2) {
-  return static_cast<float>(f);
-}
-
-inline float PrintOneElement(cus f, bool print_v2) {
   return static_cast<float>(f);
 }
 

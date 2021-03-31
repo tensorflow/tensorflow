@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PYTHON_LIB_CORE_BFLOAT16_H_
-#define TENSORFLOW_PYTHON_LIB_CORE_BFLOAT16_H_
+#ifndef TENSORFLOW_PYTHON_LIB_CORE_CUS_H_
+#define TENSORFLOW_PYTHON_LIB_CORE_CUS_H_
 
 #include <Python.h>
 
@@ -31,4 +31,4 @@ int CusNumpyType();
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PYTHON_LIB_CORE_BFLOAT16_H_
+#endif  // TENSORFLOW_PYTHON_LIB_CORE_CUS_H_

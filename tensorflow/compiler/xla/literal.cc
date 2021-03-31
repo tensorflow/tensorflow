@@ -84,7 +84,7 @@ bool LiteralProtoHasValues(const LiteralProto& proto) {
          proto.u64s_size() || proto.f32s_size() || proto.f64s_size() ||
          proto.c64s_size() || proto.c128s_size() ||
          proto.tuple_literals_size() || !proto.f16s().empty() ||
-         !proto.bf16s().empty() || !proto.u16s().empty() ||
+         !proto.bf16s().empty() || !proto.cuss().empty() || !proto.u16s().empty() ||
          !proto.s16s().empty();
 }
 
@@ -1444,6 +1444,7 @@ StatusOr<Literal> ConvertIfDestTypeMatches(const LiteralBase& src_literal,
     CONVERT_IF_TYPES_MATCH(F32)
     CONVERT_IF_TYPES_MATCH(F64)
     CONVERT_IF_TYPES_MATCH(BF16)
+    CONVERT_IF_TYPES_MATCH(CUS)
 #undef CONVERT_IF_TYPES_MATCH
     case C64:
       if (bitcast) {
@@ -1489,6 +1490,7 @@ StatusOr<Literal> ConvertSwitch(const LiteralBase& literal,
     CONVERT_IF_DEST_TYPE_MATCHES(F32)
     CONVERT_IF_DEST_TYPE_MATCHES(F64)
     CONVERT_IF_DEST_TYPE_MATCHES(BF16)
+    CONVERT_IF_DEST_TYPE_MATCHES(CUS)
 #undef CONVERT_IF_DEST_TYPE_MATCHES
       // Other types are not yet supported.
     default:
@@ -2079,10 +2081,10 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       }
       break;
     case CUS:
-      *proto->mutable_bf16s() = string(
+      *proto->mutable_cuss() = string(
           reinterpret_cast<const char*>(data<cus>().data()), size_bytes());
       if (!kLittleEndian) {
-        ConvertEndianShort(proto->mutable_bf16s());
+        ConvertEndianShort(proto->mutable_cuss());
       }
       break;
     case F32:
@@ -2208,7 +2210,7 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       }
     } break;
     case CUS: {
-      const string& s(proto.bf16s());
+      const string& s(proto.cuss());
       TF_RET_CHECK(data<cus>().size() * sizeof(cus) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
       if (!kLittleEndian) {

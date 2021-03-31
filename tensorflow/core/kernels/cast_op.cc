@@ -156,6 +156,8 @@ Status CpuCastOp::Prepare() {
     work_ = GetCpuCastFromComplex128(dst_dtype_);
   } else if (src_dtype_ == DT_BFLOAT16) {
     work_ = GetCpuCastFromBfloat(dst_dtype_);
+  } else if (src_dtype_ == DT_CUS) {
+    work_ = GetCpuCastFromCus(dst_dtype_);
   }
 
   // TODO(sesse): If CPU casting to or from Eigen::half ever becomes a

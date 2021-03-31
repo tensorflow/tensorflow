@@ -315,7 +315,7 @@ static XlaOp ErfImpl32(XlaOp x) {
   return x * EvaluatePolynomial<float>(x2, kAlpha) /
          EvaluatePolynomial<float>(x2, kBeta);
 }
-
+// todo(chenhao)
 XlaOp Erf(XlaOp x) {
   auto& b = *x.builder();
   return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {

@@ -89,6 +89,13 @@ struct hash<Eigen::bfloat16> {
     return hash<float>()(static_cast<float>(a));
   }
 };
+
+template <>
+struct hash<tensorflow::cus> {
+  std::size_t operator()(const tensorflow::cus& a) const {
+    return hash<float>()(static_cast<float>(a));
+  }
+};
 }  // namespace std
 #endif  // _MSC_VER
 

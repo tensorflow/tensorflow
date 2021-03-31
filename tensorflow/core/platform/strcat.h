@@ -120,7 +120,7 @@ class AlphaNum {
   AlphaNum(bfloat16 bf)  // NOLINT(runtime/explicit)
       : piece_(digits_, FloatToBuffer(static_cast<float>(bf), digits_)) {}
   AlphaNum(cus c)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FloatToBuffer(static_cast<float>(c), digits_)) {}
+      : piece_(digits_, FastUInt32ToBufferLeft(static_cast<uint32>(c), digits_)) {}
 
   AlphaNum(Hex hex);               // NOLINT(runtime/explicit)
 

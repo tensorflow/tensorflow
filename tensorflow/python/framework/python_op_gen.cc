@@ -52,6 +52,7 @@ const std::unordered_map<string, string> dtype_type{
     {"_dtypes.float32", "_dtypes.Float32"},
     {"_dtypes.float64", "_dtypes.Float64"},
     {"_dtypes.bfloat16", "_dtypes.BFloat16"},
+    {"_dtypes.cus", "_dtypes.cus"},
     {"_dtypes.complex64", "_dtypes.Complex64"},
     {"_dtypes.complex128", "_dtypes.Complex128"},
     {"_dtypes.int8", "_dtypes.Int8"},

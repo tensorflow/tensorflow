@@ -91,7 +91,6 @@ DEFINE(float, cus);
 
 DEFINE_ALL_TO_HALF(Eigen::half);
 DEFINE_ALL_TO_HALF(bfloat16);
-// DEFINE_ALL_TO_HALF(cus);
 DEFINE_ALL_TO_FLOAT(float);
 DEFINE_ALL_TO_FLOAT(std::complex<float>);
 

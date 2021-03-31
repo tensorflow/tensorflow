@@ -397,7 +397,7 @@ message LiteralProto {
   // The F16s, BF16s, U16s and S16s are encoded in little endian byte order
   bytes f16s = 11;
   bytes bf16s = 13;
-  bytes cus = 19;
+  bytes cuss = 19;
   bytes u16s = 16;
   bytes s16s = 17;
   repeated int64 sparse_indices = 14;

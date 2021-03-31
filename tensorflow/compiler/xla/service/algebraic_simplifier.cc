@@ -603,6 +603,10 @@ std::unique_ptr<HloInstruction> MakeScalarInstruction(HloInstruction* target,
       return HloInstruction::CreateConstant(LiteralUtil::ConvertF32ToBF16(
           LiteralUtil::CreateR0<float>(multiplier)));
       break;
+    case CUS:
+      return HloInstruction::CreateConstant(LiteralUtil::ConvertF32ToCUS(
+          LiteralUtil::CreateR0<float>(multiplier)));
+      break;
     case F32:
       return HloInstruction::CreateConstant(
           LiteralUtil::CreateR0<float>(multiplier));
@@ -616,9 +620,9 @@ std::unique_ptr<HloInstruction> MakeScalarInstruction(HloInstruction* target,
 
 Status AlgebraicSimplifierVisitor::ScalarMultiplyReduction(
     HloInstruction* dot) {
-  // We only process bfloat16 and float32 for now.
+  // We only process bfloat16 and float32 and cus for now.
   if (dot->shape().element_type() != BF16 &&
-      dot->shape().element_type() != F32) {
+      dot->shape().element_type() != F32 ){
     return Status::OK();
   }
 
@@ -1662,6 +1666,9 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
         break;
       case BF16:
         TF_RETURN_IF_ERROR(InvertConstant<bfloat16>(*c, &new_literal));
+        break;
+      case CUS:
+        TF_RETURN_IF_ERROR(InvertConstant<cus>(*c, &new_literal));
         break;
       case F64:
         TF_RETURN_IF_ERROR(InvertConstant<double>(*c, &new_literal));

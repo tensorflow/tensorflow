@@ -566,7 +566,6 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
   return tensor_proto
 # pylint: enable=invalid-name
 
-
 @tf_export("make_ndarray")
 def MakeNdarray(tensor):
   """Create a numpy ndarray from a tensor.

@@ -70,8 +70,6 @@ Status ConvertDataType(DataType dtype, Builder builder, Type* type) {
       *type = builder.getIntegerType(64, /*isSigned=*/false);
       return Status::OK();
     case DT_BFLOAT16:
-    case DT_CUS:
-      // todo(chenhao) do not need mlir for now
       *type = builder.getBF16Type();
       return Status::OK();
     case DT_COMPLEX64:

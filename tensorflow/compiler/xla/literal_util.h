@@ -221,7 +221,7 @@ class LiteralUtil {
   // If the given literal's data type is cus, converts it to a float
   // literal; otherwise, returns a copy of it. If the literal is a tuple,
   // recursively converts its elements.
-  static Literal ConvertCusToF32(const LiteralSlice& cus_literal);
+  static Literal ConvertCUSToF32(const LiteralSlice& cus_literal);
 
   // If the given literal's data type is bfloat16, converts it to a double
   // literal; otherwise, returns a copy of it. If the literal is a tuple,
@@ -231,7 +231,7 @@ class LiteralUtil {
   // If the given literal's data type is cus, converts it to a double
   // literal; otherwise, returns a copy of it. If the literal is a tuple,
   // recursively converts its elements.
-  static Literal ConvertCusToF64(const LiteralSlice& cus_literal);
+  static Literal ConvertCUSToF64(const LiteralSlice& cus_literal);
 
   // If the given literal's data type is float, converts it to a bfloat16
   // literal; otherwise, returns a copy of it. If the literal is a tuple,
@@ -241,7 +241,7 @@ class LiteralUtil {
   // If the given literal's data type is float, converts it to a cus
   // literal; otherwise, returns a copy of it. If the literal is a tuple,
   // recursively converts its elements.
-  static Literal ConvertF32ToCus(const LiteralSlice& f32_literal);
+  static Literal ConvertF32ToCUS(const LiteralSlice& f32_literal);
 
   // If the given literal's data type is float, converts it to a double
   // literal; otherwise, returns a copy of it. If the literal is a tuple,
@@ -256,7 +256,7 @@ class LiteralUtil {
   // If the given literal's data type is double, converts it to a cus
   // literal; otherwise, returns a copy of it. If the literal is a tuple,
   // recursively converts its elements.
-  static Literal ConvertF64ToCus(const LiteralSlice& f64_literal);
+  static Literal ConvertF64ToCUS(const LiteralSlice& f64_literal);
 
   // If the given literal's data type is double, converts it to a bfloat16
   // literal; otherwise, returns a copy of it. If the literal is a tuple,

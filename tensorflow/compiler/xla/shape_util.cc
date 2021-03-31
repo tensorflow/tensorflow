@@ -375,7 +375,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     case F32:
     case F64:
       return true;
-
+    // todo(chenhao) cannot assume
+    case CUS:
     case PRED:
     case U8:
     case U16:
@@ -621,6 +622,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       return sizeof(uint64);
     case BF16:
       return sizeof(float) / 2;
+    case CUS:
+      return sizeof(cus);
     case F16:
       return sizeof(float) / 2;
     case F32:

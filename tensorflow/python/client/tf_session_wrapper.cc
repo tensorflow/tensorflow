@@ -1178,6 +1178,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
       .value("TF_QUINT8", TF_QUINT8)
       .value("TF_QINT32", TF_QINT32)
       .value("TF_BFLOAT16", TF_BFLOAT16)
+      .value("TF_CUS", TF_CUS)
       .value("TF_QINT16", TF_QINT16)
       .value("TF_QUINT16", TF_QUINT16)
       .value("TF_UINT16", TF_UINT16)

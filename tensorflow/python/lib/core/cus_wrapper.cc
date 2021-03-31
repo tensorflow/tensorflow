@@ -19,6 +19,6 @@ limitations under the License.
 PYBIND11_MODULE(_pywrap_cus, m) {
   tensorflow::RegisterNumpyCus();
 
-  m.def("TF_cus",
+  m.def("TF_cus_type",
         [] { return pybind11::handle(tensorflow::CusPyType()); });
 }

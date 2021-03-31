@@ -302,7 +302,7 @@ PyTypeObject PyCus_Type = {
     sizeof(PyCus),                        // tp_basicsize
     0,                                         // tp_itemsize
     nullptr,                                   // tp_dealloc
-    nullptr,                                   // tp_print
+    0,                                   // tp_print
     nullptr,                                   // tp_getattr
     nullptr,                                   // tp_setattr
     nullptr,                                   // tp_compare / tp_reserved
@@ -393,6 +393,30 @@ void ByteSwap16(void* value) {
   std::swap(p[0], p[1]);
 }
 
+int NPyCus_Compare(const void* a, const void* b, void* arr) {
+  cus x;
+  memcpy(&x, a, sizeof(cus));
+
+  cus y;
+  memcpy(&y, b, sizeof(cus));
+
+  if (x < y) {
+    return -1;
+  }
+  if (y < x) {
+    return 1;
+  }
+  // todo(chenhao) implement NaNs sort to the end.
+  // NaNs sort to the end.
+  if (!Eigen::numext::isnan(x) && Eigen::numext::isnan(y)) {
+    return -1;
+  }
+  if (Eigen::numext::isnan(x) && !Eigen::numext::isnan(y)) {
+    return 1;
+  }
+  return 0;
+}
+
 void NPyCus_CopySwapN(void* dstv, npy_intp dstride, void* srcv,
                            npy_intp sstride, npy_intp n, int swap, void* arr) {
   char* dst = reinterpret_cast<char*>(dstv);
@@ -475,7 +499,7 @@ bool RegisterCusCast(int numpy_type, bool cast_is_safe) {
 }
 
 template <typename InType, typename OutType, typename Functor>
-void BinaryUFunc(char** args, npy_intp* dimensions, npy_intp* steps,
+void BinaryUFunc(char** args, const npy_intp* dimensions, const npy_intp* steps,
                  void* data) {
   const char* i0 = args[0];
   const char* i1 = args[1];
@@ -493,6 +517,11 @@ void BinaryUFunc(char** args, npy_intp* dimensions, npy_intp* steps,
 template <typename Functor>
 void CompareUFunc(char** args, npy_intp* dimensions, npy_intp* steps,
                   void* data) {
+  BinaryUFunc<cus, npy_bool, Functor>(args, dimensions, steps, data);
+}
+template <typename Functor>
+void CompareUFunc(char** args, const npy_intp* dimensions,
+                  const npy_intp* steps, void* data) {
   BinaryUFunc<cus, npy_bool, Functor>(args, dimensions, steps, data);
 }
 
@@ -518,6 +547,7 @@ struct CusGeFunctor {
 // Initializes the module.
 bool Initialize() {
   // It's critical to import umath to avoid crash in open source build.
+  ImportNumpy();
   import_umath1(false);
 
   Safe_PyObjectPtr numpy_str = make_safe(MakePyString("numpy"));
