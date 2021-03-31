@@ -10,6 +10,8 @@ package(
         "//tensorflow/core:__pkg__",
         # tensorflow/core/platform:monitoring depends on this package
         "//tensorflow/core/platform:__subpackages__",
+        # tensorflow/compiler/xla/pjrt:metrics depends on this package
+        "//tensorflow/compiler/xla/pjrt:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
