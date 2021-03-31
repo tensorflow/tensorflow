@@ -601,7 +601,8 @@ class Converter {
   // The input_dims argument stores the TRT dimensions of the input tensor,
   // where the dimensions to be squeezed are replaced by 0.
   Status SqueezeTensor(nvinfer1::ITensor* input, std::vector<int>* input_dims,
-                       OpConverterParams* params, nvinfer1::ITensor** output);
+                       OpConverterParams* params, nvinfer1::ITensor** output,
+                       absl::optional<int> op_instance = absl::nullopt);
 
   // Creates an IConstantLayer using 'weights' whose dimensions are specified by
   // 'dims', and returns the output ITensor.
