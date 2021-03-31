@@ -14,6 +14,7 @@ limitations under the License.
 
 ==============================================================================*/
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
@@ -184,10 +185,56 @@ struct MoveOutOfAssumingOpPattern : public OpRewritePattern<OpTy> {
     };
     if (!llvm::all_of(op->getOperands(), is_available)) return failure();
 
+    // Move op before the assuming region.
     OpBuilder::InsertionGuard guard(rewriter);
     rewriter.setInsertionPoint(assuming_op);
-    rewriter.replaceOpWithNewOp<OpTy>(op, op->getResultTypes(),
-                                      op->getOperands(), op->getAttrs());
+    Operation *new_op = rewriter.clone(*op);
+    rewriter.replaceOp(op, new_op->getResults());
+
+    // If the assuming region yields none of the new op's results, these values
+    // are exclusively used in the assuming op's body. In these cases there is
+    // no need for further rewrites.
+    auto is_new_op_result = [&](Value v) {
+      return llvm::is_contained(new_op->getResults(), v);
+    };
+    auto yield_op = cast<shape::AssumingYieldOp>(body->getTerminator());
+    if (llvm::none_of(yield_op.operands(), is_new_op_result)) return success();
+
+    // If the assuming region yields any of the new op's results, these values
+    // can instead bypass the assuming region. There is no need to yield them
+    // explicitly as they are assumed to be independent. The assuming op is
+    // rewritten accordingly.
+    SmallVector<Value, 2> replacement_values;
+    auto new_assuming_op = rewriter.create<shape::AssumingOp>(
+        assuming_op.getLoc(), assuming_op.witness(),
+        [&](OpBuilder &b, Location) {
+          // Copy body.
+          BlockAndValueMapping mapping;
+          for (Operation &nested : body->without_terminator()) {
+            b.clone(nested, mapping);
+          }
+
+          // Collect new yield operands.
+          SmallVector<Value, 2> new_yield_operands;
+          for (Value result : yield_op.operands()) {
+            if (is_new_op_result(result)) {
+              replacement_values.push_back(result);
+            } else {
+              new_yield_operands.push_back(mapping.lookup(result));
+              replacement_values.push_back(nullptr);
+            }
+          }
+          return new_yield_operands;
+        });
+
+    // Use the assuming op's results for the missing replacement values.
+    auto src = new_assuming_op.getResults().begin();
+    for (auto &dst : replacement_values) {
+      if (dst) continue;
+      dst = *src++;
+    }
+
+    rewriter.replaceOp(assuming_op, replacement_values);
     return success();
   }
 };
