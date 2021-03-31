@@ -14015,7 +14015,8 @@ regular convolution.}]>:$paddings,
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_SpaceToBatchNDOp : TF_Op<"SpaceToBatchND", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect]> {
+// TODO(jpienaar): Update to re-add type inference function.
+def TF_SpaceToBatchNDOp : TF_Op<"SpaceToBatchND", [NoSideEffect]> {
   let summary = "SpaceToBatch for N-D tensors of type T.";
 
   let description = [{
