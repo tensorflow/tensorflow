@@ -55,11 +55,6 @@ def register_loss_scale_wrapper(optimizer_cls, wrapper_cls):
   _REGISTERED_WRAPPER_OPTIMIZER_CLS[optimizer_cls] = wrapper_cls
 
 
-# TODO(reedwm): Remove this.
-def _register_wrapper_optimizer_cls(optimizer_cls, wrapper_optimizer_cls):
-  register_loss_scale_wrapper(optimizer_cls, wrapper_optimizer_cls)
-
-
 def _wrap_optimizer(opt, loss_scale, use_v1_behavior):
   """Wraps an optimizer with a LossScaleOptimizer."""
 
