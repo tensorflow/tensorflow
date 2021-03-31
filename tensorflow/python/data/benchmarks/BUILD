@@ -5,8 +5,6 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
-
 py_library(
     name = "benchmark_base",
     srcs = ["benchmark_base.py"],

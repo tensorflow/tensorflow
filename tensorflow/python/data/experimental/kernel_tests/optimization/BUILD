@@ -7,8 +7,6 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
-
 tf_py_test(
     name = "autotune_buffer_sizes_test",
     size = "small",

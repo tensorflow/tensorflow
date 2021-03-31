@@ -16,8 +16,6 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
-
 py_library(
     name = "debug_py",
     srcs = ["__init__.py"],

@@ -8,8 +8,6 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
-
 py_library(
     name = "compiler",
     srcs = ["__init__.py"],

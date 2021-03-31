@@ -12,8 +12,6 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
-
 LINKER_SCRIPT = "jni/version_script.lds"
 
 # libtensorflow_demo.so contains the native code for image colorspace conversion

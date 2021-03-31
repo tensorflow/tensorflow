@@ -10,8 +10,6 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
-
 py_library(
     name = "checkpoint_options",
     srcs = ["checkpoint_options.py"],

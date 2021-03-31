@@ -8,8 +8,6 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "all_py_srcs",
     srcs = glob(["*.py"]),

@@ -11,8 +11,6 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
-
 py_library(
     name = "distribute_test_lib_pip",
     srcs_version = "PY3",

@@ -7,8 +7,6 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
-
 tf_py_test(
     name = "assert_cardinality_test",
     size = "small",

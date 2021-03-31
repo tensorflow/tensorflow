@@ -25,8 +25,6 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
-
 py_library(
     name = "utils_v1",
     srcs = [

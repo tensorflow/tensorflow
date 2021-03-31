@@ -18,8 +18,6 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
-
 exports_files(glob([
     "test/testdata/*",
 ]))

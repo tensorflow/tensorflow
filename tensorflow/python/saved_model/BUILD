@@ -14,8 +14,6 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
-
 py_strict_library(
     name = "saved_model",
     srcs = ["saved_model.py"],

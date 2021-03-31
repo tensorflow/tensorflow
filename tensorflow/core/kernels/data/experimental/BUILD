@@ -15,8 +15,6 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
-
 # A file group which contains all operators which are known to work on mobile.
 filegroup(
     name = "android_all_op_kernels",

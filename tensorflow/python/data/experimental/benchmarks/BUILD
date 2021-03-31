@@ -5,8 +5,6 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
-
 py_binary(
     name = "autotune_benchmark_binary",
     srcs = ["autotune_benchmark.py"],

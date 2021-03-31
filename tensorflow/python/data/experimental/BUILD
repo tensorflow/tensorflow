@@ -3,8 +3,6 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
-
 py_library(
     name = "experimental",
     srcs = ["__init__.py"],
