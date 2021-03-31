@@ -2099,8 +2099,6 @@ static LogicalResult Verify(CaseOp op) {
   OperandRange branch_operands = op.branch_operands();
   for (unsigned i = 0; i < num_branches; ++i) {
     mlir::Region& branch_region = branches[i];
-    if (branch_region.empty())
-      return op.emitOpError() << "cannot have empty regions";
     mlir::Block& entry_block = branch_region.front();
     if (entry_block.getNumArguments() != 1)
       return op.emitOpError()

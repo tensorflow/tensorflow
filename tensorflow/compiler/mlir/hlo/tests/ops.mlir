@@ -288,14 +288,6 @@ func @case_mismatch_return_type(%index: tensor<i32>, %operand_1: tensor<f32>, %o
 
 // -----
 
-func @case_empty_region(%index: tensor<i32>, %operand_1: tensor<f32>) -> () {
-  // expected-error@+1 {{cannot have empty regions}}
-  "mhlo.case"(%index, %operand_1) ( {} ) : (tensor<i32>, tensor<f32>) -> tensor<f32>
-  return
-}
-
-// -----
-
 // CHECK-LABEL: func @comp_eq
 func @comp_eq(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>) -> tensor<3xi1> {
   %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "EQ"} : (tensor<3xi32>, tensor<3xi32>) -> tensor<3xi1>

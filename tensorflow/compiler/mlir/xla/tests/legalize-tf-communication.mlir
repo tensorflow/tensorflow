@@ -1075,26 +1075,6 @@ func private @callee() {
 
 // -----
 
-// Tests unsupported `mhlo.if` with region of more than one block and contains a
-// TF/XLA communication op.
-
-func @if_multiple_blocks(%arg0: tensor<i1>, %arg1: tensor<f32>) {
-  %0 = "mhlo.if"(%arg0, %arg1, %arg1) ( {
-  ^bb0(%arg2: tensor<f32>):
-    br ^bb1(%arg2 : tensor<f32>)
-  ^bb1(%arg3: tensor<f32>):
-    // expected-error@+1 {{expects single block region ancestor(s)}}
-    "tf.XlaSendToHost"(%arg3) {key = "send_key0"} : (tensor<f32>) -> ()
-    "mhlo.return"(%arg3) : (tensor<f32>) -> ()
-  },  {
-  ^bb0(%arg2: tensor<f32>):
-    "mhlo.return"(%arg2) : (tensor<f32>) -> ()
-  }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
-  return
-}
-
-// -----
-
 // Tests function with more than one block that is to be rewritten emits an
 // error instead.
 
