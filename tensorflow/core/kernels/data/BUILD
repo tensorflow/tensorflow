@@ -20,7 +20,7 @@ package(
         ":friends",
         "//tensorflow:internal",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Export a few files for use on Android.
