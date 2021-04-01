@@ -30,6 +30,7 @@ from tensorflow.python.distribute.coordinator import cluster_coordinator
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph
@@ -2796,7 +2797,7 @@ def reduce_per_replica(values, strategy, reduction='first'):
     """Reduce a single `PerReplica` object."""
     if reduction == 'concat' and _collective_all_reduce_multi_worker(strategy):
       return _multi_worker_concat(v, strategy)
-    if not isinstance(v, ds_values.PerReplica):
+    if not _is_per_replica_instance(v):
       return v
     elif reduction == 'first':
       return strategy.unwrap(v)[0]
@@ -2850,7 +2851,7 @@ def _multi_worker_concat(v, strategy):
   """Order PerReplica objects for CollectiveAllReduceStrategy and concat."""
   replicas = strategy.gather(v, axis=0)
   # v might not have the same shape on different replicas
-  if isinstance(v, ds_values.PerReplica):
+  if _is_per_replica_instance(v):
     shapes = array_ops.concat([
         array_ops.expand_dims_v2(array_ops.shape(single_value)[0], axis=0)
         for single_value in v.values
@@ -2957,3 +2958,8 @@ def flatten_metrics_in_order(logs, metrics_names):
   if len(results) == 1:
     return results[0]
   return results
+
+
+def _is_per_replica_instance(obj):
+  return (isinstance(obj, ds_values.DistributedValues) and
+          isinstance(obj, composite_tensor.CompositeTensor))
