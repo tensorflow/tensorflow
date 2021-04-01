@@ -9,7 +9,7 @@
 ------------------- |
 [![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) |
 
-[TensorFlow](https://www.tensorflow.org/) is an end-to-end open source platform
+[TensorFlow](https://www.tensorflow.org/) is an end-to-end open-source platform
 for machine learning. It has a comprehensive, flexible ecosystem of
 [tools](https://www.tensorflow.org/resources/tools),
 [libraries](https://www.tensorflow.org/resources/libraries-extensions), and
@@ -24,7 +24,7 @@ general enough to be applicable in a wide variety of other domains, as well.
 
 TensorFlow provides stable [Python](https://www.tensorflow.org/api_docs/python)
 and [C++](https://www.tensorflow.org/api_docs/cc) APIs, as well as
-non-guaranteed backward compatible API for
+non-guaranteed backward compatible APIs for
 [other languages](https://www.tensorflow.org/api_docs).
 
 Keep up-to-date with release announcements and security updates by subscribing
