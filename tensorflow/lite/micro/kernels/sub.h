@@ -41,7 +41,6 @@ struct OpData {
   int32_t output_offset;
 };
 
-
 extern const int kSubInputTensor1;
 extern const int kSubInputTensor2;
 extern const int kSubOutputTensor;
