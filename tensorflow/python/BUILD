@@ -3050,7 +3050,6 @@ tf_py_test(
     python_version = "PY3",
     tags = [
         "no_rocm",
-        "no_tfrt",  # TODO(b/179692150)
     ],
     deps = [
         ":client_testlib",
@@ -5832,7 +5831,6 @@ tf_py_test(
     srcs = ["ops/dequantize_op_test.py"],
     python_version = "PY3",
     tags = [
-        "no_tfrt",  # TODO(b/169901260)
         "no_windows",
     ],
     deps = [
@@ -5849,7 +5847,6 @@ tf_py_test(
     srcs = ["ops/quantized_ops_test.py"],
     python_version = "PY3",
     tags = [
-        "no_tfrt",  # TODO(b/169901260)
         "no_windows",
     ],
     deps = [
@@ -5866,7 +5863,6 @@ tf_py_test(
     srcs = ["ops/quantized_conv_ops_test.py"],
     python_version = "PY3",
     tags = [
-        "no_tfrt",  # TODO(b/169901260)
         "no_windows",
     ],
     deps = [
@@ -6354,7 +6350,6 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "grappler",
-        "no_tfrt",  #TODO(b/174712583)
     ],
     deps = [
         ":array_ops",
@@ -6379,7 +6374,6 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "grappler",
-        "no_tfrt",  #TODO(b/174712583)
     ],
     xla_enable_strict_auto_jit = False,
     deps = [
