@@ -900,7 +900,7 @@ class DefFunctionTest(xla_test.XLATestCase):
                                     'EXPECTED_MESSAGE_OLD'):
           f()
 
-  def test_counter(self):
+  def testCounter(self):
     cell_nojit = def_function._tf_function_counter.get_cell('0')
     cell_jit = def_function._tf_function_counter.get_cell('1')
     orig_nojit = cell_nojit.value()
@@ -981,6 +981,18 @@ class DefFunctionTest(xla_test.XLATestCase):
           return array_ops.reshape(x * 3, d)
 
       f(random_ops.random_normal([10, 10]), constant_op.constant([100]))
+
+  def testConditionalGradientTapeMathRegression(self):
+    with ops.device('device:{}:0'.format(self.device)):
+      with backprop.GradientTape():
+
+        @def_function.function(jit_compile=True, autograph=False)
+        def f(x):
+          return control_flow_ops.cond(
+              math_ops.reduce_all(x > 1), lambda: 1. / x, lambda: x)
+
+        v = variables.Variable([[2.]])
+        self.assertAllClose(f(v), constant_op.constant([[0.5]]))
 
 
 if __name__ == '__main__':
