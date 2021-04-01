@@ -72,6 +72,9 @@ class MaybeAdjoint<MATRIX, true> {
 template <typename T>
 struct SumType {
   using type = T;
+  // The following type alias is required for the build, but will never be used at
+  // run-time. Deterministic operation is not supported for the types for which
+  // there is not an explicit specialization of this template.
   using type_for_determinism = T;
 };
 
