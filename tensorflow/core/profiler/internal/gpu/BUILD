@@ -144,7 +144,7 @@ tf_cuda_library(
     name = "rocm_tracer",
     srcs = if_rocm(["rocm_tracer.cc"]),
     hdrs = if_rocm(["rocm_tracer.h"]),
-    copts = tf_copts(),
+    copts = tf_profiler_copts() + tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
