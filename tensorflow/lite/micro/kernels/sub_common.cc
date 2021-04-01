@@ -34,7 +34,7 @@ const int kSubOutputTensor = 0;
 TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteSubParams* params,
                              const TfLiteTensor* input1,
                              const TfLiteTensor* input2, TfLiteTensor* output,
-                             OpData* data) {
+                             OpDataSub* data) {
   data->requires_broadcast = !HaveSameShapes(input1, input2);
 
   if (output->type == kTfLiteInt8) {
@@ -74,7 +74,7 @@ TfLiteStatus PrepareSub(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
   TFLITE_DCHECK(node->builtin_data != nullptr);
 
-  OpData* data = static_cast<OpData*>(node->user_data);
+  OpDataSub* data = static_cast<OpDataSub*>(node->user_data);
   auto* params = reinterpret_cast<TfLiteSubParams*>(node->builtin_data);
 
   const TfLiteTensor* input1 = GetInput(context, node, kSubInputTensor1);
@@ -90,11 +90,11 @@ TfLiteStatus PrepareSub(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus EvalSubQuantized(TfLiteContext* context, TfLiteNode* node,
-                              TfLiteSubParams* params, const OpData* data,
+                              TfLiteSubParams* params, const OpDataSub* data,
                               const TfLiteEvalTensor* input1,
                               const TfLiteEvalTensor* input2,
                               TfLiteEvalTensor* output) {
-  if (output->type == kTfLiteInt8) {
+  
     tflite::ArithmeticParams op_params;
     op_params.left_shift = data->left_shift;
     op_params.input1_offset = data->input1_offset;
@@ -129,12 +129,12 @@ TfLiteStatus EvalSubQuantized(TfLiteContext* context, TfLiteNode* node,
                                  tflite::micro::GetTensorShape(output),
                                  tflite::micro::GetTensorData<int8_t>(output));
     }
-  }
+  
 
   return kTfLiteOk;
 }
 void EvalSub(TfLiteContext* context, TfLiteNode* node, TfLiteSubParams* params,
-             const OpData* data, const TfLiteEvalTensor* input1,
+             const OpDataSub* data, const TfLiteEvalTensor* input1,
              const TfLiteEvalTensor* input2, TfLiteEvalTensor* output) {
   float output_activation_min, output_activation_max;
   CalculateActivationRange(params->activation, &output_activation_min,

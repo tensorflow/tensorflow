@@ -20,7 +20,7 @@ limitations under the License.
 
 namespace tflite {
 
-struct OpData {
+struct OpDataSub {
   bool requires_broadcast;
 
   // These fields are used in both the general 8-bit -> 8bit quantized path,
@@ -46,11 +46,11 @@ extern const int kSubInputTensor2;
 extern const int kSubOutputTensor;
 
 void EvalSub(TfLiteContext* context, TfLiteNode* node, TfLiteSubParams* params,
-             const OpData* data, const TfLiteEvalTensor* input1,
+             const OpDataSub* data, const TfLiteEvalTensor* input1,
              const TfLiteEvalTensor* input2, TfLiteEvalTensor* output);
 
 TfLiteStatus EvalSubQuantized(TfLiteContext* context, TfLiteNode* node,
-                              TfLiteSubParams* params, const OpData* data,
+                              TfLiteSubParams* params, const OpDataSub* data,
                               const TfLiteEvalTensor* input1,
                               const TfLiteEvalTensor* input2,
                               TfLiteEvalTensor* output);
