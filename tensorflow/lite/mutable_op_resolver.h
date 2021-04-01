@@ -53,55 +53,27 @@ struct OperatorKeyHasher {
 };
 }  // namespace op_resolver_hasher
 
-/// An OpResolver that is mutable, also used as the op in gen_op_registration.
-/// A typical usage:
-///   MutableOpResolver resolver;
-///   resolver.AddBuiltin(BuiltinOperator_ADD, Register_ADD());
-///   resolver.AddCustom("CustomOp", Register_CUSTOM_OP());
-///   InterpreterBuilder(model, resolver)(&interpreter);
+// An OpResolver that is mutable, also used as the op in gen_op_registration.
+// A typical usage:
+//   MutableOpResolver resolver;
+//   resolver.AddBuiltin(BuiltinOperator_ADD, Register_ADD());
+//   resolver.AddCustom("CustomOp", Register_CUSTOM_OP());
+//   InterpreterBuilder(model, resolver)(&interpreter);
 class MutableOpResolver : public OpResolver {
  public:
   const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
                                    int version) const override;
   const TfLiteRegistration* FindOp(const char* op, int version) const override;
-
-  /// Registers the specified `version` of the specified builtin operator `op`.
-  /// Replaces any previous registration for the same operator version.
   void AddBuiltin(tflite::BuiltinOperator op,
                   const TfLiteRegistration* registration, int version = 1);
-
-  /// Registers the specified version range (versions `min_version` to
-  /// `max_version`, inclusive) of the specified builtin operator `op`.
-  /// Replaces any previous registration for the same operator version.
   void AddBuiltin(tflite::BuiltinOperator op,
                   const TfLiteRegistration* registration, int min_version,
                   int max_version);
-
-  /// Registers the specified `version` of the specified builtin operator `op`.
-  /// Replaces any previous registration for the same operator version.
   void AddCustom(const char* name, const TfLiteRegistration* registration,
                  int version = 1);
-
-  /// Registers the specified version range (versions `min_version` to
-  /// `max_version`, inclusive) of the specified custom operator `name`.
-  /// Replaces any previous registration for the same operator version.
   void AddCustom(const char* name, const TfLiteRegistration* registration,
                  int min_version, int max_version);
-
-  /// Registers all operator versions supported by another MutableOpResolver.
-  /// Replaces any previous registrations for the same operator versions,
-  /// except that registrations made with `AddBuiltin` or `AddCustom` always
-  /// take precedence over registrations made with `ChainOpResolver`.
   void AddAll(const MutableOpResolver& other);
-
- protected:
-  /// Registers all operator versions supported by another OpResolver,
-  /// except any already registered in this MutableOpResolver.
-  /// `other` must point to an OpResolver whose lifetime is at least as long
-  /// as the lifetime of the MutableOpResolver pointed to by `this`.
-  /// The OpResolver pointed to by `other` should not be modified during the
-  /// lifetime of this MutableOpResolver.
-  void ChainOpResolver(const OpResolver* other);
 
  private:
   typedef std::pair<tflite::BuiltinOperator, int> BuiltinOperatorKey;
@@ -113,7 +85,6 @@ class MutableOpResolver : public OpResolver {
   std::unordered_map<CustomOperatorKey, TfLiteRegistration,
                      op_resolver_hasher::OperatorKeyHasher<CustomOperatorKey> >
       custom_ops_;
-  std::vector<const OpResolver*> other_op_resolvers_;
 };
 
 }  // namespace tflite
