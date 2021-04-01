@@ -2512,18 +2512,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "compare_and_bitpack_op_test",
-    size = "small",
-    srcs = ["compare_and_bitpack_op_test.py"],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
     name = "scalar_test",
     size = "small",
     srcs = ["scalar_test.py"],
