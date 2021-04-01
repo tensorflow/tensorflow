@@ -407,6 +407,9 @@ class Env {
   /// Sleeps/delays the thread for the prescribed number of micro-seconds.
   virtual void SleepForMicroseconds(int64 micros) = 0;
 
+  /// Returns the process ID of the calling process.
+  int32 GetProcessId();
+
   /// \brief Returns a new thread that is running fn() and is identified
   /// (for debugging/performance-analysis) by "name".
   ///
