@@ -4579,7 +4579,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "control_flow_ops_test",
-    size = "small",
+    size = "medium",  # Contains artificial waits.
     srcs = ["ops/control_flow_ops_test.py"],
     python_version = "PY3",
     shard_count = 2,
