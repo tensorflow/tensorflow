@@ -650,6 +650,30 @@ class Callback:
   ...           callbacks=[MyCallback()])
   >>> assert training_finished == True
 
+  If you want to use `Callback` objects in a custom training loop:
+
+  1. You should pack all your callbacks into a single `callbacks.CallbackList`
+     so they can all be called together.
+  2. You will need to manually call all the `on_*` methods at the apropriate
+     locations in your loop. Like this:
+
+     ```
+     callbacks =  tf.keras.callbacks.CallbackList([...])
+     callbacks.append(...)
+
+     callbacks.on_train_begin(...)
+     for epoch in range(EPOCHS):
+       callbacks.on_epoch_begin(epoch)
+       for i, data in dataset.enumerate():
+         callbacks.on_train_batch_begin(i)
+         batch_logs = model.train_step(data)
+         callbacks.on_train_batch_end(i, batch_logs)
+       epoch_logs = ...
+       callbacks.on_epoch_end(epoch, epoch_logs)
+     final_logs=...
+     callbacks.on_train_end(final_logs)
+     ```
+
   Attributes:
       params: Dict. Training parameters
           (eg. verbosity, batch size, number of epochs...).
