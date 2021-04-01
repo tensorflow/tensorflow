@@ -2832,7 +2832,10 @@ class MeanIoU(Metric):
   >>> # expected_result = (0 / (1 + 0 - 0) + 2 / (2 + 2 - 2) + 1 / (1 + 2 - 1)) / 3
   >>> m = tf.keras.metrics.MeanIoU(num_classes=3)
   >>> y_true = [2, 0, 1, 1]
-  >>> y_pred = [[2.5, 0.2, 2.7], [-1.4, 0.7, 1.2], [2., 3., 1.4], [2.2, 2.4, 1.5]]
+  >>> y_pred = [[2.5,  0.2, 2.7],
+  ...           [-1.4, 0.7, 1.2],
+  ...           [2.0, 3.0, 1.4],
+  ...           [2.2, 2.4, 1.5]]
   >>> m.update_state(y_true, y_pred)
   >>> m.result().numpy()
   0.5
