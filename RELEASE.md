@@ -5,8 +5,6 @@
 * The `TF_CPP_MIN_VLOG_LEVEL` environment variable has been renamed to to
   `TF_CPP_MAX_VLOG_LEVEL` which correctly describes its effect.
 
-## Known Caveats
-
 ## Major Features and Improvements
 
 * TPU embedding support
@@ -69,9 +67,6 @@
 
 ## Bug Fixes and Other Changes
 
-*   <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-*   <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-*   <NOTES SHOULD BE GROUPED PER AREA>
 *   `tf.keras`:
     *   Preprocessing layers API consistency changes:
         *   `StringLookup` added `output_mode`, `sparse`, and
@@ -113,6 +108,7 @@
         the input pipeline to insert sharding transformations.
     *   Make tf.data.Options persistent across `tf.function` and `GraphDef`
         boundaries.
+        
 *   XLA compilation:
     *   `tf.function(experimental_compile=True)` has become a stable API,
         renamed `tf.function(jit_compile=True)`.
@@ -162,7 +158,7 @@
        ML authoring is generally discouraged.
     *  Add support for static hash tables through
          `TFLiteConverter.from_saved_model`.
-  *  The Python TF Lite Interpreter bindings now have an option
+    *  The Python TF Lite Interpreter bindings now has an option
         `experimental_preserve_all_tensors` to aid in debugging conversion.
     *  Quantized x86 execution defaults to Ruy GEMM library for platforms with
        AVX support.
@@ -190,9 +186,9 @@
         https://github.com/abseil/abseil-cpp/blob/master/absl/status/status.h
 
 *   `tf.summary`:
-  *   New `tf.summary.graph` allows manual write of TensorFlow graph
-      (`tf.Graph` or `tf.compat.v1.GraphDef`) as a summary. This is not a
-      replacement for the trace-based API.
+    *   New `tf.summary.graph` allows manual write of TensorFlow graph
+        (`tf.Graph` or `tf.compat.v1.GraphDef`) as a summary. This is not a
+        replacement for the trace-based API.
 
 *   Set `/d2ReducedOptimizeHugeFunctions` by default for Windows builds. This
     provides a big compile-time speedup, and effectively raises the minimum
@@ -228,8 +224,8 @@
         that the graph does not have unsupported features.
 
 * Other
-    *   Adding show_debug_info to mlir.convert_graph_def and
-        mlir.convert_function.
+    *   Added `show_debug_info` to `mlir.convert_graph_def` and
+        `mlir.convert_function`.
     *   Added [Arm Compute Library (ACL)](https://github.com/ARM-software/ComputeLibrary)
         support to `--config=mkl_aarch64` build.
 
