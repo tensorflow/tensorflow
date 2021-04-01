@@ -114,6 +114,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python/compat",
         "//tensorflow/python/data/experimental/ops:prefetching_ops",
+        "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
