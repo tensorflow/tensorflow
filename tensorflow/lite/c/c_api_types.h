@@ -29,8 +29,7 @@ extern "C" {
 // library.
 #ifdef SWIG
 #define TFL_CAPI_EXPORT
-#else
-#ifdef TFL_STATIC_LIBRARY_BUILD
+#elif defined(TFL_STATIC_LIBRARY_BUILD)
 #define TFL_CAPI_EXPORT
 #else   // not definded TFL_STATIC_LIBRARY_BUILD 
 #if defined(_WIN32)
@@ -42,7 +41,6 @@ extern "C" {
 #else
 #define TFL_CAPI_EXPORT __attribute__((visibility("default")))
 #endif  // _WIN32
-#endif  // TFL_STATIC_LIBRARY_BUILD
 #endif  // SWIG
 
 typedef enum TfLiteStatus {
