@@ -14015,7 +14015,6 @@ regular convolution.
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
-// TODO(jpienaar): Update to re-add type inference function.
 def TF_SpaceToBatchNDOp : TF_Op<"SpaceToBatchND", [NoSideEffect]> {
   let summary = "SpaceToBatch for N-D tensors of type T.";
 
@@ -15709,12 +15708,11 @@ occurred during compilation.
 }
 
 def TF_TPUCompileSucceededAssertOp : TF_Op<"TPUCompileSucceededAssert", []> {
-  let summary = [{
-Asserts that compilation succeeded. This op produces no output and closes the
-  }];
+  let summary = "Asserts that compilation succeeded.";
 
   let description = [{
-device during failure to ensure all pending device interactions fail.
+This op produces no output and closes the device during failure to ensure all
+pending device interactions fail.
 
 'compilation_status' is a serialized CompilationResultProto.
   }];
