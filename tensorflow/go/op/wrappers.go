@@ -1360,18 +1360,6 @@ func BatchToSpace(scope *Scope, input tf.Output, crops tf.Output, block_size int
 // the zero-padding, both `height` and `width` of the input must be divisible by the
 // block size.
 //
-// Arguments:
-//	input: 4-D with shape `[batch, height, width, depth]`.
-//	paddings: 2-D tensor of non-negative integers with shape `[2, 2]`. It specifies
-//   the padding of the input with zeros across the spatial dimensions as follows:
-//
-//       paddings = [[pad_top, pad_bottom], [pad_left, pad_right]]
-//
-//   The effective spatial dimensions of the zero-padded input tensor will be:
-//
-//       height_pad = pad_top + height + pad_bottom
-//       width_pad = pad_left + width + pad_right
-//
 // The attr `block_size` must be greater than one. It indicates the block size.
 //
 //   * Non-overlapping blocks of size `block_size x block size` in the height and
@@ -1447,6 +1435,18 @@ func BatchToSpace(scope *Scope, input tf.Output, crops tf.Output, block_size int
 //
 // Among others, this operation is useful for reducing atrous convolution into
 // regular convolution.
+//
+// Arguments:
+//	input: 4-D with shape `[batch, height, width, depth]`.
+//	paddings: 2-D tensor of non-negative integers with shape `[2, 2]`. It specifies
+//   the padding of the input with zeros across the spatial dimensions as follows:
+//
+//       paddings = [[pad_top, pad_bottom], [pad_left, pad_right]]
+//
+//   The effective spatial dimensions of the zero-padded input tensor will be:
+//
+//       height_pad = pad_top + height + pad_bottom
+//       width_pad = pad_left + width + pad_right
 //
 func SpaceToBatch(scope *Scope, input tf.Output, paddings tf.Output, block_size int64) (output tf.Output) {
 	if scope.Err() != nil {
@@ -10644,17 +10644,8 @@ func ExperimentalMaxIntraOpParallelismDataset(scope *Scope, input_dataset tf.Out
 // `[1, ..., M]` correspond to the position within the grid, and the batch
 // dimension combines both the position within a spatial block and the original
 // batch position.  Prior to division into blocks, the spatial dimensions of the
-// input are optionally zero padded according to `paddings`.  See below for a
+// input are optionally zero padded according to `paddings`. See below for a
 // precise description.
-//
-// Arguments:
-//	input: N-D with shape `input_shape = [batch] + spatial_shape + remaining_shape`,
-// where spatial_shape has `M` dimensions.
-//	block_shape: 1-D with shape `[M]`, all values must be >= 1.
-//	paddings: 2-D with shape `[M, 2]`, all values must be >= 0.
-//   `paddings[i] = [pad_start, pad_end]` specifies the padding for input dimension
-//   `i + 1`, which corresponds to spatial dimension `i`.  It is required that
-//   `block_shape[i]` divides `input_shape[i + 1] + pad_start + pad_end`.
 //
 // This operation is equivalent to the following steps:
 //
@@ -10759,6 +10750,15 @@ func ExperimentalMaxIntraOpParallelismDataset(scope *Scope, input_dataset tf.Out
 //
 // Among others, this operation is useful for reducing atrous convolution into
 // regular convolution.
+//
+// Arguments:
+//	input: N-D with shape `input_shape = [batch] + spatial_shape + remaining_shape`,
+// where spatial_shape has `M` dimensions.
+//	block_shape: 1-D with shape `[M]`, all values must be >= 1.
+//	paddings: 2-D with shape `[M, 2]`, all values must be >= 0.
+//   `paddings[i] = [pad_start, pad_end]` specifies the padding for input dimension
+//   `i + 1`, which corresponds to spatial dimension `i`.  It is required that
+//   `block_shape[i]` divides `input_shape[i + 1] + pad_start + pad_end`.
 func SpaceToBatchND(scope *Scope, input tf.Output, block_shape tf.Output, paddings tf.Output) (output tf.Output) {
 	if scope.Err() != nil {
 		return
