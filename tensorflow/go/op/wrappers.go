@@ -15979,36 +15979,6 @@ func TensorListSplit(scope *Scope, tensor tf.Output, element_shape tf.Output, le
 	return op.Output(0)
 }
 
-// Concats all tensors in the list along the 0th dimension.
-//
-// Requires that all tensors have the same shape except the first dimension.
-//
-// input_handle: The input list.
-// element_shape: The shape of the uninitialized elements in the list. If the first
-//   dimension is not -1, it is assumed that all list elements have the same
-//   leading dim.
-// leading_dims: The list of leading dims of uninitialized list elements. Used if
-//   the leading dim of input_handle.element_shape or the element_shape input arg
-//   is not already set.
-// tensor: The concated result.
-// lengths: Output tensor containing sizes of the 0th dimension of tensors in the list, used for computing the gradient.
-//
-func TensorListConcatV2(scope *Scope, input_handle tf.Output, element_shape tf.Output, leading_dims tf.Output, element_dtype tf.DataType) (tensor tf.Output, lengths tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"element_dtype": element_dtype}
-	opspec := tf.OpSpec{
-		Type: "TensorListConcatV2",
-		Input: []tf.Input{
-			input_handle, element_shape, leading_dims,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
-}
-
 // TensorListStackAttr is an optional argument to TensorListStack.
 type TensorListStackAttr func(optionalAttr)
 
@@ -17924,90 +17894,6 @@ func RequantizationRange(scope *Scope, input tf.Output, input_min tf.Output, inp
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
-}
-
-// TPUPartitionedInputAttr is an optional argument to TPUPartitionedInput.
-type TPUPartitionedInputAttr func(optionalAttr)
-
-// TPUPartitionedInputPartitionDim sets the optional partition_dim attribute to value.
-//
-// value: An integer describles which dimension is partitioned. -1 means
-// those inputs are replicated.
-// If not specified, defaults to 0
-func TPUPartitionedInputPartitionDim(value int64) TPUPartitionedInputAttr {
-	return func(m optionalAttr) {
-		m["partition_dim"] = value
-	}
-}
-
-// An op that groups a list of partitioned inputs together. This op
-//
-// Arguments:
-//	inputs: A list of partitioned inputs which must have the same shape.
-//
-// Returns A handle which represents the full shape of partitioned tensors.
-func TPUPartitionedInput(scope *Scope, inputs []tf.Output, optional ...TPUPartitionedInputAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "TPUPartitionedInput",
-		Input: []tf.Input{
-			tf.OutputList(inputs),
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Compare values of `input` to `threshold` and pack resulting bits into a `uint8`.
-//
-// Each comparison returns a boolean `true` (if `input_value > threshold`)
-// or and `false` otherwise.
-//
-// This operation is useful for Locality-Sensitive-Hashing (LSH) and other
-// algorithms that use hashing approximations of cosine and `L2` distances;
-// codes can be generated from an input via:
-//
-// ```python
-// codebook_size = 50
-// codebook_bits = codebook_size * 32
-// codebook = tf.get_variable('codebook', [x.shape[-1].value, codebook_bits],
-//                            dtype=x.dtype,
-//                            initializer=tf.orthogonal_initializer())
-// codes = compare_and_threshold(tf.matmul(x, codebook), threshold=0.)
-// codes = tf.bitcast(codes, tf.int32)  # go from uint8 to int32
-// # now codes has shape x.shape[:-1] + [codebook_size]
-// ```
-//
-// **NOTE**: Currently, the innermost dimension of the tensor must be divisible
-// by 8.
-//
-// Given an `input` shaped `[s0, s1, ..., s_n]`, the output is
-// a `uint8` tensor shaped `[s0, s1, ..., s_n / 8]`.
-//
-// Arguments:
-//	input: Values to compare against `threshold` and bitpack.
-//	threshold: Threshold to compare against.
-//
-// Returns The bitpacked comparisons.
-func CompareAndBitpack(scope *Scope, input tf.Output, threshold tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "CompareAndBitpack",
-		Input: []tf.Input{
-			input, threshold,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // Tensor contraction according to Einstein summation convention.
@@ -25385,6 +25271,36 @@ func MaxPoolGradV2(scope *Scope, orig_input tf.Output, orig_output tf.Output, gr
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Concats all tensors in the list along the 0th dimension.
+//
+// Requires that all tensors have the same shape except the first dimension.
+//
+// input_handle: The input list.
+// element_shape: The shape of the uninitialized elements in the list. If the first
+//   dimension is not -1, it is assumed that all list elements have the same
+//   leading dim.
+// leading_dims: The list of leading dims of uninitialized list elements. Used if
+//   the leading dim of input_handle.element_shape or the element_shape input arg
+//   is not already set.
+// tensor: The concated result.
+// lengths: Output tensor containing sizes of the 0th dimension of tensors in the list, used for computing the gradient.
+//
+func TensorListConcatV2(scope *Scope, input_handle tf.Output, element_shape tf.Output, leading_dims tf.Output, element_dtype tf.DataType) (tensor tf.Output, lengths tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"element_dtype": element_dtype}
+	opspec := tf.OpSpec{
+		Type: "TensorListConcatV2",
+		Input: []tf.Input{
+			input_handle, element_shape, leading_dims,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
 }
 
 // MaxPoolV2Attr is an optional argument to MaxPoolV2.
@@ -33231,9 +33147,10 @@ func StatelessRandomGetKeyCounter(scope *Scope, seed tf.Output) (key tf.Output, 
 	return op.Output(0), op.Output(1)
 }
 
-// Asserts that compilation succeeded. This op produces no output and closes the
+// Asserts that compilation succeeded.
 //
-// device during failure to ensure all pending device interactions fail.
+// This op produces no output and closes the device during failure to ensure all
+// pending device interactions fail.
 //
 // 'compilation_status' is a serialized CompilationResultProto.
 //
@@ -51559,6 +51476,45 @@ func FusedResizeAndPadConv2D(scope *Scope, input tf.Output, size tf.Output, padd
 		Type: "FusedResizeAndPadConv2D",
 		Input: []tf.Input{
 			input, size, paddings, filter,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// TPUPartitionedInputAttr is an optional argument to TPUPartitionedInput.
+type TPUPartitionedInputAttr func(optionalAttr)
+
+// TPUPartitionedInputPartitionDim sets the optional partition_dim attribute to value.
+//
+// value: An integer describles which dimension is partitioned. -1 means
+// those inputs are replicated.
+// If not specified, defaults to 0
+func TPUPartitionedInputPartitionDim(value int64) TPUPartitionedInputAttr {
+	return func(m optionalAttr) {
+		m["partition_dim"] = value
+	}
+}
+
+// An op that groups a list of partitioned inputs together. This op
+//
+// Arguments:
+//	inputs: A list of partitioned inputs which must have the same shape.
+//
+// Returns A handle which represents the full shape of partitioned tensors.
+func TPUPartitionedInput(scope *Scope, inputs []tf.Output, optional ...TPUPartitionedInputAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "TPUPartitionedInput",
+		Input: []tf.Input{
+			tf.OutputList(inputs),
 		},
 		Attrs: attrs,
 	}
