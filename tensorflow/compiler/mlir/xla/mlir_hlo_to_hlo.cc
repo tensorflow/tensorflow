@@ -1787,6 +1787,16 @@ LogicalResult AddDynamicParameterBindings(mlir::ModuleOp module,
   return success();
 }
 
+// Runs the PrepareForExport pass on the ModuleOp.
+Status PrepareForExport(mlir::ModuleOp module) {
+  // Prepare for export to XLA HLO.
+  mlir::PassManager pm(module.getContext());
+  pm.addNestedPass<mlir::FuncOp>(mhlo::CreatePrepareForExport());
+  if (failed(pm.run(module)))
+    return tensorflow::errors::Internal("Unable to optimize for XLA export");
+  return Status::OK();
+}
+
 }  // namespace
 
 Status ConvertRegionToComputation(mlir::Region* region,
@@ -1806,11 +1816,7 @@ Status ConvertMlirHloToHlo(
     bool return_tuple,
     const tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     MlirToHloConversionOptions options) {
-  // Prepare for export to XLA HLO.
-  mlir::PassManager pm(module.getContext());
-  pm.addNestedPass<mlir::FuncOp>(mhlo::CreatePrepareForExport());
-  if (failed(pm.run(module)))
-    return tensorflow::errors::Internal("Unable to optimize for XLA export");
+  TF_RETURN_IF_ERROR(PrepareForExport(module));
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
   xla::XlaBuilder module_builder("main");
   ConvertToHloModule converter(module, module_builder, use_tuple_args,
@@ -1829,6 +1835,7 @@ Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
                            std::vector<xla::XlaOp>& returns,
                            MlirToHloConversionOptions options) {
   auto module = block.getParentOp()->getParentOfType<mlir::ModuleOp>();
+  TF_RETURN_IF_ERROR(PrepareForExport(module));
   ConvertToHloModule converter(module, builder,
                                /*use_tuple_args=*/false, /*return_tuple=*/false,
                                /*shape_representation_fn=*/nullptr, options);
