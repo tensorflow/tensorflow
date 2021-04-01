@@ -119,8 +119,12 @@ def group_by_window(key_func,
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
-    return dataset.group_by_window(dataset, key_func, reduce_func,
-                                   window_size_func)
+    return dataset.group_by_window(
+        key_func=key_func,
+        reduce_func=reduce_func,
+        window_size=window_size,
+        window_size_func=window_size_func
+    )
 
   return _apply_fn
 
