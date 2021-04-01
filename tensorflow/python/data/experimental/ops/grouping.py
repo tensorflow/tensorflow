@@ -104,18 +104,6 @@ def group_by_window(key_func,
     ValueError: if neither or both of {`window_size`, `window_size_func`} are
       passed.
   """
-  if (window_size is not None and window_size_func or
-      not (window_size is not None or window_size_func)):
-    raise ValueError("Must pass either window_size or window_size_func.")
-
-  if window_size is not None:
-
-    def constant_window_func(unused_key):
-      return ops.convert_to_tensor(window_size, dtype=dtypes.int64)
-
-    window_size_func = constant_window_func
-
-  assert window_size_func is not None
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
