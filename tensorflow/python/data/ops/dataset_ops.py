@@ -5280,6 +5280,9 @@ class _GroupByWindowDataset(UnaryDataset):
   def _functions(self):
     return [self._key_func, self._reduce_func, self._window_size_func]
 
+  def _transformation_name(self):
+    return "Dataset.group_by_window()"
+
 
 def _collect_resource_inputs(op):
   """Collects resource inputs for the given ops (and its variant inputs)."""
