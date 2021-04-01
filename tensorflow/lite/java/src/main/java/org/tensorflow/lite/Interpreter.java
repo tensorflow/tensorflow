@@ -88,8 +88,12 @@ public final class Interpreter implements AutoCloseable {
     public Options() {}
 
     /**
-     * Sets the number of threads to be used for ops that support multi-threading. Defaults to a
-     * platform-dependent value.
+     * Sets the number of threads to be used for ops that support multi-threading.
+     *
+     * <p>{@code numThreads} should be >= -1. Setting {@code numThreads} to 0 has the effect to
+     * disable multithreading, which is equivalent to setting {@code numThreads} to 1. If
+     * unspecified, or set to the value -1, the number of threads used will be
+     * implementation-defined and platform-dependent.
      */
     public Options setNumThreads(int numThreads) {
       this.numThreads = numThreads;
