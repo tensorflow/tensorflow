@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/shape_inference_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -725,6 +726,10 @@ class ShapeInference {
   // yields.
   bool InferShapeForIfRegion(IfRegionOp op);
 
+  // Infers the shape of _XlaHostComputeMlir based on the host computation
+  // module.  Returns true if a return type was changed.
+  bool InferShapeForXlaHostComputeMlir(_XlaHostComputeMlirOp op);
+
   // Infers the shape of ops that create TensorList. Specifically,
   // TensorListReserveOp, EmptyTensorListOp and TensorListFromTensor ops. It
   // refines the element shape if all tensors written to the list across all
@@ -883,6 +888,51 @@ bool ShapeInference::InferShapeForIfRegion(IfRegionOp op) {
     changed = RefineResultType(op, std::get<0>(result), std::get<1>(result)) ||
               changed;
   }
+  return changed;
+}
+
+bool ShapeInference::InferShapeForXlaHostComputeMlir(
+    _XlaHostComputeMlirOp host_compute_op) {
+  // Extract the module and function.
+  // The '_XlaHostComputeMlir` verifier verifies that `host_mlir_module`
+  // attribute is well formed, so we just return in case of an error in
+  // extracting the host function since it should never occur.
+  StringAttr host_module =
+      host_compute_op->getAttrOfType<StringAttr>("host_mlir_module");
+  if (host_module.getValue().empty()) return false;
+
+  mlir::OwningModuleRef module_for_func;
+  if (!tensorflow::DeserializeMlirModule(host_module.getValue().str(),
+                                         host_compute_op->getContext(),
+                                         &module_for_func)
+           .ok()) {
+    return false;
+  }
+
+  FuncOp func = module_for_func->lookupSymbol<FuncOp>("host_func");
+  if (!func) return false;
+
+  // Update/use input shapes for function.
+  FunctionType func_type = func.getType();
+  func.setType(FunctionType::get(func.getContext(),
+                                 host_compute_op.getOperandTypes(),
+                                 func_type.getResults()));
+
+  // Run shape inference on the function.
+  if (failed(PropagateShapeToRegions(host_compute_op.getOperandTypes(),
+                                     {&func.getBody()}, 10)))
+    return false;
+  if (failed(InferShapeForFunctionReturnType(func))) return false;
+
+  bool changed = false;
+  // Use refined function return shape for XlaHostComputeMlirOp.
+  for (auto result :
+       zip(host_compute_op.getResults(), func.getType().getResults())) {
+    changed = RefineResultType(host_compute_op, std::get<0>(result),
+                               std::get<1>(result)) ||
+              changed;
+  }
+
   return changed;
 }
 
@@ -1198,6 +1248,10 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
     return InferShapeForWhile(
         while_region,
         while_region.body().front().getTerminator()->getOperandTypes());
+
+  if (auto host_compute_op = dyn_cast<_XlaHostComputeMlirOp>(op)) {
+    return InferShapeForXlaHostComputeMlir(host_compute_op);
+  }
 
   // Handle TensorList init operations by inferring shape from TensorList write
   // operations. If we are unable to refine element shape here, proceed to use
