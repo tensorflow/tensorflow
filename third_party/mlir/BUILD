@@ -1665,18 +1665,14 @@ cc_library(
     hdrs = glob(["include/mlir/Dialect/StandardOps/Transforms/*.h"]),
     includes = ["include"],
     deps = [
-        ":Analysis",
-        ":ControlFlowInterfaces",
+        ":Affine",
         ":IR",
         ":MemRefDialect",
         ":Pass",
         ":SCFDialect",
         ":StandardOps",
         ":StandardOpsTransformsPassIncGen",
-        ":Support",
-        ":TensorDialect",
         ":Transforms",
-        "@llvm-project//llvm:Support",
     ],
 )
 
