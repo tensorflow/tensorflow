@@ -1,10 +1,5 @@
 # Release 2.5.0
 
-## Breaking Changes
-
-* The `TF_CPP_MIN_VLOG_LEVEL` environment variable has been renamed to to
-  `TF_CPP_MAX_VLOG_LEVEL` which correctly describes its effect.
-
 ## Major Features and Improvements
 
 * TPU embedding support
@@ -64,6 +59,11 @@
       `TF_ENABLE_ONEDNN_OPTS=1`.
     * We do not recommend using them in GPU systems, as they have not been
       sufficiently tested with GPUs yet.
+      
+## Breaking Changes
+
+* The `TF_CPP_MIN_VLOG_LEVEL` environment variable has been renamed to to
+  `TF_CPP_MAX_VLOG_LEVEL` which correctly describes its effect.
 
 ## Bug Fixes and Other Changes
 
