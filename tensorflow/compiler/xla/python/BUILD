@@ -457,6 +457,7 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/profiler/internal/cpu:python_tracer",
         "//tensorflow/core/profiler/lib:profiler_backends",
         "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/rpc:profiler_server_impl",
