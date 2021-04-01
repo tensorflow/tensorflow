@@ -107,7 +107,6 @@ TF_LITE_MICRO_TEST(FloatPoolingOpTestL2Pool) {
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
   float output_data[kOutputCount];
   tflite::testing::L2Pool2DTestParams params;
-  params.compare_tolerance = 0;
 
   tflite::testing::TestL2Pool2D(params, kInputDims, kInput, kExpectDims,
                                 kExpect, output_data);
@@ -176,7 +175,6 @@ TF_LITE_MICRO_TEST(FloatPoolingOpTestL2PoolPaddingSame) {
   float output_data[kOutputCount];
   tflite::testing::L2Pool2DTestParams params;
   params.padding = kTfLitePaddingSame;
-  params.compare_tolerance = 0;
 
   tflite::testing::TestL2Pool2D(params, kInputDims, kInput, kExpectDims,
                                 kExpect, output_data);
