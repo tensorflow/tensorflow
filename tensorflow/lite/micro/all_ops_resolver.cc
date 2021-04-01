@@ -32,6 +32,7 @@ AllOpsResolver::AllOpsResolver() {
   AddConcatenation();
   AddConv2D();
   AddCos();
+  AddCumSum();
   AddDepthwiseConv2D();
   AddDequantize();
   AddDetectionPostprocess();
