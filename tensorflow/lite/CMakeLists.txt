@@ -416,8 +416,8 @@ target_link_libraries(tensorflow-lite
     ${TFLITE_TARGET_DEPENDENCIES}
 )
 
-if (BUILD_SHARED_LIBS)
-  list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "TFL_SHARED_LIBRARY_BUILD")
+if (NOT BUILD_SHARED_LIBS)
+  list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "TFL_STATIC_LIBRARY_BUILD")
 endif()
 
 target_compile_options(tensorflow-lite
