@@ -76,8 +76,8 @@ have it and the Android NDK and SDK installed on your system.
 
 1.  Install the latest version of the [Bazel build system](https://bazel.build/versions/master/docs/install.html).
 2.  The Android NDK is required to build the native (C/C++) TensorFlow Lite
-    code. The current recommended version is 17c, which may be found
-    [here](https://developer.android.com/ndk/downloads/older_releases.html#ndk-17c-downloads).
+    code. The current recommended version is 18b, which may be found
+    [here](https://developer.android.com/ndk/downloads/older_releases.html#ndk-18b-downloads).
 3.  The Android SDK and build tools may be obtained
     [here](https://developer.android.com/tools/revisions/build-tools.html), or
     alternatively as part of

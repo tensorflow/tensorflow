@@ -1386,16 +1386,14 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testCheckpointLargeBuffer(self):
-    # Tensor of size 100M
+    # Tensor of size 512M
     dataset = dataset_ops.Dataset.from_tensors(
-        array_ops.ones((25, 1000, 1000), dtype=dtypes.float32))
-    # Repeat 25 times to exceed the 2G proto limit
-    dataset = dataset.repeat(30)
-    dataset = dataset.map(lambda x: x * 2, num_parallel_calls=25)
-
+        array_ops.ones((128, 1024, 1024), dtype=dtypes.float32))
+    dataset = dataset.repeat()
+    # Set parallelism to 5 to exceed the 2GB protobuf limit
+    dataset = dataset.map(lambda x: x * 2, num_parallel_calls=5)
     iterator = iter(dataset)
-    # Call next() to trigger parallel map calls.
-    next(iterator)
+    next(iterator)  # request an element to fill the parallel map buffer
     ckpt = trackable_utils.Checkpoint(iterator=iterator)
     manager = checkpoint_management.CheckpointManager(
         ckpt, self.get_temp_dir(), max_to_keep=1)
@@ -1405,149 +1403,33 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                         parameterized.TestCase):
 
-  def setUp(self):
-    self._tensor_slice_len = 7
-    self._num_epochs = 7
-    self._num_outputs = self._tensor_slice_len * self._num_epochs
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 2])))
+  def testCore(self, num_parallel_calls):
 
-  def _build_ds(self, multiplier=37.0):
-    components = (np.arange(self._tensor_slice_len), np.array([[1, 2, 3]]) *
-                  np.arange(self._tensor_slice_len)[:, np.newaxis],
-                  np.array(multiplier) * np.arange(self._tensor_slice_len))
-
-    def _map_fn(x, y, z):
-      return math_ops.square(x), math_ops.square(y), math_ops.square(z)
-
-    return (
-        dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn).repeat(
-            self._num_epochs))
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testSaveRestoreCore(self):
-    self.run_core_tests(self._build_ds, self._num_outputs)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testSaveStatefulFunction(self):
+    tensor_slice_len = 7
+    num_epochs = 2
+    multiplier = 37.0
 
     def _build_ds():
 
-      def _map_fn(x):
-        return random_ops.random_uniform(
-            (), 0, 10, dtype=dtypes.int32) * math_ops.cast(x, dtypes.int32)
+      components = (np.arange(tensor_slice_len), np.array([[1, 2, 3]]) *
+                    np.arange(tensor_slice_len)[:, np.newaxis],
+                    np.array(multiplier) * np.arange(tensor_slice_len))
 
-      return dataset_ops.Dataset.range(100).map(_map_fn)
+      def _map_fn(x, y, z):
+        return math_ops.square(x), math_ops.square(y), math_ops.square(z)
 
-    self.verify_error_on_save(_build_ds, 15, errors.FailedPreconditionError)
+      return (dataset_ops.Dataset.from_tensor_slices(components).map(
+          _map_fn, num_parallel_calls=num_parallel_calls).repeat(num_epochs))
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCaptureVariableInMapFn(self):
+    self.run_core_tests(_build_ds, tensor_slice_len * num_epochs)
 
-    def _build_ds():
-      counter_var = variable_scope.get_variable(
-          "counter", (), dtypes.int32, use_resource=True)
-      return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
-          lambda _: counter_var.assign_add(1)))
-
-    self.verify_error_on_save(_build_ds, 15, errors.FailedPreconditionError)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testCaptureConstantInMapFn(self):
-    num_outputs = 10
-
-    def _build_ds():
-      constant_var = constant_op.constant(5)
-      return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
-          lambda x: x + constant_var))
-
-    self.run_core_tests(_build_ds, num_outputs)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testCaptureDefunInMapFn(self):
-    num_outputs = 10
-
-    def _build_ds():
-
-      @function.Defun(dtypes.int64)
-      def defun_fn(x):
-        return constant_op.constant(1000) + math_ops.cast(x, dtypes.int32)
-
-      return dataset_ops.Dataset.range(num_outputs).map(defun_fn)
-
-    self.run_core_tests(_build_ds, num_outputs)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testBuildDefunInMapFn(self):
-    num_outputs = 10
-
-    def _build_ds():
-
-      @function.Defun(dtypes.int64)
-      def defun_fn(x):
-
-        @function.Defun(dtypes.int32)
-        def defun_fn_deep(x):
-          return constant_op.constant(1000) + math_ops.cast(x, dtypes.int32)
-
-        return constant_op.constant(11000) + defun_fn_deep(
-            math_ops.cast(x, dtypes.int32))
-
-      return dataset_ops.Dataset.range(num_outputs).map(defun_fn)
-
-    self.run_core_tests(_build_ds, num_outputs)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testSparseCore(self):
-
-    def _sparse(i):
-      return sparse_tensor.SparseTensorValue(
-          indices=np.array([[0, 0]]),
-          values=(i * np.array([1])),
-          dense_shape=np.array([1, 1]))
-
-    def _build_ds(num_outputs):
-      return dataset_ops.Dataset.range(num_outputs).map(_sparse)
-
-    num_outputs = 10
-    self.run_core_tests(lambda: _build_ds(num_outputs), num_outputs)
-
-
-class ParallelMapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                                parameterized.TestCase):
-
-  def setUp(self):
-    super(ParallelMapCheckpointTest, self).setUp()
-    self._tensor_slice_len = 7
-    self._num_epochs = 1
-    self._num_outputs = self._tensor_slice_len * self._num_epochs
-
-  def _build_ds(self, multiplier=37.0):
-    components = (np.arange(self._tensor_slice_len), np.array([[1, 2, 3]]) *
-                  np.arange(self._tensor_slice_len)[:, np.newaxis],
-                  np.array(multiplier) * np.arange(self._tensor_slice_len))
-
-    def _map_fn(x, y, z):
-      return math_ops.square(x), math_ops.square(y), math_ops.square(z)
-
-    return (dataset_ops.Dataset.from_tensor_slices(components).map(
-        _map_fn, num_parallel_calls=3).repeat(self._num_epochs))
-
-  def _build_ds_with_prefetch(self, multiplier=37.0):
-    components = (np.arange(self._tensor_slice_len), np.array([[1, 2, 3]]) *
-                  np.arange(self._tensor_slice_len)[:, np.newaxis],
-                  np.array(multiplier) * np.arange(self._tensor_slice_len))
-
-    def _map_fn(x, y, z):
-      return math_ops.square(x), math_ops.square(y), math_ops.square(z)
-
-    return (dataset_ops.Dataset.from_tensor_slices(components).map(
-        _map_fn, num_parallel_calls=3).repeat(self._num_epochs).prefetch(5))
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testSaveRestoreCore(self):
-    for ds_fn in [self._build_ds, self._build_ds_with_prefetch]:
-      self.run_core_tests(ds_fn, self._num_outputs)
-
-  def testSaveStatefulFunction(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 2])))
+  def testSaveStatefulFunction(self, num_parallel_calls):
 
     def _build_ds():
 
@@ -1556,34 +1438,41 @@ class ParallelMapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
             (), 0, 10, dtype=dtypes.int32) * math_ops.cast(x, dtypes.int32)
 
       return dataset_ops.Dataset.range(100).map(
-          _map_fn, num_parallel_calls=2).prefetch(2)
+          _map_fn, num_parallel_calls=num_parallel_calls)
 
     self.verify_error_on_save(_build_ds, 15, errors.FailedPreconditionError)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCaptureVariableInMapFn(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 2])))
+  def testCaptureVariableInMapFn(self, num_parallel_calls):
 
     def _build_ds():
       counter_var = variable_scope.get_variable(
           "counter", (), dtypes.int32, use_resource=True)
       return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
           lambda _: counter_var.assign_add(1),
-          num_parallel_calls=2).prefetch(2))
+          num_parallel_calls=num_parallel_calls))
 
     self.verify_error_on_save(_build_ds, 15, errors.FailedPreconditionError)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCaptureConstantInMapFn(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 2])))
+  def testCaptureConstantInMapFn(self, num_parallel_calls):
+    num_outputs = 10
 
     def _build_ds():
       constant_var = constant_op.constant(5)
       return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
-          lambda x: x + constant_var, num_parallel_calls=2).prefetch(2))
+          lambda x: x + constant_var, num_parallel_calls=num_parallel_calls))
 
-    self.run_core_tests(_build_ds, 10)
+    self.run_core_tests(_build_ds, num_outputs)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCaptureDefunInMapFn(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 2])))
+  def testCaptureDefunInMapFn(self, num_parallel_calls):
     num_outputs = 10
 
     def _build_ds():
@@ -1593,12 +1482,14 @@ class ParallelMapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         return constant_op.constant(1000) + math_ops.cast(x, dtypes.int32)
 
       return dataset_ops.Dataset.range(num_outputs).map(
-          defun_fn, num_parallel_calls=2).prefetch(2)
+          defun_fn, num_parallel_calls=num_parallel_calls)
 
     self.run_core_tests(_build_ds, num_outputs)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testBuildDefunInMapFn(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 2])))
+  def testBuildDefunInMapFn(self, num_parallel_calls):
     num_outputs = 10
 
     def _build_ds():
@@ -1614,9 +1505,27 @@ class ParallelMapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
             math_ops.cast(x, dtypes.int32))
 
       return dataset_ops.Dataset.range(num_outputs).map(
-          defun_fn, num_parallel_calls=2).prefetch(2)
+          defun_fn, num_parallel_calls=num_parallel_calls)
 
     self.run_core_tests(_build_ds, num_outputs)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 2])))
+  def testSparseCore(self, num_parallel_calls):
+
+    def _sparse(i):
+      return sparse_tensor.SparseTensorValue(
+          indices=np.array([[0, 0]]),
+          values=(i * np.array([1])),
+          dense_shape=np.array([1, 1]))
+
+    def _build_ds(num_outputs):
+      return dataset_ops.Dataset.range(num_outputs).map(
+          _sparse, num_parallel_calls=num_parallel_calls)
+
+    num_outputs = 10
+    self.run_core_tests(lambda: _build_ds(num_outputs), num_outputs)
 
 
 if __name__ == "__main__":

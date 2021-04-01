@@ -14,9 +14,6 @@
 # ==============================================================================
 """Utilities related to distributed training."""
 # pylint:disable=protected-access
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import functools
 
@@ -33,7 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
@@ -77,7 +74,7 @@ def set_weights(distribution_strategy, dist_model, weights):
     weights = weights[num_param:]
 
   if not ops.executing_eagerly_outside_functions():
-    K.get_session(assign_ops).run(assign_ops)
+    backend.get_session(assign_ops).run(assign_ops)
 
 
 def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
@@ -153,7 +150,7 @@ def unwrap_output_dict(strategy, grouped_outputs, mode):
                                        grouped_outputs['metrics'])
   batch_size = strategy.reduce(reduce_util.ReduceOp.SUM,
                                grouped_outputs['batch_size'], axis=None)
-  if (K.is_tpu_strategy(strategy) and
+  if (backend.is_tpu_strategy(strategy) and
       ops.executing_eagerly_outside_functions()):
     # Choose 1 value per replica in the TPU case since all replicas produce the
     # same output.
@@ -201,7 +198,7 @@ def unwrap_outputs(distribution_strategy, grouped_outputs,
                                       grouped_outputs[0], axis=None)
   all_outputs = flatten_per_replica_values(distribution_strategy,
                                            grouped_outputs[1:])
-  if (K.is_tpu_strategy(distribution_strategy) and
+  if (backend.is_tpu_strategy(distribution_strategy) and
       ops.executing_eagerly_outside_functions()):
     # Choose 1 value per replica in the TPU case since all replicas produce the
     # same output.
@@ -378,7 +375,7 @@ def validate_all_tensor_shapes(x, x_values):
 
 def _wait_for_variable_initialization(session):
   """Utility to wait for variables to be initialized."""
-  all_variables = K._get_variables(K.get_graph())  # pylint: disable=protected-access
+  all_variables = backend._get_variables(backend.get_graph())  # pylint: disable=protected-access
   candidate_vars = []
   for v in all_variables:
     if not getattr(v, '_keras_initialized', False):
@@ -401,11 +398,11 @@ def _wait_for_variable_initialization(session):
 
 def init_restore_or_wait_for_variables():
   """Initialize or restore variables or wait for variables to be initialized."""
-  session = K._get_session()  # pylint: disable=protected-access
+  session = backend._get_session()  # pylint: disable=protected-access
   if not multi_worker_util.has_worker_context(
   ) or multi_worker_util.should_load_checkpoint():
     # TODO(yuefengz): if checkpoints exist, restore from checkpoint.
-    K._initialize_variables(session)  # pylint: disable=protected-access
+    backend._initialize_variables(session)  # pylint: disable=protected-access
   else:
     _wait_for_variable_initialization(session)
 
@@ -496,12 +493,12 @@ def get_input_params(distribution_strategy,
   if context.executing_eagerly():
     allow_partial_batch = (
         mode != ModeKeys.TRAIN or
-        not K.is_tpu_strategy(distribution_strategy))
+        not backend.is_tpu_strategy(distribution_strategy))
   else:
     allow_partial_batch = (
         mode == ModeKeys.TRAIN or
         ((mode == ModeKeys.PREDICT or mode == ModeKeys.TEST) and
-         K.is_tpu_strategy(distribution_strategy)))
+         backend.is_tpu_strategy(distribution_strategy)))
 
   if steps is None:
     if batch_size is None:
@@ -580,7 +577,7 @@ def initialize_iterator(iterator, distribution_strategy):
   with distribution_strategy.scope():
     init_op = control_flow_ops.group(iterator.initializer)
     if not context.executing_eagerly():
-      K.get_session((init_op,)).run(init_op)
+      backend.get_session((init_op,)).run(init_op)
 
 
 def _get_input_from_iterator(iterator, model):
@@ -623,7 +620,7 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   """
   strategy = model._distribution_strategy
   inputs, targets, sample_weights = _get_input_from_iterator(inputs, model)
-  if K.is_tpu_strategy(strategy):
+  if backend.is_tpu_strategy(strategy):
     if sample_weights is not None:
       raise ValueError('TPUStrategy does not support sample weights.')
 
@@ -669,7 +666,7 @@ def is_distributing_by_cloning(model):
     True if the `model` is going to be distributed using cloning and False
     otherwise.
   """
-  if (K.is_tpu_strategy(model._distribution_strategy) and
+  if (backend.is_tpu_strategy(model._distribution_strategy) and
       context.executing_eagerly):  # b/137580852
     return False
   elif ops.executing_eagerly_outside_functions():
@@ -764,7 +761,7 @@ def _build_network_on_replica(model, mode, inputs=None, targets=None):
 def _build_distributed_network(model, strategy, mode, inputs=None,
                                targets=None):
   """Create a cloned model on each replica."""
-  with K.get_graph().as_default(), strategy.scope():
+  with backend.get_graph().as_default(), strategy.scope():
     distributed_model = strategy.extended.call_for_each_replica(
         _build_network_on_replica,
         args=(model, mode, inputs, targets))
@@ -815,7 +812,7 @@ def _clone_and_build_model(model, mode, inputs=None, targets=None):
 
 def clone_model_on_replicas(model, strategy, mode, inputs=None, targets=None):
   """Create a cloned model on each replica."""
-  with K.get_graph().as_default(), strategy.scope():
+  with backend.get_graph().as_default(), strategy.scope():
     distributed_model = strategy.extended.call_for_each_replica(
         _clone_and_build_model, args=(model, mode, inputs, targets))
     set_distributed_model(model, mode, distributed_model)
@@ -968,7 +965,7 @@ def _make_graph_execution_function(model, mode):
         grouped_session_args,
         with_loss_tensor=(mode != ModeKeys.PREDICT))
 
-    return K.function(
+    return backend.function(
         all_inputs,
         all_outputs,
         updates=all_updates,
@@ -985,13 +982,13 @@ def _make_eager_execution_function(model, mode):
   # NOTE(priyag): Try creating a new FuncGraph within DS scope instead of using
   # the global one.
   strategy = model._distribution_strategy
-  global_graph = K.get_graph()
+  global_graph = backend.get_graph()
 
   with global_graph.as_default(), strategy.scope():
     # First we gather the relevant portions of the model across all replicas.
-    # `K._scratch_graph(global_graph)` signals to Keras that it should not
+    # `backend._scratch_graph(global_graph)` signals to Keras that it should not
     # lift to a separate graph when creating the per-replica functions.
-    with K._scratch_graph(global_graph):
+    with backend._scratch_graph(global_graph):
       # Create train ops on each of the devices when we call
       # `_per_replica_fit_function`.
       grouped = strategy.extended.call_for_each_replica(
@@ -1010,7 +1007,7 @@ def _make_eager_execution_function(model, mode):
 
     # Finally, a joint Keras function is created; this one will be created in
     # a separate FuncGraph.
-    return K.function(
+    return backend.function(
         all_inputs,
         all_outputs,
         name='eager_distributed_{}_function'.format(mode))
@@ -1086,7 +1083,7 @@ def _generate_cache_key(mode):
 
 @tf_contextlib.contextmanager
 def distributed_scope(strategy, learning_phase):
-  with strategy.scope(), K.learning_phase_scope(learning_phase):
+  with strategy.scope(), backend.learning_phase_scope(learning_phase):
     yield
 
 

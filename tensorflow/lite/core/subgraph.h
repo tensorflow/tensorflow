@@ -612,6 +612,9 @@ class Subgraph {
   // Returns true if cancellation function returns true.
   bool IsCancelled();
 
+  // Enables preserving intermediates for debugging.
+  TfLiteStatus PreserveAllTensorsExperimental();
+
   // The state of the Interpreter.
   enum State {
     // The interpreter isn't ready to be invoked.
@@ -744,7 +747,12 @@ class Subgraph {
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap* resources_ = nullptr;
 
+  // Name of the subgraph (analogous to function name).
   std::string name_;
+
+  // Whether memory planner should be instantiated to retain intermediates for
+  // debugging.
+  bool preserve_all_tensors_ = false;
 };
 
 }  // namespace tflite

@@ -19,9 +19,6 @@ Reference:
   - [Rethinking the Inception Architecture for Computer Vision](
       http://arxiv.org/abs/1512.00567) (CVPR 2016)
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.applications import imagenet_utils

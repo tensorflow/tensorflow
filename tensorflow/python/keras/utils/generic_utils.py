@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Python utilities required by Keras."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import binascii
 import codecs
@@ -31,7 +28,7 @@ import warnings
 import weakref
 
 import numpy as np
-import six
+
 from tensorflow.python.keras.utils import tf_contextlib
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.util import nest
@@ -511,7 +508,7 @@ def serialize_keras_object(instance):
       raise e
     serialization_config = {}
     for key, item in config.items():
-      if isinstance(item, six.string_types):
+      if isinstance(item, str):
         serialization_config[key] = item
         continue
 
@@ -582,7 +579,7 @@ def class_and_config_for_serialized_keras_object(
           custom_objects=custom_objects,
           printable_module_name='config_item')
     # TODO(momernick): Should this also have 'module_objects'?
-    elif (isinstance(item, six.string_types) and
+    elif (isinstance(item, str) and
           tf_inspect.isfunction(get_registered_object(item, custom_objects))):
       # Handle custom functions here. When saving functions, we only save the
       # function's name as a string. If we find a matching string in the custom
@@ -689,7 +686,7 @@ def deserialize_keras_object(identifier,
 
     return deserialized_obj
 
-  elif isinstance(identifier, six.string_types):
+  elif isinstance(identifier, str):
     object_name = identifier
     if custom_objects and object_name in custom_objects:
       obj = custom_objects.get(object_name)

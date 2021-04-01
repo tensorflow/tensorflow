@@ -18,7 +18,7 @@ load("//tensorflow/compiler/xla/service/cpu:build_defs.bzl", "runtime_copts")
 
 package(
     default_visibility = [":internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(

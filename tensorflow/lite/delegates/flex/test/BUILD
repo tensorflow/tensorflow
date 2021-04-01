@@ -10,7 +10,7 @@ package(
     default_visibility = [
         "//tensorflow/lite/android:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tflite_flex_jni_library(

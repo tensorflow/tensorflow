@@ -17,8 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_PASSES_H_
 
 #include <memory>
-
-#include "llvm/ADT/ArrayRef.h"
+#include <string>
 
 namespace mlir {
 class FuncOp;
@@ -64,7 +63,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizePass(
 // Creates an instance of the TensorFlow Lite dialect TrimFunctions
 // pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTrimFunctionsPass(
-    llvm::ArrayRef<std::string> trim_funcs_allowlist);
+    const std::vector<std::string>& trim_funcs_allowlist);
 
 // Creates an instance of the TensorFlow Lite dialect PrepareCompositeFunctions
 // pass.
@@ -95,7 +94,11 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateWhileOutlinePass();
 std::unique_ptr<OperationPass<FuncOp>> CreateRuntimeVerifyPass();
 
 // Creates raise custom ops pass, which legalize custom ops to TFL::CustomOp
-std::unique_ptr<OperationPass<FuncOp>> CreateRaiseCustomOpsPass();
+std::unique_ptr<OperationPass<FuncOp>> CreateRaiseCustomOpsPass(
+    const std::vector<std::string>& target_ops);
+
+// Creates raise custom ops pass, which legalize custom ops to TFL::CustomOp
+std::unique_ptr<OperationPass<FuncOp>> CreateLowerCustomOpsPass();
 
 // Inserts an TFL::CallOnce op when the tf_saved_model's session initialzer is
 // given.

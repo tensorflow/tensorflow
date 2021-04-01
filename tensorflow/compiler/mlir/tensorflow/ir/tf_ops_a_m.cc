@@ -1169,12 +1169,22 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
     }
   }
 
-  // New lhs and rhs concatenation axis.
-  auto axis_type = mlir::RankedTensorType::get({}, rewriter.getIntegerType(64));
-  auto lhs_axis = rewriter.create<TF::ConstOp>(
-      loc, DenseIntElementsAttr::get(axis_type, hoist_params->lhs_axis));
-  auto rhs_axis = rewriter.create<TF::ConstOp>(
-      loc, DenseIntElementsAttr::get(axis_type, hoist_params->rhs_axis));
+  // New lhs and rhs concatenation axis
+  auto axis_type =
+      mlir::RankedTensorType::get({}, mlir::getElementTypeOrSelf(axis_attr));
+  DenseIntElementsAttr lhs_attr, rhs_attr;
+  if (axis_type.getElementType().isInteger(32)) {
+    lhs_attr = DenseIntElementsAttr::get(
+        axis_type, static_cast<int32_t>(hoist_params->lhs_axis));
+    rhs_attr = DenseIntElementsAttr::get(
+        axis_type, static_cast<int32_t>(hoist_params->rhs_axis));
+  } else {
+    assert(axis_type.getElementType().isInteger(64));
+    lhs_attr = DenseIntElementsAttr::get(axis_type, hoist_params->lhs_axis);
+    rhs_attr = DenseIntElementsAttr::get(axis_type, hoist_params->rhs_axis);
+  }
+  auto lhs_axis = rewriter.create<TF::ConstOp>(loc, lhs_attr);
+  auto rhs_axis = rewriter.create<TF::ConstOp>(loc, rhs_attr);
 
   // Concatenate binary ops operands on the new axis.
   auto lhs_concat = rewriter.create<ConcatV2Op>(

@@ -71,6 +71,46 @@ StatusOr<DevicePutResult> HandlePythonScalar(py::handle obj,
   return DevicePutResult(std::move(buffer), /*weak_type=*/true);
 }
 
+StatusOr<DevicePutResult> HandlePythonInt(py::handle obj, PjRtDevice* to_device,
+                                          const DevicePutOptions& options) {
+  void* ptr;
+  Shape shape;
+  int64 data_int64;
+  int32 data_int32;
+
+  if (options.squash_64bit_types) {
+    try {
+      data_int32 = py::cast<int32>(obj);
+    } catch (const std::exception& e) {
+      return InvalidArgument(
+          "Unable to convert Python scalar to %s. This most likely means the "
+          "value (%s) overflows the range of the type.",
+          PrimitiveType_Name(primitive_util::NativeToPrimitiveType<int32>()),
+          py::repr(obj));
+    }
+    ptr = &data_int32;
+    shape = ShapeUtil::MakeShapeWithType<int32>({});
+  } else {
+    try {
+      data_int64 = py::cast<int64>(obj);
+    } catch (const std::exception& e) {
+      return InvalidArgument(
+          "Unable to convert Python scalar to %s. This most likely means the "
+          "value (%s) overflows the range of the type.",
+          PrimitiveType_Name(primitive_util::NativeToPrimitiveType<int64>()),
+          py::repr(obj));
+    }
+    ptr = &data_int64;
+    shape = ShapeUtil::MakeShapeWithType<int64>({});
+  }
+  TF_ASSIGN_OR_RETURN(
+      auto buffer,
+      to_device->client()->BufferFromHostBuffer(
+          ptr, shape, PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+          nullptr, to_device));
+  return DevicePutResult(std::move(buffer), /*weak_type=*/true);
+}
+
 template <typename T, typename SquashedT = T>
 StatusOr<DevicePutResult> HandleNumpyScalar(py::handle h, PjRtDevice* to_device,
                                             const DevicePutOptions& options) {
@@ -222,8 +262,7 @@ StatusOr<DevicePutResult> DevicePut(pybind11::handle arg, PjRtDevice* to_device,
                       "Conversion code assumes bool is 1 byte");
         (*p)[reinterpret_cast<PyObject*>(&PyBool_Type)] =
             HandlePythonScalar<bool, bool>;
-        (*p)[reinterpret_cast<PyObject*>(&PyLong_Type)] =
-            HandlePythonScalar<int64_t, int32_t>;
+        (*p)[reinterpret_cast<PyObject*>(&PyLong_Type)] = HandlePythonInt;
         (*p)[reinterpret_cast<PyObject*>(&PyFloat_Type)] =
             HandlePythonScalar<double, float>;
         (*p)[reinterpret_cast<PyObject*>(&PyComplex_Type)] =

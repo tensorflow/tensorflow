@@ -21,7 +21,7 @@ load(
 )
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -420,6 +420,7 @@ cuda_py_test(
     size = "small",
     srcs = ["core_test.py"],
     python_version = "PY3",
+    tags = ["notsan"],  # TODO(b/183962087)
     deps = [
         ":context",
         ":core",
@@ -949,6 +950,7 @@ tf_xla_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",
+        "no_tfrt",  # TFRT does not have xla device.
         "no_windows",
         "nomac",
     ],

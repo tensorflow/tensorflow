@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -43,6 +44,7 @@ def enable_control_flow_v2():  # pylint: disable=invalid-name
   function is not required.
   """
   # pylint: disable=protected-access
+  logging.info("Enabling control flow v2")
   ops._control_flow_api_gauge.get_cell().set(True)
   control_flow_util.ENABLE_CONTROL_FLOW_V2 = True
 
@@ -58,6 +60,7 @@ def disable_control_flow_v2():  # pylint: disable=invalid-name
   properly please file a bug.
   """
   # pylint: disable=protected-access
+  logging.info("Disabling control flow v2")
   ops._control_flow_api_gauge.get_cell().set(False)
   control_flow_util.ENABLE_CONTROL_FLOW_V2 = False
 

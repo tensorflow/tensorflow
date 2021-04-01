@@ -69,6 +69,36 @@ class _SummaryState(threading.local):
 _summary_state = _SummaryState()
 
 
+class _SummaryContextManager:
+  """Context manager to implement SummaryWriter.as_default()."""
+  # Note: this is a class so that it's possible to implement `set_as_default()`
+  # simply via `as_default().__enter__()`. We can't do that with @contextmanager
+  # because the `finally` block will be executed when the generator is GCed.
+
+  def __init__(self, writer, step=None):
+    self._writer = writer
+    self._step = step
+    self._old_writer = None
+    self._old_step = None
+
+  def __enter__(self):
+    self._old_writer = _summary_state.writer
+    _summary_state.writer = self._writer
+    if self._step is not None:
+      self._old_step = _summary_state.step
+      _summary_state.step = self._step
+    return self._writer
+
+  def __exit__(self, *exc):
+    # Flushes the summary writer in eager mode or in graph functions, but
+    # not in legacy graph mode (you're on your own there).
+    _summary_state.writer.flush()
+    _summary_state.writer = self._old_writer
+    if self._step is not None:
+      _summary_state.step = self._old_step
+    return False
+
+
 def _should_record_summaries_internal(default_state):
   """Returns boolean Tensor if summaries should/shouldn't be recorded.
 
@@ -202,7 +232,6 @@ def set_step(step):
 class SummaryWriter(object):
   """Interface representing a stateful summary writer object."""
 
-  @abc.abstractmethod
   def set_as_default(self, step=None):
     """Enables this summary writer for the current thread.
 
@@ -221,10 +250,8 @@ class SummaryWriter(object):
         the current step is modified to the given value. When `None`, the
         current step is not modified.
     """
-    raise NotImplementedError()
+    self.as_default(step).__enter__()
 
-  @abc.abstractmethod
-  @tf_contextlib.contextmanager
   def as_default(self, step=None):
     """Returns a context manager that enables summary writing.
 
@@ -253,8 +280,11 @@ class SummaryWriter(object):
         the current step is captured, replaced by a given one, and the original
         one is restored when the context manager exits. When `None`, the current
         step is not modified (and not restored when the context manager exits).
+
+    Returns:
+      The context manager.
     """
-    raise NotImplementedError()
+    return _SummaryContextManager(self, step)
 
   def init(self):
     """Initializes the summary writer."""
@@ -272,19 +302,13 @@ class SummaryWriter(object):
 class ResourceSummaryWriter(SummaryWriter):
   """Implementation of SummaryWriter using a SummaryWriterInterface resource."""
 
-  def __init__(self,
-               shared_name,
-               init_op_fn,
-               name=None,
-               v2=False,
-               metadata=None):
+  def  __init__(self, shared_name, init_op_fn, name=None, v2=False):
     self._resource = gen_summary_ops.summary_writer(
         shared_name=shared_name, name=name)
     # TODO(nickfelt): cache other constructed ops in graph mode
     self._init_op_fn = init_op_fn
     self._init_op = init_op_fn(self._resource)
     self._v2 = v2
-    self._metadata = {} if metadata is None else metadata
     self._closed = False
     if context.executing_eagerly():
       self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
@@ -293,79 +317,19 @@ class ResourceSummaryWriter(SummaryWriter):
       ops.add_to_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME, self._init_op)
 
   def set_as_default(self, step=None):
-    """Enables this summary writer for the current thread.
-
-    For convenience, if `step` is not None, this function also sets a default
-    value for the `step` parameter used in summary-writing functions elsewhere
-    in the API so that it need not be explicitly passed in every such
-    invocation. The value can be a constant or a variable.
-
-    Note: when setting `step` in a @tf.function, the step value will be
-    captured at the time the function is traced, so changes to the step outside
-    the function will not be reflected inside the function unless using
-    a `tf.Variable` step.
-
-    Args:
-      step: An `int64`-castable default step value, or `None`. When not `None`,
-        the current step is modified to the given value. When `None`, the
-        current step is not modified.
-    """
+    """See `SummaryWriter.set_as_default`."""
     if self._v2 and context.executing_eagerly() and self._closed:
       raise RuntimeError("SummaryWriter is already closed")
-    _summary_state.writer = self
-    if step is not None:
-      _summary_state.step = step
+    super().set_as_default(step)
 
-  @tf_contextlib.contextmanager
   def as_default(self, step=None):
-    """Returns a context manager that enables summary writing.
-
-    For convenience, if `step` is not None, this function also sets a default
-    value for the `step` parameter used in summary-writing functions elsewhere
-    in the API so that it need not be explicitly passed in every such
-    invocation. The value can be a constant or a variable.
-
-    Note: when setting `step` in a @tf.function, the step value will be
-    captured at the time the function is traced, so changes to the step outside
-    the function will not be reflected inside the function unless using
-    a `tf.Variable` step.
-
-    For example, `step` can be used as:
-
-    ```python
-    with writer_a.as_default(step=10):
-      tf.summary.scalar(tag, value)   # Logged to writer_a with step 10
-      with writer_b.as_default(step=20):
-        tf.summary.scalar(tag, value) # Logged to writer_b with step 20
-      tf.summary.scalar(tag, value)   # Logged to writer_a with step 10
-    ```
-
-    Args:
-      step: An `int64`-castable default step value, or `None`. When not `None`,
-        the current step is captured, replaced by a given one, and the original
-        one is restored when the context manager exits. When `None`, the current
-        step is not modified (and not restored when the context manager exits).
-    """
+    """See `SummaryWriter.as_default`."""
     if self._v2 and context.executing_eagerly() and self._closed:
       raise RuntimeError("SummaryWriter is already closed")
-    old = _summary_state.writer
-    if step is not None:
-      old_step = _summary_state.step
-    try:
-      _summary_state.writer = self
-      if step is not None:
-        _summary_state.step = step
-      yield self
-      # Flushes the summary writer in eager mode or in graph functions, but
-      # not in legacy graph mode (you're on your own there).
-      self.flush()
-    finally:
-      _summary_state.writer = old
-      if step is not None:
-        _summary_state.step = old_step
+    return super().as_default(step)
 
   def init(self):
-    """Initializes the summary writer."""
+    """See `SummaryWriter.init`."""
     if self._v2:
       if context.executing_eagerly() and self._closed:
         raise RuntimeError("SummaryWriter is already closed")
@@ -374,13 +338,14 @@ class ResourceSummaryWriter(SummaryWriter):
     return self._init_op_fn(self._resource)
 
   def flush(self):
-    """Flushes any buffered data."""
+    """See `SummaryWriter.flush`."""
     if self._v2 and context.executing_eagerly() and self._closed:
       return
-    return _flush_fn(writer=self)
+    with ops.device("cpu:0"):
+      return gen_summary_ops.flush_summary_writer(self._resource)
 
   def close(self):
-    """Flushes and closes the summary writer."""
+    """See `SummaryWriter.close`."""
     if self._v2 and context.executing_eagerly() and self._closed:
       return
     try:
@@ -512,8 +477,7 @@ def create_file_writer_v2(logdir,
               flush_millis=flush_millis,
               filename_suffix=filename_suffix),
           name=name,
-          v2=True,
-          metadata={"logdir": logdir})
+          v2=True)
 
 
 def create_file_writer(logdir,
@@ -1053,10 +1017,10 @@ def flush(writer=None, name=None):
   This operation blocks until that finishes.
 
   Args:
-    writer: The `tf.summary.SummaryWriter` resource to flush.
-      The thread default will be used if this parameter is None.
-      Otherwise a `tf.no_op` is returned.
-    name: A name for the operation (optional).
+    writer: The `tf.summary.SummaryWriter` to flush. If None, the current
+      default writer will be used instead; if there is no current writer, this
+      returns `tf.no_op`.
+    name: Ignored legacy argument for a name for the operation.
 
   Returns:
     The created `tf.Operation`.
@@ -1065,16 +1029,12 @@ def flush(writer=None, name=None):
     writer = _summary_state.writer
     if writer is None:
       return control_flow_ops.no_op()
-  if isinstance(writer, ResourceSummaryWriter):
-    resource = writer._resource  # pylint: disable=protected-access
+  if isinstance(writer, SummaryWriter):
+    return writer.flush()
   else:
-    # Assume we were passed a raw resource tensor.
-    resource = writer
-  with ops.device("cpu:0"):
-    return gen_summary_ops.flush_summary_writer(resource, name=name)
-
-
-_flush_fn = flush  # for within SummaryWriter.flush()
+    # Legacy fallback in case we were passed a raw resource tensor.
+    with ops.device("cpu:0"):
+      return gen_summary_ops.flush_summary_writer(writer, name=name)
 
 
 def eval_dir(model_dir, name=None):
@@ -1277,15 +1237,15 @@ def trace_export(name, step=None, profiler_outdir=None):
     step: Explicit `int64`-castable monotonic step value for this summary. If
       omitted, this defaults to `tf.summary.experimental.get_step()`, which must
       not be None.
-    profiler_outdir: Output directory for profiler. This is only used when the
-      profiler was enabled when the trace was started. In that case, if there is
-      a logdir-based default SummaryWriter, this defaults to the same directory,
-      but otherwise the argument must be passed.
+    profiler_outdir: Output directory for profiler. It is required when profiler
+      is enabled when trace was started. Otherwise, it is ignored.
 
   Raises:
     ValueError: if a default writer exists, but no step was provided and
       `tf.summary.experimental.get_step()` is None.
   """
+  # TODO(stephanlee): See if we can remove profiler_outdir and infer it from
+  # the SummaryWriter's logdir.
   global _current_trace_context
 
   if ops.inside_function():
@@ -1299,14 +1259,8 @@ def trace_export(name, step=None, profiler_outdir=None):
     if _current_trace_context is None:
       raise ValueError("Must enable trace before export.")
     graph, profiler = _current_trace_context  # pylint: disable=redefined-outer-name
-    if profiler_outdir is None \
-        and isinstance(_summary_state.writer, ResourceSummaryWriter):
-      logdir = _summary_state.writer._metadata.get("logdir")  # pylint: disable=protected-access
-      if logdir is not None:
-        profiler_outdir = logdir
     if profiler and profiler_outdir is None:
-      raise ValueError("Must set profiler_outdir or "
-                       "enable summary writer with logdir.")
+      raise ValueError("Required profiler_outdir is not specified")
 
   run_meta = context.context().export_run_metadata()
 

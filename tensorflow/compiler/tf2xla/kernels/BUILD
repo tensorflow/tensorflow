@@ -3,13 +3,14 @@ load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 package(
     default_visibility = ["//tensorflow/compiler/tf2xla:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_kernel_library(
     name = "xla_ops",
     srcs = [
         "aggregate_ops.cc",
+        "all_reduce_op.cc",
         "arg_op.cc",
         "batch_matmul_op.cc",
         "batch_norm_op.cc",

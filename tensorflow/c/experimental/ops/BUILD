@@ -3,7 +3,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 # Experimental ops. These will eventually be replaced by machine-generated versions.
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(

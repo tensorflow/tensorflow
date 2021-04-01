@@ -82,6 +82,8 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.structured import structured_tensor
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model.load import load
+from tensorflow.python.saved_model.save import save
 from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
@@ -4020,6 +4022,31 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         '    a: float32 Tensor, shape=<unknown>\n'
         '  Returns:\n'
         '    float32 Tensor, shape=<unknown>')
+
+  def testPrettyPrintedSignatureLoadedNamedTuple(self):
+    Point = collections.namedtuple('Point', ['x', 'y'])
+
+    @def_function.function
+    def fn(b, a):  # pylint: disable=unused-argument
+      return 1.
+
+    b = Point(
+        x=constant_op.constant(1., dtype=dtypes.float32),
+        y=constant_op.constant(1., dtype=dtypes.float32))
+    a = Point(
+        x=constant_op.constant(1, dtype=dtypes.int32),
+        y=constant_op.constant(1, dtype=dtypes.int32))
+
+    mod = module.Module()
+    f = fn.get_concrete_function(b, a)
+    save(mod, '/tmp/f', signatures=f)
+    loaded = load('/tmp/f')
+
+    printed = loaded.signatures['serving_default'].pretty_printed_signature()
+    self.assertIn('a: int32 Tensor, shape=()', printed)
+    self.assertIn('a_1: int32 Tensor, shape=()', printed)
+    self.assertIn('b: float32 Tensor, shape=()', printed)
+    self.assertIn('b_1: float32 Tensor, shape=()', printed)
 
   @test_util.run_in_graph_and_eager_modes
   def testIndexedSlicesAsGradientsForConcreteFunctions(self):

@@ -2,7 +2,7 @@
 #   TensorFlow Lite for Microcontrollers Vision Example Utils.
 package(
     features = ["-layering_check"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_binary(

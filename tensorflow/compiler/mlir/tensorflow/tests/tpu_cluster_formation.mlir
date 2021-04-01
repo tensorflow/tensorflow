@@ -684,3 +684,17 @@ func @input_index_gaps(%arg0: tensor<i1>) {
   "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
   return
 }
+
+// -----
+
+// CHECK-LABEL: func @cluster_ops_keep_replicated_core_attr
+func @cluster_ops_keep_replicated_core_attr() {
+  %0 = "tf.opA"() {_tpu_replicate = "replicate", device = "/device:TPU_REPLICATED_CORE:0", name = "name"} : () -> tensor<i1>
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
+  return
+}
+
+// CHECK:      "tf.opA"
+// CHECK-SAME-DAG: name = "name"
+// CHECK-SAME-DAG:  device = "/device:TPU_REPLICATED_CORE:0"
+// CHECK:      tf_device.return

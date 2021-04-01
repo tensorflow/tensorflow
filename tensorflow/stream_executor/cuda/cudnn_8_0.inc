@@ -1334,6 +1334,70 @@ cudnnStatus_t CUDNNWINAPI cudnnConvolutionBiasActivationForward(
                   activationDesc, yDesc, y);
 }
 
+cudnnStatus_t CUDNNWINAPI
+cudnnBackendCreateDescriptor(cudnnBackendDescriptorType_t descriptorType,
+                             cudnnBackendDescriptor_t *descriptor) {
+  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(cudnnBackendDescriptorType_t,
+                                               cudnnBackendDescriptor_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnBackendCreateDescriptor");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(descriptorType, descriptor);
+}
+
+cudnnStatus_t CUDNNWINAPI
+cudnnBackendDestroyDescriptor(cudnnBackendDescriptor_t descriptor) {
+  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(cudnnBackendDescriptor_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnBackendDestroyDescriptor");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(descriptor);
+}
+
+cudnnStatus_t CUDNNWINAPI
+cudnnBackendFinalize(cudnnBackendDescriptor_t descriptor) {
+  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(cudnnBackendDescriptor_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnBackendFinalize");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(descriptor);
+}
+
+cudnnStatus_t CUDNNWINAPI
+cudnnBackendSetAttribute(cudnnBackendDescriptor_t descriptor,
+                         cudnnBackendAttributeName_t attributeName,
+                         cudnnBackendAttributeType_t attributeType,
+                         int64_t elementCount, const void *arrayOfElements) {
+  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(
+      cudnnBackendDescriptor_t, cudnnBackendAttributeName_t,
+      cudnnBackendAttributeType_t, int64_t, const void *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnBackendSetAttribute");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(descriptor, attributeName, attributeType, elementCount,
+                  arrayOfElements);
+}
+
+cudnnStatus_t CUDNNWINAPI cudnnBackendGetAttribute(
+    cudnnBackendDescriptor_t const descriptor,
+    cudnnBackendAttributeName_t attributeName,
+    cudnnBackendAttributeType_t attributeType, int64_t requestedElementCount,
+    int64_t *elementCount, void *arrayOfElements) {
+  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(
+      cudnnBackendDescriptor_t const, cudnnBackendAttributeName_t,
+      cudnnBackendAttributeType_t, int64_t, int64_t *, void *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnBackendGetAttribute");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(descriptor, attributeName, attributeType,
+                  requestedElementCount, elementCount, arrayOfElements);
+}
+
+cudnnStatus_t CUDNNWINAPI cudnnBackendExecute(
+    cudnnHandle_t handle, cudnnBackendDescriptor_t executionPlan,
+    cudnnBackendDescriptor_t variantPack) {
+  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(
+      cudnnHandle_t, cudnnBackendDescriptor_t, cudnnBackendDescriptor_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnBackendExecute");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, executionPlan, variantPack);
+}
+
 cudnnStatus_t CUDNNWINAPI cudnnGetConvolutionBackwardDataAlgorithmMaxCount(
     cudnnHandle_t handle, int *count) {
   using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(cudnnHandle_t, int *);

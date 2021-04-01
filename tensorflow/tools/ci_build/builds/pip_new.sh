@@ -295,8 +295,10 @@ if [[ "$IN_VENV" == "1" ]]; then
   deactivate || source deactivate || die "FAILED: Unable to deactivate from existing virtualenv."
 fi
 
-# Configure python. Obtain the path to python binary as written by ./configure.
-source tools/python_bin_path.sh || true
+# Obtain the path to python binary as written by ./configure if it was run.
+if [[ -e tools/python_bin_path.sh ]]; then
+  source tools/python_bin_path.sh
+fi
 # Assume PYTHON_BIN_PATH is exported by the script above or the caller.
 if [[ -z "$PYTHON_BIN_PATH" ]]; then
   die "PYTHON_BIN_PATH was not provided. Did you run configure?"

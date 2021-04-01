@@ -14,9 +14,6 @@
 # ==============================================================================
 """Keras string lookup preprocessing layer."""
 # pylint: disable=g-classes-have-attributes
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras.engine import base_preprocessing_layer
@@ -307,11 +304,6 @@ class IntegerLookup(index_lookup.IndexLookup):
       raise ValueError(
           "num_oov_indices must be greater than or equal to 0. You passed %s" %
           (num_oov_indices,))
-
-    if vocabulary is not None:
-      if isinstance(vocabulary, str):
-        vocabulary = table_utils.get_vocabulary_from_file(vocabulary)
-        vocabulary = [int(v) for v in vocabulary]
 
     super(IntegerLookup, self).__init__(
         max_tokens=max_tokens,

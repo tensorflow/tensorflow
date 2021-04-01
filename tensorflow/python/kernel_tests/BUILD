@@ -9,7 +9,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # CPU-only tests should use tf_py_test, GPU tests use cuda_py_test
@@ -2524,18 +2524,6 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "compare_and_bitpack_op_test",
-    size = "small",
-    srcs = ["compare_and_bitpack_op_test.py"],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
         "//third_party/py/numpy",
     ],
 )

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Keras loss functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -1787,7 +1783,7 @@ class HuberLossTest(test.TestCase):
 class BinaryTruePositivesViaControlFlow(losses.Loss):
 
   def __init__(self, reduction=losses_utils.ReductionV2.AUTO):
-    super(BinaryTruePositivesViaControlFlow, self).__init__(reduction=reduction)
+    super().__init__(reduction=reduction)
 
   def call(self, y_true, y_pred):
     y_true = math_ops.cast(y_true, dtypes.bool)

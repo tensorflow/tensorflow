@@ -9,7 +9,7 @@ package(
     default_visibility = [
         "//tensorflow:tensorflow_py",
     ],
-    licenses = ["notice"],  # Apache 2.0 License
+    licenses = ["notice"],
 )
 
 keras_packages = [

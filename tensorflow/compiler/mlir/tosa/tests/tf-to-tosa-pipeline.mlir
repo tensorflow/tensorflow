@@ -705,18 +705,6 @@ func @test_reverse(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 
 // -----
 
-// CHECK-LABEL: test_gather
-// CHECK: tosa.const
-// CHECK: tosa.gather
-func @test_gather(%arg0: tensor<13x21x3xi32>) -> tensor<26x21x3xi32> {
-  %2 = "tf.Const"()  {value = dense<0> : tensor<i32>}  : () -> tensor<i32>
-  %3 = "tf.Const"()  {value = dense<[2, 2, 7, 6, 6, 1, 5, 4, 2, 11, 10, 11, 7, 7, 5, 3, 12, 7, 11, 0, 9, 5, 4, 12, 1, 9]> : tensor<26xi32>}  : () -> tensor<26xi32>
-  %4 = "tf.GatherV2"(%arg0, %3, %2)  {batch_dims = 0 : i64}  : (tensor<13x21x3xi32>, tensor<26xi32>, tensor<i32>) -> tensor<26x21x3xi32>
-  return %4 : tensor<26x21x3xi32>
-}
-
-// -----
-
 // CHECK-LABEL: test_space_to_batch
 // CHECK-DAG: "tosa.const"() {value = dense<{{\[}}[0, 0], [0, 1], [0, 0]]>
 // CHECK-DAG: "tosa.const"() {value = dense<[2, 0, 1, 3]>
