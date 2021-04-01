@@ -93,6 +93,12 @@ Status XLAShapeToTensorShape(const xla::Shape& shape,
                                    " cannot be converted to a TensorShape");
   }
   *tensor_shape = TensorShape();
+
+  // XLA Opaque types have a scalar TensorShape.
+  if (shape.IsOpaque()) {
+    return Status::OK();
+  }
+
   for (int i = 0; i < shape.rank(); ++i) {
     tensor_shape->AddDim(shape.dimensions(i));
   }
