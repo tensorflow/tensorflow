@@ -85,10 +85,10 @@ void VerifyGraphsEquivalent(const GraphDef& original_graph,
   }
 }
 
-// Currently, this test suite only passes when TensorFlow passes with CUDA,
+// Currently, this test suite only passes when TensorFlow passes with CUDA/HIP,
 // because otherwise the optimizer will not turn clearlist nodes to float16.
 // When looking at clearlist nodes, this optimizer checks if the nodes have a
-// float16 GPU OpKernel, but without CUDA there are no GPU OpKernels at all.
+// float16 GPU OpKernel, but without CUDA/HIP there are no GPU OpKernels at all.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 const std::pair<int, int> kMinGPUArch = {7, 0};
@@ -102,6 +102,8 @@ class AutoMixedPrecisionTest : public GrapplerTest {
 #if GOOGLE_CUDA
     gpu_available_ =
         gpu_available_ && (num_gpus == GetNumAvailableGPUs(kMinGPUArch));
+#else  // Here we force Tensorflow to use the virtual GFX906
+    gpu_available_ = false;
 #endif
     if (gpu_available_) {
       virtual_cluster_.reset(new SingleMachine(/* timeout_s = */ 10, 1, 1));
@@ -111,6 +113,9 @@ class AutoMixedPrecisionTest : public GrapplerTest {
 #if GOOGLE_CUDA
       device_properties.mutable_environment()->insert({"architecture", "7"});
       device_properties.mutable_environment()->insert({"cuda", "9010"});
+#else
+      device_properties.mutable_environment()->insert(
+          {"architecture", "gfx906"});
 #endif
       virtual_cluster_.reset(
           new VirtualCluster({{"/GPU:1", device_properties}}));
@@ -1035,6 +1040,14 @@ int GetCudaVersion(const Cluster& cluster) {
   return 0;
 }
 
+bool IsSupportedGPU(const Cluster& cluster) {
+#ifdef GOOGLE_CUDA
+  return GetCudaVersion(cluster) >= 9010;
+#else
+  return true;
+#endif
+}
+
 TEST_F(AutoMixedPrecisionTest, BatchMatMul) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output input = ops::Const(s.WithOpName("input"), 1.f / 33, {64, 32, 32});
@@ -1054,7 +1067,7 @@ TEST_F(AutoMixedPrecisionTest, BatchMatMul) {
 
   GraphView output_view(&output);
   EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
-  if (GetCudaVersion(*virtual_cluster_.get()) >= 9010) {
+  if (IsSupportedGPU(*virtual_cluster_.get())) {
     EXPECT_EQ(output.node_size(), item.graph.node_size() + 2);
     EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_HALF);
   } else {
