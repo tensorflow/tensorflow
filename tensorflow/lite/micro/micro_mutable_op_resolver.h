@@ -453,7 +453,7 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddSub() {
-    return AddBuiltin(BuiltinOperator_SUB, tflite::ops::micro::Register_SUB(),
+    return AddBuiltin(BuiltinOperator_SUB, Register_SUB(),
                       ParseSub);
   }
 
