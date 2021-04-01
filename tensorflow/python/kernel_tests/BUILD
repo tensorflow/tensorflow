@@ -2935,7 +2935,6 @@ cuda_py_test(
     tags = [
         "manual",
         "no_cuda_asan",
-        "no_gpu",  # flaky b/181717600
     ],
     deps = [
         "//tensorflow/python:array_ops",
