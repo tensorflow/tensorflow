@@ -2299,10 +2299,75 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "collective_combiner_utils",
+    hdrs = ["collective_combiner_utils.h"],
+    deps = [
+        ":hlo",
+        ":hlo_domain_map",
+        ":hlo_reachability",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:tflite_portable_logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+cc_library(
+    name = "all_gather_combiner",
+    srcs = ["all_gather_combiner.cc"],
+    hdrs = ["all_gather_combiner.h"],
+    deps = [
+        ":collective_combiner_utils",
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_domain_map",
+        ":hlo_pass",
+        ":hlo_query",
+        ":hlo_reachability",
+        ":shape_inference",
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "all_gather_combiner_test",
+    srcs = ["all_gather_combiner_test.cc"],
+    deps = [
+        ":all_gather_combiner",
+        ":hlo",
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
     name = "all_reduce_combiner",
     srcs = ["all_reduce_combiner.cc"],
     hdrs = ["all_reduce_combiner.h"],
     deps = [
+        ":collective_combiner_utils",
         ":hlo",
         ":hlo_casting_utils",
         ":hlo_domain_map",
