@@ -127,7 +127,7 @@ class Module(tracking.AutoTrackable):
         self._scope_name = scope_name
 
   @property
-  def name(self):
+  def name(self) -> str:
     """Returns the name of this module as passed or determined in the ctor.
 
     NOTE: This is not the same as the `self.name_scope.name` which includes
@@ -145,7 +145,7 @@ class Module(tracking.AutoTrackable):
       return ops.name_scope(self._scope_name, skip_on_eager=False)
 
   @property
-  def variables(self):
+  def variables(self) -> tuple:
     """Sequence of variables owned by this module and its submodules.
 
     Note: this method uses reflection to find variables on the current instance
@@ -176,7 +176,7 @@ class Module(tracking.AutoTrackable):
         self._flatten(predicate=_is_trainable_variable, expand_composites=True))
 
   @property
-  def non_trainable_variables(self):
+  def non_trainable_variables(self) -> tuple:
     """Sequence of non-trainable variables owned by this module and its submodules.
 
     Note: this method uses reflection to find variables on the current instance
@@ -336,7 +336,7 @@ _CAMEL_TO_SNAKE_R = re.compile(r"((?<=[a-z0-9])[A-Z]|(?!^)[A-Z](?=[a-z]))")
 _VALID_IDENTIFIER = re.compile(r"^[a-zA-Z_]([a-zA-Z0-9_])*$")
 
 
-def valid_identifier(name):
+def valid_identifier(name : str) -> bool:
   return bool(_VALID_IDENTIFIER.match(name))
 
 
