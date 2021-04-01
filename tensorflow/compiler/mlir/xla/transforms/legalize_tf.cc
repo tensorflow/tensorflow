@@ -2361,7 +2361,8 @@ Operation *AvgPoolDivideByCount(
     BuildReduceBody<AddOp>(element_type, &divisor.body(), &rewriter);
 
     // Divide `pooled` by window counts.
-    result = rewriter.create<mhlo::DivOp>(loc, pooled_type, pooled, divisor);
+    result = rewriter.create<mhlo::DivOp>(loc, pooled_type, pooled,
+                                          divisor.getResult(0));
   }
   return result;
 }
@@ -2401,7 +2402,7 @@ class ConvertAvgPoolOp : public OpRewritePattern<OpTy> {
       input_value = rewriter.create<ConvertOp>(op.getLoc(), input_value,
                                                sum_element_type);
 
-    // Create the tf.ReduceWindow op.
+    // Create the ReduceWindow op.
     Value init =
         GetScalarConstOfType(sum_element_type, op.getLoc(), 0, &rewriter);
     DenseIntElementsAttr paddings_attr = GetReduceWindowPaddingAsAttr<num_dims>(
@@ -2423,7 +2424,7 @@ class ConvertAvgPoolOp : public OpRewritePattern<OpTy> {
     GetI64ArrayAttrValues(op.strides(), &strides);
 
     Operation *result_op = AvgPoolDivideByCount<OpTy, num_dims>(
-        reduce.getResult(), input_shape, ksize, strides, op, init, rewriter);
+        reduce.getResult(0), input_shape, ksize, strides, op, init, rewriter);
 
     // Convert back if we enlarged the element type's bitwidth.
     Value result = result_op->getOpResult(0);
@@ -2600,7 +2601,7 @@ class ConvertAvgPoolGradOp : public OpRewritePattern<OpTy> {
         /*padding=*/DenseIntElementsAttr());
     BuildReduceBody<AddOp>(sum_element_type, &reduce_window_op.body(),
                            &rewriter);
-    Value result = reduce_window_op.getResult();
+    Value result = reduce_window_op.getResult(0);
 
     if (element_type != sum_element_type) {
       // Convert back to original element type.
@@ -2656,7 +2657,7 @@ class ConvertMaxPoolOp : public OpRewritePattern<OpTy> {
         /*window_dilations=*/DenseIntElementsAttr(), paddings_attr);
     BuildReduceBody<MaxOp>(element_type, &reduce.body(), &rewriter);
 
-    rewriter.replaceOp(op, reduce.getResult());
+    rewriter.replaceOp(op, reduce.getResult(0));
     return success();
   }
 };
@@ -5587,7 +5588,7 @@ class ConvertCumOp : public OpRewritePattern<OpT> {
         /*base_dilations=*/DenseIntElementsAttr(),
         /*window_dilations=*/DenseIntElementsAttr(), paddings_attr);
     BuildReduceBody<AggregationOp>(sum_element_type, &reduce.body(), &rewriter);
-    Value result = reduce.getResult();
+    Value result = reduce.getResult(0);
 
     if (op.exclusive()) {
       // In "exclusive" operation, the output will start with the "init" (0)

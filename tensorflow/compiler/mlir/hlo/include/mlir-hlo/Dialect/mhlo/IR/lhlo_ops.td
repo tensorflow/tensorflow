@@ -216,12 +216,12 @@ def LHLO_ReduceOp: LHLO_Op<"reduce", [SameVariadicOperandSize]>, BASE_HLO_Reduce
   let hasCanonicalizer = 1;
 }
 
-def LHLO_ReduceWindowOp: LHLO_Op<"reduce_window", []>, BASE_HLO_ReduceWindowOp {
-
+def LHLO_ReduceWindowOp: LHLO_Op<"reduce_window", [SameVariadicOperandSize]>,
+                         BASE_HLO_ReduceWindowOp {
   let arguments = (ins
-    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
-    Arg<LHLO_Buffer, "", [MemRead]>:$init_value,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$out,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$init_values,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$out,
     I64ElementsAttr:$window_dimensions,
     // If strides or dilations attributes are missing then the default value is
     // one for each of the input dimensions. Similarly, padding values are zero
@@ -233,6 +233,7 @@ def LHLO_ReduceWindowOp: LHLO_Op<"reduce_window", []>, BASE_HLO_ReduceWindowOp {
   );
 
   let regions = (region SizedRegion<1>:$body);
+  let verifier = [{ return Verify(*this); }];
 }
 
 // TODO(timshen): Add a custom syntax for this.

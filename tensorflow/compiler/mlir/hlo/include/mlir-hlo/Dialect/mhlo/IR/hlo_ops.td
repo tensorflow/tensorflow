@@ -1257,6 +1257,7 @@ def HLO_TriangularSolveOp: HLO_Op<"triangular_solve",
 
 def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
       RecursiveSideEffects,
+      SameVariadicOperandSize,
       SingleBlockImplicitTerminator<"ReturnOp">
     ]>, BASE_HLO_ReduceWindowOp {
 
@@ -1264,8 +1265,8 @@ def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
   // attributes are 1-d. Attributes' leading dimension should match rank of the
   // inputs.
   let arguments = (ins
-    HLO_Tensor:$operand,
-    HLO_Tensor:$init_value,
+    Variadic<HLO_Tensor>:$inputs,
+    Variadic<HLO_Tensor>:$init_values,
     I64ElementsAttr:$window_dimensions,
     // If strides or dilations attributes are missing then the default value is
     // one for each of the input dimensions. Similarly, padding values are zero
@@ -1276,15 +1277,36 @@ def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
     OptionalAttr<I64ElementsAttr>:$padding
   );
 
-  let results = (outs HLO_Tensor);
+  let results = (outs Variadic<HLO_Tensor>);
 
   // TODO(hinsu): Verify that the attached body arguments and results are
   // compatible with reduce op's operands.
   let regions = (region SizedRegion<1>:$body);
 
-  let hasCustomHLOConverter = 1;
+  // Builder for non-variadic version of the operation.
+  let builders = [
+    OpBuilder<(ins "Type":$result_type, "Value":$operand,
+      "Value":$init_value,
+      "DenseIntElementsAttr":$window_dimensions,
+      "DenseIntElementsAttr":$window_strides,
+      "DenseIntElementsAttr":$base_dilations,
+      "DenseIntElementsAttr":$window_dilations,
+      "DenseIntElementsAttr":$padding),
+    [{
+      build($_builder, $_state, TypeRange(result_type), ValueRange(operand),
+            ValueRange(init_value), window_dimensions, window_strides,
+            base_dilations, window_dilations, padding);
+    }]>
+  ];
 
+  let hasCustomHLOConverter = 1;
+  let verifier = [{ return Verify(*this); }];
   // TODO(hinsu): Implement custom printer and parser.
+
+  let extraClassDeclaration = [{
+     // Get the operation used for reduction applied to `result_index`th result.
+     Operation *getReductionOp(int result_index);
+  }];
 }
 
 def HLO_ReturnOp : HLO_Op<"return", [NoSideEffect, Terminator]> {

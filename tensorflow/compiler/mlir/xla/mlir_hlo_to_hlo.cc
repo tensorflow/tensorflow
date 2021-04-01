@@ -554,13 +554,16 @@ struct OpLoweringContext {
   xla::XlaBuilder* builder;
 };
 
-llvm::SmallVector<xla::XlaOp, 4> GetTuple(mlir::Operation::operand_range values,
-                                          OpLoweringContext ctx) {
-  llvm::SmallVector<xla::XlaOp, 4> ops;
+mlir::LogicalResult GetTuple(mlir::Operation* op,
+                             mlir::Operation::operand_range values,
+                             OpLoweringContext ctx,
+                             llvm::SmallVectorImpl<xla::XlaOp>& results) {
+  results.reserve(values.size());
   for (mlir::Value value : values) {
-    ops.push_back((*ctx.values)[value]);
+    if (failed(GetXlaOp(value, *ctx.values, &results.emplace_back(), op)))
+      return mlir::failure();
   }
-  return ops;
+  return mlir::success();
 }
 
 }  // namespace
@@ -761,9 +764,11 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   // with side effect.
   if (op.has_side_effect() || op.getNumResults() != 1) return failure();
   Value result = op.getResult(0);
+  llvm::SmallVector<xla::XlaOp> args;
+  if (failed(GetTuple(op, op.args(), ctx, args))) return failure();
   auto& value_map = *ctx.values;
   value_map[result] = xla::CustomCall(
-      ctx.builder, std::string(op.call_target_name()), GetTuple(op.args(), ctx),
+      ctx.builder, std::string(op.call_target_name()), args,
       xla::TypeToShape(result.getType()), std::string(op.backend_config()));
   return success();
 }
@@ -813,8 +818,10 @@ LogicalResult ExportXlaOp(MapOp op, OpLoweringContext ctx) {
                                                      &computation))) {
     return failure();
   }
-  value_map[op] = xla::Map(ctx.builder, GetTuple(op.operands(), ctx),
-                           computation, Convert_dimensions(op.dimensions()));
+  llvm::SmallVector<xla::XlaOp> operands;
+  if (failed(GetTuple(op, op.operands(), ctx, operands))) return failure();
+  value_map[op] = xla::Map(ctx.builder, operands, computation,
+                           Convert_dimensions(op.dimensions()));
   return success();
 }
 
@@ -873,9 +880,13 @@ LogicalResult ExportXlaOp(ReduceOp op, OpLoweringContext ctx) {
   if (failed(ctx.converter->LowerRegionAsComputation(&op.body(), &body))) {
     return failure();
   }
+  llvm::SmallVector<xla::XlaOp> operands, init_values;
+  if (failed(GetTuple(op, op.operands(), ctx, operands)) ||
+      failed(GetTuple(op, op.init_values(), ctx, init_values))) {
+    return failure();
+  }
   xla::XlaOp result =
-      xla::Reduce(ctx.builder, GetTuple(op.operands(), ctx),
-                  GetTuple(op.init_values(), ctx), body,
+      xla::Reduce(ctx.builder, operands, init_values, body,
                   Convert_broadcast_dimensions(op.dimensions()));
   if (op.getNumResults() == 1) {
     value_map[op.getResult(0)] = result;
@@ -893,17 +904,26 @@ LogicalResult ExportXlaOp(ReduceWindowOp op, OpLoweringContext ctx) {
   if (failed(ctx.converter->LowerRegionAsComputation(&op.body(), &body))) {
     return failure();
   }
-  xla::XlaOp operand, init_value;
-  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
-  if (failed(GetXlaOp(op.init_value(), value_map, &init_value, op)))
+  llvm::SmallVector<xla::XlaOp> operands, init_values;
+  if (failed(GetTuple(op, op.inputs(), ctx, operands)) ||
+      failed(GetTuple(op, op.init_values(), ctx, init_values))) {
     return failure();
+  }
 
-  value_map[op] = xla::ReduceWindowWithGeneralPadding(
-      operand, init_value, body, ConvertDenseIntAttr(op.window_dimensions()),
+  xla::XlaOp result = xla::ReduceWindowWithGeneralPadding(
+      operands, init_values, body, ConvertDenseIntAttr(op.window_dimensions()),
       ConvertDenseIntAttr(op.window_strides()),
       ConvertDenseIntAttr(op.base_dilations()),
       ConvertDenseIntAttr(op.window_dilations()),
       Convert_padding(op.padding()));
+
+  if (op.getNumResults() == 1) {
+    value_map[op.getResult(0)] = result;
+  } else {
+    for (auto item : llvm::enumerate(op.getResults())) {
+      value_map[item.value()] = xla::GetTupleElement(result, item.index());
+    }
+  }
   return success();
 }
 
@@ -1024,8 +1044,9 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
                                                      &comparator)))
     return failure();
 
-  auto sorted = xla::Sort(GetTuple(op.operands(), ctx), comparator,
-                          op.dimension(), op.is_stable());
+  llvm::SmallVector<xla::XlaOp> operands;
+  if (failed(GetTuple(op, op.operands(), ctx, operands))) return failure();
+  auto sorted = xla::Sort(operands, comparator, op.dimension(), op.is_stable());
 
   auto& value_map = *ctx.values;
   auto shape_or = sorted.builder()->GetShape(sorted);
