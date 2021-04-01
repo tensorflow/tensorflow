@@ -313,23 +313,3 @@ index 5260b5b..1e4740c 100644
    }
  
    static constexpr size_type StrlenInternal(const char* str) {
-diff --git a/absl/time/internal/cctz/BUILD.bazel b/absl/time/internal/cctz/BUILD.bazel
-index 45a9529..57c954e 100644
---- a/absl/time/internal/cctz/BUILD.bazel
-+++ b/absl/time/internal/cctz/BUILD.bazel
-@@ -74,15 +74,6 @@ cc_library(
-         "include/cctz/time_zone.h",
-         "include/cctz/zone_info_source.h",
-     ],
--    linkopts = select({
--        ":osx": [
--            "-framework Foundation",
--        ],
--        ":ios": [
--            "-framework Foundation",
--        ],
--        "//conditions:default": [],
--    }),
-     visibility = ["//visibility:public"],
-     deps = [
-         ":civil_time",
