@@ -94,42 +94,39 @@ TfLiteStatus EvalSubQuantized(TfLiteContext* context, TfLiteNode* node,
                               const TfLiteEvalTensor* input1,
                               const TfLiteEvalTensor* input2,
                               TfLiteEvalTensor* output) {
-  
-    tflite::ArithmeticParams op_params;
-    op_params.left_shift = data->left_shift;
-    op_params.input1_offset = data->input1_offset;
-    op_params.input1_multiplier = data->input1_multiplier;
-    op_params.input1_shift = data->input1_shift;
-    op_params.input2_offset = data->input2_offset;
-    op_params.input2_multiplier = data->input2_multiplier;
-    op_params.input2_shift = data->input2_shift;
-    op_params.output_offset = data->output_offset;
-    op_params.output_multiplier = data->output_multiplier;
-    op_params.output_shift = data->output_shift;
-    SetActivationParams(data->output_activation_min,
-                        data->output_activation_max, &op_params);
-    bool need_broadcast = reference_ops::ProcessBroadcastShapes(
-        tflite::micro::GetTensorShape(input1),
-        tflite::micro::GetTensorShape(input2), &op_params);
+  tflite::ArithmeticParams op_params;
+  op_params.left_shift = data->left_shift;
+  op_params.input1_offset = data->input1_offset;
+  op_params.input1_multiplier = data->input1_multiplier;
+  op_params.input1_shift = data->input1_shift;
+  op_params.input2_offset = data->input2_offset;
+  op_params.input2_multiplier = data->input2_multiplier;
+  op_params.input2_shift = data->input2_shift;
+  op_params.output_offset = data->output_offset;
+  op_params.output_multiplier = data->output_multiplier;
+  op_params.output_shift = data->output_shift;
+  SetActivationParams(data->output_activation_min, data->output_activation_max,
+                      &op_params);
+  bool need_broadcast = reference_ops::ProcessBroadcastShapes(
+      tflite::micro::GetTensorShape(input1),
+      tflite::micro::GetTensorShape(input2), &op_params);
 
-    if (need_broadcast) {
-      tflite::reference_ops::BroadcastSubSlow(
-          op_params, tflite::micro::GetTensorShape(input1),
-          tflite::micro::GetTensorData<int8_t>(input1),
-          tflite::micro::GetTensorShape(input2),
-          tflite::micro::GetTensorData<int8_t>(input2),
-          tflite::micro::GetTensorShape(output),
-          tflite::micro::GetTensorData<int8_t>(output));
-    } else {
-      tflite::reference_ops::Sub(op_params,
-                                 tflite::micro::GetTensorShape(input1),
-                                 tflite::micro::GetTensorData<int8_t>(input1),
-                                 tflite::micro::GetTensorShape(input2),
-                                 tflite::micro::GetTensorData<int8_t>(input2),
-                                 tflite::micro::GetTensorShape(output),
-                                 tflite::micro::GetTensorData<int8_t>(output));
-    }
-  
+  if (need_broadcast) {
+    tflite::reference_ops::BroadcastSubSlow(
+        op_params, tflite::micro::GetTensorShape(input1),
+        tflite::micro::GetTensorData<int8_t>(input1),
+        tflite::micro::GetTensorShape(input2),
+        tflite::micro::GetTensorData<int8_t>(input2),
+        tflite::micro::GetTensorShape(output),
+        tflite::micro::GetTensorData<int8_t>(output));
+  } else {
+    tflite::reference_ops::Sub(op_params, tflite::micro::GetTensorShape(input1),
+                               tflite::micro::GetTensorData<int8_t>(input1),
+                               tflite::micro::GetTensorShape(input2),
+                               tflite::micro::GetTensorData<int8_t>(input2),
+                               tflite::micro::GetTensorShape(output),
+                               tflite::micro::GetTensorData<int8_t>(output));
+  }
 
   return kTfLiteOk;
 }
