@@ -32,51 +32,51 @@ namespace wrap {
 
 #ifdef PLATFORM_GOOGLE
 
-#define ROCTRACER_API_WRAPPER(xxx_name)					\
-  template <typename... Args>						\
-  auto xxx_name()(Args... args)->decltype(::xxx_name(args...)) {	\
-    return ::xxx_name(args...);						\
+#define ROCTRACER_API_WRAPPER(API_NAME)                          \
+  template <typename... Args>                                    \
+  auto API_NAME()(Args... args)->decltype(::API_NAME(args...)) { \
+    return ::API_NAME(args...);                                  \
   }
 
 #else
 
-#define ROCTRACER_API_WRAPPER(xxx_name)					       \
-  template <typename... Args>						       \
-  auto xxx_name(Args... args)->decltype(::xxx_name(args...)) {		       \
-    using FuncPtrT = std::add_pointer<decltype(::xxx_name)>::type;	       \
-    static FuncPtrT loaded = []() -> FuncPtrT {				       \
-      static const char* kName = #xxx_name;				       \
-      void* f;								       \
-      auto s = Env::Default()->GetSymbolFromLibrary(			       \
-          stream_executor::internal::CachedDsoLoader::GetRoctracerDsoHandle(   \
-  ).ValueOrDie(), kName, &f);						       \
-      CHECK(s.ok()) << "could not find " << kName			       \
-                    << " in roctracer DSO; dlerror: " << s.error_message();    \
-      return reinterpret_cast<FuncPtrT>(f);				       \
-    }();								       \
-    return loaded(args...);						       \
+#define ROCTRACER_API_WRAPPER(API_NAME)                                       \
+  template <typename... Args>                                                 \
+  auto API_NAME(Args... args)->decltype(::API_NAME(args...)) {                \
+    using FuncPtrT = std::add_pointer<decltype(::API_NAME)>::type;            \
+    static FuncPtrT loaded = []() -> FuncPtrT {                               \
+      static const char* kName = #API_NAME;                                   \
+      void* f;                                                                \
+      auto s = Env::Default()->GetSymbolFromLibrary(                          \
+          stream_executor::internal::CachedDsoLoader::GetRoctracerDsoHandle() \
+              .ValueOrDie(),                                                  \
+          kName, &f);                                                         \
+      CHECK(s.ok()) << "could not find " << kName                             \
+                    << " in roctracer DSO; dlerror: " << s.error_message();   \
+      return reinterpret_cast<FuncPtrT>(f);                                   \
+    }();                                                                      \
+    return loaded(args...);                                                   \
   }
 
-#endif
+#endif  // PLATFORM_GOOGLE
 
 // clang-format off
-#define FOREACH_ROCTRACER_API(xxx_macro)		\
-  xxx_macro(roctracer_default_pool_expl)		\
-  xxx_macro(roctracer_disable_domain_activity)		\
-  xxx_macro(roctracer_disable_domain_callback)		\
-  xxx_macro(roctracer_disable_op_activity)		\
-  xxx_macro(roctracer_disable_op_callback)		\
-  xxx_macro(roctracer_enable_domain_activity_expl)	\
-  xxx_macro(roctracer_enable_domain_callback)		\
-  xxx_macro(roctracer_enable_op_activity)		\
-  xxx_macro(roctracer_enable_op_callback)		\
-  xxx_macro(roctracer_error_string)			\
-  xxx_macro(roctracer_flush_activity_expl)		\
-  xxx_macro(roctracer_get_timestamp)			\
-  xxx_macro(roctracer_op_string)			\
-  xxx_macro(roctracer_open_pool_expl)			\
-  xxx_macro(roctracer_set_properties)
-
+#define FOREACH_ROCTRACER_API(DO_FUNC)					\
+  DO_FUNC(roctracer_default_pool_expl)					\
+  DO_FUNC(roctracer_disable_domain_activity)				\
+  DO_FUNC(roctracer_disable_domain_callback)				\
+  DO_FUNC(roctracer_disable_op_activity)				\
+  DO_FUNC(roctracer_disable_op_callback)				\
+  DO_FUNC(roctracer_enable_domain_activity_expl)			\
+  DO_FUNC(roctracer_enable_domain_callback)				\
+  DO_FUNC(roctracer_enable_op_activity)				\
+  DO_FUNC(roctracer_enable_op_callback)				\
+  DO_FUNC(roctracer_error_string)					\
+  DO_FUNC(roctracer_flush_activity_expl)				\
+  DO_FUNC(roctracer_get_timestamp)					\
+  DO_FUNC(roctracer_op_string)						\
+  DO_FUNC(roctracer_open_pool_expl)					\
+  DO_FUNC(roctracer_set_properties)
 // clang-format on
 
 FOREACH_ROCTRACER_API(ROCTRACER_API_WRAPPER)
