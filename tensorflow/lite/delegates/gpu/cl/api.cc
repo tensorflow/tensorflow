@@ -41,6 +41,9 @@ limitations under the License.
 
 #ifdef CL_DELEGATE_ALLOW_GL
 #include <EGL/eglext.h>
+//add by sky on 20210402
+//Why: see ../gl/portable_gl31.h:line 36-47
+#undef Status
 
 #include "tensorflow/lite/delegates/gpu/cl/egl_sync.h"
 #include "tensorflow/lite/delegates/gpu/cl/gl_interop.h"
