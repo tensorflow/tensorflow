@@ -158,6 +158,9 @@ This release contains contributions from many people at Google, as well as:
         the input pipeline to insert sharding transformations.
     *   Make tf.data.Options persistent across `tf.function` and `GraphDef`
         boundaries.
+    *   If autotuning is ON, `tf.data.Dataset.map()` will default to be
+        parallelized unless users turn off the optimization
+        option `map_parallelization` explicitly.
 *   XLA compilation:
     *   `tf.function(experimental_compile=True)` has become a stable API,
         renamed `tf.function(jit_compile=True)`.
