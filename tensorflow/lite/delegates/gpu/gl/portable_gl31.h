@@ -33,4 +33,18 @@ limitations under the License.
 
 #include <GLES3/gl31.h>
 
+/*
+//add by sky on 20210402
+//note:
+"#include <EGL/egl.h>" import a macro 'Status' from there:
+In file EGL/egl.h: #include <EGL/eglplatform.h>
+In file EGL/eglplatform.h: #include <X11/Xlib.h>
+In file X11/Xlib.h(line:83): #define Status int
+
+After we import it, if you define a var like 'absl::Status TestVar', the compiler will precompile it to 'absl::int TestVar'. It is a disaster.
+
+we should undef it to avoid this disaster.
+*/
+#undef Status
+
 #endif  // TENSORFLOW_LITE_DELEGATES_GPU_GL_PORTABLE_GL31_H_
