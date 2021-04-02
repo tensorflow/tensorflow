@@ -418,7 +418,7 @@ def distribute(processing_mode,
   ```
   range5_dataset = tf.data.Dataset.range(5)
   dataset = range5_dataset.apply(tf.data.experimental.service.distribute(
-      "parallel_epochs", "grpc://localhost:5000", job_name="my_job_name"))
+      "parallel_epochs", "localhost:5000", job_name="my_job_name"))
   for iteration in range(3):
     print(list(dataset))
   ```
