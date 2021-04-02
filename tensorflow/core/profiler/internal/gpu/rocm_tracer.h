@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_set.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -53,23 +54,23 @@ struct MemAllocDetails {
 
 struct KernelDetails {
   // The number of registers used in this kernel.
-  uint64_t registers_per_thread;
+  uint32_t registers_per_thread;
   // The amount of shared memory space used by a thread block.
-  uint64_t static_shared_memory_usage;
+  uint32_t static_shared_memory_usage;
   // The amount of dynamic memory space used by a thread block.
-  uint64_t dynamic_shared_memory_usage;
+  uint32_t dynamic_shared_memory_usage;
   // X-dimension of a thread block.
-  uint64_t block_x;
+  uint32_t block_x;
   // Y-dimension of a thread block.
-  uint64_t block_y;
+  uint32_t block_y;
   // Z-dimension of a thread block.
-  uint64_t block_z;
+  uint32_t block_z;
   // X-dimension of a grid.
-  uint64_t grid_x;
+  uint32_t grid_x;
   // Y-dimension of a grid.
-  uint64_t grid_y;
+  uint32_t grid_y;
   // Z-dimension of a grid.
-  uint64_t grid_z;
+  uint32_t grid_z;
 };
 
 enum class RocmTracerEventType {
@@ -138,11 +139,12 @@ void DumpRocmTracerEvent(const RocmTracerEvent& event,
 struct RocmTracerOptions {
   // map of domain --> ops for which we need to enable the API callbacks
   // If the ops vector is empty, then enable API callbacks for entire domain
-  std::map<activity_domain_t, std::vector<uint32_t> > api_callbacks;
+  absl::flat_hash_map<activity_domain_t, std::vector<uint32_t> > api_callbacks;
 
   // map of domain --> ops for which we need to enable the Activity records
   // If the ops vector is empty, then enable Activity records for entire domain
-  std::map<activity_domain_t, std::vector<uint32_t> > activity_tracing;
+  absl::flat_hash_map<activity_domain_t, std::vector<uint32_t> >
+      activity_tracing;
 };
 
 struct RocmTraceCollectorOptions {
@@ -177,7 +179,10 @@ class AnnotationMap {
   const uint64_t max_size_;
   AnnotationMapImpl map_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(AnnotationMap);
+ public:
+  // Disable copy and move.
+  AnnotationMap(const AnnotationMap&) = delete;
+  AnnotationMap& operator=(const AnnotationMap&) = delete;
 };
 
 class RocmTraceCollector {
@@ -199,7 +204,10 @@ class RocmTraceCollector {
  private:
   AnnotationMap annotation_map_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RocmTraceCollector);
+ public:
+  // Disable copy and move.
+  RocmTraceCollector(const RocmTraceCollector&) = delete;
+  RocmTraceCollector& operator=(const RocmTraceCollector&) = delete;
 };
 
 // forward declarations for callback functors
@@ -286,7 +294,7 @@ class RocmTracer {
 
    private:
     // set of co-relation ids for which the hcc activity record is pending
-    std::set<uint32_t> pending_set;
+    absl::flat_hash_set<uint32_t> pending_set;
     // the callback which processes the activity records (and consequently
     // removes items from the pending set) is called in a separate thread
     // from the one that adds item to the list.
@@ -294,7 +302,10 @@ class RocmTracer {
   };
   PendingActivityRecords pending_activity_records_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RocmTracer);
+ public:
+  // Disable copy and move.
+  RocmTracer(const RocmTracer&) = delete;
+  RocmTracer& operator=(const RocmTracer&) = delete;
 };
 
 }  // namespace profiler

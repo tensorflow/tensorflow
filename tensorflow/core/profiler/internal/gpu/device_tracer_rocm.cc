@@ -15,8 +15,6 @@ limitations under the License.
 
 #if TENSORFLOW_USE_ROCM
 
-#include <stdlib.h>
-
 #include <memory>
 #include <utility>
 
@@ -361,9 +359,11 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
             (start_walltime_ns + (event.start_time_ns - start_gputime_ns)) /
             1000);
         ns->set_op_start_rel_micros(0);
-        auto elapsed_ns = event.end_time_ns - event.start_time_ns;
-        ns->set_op_end_rel_micros(elapsed_ns / 1000);
-        ns->set_all_end_rel_micros(elapsed_ns / 1000);
+        uint64_t elapsed_ns = event.end_time_ns - event.start_time_ns;
+        ns->set_op_end_rel_micros(
+            tensorflow::profiler::NanosToMicros(elapsed_ns));
+        ns->set_all_end_rel_micros(
+            tensorflow::profiler::NanosToMicros(elapsed_ns));
 
         auto annotation_stack = ParseAnnotationStack(event.annotation);
         std::string kernel_name = port::MaybeAbiDemangle(event.name.c_str());
