@@ -317,8 +317,6 @@ def EfficientNet(
 
   # Build stem
   x = img_input
-  x = layers.Rescaling(1. / 255.)(x)
-  x = layers.Normalization(axis=bn_axis)(x)
 
   x = layers.ZeroPadding2D(
       padding=imagenet_utils.correct_pad(x, 3),
