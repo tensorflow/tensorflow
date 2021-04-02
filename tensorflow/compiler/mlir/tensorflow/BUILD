@@ -1552,7 +1552,7 @@ cc_library(
     name = "tf_dialect_lib",
     deps = [
         ":tf_dialect_passes",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
     ],
 )
 
@@ -2024,7 +2024,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
