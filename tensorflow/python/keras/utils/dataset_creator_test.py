@@ -74,9 +74,6 @@ class DatasetCreatorTest(test.TestCase):
   def test_dataset_creator_usage_in_parameter_server_model_fit(self):
     cluster_def = multi_worker_test_base.create_in_process_cluster(
         num_workers=2, num_ps=1, rpc_layer="grpc")
-    cluster_def["chief"] = [
-        "localhost:%d" % multi_worker_test_base.pick_unused_port()
-    ]
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         SimpleClusterResolver(ClusterSpec(cluster_def), rpc_layer="grpc"))
     with strategy.scope():
