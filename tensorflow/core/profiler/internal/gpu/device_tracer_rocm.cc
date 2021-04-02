@@ -53,13 +53,14 @@ namespace {
 // this fact. Eventually we change line start time to corresponding
 // start_walltime_ns to normalize with CPU wall time.
 static void NormalizeTimeStamps(XPlaneBuilder* plane,
-                                uint64 start_walltime_ns) {
+                                uint64_t start_walltime_ns) {
   plane->ForEachLine([&](tensorflow::profiler::XLineBuilder line) {
     line.SetTimestampNs(start_walltime_ns);
   });
 }
 
-void GetDeviceCapabilities(int32 device_ordinal, XPlaneBuilder* device_plane) {
+void GetDeviceCapabilities(int32_t device_ordinal,
+                           XPlaneBuilder* device_plane) {
   // TODO(rocm)
 }
 
@@ -70,7 +71,7 @@ bool IsHostEvent(const RocmTracerEvent& event) {
 }
 
 std::string GetDeviceXLineName(
-    int64 stream_id, absl::flat_hash_set<RocmTracerEventType>& event_types) {
+    int64_t stream_id, absl::flat_hash_set<RocmTracerEventType>& event_types) {
   std::string line_name = absl::StrCat("Stream #", stream_id);
   event_types.erase(RocmTracerEventType::Unsupported);
   if (event_types.empty()) return line_name;
@@ -86,7 +87,7 @@ std::string GetDeviceXLineName(
 class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
  public:
   RocmTraceCollectorImpl(const RocmTraceCollectorOptions& options,
-                         uint64 start_walltime_ns, uint64 start_gputime_ns)
+                         uint64_t start_walltime_ns, uint64_t start_gputime_ns)
       : RocmTraceCollector(options),
         num_callback_events_(0),
         num_activity_events_(0),
@@ -184,7 +185,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
   }
 
   void OnEventsDropped(const std::string& reason,
-                       uint32 correlation_id) override {
+                       uint32_t correlation_id) override {
     LOG(INFO) << "RocmTracerEvent dropped (correlation_id=" << correlation_id
               << ",) : " << reason << ".";
   }
@@ -229,8 +230,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       }
 
       // determine the logical device id
-      uint32 physical_id = event.device_id;
-      uint32 logical_id = options_.num_gpus;
+      uint32_t physical_id = event.device_id;
+      uint32_t logical_id = options_.num_gpus;
       auto kv_pair = device_id_map_.find(physical_id);
       if (kv_pair == device_id_map_.end()) {
         logical_id = next_logical_device_id_++;
@@ -271,7 +272,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
   }
 
   void Export(XSpace* space) {
-    uint64 end_gputime_ns = RocmTracer::GetTimestamp();
+    uint64_t end_gputime_ns = RocmTracer::GetTimestamp();
     XPlaneBuilder host_plane(
         FindOrAddMutablePlaneWithName(space, kRoctracerApiPlaneName));
     for (int i = 0; i < options_.num_gpus; ++i) {
@@ -290,11 +291,11 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
  private:
   std::atomic<int> num_callback_events_;
   std::atomic<int> num_activity_events_;
-  uint64 start_walltime_ns_;
-  uint64 start_gputime_ns_;
+  uint64_t start_walltime_ns_;
+  uint64_t start_gputime_ns_;
 
   mutex aggregated_events_mutex_;
-  absl::flat_hash_map<uint32, RocmTracerEvent> aggregated_events_
+  absl::flat_hash_map<uint32_t, RocmTracerEvent> aggregated_events_
       TF_GUARDED_BY(aggregated_events_mutex_);
 
   // We need to create a map of
@@ -309,8 +310,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
   // and the index can be thought of as the logical device id.
   // We cannot determine the actual phsyical device id logical device id
   // mapping here, so we determine it empirically
-  std::map<uint32, uint32> device_id_map_;
-  uint32 next_logical_device_id_;
+  std::map<uint32_t, uint32_t> device_id_map_;
+  uint32_t next_logical_device_id_;
 
   bool IsEventTypeWithoutHCCActivityRecordCallback(RocmTracerEventType type) {
     switch (type) {
@@ -338,11 +339,12 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
           });
     }
 
-    void Export(int32 device_ordinal, uint64 start_walltime_ns,
-                uint64 start_gputime_ns, StepStats* step_stats) {
+    void Export(int32_t device_ordinal, uint64_t start_walltime_ns,
+                uint64_t start_gputime_ns, StepStats* step_stats) {
       mutex_lock lock(events_mutex);
-      absl::flat_hash_map<std::pair<uint64 /*stream_id*/, RocmTracerEventType>,
-                          DeviceStepStats*>
+      absl::flat_hash_map<
+          std::pair<uint64_t /*stream_id*/, RocmTracerEventType>,
+          DeviceStepStats*>
           per_stream_dev_stats;
 
       DeviceStepStats* generic_stream_dev_stats = nullptr;
@@ -480,7 +482,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
     }
 
     void CreateXEvent(const RocmTracerEvent& event, XPlaneBuilder* plane,
-                      uint64 start_gpu_ns, uint64 end_gpu_ns,
+                      uint64_t start_gpu_ns, uint64_t end_gpu_ns,
                       XLineBuilder* line) {
       if (event.start_time_ns < start_gpu_ns ||
           event.end_time_ns > end_gpu_ns ||
@@ -584,8 +586,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       }
     }
 
-    void Export(uint64 start_walltime_ns, uint64 start_gputime_ns,
-                uint64 end_gputime_ns, XPlaneBuilder* device_plane,
+    void Export(uint64_t start_walltime_ns, uint64_t start_gputime_ns,
+                uint64_t end_gputime_ns, XPlaneBuilder* device_plane,
                 XPlaneBuilder* host_plane) {
       mutex_lock lock(events_mutex);
       // Tracking event types per line.
@@ -594,8 +596,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       for (const RocmTracerEvent& event : events) {
         DumpRocmTracerEvent(event, start_walltime_ns, start_gputime_ns);
         bool is_host_event = IsHostEvent(event);
-        int64 line_id = is_host_event ? static_cast<int64>(event.thread_id)
-                                      : event.stream_id;
+        int64_t line_id = is_host_event ? static_cast<int64>(event.thread_id)
+                                        : event.stream_id;
         if (line_id == RocmTracerEvent::kInvalidThreadId ||
             line_id == RocmTracerEvent::kInvalidStreamId)
           continue;
@@ -641,7 +643,7 @@ class GpuTracer : public profiler::ProfilerInterface {
 
   RocmTracerOptions GetRocmTracerOptions();
 
-  RocmTraceCollectorOptions GetRocmTraceCollectorOptions(uint32 num_gpus);
+  RocmTraceCollectorOptions GetRocmTraceCollectorOptions(uint32_t num_gpus);
 
   enum State {
     kNotStarted,
@@ -696,7 +698,7 @@ RocmTracerOptions GpuTracer::GetRocmTracerOptions() {
 }
 
 RocmTraceCollectorOptions GpuTracer::GetRocmTraceCollectorOptions(
-    uint32 num_gpus) {
+    uint32_t num_gpus) {
   RocmTraceCollectorOptions options;
   options.max_callback_api_events = 2 * 1024 * 1024;
   options.max_activity_api_events = 2 * 1024 * 1024;
@@ -714,8 +716,8 @@ Status GpuTracer::DoStart() {
 
   RocmTraceCollectorOptions trace_collector_options =
       GetRocmTraceCollectorOptions(rocm_tracer_->NumGpus());
-  uint64 start_gputime_ns = RocmTracer::GetTimestamp();
-  uint64 start_walltime_ns = tensorflow::EnvTime::NowNanos();
+  uint64_t start_gputime_ns = RocmTracer::GetTimestamp();
+  uint64_t start_walltime_ns = tensorflow::EnvTime::NowNanos();
   // VLOG(3) << "CPU Start Time : " << start_walltime_ns / 1000
   // 			 << " , GPU Start Time : " << start_gputime_ns / 1000;
   rocm_trace_collector_ = std::make_unique<RocmTraceCollectorImpl>(
