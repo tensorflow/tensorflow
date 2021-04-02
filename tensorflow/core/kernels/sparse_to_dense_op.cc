@@ -215,10 +215,6 @@ class SparseToDenseGPU : public AsyncOpKernel {
                                                   sparse_values, default_value),
                          done);
 
-    const int64 num_elems = indices.dims() > 0 ? indices.dim_size(0) : 1;
-    const int64 num_dims = indices.dims() > 1 ? indices.dim_size(1) : 1;
-    const int64 num_values = sparse_values.NumElements();
-
     auto output_shape_vec = output_shape.flat<Index>();
     TensorShape output_tensor_shape;
     OP_REQUIRES_OK_ASYNC(c,
@@ -229,11 +225,6 @@ class SparseToDenseGPU : public AsyncOpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK_ASYNC(c, c->allocate_output(0, output_tensor_shape, &output),
                          done);
-
-    int64 dense_size = output_shape_vec.data()[0];
-    for (int i = 1; i < output_shape_vec.size(); i++) {
-      dense_size *= output_shape_vec.data()[i];
-    }
 
     Tensor output_shape_tensor;
     OP_REQUIRES_OK_ASYNC(
@@ -248,25 +239,16 @@ class SparseToDenseGPU : public AsyncOpKernel {
         c,
         stream
             ->ThenMemcpy(&output_shape_data, output_shape_vec.data(),
-                         num_dims * sizeof(Index))
+                         output_shape_tensor.NumElements() * sizeof(Index))
             .ok(),
         errors::InvalidArgument(
             "failed to copy output_shape vector from host to "
             "device in SparseToDenseOp"),
         done);
 
-    auto indices_data = AsDeviceMemory(indices.template flat<Index>().data(),
-                                       indices.template flat<Index>().size());
-    auto sparse_values_data =
-        AsDeviceMemory(sparse_values.template flat<T>().data(),
-                       sparse_values.template flat<T>().size());
-    auto output_data = AsDeviceMemory(output->template flat<T>().data(),
-                                      output->template flat<T>().size());
-
     functor::LaunchSparseToDense<T, Index>()(
-        c, done, this, validate_indices_, indices_data, sparse_values_data,
-        num_elems, num_values, output_shape_data, num_dims,
-        default_value.scalar<T>()(), dense_size, &output_data);
+        c, done, this, validate_indices_, indices, sparse_values,
+        output_shape_tensor, default_value.scalar<T>()(), output);
   }
 
  private:
@@ -275,7 +257,6 @@ class SparseToDenseGPU : public AsyncOpKernel {
 
 // TODO(b/184077412): SparseToDense causes an illegal access error.
 
-#if 0
 #define REGISTER_GPU_KERNELS(type, index_type)                         \
   REGISTER_KERNEL_BUILDER(Name("SparseToDense")                        \
                               .Device(DEVICE_GPU)                      \
@@ -295,7 +276,6 @@ REGISTER_GPU_KERNELS_ALL(bool)
 
 #undef REGISTER_GPU_KERNELS_ALL
 #undef REGISTER_GPU_KERNELS
-#endif
 
 #endif  // GOOGLE_CUDA
 
