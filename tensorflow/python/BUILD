@@ -5163,11 +5163,6 @@ alias(
 )
 
 alias(
-    name = "graph_building_benchmark",
-    actual = "//tensorflow/python/framework:graph_building_benchmark",
-)
-
-alias(
     name = "tensor_shape",
     actual = "//tensorflow/python/framework:tensor_shape",
 )
