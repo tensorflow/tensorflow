@@ -36,7 +36,7 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-constexpr uint32 RocmTracerEvent::kInvalidDeviceId;
+constexpr uint32_t RocmTracerEvent::kInvalidDeviceId;
 
 #define RETURN_IF_ROCTRACER_ERROR(expr)                                      \
   do {                                                                       \
@@ -53,8 +53,8 @@ namespace {
 // GetCachedTID() caches the thread ID in thread-local storage (which is a
 // userspace construct) to avoid unnecessary system calls. Without this caching,
 // it can take roughly 98ns, while it takes roughly 1ns with this caching.
-int32 GetCachedTID() {
-  static thread_local int32 current_thread_id =
+int32_t GetCachedTID() {
+  static thread_local int32_t current_thread_id =
       Env::Default()->GetCurrentThreadId();
   return current_thread_id;
 }
@@ -257,8 +257,9 @@ const char* GetRocmTracerEventDomainName(const RocmTracerEventDomain& domain) {
   return "";
 }
 
-void DumpRocmTracerEvent(const RocmTracerEvent& event, uint64 start_walltime_ns,
-                         uint64 start_gputime_ns) {
+void DumpRocmTracerEvent(const RocmTracerEvent& event,
+                         uint64_t start_walltime_ns,
+                         uint64_t start_gputime_ns) {
   std::ostringstream oss;
 
   oss << "correlation_id=" << event.correlation_id;
@@ -889,7 +890,8 @@ class RocmActivityCallbackImpl {
   RocmTraceCollector* collector_ = nullptr;
 };
 
-void AnnotationMap::Add(uint32 correlation_id, const std::string& annotation) {
+void AnnotationMap::Add(uint32_t correlation_id,
+                        const std::string& annotation) {
   if (annotation.empty()) return;
   VLOG(3) << "Add annotation: "
           << " correlation_id=" << correlation_id
@@ -902,7 +904,7 @@ void AnnotationMap::Add(uint32 correlation_id, const std::string& annotation) {
   }
 }
 
-absl::string_view AnnotationMap::LookUp(uint32 correlation_id) {
+absl::string_view AnnotationMap::LookUp(uint32_t correlation_id) {
   absl::MutexLock lock(&map_.mutex);
   auto it = map_.correlation_map.find(correlation_id);
   return it != map_.correlation_map.end() ? it->second : absl::string_view();
@@ -1142,7 +1144,7 @@ Status RocmTracer::DisableActivityTracing() {
   return Status::OK();
 }
 
-/*static*/ uint64 RocmTracer::GetTimestamp() {
+/*static*/ uint64_t RocmTracer::GetTimestamp() {
   uint64_t ts;
   if (wrap::roctracer_get_timestamp(&ts) != ROCTRACER_STATUS_SUCCESS) {
     const char* errstr = wrap::roctracer_error_string();

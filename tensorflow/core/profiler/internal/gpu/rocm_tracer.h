@@ -34,7 +34,7 @@ struct MemcpyDetails {
   size_t num_bytes;
   // The destination device for peer-2-peer communication (memcpy). The source
   // device is implicit: its the current device.
-  uint32 destination;
+  uint32_t destination;
   // Whether or not the memcpy is asynchronous.
   bool async;
 };
@@ -48,28 +48,28 @@ struct MemsetDetails {
 
 struct MemAllocDetails {
   // The amount of data requested for cudaMalloc events.
-  uint64 num_bytes;
+  uint64_t num_bytes;
 };
 
 struct KernelDetails {
   // The number of registers used in this kernel.
-  uint64 registers_per_thread;
+  uint64_t registers_per_thread;
   // The amount of shared memory space used by a thread block.
-  uint64 static_shared_memory_usage;
+  uint64_t static_shared_memory_usage;
   // The amount of dynamic memory space used by a thread block.
-  uint64 dynamic_shared_memory_usage;
+  uint64_t dynamic_shared_memory_usage;
   // X-dimension of a thread block.
-  uint64 block_x;
+  uint64_t block_x;
   // Y-dimension of a thread block.
-  uint64 block_y;
+  uint64_t block_y;
   // Z-dimension of a thread block.
-  uint64 block_z;
+  uint64_t block_z;
   // X-dimension of a grid.
-  uint64 grid_x;
+  uint64_t grid_x;
   // Y-dimension of a grid.
-  uint64 grid_y;
+  uint64_t grid_y;
   // Z-dimension of a grid.
-  uint64 grid_z;
+  uint64_t grid_z;
 };
 
 enum class RocmTracerEventType {
@@ -103,13 +103,13 @@ enum class RocmTracerEventDomain {
 const char* GetRocmTracerEventDomainName(const RocmTracerEventDomain& domain);
 
 struct RocmTracerEvent {
-  static constexpr uint32 kInvalidDeviceId =
+  static constexpr uint32_t kInvalidDeviceId =
       std::numeric_limits<uint32_t>::max();
-  static constexpr uint32 kInvalidThreadId =
+  static constexpr uint32_t kInvalidThreadId =
       std::numeric_limits<uint32_t>::max();
-  static constexpr uint32 kInvalidCorrelationId =
+  static constexpr uint32_t kInvalidCorrelationId =
       std::numeric_limits<uint32_t>::max();
-  static constexpr uint64 kInvalidStreamId =
+  static constexpr uint64_t kInvalidStreamId =
       std::numeric_limits<uint64_t>::max();
   RocmTracerEventType type;
   RocmTracerEventSource source;
@@ -118,12 +118,12 @@ struct RocmTracerEvent {
   // This points to strings in AnnotationMap, which should outlive the point
   // where serialization happens.
   absl::string_view annotation;
-  uint64 start_time_ns;
-  uint64 end_time_ns;
-  uint32 device_id = kInvalidDeviceId;
-  uint32 correlation_id = kInvalidCorrelationId;
-  uint32 thread_id = kInvalidThreadId;
-  int64 stream_id = kInvalidStreamId;
+  uint64_t start_time_ns;
+  uint64_t end_time_ns;
+  uint32_t device_id = kInvalidDeviceId;
+  uint32_t correlation_id = kInvalidCorrelationId;
+  uint32_t thread_id = kInvalidThreadId;
+  int64_t stream_id = kInvalidStreamId;
   union {
     MemcpyDetails memcpy_info;      // If type == Memcpy*
     MemsetDetails memset_info;      // If type == Memset*
@@ -132,8 +132,8 @@ struct RocmTracerEvent {
   };
 };
 
-void DumpRocmTracerEvent(const RocmTracerEvent& event, uint64 start_walltime_ns,
-                         uint64 start_gputime_ns);
+void DumpRocmTracerEvent(const RocmTracerEvent& event,
+                         uint64_t start_walltime_ns, uint64_t start_gputime_ns);
 
 struct RocmTracerOptions {
   // map of domain --> ops for which we need to enable the API callbacks
@@ -149,20 +149,20 @@ struct RocmTraceCollectorOptions {
   // Maximum number of events to collect from callback API; if -1, no limit.
   // if 0, the callback API is enabled to build a correlation map, but no
   // events are collected.
-  uint64 max_callback_api_events;
+  uint64_t max_callback_api_events;
   // Maximum number of events to collect from activity API; if -1, no limit.
-  uint64 max_activity_api_events;
+  uint64_t max_activity_api_events;
   // Maximum number of annotation strings that we can accommodate.
-  uint64 max_annotation_strings;
+  uint64_t max_annotation_strings;
   // Number of GPUs involved.
-  uint32 num_gpus;
+  uint32_t num_gpus;
 };
 
 class AnnotationMap {
  public:
-  explicit AnnotationMap(uint64 max_size) : max_size_(max_size) {}
-  void Add(uint32 correlation_id, const std::string& annotation);
-  absl::string_view LookUp(uint32 correlation_id);
+  explicit AnnotationMap(uint64_t max_size) : max_size_(max_size) {}
+  void Add(uint32_t correlation_id, const std::string& annotation);
+  absl::string_view LookUp(uint32_t correlation_id);
 
  private:
   struct AnnotationMapImpl {
@@ -172,9 +172,9 @@ class AnnotationMap {
     // Annotation tends to be repetitive, use a hash_set to store the strings,
     // an use the reference to the string in the map.
     absl::node_hash_set<std::string> annotations;
-    absl::flat_hash_map<uint32, absl::string_view> correlation_map;
+    absl::flat_hash_map<uint32_t, absl::string_view> correlation_map;
   };
-  const uint64 max_size_;
+  const uint64_t max_size_;
   AnnotationMapImpl map_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(AnnotationMap);
@@ -188,7 +188,7 @@ class RocmTraceCollector {
 
   virtual void AddEvent(RocmTracerEvent&& event) = 0;
   virtual void OnEventsDropped(const std::string& reason,
-                               uint32 num_events) = 0;
+                               uint32_t num_events) = 0;
   virtual void Flush() = 0;
 
   AnnotationMap* annotation_map() { return &annotation_map_; }
@@ -223,14 +223,14 @@ class RocmTracer {
   void ApiCallbackHandler(uint32_t domain, uint32_t cbid, const void* cbdata);
   void ActivityCallbackHandler(const char* begin, const char* end);
 
-  static uint64 GetTimestamp();
+  static uint64_t GetTimestamp();
   static int NumGpus();
 
-  void AddToPendingActivityRecords(uint32 correlation_id) {
+  void AddToPendingActivityRecords(uint32_t correlation_id) {
     pending_activity_records_.Add(correlation_id);
   }
 
-  void RemoveFromPendingActivityRecords(uint32 correlation_id) {
+  void RemoveFromPendingActivityRecords(uint32_t correlation_id) {
     pending_activity_records_.Remove(correlation_id);
   }
 
@@ -264,12 +264,12 @@ class RocmTracer {
   class PendingActivityRecords {
    public:
     // add a correlation id to the pending set
-    void Add(uint32 correlation_id) {
+    void Add(uint32_t correlation_id) {
       absl::MutexLock lock(&mutex);
       pending_set.insert(correlation_id);
     }
     // remove a correlation id from the pending set
-    void Remove(uint32 correlation_id) {
+    void Remove(uint32_t correlation_id) {
       absl::MutexLock lock(&mutex);
       pending_set.erase(correlation_id);
     }
@@ -286,7 +286,7 @@ class RocmTracer {
 
    private:
     // set of co-relation ids for which the hcc activity record is pending
-    std::set<uint32> pending_set;
+    std::set<uint32_t> pending_set;
     // the callback which processes the activity records (and consequently
     // removes items from the pending set) is called in a separate thread
     // from the one that adds item to the list.
