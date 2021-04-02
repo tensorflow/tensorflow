@@ -990,7 +990,7 @@ def tf_gen_op_wrapper_py(
         visibility = [clean_dep("//tensorflow:internal")],
         deps = ([
             clean_dep("//tensorflow/core:framework"),
-            clean_dep("//tensorflow/python:python_op_gen_main"),
+            clean_dep("//tensorflow/python/framework:python_op_gen_main"),
         ] + deps),
         testonly = testonly,
     )
@@ -2216,7 +2216,7 @@ def tf_py_test(
     # kernels compiled with XLA.
     if xla_enable_strict_auto_jit:
         xla_enabled = True
-        xla_test_true_list += ["//tensorflow/python:is_xla_test_true"]
+        xla_test_true_list.append("//tensorflow/python/framework:is_xla_test_true")
     if xla_enabled:
         deps = deps + tf_additional_xla_deps_py()
     if grpc_enabled:
