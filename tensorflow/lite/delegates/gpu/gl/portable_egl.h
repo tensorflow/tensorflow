@@ -19,4 +19,8 @@ limitations under the License.
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 
+//add by sky on 20210402
+//Why: see portable_gl31.h:line 36-47
+#undef Status
+
 #endif  // TENSORFLOW_LITE_DELEGATES_GPU_GL_PORTABLE_EGL_H_
