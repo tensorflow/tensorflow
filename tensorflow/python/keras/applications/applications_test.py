@@ -40,6 +40,8 @@ MODEL_LIST_NO_NASNET = [
     (resnet.ResNet50, 2048),
     (resnet.ResNet101, 2048),
     (resnet.ResNet152, 2048),
+    (resnet.ResNeXt50, 2048),
+    (resnet.ResNeXt101, 2048),
     (resnet_v2.ResNet50V2, 2048),
     (resnet_v2.ResNet101V2, 2048),
     (resnet_v2.ResNet152V2, 2048),
