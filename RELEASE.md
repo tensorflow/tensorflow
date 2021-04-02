@@ -17,6 +17,11 @@
 
 *<INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *<IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+  
+* `tf.keras`:
+    *   `tf.keras.utils.experimental.DatasetCreator` now takes an optional
+        `tf.distribute.InputOptions` for specific options when used with
+        distribution.
 
 ## Bug Fixes and Other Changes
 
