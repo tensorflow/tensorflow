@@ -21,6 +21,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
+#include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -31,31 +32,6 @@ namespace jax {
 // defined, defaulting to the value of the flag otherwise).
 bool GetEnableX64();
 
-// Describes the abstract shape and dtype of an argument.
-struct ArgSignature {
-  ArgSignature(xla::PrimitiveType dtype, absl::Span<const xla::int64> shape,
-               bool weak_type)
-      : dtype(dtype), shape(shape.begin(), shape.end()), weak_type(weak_type) {}
-  // This is the XLA dtype of the object.
-  const xla::PrimitiveType dtype;
-  const absl::InlinedVector<xla::int64, 4> shape;
-  // JAX arguments can be of weak type, if and only if they are Python scalars
-  // or `DeviceArray` values such that `aval.weak_type` is true.
-  const bool weak_type;
-  bool operator==(const ArgSignature& other) const {
-    return std::tie(dtype, weak_type, shape) ==
-           std::tie(other.dtype, other.weak_type, other.shape);
-  }
-  bool operator!=(const ArgSignature& other) const { return !(*this == other); }
-  std::string DebugString() const;
-};
-
-template <typename H>
-H AbslHashValue(H h, const ArgSignature& s) {
-  h = H::combine(std::move(h), s.dtype);
-  h = H::combine_contiguous(std::move(h), s.shape.data(), s.shape.size());
-  return h;
-}
 
 // The signature of Python jitted function call, partitioned into:
 // - dynamic positional arguments (i.e. positional args which are not static)
@@ -88,7 +64,7 @@ struct CallSignature {
   std::vector<KwargEntry> keyword_args;
   // Shape and dtype for both the dynamic positional arguments and the keyword
   // arguments (sorted by keyword name).
-  std::vector<ArgSignature> dynamic_args_signatures;
+  std::vector<xla::PyArgSignature> dynamic_args_signatures;
   xla::PjRtDevice* device;
   bool jax_enable_x64;
 
@@ -139,13 +115,6 @@ xla::Status ParseArguments(const pybind11::args& args,
                            const pybind11::kwargs& py_kwargs,
                            absl::Span<int const> static_argnums,
                            ParsedArgumentsAsBuffers& arguments);
-
-
-// Returns the ArgSignature associated with an argument. Returns an error if
-// the argument is not supported.
-xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
-                                                bool jax_enable_x64);
-
 
 // The function to call in `xla.cc` to add the bindings for this module.
 void BuildJaxjitSubmodule(pybind11::module& m);
