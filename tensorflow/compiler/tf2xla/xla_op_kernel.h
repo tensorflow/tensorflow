@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
-#include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -131,58 +130,34 @@ class XlaOpKernelContext {
 
   // Evaluates input `index` and stores it in `*constant_literal`. If the
   // expression cannot be evaluated, e.g., because it depends on unbound
-  // parameters, returns a non-OK status. This function can also be used to
-  // infer constant input upper or lower bounds, by changing the `mode`
-  // parameter.
-  Status ConstantInput(
-      int index, xla::Literal* constant_literal,
-      xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
-  Status ConstantInput(
-      absl::string_view name, xla::Literal* constant_literal,
-      xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
+  // parameters, returns a non-OK status.
+  Status ConstantInput(int index, xla::Literal* constant_literal);
+  Status ConstantInput(absl::string_view name, xla::Literal* constant_literal);
 
   // Converts a constant scalar int32 or int64 tensor into an int64.
-  Status ConstantInputAsIntScalar(
-      int index, int64* out,
-      xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
-  Status ConstantInputAsIntScalar(
-      absl::string_view name, int64* out,
-      xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
+  Status ConstantInputAsIntScalar(int index, int64* out);
+  Status ConstantInputAsIntScalar(absl::string_view name, int64* out);
 
   // Converts a constant scalar float32 or float64 tensor into a float64.
-  Status ConstantInputAsFloatScalar(
-      int index, double* out,
-      xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
+  Status ConstantInputAsFloatScalar(int index, double* out);
 
   // Converts a constant 1D int32 or int64 tensor into a vector of int64s.
-  Status ConstantInputAsIntVector(
-      int index, std::vector<int64>* out,
-      xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
-  Status ConstantInputAsIntVector(
-      absl::string_view name, std::vector<int64>* out,
-      xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
+  Status ConstantInputAsIntVector(int index, std::vector<int64>* out);
+  Status ConstantInputAsIntVector(absl::string_view name,
+                                  std::vector<int64>* out);
 
   // Reshapes and converts a constant int32 or int64 tensor into a vector of
   // int64s.
-  Status ConstantInputReshapedToIntVector(
-      int index, std::vector<int64>* out,
-      xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
-  Status ConstantInputReshapedToIntVector(
-      absl::string_view name, std::vector<int64>* out,
-      xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
+  Status ConstantInputReshapedToIntVector(int index, std::vector<int64>* out);
+  Status ConstantInputReshapedToIntVector(absl::string_view name,
+                                          std::vector<int64>* out);
 
   // Converts a constant int32 or int64 Tensor into an xla int64 Literal.
-  Status ConstantInputAsInt64Literal(
-      int index, xla::Literal* out,
-      xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
-  Status ConstantInputAsInt64Literal(
-      absl::string_view name, xla::Literal* out,
-      xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
+  Status ConstantInputAsInt64Literal(int index, xla::Literal* out);
+  Status ConstantInputAsInt64Literal(absl::string_view name, xla::Literal* out);
 
   // Converts a constant 1D int32 or int64 tensor into a TensorShape.
-  Status ConstantInputAsShape(
-      int index, TensorShape* shape,
-      xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
+  Status ConstantInputAsShape(int index, TensorShape* shape);
 
   // Converts a constant 1D int32 or int64 tensor, or a scalar with value -1
   // into a PartialTensorShape.
@@ -191,9 +166,8 @@ class XlaOpKernelContext {
   // Returns the named list-valued immutable input in "list", as
   // defined in the OpDef.  If the named output is not list-valued,
   // returns a one-element list.
-  Status ConstantInputList(
-      absl::string_view name, std::vector<xla::Literal>* outputs,
-      xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
+  Status ConstantInputList(absl::string_view name,
+                           std::vector<xla::Literal>* literals);
 
   // Returns an XlaExpression describing the value of 'index'.
   const XlaExpression& InputExpression(int index);
@@ -335,10 +309,8 @@ class XlaOpKernelContext {
   // cannot be evaluated, e.g., because it depends on unbound parameters,
   // returns a non-Ok status. If InputShape(index).num_elements() !=
   // new_shape.num_elements(), returns an error status.
-  Status ConstantInputReshaped(
-      int index, absl::Span<const int64> new_dims,
-      xla::Literal* constant_literal,
-      xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
+  Status ConstantInputReshaped(int index, absl::Span<const int64> new_dims,
+                               xla::Literal* constant_literal);
 
   OpKernelContext* const context_;
   bool dynamic_dimension_is_minus_one_;

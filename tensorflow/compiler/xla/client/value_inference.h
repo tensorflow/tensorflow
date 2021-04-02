@@ -28,49 +28,30 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
-// OptionaLiteral is an augmented literal class which returns optional
-// values for each index (the value can be either valid or invalid). The
-// implementation keeps two literals, a value literal, holding both the valid
-// and garabage value, and a masking literal representing if a value is valid or
-// garbage.
-class OptionaLiteral {
+// OptionaLiteralSlice is an augmented literal class which returns optional
+// values for each index (the value can be either valid or invalid). Underneath
+// it keeps two literals, a value literal, holding both the valid and garabage
+// value, and a masking litearl representing if a value is valid or garbage.
+class OptionaLiteralSlice {
  public:
-  explicit OptionaLiteral(Literal value, Literal mask)
-      : value_(std::move(value)), mask_(std::move(mask)) {}
+  explicit OptionaLiteralSlice(LiteralSlice value, LiteralSlice mask)
+      : value_(value), mask_(mask) {}
 
   template <typename NativeT>
-  absl::optional<NativeT> Get(absl::Span<const int64> element_index,
-                              ShapeIndex shape_index = {}) const {
-    if (mask_.Get<bool>(element_index, shape_index)) {
+  absl::optional<NativeT> Get(absl::Span<const int64> multi_index) const {
+    if (mask_.Get<bool>(multi_index)) {
       return absl::nullopt;
     } else {
-      return value_.Get<NativeT>(element_index, shape_index);
+      return value_.Get<NativeT>(multi_index);
     }
   }
 
   // Returns true if all values in this literal slice are value.
   bool AllValid() { return mask_.IsAll(0); }
 
-  // Get value out of this slice if all values are valid. Otherwise returns
-  // nullopt.
-  absl::optional<LiteralSlice> GetValue() {
-    if (!AllValid()) {
-      return absl::nullopt;
-    }
-    return LiteralSlice(value_);
-  }
-
  private:
-  Literal value_;
-  Literal mask_;
-};
-
-enum ValueInferenceMode {
-  // Inference the constant value itself.
-  kValue = 0,
-  // Inference upper-bound and lower-bound of the value. Bounds are inclusive.
-  kUpperBound,
-  kLowerBound,
+  LiteralSlice value_;
+  LiteralSlice mask_;
 };
 
 class ValueInference {
@@ -80,34 +61,38 @@ class ValueInference {
   // - What's the lower-bound of each value in a tensor.
   // - What's the constant value of each tensor.
   // - Whether or not each value in a tensor is dynamic.
-  explicit ValueInference(XlaBuilder* builder) : builder_(builder) {
-    CHECK(builder_);
+  explicit ValueInference(XlaBuilder* builder) : builder_(builder) {}
+  StatusOr<LiteralSlice> AnalyzeUpperBound(XlaOp op) {
+    return Unimplemented("Analyzing upper-bound is not implemented yet.");
   }
-  StatusOr<Literal> AnalyzeIsDynamic(XlaOp op) {
-    return AnalyzeIsDynamic(op.handle(), ValueInferenceMode::kValue);
+  StatusOr<LiteralSlice> AnalyzeLowerBound(XlaOp op) {
+    return Unimplemented("Analyzing lower-bound is not implemented yet.");
+  }
+  StatusOr<LiteralSlice> AnalyzeIsDynamic(XlaOp op) {
+    return AnalyzeIsDynamic(op.handle());
   }
 
-  // Returns an OptionalLiteralSlice. Each individual value of the literal is
-  // the concrete constant value if it can be inferred, otherwise a nullopt.
-  StatusOr<OptionaLiteral> AnalyzeConstant(XlaOp op, ValueInferenceMode mode) {
-    return AnalyzeOptionalConstant(op.handle(), mode);
+  // Returns a OptionalConstant, the value is nullopt it's dynamic, otherwise a
+  // concrete constant value.
+  StatusOr<OptionaLiteralSlice> AnalyzeOptionalConstant(XlaOp op) {
+    return AnalyzeOptionalConstant(op.handle());
   }
 
  private:
-  StatusOr<OptionaLiteral> AnalyzeOptionalConstant(int64 handle,
-                                                   ValueInferenceMode mode);
+  StatusOr<LiteralSlice> AnalyzeIsDynamic(int64 handle);
+  StatusOr<LiteralSlice> AnalyzeConstant(int64 handle);
+  StatusOr<OptionaLiteralSlice> AnalyzeOptionalConstant(int64 handle);
 
-  StatusOr<Literal> AnalyzeUpperBound(int64 handle);
-  StatusOr<Literal> AnalyzeLowerBound(int64 handle);
-  StatusOr<Literal> AnalyzeIsDynamic(int64 handle, ValueInferenceMode mode);
-  StatusOr<Literal> AnalyzeConstant(int64 handle);
-  StatusOr<Literal> AnalyzeConstantValue(int64 handle, ValueInferenceMode mode);
-
-  // Returns true if a value represented by `handle` is an integeral type or
-  // just got converted from an integral type to floating point type.
-  bool IsValueEffectiveInteger(int64 handle);
+  StatusOr<Literal> AnalyzeIsDynamicLiteral(int64 handle);
+  StatusOr<Literal> AnalyzeConstantLiteral(int64 handle);
 
   XlaBuilder* builder_;
+  // Cache to avoid re-evaluating. Mapping of xla handle to evaluated
+  // literals.
+  absl::flat_hash_map<int64, Literal> upper_bound_;
+  absl::flat_hash_map<int64, Literal> lower_bound_;
+  absl::flat_hash_map<int64, Literal> is_dynamic_;
+  absl::flat_hash_map<int64, Literal> constant_;
   HloEvaluator evaluator_;
 };
 }  // namespace xla

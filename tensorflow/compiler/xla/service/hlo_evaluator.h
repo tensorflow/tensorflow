@@ -124,15 +124,6 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   StatusOr<Literal> EvaluateElementwiseUnaryOp(HloOpcode opcode,
                                                const Literal& operand);
 
-  StatusOr<Literal> EvaluateElementwiseTernaryOp(HloOpcode opcode,
-                                                 const Literal& lhs,
-                                                 const Literal& rhs,
-                                                 const Literal& ehs);
-
-  StatusOr<Literal> EvaluateElementwiseCompareOp(ComparisonDirection direction,
-                                                 const Literal& lhs,
-                                                 const Literal& rhs);
-
   StatusOr<Literal> EvaluateDotOp(const DotDimensionNumbers& dim_numbers,
                                   const PrecisionConfig& precision_config,
                                   const Literal& lhs, const Literal& rhs);
