@@ -76,7 +76,13 @@ struct UniqueOpHashMap<bfloat16, TIndex> {
 template <typename T, typename TIndex>
 class UniqueOp : public OpKernel {
  public:
-  explicit UniqueOp(OpKernelConstruction* context) : OpKernel(context) {}
+  static constexpr size_t INIT_SIZE = 1 << 12;
+
+ public:
+  explicit UniqueOp(OpKernelConstruction* context) : OpKernel(context) {
+    uniq_table_size_ = INIT_SIZE;
+    OP_REQUIRES_OK(c, c->GetAttr("auto_adjust_uniq_table_size", &auto_adjust_));
+  }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
@@ -151,7 +157,7 @@ class UniqueOp : public OpKernel {
       const int64 N = static_cast<int64>(Tin.size());
 
       typename UniqueOpHashMap<T, TIndex>::map_type uniq;
-      uniq.reserve(2 * N);
+      uniq.reserve(auto_adjust_ ? uniq_table_size_ : (N << 1));
       for (Eigen::Index i = 0, j = 0; i < N; ++i) {
         auto it = uniq.emplace(Tin(i), j);
         idx_vec(i) = it.first->second;
@@ -161,6 +167,9 @@ class UniqueOp : public OpKernel {
       }
 
       uniq_size = static_cast<int64>(uniq.size());
+      if (auto_adjust_) {
+        AutoAdjustUniqTableSize(uniq_size);
+      }
       TensorShape output_shape(input.shape());
       output_shape.set_dim(axis, uniq_size);
       Tensor* output = nullptr;
@@ -200,8 +209,7 @@ class UniqueOp : public OpKernel {
       absl::flat_hash_map<int64, int64, decltype(hash_fn),
                           decltype(equal_to_fn)>
           uniq(0, hash_fn, equal_to_fn);
-
-      uniq.reserve(2 * Tin.dimension(1));
+      uniq.reserve(auto_adjust_ ? uniq_table_size_ : (N << 1));
 
       for (int64 i = 0, j = 0; i < Tin.dimension(1); ++i) {
         auto it = uniq.emplace(i, j);
@@ -212,6 +220,9 @@ class UniqueOp : public OpKernel {
       }
 
       uniq_size = static_cast<int64>(uniq.size());
+      if (auto_adjust_) {
+        AutoAdjustUniqTableSize(uniq_size);
+      }
       new_sizes[1] = uniq_size;
       TensorShape output_shape(input.shape());
       output_shape.set_dim(axis, uniq_size);
@@ -237,6 +248,19 @@ class UniqueOp : public OpKernel {
       }
     }
   }
+
+ private:
+  void AutoAdjustUniqTableSize(const size_t uniq_size) {
+    if ((uniq_size << 1) > uniq_table_size_) {
+      uniq_table_size_ = uniq_size * 2.1;
+    } else if (uniq_size > (uniq_table_size_ << 2)) {
+      uniq_table_size_ = (uniq_size >> 2);
+    }
+  }
+
+ private:
+  size_t uniq_table_size_ = 0;
+  bool auto_adjust_ = false;
 };
 
 #define REGISTER_UNIQUE(type)                                    \

@@ -1968,7 +1968,10 @@ def sparse_mask(a, mask_indices, name=None):
 
 @tf_export("unique")
 @dispatch.add_dispatch_support
-def unique(x, out_idx=dtypes.int32, name=None):
+def unique(x,
+           out_idx=dtypes.int32,
+           auto_adjust_uniq_table_size=False,
+           name=None):
   """Finds unique elements in a 1-D tensor.
 
   See also `tf.unique_with_counts`.
@@ -1996,6 +1999,8 @@ def unique(x, out_idx=dtypes.int32, name=None):
     x: A Tensor. 1-D.
     out_idx: An optional tf.DType from: tf.int32, tf.int64. Defaults to
       tf.int32.
+    auto_adjust_uniq_table_size: When the repetition rate is high, some
+      performance can be improved by adjusting this parameter.
     name: A name for the operation (optional).
 
   Returns:
@@ -2008,7 +2013,7 @@ def unique(x, out_idx=dtypes.int32, name=None):
   # period (3 weeks) pass.
   # TODO(yongtang): The documentation should also
   # be updated when switch  to v2.
-  return gen_array_ops.unique(x, out_idx, name)
+  return gen_array_ops.unique(x, out_idx, auto_adjust_uniq_table_size, name)
 
 
 unique.__doc__ = gen_array_ops.unique.__doc__
