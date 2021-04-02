@@ -43,6 +43,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/lru_cache.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
@@ -99,18 +100,6 @@ bool CallSignature::operator==(const CallSignature& other) const {
                }
              }) &&
          extra_jit_context.equal(other.extra_jit_context);
-}
-
-void CallSignature::IncRef() const {
-  for (const auto& kw : keyword_args) {
-    kw.key.inc_ref();
-  }
-}
-
-void CallSignature::DecRef() const {
-  for (const auto& kw : keyword_args) {
-    kw.key.dec_ref();
-  }
 }
 
 namespace {
@@ -500,7 +489,13 @@ xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
 
 namespace {
 
+// Elements of CacheEntry are protected by the GIL.
 struct CacheEntry {
+  // Has this cache entry been fully populated?
+  // The first thread to determine a compilation result sets `ready` to true
+  // after populating all necessary fields of the cache entry.
+  bool ready = false;
+
   std::shared_ptr<xla::PyExecutable> executable;
   xla::PyTreeDef out_pytree_def;
   // We use Python types within the vector because this is what we will be
@@ -514,16 +509,14 @@ struct CacheEntry {
   std::vector<py::object> out_lazy_exprs;
   xla::PjRtDevice* sticky_device;
 
-  // Ensures a single thread performs the compilation for a given executable.
-  //
-  // The first thread (holding the GIL) will create the CacheEntry associated to
-  // a signature and if the object has been insterted already, other threads
-  // will wait for the notification.
-  absl::Notification compilation_complete;
-  absl::optional<xla::Status> compilation_error = absl::nullopt;
   // Trivial computation will fallback to Python.
   // Running a jax(pmap) will also fallback to Python.
   bool fall_back_to_python = false;
+
+  // Python objects (notably in the cache key) that must remain alive as long
+  // as the cache entry does. Currently this is the `key` values in the kwarg
+  // entries in the cache key.
+  std::vector<py::object> keepalive;
 };
 
 // A `CompiledFunction` is associated to a `jax.jit(f)` and takes care of the
@@ -532,7 +525,8 @@ struct CacheEntry {
 class CompiledFunction {
  public:
   CompiledFunction(py::function fun, py::function cache_miss,
-                   py::function get_device, std::vector<int> static_argnums);
+                   py::function get_device, std::vector<int> static_argnums,
+                   int cache_size);
   ~CompiledFunction();
 
   // This function will:
@@ -549,18 +543,16 @@ class CompiledFunction {
     return inspect->attr("signature")(fun_);
   }
 
-  int cache_size() const { return executables_.size(); }
-  void ClearCache() { executables_.clear(); }
+  int cache_size() const { return executables_.Size(); }
+  void ClearCache() { executables_.Clear(); }
 
   const py::function& cache_miss() const { return cache_miss_; }
 
  private:
-  // Returns nullptr if not present in the cache.
-  CacheEntry* GetCacheEntryIfPresent(const CallSignature& signature);
-  // Should never return nullptr.
-  CacheEntry* AddCacheEntry(const py::args& args, const py::kwargs& kwargs,
-                            const CallSignature& signature,
-                            py::object out_and_fastpath_data);
+  void PopulateCacheEntry(CacheEntry* entry, const py::args& args,
+                          const py::kwargs& kwargs,
+                          const CallSignature& signature,
+                          const py::tuple& out_and_fastpath_data);
   bool always_fallback_to_python_ = false;
 
   const py::function fun_;  // The Python function to jit.
@@ -570,12 +562,14 @@ class CompiledFunction {
   // We need to know the static arguments to remove them from the arguments
   // passed to the underlying PyExecutable. In sorted order.
   std::vector<int> static_argnums_;
-  // We need a `unique_ptr` here to ensure value pointer stability.
-  absl::flat_hash_map<CallSignature, std::unique_ptr<CacheEntry>> executables_;
 
   // A function taking no arguments and returning the default device and whether
   // jax.jit has been committed to it.
   const py::function get_device_;
+
+  // Cache entries are shared_ptr<>s because it's possible the cache entry
+  // might be evicted before we finish tracing/compiling.
+  xla::LRUCache<CallSignature, std::shared_ptr<CacheEntry>> executables_;
 
   // The writing of the following is protected by the mutex.
   absl::Mutex mu_;
@@ -595,24 +589,22 @@ class CompiledFunction {
 
 CompiledFunction::CompiledFunction(py::function fun, py::function cache_miss,
                                    py::function get_device,
-                                   std::vector<int> static_argnums)
+                                   std::vector<int> static_argnums,
+                                   int cache_size)
     : fun_(std::move(fun)),
       cache_miss_(std::move(cache_miss)),
       static_argnums_(std::move(static_argnums)),
-      get_device_(std::move(get_device)) {
+      get_device_(std::move(get_device)),
+      executables_(cache_size) {
   std::sort(static_argnums_.begin(), static_argnums_.end());
 }
 
-CompiledFunction::~CompiledFunction() {
-  for (const auto& entry : executables_) {
-    entry.first.DecRef();
-  }
-}
+CompiledFunction::~CompiledFunction() = default;
 
 // Converts flattened arguments contained in ParsedArgumentsAsBuffers in
 // place. If arguments are `DeviceArray`, they must all be on the same `Device`.
 //
-// Returns `Okxla::Status()` on success. Returning an error should lead to
+// Returns `Status::OK()` on success. Returning an error should lead to
 // calling the Python fallback.
 xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
                                  xla::PjRtDevice* default_device,
@@ -730,43 +722,18 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
   return xla::Status::OK();
 }
 
-CacheEntry* CompiledFunction::GetCacheEntryIfPresent(
-    const CallSignature& signature) {
-  auto found_iterator = executables_.find(signature);
-  if (found_iterator != executables_.end()) {  // Cache hit!
-    if (!found_iterator->second->compilation_complete.HasBeenNotified()) {
-      py::gil_scoped_release gil_release;
-      found_iterator->second->compilation_complete.WaitForNotification();
-    }
-    if (found_iterator->second->compilation_error) {
-      throw std::invalid_argument(
-          found_iterator->second->compilation_error.value().error_message());
-    }
-    return found_iterator->second.get();
-  }
-  return nullptr;
-}
-
-CacheEntry* CompiledFunction::AddCacheEntry(const py::args& args,
-                                            const py::kwargs& kwargs,
-                                            const CallSignature& signature,
-                                            py::object out_and_fastpath_data) {
-  // We need to insert the element.
-  auto result = executables_.emplace(signature, std::make_unique<CacheEntry>());
-  auto it = result.first;
-  CacheEntry* cache_entry = it->second.get();
-  // CallSignatures in the cache own their keyword argument reference.
-  result.first->first.IncRef();
-
-  py::tuple tuple = py::cast<py::tuple>(out_and_fastpath_data);
-  CHECK_EQ(tuple.size(), 2);
-  if (tuple[1].is_none()) {
+void CompiledFunction::PopulateCacheEntry(
+    CacheEntry* cache_entry, const py::args& args, const py::kwargs& kwargs,
+    const CallSignature& signature, const py::tuple& out_and_fastpath_data) {
+  CHECK_EQ(out_and_fastpath_data.size(), 2);
+  if (out_and_fastpath_data[1].is_none()) {
     cache_entry->fall_back_to_python = true;
-    cache_entry->compilation_complete.Notify();
-    return cache_entry;
+    cache_entry->ready = true;
+    return;
   }
 
-  py::tuple executable_handlers_out_tree = py::cast<py::tuple>(tuple[1]);
+  py::tuple executable_handlers_out_tree =
+      py::cast<py::tuple>(out_and_fastpath_data[1]);
   if (executable_handlers_out_tree.size() != 5) {
     throw std::runtime_error(absl::StrCat(
         "The versions of jaxlib and Jax are incompatible (jaxlib is too recent "
@@ -807,8 +774,7 @@ CacheEntry* CompiledFunction::AddCacheEntry(const py::args& args,
     cache_entry->out_lazy_exprs.push_back(lazy_expr);
   }
 
-  cache_entry->compilation_complete.Notify();
-  return cache_entry;
+  cache_entry->ready = true;
 }
 
 xla::StatusOr<py::object> CompiledFunction::Call(py::args args,
@@ -869,25 +835,41 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::args args,
   }
   arguments.signature.extra_jit_context = ExtraJitContext();
 
-  CacheEntry* cache_entry = GetCacheEntryIfPresent(arguments.signature);
+  std::shared_ptr<CacheEntry> cache_entry = executables_.GetOrCreateIfAbsent(
+      arguments.signature, [](const CallSignature& key) {
+        auto entry = std::make_shared<CacheEntry>();
+        for (const auto& kw : key.keyword_args) {
+          entry->keepalive.push_back(
+              py::reinterpret_borrow<py::object>(kw.key));
+        }
+        return entry;
+      });
 
-  if (!cache_entry) {
+  if (!cache_entry->ready) {
+    // Calls Python and may release the GIL. May also throw if
+    // compilation/tracing fails.
+    // Multiple threads may reach this point and compile the same computation
+    // concurrently. Only the first thread to call PopulateCacheEntry ends
+    // up committing its compilation result to the cache.
+    // TODO(phawkins): it may be preferable to force other threads to wait if
+    // a cache miss is already happening.
     py::object out_and_fastpath_data = cache_miss_(*args, **kwargs);
-    cache_entry = GetCacheEntryIfPresent(arguments.signature);
-    if (!cache_entry) {
-      cache_entry = AddCacheEntry(args, kwargs, arguments.signature,
-                                  out_and_fastpath_data);
+    py::tuple out_tuple = py::cast<py::tuple>(out_and_fastpath_data);
+
+    // Another thread might have populated the cache entry while we were calling
+    // cache_miss_. We therefore check again that the cache entry hasn't been
+    // populated now that we have reacquired the GIL.
+    if (!cache_entry->ready) {
+      PopulateCacheEntry(cache_entry.get(), args, kwargs, arguments.signature,
+                         out_tuple);
     }
-    CHECK(cache_entry);
-    if (cache_entry->fall_back_to_python) {
-      return py::object(py::cast<py::tuple>(out_and_fastpath_data)[0]);
-    }
-    // As we have already computed the results, we can return it.
-    // It's even *required* e.g. if there are donated arguments, because
-    // otherwise the buffer which has been donated already will be invalid.
-    return py::object(py::cast<py::tuple>(out_and_fastpath_data)[0]);
+
+    // We have already computed the result in the miss path so we can return it.
+    // We are even *required* to do so if there are donated arguments, because
+    // any donated buffers will now be invalid.
+    return py::object(out_tuple[0]);
   }
-  CHECK(cache_entry);
+
   if (cache_entry->fall_back_to_python) {
     return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
   }
@@ -1016,11 +998,14 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
   jitlib.def(
       "jit",
       [](py::function fun, py::function cache_miss, py::function get_device,
-         std::vector<int> static_argnums) -> std::unique_ptr<CompiledFunction> {
+         std::vector<int> static_argnums,
+         int cache_size) -> std::unique_ptr<CompiledFunction> {
         return std::make_unique<CompiledFunction>(
             std::move(fun), std::move(cache_miss), std::move(get_device),
-            std::move(static_argnums));
-      });
+            std::move(static_argnums), cache_size);
+      },
+      py::arg("fun"), py::arg("cache_miss"), py::arg("get_device"),
+      py::arg("static_argnums"), py::arg("cache_size") = 4096);
 
   // This function is not yet a full replacement for the Python one, because:
   // (a) it does not support abstract types,

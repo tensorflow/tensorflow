@@ -64,6 +64,8 @@ struct PmapCacheEntry {
   absl::optional<xla::Status> compilation_error = absl::nullopt;
 
   bool fall_back_to_python = false;
+
+  std::vector<py::object> keepalive;
 };
 
 }  // namespace
@@ -79,12 +81,6 @@ class PmapFunction {
         cache_miss_(std::move(cache_miss)),
         static_argnums_(std::move(static_argnums)) {
     std::sort(static_argnums_.begin(), static_argnums_.end());
-  }
-
-  ~PmapFunction() {
-    for (const auto& entry : executables_) {
-      entry.first.DecRef();
-    }
   }
 
   // This function will:
@@ -154,7 +150,10 @@ PmapCacheEntry* PmapFunction::AddCacheEntry(const py::args& args,
   auto it = result.first;
   PmapCacheEntry* cache_entry = it->second.get();
   // CallSignatures in the cache own their keyword argument reference.
-  result.first->first.IncRef();
+  for (const auto& kw : signature.keyword_args) {
+    cache_entry->keepalive.push_back(
+        py::reinterpret_borrow<py::object>(kw.key));
+  }
 
   py::tuple tuple = py::cast<py::tuple>(out_and_fastpath_data);
   CHECK_EQ(tuple.size(), 2);

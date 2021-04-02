@@ -100,12 +100,6 @@ struct CallSignature {
     return !(*this == other);
   }
 
-  // To be used when we want to keep ownership of Python values referenced by
-  // the `CallSignature` (i.e. when we insert an entry).
-  void IncRef() const;
-  // The destructor of the cache should call this on all entries.
-  void DecRef() const;
-
   std::string DebugString() const;
 };
 
