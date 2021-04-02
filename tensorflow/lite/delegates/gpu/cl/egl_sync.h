@@ -19,6 +19,10 @@ limitations under the License.
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 
+//add by sky on 20210402
+//Why: see ../gl/portable_gl31.h:line 36-47
+#undef Status
+
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
