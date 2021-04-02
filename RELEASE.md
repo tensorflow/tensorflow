@@ -59,6 +59,7 @@
       `TF_ENABLE_ONEDNN_OPTS=1`.
     * We do not recommend using them in GPU systems, as they have not been
       sufficiently tested with GPUs yet.
+* TensorFlow pip packages are now built with CUDA11.2 and cuDNN 8.1.0      
       
 ## Breaking Changes
 
