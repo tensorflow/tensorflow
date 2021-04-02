@@ -26,11 +26,8 @@ from absl.testing import parameterized
 
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python import keras
-from tensorflow.python.distribute import collective_all_reduce_strategy as collective_strategy
 from tensorflow.python.distribute import combinations as ds_combinations
-from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import multi_process_runner
-from tensorflow.python.distribute import multi_worker_test_base as test_base
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
@@ -47,7 +44,6 @@ from tensorflow.python.keras.utils import kpl_test_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.platform import test
-from tensorflow.python.util import nest
 
 # pylint: disable=g-direct-tensorflow-import
 
@@ -130,7 +126,7 @@ class MultiWorkerVerificationCallback(callbacks.Callback):
     self._num_worker = num_worker
     self._task_dict = {
         key: collections.defaultdict(lambda: collections.defaultdict(int))
-        for key in ['ps', 'worker']
+        for key in ['ps', 'worker', 'chief']
     }
     self._lock = threading.Lock()
     self._is_between_graph = None
@@ -178,75 +174,52 @@ class MultiWorkerVerificationCallback(callbacks.Callback):
     else:
       # If in-graph, only the first worker calls callback methods.
       worker_call_count = {0: method_count_dict}
+    chief_call_count = {0: method_count_dict}
+    task_config = json.loads(os.environ['TF_CONFIG'])['task']['type']
     test_case.assertDictEqual(
         self._task_dict,
         {
             # PS' callback is not supposed to be called.
             'ps': {},
-            # Each of the Worker should be called num_epoch of times.
-            'worker': worker_call_count
+            # Worker or chief should only be called on worker/chief.
+            'worker': worker_call_count if task_config == 'worker' else {},
+            'chief': chief_call_count if task_config == 'chief' else {}
         })
 
 
-class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
+class KerasMultiWorkerTestIndependentWorker(test.TestCase,
                                             parameterized.TestCase):
 
   @ds_combinations.generate(
       combinations.combine(
-          mode=['graph'],
-          strategy_cls=[
-              collective_strategy.CollectiveAllReduceStrategy,
-          ],
-          required_gpus=[0, 1]))
-  def testSimpleModelIndependentWorkerSync(self, strategy_cls):
-    num_workers = 2
-    num_epoch = 2
-
-    cluster_spec = test_base.create_cluster_spec(num_workers=num_workers)
-    self._barrier = dc._Barrier(2)
-
-    # The verification callback will be shared by multiple threads.
+          mode=['eager'],
+          strategy=[
+              strategy_combinations.multi_worker_mirrored_2x1_cpu,
+              strategy_combinations.multi_worker_mirrored_2x1_gpu,
+          ]))
+  def testSimpleModelIndependentWorkerSync(self, strategy):
     verification_callback = MultiWorkerVerificationCallback(
-        num_epoch=num_epoch, num_worker=num_workers)
+        num_epoch=2,
+        num_worker=len(
+            json.loads(os.environ['TF_CONFIG'])['cluster']['worker']))
+    verification_callback.is_between_graph = \
+        strategy.extended.experimental_between_graph
+    batch_size = 64
+    steps = 2
+    train_ds, _ = multi_worker_testing_utils.mnist_synthetic_dataset(
+        batch_size, steps)
+    with strategy.scope():
+      model = multi_worker_testing_utils.get_mnist_model((28, 28, 1))
+    orig_loss, _ = model.evaluate(train_ds, steps=steps)
+    history = model.fit(
+        x=train_ds,
+        epochs=2,
+        steps_per_epoch=steps,
+        callbacks=[verification_callback])
+    self.assertIsInstance(history, keras.callbacks.History)
+    trained_loss, _ = model.evaluate(train_ds, steps=steps)
+    self.assertLess(trained_loss, orig_loss)
 
-    def _independent_worker_fn(*args, **kwargs):  # pylint: disable=unused-argument
-      """Simulates an Independent Worker inside of a thread."""
-      with test.mock.patch.object(dc, '_run_std_server',
-                                  self._make_mock_run_std_server()):
-        strategy = strategy_cls()
-        verification_callback.is_between_graph = \
-            strategy.extended.experimental_between_graph
-        batch_size = 64
-        steps = 2
-        train_ds, _ = multi_worker_testing_utils.mnist_synthetic_dataset(
-            batch_size, steps)
-        with strategy.scope():
-          model = multi_worker_testing_utils.get_mnist_model((28, 28, 1))
-        orig_loss, _ = model.evaluate(train_ds, steps=steps)
-        callbacks_for_fit = nest.flatten(
-            kwargs.get('verification_callback', []))
-        history = model.fit(
-            x=train_ds,
-            epochs=num_epoch,
-            steps_per_epoch=steps,
-            callbacks=callbacks_for_fit)
-        self.assertIsInstance(history, keras.callbacks.History)
-        trained_loss, _ = model.evaluate(train_ds, steps=steps)
-        self.assertLess(trained_loss, orig_loss)
-
-    threads = self.run_multiple_tasks_in_threads(
-        _independent_worker_fn,
-        cluster_spec,
-        verification_callback=verification_callback)
-
-    threads_to_join = []
-    strategy = strategy_cls()
-    if strategy.extended.experimental_between_graph:
-      for ts in threads.values():
-        threads_to_join.extend(ts)
-    else:
-      threads_to_join = [threads['worker'][0]]
-    self.join_independent_workers(threads_to_join)
     verification_callback.verify(self)
 
 
