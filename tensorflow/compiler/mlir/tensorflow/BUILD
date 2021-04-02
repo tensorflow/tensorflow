@@ -793,6 +793,19 @@ cc_library(
 )
 
 cc_library(
+    name = "fake_session",
+    srcs = ["utils/fake_session.cc"],
+    hdrs = ["utils/fake_session.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:threadpool_options",
+    ],
+)
+
+cc_library(
     name = "tf_saved_model_passes",
     srcs = [
         "transforms/deduplicate_bound_input_bindings.cc",
@@ -1071,6 +1084,7 @@ cc_library(
         "transforms/lower_tf_pass.cc",
     ],
     deps = [
+        ":fake_session",
         ":lift_variables_lib",
         ":lower_tf_lib",
         ":tensorflow",
