@@ -218,6 +218,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":xla_builder",
+        "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",

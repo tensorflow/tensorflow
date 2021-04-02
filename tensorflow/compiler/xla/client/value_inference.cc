@@ -15,7 +15,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/value_inference.h"
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -67,8 +70,8 @@ Literal CreateGarbageLiteral(const Shape& reference_shape) {
   }
 }
 
-using GetOperand = std::function<StatusOr<LiteralSlice>(int64 operand_index,
-                                                        int64 opreand_handle)>;
+using GetOperand =
+    std::function<StatusOr<Literal>(int64 operand_index, int64 opreand_handle)>;
 
 // HloProtoEvaluator evaluates an hlo proto and returns a literal. The user has
 // to provide operand as literals through the get_operand function.
@@ -112,7 +115,7 @@ struct HloProtoEvaluator {
       int64 operand_handle = inst.operand_ids(i);
       TF_ASSIGN_OR_RETURN(auto literal, get_operand(i, inst.operand_ids(i)));
       std::unique_ptr<HloInstruction> operand =
-          HloInstruction::CreateConstant(literal.Clone());
+          HloInstruction::CreateConstant(std::move(literal));
       operand_map[operand_handle] = operand.get();
       builder.AddInstruction(std::move(operand));
     }
@@ -150,49 +153,52 @@ struct HloProtoEvaluator {
   absl::optional<PrimitiveType> primitive_type = absl::nullopt;
   absl::optional<HloOpcode> opcode = absl::nullopt;
 };
+
 }  // namespace
 
-StatusOr<Literal> ValueInference::AnalyzeConstantLiteral(int64 handle) {
+// Analyze a tensor's constant value, upper-bound value or lower-bound value.
+StatusOr<Literal> ValueInference::AnalyzeConstantValue(
+    int64 handle, ValueInferenceMode mode) {
+  auto get_value = [mode, this](int64 handle) {
+    switch (mode) {
+      case kValue:
+        return AnalyzeConstant(handle);
+      case kUpperBound:
+        return AnalyzeUpperBound(handle);
+      case kLowerBound:
+        return AnalyzeLowerBound(handle);
+    }
+  };
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
                       builder_->LookUpInstructionByHandle(handle));
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(root->opcode()));
   switch (opcode) {
-    case HloOpcode::kGetDimensionSize: {
-      int64 dimension = root->dimensions(0);
-      int64 operand_handle = root->operand_ids(0);
-      TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
-                          builder_->LookUpInstructionByHandle(operand_handle));
-      if (operand_proto->shape().is_dynamic_dimension(dimension)) {
-        // The value is dynamic. We return a garbage literal here, which
-        // will be masked out later.
-        return CreateGarbageLiteral(Shape(root->shape()));
-      } else {
-        return LiteralUtil::CreateR0<int32>(
-            operand_proto->shape().dimensions(dimension));
-      }
-    }
       // Non functional ops.
     case HloOpcode::kRng:
     case HloOpcode::kAllReduce:
-      // TODO(b/33009255): Implement constant folding for cross replica sum.
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kCall:
-      // TODO(b/32495713): We aren't checking the to_apply computation itself,
-      // so we conservatively say that computations containing the Call op
-      // cannot be constant.  We cannot set is_functional=false in other similar
-      // cases since we're already relying on IsConstant to return true.
     case HloOpcode::kCustomCall:
     case HloOpcode::kWhile:
     case HloOpcode::kConditional:
-      // TODO(b/32495713): We aren't checking the condition and body
-      // computations themselves.
     case HloOpcode::kSend:
     case HloOpcode::kRecv:
     case HloOpcode::kParameter: {
       // The value is dynamic. We return a garbage literal here, which
       // will be masked out later.
       return CreateGarbageLiteral(Shape(root->shape()));
+    }
+    // Subtract and Divide use lower-bound as second operand.
+    case HloOpcode::kSubtract:
+    case HloOpcode::kCos:
+    case HloOpcode::kSin:
+    case HloOpcode::kNegate:
+    case HloOpcode::kAbs:
+    case HloOpcode::kDivide:
+    case HloOpcode::kGetDimensionSize: {
+      return InvalidArgument("AnalyzeConstantValue can't handle opcode: %s",
+                             root->opcode());
     }
     case HloOpcode::kGetTupleElement: {
       int64 operand_handle = root->operand_ids(0);
@@ -206,7 +212,7 @@ StatusOr<Literal> ValueInference::AnalyzeConstantLiteral(int64 handle) {
       }
       return HloProtoEvaluator(*root,
                                [&](int64 operand_index, int64 operand_handle) {
-                                 return AnalyzeConstant(operand_handle);
+                                 return get_value(operand_handle);
                                })
           .WithPrimitiveType(PRED)
           .Evaluate();
@@ -220,7 +226,7 @@ StatusOr<Literal> ValueInference::AnalyzeConstantLiteral(int64 handle) {
                                                 computation_proto, {}));
       return HloProtoEvaluator(*root,
                                [&](int64 operand_index, int64 operand_handle) {
-                                 return AnalyzeConstant(operand_handle);
+                                 return get_value(operand_handle);
                                })
           .WithComputation(std::move(computation))
           .Evaluate();
@@ -228,13 +234,13 @@ StatusOr<Literal> ValueInference::AnalyzeConstantLiteral(int64 handle) {
     default:
       return HloProtoEvaluator(*root,
                                [&](int64 operand_index, int64 operand_handle) {
-                                 return AnalyzeConstant(operand_handle);
+                                 return get_value(operand_handle);
                                })
           .Evaluate();
   }
 }
 
-StatusOr<Literal> ValueInference::AnalyzeIsDynamicLiteral(int64 handle) {
+StatusOr<Literal> ValueInference::AnalyzeUpperBound(int64 handle) {
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
                       builder_->LookUpInstructionByHandle(handle));
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(root->opcode()));
@@ -244,6 +250,194 @@ StatusOr<Literal> ValueInference::AnalyzeIsDynamicLiteral(int64 handle) {
       int64 operand_handle = root->operand_ids(0);
       TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
                           builder_->LookUpInstructionByHandle(operand_handle));
+      return LiteralUtil::CreateR0<int32>(
+          operand_proto->shape().dimensions(dimension));
+    }
+    case HloOpcode::kAbs: {
+      // upper-bound(abs(operand)) = max(abs(lower-bound(operand)),
+      // abs(upper-bound(operand)))
+      int64 operand_handle = root->operand_ids(0);
+      TF_ASSIGN_OR_RETURN(auto lower_bound, AnalyzeLowerBound(operand_handle));
+      TF_ASSIGN_OR_RETURN(auto upper_bound, AnalyzeUpperBound(operand_handle));
+      HloEvaluator evaluator;
+      TF_ASSIGN_OR_RETURN(
+          auto lower_bound_abs,
+          evaluator.EvaluateElementwiseUnaryOp(HloOpcode::kAbs, lower_bound));
+      TF_ASSIGN_OR_RETURN(
+          auto upper_bound_abs,
+          evaluator.EvaluateElementwiseUnaryOp(HloOpcode::kAbs, upper_bound));
+      return evaluator.EvaluateElementwiseBinaryOp(
+          HloOpcode::kMaximum, lower_bound_abs, upper_bound_abs);
+    }
+    case HloOpcode::kNegate: {
+      // upper-bound(negate(operand)) = negate(lower-bound(operand))
+      int64 operand_handle = root->operand_ids(0);
+      TF_ASSIGN_OR_RETURN(auto lower_bound, AnalyzeLowerBound(operand_handle));
+      HloEvaluator evaluator;
+      return evaluator.EvaluateElementwiseUnaryOp(HloOpcode::kNegate,
+                                                  lower_bound);
+    }
+    case HloOpcode::kSubtract:
+    case HloOpcode::kDivide: {
+      // Lower-bound is used for second operand of subtract and divide.
+      return HloProtoEvaluator(
+                 *root,
+                 [&](int64 operand_index,
+                     int64 operand_handle) -> StatusOr<Literal> {
+                   if (operand_index == 0) {
+                     return AnalyzeUpperBound(operand_handle);
+                   } else {
+                     TF_ASSIGN_OR_RETURN(auto lower_bound,
+                                         AnalyzeLowerBound(operand_handle));
+                     if (opcode == HloOpcode::kSubtract ||
+                         !IsValueEffectiveInteger(operand_handle)) {
+                       return lower_bound;
+                     }
+                     // Because in many cases the lower bound of a value is
+                     // integer 0, instead of throwing an divide-by-zero error
+                     // at compile time, we set the bound defer the check to
+                     // runtime. In those cases we use the upper-bound of
+                     // first operand as a placeholder.
+                     HloEvaluator evaluator;
+                     auto zero =
+                         LiteralUtil::Zero(lower_bound.shape().element_type());
+                     zero =
+                         zero.Broadcast(lower_bound.shape(), {}).ValueOrDie();
+                     TF_ASSIGN_OR_RETURN(
+                         auto lower_bound_is_zero,
+                         evaluator.EvaluateElementwiseCompareOp(
+                             ComparisonDirection::kEq, lower_bound, zero));
+
+                     auto one =
+                         LiteralUtil::One(lower_bound.shape().element_type());
+                     one = one.Broadcast(lower_bound.shape(), {}).ValueOrDie();
+                     auto result = evaluator.EvaluateElementwiseTernaryOp(
+                         HloOpcode::kSelect, lower_bound_is_zero, one,
+                         lower_bound);
+                     return result;
+                   }
+                 })
+          .Evaluate();
+    }
+    default:
+      return AnalyzeConstantValue(handle, ValueInferenceMode::kUpperBound);
+  }
+}
+
+StatusOr<Literal> ValueInference::AnalyzeLowerBound(int64 handle) {
+  TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
+                      builder_->LookUpInstructionByHandle(handle));
+  TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(root->opcode()));
+  switch (opcode) {
+    case HloOpcode::kGetDimensionSize: {
+      int64 dimension = root->dimensions(0);
+      int64 operand_handle = root->operand_ids(0);
+      TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
+                          builder_->LookUpInstructionByHandle(operand_handle));
+      if (!operand_proto->shape().is_dynamic_dimension(dimension)) {
+        return LiteralUtil::CreateR0<int32>(
+            operand_proto->shape().dimensions(dimension));
+      } else {
+        return LiteralUtil::CreateR0<int32>(0);
+      }
+    }
+    case HloOpcode::kAbs: {
+      // lower-bound(abs(operand)) = min(abs(lower-bound(operand)),
+      // abs(upper-bound(operand)))
+      int64 operand_handle = root->operand_ids(0);
+      TF_ASSIGN_OR_RETURN(auto lower_bound, AnalyzeLowerBound(operand_handle));
+      TF_ASSIGN_OR_RETURN(auto upper_bound, AnalyzeUpperBound(operand_handle));
+      HloEvaluator evaluator;
+      TF_ASSIGN_OR_RETURN(
+          auto lower_bound_abs,
+          evaluator.EvaluateElementwiseUnaryOp(HloOpcode::kAbs, lower_bound));
+      TF_ASSIGN_OR_RETURN(
+          auto upper_bound_abs,
+          evaluator.EvaluateElementwiseUnaryOp(HloOpcode::kAbs, upper_bound));
+      return evaluator.EvaluateElementwiseBinaryOp(
+          HloOpcode::kMinimum, lower_bound_abs, upper_bound_abs);
+    }
+    case HloOpcode::kNegate: {
+      // lower-bound(negate(operand)) = negate(upper-bound(operand))
+      int64 operand_handle = root->operand_ids(0);
+      TF_ASSIGN_OR_RETURN(auto upper_bound, AnalyzeUpperBound(operand_handle));
+      HloEvaluator evaluator;
+      return evaluator.EvaluateElementwiseUnaryOp(HloOpcode::kNegate,
+                                                  upper_bound);
+    }
+    case HloOpcode::kSubtract:
+    case HloOpcode::kDivide: {
+      // Upper bound is used for second operand of subtract and divide.
+      return HloProtoEvaluator(*root,
+                               [&](int64 operand_index, int64 operand_handle) {
+                                 if (operand_index == 0) {
+                                   return AnalyzeLowerBound(operand_handle);
+                                 } else {
+                                   return AnalyzeUpperBound(operand_handle);
+                                 }
+                               })
+          .Evaluate();
+    }
+    default:
+      return AnalyzeConstantValue(handle, ValueInferenceMode::kLowerBound);
+  }
+}
+
+StatusOr<Literal> ValueInference::AnalyzeConstant(int64 handle) {
+  TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
+                      builder_->LookUpInstructionByHandle(handle));
+  TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(root->opcode()));
+  switch (opcode) {
+    case HloOpcode::kGetDimensionSize: {
+      int64 dimension = root->dimensions(0);
+      int64 operand_handle = root->operand_ids(0);
+      TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
+                          builder_->LookUpInstructionByHandle(operand_handle));
+      if (operand_proto->shape().is_dynamic_dimension(dimension)) {
+        // The value is dynamic, we return garbage data here and mask them out
+        // later.
+        return CreateGarbageLiteral(Shape(root->shape()));
+      } else {
+        return LiteralUtil::CreateR0<int32>(
+            operand_proto->shape().dimensions(dimension));
+      }
+    }
+    case HloOpcode::kSubtract:
+    case HloOpcode::kCos:
+    case HloOpcode::kSin:
+    case HloOpcode::kNegate:
+    case HloOpcode::kAbs:
+    case HloOpcode::kDivide: {
+      return HloProtoEvaluator(*root,
+                               [&](int64 operand_index, int64 operand_handle) {
+                                 return AnalyzeConstant(operand_handle);
+                               })
+          .Evaluate();
+    }
+    default:
+      return AnalyzeConstantValue(handle, ValueInferenceMode::kValue);
+  }
+}
+
+StatusOr<Literal> ValueInference::AnalyzeIsDynamic(int64 handle,
+                                                   ValueInferenceMode mode) {
+  TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
+                      builder_->LookUpInstructionByHandle(handle));
+  // Invariant check.
+  TF_RET_CHECK(root);
+  TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(root->opcode()));
+  switch (opcode) {
+    case HloOpcode::kGetDimensionSize: {
+      int64 dimension = root->dimensions(0);
+      int64 operand_handle = root->operand_ids(0);
+      TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
+                          builder_->LookUpInstructionByHandle(operand_handle));
+      if (mode == ValueInferenceMode::kLowerBound ||
+          mode == ValueInferenceMode::kUpperBound) {
+        // The bound of dynamic dimension is not dynamic.
+        return LiteralUtil::CreateR0<bool>(false);
+      }
+      // The value of dynamic dimension is dynamic.
       return LiteralUtil::CreateR0<bool>(
           operand_proto->shape().is_dynamic_dimension(dimension));
     }
@@ -275,8 +469,7 @@ StatusOr<Literal> ValueInference::AnalyzeIsDynamicLiteral(int64 handle) {
     case HloOpcode::kTanh: {
       // Forward operand as they don't change if a value is dynamic or static.
       int64 operand_handle = root->operand_ids(0);
-      TF_ASSIGN_OR_RETURN(auto literal, AnalyzeIsDynamic(operand_handle));
-      return literal.Clone();
+      return AnalyzeIsDynamic(operand_handle, mode);
     }
     case HloOpcode::kAdd:
     case HloOpcode::kAtan2:
@@ -297,7 +490,7 @@ StatusOr<Literal> ValueInference::AnalyzeIsDynamicLiteral(int64 handle) {
     case HloOpcode::kShiftRightLogical: {
       return HloProtoEvaluator(*root,
                                [&](int64 operand_index, int64 operand_handle) {
-                                 return AnalyzeIsDynamic(operand_handle);
+                                 return AnalyzeIsDynamic(operand_handle, mode);
                                })
           .WithPrimitiveType(PRED)
           .WithOpCode(HloOpcode::kOr)
@@ -312,7 +505,7 @@ StatusOr<Literal> ValueInference::AnalyzeIsDynamicLiteral(int64 handle) {
     case HloOpcode::kPad: {
       return HloProtoEvaluator(*root,
                                [&](int64 operand_index, int64 operand_handle) {
-                                 return AnalyzeIsDynamic(operand_handle);
+                                 return AnalyzeIsDynamic(operand_handle, mode);
                                })
           .WithPrimitiveType(PRED)
           .Evaluate();
@@ -329,7 +522,7 @@ StatusOr<Literal> ValueInference::AnalyzeIsDynamicLiteral(int64 handle) {
       }
       return HloProtoEvaluator(*root,
                                [&](int64 operand_index, int64 operand_handle) {
-                                 return AnalyzeIsDynamic(operand_handle);
+                                 return AnalyzeIsDynamic(operand_handle, mode);
                                })
           .WithPrimitiveType(PRED)
           .Evaluate();
@@ -351,7 +544,7 @@ StatusOr<Literal> ValueInference::AnalyzeIsDynamicLiteral(int64 handle) {
       auto reduce_computation = b.Build();
       return HloProtoEvaluator(*root,
                                [&](int64 operand_index, int64 operand_handle) {
-                                 return AnalyzeIsDynamic(operand_handle);
+                                 return AnalyzeIsDynamic(operand_handle, mode);
                                })
           .WithPrimitiveType(PRED)
           .WithComputation(std::move(reduce_computation))
@@ -365,12 +558,13 @@ StatusOr<Literal> ValueInference::AnalyzeIsDynamicLiteral(int64 handle) {
       return CreatePredLiteral(true, Shape(root->shape()));
     }
     case HloOpcode::kSelect: {
-      TF_ASSIGN_OR_RETURN(OptionaLiteralSlice optional_selector_literal,
-                          AnalyzeOptionalConstant(root->operand_ids(0)));
+      TF_ASSIGN_OR_RETURN(OptionaLiteral optional_selector_literal,
+                          AnalyzeOptionalConstant(root->operand_ids(0),
+                                                  ValueInferenceMode::kValue));
       TF_ASSIGN_OR_RETURN(LiteralSlice lhs,
-                          AnalyzeIsDynamic(root->operand_ids(1)));
+                          AnalyzeIsDynamic(root->operand_ids(1), mode));
       TF_ASSIGN_OR_RETURN(LiteralSlice rhs,
-                          AnalyzeIsDynamic(root->operand_ids(2)));
+                          AnalyzeIsDynamic(root->operand_ids(2), mode));
 
       auto result = CreatePredLiteral(true, Shape(root->shape()));
 
@@ -396,8 +590,9 @@ StatusOr<Literal> ValueInference::AnalyzeIsDynamicLiteral(int64 handle) {
       return result;
     }
     case HloOpcode::kGather: {
-      TF_ASSIGN_OR_RETURN(OptionaLiteralSlice optional_selector_literal,
-                          AnalyzeOptionalConstant(root->operand_ids(1)));
+      TF_ASSIGN_OR_RETURN(OptionaLiteral optional_selector_literal,
+                          AnalyzeOptionalConstant(root->operand_ids(1),
+                                                  ValueInferenceMode::kValue));
       if (!optional_selector_literal.AllValid()) {
         // Conservatively assume result are dynamic.
         return CreatePredLiteral(true, Shape(root->shape()));
@@ -407,7 +602,8 @@ StatusOr<Literal> ValueInference::AnalyzeIsDynamicLiteral(int64 handle) {
                                  if (operand_index == 1) {
                                    return AnalyzeConstant(operand_handle);
                                  } else {
-                                   return AnalyzeIsDynamic(operand_handle);
+                                   return AnalyzeIsDynamic(operand_handle,
+                                                           mode);
                                  }
                                })
           .WithPrimitiveType(PRED)
@@ -415,7 +611,12 @@ StatusOr<Literal> ValueInference::AnalyzeIsDynamicLiteral(int64 handle) {
     }
     case HloOpcode::kCustomCall: {
       if (root->custom_call_target() == "SetBound") {
-        return CreatePredLiteral(true, Shape(root->shape()));
+        if (mode == ValueInferenceMode::kLowerBound ||
+            mode == ValueInferenceMode::kUpperBound) {
+          return CreatePredLiteral(false, Shape(root->shape()));
+        } else {
+          return CreatePredLiteral(true, Shape(root->shape()));
+        }
       } else {
         return InvalidArgument(
             "Dynamic inferencing on custom call %s is not supported",
@@ -430,29 +631,41 @@ StatusOr<Literal> ValueInference::AnalyzeIsDynamicLiteral(int64 handle) {
   }
 }
 
-StatusOr<LiteralSlice> ValueInference::AnalyzeIsDynamic(int64 handle) {
-  if (is_dynamic_.contains(handle)) {
-    return LiteralSlice(is_dynamic_[handle]);
+bool ValueInference::IsValueEffectiveInteger(int64 handle) {
+  const HloInstructionProto* instr =
+      builder_->LookUpInstructionByHandle(handle).ValueOrDie();
+  if (primitive_util::IsIntegralType(instr->shape().element_type())) {
+    return true;
   }
-  TF_ASSIGN_OR_RETURN(Literal literal, AnalyzeIsDynamicLiteral(handle));
-  is_dynamic_[handle] = std::move(literal);
-  return LiteralSlice(is_dynamic_[handle]);
+  // Also returns true if this is a convert that converts an integer to float.
+  HloOpcode opcode = StringToHloOpcode(instr->opcode()).ValueOrDie();
+  if (opcode != HloOpcode::kConvert) {
+    return false;
+  }
+  const HloInstructionProto* parent =
+      builder_->LookUpInstructionByHandle(instr->operand_ids(0)).ValueOrDie();
+  if (primitive_util::IsIntegralType(parent->shape().element_type())) {
+    return true;
+  }
+  return false;
 }
 
-StatusOr<LiteralSlice> ValueInference::AnalyzeConstant(int64 handle) {
-  if (constant_.contains(handle)) {
-    return LiteralSlice(constant_[handle]);
-  }
-  TF_ASSIGN_OR_RETURN(Literal literal, AnalyzeConstantLiteral(handle));
-  constant_[handle] = std::move(literal);
-  return LiteralSlice(constant_[handle]);
-}
-
-StatusOr<OptionaLiteralSlice> ValueInference::AnalyzeOptionalConstant(
-    int64 handle) {
-  TF_ASSIGN_OR_RETURN(LiteralSlice value, AnalyzeConstant(handle));
-  TF_ASSIGN_OR_RETURN(LiteralSlice mask, AnalyzeIsDynamic(handle));
-  return OptionaLiteralSlice(value, mask);
+StatusOr<OptionaLiteral> ValueInference::AnalyzeOptionalConstant(
+    int64 handle, ValueInferenceMode mode) {
+  auto analyze_constant = [this](int64 handle,
+                                 ValueInferenceMode mode) -> StatusOr<Literal> {
+    switch (mode) {
+      case kValue:
+        return AnalyzeConstant(handle);
+      case kUpperBound:
+        return AnalyzeUpperBound(handle);
+      case kLowerBound:
+        return AnalyzeLowerBound(handle);
+    }
+  };
+  TF_ASSIGN_OR_RETURN(Literal value, analyze_constant(handle, mode));
+  TF_ASSIGN_OR_RETURN(Literal mask, AnalyzeIsDynamic(handle, mode));
+  return OptionaLiteral(std::move(value), std::move(mask));
 }
 
 }  // namespace xla
