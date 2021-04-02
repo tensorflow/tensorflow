@@ -59,6 +59,7 @@ rm -f ${DIR}/tensorflow_jni.dll
 # Zip up the .dll, LICENSE and include files for the C library.
 mkdir -p ${DIR}/include/tensorflow/c
 mkdir -p ${DIR}/include/tensorflow/c/eager
+mkdir -p ${DIR}/include/tensorflow/core/platform
 mkdir -p ${DIR}/lib
 cp bazel-bin/tensorflow/tensorflow.dll ${DIR}/lib/tensorflow.dll
 cp bazel-bin/tensorflow/tensorflow.lib ${DIR}/lib/tensorflow.lib
@@ -67,8 +68,19 @@ cp tensorflow/c/c_api.h \
   tensorflow/c/tf_datatype.h \
   tensorflow/c/tf_status.h \
   tensorflow/c/tf_tensor.h \
+  tensorflow/c/tf_string.h \
+  tensorflow/c/tf_file_statistic.h \
+  tensorflow/c/tensor_interface.h \
+  tensorflow/c/c_api_macros.h \
+  tensorflow/c/c_api_experimental.h \
   ${DIR}/include/tensorflow/c
-cp tensorflow/c/eager/c_api.h ${DIR}/include/tensorflow/c/eager
+cp tensorflow/c/eager/c_api.h \
+  tensorflow/c/eager/c_api_experimental.h \
+  tensorflow/c/eager/dlpack.h \
+  ${DIR}/include/tensorflow/c/eager
+cp tensorflow/core/platform/cstring.h \
+  tensorflow/core/platform/cstring_internal.h \
+  ${DIR}/include/tensorflow/core/platform
 cp LICENSE ${DIR}/LICENSE
 cp bazel-bin/tensorflow/tools/lib_package/THIRD_PARTY_TF_C_LICENSES ${DIR}/
 cd ${DIR}
@@ -76,11 +88,20 @@ zip libtensorflow-gpu-windows-$(uname -m).zip \
   lib/tensorflow.dll \
   lib/tensorflow.lib \
   include/tensorflow/c/eager/c_api.h \
+  include/tensorflow/c/eager/c_api_experimental.h \
+  include/tensorflow/c/eager/dlpack.h \
   include/tensorflow/c/c_api.h \
   include/tensorflow/c/tf_attrtype.h \
   include/tensorflow/c/tf_datatype.h \
   include/tensorflow/c/tf_status.h \
   include/tensorflow/c/tf_tensor.h \
+  include/tensorflow/c/tf_string.h \
+  include/tensorflow/c/tf_file_statistic.h \
+  include/tensorflow/c/tensor_interface.h \
+  include/tensorflow/c/c_api_macros.h \
+  include/tensorflow/c/c_api_experimental.h \
+  include/tensorflow/core/platform/cstring.h \
+  include/tensorflow/core/platform/cstring_internal.h \
   LICENSE \
   THIRD_PARTY_TF_C_LICENSES
 rm -rf lib include
