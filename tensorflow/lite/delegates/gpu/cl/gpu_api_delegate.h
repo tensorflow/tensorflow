@@ -20,6 +20,11 @@ limitations under the License.
 #define EGL_NO_PROTOTYPES
 #include <EGL/egl.h>
 #include <GLES3/gl31.h>
+
+//add by sky on 20210402
+//Why: see ../gl/portable_gl31.h:line 36-47
+#undef Status
+
 #undef GL_NO_PROTOTYPES
 #undef EGL_NO_PROTOTYPES
 
