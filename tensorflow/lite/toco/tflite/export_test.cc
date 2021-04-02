@@ -269,9 +269,7 @@ TEST_F(ExportTest, ExportMinRuntime) {
   auto buf = model->metadata()->Get(0)->buffer();
   auto* buffer = (*model->buffers())[buf];
   auto* array = buffer->data();
-  std::string version(reinterpret_cast<const char*>(array->data()),
-                      array->size());
-  EXPECT_EQ(version, "1.6.0");
+  EXPECT_EQ(reinterpret_cast<const char*>(array->data()), std::string("1.6.0"));
 }
 
 TEST_F(ExportTest, ExportEmptyMinRuntime) {
@@ -288,9 +286,7 @@ TEST_F(ExportTest, ExportEmptyMinRuntime) {
   auto buf = model->metadata()->Get(0)->buffer();
   auto* buffer = (*model->buffers())[buf];
   auto* array = buffer->data();
-  std::string version(reinterpret_cast<const char*>(array->data()),
-                      array->size());
-  EXPECT_EQ(version, "");
+  EXPECT_EQ(reinterpret_cast<const char*>(array->data()), std::string(""));
 }
 
 TEST_F(ExportTest, UnsupportedControlFlowErrors) {
