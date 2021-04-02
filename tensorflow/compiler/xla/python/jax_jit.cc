@@ -370,11 +370,8 @@ class CompiledFunction {
   const py::function get_device_;
 
   // Cache entries are shared_ptr<>s because it's possible the cache entry
-  // might be evicted before we finish tracing/compiling.
+  // might be evicted before we finish tracing/compiling. Protected by the GIL.
   xla::LRUCache<CallSignature, std::shared_ptr<CacheEntry>> executables_;
-
-  // The writing of the following is protected by the mutex.
-  absl::Mutex mu_;
 
   // The logic if the following:
   // - if `device` or `backend` are not specified to `jax.jit`, we will use
@@ -383,8 +380,8 @@ class CompiledFunction {
   // - When one of `device` or `backend` is specified, this will determine
   //   the `default_device_` which will be used as the targeted device. In
   //   which case, we will always copy input buffers to this device.
+  // These fields are protected by the GIL.
   std::shared_ptr<xla::PyClient> default_pyclient_ = nullptr;
-  xla::ClientAndPtr<xla::PjRtDevice> default_pydevice_;
   xla::PjRtDevice* default_device_ = nullptr;
   bool is_committed_;
 };
@@ -589,37 +586,27 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::args args,
   }
   // Delayed values are retrieved on the first call to `Call`.
   if (!default_device_) {
-    // As we are calling Python code, that may release the GIL, we first hold
-    // mu_ before holding the GIL.
-    py::gil_scoped_release gil_release;
-    {
-      absl::MutexLock lock1(&mu_);
-      py::gil_scoped_acquire gil_aquire;
-
-      if (!default_device_) {
-        py::object device_and_is_committed = get_device_();
-        try {
-          default_pydevice_ = py::cast<xla::ClientAndPtr<xla::PjRtDevice>>(
-              device_and_is_committed.attr("default_device"));
-        } catch (const py::cast_error& e) {
-          // Pathways and Cloud TPU 2VM runtime.
-          always_fallback_to_python_ = true;
-          return py::object(
-              py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
-        }
-        default_pyclient_ = default_pydevice_.client;
-        default_device_ = default_pydevice_.contents;
-        if (!default_device_) {  // UPTC
-          always_fallback_to_python_ = true;
-          return py::object(
-              py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
-        }
+    // The following line calls Python and may release the GIL.
+    py::object device_and_is_committed = get_device_();
+    // If the GIL was released by the call to get_device_, another thread may
+    // have filled in default_device_.
+    if (!default_device_) {
+      try {
+        auto default_pydevice = py::cast<xla::ClientAndPtr<xla::PjRtDevice>>(
+            device_and_is_committed.attr("default_device"));
         is_committed_ =
             py::cast<bool>(device_and_is_committed.attr("committed_to_device"));
+        default_pyclient_ = default_pydevice.client;
+        default_device_ = default_pydevice.contents;
+      } catch (const py::cast_error& e) {
+        // Pathways, Cloud TPU 2VM, and UPTC runtime.
+        always_fallback_to_python_ = true;
+      }
+      if (!default_device_) {
+        return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
       }
     }
   }
-  CHECK(default_device_);
 
   ParsedArgumentsAsBuffers arguments;
   if (!ParseArguments(args, kwargs, static_argnums_, arguments).ok()) {
