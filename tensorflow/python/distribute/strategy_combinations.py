@@ -468,6 +468,10 @@ tf_export(
     _TF_INTERNAL_API_PREFIX + "mirrored_strategy_with_two_gpus",
     v1=[]).export_constant(__name__, "mirrored_strategy_with_two_gpus")
 tf_export(
+    _TF_INTERNAL_API_PREFIX + "mirrored_strategy_with_two_gpus_no_merge_call",
+    v1=[]).export_constant(__name__,
+                           "mirrored_strategy_with_two_gpus_no_merge_call")
+tf_export(
     _TF_INTERNAL_API_PREFIX + "multi_worker_mirrored_2x1_cpu",
     v1=[]).export_constant(__name__, "multi_worker_mirrored_2x1_cpu")
 tf_export(
@@ -476,6 +480,10 @@ tf_export(
 tf_export(
     _TF_INTERNAL_API_PREFIX + "multi_worker_mirrored_2x2_gpu",
     v1=[]).export_constant(__name__, "multi_worker_mirrored_2x2_gpu")
+tf_export(
+    _TF_INTERNAL_API_PREFIX + "multi_worker_mirrored_2x2_gpu_no_merge_call",
+    v1=[]).export_constant(__name__,
+                           "multi_worker_mirrored_2x2_gpu_no_merge_call")
 tf_export(
     _TF_INTERNAL_API_PREFIX + "one_device_strategy",
     v1=[]).export_constant(__name__, "one_device_strategy")
