@@ -1523,6 +1523,7 @@ REGISTER_OP("UniqueWithCounts")
     .Output("count: out_idx")
     .Attr("T: type")
     .Attr("out_idx: {int32, int64} = DT_INT32")
+    .Attr("auto_adjust_uniq_table_size: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       auto uniq = c->Vector(InferenceContext::kUnknownDim);
       c->set_output(0, uniq);
@@ -1540,6 +1541,7 @@ REGISTER_OP("UniqueWithCountsV2")
     .Attr("T: type")
     .Attr("Taxis: {int32,int64} = DT_INT64")
     .Attr("out_idx: {int32, int64} = DT_INT32")
+    .Attr("auto_adjust_uniq_table_size: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->UnknownShapeOfRank(c->Rank(c->input(0))));
       TF_RETURN_IF_ERROR(UniqueIdxShapeFn(c));
