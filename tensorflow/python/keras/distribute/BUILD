@@ -896,11 +896,8 @@ distribute_py_test(
     shard_count = 50,
     tags = [
         "multi_gpu",
-<<<<<<< HEAD
         "no_rocm",
-=======
         "no_oss",  # TODO(b/183640564): Reenable
->>>>>>> upstream/master
         "no_tfrt",  # TODO(b/180537361): Reenable TFRT after the issue is resolved.
     ],
     deps = [

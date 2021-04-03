@@ -210,7 +210,6 @@ cc_library(
 )
 
 cc_library(
-<<<<<<< HEAD
     name = "thunk_emitter",
     srcs = ["thunk_emitter.cc"],
     hdrs = ["thunk_emitter.h"],
@@ -230,8 +229,6 @@ cc_library(
 )
 
 cc_library(
-=======
->>>>>>> upstream/master
     name = "gpu_device_info",
     hdrs = ["gpu_device_info.h"],
 )

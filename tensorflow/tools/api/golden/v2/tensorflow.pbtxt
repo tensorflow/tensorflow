@@ -509,13 +509,12 @@ tf_module {
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-<<<<<<< HEAD
     name: "batch_gemm"
     argspec: "args=[\'a\', \'b\', \'c\', \'transpose_a\', \'transpose_b\', \'alpha\', \'beta\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'1.0\', \'0.0\', \'None\'], "
-=======
+  }
+  member_method {
     name: "batch_mat_mul_v3"
     argspec: "args=[\'x\', \'y\', \'Tout\', \'adj_x\', \'adj_y\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
->>>>>>> upstream/master
   }
   member_method {
     name: "batch_to_space"

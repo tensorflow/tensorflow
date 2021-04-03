@@ -13,12 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-<<<<<<< HEAD:tensorflow/core/kernels/unique_op_gpu.cu.cc
-=======
 #ifndef TENSORFLOW_CORE_KERNELS_UNIQUE_OP_GPU_CU_H_
 #define TENSORFLOW_CORE_KERNELS_UNIQUE_OP_GPU_CU_H_
 
->>>>>>> upstream/master:tensorflow/core/kernels/unique_op_gpu.cu.h
 #if GOOGLE_CUDA
 
 #define EIGEN_USE_GPU
@@ -451,8 +448,5 @@ class UniqueOpGPU : public AsyncOpKernel {
 }  // end namespace tensorflow
 
 #endif  // GOOGLE_CUDA
-<<<<<<< HEAD:tensorflow/core/kernels/unique_op_gpu.cu.cc
-=======
 
 #endif  // TENSORFLOW_CORE_KERNELS_UNIQUE_OP_GPU_CU_H_
->>>>>>> upstream/master:tensorflow/core/kernels/unique_op_gpu.cu.h

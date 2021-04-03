@@ -85,17 +85,10 @@ void VerifyGraphsEquivalent(const GraphDef& original_graph,
   }
 }
 
-<<<<<<< HEAD
-// Currently, this test suite only passes when TensorFlow passes with CUDA or HIP,
-// because otherwise the optimizer will not turn clearlist nodes to float16.
-// When looking at clearlist nodes, this optimizer checks if the nodes have a
-// float16 GPU OpKernel, but without CUDA or HIP there are no GPU OpKernels at all.
-=======
 // Currently, this test suite only passes when TensorFlow passes with CUDA/HIP,
 // because otherwise the optimizer will not turn clearlist nodes to float16.
 // When looking at clearlist nodes, this optimizer checks if the nodes have a
 // float16 GPU OpKernel, but without CUDA/HIP there are no GPU OpKernels at all.
->>>>>>> upstream/master
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if GOOGLE_CUDA
@@ -111,13 +104,8 @@ class AutoMixedPrecisionTest : public GrapplerTest {
 #if GOOGLE_CUDA 
     gpu_available_ =
         gpu_available_ && (num_gpus == GetNumAvailableGPUs(kMinGPUArch));
-<<<<<<< HEAD
-#elif TENSORFLOW_USE_ROCM //Here we force Tensorflow to use the virtual GFX906 always
-    gpu_available_ = false; 
-=======
 #else  // Here we force Tensorflow to use the virtual GFX906
     gpu_available_ = false;
->>>>>>> upstream/master
 #endif
     if (gpu_available_) {
       virtual_cluster_.reset(new SingleMachine(/* timeout_s = */ 10, 1, 1));
@@ -127,14 +115,9 @@ class AutoMixedPrecisionTest : public GrapplerTest {
 #if GOOGLE_CUDA
       device_properties.mutable_environment()->insert({"architecture", "7"});
       device_properties.mutable_environment()->insert({"cuda", "9010"});
-<<<<<<< HEAD
-#elif TENSORFLOW_USE_ROCM
-      device_properties.mutable_environment()->insert({"architecture", "gfx906"});
-=======
 #else
       device_properties.mutable_environment()->insert(
           {"architecture", "gfx906"});
->>>>>>> upstream/master
 #endif
       virtual_cluster_.reset(
           new VirtualCluster({{"/GPU:1", device_properties}}));
@@ -1086,15 +1069,7 @@ TEST_F(AutoMixedPrecisionTest, BatchMatMul) {
 
   GraphView output_view(&output);
   EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
-<<<<<<< HEAD
-#if GOOGLE_CUDA
-  if (GetCudaVersion(*virtual_cluster_.get()) >= 9010) {
-#else //TENSORFLOW_USE_ROCM always uses virtual gfx906 
-  if (true) {
-#endif
-=======
   if (IsSupportedGPU(*virtual_cluster_.get())) {
->>>>>>> upstream/master
     EXPECT_EQ(output.node_size(), item.graph.node_size() + 2);
     EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_HALF);
   } else {
