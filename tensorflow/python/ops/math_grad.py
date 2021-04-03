@@ -642,7 +642,7 @@ def _SqrtGradGrad(op, grad):
   y = op.outputs[0]  # y = 0.5 * b / conj(a)
   with ops.control_dependencies([grad]):
     ga = grad / a
-    return -math_ops.conj(ga) * y, 0.5 * ga
+    return -math_ops.conj(ga) * y, 0.5 * ga  # pylint: disable=invalid-unary-operand-type
 
 
 @ops.RegisterGradient("Rsqrt")
@@ -916,7 +916,7 @@ def _SpenceGrad(op, grad):
   with ops.control_dependencies([grad]):
     partial_x = math_ops.log(x) / (1 - x)
     partial_x = array_ops.where(
-        math_ops.equal(x, 1.), -array_ops.ones_like(x), partial_x)
+        math_ops.equal(x, 1.), -array_ops.ones_like(x), partial_x)  # pylint: disable=invalid-unary-operand-type
     return grad * partial_x
 
 
@@ -1133,7 +1133,7 @@ def _ZetaGrad(op, grad):
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
     q = math_ops.conj(q)
-    partial_q = -x * math_ops.zeta(x + 1, q)
+    partial_q = -x * math_ops.zeta(x + 1, q)  # pylint: disable=invalid-unary-operand-type
     return (None,
             array_ops.reshape(math_ops.reduce_sum(partial_q * grad, rq), sq))
 
@@ -1418,7 +1418,7 @@ def _DivGrad(op, grad):
       math_ops.reduce_sum(math_ops.divide(grad, y), rx), sx),
           array_ops.reshape(
               math_ops.reduce_sum(
-                  grad * math_ops.divide(math_ops.divide(-x, y), y), ry), sy))
+                  grad * math_ops.divide(math_ops.divide(-x, y), y), ry), sy))  # pylint: disable=invalid-unary-operand-type
 
 
 @ops.RegisterGradient("FloorDiv")
@@ -1462,7 +1462,7 @@ def _RealDivGrad(op, grad):
       math_ops.reduce_sum(math_ops.realdiv(grad, y), rx), sx),
           array_ops.reshape(
               math_ops.reduce_sum(
-                  grad * math_ops.realdiv(math_ops.realdiv(-x, y), y), ry), sy))
+                  grad * math_ops.realdiv(math_ops.realdiv(-x, y), y), ry), sy))  # pylint: disable=invalid-unary-operand-type
 
 
 @ops.RegisterGradient("DivNoNan")
@@ -1479,7 +1479,7 @@ def _DivNoNanGrad(op, grad):
       math_ops.reduce_sum(math_ops.div_no_nan(grad, y), rx), sx),
           array_ops.reshape(
               math_ops.reduce_sum(
-                  grad * math_ops.div_no_nan(math_ops.div_no_nan(-x, y), y),
+                  grad * math_ops.div_no_nan(math_ops.div_no_nan(-x, y), y),  # pylint: disable=invalid-unary-operand-type
                   ry), sy))
 
 

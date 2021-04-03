@@ -26,7 +26,7 @@ from enum import Enum
 
 class NoValue(Enum):
 
-  def __repr__(self):
+  def __repr__(self):  # pylint: disable=invalid-repr-returned
     return self.name
 
 

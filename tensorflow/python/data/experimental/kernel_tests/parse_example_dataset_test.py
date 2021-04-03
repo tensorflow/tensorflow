@@ -397,10 +397,10 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
 
     expected_output = {
         aname:
-            np.array(
+            np.array(  # pylint: disable=too-many-function-args
                 [[1, 1], [-1, -1]], dtype=np.float32).reshape(2, 1, 2, 1),
         bname:
-            np.array(
+            np.array(  # pylint: disable=too-many-function-args
                 ["b0_str", ""], dtype=bytes).reshape(2, 1, 1, 1, 1),
     }
 
@@ -445,10 +445,10 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
 
     expected_output = {
         aname:
-            np.array(
+            np.array(  # pylint: disable=too-many-function-args
                 [[1, 1], [-1, -1]], dtype=np.float32).reshape(2, 1, 2, 1),
         bname:
-            np.array(
+            np.array(  # pylint: disable=too-many-function-args
                 ["b0_str", "b1"], dtype=bytes).reshape(2, 1, 1, 1, 1),
     }
 
@@ -506,11 +506,11 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
 
     expected_output = {
         "a":
-            np.array(
+            np.array(  # pylint: disable=too-many-function-args
                 [[1, 1], [3, -3], [3, -3]], dtype=np.float32).reshape(3, 1, 2,
                                                                       1),
         "b":
-            np.array(
+            np.array(  # pylint: disable=too-many-function-args
                 ["tmp_str", "b1", "tmp_str"], dtype=bytes).reshape(3, 1, 1, 1,
                                                                    1),
     }
@@ -771,7 +771,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
 
     expected_output = {
         aname:
-            np.array(
+            np.array(  # pylint: disable=too-many-function-args
                 [
                     [0, 0, 0, 0],
                     [1, 1, 0, 0],
@@ -780,7 +780,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
                 ],
                 dtype=np.float32).reshape(4, 2, 2, 1),
         bname:
-            np.array(
+            np.array(  # pylint: disable=too-many-function-args
                 [["", ""], ["b0_str", "b1_str"], ["b1", ""], ["", ""]],
                 dtype=bytes).reshape(4, 2, 1, 1, 1),
         cname:
@@ -809,7 +809,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
 
     # Test with padding values.
     expected_output_custom_padding = dict(expected_output)
-    expected_output_custom_padding[aname] = np.array(
+    expected_output_custom_padding[aname] = np.array(  # pylint: disable=too-many-function-args
         [
             [-2, -2, -2, -2],
             [1, 1, -2, -2],

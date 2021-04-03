@@ -65,7 +65,7 @@ class BinaryTensorWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
   # TODO(b/176540862): remove this routine to disallow native segment execution
   # for TensorRT 7+.
   def setUp(self):
-    super(trt_test.TfTrtIntegrationTestBase, self).setUp()
+    super(trt_test.TfTrtIntegrationTestBase, self).setUp()  # pylint: disable=bad-super-call
     if trt_test.IsTensorRTVersionGreaterEqual(7):
       os.environ["TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION"] = "True"
 

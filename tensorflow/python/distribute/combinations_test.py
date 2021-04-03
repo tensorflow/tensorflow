@@ -39,7 +39,7 @@ class ClusterCombinationTest(test.TestCase, parameterized.TestCase):
   # Note that we don't have a standalone combination for ClusterParameters, so
   # we should use GPUCombination which contains it.
 
-  @framework_combinations.generate(
+  @framework_combinations.generate(  # pylint: disable=redundant-keyword-arg
       framework_combinations.combine(distribution=[
           combinations.NamedDistribution(
               "HasClusterParams", lambda: None, has_chief=True, num_workers=2),
@@ -49,7 +49,7 @@ class ClusterCombinationTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(has_chief)
     self.assertEqual(num_workers, 2)
 
-  @framework_combinations.generate(
+  @framework_combinations.generate(  # pylint: disable=redundant-keyword-arg
       framework_combinations.combine(distribution=[
           combinations.NamedDistribution("NoClusterParams", lambda: None),
       ]),
@@ -58,14 +58,14 @@ class ClusterCombinationTest(test.TestCase, parameterized.TestCase):
     self.assertFalse(has_chief)
     self.assertEqual(num_workers, 1)
 
-  @framework_combinations.generate(
+  @framework_combinations.generate(  # pylint: disable=redundant-keyword-arg
       framework_combinations.combine(v=1),
       test_combinations=(combinations.ClusterCombination(),))
   def testClusterParamsNoStrategy(self, v, has_chief, num_workers):
     self.assertFalse(has_chief)
     self.assertEqual(num_workers, 1)
 
-  @framework_combinations.generate(
+  @framework_combinations.generate(  # pylint: disable=redundant-keyword-arg
       framework_combinations.combine(distribution=[
           combinations.NamedDistribution(
               "WithClusterParams", lambda: None, has_chief=True, num_workers=2),
@@ -76,7 +76,7 @@ class ClusterCombinationTest(test.TestCase, parameterized.TestCase):
     # If combinations library doesn't raise an exception, the test is passed.
     pass
 
-  @framework_combinations.generate(
+  @framework_combinations.generate(  # pylint: disable=redundant-keyword-arg
       framework_combinations.combine(
           ds1=combinations.NamedDistribution(
               "Strategy1", lambda: None, has_chief=True, num_workers=0),
@@ -121,7 +121,7 @@ class ClusterCombinationTestEnvTest(test.TestCase, parameterized.TestCase):
 @unittest.expectedFailure
 class ClusterParametersShouldFailTest(test.TestCase, parameterized.TestCase):
 
-  @framework_combinations.generate(
+  @framework_combinations.generate(  # pylint: disable=redundant-keyword-arg
       framework_combinations.combine(
           ds1=combinations.NamedDistribution(
               "Strategy1", lambda: None, has_chief=True, num_workers=2),

@@ -51,7 +51,7 @@ class ModeKeyMapTest(test.TestCase):
 
     # Map is immutable
     with self.assertRaises(TypeError):
-      mode_map[mode_keys.KerasModeKeys.TEST] = 1
+      mode_map[mode_keys.KerasModeKeys.TEST] = 1  # pylint: disable=unsupported-assignment-operation
 
   def test_invalid_init(self):
     with self.assertRaisesRegex(ValueError, 'Multiple keys/values found'):

@@ -425,11 +425,11 @@ class ParseExampleTest(test.TestCase):
     ]
 
     expected_outputs = [{
-        aname: np.array([1, 1], dtype=np.float32).reshape(1, 2, 1),
-        bname: np.array(["b0_str"], dtype=bytes).reshape(1, 1, 1, 1)
+        aname: np.array([1, 1], dtype=np.float32).reshape(1, 2, 1),  # pylint: disable=too-many-function-args
+        bname: np.array(["b0_str"], dtype=bytes).reshape(1, 1, 1, 1)  # pylint: disable=too-many-function-args
     }, {
-        aname: np.array([-1, -1], dtype=np.float32).reshape(1, 2, 1),
-        bname: np.array([""], dtype=bytes).reshape(1, 1, 1, 1)
+        aname: np.array([-1, -1], dtype=np.float32).reshape(1, 2, 1),  # pylint: disable=too-many-function-args
+        bname: np.array([""], dtype=bytes).reshape(1, 1, 1, 1)  # pylint: disable=too-many-function-args
     }]
 
     for proto, expected_output in zip(original, expected_outputs):
@@ -469,11 +469,11 @@ class ParseExampleTest(test.TestCase):
     ]
 
     expected_outputs = [{
-        aname: np.array([1, 1], dtype=np.float32).reshape(1, 2, 1),
-        bname: np.array(["b0_str"], dtype=bytes).reshape(1, 1, 1, 1)
+        aname: np.array([1, 1], dtype=np.float32).reshape(1, 2, 1),  # pylint: disable=too-many-function-args
+        bname: np.array(["b0_str"], dtype=bytes).reshape(1, 1, 1, 1)  # pylint: disable=too-many-function-args
     }, {
-        aname: np.array([-1, -1], dtype=np.float32).reshape(1, 2, 1),
-        bname: np.array(["b1"], dtype=bytes).reshape(1, 1, 1, 1)
+        aname: np.array([-1, -1], dtype=np.float32).reshape(1, 2, 1),  # pylint: disable=too-many-function-args
+        bname: np.array(["b1"], dtype=bytes).reshape(1, 1, 1, 1)  # pylint: disable=too-many-function-args
     }]
 
     for (m, n), expected_output in zip(original, expected_outputs):
@@ -528,14 +528,14 @@ class ParseExampleTest(test.TestCase):
     ]
 
     expected_outputs = [{
-        "a": np.array([1, 1], dtype=np.float32).reshape(1, 2, 1),
-        "b": np.array("tmp_str", dtype=bytes).reshape(1, 1, 1, 1)
+        "a": np.array([1, 1], dtype=np.float32).reshape(1, 2, 1),  # pylint: disable=too-many-function-args
+        "b": np.array("tmp_str", dtype=bytes).reshape(1, 1, 1, 1)  # pylint: disable=too-many-function-args
     }, {
-        "a": np.array([3, -3], dtype=np.float32).reshape(1, 2, 1),
-        "b": np.array("b1", dtype=bytes).reshape(1, 1, 1, 1)
+        "a": np.array([3, -3], dtype=np.float32).reshape(1, 2, 1),  # pylint: disable=too-many-function-args
+        "b": np.array("b1", dtype=bytes).reshape(1, 1, 1, 1)  # pylint: disable=too-many-function-args
     }, {
-        "a": np.array([3, -3], dtype=np.float32).reshape(1, 2, 1),
-        "b": np.array("tmp_str", dtype=bytes).reshape(1, 1, 1, 1)
+        "a": np.array([3, -3], dtype=np.float32).reshape(1, 2, 1),  # pylint: disable=too-many-function-args
+        "b": np.array("tmp_str", dtype=bytes).reshape(1, 1, 1, 1)  # pylint: disable=too-many-function-args
     }]
 
     for proto, expected_output in zip(original, expected_outputs):
@@ -698,7 +698,7 @@ class ParseExampleTest(test.TestCase):
             aname:
                 np.array([[[1], [1]]], dtype=np.float32),
             bname:
-                np.array(["b0_str", "b1_str"], dtype=bytes).reshape(2, 1, 1, 1),
+                np.array(["b0_str", "b1_str"], dtype=bytes).reshape(2, 1, 1, 1),  # pylint: disable=too-many-function-args
             cname:
                 np.empty(shape=(0,), dtype=np.int64),
             dname:
@@ -706,7 +706,7 @@ class ParseExampleTest(test.TestCase):
         },
         {
             aname: np.array([[[-1], [-1]], [[2], [2]]], dtype=np.float32),
-            bname: np.array(["b1"], dtype=bytes).reshape(1, 1, 1, 1),
+            bname: np.array(["b1"], dtype=bytes).reshape(1, 1, 1, 1),  # pylint: disable=too-many-function-args
             cname: np.empty(shape=(0,), dtype=np.int64),
             dname: np.empty(shape=(0,), dtype=bytes)
         },

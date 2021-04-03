@@ -113,7 +113,7 @@ class PyWrapOptimizeGraphTest(test.TestCase):
       ]
       buf, _ = control_flow_ops.while_loop(_Cond, _Body, loop_vars, shape_inv)
 
-      f = -array_ops.ones_like(buf, optimize=False)
+      f = -array_ops.ones_like(buf, optimize=False)  # pylint: disable=invalid-unary-operand-type
       buf_shape = array_ops.shape(buf)
       f_shape = array_ops.shape(f)
       ops.add_to_collection('train_op', buf_shape)

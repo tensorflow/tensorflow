@@ -123,8 +123,8 @@ class FnArgsTest(test.TestCase):
 
     self.assertEqual(('a',), function_utils.fn_args(double_wrapped_fn))
 
-    self.assertEqual(3, double_wrapped_fn(3))
-    self.assertEqual(3, double_wrapped_fn(a=3))
+    self.assertEqual(3, double_wrapped_fn(3))  # pylint: disable=no-value-for-parameter
+    self.assertEqual(3, double_wrapped_fn(a=3))  # pylint: disable=no-value-for-parameter
 
   def test_double_partial_with_positional_args_in_both_layers(self):
     expected_test_arg1 = 123
@@ -140,8 +140,8 @@ class FnArgsTest(test.TestCase):
 
     self.assertEqual(('a',), function_utils.fn_args(double_wrapped_fn))
 
-    self.assertEqual(3, double_wrapped_fn(3))
-    self.assertEqual(3, double_wrapped_fn(a=3))
+    self.assertEqual(3, double_wrapped_fn(3))  # pylint: disable=no-value-for-parameter
+    self.assertEqual(3, double_wrapped_fn(a=3))  # pylint: disable=no-value-for-parameter
 
 
 class HasKwargsTest(test.TestCase):
@@ -231,7 +231,7 @@ class HasKwargsTest(test.TestCase):
 
     self.assertFalse(function_utils.has_kwargs(double_wrapped_fn))
     some_arg = 1
-    self.assertEqual(double_wrapped_fn(some_arg), some_arg)
+    self.assertEqual(double_wrapped_fn(some_arg), some_arg)  # pylint: disable=no-value-for-parameter
 
   def test_raises_type_error(self):
     with self.assertRaisesRegex(TypeError,

@@ -55,8 +55,8 @@ class GPUBinaryOpsTest(test.TestCase):
     self.assertAllClose(tf_cpu, tf_gpu)
 
   def testFloatBasic(self):
-    x = np.linspace(-5, 20, 15).reshape(1, 3, 5).astype(np.float32)
-    y = np.linspace(20, -5, 15).reshape(1, 3, 5).astype(np.float32)
+    x = np.linspace(-5, 20, 15).reshape(1, 3, 5).astype(np.float32)  # pylint: disable=too-many-function-args
+    y = np.linspace(20, -5, 15).reshape(1, 3, 5).astype(np.float32)  # pylint: disable=too-many-function-args
     self._compareGPU(x, y, np.add, math_ops.add)
     self._compareGPU(x, y, np.subtract, math_ops.subtract)
     self._compareGPU(x, y, np.multiply, math_ops.multiply)
@@ -66,15 +66,15 @@ class GPUBinaryOpsTest(test.TestCase):
 
   def testFloatWithBCast(self):
     x = np.linspace(-5, 20, 15).reshape(3, 5).astype(np.float32)
-    y = np.linspace(20, -5, 30).reshape(2, 3, 5).astype(np.float32)
+    y = np.linspace(20, -5, 30).reshape(2, 3, 5).astype(np.float32)  # pylint: disable=too-many-function-args
     self._compareGPU(x, y, np.add, math_ops.add)
     self._compareGPU(x, y, np.subtract, math_ops.subtract)
     self._compareGPU(x, y, np.multiply, math_ops.multiply)
     self._compareGPU(x, y + 0.1, np.true_divide, math_ops.truediv)
 
   def testDoubleBasic(self):
-    x = np.linspace(-5, 20, 15).reshape(1, 3, 5).astype(np.float64)
-    y = np.linspace(20, -5, 15).reshape(1, 3, 5).astype(np.float64)
+    x = np.linspace(-5, 20, 15).reshape(1, 3, 5).astype(np.float64)  # pylint: disable=too-many-function-args
+    y = np.linspace(20, -5, 15).reshape(1, 3, 5).astype(np.float64)  # pylint: disable=too-many-function-args
     self._compareGPU(x, y, np.add, math_ops.add)
     self._compareGPU(x, y, np.subtract, math_ops.subtract)
     self._compareGPU(x, y, np.multiply, math_ops.multiply)
@@ -82,7 +82,7 @@ class GPUBinaryOpsTest(test.TestCase):
 
   def testDoubleWithBCast(self):
     x = np.linspace(-5, 20, 15).reshape(3, 5).astype(np.float64)
-    y = np.linspace(20, -5, 30).reshape(2, 3, 5).astype(np.float64)
+    y = np.linspace(20, -5, 30).reshape(2, 3, 5).astype(np.float64)  # pylint: disable=too-many-function-args
     self._compareGPU(x, y, np.add, math_ops.add)
     self._compareGPU(x, y, np.subtract, math_ops.subtract)
     self._compareGPU(x, y, np.multiply, math_ops.multiply)

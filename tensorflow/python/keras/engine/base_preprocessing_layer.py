@@ -99,7 +99,7 @@ class PreprocessingLayer(Layer, metaclass=abc.ABCMeta):
     if self.stateful:
       raise NotImplementedError
 
-  def reset_state(self):
+  def reset_state(self):  # pylint: disable=method-hidden
     """Resets the statistics of the preprocessing layer."""
     if self.stateful:
       raise NotImplementedError
