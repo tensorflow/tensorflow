@@ -7004,7 +7004,7 @@ def TF_LookupTableSizeV2Op : TF_Op<"LookupTableSizeV2", []> {
   let summary = "Computes the number of elements in the given table.";
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, [{Handle to the table.}]>:$table_handle
+    Arg<TF_ResourceTensor, [{Handle to the table.}], [TF_LookupTableRead]>:$table_handle
   );
 
   let results = (outs
