@@ -575,23 +575,6 @@ Status ReplaceCompilationResultNodeWithIdentity(Graph* graph, Node** node) {
   return Status::OK();
 }
 
-Status FillPaddingMap(
-    const Node& replicate_node,
-    protobuf::RepeatedPtrField<tpu::PaddingMap>* padding_maps) {
-  std::vector<string> padding_map_strs;
-  TF_RETURN_IF_ERROR(
-      GetNodeAttr(replicate_node.attrs(), "padding_map", &padding_map_strs));
-  padding_maps->Reserve(padding_map_strs.size());
-  for (const string& padding_map_str : padding_map_strs) {
-    tpu::PaddingMap* padding_map = padding_maps->Add();
-    if (!padding_map->ParseFromString(padding_map_str)) {
-      return errors::InvalidArgument(
-          "Malformed padding_map serialized string: ", padding_map_str);
-    }
-  }
-  return Status::OK();
-}
-
 Status GetStepMarkerLocation(const Node& replicate_node,
                              xla::DebugOptions::StepMarkerLocation* location) {
   string step_marker_location_attr;
@@ -2383,8 +2366,6 @@ Status DistributedTPURewritePass::BuildCompileNode(
 
   // Get and fill padding map.
   if (replicate_node != nullptr) {
-    TF_RETURN_IF_ERROR(
-        FillPaddingMap(*replicate_node, proto.mutable_padding_maps()));
     xla::DebugOptions::StepMarkerLocation location;
     TF_RETURN_IF_ERROR(GetStepMarkerLocation(*replicate_node, &location));
     proto.set_step_marker_location(location);
