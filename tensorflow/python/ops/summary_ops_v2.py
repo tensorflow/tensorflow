@@ -482,11 +482,6 @@ def create_file_writer_v2(logdir,
         flush_millis = constant_op.constant(2 * 60 * 1000)
       if filename_suffix is None:
         filename_suffix = constant_op.constant(".v2")
-      # Prepend the PID and a process-local UID to the filename suffix to avoid
-      # filename collisions within the machine (the filename already contains
-      # the hostname to avoid cross-machine collisions).
-      unique_prefix = constant_op.constant(".%s.%s" % (os.getpid(), ops.uid()))
-      filename_suffix = unique_prefix + filename_suffix
       # Use a unique shared_name to prevent resource sharing.
       if context.executing_eagerly():
         shared_name = context.shared_name()

@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/record_reader.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/event.pb.h"
@@ -229,6 +228,28 @@ TEST_F(SummaryFileWriterTest, WallTime) {
         return Status::OK();
       },
       [](const Event& e) { EXPECT_EQ(e.wall_time(), 7.023); }));
+}
+
+TEST_F(SummaryFileWriterTest, AvoidFilenameCollision) {
+  // Keep unique with all other test names in this file.
+  string test_name = "avoid_filename_collision_test";
+  int num_files = 10;
+  for (int i = 0; i < num_files; i++) {
+    SummaryWriterInterface* writer;
+    TF_CHECK_OK(CreateSummaryFileWriter(1, 1, testing::TmpDir(), test_name,
+                                        &env_, &writer));
+    core::ScopedUnref deleter(writer);
+  }
+  std::vector<string> files;
+  TF_CHECK_OK(env_.GetChildren(testing::TmpDir(), &files));
+  // Filter `files` down to just those generated in this test.
+  files.erase(std::remove_if(files.begin(), files.end(),
+                             [test_name](string f) {
+                               return !absl::StrContains(f, test_name);
+                             }),
+              files.end());
+  EXPECT_EQ(num_files, files.size())
+      << "files = [" << absl::StrJoin(files, ", ") << "]";
 }
 
 }  // namespace

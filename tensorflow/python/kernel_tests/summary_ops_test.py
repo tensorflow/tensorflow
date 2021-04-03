@@ -764,6 +764,25 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
       with summary_ops.create_file_writer_v2(logdir).as_default():
         summary_ops.flush()
 
+  def testCreate_avoidsFilenameCollision(self):
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      for _ in range(10):
+        summary_ops.create_file_writer_v2(logdir)
+    event_files = gfile.Glob(os.path.join(logdir, '*'))
+    self.assertLen(event_files, 10)
+
+  def testCreate_graphMode_avoidsFilenameCollision(self):
+    logdir = self.get_temp_dir()
+    with context.graph_mode(), ops.Graph().as_default():
+      writer = summary_ops.create_file_writer_v2(logdir)
+      with self.cached_session() as sess:
+        for _ in range(10):
+          sess.run(writer.init())
+          sess.run(writer.close())
+    event_files = gfile.Glob(os.path.join(logdir, '*'))
+    self.assertLen(event_files, 10)
+
   def testNoSharing(self):
     # Two writers with the same logdir should not share state.
     logdir = self.get_temp_dir()
