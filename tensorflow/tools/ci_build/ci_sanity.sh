@@ -111,10 +111,10 @@ do_pylint() {
     echo "Invalid syntax for invoking do_pylint"
     echo "Usage: do_pylint [--incremental]"
     return 1
+  else
+    # Get all Python files, regardless of mode.
+    PYTHON_SRC_FILES=$(get_py_files_to_check)
   fi
-
-  # Get all Python files, regardless of mode.
-  PYTHON_SRC_FILES=$(get_py_files_to_check)
 
   # Something happened. TF no longer has Python code if this branch is taken
   if [[ -z ${PYTHON_SRC_FILES} ]]; then
@@ -667,6 +667,8 @@ for arg in "$@"; do
     SANITY_STEPS_DESC=("pep8 test")
   elif [[ "${arg}" == "--incremental" ]]; then
     INCREMENTAL_FLAG="--incremental"
+  elif [[ "${arg}" == "do_pylint" ]]; then
+    SANITY_STEPS=("do_pylint")
   else
     BAZEL_FLAGS="${BAZEL_FLAGS} ${arg}"
   fi
