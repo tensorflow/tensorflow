@@ -19,6 +19,7 @@
 # Options:
 #           run sanity checks: python 2&3 pylint checks and bazel nobuild
 #  --pep8   run pep8 test only
+#  --pylint run pylint check only
 #  --incremental  Performs checks incrementally, by using the files changed in
 #                 the latest commit
 
@@ -667,7 +668,7 @@ for arg in "$@"; do
     SANITY_STEPS_DESC=("pep8 test")
   elif [[ "${arg}" == "--incremental" ]]; then
     INCREMENTAL_FLAG="--incremental"
-  elif [[ "${arg}" == "do_pylint" ]]; then
+  elif [[ "${arg}" == "--pylint" ]]; then
     SANITY_STEPS=("do_pylint")
   else
     BAZEL_FLAGS="${BAZEL_FLAGS} ${arg}"
