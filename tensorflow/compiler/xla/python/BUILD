@@ -261,6 +261,7 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:private"],
     deps = [
+        ":lru_cache",
         ":py_client",
         ":python_ref_manager",
         ":pytree",
@@ -457,6 +458,7 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/profiler/internal/cpu:python_tracer",
         "//tensorflow/core/profiler/lib:profiler_backends",
         "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/rpc:profiler_server_impl",
@@ -560,4 +562,25 @@ pybind_extension(
         ":enable_gpu": ["//tensorflow/compiler/xla/service:gpu_plugin"],
         "//conditions:default": [],
     }),
+)
+
+cc_library(
+    name = "lru_cache",
+    hdrs = ["lru_cache.h"],
+    deps = [
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cc_test(
+    name = "lru_cache_test",
+    srcs = ["lru_cache_test.cc"],
+    deps = [
+        ":lru_cache",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:logging",
+    ],
 )

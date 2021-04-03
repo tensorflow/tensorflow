@@ -52,7 +52,7 @@ class RemoteProfilerSession {
 
   // Not copyable or movable.
   RemoteProfilerSession(const RemoteProfilerSession&) = delete;
-  RemoteProfilerSession operator=(const RemoteProfilerSession&) = delete;
+  RemoteProfilerSession& operator=(const RemoteProfilerSession&) = delete;
 
   ~RemoteProfilerSession();
 

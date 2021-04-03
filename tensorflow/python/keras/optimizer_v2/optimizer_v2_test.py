@@ -694,6 +694,26 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
 
     self.assertEqual(5, self.evaluate(iterations_var))
 
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def testSlotWithNonstandardShapeRestoresBasedOnCheckpoint(self):
+    # First create an optimizer and a slot variable with a non-standard shape.
+    x = variables.Variable([[1.0, 2.0], [3.0, 4.0]], dtype=dtypes.float32)
+    slot_shape = [2, 1]
+    optimizer_1 = optimizer_v2.OptimizerV2(name='test')
+    optimizer_1.add_slot(x, 'test_slot', 'ones', shape=slot_shape)
+
+    # Then save the variable and optimizer to a checkpoint.
+    checkpoint_1 = trackable_utils.Checkpoint(var=x, optimizer=optimizer_1)
+    checkpoint_path = checkpoint_1.save(self.get_temp_dir())
+
+    # Create a new optimizer and call restore on it (and x)
+    optimizer_2 = optimizer_v2.OptimizerV2(name='test')
+    checkpoint_2 = trackable_utils.Checkpoint(var=x, optimizer=optimizer_2)
+    checkpoint_2.restore(checkpoint_path)
+
+    self.assertEqual(slot_shape,
+                     optimizer_2.get_slot(x, 'test_slot').shape.as_list())
+
 
 @keras_parameterized.run_all_keras_modes
 class OptimizersCompatibilityTest(keras_parameterized.TestCase):

@@ -25,6 +25,8 @@ function compute_md5() {
     tflm_md5sum=md5sum
   elif [ ${UNAME_S} == Darwin ]; then
     tflm_md5sum='md5 -r'
+  else
+    tflm_md5sum=md5sum
   fi
   ${tflm_md5sum} ${1} | awk '{print $1}'
 }

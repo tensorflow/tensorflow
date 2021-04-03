@@ -266,6 +266,7 @@ cc_library(
         "circular_buffer.cc",
         "comparisons.cc",
         "concatenation.cc",
+        "cumsum.cc",
         "dequantize.cc",
         "detection_postprocess.cc",
         "elementwise.cc",
@@ -533,6 +534,21 @@ cc_test(
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_utils",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "cumsum_test",
+    srcs = [
+        "cumsum_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],

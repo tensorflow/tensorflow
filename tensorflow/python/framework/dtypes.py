@@ -25,7 +25,7 @@ from tensorflow.core.framework import types_pb2
 # protobuf errors where a file is defined twice on MacOS.
 # pylint: disable=invalid-import-order,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
-from tensorflow.python import _dtypes
+from tensorflow.python.framework import _dtypes
 from tensorflow.python.lib.core import _pywrap_bfloat16
 from tensorflow.python.util.tf_export import tf_export
 
@@ -480,9 +480,7 @@ for pdt in [
     _NP_TO_TF[pdt] = next(
         _NP_TO_TF[dt] for dt in _NP_TO_TF if dt == pdt().dtype)
 
-
 TF_VALUE_DTYPES = set(_NP_TO_TF.values())
-
 
 _TF_TO_NP = {
     types_pb2.DT_HALF:

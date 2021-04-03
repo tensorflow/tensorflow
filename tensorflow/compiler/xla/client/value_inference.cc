@@ -33,28 +33,38 @@ Literal CreatePredLiteral(bool pred, const Shape& reference_shape) {
     }
     return Literal::MoveIntoTuple(absl::MakeSpan(sub_literals));
   }
+  PrimitiveType element_type = reference_shape.element_type();
+  if (element_type == TOKEN) {
+    return LiteralUtil::CreateR0(pred);
+  }
   Literal literal = LiteralUtil::CreateR0(pred);
   Literal literal_broadcast =
-      literal
-          .Broadcast(ShapeUtil::ChangeElementType(Shape(reference_shape), PRED),
-                     {})
+      literal.Broadcast(ShapeUtil::ChangeElementType(reference_shape, PRED), {})
           .ValueOrDie();
   return literal_broadcast;
 }
 
-Literal CreateZeroLiteral(const Shape& reference_shape) {
+// Create a literal with garbage data. The data inside is undefined and
+// shouldn't be used in any meaningful computation.
+Literal CreateGarbageLiteral(const Shape& reference_shape) {
   if (reference_shape.IsTuple()) {
     std::vector<Literal> sub_literals;
     for (const Shape& shape : reference_shape.tuple_shapes()) {
-      sub_literals.emplace_back(CreateZeroLiteral(shape));
+      sub_literals.emplace_back(CreateGarbageLiteral(shape));
     }
     return Literal::MoveIntoTuple(absl::MakeSpan(sub_literals));
   }
-  Literal literal = LiteralUtil::Zero(reference_shape.element_type());
-  Literal literal_broadcast =
-      literal.Broadcast(reference_shape, {}).ValueOrDie();
-
-  return literal_broadcast;
+  PrimitiveType element_type = reference_shape.element_type();
+  if (element_type == TOKEN) {
+    return LiteralUtil::CreateToken();
+  }
+  if (primitive_util::IsFloatingPointType(element_type)) {
+    Literal literal = LiteralUtil::NanValue(element_type).ValueOrDie();
+    return literal.Broadcast(reference_shape, {}).ValueOrDie();
+  } else {
+    Literal literal = LiteralUtil::MaxValue(element_type);
+    return literal.Broadcast(reference_shape, {}).ValueOrDie();
+  }
 }
 
 using GetOperand = std::function<StatusOr<LiteralSlice>(int64 operand_index,
@@ -153,8 +163,9 @@ StatusOr<Literal> ValueInference::AnalyzeConstantLiteral(int64 handle) {
       TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
                           builder_->LookUpInstructionByHandle(operand_handle));
       if (operand_proto->shape().is_dynamic_dimension(dimension)) {
-        // The value is dynamic, but we return a 0 here as garbage data.
-        return CreateZeroLiteral(Shape(root->shape()));
+        // The value is dynamic. We return a garbage literal here, which
+        // will be masked out later.
+        return CreateGarbageLiteral(Shape(root->shape()));
       } else {
         return LiteralUtil::CreateR0<int32>(
             operand_proto->shape().dimensions(dimension));
@@ -179,8 +190,9 @@ StatusOr<Literal> ValueInference::AnalyzeConstantLiteral(int64 handle) {
     case HloOpcode::kSend:
     case HloOpcode::kRecv:
     case HloOpcode::kParameter: {
-      // The values are dynamic, but we return 0s here as garbage data.
-      return CreateZeroLiteral(Shape(root->shape()));
+      // The value is dynamic. We return a garbage literal here, which
+      // will be masked out later.
+      return CreateGarbageLiteral(Shape(root->shape()));
     }
     case HloOpcode::kGetTupleElement: {
       int64 operand_handle = root->operand_ids(0);
@@ -190,7 +202,7 @@ StatusOr<Literal> ValueInference::AnalyzeConstantLiteral(int64 handle) {
                           StringToHloOpcode(operand_proto->opcode()));
       if (operand_opcode == HloOpcode::kParameter) {
         // Don't materialize the whole parameter if it's followed by a GTE.
-        return CreateZeroLiteral(Shape(root->shape()));
+        return CreateGarbageLiteral(Shape(root->shape()));
       }
       return HloProtoEvaluator(*root,
                                [&](int64 operand_index, int64 operand_handle) {

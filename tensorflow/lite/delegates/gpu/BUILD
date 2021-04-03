@@ -5,7 +5,7 @@ load("@build_bazel_rules_apple//apple:macos.bzl", "macos_dylib")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files([

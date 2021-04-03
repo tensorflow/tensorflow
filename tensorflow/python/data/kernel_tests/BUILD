@@ -474,7 +474,7 @@ tf_py_test(
     name = "map_test",
     size = "small",
     srcs = ["map_test.py"],
-    shard_count = 16,
+    shard_count = 19,
     tags = ["notsan"],  # TODO(b/183962015)
     deps = [
         ":checkpoint_test_base",
@@ -538,7 +538,6 @@ cuda_py_test(
     tags = [
         "no_gpu",  # TODO(b/141255188)
         "no_oss",
-        "no_tfrt",  # TODO(b/183398908)
         "no_windows_gpu",
     ],
     deps = [

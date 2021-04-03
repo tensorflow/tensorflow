@@ -77,6 +77,11 @@ typedef struct {
     struct {
       int32_t batch_dims;
     } gather;
+    struct {
+      int32_t num_dims;
+      int32_t ellipsis_mask;
+      int32_t new_axis_mask;
+    } strided_slice;
   } options;
 } OpSignature;
 

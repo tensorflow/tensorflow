@@ -639,8 +639,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
   return status;
 }
 
-TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter,
-                                                int num_threads) {
+TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter) {
   // Apply Flex delegate if applicable.
   if (has_flex_op_) {
     if (Interpreter::TfLiteDelegatePtr flex_delegate = AcquireFlexDelegate()) {
@@ -657,13 +656,29 @@ TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter,
   return kTfLiteOk;
 }
 
-TfLiteStatus InterpreterBuilder::operator()(
-    std::unique_ptr<Interpreter>* interpreter) {
-  return operator()(interpreter, /*num_threads=*/-1);
+TfLiteStatus InterpreterBuilder::SetNumThreads(int num_threads) {
+  if (num_threads < -1) {
+    error_reporter_->Report(
+        "num_threads should be >= 0 or just -1 to let TFLite runtime set the "
+        "value.");
+    return kTfLiteError;
+  }
+  num_threads_ = num_threads;
+  return kTfLiteOk;
 }
 
 TfLiteStatus InterpreterBuilder::operator()(
     std::unique_ptr<Interpreter>* interpreter, int num_threads) {
+  TfLiteStatus status = SetNumThreads(num_threads);
+  if (status != kTfLiteOk) {
+    interpreter->reset();
+    return status;
+  }
+  return (*this)(interpreter);
+}
+
+TfLiteStatus InterpreterBuilder::operator()(
+    std::unique_ptr<Interpreter>* interpreter) {
   if (!interpreter) {
     error_reporter_->Report(
         "Null output pointer passed to InterpreterBuilder.");
@@ -676,13 +691,6 @@ TfLiteStatus InterpreterBuilder::operator()(
     interpreter->reset();
     return kTfLiteError;
   };
-
-  if (num_threads < -1) {
-    error_reporter_->Report(
-        "num_threads should be >= 0 or just -1 to let TFLite runtime set the "
-        "value.");
-    return cleanup_and_error();
-  }
 
   if (!model_) {
     error_reporter_->Report("Null pointer passed in as model.");
@@ -721,7 +729,7 @@ TfLiteStatus InterpreterBuilder::operator()(
   }
 
   interpreter->reset(new Interpreter(error_reporter_));
-  (*interpreter)->SetNumThreads(num_threads);
+  (*interpreter)->SetNumThreads(num_threads_);
   if (subgraphs->size() > 1) {
     (*interpreter)->AddSubgraphs(subgraphs->size() - 1);
   }
@@ -781,10 +789,10 @@ TfLiteStatus InterpreterBuilder::operator()(
 
   if (num_fp32_tensors_ > 0) {
     (*interpreter)->lazy_delegate_providers_ =
-        op_resolver_.GetDelegates(num_threads);
+        op_resolver_.GetDelegates(num_threads_);
   }
 
-  TfLiteStatus status = ApplyDelegates(interpreter->get(), num_threads);
+  TfLiteStatus status = ApplyDelegates(interpreter->get());
   if (status != kTfLiteOk) {
     interpreter->reset();
   }

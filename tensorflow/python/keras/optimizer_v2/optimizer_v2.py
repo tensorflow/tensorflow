@@ -1363,11 +1363,11 @@ class OptimizerV2(trackable.Trackable):
              self._distribution_strategy)):
       initializer = trackable.CheckpointInitialValueCallable(
           checkpoint_position=slot_variable_position)
-      # Shape is unknown until we read the checkpoint value.
       slot_variable = self.add_slot(
           var=variable,
           initializer=initializer,
-          slot_name=slot_name)
+          slot_name=slot_name,
+          shape=slot_variable_position.value_shape())
       # Slot variables are not owned by any one object (because we don't want to
       # save the slot variable if the optimizer is saved without the non-slot
       # variable, or if the non-slot variable is saved without the optimizer;

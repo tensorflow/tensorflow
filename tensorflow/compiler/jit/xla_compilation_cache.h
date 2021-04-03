@@ -246,6 +246,12 @@ class XlaCompilationCache : public ResourceBase {
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompilationCache);
 };
 
+// Creates a single-node graph using the specified node_def as the only op apart
+// from the arg and retval nodes.
+xla::StatusOr<std::unique_ptr<Graph>> CreateGraph(
+    const NodeDef& node_def, absl::Span<const XlaCompiler::Argument> args,
+    absl::Span<const DataType> result_types);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_XLA_COMPILATION_CACHE_H_

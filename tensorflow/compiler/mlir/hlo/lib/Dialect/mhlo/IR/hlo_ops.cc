@@ -1729,6 +1729,38 @@ static LogicalResult Verify(RecvOp op) {
 OpFoldResult CopyOp::fold(ArrayRef<Attribute> operands) { return getOperand(); }
 
 //===----------------------------------------------------------------------===//
+// ReduceWindowOp
+//===----------------------------------------------------------------------===//
+
+// For reduce-window, all `inputs` need to have compatible shapes.
+static LogicalResult Verify(ReduceWindowOp op) {
+  if (failed(verifyCompatibleShapes(op.inputs().getTypes())))
+    return op.emitOpError() << "requires same shape for all inputs";
+  return success();
+}
+
+// Get the operation used for reduction applied to `result_index`th result. Its
+// expected to be a binary operation that consumes `result_index`th and
+// `result_index + operands().size`th arguments of the body.
+Operation* ReduceWindowOp::getReductionOp(int result_index) {
+  auto return_op = cast<ReturnOp>(body().front().getTerminator());
+  Operation* compute_op = return_op.results()[result_index].getDefiningOp();
+  if (compute_op->getNumOperands() != 2) return nullptr;
+  auto arg0 = compute_op->getOperand(0).dyn_cast<BlockArgument>();
+  auto arg1 = compute_op->getOperand(1).dyn_cast<BlockArgument>();
+  if (!arg0 || !arg1) return nullptr;
+  int arg0_num = arg0.getArgNumber();
+  int arg1_num = arg1.getArgNumber();
+  int other_arg_index = result_index + inputs().size();
+  if (arg0_num == result_index && arg1_num == other_arg_index)
+    return compute_op;
+  if (arg0_num == other_arg_index && arg1_num == result_index &&
+      compute_op->hasTrait<OpTrait::IsCommutative>())
+    return compute_op;
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // ReverseOp
 //===----------------------------------------------------------------------===//
 

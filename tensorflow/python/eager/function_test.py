@@ -133,6 +133,7 @@ def dummy_tf_decorator(method):
   return tf_decorator.make_decorator(method, wrapper)
 
 
+# TODO(mdan): Organize these tests.
 class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
@@ -1408,6 +1409,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return {'name': x + 1}
 
     self.assertAllEqual(f(constant_op.constant(1.0))['name'], 2.0)
+
+  def testWeakrefInputsRejected(self):
+
+    @def_function.function
+    def f(x):
+      return x
+
+    class Dummy:
+      pass
+    o = Dummy()
+    wr = weakref.ref(o)
+
+    with self.assertRaisesRegex(ValueError, 'weakref'):
+      f(wr)
 
   def testTensorConversionWithDefun(self):
 

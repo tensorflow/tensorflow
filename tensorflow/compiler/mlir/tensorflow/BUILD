@@ -450,6 +450,7 @@ cc_library(
         "ir/tfrt_ops.h.inc",
     ] + ["ir/tf_" + target["name"] + ".h.inc" for target in tf_ops_category_list],
     deps = [
+        ":serialize_mlir_module_utils",
         ":tensorflow_attributes",
         ":tensorflow_canonicalize_inc_gen",
         ":tensorflow_op_interfaces",
@@ -792,6 +793,19 @@ cc_library(
 )
 
 cc_library(
+    name = "fake_session",
+    srcs = ["utils/fake_session.cc"],
+    hdrs = ["utils/fake_session.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:threadpool_options",
+    ],
+)
+
+cc_library(
     name = "tf_saved_model_passes",
     srcs = [
         "transforms/deduplicate_bound_input_bindings.cc",
@@ -1070,6 +1084,7 @@ cc_library(
         "transforms/lower_tf_pass.cc",
     ],
     deps = [
+        ":fake_session",
         ":lift_variables_lib",
         ":lower_tf_lib",
         ":tensorflow",
@@ -1537,7 +1552,7 @@ cc_library(
     name = "tf_dialect_lib",
     deps = [
         ":tf_dialect_passes",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
     ],
 )
 
@@ -2009,7 +2024,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

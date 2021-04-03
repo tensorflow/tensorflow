@@ -764,6 +764,25 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
       with summary_ops.create_file_writer_v2(logdir).as_default():
         summary_ops.flush()
 
+  def testCreate_avoidsFilenameCollision(self):
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      for _ in range(10):
+        summary_ops.create_file_writer_v2(logdir)
+    event_files = gfile.Glob(os.path.join(logdir, '*'))
+    self.assertLen(event_files, 10)
+
+  def testCreate_graphMode_avoidsFilenameCollision(self):
+    logdir = self.get_temp_dir()
+    with context.graph_mode(), ops.Graph().as_default():
+      writer = summary_ops.create_file_writer_v2(logdir)
+      with self.cached_session() as sess:
+        for _ in range(10):
+          sess.run(writer.init())
+          sess.run(writer.close())
+    event_files = gfile.Glob(os.path.join(logdir, '*'))
+    self.assertLen(event_files, 10)
+
   def testNoSharing(self):
     # Two writers with the same logdir should not share state.
     logdir = self.get_temp_dir()
@@ -956,6 +975,48 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
       self.assertIn(eventfile, get_open_filenames())
       del writer
       self.assertNotIn(eventfile, get_open_filenames())
+
+
+class NoopWriterTest(test_util.TensorFlowTestCase):
+
+  def testNoopWriter_doesNothing(self):
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      writer = summary_ops.create_noop_writer()
+      writer.init()
+      with writer.as_default():
+        result = summary_ops.write('test', 1.0, step=0)
+      writer.flush()
+      writer.close()
+    self.assertFalse(result)  # Should have found no active writer
+    files = gfile.Glob(os.path.join(logdir, '*'))
+    self.assertLen(files, 0)
+
+  def testNoopWriter_asNestedContext_isTransparent(self):
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      writer = summary_ops.create_file_writer_v2(logdir)
+      noop_writer = summary_ops.create_noop_writer()
+      with writer.as_default():
+        result1 = summary_ops.write('first', 1.0, step=0)
+        with noop_writer.as_default():
+          result2 = summary_ops.write('second', 1.0, step=0)
+        result3 = summary_ops.write('third', 1.0, step=0)
+    # All ops should have written, including the one inside the no-op writer,
+    # since it doesn't actively *disable* writing - it just behaves as if that
+    # entire `with` block wasn't there at all.
+    self.assertAllEqual([result1, result2, result3], [True, True, True])
+
+  def testNoopWriter_setAsDefault(self):
+    try:
+      with context.eager_mode():
+        writer = summary_ops.create_noop_writer()
+        writer.set_as_default()
+        result = summary_ops.write('test', 1.0, step=0)
+      self.assertFalse(result)  # Should have found no active writer
+    finally:
+      # Ensure we clean up no matter how the test executes.
+      summary_ops._summary_state.writer = None  # pylint: disable=protected-access
 
 
 class SummaryOpsTest(test_util.TensorFlowTestCase):

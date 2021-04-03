@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/all_gather_combiner.h"
 #include "tensorflow/compiler/xla/service/all_gather_decomposer.h"
 #include "tensorflow/compiler/xla/service/all_reduce_combiner.h"
 #include "tensorflow/compiler/xla/service/all_to_all_decomposer.h"
@@ -356,6 +357,14 @@ Status GpuCompiler::OptimizeHloModule(
                                       /*only_fusion_computations=*/true);
     horizontal_fusion.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(horizontal_fusion.Run(hlo_module).status());
+  }
+
+  {
+    HloPassPipeline pipeline("all_gather_combiner");
+    pipeline.AddPass<AllGatherCombiner>(
+        /*combine_threshold_in_bytes=*/1024 * 1024 * 1024,
+        /*combine_threshold_count=*/256);
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
   {

@@ -354,6 +354,8 @@ TfLiteStatus Interpreter::SetNumThreads(int num_threads) {
     return kTfLiteError;
   }
 
+  // num_threads == 0 has the same effect as num_threads == 1.
+  num_threads = num_threads == 0 ? 1 : num_threads;
   for (auto& subgraph : subgraphs_) {
     subgraph->context()->recommended_num_threads = num_threads;
   }
