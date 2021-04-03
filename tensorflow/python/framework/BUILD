@@ -571,7 +571,10 @@ tf_py_test(
     name = "op_def_util_test",
     srcs = ["op_def_util_test.py"],
     python_version = "PY3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "no_windows",  # TODO(b/184424727): Enable this test on Windows.
+    ],
 )
 
 cc_library(
@@ -770,7 +773,10 @@ tf_py_test(
     name = "python_api_dispatcher_test",
     srcs = ["python_api_dispatcher_test.py"],
     python_version = "PY3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "no_windows",  # TODO(b/184424727): Enable this test on Windows.
+    ],
     deps = [
         ":_pywrap_python_api_dispatcher",
         "//tensorflow/python:client_testlib",
@@ -1341,6 +1347,7 @@ tf_py_test(
     srcs = ["errors_test.py"],
     main = "errors_test.py",
     python_version = "PY3",
+    tags = ["no_windows"],  # TODO(b/184424727): Enable this test on Windows.
     deps = [
         ":_errors_test_helper",
         ":errors",
