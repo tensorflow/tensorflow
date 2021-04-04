@@ -76,13 +76,6 @@ pip3 install pandas==0.19.2
 pip3 install psutil
 pip3 install py-cpuinfo
 
-# pylint==1.6.4 requires python-astroid (>= 1.4.5) requires lazy-object-proxy
-# Latest version of lazy-object-proxy (1.4.2) fails to install from source
-# when using setuptools 39.1.0.
-# NOTE: Using the updated version of pylint for python3 as python2 is EOL,
-# thus using the updated version of lazy-object-proxy==1.4.3
-pip3 install lazy-object-proxy==1.4.3
-
 # pylint tests require the following version. pylint==1.6.4 hangs erratically,
 # thus using the updated version of 2.5.3 only for python3 as python2 is EOL
 # and this version is not available.
