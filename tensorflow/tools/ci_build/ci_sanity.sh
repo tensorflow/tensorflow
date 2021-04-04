@@ -670,6 +670,7 @@ for arg in "$@"; do
     INCREMENTAL_FLAG="--incremental"
   elif [[ "${arg}" == "--pylint" ]]; then
     SANITY_STEPS=("do_pylint")
+    SANITY_STEPS_DESC=("pylint test")
   else
     BAZEL_FLAGS="${BAZEL_FLAGS} ${arg}"
   fi
