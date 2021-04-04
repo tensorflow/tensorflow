@@ -173,7 +173,7 @@ do_pylint() {
   echo ""
 
   # Determine counts of errors
-  N_ERRORS=$(wc -l ${OUTPUTFILE} | cut -d' ' -f1)
+  N_ERRORS=$(wc -l ${OUTPUT_FILE} | cut -d' ' -f1)
 
   echo ""
   if [[ ${N_ERRORS} != 0 ]]; then
