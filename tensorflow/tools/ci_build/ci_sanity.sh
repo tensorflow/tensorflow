@@ -178,9 +178,11 @@ do_pylint() {
   echo ""
   if [[ ${N_ERRORS} != 0 ]]; then
     echo "FAIL: Found ${N_ERRORS} errors"
+    cat ${OUTPUT_FILE}
     return 1
   else
     echo "PASS: No error found"
+    return 0
   fi
 }
 
