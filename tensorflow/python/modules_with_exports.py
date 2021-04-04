@@ -46,7 +46,7 @@ from tensorflow.python.framework import graph_util
 from tensorflow.python.client.client_lib import *
 
 # Ops
-from tensorflow.python.ops.standard_ops import *
+from tensorflow.python.ops.standard_ops import *  # pylint: disable=redefined-builtin
 
 # Namespaces
 from tensorflow.python.ops import initializers_ns as initializers
