@@ -30,7 +30,7 @@ class VariantType;
 
 class TensorFlowDialect : public Dialect {
  public:
-  TensorFlowDialect(MLIRContext *context);
+  explicit TensorFlowDialect(MLIRContext *context);
 
   static StringRef getDialectNamespace() { return "tf"; }
 
