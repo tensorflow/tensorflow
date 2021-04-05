@@ -838,19 +838,5 @@ def get_tf_config_task():
   return json.loads(os.environ['TF_CONFIG'])['task']
 
 
-def get_tf_config_cluster_spec():
-  return json.loads(os.environ['TF_CONFIG'])['cluster']
-
-
 def get_task_type():
   return get_tf_config_task()['type']
-
-
-def get_task_index():
-  return get_tf_config_task()['index']
-
-
-def is_chief():
-  return ('chief' not in get_tf_config_cluster_spec()
-          and get_task_type() == 'worker'
-          and get_task_index() == 0)
