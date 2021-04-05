@@ -380,7 +380,6 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python/data/experimental/ops:grouping",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
