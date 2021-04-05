@@ -57,67 +57,72 @@ class SparseReorderTest(test.TestCase):
     self.assertAllEqual((5, 6), sp_output.get_shape())
 
   def testAlreadyInOrder(self):
-    input_val = self._SparseTensorValue_5x6(np.arange(6))
-    sp_output = sparse_ops.sparse_reorder(input_val)
-
-    output_val = self.evaluate(sp_output)
-    self.assertAllEqual(output_val.indices, input_val.indices)
-    self.assertAllEqual(output_val.values, input_val.values)
-    self.assertAllEqual(output_val.dense_shape, input_val.dense_shape)
-
-  @test_util.run_deprecated_v1
-  def testFeedAlreadyInOrder(self):
-    sp_input = self._SparseTensorPlaceholder()
-    input_val = self._SparseTensorValue_5x6(np.arange(6))
-    sp_output = sparse_ops.sparse_reorder(sp_input)
-
-    output_val = sess.run(sp_output, {sp_input: input_val})
-    self.assertAllEqual(output_val.indices, input_val.indices)
-    self.assertAllEqual(output_val.values, input_val.values)
-    self.assertAllEqual(output_val.dense_shape, input_val.dense_shape)
-
-  def testOutOfOrder(self):
-    expected_output_val = self._SparseTensorValue_5x6(np.arange(6))
-    for _ in range(5):  # To test various random permutations
-      input_val = self._SparseTensorValue_5x6(np.random.permutation(6))
+    with self.session() as sess:
+      input_val = self._SparseTensorValue_5x6(np.arange(6))
       sp_output = sparse_ops.sparse_reorder(input_val)
 
       output_val = self.evaluate(sp_output)
-      self.assertAllEqual(output_val.indices, expected_output_val.indices)
-      self.assertAllEqual(output_val.values, expected_output_val.values)
-      self.assertAllEqual(output_val.dense_shape,
-                          expected_output_val.dense_shape)
+      self.assertAllEqual(output_val.indices, input_val.indices)
+      self.assertAllEqual(output_val.values, input_val.values)
+      self.assertAllEqual(output_val.dense_shape, input_val.dense_shape)
+
+  @test_util.run_deprecated_v1
+  def testFeedAlreadyInOrder(self):
+    with self.session() as sess:
+      sp_input = self._SparseTensorPlaceholder()
+      input_val = self._SparseTensorValue_5x6(np.arange(6))
+      sp_output = sparse_ops.sparse_reorder(sp_input)
+
+      output_val = sess.run(sp_output, {sp_input: input_val})
+      self.assertAllEqual(output_val.indices, input_val.indices)
+      self.assertAllEqual(output_val.values, input_val.values)
+      self.assertAllEqual(output_val.dense_shape, input_val.dense_shape)
+
+  def testOutOfOrder(self):
+    expected_output_val = self._SparseTensorValue_5x6(np.arange(6))
+    with self.session() as sess:
+      for _ in range(5):  # To test various random permutations
+        input_val = self._SparseTensorValue_5x6(np.random.permutation(6))
+        sp_output = sparse_ops.sparse_reorder(input_val)
+
+        output_val = self.evaluate(sp_output)
+        self.assertAllEqual(output_val.indices, expected_output_val.indices)
+        self.assertAllEqual(output_val.values, expected_output_val.values)
+        self.assertAllEqual(output_val.dense_shape,
+                            expected_output_val.dense_shape)
 
   @test_util.run_deprecated_v1
   def testFeedOutOfOrder(self):
     expected_output_val = self._SparseTensorValue_5x6(np.arange(6))
-    for _ in range(5):  # To test various random permutations
-      sp_input = self._SparseTensorPlaceholder()
-      input_val = self._SparseTensorValue_5x6(np.random.permutation(6))
-      sp_output = sparse_ops.sparse_reorder(sp_input)
+    with self.session() as sess:
+      for _ in range(5):  # To test various random permutations
+        sp_input = self._SparseTensorPlaceholder()
+        input_val = self._SparseTensorValue_5x6(np.random.permutation(6))
+        sp_output = sparse_ops.sparse_reorder(sp_input)
 
-      output_val = sess.run(sp_output, {sp_input: input_val})
-      self.assertAllEqual(output_val.indices, expected_output_val.indices)
-      self.assertAllEqual(output_val.values, expected_output_val.values)
-      self.assertAllEqual(output_val.dense_shape,
-                          expected_output_val.dense_shape)
+        output_val = sess.run(sp_output, {sp_input: input_val})
+        self.assertAllEqual(output_val.indices, expected_output_val.indices)
+        self.assertAllEqual(output_val.values, expected_output_val.values)
+        self.assertAllEqual(output_val.dense_shape,
+                            expected_output_val.dense_shape)
 
   @test_util.run_deprecated_v1
   def testGradients(self):
-    for _ in range(5):  # To test various random permutations
-      input_val = self._SparseTensorValue_5x6(np.random.permutation(6))
-      sp_input = sparse_tensor.SparseTensor(input_val.indices,
-                                            input_val.values,
-                                            input_val.dense_shape)
-      sp_output = sparse_ops.sparse_reorder(sp_input)
+    with self.session():
+      for _ in range(5):  # To test various random permutations
+        input_val = self._SparseTensorValue_5x6(np.random.permutation(6))
+        sp_input = sparse_tensor.SparseTensor(input_val.indices,
+                                              input_val.values,
+                                              input_val.dense_shape)
+        sp_output = sparse_ops.sparse_reorder(sp_input)
 
-      err = gradient_checker.compute_gradient_error(
-          sp_input.values,
-          input_val.values.shape,
-          sp_output.values,
-          input_val.values.shape,
-          x_init_value=input_val.values)
-      self.assertLess(err, 1e-11)
+        err = gradient_checker.compute_gradient_error(
+            sp_input.values,
+            input_val.values.shape,
+            sp_output.values,
+            input_val.values.shape,
+            x_init_value=input_val.values)
+        self.assertLess(err, 1e-11)
 
   def testShapeOverflow(self):
     # Test case for GitHub issue 45392
