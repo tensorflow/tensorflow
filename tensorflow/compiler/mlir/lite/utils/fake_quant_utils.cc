@@ -50,44 +50,15 @@ LogicalResult UnwrapTFCustomOps(FuncOp fn, OpBuilder& builder) {
   return success();
 }
 
-// Three instances of the rule to cover the three different types of
-// TF::FakeQuant operators
-using PreparePerTensorFakeQuant = InsertTFLQuantOpsAfterTFFakeQuantOp<
-    TF::FakeQuantWithMinMaxVarsOp, /*PerAxis=*/false,
-    FetchConstantMinMaxInputs<TF::FakeQuantWithMinMaxVarsOp>>;
-
-using PreparePerChannelFakeQuant = InsertTFLQuantOpsAfterTFFakeQuantOp<
-    TF::FakeQuantWithMinMaxVarsPerChannelOp, /*PerAxis=*/true,
-    FetchConstantMinMaxInputs<TF::FakeQuantWithMinMaxVarsPerChannelOp>>;
-
-using PreparePerTensorFakeQuantWithMinMaxArgs =
-    InsertTFLQuantOpsAfterTFFakeQuantOp<
-        TF::FakeQuantWithMinMaxArgsOp, /*PerAxis=*/false,
-        FetchMinMaxAttrs<TF::FakeQuantWithMinMaxArgsOp>>;
-
-// Removes the wrapper of the tf.FakeQuant* ops and creates the tfl.quantize
-// and tfl.dequantize pairs before tf.FakeQuant* being foled.
+// Removes the wrapper of the tf.FakeQuant* ops.
 LogicalResult ConvertFakeQuantOps(FuncOp func, MLIRContext* ctx) {
   OpBuilder builder(func);
   if (failed(UnwrapTFCustomOps(func, builder))) {
     return failure();
   }
 
-  // Insert the tfl.quantize/tfl.dequantize ops after the tf.FakeQuant* ops to
-  // preserve the quantization parameters.
-  func.walk([&](Operation* op) {
-    if (auto fake_quant = llvm::dyn_cast<TF::FakeQuantWithMinMaxArgsOp>(op)) {
-      (void)PreparePerTensorFakeQuantWithMinMaxArgs().matchAndRewrite(
-          fake_quant, builder);
-    } else if (auto fake_quant =
-                   llvm::dyn_cast<TF::FakeQuantWithMinMaxVarsOp>(op)) {
-      (void)PreparePerTensorFakeQuant().matchAndRewrite(fake_quant, builder);
-    } else if (auto fake_quant =
-                   llvm::dyn_cast<TF::FakeQuantWithMinMaxVarsPerChannelOp>(
-                       op)) {
-      (void)PreparePerChannelFakeQuant().matchAndRewrite(fake_quant, builder);
-    }
-  });
+  // TODO(fengliuai): Insert the tfl.quantize/tfl.dequantize ops after the
+  // tf.FakeQuant* ops to preserve the quantization parameters.
 
   return success();
 }
