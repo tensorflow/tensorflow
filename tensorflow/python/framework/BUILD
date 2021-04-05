@@ -19,7 +19,7 @@ visibility = [
 
 package(
     default_visibility = visibility,
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_cc_shared_object(

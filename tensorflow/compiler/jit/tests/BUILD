@@ -1,7 +1,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
-licenses(["notice"])  # Apache 2.0
+licenses(["notice"])
 
 package(default_visibility = ["//visibility:private"])
 
