@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 
 namespace mlir {
@@ -69,12 +70,36 @@ class RewriteXlaHostComputeMlir
           TF::ShapeAttr::get(rewriter.getContext(), ty.cast<ShapedType>()));
     }
 
+    // Clone the `host_func` in the `host_mlir_module` attribute if it exists
+    // and use it for `shape_inference_graph` attribute on XlaHostCompute.
+    FuncOp cloned_func;
+    SymbolTable manager(op->getParentOfType<ModuleOp>());
+    StringRef host_module = op.host_mlir_module();
+    if (!host_module.empty()) {
+      mlir::OwningModuleRef module_for_func;
+      if (!tensorflow::DeserializeMlirModule(host_module.str(),
+                                             op->getContext(), &module_for_func)
+               .ok()) {
+        return failure();
+      }
+
+      FuncOp func = module_for_func->lookupSymbol<FuncOp>("host_func");
+      if (!func) return failure();
+
+      OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.setInsertionPointAfter(op->getParentOfType<FuncOp>());
+      cloned_func =
+          llvm::dyn_cast_or_null<FuncOp>(rewriter.clone(*func.getOperation()));
+      manager.insert(cloned_func);
+    }
+
     constexpr int64_t kDefaultCostEstimate = 1000000;
     rewriter.replaceOpWithNewOp<TF::XlaHostComputeOp>(
         op, op.getResultTypes(), op.inputs(),
         /*ancestors=*/rewriter.getArrayAttr({}),
         rewriter.getArrayAttr(shape_attrs),
-        /*shape_inference_graph=*/SymbolRefAttr(),
+        /*shape_inference_graph=*/
+        cloned_func ? rewriter.getSymbolRefAttr(cloned_func) : SymbolRefAttr(),
         /*key=*/rewriter.getStringAttr(""), op.send_keyAttr(),
         op.recv_keyAttr(),
         /*cost_estimate_ns=*/rewriter.getI64IntegerAttr(kDefaultCostEstimate),
