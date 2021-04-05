@@ -358,7 +358,6 @@ tf_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python/data/experimental/ops:get_single_element",
         "//tensorflow/python/data/experimental/ops:grouping",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
