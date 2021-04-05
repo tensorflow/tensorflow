@@ -2036,10 +2036,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return tuple(key[0] for key in total_function_cache(defined))
 
     # `True` corresponds to the fact that we're executing eagerly
-    self.assertIn(('URRRu', (0, 1, 20)), cache_keys())
+    self.assertIn(('UURRRuDu', (0, 1, 20)), cache_keys())
 
     defined(1)  # bar=1, baz=2
-    self.assertIn(('URRRu', (1, 1, 2)), cache_keys())
+    self.assertIn(('UURRRuDu', (1, 1, 2)), cache_keys())
 
     # This matches the previous call.
     defined(foo=1)
@@ -2047,7 +2047,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     defined(1, 2, 3)
     self.assertLen(total_function_cache(defined), 3)
-    self.assertIn(('URRRu', (1, 2, 3)), cache_keys())
+    self.assertIn(('UURRRuDu', (1, 2, 3)), cache_keys())
 
     # This matches the previous call.
     defined(1, bar=2, baz=3)
@@ -2104,6 +2104,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     out = defined(b)
     self.assertLen(total_function_cache(defined), 1)
     self.assertAllEqual(out, b)
+
+  def testInputSignatureWithDictInPositionalArgs(self):
+
+    @function.defun
+    def f(*_args, **_kwargs):
+      return None
+
+    f(1, x=2)
+    self.assertLen(total_function_cache(f), 1)
+    f(1, x=2)
+    self.assertLen(total_function_cache(f), 1)
+    f(1, {'x': 2})
+    self.assertLen(total_function_cache(f), 2)
 
   def testInputSignatureWithCompatibleInputs(self):
 
