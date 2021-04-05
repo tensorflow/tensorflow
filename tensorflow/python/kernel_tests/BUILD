@@ -2682,6 +2682,20 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "sparse_xent_op_deterministic_test",
+    size = "small",
+    srcs = ["sparse_xent_op_deterministic_test.py"],
+    xla_enable_strict_auto_jit = False,
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:nn_ops",
+    ],
+)
+
+cuda_py_test(
     name = "sparse_xent_op_test",
     size = "small",
     srcs = ["sparse_xent_op_test.py"],
@@ -2865,6 +2879,20 @@ cuda_py_test(
         "//tensorflow/python:state_ops_gen",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "xent_op_deterministic_test",
+    size = "small",
+    srcs = ["xent_op_deterministic_test.py"],
+    xla_enable_strict_auto_jit = False,
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:nn_ops",
     ],
 )
 

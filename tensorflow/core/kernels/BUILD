@@ -4711,6 +4711,7 @@ tf_kernel_library(
     deps = SPARSE_DEPS + [
         "//third_party/eigen3",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core:lib_internal",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
     ]) + if_cuda([
