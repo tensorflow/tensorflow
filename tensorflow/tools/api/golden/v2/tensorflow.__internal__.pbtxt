@@ -109,6 +109,10 @@ tf_module {
     argspec: "args=[\'tensors\', \'graph\', \'sources\', \'disallowed_placeholders\', \'add_sources\', \'handle_captures\', \'base_graph\', \'op_map\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\', \'None\', \'None\'], "
   }
   member_method {
+    name: "record_gradient"
+    argspec: "args=[\'op_name\', \'inputs\', \'attrs\', \'outputs\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "register_call_context_function"
     argspec: "args=[\'func\'], varargs=None, keywords=None, defaults=None"
   }
