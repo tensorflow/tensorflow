@@ -8,7 +8,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # CPU-only tests should use tf_py_test, GPU tests use cuda_py_test
@@ -276,7 +276,6 @@ cuda_py_test(
     srcs = ["collective_ops_test.py"],
     tags = [
         "multi_and_single_gpu",
-        "no_tfrt",  # TODO(b/171765113)
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -303,7 +302,6 @@ tf_py_test(
     python_version = "PY3",
     tags = [
         "no_rocm",
-        "no_tfrt",  # TODO(b/171765113)
         "notsan",  # TODO(b/171435192)
     ],
     deps = [
@@ -2512,18 +2510,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "compare_and_bitpack_op_test",
-    size = "small",
-    srcs = ["compare_and_bitpack_op_test.py"],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
     name = "scalar_test",
     size = "small",
     srcs = ["scalar_test.py"],
@@ -3215,6 +3201,9 @@ cuda_py_test(
     name = "sparse_tensor_dense_matmul_op_test",
     size = "medium",
     srcs = ["sparse_tensor_dense_matmul_op_test.py"],
+    tags = [
+        "notap",  # Flakey
+    ],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",

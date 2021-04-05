@@ -9,8 +9,6 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
-
 # Transitive dependencies of this target will be included in the pip package.
 py_library(
     name = "tools_pip",

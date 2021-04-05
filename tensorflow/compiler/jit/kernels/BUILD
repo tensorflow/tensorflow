@@ -5,7 +5,7 @@ package(
         "//tensorflow/compiler/tf2xla:internal",
         "//tensorflow/core/tpu:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 XLA_OPS_DEPS = [

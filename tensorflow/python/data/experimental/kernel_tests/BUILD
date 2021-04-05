@@ -4,10 +4,8 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-or
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 tf_py_test(
     name = "assert_cardinality_test",
@@ -116,6 +114,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python/compat",
         "//tensorflow/python/data/experimental/ops:prefetching_ops",
+        "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",

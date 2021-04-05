@@ -20,7 +20,7 @@ load(
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -76,7 +76,7 @@ cc_library(
         "//tensorflow/core/common_runtime/gpu:gpu_init",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
     ],
@@ -628,7 +628,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/xla/service/gpu:xla_thunks_ops",
         "//tensorflow/core:lib",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Shape",
     ],

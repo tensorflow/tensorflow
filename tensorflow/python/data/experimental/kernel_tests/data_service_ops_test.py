@@ -120,6 +120,30 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.evaluate(lookup_ops.tables_initializer())
     self.assertDatasetProduces(ds, [10, 11, -1], requires_initialization=True)
 
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(value_rank=[0, 1])))
+  def testDistributeMutableHashTable(self, value_rank):
+
+    def value(v):
+      for _ in range(value_rank):
+        v = [v, v]
+      return v
+
+    v1 = value(10)
+    v2 = value(11)
+    default_value = value(-1)
+
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    table = lookup_ops.MutableHashTable(dtypes.int64, dtypes.int64,
+                                        default_value)
+    self.evaluate(table.insert([0, 1], [v1, v2]))
+    ds = dataset_ops.Dataset.range(3)
+    ds = ds.map(table.lookup)
+    ds = self.make_distributed_dataset(ds, cluster)
+    self.assertDatasetProduces(
+        ds, [v1, v2, default_value], requires_initialization=True)
+
   @combinations.generate(test_base.default_test_combinations())
   def testDifferentShuffleOrders(self):
     random_seed.set_random_seed(None)

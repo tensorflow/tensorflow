@@ -284,6 +284,7 @@ headers = (
     list(find_files('*.proto', 'tensorflow/compiler')) +
     list(find_files('*.proto', 'tensorflow/core')) +
     list(find_files('*.proto', 'tensorflow/python')) +
+    list(find_files('*.proto', 'tensorflow/python/framework')) +
     list(find_files('*.def', 'tensorflow/compiler')) +
     list(find_files('*.h', 'tensorflow/c')) +
     list(find_files('*.h', 'tensorflow/cc')) +
@@ -291,6 +292,7 @@ headers = (
     list(find_files('*.h.inc', 'tensorflow/compiler')) +
     list(find_files('*.h', 'tensorflow/core')) +
     list(find_files('*.h', 'tensorflow/python')) +
+    list(find_files('*.h', 'tensorflow/python/framework')) +
     list(find_files('*.h', 'tensorflow/stream_executor')) +
     list(find_files('*.h', 'google/com_google_protobuf/src')) +
     list(find_files('*.inc', 'google/com_google_protobuf/src')) +
@@ -334,7 +336,7 @@ setup(
     classifiers=sorted([
         'Development Status :: 5 - Production/Stable',
         # TODO(angerson) Add IFTTT when possible
-        'Environment :: GPU :: NVIDIA CUDA :: 11.0',
+        'Environment :: GPU :: NVIDIA CUDA :: 11.2',
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',

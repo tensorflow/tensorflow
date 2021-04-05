@@ -79,7 +79,7 @@ load(
 #
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -1161,39 +1161,6 @@ tf_kernel_library(
     prefix = "quantize_and_dequantize_op",
     deps = ARRAY_DEPS + [":cwise_op"],
 )
-
-tf_kernel_library(
-    name = "compare_and_bitpack_op",
-    srcs = ["compare_and_bitpack_op.cc"],
-    hdrs = ["compare_and_bitpack_op.h"],
-    gpu_srcs = [
-        "compare_and_bitpack_op.h",
-        "compare_and_bitpack_op_gpu.cu.cc",
-    ],
-    deps = ARRAY_DEPS,
-)
-
-# TODO(ebrevdo): Add benchmarks once the op is in the autogen array namespace.
-# tf_cuda_cc_test(
-#     name = "compare_and_bitpack_op_test",
-#     srcs = ["compare_and_bitpack_op_test.cc"],
-#     deps = [
-#         ":array",
-#         ":ops_testutil",
-#         ":ops_util",
-#         "//third_party/eigen3",
-#         "//tensorflow/cc:cc_ops",
-#         "//tensorflow/cc:cc_ops_internal",
-#         "//tensorflow/core:core_cpu",
-#         "//tensorflow/core:core_cpu_internal",
-#         "//tensorflow/core:framework",
-#         "//tensorflow/core:lib",
-#         "//tensorflow/core:protos_all_cc",
-#         "//tensorflow/core:test",
-#         "//tensorflow/core:test_main",
-#         "//tensorflow/core:testlib",
-#     ],
-# )
 
 tf_kernel_library(
     name = "reshape_op",
@@ -3304,7 +3271,6 @@ cc_library(
         ":bucketize_op",
         ":cast_op",
         ":check_numerics_op",
-        ":compare_and_bitpack_op",
         ":cross_op",
         ":cwise_op",
         ":fft_ops",

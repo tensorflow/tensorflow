@@ -12,10 +12,8 @@ load("//tensorflow:tensorflow.bzl", "filegroup")  # buildifier: disable=same-ori
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 # A file group which contains all operators which are known to work on mobile.
 filegroup(

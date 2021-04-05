@@ -47,6 +47,8 @@ send_key: A unique identifier for this region used to match up host recv.
 recv_key: A unique identifier for this region used to match up host send.
 tpu_core: Default core to use for host to device transfers.
 host_mlir_module: MLIR module with the host computation used for shape inference. Should be set to empty string if output shapes are static.
+If non-empty, should contain a serialized mlir module with a function named `host_func` with the same number of inputs and outputs as this op
+as it will be used to refine output shapes.
 )doc");
 
 REGISTER_OP("XlaHostCompute")

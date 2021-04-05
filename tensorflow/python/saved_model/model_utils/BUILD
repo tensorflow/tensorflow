@@ -27,8 +27,6 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
-
 py_strict_library(
     name = "model_utils",
     srcs = ["__init__.py"],

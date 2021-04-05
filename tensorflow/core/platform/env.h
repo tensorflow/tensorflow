@@ -407,6 +407,9 @@ class Env {
   /// Sleeps/delays the thread for the prescribed number of micro-seconds.
   virtual void SleepForMicroseconds(int64 micros) = 0;
 
+  /// Returns the process ID of the calling process.
+  int32 GetProcessId();
+
   /// \brief Returns a new thread that is running fn() and is identified
   /// (for debugging/performance-analysis) by "name".
   ///
@@ -642,9 +645,9 @@ struct Register {
     if (try_modular_filesystems) {
       const char* env_value = getenv("TF_USE_MODULAR_FILESYSTEM");
       string load_plugin = env_value ? absl::AsciiStrToLower(env_value) : "";
-      if (!(load_plugin == "true" || load_plugin == "1")) {
+      if (load_plugin == "true" || load_plugin == "1") {
         // We don't register the static filesystem and wait for SIG IO one
-        LOG(WARNING) << "Using modular file system for '" << scheme << "."
+        LOG(WARNING) << "Using modular file system for '" << scheme << "'."
                      << " Please switch to tensorflow-io"
                      << " (https://github.com/tensorflow/io) for file system"
                      << " support of '" << scheme << "'.";

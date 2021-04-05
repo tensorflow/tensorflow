@@ -165,7 +165,7 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
   def test_warn_if_session_already_exists(self, mock_warn):
     # Set this to False, so Sessions created in previous tests do not trigger
     # the warning.
-    mixed_precision_global_state.non_mixed_precision_session_created = False
+    mixed_precision_global_state.set_non_mixed_precision_session_created(False)
 
     with session.Session():
       enable_mixed_precision_graph_rewrite(
@@ -179,7 +179,7 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
   def test_do_not_warn_if_session_does_not_already_exist(self, mock_warn):
     # Set this to False, so Sessions created in previous tests do not trigger
     # the warning.
-    mixed_precision_global_state.non_mixed_precision_session_created = False
+    mixed_precision_global_state.set_non_mixed_precision_session_created(False)
 
     enable_mixed_precision_graph_rewrite(
         gradient_descent_v1.GradientDescentOptimizer(1.0))

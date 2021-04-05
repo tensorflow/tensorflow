@@ -14,6 +14,7 @@ limitations under the License.
 
 ==============================================================================*/
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
@@ -92,6 +94,222 @@ struct InlineBroadcastedShapeOperandsPattern : public OpRewritePattern<OpTy> {
     // Inline shape operands.
     rewriter.replaceOpWithNewOp<OpTy>(op, op->getResultTypes(),
                                       inlined_operands, op->getAttrs());
+    return success();
+  }
+};
+
+/// Move operation into a preceding assuming op. This allows to process
+/// operations that depend on the assuming op's results. It will eventually
+/// allow to make assuming regions' constraints independent from each other.
+template <typename OpTy>
+struct MoveIntoAssumingOpPattern : public OpRewritePattern<OpTy> {
+  using OpRewritePattern<OpTy>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(OpTy op,
+                                PatternRewriter &rewriter) const override {
+    // Only move into immediately preceding `assuming` op.
+    auto assuming_op =
+        llvm::dyn_cast_or_null<shape::AssumingOp>(op->getPrevNode());
+    if (!assuming_op) return failure();
+
+    Block *body = assuming_op.getBody();
+    auto yield_op = cast<shape::AssumingYieldOp>(body->getTerminator());
+
+    // Find the operands to use if the op was within the assuming region. We
+    // will later use their copies, as we copy the assuming op and its body.
+    SmallVector<Value, 8> new_operands_unmapped;
+    for (auto operand : op->getOperands()) {
+      new_operands_unmapped.push_back(operand);
+      for (auto result : llvm::enumerate(assuming_op->getResults())) {
+        if (result.value() == operand)
+          new_operands_unmapped.back() = yield_op->getOperand(result.index());
+      }
+    }
+
+    // Insert the rewritten assuming op right before the old one.
+    OpBuilder::InsertionGuard guard(rewriter);
+    rewriter.setInsertionPoint(assuming_op);
+    auto new_assuming_op = rewriter.create<shape::AssumingOp>(
+        assuming_op.getLoc(), assuming_op.witness(),
+        [&](OpBuilder &b, Location loc) {
+          // Copy body.
+          BlockAndValueMapping mapping;
+          for (auto &nested : body->without_terminator())
+            b.clone(nested, mapping);
+
+          // Copy op into the new body and use the mapped operands.
+          SmallVector<Value, 2> new_operands;
+          for (Value v_unmapped : new_operands_unmapped) {
+            Value v = mapping.lookupOrDefault(v_unmapped);
+            new_operands.push_back(v);
+          }
+          Value new_op = b.create<OpTy>(loc, op->getResultTypes(), new_operands,
+                                        op->getAttrs());
+
+          // Yield the previous results and also the new one.
+          SmallVector<Value, 2> mapped_results;
+          for (auto result : yield_op.operands())
+            mapped_results.push_back(mapping.lookupOrDefault(result));
+          mapped_results.push_back(new_op);
+          return mapped_results;
+        });
+
+    // Replace the assuming op and the root op with the corresponding result
+    // value.
+    ValueRange new_assuming_op_results = new_assuming_op->getResults();
+    rewriter.replaceOp(assuming_op, new_assuming_op_results.drop_back());
+    rewriter.replaceOp(op, new_assuming_op_results.back());
+    return success();
+  }
+};
+
+/// Move operation out of assuming op. This is only valid for
+/// constraint-independent ops, like `cstr_broadcastable` and `shape_of`. It
+/// will eventually allow to make assuming regions' constraints independent from
+/// each other.
+template <typename OpTy>
+struct MoveOutOfAssumingOpPattern : public OpRewritePattern<OpTy> {
+  using OpRewritePattern<OpTy>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(OpTy op,
+                                PatternRewriter &rewriter) const override {
+    // Must be inside of an assuming op.
+    auto assuming_op = op->template getParentOfType<shape::AssumingOp>();
+    if (!assuming_op) return failure();
+
+    // Operands must not be defined within the assuming op.
+    Block *body = assuming_op.getBody();
+    auto is_available = [&](Value v) {
+      Operation *def = v.getDefiningOp();
+      return def == nullptr || def->getBlock() != body;
+    };
+    if (!llvm::all_of(op->getOperands(), is_available)) return failure();
+
+    // Move op before the assuming region.
+    OpBuilder::InsertionGuard guard(rewriter);
+    rewriter.setInsertionPoint(assuming_op);
+    Operation *new_op = rewriter.clone(*op);
+    rewriter.replaceOp(op, new_op->getResults());
+
+    // If the assuming region yields none of the new op's results, these values
+    // are exclusively used in the assuming op's body. In these cases there is
+    // no need for further rewrites.
+    auto is_new_op_result = [&](Value v) {
+      return llvm::is_contained(new_op->getResults(), v);
+    };
+    auto yield_op = cast<shape::AssumingYieldOp>(body->getTerminator());
+    if (llvm::none_of(yield_op.operands(), is_new_op_result)) return success();
+
+    // If the assuming region yields any of the new op's results, these values
+    // can instead bypass the assuming region. There is no need to yield them
+    // explicitly as they are assumed to be independent. The assuming op is
+    // rewritten accordingly.
+    SmallVector<Value, 2> replacement_values;
+    auto new_assuming_op = rewriter.create<shape::AssumingOp>(
+        assuming_op.getLoc(), assuming_op.witness(),
+        [&](OpBuilder &b, Location) {
+          // Copy body.
+          BlockAndValueMapping mapping;
+          for (Operation &nested : body->without_terminator()) {
+            b.clone(nested, mapping);
+          }
+
+          // Collect new yield operands.
+          SmallVector<Value, 2> new_yield_operands;
+          for (Value result : yield_op.operands()) {
+            if (is_new_op_result(result)) {
+              replacement_values.push_back(result);
+            } else {
+              new_yield_operands.push_back(mapping.lookup(result));
+              replacement_values.push_back(nullptr);
+            }
+          }
+          return new_yield_operands;
+        });
+
+    // Use the assuming op's results for the missing replacement values.
+    auto src = new_assuming_op.getResults().begin();
+    for (auto &dst : replacement_values) {
+      if (dst) continue;
+      dst = *src++;
+    }
+
+    rewriter.replaceOp(assuming_op, replacement_values);
+    return success();
+  }
+};
+
+/// Merge assuming regions if their constraints are independent from each other.
+struct MergeAssumingOpsPattern : public OpRewritePattern<shape::AssumingOp> {
+  using OpRewritePattern<shape::AssumingOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(shape::AssumingOp op,
+                                PatternRewriter &rewriter) const override {
+    // Merge assuming op with directly preceding one.
+    auto preceding_op =
+        llvm::dyn_cast_or_null<shape::AssumingOp>(op->getPrevNode());
+    if (!preceding_op) return failure();
+
+    // For now, both witnesses must be cstr_broadcastable.
+    // TODO(frgossen): Generalize this.
+    auto bcastable_a = op.witness().getDefiningOp<shape::CstrBroadcastableOp>();
+    auto bcastable_b =
+        preceding_op.witness().getDefiningOp<shape::CstrBroadcastableOp>();
+    if (!bcastable_a || !bcastable_b) return failure();
+
+    // Merge witnesses.
+    OpBuilder::InsertionGuard guard(rewriter);
+    rewriter.setInsertionPoint(preceding_op);
+    SmallVector<Value, 8> new_operands;
+    new_operands.append(bcastable_a->getOperands().begin(),
+                        bcastable_a->getOperands().end());
+    new_operands.append(bcastable_b->getOperands().begin(),
+                        bcastable_b->getOperands().end());
+    Value new_witness = rewriter.create<shape::CstrBroadcastableOp>(
+        bcastable_a.getLoc(), new_operands);
+
+    // Merge assuming ops.
+    Block *body_a = preceding_op.getBody();
+    Block *body_b = op.getBody();
+    auto new_assuming_op = rewriter.create<shape::AssumingOp>(
+        preceding_op.getLoc(), new_witness, [&](OpBuilder &b, Location) {
+          // Copy preceding op's body.
+          BlockAndValueMapping mapping;
+          for (auto &nested : body_a->without_terminator()) {
+            b.clone(nested, mapping);
+          }
+
+          // Map result values of preceding assuming op.
+          auto yield_op_a =
+              llvm::dyn_cast<shape::AssumingYieldOp>(body_a->getTerminator());
+          for (auto pair :
+               llvm::zip(preceding_op->getResults(), yield_op_a.operands())) {
+            mapping.map(std::get<0>(pair), mapping.lookup(std::get<1>(pair)));
+          }
+
+          // Copy op's body.
+          for (auto &nested : body_b->without_terminator()) {
+            b.clone(nested, mapping);
+          }
+
+          // Collect merged assuming op's results.
+          SmallVector<Value, 4> mapped_results;
+          auto yield_op_b =
+              llvm::dyn_cast<shape::AssumingYieldOp>(body_b->getTerminator());
+          for (Value v : yield_op_a.operands()) {
+            mapped_results.push_back(mapping.lookupOrDefault(v));
+          }
+          for (Value v : yield_op_b.operands()) {
+            mapped_results.push_back(mapping.lookupOrDefault(v));
+          }
+          return mapped_results;
+        });
+
+    // Replace the two assuming ops with the new corresponding results.
+    ValueRange new_results = new_assuming_op->getResults();
+    size_t split_at = preceding_op->getNumResults();
+    rewriter.replaceOp(preceding_op, new_results.take_front(split_at));
+    rewriter.replaceOp(op, new_results.drop_front(split_at));
     return success();
   }
 };
@@ -168,6 +386,11 @@ void PopulateMoveUpDynamicBroadcastsForFusionPatterns(
   // clang-format off
   patterns->insert<
       InlineBroadcastedShapeOperandsPattern<shape::CstrBroadcastableOp>,
+      MergeAssumingOpsPattern,
+      MoveIntoAssumingOpPattern<shape::ShapeOfOp>,
+      MoveIntoAssumingOpPattern<shape::CstrBroadcastableOp>,
+      MoveOutOfAssumingOpPattern<shape::CstrBroadcastableOp>,
+      MoveOutOfAssumingOpPattern<shape::ShapeOfOp>,
       MoveUpBroadcastInDimOpPattern,
       ShapeReificationPattern>(context);
   // clang-format on

@@ -70,7 +70,13 @@ TfLiteStatus L2Prepare(TfLiteContext* context, TfLiteNode* node) {
   // The dims storage is expected to be the same area in memory
   // for both TfLiteTensor and TfLiteEvalTensor.  This is important
   // because TfLiteTensor in the MicroInterpreter is a temporary
-  // allocation.
+  // allocation.  For the KernelRunner interpreter, TfLiteEvalTensor
+  // is a temporary allocation.  We must therefore relocate the dims
+  // from the FlatBuffer to the persistant storage arena.
+  TfLiteEvalTensor* output_eval =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
+  TF_LITE_ENSURE_OK(context, tflite::micro::CreateWritableTensorDimsWithCopy(
+                                 context, output, output_eval));
   output->dims->data[kBatchRank] = batches;
   output->dims->data[kHeightRank] = out_height;
   output->dims->data[kWidthRank] = out_width;

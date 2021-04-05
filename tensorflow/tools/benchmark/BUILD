@@ -13,8 +13,6 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
-
 cc_library(
     name = "benchmark_model_lib",
     testonly = 1,

@@ -678,6 +678,69 @@ bool ReplicateOp::WrapsSingleOp() { return BlockWrapsSingleOp(&GetBody()); }
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
+// tf_device.cluster
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+// Eliminates cluster op results that are not defined within the cluster and are
+// defined outside. cluster op can be rewritten to remove those results.
+static LogicalResult EliminatePassThroughResults(ClusterOp op,
+                                                 PatternRewriter& rewriter) {
+  mlir::Block& body = op.GetBody();
+  Operation* return_op = body.getTerminator();
+  int num_results = return_op->getNumOperands();
+
+  // Values defined within the cluster.
+  llvm::SmallVector<Value, 4> cluster_vals;
+  cluster_vals.reserve(num_results);
+
+  // New results stores values to use while replacing the old cluster op.
+  llvm::SmallVector<Value, 4> new_results;
+  new_results.reserve(num_results);
+  for (Value result : return_op->getOperands()) {
+    if (result.getParentBlock() == &body) {
+      // This result will be populated with the new result after rewriting the
+      // cluster op.
+      new_results.push_back(nullptr);
+      cluster_vals.push_back(result);
+    } else {
+      new_results.push_back(result);
+    }
+  }
+
+  // Return failure if there are no pass through results and op is already
+  // canonical.
+  if (cluster_vals.size() == num_results) return failure();
+
+  // Rewrite return op in the cluster.
+  rewriter.setInsertionPoint(return_op);
+  auto new_return =
+      rewriter.replaceOpWithNewOp<tf_device::ReturnOp>(return_op, cluster_vals);
+
+  // Rewrite the cluster op.
+  rewriter.setInsertionPoint(op);
+  auto new_op = rewriter.create<tf_device::ClusterOp>(
+      op->getLoc(), new_return.getOperandTypes(), op->getOperands(),
+      op->getAttrs());
+  rewriter.inlineRegionBefore(op.getBodyRegion(), new_op.getBodyRegion(),
+                              new_op.getBodyRegion().end());
+
+  int idx = 0;
+  for (Value& result : new_results) {
+    if (result == nullptr) result = new_op.getResult(idx++);
+  }
+  rewriter.replaceOp(op, new_results);
+  return success();
+}
+}  // anonymous namespace
+
+void ClusterOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                            MLIRContext* context) {
+  results.insert(EliminatePassThroughResults);
+}
+
+//===----------------------------------------------------------------------===//
 // tf_device.launch
 //===----------------------------------------------------------------------===//
 

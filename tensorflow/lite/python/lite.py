@@ -199,13 +199,6 @@ class TargetSpec(object):
       that may not be linked in by default with the TF ops that are provided
       when using the SELECT_TF_OPS path. The client is responsible for linking
       these ops into the target runtime.
-    _experimental_custom_op_registerers: Experimental flag, subject to change.
-      List of str (symbol names) or functions that take a pointer to a
-      MutableOpResolver and register TensorFlow Lite custom ops. When passing
-      functions, use a pybind function that takes a uintptr_t that can be recast
-      as a pointer to a MutableOpResolver. The TensorFlow Lite custom ops in the
-      registerers will be used when the representative data is given and the
-      post training quantization is enabled at the same time.
   """
 
   def __init__(self,
@@ -469,6 +462,7 @@ class TFLiteConverterBase(object):
     self._saved_model_exported_names = []
     # Variable for converter metrics.
     self._tflite_metrics = _global_metrics
+    self._experimental_disable_batchmatmul_unfold = False
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -550,6 +544,7 @@ class TFLiteConverterBase(object):
         "target_ops": self.target_spec.supported_ops,
         "enable_mlir_converter": self.experimental_new_converter,
         "select_user_tf_ops": self.target_spec.experimental_select_user_tf_ops,
+        "unfold_batchmatmul": not self._experimental_disable_batchmatmul_unfold,
     }
 
     if self.saved_model_dir:

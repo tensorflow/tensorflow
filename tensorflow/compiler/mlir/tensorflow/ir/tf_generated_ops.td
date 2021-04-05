@@ -7004,7 +7004,7 @@ def TF_LookupTableSizeV2Op : TF_Op<"LookupTableSizeV2", []> {
   let summary = "Computes the number of elements in the given table.";
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, [{Handle to the table.}]>:$table_handle
+    Arg<TF_ResourceTensor, [{Handle to the table.}], [TF_LookupTableRead]>:$table_handle
   );
 
   let results = (outs
@@ -13914,19 +13914,6 @@ More specifically, this op outputs a copy of the input tensor where values from
 the `height` and `width` dimensions are moved to the `batch` dimension. After
 the zero-padding, both `height` and `width` of the input must be divisible by the
 block size.
-  }];
-
-  let arguments = (ins
-    Arg<TF_Tensor, [{4-D with shape `[batch, height, width, depth]`.}]>:$input,
-    Arg<TF_I32OrI64Tensor, [{2-D tensor of non-negative integers with shape `[2, 2]`. It specifies
-  the padding of the input with zeros across the spatial dimensions as follows:
-
-      paddings = [[pad_top, pad_bottom], [pad_left, pad_right]]
-
-  The effective spatial dimensions of the zero-padded input tensor will be:
-
-      height_pad = pad_top + height + pad_bottom
-      width_pad = pad_left + width + pad_right
 
 The attr `block_size` must be greater than one. It indicates the block size.
 
@@ -14002,7 +13989,20 @@ x = [[[[1], [3]]], [[[9], [11]]], [[[2], [4]]], [[[10], [12]]],
 ```
 
 Among others, this operation is useful for reducing atrous convolution into
-regular convolution.}]>:$paddings,
+regular convolution.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Tensor, [{4-D with shape `[batch, height, width, depth]`.}]>:$input,
+    Arg<TF_I32OrI64Tensor, [{2-D tensor of non-negative integers with shape `[2, 2]`. It specifies
+  the padding of the input with zeros across the spatial dimensions as follows:
+
+      paddings = [[pad_top, pad_bottom], [pad_left, pad_right]]
+
+  The effective spatial dimensions of the zero-padded input tensor will be:
+
+      height_pad = pad_top + height + pad_bottom
+      width_pad = pad_left + width + pad_right}]>:$paddings,
 
     Confined<I64Attr, [IntMinValue<2>]>:$block_size
   );
@@ -14015,7 +14015,7 @@ regular convolution.}]>:$paddings,
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_SpaceToBatchNDOp : TF_Op<"SpaceToBatchND", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect]> {
+def TF_SpaceToBatchNDOp : TF_Op<"SpaceToBatchND", [NoSideEffect]> {
   let summary = "SpaceToBatch for N-D tensors of type T.";
 
   let description = [{
@@ -14025,18 +14025,8 @@ grid of blocks of shape `block_shape`, and interleaves these blocks with the
 `[1, ..., M]` correspond to the position within the grid, and the batch
 dimension combines both the position within a spatial block and the original
 batch position.  Prior to division into blocks, the spatial dimensions of the
-input are optionally zero padded according to `paddings`.  See below for a
+input are optionally zero padded according to `paddings`. See below for a
 precise description.
-  }];
-
-  let arguments = (ins
-    Arg<TF_Tensor, [{N-D with shape `input_shape = [batch] + spatial_shape + remaining_shape`,
-where spatial_shape has `M` dimensions.}]>:$input,
-    Arg<TF_I32OrI64Tensor, [{1-D with shape `[M]`, all values must be >= 1.}]>:$block_shape,
-    Arg<TF_I32OrI64Tensor, [{2-D with shape `[M, 2]`, all values must be >= 0.
-  `paddings[i] = [pad_start, pad_end]` specifies the padding for input dimension
-  `i + 1`, which corresponds to spatial dimension `i`.  It is required that
-  `block_shape[i]` divides `input_shape[i + 1] + pad_start + pad_end`.
 
 This operation is equivalent to the following steps:
 
@@ -14140,7 +14130,17 @@ x = [[[[0], [1], [3]]], [[[0], [9], [11]]],
 ```
 
 Among others, this operation is useful for reducing atrous convolution into
-regular convolution.}]>:$paddings
+regular convolution.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Tensor, [{N-D with shape `input_shape = [batch] + spatial_shape + remaining_shape`,
+where spatial_shape has `M` dimensions.}]>:$input,
+    Arg<TF_I32OrI64Tensor, [{1-D with shape `[M]`, all values must be >= 1.}]>:$block_shape,
+    Arg<TF_I32OrI64Tensor, [{2-D with shape `[M, 2]`, all values must be >= 0.
+  `paddings[i] = [pad_start, pad_end]` specifies the padding for input dimension
+  `i + 1`, which corresponds to spatial dimension `i`.  It is required that
+  `block_shape[i]` divides `input_shape[i + 1] + pad_start + pad_end`.}]>:$paddings
   );
 
   let results = (outs
@@ -15708,12 +15708,11 @@ occurred during compilation.
 }
 
 def TF_TPUCompileSucceededAssertOp : TF_Op<"TPUCompileSucceededAssert", []> {
-  let summary = [{
-Asserts that compilation succeeded. This op produces no output and closes the
-  }];
+  let summary = "Asserts that compilation succeeded.";
 
   let description = [{
-device during failure to ensure all pending device interactions fail.
+This op produces no output and closes the device during failure to ensure all
+pending device interactions fail.
 
 'compilation_status' is a serialized CompilationResultProto.
   }];
@@ -18692,6 +18691,8 @@ A pseudo-op to represent host-side computation in an XLA program.
 
   TF_DerivedOperandTypeListAttr Tinputs = TF_DerivedOperandTypeListAttr<0>;
   TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF__XlaRecvAtHostOp : TF_Op<"_XlaRecvAtHost", []> {

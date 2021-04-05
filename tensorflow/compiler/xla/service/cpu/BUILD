@@ -16,7 +16,7 @@ load("//tensorflow/core/platform:build_config.bzl", "if_llvm_system_z_available"
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -151,7 +151,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:Affine",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:SCFDialect",

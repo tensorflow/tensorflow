@@ -45,6 +45,7 @@ load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
+load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
 load("@tf_toolchains//toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 load("@tf_toolchains//toolchains/remote:configure.bzl", "remote_execution_configure")
 load("@tf_toolchains//toolchains/clang6:repo.bzl", "clang6_configure")
@@ -961,16 +962,6 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "rules_cc",
-        sha256 = "cf3b76a90c86c0554c5b10f4b160f05af71d252026b71362c4674e2fb9936cf9",
-        strip_prefix = "rules_cc-01d4a48911d5e7591ecb1c06d3b8af47fe872371",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_cc/archive/01d4a48911d5e7591ecb1c06d3b8af47fe872371.zip",
-            "https://github.com/bazelbuild/rules_cc/archive/01d4a48911d5e7591ecb1c06d3b8af47fe872371.zip",
-        ],
-    )
-
-    tf_http_archive(
         name = "rules_python",
         sha256 = "aa96a691d3a8177f3215b14b0edc9641787abaaa30363a080165d06ab65e1161",
         urls = [
@@ -1116,6 +1107,8 @@ def workspace():
     # don't already exist (at least if the external repository macros were
     # written according to common practice to query native.existing_rule()).
     _tf_repositories()
+
+    tfrt_dependencies()
 
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.

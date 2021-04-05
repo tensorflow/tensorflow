@@ -554,8 +554,10 @@ int main(int argc, char** argv) {
   if (argc < 2 || !parse_ok) {
     LOG(QFATAL) << usage;
   }
-
   absl::Span<char* const> args(argv, argc);
   args.remove_prefix(1);  // Pop off the binary name, argv[0]
+  if (opts.compile_only) {
+    opts.use_fake_data = true;
+  }
   return xla::tools::RealMain(args, opts);
 }

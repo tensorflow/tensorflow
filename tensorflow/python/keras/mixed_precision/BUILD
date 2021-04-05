@@ -29,8 +29,6 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "all_py_srcs",
     srcs = glob(["*.py"]),
@@ -147,9 +145,6 @@ tf_py_test(
     size = "medium",
     srcs = ["autocast_variable_test.py"],
     python_version = "PY3",
-    tags = [
-        "no_tfrt",  # TODO(b/179863362)
-    ],
     deps = [
         ":autocast_variable",
         "//tensorflow/python:client_testlib",
@@ -292,7 +287,6 @@ cuda_py_test(
     shard_count = 10,
     tags = [
         "no_rocm",
-        "no_tfrt",  # TODO(b/179863362)
     ],
     deps = [
         "//tensorflow/python:client_testlib",
