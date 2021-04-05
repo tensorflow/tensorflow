@@ -18,14 +18,11 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import structure
-from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
-
-@tf_export("data.experimental.get_single_element", "data.get_single_element")
-@deprecation.deprecated_endpoints("data.experimental.get_single_element")
+@deprecation.deprecated(None, "Use `tf.data.Dataset.get_single_element()`.")
+@tf_export("data.experimental.get_single_element")
 def get_single_element(dataset):
   """Returns the single element of the `dataset` as a nested structure of tensors.
 
@@ -48,7 +45,7 @@ def get_single_element(dataset):
              .map(preprocessing_fn, num_parallel_calls=BATCH_SIZE)
              .batch(BATCH_SIZE))
 
-  processed_features = tf.data.get_single_element(dataset)
+  processed_features = tf.data.experimental.get_single_element(dataset)
   ```
 
   In the above example, the `raw_features` tensor of length=BATCH_SIZE
@@ -60,9 +57,9 @@ def get_single_element(dataset):
   NOTE: The `dataset` should contain only one element.
 
   Now, instead of creating an iterator for the `dataset` and retrieving the
-  batch of features, the `tf.data.get_single_element()` function is used
-  to skip the iterator creation process and directly output the batch of
-  features.
+  batch of features, the `tf.data.experimental.get_single_element()` function
+  is used to skip the iterator creation process and directly output the batch
+  of features.
 
   This can be particularly useful when your tensor transformations are
   expressed as `tf.data.Dataset` operations, and you want to use those
@@ -121,12 +118,12 @@ def get_single_element(dataset):
               .map(preprocessing_fn, num_parallel_calls=BATCH_SIZE)
               .batch(BATCH_SIZE))
 
-    processed_features = tf.data.get_single_element(dataset)
+    processed_features = tf.data.experimental.get_single_element(dataset)
 
     # Please note that the value of `BATCH_SIZE` should be equal to
     # the size of the leading dimension of `raw_features`. This ensures
     # that `dataset` has only element, which is a pre-requisite for
-    # using `tf.data.get_single_element(dataset)`.
+    # using `tf.data.experimental.get_single_element(dataset)`.
 
     return tf.estimator.export.ServingInputReceiver(
         processed_features, serving_input_receiver.receiver_tensors)
@@ -150,8 +147,4 @@ def get_single_element(dataset):
   if not isinstance(dataset, dataset_ops.DatasetV2):
     raise TypeError("`dataset` must be a `tf.data.Dataset` object.")
 
-  # pylint: disable=protected-access
-  return structure.from_compatible_tensor_list(
-      dataset.element_spec,
-      gen_dataset_ops.dataset_to_single_element(
-          dataset._variant_tensor, **dataset._flat_structure))  # pylint: disable=protected-access
+  return dataset.get_single_element()
