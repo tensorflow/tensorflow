@@ -2779,7 +2779,7 @@ def stateless_random_jpeg_quality(image,
                                   min_jpeg_quality,
                                   max_jpeg_quality,
                                   seed):
-  """Deterministically radomize jpeg encoding quality for inducing jpeg noise.
+  """Deterministically randomize jpeg encoding quality for inducing jpeg noise.
 
   Guarantees the same results given the same `seed` independent of how many
   times the function is called, and independent of global seed settings (e.g.
