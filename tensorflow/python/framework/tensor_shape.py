@@ -83,7 +83,9 @@ def enable_v2_tensorshape():
   """
   global _TENSORSHAPE_V2_OVERRIDE  # pylint: disable=invalid-name
   _TENSORSHAPE_V2_OVERRIDE = True
+  # copybara:comment_begin(Reduce verbosity for OSS users)
   logging.info("Enabling v2 tensorshape")
+  # copybara:comment_end
   _api_usage_gauge.get_cell().set(True)
 
 
@@ -95,7 +97,9 @@ def disable_v2_tensorshape():
   """
   global _TENSORSHAPE_V2_OVERRIDE  # pylint: disable=invalid-name
   _TENSORSHAPE_V2_OVERRIDE = False
+  # copybara:comment_begin(Reduce verbosity for OSS users)
   logging.info("Disabling v2 tensorshape")
+  # copybara:comment_end
   _api_usage_gauge.get_cell().set(False)
 
 
