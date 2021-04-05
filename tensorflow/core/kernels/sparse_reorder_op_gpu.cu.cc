@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -47,14 +47,14 @@ __global__ void IndicesFlattenKernel(
 template <typename T>
 __global__ void PermuteIndicesAndValuesKernel(
     const int64* __restrict__ indices, const T* __restrict__ values,
-    const int64 nnz, const int64 ndims, const int64* __restrict__ permutes,
+    const int64 nnz, const int64 ndims, const int64* __restrict__ permutation,
     int64* reordered_indices, T* reordered_values) {
   GPU_1D_KERNEL_LOOP(thread_idx, nnz) {
     for (int i = 0; i < ndims; i++) {
       reordered_indices[thread_idx * ndims + i] =
-          indices[permutes[thread_idx] * ndims + i];
+          indices[permutation[thread_idx] * ndims + i];
     }
-    reordered_values[thread_idx] = values[permutes[thread_idx]];
+    reordered_values[thread_idx] = values[permutation[thread_idx]];
   }
 }
 
@@ -77,48 +77,48 @@ struct SparseReorderFunctor<GPUDevice, T> {
     auto values = input_val.template flat<T>().data();
     auto dims = input_shape_in.template flat<int64>().data();
 
-    if (num_elems > 0) {
-      Tensor flat_indices_tensor;
-      OP_REQUIRES_OK(c, c->allocate_temp(DT_INT64, TensorShape({num_elems}),
-                                         &flat_indices_tensor));
-      auto flat_indices = flat_indices_tensor.template flat<int64>().data();
+    if (num_elems <= 0) return;
 
-      GpuLaunchConfig config = GetGpuLaunchConfig(num_elems, d);
-      OP_REQUIRES_OK(c, GpuLaunchKernel(
-          IndicesFlattenKernel, config.block_count,
-          config.thread_per_block, 0, d.stream(), indices, num_elems,
-          dims, num_dims, flat_indices));
+    Tensor flat_indices_tensor;
+    OP_REQUIRES_OK(c, c->allocate_temp(DT_INT64, TensorShape({num_elems}),
+                                       &flat_indices_tensor));
+    auto flat_indices = flat_indices_tensor.template flat<int64>().data();
 
-      Tensor permutes_tensor;
-      OP_REQUIRES_OK(c, c->allocate_temp(DT_INT64, {num_elems},
-                                         &permutes_tensor));
-      auto permutes_data = permutes_tensor.template flat<int64>().data();
+    GpuLaunchConfig config = GetGpuLaunchConfig(num_elems, d);
+    OP_REQUIRES_OK(c, GpuLaunchKernel(
+        IndicesFlattenKernel, config.block_count,
+        config.thread_per_block, 0, d.stream(), indices, num_elems,
+        dims, num_dims, flat_indices));
 
-      OP_REQUIRES_OK(c, GpuRadixSort(c, num_elems, /*keys_in=*/flat_indices,
-                            /*keys_out=*/static_cast<int64*>(nullptr),
-                            /*indices_in=*/static_cast<const int64*>(nullptr),
-                            /*indices_out=*/permutes_data));
+    Tensor permutation_tensor;
+    OP_REQUIRES_OK(c, c->allocate_temp(DT_INT64, {num_elems},
+                                       &permutation_tensor));
+    auto permutation_data = permutation_tensor.template flat<int64>().data();
 
-      // Free temporary tensor that is no longer needed.
-      flat_indices_tensor = Tensor();
-      flat_indices = nullptr;
+    OP_REQUIRES_OK(c, GpuRadixSort(c, num_elems, /*keys_in=*/flat_indices,
+                          /*keys_out=*/static_cast<int64*>(nullptr),
+                          /*indices_in=*/static_cast<const int64*>(nullptr),
+                          /*indices_out=*/permutation_data));
 
-      Tensor* reordered_ind_tensor = nullptr;
-      Tensor* reordered_val_tensor = nullptr;
-      OP_REQUIRES_OK(c, c->allocate_output(0, input_ind.shape(),
-                                           &reordered_ind_tensor));
-      OP_REQUIRES_OK(c, c->allocate_output(1, input_val.shape(),
-                                           &reordered_val_tensor));
-      auto reordered_ind_data =
-          reordered_ind_tensor->template flat<int64>().data();
-      auto reordered_val_data =
-          reordered_val_tensor->template flat<T>().data();
+    // Free temporary tensor that is no longer needed.
+    flat_indices_tensor = Tensor();
+    flat_indices = nullptr;
 
-      OP_REQUIRES_OK(c, GpuLaunchKernel(
-          PermuteIndicesAndValuesKernel<T>, config.block_count,
-          config.thread_per_block, 0, d.stream(), indices, values, num_elems,
-          num_dims, permutes_data, reordered_ind_data, reordered_val_data));
-    }
+    Tensor* reordered_ind_tensor = nullptr;
+    Tensor* reordered_val_tensor = nullptr;
+    OP_REQUIRES_OK(c, c->allocate_output(0, input_ind.shape(),
+                                         &reordered_ind_tensor));
+    OP_REQUIRES_OK(c, c->allocate_output(1, input_val.shape(),
+                                         &reordered_val_tensor));
+    auto reordered_ind_data =
+        reordered_ind_tensor->template flat<int64>().data();
+    auto reordered_val_data =
+        reordered_val_tensor->template flat<T>().data();
+
+    OP_REQUIRES_OK(c, GpuLaunchKernel(
+        PermuteIndicesAndValuesKernel<T>, config.block_count,
+        config.thread_per_block, 0, d.stream(), indices, values, num_elems,
+        num_dims, permutation_data, reordered_ind_data, reordered_val_data));
   }
 };
 
