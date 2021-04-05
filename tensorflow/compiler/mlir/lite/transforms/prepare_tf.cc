@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
@@ -1447,6 +1448,13 @@ void PrepareTFPass::runOnFunction() {
   }
 
   if (failed(ConvertTf2XlaOps(func, ctx))) {
+    signalPassFailure();
+    return;
+  }
+
+  // Before the tf.FakeQuant* ops being folded, tfl.quantize and tfl.dequantize
+  // ops are created to preserve the quantization parameters.
+  if (failed(ConvertFakeQuantOps(func, ctx))) {
     signalPassFailure();
     return;
   }

@@ -4500,7 +4500,8 @@ def TFL_CustomTfOp : Op<TFL_Dialect, "custom_tf", [
   NoSideEffect,
   NoQuantizableResult,
   IsolatedFromAbove,
-  SingleBlockImplicitTerminator<"YieldOp">]> {
+  SingleBlockImplicitTerminator<"YieldOp">,
+  DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Wrapper Op for TF custom ops.";
 
   let description = [{
@@ -4518,6 +4519,11 @@ def TFL_CustomTfOp : Op<TFL_Dialect, "custom_tf", [
   let results = (outs Variadic<AnyTensor>:$output);
 
   let regions = (region SizedRegion<1>:$body);
+
+  let extraClassDeclaration = [{
+    // Returns whether the return types are compatible.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+  }];
 }
 
 def TFL_BroadcastToOp : TFL_Op<"broadcast_to", [

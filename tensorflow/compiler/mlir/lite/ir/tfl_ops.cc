@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 
@@ -783,6 +784,33 @@ static LogicalResult Verify(CustomOp op) {
     return op.emitOpError(
         "custom_option should have the same length of content with shape.");
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CustomTfOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CustomTfOp::inferReturnTypes(
+    MLIRContext *, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attr, RegionRange ranges,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  CustomTfOpAdaptor op(operands, attr, ranges);
+
+  if (op.getRegions().empty()) return success();
+  auto *real_op = &op.body().front().front();
+  if (llvm::isa<TF::FakeQuantWithMinMaxArgsOp, TF::FakeQuantWithMinMaxVarsOp,
+                TF::FakeQuantWithMinMaxVarsPerChannelOp>(real_op)) {
+    Value input = *operands.begin();
+    inferredReturnTypes.assign({input.getType()});
+  }
+  return success();
+}
+
+bool CustomTfOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
+  if (lhs.empty()) return true;
+  if (lhs.size() != rhs.size() || lhs.size() != 1) return false;
+  if (failed(mlir::verifyCompatibleShape(lhs[0], rhs[0]))) return false;
+  return true;
 }
 
 //===----------------------------------------------------------------------===//

@@ -172,6 +172,26 @@ func @fakeQuantForActivationNoDuplication(tensor<8xf32>) -> (tensor<8x!quant.uni
 // CHECK:  return %1
 }
 
+// CHECK-LABEL: WrappedFakeQuantFolded
+func @WrappedFakeQuantFolded() -> tensor<8xf32> {
+  %in = constant dense<0.0> : tensor<8xf32>
+  %min = constant dense<0.0> : tensor<f32>
+  %max = constant dense<255.0> : tensor<f32>
+  %mini = "tf.Identity"(%min) : (tensor<f32>) -> tensor<f32>
+  %maxi = "tf.Identity"(%max) : (tensor<f32>) -> tensor<f32>
+  %rst = "tfl.custom_tf"(%in, %mini, %maxi) ( {
+  ^bb0(%arg1: tensor<8xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>):
+    %2 = "tf.FakeQuantWithMinMaxVars"(%arg1, %arg2, %arg3) {num_bits = 3, narrow_range = false} : (tensor<8xf32>, tensor<f32>, tensor<f32>) -> tensor<8xf32>
+    "tfl.yield"(%2) : (tensor<8xf32>) -> ()
+  }) {num_bits = 3, narrow_range = false} :  (tensor<8xf32>, tensor<f32>, tensor<f32>) -> tensor<8xf32>
+  return %rst : tensor<8xf32>
+
+// CHECK: %[[CONSTANT:.*]] = constant dense<0.000000e+00> : tensor<8xf32>
+// CHECK: %[[QUANTIZE:.*]] = "tfl.quantize"(%[[CONSTANT]]) {qtype = tensor<8x!quant.uniform<u8:f32, 1.000000e+00>>}
+// CHECK: %[[DEQUANTIZE:.*]] = "tfl.dequantize"(%[[QUANTIZE]])
+// CHECK: return %[[DEQUANTIZE]] : tensor<8xf32>
+}
+
 // CHECK-LABEL: fakeQuantFolded
 func @fakeQuantFolded() -> (tensor<8xf32>) {
   %in = constant dense<0.0> : tensor<8xf32>
