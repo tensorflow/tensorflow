@@ -1330,12 +1330,12 @@ def function(func=None,
              experimental_autograph_options=None,
              experimental_relax_shapes=False,
              experimental_compile=None,
-             experimental_follow_type_hints=None):
+             experimental_follow_type_hints=None) -> core.GenericFunction:
   """Compiles a function into a callable TensorFlow graph.
 
-  `tf.function` constructs a callable that executes a TensorFlow graph
-  (`tf.Graph`) created by trace-compiling the TensorFlow operations in `func`,
-  effectively executing `func` as a TensorFlow graph.
+  `tf.function` constructs a `tf.types.experimental.GenericFunction` that
+  executes a TensorFlow graph (`tf.Graph`) created by trace-compiling the
+  TensorFlow operations in `func`.
 
   Example usage:
 
@@ -1347,7 +1347,11 @@ def function(func=None,
   >>> f(x, y)
   <tf.Tensor: ... numpy=array([7, 7], ...)>
 
-  _Features_
+  The trace-compilation allows non-TensorFlow operations to execute, but under
+  special conditions. In general, only TensorFlow operations are guaranteed to
+  run and create fresh results whenever the `GenericFunction` is called.
+
+  ## Features
 
   `func` may use data-dependent control flow, including `if`, `for`, `while`
   `break`, `continue` and `return` statements:
@@ -1408,17 +1412,26 @@ def function(func=None,
   >>> f(tf.constant([1, 2, 3]))
   <tf.Tensor: ..., numpy=array([2, 3, 4], ...)>
 
-  _`tf.function` is polymorphic_
+  ## `tf.function` creates polymorphic callables
 
-  Internally, `tf.function` can build more than one graph, to support arguments
-  with different data types or shapes, since TensorFlow can build more
-  efficient graphs that are specialized on shapes and dtypes. `tf.function`
-  also treats any pure Python value as opaque objects, and builds a separate
-  graph for each set of Python arguments that it encounters.
+  Internally, `tf.types.experimental.GenericFunction` may contain multiple
+  `tf.types.experimental.ConcreteFunction`s, each specialized to arguments with
+  different data types or shapes, since TensorFlow can perform more
+  optimizations on graphs of specific shapes, dtypes and values of constant
+  arguments. `tf.function` treats any pure Python values as opaque objects (best
+  thought of as compile-time constants), and builds a separate `tf.Graph` for
+  each set of Python arguments that it encounters.
+  For more information, see the
+  [tf.function guide](https://www.tensorflow.org/guide/function?hl=en#rules_of_tracing)
 
-  To obtain an individual graph, use the `get_concrete_function` method of
-  the callable created by `tf.function`. It can be called with the same
-  arguments as `func` and returns a special `tf.Graph` object:
+  Executing a `GenericFunction` will select and execute the appropriate
+  `ConcreteFunction` based on the argument types and values.
+
+  To obtain an individual `ConcreteFunction`, use the
+  `GenericFunction.get_concrete_function` method. It can be called with the
+  same arguments as `func` and returns a
+  `tf.types.experimental.ConcreteFunction`. `ConcreteFunction`s are backed by a
+  single `tf.Graph`:
 
   >>> @tf.function
   ... def f(x):
@@ -1426,15 +1439,27 @@ def function(func=None,
   >>> isinstance(f.get_concrete_function(1).graph, tf.Graph)
   True
 
+  `ConcreteFunction`s can be executed just like `GenericFunction`s, but their
+  input is resticted to the types to which they're specialized.
+
+  ## Retracing
+
+  `ConcreteFunctions` are built (traced) on the fly, as the `GenericFunction` is
+  called with new TensorFlow types or shapes, or with new Python values as
+  arguments. When `GenericFunction` builds a new trace, it is said that `func`
+  is retraced. Retracing is a frequent performance concern for `tf.function` as
+  it can be considerably slower than executing a graph that's already been
+  traced. It is ideal to minimize the amount of retracing in your code.
+
   Caution: Passing python scalars or lists as arguments to `tf.function` will
-  always build a new graph. To avoid this, pass numeric arguments as Tensors
-  whenever possible:
+  usually retrace. To avoid this, pass numeric arguments as Tensors whenever
+  possible:
 
   >>> @tf.function
   ... def f(x):
   ...   return tf.abs(x)
   >>> f1 = f.get_concrete_function(1)
-  >>> f2 = f.get_concrete_function(2)  # Slow - builds new graph
+  >>> f2 = f.get_concrete_function(2)  # Slow - compiles new graph
   >>> f1 is f2
   False
   >>> f1 = f.get_concrete_function(tf.constant(1))
@@ -1445,11 +1470,11 @@ def function(func=None,
   Python numerical arguments should only be used when they take few distinct
   values, such as hyperparameters like the number of layers in a neural network.
 
-  _Input signatures_
+  ## Input signatures
 
-  For Tensor arguments, `tf.function` instantiates a separate graph for every
-  unique set of input shapes and datatypes. The example below creates two
-  separate graphs, each specialized to a different shape:
+  For Tensor arguments, `GenericFunction`creates a new `ConcreteFunction` for
+  every unique set of input shapes and datatypes. The example below creates two
+  separate `ConcreteFunction`s, each specialized to a different shape:
 
   >>> @tf.function
   ... def f(x):
@@ -1460,11 +1485,11 @@ def function(func=None,
   False
 
   An "input signature" can be optionally provided to `tf.function` to control
-  the graphs traced. The input signature specifies the shape and type of each
+  this process. The input signature specifies the shape and type of each
   Tensor argument to the function using a `tf.TensorSpec` object. More general
-  shapes can be used. This is useful to avoid creating multiple graphs when
-  Tensors have dynamic shapes. It also restricts the shape and datatype of
-  Tensors that can be used:
+  shapes can be used. This ensures only one `ConcreteFunction` is created, and
+  restricts the `GenericFunction` to the specified shapes and types. It is
+  an effective way to limit retracing when Tensors have dynamic shapes.
 
   >>> @tf.function(
   ...     input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32)])
@@ -1475,7 +1500,7 @@ def function(func=None,
   >>> f.get_concrete_function(vector) is f.get_concrete_function(matrix)
   True
 
-  _Variables may only be created once_
+  ## Variables may only be created once
 
   `tf.function` only allows creating new `tf.Variable` objects when it is called
   for the first time:
@@ -1490,15 +1515,62 @@ def function(func=None,
   ...       self.v = tf.Variable(tf.ones_like(x))
   ...     return self.v * x
 
-  In general, it is recommended to create stateful objects like `tf.Variable`
-  outside of `tf.function` and passing them as arguments.
+  In general, it is recommended to create `tf.Variable`s outside of
+  `tf.function`.
+  In simple cases, persisting state across `tf.function` boundaries may be
+  implemented using a pure functional style in which state is represented by
+  `tf.Tensor`s passed as arguments and returned as return values.
 
-  _Using type annotations to improve performance_
+  Contrast the two styles below:
+
+  >>> state = tf.Variable(1)
+  >>> @tf.function
+  ... def f(x):
+  ...   state.assign_add(x)
+  >>> f(tf.constant(2))  # Non-pure functional style
+  >>> state
+  <tf.Variable ... numpy=3>
+
+  >>> state = tf.constant(1)
+  >>> @tf.function
+  ... def f(state, x):
+  ...   state += x
+  ...   return state
+  >>> state = f(state, tf.constant(2))  # Pure functional style
+  >>> state
+  <tf.Tensor: ... numpy=3>
+
+  ## Python operations execute only once per trace
+
+  `func` may contain TensorFlow operations mixed with pure Python operations.
+  However, when the function is executed, only the TensorFlow operations will
+  run. The Python operations run only once, at trace time. If TensorFlow
+  operations depend on results from Pyhton operations, those results will be
+  frozen into the graph.
+
+  >>> @tf.function
+  ... def f(a, b):
+  ...   print('this runs at trace time; a is', a, 'and b is', b)
+  ...   return b
+  >>> f(1, tf.constant(1))
+  this runs at trace time; a is 1 and b is Tensor("...", shape=(), dtype=int32)
+  <tf.Tensor: shape=(), dtype=int32, numpy=1>
+
+  >>> f(1, tf.constant(2))
+  <tf.Tensor: shape=(), dtype=int32, numpy=2>
+
+  >>> f(2, tf.constant(1))
+  this runs at trace time; a is 2 and b is Tensor("...", shape=(), dtype=int32)
+  <tf.Tensor: shape=(), dtype=int32, numpy=1>
+
+  >>> f(2, tf.constant(2))
+  <tf.Tensor: shape=(), dtype=int32, numpy=2>
+
+  ## Using type annotations to improve performance
 
   'experimental_follow_type_hints` can be used along with type annotations to
-  improve performance by reducing the number of expensive graph retracings.
-  For example, an argument annotated with `tf.Tensor` is converted to Tensor
-  even when the input is a non-Tensor value.
+  reduce retracing by automatically casting any Python values to `tf.Tensor`
+  (something that is not done by default, unless you use input signatures).
 
   >>> @tf.function(experimental_follow_type_hints=True)
   ... def f_with_hints(x: tf.Tensor):
@@ -1580,16 +1652,14 @@ def function(func=None,
       to a Tensor.
 
   Returns:
-     If `func` is not None, returns a callable that will execute the compiled
-     function (and return zero or more `tf.Tensor` objects).
+     If `func` is not None, returns a `tf.types.experimental.GenericFunction`.
      If `func` is None, returns a decorator that, when invoked with a single
-     `func` argument, returns a callable equivalent to the case above.
+     `func` argument, returns a `tf.types.experimental.GenericFunction`.
 
   Raises:
-     ValueError when attempting to use jit_compile=True, but XLA support is not
-     linked.
+     `ValueError` when attempting to use `jit_compile=True`, but XLA support is
+     not available.
   """
-  # TODO(mdan): Link to `tf.types` section once published.
   if input_signature is not None:
     function_lib.validate_signature(input_signature)
   if experimental_follow_type_hints is None:
