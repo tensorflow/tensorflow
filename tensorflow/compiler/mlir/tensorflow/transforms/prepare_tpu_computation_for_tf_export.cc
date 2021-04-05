@@ -77,14 +77,8 @@ class RewriteXlaHostComputeMlir
     StringRef host_module = op.host_mlir_module();
     if (!host_module.empty()) {
       mlir::OwningModuleRef module_for_func;
-      if (!tensorflow::DeserializeMlirModule(host_module.str(),
-                                             op->getContext(), &module_for_func)
-               .ok()) {
-        return failure();
-      }
 
-      FuncOp func = module_for_func->lookupSymbol<FuncOp>("host_func");
-      if (!func) return failure();
+      FuncOp func = op.GetHostFunc(&module_for_func);
 
       OpBuilder::InsertionGuard guard(rewriter);
       rewriter.setInsertionPointAfter(op->getParentOfType<FuncOp>());

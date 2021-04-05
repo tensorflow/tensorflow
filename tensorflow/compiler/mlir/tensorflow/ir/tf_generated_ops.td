@@ -18692,6 +18692,10 @@ A pseudo-op to represent host-side computation in an XLA program.
   TF_DerivedOperandTypeListAttr Tinputs = TF_DerivedOperandTypeListAttr<0>;
   TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
 
+  let extraClassDeclaration = [{
+    FuncOp GetHostFunc(mlir::OwningModuleRef* mlir_module);
+  }];
+
   let verifier = [{ return Verify(*this); }];
 }
 
