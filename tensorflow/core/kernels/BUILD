@@ -4597,10 +4597,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_fill_empty_rows_op",
     prefix = "sparse_fill_empty_rows_op",
-    deps = SPARSE_DEPS + [":gpu_prim_hdrs"] + if_cuda_or_rocm([
-        ":gpu_prim_helpers",
-        "//tensorflow/core/util:cuda_solvers",
-    ]),
+    deps = SPARSE_DEPS,
 )
 
 tf_kernel_library(
