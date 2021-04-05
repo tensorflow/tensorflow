@@ -120,7 +120,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
-        "//tensorflow/python/data/ops:dataset_ops"
+        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 
