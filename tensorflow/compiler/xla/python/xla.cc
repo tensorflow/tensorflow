@@ -111,12 +111,14 @@ PYBIND11_MODULE(xla_extension, m) {
           "id", &PjRtDevice::id,
           "Integer ID of this device.\n\nUnique across all available devices "
           "of this type, including remote devices on multi-host platforms.")
-      .def_property_readonly("host_id", &PjRtDevice::task_id,
-                             "Integer ID of this device's task.\n\n"
-                             "This is always 0 except on multi-task platforms.")
-      .def_property_readonly("task_id", &PjRtDevice::task_id,
-                             "Integer ID of this device's task.\n\n"
-                             "This is always 0 except on multi-task platforms.")
+      .def_property_readonly(
+          "process_index", &PjRtDevice::process_index,
+          "Integer index of this device's process.\n\n"
+          "This is always 0 except on multi-process platforms.")
+      .def_property_readonly("host_id", &PjRtDevice::process_index,
+                             "Deprecated; please use process_index")
+      .def_property_readonly("task_id", &PjRtDevice::process_index,
+                             "Deprecated; please use process_index")
       .def_property_readonly("platform",
                              [](const PjRtDevice& device) {
                                return device.client()->platform_name();
@@ -158,8 +160,8 @@ PYBIND11_MODULE(xla_extension, m) {
 
   py::class_<GpuDevice, PjRtDevice, ClientAndPtr<GpuDevice>>(m, "GpuDevice")
       .def("__repr__", [](const GpuDevice& device) {
-        return absl::StrFormat("GpuDevice(id=%i, task=%i)", device.id(),
-                               device.task_id());
+        return absl::StrFormat("GpuDevice(id=%i, process_index=%i)",
+                               device.id(), device.process_index());
       });
 
   py::class_<PjRtTpuDevice, PjRtDevice, ClientAndPtr<PjRtTpuDevice>>(
@@ -175,9 +177,9 @@ PYBIND11_MODULE(xla_extension, m) {
           "The index of this TpuDevice's core on the TPU chip.")
       .def("__repr__", [](const PjRtTpuDevice& device) {
         return absl::StrFormat(
-            "TpuDevice(id=%i, task=%i, coords=(%s), core_on_chip=%i)",
-            device.id(), device.task_id(), absl::StrJoin(device.coords(), ","),
-            device.core_on_chip());
+            "TpuDevice(id=%i, process_index=%i, coords=(%s), core_on_chip=%i)",
+            device.id(), device.process_index(),
+            absl::StrJoin(device.coords(), ","), device.core_on_chip());
       });
 
   // Local XLA client methods.
@@ -208,8 +210,9 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("devices", &PyClient::Devices)
       .def("local_devices", &PyClient::LocalDevices)
       .def("live_buffers", &PyClient::LiveBuffers)
-      .def("host_id", &PyClient::task_id)
-      .def("task_id", &PyClient::task_id)
+      .def("process_index", &PyClient::process_index)
+      .def("host_id", &PyClient::process_index)
+      .def("task_id", &PyClient::process_index)
       .def("get_default_device_assignment",
            &PyClient::GetDefaultDeviceAssignment)
       // TODO(skye): delete after all callers can handle 2D output
