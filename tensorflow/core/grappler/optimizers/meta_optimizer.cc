@@ -219,10 +219,12 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
              /*CPU layout conversion*/ cfg_.cpu_layout_conversion()));
   MK_OPT("auto_mixed_precision", "auto_mixed_precision",
          new AutoMixedPrecision(AutoMixedPrecisionMode::CUDA));
+#ifdef INTEL_MKL
   if (IsMKLEnabled()) {
     MK_OPT("auto_mixed_precision_mkl", "auto_mixed_precision_mkl",
            new AutoMixedPrecision(AutoMixedPrecisionMode::MKL));
   }
+#endif
   MK_OPT("memory", "memory_optimization",
          new MemoryOptimizer(RewriterConfig::MANUAL));
   MK_OPT("common_subgraph_elimination", "common_subgraph_elimination",
@@ -310,6 +312,7 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(
         MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::CUDA));
   }
+#ifdef INTEL_MKL
   if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_mkl()) &&
       AutoMixedPrecisionEnabled(
           plugin_configs.toggle_config["auto_mixed_precision_mkl"]) &&
@@ -317,6 +320,7 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(
         MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::MKL));
   }
+#endif
   if (BOTH_ARE_ON(pin_to_host_optimization)) {
     optimizers->push_back(MakeUnique<PinToHostOptimizer>());
   }
