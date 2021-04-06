@@ -1999,8 +1999,10 @@ def unique(x,
     x: A Tensor. 1-D.
     out_idx: An optional tf.DType from: tf.int32, tf.int64. Defaults to
       tf.int32.
-    auto_adjust_uniq_table_size: When the repetition rate is high, some
-      performance can be improved by adjusting this parameter.
+    auto_adjust_uniq_table_size: A `bool`. If `True`, Heuristic adjustment
+      of memory usage in unique op to decrease DRAM bound and improve
+      performance, else fixed memory usage(2*input_size) in unique op.
+      Defaults to `False`.
     name: A name for the operation (optional).
 
   Returns:
