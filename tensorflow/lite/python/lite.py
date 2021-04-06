@@ -221,13 +221,14 @@ class QuantizationMode(object):
   """QuantizationMode determines the quantization type from user options."""
 
   def __init__(self, optimizations, target_spec, representative_dataset,
-               graph_def):
+               graph_def, disable_per_channel=False):
     self._optimizations = optimizations
     self._target_spec = target_spec
     self._representative_dataset = representative_dataset
     self._graph_def = graph_def
 
     self._validate_int8_required()
+    self._disable_per_channel = disable_per_channel
 
   # TODO(b/162537905): Refactor the following quantization functions -
   # re-organize and refactor for better readability.
@@ -342,7 +343,8 @@ class QuantizationMode(object):
           "inference_input_type": inference_input_type,
           "inference_output_type": inference_output_type,
           "activations_type": self.activations_type(),
-          "allow_float": False
+          "allow_float": False,
+          "disable_per_channel": self._disable_per_channel,
       }
     elif self.post_training_int8_allow_float() \
       or self.post_training_int16x8_allow_float():
@@ -350,7 +352,8 @@ class QuantizationMode(object):
           "inference_input_type": inference_input_type,
           "inference_output_type": inference_output_type,
           "activations_type": self.activations_type(),
-          "allow_float": True
+          "allow_float": True,
+          "disable_per_channel": self._disable_per_channel,
       }
     else:
       return False, None
@@ -454,6 +457,7 @@ class TFLiteConverterBase(object):
     self._experimental_new_quantizer = None
     self._experimental_calibrate_only = False
     self._experimental_sparsify_model = False
+    self._experimental_disable_per_channel = False
     self._debug_info = None  # contains the stack traces of all the original
     # nodes in the `GraphDef` to the converter.
     self.saved_model_dir = None
@@ -490,7 +494,7 @@ class TFLiteConverterBase(object):
 
   def _calibrate_quantize_model(self, result, inference_input_type,
                                 inference_output_type, activations_type,
-                                allow_float):
+                                allow_float, disable_per_channel):
     """Calibrate and quantize the model."""
     # pylint: disable=protected-access
     custom_op_registerers_by_name = [
@@ -521,11 +525,12 @@ class TFLiteConverterBase(object):
         activations_type != _dtypes.int16):
       # TODO(b/175659372): remove the activations_type restriction and enable
       # it for all the activation types.
-      return _mlir_quantize(calibrated)
+      return _mlir_quantize(calibrated, disable_per_channel)
     else:
       return calibrate_quantize.calibrate_and_quantize(
           self.representative_dataset.input_gen, inference_input_type,
-          inference_output_type, allow_float, activations_type)
+          inference_output_type, allow_float, activations_type,
+          disable_per_channel=disable_per_channel)
 
   def _is_unknown_shapes_allowed(self):
     # Unknown dimensions are only allowed with the new converter.
@@ -731,7 +736,8 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
     # Update conversion params with graph_def.
     self._save_conversion_params_metric({}, graph_def)
     quant_mode = QuantizationMode(self.optimizations, self.target_spec,
-                                  self.representative_dataset, graph_def)
+                                  self.representative_dataset, graph_def,
+                                  self._experimental_disable_per_channel)
 
     self._validate_inference_input_output_types(quant_mode)
     self._validate_experimental_new_quantizer_flag()
@@ -893,7 +899,8 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     # Get quantization options and do some sanity checks.
     quant_mode = QuantizationMode(self.optimizations, self.target_spec,
                                   self.representative_dataset,
-                                  meta_graph.graph_def)
+                                  meta_graph.graph_def,
+                                  self._experimental_disable_per_channel)
     self._validate_inference_input_output_types(quant_mode)
 
     converter_kwargs.update(self._get_base_converter_args())
@@ -1389,7 +1396,8 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
         None value for dimension in input_tensor.
     """
     quant_mode = QuantizationMode(self.optimizations, self.target_spec,
-                                  self.representative_dataset, self._graph_def)
+                                  self.representative_dataset, self._graph_def,
+                                  self._experimental_disable_per_channel)
 
     if (not self._is_unknown_shapes_allowed() and self._has_valid_tensors()):
       # Checks dimensions in input tensor.
