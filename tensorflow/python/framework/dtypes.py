@@ -26,7 +26,6 @@ from tensorflow.core.framework import types_pb2
 # pylint: disable=invalid-import-order,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.framework import _dtypes
-from tensorflow.python.types import doc_typealias
 from tensorflow.python.lib.core import _pywrap_bfloat16
 from tensorflow.python.util.tf_export import tf_export
 
@@ -37,17 +36,34 @@ _np_bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
 class DType(_dtypes.DType):
   """Represents the type of the elements in a `Tensor`.
 
-  `DType`s are used to specify the output data type for operations which
-  require it, or to inspect the data type of existing `Tensor`s.
+  The following `DType` objects are defined:
 
-  Examples:
+  * `tf.float16`: 16-bit half-precision floating-point.
+  * `tf.float32`: 32-bit single-precision floating-point.
+  * `tf.float64`: 64-bit double-precision floating-point.
+  * `tf.bfloat16`: 16-bit truncated floating-point.
+  * `tf.complex64`: 64-bit single-precision complex.
+  * `tf.complex128`: 128-bit double-precision complex.
+  * `tf.int8`: 8-bit signed integer.
+  * `tf.uint8`: 8-bit unsigned integer.
+  * `tf.uint16`: 16-bit unsigned integer.
+  * `tf.uint32`: 32-bit unsigned integer.
+  * `tf.uint64`: 64-bit unsigned integer.
+  * `tf.int16`: 16-bit signed integer.
+  * `tf.int32`: 32-bit signed integer.
+  * `tf.int64`: 64-bit signed integer.
+  * `tf.bool`: Boolean.
+  * `tf.string`: String.
+  * `tf.qint8`: Quantized 8-bit signed integer.
+  * `tf.quint8`: Quantized 8-bit unsigned integer.
+  * `tf.qint16`: Quantized 16-bit signed integer.
+  * `tf.quint16`: Quantized 16-bit unsigned integer.
+  * `tf.qint32`: Quantized 32-bit signed integer.
+  * `tf.resource`: Handle to a mutable resource.
+  * `tf.variant`: Values of arbitrary types.
 
-  >>> tf.constant(1, dtype=tf.int64)
-  <tf.Tensor: shape=(), dtype=int64, numpy=1>
-  >>> tf.constant(1.0).dtype
-  tf.float32
-
-  See `tf.dtypes` for a complete list of `DType`s defined.
+  The `tf.as_dtype()` function converts numpy types and string type
+  names to a `DType` object.
   """
   __slots__ = ()
 
@@ -217,151 +233,59 @@ dtype_range = {
 
 # Define standard wrappers for the types_pb2.DataType enum.
 resource = DType(types_pb2.DT_RESOURCE)
-doc_typealias.document(
-    obj=resource,
-    doc="Handle to a mutable, dynamically allocated resource.")
 tf_export("dtypes.resource", "resource").export_constant(__name__, "resource")
-
 variant = DType(types_pb2.DT_VARIANT)
-doc_typealias.document(
-    obj=variant,
-    doc="Data of arbitrary type (known at runtime).")
 tf_export("dtypes.variant", "variant").export_constant(__name__, "variant")
-
-uint8 = DType(types_pb2.DT_UINT8)
-doc_typealias.document(
-    obj=uint8,
-    doc="Unsigned 8-bit (byte) integer.")
-tf_export("dtypes.uint8", "uint8").export_constant(__name__, "uint8")
-
-uint16 = DType(types_pb2.DT_UINT16)
-doc_typealias.document(
-    obj=uint16,
-    doc="Unsigned 16-bit (word) integer.")
-tf_export("dtypes.uint16", "uint16").export_constant(__name__, "uint16")
-
-uint32 = DType(types_pb2.DT_UINT32)
-doc_typealias.document(
-    obj=uint16,
-    doc="Unsigned 32-bit (dword) integer.")
-tf_export("dtypes.uint32", "uint32").export_constant(__name__, "uint32")
-
-uint64 = DType(types_pb2.DT_UINT64)
-doc_typealias.document(
-    obj=uint64,
-    doc="Unsigned 64-bit (qword) integer.")
-tf_export("dtypes.uint64", "uint64").export_constant(__name__, "uint64")
-
-int8 = DType(types_pb2.DT_INT8)
-doc_typealias.document(
-    obj=int8,
-    doc="Signed 8-bit integer.")
-tf_export("dtypes.int8", "int8").export_constant(__name__, "int8")
-
-int16 = DType(types_pb2.DT_INT16)
-doc_typealias.document(
-    obj=int16,
-    doc="Signed 16-bit integer.")
-tf_export("dtypes.int16", "int16").export_constant(__name__, "int16")
-
-int32 = DType(types_pb2.DT_INT32)
-doc_typealias.document(
-    obj=int32,
-    doc="Signed 32-bit integer.")
-tf_export("dtypes.int32", "int32").export_constant(__name__, "int32")
-
-int64 = DType(types_pb2.DT_INT64)
-doc_typealias.document(
-    obj=int64,
-    doc="Signed 64-bit integer.")
-tf_export("dtypes.int64", "int64").export_constant(__name__, "int64")
-
 float16 = DType(types_pb2.DT_HALF)
-half = float16
-doc_typealias.document(
-    obj=float16,
-    doc="16-bit (half precision) floating-point.")
 tf_export("dtypes.float16", "float16").export_constant(__name__, "float16")
+half = float16
 tf_export("dtypes.half", "half").export_constant(__name__, "half")
-
 float32 = DType(types_pb2.DT_FLOAT)
-doc_typealias.document(
-    obj=float32,
-    doc="32-bit (single precision) floating-point.")
 tf_export("dtypes.float32", "float32").export_constant(__name__, "float32")
-
 float64 = DType(types_pb2.DT_DOUBLE)
-doc_typealias.document(
-    obj=float64,
-    doc="64-bit (double precision) floating-point.")
 tf_export("dtypes.float64", "float64").export_constant(__name__, "float64")
 double = float64
 tf_export("dtypes.double", "double").export_constant(__name__, "double")
-
+int32 = DType(types_pb2.DT_INT32)
+tf_export("dtypes.int32", "int32").export_constant(__name__, "int32")
+uint8 = DType(types_pb2.DT_UINT8)
+tf_export("dtypes.uint8", "uint8").export_constant(__name__, "uint8")
+uint16 = DType(types_pb2.DT_UINT16)
+tf_export("dtypes.uint16", "uint16").export_constant(__name__, "uint16")
+uint32 = DType(types_pb2.DT_UINT32)
+tf_export("dtypes.uint32", "uint32").export_constant(__name__, "uint32")
+uint64 = DType(types_pb2.DT_UINT64)
+tf_export("dtypes.uint64", "uint64").export_constant(__name__, "uint64")
+int16 = DType(types_pb2.DT_INT16)
+tf_export("dtypes.int16", "int16").export_constant(__name__, "int16")
+int8 = DType(types_pb2.DT_INT8)
+tf_export("dtypes.int8", "int8").export_constant(__name__, "int8")
+string = DType(types_pb2.DT_STRING)
+tf_export("dtypes.string", "string").export_constant(__name__, "string")
 complex64 = DType(types_pb2.DT_COMPLEX64)
-doc_typealias.document(
-    obj=complex64,
-    doc="64-bit complex.")
 tf_export("dtypes.complex64",
           "complex64").export_constant(__name__, "complex64")
-
 complex128 = DType(types_pb2.DT_COMPLEX128)
-doc_typealias.document(
-    obj=complex128,
-    doc="128-bit complex.")
 tf_export("dtypes.complex128",
           "complex128").export_constant(__name__, "complex128")
-
-string = DType(types_pb2.DT_STRING)
-doc_typealias.document(
-    obj=string,
-    doc="Variable-length string, represented as byte array.")
-tf_export("dtypes.string", "string").export_constant(__name__, "string")
-
+int64 = DType(types_pb2.DT_INT64)
+tf_export("dtypes.int64", "int64").export_constant(__name__, "int64")
 bool = DType(types_pb2.DT_BOOL)  # pylint: disable=redefined-builtin
-doc_typealias.document(
-    obj=bool,
-    doc="Boolean.")
 tf_export("dtypes.bool", "bool").export_constant(__name__, "bool")
-
 qint8 = DType(types_pb2.DT_QINT8)
-doc_typealias.document(
-    obj=qint8,
-    doc="Signed quantized 8-bit integer.")
 tf_export("dtypes.qint8", "qint8").export_constant(__name__, "qint8")
-
-qint16 = DType(types_pb2.DT_QINT16)
-doc_typealias.document(
-    obj=qint16,
-    doc="Signed quantized 16-bit integer.")
-tf_export("dtypes.qint16", "qint16").export_constant(__name__, "qint16")
-
-qint32 = DType(types_pb2.DT_QINT32)
-doc_typealias.document(
-    obj=qint32,
-    doc="signed quantized 32-bit integer.")
-tf_export("dtypes.qint32", "qint32").export_constant(__name__, "qint32")
-
 quint8 = DType(types_pb2.DT_QUINT8)
-doc_typealias.document(
-    obj=quint8,
-    doc="Unsigned quantized 8-bit integer.")
 tf_export("dtypes.quint8", "quint8").export_constant(__name__, "quint8")
-
+qint16 = DType(types_pb2.DT_QINT16)
+tf_export("dtypes.qint16", "qint16").export_constant(__name__, "qint16")
 quint16 = DType(types_pb2.DT_QUINT16)
-doc_typealias.document(
-    obj=quint16,
-    doc="Unsigned quantized 16-bit integer.")
 tf_export("dtypes.quint16", "quint16").export_constant(__name__, "quint16")
-
-bfloat16 = DType(types_pb2.DT_BFLOAT16)
-doc_typealias.document(
-    obj=bfloat16,
-    doc="16-bit bfloat (brain floating point).")
-tf_export("dtypes.bfloat16", "bfloat16").export_constant(__name__, "bfloat16")
-
+qint32 = DType(types_pb2.DT_QINT32)
+tf_export("dtypes.qint32", "qint32").export_constant(__name__, "qint32")
 resource_ref = DType(types_pb2.DT_RESOURCE_REF)
 variant_ref = DType(types_pb2.DT_VARIANT_REF)
+bfloat16 = DType(types_pb2.DT_BFLOAT16)
+tf_export("dtypes.bfloat16", "bfloat16").export_constant(__name__, "bfloat16")
 float16_ref = DType(types_pb2.DT_HALF_REF)
 half_ref = float16_ref
 float32_ref = DType(types_pb2.DT_FLOAT_REF)
