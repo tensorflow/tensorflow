@@ -353,7 +353,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       for (const RocmTracerEvent& event : events) {
         DumpRocmTracerEvent(event, start_walltime_ns, start_gputime_ns);
 
-        NodeExecStats* ns = new NodeExecStats;
+        std::unique_ptr<NodeExecStats> ns(new NodeExecStats);
 
         ns->set_all_start_micros(
             (start_walltime_ns + (event.start_time_ns - start_gputime_ns)) /
@@ -400,7 +400,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
               all_streams_dev_stats->set_device(
                   absl::StrCat("/device:GPU:", device_ordinal, "/stream:all"));
             }
-            all_streams_dev_stats->add_node_stats()->Swap(ns);
+            all_streams_dev_stats->add_node_stats()->Swap(ns.release());
           } break;
           case RocmTracerEventType::MemcpyD2H:
           case RocmTracerEventType::MemcpyH2D:
@@ -432,7 +432,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
               memcpy_dev_stats->set_device(
                   absl::StrCat("/device:GPU:", device_ordinal, "/memcpy"));
             }
-            memcpy_dev_stats->add_node_stats()->Swap(ns);
+            memcpy_dev_stats->add_node_stats()->Swap(ns.release());
 
           } break;
           case RocmTracerEventType::MemoryAlloc: {
@@ -460,7 +460,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
               sync_dev_stats->set_device(
                   absl::StrCat("/device:GPU:", device_ordinal, "/sync"));
             }
-            sync_dev_stats->add_node_stats()->Swap(ns);
+            sync_dev_stats->add_node_stats()->Swap(ns.release());
           } break;
           case RocmTracerEventType::Generic: {
             std::string details = event.name;
@@ -471,7 +471,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
               generic_stream_dev_stats->set_device(
                   absl::StrCat("/device:GPU:", device_ordinal, "/stream:"));
             }
-            generic_stream_dev_stats->add_node_stats()->Swap(ns);
+            generic_stream_dev_stats->add_node_stats()->Swap(ns.release());
           } break;
           default:
             DCHECK(false);
