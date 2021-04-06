@@ -1574,7 +1574,8 @@ std::vector<std::string> GetStringsFromDictionaryAttr(
 }
 
 std::vector<SignatureDefData> BuildSignaturedef(
-    FuncOp main_op, const std::string& saved_model_tag) {
+    FuncOp main_op, const std::string& saved_model_tag,
+    tensorflow::OpOrArgNameMapper& name_mapper) {
   static const char kSignatureDefIndexPath[] = "tf_saved_model.index_path";
   static const char kEntryFunctionAttributes[] = "tf.entry_function";
 
@@ -1638,7 +1639,11 @@ std::vector<SignatureDefData> BuildSignaturedef(
     result[0].inputs[sig_def_inputs[i]] = input_names[i].str();
   }
   for (int i = 0; i < output_names.size(); ++i) {
-    result[0].outputs[sig_def_outputs[i]] = output_names[i].str();
+    // Fetch the name from the actual operand and not rely on names from
+    // outputs as deduping can make them invalid after conversion.
+    auto& operand = term->getOpOperand(i);
+    auto unique_name = std::string(name_mapper.GetUniqueName(operand.get()));
+    result[0].outputs[sig_def_outputs[i]] = unique_name;
   }
   if (auto name_attr = exported_name[0].dyn_cast_or_null<StringAttr>())
     result[0].method_name = name_attr.getValue().str();
@@ -1830,7 +1835,8 @@ Optional<std::string> Translator::TranslateInternal() {
   // Build SignatureDef
   // We only have 1 entry point 'main' function, so build only 1 signature def.
   auto main_fn_signature_def = BuildSignaturedef(
-      main_fn, saved_model_tags_.empty() ? "" : *saved_model_tags_.begin());
+      main_fn, saved_model_tags_.empty() ? "" : *saved_model_tags_.begin(),
+      name_mapper_);
   auto signature_defs = CreateSignatureDefs(main_fn_signature_def);
 
   auto model = tflite::CreateModel(builder_, TFLITE_SCHEMA_VERSION,
