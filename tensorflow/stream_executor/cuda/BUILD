@@ -119,6 +119,7 @@ cc_library(
         ":cuda_diagnostics",
         "@com_google_absl//absl/debugging:leak_check",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
