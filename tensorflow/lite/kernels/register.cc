@@ -227,6 +227,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* min_version = */ 1,
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_REDUCE_ANY, Register_REDUCE_ANY());
+  AddBuiltin(BuiltinOperator_REDUCE_ALL, Register_REDUCE_ALL());
   AddBuiltin(BuiltinOperator_EXPAND_DIMS, Register_EXPAND_DIMS());
   AddBuiltin(BuiltinOperator_SPARSE_TO_DENSE, Register_SPARSE_TO_DENSE(),
              /* min_version = */ 1,

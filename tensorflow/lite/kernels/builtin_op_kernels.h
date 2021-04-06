@@ -114,6 +114,7 @@ TfLiteRegistration* Register_QUANTIZE();
 TfLiteRegistration* Register_RANGE();
 TfLiteRegistration* Register_RANK();
 TfLiteRegistration* Register_REAL();
+TfLiteRegistration* Register_REDUCE_ALL();
 TfLiteRegistration* Register_REDUCE_ANY();
 TfLiteRegistration* Register_REDUCE_MAX();
 TfLiteRegistration* Register_REDUCE_MIN();
