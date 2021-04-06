@@ -248,8 +248,6 @@ build:tensorrt --repo_env TF_NEED_TENSORRT=1
 build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
 build:rocm --define=using_rocm=true --define=using_rocm_hipcc=true
 build:rocm --repo_env TF_NEED_ROCM=1
-# Generated kernels are not yet supported on ROCm.
-build:rocm --//tensorflow/core/kernels/mlir_generated:enable_gpu=false
 
 # Options extracted from configure script
 build:numa --define=with_numa_support=true
