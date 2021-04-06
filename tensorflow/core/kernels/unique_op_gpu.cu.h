@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_UNIQUE_OP_GPU_CU_H_
 #define TENSORFLOW_CORE_KERNELS_UNIQUE_OP_GPU_CU_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -293,9 +293,10 @@ class UniqueOpGPU : public AsyncOpKernel {
     using namespace unique_op_gpu;
 
     // Create a fancy input iterator to indicate segment boundaries.
+    gpuprim::CountingInputIterator<TIndex> counting_iter(0);
     gpuprim::TransformInputIterator<TIndex, SegmentIndicatorFunctor<T, TIndex>,
                                     gpuprim::CountingInputIterator<TIndex>>
-        segment_indicator_iter(0, {sorted_input_ptr});
+        segment_indicator_iter(counting_iter, {sorted_input_ptr});
 
     Tensor sorted_input_unique_ids;
     TIndex* sorted_input_unique_ids_ptr = nullptr;
@@ -331,8 +332,11 @@ class UniqueOpGPU : public AsyncOpKernel {
                                      has_count_output, done]() -> void {
       const GPUDevice& device = context->eigen_gpu_device();
       int64 uniq_size = (*last_idx_host.data()) + 1;
-
+#if GOOGLE_CUDA
       se::cuda::ScopedActivateExecutorContext scoped_activation{
+#else
+      se::gpu::ScopedActivateExecutorContext scoped_activation{
+#endif
           context->op_device_context()->stream()->parent()};
 
       Tensor unique_input_inds;
