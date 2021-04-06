@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/kernels/sparse_to_dense_op_gpu.h"
@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/stream_executor/gpu/gpu_activation.h"
 
 namespace tensorflow {
 
@@ -192,7 +192,7 @@ void LaunchSparseToDense<T, Index>::operator()(
       // Ensure that within the callback, the proper GPU settings are
       // configured.
       auto stream = c->op_device_context()->stream();
-      se::cuda::ScopedActivateExecutorContext scoped_activation{
+      se::gpu::ScopedActivateExecutorContext scoped_activation{
           stream->parent()};
 
       OP_REQUIRES_ASYNC(c, valid_status.valid == INT_MAX,
@@ -249,4 +249,4 @@ TF_CALL_INTEGRAL_TYPES(DEFINE_GPU_SPEC)
 DEFINE_GPU_SPEC(bool)
 
 }  // namespace tensorflow
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
