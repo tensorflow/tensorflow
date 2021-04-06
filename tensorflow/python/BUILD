@@ -2873,6 +2873,8 @@ cuda_py_test(
         ":tensor_array_ops",
         ":unconnected_gradients",
         ":variable_scope",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/framework:test_ops",
