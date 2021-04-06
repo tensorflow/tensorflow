@@ -1783,17 +1783,17 @@ struct ReduceWindowOpOnTensorsConversion
       switch (pooling_type) {
         case PoolingType::kMin: {
           pooling_op =
-              create_op(static_cast<linalg::PoolingNHWCMinOp*>(nullptr));
+              create_op(static_cast<linalg::PoolingNHWCMinFOp*>(nullptr));
           break;
         }
         case PoolingType::kMax: {
           pooling_op =
-              create_op(static_cast<linalg::PoolingNHWCMaxOp*>(nullptr));
+              create_op(static_cast<linalg::PoolingNHWCMaxFOp*>(nullptr));
           break;
         }
         case PoolingType::kAdd: {
           pooling_op =
-              create_op(static_cast<linalg::PoolingNHWCSumOp*>(nullptr));
+              create_op(static_cast<linalg::PoolingNHWCSumFOp*>(nullptr));
           break;
         }
         case PoolingType::kInvalid:
