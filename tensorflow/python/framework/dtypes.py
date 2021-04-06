@@ -231,84 +231,233 @@ dtype_range = {
     np.float64: (-1, 1)
 }
 
+
+# Define classes for tensorflow dtypes
+class Float16(DType):
+  pass
+
+Half = Float16
+
+class Float32(DType):
+  pass
+
+class Float64(DType):
+  pass
+
+Double = Float64
+
+class BFloat16(DType):
+  pass
+
+class Complex64(DType):
+  pass
+
+class Complex128(DType):
+  pass
+
+class Int8(DType):
+  pass
+
+class UInt8(DType):
+  pass
+
+class UInt16(DType):
+  pass
+
+class UInt32(DType):
+  pass
+
+class UInt64(DType):
+  pass
+
+class Int16(DType):
+  pass
+
+class Int32(DType):
+  pass
+
+class Int64(DType):
+  pass
+
+class Bool(DType):
+  pass
+
+class String(DType):
+  pass
+
+class QInt8(DType):
+  pass
+
+class QUInt8(DType):
+  pass
+
+class QInt16(DType):
+  pass
+
+class QUInt16(DType):
+  pass
+
+class QInt32(DType):
+  pass
+
+class Resource(DType):
+  pass
+
+class Variant(DType):
+  pass
+
+class Float16Ref(DType):
+  pass
+
+HalfRef = Float16Ref
+
+class Float32Ref(DType):
+  pass
+
+class Float64Ref(DType):
+  pass
+
+DoubleRef = Float64Ref
+
+class BFloat16Ref(DType):
+  pass
+
+class Complex64Ref(DType):
+  pass
+
+class Complex128Ref(DType):
+  pass
+
+class Int8Ref(DType):
+  pass
+
+class UInt8Ref(DType):
+  pass
+
+class UInt16Ref(DType):
+  pass
+
+class UInt32Ref(DType):
+  pass
+
+class UInt64Ref(DType):
+  pass
+
+class Int16Ref(DType):
+  pass
+
+class Int32Ref(DType):
+  pass
+
+class Int64Ref(DType):
+  pass
+
+class BoolRef(DType):
+  pass
+
+class StringRef(DType):
+  pass
+
+class QInt8Ref(DType):
+  pass
+
+class QUInt8Ref(DType):
+  pass
+
+class QInt16Ref(DType):
+  pass
+
+class QUInt16Ref(DType):
+  pass
+
+class QInt32Ref(DType):
+  pass
+
+class ResourceRef(DType):
+  pass
+
+class VariantRef(DType):
+  pass
+
+
 # Define standard wrappers for the types_pb2.DataType enum.
-resource = DType(types_pb2.DT_RESOURCE)
+resource = Resource(types_pb2.DT_RESOURCE)
 tf_export("dtypes.resource", "resource").export_constant(__name__, "resource")
-variant = DType(types_pb2.DT_VARIANT)
+variant = Variant(types_pb2.DT_VARIANT)
 tf_export("dtypes.variant", "variant").export_constant(__name__, "variant")
-float16 = DType(types_pb2.DT_HALF)
+float16 = Float16(types_pb2.DT_HALF)
 tf_export("dtypes.float16", "float16").export_constant(__name__, "float16")
 half = float16
 tf_export("dtypes.half", "half").export_constant(__name__, "half")
-float32 = DType(types_pb2.DT_FLOAT)
+float32 = Float32(types_pb2.DT_FLOAT)
 tf_export("dtypes.float32", "float32").export_constant(__name__, "float32")
-float64 = DType(types_pb2.DT_DOUBLE)
+float64 = Float64(types_pb2.DT_DOUBLE)
 tf_export("dtypes.float64", "float64").export_constant(__name__, "float64")
 double = float64
 tf_export("dtypes.double", "double").export_constant(__name__, "double")
-int32 = DType(types_pb2.DT_INT32)
+int32 = Int32(types_pb2.DT_INT32)
 tf_export("dtypes.int32", "int32").export_constant(__name__, "int32")
-uint8 = DType(types_pb2.DT_UINT8)
+uint8 = UInt8(types_pb2.DT_UINT8)
 tf_export("dtypes.uint8", "uint8").export_constant(__name__, "uint8")
-uint16 = DType(types_pb2.DT_UINT16)
+uint16 = UInt16(types_pb2.DT_UINT16)
 tf_export("dtypes.uint16", "uint16").export_constant(__name__, "uint16")
-uint32 = DType(types_pb2.DT_UINT32)
+uint32 = UInt32(types_pb2.DT_UINT32)
 tf_export("dtypes.uint32", "uint32").export_constant(__name__, "uint32")
-uint64 = DType(types_pb2.DT_UINT64)
+uint64 = UInt64(types_pb2.DT_UINT64)
 tf_export("dtypes.uint64", "uint64").export_constant(__name__, "uint64")
-int16 = DType(types_pb2.DT_INT16)
+int16 = Int16(types_pb2.DT_INT16)
 tf_export("dtypes.int16", "int16").export_constant(__name__, "int16")
-int8 = DType(types_pb2.DT_INT8)
+int8 = Int8(types_pb2.DT_INT8)
 tf_export("dtypes.int8", "int8").export_constant(__name__, "int8")
-string = DType(types_pb2.DT_STRING)
+string = String(types_pb2.DT_STRING)
 tf_export("dtypes.string", "string").export_constant(__name__, "string")
-complex64 = DType(types_pb2.DT_COMPLEX64)
+complex64 = Complex64(types_pb2.DT_COMPLEX64)
 tf_export("dtypes.complex64",
           "complex64").export_constant(__name__, "complex64")
-complex128 = DType(types_pb2.DT_COMPLEX128)
+complex128 = Complex128(types_pb2.DT_COMPLEX128)
 tf_export("dtypes.complex128",
           "complex128").export_constant(__name__, "complex128")
-int64 = DType(types_pb2.DT_INT64)
+int64 = Int64(types_pb2.DT_INT64)
 tf_export("dtypes.int64", "int64").export_constant(__name__, "int64")
-bool = DType(types_pb2.DT_BOOL)  # pylint: disable=redefined-builtin
+bool = Bool(types_pb2.DT_BOOL)  # pylint: disable=redefined-builtin
 tf_export("dtypes.bool", "bool").export_constant(__name__, "bool")
-qint8 = DType(types_pb2.DT_QINT8)
+qint8 = QInt8(types_pb2.DT_QINT8)
 tf_export("dtypes.qint8", "qint8").export_constant(__name__, "qint8")
-quint8 = DType(types_pb2.DT_QUINT8)
+quint8 = QUInt8(types_pb2.DT_QUINT8)
 tf_export("dtypes.quint8", "quint8").export_constant(__name__, "quint8")
-qint16 = DType(types_pb2.DT_QINT16)
+qint16 = QInt16(types_pb2.DT_QINT16)
 tf_export("dtypes.qint16", "qint16").export_constant(__name__, "qint16")
-quint16 = DType(types_pb2.DT_QUINT16)
+quint16 = QUInt16(types_pb2.DT_QUINT16)
 tf_export("dtypes.quint16", "quint16").export_constant(__name__, "quint16")
-qint32 = DType(types_pb2.DT_QINT32)
+qint32 = QInt32(types_pb2.DT_QINT32)
 tf_export("dtypes.qint32", "qint32").export_constant(__name__, "qint32")
-resource_ref = DType(types_pb2.DT_RESOURCE_REF)
-variant_ref = DType(types_pb2.DT_VARIANT_REF)
-bfloat16 = DType(types_pb2.DT_BFLOAT16)
+resource_ref = ResourceRef(types_pb2.DT_RESOURCE_REF)
+variant_ref = VariantRef(types_pb2.DT_VARIANT_REF)
+bfloat16 = BFloat16(types_pb2.DT_BFLOAT16)
 tf_export("dtypes.bfloat16", "bfloat16").export_constant(__name__, "bfloat16")
-float16_ref = DType(types_pb2.DT_HALF_REF)
+float16_ref = Float16Ref(types_pb2.DT_HALF_REF)
 half_ref = float16_ref
-float32_ref = DType(types_pb2.DT_FLOAT_REF)
-float64_ref = DType(types_pb2.DT_DOUBLE_REF)
+float32_ref = Float32Ref(types_pb2.DT_FLOAT_REF)
+float64_ref = Float64Ref(types_pb2.DT_DOUBLE_REF)
 double_ref = float64_ref
-int32_ref = DType(types_pb2.DT_INT32_REF)
-uint32_ref = DType(types_pb2.DT_UINT32_REF)
-uint8_ref = DType(types_pb2.DT_UINT8_REF)
-uint16_ref = DType(types_pb2.DT_UINT16_REF)
-int16_ref = DType(types_pb2.DT_INT16_REF)
-int8_ref = DType(types_pb2.DT_INT8_REF)
-string_ref = DType(types_pb2.DT_STRING_REF)
-complex64_ref = DType(types_pb2.DT_COMPLEX64_REF)
-complex128_ref = DType(types_pb2.DT_COMPLEX128_REF)
-int64_ref = DType(types_pb2.DT_INT64_REF)
-uint64_ref = DType(types_pb2.DT_UINT64_REF)
-bool_ref = DType(types_pb2.DT_BOOL_REF)
-qint8_ref = DType(types_pb2.DT_QINT8_REF)
-quint8_ref = DType(types_pb2.DT_QUINT8_REF)
-qint16_ref = DType(types_pb2.DT_QINT16_REF)
-quint16_ref = DType(types_pb2.DT_QUINT16_REF)
-qint32_ref = DType(types_pb2.DT_QINT32_REF)
-bfloat16_ref = DType(types_pb2.DT_BFLOAT16_REF)
+int32_ref = Int32Ref(types_pb2.DT_INT32_REF)
+uint32_ref = UInt32Ref(types_pb2.DT_UINT32_REF)
+uint8_ref = UInt8Ref(types_pb2.DT_UINT8_REF)
+uint16_ref = UInt16Ref(types_pb2.DT_UINT16_REF)
+int16_ref = Int16Ref(types_pb2.DT_INT16_REF)
+int8_ref = Int8Ref(types_pb2.DT_INT8_REF)
+string_ref = StringRef(types_pb2.DT_STRING_REF)
+complex64_ref = Complex64Ref(types_pb2.DT_COMPLEX64_REF)
+complex128_ref = Complex128Ref(types_pb2.DT_COMPLEX128_REF)
+int64_ref = Int64Ref(types_pb2.DT_INT64_REF)
+uint64_ref = UInt64Ref(types_pb2.DT_UINT64_REF)
+bool_ref = BoolRef(types_pb2.DT_BOOL_REF)
+qint8_ref = QInt8Ref(types_pb2.DT_QINT8_REF)
+quint8_ref = QUInt8Ref(types_pb2.DT_QUINT8_REF)
+qint16_ref = QInt16Ref(types_pb2.DT_QINT16_REF)
+quint16_ref = QUInt16Ref(types_pb2.DT_QUINT16_REF)
+qint32_ref = QInt32Ref(types_pb2.DT_QINT32_REF)
+bfloat16_ref = BFloat16Ref(types_pb2.DT_BFLOAT16_REF)
 
 # Maintain an intern table so that we don't have to create a large
 # number of small objects.

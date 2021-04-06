@@ -2,11 +2,11 @@ path: "tensorflow.lite.constants"
 tf_module {
   member {
     name: "FLOAT"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.Float32\'>"
   }
   member {
     name: "FLOAT16"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.Float16\'>"
   }
   member {
     name: "GRAPHVIZ_DOT"
@@ -14,27 +14,27 @@ tf_module {
   }
   member {
     name: "INT16"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.Int16\'>"
   }
   member {
     name: "INT32"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.Int32\'>"
   }
   member {
     name: "INT64"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.Int64\'>"
   }
   member {
     name: "INT8"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.Int8\'>"
   }
   member {
     name: "QUANTIZED_UINT8"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.UInt8\'>"
   }
   member {
     name: "STRING"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.String\'>"
   }
   member {
     name: "TFLITE"

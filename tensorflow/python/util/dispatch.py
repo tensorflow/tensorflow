@@ -37,12 +37,18 @@ from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
 
+from typing import Any, Callable, TypeVar
+
 # Private function attribute used to store a list of dispatchers.
 DISPATCH_ATTR = "_tf_dispatchers"
 
 
 # OpDispatchers which should be used for all operations.
 _GLOBAL_DISPATCHERS = []
+
+
+# Type variable for decorators
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 @tf_export("__internal__.dispatch.OpDispatcher", v1=[])
@@ -189,7 +195,7 @@ def dispatch_for_types(op, *types):
 # pylint: enable=g-doc-return-or-yield
 
 
-def add_dispatch_list(target):
+def add_dispatch_list(target: F) -> F:
   """Decorator that adds a dispatch_list attribute to an op."""
   if hasattr(target, DISPATCH_ATTR):
     raise AssertionError("%s already has a dispatch list" % target)
