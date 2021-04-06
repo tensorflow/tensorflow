@@ -20,6 +20,7 @@ import numpy as np
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.keras.layers.preprocessing import image_preprocessing
 from tensorflow.python.keras.preprocessing import dataset_utils
+from tensorflow.python.framework import dtypes
 from tensorflow.python.keras.preprocessing import image as keras_image_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import io_ops
@@ -43,7 +44,8 @@ def image_dataset_from_directory(directory,
                                  subset=None,
                                  interpolation='bilinear',
                                  follow_links=False,
-                                 smart_resize=False):
+                                 smart_resize=False
+                                 dtype=dtypes.uint8):
   """Generates a `tf.data.Dataset` from image files in a directory.
 
   If your directory structure is:
@@ -207,7 +209,8 @@ def image_dataset_from_directory(directory,
       label_mode=label_mode,
       num_classes=len(class_names),
       interpolation=interpolation,
-      smart_resize=smart_resize)
+      smart_resize=smart_resize,
+      dtype=dtype)
   if shuffle:
     # Shuffle locally at each iteration
     dataset = dataset.shuffle(buffer_size=batch_size * 8, seed=seed)
@@ -226,7 +229,8 @@ def paths_and_labels_to_dataset(image_paths,
                                 label_mode,
                                 num_classes,
                                 interpolation,
-                                smart_resize=False):
+                                smart_resize=False
+                                dtype=dtypes.uint8):
   """Constructs a dataset of images and labels."""
   # TODO(fchollet): consider making num_parallel_calls settable
   path_ds = dataset_ops.Dataset.from_tensor_slices(image_paths)
@@ -240,11 +244,11 @@ def paths_and_labels_to_dataset(image_paths,
 
 
 def load_image(path, image_size, num_channels, interpolation,
-               smart_resize=False):
+               smart_resize=False, dtype=dtypes.uint8):
   """Load an image from a path and resize it."""
   img = io_ops.read_file(path)
   img = image_ops.decode_image(
-      img, channels=num_channels, expand_animations=False)
+      img, channels=num_channels, expand_animations=False, dtype=dtype)
   if smart_resize:
     img = keras_image_ops.smart_resize(img, image_size,
                                        interpolation=interpolation)
