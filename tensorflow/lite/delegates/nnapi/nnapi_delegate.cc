@@ -1900,6 +1900,14 @@ bool NNAPIDelegateKernel::Validate(
     case kTfLiteBuiltinReshape: {
       ExpectOpVersion(version, 1, &val_ctx);
       ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
+      const auto& input = context->tensors[node->inputs->data[0]];
+      Expect(input.dims->size <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
+             "Input rank should be <= 4", &val_ctx);
+      const auto& output = context->tensors[node->outputs->data[0]];
+      Expect(output.dims->size <= 4,
+             NNAPIValidationFailureType::kUnsupportedOperandRank,
+             "Output rank should be <= 4", &val_ctx);
       if (node->inputs->size >= 2) {
         Expect(context->tensors[node->inputs->data[1]].allocation_type ==
                    kTfLiteMmapRo,
