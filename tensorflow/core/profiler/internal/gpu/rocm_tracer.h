@@ -210,9 +210,51 @@ class RocmTraceCollector {
   RocmTraceCollector& operator=(const RocmTraceCollector&) = delete;
 };
 
-// forward declarations for callback functors
-class RocmApiCallbackImpl;
-class RocmActivityCallbackImpl;
+class RocmTracer;
+
+class RocmApiCallbackImpl {
+ public:
+  RocmApiCallbackImpl(const RocmTracerOptions& options, RocmTracer* tracer,
+                      RocmTraceCollector* collector)
+      : options_(options), tracer_(tracer), collector_(collector) {}
+
+  Status operator()(uint32_t domain, uint32_t cbid, const void* cbdata);
+
+ private:
+  void AddKernelEventUponApiExit(uint32_t cbid, const hip_api_data_t* data);
+  void AddMemcpyEventUponApiExit(uint32_t cbid, const hip_api_data_t* data);
+  void AddMemsetEventUponApiExit(uint32_t cbid, const hip_api_data_t* data);
+  void AddMallocEventUponApiExit(uint32_t cbid, const hip_api_data_t* data);
+  void AddStreamSynchronizeEventUponApiExit(uint32_t cbid,
+                                            const hip_api_data_t* data);
+  void AddGenericEventUponApiExit(uint32_t cbid, const hip_api_data_t* data);
+
+  RocmTracerOptions options_;
+  RocmTracer* tracer_ = nullptr;
+  RocmTraceCollector* collector_ = nullptr;
+};
+
+class RocmActivityCallbackImpl {
+ public:
+  RocmActivityCallbackImpl(const RocmTracerOptions& options, RocmTracer* tracer,
+                           RocmTraceCollector* collector)
+      : options_(options), tracer_(tracer), collector_(collector) {}
+
+  Status operator()(const char* begin, const char* end);
+
+ private:
+  void AddHipKernelActivityEvent(const roctracer_record_t* record);
+  void AddHipMemcpyActivityEvent(const roctracer_record_t* record);
+  void AddHipMemsetActivityEvent(const roctracer_record_t* record);
+  void AddHipMallocEvent(const roctracer_record_t* record);
+  void AddHipStreamSynchronizeEvent(const roctracer_record_t* record);
+  void AddHccKernelActivityEvent(const roctracer_record_t* record);
+  void AddHccMemcpyActivityEvent(const roctracer_record_t* record);
+
+  RocmTracerOptions options_;
+  RocmTracer* tracer_ = nullptr;
+  RocmTraceCollector* collector_ = nullptr;
+};
 
 // The class use to enable cupti callback/activity API and forward the collected
 // trace events to RocmTraceCollector. There should be only one RocmTracer
