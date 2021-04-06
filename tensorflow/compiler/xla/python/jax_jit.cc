@@ -224,7 +224,8 @@ H AbslHashValue(H h, const CallSignature& s) {
 
 // Filter out static arguments, flatten and concatenate other arguments (i.e.
 // dynamic positional and keyword arguments), filling `arguments` in place.
-xla::Status ParseArguments(const py::args& args, const py::kwargs& py_kwargs,
+xla::Status ParseArguments(const py::args& args,
+                           const absl::optional<py::kwargs>& py_kwargs,
                            absl::Span<int const> static_argnums,
                            ParsedArgumentsAsBuffers& arguments) {
   tensorflow::profiler::TraceMe traceme("ParseArguments");
@@ -232,7 +233,8 @@ xla::Status ParseArguments(const py::args& args, const py::kwargs& py_kwargs,
     return xla::InvalidArgument(
         "%s", "[jaxjit] Error with static argnums, executing the Python path.");
   }
-  arguments.flat_dynamic_args.reserve(args.size() + py_kwargs.size() -
+  int num_kwargs = py_kwargs ? py_kwargs->size() : 0;
+  arguments.flat_dynamic_args.reserve(args.size() + num_kwargs -
                                       static_argnums.size());
   arguments.signature.dynamic_positional_args_treedef.reserve(
       args.size() - static_argnums.size());
@@ -246,45 +248,44 @@ xla::Status ParseArguments(const py::args& args, const py::kwargs& py_kwargs,
       arguments.signature.dynamic_positional_args_treedef.push_back(pytree_def);
     } else {
       arguments.signature.static_args.emplace_back(
-          // borrow is mandatory here.
           py::reinterpret_borrow<py::object>(args[i]));
     }
   }
 
   // Keyword arguments.
-  std::vector<std::pair<py::handle, py::handle>> kwargs(py_kwargs.begin(),
-                                                        py_kwargs.end());
-  // We first intern the keys, then sort them (by name, as in the Python path)
-  // (see also xla::PyTreeDef::Flatten) and then create the signatures.
-  // TODO(jblespiau): We should be able to sort the keys by interned-key
-  // pointers, but this requires the Python compilation to do the same.
-  arguments.signature.keyword_args.resize(kwargs.size());
-  for (size_t i = 0; i < kwargs.size(); ++i) {
-    // Intern the key if not already interned.
-    if (!PyUnicode_CHECK_INTERNED(kwargs[i].first.ptr())) {
-      PyObject* key = kwargs[i].first.ptr();
-      kwargs[i].first.inc_ref();
-      PyUnicode_InternInPlace(&key);
-      arguments.keep_alive_objects.push_back(
-          py::reinterpret_steal<py::object>(key));
-      kwargs[i].first = py::handle(key);
+  if (py_kwargs) {
+    std::vector<std::pair<py::handle, py::handle>> kwargs(py_kwargs->begin(),
+                                                          py_kwargs->end());
+    // We first intern the keys, then sort them (by name, as in the Python path)
+    // (see also xla::PyTreeDef::Flatten) and then create the signatures.
+    // TODO(jblespiau): We should be able to sort the keys by interned-key
+    // pointers, but this requires the Python compilation to do the same.
+    arguments.signature.keyword_args.resize(kwargs.size());
+    for (size_t i = 0; i < kwargs.size(); ++i) {
+      // Intern the key if not already interned.
+      if (!PyUnicode_CHECK_INTERNED(kwargs[i].first.ptr())) {
+        PyObject* key = kwargs[i].first.ptr();
+        kwargs[i].first.inc_ref();
+        PyUnicode_InternInPlace(&key);
+        arguments.keep_alive_objects.push_back(
+            py::reinterpret_steal<py::object>(key));
+        kwargs[i].first = py::handle(key);
+      }
     }
-  }
 
-  std::sort(kwargs.begin(), kwargs.end(),
-            [](const std::pair<py::handle, py::handle>& a,
-               const std::pair<py::handle, py::handle>& b) {
-              return a.first < b.first;
-            });
-  for (size_t i = 0; i < kwargs.size(); ++i) {
-    arguments.signature.keyword_args[i].key = kwargs[i].first;
-    arguments.signature.keyword_args[i].value_treedef.FlattenInto(
-        kwargs[i].second, arguments.flat_dynamic_args);
+    std::sort(kwargs.begin(), kwargs.end(),
+              [](const std::pair<py::handle, py::handle>& a,
+                 const std::pair<py::handle, py::handle>& b) {
+                return a.first < b.first;
+              });
+    for (size_t i = 0; i < kwargs.size(); ++i) {
+      arguments.signature.keyword_args[i].key = kwargs[i].first;
+      arguments.signature.keyword_args[i].value_treedef.FlattenInto(
+          kwargs[i].second, arguments.flat_dynamic_args);
+    }
   }
   return xla::Status::OK();
 }
-
-namespace {}  // namespace
 
 namespace {
 
@@ -334,7 +335,8 @@ class CompiledFunction {
   // (c) call the executable
   // (d) construct `DeviceArray` objects from the outputs
   // (e) reconstruct the `PyTree`.
-  xla::StatusOr<py::object> Call(py::args args, py::kwargs kwargs);
+  xla::StatusOr<py::object> Call(py::args args,
+                                 absl::optional<py::kwargs> kwargs);
 
   // This allows `inspect.signature(cpp_jitted_f)` from Python.
   py::object PythonSignature() {
@@ -347,10 +349,10 @@ class CompiledFunction {
 
   const py::function& cache_miss() const { return cache_miss_; }
 
+  py::handle AsPyHandle();
+
  private:
-  void PopulateCacheEntry(CacheEntry* entry, const py::args& args,
-                          const py::kwargs& kwargs,
-                          const CallSignature& signature,
+  void PopulateCacheEntry(CacheEntry* entry, const CallSignature& signature,
                           const py::tuple& out_and_fastpath_data);
   bool always_fallback_to_python_ = false;
 
@@ -512,8 +514,8 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
 }
 
 void CompiledFunction::PopulateCacheEntry(
-    CacheEntry* cache_entry, const py::args& args, const py::kwargs& kwargs,
-    const CallSignature& signature, const py::tuple& out_and_fastpath_data) {
+    CacheEntry* cache_entry, const CallSignature& signature,
+    const py::tuple& out_and_fastpath_data) {
   CHECK_EQ(out_and_fastpath_data.size(), 2);
   if (out_and_fastpath_data[1].is_none()) {
     cache_entry->fall_back_to_python = true;
@@ -566,13 +568,14 @@ void CompiledFunction::PopulateCacheEntry(
   cache_entry->ready = true;
 }
 
-xla::StatusOr<py::object> CompiledFunction::Call(py::args args,
-                                                 py::kwargs kwargs) {
+xla::StatusOr<py::object> CompiledFunction::Call(
+    py::args args, absl::optional<py::kwargs> kwargs) {
   if (JitIsDisabled()) {
-    return fun_(*args, **kwargs);
+    return fun_(*args, **kwargs.value_or(py::kwargs()));
   }
   if (always_fallback_to_python_) {
-    return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
+    return py::object(py::cast<py::tuple>(
+        cache_miss_(*args, **kwargs.value_or(py::kwargs())))[0]);
   }
   // Delayed values are retrieved on the first call to `Call`.
   if (!default_device_) {
@@ -593,14 +596,16 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::args args,
         always_fallback_to_python_ = true;
       }
       if (!default_device_) {
-        return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
+        return py::object(py::cast<py::tuple>(
+            cache_miss_(*args, **kwargs.value_or(py::kwargs())))[0]);
       }
     }
   }
 
   ParsedArgumentsAsBuffers arguments;
   if (!ParseArguments(args, kwargs, static_argnums_, arguments).ok()) {
-    return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
+    return py::object(py::cast<py::tuple>(
+        cache_miss_(*args, **kwargs.value_or(py::kwargs())))[0]);
   }
 
   bool jax_enable_x64 = GetEnableX64();
@@ -610,7 +615,8 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::args args,
   if (!ConvertArgsToBuffers(jax_enable_x64, *default_pyclient_, default_device_,
                             is_committed_, arguments)
            .ok()) {
-    return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
+    return py::object(py::cast<py::tuple>(
+        cache_miss_(*args, **kwargs.value_or(py::kwargs())))[0]);
   }
   arguments.signature.extra_jit_context = ExtraJitContext();
 
@@ -632,15 +638,15 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::args args,
     // up committing its compilation result to the cache.
     // TODO(phawkins): it may be preferable to force other threads to wait if
     // a cache miss is already happening.
-    py::object out_and_fastpath_data = cache_miss_(*args, **kwargs);
+    py::object out_and_fastpath_data =
+        cache_miss_(*args, **kwargs.value_or(py::kwargs()));
     py::tuple out_tuple = py::cast<py::tuple>(out_and_fastpath_data);
 
     // Another thread might have populated the cache entry while we were calling
     // cache_miss_. We therefore check again that the cache entry hasn't been
     // populated now that we have reacquired the GIL.
     if (!cache_entry->ready) {
-      PopulateCacheEntry(cache_entry.get(), args, kwargs, arguments.signature,
-                         out_tuple);
+      PopulateCacheEntry(cache_entry.get(), arguments.signature, out_tuple);
     }
 
     // We have already computed the result in the miss path so we can return it.
@@ -650,7 +656,8 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::args args,
   }
 
   if (cache_entry->fall_back_to_python) {
-    return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
+    return py::object(py::cast<py::tuple>(
+        cache_miss_(*args, **kwargs.value_or(py::kwargs())))[0]);
   }
   std::vector<xla::PyBuffer::object> outputs =
       ValueOrThrow(cache_entry->executable->PjRtExecute(arguments.arg_buffers));
@@ -681,38 +688,230 @@ xla::StatusOr<py::object> CompiledFunction::Call(py::args args,
   py::object out = cache_entry->out_pytree_def.Unflatten(flat_device_arrays);
   absl::optional<py::object> post_hook = PostHook();
   if (post_hook) {
-    (*post_hook)(this, args, kwargs, out);
+    (*post_hook)(AsPyHandle(), py::cast<py::tuple>(args),
+                 py::cast<py::dict>(kwargs.value_or(py::kwargs())), out);
   }
   return out;
 }
 
+PyObject* JaxCompiledFunction_Type = nullptr;
+
+struct JaxCompiledFunctionObject {
+  PyObject_HEAD;
+  PyObject* dict;      // Dictionary for __dict__
+  PyObject* weakrefs;  // Weak references; for use by the Python interpreter.
+  CompiledFunction fun;
+};
+
+bool JaxCompiledFunction_Check(py::handle handle) {
+  return handle.get_type() == JaxCompiledFunction_Type;
+}
+
+CompiledFunction* AsCompiledFunctionUnchecked(py::handle handle) {
+  return &(reinterpret_cast<JaxCompiledFunctionObject*>(handle.ptr())->fun);
+}
+
+xla::StatusOr<CompiledFunction*> AsCompiledFunction(py::handle handle) {
+  if (!JaxCompiledFunction_Check(handle)) {
+    return xla::InvalidArgument("Expected a CompiledFunction");
+  }
+  return AsCompiledFunctionUnchecked(handle);
+}
+
+py::handle CompiledFunction::AsPyHandle() {
+  return reinterpret_cast<PyObject*>(reinterpret_cast<char*>(this) -
+                                     offsetof(JaxCompiledFunctionObject, fun));
+}
+
+extern "C" {
+
+PyObject* JaxCompiledFunction_tp_new(PyTypeObject* subtype, PyObject* args,
+                                     PyObject* kwds) {
+  JaxCompiledFunctionObject* self =
+      reinterpret_cast<JaxCompiledFunctionObject*>(
+          subtype->tp_alloc(subtype, 0));
+  if (!self) return nullptr;
+  self->dict = nullptr;
+  self->weakrefs = nullptr;
+  return reinterpret_cast<PyObject*>(self);
+}
+
+void JaxCompiledFunction_tp_dealloc(PyObject* self) {
+  PyTypeObject* tp = Py_TYPE(self);
+  JaxCompiledFunctionObject* o =
+      reinterpret_cast<JaxCompiledFunctionObject*>(self);
+  if (o->weakrefs) {
+    PyObject_ClearWeakRefs(self);
+  }
+  Py_CLEAR(o->dict);
+  o->fun.~CompiledFunction();
+  tp->tp_free(self);
+  Py_DECREF(tp);
+}
+
+int JaxCompiledFunction_tp_traverse(PyObject* self, visitproc visit,
+                                    void* arg) {
+  JaxCompiledFunctionObject* o =
+      reinterpret_cast<JaxCompiledFunctionObject*>(self);
+  Py_VISIT(o->dict);
+  return 0;
+}
+
+int JaxCompiledFunction_tp_clear(PyObject* self) {
+  JaxCompiledFunctionObject* o =
+      reinterpret_cast<JaxCompiledFunctionObject*>(self);
+  Py_CLEAR(o->dict);
+  return 0;
+}
+
+// Implements the Python descriptor protocol so JIT-compiled functions can be
+// used as bound methods. See:
+// https://docs.python.org/3/howto/descriptor.html#functions-and-methods
+PyObject* JaxCompiledFunction_tp_descr_get(PyObject* self, PyObject* obj,
+                                           PyObject* type) {
+  if (obj == nullptr || obj == Py_None) {
+    Py_INCREF(self);
+    return self;
+  }
+  return PyMethod_New(self, obj);
+}
+
+// Support d = instance.__dict__.
+PyObject* JaxCompiledFunction_get_dict(PyObject* self, void*) {
+  JaxCompiledFunctionObject* o =
+      reinterpret_cast<JaxCompiledFunctionObject*>(self);
+  if (!o->dict) {
+    o->dict = PyDict_New();
+  }
+  Py_XINCREF(o->dict);
+  return o->dict;
+}
+
+int JaxCompiledFunction_set_dict(PyObject* self, PyObject* new_dict, void*) {
+  JaxCompiledFunctionObject* o =
+      reinterpret_cast<JaxCompiledFunctionObject*>(self);
+  if (!PyDict_Check(new_dict)) {
+    PyErr_Format(PyExc_TypeError,
+                 "__dict__ must be set to a dictionary, not a '%s'",
+                 Py_TYPE(new_dict)->tp_name);
+    return -1;
+  }
+  Py_INCREF(new_dict);
+  Py_CLEAR(o->dict);
+  o->dict = new_dict;
+  return 0;
+}
+
+static PyGetSetDef JaxCompiledFunction_tp_getset[] = {
+    // Having a __dict__ seems necessary to allow !functool.wraps to override
+    // __doc__.
+    {const_cast<char*>("__dict__"), JaxCompiledFunction_get_dict,
+     JaxCompiledFunction_set_dict, nullptr, nullptr},
+    {nullptr, nullptr, nullptr, nullptr, nullptr}};
+
+PyObject* JaxCompiledFunction_tp_call(PyObject* self, PyObject* args,
+                                      PyObject* kwargs) {
+  tensorflow::profiler::TraceMe traceme("JaxCompiledFunction::tp_call");
+  JaxCompiledFunctionObject* o =
+      reinterpret_cast<JaxCompiledFunctionObject*>(self);
+  py::args py_args = py::reinterpret_borrow<py::args>(args);
+  absl::optional<py::kwargs> py_kwargs;
+  if (kwargs) {
+    py_kwargs = py::reinterpret_borrow<py::kwargs>(kwargs);
+  }
+  xla::StatusOr<py::object> out;
+  try {
+    out = o->fun.Call(std::move(py_args), std::move(py_kwargs));
+  } catch (py::error_already_set& e) {
+    e.restore();
+    return nullptr;
+  } catch (py::cast_error& e) {
+    PyErr_SetString(PyExc_ValueError, e.what());
+    return nullptr;
+  } catch (std::invalid_argument& e) {
+    PyErr_SetString(PyExc_ValueError, e.what());
+    return nullptr;
+  }
+
+  if (!out.ok()) {
+    PyErr_SetString(PyExc_ValueError, out.status().ToString().c_str());
+    return nullptr;
+  }
+  return out.ValueOrDie().release().ptr();
+}
+
+}  // extern "C"
+
+py::object MakeCompiledFunction(py::function fun, py::function cache_miss,
+                                py::function get_device,
+                                std::vector<int> static_argnums,
+                                int cache_size) {
+  py::object obj = py::reinterpret_steal<py::object>(JaxCompiledFunction_tp_new(
+      reinterpret_cast<PyTypeObject*>(JaxCompiledFunction_Type), nullptr,
+      nullptr));
+  JaxCompiledFunctionObject* buf =
+      reinterpret_cast<JaxCompiledFunctionObject*>(obj.ptr());
+  new (&buf->fun) CompiledFunction(std::move(fun), std::move(cache_miss),
+                                   std::move(get_device),
+                                   std::move(static_argnums), cache_size);
+  return obj;
+}
+
+// Helpers for building Python properties
+template <typename Func>
+py::object property_readonly(Func&& get) {
+  py::handle property(reinterpret_cast<PyObject*>(&PyProperty_Type));
+  return property(py::cpp_function(std::forward<Func>(get)), py::none(),
+                  py::none(), "");
+}
+
 }  // namespace
 
-void BuildJaxjitSubmodule(pybind11::module& m) {
+void BuildJaxjitSubmodule(py::module& m) {
   py::module jitlib = m.def_submodule("jax_jit", "Jax C++ jit library");
 
-  // We allow dynamic attributes on compiled functions because they are often
-  // passed to @wraps(...).
-  py::class_<CompiledFunction, std::unique_ptr<CompiledFunction>> cfun(
-      jitlib, "CompiledFunction", py::dynamic_attr());
-  cfun.def("__call__", &CompiledFunction::Call);
-  cfun.def_property_readonly("__signature__",
-                             &CompiledFunction::PythonSignature);
-  cfun.def_property_readonly("_cache_miss", &CompiledFunction::cache_miss);
-
-  // Implements the Python descriptor protocol so JIT-compiled functions can be
-  // used as bound methods. See:
-  // https://docs.python.org/3/howto/descriptor.html#functions-and-methods
-  py::object method_type = py::module::import("types").attr("MethodType");
-  cfun.def(
-      "__get__",
-      [method_type](py::object self, py::object obj, py::object objtype) {
-        if (obj.is_none()) {
-          return self;
-        }
-        return method_type(self, obj);
-      },
-      py::arg("obj"), py::arg("objtype") = py::none());
+  // We need to use heap-allocated type objects because we want to add
+  // additional methods dynamically.
+  py::object cfun;
+  {
+    py::str name = py::str("CompiledFunction");
+    py::str qualname = py::str("CompiledFunction");
+    PyHeapTypeObject* heap_type = reinterpret_cast<PyHeapTypeObject*>(
+        PyType_Type.tp_alloc(&PyType_Type, 0));
+    // Caution: we must not call any functions that might invoke the GC until
+    // PyType_Ready() is called. Otherwise the GC might see a half-constructed
+    // type object.
+    CHECK(heap_type) << "Unable to create heap type object";
+    heap_type->ht_name = name.release().ptr();
+    heap_type->ht_qualname = qualname.release().ptr();
+    PyTypeObject* type = &heap_type->ht_type;
+    type->tp_name = "CompiledFunction";
+    type->tp_basicsize = sizeof(JaxCompiledFunctionObject);
+    type->tp_flags =
+        Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE | Py_TPFLAGS_HAVE_GC;
+    type->tp_new = JaxCompiledFunction_tp_new;
+    type->tp_dealloc = JaxCompiledFunction_tp_dealloc;
+    type->tp_dictoffset = offsetof(JaxCompiledFunctionObject, dict);
+    type->tp_traverse = JaxCompiledFunction_tp_traverse;
+    type->tp_clear = JaxCompiledFunction_tp_clear;
+    type->tp_weaklistoffset = offsetof(JaxCompiledFunctionObject, weakrefs);
+    type->tp_getset = JaxCompiledFunction_tp_getset;
+    type->tp_descr_get = JaxCompiledFunction_tp_descr_get;
+    type->tp_call = JaxCompiledFunction_tp_call;
+    CHECK_EQ(PyType_Ready(type), 0);
+    JaxCompiledFunction_Type = reinterpret_cast<PyObject*>(type);
+    cfun = py::reinterpret_borrow<py::object>(JaxCompiledFunction_Type);
+  }
+  cfun.attr("__signature__") =
+      property_readonly([](py::handle self) -> xla::StatusOr<py::object> {
+        TF_ASSIGN_OR_RETURN(CompiledFunction * fun, AsCompiledFunction(self));
+        return fun->PythonSignature();
+      });
+  cfun.attr("_cache_miss") =
+      property_readonly([](py::handle self) -> xla::StatusOr<py::object> {
+        TF_ASSIGN_OR_RETURN(CompiledFunction * fun, AsCompiledFunction(self));
+        return fun->cache_miss();
+      });
 
   py::class_<GlobalJitState> global_state_(jitlib, "GlobalJitState");
   global_state_.def_readwrite("disable_jit", &GlobalJitState::disable_jit);
@@ -777,11 +976,10 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
   jitlib.def(
       "jit",
       [](py::function fun, py::function cache_miss, py::function get_device,
-         std::vector<int> static_argnums,
-         int cache_size) -> std::unique_ptr<CompiledFunction> {
-        return std::make_unique<CompiledFunction>(
-            std::move(fun), std::move(cache_miss), std::move(get_device),
-            std::move(static_argnums), cache_size);
+         std::vector<int> static_argnums, int cache_size) -> py::object {
+        return MakeCompiledFunction(std::move(fun), std::move(cache_miss),
+                                    std::move(get_device),
+                                    std::move(static_argnums), cache_size);
       },
       py::arg("fun"), py::arg("cache_miss"), py::arg("get_device"),
       py::arg("static_argnums"), py::arg("cache_size") = 4096);
@@ -838,8 +1036,19 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
   jitlib.def("_ArgSignatureOfValue", &xla::PyArgSignatureOfValue);
 
   // All private members are only for testing/debugging purposes
-  cfun.def("_cache_size", &CompiledFunction::cache_size);
-  cfun.def("_clear_cache", &CompiledFunction::ClearCache);
+  cfun.attr("_cache_size") = py::cpp_function(
+      [](py::handle self) -> xla::StatusOr<int> {
+        TF_ASSIGN_OR_RETURN(CompiledFunction * fun, AsCompiledFunction(self));
+        return fun->cache_size();
+      },
+      py::is_method(cfun));
+  cfun.attr("_clear_cache") = py::cpp_function(
+      [](py::handle self) -> xla::Status {
+        TF_ASSIGN_OR_RETURN(CompiledFunction * fun, AsCompiledFunction(self));
+        fun->ClearCache();
+        return xla::Status::OK();
+      },
+      py::is_method(cfun));
   jitlib.def("_is_float0", &xla::IsFloat0);
 }
 

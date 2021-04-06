@@ -32,7 +32,6 @@ namespace jax {
 // defined, defaulting to the value of the flag otherwise).
 bool GetEnableX64();
 
-
 // The signature of Python jitted function call, partitioned into:
 // - dynamic positional arguments (i.e. positional args which are not static)
 // - static positional arguments (i.e. the args associated to static_argnums)
@@ -112,7 +111,7 @@ struct ParsedArgumentsAsBuffers {
 // Filter out static arguments, flatten and concatenate other arguments (i.e.
 // dynamic positional and keyword arguments), filling `arguments` in place.
 xla::Status ParseArguments(const pybind11::args& args,
-                           const pybind11::kwargs& py_kwargs,
+                           const absl::optional<pybind11::kwargs>& py_kwargs,
                            absl::Span<int const> static_argnums,
                            ParsedArgumentsAsBuffers& arguments);
 
