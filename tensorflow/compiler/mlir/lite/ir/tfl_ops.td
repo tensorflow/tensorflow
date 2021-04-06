@@ -3462,14 +3462,17 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
 
     I32Attr:$begin_mask,
     I32Attr:$end_mask,
-    Confined<I32Attr, [TFL_IntEqualsTo<0>]>:$ellipsis_mask,
-    Confined<I32Attr, [TFL_IntEqualsTo<0>]>:$new_axis_mask,
+    I32Attr:$ellipsis_mask,
+    I32Attr:$new_axis_mask,
     I32Attr:$shrink_axis_mask
   );
 
   let results = (outs
     TFL_TensorOf<[F32, I32, I64, I8, UI8, QI8, QUI8, I1, I16, QI16, TFL_Quint8, TFL_Str]>:$output
   );
+
+  // TFLite kernel only supports up to 5D input including added axis.
+  let verifier = [{ return Verify(*this); }];
 
   let hasOptions = 1;
 }

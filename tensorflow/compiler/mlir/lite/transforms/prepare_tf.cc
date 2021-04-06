@@ -744,6 +744,13 @@ struct ConvertTFStridedSlice : public RewritePattern {
                                 PatternRewriter &rewriter) const override {
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
 
+    // This logic doesn't handle simultaneous ellipsis_ and new_axis mask. It
+    // will be handled by the TFLite StridedSlice kernel.
+    if ((strided_slice_op.ellipsis_mask() != 0) &&
+        (strided_slice_op.new_axis_mask() != 0)) {
+      return failure();
+    }
+
     // Handle new axis mask.
     if (strided_slice_op.new_axis_mask() != 0) {
       // We currently don't handle simultaneous shrink_ and new_axis masks.

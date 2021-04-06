@@ -2771,6 +2771,31 @@ static LogicalResult Verify(TransposeConvOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// StridedSliceOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult Verify(StridedSliceOp op) {
+  auto ranked_input_type = op.input().getType().dyn_cast<RankedTensorType>();
+
+  // If input is unranked, there is nothing else to be verified.
+  if (!ranked_input_type) return success();
+  int num_input_dims = ranked_input_type.getRank();
+
+  // The kernel will reshape the input tensor with new axis, it only supports
+  // this reshaped tensor up to 5D.
+  uint32_t ellipsis_mask = op.ellipsis_mask();
+  uint32_t new_axis_mask = op.new_axis_mask();
+  int num_added_axis = 0;
+  for (int i = 0; i < 8; ++i) {
+    if (!((1 << i) & ellipsis_mask) && ((1 << i) & new_axis_mask)) {
+      num_added_axis++;
+    }
+  }
+  if (num_input_dims + num_added_axis > 5) return failure();
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//
 
