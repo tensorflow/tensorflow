@@ -31,7 +31,20 @@
 *   TF Core:
     *   Added `tf.saved_model.experimental.TrackableResource`, which allows the
         creation of custom wrapper objects for resource tensors.
+    *   Added `tf.lookup.experimental.MutableHashTable`, which provides a
+        generic mutable hash table implementation.
+        *   Compared to `tf.lookup.experimental.DenseHashTable` this offers
+        lower overall memory usage, and a cleaner API. It does not require
+        specifying a `delete_key` and `empty_key` that cannot be inserted into
+        the table.
 
+*  `tf.lite`:
+    *   Fix mean op reference quantization rounding issue.
+
+*   `tf.data`:
+    *   Promoting `tf.data.experimental.get_single_element` API to
+        `tf.data.Dataset.get_single_element` and deprecating the experimental
+        endpoint.
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
@@ -107,11 +120,11 @@ This release contains contributions from many people at Google, as well as:
       * Add custom ops and kernels through
         [kernel and op registration C API](https://github.com/tensorflow/community/blob/master/rfcs/20190814-kernel-and-op-registration.md).
       * Register custom graph optimization passes with
-        [graph optimization C API](https://github.com/tensorflow/community/blob/master/rfcs/20201027-modular-tensorflow-graph-c-api.md). 
-* [oneAPI Deep Neural Network Library (oneDNN)](https://github.com/oneapi-src/oneDNN) 
+        [graph optimization C API](https://github.com/tensorflow/community/blob/master/rfcs/20201027-modular-tensorflow-graph-c-api.md).
+* [oneAPI Deep Neural Network Library (oneDNN)](https://github.com/oneapi-src/oneDNN)
   CPU performance optimizations from
   [Intel-optimized TensorFlow](https://software.intel.com/content/www/us/en/develop/articles/intel-optimization-for-tensorflow-installation-guide.html)
-  are now available in the official x86-64 Linux and Windows builds. 
+  are now available in the official x86-64 Linux and Windows builds.
     * They are off by default. Enable them by setting the environment variable
       `TF_ENABLE_ONEDNN_OPTS=1`.
     * We do not recommend using them in GPU systems, as they have not been
@@ -242,7 +255,7 @@ This release contains contributions from many people at Google, as well as:
         `tf.GradientTape` inside a `tf.function`.
     *   Changed the default step size in `gradient_checker_v2.compute_gradients` to be exactly representable as a binary floating point numbers. This avoids poluting gradient approximations needlessly, which is some cases leads to false negatives in op gradient tests.
     * Added `tf.config.experimental.get_memory_info`, returning a dict with the
-      current and peak memory usage. Deprecated 
+      current and peak memory usage. Deprecated
       `tf.config.experimental.get_memory_usage` in favor of this new function.
     *   Extended `tf.config.experimental.enable_tensor_float_32_execution` to
         control Tensor-Float-32 evaluation in RNNs.
@@ -385,7 +398,7 @@ This release contains contributions from many people at Google, as well as:
   and
   [CVE-2020-14155](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-14155).
 * Updates `sqlite3` to `3.44.0` to keep in sync with master branch.
-* Newer ROCm versions are supported on the 2.1 branch. 
+* Newer ROCm versions are supported on the 2.1 branch.
 
 # Release 2.0.4
 
