@@ -29,6 +29,7 @@ limitations under the License.
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/python/absl_casters.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
+#include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -245,20 +246,19 @@ py::object PmapFunction::Call(py::args args, py::kwargs kwargs) {
   arguments.keep_alive_objects.push_back(
       py::cast<py::object>(list_of_list_of_buffers));
   // Should be `[num_devices x num_args]`.
-  std::vector<std::vector<xla::PyBuffer*>> arg_buffers;
+  std::vector<std::vector<xla::PyBuffer::object>> arg_buffers;
   arg_buffers.reserve(list_of_list_of_buffers.size());
   for (int i = 0; i < list_of_list_of_buffers.size(); ++i) {
-    std::vector<xla::PyBuffer*> buffers;
+    std::vector<xla::PyBuffer::object> buffers;
     buffers.reserve(py::cast<py::list>(list_of_list_of_buffers[i]).size());
     for (auto& buf : list_of_list_of_buffers[i]) {
-      buffers.push_back(py::cast<xla::PyBuffer*>(buf));
+      buffers.push_back(py::cast<xla::PyBuffer::object>(buf));
     }
     arg_buffers.push_back(std::move(buffers));
   }
 
-  std::vector<std::vector<std::unique_ptr<xla::PyBuffer>>> outputs =
-      ValueOrThrow(
-          cache_entry->executable->ExecuteShardedOnLocalDevices(arg_buffers));
+  std::vector<std::vector<xla::PyBuffer::object>> outputs = ValueOrThrow(
+      cache_entry->executable->ExecuteShardedOnLocalDevices(arg_buffers));
 
   // TODO(jblespiau): Move this to C++.
   py::list outputs_as_python_objects;

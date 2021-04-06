@@ -70,7 +70,7 @@ std::vector<ClientAndPtr<PjRtDevice>> PyExecutable::AddressableDevices() const {
 // Used by JAX JIT which has C++ PjRtBuffers as inputs (Numpy to PjRtBuffer is
 // faster and simpler than Numpy to PyBuffer to PjRtBuffer) and requires
 // PyBuffer as outputs as it will return to Python.
-StatusOr<std::vector<std::unique_ptr<PyBuffer>>> PyExecutable::PjRtExecute(
+StatusOr<std::vector<PyBuffer::object>> PyExecutable::PjRtExecute(
     const std::vector<PjRtBuffer*>& args) {
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
   {
@@ -78,39 +78,38 @@ StatusOr<std::vector<std::unique_ptr<PyBuffer>>> PyExecutable::PjRtExecute(
     TF_ASSIGN_OR_RETURN(output_buffers, executable_->Execute({args}, options_));
   }
   auto traceback = Traceback::Get();
-  std::vector<std::unique_ptr<PyBuffer>> outputs;
+  std::vector<PyBuffer::object> outputs;
   outputs.reserve(output_buffers[0].size());
   for (auto& buffer : output_buffers[0]) {
-    outputs.push_back(
-        std::make_unique<PyBuffer>(client_, std::move(buffer), traceback));
+    outputs.push_back(PyBuffer::Make(client_, std::move(buffer), traceback));
   }
   return outputs;
 }
 
-StatusOr<std::vector<std::unique_ptr<PyBuffer>>> PyExecutable::Execute(
-    absl::Span<PyBuffer* const> args) {
+StatusOr<std::vector<PyBuffer::object>> PyExecutable::Execute(
+    absl::Span<PyBuffer::object const> args) {
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
   {
     py::gil_scoped_release gil_release;
     std::vector<PjRtBuffer*> arg_buffers(args.size());
-    absl::c_transform(args, arg_buffers.begin(),
-                      [](PyBuffer* buf) { return buf->buffer(); });
+    absl::c_transform(
+        args, arg_buffers.begin(),
+        [](const PyBuffer::object& buf) { return buf.buf()->buffer(); });
     TF_ASSIGN_OR_RETURN(output_buffers,
                         executable_->Execute({arg_buffers}, options_));
   }
   auto traceback = Traceback::Get();
-  std::vector<std::unique_ptr<PyBuffer>> outputs;
+  std::vector<PyBuffer::object> outputs;
   outputs.reserve(output_buffers[0].size());
   for (auto& buffer : output_buffers[0]) {
-    outputs.push_back(
-        std::make_unique<PyBuffer>(client_, std::move(buffer), traceback));
+    outputs.push_back(PyBuffer::Make(client_, std::move(buffer), traceback));
   }
   return outputs;
 }
 
-StatusOr<std::vector<std::vector<std::unique_ptr<PyBuffer>>>>
+StatusOr<std::vector<std::vector<PyBuffer::object>>>
 PyExecutable::ExecuteShardedOnLocalDevices(
-    absl::Span<const std::vector<PyBuffer*>> args) {
+    absl::Span<const std::vector<PyBuffer::object>> args) {
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
   int num_computations = executable_->addressable_devices().size();
   {
@@ -123,7 +122,7 @@ PyExecutable::ExecuteShardedOnLocalDevices(
             num_computations,
             absl::StrJoin(
                 args, ", ",
-                [](std::string* out, const std::vector<PyBuffer*>& arg) {
+                [](std::string* out, const std::vector<PyBuffer::object>& arg) {
                   out->append(std::to_string(arg.size()));
                 }));
       }
@@ -133,8 +132,8 @@ PyExecutable::ExecuteShardedOnLocalDevices(
     for (int computation = 0; computation < num_computations; ++computation) {
       arg_buffers[computation].resize(num_args);
       absl::c_transform(args, arg_buffers[computation].begin(),
-                        [&](const std::vector<PyBuffer*>& arg) {
-                          return arg[computation]->buffer();
+                        [&](const std::vector<PyBuffer::object>& arg) {
+                          return arg[computation].buf()->buffer();
                         });
     }
     TF_ASSIGN_OR_RETURN(output_buffers,
@@ -142,12 +141,12 @@ PyExecutable::ExecuteShardedOnLocalDevices(
   }
   auto traceback = Traceback::Get();
   int num_output_buffers = output_buffers[0].size();
-  std::vector<std::vector<std::unique_ptr<PyBuffer>>> outputs;
+  std::vector<std::vector<PyBuffer::object>> outputs;
   outputs.resize(num_output_buffers);
   for (int buffer_id = 0; buffer_id < num_output_buffers; ++buffer_id) {
     outputs[buffer_id].reserve(num_computations);
     for (int computation = 0; computation < num_computations; ++computation) {
-      outputs[buffer_id].push_back(std::make_unique<PyBuffer>(
+      outputs[buffer_id].push_back(PyBuffer::Make(
           client_, std::move(output_buffers[computation][buffer_id]),
           traceback));
     }
