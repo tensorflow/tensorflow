@@ -260,7 +260,6 @@ py_library(
         "//tensorflow/python:check_ops",
         "//tensorflow/python:confusion_matrix",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
