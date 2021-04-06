@@ -290,7 +290,7 @@ bool StreamExecutor::GetConvolveExecutionPlans(
       output_descriptor, convolution_descriptor, out_exec_plans);
 }
 
-bool StreamExecutor::GetFusedConvolveExecutionPlans(
+port::Status StreamExecutor::GetFusedConvolveExecutionPlans(
     dnn::ConvolutionKind kind, dnn::DataType element_type, Stream *stream,
     const dnn::BatchDescriptor &input_descriptor,
     const dnn::FilterDescriptor &filter_descriptor,
@@ -299,13 +299,17 @@ bool StreamExecutor::GetFusedConvolveExecutionPlans(
     const dnn::ConvolutionDescriptor &convolution_descriptor,
     std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>> *out_exec_plans) {
   dnn::DnnSupport *dnn_support = AsDnn();
-  if (!dnn_support) {
-    return false;
+  if (dnn_support) {
+#if GOOGLE_CUDA
+    gpu::CudnnSupport *cudnn_dnn =
+        dynamic_cast<gpu::CudnnSupport *>(dnn_support);
+    return cudnn_dnn->GetFusedConvolveExecutionPlans(
+        kind, element_type, stream, input_descriptor, filter_descriptor,
+        bias_descriptor, output_descriptor, convolution_descriptor,
+        out_exec_plans);
+#endif  // GOOGLE_CUDA
   }
-  return dnn_support->GetFusedConvolveExecutionPlans(
-      kind, element_type, stream, input_descriptor, filter_descriptor,
-      bias_descriptor, output_descriptor, convolution_descriptor,
-      out_exec_plans);
+  return port::UnimplementedError("DNN library is not found.");
 }
 
 bool StreamExecutor::GetMIOpenConvolveAlgorithms(

@@ -219,15 +219,14 @@ class CudnnSupport : public dnn::DnnSupport {
       std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>>* out_exec_plans)
       override;
 
-  bool GetFusedConvolveExecutionPlans(
+  port::Status GetFusedConvolveExecutionPlans(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor,
       const dnn::FilterDescriptor& filter_descriptor,
       const dnn::BatchDescriptor& bias_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
-      std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>>* out_exec_plans)
-      override;
+      std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>>* out_exec_plans);
 
   bool GetRnnAlgorithms(
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;

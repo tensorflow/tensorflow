@@ -4397,7 +4397,7 @@ bool CudnnSupport::GetConvolveExecutionPlans(
 #endif  // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 }
 
-bool CudnnSupport::GetFusedConvolveExecutionPlans(
+port::Status CudnnSupport::GetFusedConvolveExecutionPlans(
     dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
     const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
@@ -4411,7 +4411,7 @@ bool CudnnSupport::GetFusedConvolveExecutionPlans(
       kind, element_type, stream, input_descriptor, filter_descriptor,
       bias_descriptor, output_descriptor, convolution_descriptor, cudnn);
   if (!op_graph_status.status().ok()) {
-    return false;
+    return port::Status(port::error::INTERNAL, "Cudnn graph failed to build.");
   }
   auto op_graph = op_graph_status.ConsumeValueOrDie();
 
@@ -4419,7 +4419,7 @@ bool CudnnSupport::GetFusedConvolveExecutionPlans(
                   .setOperationGraph(*op_graph)
                   .setHeurMode(CUDNN_HEUR_MODE_INSTANT)
                   .build();
-  RETURN_FALSE_IF_CUDNN_ERROR(heur);
+  RETURN_MSG_IF_CUDNN_ERROR(heur);
 
   auto &heur_configs = heur.getEngineConfig(heur.getEngineConfigCount());
 
@@ -4454,9 +4454,10 @@ bool CudnnSupport::GetFusedConvolveExecutionPlans(
 
   VLOG(4) << "\nReturned execution plans size: " << out_exec_plans->size();
 
-  return true;
+  return port::Status::OK();
 #else
-  return false;
+  return port::UnimplementedError(
+      "Cudnn execution plans are only supported with Cudnn >= 8.1.");
 #endif // CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 }
 

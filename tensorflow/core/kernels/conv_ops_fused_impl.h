@@ -384,7 +384,7 @@ Status FindBestConvolveAlgorithm(
     if (!stream->parent()->GetFusedConvolveExecutionPlans(
             se::dnn::ConvolutionKind::FORWARD, se::dnn::ToDataType<T>::value,
             stream, input_desc, filter_desc, bias_desc, output_desc, conv_desc,
-            &plans)) {
+            &plans).ok()) {
       return errors::Unknown(
           "Failed to get convolution plans. This is probably because cuDNN "
           "failed to initialize, so try looking to see if a warning log "
