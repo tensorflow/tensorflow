@@ -1074,6 +1074,7 @@ class _SessionWithFeedDictAdditions(session_lib.SessionInterface):
         fetches=fetches, feed_dict=feed_dict, **kwargs)
 
 
+@tf_export("__internal__.tracking.TrackableSaver", v1=[])
 class TrackableSaver(object):
   """Saves and restores a `Trackable` object and its dependencies.
 
@@ -1396,7 +1397,6 @@ def frozen_saver(root_trackable):
 
 
 def saver_with_op_caching(obj, attached_dependencies=None):
-  """A TrackableSaver with a SaveableObject cache when graph building."""
   if context.executing_eagerly():
     saveables_cache = None
   else:
