@@ -33,6 +33,7 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -1645,7 +1646,8 @@ class BackupAndRestore(Callback):
     self._supported_strategies = (
         mirrored_strategy.MirroredStrategy,
         collective_all_reduce_strategy.CollectiveAllReduceStrategy,
-        tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV2)
+        tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV2,
+        parameter_server_strategy_v2.ParameterServerStrategyV2)
 
     if not context.executing_eagerly():
       if ops.inside_function():
