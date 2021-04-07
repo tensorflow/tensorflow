@@ -674,8 +674,16 @@ class OptimizerV2(trackable.Trackable):
         grads_and_vars = self._aggregate_gradients(grads_and_vars)
       grads_and_vars = self._transform_gradients(grads_and_vars)
 
-      return self._distributed_apply(strategy, grads_and_vars, name,
-                                     apply_state)
+      if optimizer_utils.strategy_supports_no_merge_call():
+        return self._distributed_apply(strategy, grads_and_vars, name,
+                                       apply_state)
+      else:
+        return distribute_ctx.get_replica_context().merge_call(
+            functools.partial(self._distributed_apply, apply_state=apply_state),
+            args=(grads_and_vars,),
+            kwargs={
+                "name": name,
+            })
 
   def _distributed_apply(self, distribution, grads_and_vars, name, apply_state):
     """`apply_gradients` using a `DistributionStrategy`."""
@@ -714,8 +722,16 @@ class OptimizerV2(trackable.Trackable):
           with name_scope_only_in_function_or_graph(
               "update" if eagerly_outside_functions else "update_" +
               var.op.name):
-            update_ops.append(distribute_ctx.get_replica_context()._update(  # pylint: disable=protected-access
-                var, apply_grad_to_update_var, args=(grad,), group=False))
+            update_op = distribution.extended.update(
+                var, apply_grad_to_update_var, args=(grad,), group=False)
+            if distribute_ctx.in_cross_replica_context():
+              # In cross-replica context, extended.update returns a list of
+              # update ops from all replicas (group=False).
+              update_ops.extend(update_op)
+            else:
+              # In replica context, extended.update return the single update op
+              # of current replica.
+              update_ops.append(update_op)
 
       any_symbolic = any(isinstance(i, ops.Operation) or
                          tf_utils.is_symbolic_tensor(i) for i in update_ops)
