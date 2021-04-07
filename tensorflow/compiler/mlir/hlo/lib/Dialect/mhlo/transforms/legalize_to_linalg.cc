@@ -1712,6 +1712,10 @@ struct ReduceWindowOpOnTensorsConversion
       return rewriter.notifyMatchFailure(op, "expected NHWC pooling-based op");
     }
 
+    if (op.padding() && !isSplatValue(*op.padding(), 0)) {
+      return rewriter.notifyMatchFailure(op, "require paddings are all zero");
+    }
+
     SmallVector<int64_t, 2> shapes;
     shapes.push_back(op.window_dimensions().getValue<int64_t>(1));
     shapes.push_back(op.window_dimensions().getValue<int64_t>(2));
