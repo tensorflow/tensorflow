@@ -84,7 +84,7 @@ Status BroadcastMul(AbstractContext* ctx, AbstractTensorHandle* vec,
   TF_RETURN_IF_ERROR(ops::ExpandDims(
       ctx, vec, dim.get(), absl::MakeSpan(expand_dims_outputs), "ExpandDims"));
   TF_RETURN_IF_ERROR(
-      ops::Mul(ctx, {expand_dims_outputs[0], mat}, outputs, "Mul"));
+      ops::Mul(ctx, expand_dims_outputs[0], mat, outputs, "Mul"));
   expand_dims_outputs[0]->Unref();
   return Status::OK();
 }

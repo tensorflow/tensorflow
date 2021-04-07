@@ -64,12 +64,12 @@ class ExpGradientFunction : public GradientFunction {
     vector<AbstractTensorHandle*> conj_outputs(1);
     std::string name = "Conj_Exp_Grad";
     TF_RETURN_IF_ERROR(
-        Conj(ctx, {exp_.get()}, absl::MakeSpan(conj_outputs), name.c_str()));
+        Conj(ctx, exp_.get(), absl::MakeSpan(conj_outputs), name.c_str()));
     AbstractTensorHandlePtr conj_output_releaser(conj_outputs[0]);
 
     name = "Mul_Exp_Grad";
-    TF_RETURN_IF_ERROR(Mul(ctx, {conj_outputs[0], grad_outputs[0]}, grad_inputs,
-                           name.c_str()));
+    TF_RETURN_IF_ERROR(
+        Mul(ctx, conj_outputs[0], grad_outputs[0], grad_inputs, name.c_str()));
     return Status::OK();
   }
   ~ExpGradientFunction() override {}
@@ -87,7 +87,7 @@ class SqrtGradientFunction : public GradientFunction {
                  absl::Span<AbstractTensorHandle* const> grad_outputs,
                  absl::Span<AbstractTensorHandle*> grad_inputs) override {
     std::string name = "Sqrt_Grad";
-    TF_RETURN_IF_ERROR(SqrtGrad(ctx, {sqrt_.get(), grad_outputs[0]},
+    TF_RETURN_IF_ERROR(SqrtGrad(ctx, sqrt_.get(), grad_outputs[0],
                                 absl::MakeSpan(grad_inputs), name.c_str()));
     return Status::OK();
   }
@@ -131,13 +131,13 @@ class MatMulGradientFunction : public GradientFunction {
     // Conj each input
     vector<AbstractTensorHandle*> conj_outputs(1);
     std::string name = "Conj_A_MatMul_Grad";
-    TF_RETURN_IF_ERROR(Conj(ctx, {forward_inputs_[0]},
+    TF_RETURN_IF_ERROR(Conj(ctx, forward_inputs_[0],
                             absl::MakeSpan(conj_outputs), name.c_str()));
 
     AbstractTensorHandlePtr A(conj_outputs[0]);
 
     name = "Conj_B_MatMul_Grad";
-    TF_RETURN_IF_ERROR(Conj(ctx, {forward_inputs_[1]},
+    TF_RETURN_IF_ERROR(Conj(ctx, forward_inputs_[1],
                             absl::MakeSpan(conj_outputs), name.c_str()));
 
     AbstractTensorHandlePtr B(conj_outputs[0]);
@@ -148,50 +148,50 @@ class MatMulGradientFunction : public GradientFunction {
     std::string name_grad_A = "MatMul_Grad_A";
     std::string name_grad_B = "MatMul_Grad_B";
     if (!t_a && !t_b) {
-      TF_RETURN_IF_ERROR(MatMul(ctx, {upstream_grad, B.get()},
+      TF_RETURN_IF_ERROR(MatMul(ctx, upstream_grad, B.get(),
                                 absl::MakeSpan(matmul_A_outputs),
                                 name_grad_A.c_str(),
                                 /*transpose_a = */ false,
                                 /*transpose_b = */ true));
 
-      TF_RETURN_IF_ERROR(MatMul(ctx, {A.get(), upstream_grad},
+      TF_RETURN_IF_ERROR(MatMul(ctx, A.get(), upstream_grad,
                                 absl::MakeSpan(matmul_B_outputs),
                                 name_grad_B.c_str(),
                                 /*transpose_a = */ true,
                                 /*transpose_b = */ false));
     } else if (!t_a && t_b) {
-      TF_RETURN_IF_ERROR(MatMul(ctx, {upstream_grad, B.get()},
+      TF_RETURN_IF_ERROR(MatMul(ctx, upstream_grad, B.get(),
                                 absl::MakeSpan(matmul_A_outputs),
                                 name_grad_A.c_str(),
                                 /*transpose_a = */ false,
                                 /*transpose_b = */ false));
 
-      TF_RETURN_IF_ERROR(MatMul(ctx, {upstream_grad, A.get()},
+      TF_RETURN_IF_ERROR(MatMul(ctx, upstream_grad, A.get(),
                                 absl::MakeSpan(matmul_B_outputs),
                                 name_grad_B.c_str(),
                                 /*transpose_a = */ true,
                                 /*transpose_b = */ false));
 
     } else if (t_a && !t_b) {
-      TF_RETURN_IF_ERROR(MatMul(ctx, {B.get(), upstream_grad},
+      TF_RETURN_IF_ERROR(MatMul(ctx, B.get(), upstream_grad,
                                 absl::MakeSpan(matmul_A_outputs),
                                 name_grad_A.c_str(),
                                 /*transpose_a = */ false,
                                 /*transpose_b = */ true));
 
-      TF_RETURN_IF_ERROR(MatMul(ctx, {A.get(), upstream_grad},
+      TF_RETURN_IF_ERROR(MatMul(ctx, A.get(), upstream_grad,
                                 absl::MakeSpan(matmul_B_outputs),
                                 name_grad_B.c_str(),
                                 /*transpose_a = */ false,
                                 /*transpose_b = */ false));
     } else {  // t_a && t_b
-      TF_RETURN_IF_ERROR(MatMul(ctx, {B.get(), upstream_grad},
+      TF_RETURN_IF_ERROR(MatMul(ctx, B.get(), upstream_grad,
                                 absl::MakeSpan(matmul_A_outputs),
                                 name_grad_A.c_str(),
                                 /*transpose_a = */ true,
                                 /*transpose_b = */ true));
 
-      TF_RETURN_IF_ERROR(MatMul(ctx, {upstream_grad, A.get()},
+      TF_RETURN_IF_ERROR(MatMul(ctx, upstream_grad, A.get(),
                                 absl::MakeSpan(matmul_B_outputs),
                                 name_grad_B.c_str(),
                                 /*transpose_a = */ true,
@@ -232,7 +232,7 @@ class NegGradientFunction : public GradientFunction {
 
     std::string name = "Neg_Grad";
     TF_RETURN_IF_ERROR(
-        ops::Neg(ctx, {grad_outputs[0]}, grad_inputs, name.c_str()));
+        ops::Neg(ctx, grad_outputs[0], grad_inputs, name.c_str()));
     return Status::OK();
   }
   ~NegGradientFunction() override {}
@@ -258,8 +258,8 @@ class SubGradientFunction : public GradientFunction {
     // Grad for B
     // negate the upstream grad
     std::string name = "Neg_Sub_Grad_B";
-    TF_RETURN_IF_ERROR(ops::Neg(ctx, {grad_outputs[0]},
-                                grad_inputs.subspan(1, 1), name.c_str()));
+    TF_RETURN_IF_ERROR(ops::Neg(ctx, grad_outputs[0], grad_inputs.subspan(1, 1),
+                                name.c_str()));
 
     return Status::OK();
   }
@@ -291,12 +291,12 @@ class MulGradientFunction : public GradientFunction {
 
     // Gradient for A
     std::string name = "Mul_Grad_A";
-    TF_RETURN_IF_ERROR(Mul(ctx, {upstream_grad, forward_inputs_[1]},
+    TF_RETURN_IF_ERROR(Mul(ctx, upstream_grad, forward_inputs_[1],
                            grad_inputs.subspan(0, 1), name.c_str()));
 
     // Gradient for B
     name = "Mul_Grad_B";
-    TF_RETURN_IF_ERROR(Mul(ctx, {forward_inputs_[0], upstream_grad},
+    TF_RETURN_IF_ERROR(Mul(ctx, forward_inputs_[0], upstream_grad,
                            grad_inputs.subspan(1, 1), name.c_str()));
     return Status::OK();
   }
@@ -342,7 +342,7 @@ class Log1pGradientFunction : public GradientFunction {
     // Calculate conjugate of X
     std::string name = "Conj_Log1p_Grad_X";
     TF_RETURN_IF_ERROR(
-        Conj(ctx, {X}, absl::MakeSpan(temp_outputs), name.c_str()));
+        Conj(ctx, X, absl::MakeSpan(temp_outputs), name.c_str()));
 
     AbstractTensorHandlePtr Conj_X(temp_outputs[0]);
 
@@ -355,7 +355,7 @@ class Log1pGradientFunction : public GradientFunction {
 
     name = "Add_Log1p_Grad_X";
     // Calculate 1 + Conj(X)
-    TF_RETURN_IF_ERROR(Add(ctx, {Ones_X.get(), Conj_X.get()},
+    TF_RETURN_IF_ERROR(Add(ctx, Ones_X.get(), Conj_X.get(),
                            absl::MakeSpan(temp_outputs), name.c_str()));
 
     AbstractTensorHandlePtr Conj_XP1(temp_outputs[0]);
@@ -363,7 +363,7 @@ class Log1pGradientFunction : public GradientFunction {
     name = "Div_Log1p_Grad_X";
     // Calculate U / (1 + Conj(X))
     TF_RETURN_IF_ERROR(
-        Div(ctx, {upstream_grad, Conj_XP1.get()}, grad_inputs, name.c_str()));
+        Div(ctx, upstream_grad, Conj_XP1.get(), grad_inputs, name.c_str()));
 
     return Status::OK();
   }
@@ -414,23 +414,23 @@ class DivNoNanGradientFunction : public GradientFunction {
 
     // Calculate dX =  U / Y
     std::string name = "Div_Grad_X";
-    TF_RETURN_IF_ERROR(DivNoNan(ctx, {upstream_grad, Y},
+    TF_RETURN_IF_ERROR(DivNoNan(ctx, upstream_grad, Y,
                                 grad_inputs.subspan(0, 1), name.c_str()));
 
     vector<AbstractTensorHandle*> temp_outputs(1);
     // Calculate dY = -U*Z / Y
     name = "Neg_Div_Grad_Y";
-    TF_RETURN_IF_ERROR(Neg(ctx, {upstream_grad}, absl::MakeSpan(temp_outputs),
+    TF_RETURN_IF_ERROR(Neg(ctx, upstream_grad, absl::MakeSpan(temp_outputs),
                            name.c_str()));  // -U
     AbstractTensorHandlePtr MinusU(temp_outputs[0]);
 
     name = "Mul_Div_Grad_Y";
-    TF_RETURN_IF_ERROR(Mul(ctx, {MinusU.get(), Z}, absl::MakeSpan(temp_outputs),
+    TF_RETURN_IF_ERROR(Mul(ctx, MinusU.get(), Z, absl::MakeSpan(temp_outputs),
                            name.c_str()));  // -U*Z
     AbstractTensorHandlePtr UZ(temp_outputs[0]);
 
     name = "Div_Grad_Y";
-    TF_RETURN_IF_ERROR(DivNoNan(ctx, {UZ.get(), Y}, grad_inputs.subspan(1, 1),
+    TF_RETURN_IF_ERROR(DivNoNan(ctx, UZ.get(), Y, grad_inputs.subspan(1, 1),
                                 name.c_str()));  // -U*Z / Y
 
     return Status::OK();
