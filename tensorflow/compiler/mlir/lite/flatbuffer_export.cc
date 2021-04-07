@@ -220,10 +220,29 @@ static std::string GetOpDescriptionForDebug(Operation* inst) {
   std::string op_str;
   llvm::raw_string_ostream os(op_str);
   inst->getName().print(os);
+  os << "(";
+  if (!inst->getOperandTypes().empty()) {
+    bool first = true;
+    for (Type operand_type : inst->getOperandTypes()) {
+      os << (!first ? ", " : "");
+      first = false;
+      os << operand_type;
+    }
+  }
+  os << ") -> (";
+  if (!inst->getResultTypes().empty()) {
+    bool first = true;
+    for (Type result_type : inst->getResultTypes()) {
+      os << (!first ? ", " : "");
+      first = false;
+      os << result_type;
+    }
+  }
+  os << ")";
   // Print out attributes except for large elementsattributes (which should
   // rarely be the cause why the legalization didn't happen).
   if (!inst->getAttrDictionary().empty()) {
-    os << " {";
+    os << " : {";
     bool first = true;
     for (auto& named_attr : inst->getAttrDictionary()) {
       os << (!first ? ", " : "");
