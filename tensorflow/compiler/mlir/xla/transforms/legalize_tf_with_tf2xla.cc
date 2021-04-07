@@ -203,6 +203,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::QuantizeAndDequantizeOp>(),
     TypeID::get<TF::QuantizeAndDequantizeV2Op>(),
     TypeID::get<TF::QuantizeAndDequantizeV3Op>(),
+    TypeID::get<TF::QuantizeAndDequantizeV4Op>(),
     TypeID::get<TF::RFFT2DOp>(),
     TypeID::get<TF::RFFT3DOp>(),
     TypeID::get<TF::RGBToHSVOp>(),
