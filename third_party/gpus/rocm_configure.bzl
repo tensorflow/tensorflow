@@ -447,6 +447,7 @@ def _create_dummy_repository(repository_ctx):
             "%{rocm_is_configured}": "False",
             "%{rocm_extra_copts}": "[]",
             "%{rocm_gpu_architectures}": "[]",
+            "%{rocm_version_number}": "0",
         },
     )
     _tpl(
@@ -669,6 +670,7 @@ def _create_local_rocm_repository(repository_ctx):
                 rocm_config.amdgpu_targets,
             ),
             "%{rocm_gpu_architectures}": str(rocm_config.amdgpu_targets),
+            "%{rocm_version_number}": str(rocm_version_number),
         },
     )
     repository_ctx.template(
