@@ -3550,7 +3550,7 @@ class SavedModelSignatureDefImporterLite {
       absl::string_view name, mlir::ModuleOp sub_module,
       const std::unordered_map<std::string, std::string>& tf_name_to_mlir_name);
 
-  GraphImportConfig::InputArrays ParseInputArrays(
+  StatusOr<GraphImportConfig::InputArrays> ParseInputArrays(
       llvm::ArrayRef<std::pair<std::string, TensorInfo>> inputs);
 
  private:
@@ -3686,7 +3686,7 @@ SavedModelSignatureDefImporterLite::ConvertGraph(
 
   GraphImportConfig specs;
   specs.prune_unused_nodes = true;
-  specs.inputs = ParseInputArrays(inputs);
+  TF_ASSIGN_OR_RETURN(specs.inputs, ParseInputArrays(inputs));
   for (auto& output : outputs) specs.outputs.push_back(output.second.name());
   specs.control_outputs = control_outputs;
   specs.enable_shape_inference = false;
@@ -3751,15 +3751,19 @@ Status SavedModelSignatureDefImporterLite::ConvertSignature(
                                         tf_name_to_mlir_name);
 }
 
-GraphImportConfig::InputArrays
+StatusOr<GraphImportConfig::InputArrays>
 SavedModelSignatureDefImporterLite::ParseInputArrays(
     llvm::ArrayRef<std::pair<std::string, TensorInfo>> inputs) {
   GraphImportConfig::InputArrays results;
   for (const auto& iter : inputs) {
     const auto& tensor_info = iter.second;
 
-    // Only dense tensor is supported.
-    DCHECK_EQ(tensor_info.encoding_case(), tensorflow::TensorInfo::kName);
+    // TODO(b/184675681): Support other encoding cases.
+    //
+    // TODO(b/184679394): Add unit test for this check.
+    TF_RET_CHECK(tensor_info.encoding_case() == tensorflow::TensorInfo::kName)
+        << "Only dense tensor is supported, but got encoding case "
+        << tensor_info.encoding_case();
 
     VLOG(1) << "Importing Signature Input: input_name = " << iter.first
             << ", tensor_info = " << tensor_info.DebugString();
