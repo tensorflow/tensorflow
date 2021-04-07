@@ -1920,18 +1920,20 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
   bool few_waves = [fusion]() mutable {
     for (mlir::Operation& op : fusion.region().front()) {
       if (mlir::isa<mlir::memref::TensorLoadOp, mlir::memref::TensorStoreOp,
-                    mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp>(op)) {
+                    mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp,
+                    mlir::mhlo::ConstOp>(op)) {
         continue;
       }
       HloOpcode opcode = *MhloToHloOpcode(&op);
       if (HloInstruction::IsOpElementwise(opcode)) {
         continue;
       }
-      if (auto broadcast = mlir::dyn_cast<mlir::mhlo::BroadcastOp>(op)) {
-        if (broadcast.broadcast_sizes().size() == 0) {
+      if (auto broadcast = mlir::dyn_cast<mlir::mhlo::BroadcastInDimOp>(op)) {
+        if (broadcast.broadcast_dimensions().size() == 0) {
           continue;
         }
       }
+      VLOG(2) << "few_waves not enabled due to: " << MlirToString(&op);
       return false;
     }
     return true;
