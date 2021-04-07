@@ -147,7 +147,11 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":buffer_map",
+        ":subgraph_resource",
+        ":util",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/lite:cc_api",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -159,6 +163,7 @@ cc_library(
             "//tensorflow/core/common_runtime/eager:context",
             "//tensorflow/core/common_runtime/eager:core",
             "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
             "//tensorflow/core:lib",
         ],
     }),
@@ -170,12 +175,35 @@ tf_cc_test(
     srcs = ["delegate_data_test.cc"],
     deps = [
         ":delegate_data",
+        "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/platform:protobuf",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/testing:util",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
+)
+
+cc_library(
+    name = "subgraph_resource",
+    hdrs = ["subgraph_resource.h"],
+    deps = [
+        "//tensorflow/lite:cc_api",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework_headers_lib",
+        ],
+    }),
 )
 
 tf_cc_test(
@@ -296,4 +324,29 @@ cc_library(
         "//tensorflow/core:portable_jpeg_internal",
         "//tensorflow/core/lib/png:png_io",
     ],
+)
+
+cc_library(
+    name = "tflite_subgraph_execute",
+    srcs = ["tflite_subgraph_execute.cc"],
+    deps = [
+        ":subgraph_resource",
+        "//tensorflow/lite:cc_api",
+        "//tensorflow/lite:string_util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:kernel_util",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:lib",
+            "//tensorflow/core:framework",
+        ],
+    }),
 )
