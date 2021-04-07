@@ -67,25 +67,6 @@ std::vector<ClientAndPtr<PjRtDevice>> PyExecutable::AddressableDevices() const {
   return devices;
 }
 
-// Used by JAX JIT which has C++ PjRtBuffers as inputs (Numpy to PjRtBuffer is
-// faster and simpler than Numpy to PyBuffer to PjRtBuffer) and requires
-// PyBuffer as outputs as it will return to Python.
-StatusOr<std::vector<PyBuffer::object>> PyExecutable::PjRtExecute(
-    const std::vector<PjRtBuffer*>& args) {
-  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
-  {
-    py::gil_scoped_release gil_release;
-    TF_ASSIGN_OR_RETURN(output_buffers, executable_->Execute({args}, options_));
-  }
-  auto traceback = Traceback::Get();
-  std::vector<PyBuffer::object> outputs;
-  outputs.reserve(output_buffers[0].size());
-  for (auto& buffer : output_buffers[0]) {
-    outputs.push_back(PyBuffer::Make(client_, std::move(buffer), traceback));
-  }
-  return outputs;
-}
-
 StatusOr<std::vector<PyBuffer::object>> PyExecutable::Execute(
     absl::Span<PyBuffer::object const> args) {
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;

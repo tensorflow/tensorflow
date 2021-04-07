@@ -59,10 +59,6 @@ class PyExecutable {
   StatusOr<std::vector<PyBuffer::object>> Execute(
       absl::Span<PyBuffer::object const> args);
 
-  // Same as above, but take as inputs `PjRtBuffer*`. Only targets C++ code.
-  StatusOr<std::vector<PyBuffer::object>> PjRtExecute(
-      const std::vector<PjRtBuffer*>& args);
-
   // Takes args indexed by argid then deviceid, transposes them, and passes to
   // PjRtExecutable::Execute. The result is similarly transposed back into the
   // argid,deviceid format.
@@ -78,6 +74,7 @@ class PyExecutable {
   const PjRtExecutable& pjrt_executable() const { return *executable_; }
 
   PjRtExecutable* mutable_pjrt_executable() const { return executable_.get(); }
+  const ExecuteOptions& options() const { return options_; }
 
  private:
   friend class PyClient;

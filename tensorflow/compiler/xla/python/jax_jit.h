@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_JAX_JIT_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_JAX_JIT_H_
 
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "pybind11/pybind11.h"
@@ -42,6 +43,16 @@ bool GetEnableX64();
 // (a) equality of the arguments and keyword arguments ArgSignature
 // (a) equality (delegated to Python) of the static arguments.
 struct CallSignature {
+  // A PyTreeDef for each positional dynamic (i.e. not static) argument.
+  absl::InlinedVector<xla::PyTreeDef, 2> dynamic_positional_args_treedef;
+  // Shape and dtype for both the dynamic positional arguments and the keyword
+  // arguments (sorted by keyword name).
+  absl::InlinedVector<xla::PyArgSignature, 2> dynamic_args_signatures;
+  xla::PjRtDevice* device;
+  bool jax_enable_x64;
+  // Opaque additional context that should be included as part of the cache key.
+  pybind11::object extra_jit_context;
+
   struct KwargEntry {
     // To avoid comparing strings, we intern the kwargs strings.
     // The compilation cache holds a reference to all the keys.
@@ -57,18 +68,9 @@ struct CallSignature {
   // Only contains the arguments associated to `static_argnums`, sorted in the
   // order of their argnum index.
   std::vector<pybind11::object> static_args;
-  // A PyTreeDef for each positional dynamic (i.e. not static) argument.
-  std::vector<xla::PyTreeDef> dynamic_positional_args_treedef;
   // Keyword arguments. Sorted by the keyword name.
   std::vector<KwargEntry> keyword_args;
-  // Shape and dtype for both the dynamic positional arguments and the keyword
-  // arguments (sorted by keyword name).
-  std::vector<xla::PyArgSignature> dynamic_args_signatures;
-  xla::PjRtDevice* device;
-  bool jax_enable_x64;
 
-  // Opaque additional context that should be included as part of the cache key.
-  pybind11::object extra_jit_context;
 
   bool operator==(const CallSignature& other) const;
   bool operator!=(const CallSignature& other) const {
@@ -96,7 +98,7 @@ struct ParsedArgumentsAsBuffers {
   CallSignature signature;
   // The concatenation of the dynamic positional arguments and the sorted
   // keyword arguments.
-  std::vector<pybind11::object> flat_dynamic_args;
+  absl::InlinedVector<pybind11::object, 2> flat_dynamic_args;
   std::vector<pybind11::object> keep_alive_objects;
 
   // The following is only valid if the parsing succeeds.
@@ -110,7 +112,7 @@ struct ParsedArgumentsAsBuffers {
 
 // Filter out static arguments, flatten and concatenate other arguments (i.e.
 // dynamic positional and keyword arguments), filling `arguments` in place.
-xla::Status ParseArguments(const pybind11::args& args,
+xla::Status ParseArguments(pybind11::handle args,
                            const absl::optional<pybind11::kwargs>& py_kwargs,
                            absl::Span<int const> static_argnums,
                            ParsedArgumentsAsBuffers& arguments);
