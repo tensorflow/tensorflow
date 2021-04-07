@@ -3606,45 +3606,36 @@ GetCudnnFusedOperationGraph(
   RETURN_MSG_IF_CUDNN_ERROR(conv_desc);
 
   // Alpha is the scaling factor for input.
-  float falpha = 1.0;
-  double dalpha = 1.0;
+  float alpha = 1.0;
   // Alpha2 is the scaling factor for second input.
-  float falpha2 = 0.0;
-  double dalpha2 = 0.0;
+  float alpha2 = 0.0;
   // Beta is the scaling factor for output.
-  float fbeta = 0.0;
-  double dbeta = 0.0;
+  float beta = 0.0;
 
   // CUDNN Operation
-  auto conv_op_builder = cudnn_frontend::OperationBuilder(conv_mode);
-  conv_op_builder.setxDesc(tensor_x)
-                 .setyDesc(tensor_conv)
-                 .setwDesc(tensor_w)
-                 .setcDesc(conv_desc);
-  if (cudnn_type == CUDNN_DATA_DOUBLE) {
-    conv_op_builder.setAlpha(dalpha).setBeta(dbeta);
-  } else {
-    conv_op_builder.setAlpha(falpha).setBeta(fbeta);
-  }
-  auto conv_op = conv_op_builder.build();
+  auto conv_op = cudnn_frontend::OperationBuilder(conv_mode)
+                     .setxDesc(tensor_x)
+                     .setyDesc(tensor_conv)
+                     .setwDesc(tensor_w)
+                     .setcDesc(conv_desc)
+                     .setAlpha(alpha)
+                     .setBeta(beta)
+                     .build();
   RETURN_MSG_IF_CUDNN_ERROR(conv_op);
 
   auto add_desc = cudnn_frontend::PointWiseDescBuilder()
                       .setMode(CUDNN_POINTWISE_ADD)
                       .setMathPrecision(cudnn_type)
                       .build();
-  auto add_op_builder = cudnn_frontend::OperationBuilder(
-                            CUDNN_BACKEND_OPERATION_POINTWISE_DESCRIPTOR);
-  add_op_builder.setxDesc(conv_op.getOutputTensor())
-                .setbDesc(tensor_z)
-                .setyDesc(tensor_add)
-                .setpwDesc(add_desc);
-  if (cudnn_type == CUDNN_DATA_DOUBLE) {
-    add_op_builder.setAlpha(dalpha).setAlpha2(dalpha2);
-  } else {
-    add_op_builder.setAlpha(falpha).setAlpha2(falpha2);
-  }
-  auto add_op = add_op_builder.build();
+  auto add_op = cudnn_frontend::OperationBuilder(
+                    CUDNN_BACKEND_OPERATION_POINTWISE_DESCRIPTOR)
+                    .setxDesc(conv_op.getOutputTensor())
+                    .setbDesc(tensor_z)
+                    .setyDesc(tensor_add)
+                    .setpwDesc(add_desc)
+                    .setAlpha(alpha)
+                    .setAlpha2(alpha2)
+                    .build();
   RETURN_MSG_IF_CUDNN_ERROR(add_op);
 
   auto bias_add_desc = cudnn_frontend::PointWiseDescBuilder()
