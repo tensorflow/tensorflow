@@ -238,6 +238,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParseFloorDiv);
   }
 
+  TfLiteStatus AddFloorMod() {
+    return AddBuiltin(BuiltinOperator_FLOOR_MOD, tflite::Register_FLOOR_MOD(),
+                      ParseFloorMod);
+  }
+
   TfLiteStatus AddFullyConnected(
       const TfLiteRegistration& registration = Register_FULLY_CONNECTED()) {
     return AddBuiltin(BuiltinOperator_FULLY_CONNECTED, registration,
