@@ -29,13 +29,13 @@ namespace ops {
 Status Mul(AbstractContext* ctx, AbstractTensorHandle* const x,
            AbstractTensorHandle* const y, absl::Span<AbstractTensorHandle*> z,
            const char* name) {
-  AbstractOperationPtr mul_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(mul_op->Reset("Mul", /*raw_device_name=*/nullptr));
-  TF_RETURN_IF_ERROR(MaybeSetOpName(mul_op.get(), name));
-  TF_RETURN_IF_ERROR(mul_op->AddInput(x));
-  TF_RETURN_IF_ERROR(mul_op->AddInput(y));
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("Mul", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(x));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(y));
   int num_retvals = 1;
-  return mul_op->Execute(z, &num_retvals);
+  return op_ptr->Execute(z, &num_retvals);
 }
 
 Status Conj(AbstractContext* ctx, AbstractTensorHandle* const input,
@@ -46,13 +46,13 @@ Status Conj(AbstractContext* ctx, AbstractTensorHandle* const input,
     TF_RETURN_IF_ERROR(Identity(ctx, input, output, name));
   } else if (DataTypeIsComplex(BaseType(dtype)) ||
              BaseType(dtype) == DT_VARIANT) {
-    AbstractOperationPtr conj_op(ctx->CreateOperation());
-    TF_RETURN_IF_ERROR(conj_op->Reset("Conj", /*raw_device_name=*/nullptr));
-    TF_RETURN_IF_ERROR(MaybeSetOpName(conj_op.get(), name));
-    TF_RETURN_IF_ERROR(conj_op->AddInput(input));
+    AbstractOperationPtr op_ptr(ctx->CreateOperation());
+    TF_RETURN_IF_ERROR(op_ptr->Reset("Conj", /*raw_device_name=*/nullptr));
+    TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+    TF_RETURN_IF_ERROR(op_ptr->AddInput(input));
 
     int num_retvals = 1;
-    TF_RETURN_IF_ERROR(conj_op->Execute(output, &num_retvals));
+    TF_RETURN_IF_ERROR(op_ptr->Execute(output, &num_retvals));
   } else {
     return errors::InvalidArgument(
         "Expected numeric or variant tensor, got dtype ", dtype);
@@ -63,14 +63,14 @@ Status Conj(AbstractContext* ctx, AbstractTensorHandle* const input,
 Status Add(AbstractContext* ctx, AbstractTensorHandle* const x,
            AbstractTensorHandle* const y, absl::Span<AbstractTensorHandle*> z,
            const char* name) {
-  AbstractOperationPtr add_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(add_op->Reset("AddV2", /*raw_device_name=*/nullptr));
-  TF_RETURN_IF_ERROR(MaybeSetOpName(add_op.get(), name));
-  TF_RETURN_IF_ERROR(add_op->AddInput(x));
-  TF_RETURN_IF_ERROR(add_op->AddInput(y));
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("AddV2", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(x));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(y));
 
   int num_retvals = 1;
-  TF_RETURN_IF_ERROR(add_op->Execute(z, &num_retvals));
+  TF_RETURN_IF_ERROR(op_ptr->Execute(z, &num_retvals));
   return Status::OK();
 }
 
@@ -78,138 +78,137 @@ Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a,
               AbstractTensorHandle* const b,
               absl::Span<AbstractTensorHandle*> product, const char* name,
               bool transpose_a, bool transpose_b) {
-  AbstractOperationPtr matmul_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(matmul_op->Reset("MatMul", /*raw_device_name=*/nullptr));
-  TF_RETURN_IF_ERROR(MaybeSetOpName(matmul_op.get(), name));
-  TF_RETURN_IF_ERROR(matmul_op->AddInput(a));
-  TF_RETURN_IF_ERROR(matmul_op->AddInput(b));
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("MatMul", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(a));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(b));
 
-  TF_RETURN_IF_ERROR(matmul_op->SetAttrBool("transpose_a", transpose_a));
-  TF_RETURN_IF_ERROR(matmul_op->SetAttrBool("transpose_b", transpose_b));
+  TF_RETURN_IF_ERROR(op_ptr->SetAttrBool("transpose_a", transpose_a));
+  TF_RETURN_IF_ERROR(op_ptr->SetAttrBool("transpose_b", transpose_b));
 
   int num_retvals = 1;
-  TF_RETURN_IF_ERROR(matmul_op->Execute(product, &num_retvals));
+  TF_RETURN_IF_ERROR(op_ptr->Execute(product, &num_retvals));
   return Status::OK();
 }
 
 Status Neg(AbstractContext* ctx, AbstractTensorHandle* const x,
            absl::Span<AbstractTensorHandle*> y, const char* name) {
-  AbstractOperationPtr neg_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(neg_op->Reset("Neg", /*raw_device_name=*/nullptr));
-  TF_RETURN_IF_ERROR(MaybeSetOpName(neg_op.get(), name));
-  TF_RETURN_IF_ERROR(neg_op->AddInput(x));
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("Neg", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(x));
 
   int num_retvals = 1;
-  return neg_op->Execute(y, &num_retvals);
+  return op_ptr->Execute(y, &num_retvals);
 }
 
 Status Sum(AbstractContext* ctx, AbstractTensorHandle* const input,
            AbstractTensorHandle* const reduction_indices,
            absl::Span<AbstractTensorHandle*> output, const char* name,
            bool keep_dims) {
-  AbstractOperationPtr sum_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(sum_op->Reset("Sum", /*raw_device_name=*/nullptr));
-  TF_RETURN_IF_ERROR(MaybeSetOpName(sum_op.get(), name));
-  TF_RETURN_IF_ERROR(sum_op->AddInput(input));              // input_vals
-  TF_RETURN_IF_ERROR(sum_op->AddInput(reduction_indices));  // reduction_indices
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("Sum", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(input));              // input_vals
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(reduction_indices));  // reduction_indices
 
-  TF_RETURN_IF_ERROR(sum_op->SetAttrBool("keep_dims", keep_dims));
+  TF_RETURN_IF_ERROR(op_ptr->SetAttrBool("keep_dims", keep_dims));
 
   int num_retvals = 1;
-  TF_RETURN_IF_ERROR(sum_op->Execute(output, &num_retvals));
+  TF_RETURN_IF_ERROR(op_ptr->Execute(output, &num_retvals));
   return Status::OK();
 }
 
 Status Sub(AbstractContext* ctx, AbstractTensorHandle* const x,
            AbstractTensorHandle* const y, absl::Span<AbstractTensorHandle*> z,
            const char* name) {
-  AbstractOperationPtr sub_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(sub_op->Reset("Sub", /*raw_device_name=*/nullptr));
-  TF_RETURN_IF_ERROR(MaybeSetOpName(sub_op.get(), name));
-  TF_RETURN_IF_ERROR(sub_op->AddInput(x));
-  TF_RETURN_IF_ERROR(sub_op->AddInput(y));
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("Sub", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(x));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(y));
 
   int num_retvals = 1;
-  TF_RETURN_IF_ERROR(sub_op->Execute(z, &num_retvals));
+  TF_RETURN_IF_ERROR(op_ptr->Execute(z, &num_retvals));
   return Status::OK();
 }
 
 Status Div(AbstractContext* ctx, AbstractTensorHandle* const x,
            AbstractTensorHandle* const y, absl::Span<AbstractTensorHandle*> z,
            const char* name) {
-  AbstractOperationPtr div_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(div_op->Reset("Div", /*raw_device_name=*/nullptr));
-  TF_RETURN_IF_ERROR(MaybeSetOpName(div_op.get(), name));
-  TF_RETURN_IF_ERROR(div_op->AddInput(x));  // x
-  TF_RETURN_IF_ERROR(div_op->AddInput(y));  // y
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("Div", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(x));  // x
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(y));  // y
 
   int num_retvals = 1;
-  TF_RETURN_IF_ERROR(div_op->Execute(z, &num_retvals));  // z = x / y
+  TF_RETURN_IF_ERROR(op_ptr->Execute(z, &num_retvals));  // z = x / y
   return Status::OK();
 }
 
 Status DivNoNan(AbstractContext* ctx, AbstractTensorHandle* const x,
                 AbstractTensorHandle* const y,
                 absl::Span<AbstractTensorHandle*> z, const char* name) {
-  AbstractOperationPtr div_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(div_op->Reset("DivNoNan", /*raw_device_name=*/nullptr));
-  TF_RETURN_IF_ERROR(MaybeSetOpName(div_op.get(), name));
-  TF_RETURN_IF_ERROR(div_op->AddInput(x));  // x
-  TF_RETURN_IF_ERROR(div_op->AddInput(y));  // y
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("DivNoNan", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(x));  // x
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(y));  // y
 
   int num_retvals = 1;
   TF_RETURN_IF_ERROR(
-      div_op->Execute(z, &num_retvals));  // z = x / y, (z_i = 0 if y_i = 0)
+      op_ptr->Execute(z, &num_retvals));  // z = x / y, (z_i = 0 if y_i = 0)
   return Status::OK();
 }
 
 Status Exp(AbstractContext* ctx, AbstractTensorHandle* const x,
            absl::Span<AbstractTensorHandle*> y, const char* name) {
-  AbstractOperationPtr exp_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(exp_op->Reset("Exp", /*raw_device_name=*/nullptr));
-  TF_RETURN_IF_ERROR(MaybeSetOpName(exp_op.get(), name));
-  TF_RETURN_IF_ERROR(exp_op->AddInput(x));
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("Exp", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(x));
 
   int num_retvals = 1;
-  return exp_op->Execute(y, &num_retvals);
+  return op_ptr->Execute(y, &num_retvals);
 }
 
 Status Sqrt(AbstractContext* ctx, AbstractTensorHandle* const x,
             absl::Span<AbstractTensorHandle*> y, const char* name) {
-  AbstractOperationPtr sqrt_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(sqrt_op->Reset("Sqrt", /*raw_device_name=*/nullptr));
-  TF_RETURN_IF_ERROR(MaybeSetOpName(sqrt_op.get(), name));
-  TF_RETURN_IF_ERROR(sqrt_op->AddInput(x));
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("Sqrt", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(x));
 
   int num_retvals = 1;
-  Status s = sqrt_op->Execute(y, &num_retvals);
+  Status s = op_ptr->Execute(y, &num_retvals);
   return s;
 }
 
 Status SqrtGrad(AbstractContext* ctx, AbstractTensorHandle* const y,
                 AbstractTensorHandle* const dy,
                 absl::Span<AbstractTensorHandle*> z, const char* name) {
-  AbstractOperationPtr sqrt_grad_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(
-      sqrt_grad_op->Reset("SqrtGrad", /*raw_device_name=*/nullptr));
-  TF_RETURN_IF_ERROR(MaybeSetOpName(sqrt_grad_op.get(), name));
-  TF_RETURN_IF_ERROR(sqrt_grad_op->AddInput(y));
-  TF_RETURN_IF_ERROR(sqrt_grad_op->AddInput(dy));
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("SqrtGrad", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(y));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(dy));
 
   int num_retvals = 1;
-  Status s = sqrt_grad_op->Execute(z, &num_retvals);
+  Status s = op_ptr->Execute(z, &num_retvals);
   return s;
 }
 
 Status Log1p(AbstractContext* ctx, AbstractTensorHandle* const x,
              absl::Span<AbstractTensorHandle*> y, const char* name) {
-  AbstractOperationPtr log1p_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(log1p_op->Reset("Log1p", /*raw_device_name=*/nullptr));
-  TF_RETURN_IF_ERROR(MaybeSetOpName(log1p_op.get(), name));
-  TF_RETURN_IF_ERROR(log1p_op->AddInput(x));
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("Log1p", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(x));
 
   int num_retvals = 1;
-  Status s = log1p_op->Execute(y, &num_retvals);
+  Status s = op_ptr->Execute(y, &num_retvals);
   return s;
 }
 

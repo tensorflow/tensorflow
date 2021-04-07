@@ -24,69 +24,67 @@ namespace ops {
 
 Status Identity(AbstractContext* ctx, AbstractTensorHandle* const input,
                 absl::Span<AbstractTensorHandle*> output, const char* name) {
-  AbstractOperationPtr identity_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(
-      identity_op->Reset("Identity", /*raw_device_name=*/nullptr));
-  TF_RETURN_IF_ERROR(MaybeSetOpName(identity_op.get(), name));
-  TF_RETURN_IF_ERROR(identity_op->AddInput(input));
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("Identity", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(input));
   int num_retvals = 1;
-  return identity_op->Execute(output, &num_retvals);
+  return op_ptr->Execute(output, &num_retvals);
 }
 
 Status IdentityN(AbstractContext* ctx,
                  absl::Span<AbstractTensorHandle* const> input,
                  absl::Span<AbstractTensorHandle*> output, const char* name) {
-  AbstractOperationPtr identity_n_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(
-      identity_n_op->Reset("IdentityN", /*raw_device_name=*/nullptr));
-  TF_RETURN_IF_ERROR(MaybeSetOpName(identity_n_op.get(), name));
-  TF_RETURN_IF_ERROR(identity_n_op->AddInputList(input));
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("IdentityN", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInputList(input));
   int num_retvals = input.size();
-  return identity_n_op->Execute(output, &num_retvals);
+  return op_ptr->Execute(output, &num_retvals);
 }
 
 Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* const x,
                  absl::Span<AbstractTensorHandle*> y, const char* name) {
-  AbstractOperationPtr z_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(z_op->Reset("ZerosLike", /*raw_device_name=*/nullptr));
-  TF_RETURN_IF_ERROR(MaybeSetOpName(z_op.get(), name));
-  TF_RETURN_IF_ERROR(z_op->AddInput(x));
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("ZerosLike", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(x));
   int num_retvals = 1;
-  return z_op->Execute(y, &num_retvals);
+  return op_ptr->Execute(y, &num_retvals);
 }
 
 Status Shape(AbstractContext* ctx, AbstractTensorHandle* const input,
              absl::Span<AbstractTensorHandle*> output, const char* name) {
-  AbstractOperationPtr shape_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(shape_op->Reset("Shape", /*raw_device_name=*/nullptr));
-  TF_RETURN_IF_ERROR(MaybeSetOpName(shape_op.get(), name));
-  TF_RETURN_IF_ERROR(shape_op->AddInput(input));  // input
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("Shape", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(input));
   int num_retvals = 1;
-  TF_RETURN_IF_ERROR(shape_op->Execute(output, &num_retvals));
+  TF_RETURN_IF_ERROR(op_ptr->Execute(output, &num_retvals));
   return Status::OK();
 }
 
 Status ExpandDims(AbstractContext* ctx, AbstractTensorHandle* const input,
                   AbstractTensorHandle* const dim,
                   absl::Span<AbstractTensorHandle*> output, const char* name) {
-  AbstractOperationPtr op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(op->Reset("ExpandDims", /*raw_device_name=*/nullptr));
-  TF_RETURN_IF_ERROR(MaybeSetOpName(op.get(), name));
-  TF_RETURN_IF_ERROR(op->AddInput(input));
-  TF_RETURN_IF_ERROR(op->AddInput(dim));
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("ExpandDims", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(input));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(dim));
   int num_retvals = 1;
-  return op->Execute(output, &num_retvals);
+  return op_ptr->Execute(output, &num_retvals);
 }
 
 Status OnesLike(AbstractContext* ctx, AbstractTensorHandle* const x,
                 absl::Span<AbstractTensorHandle*> y, const char* name) {
-  AbstractOperationPtr op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(op->Reset("OnesLike", /*raw_device_name=*/nullptr));
-  TF_RETURN_IF_ERROR(MaybeSetOpName(op.get(), name));
-  TF_RETURN_IF_ERROR(op->AddInput(x));
+  AbstractOperationPtr op_ptr(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op_ptr->Reset("OnesLike", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
+  TF_RETURN_IF_ERROR(op_ptr->AddInput(x));
 
   int num_retvals = 1;
-  return op->Execute(y, &num_retvals);
+  return op_ptr->Execute(y, &num_retvals);
 }
 
 }  // namespace ops
