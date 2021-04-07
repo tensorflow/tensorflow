@@ -75,8 +75,8 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
   This layer has basic options for managing text in a Keras model. It
   transforms a batch of strings (one example = one string) into either a list of
   token indices (one example = 1D tensor of integer token indices) or a dense
-  representation (one example = 1D tensor of float values representing data about
-  the example's tokens).
+  representation (one example = 1D tensor of float values representing data 
+  about the example's tokens).
 
   If desired, the user can call this layer's adapt() method on a dataset.
   When this layer is adapted, it will analyze the dataset, determine the
