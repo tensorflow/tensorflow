@@ -20,24 +20,24 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Register with int32 out_idx.
+// Register with int64 out_idx.
 #define REGISTER_UNIQUE_GPU(type)                                \
   REGISTER_KERNEL_BUILDER(Name("Unique")                         \
                               .Device(DEVICE_GPU)                \
                               .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int32>("out_idx"), \
-                          UniqueOpGPU<type, int32>);             \
+                              .TypeConstraint<int64>("out_idx"), \
+                          UniqueOpGPU<type, int64>);             \
   REGISTER_KERNEL_BUILDER(Name("UniqueWithCounts")               \
                               .Device(DEVICE_GPU)                \
                               .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int32>("out_idx"), \
-                          UniqueOpGPU<type, int32>)
+                              .TypeConstraint<int64>("out_idx"), \
+                          UniqueOpGPU<type, int64>)
 
-TF_CALL_REAL_NUMBER_TYPES(REGISTER_UNIQUE_GPU);
+TF_CALL_INTEGRAL_TYPES(REGISTER_UNIQUE_GPU);
 REGISTER_UNIQUE_GPU(bool);
 
 #undef REGISTER_UNIQUE_GPU
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#endif  // GOOGLE_CUDA

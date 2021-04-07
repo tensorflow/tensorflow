@@ -3930,6 +3930,8 @@ tf.math.equal(x, y) ==> array([True,  True])
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_ErfOp : TF_Op<"Erf", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
@@ -18691,6 +18693,10 @@ A pseudo-op to represent host-side computation in an XLA program.
 
   TF_DerivedOperandTypeListAttr Tinputs = TF_DerivedOperandTypeListAttr<0>;
   TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
+
+  let extraClassDeclaration = [{
+    FuncOp GetHostFunc(mlir::OwningModuleRef* mlir_module);
+  }];
 
   let verifier = [{ return Verify(*this); }];
 }

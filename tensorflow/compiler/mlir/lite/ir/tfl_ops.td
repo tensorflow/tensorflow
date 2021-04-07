@@ -3462,14 +3462,17 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
 
     I32Attr:$begin_mask,
     I32Attr:$end_mask,
-    Confined<I32Attr, [TFL_IntEqualsTo<0>]>:$ellipsis_mask,
-    Confined<I32Attr, [TFL_IntEqualsTo<0>]>:$new_axis_mask,
+    I32Attr:$ellipsis_mask,
+    I32Attr:$new_axis_mask,
     I32Attr:$shrink_axis_mask
   );
 
   let results = (outs
     TFL_TensorOf<[F32, I32, I64, I8, UI8, QI8, QUI8, I1, I16, QI16, TFL_Quint8, TFL_Str]>:$output
   );
+
+  // TFLite kernel only supports up to 5D input including added axis.
+  let verifier = [{ return Verify(*this); }];
 
   let hasOptions = 1;
 }
@@ -4500,7 +4503,8 @@ def TFL_CustomTfOp : Op<TFL_Dialect, "custom_tf", [
   NoSideEffect,
   NoQuantizableResult,
   IsolatedFromAbove,
-  SingleBlockImplicitTerminator<"YieldOp">]> {
+  SingleBlockImplicitTerminator<"YieldOp">,
+  DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Wrapper Op for TF custom ops.";
 
   let description = [{
@@ -4518,6 +4522,11 @@ def TFL_CustomTfOp : Op<TFL_Dialect, "custom_tf", [
   let results = (outs Variadic<AnyTensor>:$output);
 
   let regions = (region SizedRegion<1>:$body);
+
+  let extraClassDeclaration = [{
+    // Returns whether the return types are compatible.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+  }];
 }
 
 def TFL_BroadcastToOp : TFL_Op<"broadcast_to", [

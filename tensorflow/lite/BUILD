@@ -330,6 +330,7 @@ cc_library(
     copts = tflite_copts() + tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite/core/shims:__subpackages__",
+        "//tensorflow/lite/delegates/flex:__subpackages__",
         "//tensorflow/lite/kernels:__subpackages__",
     ],
     deps = [
@@ -359,6 +360,7 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@flatbuffers//:runtime_cc",
+        "@ruy//ruy:denormal",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )

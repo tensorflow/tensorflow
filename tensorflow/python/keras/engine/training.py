@@ -19,6 +19,7 @@ import itertools
 import json
 import os
 import warnings
+import weakref
 
 from tensorflow.python.autograph.lang import directives
 from tensorflow.python.data.experimental.ops import distribute_options
@@ -55,6 +56,7 @@ from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import object_identity
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
@@ -73,6 +75,7 @@ from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
+from tensorflow.python.training.tracking import graph_view as graph_view_lib
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -311,8 +314,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     # Fault-tolerance handler. Set in `ModelCheckpoint`.
     self._training_state = None
     self._saved_model_inputs_spec = None
-    self._trackable_saver = (
-        trackable_utils.saver_with_op_caching(self))
+    self._trackable_saver = saver_with_op_caching(self)
 
     self._steps_per_execution = None
 
@@ -2963,3 +2965,13 @@ def flatten_metrics_in_order(logs, metrics_names):
 def _is_per_replica_instance(obj):
   return (isinstance(obj, ds_values.DistributedValues) and
           isinstance(obj, composite_tensor.CompositeTensor))
+
+
+def saver_with_op_caching(obj):
+  if context.executing_eagerly():
+    saveables_cache = None
+  else:
+    saveables_cache = object_identity.ObjectIdentityWeakKeyDictionary()
+  return trackable_utils.TrackableSaver(
+      graph_view_lib.ObjectGraphView(
+          weakref.ref(obj), saveables_cache=saveables_cache))

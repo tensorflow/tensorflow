@@ -210,7 +210,8 @@ StatusOr<DevicePutResult> PyBufferHelper(py::handle obj, py::handle py_buffer,
 
 StatusOr<DevicePutResult> HandlePyBuffer(py::handle obj, PjRtDevice* to_device,
                                          const DevicePutOptions& options) {
-  return PyBufferHelper(obj, obj, py::cast<PyBuffer*>(obj), to_device);
+  return PyBufferHelper(obj, obj, PyBuffer::AsPyBufferUnchecked(obj),
+                        to_device);
 }
 
 StatusOr<DevicePutResult> HandleDeviceArray(py::handle obj,
@@ -247,12 +248,8 @@ StatusOr<DevicePutResult> HandleDeviceArray(py::handle obj,
 }  // namespace
 
 StatusOr<DevicePutResult> DevicePut(pybind11::handle arg, PjRtDevice* to_device,
-                                    const DevicePutOptions& options,
-                                    PyBuffer* py_buffer) {
+                                    const DevicePutOptions& options) {
   tensorflow::profiler::TraceMe traceme("DevicePut");
-  if (py_buffer) {
-    return PyBufferHelper(arg, arg, py_buffer, to_device);
-  }
   static const absl::flat_hash_map<PyObject*, DevicePutFunc>* const handlers =
       [] {
         auto p = new absl::flat_hash_map<PyObject*, DevicePutFunc>();
@@ -269,9 +266,9 @@ StatusOr<DevicePutResult> DevicePut(pybind11::handle arg, PjRtDevice* to_device,
             HandlePythonScalar<complex128, complex64>;
 
         // Generic subclasses of DeviceArray, e.g., ShardedDeviceArray.
-        (*p)[py::type::handle_of<DeviceArrayBase>().ptr()] = HandleDeviceArray;
+        (*p)[PyBuffer::base_type()] = HandleDeviceArray;
         // The C++ PyBuffer class is handled specially.
-        (*p)[py::type::handle_of<PyBuffer>().ptr()] = HandlePyBuffer;
+        (*p)[PyBuffer::type()] = HandlePyBuffer;
 
         try {
           py::object xla_module = py::module::import("jax.interpreters.xla");
@@ -425,7 +422,7 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(pybind11::handle arg,
     // PyBuffer necessarily has a trivial LazyExpr, no need to check it.
     ToPyArgSignatureHandler buffer_handler =
         [](py::handle h, bool jax_enable_x64) -> StatusOr<PyArgSignature> {
-      PyBuffer* buffer = py::cast<PyBuffer*>(h);
+      TF_ASSIGN_OR_RETURN(PyBuffer * buffer, PyBuffer::AsPyBuffer(h));
       bool weak_type = buffer->weak_type().has_value()
                            ? *buffer->weak_type()
                            : py::cast<bool>(h.attr("aval").attr("weak_type"));
@@ -433,7 +430,7 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(pybind11::handle arg,
                             buffer->buffer()->on_device_shape().dimensions(),
                             weak_type);
     };
-    (*p)[py::type::handle_of<DeviceArrayBase>().ptr()] = buffer_handler;
+    (*p)[PyBuffer::base_type()] = buffer_handler;
     ToPyArgSignatureHandler device_array_handler =
         [](py::handle h, bool jax_enable_x64) -> StatusOr<PyArgSignature> {
       py::handle aval = h.attr("aval");

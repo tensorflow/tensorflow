@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 
@@ -783,6 +784,33 @@ static LogicalResult Verify(CustomOp op) {
     return op.emitOpError(
         "custom_option should have the same length of content with shape.");
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CustomTfOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CustomTfOp::inferReturnTypes(
+    MLIRContext *, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attr, RegionRange ranges,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  CustomTfOpAdaptor op(operands, attr, ranges);
+
+  if (op.getRegions().empty()) return success();
+  auto *real_op = &op.body().front().front();
+  if (llvm::isa<TF::FakeQuantWithMinMaxArgsOp, TF::FakeQuantWithMinMaxVarsOp,
+                TF::FakeQuantWithMinMaxVarsPerChannelOp>(real_op)) {
+    Value input = *operands.begin();
+    inferredReturnTypes.assign({input.getType()});
+  }
+  return success();
+}
+
+bool CustomTfOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
+  if (lhs.empty()) return true;
+  if (lhs.size() != rhs.size() || lhs.size() != 1) return false;
+  if (failed(mlir::verifyCompatibleShape(lhs[0], rhs[0]))) return false;
+  return true;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2739,6 +2767,31 @@ static LogicalResult Verify(TransposeConvOp op) {
                                         expected_output_type, output_type));
   }
 
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// StridedSliceOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult Verify(StridedSliceOp op) {
+  auto ranked_input_type = op.input().getType().dyn_cast<RankedTensorType>();
+
+  // If input is unranked, there is nothing else to be verified.
+  if (!ranked_input_type) return success();
+  int num_input_dims = ranked_input_type.getRank();
+
+  // The kernel will reshape the input tensor with new axis, it only supports
+  // this reshaped tensor up to 5D.
+  uint32_t ellipsis_mask = op.ellipsis_mask();
+  uint32_t new_axis_mask = op.new_axis_mask();
+  int num_added_axis = 0;
+  for (int i = 0; i < 8; ++i) {
+    if (!((1 << i) & ellipsis_mask) && ((1 << i) & new_axis_mask)) {
+      num_added_axis++;
+    }
+  }
+  if (num_input_dims + num_added_axis > 5) return failure();
   return success();
 }
 

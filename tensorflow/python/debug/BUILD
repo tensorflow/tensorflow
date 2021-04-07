@@ -706,6 +706,7 @@ py_test(
     srcs = ["lib/debug_graphs_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
+    tags = ["no_windows"],  # TODO(b/184424727): Enable this test on Windows.
     deps = [
         ":debug_graphs",
         "//tensorflow/python:client_testlib",
@@ -719,6 +720,7 @@ py_test(
     srcs = ["lib/debug_data_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
+    tags = ["no_windows"],  # TODO(b/184424727): Enable this test on Windows.
     deps = [
         ":debug_data",
         "//tensorflow/core:protos_all_py",
@@ -1199,6 +1201,7 @@ py_test(
     ],
     python_version = "PY3",
     srcs_version = "PY3",
+    tags = ["no_windows"],  # TODO(b/184424727): Enable this test on Windows.
     deps = [
         ":debug_data",
         ":evaluator",

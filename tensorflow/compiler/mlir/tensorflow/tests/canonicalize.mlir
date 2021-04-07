@@ -623,6 +623,14 @@ func @testTileMultiplesAllOnes(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   return %0: tensor<2x3xf32>
 }
 
+// CHECK-LABEL: func @testStaticAndIdenticalTypeForEqualOp
+func @testStaticAndIdenticalTypeForEqualOp(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  // CHECK:      "tf.Equal"(%arg0, %arg1)
+  // CHECK-SAME:   incompatible_shape_error = true
+  %0 = "tf.Equal"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  return %0: tensor<2xi1>
+}
+
 // CHECK-LABEL: testLogicalNotOfEqual
 func @testLogicalNotOfEqual(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xi1> {
   %0 = "tf.Equal"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>

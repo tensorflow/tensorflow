@@ -43,6 +43,7 @@ from tensorflow_docs.api_generator import doc_generator_visitor
 from tensorflow_docs.api_generator import generate_lib
 
 from tensorflow.python.framework import ops
+from tensorflow.python.types import doc_typealias
 from tensorflow.python.util import tf_export
 from tensorflow.python.util import tf_inspect
 
@@ -221,6 +222,7 @@ def build_docs(output_dir, code_url_prefix, search_hints, gen_report):
       visitor_cls=TfExportAwareVisitor,
       private_map=_PRIVATE_MAP,
       gen_report=gen_report,
+      extra_docs=doc_typealias._EXTRA_DOCS  # pylint: disable=protected-access
   )
 
   doc_generator.build(output_dir)

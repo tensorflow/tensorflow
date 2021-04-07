@@ -276,6 +276,10 @@ std::unique_ptr<FunctionPass> CreateClusterOpsByPolicyPass(
 // transformations like resource op lifting.
 std::unique_ptr<OperationPass<FuncOp>> CreateDecomposeResourceOpsPass();
 
+// Creates a pass that marks TPU cluster input-output pairs reading and writing
+// to same resource variable as aliases.
+std::unique_ptr<OperationPass<ModuleOp>> CreateMarkInputOutputAliasesPass();
+
 // Creates a pass that lifts operations on external resource variables from
 // device computation nested in `tf_device::LaunchOp` out so that resource
 // variable load operations are all before device computation while resource

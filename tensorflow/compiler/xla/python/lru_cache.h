@@ -38,7 +38,7 @@ class LRUCache {
 
   // Returns the `value` associated with `key`. Creates a value with `factory`
   // and inserts it if absent.
-  Value GetOrCreateIfAbsent(Key key,
+  Value GetOrCreateIfAbsent(const Key& key,
                             const std::function<Value(const Key&)>& factory);
 
   // Removes all entries from the cache.
@@ -85,10 +85,10 @@ void LRUCache<Key, Value, Hash, Eq>::Clear() {
 
 template <typename Key, typename Value, typename Hash, typename Eq>
 Value LRUCache<Key, Value, Hash, Eq>::GetOrCreateIfAbsent(
-    Key key, const std::function<Value(const Key&)>& factory) {
+    const Key& key, const std::function<Value(const Key&)>& factory) {
   typename absl::node_hash_map<Key, Entry, Hash, Eq>::iterator it;
   bool inserted;
-  std::tie(it, inserted) = entries_.try_emplace(std::move(key));
+  std::tie(it, inserted) = entries_.try_emplace(key);
   Entry& entry = it->second;
   if (inserted) {
     entry.key = &it->first;

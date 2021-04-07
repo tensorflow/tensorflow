@@ -381,19 +381,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           "infeed_config",
           mlir::StringAttr::get(builder_->getContext(),
                                 instruction->infeed_config())));
-      // TODO(kramm): Support tuples and tokens.
-      if (instruction->shape().IsArray()) {
-        const xla::Layout l = instruction->shape().layout();
-        absl::Span<const int64> minor_to_major = l.minor_to_major();
-        std::vector<mlir::Attribute> v;
-        for (int64 i : minor_to_major) {
-          v.push_back(builder_->getI32IntegerAttr(i));
-        }
-        llvm::ArrayRef<mlir::Attribute> array_ref(v);
-        mlir::ArrayAttr layout = builder_->getArrayAttr(array_ref);
-        attributes.push_back(builder_->getNamedAttr("layout", layout));
-      }
-
+      TF_ASSIGN_OR_RETURN(mlir::Attribute layout,
+                          ConvertShapeToMlirLayout(instruction->shape()));
+      attributes.push_back(builder_->getNamedAttr("layout", layout));
       MakeAndReturn(InfeedOp);
     }
     case HloOpcode::kOutfeed: {
@@ -993,6 +983,31 @@ void HloFunctionImporter::SetLayoutForMlir(mlir::Operation* op,
   op->setAttr(
       "minor_to_major",
       mlir::Builder(op->getContext()).getIndexTensorAttr(minor_to_major));
+}
+
+StatusOr<mlir::Attribute> HloFunctionImporter::ConvertShapeToMlirLayout(
+    const xla::Shape& shape) {
+  if (shape.IsToken()) return builder_->getUnitAttr();
+  if (shape.IsTuple()) {
+    std::vector<mlir::Attribute> tuple_layouts;
+    for (int64 i = 0; i < shape.tuple_shapes_size(); i++) {
+      TF_ASSIGN_OR_RETURN(mlir::Attribute layout,
+                          ConvertShapeToMlirLayout(shape.tuple_shapes(i)));
+      tuple_layouts.push_back(layout);
+    }
+    llvm::ArrayRef<mlir::Attribute> array_ref(tuple_layouts);
+    return builder_->getArrayAttr(array_ref);
+  }
+  if (shape.IsArray()) {
+    const xla::Layout l = shape.layout();
+    std::vector<mlir::Attribute> minor_to_major;
+    for (int64 i : l.minor_to_major()) {
+      minor_to_major.push_back(builder_->getI64IntegerAttr(i));
+    }
+    llvm::ArrayRef<mlir::Attribute> array_ref(minor_to_major);
+    return builder_->getArrayAttr(array_ref);
+  }
+  return tensorflow::errors::Internal("Couldn't convert layout.");
 }
 
 }  // namespace xla

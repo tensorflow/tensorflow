@@ -36,6 +36,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -2538,8 +2539,8 @@ def _convert_matmul(pfor_input):
       # TODO(agarwal): This check can be done inside Transpose kernel.
       b_shape = array_ops.shape(b)
       min_dim = math_ops.minimum(b_shape[0], b_shape[1])
-      perm = control_flow_ops.cond(
-          math_ops.equal(min_dim, 1), lambda: [0, 1, 2], lambda: [1, 0, 2])
+      perm = array_ops.where(
+          math_ops.equal(min_dim, 1), [0, 1, 2], [1, 0, 2])
       new_shape = array_ops.stack([b_shape[1], b_shape[0], b_shape[2]])
       b = array_ops.transpose(b, perm)
       b = array_ops.reshape(b, new_shape)
@@ -3035,14 +3036,14 @@ def _convert_select(pfor_input):
   t = pfor_input.stacked_input(1)
   e = pfor_input.stacked_input(2)
   cond_rank = array_ops.rank(cond)
-  cond, t, e = control_flow_ops.cond(
+  cond, t, e = smart_cond.smart_cond(
       cond_rank > 1, lambda: _inputs_with_flattening(pfor_input, [0, 1, 2]),
       lambda: [cond, t, e])
   outputs = _create_op(
       pfor_input.op_type, [cond, t, e], [x.dtype for x in pfor_input.outputs],
       attrs=pfor_input.op.node_def.attr).outputs
   n = pfor_input.pfor.loop_len_vector
-  out = control_flow_ops.cond(cond_rank > 1,
+  out = smart_cond.smart_cond(cond_rank > 1,
                               lambda: _unflatten_first_dim(outputs[0], n),
                               lambda: outputs[0])
   return [wrap(out, True) for x in outputs]

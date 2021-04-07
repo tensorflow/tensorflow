@@ -1061,6 +1061,7 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(
         ValueError, '"initial_scale" must be specified if "dynamic" is False'):
       loss_scale_optimizer.LossScaleOptimizer(opt, dynamic=False)
+    opt = gradient_descent.SGD()
     with self.assertRaisesRegex(
         ValueError, '"dynamic_growth_steps" must be None if "dynamic" is '
                     'False, but got: 2'):
@@ -1073,6 +1074,21 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
         TypeError, '"dynamic" argument to LossScaleOptimizer.__init__ must be '
                    "a bool, but got: 'dynamic'"):
       loss_scale_optimizer.LossScaleOptimizer(opt, 'dynamic')
+
+  def testErrorWhenNesting(self):
+    opt = gradient_descent.SGD()
+    opt = loss_scale_optimizer.LossScaleOptimizer(opt)
+    with self.assertRaisesRegex(
+        TypeError, 'LossScaleOptimizer cannot wrap another LossScaleOptimizer'):
+      loss_scale_optimizer.LossScaleOptimizer(opt)
+
+  def testErrorWrappingSameOptimizerMultipleTimes(self):
+    inner_opt = gradient_descent.SGD()
+    loss_scale_optimizer.LossScaleOptimizer(inner_opt)
+    with self.assertRaisesRegex(
+        ValueError,
+        '"inner_optimizer" is already wrapped by a LossScaleOptimizer.'):
+      loss_scale_optimizer.LossScaleOptimizer(inner_opt)
 
 
 if __name__ == '__main__':

@@ -120,7 +120,8 @@ Status RecordOperationWithNullGradientFunctionModel(
   Tape tape(/*persistent=*/false);
   tape.Watch(inputs[0]);
   std::vector<AbstractTensorHandle*> neg_outputs(1);
-  TF_RETURN_IF_ERROR(ops::Neg(ctx, inputs, absl::MakeSpan(neg_outputs), "Neg"));
+  TF_RETURN_IF_ERROR(
+      ops::Neg(ctx, inputs[0], absl::MakeSpan(neg_outputs), "Neg"));
   tape.RecordOperation(inputs, neg_outputs, nullptr, "Neg");
   return tape.ComputeGradient(ctx, /*targets=*/neg_outputs,
                               /*sources=*/inputs,

@@ -19,6 +19,7 @@ TENSORFLOW_API_INIT_FILES = [
     "__internal__/monitoring/__init__.py",
     "__internal__/nest/__init__.py",
     "__internal__/ops/__init__.py",
+    "__internal__/smart_cond/__init__.py",
     "__internal__/test/__init__.py",
     "__internal__/test/combinations/__init__.py",
     "__internal__/tf2/__init__.py",
