@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -441,7 +442,7 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
     }
 
     auto fc = rewriter.create<TFL::FullyConnectedOp>(
-        FusedLoc::get({fc_op.getLoc(), add_op.getLoc()}, fc_op.getContext()),
+        FusedLoc::get(fc_op.getContext(), {fc_op.getLoc(), add_op.getLoc()}),
         add_op.getType(),
         /*input=*/fc_op.input(),
         /*filter=*/filter,
@@ -501,7 +502,7 @@ struct FuseAddAndFullyConnected
 
     // Create the updated FC.
     auto new_fc = rewriter.create<TFL::FullyConnectedOp>(
-        FusedLoc::get({add_op.getLoc(), fc_op.getLoc()}, add_op.getContext()),
+        FusedLoc::get(add_op.getContext(), {add_op.getLoc(), fc_op.getLoc()}),
         fc_op.output().getTypes(),
         /*input=*/add_op.lhs(),
         /*filter=*/fc_op.filter(),
@@ -535,8 +536,8 @@ struct FuseFullyConnectedAndReluX : public OpRewritePattern<ReluXOp> {
     auto new_keep_num_dims =
         rewriter.getBoolAttr(fully_connected_op.keep_num_dims());
     auto fc = rewriter.create<FullyConnectedOp>(
-        FusedLoc::get({fully_connected_op.getLoc(), relu_op.getLoc()},
-                      relu_op.getContext()),
+        FusedLoc::get(relu_op.getContext(),
+                      {fully_connected_op.getLoc(), relu_op.getLoc()}),
         relu_op.getType(), fully_connected_op.input(),
         fully_connected_op.filter(), fully_connected_op.bias(),
         new_activation_func, new_weights_format, new_keep_num_dims);
@@ -609,7 +610,7 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
     }
 
     auto fc = rewriter.create<TFL::FullyConnectedOp>(
-        FusedLoc::get({fc_op.getLoc(), mul_op.getLoc()}, fc_op.getContext()),
+        FusedLoc::get(fc_op.getContext(), {fc_op.getLoc(), mul_op.getLoc()}),
         mul_op.getType(),
         /*input=*/fc_op.input(),
         /*filter=*/new_filter,
@@ -1117,6 +1118,59 @@ struct RemoveReshapeBeforeFullyConnected
   }
 };
 
+// Remove Reshape after FullyConnected when `keep_num_dims=false`, the Reshaoe
+// does not alter the last dimension and it restores the batch dimensions
+// collapsed by the FullyConnected op due to `keep_num_dims=false`. For example,
+//
+//   // %input: tensor<4x16x32xf32>
+//   %fc = tfl.fully_connected(%input, %filter, %bias)
+//           {keep_num_dims = false, weights_format = "DEFAULT"}
+//   %shape = constant dense<[4, 16, 32]> : tensor<3xi32>
+//   %rs = tfl.reshape(%fc, %shape)
+//
+// can be canonicalized to
+//
+//   %fc = tfl.fully_connected(%input, %filter, %bias)
+//           {keep_num_dims = true, weights_format = "DEFAULT"}
+struct RemoveReshapeAfterFullyConnected
+    : public OpRewritePattern<TFL::ReshapeOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::ReshapeOp reshape_op,
+                                PatternRewriter &rewriter) const override {
+    auto fully_connected_op = llvm::dyn_cast_or_null<TFL::FullyConnectedOp>(
+        reshape_op.input().getDefiningOp());
+    if (!fully_connected_op || fully_connected_op.getNumResults() != 1 ||
+        fully_connected_op.weights_format() != "DEFAULT" ||
+        fully_connected_op.keep_num_dims())
+      return failure();
+    if (!reshape_op.input().getUseList()->hasOneUse()) return failure();
+
+    auto input_shape = fully_connected_op.input().getType().cast<ShapedType>();
+    auto output_shape = fully_connected_op.getType(0).cast<ShapedType>();
+    auto reshape_shape = reshape_op.getType().cast<ShapedType>();
+    if (!input_shape.hasStaticShape() || !output_shape.hasStaticShape() ||
+        !reshape_shape.hasStaticShape())
+      return failure();
+
+    // Check that the reshape doesn't modify the last dimension and it restores
+    // the input (batch) dimension with the exception of the feature (last)
+    // dimension.
+    if (output_shape.getShape().back() != reshape_shape.getShape().back() ||
+        input_shape.getShape().drop_back() !=
+            reshape_shape.getShape().drop_back())
+      return failure();
+
+    llvm::SmallVector<Type, 1> output_type{reshape_op.getType()};
+    rewriter.replaceOpWithNewOp<TFL::FullyConnectedOp>(
+        reshape_op, output_type, fully_connected_op.input(),
+        fully_connected_op.filter(), fully_connected_op.bias(),
+        fully_connected_op.fused_activation_function(),
+        fully_connected_op.weights_format(), /*keep_num_dims=*/true);
+    return success();
+  }
+};
+
 using FuseBinaryOpToFollowingFullyConnected =
     FuseBinaryOpToFollowingAffineOp<FullyConnectedOp>;
 using FuseBinaryOpToFollowingDepthwiseConv2D =
@@ -1131,14 +1185,21 @@ void AddCanonicalizationPatterns(MLIRContext *context,
 }
 
 void OptimizePass::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   auto *ctx = &getContext();
   auto func = getFunction();
+
+  // Merge reshapes into fully connected ops before we start moving them past
+  // binary ops.
+  OwningRewritePatternList phase_0_patterns(&getContext());
+  phase_0_patterns.insert<RemoveReshapeAfterFullyConnected,
+                          RemoveReshapeBeforeFullyConnected>(ctx);
+  (void)applyPatternsAndFoldGreedily(func, std::move(phase_0_patterns));
 
   // Potentially the binary ops might be fused together, like hard_swish, thus
   // we explore these potentially first and then fuse the binary ops with the
   // following ops in a second pattern match.
-  TFL::populateWithGenerated(ctx, patterns);
+  TFL::populateWithGenerated(patterns);
   patterns.insert<FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
                   FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
                   FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
@@ -1148,8 +1209,8 @@ void OptimizePass::runOnFunction() {
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Fuse the binary ops with the following ops.
-  OwningRewritePatternList phase_2_patterns;
-  TFL::populateWithGenerated(ctx, phase_2_patterns);
+  OwningRewritePatternList phase_2_patterns(&getContext());
+  TFL::populateWithGenerated(phase_2_patterns);
   phase_2_patterns.insert<
       ScalarizeSplatConstantForAdd, ScalarizeSplatConstantForSub,
       ScalarizeSplatConstantForMul, ScalarizeSplatConstantForDiv,
@@ -1161,7 +1222,7 @@ void OptimizePass::runOnFunction() {
       FuseBinaryOpToFollowingDepthwiseConv2D,
       FuseBinaryOpToFollowingFullyConnected, FuseConv2DAndMulWithQDQs,
       FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp,
-      RemoveReshapeBeforeFullyConnected>(ctx);
+      RemoveReshapeAfterFullyConnected, RemoveReshapeBeforeFullyConnected>(ctx);
   if (enable_canonicalization_)
     AddCanonicalizationPatterns(ctx, &phase_2_patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));

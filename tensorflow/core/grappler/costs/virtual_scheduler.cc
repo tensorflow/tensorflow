@@ -975,6 +975,13 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
     }
   }
 
+  // Append the current temporary memory usage of the device to the memory usage
+  // trace.
+  if (track_mem_usage_snapshot_) {
+    device.temporary_memory_usage_trace.push_back(
+        {node->name(), device.memory_usage});
+  }
+
   // Increment num_outputs_executed of the input nodes and maybe update memory.
   for (const auto& input_port : node_state.inputs) {
     auto* input = input_port.first;

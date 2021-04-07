@@ -584,6 +584,37 @@ def _create_local_rocm_repository(repository_ctx):
         ),
     ]
 
+    # explicitly copy (into the local_config_rocm repo) the $ROCM_PATH/hiprand/include and
+    # $ROCM_PATH/rocrand/include dirs, only once the softlink to them in $ROCM_PATH/include
+    # dir has been removed. This removal will happen in a near-future ROCm release.
+    hiprand_include = ""
+    hiprand_include_softlink = rocm_config.rocm_toolkit_path + "/include/hiprand"
+    softlink_exists = files_exist(repository_ctx, [hiprand_include_softlink], bash_bin)
+    if not softlink_exists[0]:
+        hiprand_include = '":hiprand-include",\n'
+        copy_rules.append(
+            make_copy_dir_rule(
+                repository_ctx,
+                name = "hiprand-include",
+                src_dir = rocm_toolkit_path + "/hiprand/include",
+                out_dir = "rocm/include/hiprand",
+            ),
+        )
+
+    rocrand_include = ""
+    rocrand_include_softlink = rocm_config.rocm_toolkit_path + "/include/rocrand"
+    softlink_exists = files_exist(repository_ctx, [rocrand_include_softlink], bash_bin)
+    if not softlink_exists[0]:
+        rocrand_include = '":rocrand-include",\n'
+        copy_rules.append(
+            make_copy_dir_rule(
+                repository_ctx,
+                name = "rocrand-include",
+                src_dir = rocm_toolkit_path + "/rocrand/include",
+                out_dir = "rocm/include/rocrand",
+            ),
+        )
+
     rocm_libs = _find_libs(repository_ctx, rocm_config, bash_bin)
     rocm_lib_srcs = []
     rocm_lib_outs = []
@@ -642,7 +673,9 @@ def _create_local_rocm_repository(repository_ctx):
                                 '":rocblas-include",\n' +
                                 '":miopen-include",\n' +
                                 '":rccl-include",\n' +
-                                '":hipsparse-include",' +
+                                hiprand_include +
+                                rocrand_include +
+                                '":hipsparse-include",\n' +
                                 '":rocsolver-include"'),
         },
     )

@@ -18,11 +18,11 @@ limitations under the License.
 
 #include <functional>
 #include <unordered_map>
-
 #include <vector>
+
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
-#include "tensorflow/core/framework/selective_registration.h"
+#include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"

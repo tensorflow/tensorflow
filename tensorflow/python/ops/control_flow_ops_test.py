@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import itertools
+import time
 
 from absl.testing import parameterized
 import numpy as np
@@ -27,6 +29,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import tf2
+from tensorflow.python.autograph.lang import directives
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -50,6 +53,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import tensor_array_ops
@@ -1558,6 +1562,137 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
 
     grad = tape.gradient(out, x)
     self.assertAllEqual(grad, 20.0)
+
+
+class WhileLoopParallelismTest(test_util.TensorFlowTestCase,
+                               parameterized.TestCase):
+
+  @parameterized.parameters(*itertools.product(
+      (False, True),
+      (False, True),
+      (False, True),
+      (False, True),
+      (False, True),
+  ))
+  def testResourceHandlingInLoop(self, read_before, read_after, modify_in_loop,
+                                 modify_before, modify_after):
+
+    if not tf2.enabled():
+      self.skipTest("V2-only test.")
+
+    ticker = variables.Variable(0)
+
+    @def_function.function
+    def run_loop(n):
+      ticker.assign(0)
+      i = constant_op.constant(0)
+      t_acc = tensor_array_ops.TensorArray(
+          dtypes.int32, size=0, dynamic_size=True)
+
+      if read_before:
+        rb = ticker.read_value()
+      else:
+        rb = constant_op.constant(0)
+      if modify_before:
+        ticker.assign_add(1)
+
+      while i < n:
+        directives.set_loop_options(parallel_iterations=10)
+        if modify_in_loop:
+          ticker.assign_add(1)
+        t_acc = t_acc.write(i, ticker.read_value())
+        i += 1
+
+      if read_after:
+        ra = ticker.read_value()
+      else:
+        ra = constant_op.constant(0)
+      if modify_after:
+        ticker.assign_add(1)
+
+      return t_acc.stack(), rb, ra
+
+    # Warm-up.
+    self.evaluate(run_loop(1))
+
+    self.evaluate(ticker.assign(0))
+    acc, rb, ra = run_loop(3)
+    self.assertEqual(
+        self.evaluate(math_ops.reduce_max(acc)),
+        int(modify_before) + 3 * int(modify_in_loop))
+
+    # Double check variable reads are still sequenced.
+    self.assertEqual(self.evaluate(rb), 0)
+
+    if read_after:
+      expected_ra = int(modify_before) + 3 * int(modify_in_loop)
+    else:
+      expected_ra = 0
+    self.assertEqual(self.evaluate(ra), expected_ra)
+
+    # Double-check that the loop ran completely.
+    self.assertEqual(
+        self.evaluate(ticker.read_value()),
+        int(modify_before) + 3 * int(modify_in_loop) + int(modify_after))
+
+  def testStatefulParallelism(self):
+
+    if not tf2.enabled():
+      self.skipTest("V2-only test.")
+
+    ticker = variables.Variable(0)
+    # Secondary state for the pyfunc that lets us verify that things ran in
+    # the correct relative order.
+    ticker_state = []
+
+    def wait_then_tick(i):
+      # The contents of py_funcs is opaque, so TF doesn't see this variable
+      # assignment. In turn, this allows us to run it in parallel with
+      # the variable read.
+      def wait_then_tick_py_fn(i):
+        time.sleep(1)
+        ticker.assign_add(1)
+        ticker_state.append(i.numpy().item())
+        return 1
+
+      return script_ops.eager_py_func(wait_then_tick_py_fn, [i],
+                                      [dtypes.int32])[0]
+
+    @def_function.function
+    def run_loop(n):
+      ticker.assign(0)
+      i = constant_op.constant(0)
+      t_acc = tensor_array_ops.TensorArray(
+          dtypes.int32, size=0, dynamic_size=True)
+
+      while i < n:
+        directives.set_loop_options(parallel_iterations=10)
+        wait_then_tick(i + 1)
+        # The read is expected to run in much less than `wait_then_tick`,
+        # which sleeps for 1s. Hence all reads should complete before the first
+        # `wait_then_tick` increments the `ticker` variable.
+        t_acc = t_acc.write(i, ticker.read_value())
+        i += 1
+
+      return t_acc.stack()
+
+    # Warm-up.
+    self.evaluate(run_loop(1))
+
+    # This test is deterministic so long as the runtime is fast enough to
+    # execute `t_acc = t_acc.write(i, ticker.read_value())` in much less than
+    # one second.
+    self.evaluate(ticker.assign(0))
+    ticker_state.clear()
+    acc = run_loop(3)
+    # Because the loop runs entirely sequentially, the reads in each iteration
+    # see the effects of the pyfunc from the previous iteration.
+    self.assertEqual(self.evaluate(math_ops.reduce_max(acc)), 2)
+
+    # Double-check that the loop ran completely.
+    self.assertEqual(self.evaluate(ticker.read_value()), 3)
+    # Double check that the pyfuncs ran in order.
+    self.assertListEqual(ticker_state, [1, 2, 3])
 
 
 class AssertTest(test_util.TensorFlowTestCase):

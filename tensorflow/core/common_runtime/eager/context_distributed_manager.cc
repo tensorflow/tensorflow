@@ -423,7 +423,7 @@ tensorflow::Status UpdateContextWithServerDef(
   std::unique_ptr<tensorflow::ServerInterface> new_server;
   tensorflow::GrpcServer* grpc_server;
   if (reset_context) {
-    const tensorflow::DeviceMgr* device_mgr =
+    tensorflow::DeviceMgr* device_mgr =
         AreLocalDevicesCompatible(context, server_def)
             ? context->local_device_mgr()
             : nullptr;
@@ -746,9 +746,10 @@ Status EagerContextDistributedManager::CheckRemoteAlive(
 
   if (remote_status.ok()) {
     *is_alive = true;
+  } else {
+    LOG(INFO) << "Remote worker " << remote_task_name
+              << " is not alive: " << remote_status.error_message();
   }
-  LOG(INFO) << "Remote worker " << remote_task_name
-            << " is not alive: " << remote_status.error_message();
   return Status::OK();
 }
 #endif  // !IS_MOBILE_PLATFORM

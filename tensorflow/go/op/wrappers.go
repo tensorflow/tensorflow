@@ -1360,18 +1360,6 @@ func BatchToSpace(scope *Scope, input tf.Output, crops tf.Output, block_size int
 // the zero-padding, both `height` and `width` of the input must be divisible by the
 // block size.
 //
-// Arguments:
-//	input: 4-D with shape `[batch, height, width, depth]`.
-//	paddings: 2-D tensor of non-negative integers with shape `[2, 2]`. It specifies
-//   the padding of the input with zeros across the spatial dimensions as follows:
-//
-//       paddings = [[pad_top, pad_bottom], [pad_left, pad_right]]
-//
-//   The effective spatial dimensions of the zero-padded input tensor will be:
-//
-//       height_pad = pad_top + height + pad_bottom
-//       width_pad = pad_left + width + pad_right
-//
 // The attr `block_size` must be greater than one. It indicates the block size.
 //
 //   * Non-overlapping blocks of size `block_size x block size` in the height and
@@ -1447,6 +1435,18 @@ func BatchToSpace(scope *Scope, input tf.Output, crops tf.Output, block_size int
 //
 // Among others, this operation is useful for reducing atrous convolution into
 // regular convolution.
+//
+// Arguments:
+//	input: 4-D with shape `[batch, height, width, depth]`.
+//	paddings: 2-D tensor of non-negative integers with shape `[2, 2]`. It specifies
+//   the padding of the input with zeros across the spatial dimensions as follows:
+//
+//       paddings = [[pad_top, pad_bottom], [pad_left, pad_right]]
+//
+//   The effective spatial dimensions of the zero-padded input tensor will be:
+//
+//       height_pad = pad_top + height + pad_bottom
+//       width_pad = pad_left + width + pad_right
 //
 func SpaceToBatch(scope *Scope, input tf.Output, paddings tf.Output, block_size int64) (output tf.Output) {
 	if scope.Err() != nil {
@@ -6917,12 +6917,12 @@ func GetSessionHandle(scope *Scope, value tf.Output) (handle tf.Output) {
 // #                [-2, -1,  0, 1]
 // #                [-3, -2, -1, 0]],
 //
-// tf.matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
+// tf.linalg.band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
 //                                        [-1,  0,  1, 2]
 //                                        [ 0, -1,  0, 1]
 //                                        [ 0,  0, -1, 0]],
 //
-// tf.matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
+// tf.linalg.band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
 //                                       [-1,  0,  1, 0]
 //                                       [-2, -1,  0, 1]
 //                                       [ 0, -2, -1, 0]]
@@ -6931,9 +6931,9 @@ func GetSessionHandle(scope *Scope, value tf.Output) (handle tf.Output) {
 // Useful special cases:
 //
 // ```
-//  tf.matrix_band_part(input, 0, -1) ==> Upper triangular part.
-//  tf.matrix_band_part(input, -1, 0) ==> Lower triangular part.
-//  tf.matrix_band_part(input, 0, 0) ==> Diagonal.
+//  tf.linalg.band_part(input, 0, -1) ==> Upper triangular part.
+//  tf.linalg.band_part(input, -1, 0) ==> Lower triangular part.
+//  tf.linalg.band_part(input, 0, 0) ==> Diagonal.
 // ```
 //
 // Arguments:
@@ -7504,9 +7504,9 @@ func StackV2(scope *Scope, max_size tf.Output, elem_type tf.DataType, optional .
 // Checks a tensor for NaN, -Inf and +Inf values.
 //
 // When run, reports an `InvalidArgument` error if `tensor` has any values
-// that are not a number (NaN) or infinity (Inf). Otherwise, passes `tensor` as-is.
-// Unlike CheckNumerics (V1), CheckNumericsV2 distinguishes -Inf and +Inf in the
-// errors it throws.
+// that are not a number (NaN) or infinity (Inf). Otherwise, returns the input
+// tensor. Unlike CheckNumerics (V1), CheckNumericsV2 distinguishes -Inf and +Inf
+// in the errors it throws.
 //
 // Arguments:
 //
@@ -8516,6 +8516,29 @@ func IteratorToStringHandle(scope *Scope, resource_handle tf.Output) (string_han
 		Input: []tf.Input{
 			resource_handle,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset by attaching tf.data.Options to `input_dataset`.
+//
+// Arguments:
+//	input_dataset: A variant tensor representing the input dataset.
+//	serialized_options: A `tf.string` scalar `tf.Tensor` of serialized `tf.data.Options` protocol buffer.
+//
+//
+func OptionsDataset(scope *Scope, input_dataset tf.Output, serialized_options string, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"serialized_options": serialized_options, "output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "OptionsDataset",
+		Input: []tf.Input{
+			input_dataset,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -10621,17 +10644,8 @@ func ExperimentalMaxIntraOpParallelismDataset(scope *Scope, input_dataset tf.Out
 // `[1, ..., M]` correspond to the position within the grid, and the batch
 // dimension combines both the position within a spatial block and the original
 // batch position.  Prior to division into blocks, the spatial dimensions of the
-// input are optionally zero padded according to `paddings`.  See below for a
+// input are optionally zero padded according to `paddings`. See below for a
 // precise description.
-//
-// Arguments:
-//	input: N-D with shape `input_shape = [batch] + spatial_shape + remaining_shape`,
-// where spatial_shape has `M` dimensions.
-//	block_shape: 1-D with shape `[M]`, all values must be >= 1.
-//	paddings: 2-D with shape `[M, 2]`, all values must be >= 0.
-//   `paddings[i] = [pad_start, pad_end]` specifies the padding for input dimension
-//   `i + 1`, which corresponds to spatial dimension `i`.  It is required that
-//   `block_shape[i]` divides `input_shape[i + 1] + pad_start + pad_end`.
 //
 // This operation is equivalent to the following steps:
 //
@@ -10736,6 +10750,15 @@ func ExperimentalMaxIntraOpParallelismDataset(scope *Scope, input_dataset tf.Out
 //
 // Among others, this operation is useful for reducing atrous convolution into
 // regular convolution.
+//
+// Arguments:
+//	input: N-D with shape `input_shape = [batch] + spatial_shape + remaining_shape`,
+// where spatial_shape has `M` dimensions.
+//	block_shape: 1-D with shape `[M]`, all values must be >= 1.
+//	paddings: 2-D with shape `[M, 2]`, all values must be >= 0.
+//   `paddings[i] = [pad_start, pad_end]` specifies the padding for input dimension
+//   `i + 1`, which corresponds to spatial dimension `i`.  It is required that
+//   `block_shape[i]` divides `input_shape[i + 1] + pad_start + pad_end`.
 func SpaceToBatchND(scope *Scope, input tf.Output, block_shape tf.Output, paddings tf.Output) (output tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -15956,36 +15979,6 @@ func TensorListSplit(scope *Scope, tensor tf.Output, element_shape tf.Output, le
 	return op.Output(0)
 }
 
-// Concats all tensors in the list along the 0th dimension.
-//
-// Requires that all tensors have the same shape except the first dimension.
-//
-// input_handle: The input list.
-// element_shape: The shape of the uninitialized elements in the list. If the first
-//   dimension is not -1, it is assumed that all list elements have the same
-//   leading dim.
-// leading_dims: The list of leading dims of uninitialized list elements. Used if
-//   the leading dim of input_handle.element_shape or the element_shape input arg
-//   is not already set.
-// tensor: The concated result.
-// lengths: Output tensor containing sizes of the 0th dimension of tensors in the list, used for computing the gradient.
-//
-func TensorListConcatV2(scope *Scope, input_handle tf.Output, element_shape tf.Output, leading_dims tf.Output, element_dtype tf.DataType) (tensor tf.Output, lengths tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"element_dtype": element_dtype}
-	opspec := tf.OpSpec{
-		Type: "TensorListConcatV2",
-		Input: []tf.Input{
-			input_handle, element_shape, leading_dims,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
-}
-
 // TensorListStackAttr is an optional argument to TensorListStack.
 type TensorListStackAttr func(optionalAttr)
 
@@ -16769,21 +16762,6 @@ func IsotonicRegression(scope *Scope, input tf.Output, optional ...IsotonicRegre
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
-}
-
-// Computes softplus: `log(exp(features) + 1)`.
-func Softplus(scope *Scope, features tf.Output) (activations tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Softplus",
-		Input: []tf.Input{
-			features,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // MutableHashTableV2Attr is an optional argument to MutableHashTableV2.
@@ -17918,90 +17896,6 @@ func RequantizationRange(scope *Scope, input tf.Output, input_min tf.Output, inp
 	return op.Output(0), op.Output(1)
 }
 
-// TPUPartitionedInputAttr is an optional argument to TPUPartitionedInput.
-type TPUPartitionedInputAttr func(optionalAttr)
-
-// TPUPartitionedInputPartitionDim sets the optional partition_dim attribute to value.
-//
-// value: An integer describles which dimension is partitioned. -1 means
-// those inputs are replicated.
-// If not specified, defaults to 0
-func TPUPartitionedInputPartitionDim(value int64) TPUPartitionedInputAttr {
-	return func(m optionalAttr) {
-		m["partition_dim"] = value
-	}
-}
-
-// An op that groups a list of partitioned inputs together. This op
-//
-// Arguments:
-//	inputs: A list of partitioned inputs which must have the same shape.
-//
-// Returns A handle which represents the full shape of partitioned tensors.
-func TPUPartitionedInput(scope *Scope, inputs []tf.Output, optional ...TPUPartitionedInputAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "TPUPartitionedInput",
-		Input: []tf.Input{
-			tf.OutputList(inputs),
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Compare values of `input` to `threshold` and pack resulting bits into a `uint8`.
-//
-// Each comparison returns a boolean `true` (if `input_value > threshold`)
-// or and `false` otherwise.
-//
-// This operation is useful for Locality-Sensitive-Hashing (LSH) and other
-// algorithms that use hashing approximations of cosine and `L2` distances;
-// codes can be generated from an input via:
-//
-// ```python
-// codebook_size = 50
-// codebook_bits = codebook_size * 32
-// codebook = tf.get_variable('codebook', [x.shape[-1].value, codebook_bits],
-//                            dtype=x.dtype,
-//                            initializer=tf.orthogonal_initializer())
-// codes = compare_and_threshold(tf.matmul(x, codebook), threshold=0.)
-// codes = tf.bitcast(codes, tf.int32)  # go from uint8 to int32
-// # now codes has shape x.shape[:-1] + [codebook_size]
-// ```
-//
-// **NOTE**: Currently, the innermost dimension of the tensor must be divisible
-// by 8.
-//
-// Given an `input` shaped `[s0, s1, ..., s_n]`, the output is
-// a `uint8` tensor shaped `[s0, s1, ..., s_n / 8]`.
-//
-// Arguments:
-//	input: Values to compare against `threshold` and bitpack.
-//	threshold: Threshold to compare against.
-//
-// Returns The bitpacked comparisons.
-func CompareAndBitpack(scope *Scope, input tf.Output, threshold tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "CompareAndBitpack",
-		Input: []tf.Input{
-			input, threshold,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Tensor contraction according to Einstein summation convention.
 //
 // Implements generalized Tensor contraction and reduction. Each input Tensor must
@@ -19097,34 +18991,6 @@ func SparseSegmentSqrtNGrad(scope *Scope, grad tf.Output, indices tf.Output, seg
 	return op.Output(0)
 }
 
-// Computes the mean along sparse segments of a tensor.
-//
-// See `tf.sparse.segment_sum` for usage examples.
-//
-// Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
-// dimension, selecting a subset of dimension 0, specified by `indices`.
-//
-// Arguments:
-//
-//	indices: A 1-D tensor. Has same rank as `segment_ids`.
-//	segment_ids: A 1-D tensor. Values should be sorted and can be repeated.
-//
-// Returns Has same shape as data, except for dimension 0 which
-// has size `k`, the number of segments.
-func SparseSegmentMean(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SparseSegmentMean",
-		Input: []tf.Input{
-			data, indices, segment_ids,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Computes the sum along sparse segments of a tensor.
 //
 // Like `SparseSegmentSum`, but allows missing ids in `segment_ids`. If an id is
@@ -19262,6 +19128,180 @@ func UnsortedSegmentSum(scope *Scope, data tf.Output, segment_ids tf.Output, num
 		Type: "UnsortedSegmentSum",
 		Input: []tf.Input{
 			data, segment_ids, num_segments,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// ResourceScatterNdSubAttr is an optional argument to ResourceScatterNdSub.
+type ResourceScatterNdSubAttr func(optionalAttr)
+
+// ResourceScatterNdSubUseLocking sets the optional use_locking attribute to value.
+//
+// value: An optional bool. Defaults to True. If True, the assignment will
+// be protected by a lock; otherwise the behavior is undefined,
+// but may exhibit less contention.
+// If not specified, defaults to true
+func ResourceScatterNdSubUseLocking(value bool) ResourceScatterNdSubAttr {
+	return func(m optionalAttr) {
+		m["use_locking"] = value
+	}
+}
+
+// Applies sparse subtraction to individual values or slices in a Variable.
+//
+// `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+//
+// `indices` must be integer tensor, containing indices into `ref`.
+// It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+//
+// The innermost dimension of `indices` (with length `K`) corresponds to
+// indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+// dimension of `ref`.
+//
+// `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+//
+// ```
+// [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]]
+// ```
+//
+// For example, say we want to subtract 4 scattered elements from a rank-1 tensor
+// with 8 elements. In Python, that subtraction would look like this:
+//
+// ```python
+// ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8], use_resource=True)
+// indices = tf.constant([[4], [3], [1], [7]])
+// updates = tf.constant([9, 10, 11, 12])
+// sub = tf.scatter_nd_sub(ref, indices, updates)
+// with tf.Session() as sess:
+//   print sess.run(sub)
+// ```
+//
+// The resulting update to ref would look like this:
+//
+//     [1, -9, 3, -6, -4, 6, 7, -4]
+//
+// See `tf.scatter_nd` for more details about how to make updates to
+// slices.
+//
+// Arguments:
+//	ref: A resource handle. Must be from a VarHandleOp.
+//	indices: A Tensor. Must be one of the following types: int32, int64.
+// A tensor of indices into ref.
+//	updates: A Tensor. Must have the same type as ref. A tensor of
+// values to add to ref.
+//
+// Returns the created operation.
+func ResourceScatterNdSub(scope *Scope, ref tf.Output, indices tf.Output, updates tf.Output, optional ...ResourceScatterNdSubAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ResourceScatterNdSub",
+		Input: []tf.Input{
+			ref, indices, updates,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Computes the minimum along segments of a tensor.
+//
+// Read
+// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+// for an explanation of segments.
+//
+// This operator is similar to the unsorted segment sum operator found
+// [(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+// Instead of computing the sum over segments, it computes the minimum such that:
+//
+// \\(output_i = \min_{j...} data_[j...]\\) where min is over tuples `j...` such
+// that `segment_ids[j...] == i`.
+//
+// If the minimum is empty for a given segment ID `i`, it outputs the largest
+// possible value for the specific numeric type,
+// `output[i] = numeric_limits<T>::max()`.
+//
+// For example:
+//
+// ``` python
+// c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
+// tf.unsorted_segment_min(c, tf.constant([0, 1, 0]), num_segments=2)
+// # ==> [[ 1,  2, 2, 1],
+// #       [5,  6, 7, 8]]
+// ```
+//
+// If the given segment ID `i` is negative, then the corresponding value is
+// dropped, and will not be included in the result.
+//
+// Arguments:
+//
+//	segment_ids: A tensor whose shape is a prefix of `data.shape`.
+//
+//
+// Returns Has same shape as data, except for the first `segment_ids.rank`
+// dimensions, which are replaced with a single dimension which has size
+// `num_segments`.
+func UnsortedSegmentMin(scope *Scope, data tf.Output, segment_ids tf.Output, num_segments tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "UnsortedSegmentMin",
+		Input: []tf.Input{
+			data, segment_ids, num_segments,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes the minimum along segments of a tensor.
+//
+// Read
+// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+// for an explanation of segments.
+//
+// Computes a tensor such that
+// \\(output_i = \min_j(data_j)\\) where `min` is over `j` such
+// that `segment_ids[j] == i`.
+//
+// If the min is empty for a given segment ID `i`, `output[i] = 0`.
+//
+// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+// <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMin.png" alt>
+// </div>
+//
+// For example:
+//
+// ```
+// c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
+// tf.segment_min(c, tf.constant([0, 0, 1]))
+// # ==> [[1, 2, 2, 1],
+// #      [5, 6, 7, 8]]
+// ```
+//
+// Arguments:
+//
+//	segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
+// first dimension.  Values should be sorted and can be repeated.
+//
+// Returns Has same shape as data, except for dimension 0 which
+// has size `k`, the number of segments.
+func SegmentMin(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SegmentMin",
+		Input: []tf.Input{
+			data, segment_ids,
 		},
 	}
 	op := scope.AddOperation(opspec)
@@ -22222,6 +22262,108 @@ func Cast(scope *Scope, x tf.Output, DstT tf.DataType, optional ...CastAttr) (y 
 	return op.Output(0)
 }
 
+// Computes the mean along sparse segments of a tensor.
+//
+// See `tf.sparse.segment_sum` for usage examples.
+//
+// Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
+// dimension, selecting a subset of dimension 0, specified by `indices`.
+//
+// Arguments:
+//
+//	indices: A 1-D tensor. Has same rank as `segment_ids`.
+//	segment_ids: A 1-D tensor. Values should be sorted and can be repeated.
+//
+// Returns Has same shape as data, except for dimension 0 which
+// has size `k`, the number of segments.
+func SparseSegmentMean(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseSegmentMean",
+		Input: []tf.Input{
+			data, indices, segment_ids,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// BatchMatMulV3Attr is an optional argument to BatchMatMulV3.
+type BatchMatMulV3Attr func(optionalAttr)
+
+// BatchMatMulV3AdjX sets the optional adj_x attribute to value.
+//
+// value: If `True`, adjoint the slices of `x`. Defaults to `False`.
+// If not specified, defaults to false
+func BatchMatMulV3AdjX(value bool) BatchMatMulV3Attr {
+	return func(m optionalAttr) {
+		m["adj_x"] = value
+	}
+}
+
+// BatchMatMulV3AdjY sets the optional adj_y attribute to value.
+//
+// value: If `True`, adjoint the slices of `y`. Defaults to `False`.
+// If not specified, defaults to false
+func BatchMatMulV3AdjY(value bool) BatchMatMulV3Attr {
+	return func(m optionalAttr) {
+		m["adj_y"] = value
+	}
+}
+
+// Multiplies slices of two tensors in batches.
+//
+// Multiplies all slices of `Tensor` `x` and `y` (each slice can be
+// viewed as an element of a batch), and arranges the individual results
+// in a single output tensor of the same batch size. Each of the
+// individual slices can optionally be adjointed (to adjoint a matrix
+// means to transpose and conjugate it) before multiplication by setting
+// the `adj_x` or `adj_y` flag to `True`, which are by default `False`.
+//
+// The input tensors `x` and `y` are 2-D or higher with shape `[..., r_x, c_x]`
+// and `[..., r_y, c_y]`.
+//
+// The output tensor is 2-D or higher with shape `[..., r_o, c_o]`, where:
+//
+//     r_o = c_x if adj_x else r_x
+//     c_o = r_y if adj_y else c_y
+//
+// It is computed as:
+//
+//     output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
+//
+// *NOTE*: `BatchMatMulV3` supports broadcasting in the batch dimensions. More
+// about broadcasting
+// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
+//
+//
+// Arguments:
+//	x: 2-D or higher with shape `[..., r_x, c_x]`.
+//	y: 2-D or higher with shape `[..., r_y, c_y]`.
+//	Tout: If not spcified, Tout is the same type to input type.
+//
+// Returns 3-D or higher with shape `[..., r_o, c_o]`
+func BatchMatMulV3(scope *Scope, x tf.Output, y tf.Output, Tout tf.DataType, optional ...BatchMatMulV3Attr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"Tout": Tout}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "BatchMatMulV3",
+		Input: []tf.Input{
+			x, y,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Returns 0 if x == 0, and x / y otherwise, elementwise.
 func Xdivy(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	if scope.Err() != nil {
@@ -25131,6 +25273,36 @@ func MaxPoolGradV2(scope *Scope, orig_input tf.Output, orig_output tf.Output, gr
 	return op.Output(0)
 }
 
+// Concats all tensors in the list along the 0th dimension.
+//
+// Requires that all tensors have the same shape except the first dimension.
+//
+// input_handle: The input list.
+// element_shape: The shape of the uninitialized elements in the list. If the first
+//   dimension is not -1, it is assumed that all list elements have the same
+//   leading dim.
+// leading_dims: The list of leading dims of uninitialized list elements. Used if
+//   the leading dim of input_handle.element_shape or the element_shape input arg
+//   is not already set.
+// tensor: The concated result.
+// lengths: Output tensor containing sizes of the 0th dimension of tensors in the list, used for computing the gradient.
+//
+func TensorListConcatV2(scope *Scope, input_handle tf.Output, element_shape tf.Output, leading_dims tf.Output, element_dtype tf.DataType) (tensor tf.Output, lengths tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"element_dtype": element_dtype}
+	opspec := tf.OpSpec{
+		Type: "TensorListConcatV2",
+		Input: []tf.Input{
+			input_handle, element_shape, leading_dims,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
 // MaxPoolV2Attr is an optional argument to MaxPoolV2.
 type MaxPoolV2Attr func(optionalAttr)
 
@@ -27834,7 +28006,21 @@ func ExperimentalBytesProducedStatsDataset(scope *Scope, input_dataset tf.Output
 	return op.Output(0)
 }
 
-// Computes exponential linear: `exp(features) - 1` if < 0, `features` otherwise.
+// Computes the exponential linear function.
+//
+// The ELU function is defined as:
+//
+//  * $ e ^ x - 1 $ if $ x < 0 $
+//  * $ x $ if $ x >= 0 $
+//
+// Examples:
+//
+// >>> tf.nn.elu(1.0)
+// <tf.Tensor: shape=(), dtype=float32, numpy=1.0>
+// >>> tf.nn.elu(0.0)
+// <tf.Tensor: shape=(), dtype=float32, numpy=0.0>
+// >>> tf.nn.elu(-1000.0)
+// <tf.Tensor: shape=(), dtype=float32, numpy=-1.0>
 //
 // See [Fast and Accurate Deep Network Learning by Exponential Linear Units (ELUs)
 // ](http://arxiv.org/abs/1511.07289)
@@ -29783,6 +29969,42 @@ func MulNoNan(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 		Input: []tf.Input{
 			x, y,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// FinalizeDatasetAttr is an optional argument to FinalizeDataset.
+type FinalizeDatasetAttr func(optionalAttr)
+
+// FinalizeDatasetHasCapturedRef sets the optional has_captured_ref attribute to value.
+// If not specified, defaults to false
+func FinalizeDatasetHasCapturedRef(value bool) FinalizeDatasetAttr {
+	return func(m optionalAttr) {
+		m["has_captured_ref"] = value
+	}
+}
+
+// Creates a dataset by applying `tf.data.Options` to `input_dataset`.
+//
+// Arguments:
+//	input_dataset: A variant tensor representing the input dataset.
+//
+//
+func FinalizeDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...FinalizeDatasetAttr) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "FinalizeDataset",
+		Input: []tf.Input{
+			input_dataset,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -32925,9 +33147,10 @@ func StatelessRandomGetKeyCounter(scope *Scope, seed tf.Output) (key tf.Output, 
 	return op.Output(0), op.Output(1)
 }
 
-// Asserts that compilation succeeded. This op produces no output and closes the
+// Asserts that compilation succeeded.
 //
-// device during failure to ensure all pending device interactions fail.
+// This op produces no output and closes the device during failure to ensure all
+// pending device interactions fail.
 //
 // 'compilation_status' is a serialized CompilationResultProto.
 //
@@ -41880,222 +42103,6 @@ func InitializeTableFromTextFileV2(scope *Scope, table_handle tf.Output, filenam
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
-}
-
-// ResourceScatterNdSubAttr is an optional argument to ResourceScatterNdSub.
-type ResourceScatterNdSubAttr func(optionalAttr)
-
-// ResourceScatterNdSubUseLocking sets the optional use_locking attribute to value.
-//
-// value: An optional bool. Defaults to True. If True, the assignment will
-// be protected by a lock; otherwise the behavior is undefined,
-// but may exhibit less contention.
-// If not specified, defaults to true
-func ResourceScatterNdSubUseLocking(value bool) ResourceScatterNdSubAttr {
-	return func(m optionalAttr) {
-		m["use_locking"] = value
-	}
-}
-
-// Applies sparse subtraction to individual values or slices in a Variable.
-//
-// `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
-//
-// `indices` must be integer tensor, containing indices into `ref`.
-// It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
-//
-// The innermost dimension of `indices` (with length `K`) corresponds to
-// indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
-// dimension of `ref`.
-//
-// `updates` is `Tensor` of rank `Q-1+P-K` with shape:
-//
-// ```
-// [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]]
-// ```
-//
-// For example, say we want to subtract 4 scattered elements from a rank-1 tensor
-// with 8 elements. In Python, that subtraction would look like this:
-//
-// ```python
-// ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8], use_resource=True)
-// indices = tf.constant([[4], [3], [1], [7]])
-// updates = tf.constant([9, 10, 11, 12])
-// sub = tf.scatter_nd_sub(ref, indices, updates)
-// with tf.Session() as sess:
-//   print sess.run(sub)
-// ```
-//
-// The resulting update to ref would look like this:
-//
-//     [1, -9, 3, -6, -4, 6, 7, -4]
-//
-// See `tf.scatter_nd` for more details about how to make updates to
-// slices.
-//
-// Arguments:
-//	ref: A resource handle. Must be from a VarHandleOp.
-//	indices: A Tensor. Must be one of the following types: int32, int64.
-// A tensor of indices into ref.
-//	updates: A Tensor. Must have the same type as ref. A tensor of
-// values to add to ref.
-//
-// Returns the created operation.
-func ResourceScatterNdSub(scope *Scope, ref tf.Output, indices tf.Output, updates tf.Output, optional ...ResourceScatterNdSubAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ResourceScatterNdSub",
-		Input: []tf.Input{
-			ref, indices, updates,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Computes the minimum along segments of a tensor.
-//
-// Read
-// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
-// for an explanation of segments.
-//
-// This operator is similar to the unsorted segment sum operator found
-// [(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
-// Instead of computing the sum over segments, it computes the minimum such that:
-//
-// \\(output_i = \min_{j...} data_[j...]\\) where min is over tuples `j...` such
-// that `segment_ids[j...] == i`.
-//
-// If the minimum is empty for a given segment ID `i`, it outputs the largest
-// possible value for the specific numeric type,
-// `output[i] = numeric_limits<T>::max()`.
-//
-// For example:
-//
-// ``` python
-// c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
-// tf.unsorted_segment_min(c, tf.constant([0, 1, 0]), num_segments=2)
-// # ==> [[ 1,  2, 2, 1],
-// #       [5,  6, 7, 8]]
-// ```
-//
-// If the given segment ID `i` is negative, then the corresponding value is
-// dropped, and will not be included in the result.
-//
-// Arguments:
-//
-//	segment_ids: A tensor whose shape is a prefix of `data.shape`.
-//
-//
-// Returns Has same shape as data, except for the first `segment_ids.rank`
-// dimensions, which are replaced with a single dimension which has size
-// `num_segments`.
-func UnsortedSegmentMin(scope *Scope, data tf.Output, segment_ids tf.Output, num_segments tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "UnsortedSegmentMin",
-		Input: []tf.Input{
-			data, segment_ids, num_segments,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes the minimum along segments of a tensor.
-//
-// Read
-// [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
-// for an explanation of segments.
-//
-// Computes a tensor such that
-// \\(output_i = \min_j(data_j)\\) where `min` is over `j` such
-// that `segment_ids[j] == i`.
-//
-// If the min is empty for a given segment ID `i`, `output[i] = 0`.
-//
-// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMin.png" alt>
-// </div>
-//
-// For example:
-//
-// ```
-// c = tf.constant([[1,2,3,4], [4, 3, 2, 1], [5,6,7,8]])
-// tf.segment_min(c, tf.constant([0, 0, 1]))
-// # ==> [[1, 2, 2, 1],
-// #      [5, 6, 7, 8]]
-// ```
-//
-// Arguments:
-//
-//	segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
-// first dimension.  Values should be sorted and can be repeated.
-//
-// Returns Has same shape as data, except for dimension 0 which
-// has size `k`, the number of segments.
-func SegmentMin(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SegmentMin",
-		Input: []tf.Input{
-			data, segment_ids,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Execute a sub graph on a remote processor.
-//
-// The graph specifications(such as graph itself, input tensors and output names)
-// are stored as a serialized protocol buffer of RemoteFusedGraphExecuteInfo
-// as serialized_remote_fused_graph_execute_info.
-// The specifications will be passed to a dedicated registered
-// remote fused graph executor.  The executor will send the graph specifications
-// to a remote processor and execute that graph.  The execution results
-// will be passed to consumer nodes as outputs of this node.
-//
-// Arguments:
-//	inputs: Arbitrary number of tensors with arbitrary data types
-//
-//	serialized_remote_fused_graph_execute_info: Serialized protocol buffer
-// of RemoteFusedGraphExecuteInfo which contains graph specifications.
-//
-// Returns Arbitrary number of tensors with arbitrary data types
-func RemoteFusedGraphExecute(scope *Scope, inputs []tf.Output, Toutputs []tf.DataType, serialized_remote_fused_graph_execute_info string) (outputs []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"Toutputs": Toutputs, "serialized_remote_fused_graph_execute_info": serialized_remote_fused_graph_execute_info}
-	opspec := tf.OpSpec{
-		Type: "RemoteFusedGraphExecute",
-		Input: []tf.Input{
-			tf.OutputList(inputs),
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if outputs, idx, err = makeOutputList(op, idx, "outputs"); err != nil {
-		scope.UpdateErr("RemoteFusedGraphExecute", err)
-		return
-	}
-	return outputs
 }
 
 // Creates and returns an empty tensor map.
@@ -51211,7 +51218,28 @@ func MatrixDiagPartV2(scope *Scope, input tf.Output, k tf.Output, padding_value 
 // Checks a tensor for NaN and Inf values.
 //
 // When run, reports an `InvalidArgument` error if `tensor` has any values
-// that are not a number (NaN) or infinity (Inf). Otherwise, passes `tensor` as-is.
+// that are not a number (NaN) or infinity (Inf). Otherwise, returns the input
+// tensor.
+//
+// Example usage:
+//
+// ``` python
+// a = tf.Variable(1.0)
+// tf.debugging.check_numerics(a, message='')
+//
+// b = tf.Variable(np.nan)
+// try:
+//   tf.debugging.check_numerics(b, message='Checking b')
+// except Exception as e:
+//   assert "Checking b : Tensor had NaN values" in e.message
+//
+// c = tf.Variable(np.inf)
+// try:
+//   tf.debugging.check_numerics(c, message='Checking c')
+// except Exception as e:
+//   assert "Checking c : Tensor had Inf values" in e.message
+// ```
+//
 //
 // Arguments:
 //
@@ -51448,6 +51476,45 @@ func FusedResizeAndPadConv2D(scope *Scope, input tf.Output, size tf.Output, padd
 		Type: "FusedResizeAndPadConv2D",
 		Input: []tf.Input{
 			input, size, paddings, filter,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// TPUPartitionedInputAttr is an optional argument to TPUPartitionedInput.
+type TPUPartitionedInputAttr func(optionalAttr)
+
+// TPUPartitionedInputPartitionDim sets the optional partition_dim attribute to value.
+//
+// value: An integer describles which dimension is partitioned. -1 means
+// those inputs are replicated.
+// If not specified, defaults to 0
+func TPUPartitionedInputPartitionDim(value int64) TPUPartitionedInputAttr {
+	return func(m optionalAttr) {
+		m["partition_dim"] = value
+	}
+}
+
+// An op that groups a list of partitioned inputs together. This op
+//
+// Arguments:
+//	inputs: A list of partitioned inputs which must have the same shape.
+//
+// Returns A handle which represents the full shape of partitioned tensors.
+func TPUPartitionedInput(scope *Scope, inputs []tf.Output, optional ...TPUPartitionedInputAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "TPUPartitionedInput",
+		Input: []tf.Input{
+			tf.OutputList(inputs),
 		},
 		Attrs: attrs,
 	}
@@ -52050,6 +52117,24 @@ func QuantizeAndDequantizeV3(scope *Scope, input tf.Output, input_min tf.Output,
 			input, input_min, input_max, num_bits,
 		},
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns the `tf.data.Options` attached to `input_dataset`.
+//
+// Arguments:
+//	input_dataset: A variant tensor representing the input dataset.
+func GetOptions(scope *Scope, input_dataset tf.Output) (serialized_options tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "GetOptions",
+		Input: []tf.Input{
+			input_dataset,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)

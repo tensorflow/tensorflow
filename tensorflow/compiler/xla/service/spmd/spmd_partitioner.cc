@@ -218,6 +218,7 @@ HloInstruction* SpmdBuilder::AddInstruction(
   HloInstruction* hlo =
       HloComputation::Builder::AddInstruction(std::move(instruction));
   if (visiting_hlo_) {
+    hlo->set_metadata(visiting_hlo_->metadata());
     instructions_[visiting_hlo_].push_back(hlo);
   }
   if (hlo->opcode() == HloOpcode::kBroadcast) {
@@ -1397,7 +1398,6 @@ Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
   auto clone =
       b_.AddInstruction(hlo->CloneWithNewOperands(hlo->shape(), new_operands));
   clone->set_sharding(sharding);
-  clone->set_metadata(hlo->metadata());
   SetPartitionedHlo(hlo,
                     PartitionedHlo(clone, hlo->shape(), MakePartitioningState())
                         .Reshard(hlo->sharding()));
@@ -1808,10 +1808,13 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
   }
 
   const HloSharding& sharding = hlo->operand(0)->sharding();
-  if (sharding.IsTileMaximal() || sharding.IsReplicated()) {
+  // No support for partial replicate yet.
+  if (sharding.IsTileMaximal() || sharding.IsReplicated() ||
+      sharding.ReplicateOnLastTileDim()) {
     return DefaultAction(hlo);
   }
 
+  const int64 batch_dim = 0;
   const int64 sort_dim = 1;
   const int64 shard_count = sharding.tile_assignment().dim(sort_dim);
 
@@ -1819,8 +1822,9 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
     return DefaultAction(hlo);
   }
 
+  const int64 batch_dim_partition = sharding.tile_assignment().dim(batch_dim);
   const int64 input_size = hlo->operand(0)->shape().dimensions(sort_dim);
-  const int64 batch_size = hlo->shape().tuple_shapes(0).dimensions(0);
+  const int64 batch_size = hlo->shape().tuple_shapes(0).dimensions(batch_dim);
   const int64 k = hlo->shape().tuple_shapes(0).dimensions(sort_dim);
   const int64 per_partition_size = CeilOfRatio(input_size, shard_count);
 
@@ -1833,6 +1837,22 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
 
   auto partitioned_input = GetPartitionedHlo(input).PadWithValue(
       CreateFirstWithType(element_type, &b_));
+
+  auto partition_state = partitioned_input.state();
+  auto replicated_sharding = HloSharding::Replicate();
+  // If batch dimension is partitioned, partial replicated on sort dimension.
+  if (batch_dim_partition > 1) {
+    auto sharding_grouped = GroupShardingOnDims(sharding, {batch_dim});
+    partition_state = CreatePerGroupPartitioningState(
+        partitioned_input.state(), sharding_grouped.device_groups,
+        partitioned_input.state().b);
+    auto reshape_tile_assignment = sharding.tile_assignment();
+    auto reshape_dimensions = reshape_tile_assignment.dimensions();
+    reshape_dimensions.push_back(reshape_dimensions.back());
+    reshape_dimensions[sort_dim] = 1;
+    reshape_tile_assignment.Reshape(reshape_dimensions);
+    replicated_sharding = HloSharding::PartialTile(reshape_tile_assignment);
+  }
 
   // Each partition needs to do TopK separately, thus the base shape
   // becomes [batch_size, k * shard_count].
@@ -1863,7 +1883,7 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
       MakePartitioningState());
   // Reshard value to be replicated.
   auto replicated_value_gte =
-      value_partitioned_gte.Reshard(HloSharding::Replicate()).hlo();
+      value_partitioned_gte.Reshard(replicated_sharding).hlo();
 
   // Get index from TopK.
   HloInstruction* index_gte =
@@ -1871,7 +1891,7 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
           topk->shape().tuple_shapes(1), topk, 1));
   auto partition_id_s32 = b_.AddInstruction(HloInstruction::CreateConvert(
       ShapeUtil::MakeShape(S32, partition_id_->shape().dimensions()),
-      partition_id_));
+      partition_state.partition_id));
   // Add per partition offset to index, index returned from CustomCall always
   // starts from 0.
   auto index_offset = b_.AddInstruction(HloInstruction::CreateBroadcast(
@@ -1890,7 +1910,7 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
       MakePartitioningState());
   // Reshard index to be replicated.
   auto replicated_index_gte =
-      index_partitioned_gte.Reshard(HloSharding::Replicate()).hlo();
+      index_partitioned_gte.Reshard(replicated_sharding).hlo();
 
   // Creates replicated sort to do TopK, the input is value and index pairs
   // from all the partitions. The reason to use Sort instead of CustomCall TopK
@@ -1909,11 +1929,19 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
   HloCloneContext context(module_);
   auto compare_computation =
       module_->DeepCloneComputation(new_module->entry_computation(), &context);
+  // Each partition needs to do TopK separately, thus the base shape for sort
+  // becomes [ceil(batch_size / batch_dim_partition), k * shard_count].
+  const Shape sort_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(
+           hlo->operand(0)->shape().element_type(),
+           {CeilOfRatio(batch_size, batch_dim_partition), k * shard_count}),
+       ShapeUtil::MakeShape(S32, {CeilOfRatio(batch_size, batch_dim_partition),
+                                  k * shard_count})});
   auto sort = b_.AddInstruction(HloInstruction::CreateSort(
-      replicated_shape, sort_dim, {replicated_value_gte, replicated_index_gte},
+      sort_shape, sort_dim, {replicated_value_gte, replicated_index_gte},
       compare_computation, true));
   sort->set_sharding(
-      HloSharding::Replicate().GetTupleSharding(sort->shape()).ValueOrDie());
+      replicated_sharding.GetTupleSharding(sort->shape()).ValueOrDie());
   PartitionedHlo replicated_sort(sort, replicated_shape,
                                  MakePartitioningState());
 
@@ -1934,11 +1962,11 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
       SliceFirstK(sort_index_gte, &b_, sort_dim, k);
   auto create_tuple = b_.AddInstruction(
       HloInstruction::CreateTuple({slice_sort_value, slice_index_value}));
-  create_tuple->set_sharding(HloSharding::Replicate());
-
-  SetPartitionedHlo(hlo, PartitionedHlo(create_tuple, create_tuple->shape(),
-                                        MakePartitioningState())
-                             .Reshard(hlo->sharding()));
+  create_tuple->set_sharding(
+      replicated_sharding.GetTupleSharding(create_tuple->shape()).ValueOrDie());
+  SetPartitionedHlo(
+      hlo, PartitionedHlo(create_tuple, hlo->shape(), MakePartitioningState())
+               .Reshard(hlo->sharding()));
 
   return Status::OK();
 }
@@ -2111,7 +2139,6 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
         input_shard_shape.dimensions(input_sharded_dim) * merge_factor);
     auto tmp_reshape = b_.AddInstruction(
         HloInstruction::CreateReshape(tmp_shard_shape, operand.hlo()));
-    tmp_reshape->set_metadata(hlo->metadata());
     tmp_reshape->set_sharding(hlo->sharding());
     auto tmp_full_shape = tmp_shard_shape;
     tmp_full_shape.set_dimensions(
@@ -2765,7 +2792,6 @@ Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
   }
   auto local_reduce = b_.AddInstruction(HloInstruction::CreateReduce(
       reduce_shape, input_hlos, inits, hlo->dimensions(), hlo->to_apply()));
-  local_reduce->set_metadata(hlo->metadata());
 
   SetPartitionedHlo(hlo, [&]() {
     HloInstruction* reduce = local_reduce;
@@ -3499,7 +3525,7 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64 num_partitions,
           }
         }
         return b->AddInstruction(HloInstruction::CreateAllGather(
-            ag_shape, operand, all_gather_dimension, device_groups,
+            ag_shape, {operand}, all_gather_dimension, device_groups,
             /*constrain_layout=*/false, channel_id,
             /*use_global_device_ids=*/true));
       },

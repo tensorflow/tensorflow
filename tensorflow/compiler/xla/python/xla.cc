@@ -158,7 +158,8 @@ PYBIND11_MODULE(xla_extension, m) {
 
   py::class_<GpuDevice, PjRtDevice, ClientAndPtr<GpuDevice>>(m, "GpuDevice")
       .def("__repr__", [](const GpuDevice& device) {
-        return absl::StrFormat("GpuDevice(id=%i)", device.id());
+        return absl::StrFormat("GpuDevice(id=%i, task=%i)", device.id(),
+                               device.task_id());
       });
 
   py::class_<PjRtTpuDevice, PjRtDevice, ClientAndPtr<PjRtTpuDevice>>(
@@ -174,7 +175,7 @@ PYBIND11_MODULE(xla_extension, m) {
           "The index of this TpuDevice's core on the TPU chip.")
       .def("__repr__", [](const PjRtTpuDevice& device) {
         return absl::StrFormat(
-            "TpuDevice(id=%i, host=%i, coords=(%s), core_on_chip=%i)",
+            "TpuDevice(id=%i, task=%i, coords=(%s), core_on_chip=%i)",
             device.id(), device.task_id(), absl::StrJoin(device.coords(), ","),
             device.core_on_chip());
       });
@@ -189,7 +190,8 @@ PYBIND11_MODULE(xla_extension, m) {
   py::enum_<GpuAllocatorConfig::Kind>(alloc_config, "Kind")
       .value("DEFAULT", GpuAllocatorConfig::Kind::kDefault)
       .value("PLATFORM", GpuAllocatorConfig::Kind::kPlatform)
-      .value("BFC", GpuAllocatorConfig::Kind::kBFC);
+      .value("BFC", GpuAllocatorConfig::Kind::kBFC)
+      .value("CUDA_ASYNC", GpuAllocatorConfig::Kind::kCudaAsync);
 
   py::enum_<PjRtClient::HostBufferSemantics>(m, "HostBufferSemantics")
       .value("IMMUTABLE_ONLY_DURING_CALL",
@@ -200,6 +202,7 @@ PYBIND11_MODULE(xla_extension, m) {
 
   py::class_<PyClient, std::shared_ptr<PyClient>> py_local_client(m, "Client");
   py_local_client.def_property_readonly("platform", &PyClient::platform_name)
+      .def_property_readonly("platform_version", &PyClient::platform_version)
       .def("device_count", &PyClient::device_count)
       .def("local_device_count", &PyClient::addressable_device_count)
       .def("devices", &PyClient::Devices)
@@ -223,7 +226,9 @@ PYBIND11_MODULE(xla_extension, m) {
                PjRtClient::HostBufferSemantics::kZeroCopy)
       .def("compile", &PyClient::Compile, py::arg("computation"),
            py::arg("compile_options") = CompileOptions())
-      .def("heap_profile", &PyClient::HeapProfile);
+      .def("heap_profile", &PyClient::HeapProfile)
+      // TODO(zhangqiaorjc): Experimental.
+      .def("defragment", &PyClient::Defragment);
 
   m.def(
       "get_cpu_client",
@@ -265,16 +270,22 @@ PYBIND11_MODULE(xla_extension, m) {
   device_array_base.def(py::init<>());
 
   py::class_<PyBuffer, DeviceArrayBase, std::unique_ptr<PyBuffer>> buffer(
-      m, "Buffer");
+      m, "DeviceArray");
   // TODO(phawkins): alias for backward compatibility. Remove after JAX no
   // longer uses this name.
   m.add_object("PyLocalBuffer", buffer);
+  m.add_object("Buffer", buffer);
   buffer
       .def_property_readonly("__array_priority__",
                              [](py::object) { return 100; })
-      .def_property("_device", &PyBuffer::GetStickyDevice,
-                    &PyBuffer::SetStickyDevice)
+      .def_property(
+          "_device",
+          [](const PyBuffer& buffer) -> ClientAndPtr<PjRtDevice> {
+            return WrapWithClient(buffer.client(), buffer.sticky_device());
+          },
+          &PyBuffer::set_sticky_device)
       .def_property("aval", &PyBuffer::GetAval, &PyBuffer::SetAval)
+      .def_property("weak_type", &PyBuffer::weak_type, &PyBuffer::set_weak_type)
       .def_property_readonly("_lazy_expr",
                              [](py::object buffer) { return py::none(); })
       .def_property_readonly("device_buffer",
@@ -319,6 +330,7 @@ PYBIND11_MODULE(xla_extension, m) {
              return buffer->AsNumPyArray(buffer_obj);
            })
       .def("xla_shape", &PyBuffer::shape)
+      .def("xla_dynamic_shape", &PyBuffer::xla_dynamic_shape)
       .def_property_readonly("client", &PyBuffer::client)
       .def("device", &PyBuffer::device)
       .def("platform", &PyBuffer::platform_name)
@@ -326,7 +338,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("unsafe_buffer_pointer", &PyBuffer::UnsafeBufferPointer)
       .def_property_readonly("__cuda_array_interface__",
                              &PyBuffer::CudaArrayInterface)
-      .def_property_readonly("traceback", &PyBuffer::traceback);
+      .def_property_readonly("traceback", &PyBuffer::traceback)
+      .def("clone", &PyBuffer::Clone);
 
   // pybind11's implementation of the buffer protocol doesn't allow for correct
   // error handling. We bypass it and implement the buffer protocol ourselves.
@@ -352,8 +365,6 @@ PYBIND11_MODULE(xla_extension, m) {
            &PyExecutable::SizeOfGeneratedCodeInBytes)
       .def("delete", &PyExecutable::Delete)
       .def("execute", &PyExecutable::Execute, py::arg("arguments"))
-      .def("execute_on_local_devices", &PyExecutable::ExecuteOnLocalDevices,
-           py::arg("arguments"))
       .def("execute_sharded_on_local_devices",
            &PyExecutable::ExecuteShardedOnLocalDevices, py::arg("arguments"))
       .def("hlo_modules", &PyExecutable::HloModules)

@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_live_range.h"
 
 #include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
+#include "tensorflow/compiler/xla/service/hlo_value.h"
 
 namespace xla {
 /*static*/
@@ -173,7 +175,13 @@ void HloLiveRange::CalculateBufferStartEndMap() {
       buffer_end_time = buffer_start_time;
     }
 
+    HloPosition end_position;
+    int64 max_end_time = 0;
     for (const HloPosition& position : value->positions()) {
+      if (instruction_schedule_[position.instruction] >= max_end_time) {
+        max_end_time = instruction_schedule_[value->instruction()];
+        end_position = position;
+      }
       const HloComputation* position_comp = position.instruction->parent();
       // If this instruction lives out, the live range of the instruction
       // should be extended to the end of the computation.
@@ -182,7 +190,10 @@ void HloLiveRange::CalculateBufferStartEndMap() {
         if (it == computation_span_times_.end()) {
           continue;
         }
-        buffer_end_time = std::max(buffer_end_time, it->second.end);
+        if (buffer_end_time < it->second.end) {
+          buffer_end_time = it->second.end;
+          end_position = position;
+        }
       }
     }
 
@@ -204,6 +215,7 @@ void HloLiveRange::CalculateBufferStartEndMap() {
     auto& live_range = buffer_live_ranges_[value];
     live_range.start = buffer_start_time;
     live_range.end = buffer_end_time;
+    live_range.end_position = end_position;
   }
 }
 

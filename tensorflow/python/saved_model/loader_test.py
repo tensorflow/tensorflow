@@ -290,6 +290,14 @@ class SavedModelLoaderTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, "not found in graph"):
       loader.load_graph(graph, ["foo_graph"], return_elements=["z:0"])
 
+  def test_parse_saved_model_exception(self, builder_cls):
+    """Test that error message for not exist model have OS-depend delimiter in path"""
+    path = _get_export_dir("not_existing_dir")
+    pattern = os.path.sep + "{"
+    with self.assertRaises(IOError) as err:
+      loader_impl.parse_saved_model(path)
+    self.assertTrue(pattern in str(err.exception))
+
 
 if __name__ == "__main__":
   test.main()

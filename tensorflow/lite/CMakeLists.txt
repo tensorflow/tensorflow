@@ -70,6 +70,9 @@ option(TFLITE_ENABLE_GPU "Enable GPU" OFF)
 # This is currently not supported.
 option(TFLITE_ENABLE_FLEX "Enable SELECT_TF_OPS" OFF) # TODO: Add support
 option(TFLITE_ENABLE_XNNPACK "Enable XNNPACK backend" ON)
+
+option(TFLITE_KERNEL_TEST "Enable tflite kernel unit test" OFF)
+
 set(CMAKE_CXX_STANDARD 14)  # Some components require C++14.
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(_TFLITE_ENABLE_NNAPI "${TFLITE_ENABLE_NNAPI}")
@@ -216,6 +219,10 @@ if(TFLITE_ENABLE_GPU)
     FILTER "(_test|gl_interop|gpu_api_delegate|egl_sync)\\.(cc|h)$"
   )
   populate_tflite_source_vars(
+    "delegates/gpu/cl/default" TFLITE_DELEGATES_GPU_CL_DEFAULT_SRCS
+    FILTER "(_test)\\.(cc|h)$"
+  )
+  populate_tflite_source_vars(
     "delegates/gpu/cl/kernels" TFLITE_DELEGATES_GPU_CL_KERNELS_SRCS
     FILTER "(_test)\\.(cc|h)$"
   )
@@ -265,6 +272,7 @@ if(TFLITE_ENABLE_GPU)
     ${TFLITE_SOURCE_DIR}/delegates/gpu/delegate.cc
     ${TFLITE_SOURCE_DIR}/experimental/acceleration/compatibility/android_info.cc
     ${TFLITE_DELEGATES_GPU_CL_SRCS}
+    ${TFLITE_DELEGATES_GPU_CL_DEFAULT_SRCS}
     ${TFLITE_DELEGATES_GPU_CL_KERNELS_SRCS}
     ${TFLITE_DELEGATES_GPU_COMMON_DEFAULT_SRCS}
     ${TFLITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_SRCS}
@@ -421,73 +429,17 @@ target_compile_options(tensorflow-lite
 )
 add_library(tensorflow::tensorflowlite ALIAS tensorflow-lite)
 
-# Benchmark Tool
-populate_source_vars("${TFLITE_SOURCE_DIR}/tools/benchmark"
-  TFLITE_BENCHMARK_SRCS
-  FILTER "(_test|_plus_flex_main|_performance_options.*)\\.cc$"
-)
-list(APPEND TFLITE_BENCHMARK_SRCS
-  ${TF_SOURCE_DIR}/core/util/stats_calculator.cc
-  ${TFLITE_SOURCE_DIR}/profiling/memory_info.cc
-  ${TFLITE_SOURCE_DIR}/profiling/profile_summarizer.cc
-  ${TFLITE_SOURCE_DIR}/profiling/profile_summary_formatter.cc
-  ${TFLITE_SOURCE_DIR}/profiling/time.cc
-  ${TFLITE_SOURCE_DIR}/tools/command_line_flags.cc
-  ${TFLITE_SOURCE_DIR}/tools/delegates/default_execution_provider.cc
-  ${TFLITE_SOURCE_DIR}/tools/evaluation/utils.cc
-  ${TFLITE_SOURCE_DIR}/tools/optimize/sparsity/format_converter.cc
-  ${TFLITE_SOURCE_DIR}/tools/tool_params.cc
-)
-
-list(APPEND TFLITE_BENCHMARK_LIBS
-  tensorflow-lite
-  ${CMAKE_DL_LIBS}
-)
-
-# TODO(b/171007016): Enable performance options on Windows.
-if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
-  list(APPEND TFLITE_BENCHMARK_SRCS
-    ${TFLITE_SOURCE_DIR}/tools/benchmark/benchmark_performance_options.cc
-  )
+# The kernel tests.
+if(TFLITE_KERNEL_TEST)
+  enable_testing()
+  add_subdirectory(${TFLITE_SOURCE_DIR}/kernels)
 endif()
 
-if(TFLITE_ENABLE_XNNPACK)
-  list(APPEND TFLITE_BENCHMARK_SRCS
-    ${TFLITE_SOURCE_DIR}/tools/delegates/xnnpack_delegate_provider.cc
-  )
-else()
-  set(TFLITE_BENCHMARK_CC_OPTIONS "-DTFLITE_WITHOUT_XNNPACK")
-endif()  # TFLITE_ENABLE_XNNPACK
+# The benchmark tool.
+add_subdirectory(${TFLITE_SOURCE_DIR}/tools/benchmark)
 
-if(CMAKE_SYSTEM_NAME MATCHES "Android")
-  if(_TFLITE_ENABLE_NNAPI)
-    list(APPEND TFLITE_BENCHMARK_SRCS
-      ${TFLITE_SOURCE_DIR}/tools/delegates/nnapi_delegate_provider.cc
-    )
-  endif()  # _TFLITE_ENABLE_NNAPI
-  list(APPEND TFLITE_BENCHMARK_LIBS
-    ${ANDROID_LOG_LIB}
-    absl::strings
-  )
-endif()  # Android
-
-if(TFLITE_ENABLE_GPU)
-  list(APPEND TFLITE_BENCHMARK_SRCS
-    ${TFLITE_SOURCE_DIR}/tools/delegates/gpu_delegate_provider.cc
-  )
-endif()  # TFLITE_ENABLE_GPU
-
-add_executable(benchmark_model
-  EXCLUDE_FROM_ALL
-  ${TFLITE_BENCHMARK_SRCS}
-)
-target_compile_options(benchmark_model
-  PRIVATE
-    ${TFLITE_BENCHMARK_CC_OPTIONS}
-)
-target_link_libraries(benchmark_model
-    ${TFLITE_BENCHMARK_LIBS}
-)
+# The label_image example.
+add_subdirectory(${TFLITE_SOURCE_DIR}/examples/label_image)
 
 # Python interpreter wrapper.
 add_library(_pywrap_tensorflow_interpreter_wrapper SHARED EXCLUDE_FROM_ALL

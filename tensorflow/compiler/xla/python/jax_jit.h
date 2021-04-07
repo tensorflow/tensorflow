@@ -21,37 +21,17 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
+#include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace jax {
 
-// Describes the abstract shape and dtype of an argument.
-struct ArgSignature {
-  ArgSignature(xla::PrimitiveType dtype, absl::Span<const xla::int64> shape,
-               bool weak_type)
-      : dtype(dtype), shape(shape.begin(), shape.end()), weak_type(weak_type) {}
-  // This is the XLA dtype of the object.
-  const xla::PrimitiveType dtype;
-  const absl::InlinedVector<xla::int64, 4> shape;
-  // JAX arguments can be of weak type, if and only if they are Python scalars
-  // or `DeviceArray` values such that `aval.weak_type` is true.
-  const bool weak_type;
-  bool operator==(const ArgSignature& other) const {
-    return std::tie(dtype, weak_type, shape) ==
-           std::tie(other.dtype, other.weak_type, other.shape);
-  }
-  bool operator!=(const ArgSignature& other) const { return !(*this == other); }
-  std::string DebugString() const;
-};
+// Returns the value for jax_enable_x64 (defined by a thread-local value if
+// defined, defaulting to the value of the flag otherwise).
+bool GetEnableX64();
 
-template <typename H>
-H AbslHashValue(H h, const ArgSignature& s) {
-  h = H::combine(std::move(h), s.dtype);
-  h = H::combine_contiguous(std::move(h), s.shape.data(), s.shape.size());
-  return h;
-}
 
 // The signature of Python jitted function call, partitioned into:
 // - dynamic positional arguments (i.e. positional args which are not static)
@@ -84,19 +64,17 @@ struct CallSignature {
   std::vector<KwargEntry> keyword_args;
   // Shape and dtype for both the dynamic positional arguments and the keyword
   // arguments (sorted by keyword name).
-  std::vector<ArgSignature> dynamic_args_signatures;
+  std::vector<xla::PyArgSignature> dynamic_args_signatures;
   xla::PjRtDevice* device;
+  bool jax_enable_x64;
+
+  // Opaque additional context that should be included as part of the cache key.
+  pybind11::object extra_jit_context;
 
   bool operator==(const CallSignature& other) const;
   bool operator!=(const CallSignature& other) const {
     return !(*this == other);
   }
-
-  // To be used when we want to keep ownership of Python values referenced by
-  // the `CallSignature` (i.e. when we insert an entry).
-  void IncRef() const;
-  // The destructor of the cache should call this on all entries.
-  void DecRef() const;
 
   std::string DebugString() const;
 };
@@ -137,38 +115,6 @@ xla::Status ParseArguments(const pybind11::args& args,
                            const pybind11::kwargs& py_kwargs,
                            absl::Span<int const> static_argnums,
                            ParsedArgumentsAsBuffers& arguments);
-
-struct DevicePutResult {
-  explicit DevicePutResult(xla::PjRtBuffer* b, bool weak_type)
-      : buffer(b), weak_type(weak_type), owned_buffer(nullptr) {}
-  DevicePutResult(std::unique_ptr<xla::PjRtBuffer> new_buffer, bool weak_type)
-      : buffer(new_buffer.get()),
-        weak_type(weak_type),
-        owned_buffer(std::move(new_buffer)) {}
-
-  xla::PjRtBuffer* buffer;
-  bool weak_type;
-  std::unique_ptr<xla::PjRtBuffer> owned_buffer;
-};
-
-// Returns the ArgSignature associated with an argument. Returns an error if
-// the argument is not supported.
-xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
-                                                bool jax_enable_x64);
-
-// Moves a device-like object to be on device.
-// - If the object is already on device, `owned_buffer` will be nullptr.
-// - If it's not, a new buffer will be created and returned using
-//   `owned_buffer`.
-// In all cases, `buffer` will point to the already existing or newly created
-// buffer.
-// If `obj` is not convertible to a `xla::PjRtBuffer` from C++, an error will be
-// returned; float0 dtype and `_DeviceArray` with non-trivial LazyExpr are not
-// supported yet.
-xla::StatusOr<DevicePutResult> DevicePut(pybind11::handle arg,
-                                         xla::PjRtDevice* to_device,
-                                         bool jax_enable_x64,
-                                         xla::PyClient& pyclient);
 
 // The function to call in `xla.cc` to add the bindings for this module.
 void BuildJaxjitSubmodule(pybind11::module& m);

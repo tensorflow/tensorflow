@@ -96,11 +96,10 @@ mlir::Location GenerateInstructionLocation(HloInstruction* instruction,
     return op_name_loc;
   }
 
-  return mlir::FusedLoc::get(
-      {op_name_loc, mlir::FileLineColLoc::get(
-                        source_file, instruction->metadata().source_line(), 0,
-                        func_builder->getContext())},
-      func_builder->getContext());
+  return func_builder->getFusedLoc(
+      {op_name_loc,
+       mlir::FileLineColLoc::get(func_builder->getContext(), source_file,
+                                 instruction->metadata().source_line(), 0)});
 }
 }  // namespace
 

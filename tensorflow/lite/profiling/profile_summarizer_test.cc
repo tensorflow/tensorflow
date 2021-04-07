@@ -124,6 +124,7 @@ TEST(ProfileSummarizerTest, Interpreter) {
   auto output = summarizer.GetOutputString();
   // TODO(shashishekhar): Add a better test here.
   ASSERT_TRUE(output.find("SimpleOpEval") != std::string::npos) << output;
+  ASSERT_TRUE(output.find("Invoke") == std::string::npos) << output;  // NOLINT
 }
 
 TEST(ProfileSummarizerTest, InterpreterPlusProfilingDetails) {

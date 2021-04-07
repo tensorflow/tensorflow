@@ -23,12 +23,6 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_utils.h"
 
 namespace tflite {
-namespace {
-// Use this as the placeholder string if a particular op is not yet included
-// in any Tensorflow's RC/Final release source package. Once that op is
-// included in the release, please update this with the real version string.
-static constexpr char kPendingReleaseVersion[] = "UNKNOWN";
-}  // namespace
 
 bool CompareRuntimeVersion(const std::string& v1, const std::string& v2) {
   const std::vector<std::string> vec1 = absl::StrSplit(v1, '.');
@@ -52,6 +46,8 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
   // A map from the version key of an op to its minimum runtime version.
   // For example, {{kAveragePool, 1}, "1.5.0"},  means the 1st version of
   // AveragePool requires a minimum TF Lite runtime version '1.5.0`.
+  // NOTE: When adding a new op version pair, associate it with the current
+  // runtime version defined in tensorflow/core/public/version.h.
   static const std::map<std::pair<BuiltinOperator, int>, std::string>*
       op_version_map =
           new std::map<std::pair<BuiltinOperator, int>, std::string>({
@@ -61,12 +57,12 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_BATCH_MATMUL, 1}, "2.3.0"},
               {{BuiltinOperator_BATCH_MATMUL, 2}, "2.3.0"},
               {{BuiltinOperator_BATCH_MATMUL, 3}, "2.4.0"},
-              {{BuiltinOperator_BATCH_MATMUL, 4}, kPendingReleaseVersion},
+              {{BuiltinOperator_BATCH_MATMUL, 4}, "2.5.0"},
               // The version one of broadcast to op won't be not supported since
               // the version one was rollbacked and the builtin op code number
               // has been changed because of builtin op code shortage problem.
-              {{BuiltinOperator_BROADCAST_TO, 2}, kPendingReleaseVersion},
-              {{BuiltinOperator_BROADCAST_TO, 3}, kPendingReleaseVersion},
+              {{BuiltinOperator_BROADCAST_TO, 2}, "2.5.0"},
+              {{BuiltinOperator_BROADCAST_TO, 3}, "2.5.0"},
               {{BuiltinOperator_CONV_2D, 1}, "1.5.0"},
               {{BuiltinOperator_CONV_2D, 2}, "1.14.0"},
               {{BuiltinOperator_CONV_2D, 3}, "1.14.0"},
@@ -102,7 +98,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_CONCATENATION, 2}, "1.14.0"},
               {{BuiltinOperator_CONCATENATION, 3}, "2.3.0"},
               {{BuiltinOperator_DEPTH_TO_SPACE, 1}, "2.1.0"},
-              {{BuiltinOperator_DEPTH_TO_SPACE, 2}, kPendingReleaseVersion},
+              {{BuiltinOperator_DEPTH_TO_SPACE, 2}, "2.5.0"},
               {{BuiltinOperator_EMBEDDING_LOOKUP, 1}, "1.13.0"},
               {{BuiltinOperator_EMBEDDING_LOOKUP, 2}, "1.14.0"},
               {{BuiltinOperator_EMBEDDING_LOOKUP, 3}, "1.14.0"},
@@ -122,9 +118,10 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_GATHER, 2}, "1.14.0"},
               {{BuiltinOperator_GATHER, 3}, "1.15.0"},
               {{BuiltinOperator_GATHER, 4}, "2.4.0"},
+              {{BuiltinOperator_GATHER, 5}, "2.5.0"},
               {{BuiltinOperator_GATHER_ND, 1}, "1.14.0"},
               {{BuiltinOperator_GATHER_ND, 2}, "2.3.0"},
-              {{BuiltinOperator_GATHER_ND, 3}, kPendingReleaseVersion},
+              {{BuiltinOperator_GATHER_ND, 3}, "2.5.0"},
               {{BuiltinOperator_HASHTABLE_LOOKUP, 1}, "1.5.0"},
               {{BuiltinOperator_SVDF, 1}, "1.5.0"},
               {{BuiltinOperator_SVDF, 2}, "1.14.0"},
@@ -190,19 +187,19 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_SUM, 2}, "1.15.0"},
               {{BuiltinOperator_REDUCE_MAX, 1}, "1.11.0"},
               {{BuiltinOperator_REDUCE_MAX, 2}, "1.14.0"},
-              {{BuiltinOperator_REDUCE_MAX, 3}, kPendingReleaseVersion},
+              {{BuiltinOperator_REDUCE_MAX, 3}, "2.5.0"},
               {{BuiltinOperator_REDUCE_MIN, 1}, "1.11.0"},
               {{BuiltinOperator_REDUCE_MIN, 2}, "1.14.0"},
-              {{BuiltinOperator_REDUCE_MIN, 3}, kPendingReleaseVersion},
+              {{BuiltinOperator_REDUCE_MIN, 3}, "2.5.0"},
               {{BuiltinOperator_REDUCE_PROD, 1}, "1.11.0"},
               {{BuiltinOperator_REDUCE_ANY, 1}, "1.11.0"},
               {{BuiltinOperator_RELU6, 1}, "1.5.0"},
               {{BuiltinOperator_RELU6, 2}, "1.14.0"},
-              {{BuiltinOperator_RELU6, 3}, kPendingReleaseVersion},
+              {{BuiltinOperator_RELU6, 3}, "2.5.0"},
               {{BuiltinOperator_RESIZE_BILINEAR, 1}, "1.7.0"},
               {{BuiltinOperator_RESIZE_BILINEAR, 2}, "1.14.0"},
               {{BuiltinOperator_RESIZE_BILINEAR, 3}, "2.2.0"},
-              {{BuiltinOperator_RESIZE_BILINEAR, 4}, kPendingReleaseVersion},
+              {{BuiltinOperator_RESIZE_BILINEAR, 4}, "2.5.0"},
               {{BuiltinOperator_RESIZE_NEAREST_NEIGHBOR, 1}, "1.13.1"},
               {{BuiltinOperator_RESIZE_NEAREST_NEIGHBOR, 2}, "1.14.0"},
               {{BuiltinOperator_RESIZE_NEAREST_NEIGHBOR, 3}, "2.3.0"},
@@ -212,7 +209,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_RNN, 3}, "2.3.0"},
               {{BuiltinOperator_SKIP_GRAM, 1}, "1.5.0"},
               {{BuiltinOperator_SQUEEZE, 1}, "1.6.0"},
-              {{BuiltinOperator_SQUEEZE, 2}, kPendingReleaseVersion},
+              {{BuiltinOperator_SQUEEZE, 2}, "2.5.0"},
               {{BuiltinOperator_SPLIT, 1}, "1.5.0"},
               {{BuiltinOperator_SPLIT, 2}, "1.14.0"},
               {{BuiltinOperator_SPLIT, 3}, "1.14.0"},
@@ -223,7 +220,8 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_STRIDED_SLICE, 2}, "1.14.0"},
               {{BuiltinOperator_STRIDED_SLICE, 3}, "2.1.0"},
               {{BuiltinOperator_STRIDED_SLICE, 4}, "2.2.0"},
-              {{BuiltinOperator_STRIDED_SLICE, 5}, kPendingReleaseVersion},
+              {{BuiltinOperator_STRIDED_SLICE, 5}, "2.5.0"},
+              {{BuiltinOperator_STRIDED_SLICE, 6}, "2.6.0"},
               {{BuiltinOperator_TOPK_V2, 1}, "1.7.0"},
               {{BuiltinOperator_TOPK_V2, 2}, "1.14.0"},
               {{BuiltinOperator_ARG_MAX, 1}, "1.9.0"},
@@ -245,7 +243,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_SLICE, 2}, "1.14.0"},
               {{BuiltinOperator_SLICE, 3}, "1.14.0"},
               {{BuiltinOperator_SLICE, 4}, "2.4.0"},
-              {{BuiltinOperator_SLICE, 5}, kPendingReleaseVersion},
+              {{BuiltinOperator_SLICE, 5}, "2.5.0"},
               {{BuiltinOperator_TANH, 1}, "1.14.0"},
               {{BuiltinOperator_TANH, 2}, "1.14.0"},
               {{BuiltinOperator_TANH, 3}, "2.3.0"},
@@ -263,7 +261,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_LOG_SOFTMAX, 2}, "1.14.0"},
               {{BuiltinOperator_LSH_PROJECTION, 1}, "1.5.0"},
               {{BuiltinOperator_SQUARED_DIFFERENCE, 1}, "1.13.1"},
-              {{BuiltinOperator_SQUARED_DIFFERENCE, 2}, kPendingReleaseVersion},
+              {{BuiltinOperator_SQUARED_DIFFERENCE, 2}, "2.5.0"},
               {{BuiltinOperator_MIRROR_PAD, 1}, "1.13.1"},
               {{BuiltinOperator_MIRROR_PAD, 2}, "2.3.0"},
               {{BuiltinOperator_UNIQUE, 1}, "1.14.0"},
@@ -308,7 +306,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_ROUND, 1}, "1.14.0"},
               {{BuiltinOperator_RELU, 1}, "1.5.0"},
               {{BuiltinOperator_RELU, 2}, "2.1.0"},
-              {{BuiltinOperator_RELU, 3}, kPendingReleaseVersion},
+              {{BuiltinOperator_RELU, 3}, "2.5.0"},
               {{BuiltinOperator_RELU_N1_TO_1, 1}, "1.5.0"},
               {{BuiltinOperator_PRELU, 1}, "1.8.0"},
               {{BuiltinOperator_EXP, 1}, "1.7.0"},
@@ -324,32 +322,32 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_LOG, 1}, "1.14.0"},
               {{BuiltinOperator_SQRT, 1}, "1.10.0"},
               {{BuiltinOperator_RSQRT, 1}, "1.10.0"},
-              {{BuiltinOperator_RSQRT, 2}, kPendingReleaseVersion},
+              {{BuiltinOperator_RSQRT, 2}, "2.5.0"},
               {{BuiltinOperator_SQUARE, 1}, "1.12.0"},
               {{BuiltinOperator_ZEROS_LIKE, 1}, "1.12.0"},
               {{BuiltinOperator_ABS, 1}, "1.13.0"},
               {{BuiltinOperator_ABS, 2}, "2.4.0"},
-              {{BuiltinOperator_ABS, 3}, kPendingReleaseVersion},
+              {{BuiltinOperator_ABS, 3}, "2.5.0"},
               {{BuiltinOperator_HARD_SWISH, 1}, "1.15.0"},
               {{BuiltinOperator_FILL, 1}, "1.13.0"},
               {{BuiltinOperator_FILL, 2}, "2.3.0"},
-              {{BuiltinOperator_FILL, 3}, kPendingReleaseVersion},
+              {{BuiltinOperator_FILL, 3}, "2.5.0"},
               {{BuiltinOperator_REVERSE_V2, 1}, "1.14.0"},
               {{BuiltinOperator_REVERSE_V2, 2}, "2.2.0"},
-              {{BuiltinOperator_REVERSE_V2, 3}, kPendingReleaseVersion},
+              {{BuiltinOperator_REVERSE_V2, 3}, "2.5.0"},
               {{BuiltinOperator_RANK, 1}, "1.14.0"},
               {{BuiltinOperator_WHILE, 1}, "1.15.0"},
               {{BuiltinOperator_CUMSUM, 1}, "2.4.0"},
-              {{BuiltinOperator_CALL_ONCE, 1}, kPendingReleaseVersion},
-              {{BuiltinOperator_RFFT2D, 1}, kPendingReleaseVersion},
-              {{BuiltinOperator_CONV_3D, 1}, kPendingReleaseVersion},
-              {{BuiltinOperator_IMAG, 1}, kPendingReleaseVersion},
-              {{BuiltinOperator_REAL, 1}, kPendingReleaseVersion},
-              {{BuiltinOperator_COMPLEX_ABS, 1}, kPendingReleaseVersion},
-              {{BuiltinOperator_HASHTABLE, 1}, kPendingReleaseVersion},
-              {{BuiltinOperator_HASHTABLE_FIND, 1}, kPendingReleaseVersion},
-              {{BuiltinOperator_HASHTABLE_IMPORT, 1}, kPendingReleaseVersion},
-              {{BuiltinOperator_HASHTABLE_SIZE, 1}, kPendingReleaseVersion},
+              {{BuiltinOperator_CALL_ONCE, 1}, "2.5.0"},
+              {{BuiltinOperator_RFFT2D, 1}, "2.5.0"},
+              {{BuiltinOperator_CONV_3D, 1}, "2.5.0"},
+              {{BuiltinOperator_IMAG, 1}, "2.5.0"},
+              {{BuiltinOperator_REAL, 1}, "2.5.0"},
+              {{BuiltinOperator_COMPLEX_ABS, 1}, "2.5.0"},
+              {{BuiltinOperator_HASHTABLE, 1}, "2.5.0"},
+              {{BuiltinOperator_HASHTABLE_FIND, 1}, "2.5.0"},
+              {{BuiltinOperator_HASHTABLE_IMPORT, 1}, "2.5.0"},
+              {{BuiltinOperator_HASHTABLE_SIZE, 1}, "2.5.0"},
           });
 
   std::pair<BuiltinOperator, int> version_key = {op_code, op_version};
@@ -372,10 +370,8 @@ void UpdateMinimumRuntimeVersionForModel(uint8_t* model_buffer_pointer) {
           model->operator_codes()->Get(op->opcode_index());
       std::string runtime_version = FindMinimumRuntimeVersionForOp(
           GetBuiltinCode(op_code), op_code->version());
-      if (runtime_version.empty() ||
-          runtime_version == kPendingReleaseVersion) {
-        // In case we didn't find the current op in the map, or the operator
-        // doesn't have a minimum runtime version associated, continue.
+      // If we didn't find the current op version in the map, skip comparison.
+      if (runtime_version.empty()) {
         continue;
       }
       if (CompareRuntimeVersion(model_min_version, runtime_version)) {

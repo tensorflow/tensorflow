@@ -51,12 +51,11 @@ class LossScale(trackable.Trackable):
   """Base class for all TF1 loss scales.
 
   WARNING: This class is deprecated and will be unexposed from the TF 2
-  namespace starting in TensorFlow 2.5. In TensorFlow 2.5, this class will only
-  be accessible as `tf.compat.v1.mixed_precision.LossScale`. Additionally in
-  2.5, you will no longer be able to pass a `LossScale` to a
-  `tf.keras.mixed_precision.Policy`. All the functionality in this class has
-  been merged into `tf.keras.mixed_precision.LossScaleOptimizer`, so this class
-  is no longer needed.
+  namespace in a future version of TensorFlow. Once this occurs, this class will
+  only be accessible as `tf.compat.v1.mixed_precision.LossScale`. All the
+  functionality in this class has been merged into
+  `tf.keras.mixed_precision.LossScaleOptimizer`, so this class is no longer
+  needed.
 
   This is an abstract base class, so you cannot instantiate it directly.
   Instead, use one of its concrete subclasses:
@@ -223,12 +222,11 @@ class FixedLossScale(LossScale):
   """Loss scale with a fixed value.
 
   WARNING: This class is deprecated and will be unexposed from the TF 2
-  namespace starting in TensorFlow 2.5. In TensorFlow 2.5, this class will only
-  be accessible as `tf.compat.v1.mixed_precision.FixedLossScale`. Additionally
-  in 2.5, you will no longer be able to pass a `FixedLossScale` to a
-  `tf.keras.mixed_precision.Policy`. All the functionality in this class has
-  been merged into `tf.keras.mixed_precision.LossScaleOptimizer`, so this class
-  is no longer needed.
+  namespace in a future version of TensorFlow. Once this occurs, this class will
+  only be accessible as `tf.compat.v1.mixed_precision.FixedLossScale`. All the
+  functionality in this class has been merged into
+  `tf.keras.mixed_precision.LossScaleOptimizer`, so this class is no longer
+  needed.
 
   The loss scale is not updated for the lifetime of instances of this class.
   A given instance of this class always returns the same number when called.
@@ -325,12 +323,11 @@ class DynamicLossScale(LossScale):
   """Loss scale that dynamically adjusts itself.
 
   WARNING: This class is deprecated and will be unexposed from the TF 2
-  namespace starting in TensorFlow 2.5. In TensorFlow 2.5, this class will only
-  be accessible as `tf.compat.v1.mixed_precision.DynamicLossScale`. Additionally
-  in 2.5, you will no longer be able to pass a `DynamicLossScale` to a
-  `tf.keras.mixed_precision.Policy`. All the functionality in this class has
-  been merged into `tf.keras.mixed_precision.LossScaleOptimizer`, so this class
-  is no longer needed.
+  namespace in a future version of TensorFlow. Once this occurs, this class will
+  only be accessible as `tf.compat.v1.mixed_precision.DynamicLossScale`. All the
+  functionality in this class has been merged into
+  `tf.keras.mixed_precision.LossScaleOptimizer`, so this class is no longer
+  needed.
 
   Dynamic loss scaling works by adjusting the loss scale as training progresses.
   The goal is to keep the loss scale as high as possible without overflowing the

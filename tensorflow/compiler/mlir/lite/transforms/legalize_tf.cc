@@ -152,7 +152,6 @@ DECL_CONVERT_OP(SplitV);
 DECL_CONVERT_OP(Unpack);
 DECL_CONVERT_OP(RandomUniform);
 DECL_CONVERT_OP(Conv3D);
-DECL_CONVERT_OP(HashTableV2);
 
 #undef DECL_CONVERT_OP
 
@@ -577,24 +576,6 @@ struct LegalizeUnidirectionalSequenceRnn : public RewritePattern {
   }
 };
 
-LogicalResult ConvertTFHashTableV2Op::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto tf_hash_table_v2_op = cast<TF::HashTableV2Op>(op);
-  auto output_type =
-      RankedTensorType::get({1}, TF::ResourceType::get(rewriter.getContext()));
-
-  // Hash the shared name to generate integer hash table id.
-  // TODO(b/180645662): Issue a zero-based integer hash table ID.
-  auto table_id = static_cast<int32_t>(
-      ::llvm::hash_value(tf_hash_table_v2_op.shared_name()));
-  auto key_dtype = tf_hash_table_v2_op.key_dtype();
-  auto value_dtype = tf_hash_table_v2_op.value_dtype();
-
-  rewriter.replaceOpWithNewOp<TFL::HashtableOp>(op, output_type, table_id,
-                                                key_dtype, value_dtype);
-  return success();
-}
-
 // Put two TFL BroadcastTo ops in front of the given TF binary broadcast op to
 // to make binary broadcast-able op conversion always successful and does not
 // require flex delegate.
@@ -748,13 +729,12 @@ void addPatterns(MLIRContext* context, OwningRewritePatternList& patterns) {
   TF::PopulateLoweringTFPatterns(context, &patterns);
 
   // Add the generated patterns to the list.
-  populateWithGenerated(context, patterns);
+  populateWithGenerated(patterns);
   patterns
       .insert<ConvertTFConcatV2Op, ConvertTFMatMulOp, ConvertTFMatrixDiagV2Op,
               ConvertTFMatrixDiagV3Op, ConvertTFPackOp, ConvertTFSplitOp,
               ConvertTFSplitVOp, ConvertTFUnpackOp, ConvertTFAssertOp,
-              ConvertTFRandomUniformOp, ConvertTFConv3DOp,
-              ConvertTFHashTableV2Op>(context);
+              ConvertTFRandomUniformOp, ConvertTFConv3DOp>(context);
 
   // Ophint python converter converted tf node pattern.
   patterns.insert<LegalizeUnidirectionalSequenceLstm,
@@ -762,7 +742,7 @@ void addPatterns(MLIRContext* context, OwningRewritePatternList& patterns) {
 }
 
 void applyPatterns(FuncOp func, ConversionTarget& target,
-                   FrozenRewritePatternList& frozenPatterns) {
+                   FrozenRewritePatternSet& frozenPatterns) {
   // Keep trying to convert.
   // TODO(karimnosseir): This is similar to what apply greedy patterns does.
   // Look if there is a function that tries until it converge.
@@ -811,17 +791,17 @@ void LegalizeTF::runOnFunction() {
         return success(current_thread_id == llvm::get_threadid());
       });
 
-  OwningRewritePatternList stage1Patterns;
+  OwningRewritePatternList stage1Patterns(&getContext());
 
   addPatterns(context, stage1Patterns);
 
-  FrozenRewritePatternList stage1FrozenPatterns(std::move(stage1Patterns));
+  FrozenRewritePatternSet stage1FrozenPatterns(std::move(stage1Patterns));
   applyPatterns(func, target, stage1FrozenPatterns);
 
   // Explict BroadcastTo addition for left-over broadcast-able ops.
   // The following pattern matchings should be done after the other legalization
   // rules in order not to add unnecessary BroadcastTo ops.
-  OwningRewritePatternList stage2Patterns;
+  OwningRewritePatternList stage2Patterns(&getContext());
 
   addPatterns(context, stage2Patterns);
 
@@ -845,7 +825,7 @@ void LegalizeTF::runOnFunction() {
                         ApplyExplicitBroadcasting<TF::SquaredDifferenceOp>,
                         ApplyExplicitBroadcasting<TF::SelectV2Op>>(context);
 
-  FrozenRewritePatternList stage2FrozenPatterns(std::move(stage2Patterns));
+  FrozenRewritePatternSet stage2FrozenPatterns(std::move(stage2Patterns));
   applyPatterns(func, target, stage2FrozenPatterns);
 }
 

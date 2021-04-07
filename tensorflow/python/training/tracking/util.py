@@ -66,6 +66,7 @@ from tensorflow.python.util.tf_export import tf_export
 _SESSION_PROVIDER = None
 
 
+@tf_export("__internal__.tracking.register_session_provider", v1=[])
 def register_session_provider(session_provider):
   global _SESSION_PROVIDER
   if _SESSION_PROVIDER is None:
@@ -219,8 +220,9 @@ class _CheckpointRestoreCoordinator(object):
     self.all_python_objects = object_identity.ObjectIdentityWeakSet()
     self.save_path_tensor = save_path_tensor
     self.save_path_string = save_path
-    self.dtype_map = py_checkpoint_reader.NewCheckpointReader(
-        save_path).get_variable_to_dtype_map()
+    reader = py_checkpoint_reader.NewCheckpointReader(save_path)
+    self.dtype_map = reader.get_variable_to_dtype_map()
+    self.shape_map = reader.get_variable_to_shape_map()
     # A NewCheckpointReader for the most recent checkpoint, for streaming Python
     # state restoration.
     # When graph building, contains a list of ops to run to restore objects from
@@ -665,6 +667,7 @@ class _LoadStatus(object):
     return self
 
 
+@tf_export("__internal__.tracking.streaming_restore", v1=[])
 def streaming_restore(status, session=None):
   """When graph building, runs restore ops as soon as they come in.
 

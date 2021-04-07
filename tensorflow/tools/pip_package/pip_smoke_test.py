@@ -73,22 +73,22 @@ PYTHON_TARGETS, PY_TEST_QUERY_EXPRESSION = BuildPyTestDependencies()
 # TODO(amitpatankar): Clean up denylist.
 # List of dependencies that should not included in the pip package.
 DEPENDENCY_DENYLIST = [
-    "//tensorflow/python:extra_py_tests_deps",
     "//tensorflow/cc/saved_model:saved_model_test_files",
     "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     "//tensorflow:no_tensorflow_py_deps",
     "//tensorflow/tools/pip_package:win_pip_package_marker",
-    "//tensorflow/python:mixed_precision",
-    "//tensorflow/python:test_ops_2",
-    "//tensorflow/python:tf_optimizer",
-    "//tensorflow/python:compare_test_proto_py",
     "//tensorflow/core:image_testdata",
     "//tensorflow/core/lib/lmdb:lmdb_testdata",
     "//tensorflow/core/lib/lmdb/testdata:lmdb_testdata",
     "//tensorflow/core/kernels/cloud:bigquery_reader_ops",
+    "//tensorflow/python:extra_py_tests_deps",
+    "//tensorflow/python:mixed_precision",
+    "//tensorflow/python:tf_optimizer",
+    "//tensorflow/python:compare_test_proto_py",
+    "//tensorflow/python/framework:test_ops_2",
+    "//tensorflow/python/framework:test_file_system.so",
     "//tensorflow/python/debug:grpc_tensorflow_server.par",
     "//tensorflow/python/feature_column:vocabulary_testdata",
-    "//tensorflow/python:framework/test_file_system.so",
     "//tensorflow/python/util:nest_test_main_lib",
     # lite
     "//tensorflow/lite/experimental/examples/lstm:rnn_cell",

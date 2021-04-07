@@ -16,7 +16,7 @@ load("//tensorflow/core/platform:build_config.bzl", "if_llvm_system_z_available"
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -103,6 +103,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:generic_transfer_manager",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/core:lib",
@@ -150,7 +151,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:Affine",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:SCFDialect",
@@ -230,11 +231,14 @@ cc_library(
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ] + select({
-        "//tensorflow:linux_aarch64": [
+        "//tensorflow:arm_any": [
             "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
         ],
         "//tensorflow:linux_ppc64le": [
             "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
+        ],
+        "//tensorflow:macos_arm64": [
+            "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
         ],
         "//conditions:default": [
         ],
@@ -1162,10 +1166,10 @@ cc_library(
         "@llvm-project//llvm:Linker",
         "@llvm-project//mlir:CFGTransforms",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMToLLVMIRTranslation",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:TargetLLVMIR",
-        "@llvm-project//mlir:TargetLLVMIRModuleTranslation",
+        "@llvm-project//mlir:ToLLVMIRTranslation",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorToLLVM",
     ],

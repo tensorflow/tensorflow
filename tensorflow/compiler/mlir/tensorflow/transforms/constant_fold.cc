@@ -72,15 +72,18 @@ LogicalResult ConstantFoldFallbackHook(
     Operation* inst, ArrayRef<Attribute> operands,
     SmallVectorImpl<OpFoldResult>& results) {  // NOLINT
   // Instructions with side effects should not be constant folded to preserve
-  // the original semantics.
-  if (inst->hasTrait<OpTrait::TF::NoConstantFold>() ||
+  // the original semantics. Ops that have no side effect and zero results but
+  // could be folded should have a custom folder instead of relying on the
+  // TensorFlow folding hook.
+  if (inst->getNumResults() == 0 ||
+      inst->hasTrait<OpTrait::TF::NoConstantFold>() ||
       inst->getNumRegions() != 0 || !MemoryEffectOpInterface::hasNoEffect(inst))
     return failure();
 
   // If any of the result types are variants, don't try to constant fold them.
   // This creates opaque variant constants which lose information and would
   // require "raising" later.
-  for (auto& type : inst->getResultTypes()) {
+  for (auto type : inst->getResultTypes()) {
     if (auto tensor_type = type.dyn_cast<TensorType>()) {
       if (tensor_type.getElementType().isa<VariantType>()) {
         return failure();

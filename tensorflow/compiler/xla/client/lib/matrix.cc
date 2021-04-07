@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -234,6 +235,36 @@ XlaOp Triangle(XlaOp x, bool lower) {
 XlaOp UpperTriangle(XlaOp x) { return Triangle(x, false); }
 
 XlaOp LowerTriangle(XlaOp x) { return Triangle(x, true); }
+
+XlaOp Symmetrize(XlaOp x, bool lower) {
+  XlaBuilder* builder = x.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
+    if (shape.rank() < 2) {
+      return InvalidArgument(
+          "Argument to symmetrize must have >= 2 dimensions, got %s",
+          shape.ToString());
+    }
+    const int64 m = ShapeUtil::GetDimension(shape, -2);
+    const int64 n = ShapeUtil::GetDimension(shape, -1);
+    if (m != n) {
+      return InvalidArgument(
+          "The two most minor dimensions of the argument to symmetrize must be "
+          "equal size, got %s",
+          shape.ToString());
+    }
+    auto mask = lower ? TriangleMask(x, 0) : Not(TriangleMask(x, -1));
+    if (primitive_util::IsComplexType(shape.element_type())) {
+      auto re = Select(mask, Real(x), TransposeInMinorDims(Real(x)));
+      auto im_mask = lower ? TriangleMask(x, -1) : Not(TriangleMask(x, 0));
+      auto im = Select(im_mask, Imag(x), ZerosLike(Imag(x)));
+      im = Select(mask, im, -TransposeInMinorDims(im));
+      return Complex(re, im);
+    } else {
+      return Select(mask, x, TransposeInMinorDims(x));
+    }
+  });
+}
 
 namespace {
 absl::optional<std::array<std::vector<int64>, 3>> EinsumDiagonalLabels(

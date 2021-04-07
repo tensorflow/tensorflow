@@ -99,11 +99,10 @@ mlir::LogicalResult CreateSplitOp(const int num_split,
 }
 
 // Creates a tf::ConcatOp that merges `input` values in `concat_dimension`.
-mlir::LogicalResult CreateConcatOp(const int concat_dimension,
-                                   const mlir::Location& location,
-                                   mlir::ArrayRef<mlir::Value> inputs,
-                                   mlir::OpBuilder* builder,
-                                   mlir::TF::ConcatOp* concat_op) {
+mlir::TF::ConcatOp CreateConcatOp(const int concat_dimension,
+                                  const mlir::Location& location,
+                                  mlir::ArrayRef<mlir::Value> inputs,
+                                  mlir::OpBuilder* builder) {
   // Creates a const op to hold concat dimension value.
   auto concat_dim_type =
       mlir::RankedTensorType::get({}, builder->getIntegerType(32));
@@ -133,9 +132,8 @@ mlir::LogicalResult CreateConcatOp(const int concat_dimension,
     output_type = input_type;
   }
 
-  *concat_op = builder->create<mlir::TF::ConcatOp>(
+  return builder->create<mlir::TF::ConcatOp>(
       location, output_type, concat_dimension_op.output(), inputs);
-  return mlir::success();
 }
 
 // For tile sharded inputs to TPU computation, inject split op between the
@@ -389,15 +387,18 @@ int MapClusterOutputIndexWithRegionOutputIndex(
 // Collects tile sharded outputs from a tf_device.parallel_execute to remap from
 // the TPU computation result.
 llvm::SmallVector<mlir::Value, 4> GetTileShardedOutputsToMerge(
-    const int cluster_func_output_index, const xla::OpSharding& sharding,
+    const int cluster_func_output_index,
+    llvm::ArrayRef<xla::OpSharding> output_sharding_config,
     mlir::tf_device::ParallelExecuteOp parallel_execute) {
   // Reorders outputs from TPUExecute op as defined by the output sharding
   // configuration.
+  const xla::OpSharding& sharding =
+      output_sharding_config[cluster_func_output_index];
   llvm::SmallVector<mlir::Value, 4> outputs_to_merge;
   outputs_to_merge.reserve(sharding.tile_assignment_devices_size());
   for (const auto logical_device_id : sharding.tile_assignment_devices()) {
     const int region_output_index = MapClusterOutputIndexWithRegionOutputIndex(
-        sharding, logical_device_id, cluster_func_output_index);
+        output_sharding_config, logical_device_id, cluster_func_output_index);
     const auto output_from_logical_device = parallel_execute.GetRegionOutputs(
         logical_device_id)[region_output_index];
     outputs_to_merge.emplace_back(output_from_logical_device);
@@ -407,8 +408,9 @@ llvm::SmallVector<mlir::Value, 4> GetTileShardedOutputsToMerge(
 }
 
 // Merges outputs from TPU computation for tile-sharded outputs.
-mlir::LogicalResult HandleTileShardedOutputs(
-    const int cluster_func_output_index, const xla::OpSharding& sharding,
+void HandleTileShardedOutputs(
+    const int cluster_func_output_index,
+    llvm::ArrayRef<xla::OpSharding> output_sharding_config,
     const mlir::Location& location, mlir::Value cluster_func_output,
     mlir::tf_device::ParallelExecuteOp parallel_execute,
     mlir::OpBuilder* builder) {
@@ -419,10 +421,12 @@ mlir::LogicalResult HandleTileShardedOutputs(
   // Reorders outputs from TPUExecute op as defined by the output sharding
   // configuration.
   auto outputs_to_merge = GetTileShardedOutputsToMerge(
-      cluster_func_output_index, sharding, parallel_execute);
+      cluster_func_output_index, output_sharding_config, parallel_execute);
 
   // Creates a tree of Concat ops that merges outputs from multiple logical
   // devices to a single replica output.
+  const xla::OpSharding& sharding =
+      output_sharding_config[cluster_func_output_index];
   int concat_dimension = sharding.tile_assignment_dimensions_size() - 1;
   for (auto num_splits : llvm::reverse(sharding.tile_assignment_dimensions())) {
     if (num_splits == 1) {
@@ -434,15 +438,12 @@ mlir::LogicalResult HandleTileShardedOutputs(
     new_outputs.reserve(num_splits);
     for (int i = 0, end = outputs_to_merge.size(); i < end;
          i = i + num_splits) {
-      mlir::TF::ConcatOp concat_op;
-      auto result =
+      mlir::TF::ConcatOp concat_op =
           CreateConcatOp(concat_dimension, location,
                          llvm::ArrayRef<mlir::Value>{
                              outputs_to_merge.begin() + i,
                              outputs_to_merge.begin() + i + num_splits},
-                         builder, &concat_op);
-      if (mlir::failed(result)) return mlir::failure();
-
+                         builder);
       new_outputs.emplace_back(concat_op.getResult());
     }
 
@@ -452,7 +453,6 @@ mlir::LogicalResult HandleTileShardedOutputs(
 
   assert(outputs_to_merge.size() == 1);
   cluster_func_output.replaceAllUsesWith(outputs_to_merge[0]);
-  return mlir::success();
 }
 
 mlir::LogicalResult ValidateAndGetTiledExecuteOutputShape(
@@ -581,7 +581,7 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
       } else {
         assert(output_sharding_type == xla::OpSharding::OTHER);
         auto tile_sharded_outputs = GetTileShardedOutputsToMerge(
-            output_index, output_sharding, parallel_execute);
+            output_index, output_sharding_config, parallel_execute);
         for (auto result :
              llvm::zip(partitioned_output.output(), tile_sharded_outputs))
           std::get<0>(result).replaceAllUsesWith(std::get<1>(result));
@@ -590,9 +590,8 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
     }
 
     if (output_sharding_type == xla::OpSharding::OTHER) {
-      (void)HandleTileShardedOutputs(output_index, output_sharding, location,
-                                     cluster_func_output, parallel_execute,
-                                     builder);
+      HandleTileShardedOutputs(output_index, output_sharding_config, location,
+                               cluster_func_output, parallel_execute, builder);
       continue;
     }
 

@@ -2227,7 +2227,7 @@ of `data_format`, see below for details.}]>:$input,
     StringRef GetOptimalLayout(const RuntimeDevices& devices);
     LogicalResult UpdateDataFormat(StringRef data_format);
     // InferTypeOpInterface:
-    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       return ArraysAreCastCompatible(l, r);
     }
   }];
@@ -2348,7 +2348,7 @@ out_channels]`. `in_channels` must match between `input` and `filter`.}]>:$filte
 
   let extraClassDeclaration = [{
     // InferTypeOpInterface:
-    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       return ArraysAreCastCompatible(l, r);
     }
   }];
@@ -3923,7 +3923,7 @@ tf.math.equal(x, y) ==> array([True,  True])
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$x, "Value":$y,
+    OpBuilder<(ins "Value":$x, "Value":$y,
       "BoolAttr":$incompatible_shape_error)>
   ];
 
@@ -4073,7 +4073,7 @@ dimension of size 1 added.}]>:$output
   TF_DerivedOperandTypeAttr Tdim = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$condition, "Value":$dim)>
+    OpBuilder<(ins "Value":$condition, "Value":$dim)>
   ];
 }
 
@@ -4460,7 +4460,7 @@ Equivalent to np.full
   let hasFolder = 1;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$dims, "Value":$value)>
+    OpBuilder<(ins "Value":$dims, "Value":$value)>
   ];
 }
 
@@ -7004,7 +7004,7 @@ def TF_LookupTableSizeV2Op : TF_Op<"LookupTableSizeV2", []> {
   let summary = "Computes the number of elements in the given table.";
 
   let arguments = (ins
-    Arg<TF_ResourceTensor, [{Handle to the table.}]>:$table_handle
+    Arg<TF_ResourceTensor, [{Handle to the table.}], [TF_LookupTableRead]>:$table_handle
   );
 
   let results = (outs
@@ -8042,7 +8042,7 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$input, "Value":$reduction_indices,
+    OpBuilder<(ins "Value":$input, "Value":$reduction_indices,
       "BoolAttr":$keep_dims)>
   ];
 }
@@ -9060,7 +9060,7 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Commutative, NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$x, "Value":$y,
+    OpBuilder<(ins "Value":$x, "Value":$y,
       "BoolAttr":$incompatible_shape_error)>
   ];
 
@@ -9179,7 +9179,7 @@ output =
   TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$indices, "Value":$depth, "Value":$on_value,
+    OpBuilder<(ins "Value":$indices, "Value":$depth, "Value":$on_value,
       "Value":$off_value, "IntegerAttr":$axis)>
   ];
 
@@ -9353,6 +9353,8 @@ This is the opposite of `unpack`.
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasCanonicalizer = 1;
 
   let hasFolder = 1;
 }
@@ -10392,7 +10394,7 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$start, "Value":$limit, "Value":$delta)>
+    OpBuilder<(ins "Value":$start, "Value":$limit, "Value":$delta)>
   ];
 }
 
@@ -10445,7 +10447,7 @@ of the tensor. Rank is also known as "order", "degree", or "ndims."
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$input)>
+    OpBuilder<(ins "Value":$input)>
   ];
 
   let hasFolder = 1;
@@ -10716,6 +10718,25 @@ def TF_RemoteCallOp : TF_Op<"RemoteCall", []> {
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
 }
 
+def TF_RepeatDatasetOp : TF_Op<"RepeatDataset", [NoSideEffect]> {
+  let summary = [{
+Creates a dataset that emits the outputs of `input_dataset` `count` times.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    Arg<TF_Int64Tensor, [{A scalar representing the number of times that `input_dataset` should
+be repeated. A value of `-1` indicates that it should be repeated infinitely.}]>:$count,
+
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+}
+
 def TF_ReshapeOp : TF_Op<"Reshape", [NoSideEffect]> {
   let summary = "Reshapes a tensor.";
 
@@ -10794,7 +10815,7 @@ reshape(t, []) ==> 7
   TF_DerivedOperandTypeAttr Tshape = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$tensor, "Value":$shape)>
+    OpBuilder<(ins "Value":$tensor, "Value":$shape)>
   ];
 
   let verifier = [{
@@ -13273,8 +13294,6 @@ but its first dimension must match the size of `condition`.}]>:$t,
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 
-  let hasCanonicalizer = 1;
-
   let verifier = [{
     return Verify(*this);
   }];
@@ -13296,7 +13315,7 @@ def TF_SelectV2Op : TF_Op<"SelectV2", [NoSideEffect, ResultsBroadcastableShape]>
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$condition, "Value":$e, "Value":$t)>
+    OpBuilder<(ins "Value":$condition, "Value":$e, "Value":$t)>
   ];
 }
 
@@ -13459,7 +13478,7 @@ shape(t) ==> [2, 2, 3]
   }];
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$input, "BoolAttr":$use32Bit)>
+    OpBuilder<(ins "Value":$input, "BoolAttr":$use32Bit)>
   ];
 
   let hasFolder = 1;
@@ -13895,19 +13914,6 @@ More specifically, this op outputs a copy of the input tensor where values from
 the `height` and `width` dimensions are moved to the `batch` dimension. After
 the zero-padding, both `height` and `width` of the input must be divisible by the
 block size.
-  }];
-
-  let arguments = (ins
-    Arg<TF_Tensor, [{4-D with shape `[batch, height, width, depth]`.}]>:$input,
-    Arg<TF_I32OrI64Tensor, [{2-D tensor of non-negative integers with shape `[2, 2]`. It specifies
-  the padding of the input with zeros across the spatial dimensions as follows:
-
-      paddings = [[pad_top, pad_bottom], [pad_left, pad_right]]
-
-  The effective spatial dimensions of the zero-padded input tensor will be:
-
-      height_pad = pad_top + height + pad_bottom
-      width_pad = pad_left + width + pad_right
 
 The attr `block_size` must be greater than one. It indicates the block size.
 
@@ -13983,7 +13989,20 @@ x = [[[[1], [3]]], [[[9], [11]]], [[[2], [4]]], [[[10], [12]]],
 ```
 
 Among others, this operation is useful for reducing atrous convolution into
-regular convolution.}]>:$paddings,
+regular convolution.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Tensor, [{4-D with shape `[batch, height, width, depth]`.}]>:$input,
+    Arg<TF_I32OrI64Tensor, [{2-D tensor of non-negative integers with shape `[2, 2]`. It specifies
+  the padding of the input with zeros across the spatial dimensions as follows:
+
+      paddings = [[pad_top, pad_bottom], [pad_left, pad_right]]
+
+  The effective spatial dimensions of the zero-padded input tensor will be:
+
+      height_pad = pad_top + height + pad_bottom
+      width_pad = pad_left + width + pad_right}]>:$paddings,
 
     Confined<I64Attr, [IntMinValue<2>]>:$block_size
   );
@@ -13996,7 +14015,7 @@ regular convolution.}]>:$paddings,
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_SpaceToBatchNDOp : TF_Op<"SpaceToBatchND", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect]> {
+def TF_SpaceToBatchNDOp : TF_Op<"SpaceToBatchND", [NoSideEffect]> {
   let summary = "SpaceToBatch for N-D tensors of type T.";
 
   let description = [{
@@ -14006,18 +14025,8 @@ grid of blocks of shape `block_shape`, and interleaves these blocks with the
 `[1, ..., M]` correspond to the position within the grid, and the batch
 dimension combines both the position within a spatial block and the original
 batch position.  Prior to division into blocks, the spatial dimensions of the
-input are optionally zero padded according to `paddings`.  See below for a
+input are optionally zero padded according to `paddings`. See below for a
 precise description.
-  }];
-
-  let arguments = (ins
-    Arg<TF_Tensor, [{N-D with shape `input_shape = [batch] + spatial_shape + remaining_shape`,
-where spatial_shape has `M` dimensions.}]>:$input,
-    Arg<TF_I32OrI64Tensor, [{1-D with shape `[M]`, all values must be >= 1.}]>:$block_shape,
-    Arg<TF_I32OrI64Tensor, [{2-D with shape `[M, 2]`, all values must be >= 0.
-  `paddings[i] = [pad_start, pad_end]` specifies the padding for input dimension
-  `i + 1`, which corresponds to spatial dimension `i`.  It is required that
-  `block_shape[i]` divides `input_shape[i + 1] + pad_start + pad_end`.
 
 This operation is equivalent to the following steps:
 
@@ -14121,7 +14130,17 @@ x = [[[[0], [1], [3]]], [[[0], [9], [11]]],
 ```
 
 Among others, this operation is useful for reducing atrous convolution into
-regular convolution.}]>:$paddings
+regular convolution.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Tensor, [{N-D with shape `input_shape = [batch] + spatial_shape + remaining_shape`,
+where spatial_shape has `M` dimensions.}]>:$input,
+    Arg<TF_I32OrI64Tensor, [{1-D with shape `[M]`, all values must be >= 1.}]>:$block_shape,
+    Arg<TF_I32OrI64Tensor, [{2-D with shape `[M, 2]`, all values must be >= 0.
+  `paddings[i] = [pad_start, pad_end]` specifies the padding for input dimension
+  `i + 1`, which corresponds to spatial dimension `i`.  It is required that
+  `block_shape[i]` divides `input_shape[i + 1] + pad_start + pad_end`.}]>:$paddings
   );
 
   let results = (outs
@@ -14135,7 +14154,7 @@ regular convolution.}]>:$paddings
   let verifier = [{ return Verify(*this); }];
 
   let extraClassDeclaration = [{
-    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       return ArraysAreCastCompatible(l, r);
     }
   }];
@@ -15606,7 +15625,7 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$input, "Value":$reduction_indices,
+    OpBuilder<(ins "Value":$input, "Value":$reduction_indices,
       "BoolAttr":$keep_dims)>
   ];
 
@@ -15672,7 +15691,7 @@ Computes the gradient function for function f via backpropagation.
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
 }
 
-def TF_TPUCompilationResultOp : TF_Op<"TPUCompilationResult", [NoSideEffect]> {
+def TF_TPUCompilationResultOp : TF_Op<"TPUCompilationResult", []> {
   let summary = "Returns the result of a TPU compilation.";
 
   let description = [{
@@ -15689,12 +15708,11 @@ occurred during compilation.
 }
 
 def TF_TPUCompileSucceededAssertOp : TF_Op<"TPUCompileSucceededAssert", []> {
-  let summary = [{
-Asserts that compilation succeeded. This op produces no output and closes the
-  }];
+  let summary = "Asserts that compilation succeeded.";
 
   let description = [{
-device during failure to ensure all pending device interactions fail.
+This op produces no output and closes the device during failure to ensure all
+pending device interactions fail.
 
 'compilation_status' is a serialized CompilationResultProto.
   }];
@@ -16799,7 +16817,7 @@ to the indices.}]>:$output
   let verifier = [{ return Verify(*this); }];
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$tensor, "Value":$indices, "Value":$updates),
+    OpBuilder<(ins "Value":$tensor, "Value":$indices, "Value":$updates),
     [{build($_builder, $_state, tensor.getType(), tensor, indices, updates);}]>
   ];
 }
@@ -16997,7 +17015,7 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
   TF_DerivedOperandTypeAttr Tperm = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$x, "Value":$perm)>
+    OpBuilder<(ins "Value":$x, "Value":$perm)>
   ];
 
   let verifier = [{
@@ -17668,7 +17686,7 @@ for binary operators.
 
   let extraClassDeclaration = [{
     // InferTypeOpInterface:
-    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       return ArraysAreCastCompatible(l, r);
     }
   }];
@@ -17905,30 +17923,6 @@ https://www.tensorflow.org/xla/operation_semantics#gather
 
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
-def TF_XlaHostComputeOp : TF_Op<"XlaHostCompute", []> {
-  let summary = [{
-A pseudo-op to represent host-side computation in an XLA program.
-  }];
-
-  let arguments = (ins
-    Arg<Variadic<TF_Tensor>, [{A list of tensors that will be sent to the host.}]>:$inputs,
-
-    StrArrayAttr:$ancestors,
-    TF_ShapeAttrArray:$shapes,
-    SymbolRefAttr:$shape_inference_graph,
-    StrAttr:$key,
-    DefaultValuedAttr<I64Attr, "1000000">:$cost_estimate_ns,
-    DefaultValuedAttr<I64Attr, "0">:$tpu_core
-  );
-
-  let results = (outs
-    Res<Variadic<TF_Tensor>, [{A list of tensors that will be returned to the device.}]>:$outputs
-  );
-
-  TF_DerivedOperandTypeListAttr Tinputs = TF_DerivedOperandTypeListAttr<0>;
-  TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
 }
 
 def TF_XlaKeyValueSortOp : TF_Op<"XlaKeyValueSort", [NoSideEffect]> {
@@ -18687,7 +18681,8 @@ A pseudo-op to represent host-side computation in an XLA program.
 
     StrAttr:$send_key,
     StrAttr:$recv_key,
-    DefaultValuedAttr<I64Attr, "0">:$tpu_core
+    DefaultValuedAttr<I64Attr, "0">:$tpu_core,
+    DefaultValuedAttr<StrAttr, "">:$host_mlir_module
   );
 
   let results = (outs
@@ -18696,6 +18691,8 @@ A pseudo-op to represent host-side computation in an XLA program.
 
   TF_DerivedOperandTypeListAttr Tinputs = TF_DerivedOperandTypeListAttr<0>;
   TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF__XlaRecvAtHostOp : TF_Op<"_XlaRecvAtHost", []> {

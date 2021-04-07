@@ -33,6 +33,8 @@ TF_CONST_INIT extern const absl::string_view kHostThreadsPlaneName;
 TF_CONST_INIT extern const absl::string_view kGpuPlanePrefix;
 // Name prefix of XPlane that contains TPU events.
 TF_CONST_INIT extern const absl::string_view kTpuPlanePrefix;
+// Name prefix of XPlane that contains TPU runtime events.
+TF_CONST_INIT extern const absl::string_view kTpuRuntimePlaneName;
 // Name of XPlane that contains CUPTI driver API generated events.
 TF_CONST_INIT extern const absl::string_view kCuptiDriverApiPlaneName;
 // Name of XPlane that contains profile metadata such as XLA debug info.
@@ -49,6 +51,7 @@ TF_CONST_INIT extern const absl::string_view kTensorFlowOpLineName;
 TF_CONST_INIT extern const absl::string_view kXlaModuleLineName;
 TF_CONST_INIT extern const absl::string_view kXlaOpLineName;
 TF_CONST_INIT extern const absl::string_view kKernelLaunchLineName;
+TF_CONST_INIT extern const absl::string_view kSourceLineName;
 
 // Interesting event types (i.e., TraceMe names).
 enum HostEventType {
@@ -190,6 +193,7 @@ enum StatType {
   kFlops,
   kBytesAccessed,
   kSelectedGroupIds,
+  kSourceInfo,
   // Performance counter related.
   kRawValue,
   kScaledValue,

@@ -3757,6 +3757,88 @@ op {
   }
 }
 op {
+  name: "BatchMatMulV3"
+  input_arg {
+    name: "x"
+    type_attr: "Ta"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "Tb"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tout"
+  }
+  attr {
+    name: "Ta"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  attr {
+    name: "Tb"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  attr {
+    name: "adj_x"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "adj_y"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
   name: "BatchMatrixBandPart"
   input_arg {
     name: "input"
@@ -8000,37 +8082,6 @@ op {
     type: "bool"
     default_value {
       b: true
-    }
-  }
-}
-op {
-  name: "CompareAndBitpack"
-  input_arg {
-    name: "input"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "threshold"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output"
-    type: DT_UINT8
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_BOOL
-        type: DT_HALF
-        type: DT_FLOAT
-        type: DT_DOUBLE
-        type: DT_INT8
-        type: DT_INT16
-        type: DT_INT32
-        type: DT_INT64
-      }
     }
   }
 }
@@ -16650,6 +16701,36 @@ op {
   }
 }
 op {
+  name: "FinalizeDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "has_captured_ref"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
   name: "Fingerprint"
   input_arg {
     name: "data"
@@ -18427,6 +18508,17 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "GetOptions"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "serialized_options"
+    type: DT_STRING
+  }
 }
 op {
   name: "GetSessionHandle"
@@ -27004,6 +27096,33 @@ op {
   }
 }
 op {
+  name: "OptionsDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "serialized_options"
+    type: "string"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
   name: "OrderedMapClear"
   attr {
     name: "capacity"
@@ -27755,6 +27874,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+  }
+  attr {
+    name: "parallel_copy"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
   attr {
     name: "output_types"
@@ -36895,31 +37021,6 @@ op {
     type: "func"
   }
   is_stateful: true
-}
-op {
-  name: "RemoteFusedGraphExecute"
-  input_arg {
-    name: "inputs"
-    type_list_attr: "Tinputs"
-  }
-  output_arg {
-    name: "outputs"
-    type_list_attr: "Toutputs"
-  }
-  attr {
-    name: "Tinputs"
-    type: "list(type)"
-    has_minimum: true
-  }
-  attr {
-    name: "Toutputs"
-    type: "list(type)"
-    has_minimum: true
-  }
-  attr {
-    name: "serialized_remote_fused_graph_execute_info"
-    type: "string"
-  }
 }
 op {
   name: "RepeatDataset"
@@ -58581,6 +58682,20 @@ op {
   attr {
     name: "key"
     type: "string"
+  }
+  attr {
+    name: "send_key"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "recv_key"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   attr {
     name: "cost_estimate_ns"

@@ -13,7 +13,7 @@ package(
         "//tensorflow/lite/android:__subpackages__",
         "//tensorflow/lite/toco/tflite:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files([

@@ -1,16 +1,12 @@
 <!-- mdformat off(b/169948621#comment2) -->
 
 # Info
+CMSIS-NN is a library containing kernel optimizations for Arm(R) Cortex(TM)-M
+processors. To use CMSIS-NN optimized kernels instead of reference kernels, add
+`OPTIMIZED_KERNEL_DIR=cmsis_nn` to the make command line. See examples below.
 
-To use CMSIS-NN optimized kernels instead of reference kernel add
-OPTIMIZED_KERNEL_DIR=cmsis_nn to the make line. Some micro architectures have
-optimizations (M4 or higher), others don't. The kernels that doesn't have
-optimization for a certain micro architecture fallback to use TFLu reference
-kernels.
-
-The optimizations are almost exclusively made for int8 (symmetric) model. For
-more details, please read
-[CMSIS-NN doc](https://github.com/ARM-software/CMSIS_5/blob/develop/CMSIS/NN/README.md)
+For more information about the optimizations, check out
+[CMSIS-NN documentation](https://github.com/ARM-software/CMSIS_5/blob/develop/CMSIS/NN/README.md)
 
 # Example 1
 

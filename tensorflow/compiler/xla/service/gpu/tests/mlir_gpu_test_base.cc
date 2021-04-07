@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/tests/mlir_gpu_test_base.h"
 
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/Support/SourceMgr.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
@@ -141,15 +142,21 @@ MlirGpuTestBase::RunMlirModuleWithHostBuffers(
   return host_outputs;
 }
 
-mlir::OwningModuleRef MlirGpuTestBase::ParseMlirModule(
+StatusOr<mlir::OwningModuleRef> MlirGpuTestBase::ParseMlirModule(
     absl::string_view module_text, mlir::MLIRContext& context) {
   context.loadDialect<mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
                       mlir::StandardOpsDialect,
                       mlir::lmhlo_gpu::LmhloGpuDialect>();
+  llvm::SourceMgr source_mgr;
+  std::string diagnostic_str;
+  llvm::raw_string_ostream os(diagnostic_str);
+  mlir::SourceMgrDiagnosticHandler handler(source_mgr, &context, os);
 
   mlir::OwningModuleRef module = parseSourceString(
       llvm::StringRef(module_text.data(), module_text.size()), &context);
-  CHECK(module);
+  if (!module) {
+    return InvalidArgument("Failed to parse MLIR module: %s", diagnostic_str);
+  }
   return module;
 }
 
@@ -157,14 +164,16 @@ StatusOr<std::vector<std::vector<uint8>>>
 MlirGpuTestBase::RunMlirTextWithHostBuffers(
     absl::string_view module_text, std::vector<absl::Span<uint8>> arguments) {
   mlir::MLIRContext context;
-  mlir::OwningModuleRef module = ParseMlirModule(module_text, context);
+  TF_ASSIGN_OR_RETURN(mlir::OwningModuleRef module,
+                      ParseMlirModule(module_text, context));
   return RunMlirModuleWithHostBuffers(*module, arguments);
 }
 
 StatusOr<std::unique_ptr<Executable>> MlirGpuTestBase::CompileMlirText(
     absl::string_view module_text) {
   mlir::MLIRContext context;
-  mlir::OwningModuleRef module = ParseMlirModule(module_text, context);
+  TF_ASSIGN_OR_RETURN(mlir::OwningModuleRef module,
+                      ParseMlirModule(module_text, context));
   auto stream = backend_->BorrowStream(backend_->default_device_ordinal())
                     .ConsumeValueOrDie();
   return CompileMlirModule(*module, stream.get());

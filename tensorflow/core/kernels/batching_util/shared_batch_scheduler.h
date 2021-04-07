@@ -815,7 +815,8 @@ void Queue<TaskType>::ProcessBatch(std::unique_ptr<Batch<TaskType>> batch) {
   profiler::TraceMeConsumer trace_me(
       [&] {
         return profiler::TraceMeEncode(
-            "ProcessBatch", {{"batch_size_before_padding", batch->size()}});
+            "ProcessBatch", {{"batch_size_before_padding", batch->size()},
+                             {"_r", 2} /*root_event*/});
       },
       profiler::ContextType::kSharedBatchScheduler,
       batch->traceme_context_id());

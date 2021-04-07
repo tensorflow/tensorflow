@@ -37,7 +37,16 @@ bool KernelTestDelegateProviders::InitFromCmdlineArgs(int* argc,
     auto one_flags = one->CreateFlags(&params_);
     flags.insert(flags.end(), one_flags.begin(), one_flags.end());
   }
-  return tflite::Flags::Parse(argc, argv, flags);
+
+  // Note: when "--help" is passed, the 'Parse' function will return false.
+  // TODO(b/181868587): The above logic to print out the all supported flags is
+  // not intuitive, so considering adding the "--help" flag explicitly.
+  const bool parse_result = tflite::Flags::Parse(argc, argv, flags);
+  if (!parse_result) {
+    std::string usage = Flags::Usage(argv[0], flags);
+    TFLITE_LOG(ERROR) << usage;
+  }
+  return parse_result;
 }
 
 std::vector<tools::TfLiteDelegatePtr>

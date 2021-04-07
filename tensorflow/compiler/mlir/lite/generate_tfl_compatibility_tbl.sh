@@ -21,7 +21,7 @@ EOF
 # TODO(b/178456916): Leverage existing op compat definitions/specs in the
 # MLIR conversion pipeline in a better way.
 # TODO(b/180352158): Validate generated TF op names.
-grep 'patterns.insert<Legalize' $1 | awk -F'<Legalize|>' '{printf "    \"%s\",\n", $2}'
+grep 'patterns.add<Legalize' $1 | awk -F'<Legalize|>' '{printf "    \"%s\",\n", $2}'
 
 cat <<EOF
     # Rules at tensorflow/compiler/mlir/lite/transforms/legalize_tf.cc

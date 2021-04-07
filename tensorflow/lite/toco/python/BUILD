@@ -5,7 +5,7 @@ package(
         "//tensorflow/lite:__subpackages__",
         "//tensorflow/tools/pip_package:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 config_setting(
@@ -95,6 +95,7 @@ py_binary(
         "//tensorflow/python:_pywrap_toco_api",
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",
+        "@absl_py//absl:app",
     ],
 )
 

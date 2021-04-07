@@ -34,12 +34,6 @@
 // CHECK:         store float %[[VAL_32]], float* %[[VAL_34]], align 4
 // CHECK:         br label %[[VAL_30]]
 // CHECK:       }
-// CHECK:       ; Function Attrs: nounwind readnone
-// CHECK:       declare i32 @llvm.nvvm.read.ptx.sreg.ctaid.x() #0
-// CHECK:       ; Function Attrs: nounwind readnone
-// CHECK:       declare i32 @llvm.nvvm.read.ptx.sreg.tid.x() #0
-// CHECK:       ; Function Attrs: nofree nosync nounwind willreturn
-// CHECK:       declare void @llvm.assume(i1 noundef) #1
 
 // CHECK: define void @fusion__1(i8* noalias align 16 dereferenceable(8192) %[[VAL_0:.*]], i8* noalias align 64 dereferenceable(256) %[[VAL_1:.*]], i8* noalias align 64 dereferenceable(256) %[[VAL_2:.*]], i8* noalias align 16 dereferenceable(4) %[[VAL_3:.*]], i8* noalias align 16 dereferenceable(4) %[[VAL_4:.*]]) {
 // CHECK:       entry:
@@ -787,8 +781,6 @@
 // CHECK:         %[[VAL_559:.*]] = extractvalue { i32, i1 } %[[VAL_557]], 1
 // CHECK:         br i1 %[[VAL_559]], label %[[VAL_549]], label %[[VAL_554]]
 // CHECK:       }
-// CHECK:       ; Function Attrs: nounwind readnone
-// CHECK:       declare i32 @llvm.nvvm.read.ptx.sreg.ctaid.y() #0
 
 // CHECK: define internal void @region_1_4(float* dereferenceable(4) %[[VAL_0:.*]], float* dereferenceable(4) %[[VAL_1:.*]], float* dereferenceable(4) %[[VAL_2:.*]]) {
 // CHECK:       entry:

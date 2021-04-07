@@ -5,7 +5,7 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files(glob([
@@ -18,6 +18,13 @@ exports_files(glob([
     "create_op_resolver.h",
     "create_op_resolver_with_selected_ops.cc",
 ])
+
+# Config to keep symbol tables even for optimized builds. Debug builds already
+# preserve symbols.
+config_setting(
+    name = "tflite_keep_symbols",
+    define_values = {"tflite_keep_symbols": "true"},
+)
 
 config_setting(
     name = "gemmlowp_profiling",
@@ -770,6 +777,9 @@ cc_library(
         ":op_resolver",
         "//tensorflow/lite/kernels:builtin_ops",
     ],
+    # Some targets only have an implicit dependency on CreateOpResolver.
+    # This avoids warnings about backwards references when linking.
+    alwayslink = True,
 )
 
 cc_test(

@@ -50,7 +50,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.5.0'
+_VERSION = '2.6.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -102,11 +102,14 @@ REQUIRED_PACKAGES = [
     # When updating these, please also update the nightly versions below
     'tensorboard ~= 2.4',
     'tensorflow_estimator ~= 2.4.0',
+    # TODO(scottzhu): OSS keras hasn't been formally released yet.
+    # Use keras-nightly at the moment.
+    'keras-nightly ~= 2.5.0.dev',
 ]
 
 
-# For nightly packages, instead of depending on tensorboard and
-# tensorflow_estimator, we depend on their nightly equivalent.
+# For nightly packages, instead of depending on tensorboard,
+# tensorflow_estimator and keras, we depend on their nightly equivalent.
 # When updating these, make sure to also update the release versions above.
 # NOTE: the nightly versions are one version ahead of the release ones!
 # NOTE: the nightly versions specify alpha/dev!
@@ -116,6 +119,8 @@ if 'tf_nightly' in project_name:
       REQUIRED_PACKAGES[i] = 'tb-nightly ~= 2.5.0.a'
     elif 'tensorflow_estimator' in pkg:
       REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.5.0.dev'
+    elif 'keras' in pkg and 'keras_preprocessing' not in pkg:
+      REQUIRED_PACKAGES[i] = 'keras-nightly ~= 2.5.0.dev'
 
 
 # grpcio does not build correctly on big-endian machines due to lack of
@@ -279,6 +284,7 @@ headers = (
     list(find_files('*.proto', 'tensorflow/compiler')) +
     list(find_files('*.proto', 'tensorflow/core')) +
     list(find_files('*.proto', 'tensorflow/python')) +
+    list(find_files('*.proto', 'tensorflow/python/framework')) +
     list(find_files('*.def', 'tensorflow/compiler')) +
     list(find_files('*.h', 'tensorflow/c')) +
     list(find_files('*.h', 'tensorflow/cc')) +
@@ -286,6 +292,7 @@ headers = (
     list(find_files('*.h.inc', 'tensorflow/compiler')) +
     list(find_files('*.h', 'tensorflow/core')) +
     list(find_files('*.h', 'tensorflow/python')) +
+    list(find_files('*.h', 'tensorflow/python/framework')) +
     list(find_files('*.h', 'tensorflow/stream_executor')) +
     list(find_files('*.h', 'google/com_google_protobuf/src')) +
     list(find_files('*.inc', 'google/com_google_protobuf/src')) +
@@ -329,7 +336,7 @@ setup(
     classifiers=sorted([
         'Development Status :: 5 - Production/Stable',
         # TODO(angerson) Add IFTTT when possible
-        'Environment :: GPU :: NVIDIA CUDA :: 11.0',
+        'Environment :: GPU :: NVIDIA CUDA :: 11.2',
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',

@@ -150,7 +150,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
   def testWrite_gpuDeviceContext(self):
     logdir = self.get_temp_dir()
     with context.eager_mode():
-      with summary_ops.create_file_writer(logdir).as_default():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
         with ops.device('/GPU:0'):
           value = constant_op.constant(42.0)
           step = constant_op.constant(12, dtype=dtypes.int64)
@@ -172,26 +172,25 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
     # Use assertAllEqual instead of assertFalse since it works in a defun.
     self.assertAllEqual(False, summary_ops.write('tag', 42))
 
-  @test_util.also_run_as_tf_function
   def testWrite_noStep(self):
     logdir = self.get_temp_dir()
-    with summary_ops.create_file_writer(logdir).as_default():
-      with self.assertRaisesRegex(ValueError, 'No step set'):
-        summary_ops.write('tag', 42)
+    with context.eager_mode():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
+        with self.assertRaisesRegex(ValueError, 'No step set'):
+          summary_ops.write('tag', 42)
 
-  @test_util.also_run_as_tf_function
   def testWrite_noStep_okayIfNotRecordingSummaries(self):
     logdir = self.get_temp_dir()
-    with summary_ops.create_file_writer(logdir).as_default():
-      with summary_ops.record_if(False):
-        # Use assertAllEqual instead of assertFalse since it works in a defun.
-        self.assertAllEqual(False, summary_ops.write('tag', 42))
+    with context.eager_mode():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
+        with summary_ops.record_if(False):
+          self.assertFalse(summary_ops.write('tag', 42))
 
   def testWrite_usingDefaultStep(self):
     logdir = self.get_temp_dir()
     try:
       with context.eager_mode():
-        with summary_ops.create_file_writer(logdir).as_default():
+        with summary_ops.create_file_writer_v2(logdir).as_default():
           summary_ops.set_step(1)
           summary_ops.write('tag', 1.0)
           summary_ops.set_step(2)
@@ -215,7 +214,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
     logdir = self.get_temp_dir()
     try:
       with context.eager_mode():
-        writer = summary_ops.create_file_writer(logdir)
+        writer = summary_ops.create_file_writer_v2(logdir)
         @def_function.function
         def f():
           with writer.as_default():
@@ -238,7 +237,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
     logdir = self.get_temp_dir()
     try:
       with context.eager_mode():
-        writer = summary_ops.create_file_writer(logdir)
+        writer = summary_ops.create_file_writer_v2(logdir)
         @def_function.function
         def f():
           with writer.as_default():
@@ -263,7 +262,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
     logdir = self.get_temp_dir()
     try:
       with context.graph_mode():
-        writer = summary_ops.create_file_writer(logdir)
+        writer = summary_ops.create_file_writer_v2(logdir)
         summary_ops.set_step(1)
         with writer.as_default():
           write_op = summary_ops.write('tag', 1.0)
@@ -287,7 +286,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
     logdir = self.get_temp_dir()
     try:
       with context.graph_mode():
-        writer = summary_ops.create_file_writer(logdir)
+        writer = summary_ops.create_file_writer_v2(logdir)
         mystep = variables.Variable(0, dtype=dtypes.int64)
         summary_ops.set_step(mystep)
         with writer.as_default():
@@ -316,7 +315,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
     logdir = self.get_temp_dir()
     try:
       with context.eager_mode():
-        writer = summary_ops.create_file_writer(logdir)
+        writer = summary_ops.create_file_writer_v2(logdir)
         with writer.as_default(step=1):
           summary_ops.write('tag', 1.0)
           with writer.as_default():
@@ -336,7 +335,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
     logdir = self.get_temp_dir()
     try:
       with context.eager_mode():
-        writer = summary_ops.create_file_writer(logdir)
+        writer = summary_ops.create_file_writer_v2(logdir)
         mystep = variables.Variable(1, dtype=dtypes.int64)
         with writer.as_default(step=mystep):
           summary_ops.write('tag', 1.0)
@@ -358,7 +357,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
     logdir = self.get_temp_dir()
     try:
       with context.eager_mode():
-        writer = summary_ops.create_file_writer(logdir)
+        writer = summary_ops.create_file_writer_v2(logdir)
         mystep = variables.Variable(1, dtype=dtypes.int64)
         writer.set_as_default(step=mystep)
         summary_ops.write('tag', 1.0)
@@ -377,7 +376,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
     logdir = self.get_temp_dir()
     try:
       with context.eager_mode():
-        writer = summary_ops.create_file_writer(logdir)
+        writer = summary_ops.create_file_writer_v2(logdir)
         writer.set_as_default(step=1)
         summary_ops.write('tag', 1.0)
         writer.set_as_default(step=2)
@@ -765,6 +764,25 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
       with summary_ops.create_file_writer_v2(logdir).as_default():
         summary_ops.flush()
 
+  def testCreate_avoidsFilenameCollision(self):
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      for _ in range(10):
+        summary_ops.create_file_writer_v2(logdir)
+    event_files = gfile.Glob(os.path.join(logdir, '*'))
+    self.assertLen(event_files, 10)
+
+  def testCreate_graphMode_avoidsFilenameCollision(self):
+    logdir = self.get_temp_dir()
+    with context.graph_mode(), ops.Graph().as_default():
+      writer = summary_ops.create_file_writer_v2(logdir)
+      with self.cached_session() as sess:
+        for _ in range(10):
+          sess.run(writer.init())
+          sess.run(writer.close())
+    event_files = gfile.Glob(os.path.join(logdir, '*'))
+    self.assertLen(event_files, 10)
+
   def testNoSharing(self):
     # Two writers with the same logdir should not share state.
     logdir = self.get_temp_dir()
@@ -959,6 +977,48 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
       self.assertNotIn(eventfile, get_open_filenames())
 
 
+class NoopWriterTest(test_util.TensorFlowTestCase):
+
+  def testNoopWriter_doesNothing(self):
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      writer = summary_ops.create_noop_writer()
+      writer.init()
+      with writer.as_default():
+        result = summary_ops.write('test', 1.0, step=0)
+      writer.flush()
+      writer.close()
+    self.assertFalse(result)  # Should have found no active writer
+    files = gfile.Glob(os.path.join(logdir, '*'))
+    self.assertLen(files, 0)
+
+  def testNoopWriter_asNestedContext_isTransparent(self):
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      writer = summary_ops.create_file_writer_v2(logdir)
+      noop_writer = summary_ops.create_noop_writer()
+      with writer.as_default():
+        result1 = summary_ops.write('first', 1.0, step=0)
+        with noop_writer.as_default():
+          result2 = summary_ops.write('second', 1.0, step=0)
+        result3 = summary_ops.write('third', 1.0, step=0)
+    # All ops should have written, including the one inside the no-op writer,
+    # since it doesn't actively *disable* writing - it just behaves as if that
+    # entire `with` block wasn't there at all.
+    self.assertAllEqual([result1, result2, result3], [True, True, True])
+
+  def testNoopWriter_setAsDefault(self):
+    try:
+      with context.eager_mode():
+        writer = summary_ops.create_noop_writer()
+        writer.set_as_default()
+        result = summary_ops.write('test', 1.0, step=0)
+      self.assertFalse(result)  # Should have found no active writer
+    finally:
+      # Ensure we clean up no matter how the test executes.
+      summary_ops._summary_state.writer = None  # pylint: disable=protected-access
+
+
 class SummaryOpsTest(test_util.TensorFlowTestCase):
 
   def tearDown(self):
@@ -967,7 +1027,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
   def exec_summary_op(self, summary_op_fn):
     assert context.executing_eagerly()
     logdir = self.get_temp_dir()
-    writer = summary_ops.create_file_writer(logdir)
+    writer = summary_ops.create_file_writer_v2(logdir)
     with writer.as_default():
       summary_op_fn()
     writer.close()
@@ -977,7 +1037,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
   def run_metadata(self, *args, **kwargs):
     assert context.executing_eagerly()
     logdir = self.get_temp_dir()
-    writer = summary_ops.create_file_writer(logdir)
+    writer = summary_ops.create_file_writer_v2(logdir)
     with writer.as_default():
       summary_ops.run_metadata(*args, **kwargs)
     writer.close()
@@ -987,7 +1047,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
   def run_metadata_graphs(self, *args, **kwargs):
     assert context.executing_eagerly()
     logdir = self.get_temp_dir()
-    writer = summary_ops.create_file_writer(logdir)
+    writer = summary_ops.create_file_writer_v2(logdir)
     with writer.as_default():
       summary_ops.run_metadata_graphs(*args, **kwargs)
     writer.close()
@@ -1011,7 +1071,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
   def run_trace(self, f, step=1):
     assert context.executing_eagerly()
     logdir = self.get_temp_dir()
-    writer = summary_ops.create_file_writer(logdir)
+    writer = summary_ops.create_file_writer_v2(logdir)
     summary_ops.trace_on(graph=True, profiler=False)
     with writer.as_default():
       f()
@@ -1235,7 +1295,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
 
     assert context.executing_eagerly()
     logdir = self.get_temp_dir()
-    writer = summary_ops.create_file_writer(logdir)
+    writer = summary_ops.create_file_writer_v2(logdir)
     summary_ops.trace_on(graph=True, profiler=True)
     profiler_outdir = self.get_temp_dir()
     with writer.as_default():

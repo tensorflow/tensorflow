@@ -13,7 +13,7 @@ load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -266,6 +266,7 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "//tensorflow/stream_executor/platform:dso_loader",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@local_config_rocm//rocm:rocm_headers",
     ]),

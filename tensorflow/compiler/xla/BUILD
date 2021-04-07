@@ -8,7 +8,7 @@ load(
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -17,6 +17,8 @@ package_group(
     packages = [
         "//tensorflow/compiler/...",
         "//tensorflow/python/tpu/...",
+        "//third_party/iree/...",
+        "//third_party/mlir_edge/model_curriculum/...",
         "//third_party/py/jax/...",
     ],
 )
@@ -350,6 +352,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],

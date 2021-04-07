@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Contains private utilities used mainly by the base Layer class."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import functools
 import threading
@@ -216,6 +213,9 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
     have been wrapped in `TensorFlowOpLayer` instances. Second element is
     a list of the `TensorFlowOpLayer` instances created.
   """
+  if ops.executing_eagerly_outside_functions():
+    raise ValueError(
+        '`create_keras_history` should only be called if eager is disabled!')
   # Import of `base_layer` needed in order to create `TensorFlowOpLayer`.
   # Cannot be imported at top because of circular dependencies.
   # TODO(omalleyt): Resolve circular dependency.
@@ -258,10 +258,7 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
             constants[i] = op_input
           else:
             with ops.init_scope():
-              if ops.executing_eagerly_outside_functions():
-                constants[i] = backend.eval_in_eager_or_function(op_input)
-              else:
-                constants[i] = backend.function([], op_input)([])
+              constants[i] = backend.function([], op_input)([])
       layer_inputs = unnest_if_single_tensor(layer_inputs)
       processed_ops, created_layers = _create_keras_history_helper(
           layer_inputs, processed_ops, created_layers)
@@ -863,6 +860,21 @@ class TrackableWeightHandler(object):
     for idx, tensor in enumerate(weights):
       feed_dict[self._placeholder_tensors[idx]] = tensor
     backend.get_session().run(self._assign_op, feed_dict)
+
+
+class StaticTableHandler(TrackableWeightHandler):
+  """Wrapper for handling weight collection for static hash tables."""
+
+  def __init__(self, getter_lambda):  # pylint: disable=super-init-not-called
+    self._num_tensors = 2
+    self._getter = getter_lambda
+    self._distribute_strategy = distribution_strategy_context.get_strategy()
+
+    def raise_error(_):
+      raise RuntimeError('This layer contains a static lookup table, which '
+                         'cannot be changed via set_weights().')
+
+    self._setter = raise_error
 
 
 def no_ragged_support(inputs, layer_name):

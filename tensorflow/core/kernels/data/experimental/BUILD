@@ -2,15 +2,25 @@
 #   Contains experimental kernels for datasets and iterators.
 
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_not_mobile",
+    "tf_cc_test",
+)
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")  # buildifier: disable=same-origin-load
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
+# A file group which contains all operators which are known to work on mobile.
+filegroup(
+    name = "android_all_op_kernels",
+    srcs = ("threadpool_dataset_op.h", "threadpool_dataset_op.cc"),
+    visibility = ["//tensorflow:__subpackages__"],
+)
 
 tf_kernel_library(
     name = "assert_cardinality_dataset_op",
@@ -615,7 +625,6 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:op_requires",
-        "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/kernels/data:captured_function",
         "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/kernels/data:hash_utils",
@@ -683,6 +692,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "threadpool_dataset_op",
     srcs = ["threadpool_dataset_op.cc"],
+    hdrs = ["threadpool_dataset_op.h"],
     deps = [
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -761,11 +771,9 @@ tf_kernel_library(
     deps = [
         ":assert_cardinality_dataset_op",
         ":assert_next_dataset_op",
-        ":auto_shard_dataset_op",
         ":choose_fastest_branch_dataset_op",
         ":choose_fastest_dataset_op",
         ":compression_ops",
-        ":compute_batch_size_op",
         ":csv_dataset_op",
         ":dense_to_sparse_batch_dataset_op",
         ":directed_interleave_dataset_op",
@@ -796,5 +804,12 @@ tf_kernel_library(
         ":to_tf_record_op",
         ":unbatch_dataset_op",
         ":unique_dataset_op",
-    ],
+    ] + if_not_mobile([
+        # auto_shard_dataset_op uses RewriteDataset method, which
+        # is not defined on mobile platforms
+        ":auto_shard_dataset_op",
+        # compute_batch_size_op depends on grappler, which
+        # should not be included on mobile platforms
+        ":compute_batch_size_op",
+    ]),
 )

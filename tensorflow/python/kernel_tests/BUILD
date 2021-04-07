@@ -8,7 +8,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # CPU-only tests should use tf_py_test, GPU tests use cuda_py_test
@@ -276,7 +276,6 @@ cuda_py_test(
     srcs = ["collective_ops_test.py"],
     tags = [
         "multi_and_single_gpu",
-        "no_tfrt",  # TODO(b/171765113)
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -303,7 +302,6 @@ tf_py_test(
     python_version = "PY3",
     tags = [
         "no_rocm",
-        "no_tfrt",  # TODO(b/171765113)
         "notsan",  # TODO(b/171435192)
     ],
     deps = [
@@ -991,6 +989,20 @@ tf_py_test(
 )
 
 cuda_py_test(
+    name = "segment_reduction_ops_deterministic_test",
+    size = "small",
+    srcs = ["segment_reduction_ops_deterministic_test.py"],
+    xla_enable_strict_auto_jit = False,
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:backprop",
+    ],
+)
+
+cuda_py_test(
     name = "segment_reduction_ops_test",
     size = "medium",
     srcs = ["segment_reduction_ops_test.py"],
@@ -1107,7 +1119,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "sparse_to_dense_op_py_test",
     size = "small",
     srcs = ["sparse_to_dense_op_py_test.py"],
@@ -1457,7 +1469,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "unique_op_test",
     size = "small",
     srcs = ["unique_op_test.py"],
@@ -2498,18 +2510,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "compare_and_bitpack_op_test",
-    size = "small",
-    srcs = ["compare_and_bitpack_op_test.py"],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
     name = "scalar_test",
     size = "small",
     srcs = ["scalar_test.py"],
@@ -2668,6 +2668,9 @@ cuda_py_test(
     name = "sparse_tensor_dense_matmul_grad_test",
     size = "small",
     srcs = ["sparse_tensor_dense_matmul_grad_test.py"],
+    xla_tags = [
+        "no_cuda_asan",  # b/182392418 times out
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
@@ -3198,6 +3201,9 @@ cuda_py_test(
     name = "sparse_tensor_dense_matmul_op_test",
     size = "medium",
     srcs = ["sparse_tensor_dense_matmul_op_test.py"],
+    tags = [
+        "notap",  # Flakey
+    ],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -3220,7 +3226,10 @@ cuda_py_test(
     size = "medium",
     srcs = ["extract_image_patches_grad_test.py"],
     shard_count = 15,
-    tags = ["notap"],  # http://b/31080670
+    tags = [
+        "nomac",  # b/181799478
+        "notap",  # b/31080670
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3322,9 +3331,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["conv_ops_3d_test.py"],
     shard_count = 30,
-    tags = [
-        "no_cuda11",
-    ],
+    tags = ["no_cuda11"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",

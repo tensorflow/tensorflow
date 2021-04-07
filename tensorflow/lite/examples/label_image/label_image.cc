@@ -136,6 +136,7 @@ TfLiteDelegatePtrMap GetDelegates(Settings* s,
     if (!delegate) {
       LOG(INFO) << "GPU acceleration is unsupported on this platform.";
     } else {
+      LOG(INFO) << "Use GPU acceleration.";
       delegates.emplace("GPU", std::move(delegate));
     }
   }
@@ -147,6 +148,7 @@ TfLiteDelegatePtrMap GetDelegates(Settings* s,
     if (!delegate) {
       LOG(INFO) << "NNAPI acceleration is unsupported on this platform.";
     } else {
+      LOG(INFO) << "Use NNAPI acceleration.";
       delegates.emplace("NNAPI", std::move(delegate));
     }
   }
@@ -159,6 +161,7 @@ TfLiteDelegatePtrMap GetDelegates(Settings* s,
     if (!delegate) {
       LOG(INFO) << "Hexagon acceleration is unsupported on this platform.";
     } else {
+      LOG(INFO) << "Use Hexagon acceleration.";
       delegates.emplace("Hexagon", std::move(delegate));
     }
   }
@@ -168,6 +171,7 @@ TfLiteDelegatePtrMap GetDelegates(Settings* s,
     if (!delegate) {
       LOG(INFO) << "XNNPACK acceleration is unsupported on this platform.";
     } else {
+      LOG(INFO) << "Use XNNPACK acceleration.";
       delegates.emplace("XNNPACK", std::move(delegate));
     }
   }

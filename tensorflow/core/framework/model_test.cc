@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/test.h"
@@ -1143,7 +1144,8 @@ TEST_P(OptimizeZeroRamBudgetTest, Model) {
   model.AddNode([&node3](model::Node::Args args) { return node3; }, "3", node2,
                 &node3);
 
-  model.Optimize(algorithm, 40, 0, 0);
+  CancellationManager cancellation_manager;
+  model.Optimize(algorithm, 40, 0, 0, &cancellation_manager);
   EXPECT_EQ(node1->parameter_value("parallelism"), 1);
   EXPECT_EQ(node2->parameter_value("buffer_size"), 0);
   EXPECT_EQ(node3->parameter_value("parallelism"), 1);

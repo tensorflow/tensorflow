@@ -208,7 +208,20 @@ class XlaTensorBuffer : public TensorBuffer {
   TensorBuffer* root_buffer() override { return this; }
 
   void FillAllocationDescription(AllocationDescription* proto) const override {
-    proto->set_allocated_bytes(actual_size_);
+    proto->set_requested_bytes(static_cast<int64>(expected_size_));
+    proto->set_allocator_name(allocator_->Name());
+    proto->set_ptr(reinterpret_cast<uintptr_t>(data()));
+    if (allocator_->TracksAllocationSizes()) {
+      auto ab = static_cast<int64>(allocator_->AllocatedSize(data()));
+      proto->set_allocated_bytes(ab);
+      int64 id = allocator_->AllocationId(data());
+      if (id > 0) {
+        proto->set_allocation_id(id);
+      }
+      if (RefCountIsOne()) {
+        proto->set_has_single_reference(true);
+      }
+    }
   }
 
  private:

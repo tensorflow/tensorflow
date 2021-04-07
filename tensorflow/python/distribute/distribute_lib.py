@@ -594,6 +594,7 @@ class RunOptions(
     collections.namedtuple("RunOptions", [
         "experimental_enable_dynamic_batch_size",
         "experimental_bucketizing_dynamic_shape",
+        "experimental_xla_options",
     ])):
   """Run options for `strategy.run`.
 
@@ -609,14 +610,18 @@ class RunOptions(
       bucketize inputs passed into `run` if the input shape is
       dynamic. This is a performance optimization to reduce XLA recompilation,
       which should not have impact on correctness.
+    experimental_xla_options: A `tf.tpu.XLAOptions` instance. Only applies to
+      TPUStrategy. Controls the XLA compiling options on TPUs. Default to None.
   """
 
   def __new__(cls,
               experimental_enable_dynamic_batch_size=True,
-              experimental_bucketizing_dynamic_shape=False):
+              experimental_bucketizing_dynamic_shape=False,
+              experimental_xla_options=None):
     return super(RunOptions,
                  cls).__new__(cls, experimental_enable_dynamic_batch_size,
-                              experimental_bucketizing_dynamic_shape)
+                              experimental_bucketizing_dynamic_shape,
+                              experimental_xla_options)
 
 
 @tf_export("distribute.InputOptions", v1=[])
@@ -626,7 +631,6 @@ class InputOptions(
         "experimental_replication_mode",
         "experimental_place_dataset_on_device",
         "experimental_per_replica_buffer_size",
-        "experimental_prefetch_to_device",  # Deprecated
     ])):
   """Run options for `experimental_distribute_dataset(s_from_function)`.
 
@@ -677,19 +681,15 @@ class InputOptions(
               experimental_fetch_to_device=None,
               experimental_replication_mode=InputReplicationMode.PER_WORKER,
               experimental_place_dataset_on_device=False,
-              experimental_per_replica_buffer_size=1,
-              experimental_prefetch_to_device=True):
+              experimental_per_replica_buffer_size=1):
     if experimental_fetch_to_device is None:
-      # TODO(b/180133992): Remove `experimental_prefetch_to_device` after
-      # replacing all its usages with `experimental_fetch_to_device`.
-      experimental_fetch_to_device = experimental_prefetch_to_device
+      experimental_fetch_to_device = True
 
     return super(InputOptions,
                  cls).__new__(cls, experimental_fetch_to_device,
                               experimental_replication_mode,
                               experimental_place_dataset_on_device,
-                              experimental_per_replica_buffer_size,
-                              experimental_prefetch_to_device)
+                              experimental_per_replica_buffer_size)
 
 # ------------------------------------------------------------------------------
 # Base classes for all distribution strategies.
@@ -898,7 +898,7 @@ class StrategyBase(object):
       automatically enter it for you. Any variable that is created outside scope
       will not be distributed and may have performance implications. Some common
       objects that create variables in TF are Models, Optimizers, Metrics. Such
-      objects should always be initiliazized in the scope, and any functions
+      objects should always be initialized in the scope, and any functions
       that may lazily create variables (e.g., `Model.__call__()`, tracing a
       `tf.function`, etc.) should similarly be called within scope. Another
       source of variable creation can be a checkpoint restore - when variables
@@ -2442,7 +2442,7 @@ class StrategyExtendedV2(object):
     reduced = replica_context.merge_call(merge_fn, args=(nest.flatten(value),))
     return nest.pack_sequence_as(value, reduced)
 
-  def _replica_ctx_update(self, var, fn, args=(), kwargs=None):
+  def _replica_ctx_update(self, var, fn, args=(), kwargs=None, group=True):
     """Run `fn` with `args` and `kwargs` to update `var`."""
     # This method is called by ReplicaContext.update. Strategies who'd like to
     # remove merge_call in this path should override this method.
@@ -2452,7 +2452,7 @@ class StrategyExtendedV2(object):
                        "in a replica context.")
 
     def merge_fn(_, *merged_args, **merged_kwargs):
-      return self.update(var, fn, merged_args, merged_kwargs, group=True)
+      return self.update(var, fn, merged_args, merged_kwargs, group=group)
 
     return replica_context.merge_call(merge_fn, args=args, kwargs=kwargs)
 
@@ -2892,6 +2892,10 @@ class StrategyExtendedV1(StrategyExtendedV2):
       A sequence of devices for non-slot variables.
     """
     raise NotImplementedError("must be implemented in descendants")
+
+  def _use_merge_call(self):
+    """Whether to use merge-calls inside the distributed strategy."""
+    return True
 
   @property
   def experimental_between_graph(self):
@@ -3358,7 +3362,7 @@ class ReplicaContext(ReplicaContextBase):
 
     return nest.pack_sequence_as(value, grad_wrapper(*nest.flatten(value)))
 
-  def _update(self, var, fn, args=(), kwargs=None):
+  def _update(self, var, fn, args=(), kwargs=None, group=True):
     """Run `fn` to update `var` with `args` and `kwargs` in replica context.
 
     `tf.distribute.ReplicaContext.update` takes a (distributed) variable `var`
@@ -3435,13 +3439,16 @@ class ReplicaContext(ReplicaContextBase):
       fn: Function to call. Should take the variable as the first argument.
       args: Tuple or list. Additional positional arguments to pass to `fn()`.
       kwargs: Dict with keyword arguments to pass to `fn()`.
+      group: Boolean. Defaults to True. Most strategies enter a merge_call to
+      conduct update in cross-replica context, and group=True guarantees updates
+      on all replicas is executed.
 
     Returns:
       The return value of `fn` for the local replica.
     """
     if kwargs is None:
       kwargs = {}
-    return self._strategy.extended._replica_ctx_update(var, fn, args=args, kwargs=kwargs)  # pylint: disable=protected-access
+    return self._strategy.extended._replica_ctx_update(var, fn, args=args, kwargs=kwargs, group=group)  # pylint: disable=protected-access
 
 
 @tf_export(v1=["distribute.ReplicaContext"])

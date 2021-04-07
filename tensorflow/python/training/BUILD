@@ -9,7 +9,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files(
@@ -1382,6 +1382,7 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python/saved_model",
     ],
 )
 

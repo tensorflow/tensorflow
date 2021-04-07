@@ -15,11 +15,8 @@
 # pylint: disable=protected-access
 # pylint: disable=redefined-outer-name
 # pylint: disable=redefined-builtin
-"""Keras backend API.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+# pylint: disable=g-classes-have-attributes
+"""Keras backend API."""
 
 import collections
 import itertools
@@ -39,8 +36,6 @@ from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function as eager_function
-from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager.context import get_config
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
@@ -134,7 +129,7 @@ class _DummyEagerGraph(threading.local):
   weak references.
   """
 
-  class _WeakReferencableClass(object):
+  class _WeakReferencableClass:
     """This dummy class is needed for two reasons.
 
     - We need something that supports weak references. Basic types like string
@@ -840,7 +835,7 @@ def get_default_graph_uid_map():
 # DEVICE MANIPULATION
 
 
-class _TfDeviceCaptureOp(object):
+class _TfDeviceCaptureOp:
   """Class for capturing the TF device scope."""
 
   def __init__(self):
@@ -1044,7 +1039,8 @@ def name_scope(name):
   return ops.name_scope_v2(name)
 
 # Export V1 version.
-keras_export(v1=['keras.backend.name_scope'])(ops.name_scope_v1)
+_v1_name_scope = ops.name_scope_v1
+keras_export(v1=['keras.backend.name_scope'])(_v1_name_scope)
 
 
 @keras_export('keras.backend.variable')
@@ -1280,7 +1276,7 @@ def is_keras_tensor(x):
                      keras_tensor.KerasTensor)):
     raise ValueError('Unexpectedly found an instance of type `' + str(type(x)) +
                      '`. Expected a symbolic tensor instance.')
-  if keras_tensor.keras_tensors_enabled():
+  if ops.executing_eagerly_outside_functions():
     return isinstance(x, keras_tensor.KerasTensor)
   return hasattr(x, '_keras_history')
 
@@ -1333,7 +1329,7 @@ def placeholder(shape=None,
   if not shape:
     if ndim:
       shape = (None,) * ndim
-  if keras_tensor.keras_tensors_enabled():
+  if ops.executing_eagerly_outside_functions():
     if sparse:
       spec = sparse_tensor.SparseTensorSpec(
           shape=shape, dtype=dtype)
@@ -1376,8 +1372,7 @@ def placeholder(shape=None,
     # (intended to be used with keras.backend.function)
     from tensorflow.python.keras.engine import input_layer  # pylint: disable=g-import-not-at-top
     x = input_layer.Input(tensor=x)
-    if keras_tensor.keras_tensors_enabled():
-      x._is_backend_placeholder = True
+    x._is_backend_placeholder = True
 
   return x
 
@@ -1392,7 +1387,7 @@ def is_placeholder(x):
       Boolean.
   """
   try:
-    if keras_tensor.keras_tensors_enabled():
+    if ops.executing_eagerly_outside_functions():
       return hasattr(x, '_is_backend_placeholder')
     from tensorflow.python.keras.utils import tf_utils  # pylint: disable=g-import-not-at-top
     if tf_utils.is_extension_type(x):
@@ -1939,9 +1934,13 @@ def moving_average_update(x, value, momentum):
   Returns:
       The updated variable.
   """
-  zero_debias = not tf2.enabled()
-  return moving_averages.assign_moving_average(
-      x, value, momentum, zero_debias=zero_debias)
+  if tf2.enabled():
+    momentum = math_ops.cast(momentum, x.dtype)
+    value = math_ops.cast(value, x.dtype)
+    return x.assign(x * momentum + value * (1 - momentum))
+  else:
+    return moving_averages.assign_moving_average(
+        x, value, momentum, zero_debias=True)
 
 
 # LINEAR ALGEBRA
@@ -3723,7 +3722,8 @@ def get_value(x):
 
   if ops.executing_eagerly_outside_functions():
     # This method of evaluating works inside the Keras FuncGraph.
-    return eval_in_eager_or_function(x)
+    with ops.init_scope():
+      return x.numpy()
 
   with x.graph.as_default():
     return x.eval(session=get_session((x,)))
@@ -3874,7 +3874,7 @@ def print_tensor(x, message=''):
 # GRAPH MANIPULATION
 
 
-class GraphExecutionFunction(object):
+class GraphExecutionFunction:
   """Runs a computation graph.
 
   It's possible to pass arguments to `tf.Session.run()` via `session_kwargs`.
@@ -3975,7 +3975,7 @@ class GraphExecutionFunction(object):
       connection = callable_opts.tensor_connection.add()
       if x.dtype != y.dtype:
         y = math_ops.cast(y, dtype=x.dtype)
-      from_tensor = ops._as_graph_element(y)
+      from_tensor = _as_graph_element(y)
       if from_tensor is None:
         from_tensor = y
       connection.from_tensor = from_tensor.name  # Data tensor
@@ -4071,76 +4071,6 @@ class GraphExecutionFunction(object):
     return nest.map_structure(self._eval_if_composite, output_structure)
 
 
-def eval_in_eager_or_function(outputs):
-  """Method to evaluate a tensor in eager or in a tf.function.
-
-  In the case of a tf.function, it will lift the tensor out of the function
-  and try to evaluate that piece of the graph.
-
-  Warning: Do not add new usages of this function.
-  TODO(b/150169018): delete this function once _keras_history_helper is no
-  longer needed, after Keras switches to KerasTensors and op layers
-  work via dispatch.
-
-  Args:
-    outputs: tensors to fetch.
-  Returns:
-    The value of the tensors (as numpy arrays).
-  """
-  outputs_structure = outputs
-  outputs = nest.flatten(outputs, expand_composites=True)
-
-  graphs = {
-      i.graph
-      for i in nest.flatten([outputs])
-      if hasattr(i, 'graph')
-  }
-  if len(graphs) > 1:
-    raise ValueError('Cannot create an execution function which is comprised '
-                     'of elements from multiple graphs.')
-
-  source_graph = graphs.pop()
-
-  with _scratch_graph() as exec_graph:
-    global_graph = get_graph()
-    if source_graph not in (exec_graph, global_graph):
-      raise ValueError('Unknown graph. Aborting.')
-
-    if source_graph is global_graph and exec_graph is not global_graph:
-      init_tensors = outputs
-      lifted_map = lift_to_graph.lift_to_graph(
-          tensors=init_tensors,
-          graph=exec_graph,
-          sources=[],
-          add_sources=True,
-          handle_captures=True,
-          base_graph=source_graph)
-
-      outputs = [lifted_map[i] for i in outputs]
-
-  # Consolidate updates
-  with exec_graph.as_default():
-    outputs = cast_variables_to_tensor(outputs)
-
-    exec_graph.inputs = exec_graph.internal_captures
-    exec_graph.outputs = outputs
-    graph_fn = eager_function.ConcreteFunction(exec_graph)
-
-  graph_fn._num_positional_args = 0
-  graph_fn._arg_keywords = []
-
-  outputs = graph_fn()
-
-  # EagerTensor.numpy() will often make a copy to ensure memory safety.
-  # However in this case `outputs` is not directly returned, so it is always
-  # safe to reuse the underlying buffer without checking. In such a case the
-  # private numpy conversion method is preferred to guarantee performance.
-  return nest.pack_sequence_as(
-      outputs_structure,
-      [x._numpy() for x in outputs],  # pylint: disable=protected-access
-      expand_composites=True)
-
-
 @keras_export('keras.backend.function')
 @doc_controls.do_not_generate_docs
 def function(inputs, outputs, updates=None, name=None, **kwargs):
@@ -4175,7 +4105,8 @@ def function(inputs, outputs, updates=None, name=None, **kwargs):
       outs = model(model_inputs)
       if wrap_outputs:
         outs = [outs]
-      return tf_utils.to_numpy_or_python_type(outs)
+      return tf_utils.sync_to_numpy_or_python_type(outs)
+
     return func
 
   if kwargs:
@@ -4867,7 +4798,7 @@ def softplus(x):
   Returns:
       A tensor.
   """
-  return nn.softplus(x)
+  return math_ops.softplus(x)
 
 
 @keras_export('keras.backend.softsign')

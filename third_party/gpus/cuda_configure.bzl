@@ -1100,7 +1100,7 @@ def _create_local_cuda_repository(repository_ctx):
 
     # Select the headers based on the cuDNN version (strip '64_' for Windows).
     cudnn_headers = ["cudnn.h"]
-    if cuda_config.cudnn_version.rsplit("_", 1)[0] >= "8":
+    if cuda_config.cudnn_version.rsplit("_", 1)[-1] >= "8":
         cudnn_headers += [
             "cudnn_backend.h",
             "cudnn_adv_infer.h",
@@ -1378,6 +1378,8 @@ def _create_remote_cuda_repository(repository_ctx, remote_config_repo):
 
 def _cuda_autoconf_impl(repository_ctx):
     """Implementation of the cuda_autoconf repository rule."""
+    build_file = Label("//third_party/gpus:local_config_cuda.BUILD")
+
     if not enable_cuda(repository_ctx):
         _create_dummy_repository(repository_ctx)
     elif get_host_environ(repository_ctx, _TF_CUDA_CONFIG_REPO) != None:
@@ -1392,6 +1394,8 @@ def _cuda_autoconf_impl(repository_ctx):
         )
     else:
         _create_local_cuda_repository(repository_ctx)
+
+    repository_ctx.symlink(build_file, "BUILD")
 
 # For @bazel_tools//tools/cpp:windows_cc_configure.bzl
 _MSVC_ENVVARS = [

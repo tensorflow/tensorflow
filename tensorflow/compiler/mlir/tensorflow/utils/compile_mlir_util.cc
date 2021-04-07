@@ -148,6 +148,7 @@ Status GetOutputInfo(
 
   outputs->clear();
   outputs->reserve(func_type.getNumResults());
+  resource_updates->clear();
   resource_updates->reserve(func_type.getNumResults());
 
   std::vector<xla::Shape> shapes;

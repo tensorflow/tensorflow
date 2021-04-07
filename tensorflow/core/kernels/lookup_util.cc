@@ -17,15 +17,21 @@ limitations under the License.
 
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
+#include "tensorflow/core/framework/lookup_interface.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
+#include "tensorflow/core/platform/refcount.h"
 
 namespace tensorflow {
 namespace lookup {
 namespace {
+
+using InitializerSerializer =
+    ::tensorflow::lookup::InitializableLookupTable::InitializerSerializer;
 
 static const int kInputBufferSize = 1 * 1024 * 1024; /* bytes */
 static const int kLineNumber = -1;
@@ -357,6 +363,16 @@ Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
                                    char delimiter, int32 key_index,
                                    int32 value_index, int64 offset, Env* env,
                                    InitializableLookupTable* table) {
+  return InitializeTableFromTextFile(filename, vocab_size, delimiter, key_index,
+                                     value_index, offset, env,
+                                     /*serializer=*/nullptr, table);
+}
+
+Status InitializeTableFromTextFile(
+    const string& filename, int64 vocab_size, char delimiter, int32 key_index,
+    int32 value_index, int64 offset, Env* env,
+    std::unique_ptr<InitializableLookupTable::InitializerSerializer> serializer,
+    InitializableLookupTable* table) {
   if (key_index == kLineNumber && table->key_dtype() != DT_INT64) {
     return errors::InvalidArgument(
         "Key index for line number requires table key dtype of int64, got ",
@@ -391,7 +407,7 @@ Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
   // initialized. The table shared name should contain the filename to
   // avoid trying to initialize the same table from the same file at the same
   // time.
-  Status s = table->Initialize(iter);
+  Status s = table->Initialize(iter, std::move(serializer));
   if (errors::IsFailedPrecondition(s) && table->is_initialized()) {
     LOG(INFO) << "Table trying to initialize from file " << filename
               << " is already initialized.";
@@ -408,8 +424,7 @@ class DatasetIterator : public InitializableLookupTable::InitTableIterator {
 
   Status Init(OpKernelContext* ctx) {
     data::IteratorContext::Params params(ctx);
-    function_handle_cache_ =
-        absl::make_unique<data::FunctionHandleCache>(params.flr);
+    function_handle_cache_ = absl::make_unique<FunctionHandleCache>(params.flr);
     params.function_handle_cache = function_handle_cache_.get();
     params.resource_mgr = &resource_mgr_;
     cancellation_manager_ =
@@ -450,13 +465,40 @@ class DatasetIterator : public InitializableLookupTable::InitTableIterator {
  private:
   data::DatasetBase* dataset_;  // not owned.
   std::unique_ptr<data::IteratorContext> iterator_ctx_;
-  std::unique_ptr<data::FunctionHandleCache> function_handle_cache_;
+  std::unique_ptr<FunctionHandleCache> function_handle_cache_;
   ResourceMgr resource_mgr_;
   std::unique_ptr<CancellationManager> cancellation_manager_;
   std::unique_ptr<data::IteratorBase> iterator_;
   std::vector<Tensor> tensors_;
   Status status_;
 };
+
+std::unique_ptr<InitializerSerializer> MakeDatasetInitializerSerializer(
+    OpKernelContext* ctx, data::DatasetBase* dataset) {
+  dataset->Ref();
+  auto unref_dataset = [dataset] { dataset->Unref(); };
+  return absl::make_unique<InitializerSerializer>(
+      [dataset, resource_manager = ctx->resource_manager()](
+          GraphDefBuilder* builder, Node* table, Node** out) {
+        data::DatasetBase::DatasetGraphDefBuilder db(builder);
+        data::SerializationContext::Params params;
+        params.serialize_data_tensors = true;
+        params.resource_mgr = resource_manager;
+        data::SerializationContext serialization_ctx(params);
+        Node* dataset_node;
+        TF_RETURN_IF_ERROR(
+            db.AddInputDataset(&serialization_ctx, dataset, &dataset_node));
+        *out = ops::BinaryOp("InitializeTableFromDataset", table, dataset_node,
+                             builder->opts());
+        if (*out == nullptr) {
+          return errors::Internal(
+              "Failed to create InitializeTableFromDataset op: ",
+              builder->opts().StatusToString());
+        }
+        return Status::OK();
+      },
+      /*cleanup=*/std::move(unref_dataset));
+}
 
 void InitializeTableFromDataset(OpKernelContext* ctx,
                                 data::DatasetBase* dataset,
@@ -491,7 +533,8 @@ void InitializeTableFromDataset(OpKernelContext* ctx,
                                       dataset_shapes[1].DebugString()));
   DatasetIterator iter(dataset);
   OP_REQUIRES_OK(ctx, iter.Init(ctx));
-  Status s = table->Initialize(iter);
+  Status s =
+      table->Initialize(iter, MakeDatasetInitializerSerializer(ctx, dataset));
   if (errors::IsFailedPrecondition(s) && table->is_initialized()) {
     LOG(INFO) << "Table already initialized from dataset.";
     return;

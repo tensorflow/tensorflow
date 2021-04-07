@@ -33,11 +33,19 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "feature_column"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "function"
     mtype: "<type \'module\'>"
   }
   member {
     name: "graph_util"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "mixed_precision"
     mtype: "<type \'module\'>"
   }
   member {
@@ -69,6 +77,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "train"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "types"
     mtype: "<type \'module\'>"
   }
@@ -95,5 +107,21 @@ tf_module {
   member_method {
     name: "lift_to_graph"
     argspec: "args=[\'tensors\', \'graph\', \'sources\', \'disallowed_placeholders\', \'add_sources\', \'handle_captures\', \'base_graph\', \'op_map\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "register_call_context_function"
+    argspec: "args=[\'func\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "register_clear_session_function"
+    argspec: "args=[\'func\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "register_get_session_function"
+    argspec: "args=[\'func\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "register_load_model_function"
+    argspec: "args=[\'func\'], varargs=None, keywords=None, defaults=None"
   }
 }

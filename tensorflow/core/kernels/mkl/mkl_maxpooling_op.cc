@@ -153,7 +153,8 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
 
       T* dst_data = output_tensor->flat<T>().data();
       std::shared_ptr<stream> fwd_cpu_stream;
-      fwd_cpu_stream.reset(CreateStream(context, pooling_fwd->GetEngine()));
+      MklDnnThreadPool eigen_tp(context);
+      fwd_cpu_stream.reset(CreateStream(&eigen_tp, pooling_fwd->GetEngine()));
 
       if (int8_forward_inference) {
         // Execute pooling op
@@ -304,7 +305,8 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
           MklPoolingBwdPrimitiveFactory<T>::Get(bwdParams);
 
       std::shared_ptr<stream> bwd_cpu_stream;
-      bwd_cpu_stream.reset(CreateStream(context, pooling_bwd->GetEngine()));
+      MklDnnThreadPool eigen_tp(context);
+      bwd_cpu_stream.reset(CreateStream(&eigen_tp, pooling_bwd->GetEngine()));
       // Allocate output tensor and memory primitive.
       Tensor* output_tensor = nullptr;
       this->AllocateOutputTensor(context, *(pooling_bwd->GetPoolingBwdPd()),

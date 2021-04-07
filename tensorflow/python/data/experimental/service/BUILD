@@ -5,7 +5,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_python_pybind_extension(
@@ -31,6 +31,7 @@ py_library(
     ],
     deps = [
         ":_pywrap_server_lib",
+        ":_pywrap_utils",
     ],
 )
 
@@ -43,6 +44,18 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/profiler:profiler_client",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_utils",
+    srcs = ["utils_wrapper.cc"],
+    module_name = "_pywrap_utils",
+    deps = [
+        "//tensorflow/core/data/service:py_utils",
+        "//tensorflow/python:pybind11_lib",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )
 

@@ -302,7 +302,8 @@ class TPUEmbeddingCheckpointTest(parameterized.TestCase, test.TestCase):
 
   @parameterized.parameters(tpu_embedding_v2_utils.SGD,
                             tpu_embedding_v2_utils.Adagrad,
-                            tpu_embedding_v2_utils.Adam)
+                            tpu_embedding_v2_utils.Adam,
+                            tpu_embedding_v2_utils.FTRL)
   def test_check_checkpoint_variable_names_are_same_on_cpu_and_tpu(self,
                                                                    optimizer):
     # Reinitialize the TPU so that we can re-initialize the embeddings with the
@@ -1041,6 +1042,8 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
         optimizer = tpu_embedding_v2_utils.Adagrad(learning_rate=0.1)
       elif optimizer_name == 'adam':
         optimizer = tpu_embedding_v2_utils.Adam(learning_rate=0.1)
+      elif optimizer_name == 'ftrl':
+        optimizer = tpu_embedding_v2_utils.FTRL(learning_rate=0.1)
       else:
         raise ValueError('optimizer is not recognized: ', optimizer_name)
       mid_level_api = self._create_mid_level(optimizer=optimizer)

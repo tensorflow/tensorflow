@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/self_adjoint_eig.h"
 
+#include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -121,8 +123,12 @@ XlaOp ComputeMatmulVWVt(SelfAdjointEigResult result, XlaBuilder* builder) {
   std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
 
   broadcast_dims[shape.rank() - 2] = shape.rank() - 1;
-  auto vw = Mul(result.v, BroadcastInDim(result.w, out_dims, broadcast_dims));
-  return BatchDot(vw, TransposeInMinorDims(result.v), PrecisionConfig::HIGHEST);
+  auto vw =
+      Mul(result.v,
+          BroadcastInDim(ConvertElementType(result.w, shape.element_type()),
+                         out_dims, broadcast_dims));
+  return BatchDot(vw, MaybeConjugate(TransposeInMinorDims(result.v), true),
+                  PrecisionConfig::HIGHEST);
 }
 
 XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_2x4x4) {
@@ -135,6 +141,22 @@ XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_2x4x4) {
 
   ComputeAndCompareR3<float>(&builder, batch_3d_4x4_, {a_data.get()},
                              ErrorSpec(1e-3, 1e-3));
+}
+
+XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_3x3_Complex) {
+  XlaBuilder builder(TestName());
+  Array<complex64> input = {
+      {1, complex64{2, -7}, complex64{4, -8}},
+      {complex64{2, 7}, 3, complex64{5, -9}},
+      {complex64{4, 8}, complex64{5, 9}, 6},
+  };
+  XlaOp a;
+  auto a_data = CreateParameter<complex64>(input, 0, "a", &builder, &a);
+  auto result = SelfAdjointEig(a);
+  ComputeMatmulVWVt(result, &builder);
+
+  ComputeAndCompare<complex64>(&builder, input, {a_data.get()},
+                               ErrorSpec(1e-3, 1e-3));
 }
 
 XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_Lower_2x4x4) {

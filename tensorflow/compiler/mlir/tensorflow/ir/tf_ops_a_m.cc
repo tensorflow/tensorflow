@@ -739,11 +739,9 @@ LogicalResult FoldConstantCaseOp::matchAndRewrite(
 
   auto func = op.branches()[index].cast<SymbolRefAttr>();
   auto empty = rewriter.getStringAttr("");
-  auto call_op = rewriter.create<PartitionedCallOp>(
-      op.getLoc(), op.getResultTypes(), op.getOperands().drop_front(), func,
+  ReplaceTfOpWithNewOp<PartitionedCallOp>(
+      rewriter, op, op.getResultTypes(), op.getOperands().drop_front(), func,
       /*config=*/empty, /*config_proto=*/empty, /*executor_type=*/empty);
-  CopyDeviceAndUnderscoredAttributes(op.getOperation(), call_op);
-  rewriter.replaceOp(op, call_op.getResults());
   return success();
 }
 
@@ -761,7 +759,8 @@ static LogicalResult VerifyCaseOpBase(Operation *op, Value branch_index) {
 }
 
 static LogicalResult VerifyCaseOrIfOpBranchFunctions(
-    Operation *op, ArrayRef<Attribute> branches,
+    SymbolTableCollection &symbol_table, Operation *op,
+    ArrayRef<Attribute> branches,
     llvm::function_ref<std::string(unsigned branch_index)> branch_name) {
   SmallVector<FunctionType, 2> branch_types;
   branch_types.reserve(branches.size());
@@ -772,7 +771,7 @@ static LogicalResult VerifyCaseOrIfOpBranchFunctions(
   TypeRangeWithDesc result{op->getResultTypes(), "result"};
 
   for (auto branch : llvm::enumerate(branches)) {
-    auto branch_func = SymbolTable::lookupNearestSymbolFrom<FuncOp>(
+    auto branch_func = symbol_table.lookupNearestSymbolFrom<FuncOp>(
         op, branch.value().cast<SymbolRefAttr>());
     if (!branch_func)
       return op->emitOpError()
@@ -816,12 +815,17 @@ static LogicalResult VerifyCaseOrIfOpBranchFunctions(
 }
 
 static LogicalResult Verify(CaseOp op) {
-  if (failed(VerifyCaseOpBase(op, op.branch_index()))) return failure();
+  return VerifyCaseOpBase(op, op.branch_index());
+}
+
+LogicalResult CaseOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
   auto branch_name = [](unsigned index) {
     return llvm::formatv("branch #{0}", index).str();
   };
-  return VerifyCaseOrIfOpBranchFunctions(op, op.branches().getValue(),
-                                         branch_name);
+  // TODO(jpienaar): Remove.
+  if (failed(CaseOpAdaptor(*this).verify(getLoc()))) return failure();
+  return VerifyCaseOrIfOpBranchFunctions(symbol_table, *this,
+                                         branches().getValue(), branch_name);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1165,12 +1169,22 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
     }
   }
 
-  // New lhs and rhs concatenation axis.
-  auto axis_type = mlir::RankedTensorType::get({}, rewriter.getIntegerType(64));
-  auto lhs_axis = rewriter.create<TF::ConstOp>(
-      loc, DenseIntElementsAttr::get(axis_type, hoist_params->lhs_axis));
-  auto rhs_axis = rewriter.create<TF::ConstOp>(
-      loc, DenseIntElementsAttr::get(axis_type, hoist_params->rhs_axis));
+  // New lhs and rhs concatenation axis
+  auto axis_type =
+      mlir::RankedTensorType::get({}, mlir::getElementTypeOrSelf(axis_attr));
+  DenseIntElementsAttr lhs_attr, rhs_attr;
+  if (axis_type.getElementType().isInteger(32)) {
+    lhs_attr = DenseIntElementsAttr::get(
+        axis_type, static_cast<int32_t>(hoist_params->lhs_axis));
+    rhs_attr = DenseIntElementsAttr::get(
+        axis_type, static_cast<int32_t>(hoist_params->rhs_axis));
+  } else {
+    assert(axis_type.getElementType().isInteger(64));
+    lhs_attr = DenseIntElementsAttr::get(axis_type, hoist_params->lhs_axis);
+    rhs_attr = DenseIntElementsAttr::get(axis_type, hoist_params->rhs_axis);
+  }
+  auto lhs_axis = rewriter.create<TF::ConstOp>(loc, lhs_attr);
+  auto rhs_axis = rewriter.create<TF::ConstOp>(loc, rhs_attr);
 
   // Concatenate binary ops operands on the new axis.
   auto lhs_concat = rewriter.create<ConcatV2Op>(
@@ -2459,12 +2473,14 @@ static LogicalResult Verify(GatherV2Op op) {
 // IfOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(IfOp op) {
+LogicalResult IfOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
   auto branch_name = [](unsigned index) -> std::string {
     return index == 0 ? "'then_branch'" : "'else_branch'";
   };
+  // TODO(jpienaar): Remove.
+  if (failed(IfOpAdaptor(*this).verify(getLoc()))) return failure();
   return VerifyCaseOrIfOpBranchFunctions(
-      op, {op.then_branchAttr(), op.else_branchAttr()}, branch_name);
+      symbol_table, *this, {then_branchAttr(), else_branchAttr()}, branch_name);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2502,11 +2518,9 @@ LogicalResult FoldConstantIfOp::matchAndRewrite(
   // Replace IfOp with PartitionedCallOp or StatefulPartitionedCallOp.
   auto rewrite = [&](auto op_type) {
     auto empty = rewriter.getStringAttr("");
-    auto call_op = rewriter.create<typename decltype(op_type)::CallOp>(
-        op.getLoc(), op.getResultTypes(), op.input(), func,
+    ReplaceTfOpWithNewOp<typename decltype(op_type)::CallOp>(
+        rewriter, op, op.getResultTypes(), op.input(), func,
         /*config=*/empty, /*config_proto=*/empty, /*executor_type=*/empty);
-    CopyDeviceAndUnderscoredAttributes(op.getOperation(), call_op);
-    rewriter.replaceOp(op, call_op.getResults());
   };
 
   if (op.is_stateless())

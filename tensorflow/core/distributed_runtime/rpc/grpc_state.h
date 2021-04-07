@@ -54,21 +54,15 @@ class RPCState : public GrpcClientCQTag {
             // 2) Otherwise if GRPC_FAIL_FAST is set to 'use_caller', use the
             // fail_fast from the caller. See b/140260119.
             //
-            // Current default for PLATFORM_GOOGLE: use caller fail_fast;
-            // Current default for open source: fail_fast=false.
+            // Current default: use caller's fail_fast argument.
             //
             // NOTE: Callers mostly set fail_fast=true to prevent job hanging
             // on worker task failures, except a few cases such as GetStatus
             // in cluster initialization and collective param resolution.
             [fail_fast, &done]() -> bool {
               string fail_fast_env;
-#if defined(PLATFORM_GOOGLE)
               TF_CHECK_OK(ReadStringFromEnvVar("GRPC_FAIL_FAST", "use_caller",
                                                &fail_fast_env));
-#else
-              TF_CHECK_OK(ReadStringFromEnvVar("GRPC_FAIL_FAST", "false",
-                                               &fail_fast_env));
-#endif  // PLATFORM_GOOGLE
               string fail_fast_env_lower = absl::AsciiStrToLower(fail_fast_env);
               if (fail_fast_env_lower == "true") {
                 return true;
@@ -85,8 +79,7 @@ class RPCState : public GrpcClientCQTag {
               }
             }(),
             (call_opts != nullptr ? call_opts->GetTimeout() : 0), max_retries,
-            target) {
-  }
+            target) {}
 
   template <typename Request>
   RPCState(::grpc::GenericStub* stub, ::grpc::CompletionQueue* cq,

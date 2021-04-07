@@ -87,13 +87,13 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
 
   void Execute(void* src_data, void* dst_data,
                std::shared_ptr<stream> reorder_stream) {
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(src_data, *reorder_stream);
     context_.dst_mem->set_data_handle(dst_data, *reorder_stream);
 #else
     context_.src_mem->set_data_handle(src_data);
     context_.dst_mem->set_data_handle(dst_data);
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
     context_.reorder_prim->execute(*reorder_stream, context_.prim_args);
     // After execution, set data handle back.
     context_.src_mem->set_data_handle(DummyData);
@@ -474,7 +474,8 @@ class MklQuantizeV2Op : public OpKernel {
         MklReorderWithScalePrimitiveFactory<T>::Get(src.GetUsrMem(),
                                                     dst.GetUsrMem(), fwdParams);
     std::shared_ptr<stream> cpu_stream;
-    cpu_stream.reset(CreateStream(ctx, reorder_prim->GetEngine()));
+    MklDnnThreadPool eigen_tp(ctx);
+    cpu_stream.reset(CreateStream(&eigen_tp, reorder_prim->GetEngine()));
     reorder_prim->Execute(src.GetUsrMemDataHandle(), dst.GetUsrMemDataHandle(),
                           cpu_stream);
 

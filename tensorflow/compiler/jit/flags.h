@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/command_line_flags.h"
@@ -98,6 +99,9 @@ struct XlaOpsCommonFlags {
   // If true, _XlaCompile always refuses to compile the cluster, which means the
   // XLA clusters always run in the TF executor.  Defaults to false.
   bool tf_xla_always_defer_compilation;
+  // If true, _XlaCompile compiles the cluster asynchronously with respect to
+  // the main execution. The fallback path is taken while compilation happens.
+  bool tf_xla_async_compilation;
 };
 
 // Flags for the build_xla_ops pass.
@@ -155,6 +159,11 @@ const IntroduceFloatingPointJitterPassFlags&
 GetIntroduceFloatingPointJitterPassFlags();
 
 MlirCommonFlags* GetMlirCommonFlags();
+
+// Returns the effective MLIR bridge rollout state based on the flags and the
+// optional configuration.
+ConfigProto::Experimental::MlirBridgeRollout GetMlirBridgeRolloutState(
+    absl::optional<const ConfigProto> config_proto);
 
 // Appends the flag definitions associated with
 // MarkForCompilationPassFlags/DumpGraphFlags to `flag_list`.

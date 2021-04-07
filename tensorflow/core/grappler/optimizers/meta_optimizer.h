@@ -59,20 +59,26 @@ class MetaOptimizer : public GraphOptimizer {
 
  private:
   std::unique_ptr<GraphOptimizer> MakeNewOptimizer(
-      const string& optimizer) const;
+      const string& optimizer, const std::set<string>& device_types) const;
 
   // When grappler should lower control flow to V1 switch/merge style nodes.
   bool LowerControlFlow() const;
 
   // Initialize active optimizers from RewriterConfig toggles.
   Status InitializeOptimizers(
+      const std::set<string>& device_types,
       std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const;
   // Initialize active optimizers from RewriterConfig optimizer names.
   Status InitializeOptimizersByName(
+      const std::set<string>& device_types,
       std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const;
   // Initialize active optimizers from RewriterConfig.custom_optimizers.
   Status InitializeCustomGraphOptimizers(
+      const std::set<string>& device_types,
       const std::set<string>& pre_initialized_optimizers,
+      std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const;
+  Status InitializePluginGraphOptimizers(
+      const std::set<string>& device_types,
       std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const;
   // Returns the config for a custom graph optimizer. Null if none was found.
   const RewriterConfig::CustomGraphOptimizer* GetCustomGraphOptimizerConfig(
@@ -84,6 +90,8 @@ class MetaOptimizer : public GraphOptimizer {
       std::vector<std::unique_ptr<GraphVerifier>>* post_optimization_verifiers)
       const;
 
+  void PrintUserAndPluginConfigs(const std::set<string>& device_types) const;
+
   // Run optimization pass over a single GrapplerItem. Meta optimizer might run
   // multiple such passes: 1) for the main graph 2) for the function library
   Status OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
@@ -92,6 +100,7 @@ class MetaOptimizer : public GraphOptimizer {
   DeviceBase* const cpu_device_;  // may be NULL
   ConfigProto config_proto_;
   RewriterConfig& cfg_;
+  bool xla_auto_clustering_on_;
 
   struct OptimizerResult {
     string optimizer_name;

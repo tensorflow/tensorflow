@@ -89,6 +89,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.types import core
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
@@ -517,13 +518,31 @@ class FunctionDeleter(object):
       pass
 
 
-class Function(object):
-  """Wrapper class for the graph functions defined for a Python function.
+class OptionalXlaContext(object):
+  """Wrapper for XLA context optionally applied under a context manager."""
 
-  See the documentation for `tf.function` for more information on the semantics
-  of defined functions.
+  def __init__(self, is_compiled):
+    wrap = is_compiled and not control_flow_util.GraphOrParentsInXlaContext( \
+              ops.get_default_graph())
+    self.xla_context = control_flow_ops.XLAControlFlowContext() \
+        if wrap else None
 
-  `Function` is thread-compatible.
+  def __enter__(self):
+    if self.xla_context:
+      self.xla_context.Enter()
+
+  def __exit__(self, t, value, traceback):
+    if self.xla_context:
+      self.xla_context.Exit()
+
+
+# TODO(mdan): Consider expose this type for instance type checking.
+@tf_export("__internal__.function.Function", v1=[])
+class Function(core.GenericFunction):
+  """A `tf.types.experimental.GenericFunction` created by `tf.function`.
+
+  Currently, individual methods/attributes under this class are not guaranteed
+  by the TF API contract, and are subject to future changes.
   """
 
   def __init__(self,
@@ -645,15 +664,7 @@ class Function(object):
       with default_graph._variable_creator_scope(scope, priority=50):  # pylint: disable=protected-access
         # __wrapped__ allows AutoGraph to swap in a converted function. We give
         # the function a weak reference to itself to avoid a reference cycle.
-        if compile_with_xla and \
-            not control_flow_util.GraphOrParentsInXlaContext(default_graph):
-          xla_context = control_flow_ops.XLAControlFlowContext()
-          try:
-            xla_context.Enter()
-            out = weak_wrapped_fn().__wrapped__(*args, **kwds)
-          finally:
-            xla_context.Exit()
-        else:
+        with OptionalXlaContext(compile_with_xla):
           out = weak_wrapped_fn().__wrapped__(*args, **kwds)
         return out
 
@@ -747,18 +758,6 @@ class Function(object):
     self._concrete_stateful_fn = (
         self._stateful_fn._get_concrete_function_internal_garbage_collected(  # pylint: disable=protected-access
             *args, **kwds))
-
-    compiled = bool(self._jit_compile and
-                    not control_flow_util.GraphOrParentsInXlaContext(
-                        ops.get_default_graph()))
-    # For nested functions, increment the counter only when a function with
-    # jit_compile=True is called within a function with jit_compile=False. We
-    # count this special case to correctly record that both jit_compile=True and
-    # jit_compile=False is being used for parts of the outer function.
-    if ops.executing_eagerly_outside_functions() and (
-        context.executing_eagerly() or compiled):
-      # Labels must be strings in Python, so we convert 'compiled' to a string
-      _tf_function_counter.get_cell(str(int(compiled))).increase_by(1)
 
     def invalid_creator_scope(*unused_args, **unused_kwds):
       """Disables variable creation."""
@@ -857,15 +856,34 @@ class Function(object):
     return RUN_FUNCTIONS_EAGERLY
 
   def __call__(self, *args, **kwds):
-    """Calls the graph function and warn too frequent tracings."""
+    # Implements GenericFunction.__call__.
     if self._run_functions_eagerly:
       with trace.Trace(self._name, tf_function_call="eager"):
         return self._python_function(*args, **kwds)
 
+    # Only count the statistics the fitst time, before initialization took
+    # place.
+    if self._created_variables is None:
+      compiled = bool(self._jit_compile and
+                      not control_flow_util.GraphOrParentsInXlaContext(
+                          ops.get_default_graph()))
+      # For nested functions, increment the counter only when a function with
+      # jit_compile=True is called within a function with jit_compile=False. We
+      # count this special case to correctly record that both jit_compile=True
+      # and jit_compile=False is being used for parts of the outer function.
+      if ops.executing_eagerly_outside_functions() and (
+          context.executing_eagerly() or compiled):
+        # Labels must be strings in Python, so we convert 'compiled' to a string
+        _tf_function_counter.get_cell(str(int(compiled))).increase_by(1)
+
     tracing_count = self.experimental_get_tracing_count()
     with trace.Trace(self._name) as tm:
-      result = self._call(*args, **kwds)
+      # TODO(cheshire): Do not duplicate the XLAControlFlowContext annotation.
       compiler = "xla" if self._jit_compile else "nonXla"
+
+      with OptionalXlaContext(self._jit_compile):
+        result = self._call(*args, **kwds)
+
       new_tracing_count = self.experimental_get_tracing_count()
       without_tracing = (tracing_count == new_tracing_count)
       execution_mode = "notTraced" if without_tracing else "traced"
@@ -1267,81 +1285,7 @@ class Function(object):
       return concrete
 
   def get_concrete_function(self, *args, **kwargs):
-    """Returns a `ConcreteFunction` specialized to inputs and execution context.
-
-    If this `Function` was created with an `input_signature`, `args` and
-    `kwargs` may be omitted. With an input signature there is only one
-    concrete function associated with this `Function`.
-
-    If there is no fixed `input_signature` associated with this
-    `Function`, positional and keyword arguments to `get_concrete_function`
-    follow the same rules as input signature specification, with `tf.TensorSpec`
-    objects describing `tf.Tensor`s which will be passed to the concrete
-    function.
-
-    Each `tf.Tensor` argument to the concrete function must have a unique name,
-    either because it is the only one associated with a named argument of the
-    Python function or because an explicit `name=` was passed to its
-    `tf.TensorSpec` object. These names become the argument names for the
-    concrete function.
-
-    Arguments to the concrete function may always be specified as keyword
-    arguments, naming the Tensor input. Positional arguments may be used instead
-    when each preceding argument to the Python function is a Tensor.
-
-    ```python
-    @tf.function
-    def f(x):
-      return x
-
-    f_concrete = f.get_concrete_function(tf.TensorSpec([], tf.float64))
-    f_concrete(tf.constant(1.))
-    f_concrete(x=tf.constant(1.))
-    ```
-
-    Nested structures containing Tensors may be specified when retrieving
-    concrete functions. Structures with multiple Tensors are expanded into
-    multiple arguments of the concrete function. Since multiple concrete
-    function arguments are associated with one argument to the original
-    function, these Tensors must be named explicitly. Tensors in nested
-    structures may not be passed using positional arguments when calling the
-    concrete function.
-
-    ```python
-    f_concrete2 = f.get_concrete_function(
-        (tf.TensorSpec(None, tf.float64, name="first"),
-         tf.TensorSpec([], tf.float32, name="second")))
-    # Keyword arguments are required when identifying Tensors in nested
-    # structures.
-    f_concrete2(first=tf.constant([1.]), second=tf.constant(0.))
-    ```
-
-    Functions with fixed input signatures have only one concrete function
-    associated with them, which can be retrieved without specifying any
-    arguments. As before Tensors must have unique names, either inferred from
-    the argument names in the original Python function or specified
-    explicitly.
-
-    ```python
-    @tf.function(input_signature=(tf.TensorSpec(None, tf.float32)))
-    def f_sig(y):
-      return y
-
-    f_sig_concrete = f.get_concrete_function()
-    f_sig_concrete(tf.constant(1.))
-    f_sig_concrete(y=tf.constant(1.))
-    ```
-
-    Args:
-      *args: inputs to specialize on.
-      **kwargs: inputs to specialize on.
-
-    Returns:
-      A TensorFlow function which takes exactly one `tf.Tensor` per argument.
-
-    Raises:
-      ValueError: if this object has not yet been called on concrete values.
-    """
+    # Implements GenericFunction.get_concrete_function.
     concrete = self._get_concrete_function_garbage_collected(*args, **kwargs)
     concrete._garbage_collector.release()  # pylint: disable=protected-access
     return concrete
