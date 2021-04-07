@@ -35,10 +35,35 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
-#include "tensorflow/core/kernels/fake_quant_ops_functor.h"
 
 namespace mlir {
 namespace tosa {
+
+// Copied Nudge implementation from
+// tensorflow/core/kernels/fake_quant_ops_functor.h.
+// Suggested approach to avoid significant TensorFlow
+// build dependency.
+void tensorflow_nudge(const float min, const float max, const int quant_min,
+                      const int quant_max, float* nudged_min, float* nudged_max,
+                      float* scale) {
+  const float quant_min_float = static_cast<float>(quant_min);
+  const float quant_max_float = static_cast<float>(quant_max);
+  *scale = (max - min) / (quant_max_float - quant_min_float);
+  const float zero_point_from_min = quant_min_float - min / *scale;
+  const uint16_t nudged_zero_point = [zero_point_from_min, quant_min,
+                                      quant_min_float, quant_max,
+                                      quant_max_float] {
+    if (zero_point_from_min < quant_min_float) {
+      return static_cast<uint16_t>(quant_min);
+    }
+    if (zero_point_from_min > quant_max_float) {
+      return static_cast<uint16_t>(quant_max);
+    }
+    return static_cast<uint16_t>(std::round(zero_point_from_min));
+  }();
+  *nudged_min = (quant_min_float - nudged_zero_point) * (*scale);
+  *nudged_max = (quant_max_float - nudged_zero_point) * (*scale);
+}
 
 // Lowers the Pack operator to TOSA.
 llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
@@ -2264,33 +2289,41 @@ llvm::Optional<Value> convertFusedActivation(PatternRewriter& rewriter,
   } else {
     if (fused_activation_fn.getValue() == "NONE") {
       return input_value;
-    } else if (fused_activation_fn.getValue() == "RELU") {
-      return rewriter
-          .create<tosa::ReluNOp>(
-              op->getLoc(), input_type, input_value,
-              rewriter.getI64IntegerAttr(std::numeric_limits<int32_t>::max()),
-              rewriter.getF32FloatAttr(std::numeric_limits<float>::max()))
-          .getResult();
-    } else if (fused_activation_fn.getValue() == "RELU6") {
-      return rewriter
-          .create<tosa::ReluNOp>(op->getLoc(), input_type, input_value,
-                                 rewriter.getI64IntegerAttr(6),
-                                 rewriter.getF32FloatAttr(6.0))
-          .getResult();
-    } else if (fused_activation_fn.getValue() == "RELU_N1_TO_1") {
-      return rewriter
-          .create<tosa::ClampOp>(
-              op->getLoc(), input_type, input_value,
-              rewriter.getI64IntegerAttr(-1), rewriter.getI64IntegerAttr(1),
-              rewriter.getF32FloatAttr(-1.0), rewriter.getF32FloatAttr(1.0))
-          .getResult();
-    } else if (fused_activation_fn.getValue() == "TANH") {
-      return rewriter
-          .create<tosa::TanhOp>(op->getLoc(), input_type, input_value)
-          .getResult();
     } else {
-      // Unsupported activation type. Bail out.
-      return llvm::None;
+      // For non-quantized type, only support F32.
+      if (!input_type.getElementType().isF32()) {
+        op->emitOpError("ConvertTFLeakyReluOp: only support F32");
+        return llvm::None;
+      }
+
+      if (fused_activation_fn.getValue() == "RELU") {
+        return rewriter
+            .create<tosa::ReluNOp>(
+                op->getLoc(), input_type, input_value,
+                rewriter.getI64IntegerAttr(std::numeric_limits<int32_t>::max()),
+                rewriter.getF32FloatAttr(std::numeric_limits<float>::max()))
+            .getResult();
+      } else if (fused_activation_fn.getValue() == "RELU6") {
+        return rewriter
+            .create<tosa::ReluNOp>(op->getLoc(), input_type, input_value,
+                                   rewriter.getI64IntegerAttr(6),
+                                   rewriter.getF32FloatAttr(6.0))
+            .getResult();
+      } else if (fused_activation_fn.getValue() == "RELU_N1_TO_1") {
+        return rewriter
+            .create<tosa::ClampOp>(
+                op->getLoc(), input_type, input_value,
+                rewriter.getI64IntegerAttr(-1), rewriter.getI64IntegerAttr(1),
+                rewriter.getF32FloatAttr(-1.0), rewriter.getF32FloatAttr(1.0))
+            .getResult();
+      } else if (fused_activation_fn.getValue() == "TANH") {
+        return rewriter
+            .create<tosa::TanhOp>(op->getLoc(), input_type, input_value)
+            .getResult();
+      } else {
+        // Unsupported activation type. Bail out.
+        return llvm::None;
+      }
     }
   }
 
@@ -2576,13 +2609,10 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
 
-  auto input_shape = input_type.getShape();
-  auto output_shape = output_type.getShape();
-
-  size_t input_height = input_shape[1];
-  size_t input_width = input_shape[2];
-  size_t output_height = output_shape[1];
-  size_t output_width = output_shape[2];
+  if (input_type.getRank() != 4 || output_type.getRank() != 4) {
+    op->emitOpError("convertResizeOp: input/output must be rank 4");
+    return llvm::None;
+  }
 
   bool input_is_qtype =
       input_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
@@ -2603,6 +2633,14 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
       return llvm::None;
     }
   }
+
+  auto input_shape = input_type.getShape();
+  auto output_shape = output_type.getShape();
+
+  size_t input_height = input_shape[1];
+  size_t input_width = input_shape[2];
+  size_t output_height = output_shape[1];
+  size_t output_width = output_shape[2];
 
   // Need to resize around the center of the image to avoid distortion.
   double in_center_h = static_cast<double>(input_height - 1) / 2.0;
@@ -2638,7 +2676,6 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
       rewriter.getI64ArrayAttr({output_height, output_width});
   StringAttr resize_mode = rewriter.getStringAttr(mode);
 
-  Value val;
   if (input_is_qtype) {
     // Magic shift number TFLite resize bilinear use
     // reference: tensorflow/lite/kernels/internal/reference/reference_ops.h
@@ -2733,13 +2770,13 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
       auto cast_op = rewriter.create<tosa::CastOp>(op->getLoc(), output_type,
                                                    select_op.getResult());
 
-      val = cast_op.getResult();
+      return cast_op.getResult();
     } else if (mode == "NEAREST_NEIGHBOR") {
       auto resize_op = rewriter.create<tosa::ResizeOp>(
           op->getLoc(), output_type, input_value, output_size, stride, offset,
           shift_attr, rewriter.getF32ArrayAttr({0.0, 0.0}),
           rewriter.getF32ArrayAttr({0.0, 0.0}), resize_mode);
-      val = resize_op.getResult();
+      return resize_op.getResult();
     } else {
       op->emitOpError(
           "OpResize: only support BILINEAR or NEAREST_NEIGHBOR mode");
@@ -2752,9 +2789,8 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
         rewriter.getI32IntegerAttr(0),
         rewriter.getF32ArrayAttr({fp_stride_y, fp_stride_x}),
         rewriter.getF32ArrayAttr({fp_offset_y, fp_offset_x}), resize_mode);
-    val = resize_op.getResult();
+    return resize_op.getResult();
   }
-  return val;
 }
 
 // Lowers Quantize to a sequence of TOSA quantization ops.
@@ -2857,8 +2893,8 @@ llvm::Optional<Value> convertFakeQuantOp(PatternRewriter& rewriter,
   int32_t qmin = narrow_range ? 1 : 0;
 
   float nudged_min, nudged_max, nudged_scale;
-  tensorflow::Nudge(min, max, qmin, qmax, &nudged_min, &nudged_max,
-                    &nudged_scale);
+  tensorflow_nudge(min, max, qmin, qmax, &nudged_min, &nudged_max,
+                   &nudged_scale);
 
   Value cst_min = getTosaConstTensorSingleF32(rewriter, op, nudged_min);
   Value cst_max = getTosaConstTensorSingleF32(rewriter, op, nudged_max);
@@ -2984,16 +3020,12 @@ llvm::Optional<Value> convertTFConv2DCommon(
 llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
                                       Value result_value, Value params_value,
                                       Value indices_value, int32_t batch_dims,
-                                      int32_t axis)
-
-{
+                                      int32_t axis) {
   auto result_type = result_value.getType().dyn_cast<RankedTensorType>();
   auto params_type = params_value.getType().dyn_cast<RankedTensorType>();
   auto indices_type = indices_value.getType().dyn_cast<RankedTensorType>();
 
-  if (!result_type) return llvm::None;
-  if (!params_type) return llvm::None;
-  if (!indices_type) return llvm::None;
+  if (!result_type || !params_type || !indices_type) return llvm::None;
 
   // batch_dims indicates the number of batch dimensions in params and
   // indices axis indicates the axis at which the gather indexing is
@@ -3053,10 +3085,10 @@ llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   //
   //  [Batch, LeftChannels, Non-Batch-Indices, RightChannels]
 
-  int32_t N = 1, W = 1, K = 1, C = 1;
+  int N = 1, W = 1, K = 1, C = 1;
 
-  size_t params_rank = params_type.getShape().size();
-  size_t indices_rank = indices_type.getShape().size();
+  int params_rank = params_type.getShape().size();
+  int indices_rank = indices_type.getShape().size();
 
   if (!(batch_dims <= indices_rank)) {
     op->emitOpError("Batch_dims must be <= indices_rank for a valid gather op");
@@ -3244,9 +3276,7 @@ llvm::Optional<Value> convertGatherNdOp(PatternRewriter& rewriter,
   auto params_type = params_value.getType().dyn_cast<RankedTensorType>();
   auto indices_type = indices_value.getType().dyn_cast<RankedTensorType>();
 
-  if (!result_type) return llvm::None;
-  if (!params_type) return llvm::None;
-  if (!indices_type) return llvm::None;
+  if (!result_type || !params_type || !indices_type) return llvm::None;
 
   // N: number of batches
   // Always 1 for GatherND
@@ -3311,10 +3341,10 @@ llvm::Optional<Value> convertGatherNdOp(PatternRewriter& rewriter,
   //
   // Where, Indices is indices.shape[0:ND-1]
 
-  int32_t N = 1, W = 1, K = 1, C = 1, ND = 1;
+  int N = 1, W = 1, K = 1, C = 1, ND = 1;
 
-  size_t params_rank = params_type.getShape().size();
-  size_t indices_rank = indices_type.getShape().size();
+  int params_rank = params_type.getShape().size();
+  int indices_rank = indices_type.getShape().size();
 
   ND = indices_type.getShape()[indices_rank - 1];
 
@@ -3411,10 +3441,8 @@ llvm::Optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
   auto on_value_type = on_value.getType().dyn_cast<RankedTensorType>();
   auto off_value_type = off_value.getType().dyn_cast<RankedTensorType>();
 
-  if (!result_type) return llvm::None;
-  if (!indices_type) return llvm::None;
-  if (!on_value_type) return llvm::None;
-  if (!off_value_type) return llvm::None;
+  if (!result_type || !indices_type || !on_value_type || !off_value_type)
+    return llvm::None;
 
   // OneHot operator creates a new tensor with shape indices.shape[:axis] +
   // [depth] + indices.shape[axis:] For each index in 'indices', it needs to be
@@ -3463,17 +3491,18 @@ llvm::Optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
     axis = indices_type.getRank();
   }
 
-  int32_t N = 1, W = 1, C = 1;
-  int32_t K = depth;
-  int32_t left_dim = 1, right_dim = 1;
+  int N = 1, W = 1, C = 1;
+  int K = depth;
+  int left_dim = 1, right_dim = 1;
 
   for (int32_t i = 0; i < indices_type.getRank(); i++) {
     int32_t dim = indices_type.getShape()[i];
     N *= dim;
-    if (i >= axis)
+    if (i >= axis) {
       right_dim *= dim;
-    else
+    } else {
       left_dim *= dim;
+    }
   }
 
   // Reshape on_value to [1, 1, 1]

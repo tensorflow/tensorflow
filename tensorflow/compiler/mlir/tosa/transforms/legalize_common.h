@@ -30,7 +30,6 @@ limitations under the License.
 
 namespace mlir {
 namespace tosa {
-constexpr char kOverrideZeropointAttrName[] = "override_zeropoint";
 
 // Lowers the Pack operator to TOSA.
 llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,

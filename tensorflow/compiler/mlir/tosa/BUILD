@@ -79,7 +79,6 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
-        "//tensorflow/core/kernels:fake_quant_ops",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",

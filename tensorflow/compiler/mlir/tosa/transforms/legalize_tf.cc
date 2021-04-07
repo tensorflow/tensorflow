@@ -1670,12 +1670,10 @@ LogicalResult ConvertTFResizeBilinearOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  bool align_corners = tf_resize_op.align_cornersAttr().getValue();
-  bool half_pixel_centers = tf_resize_op.half_pixel_centersAttr().getValue();
-
-  llvm::Optional<Value> result =
-      convertResizeOp(rewriter, op, output_type, tf_resize_op.images(),
-                      StringRef("BILINEAR"), align_corners, half_pixel_centers);
+  llvm::Optional<Value> result = convertResizeOp(
+      rewriter, op, output_type, tf_resize_op.images(), StringRef("BILINEAR"),
+      tf_resize_op.align_cornersAttr().getValue(),
+      tf_resize_op.half_pixel_centersAttr().getValue());
 
   if (!result) return failure();
 
@@ -1693,12 +1691,11 @@ LogicalResult ConvertTFResizeNearestNeighborOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  bool align_corners = tf_resize_op.align_cornersAttr().getValue();
-  bool half_pixel_centers = tf_resize_op.half_pixel_centersAttr().getValue();
-
-  llvm::Optional<Value> result = convertResizeOp(
-      rewriter, op, output_type, tf_resize_op.images(),
-      StringRef("NEAREST_NEIGHBOR"), align_corners, half_pixel_centers);
+  llvm::Optional<Value> result =
+      convertResizeOp(rewriter, op, output_type, tf_resize_op.images(),
+                      StringRef("NEAREST_NEIGHBOR"),
+                      tf_resize_op.align_cornersAttr().getValue(),
+                      tf_resize_op.half_pixel_centersAttr().getValue());
 
   if (!result) return failure();
 
@@ -1944,6 +1941,11 @@ LogicalResult ConvertTFLeakyReluOp::matchAndRewrite(
   //
   // But this alternative is not robust unless alpha meets those constraints.
 
+  if (!output_type.getElementType().isF32()) {
+    op->emitOpError("ConvertTFLeakyReluOp: only support F32");
+    return failure();
+  }
+
   FloatAttr tmpAttr = tf_leakyrelu_op.alphaAttr();
   // There is disagreement between the MLIR .td defaults and TF
   // documentation on 0.2 vs 0.3, but 0.2 will be used here.
@@ -1961,7 +1963,7 @@ LogicalResult ConvertTFLeakyReluOp::matchAndRewrite(
 
   auto a2_ge = rewriter.create<tosa::GreaterEqualOp>(
       op->getLoc(),
-      RankedTensorType::get(output_type.getShape(), rewriter.getIntegerType(1)),
+      RankedTensorType::get(output_type.getShape(), rewriter.getI1Type()),
       tf_leakyrelu_op.features(), const_zero);
 
   auto a3_select = rewriter.create<tosa::SelectOp>(

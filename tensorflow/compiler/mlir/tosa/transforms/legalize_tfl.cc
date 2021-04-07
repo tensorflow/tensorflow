@@ -1044,30 +1044,8 @@ LogicalResult ConvertTFLAveragePool2DOp::matchAndRewrite(
       return failure();
   }
 
-  if (input_type.getElementType().isa<UniformQuantizedType>()) {
-    // Search for attribute annotated by --tosa-convert-tfl-uint8 pass.
-    // This is needed in average pool2d to match TFLite rounding behavior.
-    IntegerAttr override_zeropoint_attr =
-        op->getAttrOfType<IntegerAttr>(kOverrideZeropointAttrName);
-    if (!override_zeropoint_attr) {
-      std::string msg =
-          std::string("Can't find attribute ") + kOverrideZeropointAttrName;
-      op->emitOpError(msg.c_str());
-      return failure();
-    }
-    int32_t override_zeropoint = override_zeropoint_attr.getInt();
-    tosa::UnaryOpQuantizationAttr quantAttr =
-        tosa::UnaryOpQuantizationAttr::get(
-            rewriter.getI32IntegerAttr(override_zeropoint),
-            rewriter.getI32IntegerAttr(override_zeropoint),
-            rewriter.getContext());
-    rewriter.replaceOpWithNewOp<tosa::AvgPool2dOp>(
-        op, output_type, tfl_avgpool_op.input(), kernel_size, stride, pad,
-        quantAttr);
-  } else {
-    rewriter.replaceOpWithNewOp<tosa::AvgPool2dOp>(
-        op, output_type, tfl_avgpool_op.input(), kernel_size, stride, pad);
-  }
+  rewriter.replaceOpWithNewOp<tosa::AvgPool2dOp>(
+      op, output_type, tfl_avgpool_op.input(), kernel_size, stride, pad);
   return success();
 }
 
@@ -2307,12 +2285,10 @@ LogicalResult ConvertTFLResizeBilinearOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  bool align_corners = tfl_resize_op.align_cornersAttr().getValue();
-  bool half_pixel_centers = tfl_resize_op.half_pixel_centersAttr().getValue();
-
-  llvm::Optional<Value> result =
-      convertResizeOp(rewriter, op, output_type, tfl_resize_op.input(),
-                      StringRef("BILINEAR"), align_corners, half_pixel_centers);
+  llvm::Optional<Value> result = convertResizeOp(
+      rewriter, op, output_type, tfl_resize_op.input(), StringRef("BILINEAR"),
+      tfl_resize_op.align_cornersAttr().getValue(),
+      tfl_resize_op.half_pixel_centersAttr().getValue());
 
   if (!result) return failure();
 
@@ -2330,12 +2306,11 @@ LogicalResult ConvertTFLResizeNearestNeighborOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
-  bool align_corners = tfl_resize_op.align_cornersAttr().getValue();
-  bool half_pixel_centers = tfl_resize_op.half_pixel_centersAttr().getValue();
-
-  llvm::Optional<Value> result = convertResizeOp(
-      rewriter, op, output_type, tfl_resize_op.input(),
-      StringRef("NEAREST_NEIGHBOR"), align_corners, half_pixel_centers);
+  llvm::Optional<Value> result =
+      convertResizeOp(rewriter, op, output_type, tfl_resize_op.input(),
+                      StringRef("NEAREST_NEIGHBOR"),
+                      tfl_resize_op.align_cornersAttr().getValue(),
+                      tfl_resize_op.half_pixel_centersAttr().getValue());
 
   if (!result) return failure();
 
@@ -2788,8 +2763,6 @@ LogicalResult ConvertTFLLeakyReluOp::matchAndRewrite(
     alpha = tmpAttr.getValueAsDouble();
   }
 
-  Value output;
-
   if (output_is_qtype) {
     // op1 = rescale(input)
     // rescaled_alpha = (alpha << alpha_shift) // Remains within int32 range
@@ -2829,11 +2802,10 @@ LogicalResult ConvertTFLLeakyReluOp::matchAndRewrite(
         rewriter, op, output_type, tfl_leakyrelu_op.input(), scale_identity,
         input_qtype.getZeroPoint(), output_qtype.getZeroPoint(), true);
 
-    auto op5_select = rewriter.create<tosa::SelectOp>(
-        op->getLoc(), output_type, op2_ge, op4_rescale_identity_in,
-        op3_rescale_alpha_in);
+    rewriter.replaceOpWithNewOp<tosa::SelectOp>(
+        op, output_type, op2_ge, op4_rescale_identity_in, op3_rescale_alpha_in);
 
-    output = op5_select.getResult();
+    return success();
 
   } else {
     Value const_zero = getTosaConstTensorSingleF32(rewriter, op, 0.0);
@@ -2848,16 +2820,11 @@ LogicalResult ConvertTFLLeakyReluOp::matchAndRewrite(
                               rewriter.getIntegerType(1)),
         tfl_leakyrelu_op.input(), const_zero);
 
-    auto op3_select = rewriter.create<tosa::SelectOp>(
-        op->getLoc(), output_type, op2_ge, tfl_leakyrelu_op.input(),
-        op1_mul.getResult());
+    rewriter.replaceOpWithNewOp<tosa::SelectOp>(
+        op, output_type, op2_ge, tfl_leakyrelu_op.input(), op1_mul.getResult());
 
-    output = op3_select.getResult();
+    return success();
   }
-
-  rewriter.replaceOp(op, {output});
-
-  return success();
 }
 
 LogicalResult ConvertTFLNegOp::matchAndRewrite(
