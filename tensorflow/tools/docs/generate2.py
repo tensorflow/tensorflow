@@ -43,12 +43,20 @@ from tensorflow_docs.api_generator import doc_generator_visitor
 from tensorflow_docs.api_generator import generate_lib
 
 from tensorflow.python.framework import ops
-from tensorflow.python.types import doc_typealias
 from tensorflow.python.util import tf_export
 from tensorflow.python.util import tf_inspect
 
 # Caution: the google and oss versions of this import are different.
 import base_dir
+
+# pylint: disable=g-import-not-at-top
+try:
+  from tensorflow.python.types import doc_typealias
+  _EXTRA_DOCS = getattr(doc_typealias, "_EXTRA_DOCS", {})
+  del doc_typealias
+except ImportError:
+  _EXTRA_DOCS = {}
+# pylint: enable=g-import-not-at-top
 
 # `tf` has an `__all__` that doesn't list important things like `keras`.
 # The doc generator recognizes `__all__` as the list of public symbols.
@@ -222,7 +230,7 @@ def build_docs(output_dir, code_url_prefix, search_hints, gen_report):
       visitor_cls=TfExportAwareVisitor,
       private_map=_PRIVATE_MAP,
       gen_report=gen_report,
-      extra_docs=doc_typealias._EXTRA_DOCS  # pylint: disable=protected-access
+      extra_docs=_EXTRA_DOCS
   )
 
   doc_generator.build(output_dir)
