@@ -326,6 +326,7 @@ tf_cc_test_mkl(
     size = "small",
     srcs = ["mkl_fused_batch_norm_op_test.cc"],
     linkstatic = 1,
+    tags = ["no_rocm"], # fails on AMD Rome CPUs as of 2021-03-29
     deps = [
         ":mkl_conv_op",
         ":mkl_fused_batch_norm_op",

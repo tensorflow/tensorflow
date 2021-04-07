@@ -1006,6 +1006,7 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
         "notsan",  # b/177098062
+        "no_rocm", # broken in 4.1
     ],
     deps = [
         ":collective_all_reduce_strategy",
