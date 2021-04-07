@@ -4635,7 +4635,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_reorder_op",
     prefix = "sparse_reorder_op",
-    deps = SPARSE_DEPS,
+    deps = SPARSE_DEPS + if_cuda_or_rocm([
+        ":gpu_prim_hdrs",
+        ":gpu_prim_helpers",
+    ]),
 )
 
 tf_kernel_library(
