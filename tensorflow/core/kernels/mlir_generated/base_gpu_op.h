@@ -54,6 +54,9 @@ namespace tensorflow {
 #define GENERATE_BINARY_GPU_KERNEL2(tf_op, input_type, output_type) \
   GENERATE_BINARY_KERNEL2(tf_op, GPU, input_type, output_type)
 
+#define GENERATE_AND_REGISTER_SELECT_GPU_KERNEL(tf_op, input_type) \
+  GENERATE_AND_REGISTER_SELECT_KERNEL(tf_op, GPU, input_type)
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_BASE_GPU_OP_H_

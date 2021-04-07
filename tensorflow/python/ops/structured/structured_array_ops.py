@@ -19,8 +19,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged.row_partition import RowPartition
 from tensorflow.python.ops.structured.structured_tensor import StructuredTensor
 from tensorflow.python.util import deprecation
@@ -92,6 +94,41 @@ def expand_dims_v2(input, axis, name=None):  # pylint: disable=redefined-builtin
   return _expand_dims_impl(input, axis, name=name)
 
 
+# pylint: disable=protected-access
+def zeros_like_object(st, dtype=None):
+  """Replace every object with a zero.
+
+  Example:
+  >>> st = StructuredTensor.from_pyval([{"x":[3]}, {"x":[4,5]}])
+  >>> zeros_like_object(st)
+  <tf.Tensor: shape=(2,), dtype=int32, numpy=array([0, 0], dtype=int32)>
+  >>> st = StructuredTensor.from_pyval([[{"x":[3]}], [{"x":[4,5]}, {"x":[]}]])
+  >>> zeros_like_object(st, dtype=tf.float32)
+  <tf.RaggedTensor [[0.0], [0.0, 0.0]]>
+
+  Args:
+    st: a structured tensor.
+    dtype: the dtype of the resulting zeros.
+
+  Returns:
+    a tensor of zeros of the same shape.
+  """
+  if dtype is None:
+    dtype = dtypes.int32
+  if not st._row_partitions:
+    if st._nrows is not None:
+      return array_ops.zeros([st._nrows], dtype)  # vector.
+    else:
+      return array_ops.zeros([], dtype)  # scalar.
+  # 2D and up.
+  last_row_partition = st._row_partitions[-1]
+
+  result = ragged_tensor.RaggedTensor._from_nested_row_partitions(
+      array_ops.zeros(last_row_partition.nvals(), dtype=dtype),
+      st._row_partitions)
+  return result
+
+
 def _expand_dims_impl(st, axis, name=None):  # pylint: disable=redefined-builtin
   """Creates a StructuredTensor with a length 1 axis inserted at index `axis`.
 
@@ -123,8 +160,7 @@ def _expand_dims_impl(st, axis, name=None):  # pylint: disable=redefined-builtin
       axis, st.rank + 1, axis_name='axis', ndims_name='rank(st)')
   with ops.name_scope(name, 'ExpandDims', [st, axis]):
     new_fields = {
-        k: array_ops.expand_dims(v, axis)
-        for (k, v) in st._fields.items()
+        k: array_ops.expand_dims(v, axis) for (k, v) in st._fields.items()
     }
     new_shape = st.shape[:axis] + (1,) + st.shape[axis:]
     new_row_partitions = _expand_st_row_partitions(st, axis)

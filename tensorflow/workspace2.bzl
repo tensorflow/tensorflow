@@ -45,6 +45,7 @@ load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
+load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
 load("@tf_toolchains//toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 load("@tf_toolchains//toolchains/remote:configure.bzl", "remote_execution_configure")
 load("@tf_toolchains//toolchains/clang6:repo.bzl", "clang6_configure")
@@ -126,11 +127,11 @@ def _tf_repositories():
     # and update the sha256 with the result.
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "95b778a920a1a79efdb11bf68dda9b4fd16779a1a0210438582e750f9bfb6351",
-        strip_prefix = "XNNPACK-fb8d1f1b2bb2e32c141564528a39748c4631b453",
+        sha256 = "b7cfab9fe1b5ce6b92d732261f8d044b1c21bcc0ef31b7d3ee31edec9aa5e7de",
+        strip_prefix = "XNNPACK-f0cb70a1ae68c4b99047b7c5d26c40fa3a65f0e4",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/fb8d1f1b2bb2e32c141564528a39748c4631b453.zip",
-            "https://github.com/google/XNNPACK/archive/fb8d1f1b2bb2e32c141564528a39748c4631b453.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/f0cb70a1ae68c4b99047b7c5d26c40fa3a65f0e4.zip",
+            "https://github.com/google/XNNPACK/archive/f0cb70a1ae68c4b99047b7c5d26c40fa3a65f0e4.zip",
         ],
     )
 
@@ -180,11 +181,11 @@ def _tf_repositories():
     tf_http_archive(
         name = "mkl_dnn_v1",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "53e1c2f9e9f735e9ee7a8dd3e00d5159da16c914f92f6700ceb7e98857ce9ebe",
-        strip_prefix = "oneDNN-3d1e248f293cb962eb73bfc1298a0c66a3ad3298",
+        sha256 = "4d655c0751ee6439584ef5e3d465953fe0c2f4ee2700bc02699bdc1d1572af0d",
+        strip_prefix = "oneDNN-2.2",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/3d1e248f293cb962eb73bfc1298a0c66a3ad3298.tar.gz",
-            "https://github.com/oneapi-src/oneDNN/archive/3d1e248f293cb962eb73bfc1298a0c66a3ad3298.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v2.2.tar.gz",
+            "https://github.com/oneapi-src/oneDNN/archive/v2.2.tar.gz",
         ],
     )
 
@@ -961,16 +962,6 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "rules_cc",
-        sha256 = "cf3b76a90c86c0554c5b10f4b160f05af71d252026b71362c4674e2fb9936cf9",
-        strip_prefix = "rules_cc-01d4a48911d5e7591ecb1c06d3b8af47fe872371",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_cc/archive/01d4a48911d5e7591ecb1c06d3b8af47fe872371.zip",
-            "https://github.com/bazelbuild/rules_cc/archive/01d4a48911d5e7591ecb1c06d3b8af47fe872371.zip",
-        ],
-    )
-
-    tf_http_archive(
         name = "rules_python",
         sha256 = "aa96a691d3a8177f3215b14b0edc9641787abaaa30363a080165d06ab65e1161",
         urls = [
@@ -1116,6 +1107,8 @@ def workspace():
     # don't already exist (at least if the external repository macros were
     # written according to common practice to query native.existing_rule()).
     _tf_repositories()
+
+    tfrt_dependencies()
 
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.

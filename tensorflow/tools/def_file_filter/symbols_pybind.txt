@@ -136,7 +136,7 @@ tensorflow::TensorToNdarray
 tensorflow::detail::PyDecrefDeleter
 tensorflow::make_safe
 
-[//tensorflow/python:python_op_gen] # python_op_gen
+[//tensorflow/python/framework:python_op_gen] # python_op_gen
 tensorflow::GetPythonWrappers
 
 [//tensorflow/python/eager:pywrap_tfe_lib] # tfe

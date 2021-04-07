@@ -26,7 +26,7 @@ package(
     default_visibility = [
         "//tensorflow/core/kernels:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 bool_flag(
@@ -235,6 +235,7 @@ tf_kernel_library(
     ]) + if_mlir_generated_experimental_kernels_enabled([
         "gpu_op_floor_div.cc",
         "gpu_op_squared_difference.cc",
+        "gpu_op_select.cc",
     ]),
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
@@ -267,6 +268,7 @@ tf_kernel_library(
     ]) + if_mlir_generated_experimental_kernels_enabled([
         ":gpu_floor_div_kernels",
         ":gpu_squared_difference_kernels",
+        ":gpu_select_v2_kernels",
     ]),
 )
 
@@ -1038,6 +1040,22 @@ gpu_kernel_library(
     ],
     # TODO(b/178388085): Enable unrolling after vectorization is fixed.
     # unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_select_v2_kernels",
+    op = "select_v2",
+    tile_size = "256",
+    types = [
+        "i1",
+        "i32",
+        "i64",
+        "f16",
+        "f32",
+        "f64",
+        "c64",
+        "c128",
+    ],
 )
 
 cpu_kernel_library(

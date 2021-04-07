@@ -74,7 +74,8 @@ TensorFlow coding style.
     [tensorflow/python](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python).
     TensorFlow has passed version 1.0 and hence cannot make
     non-backward-compatible API changes without a major release. Reviewers of
-    your pull request will comment on any API compatibility issues.
+    your pull request will comment on any API compatibility issues
+    [following API review practices](https://github.com/tensorflow/community/blob/master/governance/api-reviews.md).
 *   When you contribute a new feature to TensorFlow, the maintenance burden is
     (by default) transferred to the TensorFlow team. This means that the benefit
     of the contribution must be compared against the cost of maintaining the

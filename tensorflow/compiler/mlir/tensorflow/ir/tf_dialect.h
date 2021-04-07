@@ -28,9 +28,9 @@ namespace TF {
 class ResourceType;
 class VariantType;
 
-class TensorFlowDialect : public Dialect {
+class TensorFlowDialect final : public Dialect {
  public:
-  TensorFlowDialect(MLIRContext *context);
+  explicit TensorFlowDialect(MLIRContext *context);
 
   static StringRef getDialectNamespace() { return "tf"; }
 

@@ -172,6 +172,26 @@ func @fakeQuantForActivationNoDuplication(tensor<8xf32>) -> (tensor<8x!quant.uni
 // CHECK:  return %1
 }
 
+// CHECK-LABEL: WrappedFakeQuantFolded
+func @WrappedFakeQuantFolded() -> tensor<8xf32> {
+  %in = constant dense<0.0> : tensor<8xf32>
+  %min = constant dense<0.0> : tensor<f32>
+  %max = constant dense<255.0> : tensor<f32>
+  %mini = "tf.Identity"(%min) : (tensor<f32>) -> tensor<f32>
+  %maxi = "tf.Identity"(%max) : (tensor<f32>) -> tensor<f32>
+  %rst = "tfl.custom_tf"(%in, %mini, %maxi) ( {
+  ^bb0(%arg1: tensor<8xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>):
+    %2 = "tf.FakeQuantWithMinMaxVars"(%arg1, %arg2, %arg3) {num_bits = 3, narrow_range = false} : (tensor<8xf32>, tensor<f32>, tensor<f32>) -> tensor<8xf32>
+    "tfl.yield"(%2) : (tensor<8xf32>) -> ()
+  }) {num_bits = 3, narrow_range = false} :  (tensor<8xf32>, tensor<f32>, tensor<f32>) -> tensor<8xf32>
+  return %rst : tensor<8xf32>
+
+// CHECK: %[[CONSTANT:.*]] = constant dense<0.000000e+00> : tensor<8xf32>
+// CHECK: %[[QUANTIZE:.*]] = "tfl.quantize"(%[[CONSTANT]]) {qtype = tensor<8x!quant.uniform<u8:f32, 1.000000e+00>>}
+// CHECK: %[[DEQUANTIZE:.*]] = "tfl.dequantize"(%[[QUANTIZE]])
+// CHECK: return %[[DEQUANTIZE]] : tensor<8xf32>
+}
+
 // CHECK-LABEL: fakeQuantFolded
 func @fakeQuantFolded() -> (tensor<8xf32>) {
   %in = constant dense<0.0> : tensor<8xf32>
@@ -579,6 +599,18 @@ func @strided_slice_with_constant_attributes(%arg0: tensor<10x10x10xf32>, %arg1:
   // CHECK-DAG: [[END:%cst.*]] = constant dense<[0, 10, 10]> : tensor<3xi32>
   // CHECK-DAG: [[STRIDES:%cst.*]] = constant dense<1> : tensor<3xi32>
   // CHECK-NEXT: "tf.StridedSlice"(%arg0, [[BEGIN]], [[END]], [[STRIDES]]) {begin_mask = 6 : i64, ellipsis_mask = 0 : i64, end_mask = 6 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<10x10x10xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<10x10xf32>
+}
+
+// CHECK-LABEL: @StridedSliceEllipsisAndNewAxisMaskBothSet
+func @StridedSliceEllipsisAndNewAxisMaskBothSet(%arg0: tensor<21x15x7xf32>) -> tensor<21x15x2xf32> {
+  %cst = constant dense<0> : tensor<2xi32>
+  %cst_0 = constant dense<1> : tensor<2xi32>
+  %0 = "tf.StridedSlice"(%arg0, %cst, %cst, %cst_0) {begin_mask = 0 : i64, ellipsis_mask = 1 : i64, end_mask = 0 : i64, new_axis_mask = 2 : i64, shrink_axis_mask = 0 : i64} : (tensor<21x15x7xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<21x15x2xf32>
+  return %0 : tensor<21x15x2xf32>
+
+  // CHECK: %[[CST:.*]] = constant dense<0> : tensor<2xi32>
+  // CHECK: %[[CST_0:.*]] = constant dense<1> : tensor<2xi32>
+  // CHECK: %[[STRIDED_SLICE:.*]] = "tf.StridedSlice"(%arg0, %[[CST]], %[[CST]], %[[CST_0]]) {begin_mask = 0 : i64, ellipsis_mask = 1 : i64, end_mask = 0 : i64, new_axis_mask = 2 : i64, shrink_axis_mask = 0 : i64} : (tensor<21x15x7xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<21x15x2xf32>
 }
 
 func @broadcast_to_f32_low_dim(%arg0: tensor<3xf32>, %arg1: tensor<2xi32>) -> tensor<3x3xf32> {

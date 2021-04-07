@@ -38,7 +38,7 @@ PYBIND11_MODULE(_nn_ops, m) {
             name = "Relu";
           }
           MaybeRaiseRegisteredFromStatus(
-              ops::Relu(ctx, {a}, absl::MakeSpan(outputs), name));
+              ops::Relu(ctx, a, absl::MakeSpan(outputs), name));
           return outputs[0];
         });
 
@@ -52,7 +52,7 @@ PYBIND11_MODULE(_nn_ops, m) {
           name = "SparseSoftmaxCrossEntropyWithLogits";
         }
         MaybeRaiseRegisteredFromStatus(ops::SparseSoftmaxCrossEntropyWithLogits(
-            ctx, {features, labels}, absl::MakeSpan(outputs), name));
+            ctx, features, labels, absl::MakeSpan(outputs), name));
         return outputs[0];  // Only return the loss vals, not the backprop.
       });
 }

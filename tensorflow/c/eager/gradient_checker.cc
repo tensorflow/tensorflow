@@ -84,7 +84,7 @@ Status RunAndMaybeSum(AbstractContext* ctx, Model forward,
 
   // Reduce sum the output on all dimensions.
   TF_RETURN_IF_ERROR(
-      ops::Sum(ctx, {model_out.get(), sum_dims.get()}, outputs, "sum_output"));
+      ops::Sum(ctx, model_out.get(), sum_dims.get(), outputs, "sum_output"));
   return Status::OK();
 }
 // ========================= End Helper Functions==============================
@@ -175,13 +175,13 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
     AbstractTensorHandlePtr fMinus(f_outputs[0]);
 
     // Take Difference of both estimates: (f(theta + eps) - f(theta - eps)).
-    TF_RETURN_IF_ERROR(ops::Sub(ctx, {fPlus.get(), fMinus.get()},
+    TF_RETURN_IF_ERROR(ops::Sub(ctx, fPlus.get(), fMinus.get(),
                                 absl::MakeSpan(f_outputs), "sub_top"));
     AbstractTensorHandlePtr fDiff(f_outputs[0]);
 
     // Calculate using the difference quotient definition:
     // (f(theta + eps) - f(theta - eps)) / (2 * eps).
-    TF_RETURN_IF_ERROR(ops::Div(ctx, {fDiff.get(), two_eps.get()},
+    TF_RETURN_IF_ERROR(ops::Div(ctx, fDiff.get(), two_eps.get(),
                                 absl::MakeSpan(f_outputs), "diff_quotient"));
     AbstractTensorHandlePtr diff_quotient(f_outputs[0]);
 

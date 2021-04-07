@@ -214,7 +214,23 @@ TEST(OpVersionTest, VersioningTanhTest) {
 }
 
 TEST(OpVersionTest, VersioningStridedSliceTest) {
-  SimpleVersioningTest(BuiltinOperator_STRIDED_SLICE);
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_STRIDED_SLICE,
+      .input_types = std::vector<TensorType>{TensorType_INT8},
+  };
+  fake_op_sig.options.strided_slice.ellipsis_mask = 0;
+  fake_op_sig.options.strided_slice.new_axis_mask = 2;
+  fake_op_sig.options.strided_slice.num_dims = 5;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 6);
+
+  fake_op_sig.options.strided_slice.new_axis_mask = 0;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+
+  fake_op_sig.options.strided_slice.num_dims = 4;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig.input_types = std::vector<TensorType>{TensorType_UINT8};
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 
 TEST(OpVersionTest, VersioningSpaceToDepthTest) {

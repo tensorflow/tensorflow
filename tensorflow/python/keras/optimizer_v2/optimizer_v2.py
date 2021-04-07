@@ -478,7 +478,18 @@ class OptimizerV2(trackable.Trackable):
     return grads_and_vars
 
   def _aggregate_gradients(self, grads_and_vars):
-    """Called in `apply_gradients` to aggregate gradients across devices."""
+    """Called in `apply_gradients` to aggregate gradients across devices.
+
+    Note that user subclasses may override this, so the interface should not be
+    changed.
+
+    Args:
+      grads_and_vars: List of (gradient, variable) pairs.
+
+    Returns:
+      A list of (aggregrated_gradient, variable) pairs. By default, this calls
+      `self.gradient_aggregator`.
+    """
     return self.gradient_aggregator(grads_and_vars)
 
   def _transform_gradients(self, grads_and_vars):
@@ -1363,11 +1374,11 @@ class OptimizerV2(trackable.Trackable):
              self._distribution_strategy)):
       initializer = trackable.CheckpointInitialValueCallable(
           checkpoint_position=slot_variable_position)
-      # Shape is unknown until we read the checkpoint value.
       slot_variable = self.add_slot(
           var=variable,
           initializer=initializer,
-          slot_name=slot_name)
+          slot_name=slot_name,
+          shape=slot_variable_position.value_shape())
       # Slot variables are not owned by any one object (because we don't want to
       # save the slot variable if the optimizer is saved without the non-slot
       # variable, or if the non-slot variable is saved without the optimizer;

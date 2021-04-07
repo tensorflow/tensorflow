@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"  // from @llvm-project
+#include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 
@@ -49,8 +50,10 @@ class GpuKernelToNVVMPass
     GPUModuleOp m = getOperation();
 
     RewritePatternSet patterns(&getContext());
-    mlir::LowerToLLVMOptions llvm_opts;
-    llvm_opts.indexBitwidth = 32;
+    mlir::LowerToLLVMOptions llvm_opts(
+        m.getContext(),
+        DataLayout(cast<DataLayoutOpInterface>(m.getOperation())));
+    llvm_opts.overrideIndexBitwidth(32);
     LLVMTypeConverter converter(m.getContext(), llvm_opts);
     populateStdToLLVMConversionPatterns(converter, patterns);
     populateGpuToNVVMConversionPatterns(converter, patterns);

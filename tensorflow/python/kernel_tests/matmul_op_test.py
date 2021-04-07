@@ -37,6 +37,17 @@ from tensorflow.python.platform import test as test_lib
 # os.environ["TF_MATMUL_AUTOTUNE_ENABLE"] = "1" to enable it.
 
 
+class MatMulMixedType(test_lib.TestCase):
+  """Simple test for tf.matmul where Tout is different from T."""
+
+  def testBatchMatMulV3OutputType(self):
+    a = np.array([[1, 2], [3, 4]], dtype=np.int8)
+    b = np.array([[1, 2], [3, 4]], dtype=np.int8)
+    c = math_ops.batch_mat_mul_v3(a, b, adj_y=True, Tout=np.int32)
+    self.assertAllEqual((2, 2), c.shape)
+    self.assertAllEqual([[5, 11], [11, 25]], c)
+
+
 class MatVecTest(test_lib.TestCase):
   """Simple test for matvec, which is sugar on top of matmul."""
 

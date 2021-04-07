@@ -38,6 +38,9 @@ limitations under the License.
 
 namespace tensorflow {
 
+using InitializerSerializer =
+    lookup::InitializableLookupTable::InitializerSerializer;
+
 // Kernel to initialize a look table given a key and value tensors.
 // After this operation, the table becomes read-only.
 class InitializeTableOp : public OpKernel {
@@ -143,10 +146,11 @@ class InitializeTableFromTextFileOp : public OpKernel {
     if (ctx->track_allocations()) {
       memory_used_before = table->MemoryUsed();
     }
-    OP_REQUIRES_OK(ctx, lookup::InitializeTableFromTextFile(
-                            vocab_filename, vocab_size_, delimiter_, key_index_,
-                            value_index_, offset_, ctx->env(),
-                            AsGraphDefFunc(vocab_filename_tensor), table));
+    OP_REQUIRES_OK(
+        ctx, lookup::InitializeTableFromTextFile(
+                 vocab_filename, vocab_size_, delimiter_, key_index_,
+                 value_index_, offset_, ctx->env(),
+                 MakeInitializerSerializer(vocab_filename_tensor), table));
     if (ctx->track_allocations()) {
       ctx->record_persistent_memory_allocation(table->MemoryUsed() -
                                                memory_used_before);
@@ -154,29 +158,29 @@ class InitializeTableFromTextFileOp : public OpKernel {
   }
 
  private:
-  lookup::InitializableLookupTable::InitializerAsGraphDefFunc AsGraphDefFunc(
+  std::unique_ptr<InitializerSerializer> MakeInitializerSerializer(
       Tensor vocab_filename) {
-    return [vocab_filename, vocab_size = vocab_size_, delimiter = delimiter_,
-            key_index = key_index_, value_index = value_index_,
-            offset = offset_](GraphDefBuilder* builder, Node* table,
-                              Node** out) {
-      Node* vocab_filename_node =
-          ops::SourceOp("Const", builder->opts()
-                                     .WithAttr("dtype", vocab_filename.dtype())
-                                     .WithAttr("value", vocab_filename));
-      std::string delimiter_string(1, delimiter);
-      Node* import_table = ops::BinaryOp(
-          "InitializeTableFromTextFileV2", table, vocab_filename_node,
-          builder->opts()
-              .WithAttr("vocab_size", vocab_size)
-              .WithAttr("key_index", key_index)
-              .WithAttr("value_index", value_index)
-              .WithAttr("offset", offset)
-              .WithAttr("delimiter", delimiter_string));
-      *out = ops::UnaryOp("Identity", table,
-                          builder->opts().WithControlInput(import_table));
-      return Status::OK();
-    };
+    return absl::make_unique<InitializerSerializer>(
+        [vocab_filename, vocab_size = vocab_size_, delimiter = delimiter_,
+         key_index = key_index_, value_index = value_index_,
+         offset = offset_](GraphDefBuilder* builder, Node* table, Node** out) {
+          Node* vocab_filename_node = ops::SourceOp(
+              "Const", builder->opts()
+                           .WithAttr("dtype", vocab_filename.dtype())
+                           .WithAttr("value", vocab_filename));
+          std::string delimiter_string(1, delimiter);
+          Node* import_table = ops::BinaryOp(
+              "InitializeTableFromTextFileV2", table, vocab_filename_node,
+              builder->opts()
+                  .WithAttr("vocab_size", vocab_size)
+                  .WithAttr("key_index", key_index)
+                  .WithAttr("value_index", value_index)
+                  .WithAttr("offset", offset)
+                  .WithAttr("delimiter", delimiter_string));
+          *out = ops::UnaryOp("Identity", table,
+                              builder->opts().WithControlInput(import_table));
+          return Status::OK();
+        });
   }
 
   mutex mu_;

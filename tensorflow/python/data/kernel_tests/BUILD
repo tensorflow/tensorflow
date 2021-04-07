@@ -4,7 +4,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-or
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_py_test(
@@ -474,7 +474,8 @@ tf_py_test(
     name = "map_test",
     size = "small",
     srcs = ["map_test.py"],
-    shard_count = 16,
+    shard_count = 19,
+    tags = ["notsan"],  # TODO(b/183962015)
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -511,7 +512,13 @@ cuda_py_test(
     size = "small",
     srcs = ["memory_cleanup_test.py"],
     shard_count = 2,
-    tags = ["notsan"],  # TODO(b/144706539)
+    tags = [
+        "no_cuda_asan",  # TODO(b/183963686)
+        "notsan",  # TODO(b/144706539)
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # TODO(b/183963686)
+    ],
     deps = [
         ":test_base",
         "//tensorflow/core:protos_all_py",
@@ -531,7 +538,6 @@ cuda_py_test(
     tags = [
         "no_gpu",  # TODO(b/141255188)
         "no_oss",
-        "no_tfrt",  # TODO(b/183398908)
         "no_windows_gpu",
     ],
     deps = [

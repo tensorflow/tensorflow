@@ -70,6 +70,9 @@ option(TFLITE_ENABLE_GPU "Enable GPU" OFF)
 # This is currently not supported.
 option(TFLITE_ENABLE_FLEX "Enable SELECT_TF_OPS" OFF) # TODO: Add support
 option(TFLITE_ENABLE_XNNPACK "Enable XNNPACK backend" ON)
+
+option(TFLITE_KERNEL_TEST "Enable tflite kernel unit test" OFF)
+
 set(CMAKE_CXX_STANDARD 14)  # Some components require C++14.
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(_TFLITE_ENABLE_NNAPI "${TFLITE_ENABLE_NNAPI}")
@@ -216,6 +219,10 @@ if(TFLITE_ENABLE_GPU)
     FILTER "(_test|gl_interop|gpu_api_delegate|egl_sync)\\.(cc|h)$"
   )
   populate_tflite_source_vars(
+    "delegates/gpu/cl/default" TFLITE_DELEGATES_GPU_CL_DEFAULT_SRCS
+    FILTER "(_test)\\.(cc|h)$"
+  )
+  populate_tflite_source_vars(
     "delegates/gpu/cl/kernels" TFLITE_DELEGATES_GPU_CL_KERNELS_SRCS
     FILTER "(_test)\\.(cc|h)$"
   )
@@ -265,6 +272,7 @@ if(TFLITE_ENABLE_GPU)
     ${TFLITE_SOURCE_DIR}/delegates/gpu/delegate.cc
     ${TFLITE_SOURCE_DIR}/experimental/acceleration/compatibility/android_info.cc
     ${TFLITE_DELEGATES_GPU_CL_SRCS}
+    ${TFLITE_DELEGATES_GPU_CL_DEFAULT_SRCS}
     ${TFLITE_DELEGATES_GPU_CL_KERNELS_SRCS}
     ${TFLITE_DELEGATES_GPU_COMMON_DEFAULT_SRCS}
     ${TFLITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_SRCS}
@@ -420,6 +428,12 @@ target_compile_options(tensorflow-lite
   PRIVATE ${TFLITE_TARGET_PRIVATE_OPTIONS}
 )
 add_library(tensorflow::tensorflowlite ALIAS tensorflow-lite)
+
+# The kernel tests.
+if(TFLITE_KERNEL_TEST)
+  enable_testing()
+  add_subdirectory(${TFLITE_SOURCE_DIR}/kernels)
+endif()
 
 # The benchmark tool.
 add_subdirectory(${TFLITE_SOURCE_DIR}/tools/benchmark)

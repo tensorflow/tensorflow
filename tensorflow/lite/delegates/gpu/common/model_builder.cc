@@ -1673,6 +1673,35 @@ class ReLUOperationParser : public TFLiteOperationParser {
   const int clip_;
 };
 
+class ResamplerOperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    return CheckInputsOutputs(context, tflite_node,
+                              /*runtime_inputs=*/2, /*outputs=*/1);
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    RETURN_IF_ERROR(reader->AddInput(node, 0));  // src
+    RETURN_IF_ERROR(reader->AddInput(node, 1));  // warp
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+
+    node->operation.type = ToString(OperationType::RESAMPLER);
+
+    auto src_shape = graph->FindInputs(node->id)[0]->tensor.shape;
+    auto warp_shape = graph->FindInputs(node->id)[1]->tensor.shape;
+
+    auto output_value = graph->FindOutputs(node->id)[0];
+    output_value->tensor.shape =
+        BHWC(src_shape.b, warp_shape.h, warp_shape.w, src_shape.c);
+    return absl::OkStatus();
+  }
+};
+
 class ReshapeOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
@@ -2005,23 +2034,73 @@ class SpaceToDepthOperationParser : public TFLiteOperationParser {
   }
 };
 
-class SplitVOperationParser : public TFLiteOperationParser {
+class SplitOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    const TfLiteSplitVParams* split_params;
-    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &split_params));
-    if (split_params->num_splits == 1) {
-      return absl::InvalidArgumentError(
-          "SplitV with num_splits = 1 is a no-op.");
-    }
     return absl::OkStatus();
   }
 
   absl::Status Parse(const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration,
                      GraphFloat32* graph, ObjectReader* reader) final {
+    const TfLiteSplitParams* split_params;
+    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &split_params));
+    if (split_params->num_splits == 1) {
+      // Adding Identity reshape that will be removed.
+      Node* node = graph->NewNode();
+      node->operation.type = ToString(OperationType::RESHAPE);
+      RETURN_IF_ERROR(reader->AddInput(node, 1));
+      RETURN_IF_ERROR(reader->AddOutputs(node));
+      // New shape comes from output shape.
+      ReshapeAttributes attr;
+      attr.new_shape = graph->FindOutputs(node->id)[0]->tensor.shape;
+      node->operation.attributes = attr;
+      return absl::OkStatus();
+    }
+    const TfLiteTensor* input = reader->GetInputTensor(1);
+    const TfLiteTensor* axis_tensor = reader->GetInputTensor(0);
+    SplitAttributes attr;
+    RETURN_IF_ERROR(
+        ExtractAxisFromIndex(*input, axis_tensor->data.i32[0], &attr.axis));
+
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::SPLIT);
+    node->operation.attributes = attr;
+    RETURN_IF_ERROR(reader->AddInput(node, 1));
+    for (int i = 0; i < tflite_node->outputs->size; ++i) {
+      RETURN_IF_ERROR(reader->AddOutput(node, i));
+    }
+    return absl::OkStatus();
+  }
+};
+
+class SplitVOperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    return absl::OkStatus();
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    const TfLiteSplitVParams* split_params;
+    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &split_params));
+    if (split_params->num_splits == 1) {
+      // Adding Identity reshape that will be removed.
+      Node* node = graph->NewNode();
+      node->operation.type = ToString(OperationType::RESHAPE);
+      RETURN_IF_ERROR(reader->AddInput(node, 0));
+      RETURN_IF_ERROR(reader->AddOutputs(node));
+      // New shape comes from output shape.
+      ReshapeAttributes attr;
+      attr.new_shape = graph->FindOutputs(node->id)[0]->tensor.shape;
+      node->operation.attributes = attr;
+      return absl::OkStatus();
+    }
     const TfLiteTensor* input = reader->GetInputTensor(0);
     const TfLiteTensor* axis_tensor = reader->GetInputTensor(2);
     SplitAttributes attr;
@@ -2729,6 +2808,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<SoftmaxOperationParser>();
     case kTfLiteBuiltinSpaceToDepth:
       return std::make_unique<SpaceToDepthOperationParser>();
+    case kTfLiteBuiltinSplit:
+      return std::make_unique<SplitOperationParser>();
     case kTfLiteBuiltinSplitV:
       return std::make_unique<SplitVOperationParser>();
     case kTfLiteBuiltinSqrt:
@@ -2763,6 +2844,9 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       }
       if (custom_name == "MaxUnpooling2D") {
         return std::make_unique<Unpooling2DOperationParser>();
+      }
+      if (custom_name == "Resampler") {
+        return std::make_unique<ResamplerOperationParser>();
       }
       return NewCustomOperationParser(registration->custom_name);
     }

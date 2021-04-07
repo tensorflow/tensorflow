@@ -39,6 +39,7 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
+    "if_mkl_ml",
 )
 
 default_package_visibility = [
@@ -48,7 +49,7 @@ default_package_visibility = [
 
 package(
     default_visibility = default_package_visibility,
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_cuda_library(
@@ -1543,7 +1544,9 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-    ] + if_mkl([":mkl_cpu_allocator"]),
+    ] + if_mkl([":mkl_cpu_allocator"]) + if_mkl_ml([
+        "//third_party/mkl:intel_binary_blob",
+    ]),
 )
 
 cc_library(

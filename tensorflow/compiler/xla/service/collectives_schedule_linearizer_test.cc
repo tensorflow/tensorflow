@@ -138,5 +138,36 @@ ENTRY entry {
   EXPECT_EQ(CountControlEdges(*module->entry_computation()), 0);
 }
 
+TEST_F(CollectivesScheduleLinearizerTest, NonPostorder) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT out = f32[] add(a, b)
+}
+
+ENTRY entry {
+  p0 = f32[100] parameter(0), parameter_replication={false}
+  p1 = f32[100] parameter(1), parameter_replication={false}
+  c1 = f32[100] all-reduce(p0), replica_groups={}, to_apply=sum
+  c2 = f32[100] all-reduce(p1), replica_groups={}, to_apply=sum
+  c3 = f32[100] all-reduce(p1), replica_groups={}, to_apply=sum
+  t = f32[100] add(c1, c2)
+  ROOT out = f32[100] add(t, c3)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_IS_OK(
+      module->entry_computation()
+          ->GetInstructionWithName("c3")
+          ->AddControlDependencyTo(
+              module->entry_computation()->GetInstructionWithName("c1")));
+  InsertCollectivesSchedule(module.get());
+  EXPECT_EQ(CountControlEdges(*module->entry_computation()), 2);
+}
+
 }  // namespace
 }  // namespace xla

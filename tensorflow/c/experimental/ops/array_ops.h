@@ -16,34 +16,30 @@ limitations under the License.
 #define TENSORFLOW_C_EXPERIMENTAL_OPS_ARRAY_OPS_H_
 
 #include "tensorflow/c/eager/abstract_context.h"
-#include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 
 namespace tensorflow {
 namespace ops {
 
 Status Identity(AbstractContext* ctx, AbstractTensorHandle* const input,
-                absl::Span<AbstractTensorHandle*> outputs, const char* name);
+                absl::Span<AbstractTensorHandle*> output, const char* name);
 
 Status IdentityN(AbstractContext* ctx,
-                 absl::Span<AbstractTensorHandle* const> inputs,
-                 absl::Span<AbstractTensorHandle*> outputs, const char* name);
+                 absl::Span<AbstractTensorHandle* const> input,
+                 absl::Span<AbstractTensorHandle*> output, const char* name);
 
-Status ZerosLike(AbstractContext* ctx,
-                 absl::Span<AbstractTensorHandle* const> inputs,
-                 absl::Span<AbstractTensorHandle*> outputs, const char* name);
+Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* const x,
+                 absl::Span<AbstractTensorHandle*> y, const char* name);
 
-Status Shape(AbstractContext* ctx,
-             absl::Span<AbstractTensorHandle* const> inputs,
-             absl::Span<AbstractTensorHandle*> outputs, const char* name);
+Status Shape(AbstractContext* ctx, AbstractTensorHandle* const input,
+             absl::Span<AbstractTensorHandle*> output, const char* name);
 
-Status ExpandDims(AbstractContext* ctx,
-                  absl::Span<AbstractTensorHandle* const> inputs,
-                  absl::Span<AbstractTensorHandle*> outputs, const char* name);
+Status ExpandDims(AbstractContext* ctx, AbstractTensorHandle* const input,
+                  AbstractTensorHandle* const dim,
+                  absl::Span<AbstractTensorHandle*> output, const char* name);
 
-Status OnesLike(AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs, const char* name);
+Status OnesLike(AbstractContext* ctx, AbstractTensorHandle* const x,
+                absl::Span<AbstractTensorHandle*> y, const char* name);
 
 }  // namespace ops
 }  // namespace tensorflow

@@ -6,10 +6,8 @@ load("//tensorflow/python/tools:tools.bzl", "saved_model_compile_aot")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 # Transitive dependencies of this target will be included in the pip package.
 py_library(

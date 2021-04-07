@@ -333,6 +333,14 @@ CudnnSupport::CudnnSupport(GpuExecutor* parent) : parent_(parent) {}
 
 port::Status CudnnSupport::Init() {
   ScopedActivateExecutorContext context(parent_);
+
+  // Peek at the last error to give more information in cases of errors.
+  cudaError_t cerr = cudaPeekAtLastError();
+  if (cerr != cudaSuccess) {
+    LOG(WARNING) << "There was an error before creating cudnn handle: "
+                 << cudaGetErrorName(cerr) << " : " << cudaGetErrorString(cerr);
+  }
+
   cudnnHandle_t cudnn_handle = nullptr;
   const auto status = cudnnCreate(&cudnn_handle);
   if (status == CUDNN_STATUS_SUCCESS) {

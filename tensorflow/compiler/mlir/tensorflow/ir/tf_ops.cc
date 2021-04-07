@@ -177,15 +177,16 @@ bool TensorFlowDialect::CanDuplicate(Operation *op) {
   if (auto is_stateless = op->getAttrOfType<BoolAttr>("is_stateless"))
     return is_stateless.getValue();
 
+  // Assume ops can be duplicated if modelled.
+  if (op->isRegistered()) return true;
+
   // Assume ops can be duplicated when the given op is not a stateful op.
   const tensorflow::OpRegistrationData *op_reg_data = nullptr;
   tensorflow::Status s = tensorflow::OpRegistry::Global()->LookUp(
       op->getName().stripDialect().str(), &op_reg_data);
-  if (!s.ok()) {
-    // Assume unknown ops can not be duplicated.
-    return false;
-  }
-  return !op_reg_data->op_def.is_stateful();
+  // Assume unregistered ops cannot be duplicated, while unmodelled ones only if
+  // stateless.
+  return s.ok() && !op_reg_data->op_def.is_stateful();
 }
 
 // Returns true if the op can have side effects.

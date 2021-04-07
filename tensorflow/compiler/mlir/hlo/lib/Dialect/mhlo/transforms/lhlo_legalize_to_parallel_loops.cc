@@ -93,8 +93,8 @@ struct MappedIvs {
 };
 
 template <typename OpTy>
-MappedIvs MapWindowIvsToInput(OpTy op, ValueRange ivs, ValueRange window_ivs,
-                              OpBuilder* b) {
+MappedIvs MapWindowIvsToInput(OpTy op, Value operand, ValueRange ivs,
+                              ValueRange window_ivs, OpBuilder* b) {
   MappedIvs mapped_ivs;
 
   if (!op.window_strides().hasValue()) {
@@ -108,7 +108,6 @@ MappedIvs MapWindowIvsToInput(OpTy op, ValueRange ivs, ValueRange window_ivs,
   auto padding = op.padding().getValue();
 
   auto loc = op.getLoc();
-  auto operand = op.operand();
   auto operand_shape = operand.getType().template cast<MemRefType>().getShape();
 
   // `in_bounds` is false when the mapped indices are in the padding area.
@@ -196,7 +195,7 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
   LogicalResult matchAndRewrite(
       lmhlo::ReduceOp reduce_op, ArrayRef<Value> /*args*/,
       ConversionPatternRewriter& rewriter) const final {
-    // TODO(b/137624192) Implement variadic reduce.
+    // TODO(b/183977252) : Handle variadic ReduceOp/ReduceWindowOp
     if (reduce_op.out().size() != 1) return failure();
 
     scf::ReduceOp scf_reduce_op =
@@ -312,7 +311,7 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
 //       value = input[I]
 //     else
 //       value = neutral_value
-//     accumulator = reduction_operator(output[O], value)
+//     accumulator = reduction_operator(accumulator, value)
 //   output[O] = accumulator
 //
 // Converts `lmhlo.ReduceWindowOp` into two scf::ParallelOp and a
@@ -367,6 +366,9 @@ class ReduceWindowOpConverter
   LogicalResult matchAndRewrite(
       lmhlo::ReduceWindowOp reduce_window_op, ArrayRef<Value> /*args*/,
       ConversionPatternRewriter& rewriter) const final {
+    // TODO(b/183977252) : Handle variadic ReduceOp/ReduceWindowOp
+    if (reduce_window_op.out().size() != 1) return failure();
+
     scf::ParallelOp output_loop, window_loop;
     std::tie(output_loop, window_loop) =
         CreateParallelLoopsToTraverseOutputAndWindow(reduce_window_op,
@@ -387,14 +389,14 @@ class ReduceWindowOpConverter
       lmhlo::ReduceWindowOp reduce_window_op,
       ConversionPatternRewriter* rewriter) const {
     auto loc = reduce_window_op.getLoc();
-    Value init_value =
-        rewriter->create<memref::LoadOp>(loc, reduce_window_op.init_value());
+    Value init_value = rewriter->create<memref::LoadOp>(
+        loc, reduce_window_op.init_values()[0]);
 
     Value zero = rewriter->create<ConstantIndexOp>(loc, 0);
     Value one = rewriter->create<ConstantIndexOp>(loc, 1);
 
     // Create an outer parallel loop that spans the output of ReduceWindowOp.
-    Value output = reduce_window_op.out();
+    Value output = reduce_window_op.out()[0];
     auto output_loop = MakeLoopOverShape(loc, output, rewriter);
 
     // Create a nested loop that traverses the window.
@@ -429,22 +431,22 @@ class ReduceWindowOpConverter
           "`window_dilations` attributes yet. The attributes will be ignored.");
     }
 
-    Value operand = reduce_window_op.operand();
-    auto operand_type = operand.getType().cast<MemRefType>();
+    Value input = reduce_window_op.inputs()[0];
+    auto input_type = input.getType().cast<MemRefType>();
 
     // Compute ivs in 'arg' buffer and whether these ivs are in pad area or not.
-    MappedIvs mapped_ivs =
-        MapWindowIvsToInput(reduce_window_op, output_loop.getInductionVars(),
-                            window_loop.getInductionVars(), rewriter);
+    MappedIvs mapped_ivs = MapWindowIvsToInput(
+        reduce_window_op, input, output_loop.getInductionVars(),
+        window_loop.getInductionVars(), rewriter);
 
     auto elem_or_init = rewriter->create<scf::IfOp>(
-        loc, operand_type.getElementType(), mapped_ivs.in_bounds,
+        loc, input_type.getElementType(), mapped_ivs.in_bounds,
         /*withElseRegion=*/true);
 
     OpBuilder then_builder =
         elem_or_init.getThenBodyBuilder(rewriter->getListener());
-    Value elem = then_builder.create<mlir::memref::LoadOp>(
-        loc, reduce_window_op.operand(), mapped_ivs.ivs);
+    Value elem =
+        then_builder.create<mlir::memref::LoadOp>(loc, input, mapped_ivs.ivs);
     then_builder.create<scf::YieldOp>(loc, elem);
 
     OpBuilder else_builder =
@@ -611,9 +613,9 @@ class SelectAndScatterOpConverter
         OpBuilder::atBlockEnd(window_loops.inner_loop.getBody());
 
     // Compute ivs in 'arg' buffer and whether these ivs are in the pad area.
-    MappedIvs mapped_ivs =
-        MapWindowIvsToInput(s_and_s_op, loop_over_src.getInductionVars(),
-                            window_loops.window_ivs, &inner_loop_b);
+    MappedIvs mapped_ivs = MapWindowIvsToInput(
+        s_and_s_op, s_and_s_op.operand(), loop_over_src.getInductionVars(),
+        window_loops.window_ivs, &inner_loop_b);
 
     IterArgs ivs_val_flag(window_loops.inner_loop.getRegionIterArgs());
 

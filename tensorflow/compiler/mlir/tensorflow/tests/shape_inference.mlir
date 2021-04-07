@@ -1170,6 +1170,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %1 = shape.shape_of %0 : tensor<*xindex> -> tensor<?xindex>
     return %0, %1 : tensor<*xindex>, tensor<?xindex>
   }
+
   // CHECK-LABEL: func @partitioned_called_const_index
   // CHECK-SAME: -> tensor<index>
   func @partitioned_called_const_index() -> (tensor<*xindex>) {
@@ -1191,5 +1192,23 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     call @quant_fn(%1#0) : (tensor<*x!quant.uniform<u8:f32, 0.007:128>>) -> ()
 
     return %1#1 : tensor<*x!quant.uniform<u8:f32, 0.007:128>>
+  }
+
+  // CHECK-LABEL: func @xla_host_compute_mlir_empty_module
+  func @xla_host_compute_mlir_empty_module(%arg0: tensor<2xf32>) -> tensor<*xf32> {
+    // CHECK: "tf._XlaHostComputeMlir"
+    // CHECK-SAME: -> tensor<*xf32>
+    %0 = "tf._XlaHostComputeMlir"(%arg0) {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0, host_mlir_module = ""} : (tensor<2xf32>) -> tensor<*xf32>
+    return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @xla_host_compute_mlir_shape_inferred
+  func @xla_host_compute_mlir_shape_inferred(%arg0: tensor<2xf32>) -> tensor<*xf32> {
+    // CHECK: "tf._XlaHostComputeMlir"
+    // CHECK-SAME: -> tensor<2xf32>
+    // CHECK: return
+    // CHECK-SAME: tensor<2xf32>
+    %0 = "tf._XlaHostComputeMlir"(%arg0) {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0, host_mlir_module = "module  {\0A  func @host_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {\0A    %0 = \22tf.Identity\22(%arg0) {_xla_outside_compilation = \22cluster1\22} : (tensor<*xf32>) -> tensor<*xf32> \0A    return %0 : tensor<*xf32> \0A  } \0A} \0A"} : (tensor<2xf32>) -> tensor<*xf32>
+    return %0 : tensor<*xf32>
   }
 }

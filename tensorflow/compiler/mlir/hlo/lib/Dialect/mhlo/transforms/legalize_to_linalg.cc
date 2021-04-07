@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -1686,40 +1687,38 @@ struct ReduceWindowOpOnTensorsConversion
   /// the pooling is determined based on the body of the reduce window
   /// operation. This class enumerates the different variants.
   enum class PoolingType {
+    kInvalid,
     kMin,
     kMax,
     kAdd,
   };
 
-  static PoolingType getPoolingType(Region& region) {
-    assert(region.getBlocks().size() == 1 &&
-           "expected the region has exactlly one block");
-    Block& block = region.front();
-    assert(block.getOperations().size() == 2 &&
-           "expected the block has exactlly two operations");
-    auto op = block.begin();
-    if (isa<mhlo::MinOp>(op)) return PoolingType::kMin;
-    if (isa<mhlo::MaxOp>(op)) return PoolingType::kMax;
-    if (isa<mhlo::AddOp>(op)) return PoolingType::kAdd;
-
-    llvm_unreachable("unknown pooling type");
+  static PoolingType getPoolingType(mhlo::ReduceWindowOp reduce_op,
+                                    int result_index) {
+    if (Operation* op = reduce_op.getReductionOp(result_index)) {
+      if (isa<mhlo::MinOp>(*op)) return PoolingType::kMin;
+      if (isa<mhlo::MaxOp>(*op)) return PoolingType::kMax;
+      if (isa<mhlo::AddOp>(*op)) return PoolingType::kAdd;
+    }
+    return PoolingType::kInvalid;
   }
 
   LogicalResult matchAndRewrite(
       mhlo::ReduceWindowOp op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const override {
     auto loc = op.getLoc();
-    auto result_type = op.getResult().getType().cast<ShapedType>();
-    if (result_type.getRank() != 4) {
+    int rank = op.getResultTypes()[0].cast<ShapedType>().getRank();
+    if (rank != 4) {
       return rewriter.notifyMatchFailure(op, "expected NHWC pooling-based op");
     }
 
-    // Create a fake window dimension.
-    SmallVector<int64_t, 4> shapes;
+    if (op.padding() && !isSplatValue(*op.padding(), 0)) {
+      return rewriter.notifyMatchFailure(op, "require paddings are all zero");
+    }
+
+    SmallVector<int64_t, 2> shapes;
     shapes.push_back(op.window_dimensions().getValue<int64_t>(1));
     shapes.push_back(op.window_dimensions().getValue<int64_t>(2));
-    auto fake_window_dims = rewriter.create<linalg::InitTensorOp>(
-        loc, shapes, result_type.getElementType());
 
     if (op.window_strides() &&
         (op.window_strides().getValue().getValue<int64_t>(0) != 1 ||
@@ -1732,10 +1731,6 @@ struct ReduceWindowOpOnTensorsConversion
          op.window_dimensions().getValue<int64_t>(3) != 1)) {
       return rewriter.notifyMatchFailure(
           op, "expected window_dimensions to be [1,x,y,1]");
-    }
-
-    if (!args[0].getType().cast<ShapedType>().getElementType().isF32()) {
-      return rewriter.notifyMatchFailure(op, "expected element type to be f32");
     }
 
     Attribute strides;
@@ -1755,39 +1750,62 @@ struct ReduceWindowOpOnTensorsConversion
       dilations = rewriter.getI64VectorAttr({1, 1});
     }
 
-    Value init_tensor = rewriter.create<linalg::InitTensorOp>(
-        loc, result_type.getShape(), result_type.getElementType());
-    Value init_value = args[1];
-    init_value = rewriter.create<tensor::ExtractOp>(loc, init_value);
-    Value filled_init_tensor =
-        rewriter.create<linalg::FillOp>(loc, init_tensor, init_value)
-            .getResult(0);
-    auto create_op = [&](auto* type_ptr) -> linalg::LinalgOp {
-      return cast<linalg::LinalgOp>(
-          rewriter
-              .create<std::remove_pointer_t<decltype(type_ptr)>>(
-                  loc, ArrayRef<Type>{result_type},
-                  ValueRange{args[0], fake_window_dims.getResult()},
-                  filled_init_tensor, dilations, strides)
-              .getOperation());
-    };
-    linalg::LinalgOp pooling_op;
-    PoolingType pooling_type = getPoolingType(op.body());
-    switch (pooling_type) {
-      case PoolingType::kMin: {
-        pooling_op = create_op(static_cast<linalg::PoolingNHWCMinOp*>(nullptr));
-        break;
+    SmallVector<Value> pooling_ops;
+
+    ArrayRef<Value> inputs = args.take_front(op.inputs().size());
+    ArrayRef<Value> init_values = args.drop_front(op.inputs().size());
+    for (auto it : llvm::zip(op.getResults(), inputs, init_values)) {
+      OpResult result = std::get<0>(it);
+      Value input = std::get<1>(it);
+      Value init_value = std::get<2>(it);
+      auto result_type = result.getType().cast<ShapedType>();
+      if (!input.getType().cast<ShapedType>().getElementType().isF32()) {
+        return rewriter.notifyMatchFailure(op,
+                                           "expected element type to be f32");
       }
-      case PoolingType::kMax: {
-        pooling_op = create_op(static_cast<linalg::PoolingNHWCMaxOp*>(nullptr));
-        break;
+
+      // Create a fake window dimension.
+      auto fake_window_dims = rewriter.create<linalg::InitTensorOp>(
+          loc, shapes, result_type.getElementType());
+      Value init_tensor = rewriter.create<linalg::InitTensorOp>(
+          loc, result_type.getShape(), result_type.getElementType());
+      init_value = rewriter.create<tensor::ExtractOp>(loc, init_value);
+      Value filled_init_tensor =
+          rewriter.create<linalg::FillOp>(loc, init_tensor, init_value)
+              .getResult(0);
+      auto create_op = [&](auto* type_ptr) -> linalg::LinalgOp {
+        return cast<linalg::LinalgOp>(
+            rewriter
+                .create<std::remove_pointer_t<decltype(type_ptr)>>(
+                    loc, ArrayRef<Type>{result_type},
+                    ValueRange{args[0], fake_window_dims.getResult()},
+                    filled_init_tensor, dilations, strides)
+                .getOperation());
+      };
+      linalg::LinalgOp pooling_op;
+      PoolingType pooling_type = getPoolingType(op, result.getResultNumber());
+      switch (pooling_type) {
+        case PoolingType::kMin: {
+          pooling_op =
+              create_op(static_cast<linalg::PoolingNHWCMinFOp*>(nullptr));
+          break;
+        }
+        case PoolingType::kMax: {
+          pooling_op =
+              create_op(static_cast<linalg::PoolingNHWCMaxFOp*>(nullptr));
+          break;
+        }
+        case PoolingType::kAdd: {
+          pooling_op =
+              create_op(static_cast<linalg::PoolingNHWCSumFOp*>(nullptr));
+          break;
+        }
+        case PoolingType::kInvalid:
+          return rewriter.notifyMatchFailure(op, "unknown reduction operation");
       }
-      case PoolingType::kAdd: {
-        pooling_op = create_op(static_cast<linalg::PoolingNHWCSumOp*>(nullptr));
-        break;
-      }
+      pooling_ops.push_back(pooling_op->getResult(0));
     }
-    rewriter.replaceOp(op, pooling_op->getResult(0));
+    rewriter.replaceOp(op, pooling_ops);
     return success();
   }
 };
@@ -1965,7 +1983,9 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
 struct LhloLegalizeToLinalgPass
     : public PassWrapper<LhloLegalizeToLinalgPass, FunctionPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<AffineDialect, linalg::LinalgDialect, math::MathDialect>();
+    registry
+        .insert<AffineDialect, complex::ComplexDialect, linalg::LinalgDialect,
+                math::MathDialect, memref::MemRefDialect>();
   }
 
   void runOnFunction() override {
@@ -1986,8 +2006,9 @@ struct LhloLegalizeToLinalgPass
 struct HloLegalizeToLinalgPass
     : public PassWrapper<HloLegalizeToLinalgPass, FunctionPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<linalg::LinalgDialect, scf::SCFDialect,
-                    complex::ComplexDialect, math::MathDialect>();
+    registry
+        .insert<linalg::LinalgDialect, scf::SCFDialect, complex::ComplexDialect,
+                math::MathDialect, memref::MemRefDialect>();
   }
 
   void runOnFunction() override {
