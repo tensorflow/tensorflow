@@ -81,9 +81,8 @@ Status BroadcastMul(AbstractContext* ctx, AbstractTensorHandle* vec,
   AbstractTensorPtr minus_1(imm_ctx->CreateInt32Scalar(-1));
   ImmediateTensorHandlePtr dim(imm_ctx->CreateLocalHandle(minus_1.get()));
   vector<AbstractTensorHandle*> expand_dims_outputs(1);
-  TF_RETURN_IF_ERROR(ops::ExpandDims(ctx, {vec, dim.get()},
-                                     absl::MakeSpan(expand_dims_outputs),
-                                     "ExpandDims"));
+  TF_RETURN_IF_ERROR(ops::ExpandDims(
+      ctx, vec, dim.get(), absl::MakeSpan(expand_dims_outputs), "ExpandDims"));
   TF_RETURN_IF_ERROR(
       ops::Mul(ctx, {expand_dims_outputs[0], mat}, outputs, "Mul"));
   expand_dims_outputs[0]->Unref();

@@ -348,8 +348,8 @@ class Log1pGradientFunction : public GradientFunction {
 
     // Creates Ones
     name = "OnesLike_Log1p_Grad_X";
-    TF_RETURN_IF_ERROR(OnesLike(ctx, {Conj_X.get()},
-                                absl::MakeSpan(temp_outputs), name.c_str()));
+    TF_RETURN_IF_ERROR(OnesLike(ctx, Conj_X.get(), absl::MakeSpan(temp_outputs),
+                                name.c_str()));
 
     AbstractTensorHandlePtr Ones_X(temp_outputs[0]);
 
