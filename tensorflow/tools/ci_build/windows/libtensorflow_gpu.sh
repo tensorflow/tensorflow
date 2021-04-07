@@ -68,7 +68,7 @@ cp tensorflow/c/c_api.h \
   tensorflow/c/tf_datatype.h \
   tensorflow/c/tf_status.h \
   tensorflow/c/tf_tensor.h \
-  tensorflow/c/tf_string.h \
+  tensorflow/c/tf_tstring.h \
   tensorflow/c/tf_file_statistics.h \
   tensorflow/c/tensor_interface.h \
   tensorflow/c/c_api_macros.h \
@@ -95,7 +95,7 @@ zip libtensorflow-gpu-windows-$(uname -m).zip \
   include/tensorflow/c/tf_datatype.h \
   include/tensorflow/c/tf_status.h \
   include/tensorflow/c/tf_tensor.h \
-  include/tensorflow/c/tf_string.h \
+  include/tensorflow/c/tf_tstring.h \
   include/tensorflow/c/tf_file_statistics.h \
   include/tensorflow/c/tensor_interface.h \
   include/tensorflow/c/c_api_macros.h \
