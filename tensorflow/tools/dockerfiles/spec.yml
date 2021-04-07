@@ -128,6 +128,7 @@ slice_sets:
           tests:
               - build-cpu.sh
           args:
+              - UBUNTU_VERSION=20.04
               - CHECKOUT_TF_SRC=1
         - add_to_name: "devel-gpu"
           dockerfile_exclusive_name: "devel-gpu"
@@ -141,6 +142,7 @@ slice_sets:
               - build-gpu.sh
           test_runtime: nvidia
           args:
+              - UBUNTU_VERSION=20.04
               - CHECKOUT_TF_SRC=1
 
     ubuntu-devel-arm64v8:

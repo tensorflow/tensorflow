@@ -23,6 +23,8 @@ ARG UBUNTU_VERSION=18.04
 
 FROM ubuntu:${UBUNTU_VERSION} AS base
 
+ARG DEBIAN_FRONTEND="noninteractive"
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         curl \
@@ -85,6 +87,7 @@ RUN python3 -m pip --no-cache-dir install \
     matplotlib \
     mock \
     'numpy<1.19.0' \
+    pylint==2.7.4 \
     scipy \
     sklearn \
     pandas \
