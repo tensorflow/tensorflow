@@ -34,7 +34,11 @@ from tensorflow.python.platform import test
 
 
 class SegmentReductionDeterminismExceptionsTest(test.TestCase):
-  """Test that tf.errors.UnimplementedError is thrown or not thrown, as appropriate, by the GPU code-paths for the segment reduction ops when determinsitic ops are enabled.
+  """Test d9m-unimplemented exceptions from the segment reduction ops.
+
+  Test that tf.errors.UnimplementedError is thrown or not thrown, as
+  appropriate, by the GPU code-paths for segment reduction ops when
+  deterministic ops are enabled.
 
   This test assumes that the base op test runs all the same test cases when
   deterministic ops are not enabled and will therefore detect erroneous

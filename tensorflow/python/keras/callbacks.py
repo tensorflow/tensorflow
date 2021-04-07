@@ -234,6 +234,14 @@ class CallbackList:
 
     # Performance optimization: determines if batch hooks need to be called.
     # pylint: disable=protected-access
+    self._supports_tf_logs = all(
+        getattr(cb, '_supports_tf_logs', False) for cb in self.callbacks)
+    self._batch_hooks_support_tf_logs = all(
+        getattr(cb, '_supports_tf_logs', False)
+        for cb in self.callbacks
+        if cb._implements_train_batch_hooks() or cb
+        ._implements_test_batch_hooks() or cb._implements_predict_batch_hooks())
+
     self._should_call_train_batch_hooks = any(
         cb._implements_train_batch_hooks() for cb in self.callbacks)
     self._should_call_test_batch_hooks = any(
@@ -271,6 +279,16 @@ class CallbackList:
     if self._history is None and add_history:
       self._history = History()
       self.callbacks.append(self._history)
+
+  def _process_logs(self, logs, is_batch_hook=False):
+    """Turns tensors into numpy arrays or Python scalars if necessary."""
+    if logs is None:
+      return {}
+    if self._supports_tf_logs:
+      return logs
+    if is_batch_hook and self._batch_hooks_support_tf_logs:
+      return logs
+    return tf_utils.sync_to_numpy_or_python_type(logs)
 
   def append(self, callback):
     self.callbacks.append(callback)
@@ -347,19 +365,13 @@ class CallbackList:
 
   def _call_batch_hook_helper(self, hook_name, batch, logs):
     """Helper function for `on_*_batch_*` methods."""
-    logs = logs or {}
-    numpy_logs = None
     if self._check_timing:
       start_time = time.time()
 
+    logs = self._process_logs(logs, is_batch_hook=True)
     for callback in self.callbacks:
       hook = getattr(callback, hook_name)
-      if getattr(callback, '_supports_tf_logs', False):
-        hook(batch, logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.sync_to_numpy_or_python_type(logs)
-        hook(batch, numpy_logs)
+      hook(batch, logs)
 
     if self._check_timing:
       if hook_name not in self._hook_times:
@@ -402,15 +414,9 @@ class CallbackList:
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
-    logs = logs or {}
-    numpy_logs = None
+    logs = self._process_logs(logs)
     for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_epoch_begin(epoch, logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.sync_to_numpy_or_python_type(logs)
-        callback.on_epoch_begin(epoch, numpy_logs)
+      callback.on_epoch_begin(epoch, logs)
 
   def on_epoch_end(self, epoch, logs=None):
     """Calls the `on_epoch_end` methods of its callbacks.
@@ -423,15 +429,9 @@ class CallbackList:
           validation epoch if validation is performed. Validation result keys
           are prefixed with `val_`.
     """
-    logs = logs or {}
-    numpy_logs = None
+    logs = self._process_logs(logs)
     for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_epoch_end(epoch, logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.sync_to_numpy_or_python_type(logs)
-        callback.on_epoch_end(epoch, numpy_logs)
+      callback.on_epoch_end(epoch, logs)
 
   def on_train_batch_begin(self, batch, logs=None):
     """Calls the `on_train_batch_begin` methods of its callbacks.
@@ -506,15 +506,9 @@ class CallbackList:
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
-    logs = logs or {}
-    numpy_logs = None
+    logs = self._process_logs(logs)
     for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_train_begin(logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.sync_to_numpy_or_python_type(logs)
-        callback.on_train_begin(numpy_logs)
+      callback.on_train_begin(logs)
 
   def on_train_end(self, logs=None):
     """Calls the `on_train_end` methods of its callbacks.
@@ -523,15 +517,9 @@ class CallbackList:
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
-    logs = logs or {}
-    numpy_logs = None
+    logs = self._process_logs(logs)
     for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_train_end(logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.sync_to_numpy_or_python_type(logs)
-        callback.on_train_end(numpy_logs)
+      callback.on_train_end(logs)
 
   def on_test_begin(self, logs=None):
     """Calls the `on_test_begin` methods of its callbacks.
@@ -540,15 +528,9 @@ class CallbackList:
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
-    logs = logs or {}
-    numpy_logs = None
+    logs = self._process_logs(logs)
     for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_test_begin(logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.sync_to_numpy_or_python_type(logs)
-        callback.on_test_begin(numpy_logs)
+      callback.on_test_begin(logs)
 
   def on_test_end(self, logs=None):
     """Calls the `on_test_end` methods of its callbacks.
@@ -557,15 +539,9 @@ class CallbackList:
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
-    logs = logs or {}
-    numpy_logs = None
+    logs = self._process_logs(logs)
     for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_test_end(logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.sync_to_numpy_or_python_type(logs)
-        callback.on_test_end(numpy_logs)
+      callback.on_test_end(logs)
 
   def on_predict_begin(self, logs=None):
     """Calls the 'on_predict_begin` methods of its callbacks.
@@ -574,15 +550,9 @@ class CallbackList:
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
-    logs = logs or {}
-    numpy_logs = None
+    logs = self._process_logs(logs)
     for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_predict_begin(logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.sync_to_numpy_or_python_type(logs)
-        callback.on_predict_begin(numpy_logs)
+      callback.on_predict_begin(logs)
 
   def on_predict_end(self, logs=None):
     """Calls the `on_predict_end` methods of its callbacks.
@@ -591,15 +561,9 @@ class CallbackList:
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
-    logs = logs or {}
-    numpy_logs = None
+    logs = self._process_logs(logs)
     for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_predict_end(logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.sync_to_numpy_or_python_type(logs)
-        callback.on_predict_end(numpy_logs)
+      callback.on_predict_end(logs)
 
   def __iter__(self):
     return iter(self.callbacks)

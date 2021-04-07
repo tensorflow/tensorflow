@@ -85,7 +85,6 @@ namespace {
 // For other attributes, there is no additional verification beyond the default.
 static LogicalResult Verify(_XlaHostComputeMlirOp op) {
   // Extract the module and function.
-  // StringAttr host_module = op->getAttrOfType<StringAttr>("host_mlir_module");
   StringRef host_module = op.host_mlir_module();
 
   if (host_module.empty()) return success();
@@ -119,6 +118,14 @@ static LogicalResult Verify(_XlaHostComputeMlirOp op) {
                           << " results.  Number of results should be the same.";
 
   return success();
+}
+
+FuncOp _XlaHostComputeMlirOp::GetHostFunc(mlir::OwningModuleRef* mlir_module) {
+  if (!tensorflow::DeserializeMlirModule(host_mlir_module().str(),
+                                         this->getContext(), mlir_module)
+           .ok())
+    return nullptr;
+  return (*mlir_module)->lookupSymbol<FuncOp>("host_func");
 }
 
 }  // namespace TF

@@ -101,7 +101,8 @@ TfLiteStatus QuantizeModel(
   pm.addPass(TFL::CreatePostQuantizePass(emit_adaptor));
 
   if (failed(pm.run(module.get()))) {
-    const std::string& err = statusHandler.ConsumeStatus().error_message();
+    Status status = statusHandler.ConsumeStatus();
+    const std::string& err = status.error_message();
     error_reporter->Report("Failed to quantize: %s", err.c_str());
     return kTfLiteError;
   }

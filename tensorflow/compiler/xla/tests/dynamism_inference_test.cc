@@ -43,35 +43,17 @@ limitations under the License.
 namespace xla {
 namespace {
 
-// An enumerator for the client types that we want to iterate over in
-// the various tests.
-enum class ClientType { kLocal, kCompileOnly };
-
-class DynamismInferenceTest : public ::testing::Test {
+class ValueInferenceTest : public ::testing::Test {
  public:
-  explicit DynamismInferenceTest(se::Platform* platform = nullptr)
-      : platform_(platform) {}
-
   string TestName() const {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
+};
 
-  Client* ClientOrDie(se::Platform* platform, ClientType client_type) {
-    if (client_type == ClientType::kLocal) {
-      StatusOr<Client*> result =
-          ClientLibrary::GetOrCreateLocalClient(platform);
-      TF_CHECK_OK(result.status())
-          << "could not create LocalClient for testing";
-      return result.ValueOrDie();
-    } else if (client_type == ClientType::kCompileOnly) {
-      StatusOr<Client*> result =
-          ClientLibrary::GetOrCreateCompileOnlyClient(platform);
-      TF_CHECK_OK(result.status())
-          << "could not create CompileOnlyClient for testing";
-      return result.ValueOrDie();
-    }
-    LOG(FATAL) << "invalid client_type value";
-  }
+class DynamismInferenceTest : public ValueInferenceTest {
+ public:
+  explicit DynamismInferenceTest(se::Platform* platform = nullptr)
+      : platform_(platform) {}
 
   StatusOr<Literal> ComputeDynamismLiteral(XlaOp operand, XlaBuilder* builder,
                                            Layout* output_layout = nullptr) {
@@ -314,6 +296,81 @@ TEST_F(DynamismInferenceTest, InferThroughPad) {
   EXPECT_FALSE(ComputeDynamismLiteral(pad, &b).ValueOrDie().Get<bool>({0}));
   EXPECT_FALSE(ComputeDynamismLiteral(pad, &b).ValueOrDie().Get<bool>({1}));
   EXPECT_TRUE(ComputeDynamismLiteral(pad, &b).ValueOrDie().Get<bool>({2}));
+}
+
+class UpperBoundInferenceTest : public ValueInferenceTest {
+ public:
+  explicit UpperBoundInferenceTest(se::Platform* platform = nullptr)
+      : platform_(platform) {}
+
+  StatusOr<OptionalLiteral> ComputeUpperBoundLiteral(
+      XlaOp operand, XlaBuilder* builder, Layout* output_layout = nullptr) {
+    ValueInference value_inference(builder);
+    TF_ASSIGN_OR_RETURN(auto literal,
+                        value_inference.AnalyzeConstant(
+                            operand, ValueInferenceMode::kUpperBound));
+    return literal;
+  }
+
+  se::Platform* platform_;
+};
+
+TEST_F(UpperBoundInferenceTest, GetDimensionSize) {
+  XlaBuilder b(TestName());
+  auto p =
+      Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2, 3}, {true, false}), "p0");
+
+  auto gds0 = GetDimensionSize(p, 0);
+  auto gds1 = GetDimensionSize(p, 1);
+  auto tuple_2 = Tuple(&b, {gds0, gds1});
+  EXPECT_EQ(
+      ComputeUpperBoundLiteral(tuple_2, &b).ValueOrDie().Get<int32>({}, {0}),
+      2);
+  EXPECT_EQ(
+      ComputeUpperBoundLiteral(tuple_2, &b).ValueOrDie().Get<int32>({}, {1}),
+      3);
+}
+
+TEST_F(UpperBoundInferenceTest, GetDimensionSizeSub) {
+  XlaBuilder b(TestName());
+  auto p =
+      Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2, 3}, {true, false}), "p0");
+
+  // The range of the first dimension is [0, 2]
+  auto gds0 = GetDimensionSize(p, 0);
+  // The range of the second dimension is [3, 3]
+  auto gds1 = GetDimensionSize(p, 1);
+  // Upper bound of `second_dimension - first_dimension` is 3 - 0 = 3
+  auto sub = Sub(gds1, gds0);
+  EXPECT_EQ(ComputeUpperBoundLiteral(sub, &b).ValueOrDie().Get<int32>({}), 3);
+}
+
+TEST_F(UpperBoundInferenceTest, GetDimensionSizeDiv) {
+  XlaBuilder b(TestName());
+  auto p =
+      Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2, 3}, {true, false}), "p0");
+  // The range of the first dimension is [0, 2]
+  auto gds0 = GetDimensionSize(p, 0);
+  // The range of the second dimension is [3, 3]
+  auto gds1 = GetDimensionSize(p, 1);
+  // Upper bound of `second_dimension / first_dimension` is 3 / 1 = 3. Notice we
+  // don't use 0 as the lower bound as it would create divide-by-zero error.
+  auto sub = Div(gds1, gds0);
+  EXPECT_EQ(ComputeUpperBoundLiteral(sub, &b).ValueOrDie().Get<int32>({}), 3);
+}
+
+TEST_F(UpperBoundInferenceTest, ParamCantInferBound) {
+  // We can infer a parameter's dimension's bound, but not the parameter value's
+  // bound.
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2}, {true}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {}, {}), "p1");
+  auto gds = GetDimensionSize(p0, 0);
+  auto sub = Div(gds, p1);
+  EXPECT_FALSE(ComputeUpperBoundLiteral(sub, &b)
+                   .ValueOrDie()
+                   .Get<int32>({})
+                   .has_value());
 }
 
 }  // namespace

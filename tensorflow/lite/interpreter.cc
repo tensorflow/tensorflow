@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "ruy/denormal.h"  // from @ruy
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
@@ -281,6 +282,12 @@ TfLiteStatus Interpreter::ReleaseNonPersistentMemory() {
 TfLiteStatus Interpreter::Invoke() {
   ScopedRuntimeInstrumentationProfile scoped_runtime_event(installed_profiler_,
                                                            "invoke");
+
+  // Denormal floating point numbers could cause significant slowdown on
+  // platforms like x86, therefore, we suppress denormals here to prevent this
+  // from happening.
+  ruy::ScopedSuppressDenormals suppress_denormals;
+
   TF_LITE_ENSURE_STATUS_WITH_SCOPED_INSTRUMENTATION(
       scoped_runtime_event, primary_subgraph().Invoke());
 

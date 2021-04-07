@@ -14,7 +14,7 @@ load(
 
 package(
     default_visibility = ["//tensorflow/tools/consistency_integration_test:__subpackages__"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 licenses(["notice"])

@@ -809,7 +809,10 @@ cc_library(
         ): [":neon_tensor_utils"],
         (
             ":x86_any",
-        ): [":sse_tensor_utils"],
+        ): [
+            ":portable_tensor_utils",  # If SSSE3 isn't available, we fall back to portable
+            ":sse_tensor_utils",
+        ],
         (
             "//tensorflow/lite:tf_lite_static_memory",
             "//conditions:default",

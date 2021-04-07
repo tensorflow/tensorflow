@@ -446,12 +446,13 @@ add {
 }
 
 // CHECK-LABEL:  func private @test_infeed
-// CHECK-SAME: ([[TOKEN:%.*]]: !mhlo.token) -> tuple<tensor<3xi32>, !mhlo.token>
-%test_infeed (token0: token[]) -> (s32[3], token[]) {
+// CHECK-SAME: ([[TOKEN:%.*]]: !mhlo.token) -> tuple<tensor<3x3x3xi32>, !mhlo.token>
+%test_infeed (token0: token[]) -> (s32[3, 3, 3], token[]) {
   %token0 = token[] parameter(0)
   // CHECK-NEXT:  "mhlo.infeed"([[TOKEN]])
   // CHECK-SAME:  infeed_config = "foobar"
-  ROOT %infeed = (s32[3], token[]) infeed(token[] %token0), infeed_config="foobar"
+  // CHECK-SAME:  layout = {{\[\[2, 0, 1], unit]}}
+  ROOT %infeed = (s32[3, 3, 3]{2, 0, 1}, token[]) infeed(token[] %token0), infeed_config="foobar"
 }
 
 

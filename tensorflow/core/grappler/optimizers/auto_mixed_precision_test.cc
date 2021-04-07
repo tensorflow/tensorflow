@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM || ENABLE_MKL
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM || INTEL_MKL
 
 #include "tensorflow/core/grappler/optimizers/auto_mixed_precision.h"
 
@@ -1189,7 +1189,7 @@ TEST_F(AutoMixedPrecisionTest, TanhOp) {
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#if ENABLE_MKL
+#if INTEL_MKL
 
 class AutoMixedPrecisionMklTest : public GrapplerTest {
  protected:
@@ -1203,7 +1203,8 @@ class AutoMixedPrecisionMklTest : public GrapplerTest {
 };
 
 TEST_F(AutoMixedPrecisionMklTest, AlreadyBf16) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(
+      "/job:localhost/replica:0/task:0/device:CPU:0");
   Output input = ops::Const(s.WithOpName("input"), 1.f, {32, 32});
   Output cst1 = ops::Cast(s.WithOpName("cst1"), input, DT_BFLOAT16);
   Output allow1 = ops::MatMul(s.WithOpName("allow1"), cst1, cst1);
@@ -1241,7 +1242,8 @@ TEST_F(AutoMixedPrecisionMklTest, AlreadyBf16) {
 }
 
 TEST_F(AutoMixedPrecisionMklTest, Simple) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(
+      "/job:localhost/replica:0/task:0/device:CPU:0");
   Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
   Output deny1 = ops::Exp(s.WithOpName("deny1"), input);
   Output clr1 = ops::Relu(s.WithOpName("clr1"), deny1);
@@ -1290,7 +1292,8 @@ TEST_F(AutoMixedPrecisionMklTest, Simple) {
 }
 
 TEST_F(AutoMixedPrecisionMklTest, TensorListSetGet) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(
+      "/job:localhost/replica:0/task:0/device:CPU:0");
   tensorflow::Input shape = {32, 32};
   auto tl1 = ops::TensorListReserve(s.WithOpName("tl1"), {32, 32}, 8, DT_FLOAT);
   Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
@@ -1365,10 +1368,10 @@ TEST_F(AutoMixedPrecisionMklTest, TensorListSetGet) {
   }
 }
 
-#endif  // ENABLE_MKL
+#endif  // INTEL_MKL
 
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM || ENABLE_MKL
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM || INTEL_MKL

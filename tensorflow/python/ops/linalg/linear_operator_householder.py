@@ -23,6 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_util
@@ -209,8 +210,7 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
     reflection_axis = ops.convert_to_tensor_v2_with_dispatch(
         self.reflection_axis)
     x = linalg.adjoint(x) if adjoint_arg else x
-    normalized_axis = reflection_axis / linalg.norm(
-        reflection_axis, axis=-1, keepdims=True)
+    normalized_axis = nn.l2_normalize(reflection_axis, axis=-1)
     mat = normalized_axis[..., array_ops.newaxis]
     x_dot_normalized_v = math_ops.matmul(mat, x, adjoint_a=True)
 
@@ -240,8 +240,7 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
   def _to_dense(self):
     reflection_axis = ops.convert_to_tensor_v2_with_dispatch(
         self.reflection_axis)
-    normalized_axis = reflection_axis / linalg.norm(
-        reflection_axis, axis=-1, keepdims=True)
+    normalized_axis = nn.l2_normalize(reflection_axis, axis=-1)
     mat = normalized_axis[..., array_ops.newaxis]
     matrix = -2 * math_ops.matmul(mat, mat, adjoint_b=True)
     return array_ops.matrix_set_diag(
@@ -250,8 +249,7 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
   def _diag_part(self):
     reflection_axis = ops.convert_to_tensor_v2_with_dispatch(
         self.reflection_axis)
-    normalized_axis = reflection_axis / linalg.norm(
-        reflection_axis, axis=-1, keepdims=True)
+    normalized_axis = nn.l2_normalize(reflection_axis, axis=-1)
     return 1. - 2 * normalized_axis * math_ops.conj(normalized_axis)
 
   def _eigvals(self):

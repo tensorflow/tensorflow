@@ -70,7 +70,7 @@ TEST_P(SingleSubgraphTest, InvalidDestinations) {
   interpreter.SetInputs({0, 1});
   interpreter.SetOutputs({2});
   const char* initial_data = "";
-  tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
   TfLiteAddParams* builtin_data =
       reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
   builtin_data->activation = kTfLiteActNone;
@@ -113,7 +113,7 @@ TEST_P(SingleSubgraphTest, FloatModelTest) {
   interpreter.SetInputs({0, 1});
   interpreter.SetOutputs({2});
   const char* initial_data = "";
-  tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
   TfLiteAddParams* builtin_data =
       reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
   builtin_data->activation = kTfLiteActNone;
@@ -151,7 +151,7 @@ TEST_P(SingleSubgraphTest, CustomInputOutputTest) {
 
   // Add two ops: Add and Relu
   const char* initial_data = "";
-  tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
   TfLiteAddParams* builtin_data =
       reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
   builtin_data->activation = kTfLiteActNone;
@@ -200,7 +200,7 @@ TEST_P(SingleSubgraphTest, CustomInputOutputErrorCasesTest) {
 
   // Add three ops.
   const char* initial_data = "";
-  tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
   TfLiteAddParams* builtin_data =
       reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
   builtin_data->activation = kTfLiteActNone;
@@ -234,7 +234,7 @@ TEST_P(SingleSubgraphTest, CustomInputOutputErrorCasesTest) {
 // Tests if SetCustomInputOutput handles variable tensors correctly.
 TEST_P(SingleSubgraphTest, CustomInputOutputVariableTensorTest) {
   Interpreter interpreter;
-  tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
 
   // Create tensors.
   interpreter.AddTensors(3);
@@ -287,7 +287,7 @@ TEST_P(SingleSubgraphTest, PerTensorQuantizedModelTest) {
   interpreter.SetInputs({0, 1});
   interpreter.SetOutputs({2});
   const char* initial_data = "";
-  tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
   TfLiteAddParams* builtin_data =
       reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
   builtin_data->activation = kTfLiteActNone;
@@ -351,7 +351,7 @@ TEST_P(ReshapeLayerTest, ReshapeLayerTest) {
   interpreter.SetInputs(input_tensors);
   interpreter.SetOutputs({total_tensors - 1});
   const char* initial_data = "";
-  tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
   TfLiteReshapeParams* builtin_data = reinterpret_cast<TfLiteReshapeParams*>(
       malloc(sizeof(TfLiteReshapeParams)));
   memset(builtin_data, 0, sizeof(TfLiteReshapeParams));
@@ -464,7 +464,7 @@ TEST_F(WhileTest, TestTriangularNumberSequence) {
   writer.Write(test_file);
   std::unique_ptr<FlatBufferModel> model =
       FlatBufferModel::BuildFromFile(test_file.c_str());
-  tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
   InterpreterBuilder builder(*model, resolver);
   std::unique_ptr<Interpreter> new_interpreter;
   builder(&new_interpreter);

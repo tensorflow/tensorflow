@@ -1278,24 +1278,41 @@ class MetricTest(test.TestCase, parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types
   def test_custom_metric_model(self):
+    # TODO(b/134519980): Issue with `model.fit` if the model call function uses
+    # a `tf.function` in graph mode.
+    if not context.executing_eagerly():
+      return
+
+    x = np.random.random((1, 3))
+    y = np.random.random((1, 4))
 
     class CustomMetric(keras.metrics.MeanSquaredError):
       pass
 
-    with self.cached_session():
-      metric = CustomMetric()
-      model = testing_utils.get_small_mlp(1, 4, input_dim=3)
-      model.compile(loss='mse', optimizer='rmsprop', metrics=[metric])
-      self.evaluate(variables.global_variables_initializer())
-      self.evaluate([v.initializer for v in metric.variables])
+    def zero_metric(y_true, y_pred):
+      del y_true, y_pred
+      return 0
 
+    with self.cached_session():
+      custom_metric = CustomMetric()
+      model = testing_utils.get_small_mlp(1, 4, input_dim=3)
+      model.compile(loss='mse', optimizer='SGD',
+                    metrics=[custom_metric, zero_metric])
+      self.evaluate(variables.global_variables_initializer())
+      self.evaluate([v.initializer for v in custom_metric.variables])
+      model.fit(x, y)
       saved_model_dir = self._save_model_dir()
       tf_save.save(model, saved_model_dir)
-    with self.assertRaisesRegex(ValueError, 'custom_objects'):
-      keras_load.load(saved_model_dir)
 
-    keras_load.load(saved_model_dir, compile=False)
+      with self.assertRaisesRegex(ValueError, 'custom_objects'):
+        keras_load.load(saved_model_dir)
 
+      with generic_utils.CustomObjectScope(
+          {'CustomMetric': CustomMetric, 'zero_metric': zero_metric}):
+        loaded = keras_load.load(saved_model_dir)
+
+      self.evaluate([v.initializer for v in loaded.variables])
+      loaded.fit(x, y)
 
 if __name__ == '__main__':
   test.main()
