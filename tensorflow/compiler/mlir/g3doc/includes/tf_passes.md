@@ -165,6 +165,11 @@ func @cluster() -> tensor<i32> {
   return %cluster : tensor<i32>
 }
 ```
+### `-tf-device-mark-input-output-aliases`: Marks device cluster inputs-output pairs that read/write to the same variable as aliases
+This pass analyzes the inputs and outputs to device cluster and marks those
+input-output pairs as aliases (using `tf.aliasing_output` attribute) which read
+and write to the same resource. This aliasing information can then be propagated
+to XLA compiler for input/output buffer space optimizations.
 ### `-tf-executor-graph-pruning`: Prunes unreachable ops in a tf_executor.graph
 This pass removes ops from a `tf_executor.graph` that are not transitively, via
 data or control dependencies, connected to the associated `tf_executor.fetch`

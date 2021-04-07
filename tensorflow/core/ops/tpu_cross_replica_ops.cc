@@ -32,16 +32,15 @@ REGISTER_OP("AllToAll")
     .Attr("split_count: int")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
-      int64 rank;
-      if (c->RankKnown(input)) {
-        rank = c->Rank(input);
-      } else {
-        return errors::InvalidArgument("input's rank is unknown.");
+      if (!c->RankKnown(input)) {
+        c->set_output(0, c->UnknownShape());
+        return Status::OK();
       }
+
+      int64 rank = c->Rank(input);
       int concat_dimension;
       int split_dimension;
       int split_count;
-
       TF_RETURN_IF_ERROR(c->GetAttr("split_count", &split_count));
 
       TF_RETURN_IF_ERROR(c->GetAttr("concat_dimension", &concat_dimension));

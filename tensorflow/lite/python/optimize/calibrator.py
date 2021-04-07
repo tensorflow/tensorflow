@@ -80,7 +80,8 @@ class Calibrator(object):
                              output_type,
                              allow_float,
                              activations_type=dtypes.int8,
-                             resize_input=True):
+                             resize_input=True,
+                             disable_per_channel=False):
     """Calibrates the model with specified generator and then quantizes it.
 
     The input shapes of the calibrator are resized with the calibration data if
@@ -101,6 +102,8 @@ class Calibrator(object):
                    activations.
       resize_input: A boolean. True if the shape of the sample data is different
         from the input.
+      disable_per_channel: A boolean. True if disabling per-channel
+                   quantization.
     """
     initialized = False
     for sample in dataset_gen():
@@ -114,7 +117,8 @@ class Calibrator(object):
     return self._calibrator.QuantizeModel(
         np.dtype(input_type.as_numpy_dtype()).num,
         np.dtype(output_type.as_numpy_dtype()).num, allow_float,
-        np.dtype(activations_type.as_numpy_dtype()).num)
+        np.dtype(activations_type.as_numpy_dtype()).num,
+        disable_per_channel)
 
   def calibrate_and_quantize_single(self,
                                     dataset_gen,

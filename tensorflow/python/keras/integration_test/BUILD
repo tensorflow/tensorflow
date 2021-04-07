@@ -91,7 +91,6 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
-        "no_tfrt",  # TODO(b/179839466): Reenable TFRT after the issue is resolved.
         "no_windows_gpu",  # TODO(b/130551176)
     ],
     deps = [
@@ -122,7 +121,6 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 3,
     tags = [
-        "no_tfrt",  # TODO(b/171765113)
         "no_windows",  # TODO(b/183102726)
         "noasan",  # TODO(b/156029134)
         "nomac",  # TODO(b/182567880)

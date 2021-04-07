@@ -23,25 +23,26 @@ namespace tensorflow {
 namespace ops {
 
 Status SparseSoftmaxCrossEntropyWithLogits(
-    AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+    AbstractContext* ctx, AbstractTensorHandle* const features,
+    AbstractTensorHandle* const labels,
     absl::Span<AbstractTensorHandle*> outputs, const char* name);
 
-Status ReluGrad(AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs, const char* name);
+Status ReluGrad(AbstractContext* ctx, AbstractTensorHandle* const gradients,
+                AbstractTensorHandle* const features,
+                absl::Span<AbstractTensorHandle*> backprops, const char* name);
 
-Status Relu(AbstractContext* ctx,
-            absl::Span<AbstractTensorHandle* const> inputs,
-            absl::Span<AbstractTensorHandle*> outputs, const char* name);
+Status Relu(AbstractContext* ctx, AbstractTensorHandle* const features,
+            absl::Span<AbstractTensorHandle*> activations, const char* name);
 
-Status BiasAdd(AbstractContext* ctx,
-               absl::Span<AbstractTensorHandle* const> inputs,
-               absl::Span<AbstractTensorHandle*> outputs, const char* name);
+Status BiasAdd(AbstractContext* ctx, AbstractTensorHandle* const value,
+               AbstractTensorHandle* const bias,
+               absl::Span<AbstractTensorHandle*> output, const char* name,
+               const char* data_format = "NHWC");
 
 Status BiasAddGrad(AbstractContext* ctx,
-                   absl::Span<AbstractTensorHandle* const> inputs,
-                   absl::Span<AbstractTensorHandle*> outputs,
-                   const char* data_format, const char* name);
+                   AbstractTensorHandle* const out_backprop,
+                   absl::Span<AbstractTensorHandle*> output, const char* name,
+                   const char* data_format = "NHWC");
 
 }  // namespace ops
 }  // namespace tensorflow

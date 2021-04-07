@@ -59,7 +59,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
-#include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
@@ -3812,41 +3811,6 @@ IrEmitterUnnested::BuildFusedInitializerThunkForMlir(
           .EmitLoop(mlir::GetNameFromLoc(fusion.getLoc())));
   return {std::move(kernel_thunk)};
 }
-
-namespace {
-
-// Checks that the buffers corresponding to the given two HLOs share the same
-// allocation.
-Status CheckHloBuffersShareAllocation(
-    const HloInstruction* a, const HloInstruction* b, const ShapeIndex& index,
-    const BufferAssignment& buffer_assignment) {
-  const BufferAllocation::Slice slice_a =
-      buffer_assignment.GetUniqueSlice(a, index).ConsumeValueOrDie();
-  const BufferAllocation::Slice slice_b =
-      buffer_assignment.GetUniqueSlice(b, index).ConsumeValueOrDie();
-  if (slice_a != slice_b) {
-    return InternalError(
-        "instruction %s %s does not share allocation with instruction %s %s",
-        a->ToString(), slice_a.ToString(), b->ToString(), slice_b.ToString());
-  }
-  return Status::OK();
-}
-
-Status AcceptMaybeOrdered(HloComputation* computation,
-                          IrEmitterUnnested* emitter,
-                          const BufferAssignment& buffer_assignment) {
-  const auto& debug_options = computation->parent()->config().debug_options();
-  if (debug_options.xla_gpu_disable_multi_streaming()) {
-    const HloInstructionSequence* sequence =
-        buffer_assignment.hlo_ordering().SequentialOrder(*computation);
-    // Always expect a sequential ordering for single-stream programs.
-    TF_RET_CHECK(sequence);
-    return computation->AcceptOrdered(emitter, sequence->instructions());
-  }
-  return computation->Accept(emitter);
-}
-
-}  // namespace
 
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildWhileThunk(
     mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info) {

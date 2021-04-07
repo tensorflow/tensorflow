@@ -72,7 +72,8 @@ Status CreateConcatAndSplitNodesForOutputTensor(
     int32_t minimum_output_tensors_packing);
 
 Status InsertReshapeNodePairs(Graph* graph, const string& cluster_name,
-                              EdgeShapes* tpu_input_shapes);
+                              EdgeShapes* tpu_input_shapes,
+                              int num_cores_per_replica);
 
 }  // namespace tpu_functional_internal
 
@@ -180,10 +181,15 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
       ResourceHandle& handle, Node* variable, int num_cores_per_replica)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  Status ShardInputsWithXlaSharding(Graph* graph, int num_cores_per_replica,
+                                    OpKernelContext* ctx)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   // Rewrite the graph for input and output optimiazations.
   // TODO(ylc): Move this function to Graph optimization pass.
   Status OptimizeTpuInputOutputTensors(
       Graph* graph, bool enable_spmd_xla_partitioning,
+      int num_cores_per_replica,
       std::map<std::string, std::vector<int>>& named_input_shapes,
       OpKernelContext* ctx) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 

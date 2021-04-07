@@ -29,6 +29,7 @@ limitations under the License.
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/python/absl_casters.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
+#include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -64,6 +65,8 @@ struct PmapCacheEntry {
   absl::optional<xla::Status> compilation_error = absl::nullopt;
 
   bool fall_back_to_python = false;
+
+  std::vector<py::object> keepalive;
 };
 
 }  // namespace
@@ -79,12 +82,6 @@ class PmapFunction {
         cache_miss_(std::move(cache_miss)),
         static_argnums_(std::move(static_argnums)) {
     std::sort(static_argnums_.begin(), static_argnums_.end());
-  }
-
-  ~PmapFunction() {
-    for (const auto& entry : executables_) {
-      entry.first.DecRef();
-    }
   }
 
   // This function will:
@@ -154,7 +151,10 @@ PmapCacheEntry* PmapFunction::AddCacheEntry(const py::args& args,
   auto it = result.first;
   PmapCacheEntry* cache_entry = it->second.get();
   // CallSignatures in the cache own their keyword argument reference.
-  result.first->first.IncRef();
+  for (const auto& kw : signature.keyword_args) {
+    cache_entry->keepalive.push_back(
+        py::reinterpret_borrow<py::object>(kw.key));
+  }
 
   py::tuple tuple = py::cast<py::tuple>(out_and_fastpath_data);
   CHECK_EQ(tuple.size(), 2);
@@ -202,7 +202,7 @@ py::object PmapFunction::Call(py::args args, py::kwargs kwargs) {
 
   // Get dynamic argument signatures.
   for (py::handle arg : arguments.flat_dynamic_args) {
-    auto signature_or_error = ArgSignatureOfValue(arg, GetEnableX64());
+    auto signature_or_error = xla::PyArgSignatureOfValue(arg, GetEnableX64());
     if (!signature_or_error.ok()) {
       return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
     }
@@ -246,20 +246,19 @@ py::object PmapFunction::Call(py::args args, py::kwargs kwargs) {
   arguments.keep_alive_objects.push_back(
       py::cast<py::object>(list_of_list_of_buffers));
   // Should be `[num_devices x num_args]`.
-  std::vector<std::vector<xla::PyBuffer*>> arg_buffers;
+  std::vector<std::vector<xla::PyBuffer::object>> arg_buffers;
   arg_buffers.reserve(list_of_list_of_buffers.size());
   for (int i = 0; i < list_of_list_of_buffers.size(); ++i) {
-    std::vector<xla::PyBuffer*> buffers;
+    std::vector<xla::PyBuffer::object> buffers;
     buffers.reserve(py::cast<py::list>(list_of_list_of_buffers[i]).size());
     for (auto& buf : list_of_list_of_buffers[i]) {
-      buffers.push_back(py::cast<xla::PyBuffer*>(buf));
+      buffers.push_back(py::cast<xla::PyBuffer::object>(buf));
     }
     arg_buffers.push_back(std::move(buffers));
   }
 
-  std::vector<std::vector<std::unique_ptr<xla::PyBuffer>>> outputs =
-      ValueOrThrow(
-          cache_entry->executable->ExecuteShardedOnLocalDevices(arg_buffers));
+  std::vector<std::vector<xla::PyBuffer::object>> outputs = ValueOrThrow(
+      cache_entry->executable->ExecuteShardedOnLocalDevices(arg_buffers));
 
   // TODO(jblespiau): Move this to C++.
   py::list outputs_as_python_objects;

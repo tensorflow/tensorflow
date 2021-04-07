@@ -13,7 +13,7 @@ package(
         # tensorflow/compiler/xla/pjrt:metrics depends on this package
         "//tensorflow/compiler/xla/pjrt:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Todo(bmzhao): Remaining targets to add are: all tests.

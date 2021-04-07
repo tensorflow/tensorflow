@@ -78,7 +78,4 @@ def get_mnist_model(input_shape):
 def make_parameter_server_cluster(num_workers, num_ps):
   cluster_def = multi_worker_test_base.create_in_process_cluster(
       num_workers=num_workers, num_ps=num_ps, rpc_layer="grpc")
-  cluster_def["chief"] = [
-      "localhost:%d" % multi_worker_test_base.pick_unused_port()
-  ]
   return SimpleClusterResolver(ClusterSpec(cluster_def), rpc_layer="grpc")

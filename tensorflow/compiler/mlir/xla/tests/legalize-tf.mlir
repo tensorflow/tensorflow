@@ -1709,6 +1709,27 @@ func @leaky_relu_grad(%arg0: tensor<1x4x4xf32>, %arg1: tensor<1x4x4xf32>) -> ten
 }
 
 //===----------------------------------------------------------------------===//
+// Roll op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @Roll_0D
+func @Roll_0D(%arg0: tensor<512xi32>, %shift: tensor<i32>) -> tensor<512xi32> {
+  %axis = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> (tensor<i32>)
+  //      CHECK: %[[ZERO:.*]] = mhlo.constant dense<0> : tensor<i32>
+  //      CHECK: %[[AXIS_SIZE:.*]] = mhlo.constant dense<512> : tensor<i32>
+  //      CHECK: %[[T1:.+]] = mhlo.remainder %arg1, %[[AXIS_SIZE]] : tensor<i32>
+  //      CHECK: %[[T2:.+]] = mhlo.add %[[T1]], %[[AXIS_SIZE]] : tensor<i32>
+  //      CHECK: %[[T3:.+]] = mhlo.remainder %[[T2]], %[[AXIS_SIZE]] : tensor<i32>
+  //      CHECK: %[[CONCAT:.+]] = "mhlo.concatenate"(%arg0, %arg0) {dimension = 0 : i64}
+  //      CHECK: %[[OFFSET:.+]] = mhlo.subtract %[[AXIS_SIZE]], %[[T3]] : tensor<i32>
+  //      CHECK: "mhlo.dynamic-slice"(%[[CONCAT]], %[[OFFSET]])
+  // CHECK-SAME:    {slice_sizes = dense<512> : tensor<1xi64>}
+  // CHECK-SAME:    (tensor<1024xi32>, tensor<i32>) -> tensor<512xi32>
+  %0 = "tf.Roll"(%arg0, %shift, %axis) {device = ""} : (tensor<512xi32>, tensor<i32>, tensor<i32>) -> tensor<512xi32>
+  return %0 : tensor<512xi32>
+}
+
+//===----------------------------------------------------------------------===//
 // Select op legalizations.
 //===----------------------------------------------------------------------===//
 

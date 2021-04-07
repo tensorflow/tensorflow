@@ -281,6 +281,17 @@ void ReduceOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
   results.insert<RemoveCopyInReduceBody>(context);
 }
 
+//===----------------------------------------------------------------------===//
+// ReduceWindowOp.
+//===----------------------------------------------------------------------===//
+
+// For reduce-window, all `inputs` need to have compatible shapes.
+static LogicalResult Verify(ReduceWindowOp op) {
+  if (failed(verifyCompatibleShapes(op.inputs().getTypes())))
+    return op.emitOpError() << "requires same shape for all operands";
+  return success();
+}
+
 }  // namespace lmhlo
 }  // namespace mlir
 

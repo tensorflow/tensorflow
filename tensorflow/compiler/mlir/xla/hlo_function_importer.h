@@ -119,6 +119,9 @@ class HloFunctionImporter {
   // Converts xla Tensor type to the corresponding MLIR type.
   StatusOr<mlir::RankedTensorType> ConvertTensorType(const xla::Shape& shape);
 
+  // Converts an XLA shape/layout to the corresponding MLIR layout
+  StatusOr<mlir::Attribute> ConvertShapeToMlirLayout(const xla::Shape& shape);
+
   // Returns the output type of an HloInstruction.
   StatusOr<mlir::Type> GetReturnType(xla::HloInstruction* instruction);
 

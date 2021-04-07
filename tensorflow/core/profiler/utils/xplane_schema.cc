@@ -41,6 +41,7 @@ const absl::string_view kTensorFlowOpLineName = "TensorFlow Ops";
 const absl::string_view kXlaModuleLineName = "XLA Modules";
 const absl::string_view kXlaOpLineName = "XLA Ops";
 const absl::string_view kKernelLaunchLineName = "Launch Stats";
+const absl::string_view kSourceLineName = "Source code";
 
 namespace {
 
@@ -199,6 +200,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"flops", kFlops},
       {"bytes_accessed", kBytesAccessed},
       {"selected_group_ids", kSelectedGroupIds},
+      {"source", kSourceInfo},
       // Performance counter related.
       {"Raw Value", kRawValue},
       {"Scaled Value", kScaledValue},

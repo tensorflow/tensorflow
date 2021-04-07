@@ -7,7 +7,7 @@ load("@build_bazel_rules_android//android:rules.bzl", "android_binary")
 
 package(
     default_visibility = ["//visibility:private"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # See README.md for details about building and executing the benchmark in APK

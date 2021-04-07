@@ -479,6 +479,17 @@ class CheckpointPosition(object):
   def __repr__(self):
     return repr(self.object_proto)
 
+  def value_shape(self):
+    """The shape of the VARIABLE_VALUE tensor.
+
+    Returns:
+      If found a TensorShape object, otherwise None.
+    """
+    for serialized_tensor in self.object_proto.attributes:
+      if serialized_tensor.name == VARIABLE_VALUE_KEY:
+        return self._checkpoint.shape_map[serialized_tensor.checkpoint_key]
+    return None
+
 
 _DeferredSlotVariableRestoration = collections.namedtuple(
     "_DeferredSlotVariableRestoration", [

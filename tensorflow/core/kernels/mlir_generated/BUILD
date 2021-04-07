@@ -235,6 +235,7 @@ tf_kernel_library(
     ]) + if_mlir_generated_experimental_kernels_enabled([
         "gpu_op_floor_div.cc",
         "gpu_op_squared_difference.cc",
+        "gpu_op_select.cc",
     ]),
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
@@ -267,6 +268,7 @@ tf_kernel_library(
     ]) + if_mlir_generated_experimental_kernels_enabled([
         ":gpu_floor_div_kernels",
         ":gpu_squared_difference_kernels",
+        ":gpu_select_v2_kernels",
     ]),
 )
 
@@ -1046,8 +1048,6 @@ gpu_kernel_library(
     tile_size = "256",
     types = [
         "i1",
-        "i8",
-        "i16",
         "i32",
         "i64",
         "f16",
