@@ -251,6 +251,7 @@ cc_library(
         "lib/strdup.h",
         "lib/strerror.c",
         "lib/strerror.h",
+        "lib/strtok.c",
         "lib/strtok.h",
         "lib/strtoofft.c",
         "lib/strtoofft.h",
