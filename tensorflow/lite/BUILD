@@ -359,6 +359,7 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@flatbuffers//:runtime_cc",
+        "@ruy//ruy:denormal",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
