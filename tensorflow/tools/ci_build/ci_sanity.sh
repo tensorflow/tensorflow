@@ -129,7 +129,7 @@ do_pylint() {
   echo ""
   echo "check whether pylint is available or not."
   echo ""
-  pip show numpy
+  python3.8 -m pip show numpy
   exit 1
   ${PYLINT_BIN} --version
   if [[ $? -eq 0 ]]
