@@ -708,6 +708,20 @@ std::vector<mlir::Value> GetHloOutputs(mlir::Operation* op) {
   LOG(FATAL) << "Unexpected op: " << MlirToString(op);
 }
 
+bool IsRowMajor(mlir::Operation* op) {
+  if (auto attr = mlir::GetLayoutFromMlirHlo(op)) {
+    std::vector<int64> minor_to_major;
+    absl::c_transform(
+        attr, std::back_inserter(minor_to_major),
+        std::function<int64(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
+    bool ret = std::is_sorted(minor_to_major.begin(),
+                              minor_to_major.end(), std::greater<int64>());
+    return ret;
+  }
+  // It is row major by default.
+  return true;
+}
+
 bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand) {
   llvm::SmallVector<mlir::MemoryEffects::EffectInstance, 2> effects;
   mlir::cast<mlir::MemoryEffectOpInterface>(op).getEffectsOnValue(operand,
