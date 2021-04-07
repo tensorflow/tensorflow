@@ -53,7 +53,7 @@ class ReluGradientFunction : public GradientFunction {
     // Calculate Grad
     std::string name = "relu_grad";
     TF_RETURN_IF_ERROR(
-        ReluGrad(ctx, {upstream_grad, activations}, grad_inputs, name.c_str()));
+        ReluGrad(ctx, upstream_grad, activations, grad_inputs, name.c_str()));
     return Status::OK();
   }
   ~ReluGradientFunction() override {
@@ -142,9 +142,9 @@ class BiasAddGradientFunction : public GradientFunction {
 
     // Grad for bias
     std::string name = "bias_add_grad";
-    TF_RETURN_IF_ERROR(BiasAddGrad(ctx, {upstream_grad},
-                                   grad_inputs.subspan(1, 1),
-                                   data_format.c_str(), name.c_str()));
+    TF_RETURN_IF_ERROR(BiasAddGrad(ctx, upstream_grad,
+                                   grad_inputs.subspan(1, 1), name.c_str(),
+                                   data_format.c_str()));
 
     return Status::OK();
   }
