@@ -264,11 +264,19 @@ Status DataServiceDispatcherClient::EnsureInitialized() {
         grpc::ClientContext ctx;
         grpc::Status s = stub_->GetVersion(&ctx, req, &resp);
         if (!s.ok()) {
-          return grpc_util::WrapError(
-              absl::StrCat("Failed to get dispatcher version from dispatcher "
-                           "running at ",
-                           address_),
-              s);
+          std::string message = absl::StrCat(
+              "Failed to get dispatcher version from dispatcher "
+              "running at ",
+              address_);
+#if defined(PLATFORM_GOOGLE)
+          if (protocol_ != "grpc+loas") {
+            absl::StrAppend(
+                &message, ". Using protocol ", protocol_,
+                ". If the server is using loas credentials, make sure that "
+                "loas credentials are also linked into the client");
+          }
+#endif  // PLATFORM_GOOGLE
+          return grpc_util::WrapError(message, s);
         }
         return Status::OK();
       },
