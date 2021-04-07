@@ -794,6 +794,11 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
   }
   TF_RETURN_IF_ERROR(LinkROCDLIfNecessary(module, amdgpu_version->first,
                                           device_bitcode_dir_path));
+  if (hlo_module_config.debug_options().xla_gpu_ftz()) {
+    for (llvm::Function& fn : *module) {
+      fn.addFnAttr("denormal-fp-math-f32", "preserve-sign");
+    }
+  }
 
   return Status::OK();
 }
