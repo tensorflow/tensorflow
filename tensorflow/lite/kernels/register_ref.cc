@@ -285,9 +285,9 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              Register_UNIDIRECTIONAL_SEQUENCE_LSTM(), /* min_version = */ 1,
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_PAD, Register_PAD_REF(), /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_PADV2, Register_PADV2_REF(), /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_RESHAPE, Register_RESHAPE());
   AddBuiltin(BuiltinOperator_RESIZE_BILINEAR, Register_RESIZE_BILINEAR_REF(),
              /* min_version = */ 1,
