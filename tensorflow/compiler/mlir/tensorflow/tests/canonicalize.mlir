@@ -1663,3 +1663,35 @@ func @testDontConvertPackToReshapeDynamicShape(%arg0: tensor<2x?xf32>) -> tensor
   // CHECK: %[[PACK:.*]] = "tf.Pack"(%arg0) {axis = 0 : i64} : (tensor<2x?xf32>) -> tensor<1x2x?xf32>
   // CHECK: return %[[PACK]] : tensor<1x2x?xf32>
 }
+
+// CHECK-LABEL: while_with_id_passthrough
+func @while_with_id_passthrough(%arg0: tensor<7xf32> {tf._user_specified_name = "x"}) -> tensor<?xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "x", outputs = "identity_RetVal"}} {
+  %0 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %1 = "tf.Const"() {value = dense<3> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[SHAPE:.*]] = "tf.Const"() {value = dense<7> : tensor<1xi32>}
+  %2 = "tf.Const"() {value = dense<7> : tensor<1xi32>} : () -> tensor<1xi32>
+  %3 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+  %4 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %5 = "tf.Const"() {value = dense<2.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  %6:4 = "tf.WhileRegion"(%0, %1, %arg0, %2) ( {
+    ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<?xf32>, %arg4: tensor<1xi32>):  // no predecessors
+      %8 = "tf.Less"(%arg1, %arg2) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      %9 = "tf.LogicalAnd"(%8, %3) {device = ""} : (tensor<i1>, tensor<i1>) -> tensor<i1>
+      %10 = "tf.Identity"(%9) {device = ""} : (tensor<i1>) -> tensor<i1>
+      "tf.Yield"(%10) : (tensor<i1>) -> ()
+    },  {
+    ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<?xf32>, %arg4: tensor<1xi32>):  // no predecessors
+      %8 = "tf.Identity"(%arg4) {device = ""} : (tensor<1xi32>) -> tensor<1xi32>
+      // CHECK: tf.RandomStandardNormal{{.*}}(%[[SHAPE]])
+      %9 = "tf.RandomStandardNormal"(%arg4) {device = "", seed = 87654321 : i64, seed2 = 0 : i64} : (tensor<1xi32>) -> tensor<?xf32>
+      %10 = "tf.Pow"(%9, %5) {device = ""} : (tensor<?xf32>, tensor<f32>) -> tensor<?xf32>
+      %11 = "tf.AddV2"(%arg3, %10) {device = ""} : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+      %12 = "tf.Identity"(%11) {device = ""} : (tensor<?xf32>) -> tensor<?xf32>
+      %13 = "tf.AddV2"(%arg1, %4) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      %14 = "tf.Identity"(%13) {device = ""} : (tensor<i32>) -> tensor<i32>
+      %15 = "tf.Identity"(%arg2) {device = ""} : (tensor<i32>) -> tensor<i32>
+      "tf.Yield"(%14, %15, %12, %8) : (tensor<i32>, tensor<i32>, tensor<?xf32>, tensor<1xi32>) -> ()
+  }) {_num_original_outputs = 4 : i64, _read_only_resource_inputs = [], _xla_propagate_compile_time_consts = true, device = "", is_stateless = false, parallel_iterations = 10 : i64} : (tensor<i32>, tensor<i32>, tensor<7xf32>, tensor<1xi32>) -> (tensor<i32>, tensor<i32>, tensor<?xf32>, tensor<1xi32>)
+  %7 = "tf.Identity"(%6#2) {device = ""} : (tensor<?xf32>) -> tensor<?xf32>
+  return %7 : tensor<?xf32>
+}
