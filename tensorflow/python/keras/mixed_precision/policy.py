@@ -449,7 +449,7 @@ def _check_if_mixed_precision_graph_rewrite_is_enabled(policy):
         'The global dtype policy cannot be set to "{policy.name}", because the '
         'mixed precision graph rewrite has already been enabled.\n'
         'At most, one of the following can be called:\n\n'
-        '  1. tf.train.experimental.enable_mixed_precision_graph_rewrite() '
+        '  1. tf.compat.v1.train.enable_mixed_precision_graph_rewrite() '
         '(You called this first)\n'
         '  2. tf.keras.mixed_precision.experimental.set_policy() with a mixed '
         'precision policy (You called this second)\n\n'
