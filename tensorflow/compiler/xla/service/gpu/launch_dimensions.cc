@@ -56,15 +56,15 @@ static int64 ThreadsPerBlockLimit(GpuDeviceInfo gpu_device_info) {
 
 // Calculates the launch dimensions used to invoke `hlo`.
 StatusOr<LaunchDimensions> CalculateLaunchDimensions(
-    const Shape& shape, GpuDeviceInfo gpu_device_info, int unroll_factor,
-    bool few_waves, bool row_optimized) {
+    const Shape& shape, GpuDeviceInfo gpu_device_info,
+    LaunchDimensionsConfig dim_config) {
   int64 num_elements = ShapeUtil::ElementsIn(shape);
   if (num_elements <= 1) {
     return LaunchDimensions();
   }
 
-  CHECK_EQ(num_elements % unroll_factor, 0);
-  num_elements = num_elements / unroll_factor;
+  CHECK_EQ(num_elements % dim_config.unroll_factor, 0);
+  num_elements = num_elements / dim_config.unroll_factor;
 
   // Since we don't do any inter-warp communication, we're free to choose any
   // block size we want, subject to hardware constraints.  We choose the largest
@@ -82,9 +82,9 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
   // need more registers to hold intermediate values. Reduce the number of
   // blocks per thread to increase the number of registers available to ptxas.
   // Make sure we still have a multiple of 32.
-  int64 threads_per_block_row_optimized = shape.dimensions().back() / unroll_factor;
-  if (row_optimized &&
-      shape.dimensions().back() % unroll_factor == 0 &&
+  int64 threads_per_block_row_optimized = shape.dimensions().back() / dim_config.unroll_factor;
+  if (dim_config.row_optimized &&
+      shape.dimensions().back() % dim_config.unroll_factor == 0 &&
       // If the row size is a multiple of 256, then use the old code
       // path that use a block size of 256. This give small speed up on V100.
       // Vectorization of the row load was already happening.
@@ -98,7 +98,7 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
               << threads_per_block << ") to be row_optimized.";
   } else {
     threads_per_block =
-      RoundUpToNearest(threads_per_block / unroll_factor, int64{32});
+      RoundUpToNearest(threads_per_block / dim_config.unroll_factor, int64{32});
     if (num_elements < threads_per_block) {
       threads_per_block = num_elements;
       VLOG(2) << "Update # of threads per block to the element count ("
@@ -107,7 +107,7 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
   }
 
   int64 block_count = CeilOfRatio(num_elements, threads_per_block);
-  if (few_waves) {
+  if (dim_config.few_waves) {
     int64 capped_threads_per_block = std::min<int64>(threads_per_block, 128);
     int64 capped_block_count =
         gpu_device_info.core_count *
@@ -134,8 +134,9 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
       num_elements, threads_per_block, block_count);
 
   bool last_dim_aligned_for_vectorization = false;
-  if (row_optimized && shape.rank() > 1) {
-    last_dim_aligned_for_vectorization = threads_per_block * unroll_factor == shape.dimensions().back();
+  if (dim_config.row_optimized && shape.rank() > 1) {
+    last_dim_aligned_for_vectorization = threads_per_block * dim_config.unroll_factor ==
+        shape.dimensions().back();
   }
 
   return LaunchDimensions(block_count, threads_per_block, last_dim_aligned_for_vectorization);

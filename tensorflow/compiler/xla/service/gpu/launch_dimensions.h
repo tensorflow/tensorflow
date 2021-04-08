@@ -74,9 +74,15 @@ class LaunchDimensions {
 std::ostream& operator<<(std::ostream& out,
                          const LaunchDimensions& launch_dims);
 
+struct LaunchDimensionsConfig {
+  int unroll_factor = 1;
+  bool few_waves = false;
+  bool row_optimized = false;
+};
+
 StatusOr<LaunchDimensions> CalculateLaunchDimensions(
-    const Shape& shape, GpuDeviceInfo gpu_device_info, int unroll_factor = 1,
-    bool few_waves = false, bool row_optimized = false);
+    const Shape& shape, GpuDeviceInfo gpu_device_info,
+    LaunchDimensionsConfig dim_config={});
 
 }  // namespace gpu
 }  // namespace xla
