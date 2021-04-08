@@ -357,6 +357,11 @@ if __name__ == '__main__':
       action='store_true',
       help='do not include top layers',
       default=False)
+  p.add_argument(
+      '--lite',
+      action='store_true',
+      help='Whether to use lite variant of the model.',
+      default=False)
   p.add_argument('--ckpt', required=True, type=str, help='checkpoint path')
   p.add_argument(
       '--output', '-o', required=True, type=str, help='output (h5) file path')
@@ -364,5 +369,7 @@ if __name__ == '__main__':
 
   include_top = not args.notop
 
-  model = arg_to_model[args.model](include_top=include_top)
+  model = arg_to_model[args.model](
+      include_top=include_top, lite=args.lite, weights=None
+  )
   write_ckpt_to_h5(args.output, args.ckpt, keras_model=model)
