@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -182,6 +183,20 @@ static std::vector<xla::ReplicaGroup> Convert_replica_groups(
 static xla::TriangularSolveOptions::Transpose Convert_transpose_a(
     llvm::StringRef transpose_str) {
   return xla::ConvertTranspose(transpose_str).ValueOrDie();
+}
+
+static xla::Layout ExtractLayout(mlir::Operation* op, int rank,
+                                 llvm::StringRef attr_name = "minor_to_major") {
+  if (auto attr = GetLayoutFromMlirHlo(op, attr_name)) {
+    llvm::SmallVector<int64, 4> minor_to_major;
+    DCHECK_EQ(rank, attr.size());
+    minor_to_major.reserve(attr.size());
+    for (const llvm::APInt& i : attr) {
+      minor_to_major.push_back(i.getZExtValue());
+    }
+    return xla::LayoutUtil::MakeLayout(minor_to_major);
+  }
+  return xla::LayoutUtil::MakeDescendingLayout(rank);
 }
 
 #define I64_ELEMENTS_ATTR_TO_VECTOR(attribute)                \
@@ -506,6 +521,8 @@ class ConvertToHloModule {
       xla::XlaBuilder* builder,
       ConvertToHloModule::ValueLoweringMap* value_lowering,
       xla::XlaOp* return_value);
+
+  const MlirToHloConversionOptions& GetOptions() const { return options_; }
 
  private:
   LogicalResult SetEntryTupleShapesAndLeafReplication(
@@ -1130,8 +1147,32 @@ LogicalResult ExportXlaOp(BitcastOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp operand;
   if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
-  value_map[op] = xla::internal::XlaBuilderFriend::BuildBitcast(
+  xla::XlaOp bitcast = xla::internal::XlaBuilderFriend::BuildBitcast(
       ctx.builder, operand, xla::TypeToShape(op.getType()));
+  value_map[op] = bitcast;
+  if (ctx.converter->GetOptions().propagate_bitcast_layouts_to_backend_config) {
+    // Encode the source and result layout of the bitcast into the XLA HLO
+    // backend config as a protobuf. Note that this is a temporary solution
+    // which will go away once XLA:GPU stops falling back to XLA HLO Elemental
+    // IR emitters.
+    xla::HloInstructionProto* bitcast_proto =
+        xla::internal::XlaBuilderFriend::GetInstruction(bitcast);
+    xla::HloInstructionProto* operand_proto =
+        xla::internal::XlaBuilderFriend::GetInstruction(operand);
+    xla::LayoutProto result_layout =
+        ExtractLayout(op, bitcast_proto->shape().dimensions_size(),
+                      "result_layout")
+            .ToProto();
+    xla::LayoutProto source_layout =
+        ExtractLayout(op, operand_proto->shape().dimensions_size(),
+                      "source_layout")
+            .ToProto();
+    xla::gpu::BitcastBackendConfig bitcast_config;
+    *bitcast_config.mutable_source_layout() = source_layout;
+    *bitcast_config.mutable_result_layout() = result_layout;
+    *bitcast_proto->mutable_backend_config() =
+        bitcast_config.SerializeAsString();
+  }
   return success();
 }
 
@@ -1180,19 +1221,6 @@ StatusOr<xla::Literal> CreateArrayLiteralFromAttr(ElementsAttr attr,
           "Unsupported type: ", xla::PrimitiveType_Name(shape.element_type())));
   }
 #undef ELEMENTS_ATTR_TO_LITERAL
-}
-
-xla::Layout ExtractLayout(mlir::Operation* op, int rank) {
-  if (auto attr = GetLayoutFromMlirHlo(op)) {
-    llvm::SmallVector<int64, 4> minor_to_major;
-    DCHECK_EQ(rank, attr.size());
-    minor_to_major.reserve(attr.size());
-    for (const llvm::APInt& i : attr) {
-      minor_to_major.push_back(i.getZExtValue());
-    }
-    return xla::LayoutUtil::MakeLayout(minor_to_major);
-  }
-  return xla::LayoutUtil::MakeDescendingLayout(rank);
 }
 
 LogicalResult ConvertLayout(mlir::Operation* op, const mlir::ArrayAttr& layout,
@@ -1872,8 +1900,9 @@ Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
   return Status::OK();
 }
 
-DenseIntElementsAttr GetLayoutFromMlirHlo(mlir::Operation* op) {
-  return op->getAttrOfType<mlir::DenseIntElementsAttr>("minor_to_major");
+DenseIntElementsAttr GetLayoutFromMlirHlo(mlir::Operation* op,
+                                          llvm::StringRef attr_name) {
+  return op->getAttrOfType<mlir::DenseIntElementsAttr>(attr_name);
 }
 
 }  // namespace mlir

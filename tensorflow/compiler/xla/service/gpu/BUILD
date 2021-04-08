@@ -335,6 +335,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_loop",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",

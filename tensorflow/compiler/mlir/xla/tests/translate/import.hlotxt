@@ -1028,10 +1028,10 @@ add {
 
 // CHECK-LABEL:  func private @bitcast
 // CHECK-SAME:    (%[[ARG0:.*]]: tensor<3x4xf32>) -> tensor<3x4x1xf32>
-%bitcast (Arg_0.1: f32[3,4]) -> f32[3,4,1] {
+%bitcast (Arg_0.1: f32[3,4]) -> f32[3,4,1]{2,0,1} {
   %Arg_0.1 = f32[3,4] parameter(0)
-  // CHECK: "mhlo.bitcast"(%[[ARG0]]) : (tensor<3x4xf32>) -> tensor<3x4x1xf32>
-  ROOT %bitcast = f32[3,4,1] bitcast(f32[3,4] %Arg_0.1)
+  // CHECK: "mhlo.bitcast"(%[[ARG0]]) {minor_to_major = dense<[2, 0, 1]> : tensor<3xindex>, result_layout = dense<[2, 0, 1]> : tensor<3xindex>, source_layout = dense<[1, 0]> : tensor<2xindex>} : (tensor<3x4xf32>) -> tensor<3x4x1xf32>
+  ROOT %bitcast = f32[3,4,1]{2,0,1} bitcast(f32[3,4] %Arg_0.1)
 }
 
 // CHECK-LABEL:  func private @reduce_precision

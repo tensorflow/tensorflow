@@ -2801,6 +2801,7 @@ IrEmitterUnnested::GetOrCreateSubComputationFromRegion(mlir::Region* region,
     xla::XlaComputation xla_computation;
     mlir::MlirToHloConversionOptions options;
     options.propagate_layouts = true;
+    options.propagate_bitcast_layouts_to_backend_config = true;
     TF_RETURN_IF_ERROR(
         ConvertRegionToComputation(region, &xla_computation, options));
 
