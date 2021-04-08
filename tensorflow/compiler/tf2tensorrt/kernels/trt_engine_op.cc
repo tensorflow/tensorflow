@@ -76,7 +76,6 @@ class ContextDeviceMemory {
   ~ContextDeviceMemory() {
     if (device_memory_) {
       device_memory_allocator_->free(device_memory_);
-      execution_context_->setDeviceMemory(nullptr);
     }
   }
 
