@@ -1357,7 +1357,7 @@ Status VerifyBatchNormForThunkEmission(
 // fusion with only point-wise operations, scalar broadcasting and row
 // broadcasting, we can trigger a kernel that vectorize the row loads.
 // This speed up the kernel, in particular on A100.
-bool EnableRowOptimization(mlir::lmhlo::FusionOp fusion) {
+bool RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
   bool row_optimized = fusion.getFusionResults().size() == 1 && // Not tested with MOF.
       absl::c_all_of(GetHloOperands(fusion), [](const mlir::Value& value) {
           // Only tested when the inputs are row-major. So only enable that case.
@@ -1372,7 +1372,12 @@ bool EnableRowOptimization(mlir::lmhlo::FusionOp fusion) {
       absl::c_all_of(GetOutputOps(fusion), IsRowMajor);
 
   bool some_row_broadcasting = false;
-  // Check that the operation in the fusion are supported
+  // Check that the operation in the fusion are supported.  Each
+  // supported operation (or category) must be manually vetted as XLA
+  // only unroll and rely on LLVM to vectorize. But this is brittle.
+  // If the vectorization doesn't happens, then it would slow down
+  // computation.  Currently tested and supported operations:
+  // Elementwise, scalar and row broadcasting.
   for (mlir::Operation& op : fusion.region().front()) {
     if (mlir::isa<mlir::memref::TensorLoadOp, mlir::memref::TensorStoreOp,
         mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp,
@@ -1930,7 +1935,7 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
     return true;
   }();
 
-  bool row_optimized = EnableRowOptimization(fusion);
+  bool row_optimized = RowVectorizationEnabled(fusion);
   Shape element_shape = context.output_shapes[0];
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
                       CalculateLaunchDimensions(
