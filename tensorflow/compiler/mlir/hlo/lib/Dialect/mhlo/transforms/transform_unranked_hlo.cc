@@ -497,7 +497,11 @@ struct ConvertUnrankedDynamicBroadcastNaryOp
     // Put each subsequent rank specialization inside the else statement of the
     // previous one.
     OpBuilder else_builder = if_op.getElseBodyBuilder(rewriter.getListener());
-    constexpr int kMaxRankSpecialization = 5;
+
+    // Tensorflow supports up to rank 8 for SelectOp (currently the only op with
+    // arity > 2 that we support), but only up to rank 5 for binary ops. We want
+    // to preserve this behavior.
+    const int kMaxRankSpecialization = operands.size() > 2 ? 8 : 5;
     for (int i = 2; i < kMaxRankSpecialization; i++) {
       auto inner_if = createIfOpForRankSpecializedBroadcastAndOp(
           else_builder, op, greater_rank, i);
