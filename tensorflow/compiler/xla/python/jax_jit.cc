@@ -601,6 +601,14 @@ void CompiledFunction::TryToPopulateDefaultDevice() {
 
 xla::StatusOr<py::object> CompiledFunction::Call(
     py::handle args, absl::optional<py::kwargs> kwargs) {
+  // Make sure we trigger a garbage collection on JIT function calls. Otherwise
+  // code like
+  // f = jit(...)
+  // while True:
+  //   f(x)
+  // may never free temporary buffers for copies of arguments.
+  xla::GlobalPyRefManager()->MaybeCollectGarbage();
+
   auto& tls = thread_local_state;
   if (tls.disable_jit.value_or(global_state.disable_jit)) {
     return fun_(*py::reinterpret_borrow<py::args>(args),
