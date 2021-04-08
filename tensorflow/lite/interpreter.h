@@ -86,9 +86,11 @@ class TestDelegate;  // Class for friend declarations.
 /// interpreter.Invoke();
 /// </code></pre>
 ///
-/// Note: for nearly all practical use cases, one should not directly construct
+/// Note: For nearly all practical use cases, one should not directly construct
 /// an Interpreter object, but rather use the InterpreterBuilder.
-
+///
+/// WARNING: This class is *not* thread-safe. The client is responsible for
+/// ensuring serialized interaction to avoid data races and undefined behavior.
 class Interpreter {
  public:
   // Instantiate an interpreter. All errors associated with reading and

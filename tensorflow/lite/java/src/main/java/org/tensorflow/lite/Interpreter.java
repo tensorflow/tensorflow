@@ -73,13 +73,11 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  * obtained via the {@link Tensor} class, available via {@link #getInputTensor(int)} and {@link
  * #getOutputTensor(int)}.
  *
- * <p><b>WARNING:</b>Instances of a {@code Interpreter} is <b>not</b> thread-safe. A {@code
- * Interpreter} owns resources that <b>must</b> be explicitly freed by invoking {@link #close()}
+ * <p><b>WARNING:</b>{@code Interpreter} instances are <b>not</b> thread-safe. A {@code Interpreter}
+ * owns resources that <b>must</b> be explicitly freed by invoking {@link #close()}
  *
  * <p>The TFLite library is built against NDK API 19. It may work for Android API levels below 19,
  * but is not guaranteed.
- *
- * <p>Note: This class is not thread safe.
  */
 public final class Interpreter implements AutoCloseable {
 
