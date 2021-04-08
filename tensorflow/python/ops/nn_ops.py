@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Primitive Neural Net (NN) Operations.
+r"""Primitive Neural Net (NN) Operations.
 
 ## Notes on padding
 
@@ -34,7 +34,7 @@ window ignores padded values, which is equivalent to the padded values being
 
 Passing `padding='VALID'` to an op causes no padding to be used. This causes the
 output size to typically be smaller than the input size, even when the stride is
-1. In the 2D case, the output size is computed as:
+1\. In the 2D case, the output size is computed as:
 
 ```
 out_height = ceil((in_height - filter_height + 1) / stride_height)
