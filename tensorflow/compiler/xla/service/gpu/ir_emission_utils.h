@@ -254,6 +254,8 @@ int PartitionLmhloOperandsAndOutputs(mlir::Operation* op);
 std::vector<mlir::Value> GetHloOperands(mlir::Operation* op);
 std::vector<mlir::Value> GetHloOutputs(mlir::Operation* op);
 
+// return true if the operation have a row-major memory layout.
+// If no layout is specified, it default to row-major memory layout.
 bool IsRowMajor(mlir::Operation* op);
 
 bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand);

@@ -709,13 +709,12 @@ std::vector<mlir::Value> GetHloOutputs(mlir::Operation* op) {
 }
 
 bool IsRowMajor(mlir::Operation* op) {
-  if (auto attr = mlir::GetLayoutFromMlirHlo(op)) {
+  if (mlir::DenseIntElementsAttr attr = mlir::GetLayoutFromMlirHlo(op)) {
     std::vector<int64> minor_to_major;
     absl::c_transform(
         attr, std::back_inserter(minor_to_major),
         std::function<int64(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
-    bool ret = std::is_sorted(minor_to_major.begin(),
-                              minor_to_major.end(), std::greater<int64>());
+    bool ret = absl::c_is_sorted(minor_to_major, std::greater<int64>());
     return ret;
   }
   // It is row major by default.
