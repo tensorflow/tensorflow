@@ -77,7 +77,7 @@ std::ostream& operator<<(std::ostream& out,
 struct LaunchDimensionsConfig {
   int unroll_factor = 1;
   bool few_waves = false;
-  bool row_optimized = false;
+  bool row_vectorized = false;
 };
 
 StatusOr<LaunchDimensions> CalculateLaunchDimensions(

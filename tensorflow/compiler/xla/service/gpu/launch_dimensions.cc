@@ -82,8 +82,8 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
   // need more registers to hold intermediate values. Reduce the number of
   // blocks per thread to increase the number of registers available to ptxas.
   // Make sure we still have a multiple of 32.
-  int64 threads_per_block_row_optimized = shape.dimensions().back() / dim_config.unroll_factor;
-  if (dim_config.row_optimized &&
+  int64 threads_per_block_row_vectorized = shape.dimensions().back() / dim_config.unroll_factor;
+  if (dim_config.row_vectorized &&
       shape.dimensions().back() % dim_config.unroll_factor == 0 &&
       // If the row size is a multiple of 256, then use the old code
       // path that use a block size of 256. This give small speed up on V100.
@@ -91,11 +91,11 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
       (shape.dimensions().back() % 256) != 0 &&
       // Do not trigger the row vectorized codepath if this create too
       // small block size as this hurt performance.
-      (threads_per_block_row_optimized >= 128 &&
-       threads_per_block_row_optimized <= gpu_device_info.threads_per_block_limit)) {
-    threads_per_block = threads_per_block_row_optimized;
+      (threads_per_block_row_vectorized >= 128 &&
+       threads_per_block_row_vectorized <= gpu_device_info.threads_per_block_limit)) {
+    threads_per_block = threads_per_block_row_vectorized;
     VLOG(2) << "Update # of threads per block to ("
-              << threads_per_block << ") to be row_optimized.";
+              << threads_per_block << ") to be row_vectorized.";
   } else {
     threads_per_block =
       RoundUpToNearest(threads_per_block / dim_config.unroll_factor, int64{32});
@@ -134,7 +134,7 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
       num_elements, threads_per_block, block_count);
 
   bool last_dim_aligned_for_vectorization = false;
-  if (dim_config.row_optimized && shape.rank() > 1) {
+  if (dim_config.row_vectorized && shape.rank() > 1) {
     last_dim_aligned_for_vectorization = threads_per_block * dim_config.unroll_factor ==
         shape.dimensions().back();
   }
