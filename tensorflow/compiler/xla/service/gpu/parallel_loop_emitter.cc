@@ -134,7 +134,10 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
   // match the block sizes.  So we can generates a simpler indexing
   // for that dimensions.  This help LLVM generates vectorized codes
   // in that cases.
-  bool enable_row_index = launch_dimensions_.last_dim_aligned_for_vectorization();
+  LaunchDimensions::Dim3D dim3 = launch_dimensions_.thread_counts_per_block();
+  bool enable_row_index = shape_.rank() > 1 && unroll_factor_ > 1 &&
+      shape_.has_layout() && shape_.layout().minor_to_major()[shape_.rank()-1] == 0 &&
+      dim3.x * dim3.y * dim3.z * unroll_factor_ == shape_.dimensions().back();
   VLOG(2) << "Emitting row optimized indexing: " << enable_row_index;
   llvm::Value* row_index = nullptr;
   if (!enable_row_index) {

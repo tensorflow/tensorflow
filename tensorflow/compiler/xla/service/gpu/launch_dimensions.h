@@ -36,20 +36,16 @@ class LaunchDimensions {
   // The default constructor creates a launch dimension that indicate
   // single-threaded execution.
   LaunchDimensions()
-      : block_counts_({1, 1, 1}), thread_counts_per_block_({1, 1, 1}),
-        last_dim_aligned_for_vectorization_(false) {}
+      : block_counts_({1, 1, 1}), thread_counts_per_block_({1, 1, 1}) {}
 
-  LaunchDimensions(int64 block_x_count, int64 thread_x_count_per_block,
-                   bool last_dim_aligned_for_vectorization = false)
+  LaunchDimensions(int64 block_x_count, int64 thread_x_count_per_block)
       : block_counts_({block_x_count, 1, 1}),
-        thread_counts_per_block_({thread_x_count_per_block, 1, 1}),
-        last_dim_aligned_for_vectorization_(last_dim_aligned_for_vectorization) {}
+        thread_counts_per_block_({thread_x_count_per_block, 1, 1}) {}
 
   LaunchDimensions(const Dim3D& block_counts,
                    const Dim3D& thread_counts_per_block)
       : block_counts_(block_counts),
-        thread_counts_per_block_(thread_counts_per_block),
-        last_dim_aligned_for_vectorization_(false) {}
+        thread_counts_per_block_(thread_counts_per_block) {}
 
   Dim3D block_counts() const { return block_counts_; }
 
@@ -61,14 +57,9 @@ class LaunchDimensions {
            thread_counts_per_block_.z;
   }
 
-  bool last_dim_aligned_for_vectorization() const {
-    return last_dim_aligned_for_vectorization_;
-  }
-
  private:
   Dim3D block_counts_;
   Dim3D thread_counts_per_block_;
-  bool last_dim_aligned_for_vectorization_;
 };
 
 std::ostream& operator<<(std::ostream& out,
