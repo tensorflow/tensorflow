@@ -1852,12 +1852,10 @@ mlir::Operation* ImporterBase::CreateOperation(
   if (!name.getAbstractOperation() &&
       // Skip unmodelled ops that are handled differently.
       (node_type_name != "_Arg" && node_type_name != "_Retval")) {
-    if (GetUnmodelledOpTypes().insert(name.getStringRef()).second) {
-      LOG(INFO) << "Unmodelled op type `" << node.type_string() << "`"
-                << (node.op_def().is_stateful()
-                        ? " is stateful but effects not modelled"
-                        : " is not stateful but will be treated as such "
-                          "conservatively");
+    if (node.op_def().is_stateful() &&
+        GetUnmodelledOpTypes().insert(name.getStringRef()).second) {
+      LOG(INFO) << "Op type `" << node.type_string()
+                << "` is stateful but effects not modelled";
     }
   }
 
