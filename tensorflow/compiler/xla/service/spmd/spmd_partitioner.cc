@@ -2681,7 +2681,8 @@ Status SpmdPartitioningVisitor::HandlePad(HloInstruction* hlo) {
     dim->set_padding_high(pd.edge_padding_high());
     dim->set_base_dilation(pd.interior_padding() + 1);
     needs_masking |= hlo->sharding().tile_assignment().dim(i) > 1 &&
-                     (pd.edge_padding_low() < 0 || pd.edge_padding_high() < 0);
+                     (pd.edge_padding_low() > 0 || pd.edge_padding_high() > 0 ||
+                      pd.interior_padding() > 0);
   }
 
   auto replicated_rhs = GetPartitionedHlo(hlo->operand(1))

@@ -2122,7 +2122,7 @@ ENTRY entry {
             op::Concatenate(param0, op::CollectivePermute(op::Slice(param0))));
   auto pad = AllOf(op::Shape("f32[14,131]"),
                    op::Pad(after_halo_exchange, op::Constant()));
-  EXPECT_THAT(root, op::DynamicSlice(pad, op::Constant(), _));
+  EXPECT_THAT(root, op::Select(_, op::DynamicSlice(pad, op::Constant(), _), _));
 }
 
 TEST_F(SpmdPartitioningTest, PadAlongPartitionedDimensionWithInteriorPadding) {
