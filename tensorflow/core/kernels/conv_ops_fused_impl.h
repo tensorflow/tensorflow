@@ -451,6 +451,11 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
         errors::Unimplemented("FusedConv2D for GPU is not currently supported "
                               "without cudnn"));
 
+    OP_REQUIRES(
+        context, fusion == FusedComputationType::kBiasAddWithRelu,
+        errors::Unimplemented("FusedConv2D implementation only supports "
+                              "fusing with `BiasAdd + Relu` for now."));
+
     Tensor input = input_param;
 
     const int64 in_batch = GetTensorDim(input, params.data_format, 'N');
@@ -554,24 +559,15 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     }
 
     CHECK(common_padding_rows >= 0) << "Negative padding rows";  // Crash OK
-    CHECK(common_padding_cols >= 0) << "Negative padding cols";  // Crash OK
+    CHECK(common_padding_rows >= 0) << "Negative padding cols";  // Crash OK
 
     se::dnn::ActivationMode dnn_activation_mode;
     switch (fusion) {
-      case FusedComputationType::kUndefined:
-        OP_REQUIRES_OK(context, errors::Internal("Fusion type is undefined"));
-        break;
-      case FusedComputationType::kBiasAdd:
-        dnn_activation_mode = se::dnn::ActivationMode::kNone;
-        break;
       case FusedComputationType::kBiasAddWithRelu:
         dnn_activation_mode = se::dnn::ActivationMode::kRelu;
         break;
-      case FusedComputationType::kBiasAddWithRelu6:
-        dnn_activation_mode = se::dnn::ActivationMode::kRelu6;
-        break;
       default:
-        OP_REQUIRES_OK(context, errors::Internal("Unsupported fusion type"));
+        LOG(FATAL) << "Unsupported fusion type";  // Crash OK
     }
 
     se::dnn::BatchDescriptor input_desc;
@@ -746,12 +742,12 @@ class FusedConv2DOp : public OpKernel {
       };
     }
 
+    // NOTE(ezhulenev): CuDNN `cudnnConvolutionBiasActivationForward` supports
+    // identity activation function, it in theory should allow to fuse
+    // convolution with BiasAdd, but in practice it doesn't work, cuDNN ignores
+    // this parameter and always does Relu activation.
     if (std::is_same<Device, GPUDevice>::value) {
-      patterns = {
-          {FCT::kBiasAdd, {"BiasAdd"}},
-          {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}},
-          {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu6"}},
-      };
+      patterns = {{FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}}};
     }
 
     OP_REQUIRES_OK(context, InitializeFusedComputation(
