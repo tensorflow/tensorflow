@@ -89,6 +89,10 @@ typedef enum TF_TriState {
   TF_TriState_On,
 } TF_TriState;
 
+// TF_GrapplerItem represents a combination of a graph, one of more fetch nodes,
+// and potentially a set of nodes to feed.
+typedef struct TF_GrapplerItem TF_GrapplerItem;
+
 // Flags indicating whether existing optimizers should be turned off.
 // It's optional for plugin to set functions to return true/false. If not
 // set, proper uses configuration set by user.
@@ -129,9 +133,10 @@ typedef struct TP_Optimizer {
   void* (*create_func)();
 
   // Optimizer function for optimizer. The first param is an optimizer created
-  // by create_func. The second param is input graph. The third param is output
-  // graph.
-  void (*optimize_func)(void*, TF_Buffer*, TF_Buffer*, TF_Status*);
+  // by create_func. The second param is input graph. The third param is
+  // GrapplerItem. The fourth param is output graph.
+  void (*optimize_func)(void*, const TF_Buffer*, const TF_GrapplerItem*,
+                        TF_Buffer*, TF_Status*);
 
   // [Optional]
   // Destroy function for optimizer. If Create function is provided, destroy
@@ -162,13 +167,6 @@ typedef struct TP_OptimizerRegistrationParams {
 // TF_InitGraph is used to do graph optimizer registration.
 // Plugin should implement TF_InitGraph to register graph optimizers.
 void TF_InitGraph(TP_OptimizerRegistrationParams* params, TF_Status* status);
-
-// TF_GrapplerItem represents a combination of a graph, one of more fetch nodes,
-// and potentially a set of nodes to feed.
-typedef struct TF_GrapplerItem TF_GrapplerItem;
-
-// Get TF_GrapplerItem from TF_Buffer.
-const TF_GrapplerItem* TF_GetGrapplerItem(TF_Buffer* graph, TF_Status* status);
 
 // Get a set of node names that must be preserved. They can not be transformed
 // or removed during the graph transformation. This includes feed and fetch
