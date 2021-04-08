@@ -1619,20 +1619,8 @@ bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
     }
   }
   bool hasXDLOPS = false;
-  auto status = GpuDriver::GetMFMASupport(hasXDLOPS);
-  if(!hasXDLOPS) {
-    VLOG(1) << "Using rocblas_hgemm";
-    const Eigen::half alpha_half(alpha);
-    const Eigen::half beta_half(beta);
-    return DoBlasInternal(
-      wrap::rocblas_hgemm, stream, /* pointer_mode_host = */ true,
-      ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k,
-      reinterpret_cast<const rocblas_half *>(&alpha_half),
-      reinterpret_cast<const rocblas_half *>(GpuMemory(a)), lda,
-      reinterpret_cast<const rocblas_half *>(GpuMemory(b)), ldb,
-      reinterpret_cast<const rocblas_half *>(&beta_half),
-      reinterpret_cast<rocblas_half *>(GpuMemoryMutable(c)), ldc);
-  } else {
+  port::Status status = GpuDriver::GetMFMASupport(hasXDLOPS);
+  if (status.ok() && hasXDLOPS) {
     VLOG(1) << "Using rocblas_gemm_ex";
     return DoBlasInternal(
       wrap::rocblas_gemm_ex, stream, /* pointer_mode_host = */ true,
@@ -1646,6 +1634,18 @@ bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
       rocblas_datatype_f16_r, ldc,
       reinterpret_cast<void*>(GpuMemoryMutable(c)), rocblas_datatype_f16_r, ldc,
           rocblas_datatype_f32_r, rocblas_gemm_algo_standard, 0, 0);
+  } else {
+    VLOG(1) << "Using rocblas_hgemm";
+    const Eigen::half alpha_half(alpha);
+    const Eigen::half beta_half(beta);
+    return DoBlasInternal(
+        wrap::rocblas_hgemm, stream, /* pointer_mode_host = */ true,
+        ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k,
+        reinterpret_cast<const rocblas_half*>(&alpha_half),
+        reinterpret_cast<const rocblas_half*>(GpuMemory(a)), lda,
+        reinterpret_cast<const rocblas_half*>(GpuMemory(b)), ldb,
+        reinterpret_cast<const rocblas_half*>(&beta_half),
+        reinterpret_cast<rocblas_half*>(GpuMemoryMutable(c)), ldc);
   }
 }
 
