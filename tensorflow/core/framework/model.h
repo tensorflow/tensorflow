@@ -141,6 +141,11 @@ class Node {
   using NodeVector = std::vector<std::shared_ptr<Node>>;
   using NodePairList =
       std::list<std::pair<std::shared_ptr<Node>, std::shared_ptr<Node>>>;
+  using ModelParameters =
+      std::vector<std::pair<string, std::shared_ptr<Parameter>>>;
+  using NodeValues = absl::flat_hash_map<string, double>;
+  using ParameterGradients =
+      absl::flat_hash_map<std::pair<string, string>, double>;
 
   explicit Node(Args args)
       : id_(args.id),
@@ -333,9 +338,7 @@ class Node {
                                 double* buffer_size_derivative);
 
   // Collects tunable parameters in the subtree rooted in this node.
-  void CollectTunableParameters(
-      absl::flat_hash_map<string, std::shared_ptr<Parameter>>* parameters) const
-      TF_LOCKS_EXCLUDED(mu_);
+  ModelParameters CollectTunableParameters() const TF_LOCKS_EXCLUDED(mu_);
 
   // Returns a human-readable representation of this node.
   string DebugString() const TF_LOCKS_EXCLUDED(mu_);
@@ -346,9 +349,8 @@ class Node {
   // Returns the per-element output time for this node and if `gradients` is not
   // `nullptr`, collects the output time gradient w.r.t. tunable parameters of
   // the subtree rooted in this node.
-  double OutputTime(absl::flat_hash_map<string, double>* input_times,
-                    absl::flat_hash_map<string, double>* gradients) const
-      TF_LOCKS_EXCLUDED(mu_);
+  double OutputTime(NodeValues* input_times,
+                    ParameterGradients* gradients) const TF_LOCKS_EXCLUDED(mu_);
 
   // Returns a copy of this node, making a deep copy of its inputs and a
   // shallow copy of its tunable parameters.
@@ -372,8 +374,7 @@ class Node {
   // Returns the per-element CPU time spent in the subtree rooted in this node.
   // If `processing_times` is not `nullptr`, collects the per-element CPU time
   // spent in each node of the subtree.
-  double TotalProcessingTime(
-      absl::flat_hash_map<string, double>* processing_times)
+  double TotalProcessingTime(NodeValues* processing_times)
       TF_LOCKS_EXCLUDED(mu_);
 
   // Recursively produces a proto for this node and its subtree.
@@ -450,30 +451,27 @@ class Node {
 
   // Returns the sum of per-element output time for the tunable inputs of this
   // node.
-  double OutputTimeForInputs(
-      const absl::flat_hash_map<string, double>& output_times) const
+  double OutputTimeForInputs(const NodeValues& output_times) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Returns the sum of output time gradient w.r.t. input time for the tunable
   // inputs of this node.
-  double OutputTimeGradientsForInputs(
-      const absl::flat_hash_map<string, double>& output_time_gradients) const
-      TF_SHARED_LOCKS_REQUIRED(mu_);
+  double OutputTimeGradientsForInputs(const NodeValues& output_time_gradients)
+      const TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Computes the input time for this node and stores it in `input_times`.
-  virtual void InputTimeLocked(absl::flat_hash_map<string, double>* input_times)
-      const TF_SHARED_LOCKS_REQUIRED(mu_) = 0;
+  virtual void InputTimeLocked(NodeValues* input_times) const
+      TF_SHARED_LOCKS_REQUIRED(mu_) = 0;
 
   // Computes the per-element output time for this node and stores it in
   // `output_times`. If `gradients` is not `nullptr`, computes the output time
   // gradient w.r.t. tunable parameters of the subtree rooted in this node and
   // stores it in `gradients`, also computes the output time gradient w.r.t.
   // input time and stores it in `output_time_gradients`.
-  virtual void OutputTimeLocked(
-      const absl::flat_hash_map<string, double>& input_times,
-      absl::flat_hash_map<string, double>* gradients,
-      absl::flat_hash_map<string, double>* output_times,
-      absl::flat_hash_map<string, double>* output_time_gradients) const
+  virtual void OutputTimeLocked(const NodeValues& input_times,
+                                ParameterGradients* gradients,
+                                NodeValues* output_times,
+                                NodeValues* output_time_gradients) const
       TF_SHARED_LOCKS_REQUIRED(mu_) = 0;
 
   // Returns the sum of per-element processing time for the inputs of this node
@@ -484,8 +482,7 @@ class Node {
   //
   // Uniform distribution of per-element processing times across different
   // inputs is assumed.
-  double TotalProcessingTimeForInputs(
-      const absl::flat_hash_map<string, double>& total_processing_times)
+  double TotalProcessingTimeForInputs(const NodeValues& total_processing_times)
       TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Returns the per-element processing time spent in this node.
@@ -495,9 +492,8 @@ class Node {
   // and stores it in `total_processing_times`. If `processing_times` is not
   // `nullptr`, collects the per-element CPU time spent in each node of the
   // subtree.
-  virtual void TotalProcessingTimeLocked(
-      absl::flat_hash_map<string, double>* processing_times,
-      absl::flat_hash_map<string, double>* total_processing_times)
+  virtual void TotalProcessingTimeLocked(NodeValues* processing_times,
+                                         NodeValues* total_processing_times)
       TF_SHARED_LOCKS_REQUIRED(mu_) = 0;
 
   // Returns a vector of nodes of the subtree rooted in this node. The nodes are
@@ -510,9 +506,13 @@ class Node {
                           bool collect_node(const std::shared_ptr<Node>)) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
 
+  // Collects tunable parameters in the subtree rooted in this node assuming
+  // mutex locked.
+  ModelParameters CollectTunableParametersLocked() const
+      TF_SHARED_LOCKS_REQUIRED(mu_);
+
   // Collect tunable parameters on the nodes which have recorded elements.
-  void CollectTunableParametersHelper(
-      absl::flat_hash_map<string, std::shared_ptr<Parameter>>* parameters) const
+  void CollectTunableParametersHelper(ModelParameters* parameters) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Build up debug string for the node and store in the debug strings map.
@@ -524,14 +524,12 @@ class Node {
                                        NodePairList* node_pairs) const;
 
   // Compute total buffered bytes for the node and store in the total bytes map.
-  void TotalBufferedBytesHelper(
-      absl::flat_hash_map<string, double>* total_bytes) const
+  void TotalBufferedBytesHelper(NodeValues* total_bytes) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Compute total maximum buffered bytes for the node and store in the total
   // bytes map.
-  void TotalMaximumBufferedBytesHelper(
-      absl::flat_hash_map<string, double>* total_bytes) const
+  void TotalMaximumBufferedBytesHelper(NodeValues* total_bytes) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Compute and return the maximum buffered bytes on the node itself. By
@@ -638,6 +636,9 @@ std::shared_ptr<Node> MakeUnknownNode(Node::Args args);
 class Model {
  public:
   using OptimizationParams = ModelProto::OptimizationParams;
+  using ModelParameters = Node::ModelParameters;
+  using NodeValues = Node::NodeValues;
+  using ParameterGradients = Node::ParameterGradients;
 
   // Creates a new model.
   Model()
@@ -714,9 +715,8 @@ class Model {
   static constexpr int64 kMaxNumBufferedOptimizeArgs = 100;
 
   // Collects tunable parameters in the tree rooted in the given node, returning
-  // a mapping from a (unique) node name to a tunable parameter.
-  absl::flat_hash_map<string, std::shared_ptr<Parameter>>
-  CollectTunableParameters(std::shared_ptr<Node> node);
+  // a vector which contains pairs of node names and tunable parameters.
+  ModelParameters CollectTunableParameters(std::shared_ptr<Node> node);
 
   // Flushes metrics recorded by the model.
   void FlushMetrics() TF_LOCKS_EXCLUDED(mu_);
@@ -746,19 +746,16 @@ class Model {
   // time gradient w.r.t. tunable parameters of the subtree rooted in the given
   // node.
   double OutputTime(std::shared_ptr<Node> node, double model_input_time,
-                    absl::flat_hash_map<string, double>* gradients);
+                    ParameterGradients* gradients);
 
   // Determines if we should stop the gradient descent optimization iterations
   // based on number of increasable parameters, CPU budget, RAM budget and
   // current resource usage.
-  bool ShouldStop(
-      int64 cpu_budget, int64 ram_budget,
-      const absl::flat_hash_map<string, std::shared_ptr<Parameter>>& parameters,
-      const absl::flat_hash_map<string, std::shared_ptr<Parameter>>&
-          parallelism_parameters,
-      const absl::flat_hash_map<string, std::shared_ptr<Parameter>>&
-          buffer_size_parameters,
-      std::shared_ptr<Node> snapshot, bool* cpu_budget_reached);
+  bool ShouldStop(int64 cpu_budget, int64 ram_budget,
+                  const ModelParameters& parameters,
+                  const ModelParameters& parallelism_parameters,
+                  const ModelParameters& buffer_size_parameters,
+                  std::shared_ptr<Node> snapshot, bool* cpu_budget_reached);
 
   // Collects the processing time for the given node.
   double TotalProcessingTime(std::shared_ptr<Node> node);
