@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,21 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/cwise_ops_common.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/kernels/mlir_generated/base_cpu_op.h"
 
 namespace tensorflow {
 
-#if !defined(MLIR_GENERATED_CPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
-REGISTER4(UnaryOp, CPU, "Floor", functor::floor, float, Eigen::half, bfloat16,
-          double);
-#else
-REGISTER(UnaryOp, CPU, "Floor", functor::floor, bfloat16);
-#endif
+GENERATE_AND_REGISTER_UNARY_CPU_KERNEL(Floor, DT_HALF);
+GENERATE_AND_REGISTER_UNARY_CPU_KERNEL(Floor, DT_FLOAT);
+GENERATE_AND_REGISTER_UNARY_CPU_KERNEL(Floor, DT_DOUBLE);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
-REGISTER3(UnaryOp, GPU, "Floor", functor::floor, float, Eigen::half, double);
-#endif
-#endif
 }  // namespace tensorflow
