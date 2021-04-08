@@ -65,6 +65,7 @@ ShardInfo = collections.namedtuple(
     "CheckpointInitialValueShardInfo", ["shape", "offset"])
 
 
+@tf_export("__internal__.tracking.CheckpointInitialValueCallable", v1=[])
 class CheckpointInitialValueCallable(object):
   """A callable object that returns a CheckpointInitialValue.
 
@@ -91,6 +92,7 @@ class CheckpointInitialValueCallable(object):
     return self._checkpoint_position.restore_uid
 
 
+@tf_export("__internal__.tracking.CheckpointInitialValue", v1=[])
 class CheckpointInitialValue(ops.Tensor):
   """Tensor wrapper for managing update UIDs in `Variables`.
 
