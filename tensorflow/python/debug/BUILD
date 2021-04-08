@@ -13,10 +13,8 @@ load("//tensorflow:tensorflow.bzl", "if_not_v2", "if_not_windows", "py_binary", 
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 py_library(
     name = "debug_py",
@@ -779,6 +777,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["lib/debug_v2_ops_test.py"],
     python_version = "PY3",
+    tags = ["no_windows_gpu"],
     deps = [
         ":debug_events_reader",
         ":debug_events_writer",

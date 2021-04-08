@@ -13,7 +13,7 @@ load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(

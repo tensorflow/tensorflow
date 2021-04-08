@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <limits>
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/kernels/mlir_generated/base_ops_test.h"
@@ -56,12 +58,17 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
 
 // Test only values in the function domain. The otherwise returned nan value
 // fails comparison for equality.
+#if defined(TENSORFLOW_USE_ROCM)
+auto acos_test_config = test::OpsTestConfig();
+#else
+auto acos_test_config = test::OpsTestConfig().ExpectStrictlyEqual();
+#endif
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Acos, DT_FLOAT, DT_FLOAT, test::DefaultInputBetweenZeroAndOne<float>(),
-    std::acos, test::OpsTestConfig().ExpectStrictlyEqual())
+    std::acos, acos_test_config)
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Acos, DT_DOUBLE, DT_DOUBLE, test::DefaultInputBetweenZeroAndOne<double>(),
-    std::acos, test::OpsTestConfig().ExpectStrictlyEqual())
+    std::acos, acos_test_config)
 
 /// Test `tf.Acosh`.
 
@@ -732,6 +739,13 @@ TEST_F(UnaryOpsTest, TanhSmallAndLarge) {
       test::InputAsVector<float>({-100.0, -10.5, 12.0, 123.0, 10000.0}),
       baseline_tanh_limits,
       test::OpsTestConfig().ExpectStrictlyEqual().SuppressTolerance());
+}
+
+TEST_F(UnaryOpsTest, TanhNaN) {
+  Test<float, float, float, float>(
+      "Tanh", test::DefaultInputShape(),
+      test::InputAsVector<float>({std::numeric_limits<float>::quiet_NaN()}),
+      std::tanh, test::OpsTestConfig().ExpectStrictlyEqual());
 }
 
 /// Test `tf.Square`.

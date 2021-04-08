@@ -1844,6 +1844,7 @@ def _BatchMatMul(op, grad):
 
 
 @ops.RegisterGradient("BatchMatMulV2")
+@ops.RegisterGradient("BatchMatMulV3")
 def _BatchMatMulV2(op, grad):
   """Returns the gradient of x and y given the gradient of x * y."""
   x = op.inputs[0]

@@ -14,7 +14,7 @@ load(
 
 package(
     default_visibility = [":internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(

@@ -50,7 +50,7 @@ class EmbedTFFrameworkFunctionAndAllocPass
     ModuleOp m = getOperation();
 
     // Populate patterns.
-    OwningRewritePatternList patterns;
+    RewritePatternSet patterns(&getContext());
     PopulateEmbedTFFrameworkFunctionAndAllocConversionPatterns(m.getContext(),
                                                                &patterns);
 
@@ -91,7 +91,7 @@ class EmbedTFFrameworkAssertPass
     ModuleOp m = getOperation();
 
     // Populate patterns.
-    OwningRewritePatternList patterns;
+    RewritePatternSet patterns(&getContext());
     PopulateEmbedTFFrameworkAssertConversionPatterns(m.getContext(), &patterns);
 
     // Set target.

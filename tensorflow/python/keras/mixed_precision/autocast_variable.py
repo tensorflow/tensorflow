@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Contains AutoCastVariable, a variable which automatically casts itself."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import threading
 from tensorflow.python.distribute import ps_values as ps_distribute_values

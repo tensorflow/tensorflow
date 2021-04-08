@@ -35,5 +35,6 @@ int main(int argc, char **argv) {
   registry.insert<mlir::lmhlo_gpu::LmhloGpuDialect>();
 
   return failed(mlir::MlirOptMain(argc, argv, "MLIR HLO pass driver\n",
-                                  registry, /*preloadDialectsInContext=*/true));
+                                  registry,
+                                  /*preloadDialectsInContext=*/false));
 }

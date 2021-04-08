@@ -9,7 +9,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_gen_op_wrapper_py")
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -450,6 +450,7 @@ cc_library(
         "ir/tfrt_ops.h.inc",
     ] + ["ir/tf_" + target["name"] + ".h.inc" for target in tf_ops_category_list],
     deps = [
+        ":serialize_mlir_module_utils",
         ":tensorflow_attributes",
         ":tensorflow_canonicalize_inc_gen",
         ":tensorflow_op_interfaces",

@@ -5,7 +5,7 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files(glob([
@@ -777,6 +777,9 @@ cc_library(
         ":op_resolver",
         "//tensorflow/lite/kernels:builtin_ops",
     ],
+    # Some targets only have an implicit dependency on CreateOpResolver.
+    # This avoids warnings about backwards references when linking.
+    alwayslink = True,
 )
 
 cc_test(

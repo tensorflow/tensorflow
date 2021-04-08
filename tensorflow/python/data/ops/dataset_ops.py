@@ -336,6 +336,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
   def _graph(self, _):
     raise ValueError("The _graph property is read-only")
 
+  # TODO(b/183496844): Move implementation to FinalizeDatasetOp C++.
   def _has_captured_ref(self):
     """Whether this dataset uses a function that captures ref variables.
 
@@ -2672,14 +2673,19 @@ class DatasetV1(DatasetV2):
 
   @staticmethod
   @functools.wraps(DatasetV2.from_generator)
+  @deprecation.deprecated_args(None, "Use output_signature instead",
+                               "output_types", "output_shapes")
   def from_generator(generator,
                      output_types=None,
                      output_shapes=None,
                      args=None,
                      output_signature=None):
-    return DatasetV1Adapter(
-        DatasetV2.from_generator(generator, output_types, output_shapes, args,
-                                 output_signature))
+    # Calling DatasetV2.from_generator with output_shapes or output_types is
+    # deprecated, but this is already checked by the decorator on this function.
+    with deprecation.silence():
+      return DatasetV1Adapter(
+          DatasetV2.from_generator(generator, output_types, output_shapes, args,
+                                   output_signature))
 
   @staticmethod
   @functools.wraps(DatasetV2.range)

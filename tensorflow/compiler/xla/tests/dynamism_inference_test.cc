@@ -205,6 +205,18 @@ TEST_F(DynamismInferenceTest, UnaryOpKeepsDynamism) {
   EXPECT_EQ(ComputeDynamismScalar(tuple_2, &b, {1}).ValueOrDie(), true);
 }
 
+TEST_F(DynamismInferenceTest, ParameterWithToken) {
+  // Test that token shape can be handled in a parameter.
+  XlaBuilder b(TestName());
+  auto p =
+      Parameter(&b, 0,
+                ShapeUtil::MakeTupleShape({ShapeUtil::MakeTokenShape(),
+                                           ShapeUtil::MakeScalarShape(S32)}),
+                "p0");
+  EXPECT_EQ(ComputeDynamismScalar(p, &b, {0}).ValueOrDie(), true);
+  EXPECT_EQ(ComputeDynamismScalar(p, &b, {1}).ValueOrDie(), true);
+}
+
 TEST_F(DynamismInferenceTest, BinaryOpsOrsDynamism) {
   XlaBuilder b(TestName());
   auto c = ConstantR0<int32>(&b, 42);

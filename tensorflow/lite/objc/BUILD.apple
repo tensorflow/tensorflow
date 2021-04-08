@@ -6,7 +6,7 @@ load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_unit_tes
 
 package(
     default_visibility = ["//visibility:private"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 SOURCES = glob([

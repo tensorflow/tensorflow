@@ -15,15 +15,11 @@
 # pylint: disable=invalid-name
 """Inception-ResNet V2 model for Keras.
 
-
 Reference:
   - [Inception-v4, Inception-ResNet and the Impact of
      Residual Connections on Learning](https://arxiv.org/abs/1602.07261)
     (AAAI 2017)
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.applications import imagenet_utils

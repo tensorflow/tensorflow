@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 
+#include <string>
+
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -24,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/decode_constant.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -67,6 +71,14 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
                                 const mlir::TFL::PassConfig& pass_config,
                                 mlir::OpPassManager* pass_manager,
                                 llvm::Optional<tensorflow::Session*> session) {
+  // This pass wraps all the tf.FakeQuant ops in a custom op so they are not
+  // folded before being converted to tfl.quantize and tfl.dequantize ops.
+  std::vector<std::string> wrapped_ops = {
+      mlir::TF::FakeQuantWithMinMaxVarsOp::getOperationName().str(),
+      mlir::TF::FakeQuantWithMinMaxVarsPerChannelOp::getOperationName().str()};
+  pass_manager->addNestedPass<mlir::FuncOp>(
+      mlir::TFL::CreateRaiseCustomOpsPass(wrapped_ops));
+
   mlir::TF::StandardPipelineOptions standard_pipeline_options;
   standard_pipeline_options.enable_inliner = false;
   standard_pipeline_options.form_clusters = pass_config.form_clusters;
@@ -186,6 +198,9 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
         model_flags.saved_model_dir()));
   }
 
+  pass_manager->addNestedPass<mlir::FuncOp>(
+      mlir::TFL::CreateLowerCustomOpsPass());
+
   // The below passes only make sense if Builtin TFLite ops are enabled
   // for emission.
   if (pass_config.emit_builtin_tflite_ops) {
@@ -237,8 +252,9 @@ void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
     // so that it can target constants introduced once TensorFlow Identity ops
     // are removed during legalization.
     pass_manager->addPass(mlir::TFL::CreateOptimizeFunctionalOpsPass());
+    std::vector<std::string> empty_wrapped_ops({});
     pass_manager->addNestedPass<mlir::FuncOp>(
-        mlir::TFL::CreateRaiseCustomOpsPass());
+        mlir::TFL::CreateRaiseCustomOpsPass(empty_wrapped_ops));
     pass_manager->addPass(mlir::createSymbolDCEPass());
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCSEPass());

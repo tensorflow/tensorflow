@@ -9,7 +9,7 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 HARD_FP_FLAGS_IF_APPLICABLE = select({
@@ -467,6 +467,7 @@ cc_library(
         "reference/concatenation.h",
         "reference/conv.h",
         "reference/conv3d.h",
+        "reference/cumsum.h",
         "reference/densify.h",
         "reference/depth_to_space.h",
         "reference/depthwiseconv_float.h",
@@ -575,6 +576,7 @@ cc_library(
         "reference/concatenation.h",
         "reference/conv.h",
         "reference/conv3d.h",
+        "reference/cumsum.h",
         "reference/densify.h",
         "reference/depth_to_space.h",
         "reference/depthwiseconv_float.h",

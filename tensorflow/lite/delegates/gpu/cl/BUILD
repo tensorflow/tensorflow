@@ -3,10 +3,11 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
 )
+load("//tensorflow:tensorflow.bzl", "if_google")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 config_setting(
@@ -434,6 +435,7 @@ cc_library(
     hdrs = ["linear_storage.h"],
     deps = [
         ":cl_context",
+        ":cl_image_format",
         ":gpu_object",
         ":opencl_wrapper",
         ":util",
@@ -462,6 +464,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_absl//absl/strings",
         "@opencl_headers",
+        "//tensorflow/lite/delegates/gpu/cl/" + if_google("google", "default") + ":qcom_wrapper",
     ],
 )
 
@@ -557,6 +560,7 @@ cc_library(
     deps = [
         ":cl_command_queue",
         ":cl_context",
+        ":cl_image_format",
         ":gpu_object",
         ":opencl_wrapper",
         ":util",

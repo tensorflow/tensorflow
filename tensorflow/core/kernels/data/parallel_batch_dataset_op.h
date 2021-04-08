@@ -28,6 +28,7 @@ class ParallelBatchDatasetOp : public UnaryDatasetOpKernel {
   static constexpr const char* const kBatchSize = "batch_size";
   static constexpr const char* const kNumParallelCalls = "num_parallel_calls";
   static constexpr const char* const kDropRemainder = "drop_remainder";
+  static constexpr const char* const kParallelCopy = "parallel_copy";
   static constexpr const char* const kOutputTypes = "output_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
   static constexpr const char* const kDeterministic = "deterministic";
@@ -41,6 +42,7 @@ class ParallelBatchDatasetOp : public UnaryDatasetOpKernel {
  private:
   class Dataset;
   DeterminismPolicy deterministic_;
+  bool parallel_copy_ = false;
 };
 
 }  // namespace data

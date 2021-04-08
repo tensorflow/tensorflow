@@ -9,7 +9,7 @@ load("//third_party/mlir:tblgen.bzl", "gentbl")
 # TODO: Tighten visibility once targets are at the right granularity.
 package(
     default_visibility = [":internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(

@@ -204,9 +204,7 @@ class HashTable : public InitializableLookupTable {
       return Status::OK();
     }
 
-    // TODO(aaudibert): Make initializer_as_graphdef_func non-optional and
-    // remove this check.
-    if (!initializer_as_graphdef_func_.has_value()) {
+    if (initializer_serializer_ == nullptr) {
       std::string message =
           "Failed to serialize lookup table: no initialization function was "
           "specified. Falling back to serializing a handle to the table.";
@@ -214,7 +212,7 @@ class HashTable : public InitializableLookupTable {
       return errors::Unimplemented(message);
     }
     Node* initializer;
-    TF_RETURN_IF_ERROR(initializer_as_graphdef_func_.value()(
+    TF_RETURN_IF_ERROR(initializer_serializer_->AsGraphDef(
         builder, hash_table_node, &initializer));
     *out = ops::UnaryOp("Identity", hash_table_node,
                         builder->opts().WithControlInput(initializer));

@@ -13,11 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
-"""Home of the `Sequential` model.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Home of the `Sequential` model."""
 
 import copy
 import warnings

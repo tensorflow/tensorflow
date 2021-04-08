@@ -6,7 +6,7 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 common_copts = tflite_copts() + tflite_copts_warnings()

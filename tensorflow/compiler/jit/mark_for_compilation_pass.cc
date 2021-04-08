@@ -1200,6 +1200,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
         CreateOperationFilter(*registration);
     filter.require_always_compilable = true;
     filter.allow_string_consts = false;
+    filter.allow_collective_reduce_v2 = false;
 
     RecursiveCompilabilityChecker checker(
         filter, DeviceType{registration->compilation_device_name});
@@ -1785,7 +1786,7 @@ absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable() {
             "Identity", "IdentityN", "Relu", "Relu6", "ReluGrad", "Relu6Grad",
             "LeakyReluGrad", "Elu", "EluGrad", "Selu", "SeluGrad", "Select",
             "SelectV2", "Transpose", "ConjugateTranspose",
-            "_UnaryOpsComposition",
+            "_UnaryOpsComposition", "CollectiveReduceV2",
             // The following 4 operations are converted to identity
             "PlaceholderWithDefault", "PreventGradient", "StopGradient",
             "Snapshot"}},

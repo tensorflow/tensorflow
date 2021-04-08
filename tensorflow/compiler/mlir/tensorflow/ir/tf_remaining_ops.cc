@@ -65,6 +65,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -74,6 +75,52 @@ namespace {
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_helpers.inc"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_canonicalize.inc"
 }  // namespace
+
+//===----------------------------------------------------------------------===//
+// _XlaHostComputeOp
+//===----------------------------------------------------------------------===//
+
+// This verifies that `_XlaHostComputeMlirOp` has a well-formed
+// `host_mlir_module` attribute.
+// For other attributes, there is no additional verification beyond the default.
+static LogicalResult Verify(_XlaHostComputeMlirOp op) {
+  // Extract the module and function.
+  // StringAttr host_module = op->getAttrOfType<StringAttr>("host_mlir_module");
+  StringRef host_module = op.host_mlir_module();
+
+  if (host_module.empty()) return success();
+
+  mlir::OwningModuleRef module_for_func;
+  tensorflow::Status status = tensorflow::DeserializeMlirModule(
+      host_module.str(), op->getContext(), &module_for_func);
+  if (!status.ok()) {
+    return op.emitError()
+           << "attribute 'host_mlir_module' can not be deserialized. "
+           << status.error_message();
+  }
+
+  FuncOp func = module_for_func->lookupSymbol<FuncOp>("host_func");
+  if (!func)
+    return op.emitError()
+           << "serialized module in attribute 'host_mlir_module' does not "
+              "contain 'host_func' function.";
+
+  if (op->getNumOperands() != func.getType().getNumInputs())
+    return op.emitError()
+           << "'host_func' has " << func.getType().getNumInputs()
+           << " inputs and '_XlaHostComputeMlir' has " << op->getNumOperands()
+           << " operands.  Number of operands/inputs should be the same.";
+
+  if (op->getNumResults() != func.getType().getNumResults())
+    return op.emitError() << "'host_func' has "
+                          << func.getType().getNumResults()
+                          << " results and '_XlaHostComputeMlir' has "
+                          << op->getNumResults()
+                          << " results.  Number of results should be the same.";
+
+  return success();
+}
+
 }  // namespace TF
 }  // namespace mlir
 

@@ -198,7 +198,9 @@ bool AlreadyCollected(const std::vector<std::vector<nvinfer1::Dims>>& values,
 }
 
 void TrtShapeOptimizationProfile::InitProfiles(
-    const std::vector<PartialTensorShape>& input_partial_shapes) {
+    const std::vector<PartialTensorShape>& input_partial_shapes,
+    ProfileStrategy strategy) {
+  strategy_ = strategy;
   if (input_shapes_.size() == 0) {
     VLOG(1) << "Not creating profiles without input_shapes. "
                "You have to enable profile generation mode first (build).";

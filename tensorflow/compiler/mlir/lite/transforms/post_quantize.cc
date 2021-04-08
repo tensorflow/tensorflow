@@ -172,10 +172,10 @@ struct PruneUnusedOpsWithSideEffect : public OpRewritePattern<OpTy> {
 #include "tensorflow/compiler/mlir/lite/transforms/generated_post_quantize.inc"
 
 void PostQuantizePass::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   auto func = getFunction();
   auto* ctx = func.getContext();
-  TFL::populateWithGenerated(ctx, patterns);
+  TFL::populateWithGenerated(patterns);
   patterns.insert<quant::FoldTrivalRequantizeOp<QuantizeOp>>(ctx);
   patterns.insert<PruneUnusedOpsWithSideEffect<TFL::LSTMOp>>(ctx);
   patterns
@@ -188,8 +188,8 @@ void PostQuantizePass::runOnFunction() {
     RemoveQuantizationAdaptorOps(getFunction());
   }
 
-  OwningRewritePatternList phase_2_patterns;
-  TFL::populateWithGenerated(ctx, phase_2_patterns);
+  OwningRewritePatternList phase_2_patterns(&getContext());
+  TFL::populateWithGenerated(phase_2_patterns);
   phase_2_patterns
       .insert<quant::FoldTrivalRequantizeOp<QuantizeOp>, RemoveVolatileOps>(
           ctx);

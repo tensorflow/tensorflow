@@ -560,7 +560,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     expected_values = self._interleave(
         [[4] * 4, [5] * 5, [6] * 6] * self.repeat_count, 1, 2)
-    self.assertItemsEqual(output_values, expected_values)
+    self.assertCountEqual(output_values, expected_values)
 
   @combinations.generate(test_base.default_test_combinations())
   def testSparse(self):
@@ -770,7 +770,8 @@ class ParallelInterleaveCheckpointTest(
     checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
 
   def setUp(self):
-    self.input_values = np.array([4, 5, 6], dtype=np.int64)
+    super(ParallelInterleaveCheckpointTest, self).setUp()
+    self.input_values = np.array([2, 3], dtype=np.int64)
     self.num_repeats = 2
     self.num_outputs = np.sum(self.input_values) * 2
 
@@ -781,43 +782,28 @@ class ParallelInterleaveCheckpointTest(
                 lambda x: dataset_ops.Dataset.range(10 * x, 11 * x),
                 cycle_length, block_length, sloppy)))
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCheckpointCore(self):
-    # cycle_length > 1, block_length > 1
-    cycle_length = 2
-    block_length = 3
-    self.run_core_tests(lambda: self._build_ds(cycle_length, block_length),
-                        self.num_outputs)
-    # cycle_length = 1
-    cycle_length = 1
-    block_length = 3
-    self.run_core_tests(lambda: self._build_ds(cycle_length, block_length),
-                        self.num_outputs)
-    # block_length = 1
-    cycle_length = 2
-    block_length = 1
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(cycle_length=[1, 2], block_length=[1, 3])))
+  def testCore(self, cycle_length, block_length):
     self.run_core_tests(lambda: self._build_ds(cycle_length, block_length),
                         self.num_outputs)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testCheckpointWithSloppy(self):
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(cycle_length=[1, 2], block_length=[1, 3])))
+  def testWithSloppy(self, cycle_length, block_length):
     break_points = self.gen_break_points(self.num_outputs, 10)
     expected_outputs = np.repeat(
         np.concatenate([np.arange(10 * x, 11 * x) for x in self.input_values]),
         self.num_repeats).tolist()
 
-    def run_test(cycle_length, block_length):
-      actual = self.gen_outputs(
-          lambda: self._build_ds(cycle_length, block_length, True),
-          break_points, self.num_outputs)
-      self.assertSequenceEqual(sorted(actual), expected_outputs)
-
-    # cycle_length > 1, block_length > 1
-    run_test(2, 3)
-    # cycle_length = 1
-    run_test(1, 3)
-    # block_length = 1
-    run_test(2, 1)
+    actual = self.gen_outputs(
+        lambda: self._build_ds(cycle_length, block_length, True),
+        break_points, self.num_outputs)
+    self.assertSequenceEqual(sorted(actual), expected_outputs)
 
   @combinations.generate(test_base.default_test_combinations())
   def testSparseCore(self):

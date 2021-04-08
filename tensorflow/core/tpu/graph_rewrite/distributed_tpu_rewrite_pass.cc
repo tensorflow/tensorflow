@@ -97,6 +97,16 @@ const char kVarHandleOp[] = "VarHandleOp";
 static const char* const kTPUCompilationResultAttr = "_tpu_compilation_status";
 static const char* const kPostDeviceRewriteAttr = "_post_device_rewrite";
 
+using NodeAndId = std::pair<const Node*, int>;
+
+struct NodeAndPort {
+  explicit NodeAndPort(Node* node, int port) : node(node), port(port) {}
+
+  Node* node;
+  // Port of the node, e.g. this can be the `src_output` index of an Edge.
+  int port;
+};
+
 class IntrusiveHeapLink {
  public:
   using size_type = size_t;
@@ -2950,7 +2960,8 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
   TF_RETURN_IF_ERROR(replicate_node.input_edges(&replicate_input_edges));
 
   // Map from replicate input index to the fan_in node;
-  absl::flat_hash_map<int, std::vector<Node*>> replicate_input_fan_in_nodes;
+  absl::flat_hash_map<int, std::vector<NodeAndPort>>
+      replicate_input_fan_in_nodes;
   absl::flat_hash_map<int, std::vector<Node*>> replicate_output_fan_out_nodes;
   absl::flat_hash_map<int, std::vector<int>>
       replicate_output_fan_out_dst_inputs;
@@ -2967,8 +2978,9 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
             e->src()->name(), " must only have one user. Found ", num_users);
       }
       to_be_removed_nodes.push_back(e->src());
-      std::vector<Node*>& nodes = replicate_input_fan_in_nodes[e->dst_input()];
-      nodes.resize(num_cores_per_replica, nullptr);
+      std::vector<NodeAndPort>& nodes =
+          replicate_input_fan_in_nodes[e->dst_input()];
+      nodes.resize(num_cores_per_replica, NodeAndPort(nullptr, 0));
       VLOG(2) << "allocate " << num_cores_per_replica
               << " for replicate_input_fan_in_nodes[" << e->dst_input() << "]";
       std::vector<const Edge*> fan_in_edges;
@@ -2976,7 +2988,8 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
       TF_RET_CHECK(fan_in_edges.size() == num_cores_per_replica);
 
       for (const Edge* fe : fan_in_edges) {
-        nodes[fe->dst_input()] = fe->src();
+        nodes[fe->dst_input()].node = fe->src();
+        nodes[fe->dst_input()].port = fe->src_output();
         VLOG(2) << "replicate_input_fan_in_nodes[" << e->dst_input() << "]["
                 << fe->dst_input() << "] = " << fe->src()->name();
       }
@@ -3194,10 +3207,12 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
             // Don't automatically add a split node when input node is
             // kTPUPartitionedInput
             if (edge->src()->type_string() == kTPUPartitionedInput) {
-              VLOG(2) << "Connect "
-                      << replicate_input_fan_in_nodes[input_num][core]->name()
-                      << " to " << node->name() << " at " << i;
-              graph->AddEdge(replicate_input_fan_in_nodes[input_num][core], 0,
+              VLOG(2)
+                  << "Connect "
+                  << replicate_input_fan_in_nodes[input_num][core].node->name()
+                  << " to " << node->name() << " at " << i;
+              graph->AddEdge(replicate_input_fan_in_nodes[input_num][core].node,
+                             replicate_input_fan_in_nodes[input_num][core].port,
                              node, i);
             } else {
               if (dtype == DT_RESOURCE) {
@@ -3225,7 +3240,8 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
           } else if (edge->src()->type_string() == kTPUPartitionedInput &&
                      arg_shardings[orig_arg_num].type() ==
                          xla::OpSharding::REPLICATED) {
-            graph->AddEdge(replicate_input_fan_in_nodes[input_num][core], 0,
+            graph->AddEdge(replicate_input_fan_in_nodes[input_num][core].node,
+                           replicate_input_fan_in_nodes[input_num][core].port,
                            node, i);
           } else {
             graph->AddEdge(edge->src(), edge->src_output(), node, i);

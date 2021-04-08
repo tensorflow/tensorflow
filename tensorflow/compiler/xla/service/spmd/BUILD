@@ -5,7 +5,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(

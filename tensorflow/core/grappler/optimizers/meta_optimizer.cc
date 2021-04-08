@@ -65,9 +65,6 @@ namespace {
 constexpr int kDefaultNumberOfIterations = 2;
 constexpr int kDefaultMinGraphNodes = 4;
 
-// TODO(b/183176774): Delete this once the protobuf has been updated.
-constexpr auto kUsePluginOptimizers = RewriterConfig::ON;
-
 int64 NumEdges(const GraphDef& graph) {
   int64 num_edges = 0;
   for (const auto& node : graph.node()) {
@@ -200,10 +197,8 @@ bool MetaOptimizer::LowerControlFlow() const {
 
 std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
     const string& optimizer, const std::set<string>& device_types) const {
-  // TODO(b/183176774): Replace kUsePluginOptimizers with
-  // cfg_.use_plugin_optimizers() once the protobuf has been updated.
   ConfigList plugin_configs = PluginGraphOptimizerRegistry::GetPluginConfigs(
-      kUsePluginOptimizers != RewriterConfig::OFF, device_types);
+      cfg_.use_plugin_optimizers() != RewriterConfig::OFF, device_types);
   if (optimizer == "pruning" && !plugin_configs.disable_model_pruning)
     return std::unique_ptr<GraphOptimizer>(new ModelPruner());
   MK_OPT("function", "function_optimization",
@@ -267,10 +262,8 @@ Status MetaOptimizer::InitializeOptimizers(
     return Status::OK();
   }
 
-  // TODO(b/183176774): Replace kUsePluginOptimizers with
-  // cfg_.use_plugin_optimizers() once the protobuf has been updated.
   ConfigList plugin_configs = PluginGraphOptimizerRegistry::GetPluginConfigs(
-      kUsePluginOptimizers != RewriterConfig::OFF, device_types);
+      cfg_.use_plugin_optimizers() != RewriterConfig::OFF, device_types);
   if (!cfg_.disable_model_pruning() && !plugin_configs.disable_model_pruning) {
     optimizers->push_back(MakeUnique<ModelPruner>());
   }
@@ -361,10 +354,13 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(
         MakeUnique<AutoParallel>(cfg_.auto_parallel().num_replicas()));
   }
+
+#ifndef ENABLE_MKL
   if (BOTH_ARE_ON(scoped_allocator_optimization)) {
     optimizers->push_back(MakeUnique<ScopedAllocatorOptimizer>(
         cfg_.scoped_allocator_optimization(), cfg_.scoped_allocator_opts()));
   }
+#endif
 
 #undef USER_IS_ON
 #undef USER_NOT_OFF
@@ -445,9 +441,7 @@ Status MetaOptimizer::InitializeCustomGraphOptimizers(
 Status MetaOptimizer::InitializePluginGraphOptimizers(
     const std::set<string>& device_types,
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
-  // TODO(b/183176774): Replace kUsePluginOptimizers with
-  // cfg_.use_plugin_optimizers() once the protobuf has been updated.
-  if (kUsePluginOptimizers == RewriterConfig::OFF) return Status::OK();
+  if (cfg_.use_plugin_optimizers() == RewriterConfig::OFF) return Status::OK();
   auto plugin_optimizers =
       PluginGraphOptimizerRegistry::CreateOptimizers(device_types);
   for (auto& plugin_optimizer : plugin_optimizers) {
@@ -482,11 +476,9 @@ void MetaOptimizer::InitializeVerifiers(
 
 void MetaOptimizer::PrintUserAndPluginConfigs(
     const std::set<string>& device_types) const {
-  // TODO(b/183176774): Replace kUsePluginOptimizers with
-  // cfg_.use_plugin_optimizers() once the protobuf has been updated.
-  if (kUsePluginOptimizers == RewriterConfig::OFF) return;
+  if (cfg_.use_plugin_optimizers() == RewriterConfig::OFF) return;
   ConfigList plugin_cfg = PluginGraphOptimizerRegistry::GetPluginConfigs(
-      kUsePluginOptimizers != RewriterConfig::OFF, device_types);
+      cfg_.use_plugin_optimizers() != RewriterConfig::OFF, device_types);
   PluginGraphOptimizerRegistry::PrintPluginConfigsIfConflict(device_types);
 
   ConfigList user_cfg;
@@ -691,11 +683,13 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
       GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
       // Some optimizers can run only once.
       if (iteration > 0 && IsRunOnceOptimizer(optimizer->name())) continue;
+#ifndef ENABLE_MKL
       // Some must run only on the last iteration.
       if (optimizer->name() == "scoped_allocator_optimizer") {
         if (sa_optimizer == nullptr) sa_optimizer = optimizer.get();
         continue;
       }
+#endif
 
       TF_RETURN_IF_ERROR(RunOptimizer(optimizer.get(), cluster, &item,
                                       optimized_graph, &optimization_result));
@@ -727,13 +721,14 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
       TF_RETURN_IF_ERROR(verifier->Verify(*optimized_graph));
     }
   }
-
+#ifndef ENABLE_MKL
   // ScopedAllocatorOptimizer must run last.
   if (sa_optimizer != nullptr) {
     TF_RETURN_IF_ERROR(RunOptimizer(sa_optimizer, cluster, &item,
                                     optimized_graph, &optimization_result));
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
   }
+#endif
 
   bool is_optimized = std::find_if(optimization_result.results.begin(),
                                    optimization_result.results.end(),
@@ -1158,7 +1153,9 @@ bool MetaOptimizerEnabled(const ConfigProto& cfg) {
          rewrite_cfg.auto_parallel().enable() ||
          rewrite_cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
          rewrite_cfg.debug_stripper() == RewriterConfig::ON ||
+#ifndef ENABLE_MKL
          rewrite_cfg.scoped_allocator_optimization() == RewriterConfig::ON ||
+#endif
          rewrite_cfg.pin_to_host_optimization() == RewriterConfig::ON ||
          AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision()) ||
          AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision_mkl()) ||

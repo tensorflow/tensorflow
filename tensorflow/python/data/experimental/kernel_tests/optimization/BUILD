@@ -4,20 +4,13 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-or
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 tf_py_test(
     name = "autotune_buffer_sizes_test",
     size = "small",
     srcs = ["autotune_buffer_sizes_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -54,11 +47,6 @@ tf_py_test(
     name = "choose_fastest_dataset_test",
     size = "small",
     srcs = ["choose_fastest_dataset_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -74,11 +62,6 @@ tf_py_test(
     name = "filter_fusion_test",
     size = "medium",
     srcs = ["filter_fusion_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -144,11 +127,6 @@ tf_py_test(
     name = "hoist_random_uniform_test",
     size = "small",
     srcs = ["hoist_random_uniform_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -170,11 +148,6 @@ tf_py_test(
     name = "map_and_batch_fusion_test",
     size = "small",
     srcs = ["map_and_batch_fusion_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -189,11 +162,6 @@ tf_py_test(
     name = "map_and_filter_fusion_test",
     size = "small",
     srcs = ["map_and_filter_fusion_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -212,11 +180,6 @@ tf_py_test(
     name = "map_fusion_test",
     size = "small",
     srcs = ["map_fusion_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -232,11 +195,6 @@ tf_py_test(
     name = "map_parallelization_test",
     size = "small",
     srcs = ["map_parallelization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -296,11 +254,6 @@ tf_py_test(
     name = "noop_elimination_test",
     size = "small",
     srcs = ["noop_elimination_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",

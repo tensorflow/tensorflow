@@ -13,13 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Contains the Policy class for mixed precision training."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import contextlib
-
-import six
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import backend
@@ -193,7 +188,7 @@ class Policy(object):
     if isinstance(name, dtypes.DType):
       raise TypeError("'name' must be a string, not a DType. "
                       "Instead, pass DType.name. Got: %s" % (name.name,))
-    elif not isinstance(name, six.string_types):
+    elif not isinstance(name, str):
       raise TypeError("'name' must be a string, but got: %s" % (name,))
     self._name = name
     self._compute_dtype, self._variable_dtype = self._parse_name(name)
@@ -245,8 +240,7 @@ class Policy(object):
       error = ("Cannot convert value %s to a mixed precision Policy. "
                "Valid policies include 'mixed_float16', 'mixed_bfloat16', "
                "and the name of any dtype such as 'float32'." % (name,))
-      # six.raise_from suppresses the original TypeError from being raised
-      six.raise_from(ValueError(error), None)
+      raise ValueError(error)
     return dtype, dtype
 
   @property
@@ -369,10 +363,11 @@ class PolicyV1(Policy):
     else:
       self._using_default_loss_scale = False
     if loss_scale and self._compute_dtype not in (None, 'float16'):
-      tf_logging.warn('Creating a Policy with a loss scale is only useful for '
-                      'float16 policies. You passed loss_scale=%r for policy '
-                      '%s. Consider not passing any loss_scale instead.' %
-                      (loss_scale, name))
+      tf_logging.warning(
+          'Creating a Policy with a loss scale is only useful for '
+          'float16 policies. You passed loss_scale=%r for policy '
+          '%s. Consider not passing any loss_scale instead.' %
+          (loss_scale, name))
     self._loss_scale = keras_loss_scale_module.get(loss_scale)
 
   @property
@@ -449,7 +444,7 @@ def global_policy():
 
 
 def _check_if_mixed_precision_graph_rewrite_is_enabled(policy):
-  if mixed_precision_global_state.mixed_precision_graph_rewrite_is_enabled:
+  if mixed_precision_global_state.is_mixed_precision_graph_rewrite_enabled():
     raise ValueError(
         'The global dtype policy cannot be set to "{policy.name}", because the '
         'mixed precision graph rewrite has already been enabled.\n'
@@ -520,7 +515,7 @@ def set_policy(policy):
                      '"mixed_float16", but got policy: %s'
                      % (policy.name,))
   _global_policy = policy
-  mixed_precision_global_state.using_mixed_precision_policy = is_mixed_policy
+  mixed_precision_global_state.set_using_mixed_precision_policy(is_mixed_policy)
 
 
 # TODO(reedwm): Make this thread local

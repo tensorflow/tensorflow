@@ -54,7 +54,6 @@
     }) : () -> ()
     "std.return"() : () -> ()
   }) {sym_name = "main", type = () -> ()} : () -> ()
-  "module_terminator"() : () -> ()
 }) {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 126 : i32}} : () -> ()
 
 // CHECK: _SwitchN

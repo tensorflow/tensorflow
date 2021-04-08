@@ -61,7 +61,8 @@ TpuDeviceState::TpuDeviceState(se::StreamExecutor* executor,
                                LocalClient* client, bool asynchronous)
     : LocalDeviceState(executor, client, LocalDeviceState::kAsynchronous,
                        asynchronous,
-                       /*allow_event_reuse=*/false) {}
+                       /*allow_event_reuse=*/false,
+                       /*use_callback_stream=*/true) {}
 
 Status TpuDeviceState::ThenMemcpyDeviceToDevice(
     se::Stream* transfer_stream, se::Stream* dst_stream,

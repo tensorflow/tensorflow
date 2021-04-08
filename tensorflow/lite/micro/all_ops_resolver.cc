@@ -35,16 +35,17 @@ AllOpsResolver::AllOpsResolver() {
   AddDepthwiseConv2D();
   AddDequantize();
   AddDetectionPostprocess();
-  AddDiv();
   AddElu();
   AddEqual();
   AddEthosU();
   AddFloor();
+  AddFloorDiv();
   AddFullyConnected();
   AddGreater();
   AddGreaterEqual();
   AddHardSwish();
   AddL2Normalization();
+  AddL2Pool2D();
   AddLeakyRelu();
   AddLess();
   AddLessEqual();

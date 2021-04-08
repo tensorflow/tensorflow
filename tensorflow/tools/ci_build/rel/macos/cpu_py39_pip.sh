@@ -34,6 +34,7 @@ install_macos_pip_deps
 export OS_TYPE="MACOS"
 export CONTAINER_TYPE="CPU"
 export TF_PYTHON_VERSION='python3.9'
+export PYTHON_BIN_PATH="$(which python)"
 export TF_BUILD_BOTH_CPU_PACKAGES=1
 
 # Export optional variables for running pip.sh

@@ -2,7 +2,7 @@
 #  Tools for building the TensorFlow pip package.
 
 load("//tensorflow:tensorflow.bzl", "filegroup_as_file", "if_windows", "transitive_hdrs")
-load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
+load("//third_party/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
@@ -262,9 +262,8 @@ filegroup(
         "@cub_archive//:LICENSE.TXT",
         "@local_config_nccl//:LICENSE",
     ]) + if_mkl([
-        "//third_party/mkl:LICENSE",
         "//third_party/mkl_dnn:LICENSE",
-    ]) + if_not_system_lib(
+    ]) + if_enable_mkl(["//third_party/mkl:LICENSE"]) + if_not_system_lib(
         "absl_py",
         [
             "@absl_py//absl:LICENSE",

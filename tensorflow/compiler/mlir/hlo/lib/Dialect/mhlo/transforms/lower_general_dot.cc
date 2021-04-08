@@ -182,7 +182,7 @@ struct LegalizeGeneralDotPass
     : public PassWrapper<LegalizeGeneralDotPass, FunctionPass> {
   /// Lower all general dots that can be represented as a non-batched matmul.
   void runOnFunction() override {
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     mlir::mhlo::PopulateGeneralDotOpLoweringPatterns(&patterns, &getContext());
     (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
   }

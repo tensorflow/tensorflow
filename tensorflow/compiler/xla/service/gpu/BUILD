@@ -40,7 +40,7 @@ load("//third_party/mlir:tblgen.bzl", "gentbl")
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -262,7 +262,6 @@ cc_library(
         ":parallel_loop_emitter",
         ":target_util",
         ":thunk",
-        ":thunk_emitter",
         "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:lhlo",
@@ -1283,6 +1282,8 @@ cc_library(
         ":target_constants",
         ":tree_reduction_rewriter",
         ":variadic_op_splitter",
+        "//tensorflow/compiler/mlir:name_utils",
+        "//tensorflow/compiler/mlir/xla:hlo_utils",
         "//tensorflow/compiler/mlir/xla:mhlo_to_lhlo_with_xla",
         "//tensorflow/compiler/mlir/xla:type_to_shape",
         "//tensorflow/compiler/xla:protobuf_util",
@@ -1291,6 +1292,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
+        "//tensorflow/compiler/xla/service:all_gather_combiner",
         "//tensorflow/compiler/xla/service:all_gather_decomposer",
         "//tensorflow/compiler/xla/service:all_reduce_combiner",
         "//tensorflow/compiler/xla/service:all_to_all_decomposer",
@@ -1315,9 +1317,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_cse",
         "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
         "//tensorflow/compiler/xla/service:hlo_dce",
-        "//tensorflow/compiler/xla/service:hlo_domain_isolator",
-        "//tensorflow/compiler/xla/service:hlo_domain_remover",
         "//tensorflow/compiler/xla/service:hlo_element_type_converter",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:hlo_proto_util",

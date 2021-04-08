@@ -2,7 +2,7 @@
 #   TensorFlow Lite for Microcontrollers image recognition example.
 package(
     features = ["-layering_check"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
