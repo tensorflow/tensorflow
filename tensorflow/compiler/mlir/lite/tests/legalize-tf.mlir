@@ -2068,3 +2068,15 @@ func @all_i64axes(%arg0: tensor<8x16x16xi1>, %arg1: tensor<2xi64>) -> tensor<?xi
   // CHECK: %[[V0:.*]] = "tfl.cast"(%arg1) : (tensor<2xi64>) -> tensor<2xi32>
   // CHECK: "tfl.reduce_all"(%arg0, %[[V0]]) {keep_dims = false} : (tensor<8x16x16xi1>, tensor<2xi32>) -> tensor<?xi1>
 }
+
+func @quantize_dequantize_v4(%arg0 : tensor<?x?xf32>) -> tensor<?x?xf32> {
+  %cst = constant dense<0.0> : tensor<f32>
+  %cst_0 = constant dense<255.0> : tensor<f32>
+  %0 = "tf.QuantizeAndDequantizeV4"(%arg0, %cst, %cst_0) : (tensor<?x?xf32>, tensor<f32>, tensor<f32>) -> tensor<?x?xf32>
+  return %0 : tensor<?x?xf32>
+
+// CHECK-LABEL: quantize_dequantize_v4
+// CHECK:  %[[QUANT:.*]] = "tfl.quantize"(%arg0) {qtype = tensor<?x?x!quant.uniform<u8:f32, 1.000000e+00>>} : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<u8:f32, 1.000000e+00>>
+// CHECK:  %[[DEQUANT:.*]] = "tfl.dequantize"(%[[QUANT]]) : (tensor<?x?x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<?x?xf32>
+// CHECK:  return %[[DEQUANT]]
+}
