@@ -1371,20 +1371,19 @@ bool RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
           // Only tested when the inputs are row-major. So only enable that case.
           // Maybe it would works if only the inner dimensions is contiguous.
           if (auto op = value.getDefiningOp()) {
-            return IsRowMajor(value.getDefiningOp());
+            return IsMonotonicWithDim0Major(value.getDefiningOp());
           }
           // Reuse TypeToShape to not duplicate the layout convertion code.
           return LayoutUtil::IsMonotonicWithDim0Major(TypeToShape(value.getType()).layout());
         }) &&
       // Only tested when the output is row-major.
-      absl::c_all_of(GetOutputOps(fusion), IsRowMajor);
+      absl::c_all_of(GetOutputOps(fusion), IsMonotonicWithDim0Major);
 
   bool some_row_broadcasting = false;
-  // Check that the operation in the fusion are supported.  Each
+  // Check that the operations in the fusion are supported.  Each
   // supported operation (or category) must be manually vetted as XLA
-  // only unroll and rely on LLVM to vectorize. But this is brittle.
-  // If the vectorization doesn't happens, then it would slow down
-  // computation.  Currently tested and supported operations:
+  // only unrolls and relies on LLVM to vectorize. But this is brittle.
+  // Currently tested and supported operations:
   // Elementwise, scalar and row broadcasting.
   for (mlir::Operation& op : fusion.region().front()) {
     if (mlir::isa<mlir::memref::TensorLoadOp, mlir::memref::TensorStoreOp,
@@ -1413,12 +1412,11 @@ bool RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
         continue;
       }
     }
-    row_vectorized = false;
     VLOG(2) << "Row vectorization not enabled due to this op: " << MlirToString(&op);
-    break;
+    return false;
   }
   // Trigger only when there is a row broadcasting.
-  return row_vectorized &= some_row_broadcasting;
+  return row_vectorized && some_row_broadcasting;
 }
 }  // namespace
 

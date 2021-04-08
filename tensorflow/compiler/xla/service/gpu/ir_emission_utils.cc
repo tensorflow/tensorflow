@@ -708,16 +708,15 @@ std::vector<mlir::Value> GetHloOutputs(mlir::Operation* op) {
   LOG(FATAL) << "Unexpected op: " << MlirToString(op);
 }
 
-bool IsRowMajor(mlir::Operation* op) {
+bool IsMonotonicWithDim0Major(mlir::Operation* op) {
   if (mlir::DenseIntElementsAttr attr = mlir::GetLayoutFromMlirHlo(op)) {
-    std::vector<int64> minor_to_major;
-    absl::c_transform(
-        attr, std::back_inserter(minor_to_major),
-        std::function<int64(const llvm::APInt&)>(&llvm::APInt::getZExtValue));
-    bool ret = absl::c_is_sorted(minor_to_major, std::greater<int64>());
-    return ret;
+    return absl::c_is_sorted(attr,
+                             [](const llvm::APInt& lhs,
+                                const llvm::APInt& rhs) {
+                               return lhs.getZExtValue() > rhs.getZExtValue();
+                             });
   }
-  // It is row major by default.
+  // Dim0 is major(row major) by default.
   return true;
 }
 
