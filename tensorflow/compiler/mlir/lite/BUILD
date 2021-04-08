@@ -321,6 +321,24 @@ cc_library(
 )
 
 cc_library(
+    name = "fake_quant_utils",
+    srcs = [
+        "utils/fake_quant_utils.cc",
+    ],
+    hdrs = [
+        "utils/fake_quant_utils.h",
+    ],
+    deps = [
+        ":tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "nms_utils",
     srcs = [
         "utils/nms_utils.cc",
@@ -457,7 +475,6 @@ cc_library(
         "transforms/legalize_tf.cc",
         "transforms/legalize_tf_while.cc",
         "transforms/legalize_variables.cc",
-        "transforms/lower_custom_ops.cc",
         "transforms/lower_static_tensor_list.cc",
         "transforms/optimize_functional_ops.cc",
         "transforms/prepare_composite_functions_tf.cc",
@@ -476,6 +493,7 @@ cc_library(
     ],
     deps = [
         ":constant_utils",
+        ":fake_quant_utils",
         ":lstm_utils",
         ":nms_utils",
         ":perception_ops_utils",
@@ -867,7 +885,7 @@ tf_cc_binary(
     deps = [
         ":flatbuffer_translate_registeration",
         # TODO(b/155809683): Link only necessary dialects.
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
     ],
 )
 
@@ -919,7 +937,7 @@ tf_cc_binary(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         # TODO(b/155809683): Link only necessary dialects.
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
@@ -966,6 +984,7 @@ cc_library(
     ],
     deps = [
         ":common",
+        ":fake_quant_utils",
         ":tensorflow_lite_d2s",
         ":tensorflow_lite_legalize_tf",
         ":tensorflow_lite_optimize",
@@ -1016,7 +1035,7 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",

@@ -243,7 +243,9 @@ def enable_tensor_equality():
   unhashable. Thus tensors can no longer be directly used in sets or as a key in
   a dictionary.
   """
+  # copybara:comment_begin(Reduce verbosity for OSS users)
   logging.info("Enabling tensor equality")
+  # copybara:comment_end
   _tensor_equality_api_usage_gauge.get_cell().set(True)
   Tensor._USE_EQUALITY = True  # pylint: disable=protected-access
 
@@ -254,7 +256,9 @@ def disable_tensor_equality():
 
   This is a legacy behaviour of TensorFlow and is highly discouraged.
   """
+  # copybara:comment_begin(Reduce verbosity for OSS users)
   logging.info("Disabling tensor equality")
+  # copybara:comment_end
   _tensor_equality_api_usage_gauge.get_cell().set(False)
   Tensor._USE_EQUALITY = False  # pylint: disable=protected-access
 
@@ -5890,7 +5894,9 @@ def enable_eager_execution(config=None, device_policy=None,
      to this function.
   """
   _api_usage_gauge.get_cell().set(True)
+  # copybara:comment_begin(Reduce verbosity for OSS users)
   logging.info("Enabling eager execution")
+  # copybara:comment_end
   if context.default_execution_mode != context.EAGER_MODE:
     return enable_eager_execution_internal(
         config=config,
@@ -5908,7 +5914,9 @@ def disable_eager_execution():
   projects from TensorFlow 1.x to 2.x.
   """
   _api_usage_gauge.get_cell().set(False)
+  # copybara:comment_begin(Reduce verbosity for OSS users)
   logging.info("Disabling eager execution")
+  # copybara:comment_end
   context.default_execution_mode = context.GRAPH_MODE
   c = context.context_safe()
   if c is not None:

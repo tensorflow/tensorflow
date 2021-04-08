@@ -254,6 +254,9 @@ TF_CALL_ALL_TYPES(REGISTER_SELECT);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+
 // Registration of the GPU implementations.
 #define REGISTER_SELECT_GPU(type)                                    \
   REGISTER_KERNEL_BUILDER(                                           \
@@ -273,6 +276,25 @@ REGISTER_SELECT_GPU(complex64);
 REGISTER_SELECT_GPU(complex128);
 
 #undef REGISTER_SELECT_GPU
+
+#else
+
+#define REGISTER_SELECT_GPU(type)                                  \
+  REGISTER_KERNEL_BUILDER(                                         \
+      Name("Select").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
+      SelectOp<GPUDevice, type>);
+
+REGISTER_SELECT_GPU(bool);
+REGISTER_SELECT_GPU(Eigen::half);
+REGISTER_SELECT_GPU(float);
+REGISTER_SELECT_GPU(double);
+REGISTER_SELECT_GPU(int32);
+REGISTER_SELECT_GPU(int64);
+REGISTER_SELECT_GPU(complex64);
+REGISTER_SELECT_GPU(complex128);
+
+#undef REGISTER_SELECT_GPU
+#endif
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

@@ -141,6 +141,26 @@ build_test(
     ],
 )
 
+cc_library(
+    name = "verifier",
+    hdrs = ["cc/tools/verifier.h"],
+    copts = tflite_copts_warnings(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/lite/tools:verifier",
+    ],
+)
+
+build_test(
+    name = "verifier_build_test",
+    targets = [
+        ":verifier",
+    ],
+)
+
 #------------------------------------------------------------------------------
 # C API
 

@@ -38,7 +38,7 @@ PYBIND11_MODULE(_math_ops, m) {
       name = "Add";
     }
     MaybeRaiseRegisteredFromStatus(
-        ops::Add(ctx, {a, b}, absl::MakeSpan(outputs), name));
+        ops::Add(ctx, a, b, absl::MakeSpan(outputs), name));
     return outputs[0];
   });
   m.def("mat_mul", [](AbstractContext* ctx, AbstractTensorHandle* a,
@@ -49,7 +49,7 @@ PYBIND11_MODULE(_math_ops, m) {
       name = "MatMul";
     }
     MaybeRaiseRegisteredFromStatus(
-        ops::MatMul(ctx, {a, b}, absl::MakeSpan(outputs), name,
+        ops::MatMul(ctx, a, b, absl::MakeSpan(outputs), name,
                     /*transpose_a=*/false, /*transpose_b=*/false));
     return outputs[0];
   });
@@ -61,7 +61,7 @@ PYBIND11_MODULE(_math_ops, m) {
             name = "Neg";
           }
           MaybeRaiseRegisteredFromStatus(
-              ops::Neg(ctx, {a}, absl::MakeSpan(outputs), name));
+              ops::Neg(ctx, a, absl::MakeSpan(outputs), name));
           return outputs[0];
         });
   m.def("sub", [](AbstractContext* ctx, AbstractTensorHandle* a,
@@ -72,7 +72,7 @@ PYBIND11_MODULE(_math_ops, m) {
       name = "Sub";
     }
     MaybeRaiseRegisteredFromStatus(
-        ops::Sub(ctx, {a, b}, absl::MakeSpan(outputs), name));
+        ops::Sub(ctx, a, b, absl::MakeSpan(outputs), name));
     return outputs[0];
   });
   m.def("mul", [](AbstractContext* ctx, AbstractTensorHandle* a,
@@ -83,7 +83,7 @@ PYBIND11_MODULE(_math_ops, m) {
       name = "Mul";
     }
     MaybeRaiseRegisteredFromStatus(
-        ops::Mul(ctx, {a, b}, absl::MakeSpan(outputs), name));
+        ops::Mul(ctx, a, b, absl::MakeSpan(outputs), name));
     return outputs[0];
   });
   m.def("log1p",
@@ -94,7 +94,7 @@ PYBIND11_MODULE(_math_ops, m) {
             name = "Log1p";
           }
           MaybeRaiseRegisteredFromStatus(
-              ops::Log1p(ctx, {a}, absl::MakeSpan(outputs), name));
+              ops::Log1p(ctx, a, absl::MakeSpan(outputs), name));
           return outputs[0];
         });
   m.def("div_no_nan", [](AbstractContext* ctx, AbstractTensorHandle* a,
@@ -105,7 +105,7 @@ PYBIND11_MODULE(_math_ops, m) {
       name = "DivNoNan";
     }
     MaybeRaiseRegisteredFromStatus(
-        ops::DivNoNan(ctx, {a, b}, absl::MakeSpan(outputs), name));
+        ops::DivNoNan(ctx, a, b, absl::MakeSpan(outputs), name));
     return outputs[0];
   });
 }

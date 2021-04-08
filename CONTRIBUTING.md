@@ -2,14 +2,16 @@
 
 ## Pull Request Checklist
 
-Before sending your pull requests, make sure you followed this list.
+Before sending your pull requests, make sure you do the following:
 
-- Read [contributing guidelines](CONTRIBUTING.md).
-- Read [Code of Conduct](CODE_OF_CONDUCT.md).
-- Ensure you have signed the [Contributor License Agreement (CLA)](https://cla.developers.google.com/).
-- Check if my changes are consistent with the [guidelines](https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md#general-guidelines-and-philosophy-for-contribution).
-- Changes are consistent with the [Coding Style](https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md#c-coding-style).
-- Run [Unit Tests](https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md#running-unit-tests).
+-   Read the [contributing guidelines](CONTRIBUTING.md).
+-   Read the [Code of Conduct](CODE_OF_CONDUCT.md).
+-   Ensure you have signed the
+    [Contributor License Agreement (CLA)](https://cla.developers.google.com/).
+-   Check if your changes are consistent with the
+    [guidelines](#general-guidelines-and-philosophy-for-contribution).
+-   Changes are consistent with the [Coding Style](#c-coding-style).
+-   Run the [unit tests](#running-unit-tests).
 
 ## How to become a contributor and submit your own code
 

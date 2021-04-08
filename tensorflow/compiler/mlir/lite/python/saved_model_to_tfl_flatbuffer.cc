@@ -176,6 +176,7 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   pass_config.lower_tensor_list_ops = true;
   pass_config.enable_tflite_variables =
       toco_flags.enable_tflite_resource_variables();
+  pass_config.unfold_batch_matmul = toco_flags.unfold_batchmatmul();
   // Disable the unfolding of the 16x16 TF::BatchMatMulOp to avoid the
   // conversion to an unsupported 16x16 TFL::FullyConnectedOp.
   if (toco_flags.inference_type() == toco::IODataType::QUANTIZED_INT16) {

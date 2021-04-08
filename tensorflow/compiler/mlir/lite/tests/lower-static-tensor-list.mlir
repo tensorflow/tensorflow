@@ -450,14 +450,20 @@ func @tensorlistReserveWithDynamicShape(%arg0: tensor<i32>, %arg1: tensor<i32>, 
 // -----
 
 // CHECK-LABEL: tensorlistConcat
-func @tensorlistConcat(%arg0: tensor<?xf32>, %element_shape: tensor<0xi32>, %lead: tensor<i64>) -> (tensor<?xf32>, tensor<0xi64>) {
-  %list = "tf.TensorListFromTensor"(%arg0, %element_shape) : (tensor<?xf32>, tensor<0xi32>) -> tensor<!tf.variant<tensor<f32>>>
-  %t:2 = "tf.TensorListConcatV2"(%list, %element_shape, %lead) : (tensor<!tf.variant<tensor<f32>>>, tensor<0xi32>, tensor<i64>) -> (tensor<?xf32>, tensor<0xi64>)
-  return %t#0, %t#1 : tensor<?xf32>, tensor<0xi64>
+func @tensorlistConcat(%arg0: tensor<3x2x2xf32>, %lead: tensor<i64>) -> (tensor<?x2xf32>, tensor<0xi64>) {
+  %cst = constant dense<[2, 2]> : tensor<2xi32>
+  %list = "tf.TensorListFromTensor"(%arg0, %cst) : (tensor<3x2x2xf32>, tensor<2xi32>) -> tensor<!tf.variant<tensor<f32>>>
+  %t:2 = "tf.TensorListConcatV2"(%list, %cst, %lead) : (tensor<!tf.variant<tensor<f32>>>, tensor<2xi32>, tensor<i64>) -> (tensor<?x2xf32>, tensor<0xi64>)
+  return %t#0, %t#1 : tensor<?x2xf32>, tensor<0xi64>
 
-// CHECK: %0 = "tf.TensorListFromTensor"(%arg0, %arg1) : (tensor<?xf32>, tensor<0xi32>) -> tensor<!tf.variant<tensor<f32>>>
-// CHECK: %tensor, %lengths = "tf.TensorListConcatV2"(%0, %arg1, %arg2) : (tensor<!tf.variant<tensor<f32>>>, tensor<0xi32>, tensor<i64>) -> (tensor<?xf32>, tensor<0xi64>)
-// CHECK: return %tensor, %lengths : tensor<?xf32>, tensor<0xi64>
+// CHECK: [[ELEMENT_SHAPE:%.*]] = constant dense<2> : tensor<2xi32>
+// CHECK: [[SCALAR_ZERO:%.*]] = constant dense<0> : tensor<i32>
+// CHECK: [[SCALAR_ONE:%.*]] = constant dense<1> : tensor<i32>
+// CHECK: [[SPLIT:%.*]] = "tf.Split"([[SCALAR_ZERO]], %arg0) : (tensor<i32>, tensor<3x2x2xf32>) -> tensor<*xf32>
+// CHECK: [[CONCAT:%.*]] = "tf.Concat"([[SCALAR_ONE]], [[SPLIT]]) : (tensor<i32>, tensor<*xf32>) -> tensor<*xf32>
+// CHECK: [[SQUEEZE:%.*]] = "tf.Squeeze"([[CONCAT]]) {squeeze_dims = [0]} : (tensor<*xf32>) -> tensor<?x2xf32>
+// CHECK: [[LENGTHS:%.*]] = constant dense<0> : tensor<0xi64>
+// CHECK: return [[SQUEEZE]], [[LENGTHS]] : tensor<?x2xf32>, tensor<0xi64>
 }
 
 // -----
@@ -495,4 +501,41 @@ func @tensorlistWhileCond(%arg0: tensor<i32>, %arg1: tensor<!tf.variant>) -> ten
 
 // verify `cond` function's signature stays unchanged.
 // CHECK: func @tensorlistWhileCond(%[[ARG0:.*]]: tensor<i32>, %[[ARG1:.*]]: tensor<!tf.variant>) -> tensor<i1>
+}
+
+// -----
+
+func @tensorListIf(%arg0: tensor<3x10xf32>, %arg1: tensor<1xi32>, %arg2: tensor<i32>) -> tensor<*xf32> {
+  %cst = constant dense<2> : tensor<i32>
+  %0 = "tf.TensorListFromTensor"(%arg0, %arg1) : (tensor<3x10xf32>, tensor<1xi32>) -> tensor<!tf.variant<tensor<10xf32>>>
+  %1 = "tf.Less"(%arg2, %cst) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  %res = "tf.If"(%1, %0) {else_branch = @tensorListIfCondFalse, is_stateless = true, then_branch = @tensorListIfCondTrue} : (tensor<i1>, tensor<!tf.variant<tensor<10xf32>>>) -> tensor<!tf.variant<tensor<10xf32>>>
+  %2 = "tf.TensorListStack"(%res, %arg1) : (tensor<!tf.variant<tensor<10xf32>>>, tensor<1xi32>) -> tensor<*xf32>
+  return %2 : tensor<*xf32>
+
+// CHECK: func @tensorListIf
+// CHECK-NEXT:  %cst = constant dense<2> : tensor<i32>
+// CHECK-NEXT:  %0 = "tf.Less"(%arg2, %cst) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+// CHECK-NEXT:  %1 = "tf.If"(%0, %arg0) {else_branch = @tensorListIfCondFalse, is_stateless = true, then_branch = @tensorListIfCondTrue} : (tensor<i1>, tensor<3x10xf32>) -> tensor<*xf32>
+// CHECK-NEXT:  return %1 : tensor<*xf32>
+}
+
+func @tensorListIfCondTrue(%arg0: tensor<!tf.variant<tensor<10xf32>>>) -> (tensor<!tf.variant<tensor<10xf32>>>) {
+  %cst = constant dense<0> : tensor<i32>
+  %cst_0 = constant dense<0.0> : tensor<10xf32>
+  %0 = "tf.TensorListSetItem"(%arg0, %cst, %cst_0) : (tensor<!tf.variant<tensor<10xf32>>>, tensor<i32>, tensor<10xf32>) -> tensor<!tf.variant<tensor<10xf32>>>
+  return %0 : tensor<!tf.variant<tensor<10xf32>>>
+
+// CHECK: func @tensorListIfCondTrue(%arg0: tensor<*xf32>) -> tensor<*xf32>
+// CHECK-NOT: tf.TensorListSetItem
+}
+
+func @tensorListIfCondFalse(%arg0: tensor<!tf.variant<tensor<10xf32>>>) -> (tensor<!tf.variant<tensor<10xf32>>>) {
+  %cst = constant dense<0> : tensor<i32>
+  %cst_0 = constant dense<1.0> : tensor<10xf32>
+  %0 = "tf.TensorListSetItem"(%arg0, %cst, %cst_0) : (tensor<!tf.variant<tensor<10xf32>>>, tensor<i32>, tensor<10xf32>) -> tensor<!tf.variant<tensor<10xf32>>>
+  return %0 : tensor<!tf.variant<tensor<10xf32>>>
+
+// CHECK: func @tensorListIfCondFalse(%arg0: tensor<*xf32>) -> tensor<*xf32>
+// CHECK-NOT: tf.TensorListSetItem
 }

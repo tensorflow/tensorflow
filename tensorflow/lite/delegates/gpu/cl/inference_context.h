@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
+#include "tensorflow/lite/delegates/gpu/cl/recordable_queue_builder.h"
 #include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
@@ -140,6 +141,8 @@ class InferenceContext {
                     ProfilingCommandQueue* profiling_queue);
   absl::Status UpdateParams();
 
+  void InitRecordableQueue(Environment* env);
+
   void ReleaseCPURepresentation();
 
   // performance hacks
@@ -237,6 +240,8 @@ class InferenceContext {
   // for serialization
   std::vector<int64_t> in_refs_;
   std::vector<int64_t> out_refs_;
+
+  std::unique_ptr<RecordableQueue> recordable_queue_;
 };
 
 // Runs OpenCL specific transforms for the graph.

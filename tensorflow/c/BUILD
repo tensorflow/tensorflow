@@ -727,7 +727,10 @@ tf_cc_test(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    tags = ["notsan"],  # b/149031034
+    tags = [
+        "nomsan",  # b/149031034
+        "notsan",  # b/149031034
+    ],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     # linkstatic = tf_kernel_tests_linkstatic(),
@@ -877,7 +880,7 @@ tf_cuda_library(
         ":c_api",
         ":c_api_internal",
         # TODO(b/74620627): remove when _USE_C_SHAPES is removed
-        "//tensorflow/python:cpp_shape_inference_proto_cc",
+        "//tensorflow/python/framework:cpp_shape_inference_proto_cc",
     ],
     alwayslink = 1,
 )

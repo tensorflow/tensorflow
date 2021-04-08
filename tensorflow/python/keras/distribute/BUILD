@@ -322,6 +322,7 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
+        ":multi_worker_testing_utils",
         ":optimizer_combinations",
         ":strategy_combinations",
         "//tensorflow/python:client_testlib",
@@ -687,7 +688,6 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
-        "no_tfrt",  # TODO(b/179839466): Reenable TFRT after the issue is resolved.
         "no_windows_gpu",  # TODO(b/130551176)
     ],
     deps = [
@@ -737,7 +737,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
-        "no_tfrt",  # TODO(b/179839466): Reenable TFRT after the issue is resolved.
     ],
     deps = [
         ":multi_worker_testing_utils",
@@ -859,10 +858,9 @@ distribute_py_test(
     name = "parameter_server_training_test",
     srcs = ["parameter_server_training_test.py"],
     python_version = "PY3",
-    shard_count = 1,
+    shard_count = 4,  # TODO(b/184290570): Investigate why only 1 shard times out.
     tags = [
         "multi_and_single_gpu",
-        "no_tfrt",  # TODO(b/180537361): Reenable TFRT after the issue is resolved.
     ],
     deps = [
         ":multi_worker_testing_utils",
@@ -900,7 +898,8 @@ distribute_py_test(
         "multi_gpu",
         "no_rocm",
         "no_oss",  # TODO(b/183640564): Reenable
-        "no_tfrt",  # TODO(b/180537361): Reenable TFRT after the issue is resolved.
+        "no_rocm",
+        "notsan",  # TODO(b/184542721)
     ],
     deps = [
         ":multi_worker_testing_utils",

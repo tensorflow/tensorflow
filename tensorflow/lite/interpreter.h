@@ -86,9 +86,11 @@ class TestDelegate;  // Class for friend declarations.
 /// interpreter.Invoke();
 /// </code></pre>
 ///
-/// Note: for nearly all practical use cases, one should not directly construct
+/// Note: For nearly all practical use cases, one should not directly construct
 /// an Interpreter object, but rather use the InterpreterBuilder.
-
+///
+/// WARNING: This class is *not* thread-safe. The client is responsible for
+/// ensuring serialized interaction to avoid data races and undefined behavior.
 class Interpreter {
  public:
   // Instantiate an interpreter. All errors associated with reading and
@@ -445,9 +447,10 @@ class Interpreter {
 
   /// Set the number of threads available to the interpreter.
   ///
-  /// NOTE: num_threads should be >= -1.
-  /// User may pass -1 to let the TFLite interpreter set the no of threads
-  /// available to itself.
+  /// NOTE: num_threads should be >= -1. Setting num_threads to 0 has the effect
+  /// to disable multithreading, which is equivalent to setting num_threads
+  /// to 1. If set to the value -1, the number of threads used will be
+  /// implementation-defined and platform-dependent.
   TfLiteStatus SetNumThreads(int num_threads);
 
   /// Allow float16 precision for FP32 calculation when possible.

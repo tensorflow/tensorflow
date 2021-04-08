@@ -132,6 +132,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(CreateTPUShardingIdentificationPass());
   pm.addNestedPass<FuncOp>(CreateTPUResourceReadsWritesPartitioningPass());
   pm.addPass(TFDevice::CreateAnnotateParameterReplicationPass());
+  pm.addPass(TFDevice::CreateMarkInputOutputAliasesPass());
   pm.addPass(CreateTPURewritePass());
   pm.addPass(createSymbolDCEPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());

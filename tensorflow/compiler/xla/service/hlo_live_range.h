@@ -201,6 +201,8 @@ class HloLiveRange {
   // Note there is no overlap of live ranges after normalization.
   void NormalizeAliasedBuffers();
 
+  int64 ComputePeakMemoryMoment() const;
+
   const HloSchedule& schedule_;
   const HloAliasAnalysis& alias_analysis_;
   bool module_scoped_analysis_;

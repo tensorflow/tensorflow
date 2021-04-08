@@ -14,7 +14,7 @@ load(
 
 package(
     default_visibility = ["//tensorflow/tools/consistency_integration_test:__subpackages__"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 licenses(["notice"])
@@ -35,6 +35,9 @@ py_test(
     name = "basic_tests",
     srcs = ["basic_tests.py"],
     srcs_version = "PY3",
+    tags = [
+        "no_pip",
+    ],
     deps = [
         ":consistency_test_base",
         "//tensorflow/python:client_testlib",

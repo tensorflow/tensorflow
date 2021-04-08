@@ -4622,104 +4622,131 @@ inline void PadImpl(const tflite::PadParams& op_params,
                     const RuntimeShape& input_shape, const T* input_data,
                     const P* pad_value_ptr, const RuntimeShape& output_shape,
                     T* output_data) {
-  ruy::profiler::ScopeLabel label("Pad4DSlowImpl");
+  ruy::profiler::ScopeLabel label("PadImpl");
+  const int max_supported_dims = 5;
   const RuntimeShape ext_input_shape =
-      RuntimeShape::ExtendedShape(4, input_shape);
+      RuntimeShape::ExtendedShape(max_supported_dims, input_shape);
   const RuntimeShape ext_output_shape =
-      RuntimeShape::ExtendedShape(4, output_shape);
-  TFLITE_DCHECK_LE(op_params.left_padding_count, 4);
-  TFLITE_DCHECK_LE(op_params.right_padding_count, 4);
+      RuntimeShape::ExtendedShape(max_supported_dims, output_shape);
+  TFLITE_DCHECK_LE(op_params.left_padding_count, max_supported_dims);
+  TFLITE_DCHECK_LE(op_params.right_padding_count, max_supported_dims);
 
   // Pad kernels are limited to max 4 dimensions. Copy inputs so we can pad them
   // to 4 dims (yes, we are "padding the padding").
-  std::vector<int> left_padding_copy(4, 0);
-  const int left_padding_extend = 4 - op_params.left_padding_count;
+  std::vector<int> left_padding_copy(max_supported_dims, 0);
+  const int left_padding_extend =
+      max_supported_dims - op_params.left_padding_count;
   for (int i = 0; i < op_params.left_padding_count; ++i) {
     left_padding_copy[left_padding_extend + i] = op_params.left_padding[i];
   }
-  std::vector<int> right_padding_copy(4, 0);
-  const int right_padding_extend = 4 - op_params.right_padding_count;
+  std::vector<int> right_padding_copy(max_supported_dims, 0);
+  const int right_padding_extend =
+      max_supported_dims - op_params.right_padding_count;
   for (int i = 0; i < op_params.right_padding_count; ++i) {
     right_padding_copy[right_padding_extend + i] = op_params.right_padding[i];
   }
 
   const int output_batch = ext_output_shape.Dims(0);
-  const int output_height = ext_output_shape.Dims(1);
-  const int output_width = ext_output_shape.Dims(2);
-  const int output_depth = ext_output_shape.Dims(3);
+  const int output_spatial_dim1 = ext_output_shape.Dims(1);
+  const int output_spatial_dim2 = ext_output_shape.Dims(2);
+  const int output_spatial_dim3 = ext_output_shape.Dims(3);
+  const int output_channel = ext_output_shape.Dims(4);
 
   const int left_b_padding = left_padding_copy[0];
-  const int left_h_padding = left_padding_copy[1];
-  const int left_w_padding = left_padding_copy[2];
-  const int left_d_padding = left_padding_copy[3];
+  const int left_s1_padding = left_padding_copy[1];
+  const int left_s2_padding = left_padding_copy[2];
+  const int left_s3_padding = left_padding_copy[3];
+  const int left_c_padding = left_padding_copy[4];
 
   const int right_b_padding = right_padding_copy[0];
-  const int right_h_padding = right_padding_copy[1];
-  const int right_w_padding = right_padding_copy[2];
-  const int right_d_padding = right_padding_copy[3];
+  const int right_s1_padding = right_padding_copy[1];
+  const int right_s2_padding = right_padding_copy[2];
+  const int right_s3_padding = right_padding_copy[3];
+  const int right_c_padding = right_padding_copy[4];
 
-  const int input_depth = ext_input_shape.Dims(3);
+  const int input_depth = ext_input_shape.Dims(4);
   const T pad_value = *pad_value_ptr;
 
   if (left_b_padding != 0) {
-    TypedMemset<T>(
-        output_data, pad_value,
-        left_b_padding * output_height * output_width * output_depth);
+    TypedMemset<T>(output_data, pad_value,
+                   left_b_padding * output_spatial_dim1 * output_spatial_dim2 *
+                       output_spatial_dim3 * output_channel);
   }
   for (int out_b = left_b_padding; out_b < output_batch - right_b_padding;
        ++out_b) {
-    if (left_h_padding != 0) {
-      TypedMemset<T>(output_data + Offset(ext_output_shape, out_b, 0, 0, 0),
-                     pad_value, left_h_padding * output_width * output_depth);
+    if (left_s1_padding != 0) {
+      TypedMemset<T>(output_data + Offset(ext_output_shape, out_b, 0, 0, 0, 0),
+                     pad_value,
+                     left_s1_padding * output_spatial_dim2 *
+                         output_spatial_dim3 * output_channel);
     }
-    for (int out_h = left_h_padding; out_h < output_height - right_h_padding;
-         ++out_h) {
-      if (left_w_padding != 0) {
+    for (int out_p = left_s1_padding;
+         out_p < output_spatial_dim1 - right_s1_padding; ++out_p) {
+      if (left_s2_padding != 0) {
         TypedMemset<T>(
-            output_data + Offset(ext_output_shape, out_b, out_h, 0, 0),
-            pad_value, left_w_padding * output_depth);
+            output_data + Offset(ext_output_shape, out_b, out_p, 0, 0, 0),
+            pad_value, left_s2_padding * output_spatial_dim3 * output_channel);
       }
-      for (int out_w = left_w_padding; out_w < output_width - right_w_padding;
-           ++out_w) {
-        if (left_d_padding != 0) {
+      for (int out_h = left_s2_padding;
+           out_h < output_spatial_dim2 - right_s2_padding; ++out_h) {
+        if (left_s3_padding != 0) {
           TypedMemset<T>(
-              output_data + Offset(ext_output_shape, out_b, out_h, out_w, 0),
-              pad_value, left_d_padding);
+              output_data + Offset(ext_output_shape, out_b, out_p, out_h, 0, 0),
+              pad_value, left_s3_padding * output_channel);
         }
+        for (int out_w = left_s3_padding;
+             out_w < output_spatial_dim3 - right_s3_padding; ++out_w) {
+          if (left_c_padding != 0) {
+            TypedMemset<T>(output_data + Offset(ext_output_shape, out_b, out_p,
+                                                out_h, out_w, 0),
+                           pad_value, left_c_padding);
+          }
 
-        T* out = output_data +
-                 Offset(ext_output_shape, out_b, out_h, out_w, left_d_padding);
-        const T* in = input_data +
-                      Offset(ext_input_shape, out_b - left_b_padding,
-                             out_h - left_h_padding, out_w - left_w_padding, 0);
-        memcpy(out, in, input_depth * sizeof(T));
+          T* out = output_data + Offset(ext_output_shape, out_b, out_p, out_h,
+                                        out_w, left_c_padding);
+          const T* in = input_data +
+                        Offset(ext_input_shape, out_b - left_b_padding,
+                               out_p - left_s1_padding, out_h - left_s2_padding,
+                               out_w - left_s3_padding, 0);
+          memcpy(out, in, input_depth * sizeof(T));
 
-        if (right_d_padding != 0) {
+          if (right_c_padding != 0) {
+            TypedMemset<T>(
+                output_data + Offset(ext_output_shape, out_b, out_p, out_h,
+                                     out_w, output_channel - right_c_padding),
+                pad_value, right_c_padding);
+          }
+        }
+        if (right_s3_padding != 0) {
           TypedMemset<T>(
-              output_data + Offset(ext_output_shape, out_b, out_h, out_w,
-                                   output_depth - right_d_padding),
-              pad_value, right_d_padding);
+              output_data + Offset(ext_output_shape, out_b, out_p, out_h,
+                                   output_spatial_dim3 - right_s3_padding, 0),
+              pad_value, right_s3_padding * output_channel);
         }
       }
-      if (right_w_padding != 0) {
-        TypedMemset<T>(output_data + Offset(ext_output_shape, out_b, out_h,
-                                            output_width - right_w_padding, 0),
-                       pad_value, right_w_padding * output_depth);
+      if (right_s2_padding != 0) {
+        TypedMemset<T>(
+            output_data + Offset(ext_output_shape, out_b, out_p,
+                                 output_spatial_dim2 - right_s2_padding, 0, 0),
+            pad_value, right_s2_padding * output_spatial_dim3 * output_channel);
       }
     }
-    if (right_h_padding != 0) {
+    if (right_s1_padding != 0) {
       TypedMemset<T>(
           output_data + Offset(ext_output_shape, out_b,
-                               output_height - right_h_padding, 0, 0),
-          pad_value, right_h_padding * output_width * output_depth);
+                               output_spatial_dim1 - right_s1_padding, 0, 0, 0),
+          pad_value,
+          right_s1_padding * output_spatial_dim2 * output_spatial_dim3 *
+              output_channel);
     }
   }
   if (right_b_padding != 0) {
     TypedMemset<T>(
-        output_data +
-            Offset(ext_output_shape, output_batch - right_b_padding, 0, 0, 0),
+        output_data + Offset(ext_output_shape, output_batch - right_b_padding,
+                             0, 0, 0, 0),
         pad_value,
-        right_b_padding * output_height * output_width * output_depth);
+        right_b_padding * output_spatial_dim1 * output_spatial_dim2 *
+            output_spatial_dim3 * output_channel);
   }
 }
 

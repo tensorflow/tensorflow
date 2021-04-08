@@ -20,9 +20,6 @@ func @merge_same_device_variables(
   // CHECK: %[[COMPILE:.*]]:2 = "tf_device.launch"
   %compile:2 = "tf_device.launch"() ( {
       // CHECK: tf._TPUCompileMlir
-      // CHECK-SAME: mlir_module
-      // CHECK-SAME: func @main(%arg0: tensor<32xf32> {tf.aliasing_output = 0 : i64},
-      // CHECK-SAME:            %arg1: tensor<64xf32>, %arg2: tensor<16xf32>)
       %0:2 = "tf._TPUCompileMlir"() {
         metadata = "",
         mlir_module = "module attributes {tf.versions = {producer = 888 : i32}} {\0A  func @main(%arg0: tensor<32xf32>, %arg1: tensor<64xf32>, %arg2: tensor<16xf32>) -> (tensor<32xf32>, tensor<16xf32>) {\0A    %0:2 = \22tf.A\22(%arg0, %arg1, %arg2) : (tensor<32xf32>, tensor<64xf32>, tensor<16xf32>) -> (tensor<32xf32>, tensor<16xf32>)\0A    return %0#0, %0#1 : tensor<32xf32>, tensor<16xf32>\0A  }\0A}"
@@ -65,8 +62,6 @@ func @merge_replicated_variables(
   // CHECK: %[[COMPILE:.*]]:2 = "tf_device.launch"
   %compile:2 = "tf_device.launch"() ( {
     // CHECK: tf._TPUCompileMlir
-    // CHECK-SAME: mlir_module
-    // CHECK-SAME: func @main(%arg0: tensor<32xf32>, %arg1: tensor<32xf32> {tf.aliasing_output = 0 : i64})
     %0:2 = "tf._TPUCompileMlir"() {
       metadata = "",
       mlir_module = "module attributes {tf.versions = {producer = 888 : i32}} {\0A  func @main(%arg0: tensor<32xf32>, %arg1: tensor<32xf32>) -> (tensor<32xf32>) {\0A    %0 = \22tf.A\22(%arg0, %arg1) : (tensor<32xf32>, tensor<32xf32>) -> (tensor<32xf32>)\0A    return %0 : tensor<32xf32>\0A  }\0A}"
@@ -128,8 +123,6 @@ func @interferencing_accesses(
   // CHECK: %[[COMPILE:.*]]:2 = "tf_device.launch"
   %compile:2 = "tf_device.launch"() ( {
     // CHECK: tf._TPUCompileMlir
-    // CHECK-SAME: mlir_module
-    // CHECK-SAME: func @main(%arg0: tensor<32xf32>, %arg1: tensor<32xf32> {tf.aliasing_output = 1 : i64})
     %0:2 = "tf._TPUCompileMlir"() {
       metadata = "",
       mlir_module = "module attributes {tf.versions = {producer = 888 : i32}} {\0A  func @main(%arg0: tensor<32xf32>, %arg1: tensor<32xf32>) -> (tensor<32xf32>) {\0A    %0 = \22tf.A\22(%arg0, %arg1) : (tensor<32xf32>, tensor<32xf32>) -> (tensor<32xf32>)\0A    return %0 : tensor<32xf32>\0A  }\0A}"

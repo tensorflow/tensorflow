@@ -395,6 +395,7 @@ def build_toco_flags(inference_type=dtypes.float32,
                      conversion_summary_dir=None,
                      select_user_tf_ops=None,
                      enable_tflite_resource_variables=False,
+                     unfold_batchmatmul=True,
                      **_):
   """Build the TOCO flags object from params."""
   toco = _toco_flags_pb2.TocoFlags()
@@ -428,6 +429,7 @@ def build_toco_flags(inference_type=dtypes.float32,
     if set(target_ops) == set([OpsSet.SELECT_TF_OPS]):
       toco.force_select_tf_ops = True
   toco.enable_tflite_resource_variables = enable_tflite_resource_variables
+  toco.unfold_batchmatmul = unfold_batchmatmul
   return toco
 
 
@@ -456,7 +458,8 @@ def build_toco_convert_protos(input_tensors,
                               saved_model_version=0,
                               saved_model_tags=None,
                               saved_model_exported_names=None,
-                              select_user_tf_ops=None):
+                              select_user_tf_ops=None,
+                              unfold_batchmatmul=True):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -534,6 +537,8 @@ def build_toco_convert_protos(input_tensors,
     select_user_tf_ops: List of user's defined TensorFlow ops need to be
       supported in the TensorFlow Lite runtime. These ops will be supported as
       select TensorFlow ops.
+    unfold_batchmatmul: Whether to unfold tf.BatchMatMul to a set of
+      tfl.fully_connected ops. If not, translate to tfl.batch_matmul.
 
   Returns:
     model_flags, toco_flags, debug_info: three protocol buffers describing the
@@ -546,13 +551,23 @@ def build_toco_convert_protos(input_tensors,
     RuntimeError: If TOCO fails to convert (in which case the runtime error's
       error text will contain the TOCO error log)
   """
-  toco = build_toco_flags(inference_type, inference_input_type, input_format,
-                          output_format, default_ranges_stats,
-                          drop_control_dependency, reorder_across_fake_quant,
-                          allow_custom_ops,
-                          post_training_quantize, quantize_to_float16,
-                          dump_graphviz_dir, dump_graphviz_video, target_ops,
-                          conversion_summary_dir, select_user_tf_ops)
+  toco = build_toco_flags(
+      inference_type=inference_type,
+      inference_input_type=inference_input_type,
+      input_format=input_format,
+      output_format=output_format,
+      default_ranges_stats=default_ranges_stats,
+      drop_control_dependency=drop_control_dependency,
+      reorder_across_fake_quant=reorder_across_fake_quant,
+      allow_custom_ops=allow_custom_ops,
+      post_training_quantize=post_training_quantize,
+      quantize_to_float16=quantize_to_float16,
+      dump_graphviz_dir=dump_graphviz_dir,
+      dump_graphviz_video=dump_graphviz_video,
+      target_ops=target_ops,
+      conversion_summary_dir=conversion_summary_dir,
+      select_user_tf_ops=select_user_tf_ops,
+      unfold_batchmatmul=unfold_batchmatmul)
   model = _model_flags_pb2.ModelFlags()
   model.change_concat_input_ranges = change_concat_input_ranges
   for idx, input_tensor in enumerate(input_tensors):

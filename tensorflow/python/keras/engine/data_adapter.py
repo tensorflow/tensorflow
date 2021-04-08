@@ -533,7 +533,8 @@ class DatasetCreatorAdapter(DataAdapter):
     return None  # To be inferred by `DataHandler`.
 
   def get_dataset(self):
-    return self.strategy.distribute_datasets_from_function(self.dataset_creator)
+    return self.strategy.distribute_datasets_from_function(
+        self.dataset_creator, options=self.dataset_creator.input_options)
 
   def batch_size(self):
     raise NotImplementedError()
@@ -1345,7 +1346,8 @@ class _ClusterCoordinatorDataHandler(DataHandler):
                       "`DatasetCreator`.")
 
     def per_worker_dataset_fn():
-      return strategy.distribute_datasets_from_function(x)
+      return strategy.distribute_datasets_from_function(
+          x, options=x.input_options)
 
     self._dataset = self._model._cluster_coordinator.create_per_worker_dataset(  # pylint: disable=protected-access
         per_worker_dataset_fn)

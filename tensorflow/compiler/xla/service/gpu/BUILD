@@ -355,6 +355,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_loop",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
@@ -1360,7 +1361,7 @@ cc_library(
         "@llvm-project//llvm:BitWriter",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:TransformUtils",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -1892,6 +1893,7 @@ cc_library(
 tf_cc_test(
     name = "horizontal_loop_fusion_test",
     srcs = ["horizontal_loop_fusion_test.cc"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":fusion_merger",
         ":horizontal_loop_fusion",

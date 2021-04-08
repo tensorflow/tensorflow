@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/kernels/sparse_to_dense_op_gpu.h"
@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/stream_executor/gpu/gpu_activation.h"
 
 namespace tensorflow {
 
@@ -141,18 +141,19 @@ namespace functor {
 template <typename T, typename Index>
 void LaunchSparseToDense<T, Index>::operator()(
     OpKernelContext* c, AsyncOpKernel::DoneCallback done, AsyncOpKernel* op,
-    bool validate_indices, const se::DeviceMemory<Index>& indices,
-    const se::DeviceMemory<T>& values, const int num_elems,
-    const int num_values, const se::DeviceMemory<Index>& shape,
-    const int num_dims, const T default_value, int64 dense_size,
-    se::DeviceMemory<T>* dense) {
+    bool validate_indices, const Tensor& indices, const Tensor& values,
+    const Tensor& shape, const T default_value, Tensor* dense) {
   auto* stream = c->op_device_context()->stream();
   const Eigen::GpuDevice& d = c->eigen_gpu_device();
 
-  auto indices_ptr = static_cast<const Index*>(indices.opaque());
-  auto values_ptr = static_cast<const T*>(values.opaque());
-  auto shape_ptr = static_cast<const Index*>(shape.opaque());
-  auto dense_ptr = static_cast<T*>(dense->opaque());
+  const Index* indices_ptr = indices.flat<Index>().data();
+  const T* values_ptr = values.flat<T>().data();
+  const Index* shape_ptr = shape.flat<Index>().data();
+  T* dense_ptr = dense->flat<T>().data();
+  const int64 dense_size = dense->NumElements();
+  const int64 num_values = values.NumElements();
+  const int64 num_elems = indices.dims() > 0 ? indices.dim_size(0) : 1;
+  const int64 num_dims = indices.dims() > 1 ? indices.dim_size(1) : 1;
   if (validate_indices && num_elems != 0) {
     VLOG(1) << "SparseToDense will be performed on GPUs. For performance "
                "reasons, it is suggested to pass False to validate_indices.";
@@ -182,14 +183,16 @@ void LaunchSparseToDense<T, Index>::operator()(
     stream->ThenMemcpy(reinterpret_cast<int*>(&valid_status), valid_status_ptr,
                        valid_status_bytes);
 
+    // We capture 'shape' instead of 'shape_ptr' since this lambda outlives
+    // the 'shape' tensor.
     auto check_status_and_compute = [op, c, valid_status, dense_size,
                                      default_value, indices_ptr, values_ptr,
-                                     num_elems, num_values, shape_ptr, num_dims,
+                                     num_elems, num_values, shape, num_dims,
                                      dense_ptr, done]() {
       // Ensure that within the callback, the proper GPU settings are
       // configured.
       auto stream = c->op_device_context()->stream();
-      se::cuda::ScopedActivateExecutorContext scoped_activation{
+      se::gpu::ScopedActivateExecutorContext scoped_activation{
           stream->parent()};
 
       OP_REQUIRES_ASYNC(c, valid_status.valid == INT_MAX,
@@ -216,8 +219,8 @@ void LaunchSparseToDense<T, Index>::operator()(
       OP_REQUIRES_OK_ASYNC(
           c,
           LaunchComputeKernels(c, dense_size, default_value, indices_ptr,
-                               values_ptr, num_elems, num_values, shape_ptr,
-                               num_dims, dense_ptr),
+                               values_ptr, num_elems, num_values,
+                               shape.flat<Index>().data(), num_dims, dense_ptr),
           done);
       done();
     };
@@ -246,4 +249,4 @@ TF_CALL_INTEGRAL_TYPES(DEFINE_GPU_SPEC)
 DEFINE_GPU_SPEC(bool)
 
 }  // namespace tensorflow
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

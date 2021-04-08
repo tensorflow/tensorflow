@@ -756,7 +756,10 @@ class ParameterServerStrategyV2Extended(
         not self._allow_run_without_coordinator):
       raise NotImplementedError(
           "`tf.distribute.experimental.ParameterServerStrategy` must be used "
-          "with `tf.distribute.experimental.coordinator.ClusterCoordinator`.")
+          "with `tf.distribute.experimental.coordinator.ClusterCoordinator` in "
+          "a custom training loop. If you are using `Model.fit`, please supply "
+          "a dataset function directly to a "
+          "`tf.keras.utils.experimental.DatasetCreator` instead.")
 
   def _assert_being_scheduled_by_cluster_coordinator(self):
     if not self._being_scheduled and not self._allow_run_without_coordinator:

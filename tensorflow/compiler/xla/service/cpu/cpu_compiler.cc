@@ -663,7 +663,6 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       absl::StrCat("Compiling module ", module->name());
   auto slow_compile_alarm = SlowCompilationAlarm(slow_compilation_msg);
 
-  TF_RET_CHECK(stream_exec != nullptr);
   absl::call_once(llvm_command_line_options_initialized,
                   &llvm_ir::InitializeLLVMCommandLineOptions, module->config());
 

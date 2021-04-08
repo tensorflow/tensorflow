@@ -2562,13 +2562,21 @@ class StrategyExtendedV2(object):
       where each list has an element per replica, and the caller is responsible
       for ensuring all elements are executed.
     """
-    _require_cross_replica_or_default_context_extended(self)
+    # TODO(b/178944108): Update the documentation to relfect the fact that
+    # `update` can be called in a replica context.
     if kwargs is None:
       kwargs = {}
-    fn = autograph.tf_convert(
-        fn, autograph_ctx.control_status_ctx(), convert_by_default=False)
-    with self._container_strategy().scope():
-      return self._update(var, fn, args, kwargs, group)
+    replica_context = distribution_strategy_context.get_replica_context()
+    # pylint: disable=protected-access
+    if (replica_context is None or replica_context is
+        distribution_strategy_context._get_default_replica_context()):
+      fn = autograph.tf_convert(
+          fn, autograph_ctx.control_status_ctx(), convert_by_default=False)
+      with self._container_strategy().scope():
+        return self._update(var, fn, args, kwargs, group)
+    else:
+      return self._replica_ctx_update(
+          var, fn, args=args, kwargs=kwargs, group=group)
 
   def _update(self, var, fn, args, kwargs, group):
     raise NotImplementedError("must be implemented in descendants")
