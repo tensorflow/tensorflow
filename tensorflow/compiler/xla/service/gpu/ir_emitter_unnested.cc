@@ -40,13 +40,13 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Verifier.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"               // from @llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"     // from @llvm-project
+#include "mlir/IR/Builders.h"                 // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"        // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"               // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"             // from @llvm-project
+#include "mlir/IR/Verifier.h"                 // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
@@ -937,11 +937,10 @@ Status IrEmitterUnnested::EmitPadToStaticFromMlir(MlirEmitterInput mlir_input) {
     return Status::OK();
   };
 
-  TF_ASSIGN_OR_RETURN(
-      LaunchDimensions launch_dimensions,
-      CalculateLaunchDimensions(
-          input_shape, ir_emitter_context_->gpu_device_info(),
-          {unroll_factor}));
+  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
+                      CalculateLaunchDimensions(
+                          input_shape, ir_emitter_context_->gpu_device_info(),
+                          {unroll_factor}));
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
                          ir_emitter_context_->llvm_module());
   TF_RETURN_IF_ERROR(
@@ -1062,11 +1061,10 @@ Status IrEmitterUnnested::EmitSliceToDynamicFromMlir(
     return Status::OK();
   };
 
-  TF_ASSIGN_OR_RETURN(
-      LaunchDimensions launch_dimensions,
-      CalculateLaunchDimensions(
-          input_shape, ir_emitter_context_->gpu_device_info(),
-          {unroll_factor}));
+  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
+                      CalculateLaunchDimensions(
+                          input_shape, ir_emitter_context_->gpu_device_info(),
+                          {unroll_factor}));
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
                          ir_emitter_context_->llvm_module());
 
@@ -1360,16 +1358,21 @@ Status VerifyBatchNormForThunkEmission(
 // broadcasting, we can trigger a kernel that vectorize the row loads.
 // This speed up the kernel, in particular on A100.
 bool RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
-  bool row_vectorized = fusion.getFusionResults().size() == 1 && // Not tested with MOF.
-      absl::c_all_of(GetHloOperands(fusion), [](const mlir::Value& value) {
-          // Only tested when the inputs are row-major. So only enable that case.
-          // Maybe it would works if only the inner dimensions is contiguous.
-          if (auto op = value.getDefiningOp()) {
-            return IsMonotonicWithDim0Major(value.getDefiningOp());
-          }
-          // Reuse TypeToShape to not duplicate the layout convertion code.
-          return LayoutUtil::IsMonotonicWithDim0Major(TypeToShape(value.getType()).layout());
-        }) &&
+  bool row_vectorized =
+      fusion.getFusionResults().size() == 1 &&  // Not tested with MOF.
+      absl::c_all_of(GetHloOperands(fusion),
+                     [](const mlir::Value& value) {
+                       // Only tested when the inputs are row-major. So only
+                       // enable that case. Maybe it would works if only the
+                       // inner dimensions is contiguous.
+                       if (auto op = value.getDefiningOp()) {
+                         return IsMonotonicWithDim0Major(value.getDefiningOp());
+                       }
+                       // Reuse TypeToShape to not duplicate the layout
+                       // convertion code.
+                       return LayoutUtil::IsMonotonicWithDim0Major(
+                           TypeToShape(value.getType()).layout());
+                     }) &&
       // Only tested when the output is row-major.
       absl::c_all_of(GetOutputOps(fusion), IsMonotonicWithDim0Major);
 
@@ -1381,12 +1384,12 @@ bool RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
   // Elementwise, scalar and row broadcasting.
   for (mlir::Operation& op : fusion.region().front()) {
     if (mlir::isa<mlir::memref::TensorLoadOp, mlir::memref::TensorStoreOp,
-        mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp,
-        mlir::mhlo::ConstOp, mlir::lmhlo::ConstOp>(op) ) {
+                  mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp,
+                  mlir::mhlo::ConstOp, mlir::lmhlo::ConstOp>(op)) {
       continue;
     }
     HloOpcode opcode = *MhloToHloOpcode(&op);
-    if(HloInstruction::IsOpElementwise(opcode)) {
+    if (HloInstruction::IsOpElementwise(opcode)) {
       continue;
     }
 
@@ -1406,7 +1409,8 @@ bool RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
         continue;
       }
     }
-    VLOG(2) << "Row vectorization not enabled due to this op: " << MlirToString(&op);
+    VLOG(2) << "Row vectorization not enabled due to this op: "
+            << MlirToString(&op);
     return false;
   }
   // Trigger only when there is a row broadcasting.
@@ -2651,19 +2655,19 @@ Status IrEmitterUnnested::EmitScatterFromMlir(MlirEmitterInput mlir_input) {
     return GetIndexTypeForKernelFromMlir(scatter_op, launch_size, &b_);
   };
 
-  TF_RETURN_IF_ERROR(EmitScatter(
-      thunks.back().get(), scatter_op, output,
-      /*scatter_indices_gen=*/
-      [&](const IrArray::Index& index) {
-        return scatter_indices.EmitReadArrayElement(index, &b_,
-                                                    "scatter_index");
-      },
-      /*updates_gen=*/
-      [&](const IrArray::Index& index) {
-        return updates.EmitReadArrayElement(index, &b_, "update");
-      },
-      /* get_index_type=*/
-      get_index_type));
+  TF_RETURN_IF_ERROR(EmitScatter(thunks.back().get(), scatter_op, output,
+                                 /*scatter_indices_gen=*/
+                                 [&](const IrArray::Index& index) {
+                                   return scatter_indices.EmitReadArrayElement(
+                                       index, &b_, "scatter_index");
+                                 },
+                                 /*updates_gen=*/
+                                 [&](const IrArray::Index& index) {
+                                   return updates.EmitReadArrayElement(
+                                       index, &b_, "update");
+                                 },
+                                 /* get_index_type=*/
+                                 get_index_type));
 
   // Elide the sequential thunk if there's no copy.
   if (thunks.size() == 1) {
@@ -4119,8 +4123,8 @@ void IrEmitterUnnested::EmitPrologueForReduction(
       }
       const HloInstruction* init_value = reduce_hlo->operand(1);
 
-      init_ir_value = (*fused_emitter->GetGenerator(
-          init_value))(IrArray::Index(b_.getInt32Ty()))
+      init_ir_value = (*fused_emitter->GetGenerator(init_value))(
+                          IrArray::Index(b_.getInt32Ty()))
                           .ValueOrDie();
     } else {
       init_ir_value = operand_ir_arrays[1].EmitReadArrayElement(
