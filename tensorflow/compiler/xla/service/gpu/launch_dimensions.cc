@@ -78,10 +78,6 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
   // TODO(jlebar): Investigate this further, and tune this heuristic so we can
   // run faster on the few benchmarks where smaller block size helps.
   int64 threads_per_block = ThreadsPerBlockLimit(gpu_device_info);
-  // We unroll kernels to make use of vectorized loads/stores. This means we
-  // need more registers to hold intermediate values. Reduce the number of
-  // blocks per thread to increase the number of registers available to ptxas.
-  // Make sure we still have a multiple of 32.
   int64 threads_per_block_row_vectorized = shape.dimensions().back() / dim_config.unroll_factor;
   if (dim_config.row_vectorized &&
       shape.dimensions().back() % dim_config.unroll_factor == 0 &&
@@ -97,6 +93,10 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
     VLOG(2) << "Update # of threads per block to ("
               << threads_per_block << ") to be row_vectorized.";
   } else {
+    // We unroll kernels to make use of vectorized loads/stores. This means we
+    // need more registers to hold intermediate values. Reduce the number of
+    // blocks per thread to increase the number of registers available to ptxas.
+    // Make sure we still have a multiple of 32.
     threads_per_block =
       RoundUpToNearest(threads_per_block / dim_config.unroll_factor, int64{32});
     if (num_elements < threads_per_block) {
