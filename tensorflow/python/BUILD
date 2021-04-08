@@ -5205,7 +5205,7 @@ alias(
 alias(
     name = "is_mlir_bridge_test_true",
     actual = "//tensorflow/python/framework:is_mlir_bridge_test_true",
-    visibility = visibility + ["//platforms/darwinn/lisa:__subpackages__"],
+    visibility = visibility,
 )
 
 alias(
@@ -5266,7 +5266,7 @@ alias(
 alias(
     name = "is_mlir_bridge_test_false",
     actual = "//tensorflow/python/framework:is_mlir_bridge_test_false",
-    visibility = visibility + ["//platforms/darwinn/lisa:__subpackages__"],
+    visibility = visibility,
 )
 
 alias(
