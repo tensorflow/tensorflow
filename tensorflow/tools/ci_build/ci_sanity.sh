@@ -129,6 +129,9 @@ do_pylint() {
   echo ""
   echo "check whether pylint is available or not."
   echo ""
+
+  # !!!!!!This is only an hack to workaround CI VM with numpy 1.14.5!!!!!!!!
+  pip3 install --upgrade numpy~=1.19.2
   python3.8 -m pip show numpy
 
   ${PYLINT_BIN} --version
