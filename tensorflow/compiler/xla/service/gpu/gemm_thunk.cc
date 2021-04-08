@@ -33,6 +33,37 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+BlasScratchAllocator::BlasScratchAllocator(
+    int device_ordinal, se::DeviceMemoryAllocator *memory_allocator)
+    : device_ordinal_(device_ordinal), memory_allocator_(memory_allocator) {}
+
+int64 BlasScratchAllocator::GetMemoryLimitInBytes() {
+  static const int64 max_scratch_size = tensorflow::GetBlasWorkspaceLimit(
+      "TF_CUBLAS_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
+  return max_scratch_size;
+}
+
+StatusOr<se::DeviceMemory<uint8>> BlasScratchAllocator::AllocateBytes(
+    int64 byte_size) {
+  CHECK_GE(byte_size, 0) << "byte_size must be positive.";
+  if (byte_size > GetMemoryLimitInBytes()) {
+    return se::port::Status(
+        se::port::error::RESOURCE_EXHAUSTED,
+        absl::StrFormat(
+            "Allocating %d bytes exceeds the memory limit of %d bytes.",
+            byte_size, GetMemoryLimitInBytes()));
+  }
+
+  TF_ASSIGN_OR_RETURN(se::OwningDeviceMemory allocated_buffer,
+                      memory_allocator_->Allocate(device_ordinal_, byte_size,
+                                                  /*retry_on_failure=*/false));
+  total_allocated_bytes_ += byte_size;
+
+  se::DeviceMemoryBase buffer_addr = *allocated_buffer;
+  allocated_buffers_.push_back(std::move(allocated_buffer));
+  return se::DeviceMemory<uint8>(buffer_addr);
+}
+
 GpuGemmConfig GetGpuGemmConfig(const HloInstruction *gemm) {
   GpuGemmConfig config;
   config.output_shape = gemm->shape();
@@ -60,23 +91,19 @@ Status GemmThunk::ExecuteOnStream(const ExecuteParams &params) {
     return params.buffer_allocations->GetDeviceAddress(slice);
   };
 
-  VLOG(3) << "Running GEMM thunk";
   se::DeviceMemoryBase lhs_data = get_device_address(lhs_buffer_);
   se::DeviceMemoryBase rhs_data = get_device_address(rhs_buffer_);
   se::DeviceMemoryBase output_data = get_device_address(output_buffer_);
+
+  auto &buffer_allocations = *params.buffer_allocations;
+  BlasScratchAllocator scratch_allocator(buffer_allocations.device_ordinal(),
+                                         buffer_allocations.memory_allocator());
+
+  VLOG(3) << "Running GEMM thunk";
   return RunGemm(config_, lhs_data, rhs_data, output_data, params.stream,
                  implements_whole_instruction_, profile_index(),
-                 params.profiler);
+                 &scratch_allocator, params.profiler);
 }
-
-// This struct contains the metadata of a matrix, e.g., its base address and
-// dimensions.
-struct MatrixDescriptor {
-  se::DeviceMemoryBase data;
-  bool transpose;  // Whether this matrix needs to be transposed.
-  int64 num_rows;
-  int64 num_cols;
-};
 
 template <typename Element, typename AlphaType>
 static bool DoGemmWithAlgorithm(
@@ -168,16 +195,70 @@ static bool DoGemmWithAlgorithm(
       .ok();
 }
 
-Status RunGemm(const GpuGemmConfig &gemm_config,
-               se::DeviceMemoryBase lhs_buffer, se::DeviceMemoryBase rhs_buffer,
-               se::DeviceMemoryBase output_buffer, se::Stream *stream,
-               bool implements_whole_instruction,
-               absl::optional<int64> profile_index,
-               HloExecutionProfiler *profiler,
-               se::blas::ProfileResult *profile_result,
-               absl::optional<se::blas::AlgorithmType> algorithm) {
-  VLOG(2) << "Executing a GemmThunk";
+template <typename ElemType>
+static bool DoGemmLt(
+    int64 batch_size, MatrixDescriptor lhs_matrix, MatrixDescriptor rhs_matrix,
+    MatrixDescriptor output_matrix, se::Stream *stream,
+    se::ScratchAllocator *scratch_allocator,
+    std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm> &profiled_algorithm,
+    se::blas::ProfileResult *output_profile_result) {
+  DCHECK(!output_matrix.transpose);
+  tensorflow::DataType dtype = tensorflow::DataTypeToEnum<ElemType>::value;
+  bool allow_tf32 = tensorflow::tensor_float_32_execution_enabled();
+  int device_id = stream->parent()->device_ordinal();
+  bool trans_x = lhs_matrix.transpose;
+  bool trans_y = rhs_matrix.transpose;
 
+  int64 m = output_matrix.num_rows;
+  int64 n = output_matrix.num_cols;
+  auto k = lhs_matrix.transpose ? lhs_matrix.num_rows : lhs_matrix.num_cols;
+
+  tensorflow::BatchMatmulParameters matmul_parameters(
+      trans_x, trans_y, /*adj_x*/ false, /*adj_y*/ false, m, n, k, batch_size,
+      /*broadcast_a*/ false, /*broadcast_b*/ false, dtype, dtype, allow_tf32,
+      device_id);
+
+  const auto *plan_and_algorithms =
+      tensorflow::BatchMatmulPlanMapSingleton::GetInstance()->Find(
+          matmul_parameters);
+
+  const auto &plan = plan_and_algorithms->plan;
+  const auto &algorithms = plan_and_algorithms->algorithms;
+
+  std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm> algorithm(nullptr);
+  if (!profiled_algorithm.get()) {
+    se::blas::AlgorithmConfig algorithm_config(se::blas::kNoAlgorithm);
+    tensorflow::AutoTuneBatchMatmul::GetInstance()->Find(matmul_parameters,
+                                                         &algorithm_config);
+
+    se::blas::AlgorithmType algorithm_idx = algorithm_config.algorithm();
+    algorithm.reset(algorithms[algorithm_idx].get());
+  } else {
+    algorithm.reset(profiled_algorithm.get());
+  }
+  // The BlasLtMatmul routines (unlike BlasGemm, BlasGemmBatched etc.) take
+  // alpha and beta with the same type as the matrices.
+  ElemType alpha(1.0);
+  ElemType beta(0.0);
+  se::DeviceMemory<ElemType> lhs_data(lhs_matrix.data);
+  se::DeviceMemory<ElemType> rhs_data(rhs_matrix.data);
+  se::DeviceMemory<ElemType> output_data(output_matrix.data);
+
+  return stream
+      ->ThenBlasLtMatmul(plan.get(), alpha, rhs_data, lhs_data, beta,
+                         &output_data, scratch_allocator, algorithm.get(), {},
+                         output_profile_result)
+      .ok();
+}
+
+Status PopulateInputOutputMatrices(const GpuGemmConfig &gemm_config,
+                                   se::DeviceMemoryBase lhs_buffer,
+                                   se::DeviceMemoryBase rhs_buffer,
+                                   se::DeviceMemoryBase output_buffer,
+                                   MatrixDescriptor *lhs_matrix,
+                                   MatrixDescriptor *rhs_matrix,
+                                   MatrixDescriptor *output_matrix) {
+  VLOG(2) << "Populate I/O matrices";
   const Shape &output_shape = gemm_config.output_shape;
   const Shape &lhs_shape = gemm_config.lhs_shape;
   const Shape &rhs_shape = gemm_config.rhs_shape;
@@ -240,71 +321,144 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
         shape.dimensions(row_dim + static_cast<int64>(!is_row_major))};
   };
 
-  MatrixDescriptor lhs_matrix = make_descriptor(
+  *lhs_matrix = make_descriptor(
       lhs_buffer, lhs_shape, dim_nums.lhs_contracting_dimensions(0) == row_dim);
-  MatrixDescriptor rhs_matrix = make_descriptor(
+  *rhs_matrix = make_descriptor(
       rhs_buffer, rhs_shape, dim_nums.rhs_contracting_dimensions(0) == col_dim);
-  std::unique_ptr<ScopedInstructionProfiler> op_profiler =
-      profiler ? profiler->MakeScopedInstructionProfiler(
-                     implements_whole_instruction ? profile_index : -1)
-               : nullptr;
+  // std::unique_ptr<ScopedInstructionProfiler> op_profiler =
+  //     profiler ? profiler->MakeScopedInstructionProfiler(
+  //                    implements_whole_instruction ? profile_index : -1)
+  //              : nullptr;
 
   if (LayoutUtil::Minor(output_shape.layout(), row_dim) != 0) {
     std::swap(lhs_matrix, rhs_matrix);
     std::swap(output_num_cols, output_num_rows);
   }
 
-  const MatrixDescriptor output_matrix{output_buffer, /*needs_transpose=*/false,
-                                       output_num_rows, output_num_cols};
-  auto best_algorithm = [&]() -> absl::optional<se::blas::AlgorithmType> {
-    if (algorithm) {
-      return *algorithm;
-    }
-    if (backend_config.algorithm_case() ==
-        GemmBackendConfig::ALGORITHM_NOT_SET) {
-      return absl::nullopt;
-    }
-    return backend_config.selected_algorithm();
-  }();
+  MatrixDescriptor out_matrix{output_buffer, /*needs_transpose=*/false,
+                              output_num_rows, output_num_cols};
+  *output_matrix = out_matrix;
 
-  complex128 alpha = {backend_config.alpha_real(), backend_config.alpha_imag()};
-  double beta = backend_config.beta();
+  return Status::OK();
+}
 
-  bool launch_ok = [&]() {
-    switch (output_shape.element_type()) {
-      case F16:
-        CHECK_EQ(alpha.imag(), 0);
-        return DoGemmWithAlgorithm<Eigen::half, double>(
-            batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha.real(),
-            beta, stream, best_algorithm,
-            /*output_profile_result=*/profile_result);
-      case F32:
-        CHECK_EQ(alpha.imag(), 0);
-        return DoGemmWithAlgorithm<float, double>(
-            batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha.real(),
-            beta, stream, best_algorithm,
-            /*output_profile_result=*/profile_result);
-      case F64:
-        CHECK_EQ(alpha.imag(), 0);
-        return DoGemmWithAlgorithm<double, double>(
-            batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha.real(),
-            beta, stream, best_algorithm,
-            /*output_profile_result=*/profile_result);
-      case C64:
-        return DoGemmWithAlgorithm<complex64, complex64>(
-            batch_size, lhs_matrix, rhs_matrix, output_matrix,
-            static_cast<complex64>(alpha), beta, stream, best_algorithm,
-            /*output_profile_result=*/profile_result);
-      case C128:
-        return DoGemmWithAlgorithm<complex128, complex128>(
-            batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha, beta,
-            stream, best_algorithm,
-            /*output_profile_result=*/profile_result);
-      default:
-        return false;
-    }
-  }();
+Status RunGemm(const GpuGemmConfig &gemm_config,
+               se::DeviceMemoryBase lhs_buffer, se::DeviceMemoryBase rhs_buffer,
+               se::DeviceMemoryBase output_buffer, se::Stream *stream,
+               bool implements_whole_instruction,
+               absl::optional<int64> profile_index,
+               BlasScratchAllocator *scratch_allocator,
+               HloExecutionProfiler *profiler,
+               se::blas::ProfileResult *profile_result,
+               absl::optional<se::blas::AlgorithmType> algorithm,
+               const std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm>
+                   &profiled_algorithm) {
+  VLOG(2) << "Executing a GemmThunk";
+  MatrixDescriptor lhs_matrix;
+  MatrixDescriptor rhs_matrix;
+  MatrixDescriptor output_matrix;
+  const Shape &output_shape = gemm_config.output_shape;
+  int64 batch_size = gemm_config.backend_config.batch_size();
+  LOG(INFO) << "Batch Size: " << batch_size;
+  CHECK(PopulateInputOutputMatrices(gemm_config, lhs_buffer, lhs_buffer,
+                                    output_buffer, &lhs_matrix, &rhs_matrix,
+                                    &output_matrix)
+            .ok());
+  bool launch_ok = false;
+  // The BlasLtMatmul routines are only supported from CUDA 11.0 onward.
+  if (batch_size != 1) {
+    //#if GOOGLE_CUDA && CUDA_VERSION >= 11000
+    launch_ok = [&]() {
+      std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm> best_algo(nullptr);
+      if (!profiled_algorithm.get()) {
+        best_algo.reset(profiled_algorithm.get());
+      }
+      switch (output_shape.element_type()) {
+        case F16:
 
+          return DoGemmLt<Eigen::half>(
+              batch_size, lhs_matrix, rhs_matrix, output_matrix, stream,
+              scratch_allocator, best_algo,
+              /*output_profile_result=*/profile_result);
+        case F32:
+
+          return DoGemmLt<float>(batch_size, lhs_matrix, rhs_matrix,
+                                 output_matrix, stream, scratch_allocator,
+                                 best_algo,
+                                 /*output_profile_result=*/profile_result);
+        case F64:
+
+          return DoGemmLt<double>(batch_size, lhs_matrix, rhs_matrix,
+                                  output_matrix, stream, scratch_allocator,
+                                  best_algo,
+                                  /*output_profile_result=*/profile_result);
+        case C64:
+          return DoGemmLt<complex64>(batch_size, lhs_matrix, rhs_matrix,
+                                     output_matrix, stream, scratch_allocator,
+                                     best_algo,
+                                     /*output_profile_result=*/profile_result);
+        case C128:
+          return DoGemmLt<complex128>(batch_size, lhs_matrix, rhs_matrix,
+                                      output_matrix, stream, scratch_allocator,
+                                      best_algo,
+                                      /*output_profile_result=*/profile_result);
+        default:
+          return false;
+      }
+    }();
+  } else {
+    //#else   // if not GOOGLE_CUDA or CUDA_VERSION < 11000
+    const GemmBackendConfig &backend_config = gemm_config.backend_config;
+    auto best_algorithm = [&]() -> absl::optional<se::blas::AlgorithmType> {
+      if (algorithm) {
+        return *algorithm;
+      }
+      if (backend_config.algorithm_case() ==
+          GemmBackendConfig::ALGORITHM_NOT_SET) {
+        return absl::nullopt;
+      }
+      return backend_config.selected_algorithm();
+    }();
+
+    complex128 alpha = {backend_config.alpha_real(),
+                        backend_config.alpha_imag()};
+    double beta = backend_config.beta();
+
+    launch_ok = [&]() {
+      switch (output_shape.element_type()) {
+        case F16:
+          CHECK_EQ(alpha.imag(), 0);
+          return DoGemmWithAlgorithm<Eigen::half, double>(
+              batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha.real(),
+              beta, stream, best_algorithm,
+              /*output_profile_result=*/profile_result);
+        case F32:
+          CHECK_EQ(alpha.imag(), 0);
+          return DoGemmWithAlgorithm<float, double>(
+              batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha.real(),
+              beta, stream, best_algorithm,
+              /*output_profile_result=*/profile_result);
+        case F64:
+          CHECK_EQ(alpha.imag(), 0);
+          return DoGemmWithAlgorithm<double, double>(
+              batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha.real(),
+              beta, stream, best_algorithm,
+              /*output_profile_result=*/profile_result);
+        case C64:
+          return DoGemmWithAlgorithm<complex64, complex64>(
+              batch_size, lhs_matrix, rhs_matrix, output_matrix,
+              static_cast<complex64>(alpha), beta, stream, best_algorithm,
+              /*output_profile_result=*/profile_result);
+        case C128:
+          return DoGemmWithAlgorithm<complex128, complex128>(
+              batch_size, lhs_matrix, rhs_matrix, output_matrix, alpha, beta,
+              stream, best_algorithm,
+              /*output_profile_result=*/profile_result);
+        default:
+          return false;
+      }
+    }();
+  }  //#endif  // not GOOGLE_CUDA or CUDA_VERSION < 11000
   if (!launch_ok) {
     return InternalError("Unable to launch cuBLAS gemm on stream %p", stream);
   }

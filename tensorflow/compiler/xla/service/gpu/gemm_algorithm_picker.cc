@@ -59,41 +59,18 @@ static int64 cache_misses TF_GUARDED_BY(autotune_cache_mu) = 0;
 // all.
 static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
     const HloInstruction* gemm, se::Stream* stream,
-    se::DeviceMemoryAllocator* allocator) {
+    /*se::DeviceMemoryAllocator* allocator,*/
+    se::RedzoneAllocator* input_output_allocator,
+    se::DeviceMemoryBase lhs_buffer, se::DeviceMemoryBase rhs_buffer,
+    se::DeviceMemoryBase output_buffer,
+    se::DeviceMemoryBase reference_result_buffer) {
   if (!stream->parent()->SynchronizeAllActivity()) {
     return InternalError("Failed to synchronize GPU for autotuning.");
   }
 
   const HloModuleConfig& hlo_module_config = gemm->GetModule()->config();
-  const bool init_cublas_data =
-      hlo_module_config.debug_options().xla_gpu_autotune_level() > 1;
-  se::RedzoneAllocator input_output_allocator(
-      stream, allocator, PtxOptsFromConfig(hlo_module_config),
-      /*memory_limit=*/std::numeric_limits<int64>::max());
 
   BufferComparator comparator(gemm->shape(), hlo_module_config);
-
-  int64 rng_state = 0;
-  auto get_initialized_buffer =
-      [&](const HloInstruction* op) -> StatusOr<se::DeviceMemoryBase> {
-    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase buffer,
-                        input_output_allocator.AllocateBytes(
-                            ShapeUtil::ByteSizeOf(op->shape())));
-    if (init_cublas_data) {
-      InitializeBuffer(stream, op->shape().element_type(), &rng_state, buffer);
-    }
-    return buffer;
-  };
-
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase lhs_buffer,
-                      get_initialized_buffer(gemm->operand(0)));
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase rhs_buffer,
-                      get_initialized_buffer(gemm->operand(1)));
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase output_buffer,
-                      get_initialized_buffer(gemm));
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase reference_result_buffer,
-                      get_initialized_buffer(gemm));
-
   const DebugOptions& debug_options =
       gemm->GetModule()->config().debug_options();
 
@@ -133,9 +110,10 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
     // and the actual success-ness is returned in ProfileResult::is_valid.
     CHECK(RunGemm(config, lhs_buffer, rhs_buffer, output_buffer, stream,
                   /*implements_whole_instruction=*/true,
-                  /*profile_index=*/-1,
+                  /*profile_index=*/-1, /*scratch allocator*/ nullptr,
                   /*profiler=*/nullptr,
-                  /*profile_result=*/&profile_result, algorithm)
+                  /*profile_result=*/&profile_result,
+                  algorithm /*, absl::nullopt*/)
               .ok());
 
     if (!profile_result.is_valid()) {
@@ -159,7 +137,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
 
     TF_ASSIGN_OR_RETURN(
         se::RedzoneAllocator::RedzoneCheckStatus rz_check_status,
-        input_output_allocator.CheckRedzones());
+        input_output_allocator->CheckRedzones());
     if (!rz_check_status.ok()) {
       result.mutable_failure()->set_kind(AutotuneResult::REDZONE_MODIFIED);
       *result.mutable_failure()->mutable_msg() =
@@ -259,19 +237,213 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   cache_misses++;
   VLOG(4) << "Autotuning cache miss";
 
+  const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
+  const bool init_cublas_data =
+      hlo_module_config.debug_options().xla_gpu_autotune_level() > 1;
+  se::RedzoneAllocator input_output_allocator(
+      stream, allocator, PtxOptsFromConfig(hlo_module_config),
+      /*memory_limit=*/std::numeric_limits<int64>::max());
+  int64 rng_state = 0;
+  auto get_initialized_buffer =
+      [&](const HloInstruction* op) -> StatusOr<se::DeviceMemoryBase> {
+    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase buffer,
+                        input_output_allocator.AllocateBytes(
+                            ShapeUtil::ByteSizeOf(op->shape())));
+    if (init_cublas_data) {
+      InitializeBuffer(stream, op->shape().element_type(), &rng_state, buffer);
+    }
+    return buffer;
+  };
+
+  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase lhs_buffer,
+                      get_initialized_buffer(instr->operand(0)));
+  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase rhs_buffer,
+                      get_initialized_buffer(instr->operand(1)));
+  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase output_buffer,
+                      get_initialized_buffer(instr));
+  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase reference_result_buffer,
+                      get_initialized_buffer(instr));
+
   int64 batch_size = gemm_config.batch_size();
+  //#if GOOGLE_CUDA && CUDA_VERSION >= 11000
+  //#else   // if not GOOGLE_CUDA or CUDA_VERSION < 11000
   absl::optional<se::blas::AlgorithmType> result;
   if (batch_size != 1) {
-    // TODO(b/112111608): Implement auto tune for batched gemm.
-    VLOG(2) << "Batch size is non-singular, using generic algorithm";
-    result = absl::nullopt;
+    // // TODO(b/112111608): Implement auto tune for batched gemm.
+    // VLOG(2) << "Batch size is non-singular, using generic algorithm";
+    // result = absl::nullopt;
+    MatrixDescriptor lhs_matrix;
+    MatrixDescriptor rhs_matrix;
+    MatrixDescriptor output_matrix;
+    static const int64 max_scratch_size = tensorflow::GetBlasWorkspaceLimit(
+        "TF_CUBLAS_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
+    GpuGemmConfig config = GetGpuGemmConfig(instr);
+    CHECK(PopulateInputOutputMatrices(config, lhs_buffer, lhs_buffer,
+                                      output_buffer, &lhs_matrix, &rhs_matrix,
+                                      &output_matrix)
+              .ok());
+    DCHECK(!output_matrix.transpose);
+    tensorflow::DataType dtype;
+    se::blas::DataType blas_dtype;
+    const Shape& output_shape = config.output_shape;
+    switch (output_shape.element_type()) {
+      case F16:
+
+        dtype = tensorflow::DataTypeToEnum<Eigen::half>::value;
+        blas_dtype = se::blas::ToDataType<Eigen::half>::value;
+      case F32:
+
+        dtype = tensorflow::DataTypeToEnum<float>::value;
+        blas_dtype = se::blas::ToDataType<float>::value;
+      case F64:
+
+        dtype = tensorflow::DataTypeToEnum<double>::value;
+        blas_dtype = se::blas::ToDataType<double>::value;
+      case C64:
+
+        dtype = tensorflow::DataTypeToEnum<complex64>::value;
+        blas_dtype = se::blas::ToDataType<complex64>::value;
+      case C128:
+
+        dtype = tensorflow::DataTypeToEnum<complex128>::value;
+        blas_dtype = se::blas::ToDataType<complex128>::value;
+      default:
+        return InternalError("Unsupported dtype for batched matmul");
+    }
+
+    bool allow_tf32 = tensorflow::tensor_float_32_execution_enabled();
+    int device_id = stream->parent()->device_ordinal();
+    bool trans_x = lhs_matrix.transpose;
+    bool trans_y = rhs_matrix.transpose;
+
+    int64 m = output_matrix.num_rows;
+    int64 n = output_matrix.num_cols;
+    auto k = lhs_matrix.transpose ? lhs_matrix.num_rows : lhs_matrix.num_cols;
+    // tensorflow::DataType dtype =
+    // tensorflow::DataTypeToEnum<complex64>::value;
+    tensorflow::BatchMatmulParameters matmul_parameters(
+        trans_x, trans_y, /*adj_x*/ false, /*adj_y*/ false, m, n, k, batch_size,
+        /*broadcast_a*/ false, /*broadcast_b*/ false, dtype, dtype, allow_tf32,
+        device_id);
+    static const bool max_autotune_algorithm_count =
+        tensorflow::MatmulMaxAutotuneAlgorithmCount();
+    int max_algorithm_count =
+        hlo_module_config.debug_options().xla_gpu_autotune_level() == 0
+            ? max_autotune_algorithm_count
+            : 1;
+    const auto* plan_and_algorithms =
+        tensorflow::BatchMatmulPlanMapSingleton::GetInstance()->Find(
+            matmul_parameters);
+    if (!plan_and_algorithms) {
+      // se::blas::DataType blas_dtype = se::blas::ToDataType<ElemType>::value;
+      se::blas::ComputationType computation_type;
+      if (!GetBlasComputationType(dtype, allow_tf32, &computation_type)) {
+        return InternalError("Unsupported dtype for batched matmul");
+      }
+      int64 lhs_stride = lhs_matrix.num_rows * lhs_matrix.num_cols;
+      int64 rhs_stride = rhs_matrix.num_rows * rhs_matrix.num_cols;
+      int64 output_stride = output_matrix.num_rows * output_matrix.num_cols;
+
+      auto lhs_transpose = lhs_matrix.transpose
+                               ? se::blas::Transpose::kTranspose
+                               : se::blas::Transpose::kNoTranspose;
+      auto rhs_transpose = rhs_matrix.transpose
+                               ? se::blas::Transpose::kTranspose
+                               : se::blas::Transpose::kNoTranspose;
+
+      se::blas::BlasLtMatmulPlanParams plan_params;
+      plan_params.ab_type = blas_dtype;
+      plan_params.c_type = blas_dtype;
+      plan_params.computation_type = computation_type;
+      plan_params.pointer_mode = se::blas::PointerMode::kHost;
+      plan_params.epilogue = se::blas::Epilogue::kDefault;
+      plan_params.transa = lhs_transpose;
+      plan_params.transb = rhs_transpose;
+      plan_params.m = m;
+      plan_params.n = n;
+      plan_params.k = k;
+      plan_params.lda = lhs_matrix.num_rows;
+      plan_params.ldb = rhs_matrix.num_rows;
+      plan_params.ldc = output_matrix.num_rows;
+      plan_params.batch_count = batch_size;
+      plan_params.stride_a = lhs_stride;
+      plan_params.stride_b = rhs_stride;
+      plan_params.stride_c = output_stride;
+      auto status_or_plan =
+          stream->parent()->CreateBlasLtMatmulPlan(plan_params);
+      TF_RETURN_IF_ERROR(tensorflow::FromExecutorStatus(status_or_plan));
+      std::unique_ptr<se::blas::IBlasLtMatmulPlan> plan =
+          status_or_plan.ConsumeValueOrDie();
+
+      auto status_or_algorithms = stream->parent()->GetBlasLtMatmulAlgorithms(
+          plan.get(), max_scratch_size, max_algorithm_count);
+      TF_RETURN_IF_ERROR(tensorflow::FromExecutorStatus(status_or_algorithms));
+      auto algorithms = status_or_algorithms.ConsumeValueOrDie();
+
+      plan_and_algorithms =
+          tensorflow::BatchMatmulPlanMapSingleton::GetInstance()->Insert(
+              matmul_parameters, {std::move(plan), std::move(algorithms)});
+    }
+    const auto& plan = plan_and_algorithms->plan;
+    const auto& algorithms = plan_and_algorithms->algorithms;
+    // Note that algorithm_config.algorithm() here is used to refer
+    // to the index within the algorithms vector, not the algorithm
+    // itself.
+    se::blas::AlgorithmConfig algorithm_config(se::blas::kNoAlgorithm);
+    if (max_algorithm_count == 1) {
+      algorithm_config.set_algorithm(0);
+    } else if (!tensorflow::AutoTuneBatchMatmul::GetInstance()->Find(
+                   matmul_parameters, &algorithm_config)) {
+      VLOG(4) << "Autotuning BlasLtMatmul over " << algorithms.size()
+              << " algorithms.";
+      se::blas::ProfileResult best_result;
+      se::blas::ProfileResult profile_result;
+      // for (const auto& profile_algorithm : plan_and_algorithms->algorithms)
+      // {
+      // std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm>profile_algorithm(nullptr);
+      for (size_t i = 0; i != algorithms.size(); ++i) {
+        // Create a new scratch allocator with every autotuning run so that
+        // scratch space is deallocated between runs.
+        BlasScratchAllocator scratch_allocator(device_id, allocator);
+
+        CHECK(RunGemm(config, lhs_buffer, rhs_buffer, output_buffer, stream,
+                      /*implements_whole_instruction=*/true,
+                      /*profile_index=*/-1, /*scratch allocator*/ nullptr,
+                      /*profiler=*/nullptr,
+                      /*profile_result=*/&profile_result, absl::nullopt,
+                      /*profile_algorithm*/ algorithms[i])
+                  .ok());
+        VLOG(4) << "  Autotune algorithm " << i
+                << " result: " << profile_result.elapsed_time_in_ms()
+                << " ms, valid=" << profile_result.is_valid();
+        //<< ", workspace_size=" << profile_algorithm->workspace_size();
+
+        if (profile_result.is_valid() && profile_result.elapsed_time_in_ms() <
+                                             best_result.elapsed_time_in_ms()) {
+          best_result = profile_result;
+        }
+      }
+
+      if (best_result.is_valid()) {
+        algorithm_config.set_algorithm(best_result.algorithm());
+      }
+      // We make sure that each matmul parameter set only gets one pass of
+      // autotune. If no algorithms works, we add kNoAlgorithm to the autotune
+      // map.
+      tensorflow::AutoTuneBatchMatmul::GetInstance()->Insert(matmul_parameters,
+                                                             algorithm_config);
+    }
+    return {absl::nullopt};
   } else {
-    TF_ASSIGN_OR_RETURN(result,
-                        DoUncachedGemmAutotune(instr, stream, allocator));
+    TF_ASSIGN_OR_RETURN(
+        result, DoUncachedGemmAutotune(instr, stream, &input_output_allocator,
+                                       lhs_buffer, rhs_buffer, output_buffer,
+                                       reference_result_buffer));
   }
 
   CHECK(autotune_cache.emplace(key, result).second);
   return result;
+  //#endif  // not GOOGLE_CUDA or CUDA_VERSION < 11000
 }
 
 static StatusOr<bool> RunOnInstruction(HloInstruction* instr,

@@ -288,6 +288,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:reduction_ops",
         "//tensorflow/core/kernels:transpose_functor",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/stream_executor:matmul_util",
         "//third_party/eigen3",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",

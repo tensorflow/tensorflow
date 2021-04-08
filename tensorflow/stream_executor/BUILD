@@ -6,10 +6,11 @@
 
 load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "if_cuda_or_rocm",)
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 package(
     default_visibility = [":friends"],
@@ -97,6 +98,27 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
+)
+
+MATH_DEPS = [
+    "//tensorflow/core/kernels:fill_functor",
+    "//tensorflow/core:core_cpu",
+    "//tensorflow/core:framework",
+    "//tensorflow/core:lib",
+    "//tensorflow/core:lib_internal",
+    "//tensorflow/core:math_grad",
+    "//tensorflow/core/framework:bounds_check",
+    # "//tensorflow/core/framework:op_requires",
+    "//third_party/eigen3",
+]
+
+cc_library(
+    name = "matmul_util",
+    hdrs = ["matmul_util.h"],
+    deps = MATH_DEPS + if_cuda([
+        "//tensorflow/core/platform/default/build_config:cublas_plugin",
+        "//tensorflow/core/platform:tensor_float_32_utils",
+    ]) + if_cuda_or_rocm(["//tensorflow/core/kernels:gpu_utils"]),
 )
 
 cc_library(
