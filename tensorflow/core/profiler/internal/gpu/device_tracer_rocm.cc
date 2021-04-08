@@ -433,7 +433,6 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
                   absl::StrCat("/device:GPU:", device_ordinal, "/memcpy"));
             }
             memcpy_dev_stats->add_node_stats()->Swap(ns.release());
-
           } break;
           case RocmTracerEventType::MemoryAlloc: {
             std::string details = absl::StrCat(
@@ -718,8 +717,6 @@ Status GpuTracer::DoStart() {
       GetRocmTraceCollectorOptions(rocm_tracer_->NumGpus());
   uint64_t start_gputime_ns = RocmTracer::GetTimestamp();
   uint64_t start_walltime_ns = tensorflow::EnvTime::NowNanos();
-  // VLOG(3) << "CPU Start Time : " << start_walltime_ns / 1000
-  // 			 << " , GPU Start Time : " << start_gputime_ns / 1000;
   rocm_trace_collector_ = std::make_unique<RocmTraceCollectorImpl>(
       trace_collector_options, start_walltime_ns, start_gputime_ns);
 

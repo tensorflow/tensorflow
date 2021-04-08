@@ -15,11 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/internal/gpu/rocm_tracer.h"
 
-#include <chrono>
-#include <iostream>
-#include <sstream>
-#include <thread>
-
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "rocm/rocm_config.h"
@@ -31,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/profiler/internal/cpu/annotation_stack.h"
+#include "tensorflow/core/profiler/utils/time_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -85,7 +81,7 @@ const char* GetActivityDomainName(uint32_t domain) {
   return "";
 }
 
-string GetActivityDomainOpName(uint32_t domain, uint32_t op) {
+std::string GetActivityDomainOpName(uint32_t domain, uint32_t op) {
   std::ostringstream oss;
   oss << GetActivityDomainName(domain) << " - ";
   switch (domain) {
@@ -458,7 +454,7 @@ void RocmApiCallbackImpl::AddMemcpyEventUponApiExit(
   event.thread_id = GetCachedTID();
   event.correlation_id = data->correlation_id;
 
-  // ROCM TODO: figure out a way to properly populate this field.
+  // TODO(rocm): figure out a way to properly populate this field.
   event.memcpy_info.destination = 0;
   switch (cbid) {
     case HIP_API_ID_hipMemcpyDtoH:
@@ -1106,7 +1102,7 @@ Status RocmTracer::DisableActivityTracing() {
             << ", Threshold = " << threshold;
     VLOG(3) << "Wait for pending activity records : sleep for " << duration_ms
             << " ms";
-    std::this_thread::sleep_for(std::chrono::milliseconds(duration_ms));
+    tensorflow::profiler::SleepForMillis(duration_ms);
   }
   ClearPendingActivityRecordsCount();
 
