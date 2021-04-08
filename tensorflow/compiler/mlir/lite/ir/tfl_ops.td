@@ -616,6 +616,35 @@ retained with length 1.
   let customOption = "ReducerOptions";
 }
 
+def TFL_ReduceAllOp : TFL_Op<"reduce_all", [
+    NoSideEffect,
+    NoQuantizableResult]> {
+  let summary = [{
+Computes the "logical and" of elements across dimensions of a tensor.
+  }];
+
+  let description = [{
+Reduces `input` along the dimensions given in `axis`. Unless
+`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+`axis`. If `keep_dims` is true, the reduced dimensions are
+retained with length 1.
+  }];
+
+  let arguments = (ins
+    TFL_BoolTensor:$input,
+    TFL_I32Tensor:$reduction_indices,
+
+    DefaultValuedAttr<BoolAttr, "false">:$keep_dims
+  );
+
+  let results = (outs
+    TFL_BoolTensor:$output
+  );
+
+  let hasOptions = 1;
+  let customOption = "ReducerOptions";
+}
+
 def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
     NoSideEffect,
     TFL_OperandHasRank<0, 1>,

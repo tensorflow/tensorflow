@@ -352,6 +352,11 @@ def LegalizeAny : Pat<
   (TFL_ReduceAnyOp $input, (CreateTFCastToInt32Op $reduction_indices),
                    $keep_dims)>;
 
+def LegalizeAll : Pat<
+  (TF_AllOp $input, $reduction_indices, $keep_dims),
+  (TFL_ReduceAllOp $input, (CreateTFCastToInt32Op $reduction_indices),
+                   $keep_dims)>;
+
 def LegalizeCast : Pat<(TF_CastOp $arg0, BoolAttr:$arg1), (TFL_CastOp $arg0)>;
 
 def LegalizeBatchToSpaceND : Pat<
