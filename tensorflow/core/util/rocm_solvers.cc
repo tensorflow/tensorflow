@@ -80,8 +80,7 @@ namespace wrap {
       return f;                                                             \
     }                                                                       \
     template <typename... Args>                                             \
-    rocblas_status operator()(GpuExecutor* parent, Args... args) {          \
-      ScopedActivateExecutorContext sac{parent};                            \
+    rocblas_status operator()(Args... args) {                               \
       return DynLoad()(args...);                                            \
     }                                                                       \
   } __name;                                                                 \
@@ -100,16 +99,18 @@ ROCBLAS_WRAP(rocblas_strsm)
 struct ROCmSolverHandles {
   explicit ROCmSolverHandles(GpuExecutor* parent, hipStream_t stream) {
     parent_ = parent;
-    CHECK(wrap::rocblas_create_handle(parent_, &rocm_blas_handle) ==
+    ScopedActivateExecutorContext sac{parent_};
+    CHECK(wrap::rocblas_create_handle(&rocm_blas_handle) ==
           rocblas_status_success)
         << "Failed to create rocBlas instance.";
-    CHECK(wrap::rocblas_set_stream(parent_, rocm_blas_handle, stream) ==
+    CHECK(wrap::rocblas_set_stream(rocm_blas_handle, stream) ==
           rocblas_status_success)
         << "Failed to set rocBlas stream.";
   }
 
   ~ROCmSolverHandles() {
-    CHECK(wrap::rocblas_destroy_handle(parent_, rocm_blas_handle) ==
+    ScopedActivateExecutorContext sac{parent_};
+    CHECK(wrap::rocblas_destroy_handle(rocm_blas_handle) ==
           rocblas_status_success)
         << "Failed to destroy cuBlas instance.";
   }
@@ -215,8 +216,9 @@ static inline Status TrsmImpl(GpuExecutor* gpu_executor, SolverFnT solver,
   mutex_lock lock(handle_map_mutex);
   using ROCmScalar = typename ROCmComplexT<Scalar>::type;
 
-  TF_RETURN_IF_ROCBLAS_ERROR(solver(gpu_executor, rocm_blas_handle, side, uplo,
-                                    trans, diag, m, n,
+  ScopedActivateExecutorContext sac{gpu_executor};
+  TF_RETURN_IF_ROCBLAS_ERROR(solver(rocm_blas_handle, side, uplo, trans, diag,
+                                    m, n,
                                     reinterpret_cast<const ROCmScalar*>(alpha),
                                     reinterpret_cast<const ROCmScalar*>(A), lda,
                                     reinterpret_cast<ROCmScalar*>(B), ldb));

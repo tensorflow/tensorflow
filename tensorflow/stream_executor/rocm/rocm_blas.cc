@@ -91,8 +91,7 @@ namespace wrap {
       return f;                                                           \
     }                                                                     \
     template <typename... Args>                                           \
-    rocblas_status operator()(GpuExecutor *parent, Args... args) {        \
-      gpu::ScopedActivateExecutorContext sac{parent};                     \
+    rocblas_status operator()(Args... args) {                             \
       return DynLoad()(args...);                                          \
     }                                                                     \
   } __name;                                                               \
@@ -344,7 +343,8 @@ static string ToString(rocblas_status status) {
 }
 
 bool ROCMBlas::Init() {
-  rocblas_status ret = wrap::rocblas_create_handle(parent_, &blas_);
+  gpu::ScopedActivateExecutorContext sac{parent_};
+  rocblas_status ret = wrap::rocblas_create_handle(&blas_);
   if (ret != rocblas_status_success) {
     LOG(ERROR) << "failed to create rocBLAS handle: " << ToString(ret);
     return false;
@@ -358,7 +358,8 @@ ROCMBlas::ROCMBlas(gpu::GpuExecutor *parent)
 
 ROCMBlas::~ROCMBlas() {
   if (blas_ != nullptr) {
-    wrap::rocblas_destroy_handle(parent_, blas_);
+    gpu::ScopedActivateExecutorContext sac{parent_};
+    wrap::rocblas_destroy_handle(blas_);
   }
 }
 
@@ -366,8 +367,9 @@ bool ROCMBlas::SetStream(Stream *stream) {
   CHECK(stream != nullptr);
   CHECK(AsGpuStreamValue(stream) != nullptr);
   CHECK(blas_ != nullptr);
+  gpu::ScopedActivateExecutorContext sac{parent_};
   rocblas_status ret =
-      wrap::rocblas_set_stream(parent_, blas_, AsGpuStreamValue(stream));
+      wrap::rocblas_set_stream(blas_, AsGpuStreamValue(stream));
   if (ret != rocblas_status_success) {
     LOG(ERROR) << "failed to set stream for rocBLAS calls: " << ToString(ret);
     return false;
@@ -439,7 +441,8 @@ bool ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
     return false;
   }
 
-  rocblas_status ret = rocblas_func(parent_, blas_, args...);
+  gpu::ScopedActivateExecutorContext sac{parent_};
+  rocblas_status ret = rocblas_func(blas_, args...);
   if (err_on_failure && ret != rocblas_status_success) {
     LOG(ERROR) << "failed to run ROCBLAS routine " << rocblas_func.kName << ": "
                << ToString(ret);
