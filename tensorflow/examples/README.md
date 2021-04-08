@@ -7,7 +7,7 @@ If that's not what you're looking for here are some links:
   [the tutorials on tensorflow.org](https://tensorflow.org/tutorials)
 * For community maintained keras examples goto [keras.io/examples](https://keras.io/examples/)
 * For TensorFlow Lite examples see [the tensorflow/examples repository](https://github.com/tensorflow/examples/tree/master/lite)
-* If you're looking for topics like course assignments, templates, refer [the tensorflow/examples repository](https://github.com/tensorflow/examples/tree/master/lite)
+* If you're looking for topics like course assignments, templates, then refer [the tensorflow/examples repository](https://github.com/tensorflow/examples/tree/master/lite)
 
 ## About these examples
 
