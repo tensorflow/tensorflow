@@ -1275,7 +1275,8 @@ XlaOp XlaBuilder::Dot(XlaOp lhs, XlaOp rhs,
     dimension_numbers.add_lhs_contracting_dimensions(
         lhs_shape->dimensions_size() == 1 ? 0 : 1);
     dimension_numbers.add_rhs_contracting_dimensions(0);
-    return DotGeneral(lhs, rhs, dimension_numbers, precision_config);
+    return DotGeneral(lhs, rhs, dimension_numbers, precision_config,
+                      preferred_element_type);
   });
 }
 

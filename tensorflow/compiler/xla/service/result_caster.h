@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,19 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_OPERAND_UPCASTER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_OPERAND_UPCASTER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_RESULT_CASTER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_RESULT_CASTER_H_
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/op_expander_pass.h"
 
 namespace xla {
 
-// Inserts Convert to operands of instructions that allows result accumulation
-// as wider integral types.
-class OperandUpcaster : public OpExpanderPass {
+// Inserts Convert to result of instructions to the preferred element type
+// specified by the instructions when direct accumulation of that type isn't
+// supported by the backend. This pass should run after OperandUpcaster.
+class ResultCaster : public OpExpanderPass {
  public:
-  absl::string_view name() const override { return "operand_upcaster"; }
+  absl::string_view name() const override { return "result_caster"; }
 
  protected:
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
@@ -36,4 +37,4 @@ class OperandUpcaster : public OpExpanderPass {
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_OPERAND_UPCASTER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_RESULT_CASTER_H_
