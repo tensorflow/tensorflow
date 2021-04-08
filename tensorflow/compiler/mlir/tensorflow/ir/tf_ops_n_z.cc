@@ -492,6 +492,15 @@ OpFoldResult PowOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// QuantizeAndDequantizeV2Op
+//===----------------------------------------------------------------------===//
+
+void QuantizeAndDequantizeV2Op::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<QuantizeAndDequantizeV2ToQuantizeAndDequantizeV4>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // QrOp
 //===----------------------------------------------------------------------===//
 
