@@ -21,6 +21,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ast
 import inspect
 import linecache
 import re
@@ -35,6 +36,11 @@ import six
 from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.util import tf_inspect
+
+
+if sys.version_info >= (3, 9):
+  # ast has an unparse function in 3.9+
+  astunparse = ast
 
 
 PY2_PREAMBLE = textwrap.dedent("""
