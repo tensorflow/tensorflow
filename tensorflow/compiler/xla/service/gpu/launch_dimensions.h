@@ -66,8 +66,19 @@ std::ostream& operator<<(std::ostream& out,
                          const LaunchDimensions& launch_dims);
 
 struct LaunchDimensionsConfig {
+  // The kernel implementation will be unrolled if `unroll_factor` is
+  // greater than one.
   int unroll_factor = 1;
+  // A wave is a group of blocks that execute at the same time on the
+  // GPU. If there are more blocks then the number that can run
+  // concurrently, there are multiple waves of blocks running
+  // sequentially.  If `few_waves` is true, each thread will loop over
+  // a block of unroll_factor elements. Otherwise each thread will
+  // handle only unroll_factor.
   bool few_waves = false;
+  // If `row_optimized` is true, then the block size will equal to
+  // `hlo.shape().dimensions().back()/unroll_factor`.
+  // Currently few_waves and row_vectorized do not work together.
   bool row_vectorized = false;
 };
 
