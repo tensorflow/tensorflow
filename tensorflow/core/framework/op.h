@@ -20,6 +20,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/full_type_util.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/registration/registration.h"
@@ -261,6 +263,15 @@ class OpDefBuilderWrapper {
   }
   OpDefBuilderWrapper& SetShapeFn(OpShapeInferenceFn fn) {
     builder_.SetShapeFn(std::move(fn));
+    return *this;
+  }
+
+  // Type constructor to support type inference. Similar to SetShapeFn, it
+  // allows programmatic control over the output type of an op, including
+  // inferring it from the inputs.
+  // TODO(mdan): Merge with shape inference.
+  OpDefBuilderWrapper& SetTypeConstructor(OpTypeConstructor fn) {
+    builder_.SetTypeConstructor(std::move(fn));
     return *this;
   }
 
