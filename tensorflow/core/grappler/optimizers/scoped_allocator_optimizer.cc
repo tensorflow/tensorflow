@@ -1197,9 +1197,9 @@ Status ScopedAllocatorOptimizer::OrderNodeSet(
   // the same instance_key.
   if (nodes->size() <= 1) return Status::OK();
   if (IsCollectiveNode(*nodes->at(0))) {
-    sort(nodes->begin(), nodes->end(), InstanceKeyLess());
+    std::sort(nodes->begin(), nodes->end(), InstanceKeyLess());
   } else {
-    sort(nodes->begin(), nodes->end(), NameLess());
+    std::sort(nodes->begin(), nodes->end(), NameLess());
   }
   return Status::OK();
 }

@@ -6,7 +6,7 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files([
@@ -191,6 +191,7 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/core/api:op_resolver",

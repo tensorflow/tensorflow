@@ -1217,7 +1217,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
         replica_groups = CreateReplicaGroups(*tmp_groups);
       }
       instruction = builder->AddInstruction(HloInstruction::CreateAllGather(
-          shape, operands[0], dimensions->at(0), replica_groups,
+          shape, operands, dimensions->at(0), replica_groups,
           constrain_layout ? *constrain_layout : false, channel_id,
           use_global_device_ids ? *use_global_device_ids : false));
       break;

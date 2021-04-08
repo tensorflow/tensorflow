@@ -141,7 +141,7 @@ using PreparePerChannelFakeQuant =
 // legalization.
 
 void LegalizeTFToQuant::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   auto func = getFunction();
   auto *ctx = func.getContext();
   patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(ctx);

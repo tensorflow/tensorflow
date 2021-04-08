@@ -137,7 +137,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
       &devices);
   if (!status->status.ok()) return nullptr;
   std::unique_ptr<tensorflow::DeviceMgr> device_mgr(
-      new tensorflow::StaticDeviceMgr(std::move(devices)));
+      new tensorflow::DynamicDeviceMgr(std::move(devices)));
 
   tensorflow::Rendezvous* r =
       new tensorflow::IntraProcessRendezvous(device_mgr.get());
@@ -507,6 +507,25 @@ class CAPICustomDeviceTensorHandle
     return s.status;
   }
 
+  bool HasCustomSummarizer() const override {
+    return methods_.summarize != nullptr;
+  }
+
+  Status SummarizeValue(std::string& summary) const override {
+    if (methods_.summarize == nullptr) {
+      return tensorflow::CustomDeviceTensorHandle::SummarizeValue(summary);
+    }
+    TF_Status c_status;
+    std::unique_ptr<TF_Buffer, decltype(&TF_DeleteBuffer)> summary_buffer(
+        methods_.summarize(data_, &c_status), TF_DeleteBuffer);
+    if (!c_status.status.ok()) {
+      return c_status.status;
+    }
+    summary = std::string(reinterpret_cast<const char*>(summary_buffer->data),
+                          summary_buffer->length);
+    return Status::OK();
+  }
+
  private:
   void* const data_;
   const TFE_CustomDeviceTensorHandleMethods methods_;
@@ -518,8 +537,7 @@ class CAPICustomDeviceTensorHandle
 TFE_TensorHandle* TFE_NewCustomDeviceTensorHandle(
     TFE_Context* ctx, const char* device_name, TF_DataType dtype, void* data,
     TFE_CustomDeviceTensorHandleMethods methods, TF_Status* status) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
+  tensorflow::ImmediateExecutionContext* context = tensorflow::unwrap(ctx);
   tensorflow::CustomDevice* device = nullptr;
   if (!context->GetCustomDeviceOpHandler().FindCustomDeviceFromName(device_name,
                                                                     &device)) {

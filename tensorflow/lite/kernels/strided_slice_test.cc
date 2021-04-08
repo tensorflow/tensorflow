@@ -96,15 +96,6 @@ TYPED_TEST(StridedSliceOpTest, UnsupportedInputSize) {
                                               0, 0, 0, 0, 0),
                "StridedSlice op only supports 1D-5D input arrays.");
 }
-
-TYPED_TEST(StridedSliceOpTest, UnsupportedArgs) {
-  EXPECT_DEATH(
-      StridedSliceOpModel<TypeParam>({3, 2}, {2}, {2}, {2}, 0, 0, 1, 0, 0),
-      "ellipsis_mask is not implemented yet.");
-  EXPECT_DEATH(
-      StridedSliceOpModel<TypeParam>({3, 2}, {2}, {2}, {2}, 0, 0, 0, 1, 0),
-      "new_axis_mask is not implemented yet.");
-}
 #endif
 
 TYPED_TEST(StridedSliceOpTest, In1DEmpty) {
@@ -755,6 +746,103 @@ TYPED_TEST(StridedSliceOpTest, In2D_ShrinkAxis_Endmask_AtSameAxis) {
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1}));
+}
+
+TYPED_TEST(StridedSliceOpTest, EllipsisMask1_NewAxisMask2) {
+  StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, 0, 0, 1, 2, 0);
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  m.SetBegin({0, 0, 0});
+  m.SetEnd({1, 2, 1});
+  m.SetStrides({1, 1, 1});
+
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 1, 1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 3, 5, 7, 9, 11}));
+}
+
+TYPED_TEST(StridedSliceOpTest, EllipsisMask2_NewAxisMask1) {
+  StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, 0, 0, 2, 1, 0);
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  m.SetBegin({0, 0, 0});
+  m.SetEnd({1, 2, 1});
+  m.SetStrides({1, 1, 1});
+
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 3, 1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 3, 5, 7, 9, 11}));
+}
+
+TYPED_TEST(StridedSliceOpTest, EllipsisMask2_NewAxisMask5) {
+  StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, 0, 0, 2, 5, 0);
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  m.SetBegin({0, 0, 0});
+  m.SetEnd({1, 2, 1});
+  m.SetStrides({1, 1, 1});
+
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 3, 2, 1}));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
+}
+
+TYPED_TEST(StridedSliceOpTest, EllipsisMask2_NewAxisMask2) {
+  StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, 0, 0, 2, 2, 0);
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  m.SetBegin({0, 0, 0});
+  m.SetEnd({1, 2, 1});
+  m.SetStrides({1, 1, 1});
+
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 3, 5}));
+}
+
+TYPED_TEST(StridedSliceOpTest, EllipsisMask4_NewAxisMask2) {
+  StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, 0, 0, 4, 2, 0);
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  m.SetBegin({0, 0, 0});
+  m.SetEnd({1, 2, 1});
+  m.SetStrides({1, 1, 1});
+
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 3, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
+}
+
+TYPED_TEST(StridedSliceOpTest, EllipsisMask2) {
+  StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, 0, 0, 2, 0, 0);
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  m.SetBegin({0, 0, 0});
+  m.SetEnd({1, 2, 1});
+  m.SetStrides({1, 1, 1});
+
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 3, 5}));
+}
+
+TYPED_TEST(StridedSliceOpTest, NewAxisMask2) {
+  StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, 0, 0, 0, 2, 0);
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  m.SetBegin({0, 0, 0});
+  m.SetEnd({1, 3, 1});
+  m.SetStrides({1, 1, 1});
+
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2}));
+}
+
+TYPED_TEST(StridedSliceOpTest, NewAxisMask1) {
+  StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, 0, 0, 0, 1, 0);
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  m.SetBegin({0, 0, 0});
+  m.SetEnd({1, 3, 1});
+  m.SetStrides({1, 1, 1});
+
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 1, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 7, 8}));
 }
 
 }  // namespace

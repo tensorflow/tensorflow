@@ -27,6 +27,14 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "build_with_mkl_aarch64",
+    define_values = {
+        "build_with_mkl_aarch64": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
 bzl_library(
     name = "build_defs_bzl",
     srcs = ["build_defs.bzl"],

@@ -120,6 +120,10 @@ class DynamicDeviceMgr : public DeviceMgr {
   // Constructs an empty DynamicDeviceMgr.
   DynamicDeviceMgr();
 
+  // Constructs a DynamicDeviceMgr from a list of devices.
+  // TODO(b/183966398): Remove StaticDeviceMgr since there's no usage.
+  explicit DynamicDeviceMgr(std::vector<std::unique_ptr<Device>> devices);
+
   ~DynamicDeviceMgr() override;
 
   void ListDeviceAttributes(
@@ -139,7 +143,7 @@ class DynamicDeviceMgr : public DeviceMgr {
   // Remove devices from device manager.
   // Returns error for non-existing devices or if the HostCPU() device is in the
   // input list. If an error is returned, the device list is not modified.
-  Status RemoveDevices(std::vector<Device*> devices);
+  Status RemoveDevices(const std::vector<Device*>& devices);
 
   // Remove devices from device manager by their names. Returns error for
   // non-existing devices or if the HostCPU() device is given in the input list.
@@ -149,7 +153,7 @@ class DynamicDeviceMgr : public DeviceMgr {
  private:
   mutable mutex devices_mu_;
 
-  std::unordered_map<Device*, std::unique_ptr<Device>> dynamic_devices_
+  std::vector<std::unique_ptr<Device>> dynamic_devices_
       TF_GUARDED_BY(devices_mu_);
 
   absl::flat_hash_set<int64> device_incarnation_set_ TF_GUARDED_BY(devices_mu_);

@@ -257,6 +257,9 @@ message EdgeTpuSettings {
 
   // Device spec for creating the EdgeTpu device.
   optional EdgeTpuDeviceSpec edgetpu_device_spec = 4;
+
+  // A unique identifier of the input TfLite model.
+  optional string model_token = 5;
 }
 
 // Coral Dev Board / USB accelerator delegate settings.
@@ -290,7 +293,8 @@ message CoralSettings {
 }
 
 message CPUSettings {
-  optional int32 num_threads = 1;
+  // Set to -1 to let the interpreter choose. Otherwise, must be > 0.
+  optional int32 num_threads = 1 [default = -1];
 }
 
 // How to configure TFLite.

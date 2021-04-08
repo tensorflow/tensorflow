@@ -1,3 +1,43 @@
+# Release 2.6.0
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+## Breaking Changes
+
+*<DOCUMENT BREAKING CHANGES HERE>
+*<THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+
+## Known Caveats
+
+*<CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+*<ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
+*<KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+
+## Major Features and Improvements
+
+*<INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
+*<IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+  
+* `tf.keras`:
+    *   `tf.keras.utils.experimental.DatasetCreator` now takes an optional
+        `tf.distribute.InputOptions` for specific options when used with
+        distribution.
+
+## Bug Fixes and Other Changes
+
+*<SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+*<IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+*<NOTES SHOULD BE GROUPED PER AREA>
+*   TF Core:
+    *   Added `tf.saved_model.experimental.TrackableResource`, which allows the
+        creation of custom wrapper objects for resource tensors.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
 # Release 2.5.0
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
@@ -39,6 +79,43 @@
         `num_parallel_calls` set, `deterministic` is used to indicate that
         outputs can be obtained in the non-deterministic order.
     *   Options returned by `tf.data.Dataset.options()` are no longer mutable.
+    *   tf.data input pipelines can now be executed in debug mode, which
+        disables any asynchrony, parallelism, or non-determinism and forces
+        Python execution (as opposed to trace-compiled graph execution) of
+        user-defined functions passed into transformations such as `map`. The
+        debug mode can be enabled through `tf.data.experimental.enable_debug_mode()`.
+* `tf.lite`
+    *   Enabled the new MLIR-based quantization backend by default
+        *   The new backend is used for 8 bits full integer post-training quantization
+        *   The new backend removes the redundant rescales and fixes some bugs (shared weight/bias, extremely small scales, etc)
+        *   Set `experimental_new_quantizer` in tf.lite.TFLiteConverter to False to disable this change
+* `tf.keras`
+    *   Enabled a new supported input type in `Model.fit`,
+        `tf.keras.utils.experimental.DatasetCreator`, which takes a
+        callable, `dataset_fn`.
+        `DatasetCreator` is intended to work across all `tf.distribute`
+        strategies, and is the only input type supported for Parameter Server
+        strategy.
+* `tf.distribute`
+    *   `tf.distribute.experimental.ParameterServerStrategy` now supports
+        training with Keras `Model.fit` when used with `DatasetCreator`.
+* PluggableDevice
+    * Third-party devices can now connect to TensorFlow
+      [modularly](https://github.com/tensorflow/community/blob/master/rfcs/20190305-modular-tensorflow.md)
+      through [StreamExecutor C API](https://github.com/tensorflow/community/blob/master/rfcs/20200612-stream-executor-c-api.md).
+      and [PluggableDevice](https://github.com/tensorflow/community/blob/master/rfcs/20200624-pluggable-device-for-tensorflow.md) interface.
+      * Add custom ops and kernels through
+        [kernel and op registration C API](https://github.com/tensorflow/community/blob/master/rfcs/20190814-kernel-and-op-registration.md).
+      * Register custom graph optimization passes with
+        [graph optimization C API](https://github.com/tensorflow/community/blob/master/rfcs/20201027-modular-tensorflow-graph-c-api.md). 
+* [oneAPI Deep Neural Network Library (oneDNN)](https://github.com/oneapi-src/oneDNN) 
+  CPU performance optimizations from
+  [Intel-optimized TensorFlow](https://software.intel.com/content/www/us/en/develop/articles/intel-optimization-for-tensorflow-installation-guide.html)
+  are now available in the official x86-64 Linux and Windows builds. 
+    * They are off by default. Enable them by setting the environment variable
+      `TF_ENABLE_ONEDNN_OPTS=1`.
+    * We do not recommend using them in GPU systems, as they have not been
+      sufficiently tested with GPUs yet.
 
 ## Bug Fixes and Other Changes
 
@@ -46,8 +123,23 @@
 *   <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 *   <NOTES SHOULD BE GROUPED PER AREA>
 *   `tf.keras`:
-    *   Improvements to Keras preprocessing layers:
-        *   Discretization combiner implemented, with additional arg `epsilon`.
+    *   Preprocessing layers API consistency changes:
+        *   `StringLookup` added `output_mode`, `sparse`, and
+            `pad_to_max_tokens` arguments with same semantics as
+            `TextVectorization`.
+        *   `IntegerLookup` added `output_mode`, `sparse`, and
+            `pad_to_max_tokens` arguments with same semantics as
+            `TextVectorization`. Renamed `max_values`, `oov_value` and
+            `mask_value` to `max_tokens`, `oov_token` and `mask_token` to align
+            with `StringLookup` and `TextVectorization`.
+        *   `TextVectorization` default for `pad_to_max_tokens` switched to
+            False.
+        *   `CategoryEncoding` no longer supports `adapt`, `IntegerLookup`
+            now supports equivalent functionality. `max_tokens` argument renamed
+            to `num_tokens`.
+        *   `Discretization` added `num_bins` argument for learning bins
+            boundaries through calling `adapt` on a dataset. Renamed `bins`
+            argument to `bin_boundaries` for specifying bins without `adapt`.
     *   Improvements to model saving/loading:
         *   `model.load_weights` now accepts paths to saved models.
     *   Keras inputs can now be created directly from arbitrary `tf.TypeSpecs`.
@@ -66,9 +158,23 @@
     *   Add `.element_spec` property to `tf.data.DatasetSpec` to access the
         inner spec. This can be used to extract the structure of nested
         datasets.
+    *   Add `tf.data.experimental.AutoShardingPolicy.HINT` which can be used
+        to provide hints to tf.distribute-based auto-sharding as to where in
+        the input pipeline to insert sharding transformations.
+    *   Make tf.data.Options persistent across `tf.function` and `GraphDef`
+        boundaries.
+    *   If autotuning is ON, `tf.data.Dataset.map()` will default to be
+        parallelized unless users turn off the optimization
+        option `map_parallelization` explicitly.
 *   XLA compilation:
     *   `tf.function(experimental_compile=True)` has become a stable API,
         renamed `tf.function(jit_compile=True)`.
+    *   XLA can now compile MirroredStrategy: the step function passed to
+        `strategy.run` can now be annoted with `jit_compile=True`.
+
+*   `tf.distribute`:
+    *   Rename `experimental_prefetch_to_device` in `tf.distribute.InputOptions`
+        to `experimental_fetch_to_device` to better reflect the purpose.
 
 *   `tf.lite`:
     *   class `tflite::Subgraph`:
@@ -109,13 +215,28 @@
        ML authoring is generally discouraged.
     *  Add support for static hash tables through
          `TFLiteConverter.from_saved_model`.
+  *  The Python TF Lite Interpreter bindings now have an option
+        `experimental_preserve_all_tensors` to aid in debugging conversion.
     *  Quantized x86 execution defaults to Ruy GEMM library for platforms with
        AVX support.
     *  Deprecate `tf.compat.v1.lite.experimental.get_potentially_supported_ops`.
        Use `tf.lite.TFLiteConverter` directly to check whether a model is
        convertible.
-
+    * Add support to select one of three different built-in op resolvers to be
+    *  Enabled post training with calibrations for models that require user
+       provied TensorFlow Lite custom op libraries via
+       `converter.target_spec._experimental_custom_op_registerers`.
+      used in Python Interpreter API.
 *   TF Core:
+    *   Several new types have been introduced to describe the return types of
+        `tf.function` and related APIs:
+          * `tf.types.experimental.Callable` is intended to represent TensorFlow
+            callables in general.
+          * `tf.types.experimental.ConcreteFunction` represents a callable
+            TensofFlow graph function specialized to a particular input.
+          * `tf.types.experimental.GenericFunction` is the output of
+            `tf.function` and represents a callble that can be backed by
+            multiple `ConcreteFunction`s (commonly known as traces).
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,
         `tf.while_loop`, and compositions like `tf.foldl`) computed with
         `tf.GradientTape` inside a `tf.function`.
@@ -129,6 +250,7 @@
         its subclasses to support more detailed error reporting.
         This is inspired from Abseil Status payloads:
         https://github.com/abseil/abseil-cpp/blob/master/absl/status/status.h
+    *   Extended `tf.matmul` to support output_type and mixed input types.
 
 *   `tf.summary`:
   *   New `tf.summary.graph` allows manual write of TensorFlow graph
@@ -162,10 +284,17 @@
         `tf.config.experimental.mlir_bridge_rollout` to enable a \"safe\" mode.
         This runs the MLIR bridge only when an analysis of the graph only when
         an analysis of the graph determines that it is safe to run.
+    *   Add new enum value 'MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED' to
+        `tf.config.experimental.mlir_bridge_rollout` to enable a fallback for
+        the MLIR bridge in a \"safe\" mode. This runs the MLIR bridge in a
+        FallbackEnabled mode when an analysis of the graph determines
+        that the graph does not have unsupported features.
 
 * Other
     *   Adding show_debug_info to mlir.convert_graph_def and
         mlir.convert_function.
+    *   Added [Arm Compute Library (ACL)](https://github.com/ARM-software/ComputeLibrary)
+        support to `--config=mkl_aarch64` build.
 
 ## Thanks to our Contributors
 

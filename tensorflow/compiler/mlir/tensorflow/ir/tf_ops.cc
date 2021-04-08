@@ -65,6 +65,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -175,9 +177,16 @@ bool TensorFlowDialect::CanDuplicate(Operation *op) {
   if (auto is_stateless = op->getAttrOfType<BoolAttr>("is_stateless"))
     return is_stateless.getValue();
 
-  // Otherwise, assume ops can be duplicated by default if its registered, else
-  // it cannot be for unknown ops.
-  return op->isRegistered();
+  // Assume ops can be duplicated if modelled.
+  if (op->isRegistered()) return true;
+
+  // Assume ops can be duplicated when the given op is not a stateful op.
+  const tensorflow::OpRegistrationData *op_reg_data = nullptr;
+  tensorflow::Status s = tensorflow::OpRegistry::Global()->LookUp(
+      op->getName().stripDialect().str(), &op_reg_data);
+  // Assume unregistered ops cannot be duplicated, while unmodelled ones only if
+  // stateless.
+  return s.ok() && !op_reg_data->op_def.is_stateful();
 }
 
 // Returns true if the op can have side effects.
@@ -217,14 +226,10 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.cc.inc"
       >();
-  addTypes<
-#define HANDLE_TF_TYPE(tftype, enumerant, name) tftype##Type,
-#define HANDLE_LAST_TF_TYPE(tftype, enumerant, name) tftype##Type
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
-      >();
+  registerTypes();
   addInterfaces<TFInlinerInterface, TFDecodeAttributesInterface,
                 TFConstantFoldInterface>();
-  addAttributes<ShapeAttr, FuncAttr>();
+  registerAttributes();
 
   // Support unknown operations because not all TensorFlow operations are
   // registered.

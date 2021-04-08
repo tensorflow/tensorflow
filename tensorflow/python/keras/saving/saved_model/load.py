@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Keras SavedModel deserialization."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import os
 import re
@@ -23,7 +20,6 @@ import types
 
 from google.protobuf import message
 
-from tensorflow.core.framework import versions_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -33,6 +29,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.protobuf import saved_metadata_pb2
+from tensorflow.python.keras.protobuf import versions_pb2
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.saving.saved_model import constants
 from tensorflow.python.keras.saving.saved_model import json_utils
@@ -347,10 +344,11 @@ class KerasObjectLoader(object):
         if self.loaded_nodes[child_id][0] is not obj_child:
           # This means that the same trackable object is referenced by two
           # different objects that were recreated from the config.
-          logging.warn('Looks like there is an object (perhaps variable or '
-                       'layer) that is shared between different layers/models. '
-                       'This may cause issues when restoring the variable '
-                       'values. Object: {}'.format(obj_child))
+          logging.warning(
+              'Looks like there is an object (perhaps variable or '
+              'layer) that is shared between different layers/models. '
+              'This may cause issues when restoring the variable '
+              'values. Object: {}'.format(obj_child))
         continue
 
       # Overwrite variable names with the ones saved in the SavedModel.
@@ -790,15 +788,22 @@ class KerasObjectLoader(object):
 def _finalize_saved_model_layers(layers):
   """Runs the final steps of loading Keras Layers from SavedModel."""
   # pylint: disable=protected-access
-  # 1. Set up call functions for all layers (skip this step for Sequential and
-  # Functional models).
+  # 1. Set up call functions for all layers initialized from the SavedModel (
+  # and not the config)
   for layer in layers:
     layer.built = True
-    if hasattr(_get_keras_attr(layer), 'call_and_return_conditional_losses'):
+    layer_call = getattr(_get_keras_attr(layer),
+                         'call_and_return_conditional_losses', None)
+    if layer_call and layer_call.concrete_functions:
       layer.call = utils.use_wrapped_call(
-          layer, _get_keras_attr(layer).call_and_return_conditional_losses,
-          return_method=True)
-      layer._init_call_fn_args()
+          layer, layer_call, return_method=True)
+      expects_training_arg = layer._serialized_attributes['metadata'][
+          'expects_training_arg']
+      if 'training' in layer_call.function_spec.arg_names:
+        # This could change the value of `expects_training_arg` if this layer
+        # doesn't expect a training arg, but has a child layer that does.
+        expects_training_arg = True
+      layer._init_call_fn_args(expects_training_arg)
     else:
       layer.call = types.MethodType(
           _unable_to_call_layer_due_to_serialization_issue, layer)
@@ -984,7 +989,7 @@ class RevivedLayer(object):
 
     revived_obj = cls(**init_args)
 
-    with trackable.no_automatic_dependency_tracking_scope(revived_obj):
+    with utils.no_automatic_dependency_tracking_scope(revived_obj):
       # pylint:disable=protected-access
       revived_obj._expects_training_arg = metadata['expects_training_arg']
       config = metadata.get('config')
@@ -1033,7 +1038,12 @@ def _revive_setter(layer, name, value):
     # be temporarily added as a dependency so that checkpointed values can be
     # restored. These dependencies are manually deleted in
     # KerasObjectLoader.del_tracking.
-    layer._track_trackable(value, name)  # pylint: disable=protected-access
+
+    # Set `overwrite=True` in the case that `layer` already tracks a different
+    # layer-n. This may cause variable values to not be loaded properly in the
+    # original layer-n, but we already warn the users about this
+    # (ctrl-f "shared between different layers/models").
+    layer._track_trackable(value, name, overwrite=True)  # pylint: disable=protected-access
   elif getattr(layer, name, None) is not None:
     # Don't overwrite already defined attributes.
     pass
@@ -1054,7 +1064,7 @@ class RevivedInputLayer(object):
         ragged=metadata['ragged'],
         batch_input_shape=metadata['batch_input_shape'])
     revived_obj = cls(**init_args)
-    with trackable.no_automatic_dependency_tracking_scope(revived_obj):
+    with utils.no_automatic_dependency_tracking_scope(revived_obj):
       revived_obj._config = metadata['config']  # pylint:disable=protected-access
 
     return revived_obj, setattr
@@ -1141,7 +1151,7 @@ class RevivedNetwork(RevivedLayer):
     # Store attributes revived from SerializedAttributes in a un-tracked
     # dictionary. The attributes are the ones listed in CommonEndpoints or
     # "keras_api" for keras-specific attributes.
-    with trackable.no_automatic_dependency_tracking_scope(revived_obj):
+    with utils.no_automatic_dependency_tracking_scope(revived_obj):
       # pylint:disable=protected-access
       revived_obj._expects_training_arg = metadata['expects_training_arg']
       config = metadata.get('config')
@@ -1158,7 +1168,7 @@ class RevivedNetwork(RevivedLayer):
 
 def _set_network_attributes_from_metadata(revived_obj):
   """Sets attributes recorded in the metadata."""
-  with trackable.no_automatic_dependency_tracking_scope(revived_obj):
+  with utils.no_automatic_dependency_tracking_scope(revived_obj):
     # pylint:disable=protected-access
     metadata = revived_obj._serialized_attributes['metadata']
     if metadata.get('dtype') is not None:
@@ -1172,7 +1182,7 @@ def _maybe_add_serialized_attributes(layer, metadata):
   # dictionary. The attributes are the ones listed in CommonEndpoints or
   # "keras_api" for keras-specific attributes.
   if not hasattr(layer, '_serialized_attributes'):
-    with trackable.no_automatic_dependency_tracking_scope(layer):
+    with utils.no_automatic_dependency_tracking_scope(layer):
       layer._serialized_attributes = {'metadata': metadata}  # pylint: disable=protected-access
 
 

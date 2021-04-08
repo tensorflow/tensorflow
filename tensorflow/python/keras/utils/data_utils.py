@@ -15,31 +15,27 @@
 # ==============================================================================
 # pylint: disable=g-import-not-at-top
 """Utilities for file download and caching."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from abc import abstractmethod
 from contextlib import closing
-import errno
 import functools
 import hashlib
 import multiprocessing
 import multiprocessing.dummy
 import os
+import queue
 import random
 import shutil
-import sys
+import sys  # pylint: disable=unused-import
 import tarfile
 import threading
 import time
+import typing
+import urllib
 import weakref
 import zipfile
 
 import numpy as np
-import six
-from six.moves.urllib.error import HTTPError
-from six.moves.urllib.error import URLError
 
 from tensorflow.python.framework import ops
 from six.moves.urllib.request import urlopen
@@ -47,20 +43,6 @@ from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.util.tf_export import keras_export
-
-
-try:
-  import queue
-except ImportError:
-  import Queue as queue
-
-try:
-  import typing
-  is_iterator = lambda x: isinstance(x, typing.Iterator)
-except ImportError:
-  # Python2 uses next, and Python3 should have typing so __next__ is not needed.
-  is_iterator = lambda x: hasattr(x, '__iter__') and hasattr(x, 'next')
-
 
 if sys.version_info[0] == 2:
 
@@ -101,7 +83,7 @@ if sys.version_info[0] == 2:
       for chunk in chunk_read(response, reporthook=reporthook):
         fd.write(chunk)
 else:
-  from six.moves.urllib.request import urlretrieve
+  from urllib.request import urlretrieve  # pylint: disable=g-importing-member
 
 
 def is_generator_or_sequence(x):
@@ -109,7 +91,9 @@ def is_generator_or_sequence(x):
   builtin_iterators = (str, list, tuple, dict, set, frozenset)
   if isinstance(x, (ops.Tensor, np.ndarray) + builtin_iterators):
     return False
-  return tf_inspect.isgenerator(x) or isinstance(x, Sequence) or is_iterator(x)
+  return (tf_inspect.isgenerator(x) or
+          isinstance(x, Sequence) or
+          isinstance(x, typing.Iterator))
 
 
 def _extract_archive(file_path, path='.', archive_format='auto'):
@@ -132,7 +116,7 @@ def _extract_archive(file_path, path='.', archive_format='auto'):
     return False
   if archive_format == 'auto':
     archive_format = ['tar', 'zip']
-  if isinstance(archive_format, six.string_types):
+  if isinstance(archive_format, str):
     archive_format = [archive_format]
 
   file_path = path_to_string(file_path)
@@ -272,9 +256,9 @@ def get_file(fname,
     try:
       try:
         urlretrieve(origin, fpath, dl_progress)
-      except HTTPError as e:
+      except urllib.error.HTTPError as e:
         raise Exception(error_msg.format(origin, e.code, e.msg))
-      except URLError as e:
+      except urllib.error.URLError as e:
         raise Exception(error_msg.format(origin, e.errno, e.reason))
     except (Exception, KeyboardInterrupt) as e:
       if os.path.exists(fpath):
@@ -294,15 +278,19 @@ def get_file(fname,
 
 
 def _makedirs_exist_ok(datadir):
-  if six.PY2:
-    # Python 2 doesn't have the exist_ok arg, so we try-except here.
-    try:
-      os.makedirs(datadir)
-    except OSError as e:
-      if e.errno != errno.EEXIST:
-        raise
-  else:
-    os.makedirs(datadir, exist_ok=True)  # pylint: disable=unexpected-keyword-arg
+  os.makedirs(datadir, exist_ok=True)  # pylint: disable=unexpected-keyword-arg
+
+
+def _resolve_hasher(algorithm, file_hash=None):
+  """Returns hash algorithm as hashlib function."""
+  if algorithm == 'sha256':
+    return hashlib.sha256()
+
+  if algorithm == 'auto' and file_hash is not None and len(file_hash) == 64:
+    return hashlib.sha256()
+
+  # This is used only for legacy purposes.
+  return hashlib.md5()
 
 
 def _hash_file(fpath, algorithm='sha256', chunk_size=65535):
@@ -324,10 +312,10 @@ def _hash_file(fpath, algorithm='sha256', chunk_size=65535):
   Returns:
       The file hash
   """
-  if (algorithm == 'sha256') or (algorithm == 'auto' and len(hash) == 64):
-    hasher = hashlib.sha256()
+  if isinstance(algorithm, str):
+    hasher = _resolve_hasher(algorithm)
   else:
-    hasher = hashlib.md5()
+    hasher = algorithm
 
   with open(fpath, 'rb') as fpath_file:
     for chunk in iter(lambda: fpath_file.read(chunk_size), b''):
@@ -350,10 +338,7 @@ def validate_file(fpath, file_hash, algorithm='auto', chunk_size=65535):
   Returns:
       Whether the file is valid
   """
-  if (algorithm == 'sha256') or (algorithm == 'auto' and len(file_hash) == 64):
-    hasher = 'sha256'
-  else:
-    hasher = 'md5'
+  hasher = _resolve_hasher(algorithm, file_hash)
 
   if str(_hash_file(fpath, hasher, chunk_size)) == str(file_hash):
     return True
@@ -776,9 +761,9 @@ class OrderedEnqueuer(SequenceEnqueuer):
           yield inputs
       except queue.Empty:
         pass
-      except Exception:  # pylint: disable=broad-except
+      except Exception as e:  # pylint: disable=broad-except
         self.stop()
-        six.reraise(*sys.exc_info())
+        raise e
 
 
 def init_pool_generator(gens, random_seed=None, id_queue=None):
@@ -821,7 +806,7 @@ def next_sample(uid):
   Returns:
       The next value of generator `uid`.
   """
-  return six.next(_SHARED_SEQUENCES[uid])
+  return next(_SHARED_SEQUENCES[uid])
 
 
 @keras_export('keras.utils.GeneratorEnqueuer')
@@ -908,4 +893,4 @@ class GeneratorEnqueuer(SequenceEnqueuer):
             'Your generator is NOT thread-safe. '
             'Keras requires a thread-safe generator when '
             '`use_multiprocessing=False, workers > 1`. ')
-      six.reraise(*sys.exc_info())
+      raise e

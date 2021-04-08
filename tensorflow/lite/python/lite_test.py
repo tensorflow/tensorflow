@@ -389,6 +389,39 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     self.assertEqual(output_details[1]['dtype'], expected_dtype)
 
   @parameterized.named_parameters(
+      ('_PerChannelQuant', False, False),
+      ('_PerChannelMlirQuant', False, True),
+      ('_PerTensorQuant', True, False),
+      ('_PerTensorMlirQuant', True, True))
+  def testDisablePerChannelQuantization(self, disable_per_channel=False,
+                                        enable_mlir_quantizer=False):
+    k_conv_name = 'Conv2D1'
+    k_num_filters = 16
+    with ops.Graph().as_default():
+      inp, output, calibration_gen = self._getIntegerQuantizeModel()
+      sess = session.Session()
+
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [inp], [output])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.representative_dataset = calibration_gen
+    quantized_converter.experimental_new_quantizer = enable_mlir_quantizer
+    if disable_per_channel:
+      quantized_converter._experimental_disable_per_channel = (
+          disable_per_channel)
+    quantized_tflite_model = quantized_converter.convert()
+    self.assertIsNotNone(quantized_tflite_model)
+
+    interpreter = Interpreter(model_content=quantized_tflite_model)
+    interpreter.allocate_tensors()
+    detail = next((d for d in interpreter.get_tensor_details()
+                   if d['name'] == k_conv_name))
+    quant_params = detail['quantization_parameters']
+    expected_num_params = 1 if disable_per_channel else k_num_filters
+    self.assertLen(quant_params['scales'], expected_num_params)
+    self.assertLen(quant_params['zero_points'], expected_num_params)
+
+  @parameterized.named_parameters(
       ('EnableMlirConverter', True),  # enable mlir
       ('DisableMlirConverter', False))  # disable mlir
   def testString(self, enable_mlir_converter):

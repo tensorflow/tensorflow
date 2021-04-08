@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1194,6 +1194,7 @@ struct EdgeTpuSettingsT : public flatbuffers::NativeTable {
   std::vector<std::unique_ptr<tflite::EdgeTpuInactivePowerConfigT>> inactive_power_configs;
   int32_t inference_priority;
   std::unique_ptr<tflite::EdgeTpuDeviceSpecT> edgetpu_device_spec;
+  std::string model_token;
   EdgeTpuSettingsT()
       : inference_power_state(tflite::EdgeTpuPowerState_UNDEFINED_POWERSTATE),
         inference_priority(-1) {
@@ -1206,7 +1207,8 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_INFERENCE_POWER_STATE = 4,
     VT_INACTIVE_POWER_CONFIGS = 6,
     VT_INFERENCE_PRIORITY = 8,
-    VT_EDGETPU_DEVICE_SPEC = 10
+    VT_EDGETPU_DEVICE_SPEC = 10,
+    VT_MODEL_TOKEN = 12
   };
   tflite::EdgeTpuPowerState inference_power_state() const {
     return static_cast<tflite::EdgeTpuPowerState>(GetField<int32_t>(VT_INFERENCE_POWER_STATE, 0));
@@ -1220,6 +1222,9 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const tflite::EdgeTpuDeviceSpec *edgetpu_device_spec() const {
     return GetPointer<const tflite::EdgeTpuDeviceSpec *>(VT_EDGETPU_DEVICE_SPEC);
   }
+  const flatbuffers::String *model_token() const {
+    return GetPointer<const flatbuffers::String *>(VT_MODEL_TOKEN);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_INFERENCE_POWER_STATE) &&
@@ -1229,6 +1234,8 @@ struct EdgeTpuSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<int32_t>(verifier, VT_INFERENCE_PRIORITY) &&
            VerifyOffset(verifier, VT_EDGETPU_DEVICE_SPEC) &&
            verifier.VerifyTable(edgetpu_device_spec()) &&
+           VerifyOffset(verifier, VT_MODEL_TOKEN) &&
+           verifier.VerifyString(model_token()) &&
            verifier.EndTable();
   }
   EdgeTpuSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -1251,6 +1258,9 @@ struct EdgeTpuSettingsBuilder {
   void add_edgetpu_device_spec(flatbuffers::Offset<tflite::EdgeTpuDeviceSpec> edgetpu_device_spec) {
     fbb_.AddOffset(EdgeTpuSettings::VT_EDGETPU_DEVICE_SPEC, edgetpu_device_spec);
   }
+  void add_model_token(flatbuffers::Offset<flatbuffers::String> model_token) {
+    fbb_.AddOffset(EdgeTpuSettings::VT_MODEL_TOKEN, model_token);
+  }
   explicit EdgeTpuSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1268,8 +1278,10 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(
     tflite::EdgeTpuPowerState inference_power_state = tflite::EdgeTpuPowerState_UNDEFINED_POWERSTATE,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>>> inactive_power_configs = 0,
     int32_t inference_priority = -1,
-    flatbuffers::Offset<tflite::EdgeTpuDeviceSpec> edgetpu_device_spec = 0) {
+    flatbuffers::Offset<tflite::EdgeTpuDeviceSpec> edgetpu_device_spec = 0,
+    flatbuffers::Offset<flatbuffers::String> model_token = 0) {
   EdgeTpuSettingsBuilder builder_(_fbb);
+  builder_.add_model_token(model_token);
   builder_.add_edgetpu_device_spec(edgetpu_device_spec);
   builder_.add_inference_priority(inference_priority);
   builder_.add_inactive_power_configs(inactive_power_configs);
@@ -1282,14 +1294,17 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettingsDirect(
     tflite::EdgeTpuPowerState inference_power_state = tflite::EdgeTpuPowerState_UNDEFINED_POWERSTATE,
     const std::vector<flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>> *inactive_power_configs = nullptr,
     int32_t inference_priority = -1,
-    flatbuffers::Offset<tflite::EdgeTpuDeviceSpec> edgetpu_device_spec = 0) {
+    flatbuffers::Offset<tflite::EdgeTpuDeviceSpec> edgetpu_device_spec = 0,
+    const char *model_token = nullptr) {
   auto inactive_power_configs__ = inactive_power_configs ? _fbb.CreateVector<flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>>(*inactive_power_configs) : 0;
+  auto model_token__ = model_token ? _fbb.CreateString(model_token) : 0;
   return tflite::CreateEdgeTpuSettings(
       _fbb,
       inference_power_state,
       inactive_power_configs__,
       inference_priority,
-      edgetpu_device_spec);
+      edgetpu_device_spec,
+      model_token__);
 }
 
 flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -2528,7 +2543,8 @@ inline bool operator==(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs)
       (lhs.inference_power_state == rhs.inference_power_state) &&
       (lhs.inactive_power_configs == rhs.inactive_power_configs) &&
       (lhs.inference_priority == rhs.inference_priority) &&
-      ((!lhs.edgetpu_device_spec && !rhs.edgetpu_device_spec) || (lhs.edgetpu_device_spec && rhs.edgetpu_device_spec && *lhs.edgetpu_device_spec == *rhs.edgetpu_device_spec) || (lhs.edgetpu_device_spec && !rhs.edgetpu_device_spec && *lhs.edgetpu_device_spec == decltype(lhs.edgetpu_device_spec)::element_type()) || (rhs.edgetpu_device_spec && !lhs.edgetpu_device_spec && *rhs.edgetpu_device_spec == decltype(rhs.edgetpu_device_spec)::element_type()));
+      ((!lhs.edgetpu_device_spec && !rhs.edgetpu_device_spec) || (lhs.edgetpu_device_spec && rhs.edgetpu_device_spec && *lhs.edgetpu_device_spec == *rhs.edgetpu_device_spec) || (lhs.edgetpu_device_spec && !rhs.edgetpu_device_spec && *lhs.edgetpu_device_spec == decltype(lhs.edgetpu_device_spec)::element_type()) || (rhs.edgetpu_device_spec && !lhs.edgetpu_device_spec && *rhs.edgetpu_device_spec == decltype(rhs.edgetpu_device_spec)::element_type())) &&
+      (lhs.model_token == rhs.model_token);
 }
 
 inline bool operator!=(const EdgeTpuSettingsT &lhs, const EdgeTpuSettingsT &rhs) {
@@ -2549,6 +2565,7 @@ inline void EdgeTpuSettings::UnPackTo(EdgeTpuSettingsT *_o, const flatbuffers::r
   { auto _e = inactive_power_configs(); if (_e) { _o->inactive_power_configs.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->inactive_power_configs[_i] = std::unique_ptr<tflite::EdgeTpuInactivePowerConfigT>(_e->Get(_i)->UnPack(_resolver)); } } }
   { auto _e = inference_priority(); _o->inference_priority = _e; }
   { auto _e = edgetpu_device_spec(); if (_e) _o->edgetpu_device_spec = std::unique_ptr<tflite::EdgeTpuDeviceSpecT>(_e->UnPack(_resolver)); }
+  { auto _e = model_token(); if (_e) _o->model_token = _e->str(); }
 }
 
 inline flatbuffers::Offset<EdgeTpuSettings> EdgeTpuSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const EdgeTpuSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -2563,12 +2580,14 @@ inline flatbuffers::Offset<EdgeTpuSettings> CreateEdgeTpuSettings(flatbuffers::F
   auto _inactive_power_configs = _o->inactive_power_configs.size() ? _fbb.CreateVector<flatbuffers::Offset<tflite::EdgeTpuInactivePowerConfig>> (_o->inactive_power_configs.size(), [](size_t i, _VectorArgs *__va) { return CreateEdgeTpuInactivePowerConfig(*__va->__fbb, __va->__o->inactive_power_configs[i].get(), __va->__rehasher); }, &_va ) : 0;
   auto _inference_priority = _o->inference_priority;
   auto _edgetpu_device_spec = _o->edgetpu_device_spec ? CreateEdgeTpuDeviceSpec(_fbb, _o->edgetpu_device_spec.get(), _rehasher) : 0;
+  auto _model_token = _o->model_token.empty() ? 0 : _fbb.CreateString(_o->model_token);
   return tflite::CreateEdgeTpuSettings(
       _fbb,
       _inference_power_state,
       _inactive_power_configs,
       _inference_priority,
-      _edgetpu_device_spec);
+      _edgetpu_device_spec,
+      _model_token);
 }
 
 
@@ -3019,4 +3038,3 @@ inline flatbuffers::Offset<BenchmarkEvent> CreateBenchmarkEvent(flatbuffers::Fla
 }  // namespace tflite
 
 #endif  // FLATBUFFERS_GENERATED_CONFIGURATION_TFLITE_H_
-

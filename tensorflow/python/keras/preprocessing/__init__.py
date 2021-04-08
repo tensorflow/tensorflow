@@ -14,10 +14,6 @@
 # ==============================================================================
 """Provides keras data preprocessing utils to pre-process tf.data.Datasets before they are fed to the model."""
 # pylint: disable=g-import-not-at-top
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # TODO(mihaimaruseac): remove the import of keras_preprocessing and injecting
 # once we update to latest version of keras_preprocessing
 import keras_preprocessing
@@ -31,7 +27,3 @@ from tensorflow.python.keras.utils import all_utils as utils
 
 # This exists for compatibility with prior version of keras_preprocessing.
 keras_preprocessing.set_keras_submodules(backend=backend, utils=utils)
-
-del absolute_import
-del division
-del print_function

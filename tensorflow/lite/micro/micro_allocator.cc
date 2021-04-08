@@ -265,24 +265,8 @@ TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
   return kTfLiteOk;
 }
 
-// The tensor offsets will be encoded in the metadata:[Metadata] field of the
-// Model. The following encoding applies:
-//
-// | Metadata component |                 Value                                |
-// |    name:string     | “OfflineMemoryAllocation”                            |
-// |    buffer:unit     | Index of buffer containing memory allocation data    |
-//
-// The buffer contents for the memory allocation is a list of 32-bit integers.
-// The number of tensors, n, must be equal to the number of tensors defined in
-// the model. The following encoding applies:
-//
-// |  Offset |                            Value                                |
-// |    0    | Offline allocation format version – set to 0                    |
-// |    1    | Subgraph index to which this allocation applies                 |
-// |    2    | Number offsets following: n                                     |
-// |    3    | Arena byte offset of tensor #0 or -1 to allocate at runtime     |
-// |    4    | Arena byte offset of tensor #1 or -1 to allocate at runtime     |
-// | 3+(n-1) | Arena byte offset of tensor #(n-1) or -1 to allocate at runtime |
+// Get offline tensors allocation plan. See
+// micro/docs/memory_management.md for more info.
 TfLiteStatus AllocationInfoBuilder::GetOfflinePlannedOffsets(
     const Model* model, const int32_t** offline_planner_offsets) {
   if (model->metadata()) {

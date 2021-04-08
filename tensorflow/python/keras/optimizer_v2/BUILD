@@ -11,7 +11,7 @@ package(
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/python/training/tracking:__pkg__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -138,6 +138,7 @@ cuda_py_test(
     srcs = ["adamax_test.py"],
     shard_count = 4,
     # TODO(b/168527439): invalid resource variable reference on GPU for TFRT.
+    tags = ["no_rocm"],
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",

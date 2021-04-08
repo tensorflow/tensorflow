@@ -26,7 +26,7 @@ package(
     default_visibility = [
         "//tensorflow:internal",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_proto_library(
@@ -364,6 +364,15 @@ cc_library(
         tf_grpc_cc_dependency(),
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "py_utils",
+    srcs = ["py_utils.cc"],
+    hdrs = ["py_utils.h"],
+    deps = [
+        ":credentials_factory",
+    ],
 )
 
 cc_library(

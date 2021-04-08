@@ -53,7 +53,7 @@ class BaseOpModel : public SingleOpModel {
   int Input() { return input_; }
 
  protected:
-  TensorData& SymmetricInt16Scaling(TensorData& tensor) {
+  void SymmetricInt16Scaling(TensorData& tensor) {
     // Symmetric range and null zero-point is required for INT16 tensors. As
     // SingleOpModel::QuantizationParams calculates the scale on an asymmetric
     // base [int_type::min, int_type::max], manually calculate the scale on a
@@ -66,8 +66,6 @@ class BaseOpModel : public SingleOpModel {
       tensor.min = 0;
       tensor.max = 0;
     }
-
-    return tensor;
   }
 
  protected:
@@ -77,178 +75,60 @@ class BaseOpModel : public SingleOpModel {
 };
 
 // Model for the tests case where axis is a const tensor.
-class MeanOpConstModel : public BaseOpModel {
+template <BuiltinOperator op_code, bool symmetric_int16_scaling = false>
+class BaseConstOpModel : public BaseOpModel {
  public:
-  MeanOpConstModel(TensorData input, TensorData output,
+  BaseConstOpModel(TensorData input, TensorData output,
                    std::initializer_list<int> axis_shape,
                    std::initializer_list<int> axis, bool keep_dims) {
-    input_ = AddInput(SymmetricInt16Scaling(input));
+    if (symmetric_int16_scaling) {
+      SymmetricInt16Scaling(input);
+      SymmetricInt16Scaling(output);
+    }
+    input_ = AddInput(input);
     axis_ = AddConstInput(TensorType_INT32, axis, axis_shape);
-    output_ = AddOutput(SymmetricInt16Scaling(output));
-    SetBuiltinOp(BuiltinOperator_MEAN, BuiltinOptions_ReducerOptions,
+    output_ = AddOutput(output);
+    SetBuiltinOp(op_code, BuiltinOptions_ReducerOptions,
                  CreateReducerOptions(builder_, keep_dims).Union());
     BuildInterpreter({GetShape(input_)});
   }
 };
 
 // Model for the tests case where axis is a dynamic tensor.
-class MeanOpDynamicModel : public BaseOpModel {
+template <BuiltinOperator op_code>
+class BaseDynamicOpModel : public BaseOpModel {
  public:
-  MeanOpDynamicModel(const TensorData& input, const TensorData& output,
+  BaseDynamicOpModel(const TensorData& input, const TensorData& output,
                      const TensorData& axis, bool keep_dims) {
     input_ = AddInput(input);
     axis_ = AddInput(axis);
     output_ = AddOutput(output);
-    SetBuiltinOp(BuiltinOperator_MEAN, BuiltinOptions_ReducerOptions,
+    SetBuiltinOp(op_code, BuiltinOptions_ReducerOptions,
                  CreateReducerOptions(builder_, keep_dims).Union());
     BuildInterpreter({GetShape(input_)});
   }
 };
 
-// Model for the tests case where axis is a const tensor.
-class SumOpConstModel : public BaseOpModel {
- public:
-  SumOpConstModel(const TensorData& input, const TensorData& output,
-                  std::initializer_list<int> axis_shape,
-                  std::initializer_list<int> axis, bool keep_dims) {
-    input_ = AddInput(input);
-    axis_ = AddConstInput(TensorType_INT32, axis, axis_shape);
-    output_ = AddOutput(output);
-    SetBuiltinOp(BuiltinOperator_SUM, BuiltinOptions_ReducerOptions,
-                 CreateReducerOptions(builder_, keep_dims).Union());
-    BuildInterpreter({GetShape(input_)});
-  }
-};
+using MeanOpConstModel = BaseConstOpModel<BuiltinOperator_MEAN, true>;
+using MeanOpDynamicModel = BaseDynamicOpModel<BuiltinOperator_MEAN>;
 
-// Model for the tests case where axis is a dynamic tensor.
-class SumOpDynamicModel : public BaseOpModel {
- public:
-  SumOpDynamicModel(const TensorData& input, const TensorData& output,
-                    const TensorData& axis, bool keep_dims) {
-    input_ = AddInput(input);
-    axis_ = AddInput(axis);
-    output_ = AddOutput(output);
-    SetBuiltinOp(BuiltinOperator_SUM, BuiltinOptions_ReducerOptions,
-                 CreateReducerOptions(builder_, keep_dims).Union());
-    BuildInterpreter({GetShape(input_)});
-  }
-};
+using SumOpConstModel = BaseConstOpModel<BuiltinOperator_SUM>;
+using SumOpDynamicModel = BaseDynamicOpModel<BuiltinOperator_SUM>;
 
-// Model for the tests case where axis is a const tensor.
-class ProdOpConstModel : public BaseOpModel {
- public:
-  ProdOpConstModel(const TensorData& input, const TensorData& output,
-                   std::initializer_list<int> axis_shape,
-                   std::initializer_list<int> axis, bool keep_dims) {
-    input_ = AddInput(input);
-    axis_ = AddConstInput(TensorType_INT32, axis, axis_shape);
-    output_ = AddOutput(output);
-    SetBuiltinOp(BuiltinOperator_REDUCE_PROD, BuiltinOptions_ReducerOptions,
-                 CreateReducerOptions(builder_, keep_dims).Union());
-    BuildInterpreter({GetShape(input_)});
-  }
-};
+using ProdOpConstModel = BaseConstOpModel<BuiltinOperator_REDUCE_PROD>;
+using ProdOpDynamicModel = BaseDynamicOpModel<BuiltinOperator_REDUCE_PROD>;
 
-// Model for the tests case where axis is a dynamic tensor.
-class ProdOpDynamicModel : public BaseOpModel {
- public:
-  ProdOpDynamicModel(const TensorData& input, const TensorData& output,
-                     const TensorData& axis, bool keep_dims) {
-    input_ = AddInput(input);
-    axis_ = AddInput(axis);
-    output_ = AddOutput(output);
-    SetBuiltinOp(BuiltinOperator_REDUCE_PROD, BuiltinOptions_ReducerOptions,
-                 CreateReducerOptions(builder_, keep_dims).Union());
-    BuildInterpreter({GetShape(input_)});
-  }
-};
+using MaxOpConstModel = BaseConstOpModel<BuiltinOperator_REDUCE_MAX>;
+using MaxOpDynamicModel = BaseDynamicOpModel<BuiltinOperator_REDUCE_MAX>;
 
-// Model for the tests case where axis is a const tensor.
-class MaxOpConstModel : public BaseOpModel {
- public:
-  MaxOpConstModel(const TensorData& input, const TensorData& output,
-                  std::initializer_list<int> axis_shape,
-                  std::initializer_list<int> axis, bool keep_dims) {
-    input_ = AddInput(input);
-    axis_ = AddConstInput(TensorType_INT32, axis, axis_shape);
-    output_ = AddOutput(output);
-    SetBuiltinOp(BuiltinOperator_REDUCE_MAX, BuiltinOptions_ReducerOptions,
-                 CreateReducerOptions(builder_, keep_dims).Union());
-    BuildInterpreter({GetShape(input_)});
-  }
-};
+using MinOpConstModel = BaseConstOpModel<BuiltinOperator_REDUCE_MIN>;
+using MinOpDynamicModel = BaseDynamicOpModel<BuiltinOperator_REDUCE_MIN>;
 
-// Model for the tests case where axis is a dynamic tensor.
-class MaxOpDynamicModel : public BaseOpModel {
- public:
-  MaxOpDynamicModel(const TensorData& input, const TensorData& output,
-                    const TensorData& axis, bool keep_dims) {
-    input_ = AddInput(input);
-    axis_ = AddInput(axis);
-    output_ = AddOutput(output);
-    SetBuiltinOp(BuiltinOperator_REDUCE_MAX, BuiltinOptions_ReducerOptions,
-                 CreateReducerOptions(builder_, keep_dims).Union());
-    BuildInterpreter({GetShape(input_)});
-  }
-};
+using AnyOpConstModel = BaseConstOpModel<BuiltinOperator_REDUCE_ANY>;
+using AnyOpDynamicModel = BaseDynamicOpModel<BuiltinOperator_REDUCE_ANY>;
 
-// Model for the tests case where axis is a const tensor.
-class MinOpConstModel : public BaseOpModel {
- public:
-  MinOpConstModel(const TensorData& input, const TensorData& output,
-                  std::initializer_list<int> axis_shape,
-                  std::initializer_list<int> axis, bool keep_dims) {
-    input_ = AddInput(input);
-    axis_ = AddConstInput(TensorType_INT32, axis, axis_shape);
-    output_ = AddOutput(output);
-    SetBuiltinOp(BuiltinOperator_REDUCE_MIN, BuiltinOptions_ReducerOptions,
-                 CreateReducerOptions(builder_, keep_dims).Union());
-    BuildInterpreter({GetShape(input_)});
-  }
-};
-
-// Model for the tests case where axis is a dynamic tensor.
-class MinOpDynamicModel : public BaseOpModel {
- public:
-  MinOpDynamicModel(const TensorData& input, const TensorData& output,
-                    const TensorData& axis, bool keep_dims) {
-    input_ = AddInput(input);
-    axis_ = AddInput(axis);
-    output_ = AddOutput(output);
-    SetBuiltinOp(BuiltinOperator_REDUCE_MIN, BuiltinOptions_ReducerOptions,
-                 CreateReducerOptions(builder_, keep_dims).Union());
-    BuildInterpreter({GetShape(input_)});
-  }
-};
-
-// Model for the tests case where axis is a const tensor.
-class AnyOpConstModel : public BaseOpModel {
- public:
-  AnyOpConstModel(const TensorData& input, const TensorData& output,
-                  std::initializer_list<int> axis_shape,
-                  std::initializer_list<int> axis, bool keep_dims) {
-    input_ = AddInput(input);
-    axis_ = AddConstInput(TensorType_INT32, axis, axis_shape);
-    output_ = AddOutput(output);
-    SetBuiltinOp(BuiltinOperator_REDUCE_ANY, BuiltinOptions_ReducerOptions,
-                 CreateReducerOptions(builder_, keep_dims).Union());
-    BuildInterpreter({GetShape(input_)});
-  }
-};
-
-// Model for the tests case where axis is a dynamic tensor.
-class AnyOpDynamicModel : public BaseOpModel {
- public:
-  AnyOpDynamicModel(const TensorData& input, const TensorData& output,
-                    const TensorData& axis, bool keep_dims) {
-    input_ = AddInput(input);
-    axis_ = AddInput(axis);
-    output_ = AddOutput(output);
-    SetBuiltinOp(BuiltinOperator_REDUCE_ANY, BuiltinOptions_ReducerOptions,
-                 CreateReducerOptions(builder_, keep_dims).Union());
-    BuildInterpreter({GetShape(input_)});
-  }
-};
+using AllOpConstModel = BaseConstOpModel<BuiltinOperator_REDUCE_ALL>;
+using AllOpDynamicModel = BaseDynamicOpModel<BuiltinOperator_REDUCE_ALL>;
 
 // for quantized Add, the error shouldn't exceed step
 template <typename integer_type = int8_t>
@@ -1460,6 +1340,78 @@ TEST(DynamicAnyOpTest, KeepDims) {
 TEST(DynamicAnyOpTest, Scalar) {
   std::vector<bool> data = {false};
   AnyOpDynamicModel m({TensorType_BOOL, {1}}, {TensorType_BOOL, {1}},
+                      {TensorType_INT32, {1}}, true);
+  std::vector<int> axis = {0};
+  m.SetAxis(axis);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({false}));
+}
+
+// Tests for reduce_all
+
+TEST(ConstAllOpTest, NotKeepDims) {
+  std::vector<bool> data = {true, true, true, true, true, false,
+                            true, true, true, true, true, true};
+  AllOpConstModel m({TensorType_BOOL, {2, 3, 2}}, {TensorType_BOOL, {2}}, {4},
+                    {1, 0, -3, -3}, false);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({true, false}));
+}
+
+TEST(ConstAllOpTest, KeepDims) {
+  std::vector<bool> data = {true, true, true, true, true, false,
+                            true, true, true, true, true, true};
+  AllOpConstModel m({TensorType_BOOL, {2, 3, 2}}, {TensorType_BOOL, {3}}, {2},
+                    {0, 2}, true);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
+  EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({true, true, false}));
+}
+
+TEST(ConstAllOpTest, ZeroInputDim) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  AllOpConstModel m({TensorType_BOOL, {2, 0, 2}}, {TensorType_BOOL, {3}}, {2},
+                    {0, 2}, true);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 0, 1}));
+}
+
+TEST(DynamicAllOpTest, NotKeepDims) {
+  std::vector<bool> data = {true, true, true, true, true, false,
+                            true, true, true, true, true, true};
+  AllOpDynamicModel m({TensorType_BOOL, {2, 3, 2}}, {TensorType_BOOL, {2}},
+                      {TensorType_INT32, {4}}, false);
+  std::vector<int> axis = {1, 0, -3, -3};
+  m.SetAxis(axis);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({true, false}));
+}
+
+TEST(DynamicAllOpTest, KeepDims) {
+  std::vector<bool> data = {true, true, true, true, true, false,
+                            true, true, true, true, true, true};
+  AllOpDynamicModel m({TensorType_BOOL, {2, 3, 2}}, {TensorType_BOOL, {3}},
+                      {TensorType_INT32, {2}}, true);
+  std::vector<int> axis = {0, 2};
+  m.SetAxis(axis);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
+  EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({true, true, false}));
+}
+
+TEST(DynamicAllOpTest, Scalar) {
+  std::vector<bool> data = {false};
+  AllOpDynamicModel m({TensorType_BOOL, {1}}, {TensorType_BOOL, {1}},
                       {TensorType_INT32, {1}}, true);
   std::vector<int> axis = {0};
   m.SetAxis(axis);

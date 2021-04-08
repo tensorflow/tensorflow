@@ -138,14 +138,8 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   const RendezvousKey rendezvous_key(
       params.run_id, std::move(participants), local_participants.size(),
       config().collective_op_kind, config().op_id);
-  if (VLOG_IS_ON(2)) {
-    TF_ASSIGN_OR_RETURN(
-        DeviceAssignment::LogicalID logical_id,
-        params.device_assn->LogicalIdForDevice(global_device_id));
-    VLOG(2) << "global device " << global_device_id << ", (r"
-            << logical_id.replica_id << ", p" << logical_id.computation_id
-            << ") key " << rendezvous_key.ToString() << "\n";
-  }
+  VLOG(2) << GetDeviceString(params) << ": key " << rendezvous_key.ToString()
+          << "\n";
 
   int device_ordinal = params.stream->parent()->device_ordinal();
 
@@ -166,6 +160,17 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
       "NCCL support is not available: this binary was not built with a CUDA "
       "compiler, which is necessary to build the NCCL source library.");
 #endif  // XLA_ENABLE_XCCL
+}
+
+std::string NcclCollectiveThunk::GetDeviceString(
+    const ExecuteParams& params) const {
+  int device_ordinal = params.stream->parent()->device_ordinal();
+  GlobalDeviceId global_device_id = params.GetGlobalDeviceId().ValueOrDie();
+  DeviceAssignment::LogicalID logical_id =
+      params.device_assn->LogicalIdForDevice(global_device_id).ValueOrDie();
+  return absl::StrFormat("(r%d, p%d) : GlobalID %d, ord %d",
+                         logical_id.replica_id, logical_id.computation_id,
+                         global_device_id.value(), device_ordinal);
 }
 
 bool IsTypeSupportedByNccl(PrimitiveType element_type) {

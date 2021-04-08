@@ -13,16 +13,19 @@ tensorflow/lite/core/shims/c/c_api_experimental.h
 tensorflow/lite/core/shims/c/common.h
 tensorflow/lite/core/shims/c/shims_test_util.cc
 tensorflow/lite/core/shims/c/shims_test_util.h
+tensorflow/lite/core/shims/cc/experimental/acceleration/configuration/delegate_registry.h
 tensorflow/lite/core/shims/cc/interpreter.h
 tensorflow/lite/core/shims/cc/interpreter_builder.h
 tensorflow/lite/core/shims/cc/kernels/register.h
 tensorflow/lite/core/shims/cc/model.h
 tensorflow/lite/core/shims/cc/model_builder.h
 tensorflow/lite/core/shims/cc/shims_test_util.h
+tensorflow/lite/core/shims/cc_library_with_tflite.bzl
 tensorflow/lite/delegates/gpu/cl/compiled_program_cache_generated.h
 tensorflow/lite/delegates/gpu/cl/serialization_generated.h
 tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h
 tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h
+tensorflow/lite/java/src/main/native/BUILD
 tensorflow/lite/java/src/main/native/nativeinterpreterwrapper_jni.cc
 tensorflow/lite/micro/build_def.bzl
 tensorflow/lite/schema/schema_generated.h
@@ -55,6 +58,8 @@ tensorflow/third_party/clang_toolchain/cc_configure_clang.bzl
 tensorflow/third_party/clang_toolchain/download_clang.bzl
 tensorflow/third_party/codegen.BUILD
 tensorflow/third_party/common.bzl
+tensorflow/third_party/compute_library/BUILD
+tensorflow/third_party/compute_library/LICENSE
 tensorflow/third_party/coremltools.BUILD
 tensorflow/third_party/cub.BUILD
 tensorflow/third_party/curl.BUILD
@@ -147,6 +152,7 @@ tensorflow/third_party/mkl/build_defs.bzl
 tensorflow/third_party/mkl_dnn/LICENSE
 tensorflow/third_party/mkl_dnn/build_defs.bzl
 tensorflow/third_party/mkl_dnn/mkldnn.BUILD
+tensorflow/third_party/mkl_dnn/mkldnn_acl.BUILD
 tensorflow/third_party/mkl_dnn/mkldnn_v1.BUILD
 tensorflow/third_party/mpi/.gitignore
 tensorflow/third_party/nanopb.BUILD
@@ -238,7 +244,6 @@ tensorflow/third_party/toolchains/embedded/arm-linux/aarch64-linux-toolchain.BUI
 tensorflow/third_party/toolchains/embedded/arm-linux/arm_linux_toolchain_configure.bzl
 tensorflow/third_party/toolchains/embedded/arm-linux/armhf-linux-toolchain.BUILD
 tensorflow/third_party/toolchains/embedded/arm-linux/cc_config.bzl.tpl
-tensorflow/third_party/toolchains/java/BUILD
 tensorflow/third_party/toolchains/preconfig/generate/BUILD
 tensorflow/third_party/toolchains/preconfig/generate/archives.bzl
 tensorflow/third_party/toolchains/preconfig/generate/containers.bzl

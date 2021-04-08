@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 
+#include <cstdint>
 #include <cstring>
 #include <memory>
 
@@ -68,7 +69,8 @@ absl::Status AllocateTensorMemory(const CLContext& context, const BHWDC& shape,
 
       cl_image_format format;
       format.image_channel_order = CL_RGBA;
-      format.image_channel_data_type = ToImageChannelType(descriptor.data_type);
+      format.image_channel_data_type =
+          DataTypeToChannelType(descriptor.data_type);
 
       cl_int error_code;
       cl_mem memory =
@@ -97,7 +99,8 @@ absl::Status AllocateTensorMemory(const CLContext& context, const BHWDC& shape,
 
       cl_image_format format;
       format.image_channel_order = CL_RGBA;
-      format.image_channel_data_type = ToImageChannelType(descriptor.data_type);
+      format.image_channel_data_type =
+          DataTypeToChannelType(descriptor.data_type);
 
       cl_int error_code;
       cl_mem memory =
@@ -127,7 +130,8 @@ absl::Status AllocateTensorMemory(const CLContext& context, const BHWDC& shape,
 
       cl_image_format format;
       format.image_channel_order = CL_RGBA;
-      format.image_channel_data_type = ToImageChannelType(descriptor.data_type);
+      format.image_channel_data_type =
+          DataTypeToChannelType(descriptor.data_type);
 
       cl_int error_code;
       cl_mem memory =
@@ -164,7 +168,7 @@ absl::Status AllocateTensorMemory(const CLContext& context, const BHWDC& shape,
       if (context.IsFloatTexture2DSupported(shape.c, descriptor.data_type)) {
         format.image_channel_order = ToChannelOrder(shape.c);
         format.image_channel_data_type =
-            ToImageChannelType(descriptor.data_type);
+            DataTypeToChannelType(descriptor.data_type);
       } else {
         return absl::InvalidArgumentError(absl::StrCat(
             "This device doesn't support ", shape.c, "-channel textures."));
@@ -199,7 +203,7 @@ absl::Status CreateImageBufferFromBuffer(const CLContext& context,
   desc.image_width = width;
   desc.mem_object = memory;
 
-  format.image_channel_data_type = ToImageChannelType(data_type);
+  format.image_channel_data_type = DataTypeToChannelType(data_type);
   format.image_channel_order = CL_RGBA;
 
   cl_int error_code;
@@ -484,50 +488,6 @@ cl_mem Tensor::GetMemoryPtr() const {
 
 cl_mem Tensor::GetMemoryPtrForWriting() const { return memory_; }
 
-absl::Status Tensor::WriteDataBHWDC(const float* in, CLCommandQueue* queue) {
-  void* data_ptr = nullptr;
-  const int aligned_channels = GetAlignedChannels();
-  const int elements_count =
-      shape_.b * shape_.w * shape_.h * shape_.d * aligned_channels;
-
-  const size_t data_size = elements_count * SizeOf(descriptor_.data_type);
-  std::unique_ptr<float[]> data_f;
-  std::unique_ptr<half[]> data_h;
-  if (descriptor_.data_type == DataType::FLOAT32) {
-    data_f.reset(new float[elements_count]);
-    data_ptr = data_f.get();
-    DataFromBHWDC(in, shape_, descriptor_, data_f.get());
-  } else {
-    data_h.reset(new half[elements_count]);
-    data_ptr = data_h.get();
-    DataFromBHWDC(in, shape_, descriptor_, data_h.get());
-  }
-
-  switch (descriptor_.storage_type) {
-    case TensorStorageType::BUFFER:
-    case TensorStorageType::IMAGE_BUFFER:
-      RETURN_IF_ERROR(queue->EnqueueWriteBuffer(memory_, data_size, data_ptr));
-      break;
-    case TensorStorageType::TEXTURE_ARRAY:
-    case TensorStorageType::TEXTURE_2D:
-    case TensorStorageType::TEXTURE_3D:
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      RETURN_IF_ERROR(
-          queue->EnqueueWriteImage(memory_, GetFullTensorRegion(), data_ptr));
-      break;
-    default:
-      return absl::InternalError("Unsupported tensor storage type");
-  }
-
-  return absl::OkStatus();
-}
-
-absl::Status Tensor::WriteData(CLCommandQueue* queue,
-                               const TensorFloat32& src) {
-  RETURN_IF_ERROR(IsValid(src.shape));
-  return WriteDataBHWDC(src.data.data(), queue);
-}
-
 absl::Status Tensor::WriteData(
     CLCommandQueue* queue,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src) {
@@ -538,64 +498,6 @@ absl::Status Tensor::WriteData(
     CLCommandQueue* queue,
     const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src) {
   return WriteDataBHWDC(src.data.data(), queue);
-}
-
-absl::Status Tensor::WriteData(CLCommandQueue* queue,
-                               const Tensor5DFloat32& src) {
-  RETURN_IF_ERROR(IsValid(src.shape));
-  return WriteDataBHWDC(src.data.data(), queue);
-}
-
-absl::Status Tensor::ReadDataBHWDC(float* out, CLCommandQueue* queue) const {
-  void* data_ptr = nullptr;
-  const int aligned_channels = GetAlignedChannels();
-  const int elements_count =
-      shape_.b * shape_.w * shape_.h * shape_.d * aligned_channels;
-  const size_t data_size = elements_count * SizeOf(descriptor_.data_type);
-  std::unique_ptr<float[]> data_f;
-  std::unique_ptr<half[]> data_h;
-  if (descriptor_.data_type == DataType::FLOAT32) {
-    data_f.reset(new float[elements_count]);
-    data_ptr = data_f.get();
-  } else {
-    data_h.reset(new half[elements_count]);
-    data_ptr = data_h.get();
-  }
-
-  switch (descriptor_.storage_type) {
-    case TensorStorageType::BUFFER:
-    case TensorStorageType::IMAGE_BUFFER:
-      RETURN_IF_ERROR(queue->EnqueueReadBuffer(memory_, data_size, data_ptr));
-      break;
-    case TensorStorageType::TEXTURE_ARRAY:
-    case TensorStorageType::TEXTURE_2D:
-    case TensorStorageType::TEXTURE_3D:
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      RETURN_IF_ERROR(
-          queue->EnqueueReadImage(memory_, GetFullTensorRegion(), data_ptr));
-      break;
-    default:
-      return absl::InternalError("Unsupported tensor storage type");
-  }
-
-  if (descriptor_.data_type == DataType::FLOAT32) {
-    DataToBHWDC(data_f.get(), shape_, descriptor_, out);
-  } else {
-    DataToBHWDC(data_h.get(), shape_, descriptor_, out);
-  }
-
-  return absl::OkStatus();
-}
-
-absl::Status Tensor::ReadData(CLCommandQueue* queue, TensorFloat32* dst) const {
-  RETURN_IF_ERROR(IsValid(dst->shape));
-  return ReadDataBHWDC(dst->data.data(), queue);
-}
-
-absl::Status Tensor::ReadData(CLCommandQueue* queue,
-                              Tensor5DFloat32* dst) const {
-  RETURN_IF_ERROR(IsValid(dst->shape));
-  return ReadDataBHWDC(dst->data.data(), queue);
 }
 
 absl::Status Tensor::CreateFromDescriptor(const TensorDescriptor& desc,

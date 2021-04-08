@@ -12,11 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 
 #include <algorithm>
+#include <cmath>
 #include <initializer_list>
 #include <limits>
 #include <map>
@@ -1900,7 +1900,7 @@ TEST(FloatActivationsOpTest, Softmax1DInf) {
   m.Invoke();
   auto output = m.GetOutput();
   for (int i = 0; i < 8; ++i) {
-    EXPECT_TRUE(isnan(output[i]));
+    EXPECT_TRUE(std::isnan(output[i]));
   }
 }
 

@@ -54,6 +54,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tensorrt {
+namespace {
 static Logger logger;
 using absl::StrAppend;
 using absl::StrCat;
@@ -62,26 +63,73 @@ using ::nvinfer1::IRuntime;
 #define LOG_FIRST_FEW_WARNING_WITH_PREFIX \
   LOG_FIRST_N(WARNING, 5) << "TF-TRT Warning: "
 
-// A helper class to call done() when destructed for asynchronous execution.
-// Helps simultaneous execution of native and TRT engines.
+// Allocates device memory for an execution context to execute a TensorRT
+// engine and records the relevant information for deallocating the memory when
+// the engine finishes execution.
+class ContextDeviceMemory {
+ public:
+  ContextDeviceMemory()
+      : execution_context_(nullptr),
+        device_memory_allocator_(nullptr),
+        device_memory_(nullptr) {}
 
+  ~ContextDeviceMemory() {
+    if (device_memory_) {
+      device_memory_allocator_->free(device_memory_);
+      execution_context_->setDeviceMemory(nullptr);
+    }
+  }
+
+  Status AllocateDeviceMemory(nvinfer1::IExecutionContext* execution_context,
+                              TRTBaseAllocator* device_memory_allocator) {
+    execution_context_ = execution_context;
+    device_memory_allocator_ = device_memory_allocator;
+    device_memory_ = nullptr;
+    const size_t device_memory_size =
+        execution_context_->getEngine().getDeviceMemorySize();
+    VLOG(2) << "Device memory size for TensorRT engine " << device_memory_size;
+    if (device_memory_size > 0) {
+      device_memory_ = device_memory_allocator_->allocate(
+          device_memory_size,
+          /*unused alignment=*/0, /*flags=*/0);
+      if (device_memory_ == nullptr) {
+        return errors::InvalidArgument(
+            "Out of GPU memory for execution context");
+      }
+    }
+    execution_context_->setDeviceMemory(device_memory_);
+
+    return Status::OK();
+  }
+
+ private:
+  nvinfer1::IExecutionContext* execution_context_;
+  TRTBaseAllocator* device_memory_allocator_;
+  void* device_memory_;
+};
+
+// Macros for asynchronous execution, such as OP_REQUIRES_OK_ASYNC requires an
+// object with operator (). Provides such an object with a noop operator()
+// because we don't need such macros to invoke the DoneCallback for the
+// TRTEngineOp.
+struct DummyAsyncHelper {
+  void operator()() {}
+};
+
+// A helper class to call the DoneCallback for the TRTEngineOp when the object
+// is destructed to support asynchronous of the native segment and TRT engines
+// for the TRTEngineOp.
 class AsyncHelper : public core::RefCounted {
  public:
   AsyncHelper(AsyncOpKernel::DoneCallback done) : done_(done) {}
 
-  ~AsyncHelper() override { this->operator()(); }
-
-  void operator()() {
-    if (!called_) {
-      done_();
-      called_ = true;
-    }
-  }
+  ~AsyncHelper() override { done_(); }
 
  private:
   AsyncOpKernel::DoneCallback done_;
-  bool called_ = false;  // Has `done_` been called?
 };
+
+}  // end anonymous namespace
 
 //  This OP can construct TRTEngine on the fly and if construction of engine
 //  fails, executes equivalent subgraph as a TensorFlow function.
@@ -97,10 +145,10 @@ class TRTEngineOp : public AsyncOpKernel {
       LRUCache<std::vector<TensorShape>, std::unique_ptr<EngineContext>,
                VectorTensorShapeHasher>;
 
-  // Executes calibration.
+  // Executes calibration asynchronously.
   void ExecuteCalibration(OpKernelContext* ctx,
                           TRTEngineCacheResource* cache_res,
-                          AsyncHelper* helper);
+                          AsyncHelper* async_helper);
 
   // Constructs a function handle for the segment of the TRTEngineOp.
   StatusOr<FunctionLibraryRuntime::Handle> ConstructFunctionHandle(
@@ -113,13 +161,16 @@ class TRTEngineOp : public AsyncOpKernel {
   Status ImportSegmentGraphDef(FunctionLibraryRuntime* lib,
                                const string& device_name);
 
-  // Executes replaced native segment as function Op.
-  void ExecuteNativeSegment(OpKernelContext* ctx, AsyncHelper* helper);
+  // Executes the native segment as function Op  asynchronously.
+  void ExecuteNativeSegment(OpKernelContext* ctx, AsyncHelper* async_helper);
 
-  // Executes the tensorrt engine. Returns whether we need to retry by running
-  // the native segment.
+  // Allocates the device memory for the execution context and enqueues the
+  // TensorRT engine for execution. Also deallocates the device memory. Returns
+  // whether we need to retry by running the native segment.
   Status ExecuteTrtEngine(OpKernelContext* ctx, EngineContext* engine_context,
-                          int trt_context_idx);
+                          int trt_context_idx,
+                          const TrtShapeOptimizationProfile& profiles,
+                          TRTBaseAllocator* allocator);
 
   // Allocates necessary resources for calibration.
   Status AllocateCalibrationResources(OpKernelContext* ctx,
@@ -177,6 +228,9 @@ class TRTEngineOp : public AsyncOpKernel {
   // Whether to collect optimization profiles for TensorRT, only used when
   // use_implicit_batch_=false.
   bool profile_generation_mode_;
+
+  // Optimization profile generation strategy.
+  ProfileStrategy profile_strategy_;
 
   // Whether the TRTEngineOp has any input with unknown dimensions.
   bool has_dynamic_shape_input_;
@@ -434,6 +488,17 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     OP_REQUIRES(context, !calibration_mode_,
                 errors::InvalidArgument(
                     "Explicit batch mode does not support calibration"));
+
+    string profile_strategy_name;
+    status = context->GetAttr("profile_strategy", &profile_strategy_name);
+    if (status.code() == tensorflow::error::NOT_FOUND) {
+      VLOG(2) << "Not found strategy in " << context->device()->name()
+              << ", thus setting profile_strategy='Range'";
+      profile_strategy_ = ProfileStrategy::kRange;
+    } else {
+      OP_REQUIRES_OK(context, ProfileStrategyFromName(profile_strategy_name,
+                                                      &profile_strategy_));
+    }
   }
   has_dynamic_shape_input_ = absl::c_any_of(
       input_partial_shapes_,
@@ -443,7 +508,7 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
 }
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
-                                       AsyncHelper* helper) {
+                                       AsyncHelper* async_helper) {
   tensorflow::profiler::TraceMe activity(
       "TRTEngineOp::ExecuteNativeSegment",
       tensorflow::profiler::TraceMeLevel::kInfo);
@@ -454,9 +519,11 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
         ConstructFunctionHandle(ctx->function_library(), ctx->device()->name(),
                                 allow_soft_placement_, ctx->num_inputs(),
                                 ctx->num_outputs());
-    OP_REQUIRES_OK_ASYNC(ctx, status_or_handle.status(), *helper);
-    native_execution_func_handle_ = status_or_handle.ValueOrDie();
+    DummyAsyncHelper dummy_async_helper;
+    OP_REQUIRES_OK_ASYNC(ctx, status_or_handle.status(), dummy_async_helper);
+    native_execution_func_handle_ = *status_or_handle;
   }
+
   auto lib = ctx->function_library();
   FunctionLibraryRuntime::Options opts;
   opts.rendezvous = ctx->rendezvous();
@@ -466,13 +533,17 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
   for (int i = 0; i < ctx->num_inputs(); i++) {
     inputs.push_back(ctx->input(i));
   }
-  helper->Ref();  // Increment count for calculating native graph
   VLOG(1) << "Executing native segment: " << name();
+  // Increment the reference count of the async_helper by 1. When the native
+  // segment finishes execution asynchronously, we decrement the reference count
+  // of the object.
+  async_helper->Ref();
   lib->Run(opts, native_execution_func_handle_, inputs, outputs,
-           [this, ctx, outputs, helper](const Status& s) {
-             core::ScopedUnref sc(helper);
+           [this, ctx, outputs, async_helper](const Status& s) {
+             core::ScopedUnref sc(async_helper);
+             DummyAsyncHelper dummy_async_helper;
              std::unique_ptr<std::vector<Tensor>> outputs_wrapper(outputs);
-             OP_REQUIRES_OK_ASYNC(ctx, s, *helper);
+             OP_REQUIRES_OK_ASYNC(ctx, s, dummy_async_helper);
              VLOG(1) << "Native Segment completed";
              for (size_t t = 0; t < outputs->size(); ++t) {
                ctx->set_output(t, outputs->at(t));
@@ -482,13 +553,12 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
 
 void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
                                      TRTEngineCacheResource* cache_res,
-                                     AsyncHelper* helper) {
+                                     AsyncHelper* async_helper) {
   tensorflow::profiler::TraceMe activity(
       "TRTEngineOp::ExecuteCalibration",
       tensorflow::profiler::TraceMeLevel::kInfo);
   VLOG(1) << "Executing TRT calibration: " << name();
-  helper->Ref();
-  core::ScopedUnref sc(helper);
+  DummyAsyncHelper dummy_async_helper;
 
   CalibrationContext* calib_ctx = cache_res->calib_ctx_.get();
   const int num_inputs = ctx->num_inputs();
@@ -501,7 +571,7 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
     OP_REQUIRES_ASYNC(ctx, data_address,
                       errors::InvalidArgument(
                           "Unsupported data type encountered in input ", i),
-                      *helper);
+                      dummy_async_helper);
     // Check the allocated buffer is sufficient for input
     const auto device_tensor =
         calib_ctx->device_tensors_.at(i).AccessTensor(ctx);
@@ -509,25 +579,31 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
     input_data.emplace(StrCat(IONamePrefixes::kInputPHName, i), data_address);
   }
   VLOG(2) << "Filled map for sending";
-  // copied from cuda_kernel_helper since it seems only valid in *.cu.cc files
+  // Copied from gpu_kernel_helper.h as the header can only be used in *.cu.cc
+  // files.
   const cudaStream_t* stream = CHECK_NOTNULL(
       reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
                                                 ->stream()
                                                 ->implementation()
                                                 ->GpuStreamMemberHack()));
-  // If calibrator is terminated before, it means an error has occurred.
+  // TRTInt8Calibrator::setBatch will wait until TRTInt8Calibrator::getBatch is
+  // called before proceeding with feeding the calibration data to the
+  // calibrator. It returns true if the calibration data is accepted and
+  // returns false if calibration is terminated due to errors.
   //
-  // Note: setBatch() will wait until TRTInt8Calibrator::getBatch() is called
-  // the first time before proceeding, so if buildCudaEngine() returns an error,
-  // it means getBatch() is never called, and the setBatch() here will hang
-  // until setDone() is called later by the calibration thread in
-  // AllocateCalibrationResources(). In that case, this setBatch() will always
-  // be able to detect the error and return false.
+  // If TRTInt8Calibrator::getBatch is never called, which could happen if
+  // there is any problem in building the cuda engine for calibration inside
+  // TensorRT, then the TRTInt8Calibrator::setBatch call here will hang until
+  // TRTInt8Calibrator::setDone is called by the calibration thread in
+  // AllocateCalibrationResources.
+  //
+  // In both of the above cases, setBatch here returns a boolean value to
+  // indicate the result of the calibration process.
   OP_REQUIRES_ASYNC(ctx, calib_ctx->calibrator_->setBatch(input_data, *stream),
                     errors::Internal("Failed to feed calibration data"),
-                    *helper);
+                    dummy_async_helper);
   VLOG(2) << "Passed calibration data";
-  ExecuteNativeSegment(ctx, helper);
+  ExecuteNativeSegment(ctx, async_helper);
 }
 
 Status TRTEngineOp::VerifyInputShapes(
@@ -613,12 +689,21 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
                                AsyncOpKernel::DoneCallback done) {
   tensorflow::profiler::TraceMe activity(
       "TRTEngineOp::ComputeAsync", tensorflow::profiler::TraceMeLevel::kInfo);
-  auto helper = new AsyncHelper(done);
-  core::ScopedUnref sc(helper);
+
+  // Invoke DoneCallback when this object is destructed, which could be after
+  // this routine finishes execution, in particular, when native segment is
+  // executed.
+  auto async_helper = new AsyncHelper(done);
+  core::ScopedUnref sc(async_helper);
+
+  // For all async execution macros, use this object as there is no need to call
+  // DoneCallback from those macros.
+  DummyAsyncHelper dummy_async_helper;
 
   // Get TRT resource.
   TRTEngineCacheResource* cache_res = nullptr;
-  OP_REQUIRES_OK_ASYNC(ctx, GetEngineCacheResource(ctx, &cache_res), *helper);
+  OP_REQUIRES_OK_ASYNC(ctx, GetEngineCacheResource(ctx, &cache_res),
+                       dummy_async_helper);
   core::ScopedUnref unref_cache_res(cache_res);
 
   // Run calibration if in int8+calibration mode.
@@ -644,12 +729,12 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
       mutex_lock lock(engine_mutex_);
       if (!cache_res->calib_ctx_) {
         OP_REQUIRES_OK_ASYNC(ctx, AllocateCalibrationResources(ctx, cache_res),
-                             *helper);
+                             dummy_async_helper);
       }
     }
     // TODO(laigd): check that the input shapes match the shapes of the
     // persistent tensor in the calibration resource.
-    ExecuteCalibration(ctx, cache_res, helper);
+    ExecuteCalibration(ctx, cache_res, async_helper);
     return;
   }
 
@@ -667,23 +752,27 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
         << "Running native segment for" << name()
         << " due to failure in verifying input shapes: "
         << verify_input_shape_status.error_message();
-    ExecuteNativeSegment(ctx, helper);
+    ExecuteNativeSegment(ctx, async_helper);
     return;
   }
 
-  if (!use_implicit_batch_ && has_dynamic_shape_input_) {
+  if (!use_implicit_batch_ &&
+      (has_dynamic_shape_input_ || cache_res->profiles_.HasShapeTensor())) {
+    OP_REQUIRES_OK_ASYNC(ctx, cache_res->profiles_.CollectShapeValues(ctx),
+                         dummy_async_helper);
     if (profile_generation_mode_) {
       // Collecting new shapes for profiles can be only done once. After the
       // shapes are converted to TRT profiles, no shapes can be collected
       // anymore.
-      OP_REQUIRES(ctx, cache_res->profiles_.GetNumProfiles() == 0,
-                  errors::Unimplemented("Cannot collect new shapes when "
-                                        "profiles are already created."));
+      OP_REQUIRES_ASYNC(ctx, cache_res->profiles_.GetNumProfiles() == 0,
+                        errors::Unimplemented("Cannot collect new shapes when "
+                                              "profiles are already created."),
+                        dummy_async_helper);
       // Just collect the input shape info and return. The shapes are used to
       // generate optimization profiles during engine creation.
       cache_res->profiles_.AddShape(input_concrete_shapes);
       VLOG(1) << "Native segment is used during collecting shapes for profiles";
-      ExecuteNativeSegment(ctx, helper);
+      ExecuteNativeSegment(ctx, async_helper);
       return;
     } else if (cache_res->profiles_.GetNumProfiles() == 0) {
       // Add current shape if we did not collect any shapes so far.
@@ -691,12 +780,13 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
         cache_res->profiles_.AddShape(input_concrete_shapes);
       }
       // Create profiles out of collected shapes during profile generation.
-      cache_res->profiles_.InitProfiles(input_partial_shapes_);
+      cache_res->profiles_.InitProfiles(input_partial_shapes_,
+                                        profile_strategy_);
     }
   }
   StatusOr<std::pair<EngineContext*, int>> status =
       GetEngine(input_concrete_shapes, ctx, cache_res);
-  OP_REQUIRES_OK_ASYNC(ctx, status.status(), *helper);
+  OP_REQUIRES_OK_ASYNC(ctx, status.status(), dummy_async_helper);
 
   EngineContext* engine_context = status.ValueOrDie().first;
   int trt_context_idx = status.ValueOrDie().second;
@@ -714,33 +804,34 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
         << TensorShapeUtils::ShapeListString(input_concrete_shapes)
         << " failed. Running native segment for " << name();
     if (may_execute_native_segment()) {
-      ExecuteNativeSegment(ctx, helper);
+      ExecuteNativeSegment(ctx, async_helper);
     }
     return;
   }
-  Status stat = ExecuteTrtEngine(ctx, engine_context, trt_context_idx);
-  if (!stat.ok()) {
-    LOG_FIRST_FEW_WARNING_WITH_PREFIX << "Failed to execute engine: " << stat
-                                      << " Retrying with native segment for "
-                                      << name();
-    if (!may_execute_native_segment()) {
-      return;
-    }
-    // Release any outputs that are allocated, ExecuteNativeSegment will
-    // re-allocate them and fail if they are currently allocated.
-    // The Tensor pointer in the returned TensorValue must be explicitly
-    // deleted.
-    for (int i = 0; i < ctx->num_outputs(); i++) {
-      delete ctx->release_output(i).tensor;
-    }
-    ExecuteNativeSegment(ctx, helper);
+  Status stat =
+      ExecuteTrtEngine(ctx, engine_context, trt_context_idx,
+                       cache_res->profiles_, cache_res->allocator_.get());
+  if (stat.ok()) return;
+
+  LOG_FIRST_FEW_WARNING_WITH_PREFIX << "Failed to execute engine: " << stat
+                                    << " Retrying with native segment for "
+                                    << name();
+  if (!may_execute_native_segment()) {
     return;
   }
+  // Release any outputs that are allocated, ExecuteNativeSegment will
+  // re-allocate them and fail if they are currently allocated.
+  // The Tensor pointer in the returned TensorValue must be explicitly
+  // deleted.
+  for (int i = 0; i < ctx->num_outputs(); i++) {
+    delete ctx->release_output(i).tensor;
+  }
+  ExecuteNativeSegment(ctx, async_helper);
 }
 
-Status TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
-                                     EngineContext* engine_context,
-                                     int trt_context_idx) {
+Status TRTEngineOp::ExecuteTrtEngine(
+    OpKernelContext* ctx, EngineContext* engine_context, int trt_context_idx,
+    const TrtShapeOptimizationProfile& profiles, TRTBaseAllocator* allocator) {
   tensorflow::profiler::TraceMe activity(
       "TRTEngineOp::ExecuteTrtEngine",
       tensorflow::profiler::TraceMeLevel::kInfo);
@@ -781,24 +872,31 @@ Status TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   const int num_batch =
       use_implicit_batch_ ? ctx->input(0).shape().dim_size(0) : 0;
 
-  TF_RETURN_IF_ERROR(SetTrtEngineInputs(cuda_engine.get(), execution_context,
-                                        trt_context_idx, buffers,
-                                        use_implicit_batch_, num_batch, ctx));
+  TF_RETURN_IF_ERROR(SetTrtEngineInputs(
+      cuda_engine.get(), execution_context, trt_context_idx, buffers,
+      use_implicit_batch_, num_batch, profiles, ctx));
 
   TF_RETURN_IF_ERROR(SetTrtEngineOutputs(cuda_engine.get(), execution_context,
                                          trt_context_idx, buffers,
                                          use_implicit_batch_, num_batch, ctx));
 
-  // Copied from cuda_kernel_helper since it seems only valid in *.cu.cc files
+  // Copied from gpu_kernel_helper.h as the header can only be used in *.cu.cc
+  // files.
   const cudaStream_t* stream = CHECK_NOTNULL(
       reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
                                                 ->stream()
                                                 ->implementation()
                                                 ->GpuStreamMemberHack()));
 
-  TF_RETURN_IF_ERROR(TrtEnqueue(execution_context, buffers, *stream,
-                                use_implicit_batch_, num_batch));
-  return Status::OK();
+  ContextDeviceMemory context_device_memory;
+  // Allocate device memory for the TensorRT engine execution. The device
+  // memory will be released when context_device_memory goes out of scope.
+  TF_RETURN_IF_ERROR(
+      context_device_memory.AllocateDeviceMemory(execution_context, allocator));
+
+  // Enqueue the TensorRT engine for execution.
+  return TrtEnqueue(execution_context, buffers, *stream, use_implicit_batch_,
+                    num_batch);
 }
 
 Status TRTEngineOp::GetEngineCacheResource(OpKernelContext* ctx,
@@ -828,17 +926,19 @@ StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> TRTEngineOp::BuildEngine(
     const std::vector<TensorShape>& input_concrete_shapes, int batch_size,
     bool use_calibration, TRTInt8Calibrator* calibrator,
     TRTEngineCacheResource* cache_resource) {
-  VLOG(1) << "Building a new TensorRT engine for " << name()
-          << " with input shapes: "
-          << TensorShapeUtils::ShapeListString(input_concrete_shapes);
-
   // Use concrete shapes for implicit batch mode and partial shapes for
   // explicit batch mode.
+  bool use_concrete_shapes =
+      use_implicit_batch_ || cache_resource->profiles_.IsStaticCompatible();
   const std::vector<PartialTensorShape>& conversion_input_shapes =
-      use_implicit_batch_
+      use_concrete_shapes
           ? std::vector<PartialTensorShape>(input_concrete_shapes.begin(),
                                             input_concrete_shapes.end())
           : input_partial_shapes_;
+
+  VLOG(1) << "Building a new TensorRT engine for " << name()
+          << " with input shapes: " << DebugString(conversion_input_shapes);
+
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
   auto status = convert::ConvertGraphDefToEngine(
       segment_graph_def_, precision_mode_, batch_size, workspace_size_,
@@ -931,18 +1031,12 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     for (int i = 0; i < engine_input_shapes.size(); i++) {
       engine_input_shapes[i].set_dim(0, max_batch_size);
     }
-    auto exec_context_status =
-        ExecutionContext::Create(raw_static_engine, allocator);
-    if (!exec_context_status.ok()) {
-      return std::pair<EngineContext*, int>(&empty_context, 0);
-    }
-
+    ExecutionContext context = ExecutionContext::Create(raw_static_engine);
     // TODO(laigd): here we assume engine_input_shapes matches the actual input
     // shapes of the engine, we should verify that.
     cache.emplace(engine_input_shapes,
-                  absl::make_unique<EngineContext>(
-                      std::move(static_engine),
-                      std::move(exec_context_status.ValueOrDie())));
+                  absl::make_unique<EngineContext>(std::move(static_engine),
+                                                   std::move(context)));
     // Runtime is safe to delete after engine creation
     VLOG(1) << "Size of serialized TRT engine: "
             << serialized_segment_.capacity();
@@ -998,7 +1092,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
         std::move(result.ValueOrDie());
     std::vector<ExecutionContext> exec_contexts;
     TF_RETURN_IF_ERROR(cache_res->profiles_.CreateExecutionContexts(
-        engine.get(), exec_contexts, allocator));
+        engine.get(), &exec_contexts));
     cache.emplace(input_concrete_shapes,
                   absl::make_unique<EngineContext>(std::move(engine),
                                                    std::move(exec_contexts)));
@@ -1090,17 +1184,10 @@ Status TRTEngineOp::AllocateCalibrationResources(
       // dump it out during conversion for TF 2.0.
       mutex_lock lock(this->engine_mutex_);
       this->calibrator_ = std::move(cres->calibrator_);
-      auto exec_context_status = ExecutionContext::Create(
-          cres->engine_.get(), cache_res->allocator_.get());
-      if (!exec_context_status.ok()) {
-        LOG(ERROR) << "Calibration failed: " << s;
-        cres->calibrator_->setDone();  // Ignore further pushes
-      } else {
-        cache_res->cache_.emplace(
-            shapes, absl::make_unique<EngineContext>(
-                        std::move(cres->engine_),
-                        std::move(exec_context_status.ValueOrDie())));
-      }
+      ExecutionContext context = ExecutionContext::Create(cres->engine_.get());
+      cache_res->cache_.emplace(
+          shapes, absl::make_unique<EngineContext>(std::move(cres->engine_),
+                                                   std::move(context)));
     }
 
     VLOG(1) << "Calibration loop terminated " << this->name();

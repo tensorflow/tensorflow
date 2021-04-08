@@ -17,36 +17,63 @@ limitations under the License.
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/interpreter_builder.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model_builder.h"
-#include "tensorflow/lite/profiling/memory_info.h"
 #include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {
 
-TEST(ConvMemUsage, HugeIm2ColData) {
-  // The model has a conv op will require a temporary tensor of ~3.5GB if
-  // im2col is performed and it's possible to cause OOM on devices. To prevent
-  // this from happening, a size cap (i.e. kMaxIm2colBufferSize) of
-  // to-be-allocated im2col data is used to determine whether to disable im2col.
-  // This test will check the memory footprint before/after interpreter Invoke
-  // to ensure the size cap is correctly enforced.
-  auto model = FlatBufferModel::BuildFromFile(
-      "tensorflow/lite/testdata/conv_huge_im2col.bin");
-  ASSERT_TRUE(model);
+void TestMemoryThreshold(const std::string& model_path,
+                         size_t threshold_in_kb) {
+  // The Im2Col optimization is only applied on mobile platforms, so only
+  // validate on such platforms.
+  if (!IsMobilePlatform()) {
+    return;
+  }
 
-  const auto mem_before = profiling::memory::GetMemoryUsage();
+  // The model has a conv op will require a huge temporary tensor if
+  // im2col is performed and it's possible to cause OOM on devices. To prevent
+  // this from happening, a size cap (i.e. kMaxIm2colBufferSizeMobile) of
+  // to-be-allocated im2col data is used to determine whether to disable
+  // im2col. This test will check the memory footprint before/after
+  // interpreter Invoke to ensure the size cap is correctly enforced on mobile
+  // platforms.
+  auto model = FlatBufferModel::BuildFromFile(model_path.c_str());
+  ASSERT_TRUE(model);
   std::unique_ptr<Interpreter> interpreter;
+
+  // Note that we explicitly set 1 thread here to avoid extra memory footprint
+  // caused by multithreading, which will make the memory usage threshold
+  // check later more reliable.
   ASSERT_EQ(InterpreterBuilder(*model, ops::builtin::BuiltinOpResolver())(
                 &interpreter, /*num_threads*/ 1),
             kTfLiteOk);
   ASSERT_TRUE(interpreter);
   ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteOk);
-  ASSERT_EQ(interpreter->Invoke(), kTfLiteOk);
-  const auto mem_after = profiling::memory::GetMemoryUsage();
-  TFLITE_LOG(INFO) << "HugeIm2ColData Memory usage info: "
-                   << mem_after - mem_before;
-  EXPECT_LE((mem_after - mem_before).max_rss_kb, 2 * 1024 * 1024);
+
+  // Memory required for all tensors should be smaller than the  threshold.
+  int64_t accumulate_tensor_memory = 0;
+  for (int i = 0; i < interpreter->tensors_size(); ++i) {
+    accumulate_tensor_memory += interpreter->tensor(i)->bytes;
+  }
+  EXPECT_LE(accumulate_tensor_memory, threshold_in_kb * 1024);
+}
+
+TEST(ConvMemUsage, HugeIm2ColData) {
+  TestMemoryThreshold(
+      // The model has a conv op will require a temporary tensor of ~3.5GB if
+      // im2col is performed.
+      "tensorflow/lite/testdata/conv_huge_im2col.bin",
+      /*threshold_in_kb=*/3 * 1024 * 1024);
+}
+
+TEST(Conv3DMemUsage, HugeIm2ColData) {
+  TestMemoryThreshold(
+      // The model has a Conv3D op will require a temporary tensor of ~1.3GB if
+      // im2col is performed.If not, it will use about 450MB.
+      "tensorflow/lite/testdata/conv3d_huge_im2col.bin",
+      /*threshold_in_kb=*/1 * 1024 * 1024);
 }
 
 }  // namespace tflite

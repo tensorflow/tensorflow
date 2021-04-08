@@ -14,7 +14,7 @@ tf_module {
   }
   member_method {
     name: "create_file_writer"
-    argspec: "args=[\'logdir\', \'max_queue\', \'flush_millis\', \'filename_suffix\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'logdir\', \'max_queue\', \'flush_millis\', \'filename_suffix\', \'name\', \'experimental_trackable\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "create_noop_writer"

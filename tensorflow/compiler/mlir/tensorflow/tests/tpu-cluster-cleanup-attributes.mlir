@@ -10,7 +10,8 @@ func @test(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) ->  tensor
         %4 = "tf.Mul" (%arg1, %2) {device = "y"}: (tensor<f32>, tensor<f32>) -> tensor<f32>
         "tf.Yield"(%4) : (tensor<f32>) -> ()
       }, {
-        %5 = "tf.Div" (%arg1, %2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+        // CHECK: device = "/device:TPU_REPLICATED_CORE:0"
+        %5 = "tf.Div" (%arg1, %2) {device = "/device:TPU_REPLICATED_CORE:0"} : (tensor<f32>, tensor<f32>) -> tensor<f32>
         "tf.Yield"(%5) : (tensor<f32>) -> ()
       }) {is_stateless = true, _tpu_replicate = "x" } : (tensor<i1>) -> (tensor<f32>)
     tf_device.return %3 : tensor<f32>

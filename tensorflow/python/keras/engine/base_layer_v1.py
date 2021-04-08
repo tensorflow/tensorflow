@@ -14,9 +14,6 @@
 # ==============================================================================
 # pylint: disable=protected-access
 """Contains the base Layer class, from which all layers inherit."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import collections
 import functools
@@ -25,8 +22,6 @@ import threading
 import warnings
 
 import numpy as np
-import six
-from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
@@ -308,7 +303,10 @@ class Layer(base_layer.Layer):
     Returns:
       The TrackableWeightHandler used to track this object.
     """
-    handler = base_layer_utils.TrackableWeightHandler(trackable_object)
+    if isinstance(trackable_object, base_layer_utils.TrackableWeightHandler):
+      handler = trackable_object
+    else:
+      handler = base_layer_utils.TrackableWeightHandler(trackable_object)
     if trainable:
       self._trainable_weights.append(handler)
     else:
@@ -375,6 +373,7 @@ class Layer(base_layer.Layer):
       if kwarg not in ['getter', 'collections', 'experimental_autocast',
                        'caching_device']:
         raise TypeError('Unknown keyword argument:', kwarg)
+    has_custom_getter = 'getter' in kwargs
     getter = kwargs.pop('getter', base_layer_utils.make_variable)
     collections_arg = kwargs.pop('collections', None)
     # 'experimental_autocast' can be set to False by the caller to indicate an
@@ -416,7 +415,10 @@ class Layer(base_layer.Layer):
       elif dtype.is_integer or dtype.is_unsigned or dtype.is_bool:
         initializer = initializers.zeros()
       # NOTES:Do we need to support for handling DT_STRING and DT_COMPLEX here?
-      else:
+      elif not has_custom_getter:
+        # When `getter` is specified, it's possibly fine for `initializer` to be
+        # None since it's up to the custom `getter` to raise error in case it
+        # indeed needs `initializer`.
         raise ValueError('An initializer for variable %s of type %s is required'
                          ' for layer %s' % (name, dtype.base_dtype, self.name))
 
@@ -432,8 +434,9 @@ class Layer(base_layer.Layer):
       # disable it if it is specified.
       # TODO(b/142020079): Reenable it once the bug is fixed.
       if caching_device is not None:
-        tf_logging.warn('`caching_device` does not work with mixed precision '
-                        'API. Ignoring user specified `caching_device`.')
+        tf_logging.warning(
+            '`caching_device` does not work with mixed precision API. Ignoring '
+            'user specified `caching_device`.')
         caching_device = None
 
     variable = self._add_variable_with_custom_getter(
@@ -566,12 +569,11 @@ class Layer(base_layer.Layer):
           try:
             outputs = self(inputs, training=False)
           except TypeError as e:
-            six.raise_from(
-                NotImplementedError(
-                    'We could not automatically infer the static shape of the '
-                    'layer\'s output. Please implement the '
-                    '`compute_output_shape` method on your layer (%s).' %
-                    self.__class__.__name__), e)
+            raise NotImplementedError(
+                'We could not automatically infer the static shape of the '
+                'layer\'s output. Please implement the '
+                '`compute_output_shape` method on your layer (%s).' %
+                self.__class__.__name__) from e
       return nest.map_structure(lambda t: t.shape, outputs)
     raise NotImplementedError
 
@@ -2272,15 +2274,19 @@ class Layer(base_layer.Layer):
   def _is_layer(self):
     return True
 
-  def _init_call_fn_args(self):
+  def _init_call_fn_args(self, expects_training_arg=None):
     # Clear cached call function arguments.
     self.__class__._call_full_argspec.fget.cache.pop(self, None)
     self.__class__._call_fn_args.fget.cache.pop(self, None)
     self.__class__._call_accepts_kwargs.fget.cache.pop(self, None)
 
     call_fn_args = self._call_fn_args
-    self._expects_training_arg = ('training' in call_fn_args or
-                                  self._call_accepts_kwargs)
+    if expects_training_arg is None:
+      self._expects_training_arg = ('training' in call_fn_args or
+                                    self._call_accepts_kwargs)
+    else:
+      # Use value encoded into the metadata when loading from the SavedModel.
+      self._expects_training_arg = expects_training_arg
     self._expects_mask_arg = ('mask' in call_fn_args or
                               self._call_accepts_kwargs)
 

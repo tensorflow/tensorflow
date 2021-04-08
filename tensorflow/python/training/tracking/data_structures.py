@@ -123,6 +123,7 @@ def wrap_or_unwrap(value):
   # pylint: enable=unidiomatic-typecheck
 
 
+@tf_export("__internal__.tracking.sticky_attribute_assignment", v1=[])
 def sticky_attribute_assignment(trackable, name, value):
   """Adds dependencies, generally called from __setattr__.
 
@@ -169,6 +170,7 @@ class _UntrackableError(ValueError):
              "Trackable.") % (self._value,))
 
 
+@tf_export("__internal__.tracking.TrackableDataStructure", v1=[])
 class TrackableDataStructure(base.Trackable):
   """Base class for data structures which contain trackable objects."""
 
@@ -1070,6 +1072,11 @@ class _TupleWrapper(TrackableDataStructure, wrapt.ObjectProxy):
     return super(_TupleWrapper, self)._checkpoint_dependencies
 
   def __getattribute__(self, name):
+    if name != "__wrapped__" and hasattr(self.__wrapped__, name):
+      # Prefer attributes on the wrapped object when they conflict with
+      # attributes on the wrapper object.
+      return getattr(self.__wrapped__, name)
+
     if (hasattr(type(self), name)
         and isinstance(getattr(type(self), name), property)):
       # Bypass ObjectProxy for properties. Whether this workaround is necessary

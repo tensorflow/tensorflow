@@ -119,31 +119,30 @@ def HLO_CreateTokenOp : HLO_Op<"create_token", [NoSideEffect]> {
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
 
 class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
-      Type TensorType>: HLO_Op<mnemonic,
-        !listconcat(traits,
-        [InferShapedTypeOpInterface, InferFusibilityOpInterface,
-        SameOperandsAndResultShape])> {
-    let arguments = (ins TensorType:$operand);
-    let results = (outs TensorType);
-    let extraClassDeclaration = [{
-      static  LogicalResult inferReturnTypeComponents(
-          MLIRContext* context, Optional<Location> location,
-          ValueRange operands, DictionaryAttr attributes, RegionRange regions,
-          SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
-        return failure();
-      }
-      LogicalResult reifyReturnTypeShapes(
-          OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
-        return ::mlir::mhlo::deriveShapeFromFirstOperand(&builder, getOperation(),
-                                                         &reifiedReturnShapes);
-      }
-      bool inferInputOutputShapeEquality(int input, int output) {
-        return true;
-      }
-      llvm::Optional<Value> inferEffectiveWorkloadShape() {
-        return getOperation()->getResult(0);
-      }
-    }];
+    Type TensorType> : HLO_Op<mnemonic, traits # [Elementwise,
+    InferShapedTypeOpInterface, InferFusibilityOpInterface,
+    SameOperandsAndResultShape]> {
+  let arguments = (ins TensorType:$operand);
+  let results = (outs TensorType);
+  let extraClassDeclaration = [{
+    static  LogicalResult inferReturnTypeComponents(
+        MLIRContext* context, Optional<Location> location,
+        ValueRange operands, DictionaryAttr attributes, RegionRange regions,
+        SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
+      return failure();
+    }
+    LogicalResult reifyReturnTypeShapes(
+        OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
+      return ::mlir::mhlo::deriveShapeFromFirstOperand(&builder, getOperation(),
+                                                       &reifiedReturnShapes);
+    }
+    bool inferInputOutputShapeEquality(int input, int output) {
+      return true;
+    }
+    llvm::Optional<Value> inferEffectiveWorkloadShape() {
+      return getOperation()->getResult(0);
+    }
+  }];
 }
 
 // Abs supports complex to real, so element type is not guaranteed to match.
@@ -218,6 +217,7 @@ def HLO_LogisticOp: HLO_UnaryElementwiseOp<"logistic",
 def HLO_NotOp: HLO_UnaryElementwiseOp<"not",
     [NoSideEffect, SameOperandsAndResultType], HLO_PredOrIntTensor>,
     BASE_HLO_NotOp {
+    let hasFolder = 1;
 }
 
 def HLO_NegOp: HLO_UnaryElementwiseOp<"negate",
@@ -271,9 +271,8 @@ def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
 class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
-        HLO_Op<mnemonic, !listconcat(traits,
-        [InferShapedTypeOpInterface, InferFusibilityOpInterface,
-        SameOperandsAndResultShape])> {
+    HLO_Op<mnemonic, traits # [InferShapedTypeOpInterface,
+    InferFusibilityOpInterface, SameOperandsAndResultShape, Elementwise]> {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs
@@ -525,7 +524,9 @@ def HLO_AfterAllOp : HLO_Op<"after_all", [NoSideEffect]> {
 // Xla Client API has two separate calls for indexed and predicated conditional,
 // although both eventually map to kConditional HLO. IfOp maps to predicated
 // conditional use of kConditional HLO.
-def HLO_IfOp: HLO_Op<"if", [RecursiveSideEffects]> {
+def HLO_IfOp: HLO_Op<"if", [
+    RecursiveSideEffects,
+    SingleBlockImplicitTerminator<"ReturnOp">]> {
   string summary = "If operator";
 
   string description = [{
@@ -541,40 +542,48 @@ def HLO_IfOp: HLO_Op<"if", [RecursiveSideEffects]> {
     HLO_TensorOrTuple:$false_arg
   );
 
-  let regions = (region AnyRegion:$true_branch,
-                        AnyRegion:$false_branch);
+  let regions = (region SizedRegion<1>:$true_branch,
+                        SizedRegion<1>:$false_branch);
 
   let results = (outs HLO_TensorOrTuple);
 
   // TODO(b/129422361): ConditionalOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
+
+  let hasCanonicalizer = 1;
 }
 
 // Xla Client API has two separate calls for indexed and predicated conditional,
 // although both eventually map to kConditional HLO. CaseOp maps to indexed
 // conditional use of kConditional HLO.
-def HLO_CaseOp: HLO_Op<"case", [RecursiveSideEffects]>,
-      BASE_HLO_CaseOp {
+def HLO_CaseOp: HLO_Op<"case", [
+      RecursiveSideEffects,
+      SingleBlockImplicitTerminator<"ReturnOp">
+    ]>, BASE_HLO_CaseOp {
 
   let arguments = (ins
     I32Tensor:$index,
     Variadic<HLO_TensorOrTuple>:$branch_operands
   );
 
-  let regions = (region VariadicRegion<AnyRegion>:$branches);
+  let regions = (region VariadicRegion<SizedRegion<1>>:$branches);
 
   let results = (outs Variadic<HLO_TensorOrTuple>);
 
   let hasCustomHLOConverter = 1;
+
+  let hasCanonicalizer = 1;
 }
 
 
-def HLO_WhileOp: HLO_Op<"while", [RecursiveSideEffects,
-                                  SameOperandsAndResultType]>,
-                 BASE_HLO_WhileOp {
+def HLO_WhileOp: HLO_Op<"while", [
+      RecursiveSideEffects,
+      SameOperandsAndResultType,
+      SingleBlockImplicitTerminator<"ReturnOp">
+    ]>, BASE_HLO_WhileOp {
   let arguments = (ins HLO_TensorOrTuple:$val);
 
-  let regions = (region AnyRegion:$cond, AnyRegion:$body);
+  let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
 
   let results = (outs HLO_TensorOrTuple);
 
@@ -678,7 +687,8 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
 def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
     SameOperandsAndResultShape,
     DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-    ["reifyReturnTypeShapes"]>]>, BASE_HLO_CompareOp {
+        ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>]>,
+    BASE_HLO_CompareOp {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,
@@ -826,8 +836,9 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim",
-      [NoSideEffect]> {
+def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim", [
+    NoSideEffect, DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
+    ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
   string summary = "Broadcast a tensor into the given dynamic shape by adding dimensions.";
   string description = [{
     This is a generalization of the BroadcastInDimOp which accepts its output
@@ -1114,7 +1125,8 @@ def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]>,
 // TODO(jpienaar): Add broadcastable trait.
 def HLO_SelectOp: HLO_Op<"select", [NoSideEffect,
     DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-    ["reifyReturnTypeShapes"]>, DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
     ]>, BASE_HLO_SelectOp {
   let arguments = (ins
     HLO_PredTensor:$pred,
@@ -1246,6 +1258,7 @@ def HLO_TriangularSolveOp: HLO_Op<"triangular_solve",
 
 def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
       RecursiveSideEffects,
+      SameVariadicOperandSize,
       SingleBlockImplicitTerminator<"ReturnOp">
     ]>, BASE_HLO_ReduceWindowOp {
 
@@ -1253,8 +1266,8 @@ def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
   // attributes are 1-d. Attributes' leading dimension should match rank of the
   // inputs.
   let arguments = (ins
-    HLO_Tensor:$operand,
-    HLO_Tensor:$init_value,
+    Variadic<HLO_Tensor>:$inputs,
+    Variadic<HLO_Tensor>:$init_values,
     I64ElementsAttr:$window_dimensions,
     // If strides or dilations attributes are missing then the default value is
     // one for each of the input dimensions. Similarly, padding values are zero
@@ -1265,15 +1278,36 @@ def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
     OptionalAttr<I64ElementsAttr>:$padding
   );
 
-  let results = (outs HLO_Tensor);
+  let results = (outs Variadic<HLO_Tensor>);
 
   // TODO(hinsu): Verify that the attached body arguments and results are
   // compatible with reduce op's operands.
   let regions = (region SizedRegion<1>:$body);
 
-  let hasCustomHLOConverter = 1;
+  // Builder for non-variadic version of the operation.
+  let builders = [
+    OpBuilder<(ins "Type":$result_type, "Value":$operand,
+      "Value":$init_value,
+      "DenseIntElementsAttr":$window_dimensions,
+      "DenseIntElementsAttr":$window_strides,
+      "DenseIntElementsAttr":$base_dilations,
+      "DenseIntElementsAttr":$window_dilations,
+      "DenseIntElementsAttr":$padding),
+    [{
+      build($_builder, $_state, TypeRange(result_type), ValueRange(operand),
+            ValueRange(init_value), window_dimensions, window_strides,
+            base_dilations, window_dilations, padding);
+    }]>
+  ];
 
+  let hasCustomHLOConverter = 1;
+  let verifier = [{ return Verify(*this); }];
   // TODO(hinsu): Implement custom printer and parser.
+
+  let extraClassDeclaration = [{
+     // Get the operation used for reduction applied to `result_index`th result.
+     Operation *getReductionOp(int result_index);
+  }];
 }
 
 def HLO_ReturnOp : HLO_Op<"return", [NoSideEffect, Terminator]> {

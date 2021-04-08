@@ -11,10 +11,8 @@ package(
     # TODO(drpng): change that to //third_party/tensorflow:internal
     # when we have migrated all users.
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 py_strict_library(
     name = "saved_model",
@@ -284,6 +282,7 @@ py_strict_library(
         ":function_serialization",
         ":revived_types",
         ":signature_constants",
+        "//tensorflow/python:composite_tensor",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_spec",
@@ -361,6 +360,7 @@ py_strict_library(
         "//tensorflow/python/training/tracking:graph_view",
         "//tensorflow/python/training/tracking:util",
         "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
         "@absl_py//absl/logging",
     ],
 )
@@ -413,6 +413,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:values_util",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/training/saving:checkpoint_options",
         "//tensorflow/python/training/saving:saveable_object_util",
@@ -585,6 +586,7 @@ py_strict_library(
         "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:row_partition",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )

@@ -51,6 +51,25 @@ namespace quant {
 constexpr double kNearZeroTolerance = 1.0e-6;
 constexpr double kSmallestHalfRange = kNearZeroTolerance / 2;
 
+const char kQuantTraitAttr[] = "_tfl_quant_trait";
+const absl::string_view QuantTraitValues[] = {"fully_quantizable",
+                                              "not_quantizable"};
+
+bool IsOpNotQuantizable(Operation* op) {
+  // If it is terminator or not quantizable or any ops form the mlir quant
+  // ops dialect, we shouldn't rewrite.
+  bool attr_enforced_quantizable =
+      op->hasAttrOfType<StringAttr>(kQuantTraitAttr) &&
+      op->getAttrOfType<StringAttr>(kQuantTraitAttr).getValue().str() ==
+          QuantTraitValues[QuantizationTrait::FullyQuantizable];
+  bool prop_enforced_no_quantizable =
+      op->hasTrait<OpTrait::quant::NoQuantizableResult>();
+
+  return op->hasTrait<OpTrait::IsTerminator>() ||
+         llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp>(op) ||
+         (!attr_enforced_quantizable && prop_enforced_no_quantizable);
+}
+
 // This method expands the range to be larger than or equal to 1.0e-6, if it is
 // very small (< 1.0e-6). This is to prevent very large quantized value by this
 // range.
@@ -499,6 +518,12 @@ ElementsAttr QuantizeLegacy(Attribute real_value, Type tensor_type) {
                      return APInt(8, value, /*isSigned=*/true);
                    });
     return DenseElementsAttr::get(new_dense_type, quantized_attr);
+  } else if (width == 8) {
+    // This can be a state tensor, or an actual constant tensor with
+    // asymmetric range. For a state tensor, assigining correct quantization
+    // parameters is sufficient, and for constants with asymmetric range it's
+    // not correctly quantized by legacy quantizer so call the new Quantize.
+    return Quantize(real_value, tensor_type);
   } else if (width == 16) {
     if (auto uniform_type = q_type.dyn_cast<UniformQuantizedType>()) {
       auto quantized_values =

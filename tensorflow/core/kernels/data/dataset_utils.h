@@ -24,6 +24,10 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+// Constant used for indicating that the argument of tf.data.Dataset.shard
+// should be supplied by the auto-sharding rewrite.
+constexpr int kShardHint = -1;
+
 // Creates a resource handle with a unique name for the given resource.
 template <typename T>
 Status CreateHandle(OpKernelContext* ctx, T* resource,

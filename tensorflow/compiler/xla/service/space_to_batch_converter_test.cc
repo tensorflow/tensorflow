@@ -29,10 +29,10 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ConvolutionSpaceToBatchConverterTest = HloTestBase;
+using SpaceToBatchConverterTest = HloTestBase;
 namespace op = testing::opcode_matchers;
 
-TEST_F(ConvolutionSpaceToBatchConverterTest, SimpleBatch1) {
+TEST_F(SpaceToBatchConverterTest, SimpleBatch1) {
   string hlo_string = R"(
   
   HloModule module
@@ -48,7 +48,7 @@ ENTRY computation {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
-  ConvolutionSpaceToBatchConverter converter;
+  SpaceToBatchConverter converter;
   ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, op::Transpose());
@@ -64,7 +64,7 @@ ENTRY computation {
   EXPECT_GT(reshape->operand(0)->shape().dimensions(batch_dim), 1);
 }
 
-TEST_F(ConvolutionSpaceToBatchConverterTest, SimpleBatch1WithReduceWindow) {
+TEST_F(SpaceToBatchConverterTest, SimpleBatch1WithReduceWindow) {
   string hlo_string = R"(
   HloModule module  
   adder (lhs: bf16[], rhs: bf16[]) -> bf16[] {
@@ -91,13 +91,13 @@ TEST_F(ConvolutionSpaceToBatchConverterTest, SimpleBatch1WithReduceWindow) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  ConvolutionSpaceToBatchConverter converter;
+  SpaceToBatchConverter converter;
   // Test that a reduce window consumer with different rank won't freeze the
   // compiler.
   ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
 }
 
-TEST_F(ConvolutionSpaceToBatchConverterTest, SimpleBatch2) {
+TEST_F(SpaceToBatchConverterTest, SimpleBatch2) {
   string hlo_string = R"(
   HloModule module
   ENTRY computation {
@@ -111,11 +111,11 @@ TEST_F(ConvolutionSpaceToBatchConverterTest, SimpleBatch2) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  ConvolutionSpaceToBatchConverter converter;
+  SpaceToBatchConverter converter;
   ASSERT_FALSE(converter.Run(module.get()).ValueOrDie());
 }
 
-TEST_F(ConvolutionSpaceToBatchConverterTest, Batch1WithStrideAndPad) {
+TEST_F(SpaceToBatchConverterTest, Batch1WithStrideAndPad) {
   string hlo_string = R"(
   HloModule module
   ENTRY computation {
@@ -130,7 +130,7 @@ TEST_F(ConvolutionSpaceToBatchConverterTest, Batch1WithStrideAndPad) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
-  ConvolutionSpaceToBatchConverter converter(/*limit_on_batch_size=*/4);
+  SpaceToBatchConverter converter(/*limit_on_batch_size=*/4);
   ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, op::Transpose());
@@ -146,7 +146,7 @@ TEST_F(ConvolutionSpaceToBatchConverterTest, Batch1WithStrideAndPad) {
   EXPECT_GT(reshape->operand(0)->shape().dimensions(batch_dim), 4);
 }
 
-TEST_F(ConvolutionSpaceToBatchConverterTest, Batch1WithBaseDilation) {
+TEST_F(SpaceToBatchConverterTest, Batch1WithBaseDilation) {
   string hlo_string = R"(
   
   HloModule module
@@ -163,7 +163,7 @@ ENTRY computation {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   auto computation = module->entry_computation();
-  ConvolutionSpaceToBatchConverter converter;
+  SpaceToBatchConverter converter;
   ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
 
   HloInstruction* root = computation->root_instruction();

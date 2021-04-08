@@ -130,7 +130,7 @@ TEST_F(GPUDeviceTest, InvalidGpuId) {
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
   ExpectErrorMessageSubstr(status,
-                           "'visible_device_list' listed an invalid GPU id");
+                           "'visible_device_list' listed an invalid Device id");
 }
 
 TEST_F(GPUDeviceTest, DuplicateEntryInVisibleDeviceList) {

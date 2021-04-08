@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
 #include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -526,4 +526,4 @@ TEST_F(MklRemapperTest, FuseMatMulWithBiasAddAndAdd) {
 
 }  // namespace grappler
 }  // namespace tensorflow
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && ENABLE_MKL

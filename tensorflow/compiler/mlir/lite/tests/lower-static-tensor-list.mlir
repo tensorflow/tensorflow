@@ -450,14 +450,20 @@ func @tensorlistReserveWithDynamicShape(%arg0: tensor<i32>, %arg1: tensor<i32>, 
 // -----
 
 // CHECK-LABEL: tensorlistConcat
-func @tensorlistConcat(%arg0: tensor<?xf32>, %element_shape: tensor<0xi32>, %lead: tensor<i64>) -> (tensor<?xf32>, tensor<0xi64>) {
-  %list = "tf.TensorListFromTensor"(%arg0, %element_shape) : (tensor<?xf32>, tensor<0xi32>) -> tensor<!tf.variant<tensor<f32>>>
-  %t:2 = "tf.TensorListConcatV2"(%list, %element_shape, %lead) : (tensor<!tf.variant<tensor<f32>>>, tensor<0xi32>, tensor<i64>) -> (tensor<?xf32>, tensor<0xi64>)
-  return %t#0, %t#1 : tensor<?xf32>, tensor<0xi64>
+func @tensorlistConcat(%arg0: tensor<3x2x2xf32>, %lead: tensor<i64>) -> (tensor<?x2xf32>, tensor<0xi64>) {
+  %cst = constant dense<[2, 2]> : tensor<2xi32>
+  %list = "tf.TensorListFromTensor"(%arg0, %cst) : (tensor<3x2x2xf32>, tensor<2xi32>) -> tensor<!tf.variant<tensor<f32>>>
+  %t:2 = "tf.TensorListConcatV2"(%list, %cst, %lead) : (tensor<!tf.variant<tensor<f32>>>, tensor<2xi32>, tensor<i64>) -> (tensor<?x2xf32>, tensor<0xi64>)
+  return %t#0, %t#1 : tensor<?x2xf32>, tensor<0xi64>
 
-// CHECK: %0 = "tf.TensorListFromTensor"(%arg0, %arg1) : (tensor<?xf32>, tensor<0xi32>) -> tensor<!tf.variant<tensor<f32>>>
-// CHECK: %tensor, %lengths = "tf.TensorListConcatV2"(%0, %arg1, %arg2) : (tensor<!tf.variant<tensor<f32>>>, tensor<0xi32>, tensor<i64>) -> (tensor<?xf32>, tensor<0xi64>)
-// CHECK: return %tensor, %lengths : tensor<?xf32>, tensor<0xi64>
+// CHECK: [[ELEMENT_SHAPE:%.*]] = constant dense<2> : tensor<2xi32>
+// CHECK: [[SCALAR_ZERO:%.*]] = constant dense<0> : tensor<i32>
+// CHECK: [[SCALAR_ONE:%.*]] = constant dense<1> : tensor<i32>
+// CHECK: [[SPLIT:%.*]] = "tf.Split"([[SCALAR_ZERO]], %arg0) : (tensor<i32>, tensor<3x2x2xf32>) -> tensor<*xf32>
+// CHECK: [[CONCAT:%.*]] = "tf.Concat"([[SCALAR_ONE]], [[SPLIT]]) : (tensor<i32>, tensor<*xf32>) -> tensor<*xf32>
+// CHECK: [[SQUEEZE:%.*]] = "tf.Squeeze"([[CONCAT]]) {squeeze_dims = [0]} : (tensor<*xf32>) -> tensor<?x2xf32>
+// CHECK: [[LENGTHS:%.*]] = constant dense<0> : tensor<0xi64>
+// CHECK: return [[SQUEEZE]], [[LENGTHS]] : tensor<?x2xf32>, tensor<0xi64>
 }
 
 // -----

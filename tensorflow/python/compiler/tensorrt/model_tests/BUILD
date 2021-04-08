@@ -4,7 +4,7 @@
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files(glob([
@@ -53,8 +53,10 @@ py_binary(
         ":model_handler",
         ":result_analyzer",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:config",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/compiler/tensorrt:trt_convert_py",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
         "@absl_py//absl:app",

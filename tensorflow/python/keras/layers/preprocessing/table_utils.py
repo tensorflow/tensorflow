@@ -13,18 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 """Utilities for working with tf.lookup tables in Keras."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import collections
 import os
 import numpy as np
 
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
@@ -43,21 +38,12 @@ class TableHandler(object):
                table,
                oov_tokens=None,
                mask_token=None,
-               use_v1_apis=False):
+               mask_value=0):
     self.table = table
-
-    # If we are using V1 APIs, and the table has an initializer, we need to run
-    # it. However, not all tables have initializers, so we try-except here.
-    if use_v1_apis:
-      try:
-        K.get_session().run(self.table.initializer)
-      except AttributeError:
-        pass
-
     self.mutable = isinstance(table, lookup_ops.MutableHashTable)
     self.mask_token = mask_token
+    self.mask_value = mask_value
 
-    self.use_v1_apis = use_v1_apis
     if oov_tokens is None:
       self.oov_tokens = oov_tokens
     else:
@@ -67,17 +53,17 @@ class TableHandler(object):
 
   def data(self):
     keys, values = self.table.export()
-    return (self._eval(keys), self._eval(values))
+    return (keys.numpy(), values.numpy())
 
   def table_size(self):
-    return self._eval(self.table.size())
+    return self.table.size().numpy()
 
   def clear(self):
     if not self.mutable:
       return RuntimeError("Unable to clear a statically-backed table.")
 
     keys, _ = self.table.export()
-    self._run(self.table.remove(keys))
+    self.table.remove(keys)
 
   def insert(self, keys, values):
     """Insert values into the backed table."""
@@ -95,7 +81,7 @@ class TableHandler(object):
     if values.shape.ndims != 1:
       raise ValueError("`values` must be 1-dimensional, got an input with "
                        " %s dimensions." % values.shape.ndims)
-    self._run(self.table.insert(keys, values))
+    self.table.insert(keys, values)
 
   def _replace_oov_buckets(self, inputs, lookups):
     """Replace the default OOV value with one of the OOV bucket values."""
@@ -121,21 +107,12 @@ class TableHandler(object):
     if self.mask_token is None:
       return lookups
 
-    # If we do need to handle masking, increment all the lookup values by 1
-    # to account for the mask value at location 0. This also increments the
-    # OOV value, so replace that. (This is inefficient, but we can't adjust
-    # the table safely, so we don't have a choice.)
-    oov_locations = math_ops.equal(lookups, self.table._default_value)  # pylint: disable=protected-access
-    oov_values = array_ops.ones_like(
-        lookups, dtype=self.table._value_dtype) * self.table._default_value  # pylint: disable=protected-access
-    adjusted_lookups = array_ops.where(oov_locations, oov_values, lookups)
-
     # Inject 0s wherever the mask token was in the inputs.
     mask_locations = math_ops.equal(inputs, self.mask_token)
-    return array_ops.where(
+    return array_ops.where_v2(
         mask_locations,
-        array_ops.zeros_like(lookups, dtype=self.table._value_dtype),  # pylint: disable=protected-access
-        adjusted_lookups)  # pylint: disable=protected-access
+        math_ops.cast(self.mask_value, self.table._value_dtype),  # pylint: disable=protected-access
+        lookups)  # pylint: disable=protected-access
 
   def _ragged_lookup(self, inputs):
     """Perform a table lookup on a ragged tensor."""
@@ -182,8 +159,7 @@ class TableHandler(object):
     if tf_utils.is_ragged(inputs):
       if isinstance(inputs, ragged_tensor_value.RaggedTensorValue):
         flat_values = ops.convert_to_tensor_v2_with_dispatch(
-            value=inputs.flat_values,
-            name="flat_values")
+            value=inputs.flat_values, name="flat_values")
         inputs = ragged_tensor.RaggedTensor.from_nested_row_splits(
             flat_values, inputs.nested_row_splits, validate=False)
       return self._ragged_lookup(inputs)
@@ -192,15 +168,17 @@ class TableHandler(object):
     inputs = ops.convert_to_tensor_v2_with_dispatch(inputs)
     return self._tensor_lookup(inputs)
 
-  def _eval(self, tensor):
-    if self.use_v1_apis:
-      return K.get_session().run(tensor)
-    else:
-      return tensor.numpy()
 
-  def _run(self, op):
-    if self.use_v1_apis:
-      K.get_session().run(op)
+def num_tokens_in_file(vocabulary_path):
+  """Count the number of lines in a vocab file to get the number of tokens."""
+  num_tokens = 0
+  with gfile.GFile(vocabulary_path, "r") as reader:
+    text = reader.readline()
+    while text:
+      num_tokens += 1
+      text = reader.readline()
+
+  return num_tokens
 
 
 def get_vocabulary_from_file(vocabulary_path, encoding="utf-8"):
@@ -233,22 +211,3 @@ def find_repeated_tokens(vocabulary):
     ]
   else:
     return []
-
-
-def assert_same_type(expected_type, values, value_name):
-  """Assert that 'values' is of type 'expected_type'."""
-  if dtypes.as_dtype(expected_type) != dtypes.as_dtype(values.dtype):
-    raise RuntimeError("Expected %s type %s, got %s" %
-                       (value_name, expected_type, values.dtype))
-
-
-def convert_to_ndarray(x, dtype=None):
-  """Convert 'x' to a numpy array."""
-  array = np.array(x) if isinstance(x, (list, tuple)) else x
-  if dtype not in (None, dtypes.string):
-    # If the dtype is an integer, we do permissive casting. This allows
-    # users to examine int32 data if the dtype is int64 without trouble.
-    np_dtype = dtypes.as_dtype(dtype).as_numpy_dtype
-    if np.can_cast(array.dtype, np_dtype):
-      array = array.astype(np_dtype, casting="safe")
-  return array

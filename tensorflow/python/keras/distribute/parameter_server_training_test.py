@@ -15,44 +15,33 @@
 # ==============================================================================
 """Tests for ClusterCoordinator and Keras models."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import random
 import tempfile
-from absl import logging
+
 from absl.testing import parameterized
-import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import sharded_variable
-from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.keras import callbacks as callbacks_lib
-from tensorflow.python.keras.engine import sequential
-from tensorflow.python.keras.layers import core as core_layers
+from tensorflow.python.keras.distribute import multi_worker_testing_utils
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.layers.preprocessing import string_lookup
-from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.optimizer_v2 import rmsprop
-from tensorflow.python.keras.utils import dataset_creator
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
-from tensorflow.python.training.server_lib import ClusterSpec
 
 
 # These vocabularies usually come from TFT or a Beam pipeline.
@@ -63,19 +52,11 @@ FEATURE_VOCAB = [
 LABEL_VOCAB = ["yes", "no"]
 
 
-def make_cluster(num_workers, num_ps):
-  cluster_def = multi_worker_test_base.create_in_process_cluster(
-      num_workers=num_workers, num_ps=num_ps, rpc_layer="grpc")
-  cluster_def["chief"] = [
-      "localhost:%d" % multi_worker_test_base.pick_unused_port()
-  ]
-  return SimpleClusterResolver(ClusterSpec(cluster_def), rpc_layer="grpc")
-
-
 def make_coordinator(num_workers, num_ps, variable_partitioner=None):
   return coordinator_lib.ClusterCoordinator(
       parameter_server_strategy_v2.ParameterServerStrategyV2(
-          make_cluster(num_workers, num_ps),
+          multi_worker_testing_utils.make_parameter_server_cluster(
+              num_workers, num_ps),
           variable_partitioner=variable_partitioner))
 
 
@@ -196,7 +177,7 @@ class KPLTest(test.TestCase, parameterized.TestCase):
     distributed_dataset = self.coordinator.create_per_worker_dataset(dataset_fn)
     distributed_iterator = iter(distributed_dataset)
     for _ in range(4):
-      accuracy.reset_states()
+      accuracy.reset_state()
       for _ in range(7):
         self.coordinator.schedule(worker_fn, args=(distributed_iterator,))
       self.coordinator.join()
@@ -243,139 +224,90 @@ class KPLTest(test.TestCase, parameterized.TestCase):
     self.assertIn(prediction1, ("yes", "no"))
 
 
-class ModelFitTest(test.TestCase, parameterized.TestCase):
+class ShardedVariableTest(test.TestCase):
 
-  def _model_compile(self,
-                     steps_per_execution=1,
-                     run_eagerly=False,
-                     with_normalization_layer=False):
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    cls.strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        multi_worker_testing_utils.make_parameter_server_cluster(3, 2),
+        variable_partitioner=sharded_variable.FixedShardsPartitioner(2))
 
-    class ResultAssertingCallback(callbacks_lib.Callback):
+  def assert_list_all_equal(self, list1, list2):
+    """Used in lieu of `assertAllEqual`.
+
+    This is used to replace standard `assertAllEqual` for the cases where
+    `list1` and `list2` contain `AggregatingVariable`. Lists with
+    `AggregatingVariable` are not convertible to numpy array via `np.array`
+    calls as numpy would raise `ValueError: setting an array element with a
+    sequence.`
+
+    Args:
+      list1: The first list to compare equality.
+      list2: The second list to compare equality.
+    """
+    for lhs, rhs in zip(list1, list2):
+      self.assertEqual(lhs, rhs)
+
+  def test_keras_layer_setattr(self):
+
+    class Layer(base_layer.Layer):
 
       def __init__(self):
-        self._prev_epoch = -1
+        super().__init__()
+        self.w = variables_lib.Variable([0, 1])
+        self.b = variables_lib.Variable([2, 3], trainable=False)
 
-      def on_epoch_end(self, epoch, logs=None):
-        logging.info("testModelFit: epoch=%r, logs=%r", epoch, logs)
-        if epoch <= self._prev_epoch:
-          raise RuntimeError("Epoch is supposed to be larger than previous.")
-        self._prev_epoch = epoch
-        if (logs.get("loss", None) is None or
-            not isinstance(logs["loss"], np.floating)):
-          raise RuntimeError("loss is supposed to be in the logs and float.")
+    with self.strategy.scope():
+      layer = Layer()
 
-    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
-        make_cluster(3, 2),
-        variable_partitioner=sharded_variable.FixedShardsPartitioner(2))
-    with strategy.scope():
-      model = sequential.Sequential([core_layers.Dense(10)])
-      if with_normalization_layer:
-        norm = keras.layers.BatchNormalization(
-            axis=-1, input_shape=(4, 4, 3), momentum=0.8)
-        model.add(norm)
+    self.assertLen(layer.trainable_weights, 2)
+    self.assertEqual(layer.trainable_weights[0], [0])
+    self.assertEqual(layer.trainable_weights[1], [1])
+    self.assertLen(layer.non_trainable_weights, 2)
+    self.assertEqual(layer.non_trainable_weights[0], [2])
+    self.assertEqual(layer.non_trainable_weights[1], [3])
+    self.assert_list_all_equal(
+        layer.weights, layer.trainable_weights + layer.non_trainable_weights)
+    self.assert_list_all_equal(layer.trainable_weights,
+                               layer.trainable_variables)
+    self.assert_list_all_equal(layer.weights, layer.variables)
 
-    model.compile(
-        gradient_descent.SGD(),
-        loss="mse",
-        steps_per_execution=steps_per_execution,
-        run_eagerly=run_eagerly)
-    return model, [ResultAssertingCallback()]
+    checkpoint_deps = set(dep.ref for dep in layer._checkpoint_dependencies)
+    self.assertEqual(checkpoint_deps, set([layer.w, layer.b]))
 
-  def _model_fit(self,
-                 steps_per_execution=1,
-                 validation_data=None,
-                 x=None,
-                 steps_per_epoch=10,
-                 run_eagerly=False,
-                 with_normalization_layer=False):
-    model, callbacks = self._model_compile(steps_per_execution, run_eagerly,
-                                           with_normalization_layer)
+  def test_keras_layer_add_weight(self):
 
-    def dataset_fn(input_context):
-      del input_context
-      x = random_ops.random_uniform((10, 10))
-      y = random_ops.random_uniform((10,))
-      return dataset_ops.DatasetV2.from_tensor_slices(
-          (x, y)).shuffle(10).repeat().batch(2)
+    class Layer(base_layer.Layer):
 
-    x = x or dataset_creator.DatasetCreator(dataset_fn)
+      def __init__(self):
+        super().__init__()
+        self.w = self.add_weight(
+            shape=(2,),
+            initializer=lambda shape, dtype: constant_op.constant([0., 1.],),
+            trainable=True)
+        self.b = self.add_weight(
+            shape=(2,),
+            initializer=lambda shape, dtype: constant_op.constant([2., 3.]),
+            trainable=False)
 
-    model.fit(
-        x,
-        epochs=10,
-        steps_per_epoch=steps_per_epoch,
-        verbose=0,
-        callbacks=callbacks,
-        validation_data=validation_data)
-    return model
+    with self.strategy.scope():
+      layer = Layer()
 
-  @combinations.generate(combinations.combine(mode=["eager"]))
-  def testModelFit(self):
-    model = self._model_fit()
-    self.assertEqual(model.optimizer.iterations, 100)
-    return model
+    self.assertLen(layer.trainable_weights, 2)
+    self.assertEqual(layer.trainable_weights[0], [0.])
+    self.assertEqual(layer.trainable_weights[1], [1.])
+    self.assertLen(layer.non_trainable_weights, 2)
+    self.assertEqual(layer.non_trainable_weights[0], [2.])
+    self.assertEqual(layer.non_trainable_weights[1], [3.])
+    self.assert_list_all_equal(
+        layer.weights, layer.trainable_weights + layer.non_trainable_weights)
+    self.assert_list_all_equal(layer.trainable_weights,
+                               layer.trainable_variables)
+    self.assert_list_all_equal(layer.weights, layer.variables)
 
-  @combinations.generate(combinations.combine(mode=["eager"]))
-  def testModelFitWithNormalizationLayer(self):
-    model = self._model_fit(with_normalization_layer=True)
-    self.assertEqual(model.optimizer.iterations, 100)
-
-  @combinations.generate(combinations.combine(mode=["eager"]))
-  def testModelFitWithStepsPerExecution(self):
-    model = self._model_fit(steps_per_execution=10)
-    self.assertEqual(model.optimizer.iterations, 100)
-
-  @combinations.generate(combinations.combine(mode=["eager"]))
-  def testModelFitWithNoStepsPerEpoch(self):
-    with self.assertRaisesRegex(
-        ValueError, "`steps_per_epoch` must be specified with "
-        "`ParameterServerStrategy`."):
-      self._model_fit(steps_per_epoch=None)
-
-  @combinations.generate(combinations.combine(mode=["eager"]))
-  def testModelFitWithRunEagerly(self):
-    with self.assertRaisesRegex(
-        ValueError, "When using `Model` with `ParameterServerStrategy`, "
-        "`run_eagerly` is not supported."):
-      self._model_fit(run_eagerly=True)
-
-  @combinations.generate(combinations.combine(mode=["eager"]))
-  def testModelFitWithValidationData(self):
-    with self.assertRaisesRegex(
-        NotImplementedError, "Evaluation in `model.fit` with "
-        "`ParameterServerStrategy` is not yet supported."):
-      self._model_fit(
-          validation_data=dataset_ops.DatasetV2.from_tensor_slices([1, 1]))
-
-  @combinations.generate(combinations.combine(mode=["eager"]))
-  def testModelFitWithDatasetInstance(self):
-    with self.assertRaisesRegex(
-        NotImplementedError, "Only `DatasetCreator` input is supported in "
-        "`ParameterServerStrategy` at this time."):
-      self._model_fit(x=dataset_ops.DatasetV2.from_tensor_slices([1, 1]))
-
-  @combinations.generate(combinations.combine(mode=["eager"]))
-  def testModelEvaluate(self):
-    model, _ = self._model_compile()
-    with self.assertRaisesRegex(
-        NotImplementedError, "`model.evaluate` is not yet supported with "
-        "`ParameterServerStrategy`."):
-      model.evaluate(x=dataset_ops.DatasetV2.from_tensor_slices([1, 1]))
-
-  @combinations.generate(combinations.combine(mode=["eager"]))
-  def testModelPredict(self):
-    model, _ = self._model_compile()
-    with self.assertRaisesRegex(
-        NotImplementedError, "`model.predict` is not yet supported with "
-        "`ParameterServerStrategy`."):
-      model.predict(x=dataset_ops.DatasetV2.from_tensor_slices([1, 1]))
-
-  @combinations.generate(combinations.combine(mode=["eager"]))
-  def testClusterCoordinatorSingleInstance(self):
-    model = self._model_fit()
-    strategy = model.distribute_strategy
-    self.assertIs(strategy._cluster_coordinator,
-                  coordinator_lib.ClusterCoordinator(strategy))
+    checkpoint_deps = set(dep.ref for dep in layer._checkpoint_dependencies)
+    self.assertEqual(checkpoint_deps, set([layer.w, layer.b]))
 
 
 if __name__ == "__main__":

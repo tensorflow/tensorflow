@@ -276,11 +276,20 @@ Status ShapeVerifier::HandleAllGather(HloInstruction* hlo) {
                                                ag->use_global_device_ids()));
   TF_RETURN_IF_ERROR(CheckReplicaGroups(ag, group_mode));
   TF_RET_CHECK(ag->all_gather_dimension() >= 0);
-  TF_RET_CHECK(ag->all_gather_dimension() < ag->shape().rank());
-  TF_RET_CHECK(ag->all_gather_dimension() < ag->operand(0)->shape().rank());
+
+  for (int64_t i = 0; i < ag->operand_count(); ++i) {
+    TF_RET_CHECK(ag->all_gather_dimension() < ag->operand(i)->shape().rank());
+
+    const Shape& output_shape =
+        (ag->operand_count() == 1) ? ag->shape() : ag->shape().tuple_shapes(i);
+    TF_RET_CHECK(ag->all_gather_dimension() < output_shape.rank());
+  }
+
+  const Shape& output0_shape =
+      (ag->operand_count() == 1) ? ag->shape() : ag->shape().tuple_shapes(0);
 
   int64 shard_count = CeilOfRatio(
-      ag->shape().dimensions(ag->all_gather_dimension()),
+      output0_shape.dimensions(ag->all_gather_dimension()),
       ag->operand(0)->shape().dimensions(ag->all_gather_dimension()));
   const HloModuleConfig& config = hlo->GetModule()->config();
   // empty replica groups imply all replicas form a single group.
@@ -312,9 +321,13 @@ Status ShapeVerifier::HandleAllGather(HloInstruction* hlo) {
       << "shard_count = " << shard_count
       << ", subgroup_size = " << subgroup_size << ", " << hlo->ToString();
 
-  return CheckShape(ag, ShapeInference::InferAllGatherShape(
-                            ag->operand(0)->shape(), ag->all_gather_dimension(),
-                            shard_count));
+  std::vector<const Shape*> operand_shapes;
+  for (const HloInstruction* operand : hlo->operands()) {
+    operand_shapes.push_back(&operand->shape());
+  }
+  return CheckShape(
+      ag, ShapeInference::InferAllGatherShape(
+              operand_shapes, ag->all_gather_dimension(), shard_count));
 }
 
 Status ShapeVerifier::HandleAllReduce(HloInstruction* hlo) {

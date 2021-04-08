@@ -22,7 +22,7 @@ load("//tensorflow:tensorflow.bzl", "if_nccl")
 
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(

@@ -389,7 +389,7 @@ func @gatherScalarIndices(%arg0 : tensor<3x2xf32>, %arg1 : tensor<i32>) -> tenso
   return %0 : tensor<2xf32>
 
 // CHECK-LABEL:gatherScalarIndices
-// CHECK:  "tfl.gather"(%arg0, %arg1) {axis = 0 : i32} : (tensor<3x2xf32>, tensor<i32>) -> tensor<2xf32>
+// CHECK:  "tfl.gather"(%arg0, %arg1) {axis = 0 : i32, batch_dims = 0 : i32} : (tensor<3x2xf32>, tensor<i32>) -> tensor<2xf32>
 }
 
 func @gatherVectorIndices(%arg0 : tensor<2xf32>, %arg1 : tensor<3xi32>) -> tensor<3xf32> {
@@ -397,7 +397,7 @@ func @gatherVectorIndices(%arg0 : tensor<2xf32>, %arg1 : tensor<3xi32>) -> tenso
   return %0 : tensor<3xf32>
 
 // CHECK-LABEL:gatherVectorIndices
-// CHECK:  "tfl.gather"(%arg0, %arg1) {axis = 0 : i32} : (tensor<2xf32>, tensor<3xi32>) -> tensor<3xf32>
+// CHECK:  "tfl.gather"(%arg0, %arg1) {axis = 0 : i32, batch_dims = 0 : i32} : (tensor<2xf32>, tensor<3xi32>) -> tensor<3xf32>
 }
 
 func @gatherHigherRankIndices(%arg0 : tensor<2x3x6xf32>, %arg1 : tensor<4x5xi32>) -> tensor<4x5x3x6xf32> {
@@ -405,7 +405,7 @@ func @gatherHigherRankIndices(%arg0 : tensor<2x3x6xf32>, %arg1 : tensor<4x5xi32>
   return %0 : tensor<4x5x3x6xf32>
 
 // CHECK-LABEL:gatherHigherRankIndices
-// CHECK:  "tfl.gather"(%arg0, %arg1) {axis = 0 : i32} : (tensor<2x3x6xf32>, tensor<4x5xi32>) -> tensor<4x5x3x6xf32>
+// CHECK:  "tfl.gather"(%arg0, %arg1) {axis = 0 : i32, batch_dims = 0 : i32} : (tensor<2x3x6xf32>, tensor<4x5xi32>) -> tensor<4x5x3x6xf32>
 }
 
 func @gatherNdVectorIndices(%arg0 : tensor<3x2x2xf32>, %arg1 : tensor<2xi32>) -> tensor<2xf32> {
@@ -460,7 +460,7 @@ func @gatherV2VectorIndices(%arg0 : tensor<1x2x20xf32>, %arg1 : tensor<3x5xi32>)
   return %1 : tensor<1x3x5x20xf32>
 
 // CHECK-LABEL:gatherV2VectorIndices
-// CHECK:  "tfl.gather"(%arg0, %arg1) {axis = 1 : i32} : (tensor<1x2x20xf32>, tensor<3x5xi32>) -> tensor<1x3x5x20xf32>
+// CHECK:  "tfl.gather"(%arg0, %arg1) {axis = 1 : i32, batch_dims = 0 : i32} : (tensor<1x2x20xf32>, tensor<3x5xi32>) -> tensor<1x3x5x20xf32>
 }
 
 func @gatherV2VectorIndices_I64Axis(%arg0 : tensor<1x2x20xf32>, %arg1 : tensor<3x5xi32>) -> tensor<1x3x5x20xf32> {
@@ -469,7 +469,7 @@ func @gatherV2VectorIndices_I64Axis(%arg0 : tensor<1x2x20xf32>, %arg1 : tensor<3
   return %1 : tensor<1x3x5x20xf32>
 
 // CHECK-LABEL:gatherV2VectorIndices_I64Axis
-// CHECK:  "tfl.gather"(%arg0, %arg1) {axis = 1 : i32} : (tensor<1x2x20xf32>, tensor<3x5xi32>) -> tensor<1x3x5x20xf32>
+// CHECK:  "tfl.gather"(%arg0, %arg1) {axis = 1 : i32, batch_dims = 0 : i32} : (tensor<1x2x20xf32>, tensor<3x5xi32>) -> tensor<1x3x5x20xf32>
 }
 
 func @gatherV2VectorIndicesNegAxis(%arg0 : tensor<1x2x20xf32>, %arg1 : tensor<3x5xi32>) -> tensor<1x2x3x5xf32> {
@@ -478,17 +478,19 @@ func @gatherV2VectorIndicesNegAxis(%arg0 : tensor<1x2x20xf32>, %arg1 : tensor<3x
   return %1 : tensor<1x2x3x5xf32>
 
 // CHECK-LABEL:gatherV2VectorIndices
-// CHECK:  "tfl.gather"(%arg0, %arg1) {axis = -1 : i32} : (tensor<1x2x20xf32>, tensor<3x5xi32>) -> tensor<1x2x3x5xf32>
+// CHECK:  "tfl.gather"(%arg0, %arg1) {axis = -1 : i32, batch_dims = 0 : i32} : (tensor<1x2x20xf32>, tensor<3x5xi32>) -> tensor<1x2x3x5xf32>
 }
 
-func @gatherV2NonZeroBatchDims(%arg0 : tensor<1x2x20xf32>, %arg1 : tensor<3x5xi32>) -> tensor<1x2x3x5xf32> {
+func @gatherWithBatchDims(%arg0 : tensor<2x3x6xf32>, %arg1 : tensor<2x5xi32>) -> tensor<2x5x3x6xf32> {
   %0 = "tf.Const"() { value = dense<[1]> : tensor<1xi32> } : () -> tensor<1xi32>
-  %1 = "tf.GatherV2"(%arg0, %arg1, %0) {batch_dims = 1 : i64} : (tensor<1x2x20xf32>, tensor<3x5xi32>, tensor<1xi32>) -> tensor<1x2x3x5xf32>
-  return %1 : tensor<1x2x3x5xf32>
+  %1 = "tf.GatherV2"(%arg0, %arg1, %0) {batch_dims = 1 : i64} : (tensor<2x3x6xf32>, tensor<2x5xi32>, tensor<1xi32>) -> tensor<2x5x3x6xf32>
+  return %1 : tensor<2x5x3x6xf32>
 
-// CHECK-LABEL:gatherV2NonZeroBatchDims
-// CHECK: tf.GatherV2
+// CHECK-LABEL:gatherWithBatchDims
+// CHECK:  "tfl.gather"(%arg0, %arg1) {axis = 1 : i32, batch_dims = 1 : i32} : (tensor<2x3x6xf32>, tensor<2x5xi32>) -> tensor<2x5x3x6xf32>
 }
+
+
 
 func @greater(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xi1> {
   %0 = "tf.Greater"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
@@ -1267,14 +1269,21 @@ func @strided_slice_non_zero_ellipsis_mask(%arg0: tensor<12x2x2x5xf32>, %arg1: t
   %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 1 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
   return %0 : tensor<1x2x2x5xf32>
   // CHECK-LABEL: strided_slice_non_zero_ellipsis_mask
-  // CHECK-NOT: "tfl.strided_slice"
+  // CHECK:  %0 = "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 1 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
 }
 
 func @strided_slice_non_zero_new_axis_mask(%arg0: tensor<12x2x2x5xf32>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<1x2x2x5xf32> {
   %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 2 : i64, shrink_axis_mask = 0 : i64} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
   return %0 : tensor<1x2x2x5xf32>
   // CHECK-LABEL: strided_slice_non_zero_new_axis_mask
-  // CHECK-NOT: "tfl.strided_slice"
+  // CHECK: "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 2 : i32, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
+}
+
+func @strided_slice_big_dims(%arg0: tensor<5x6x7xf32>, %arg1: tensor<3xi32>, %arg2: tensor<3xi32>, %arg3: tensor<3xi32>) -> tensor<1x1x5x6x7xf32> {
+  %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 7 : i64, shrink_axis_mask = 0 : i64} : (tensor<5x6x7xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x1x5x6x7xf32>
+  return %0 : tensor<1x1x5x6x7xf32>
+  // CHECK-LABEL: strided_slice_big_dims
+  // CHECK: %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 7 : i64, shrink_axis_mask = 0 : i64} : (tensor<5x6x7xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x1x5x6x7xf32>
 }
 
 func @slice1Tensor(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>, %arg2: tensor<3xi32>) -> tensor<?x3x5xf32> {
@@ -1987,14 +1996,14 @@ func @rfft2d(%arg0: tensor<10x20x10x30xf32>, %arg1: tensor<2xi32>) -> tensor<10x
   %0 = "tf.RFFT2D"(%arg0, %arg1) : (tensor<10x20x10x30xf32>, tensor<2xi32>) -> tensor<10x20x10x30xcomplex<f32>>
   return %0 : tensor<10x20x10x30xcomplex<f32>>
   // CHECK-LABEL: rfft2d
-  // CHECK: "tfl.RFFT2D"(%arg0, %arg1) : (tensor<10x20x10x30xf32>, tensor<2xi32>) -> tensor<10x20x10x30xcomplex<f32>>
+  // CHECK: "tfl.rfft2d"(%arg0, %arg1) : (tensor<10x20x10x30xf32>, tensor<2xi32>) -> tensor<10x20x10x30xcomplex<f32>>
 }
 
 func @rfft2d_invalid(%arg0: tensor<10x20x10x30xf64>, %arg1: tensor<2xi32>) -> tensor<10x20x10x30xcomplex<f64>> {
   %0 = "tf.RFFT2D"(%arg0, %arg1) : (tensor<10x20x10x30xf64>, tensor<2xi32>) -> tensor<10x20x10x30xcomplex<f64>>
   return %0 : tensor<10x20x10x30xcomplex<f64>>
   // CHECK-LABEL: rfft2d_invalid
-  // CHECK-NOT: "tfl.RFFT2D"
+  // CHECK-NOT: "tfl.rfft2d"
 }
 
 
@@ -2043,78 +2052,19 @@ func @imag(%arg0: tensor<1 x complex<f64>>) -> tensor<1xf64> {
 // CHECK:  return
 }
 
-func @hashtable() {
-  %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf.string, shared_name = "hash_table_1dd4fef4-646d-491f-a3a8-bf5334f45813", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf.resource>
-  // CHECK-LABEL: hashtable
-  // CHECK-NEXT:  [[HASH_TABLE:%.*]] = "tfl.hashtable"() {key_dtype = !tf.string, table_id = -1323619995 : i32, value_dtype = i64} : () -> tensor<1x!tf.resource>
-  return
+func @all(%arg0: tensor<2x2xi1>, %arg1: tensor<i32>) -> tensor<i1> {
+  %0 = "tf.All"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i32>) -> tensor<i1>
+  return %0 : tensor<i1>
+
+// CHECK-LABEL:all
+// CHECK:  "tfl.reduce_all"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i32>) -> tensor<i1>
 }
 
-func @hashtable_find(%arg0: tensor<i64>) -> tensor<*x!tf.string> {
-  %cst = constant dense<"f"> : tensor<!tf.string>
-  %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = i64, shared_name = "hash_table_e308c10b-91c8-416c-81f9-af5bf6aba847", use_node_name_sharing = false, value_dtype = !tf.string} : () -> tensor<!tf.resource>
-  %1 = "tf.LookupTableFindV2"(%0, %arg0, %cst) {device = ""} : (tensor<!tf.resource>, tensor<i64>, tensor<!tf.string>) -> tensor<*x!tf.string>
-  // CHECK-LABEL: hashtable_find
-  // CHECK:       [[CST:%.*]] = constant dense<"f"> : tensor<!tf.string>
-  // CHECK-NEXT:  [[HASH_TABLE:%.*]] = "tfl.hashtable"() {key_dtype = i64, table_id = 1530976467 : i32, value_dtype = !tf.string} : () -> tensor<1x!tf.resource>
-  // CHECK-NEXT:  [[FIND:%.*]] = "tfl.hashtable_find"([[HASH_TABLE]], %arg0, [[CST]]) : (tensor<1x!tf.resource>, tensor<i64>, tensor<!tf.string>) -> tensor<*x!tf.string>
-  // CHECK-NEXT:  return [[FIND]] : tensor<*x!tf.string>
-  return %1 : tensor<*x!tf.string>
-}
+func @all_i64axes(%arg0: tensor<8x16x16xi1>, %arg1: tensor<2xi64>) -> tensor<?xi1> {
+  %0 = "tf.All"(%arg0, %arg1) {keep_dims = false} : (tensor<8x16x16xi1>, tensor<2xi64>) -> tensor<?xi1>
+  return %0 : tensor<?xi1>
 
-func @hashtable_import(%arg0: tensor<5x!tf.string>) {
-  %cst = constant dense<["emerson", "lake", "palmer"]> : tensor<3x!tf.string>
-  %cst_0 = constant dense<[0, 1, 2]> : tensor<3xi64>
-  %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf.string, shared_name = "hash_table_1dd4fef4-646d-491f-a3a8-bf5334f45813", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf.resource>
-  "tf.LookupTableImportV2"(%0, %cst, %cst_0) {device = ""} : (tensor<!tf.resource>, tensor<3x!tf.string>, tensor<3xi64>) -> ()
-  return
-  // CHECK-LABEL: hashtable_import
-  // CHECK:       [[CST:%.*]] = constant dense<["emerson", "lake", "palmer"]> : tensor<3x!tf.string>
-  // CHECK-NEXT:  [[CST_0:%.*]] = constant dense<[0, 1, 2]> : tensor<3xi64>
-  // CHECK-NEXT:  [[HASH_TABLE:%.*]] = "tfl.hashtable"() {key_dtype = !tf.string, table_id = -1323619995 : i32, value_dtype = i64} : () -> tensor<1x!tf.resource>
-  // CHECK-NEXT:   "tfl.hashtable_import"([[HASH_TABLE]], [[CST]], [[CST_0]]) : (tensor<1x!tf.resource>, tensor<3x!tf.string>, tensor<3xi64>) -> ()
-}
-
-func @hashtable_size(%arg0: tensor<5x!tf.string>) -> tensor<i64> {
-  %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf.string, shared_name = "hash_table_1dd4fef4-646d-491f-a3a8-bf5334f45813", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf.resource>
-  %1 = "tf.LookupTableSizeV2"(%0) {device = ""} : (tensor<!tf.resource>) -> tensor<i64>
-  // CHECK-LABEL: hashtable_size
-  // CHECK-NEXT:  [[HASH_TABLE:%.*]] = "tfl.hashtable"() {key_dtype = !tf.string, table_id = -1323619995 : i32, value_dtype = i64} : () -> tensor<1x!tf.resource>
-  // CHECK-NEXT:  [[SIZE:%.*]] = "tfl.hashtable_size"([[HASH_TABLE]]) : (tensor<1x!tf.resource>) -> tensor<i64>
-  // CHECK-NEXT:  return [[SIZE]] : tensor<i64>
-  return %1 : tensor<i64>
-}
-
-func @hashtable_import_then_find(%arg0: tensor<5x!tf.string>) -> tensor<*xi64> {
-  %cst = constant dense<["emerson", "lake", "palmer"]> : tensor<3x!tf.string>
-  %cst_0 = constant dense<-1> : tensor<i64>
-  %cst_1 = constant dense<[0, 1, 2]> : tensor<3xi64>
-  %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf.string, shared_name = "hash_table_1dd4fef4-646d-491f-a3a8-bf5334f45813", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf.resource>
-  "tf.LookupTableImportV2"(%0, %cst, %cst_1) {device = ""} : (tensor<!tf.resource>, tensor<3x!tf.string>, tensor<3xi64>) -> ()
-  %1 = "tf.LookupTableFindV2"(%0, %arg0, %cst_0) {device = ""} : (tensor<!tf.resource>, tensor<5x!tf.string>, tensor<i64>) -> tensor<*xi64>
-  // CHECK-LABEL: hashtable_import_then_find
-  // CHECK:       [[CST:%.*]] = constant dense<["emerson", "lake", "palmer"]> : tensor<3x!tf.string>
-  // CHECK-NEXT:  [[CST_0:%.*]] = constant dense<-1> : tensor<i64>
-  // CHECK-NEXT:  [[CST_1:%.*]] = constant dense<[0, 1, 2]> : tensor<3xi64>
-  // CHECK-NEXT:  [[HASH_TABLE:%.*]] = "tfl.hashtable"() {key_dtype = !tf.string, table_id = -1323619995 : i32, value_dtype = i64} : () -> tensor<1x!tf.resource>
-  // CHECK-NEXT:   "tfl.hashtable_import"([[HASH_TABLE]], [[CST]], [[CST_1]]) : (tensor<1x!tf.resource>, tensor<3x!tf.string>, tensor<3xi64>) -> ()
-  // CHECK-NEXT:  [[FIND:%.*]] = "tfl.hashtable_find"([[HASH_TABLE]], %arg0, [[CST_0]]) : (tensor<1x!tf.resource>, tensor<5x!tf.string>, tensor<i64>) -> tensor<*xi64>
-  // CHECK-NEXT:  return [[FIND]] : tensor<*xi64>
-  return %1 : tensor<*xi64>
-}
-
-func @hashtable_import_then_size(%arg0: tensor<5x!tf.string>) -> tensor<i64> {
-  %cst = constant dense<["emerson", "lake", "palmer"]> : tensor<3x!tf.string>
-  %cst_0 = constant dense<[0, 1, 2]> : tensor<3xi64>
-  %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf.string, shared_name = "hash_table_1dd4fef4-646d-491f-a3a8-bf5334f45813", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf.resource>
-  "tf.LookupTableImportV2"(%0, %cst, %cst_0) {device = ""} : (tensor<!tf.resource>, tensor<3x!tf.string>, tensor<3xi64>) -> ()
-  %1 = "tf.LookupTableSizeV2"(%0) {device = ""} : (tensor<!tf.resource>) -> tensor<i64>
-  // CHECK-LABEL: hashtable_import_then_size
-  // CHECK:       [[CST:%.*]] = constant dense<["emerson", "lake", "palmer"]> : tensor<3x!tf.string>
-  // CHECK-NEXT:  [[CST_0:%.*]] = constant dense<[0, 1, 2]> : tensor<3xi64>
-  // CHECK-NEXT:  [[HASH_TABLE:%.*]] = "tfl.hashtable"() {key_dtype = !tf.string, table_id = -1323619995 : i32, value_dtype = i64} : () -> tensor<1x!tf.resource>
-  // CHECK-NEXT:   "tfl.hashtable_import"([[HASH_TABLE]], [[CST]], [[CST_0]]) : (tensor<1x!tf.resource>, tensor<3x!tf.string>, tensor<3xi64>) -> ()
-  // CHECK-NEXT:  [[SIZE:%.*]] = "tfl.hashtable_size"([[HASH_TABLE]]) : (tensor<1x!tf.resource>) -> tensor<i64>
-  // CHECK-NEXT:  return [[SIZE]] : tensor<i64>
-  return %1 : tensor<i64>
+  // CHECK-LABEL: all_i64axes
+  // CHECK: %[[V0:.*]] = "tfl.cast"(%arg1) : (tensor<2xi64>) -> tensor<2xi32>
+  // CHECK: "tfl.reduce_all"(%arg0, %[[V0]]) {keep_dims = false} : (tensor<8x16x16xi1>, tensor<2xi32>) -> tensor<?xi1>
 }

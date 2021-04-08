@@ -195,7 +195,7 @@ StatusOr<XlaOp> MlirHloBuilder::ReduceWindowInternal(
       GetI64ElementsAttr(win_dilations, &builder_),
       mlir::DenseIntElementsAttr::get(padding_ty, padding));
   TF_RETURN_IF_ERROR(ImportComputation(computation.proto(), &op.body()));
-  return MakeXlaOp(op);
+  return MakeXlaOp(op.getResult(0));
 }
 
 XlaOp MlirHloBuilder::Iota(const Shape& shape, int64 iota_dimension) {

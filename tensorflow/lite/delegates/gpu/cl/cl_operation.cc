@@ -93,6 +93,9 @@ std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
       result += "#define TO_FLT4 convert_float4\n";
       result += "#define TO_ACCUM_TYPE convert_float4\n";
       result += "#define TO_ACCUM_FLT convert_float\n";
+      result += "#define TO_ACCUM_FLT2 convert_float2\n";
+      result += "#define TO_ACCUM_FLT3 convert_float3\n";
+      result += "#define TO_ACCUM_FLT4 convert_float4\n";
       result += "#define INIT_FLT(value) (float)(value)\n";
       result += "#define INIT_FLT4(value) (float4)(value)\n";
       result +=
@@ -110,6 +113,9 @@ std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
       result += "#define TO_FLT4 convert_half4\n";
       result += "#define TO_ACCUM_TYPE convert_half4\n";
       result += "#define TO_ACCUM_FLT convert_half\n";
+      result += "#define TO_ACCUM_FLT2 convert_half2\n";
+      result += "#define TO_ACCUM_FLT3 convert_half3\n";
+      result += "#define TO_ACCUM_FLT4 convert_half4\n";
       result += "#define INIT_FLT(value) (half)(value)\n";
       result += "#define INIT_FLT4(value) (half4)(value)\n";
       result += "#define INIT_FLT4v4(v0, v1, v2, v3) (half4)(v0, v1, v2, v3)\n";
@@ -126,6 +132,9 @@ std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
       result += "#define TO_FLT4 convert_half4\n";
       result += "#define TO_ACCUM_TYPE convert_float4\n";
       result += "#define TO_ACCUM_FLT convert_float\n";
+      result += "#define TO_ACCUM_FLT2 convert_float2\n";
+      result += "#define TO_ACCUM_FLT3 convert_float3\n";
+      result += "#define TO_ACCUM_FLT4 convert_float4\n";
       result += "#define INIT_FLT(value) (half)(value)\n";
       result += "#define INIT_FLT4(value) (half4)(value)\n";
       result += "#define INIT_FLT4v4(v0, v1, v2, v3) (half4)(v0, v1, v2, v3)\n";

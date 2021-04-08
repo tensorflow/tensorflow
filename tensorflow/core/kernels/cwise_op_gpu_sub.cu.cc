@@ -19,8 +19,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace functor {
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 DEFINE_BINARY4(sub, Eigen::half, float, double, int64);
 #endif
 DEFINE_BINARY6(sub, complex64, complex128, uint8, uint16, uint32, uint64);

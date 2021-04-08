@@ -222,8 +222,7 @@ class GpuKernelToBlobPass
 
     // TODO(b/169870789): Revisit the use of fatbins.
     // Bundle cubin and PTX images into a single fatbin.
-    return tensorflow::se::BundleGpuAsm(images,
-                                        gpu_asm_opts.preferred_cuda_dir);
+    return tensorflow::se::BundleGpuAsm(images, gpu_asm_opts);
 #endif
 
     return InternalError(

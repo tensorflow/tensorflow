@@ -519,7 +519,8 @@ TF_CAPI_EXPORT extern void TFE_RegisterCustomDevice(TFE_Context* ctx,
                                                     void* device_info,
                                                     TF_Status* status);
 
-// Struct to be filled in to define a custom device tensor handle.
+// Struct to be filled in to define a custom device tensor handle. Fields are
+// required except where indicated.
 typedef struct TFE_CustomDeviceTensorHandleMethods {
   int version = TFE_CUSTOM_DEVICE_VERSION;
 
@@ -535,6 +536,17 @@ typedef struct TFE_CustomDeviceTensorHandleMethods {
   int64_t (*dim)(void* data, int dim_index, TF_Status* status);
 
   void (*deallocator)(void* data);
+
+  // Summarizes the value of this tensor. The caller takes ownership of the
+  // returned buffer. If `status` is not TF_OK, instead returns a null pointer.
+  //
+  // Does not include the shape and dtype of the tensor (which is generally
+  // appended later), but should include any information specific to this custom
+  // device which would be useful for debugging.
+  //
+  // Optional. If null, defaults to resolving the TFE_TensorHandle into a
+  // TF_Tensor and summarizing that.
+  TF_Buffer* (*summarize)(void* data, TF_Status* status) = nullptr;
 } TFE_CustomDeviceTensorHandle;
 
 // Creates a new TensorHandle from memory residing in a custom device. Takes
@@ -605,6 +617,14 @@ TF_CAPI_EXPORT extern int TFE_TensorHandleDeviceID(TFE_TensorHandle* h,
 TF_CAPI_EXPORT extern void TFE_GetExecutedOpNames(TFE_Context* ctx,
                                                   TF_Buffer* buf,
                                                   TF_Status* status);
+
+// Set logical devices to the context's device manager.
+// If logical devices are already configured at context initialization
+// through TFE_ContextOptions, this method should not be called.
+TF_CAPI_EXPORT extern void TFE_SetLogicalCpuDevices(TFE_Context* ctx,
+                                                    int num_cpus,
+                                                    const char* prefix,
+                                                    TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

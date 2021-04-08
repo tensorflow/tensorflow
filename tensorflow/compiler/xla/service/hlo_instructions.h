@@ -388,7 +388,8 @@ class HloCollectiveInstruction : public HloChannelInstruction {
 class HloAllGatherInstruction : public HloCollectiveInstruction {
  public:
   explicit HloAllGatherInstruction(
-      const Shape& shape, HloInstruction* operand, int64 all_gather_dimension,
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      int64 all_gather_dimension,
       const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
       const absl::optional<int64>& channel_id, bool use_global_device_ids);
   // Same as HloAllReduceInstruction::use_global_device_ids.
@@ -894,6 +895,14 @@ class HloFusionInstruction : public HloInstruction {
   explicit HloFusionInstruction(const Shape& shape, FusionKind fusion_kind,
                                 absl::Span<HloInstruction* const> operands,
                                 HloComputation* fusion_computation);
+
+  ~HloFusionInstruction() override;
+
+  void ClearCalledComputations() override;
+
+  // When a fusion instruction is being destructed, clear the back pointer of
+  // its fusion computation, to avoid referencing freed memory.
+  void ClearFusionComputationInstruction();
 
   string ToCategory() const override;
   // Returns a serialized representation of this instruction.

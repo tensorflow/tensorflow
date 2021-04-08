@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/c/eager/parallel_device/parallel_device.h"
 
+#include <cstring>
 #include <memory>
 
 #include "absl/strings/str_cat.h"
@@ -209,6 +210,17 @@ int64_t ParallelTensorDim(void* data, int dim_index, TF_Status* status) {
   return (*shape)[dim_index];
 }
 
+TF_Buffer* ParallelTensorSummarize(void* data, TF_Status* status) {
+  ParallelTensor* parallel_tensor = reinterpret_cast<ParallelTensor*>(data);
+  std::string summary;
+  Status cpp_status = parallel_tensor->SummarizeValue(summary);
+  if (!cpp_status.ok()) {
+    Set_TF_Status_from_Status(status, cpp_status);
+    return nullptr;
+  }
+  return TF_NewBufferFromString(summary.data(), summary.size());
+}
+
 TensorHandlePtr ParallelTensorToTensorHandle(
     const std::string& parallel_device_name, TFE_Context* context,
     std::unique_ptr<ParallelTensor> t, TF_Status* status) {
@@ -220,6 +232,7 @@ TensorHandlePtr ParallelTensorToTensorHandle(
   handle_methods.num_dims = &ParallelTensorNumDims;
   handle_methods.dim = &ParallelTensorDim;
   handle_methods.deallocator = &ParallelTensorDeallocator;
+  handle_methods.summarize = &ParallelTensorSummarize;
   return TensorHandlePtr(TFE_NewCustomDeviceTensorHandle(
       context, parallel_device_name.c_str(), t_released->dtype(), t_released,
       handle_methods, status));

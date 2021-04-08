@@ -16,8 +16,11 @@
 
 import csv
 import io
+import re
 
+from unittest import mock
 from absl.testing import parameterized
+
 import numpy as np
 import tensorflow as tf
 
@@ -27,6 +30,13 @@ from tensorflow.lite.python import lite
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import tracking
+
+# pylint: disable=g-import-not-at-top
+try:
+  from tensorflow.lite.python import metrics_portable as metrics
+except ImportError:
+  from tensorflow.lite.python import metrics_nonportable as metrics
+# pylint: enable=g-import-not-at-top
 
 
 def _get_model():
@@ -113,7 +123,7 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
         'stddev': 0.03850026,
         'mean_error': 0.01673192,
         'max_abs_error': 0.10039272,
-        'mean_square_error': 0.0027558778,
+        'mean_squared_error': 0.0027558778,
         'l1_norm': 0.023704167,
     }
     self.assertLen(quant_debugger.layer_statistics, 1)
@@ -134,11 +144,15 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
         'tensor_idx': 7 if quantized_io else 8,
         'scales': [0.15686275],
         'zero_points': [-128],
-        'tensor_name': 'Identity' if quantized_io else 'Identity4'
+        'tensor_name': r'Identity[1-9]?$'
     })
     for key, value in expected_values.items():
       if isinstance(value, str):
-        self.assertEqual(value, actual_values[key])
+        self.assertIsNotNone(
+            re.match(value, actual_values[key]),
+            'String is different from expected string. Please fix test code if'
+            " it's being affected by graph manipulation changes."
+        )
       elif isinstance(value, list):
         self.assertAlmostEqual(
             value[0], float(actual_values[key][1:-1]), places=5)
@@ -224,6 +238,15 @@ class QuantizationDebuggerTest(test_util.TensorFlowTestCase,
   )
   def test_get_quant_params(self, tensor_detail, expected_value):
     self.assertEqual(debugger._get_quant_params(tensor_detail), expected_value)
+
+  @mock.patch.object(metrics.TFLiteMetrics,
+                     'increase_counter_debugger_creation')
+  def test_quantization_debugger_creation_counter(self, increase_call):
+    debug_model = QuantizationDebuggerTest.debug_model_float
+    debugger.QuantizationDebugger(
+        quant_debug_model_content=debug_model,
+        debug_dataset=_calibration_gen)
+    increase_call.assert_called_once()
 
 
 if __name__ == '__main__':

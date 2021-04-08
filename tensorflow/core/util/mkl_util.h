@@ -225,11 +225,9 @@ inline bool array_cmp(const T* a1, const T* a2, size_t size) {
 inline mkldnn::stream* CreateStream(MklDnnThreadPool* eigen_tp,
                                     const engine& engine) {
 #ifndef ENABLE_ONEDNN_OPENMP
-  stream_attr tp_stream_attr(engine::kind::cpu);
   if (eigen_tp != nullptr) {
-    tp_stream_attr.set_threadpool(eigen_tp);
     stream* tp_stream =
-        new stream(engine, stream::flags::default_flags, tp_stream_attr);
+        new stream(dnnl::threadpool_interop::make_stream(engine, eigen_tp));
     return tp_stream;
   } else {
     stream* tp_stream = new stream(engine);
@@ -471,7 +469,6 @@ class MklDnnShape {
     } else {
       auto format_tag =
           MklTensorFormatToMklDnnDataFormat(data_.tf_data_format_);
-      DCHECK_NE(format_tag, memory::format_tag::undef);
       return memory::desc(dims, data_.T_, format_tag);
     }
   }
@@ -1863,6 +1860,12 @@ class FactoryKeyCreator {
   void AddAsKey(const T data) {
     auto buffer = reinterpret_cast<const char*>(&data);
     Append(StringPiece(buffer, sizeof(T)));
+  }
+
+  // generalisation to handle pointers
+  void AddAsKey(const void* data) {
+    auto buffer = reinterpret_cast<const char*>(&data);
+    Append(StringPiece(buffer, sizeof(data)));
   }
 
   string GetKey() { return key_; }

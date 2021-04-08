@@ -17,7 +17,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -957,6 +957,43 @@ xla_test(
         "optonly",
         # TODO(b/151340488): Timed out on 2020-03-12.
         "nozapfhahn",
+    ],
+    deps = [
+        ":client_library_test_base",
+        ":hlo_test_base",
+        ":literal_test_util",
+        ":test_macros_header",
+        ":test_utils",
+        ":xla_internal_test_main",
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:array3d",
+        "//tensorflow/compiler/xla:reference_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:matrix",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+# Run dot tests with dot canonicalization after the layout assignment pass.
+xla_test(
+    name = "dot_operation_test_canonicalization_after_layout",
+    srcs = ["dot_operation_test.cc"],
+    args = [
+        "--xla_tpu_order_dot_after_layout=true",
+    ],
+    disabled_backends = [
+        "cpu",
+        "gpu",
+        "interpreter",
+    ],
+    tags = [
+        "optonly",
     ],
     deps = [
         ":client_library_test_base",
@@ -2104,7 +2141,9 @@ xla_test(
         "//tensorflow/compiler/xla/client/lib:prng",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

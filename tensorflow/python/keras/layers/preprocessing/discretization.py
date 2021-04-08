@@ -14,9 +14,6 @@
 # ==============================================================================
 """Keras discretization preprocessing layer."""
 # pylint: disable=g-classes-have-attributes
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import collections
 import json
@@ -26,17 +23,16 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.engine.base_preprocessing_layer import Combiner
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_boosted_trees_ops
-from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.parallel_for import control_flow_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import keras_export
 
@@ -150,11 +146,12 @@ class Discretization(base_preprocessing_layer.CombinerPreprocessingLayer):
     Same as input shape.
 
   Attributes:
-    bins: Optional boundary specification or number of bins to compute if `int`.
-      Bins exclude the left boundary and include the right boundary,
-      so `bins=[0., 1., 2.]` generates bins
-      `(-inf, 0.)`, `[0., 1.)`, `[1., 2.)`, and `[2., +inf)`.
-      This would correspond to bins = 4.
+    bin_boundaries: A list of bin boundaries. The leftmost and rightmost bins
+      will always extend to `-inf` and `inf`, so `bin_boundaries=[0., 1., 2.]`
+      generates bins `(-inf, 0.)`, `[0., 1.)`, `[1., 2.)`, and `[2., +inf)`. If
+      this option is set, `adapt` should not be called.
+    num_bins: The integer number of bins to compute. If this option is set,
+      `adapt` should be called to learn the bin boundaries.
     epsilon: Error tolerance, typically a small fraction close to zero (e.g.
       0.01). Higher values of epsilon increase the quantile approximation, and
       hence result in more unequal buckets, but could improve performance
@@ -165,7 +162,7 @@ class Discretization(base_preprocessing_layer.CombinerPreprocessingLayer):
   Bucketize float values based on provided buckets.
   >>> input = np.array([[-1.5, 1.0, 3.4, .5], [0.0, 3.0, 1.3, 0.0]])
   >>> layer = tf.keras.layers.experimental.preprocessing.Discretization(
-  ...          bins=[0., 1., 2.])
+  ...          bin_boundaries=[0., 1., 2.])
   >>> layer(input)
   <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
   array([[0, 1, 3, 1],
@@ -174,7 +171,7 @@ class Discretization(base_preprocessing_layer.CombinerPreprocessingLayer):
   Bucketize float values based on a number of buckets to compute.
   >>> input = np.array([[-1.5, 1.0, 3.4, .5], [0.0, 3.0, 1.3, 0.0]])
   >>> layer = tf.keras.layers.experimental.preprocessing.Discretization(
-  ...          bins=4, epsilon=0.01)
+  ...          num_bins=4, epsilon=0.01)
   >>> layer.adapt(input)
   >>> layer(input)
   <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
@@ -183,35 +180,53 @@ class Discretization(base_preprocessing_layer.CombinerPreprocessingLayer):
   """
 
   def __init__(self,
-               bins,
+               bin_boundaries=None,
+               num_bins=None,
                epsilon=0.01,
                **kwargs):
+    # bins is a deprecated arg for setting bin_boundaries or num_bins that still
+    # has some usage.
+    if "bins" in kwargs:
+      logging.warning(
+          "bins is deprecated, please use bin_boundaries or num_bins instead.")
+      if isinstance(kwargs["bins"], int) and num_bins is None:
+        num_bins = kwargs["bins"]
+      elif bin_boundaries is None:
+        bin_boundaries = kwargs["bins"]
+      del kwargs["bins"]
     super(Discretization, self).__init__(
         combiner=Discretization.DiscretizingCombiner(
-            epsilon, bins if isinstance(bins, int) else 1),
+            epsilon, num_bins if num_bins is not None else 1),
         **kwargs)
     base_preprocessing_layer.keras_kpl_gauge.get_cell(
         "Discretization").set(True)
-    if bins is not None and not isinstance(bins, int):
-      self.bins = np.append(bins, [np.Inf])
-    else:
-      self.bins = np.zeros(bins)
-    # Need this to return correct config
-    self.input_bins = bins
+    if num_bins is not None and num_bins < 0:
+      raise ValueError("`num_bins` must be must be greater than or equal to 0. "
+                       "You passed `num_bins={}`".format(num_bins))
+    if num_bins is not None and bin_boundaries is not None:
+      raise ValueError("Both `num_bins` and `bin_boundaries` should not be "
+                       "set. You passed `num_bins={}` and "
+                       "`bin_boundaries={}`".format(num_bins, bin_boundaries))
+    self.bin_boundaries = bin_boundaries
+    self.num_bins = num_bins
     self.epsilon = epsilon
 
   def build(self, input_shape):
+    if self.bin_boundaries is not None:
+      initial_bins = np.append(self.bin_boundaries, [np.Inf])
+    else:
+      initial_bins = np.zeros(self.num_bins)
     self.bins = self._add_state_variable(
         name=_BINS_NAME,
-        shape=(self.bins.size,),
+        shape=(initial_bins.size,),
         dtype=dtypes.float32,
-        initializer=init_ops.constant_initializer(self.bins))
+        initializer=init_ops.constant_initializer(initial_bins))
     super(Discretization, self).build(input_shape)
 
   def get_config(self):
     config = {
-        "bins": None if self.input_bins is None else (
-            K.get_value(self.input_bins)),
+        "bin_boundaries": self.bin_boundaries,
+        "num_bins": self.num_bins,
         "epsilon": self.epsilon,
     }
     base_config = super(Discretization, self).get_config()
@@ -229,44 +244,39 @@ class Discretization(base_preprocessing_layer.CombinerPreprocessingLayer):
     return tensor_spec.TensorSpec(shape=output_shape, dtype=output_dtype)
 
   def call(self, inputs):
-    def _bucketize_op(bins):
-      bins = [math_ops.cast(bins, dtypes.float32)]
-      return lambda inputs: gen_boosted_trees_ops.BoostedTreesBucketize(  # pylint: disable=g-long-lambda
+    bins = [math_ops.cast(array_ops.squeeze(self.bins), dtypes.float32)]
+
+    def _bucketize_fn(inputs):
+      return gen_boosted_trees_ops.BoostedTreesBucketize(
           float_values=[math_ops.cast(inputs, dtypes.float32)],
           bucket_boundaries=bins)[0]
 
     if tf_utils.is_ragged(inputs):
       integer_buckets = ragged_functional_ops.map_flat_values(
-          _bucketize_op(array_ops.squeeze(self.bins)),
-          inputs)
+          _bucketize_fn, inputs)
       # Ragged map_flat_values doesn't touch the non-values tensors in the
       # ragged composite tensor. If this op is the only op a Keras model,
       # this can cause errors in Graph mode, so wrap the tensor in an identity.
       return array_ops.identity(integer_buckets)
     elif isinstance(inputs, sparse_tensor.SparseTensor):
-      integer_buckets = gen_boosted_trees_ops.BoostedTreesBucketize(
-          float_values=[math_ops.cast(inputs.values, dtypes.float32)],
-          bucket_boundaries=[math_ops.cast(array_ops.squeeze(self.bins),
-                                           dtypes.float32)])[0]
       return sparse_tensor.SparseTensor(
           indices=array_ops.identity(inputs.indices),
-          values=integer_buckets,
+          values=_bucketize_fn(inputs.values),
           dense_shape=array_ops.identity(inputs.dense_shape))
     else:
-      input_shape = inputs.get_shape()
-      if any(dim is None for dim in input_shape.as_list()[1:]):
+      static_shape = inputs.get_shape()
+      if any(dim is None for dim in static_shape.as_list()[1:]):
         raise NotImplementedError(
             "Discretization Layer requires known non-batch shape,"
-            "found {}".format(input_shape))
+            "found {}".format(static_shape))
 
-      reshaped = array_ops.reshape(
-          inputs,
-          [-1, gen_math_ops.Prod(input=input_shape.as_list()[1:], axis=0)])
-
+      dynamic_shape = array_ops.shape_v2(inputs)
+      # BoostedTreesBucketize only handles rank 1 inputs. We need to flatten our
+      # inputs after batch size and vectorized_map over each sample.
+      reshaped = array_ops.reshape(inputs, [dynamic_shape[0], -1])
       return array_ops.reshape(
-          control_flow_ops.vectorized_map(
-              _bucketize_op(array_ops.squeeze(self.bins)), reshaped),
-          array_ops.constant([-1] + input_shape.as_list()[1:]))
+          control_flow_ops.vectorized_map(_bucketize_fn, reshaped),
+          dynamic_shape)
 
   class DiscretizingCombiner(Combiner):
     """Combiner for the Discretization preprocessing layer.

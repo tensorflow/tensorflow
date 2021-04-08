@@ -694,7 +694,7 @@ Status CreateForwardAndBackwardIODescriptors(
     std::unique_ptr<RnnStateTensorDescriptor>* h_state_desc,
     std::unique_ptr<RnnStateTensorDescriptor>* c_state_desc,
     std::unique_ptr<RnnSequenceTensorDescriptor>* output_desc,
-    const absl::Span<const int>& seq_lengths, bool time_major) {
+    const absl::Span<const int> seq_lengths, bool time_major) {
   StreamExecutor* executor = context->op_device_context()->stream()->parent();
   se::dnn::DataType data_type = ToDataType<T>::value;
 

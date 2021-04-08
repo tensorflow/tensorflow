@@ -14,10 +14,6 @@
 # ==============================================================================
 """Classes and functions implementing to Model SavedModel serialization."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.saving.saved_model import constants
 from tensorflow.python.keras.saving.saved_model import layer_serialization

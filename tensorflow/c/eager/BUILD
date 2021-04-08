@@ -27,7 +27,7 @@ load(
 )
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_cuda_library(
@@ -137,7 +137,7 @@ filegroup(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
+        "//tensorflow/python:__subpackages__",
     ],
 )
 
@@ -386,6 +386,7 @@ cc_library(
 
 cc_library(
     name = "immediate_execution_tensor_handle",
+    srcs = ["immediate_execution_tensor_handle.cc"],
     hdrs = ["immediate_execution_tensor_handle.h"],
     visibility = [
         "//tensorflow:internal",

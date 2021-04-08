@@ -68,8 +68,8 @@ Status GpuTransferManager::TransferLiteralToInfeed(
 
 Status GpuTransferManager::EnqueueBuffersToInfeed(
     se::StreamExecutor* executor, ShapeTree<InfeedBuffer> buffers) {
-  gpu::InfeedManager* infeed_manager = gpu::GetOrCreateInfeedManager();
-  se::Stream* stream = infeed_manager->GetStream(executor);
+  gpu::InfeedManager* infeed_manager = gpu::GetOrCreateInfeedManager(executor);
+  se::Stream* stream = infeed_manager->GetStream();
 
   // TODO(b/30467474): Since this stream is shared across different
   // infeed requests, blocking on the stream might be
@@ -99,8 +99,8 @@ StatusOr<InfeedBuffer> GpuTransferManager::TransferBufferToInfeedInternal(
     return InvalidArgument("Infeed shape needs 0 bytes");
   }
 
-  gpu::InfeedManager* infeed_manager = gpu::GetOrCreateInfeedManager();
-  se::Stream* stream = infeed_manager->GetStream(executor);
+  gpu::InfeedManager* infeed_manager = gpu::GetOrCreateInfeedManager(executor);
+  se::Stream* stream = infeed_manager->GetStream();
   if (stream == nullptr) {
     return InternalError("Failed to obtain a stream");
   }

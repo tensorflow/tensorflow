@@ -39,7 +39,7 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     default_visibility = [":internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files([
@@ -482,7 +482,10 @@ config_setting(
 
 config_setting(
     name = "no_nccl_support",
-    define_values = {"no_nccl_support": "true"},
+    define_values = dict(
+        if_google({"GOOGLE_CUDA_COMPILER": "clang"}),
+        no_nccl_support = "true",
+    ),
     visibility = ["//visibility:public"],
 )
 
@@ -936,6 +939,7 @@ tf_cc_shared_object(
         "//tensorflow/core/common_runtime:core_cpu_impl",
         "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
+        "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime_impl",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
         "//tensorflow/core:lib_internal_impl",
         "//tensorflow/core/profiler:profiler_impl",

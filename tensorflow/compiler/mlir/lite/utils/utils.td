@@ -27,9 +27,5 @@ def NotFromQuantOpOrSameQuantType : Constraint<
 def SameElementType : Constraint<
   CPred<"getElementTypeOrSelf($0) == getElementTypeOrSelf($1)">>;
 
-// Accepts two inputs and check if both have the same element type.
-def TypeEqual : Constraint<
-  CPred<"$0 == $1">>;
-
 // Checks if the value has only one user.
 def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;

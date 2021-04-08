@@ -57,6 +57,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "SHARD_HINT"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "SqlDataset"
     mtype: "<type \'type\'>"
   }
@@ -141,6 +145,10 @@ tf_module {
     argspec: "args=[\'batch_size\', \'row_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "enable_debug_mode"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "enumerate_dataset"
     argspec: "args=[\'start\'], varargs=None, keywords=None, defaults=[\'0\'], "
   }
@@ -186,7 +194,7 @@ tf_module {
   }
   member_method {
     name: "make_saveable_from_iterator"
-    argspec: "args=[\'iterator\', \'external_state_policy\'], varargs=None, keywords=None, defaults=[\'fail\'], "
+    argspec: "args=[\'iterator\', \'external_state_policy\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "map_and_batch"
