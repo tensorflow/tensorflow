@@ -889,10 +889,9 @@ class CudnnNormalizeDescriptor {
 // descriptor handle within a scope.
 class CudnnActivationDescriptor {
  public:
-  CudnnActivationDescriptor(dnn::ActivationMode activation_mode,
-                            cudnnNanPropagation_t nan_propagation,
-                            double value_max)
-      : handle_(CreateActivationDescriptor()) {
+  static port::StatusOr<CudnnActivationDescriptor> Create(
+      dnn::ActivationMode activation_mode,
+      cudnnNanPropagation_t nan_propagation, double value_max) {
     double relu_ceiling = 0.0;
     cudnnActivationMode_t mode;
     switch (activation_mode) {
@@ -917,20 +916,25 @@ class CudnnActivationDescriptor {
         mode = CUDNN_ACTIVATION_TANH;
         break;
       default:
-        LOG(FATAL) << "unrecognized activation mode: "
-                   << static_cast<int>(activation_mode);
+        return port::UnimplementedError(
+            absl::StrCat("unrecognized activation mode: ",
+                         static_cast<int>(activation_mode)));
     }
 
-    CHECK_CUDNN_OK(cudnnSetActivationDescriptor(handle_.get(), mode,
+    CudnnActivationDescriptor self;
+    self.handle_ = CreateActivationDescriptor();
+    CHECK_CUDNN_OK(cudnnSetActivationDescriptor(self.handle_.get(), mode,
                                                 nan_propagation, relu_ceiling));
+    return self;
   }
+
+  CudnnActivationDescriptor(CudnnActivationDescriptor&& rhs) = default;
 
   cudnnActivationDescriptor_t handle() const { return handle_.get(); }
 
  private:
+  CudnnActivationDescriptor() = default;
   ActivationDescriptor handle_;  // Owned.
-
-  SE_DISALLOW_COPY_AND_ASSIGN(CudnnActivationDescriptor);
 };
 
 cudnnDataType_t ToCudnnDataType(
@@ -3800,13 +3804,6 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
     ScratchAllocator* scratch_allocator,
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
-  if (activation_mode != dnn::ActivationMode::kRelu &&
-      activation_mode != dnn::ActivationMode::kNone) {
-    return port::Status(port::error::INVALID_ARGUMENT,
-                        "cudnnConvolutionBiasActivationForward() only supports "
-                        "Relu or None activation.");
-  }
-
   CudnnTensorDescriptor conv_input_nd(
       conv_input_descriptor,
       GetCudnnDataType<ElementType>(conv_input_descriptor.layout()));
@@ -3830,6 +3827,27 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
           dnn::ToDataType<ElementType>::value, convolution_descriptor,
           output_nd, scratch_allocator, &scratch));
 
+  if (activation_mode == dnn::ActivationMode::kNone) {
+    // cuDNN 8.1.0 is not a precise bounding box, but a conservative one (it's
+    // potentially too new).
+#if CUDNN_VERSION < 8100
+    return port::InternalError(
+        "cuDNN 7 doesn't implement conv with identity activation correctly");
+#else
+    if (algo_desc.algo_id() !=
+        CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM) {
+      return port::UnimplementedError(
+          "cudnnConvolutionBiasActivationForward() for IDENTITY is only "
+          "supported on CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM");
+    }
+#endif  // CUDNN_VERSION < 8100
+  }
+
+  if (activation_mode == dnn::ActivationMode::kRelu6) {
+    return port::UnimplementedError(
+        "cuDNN hasn't implement CUDNN_ACTIVATION_CLIPPED_RELU");
+  }
+
   CudnnConvolutionDescriptor conv(convolution_descriptor,
                                   ToCudnnDataType(accumulator_type));
   conv.set_use_tensor_op_math(algo_desc.tensor_ops_enabled());
@@ -3848,8 +3866,10 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
   // activation descriptor. Note that this will change the nan propagation
   // behavior from separate conv, bias, and relu (which by default is
   // CUDNN_PROPAGATE_NAN.
-  CudnnActivationDescriptor activation_desc(
-      activation_mode, CUDNN_NOT_PROPAGATE_NAN, output_descriptor.value_max());
+  SE_ASSIGN_OR_RETURN(auto activation_desc,
+                      CudnnActivationDescriptor::Create(
+                          activation_mode, CUDNN_NOT_PROPAGATE_NAN,
+                          output_descriptor.value_max()));
   auto side_input_data_ptr = (side_input_scale == 0) ? output_data->opaque()
                                                      : side_input_data.opaque();
 
@@ -4218,8 +4238,10 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
   const cudnnBatchNormOps_t bn_ops = get_bn_ops();
 
   // We use Nan propagation to be consistent with CudnnSupport::DoActivate(...).
-  CudnnActivationDescriptor activation_desc(
-      activation_mode, CUDNN_PROPAGATE_NAN, x_desc.value_max());
+  SE_ASSIGN_OR_RETURN(
+      auto activation_desc,
+      CudnnActivationDescriptor::Create(activation_mode, CUDNN_PROPAGATE_NAN,
+                                        x_desc.value_max()));
 
   if (reserve_space_allocator != nullptr && workspace_allocator != nullptr) {
     SE_ASSIGN_OR_RETURN(
@@ -4925,8 +4947,12 @@ bool CudnnSupport::DoActivate(Stream* stream,
                               const DeviceMemory<float>& input_data,
                               DeviceMemory<float>* output_data,
                               uint64 options) {
-  CudnnActivationDescriptor activation_desc(
+  auto activation_desc = CudnnActivationDescriptor::Create(
       activation_mode, CUDNN_PROPAGATE_NAN, dimensions.value_max());
+
+  if (!activation_desc.ok()) {
+    return false;
+  }
 
   CudnnTensorDescriptor input_nd(dimensions, CUDNN_DATA_FLOAT);
   // Alpha is the input scaling factor.
@@ -4937,7 +4963,7 @@ bool CudnnSupport::DoActivate(Stream* stream,
   auto cudnn = cudnn_->GetHandle(parent_, stream);
   const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnActivationForward(
-        cudnn.handle(), activation_desc.handle(), &alpha, input_nd.handle(),
+        cudnn.handle(), activation_desc->handle(), &alpha, input_nd.handle(),
         input_data.opaque(), &beta, input_nd.handle(), output_data->opaque()));
     return port::Status::OK();
   }();
