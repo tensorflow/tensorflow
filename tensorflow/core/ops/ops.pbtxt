@@ -13807,6 +13807,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: FT_ARRAY
+      args {
+        type_id: FT_VAR
+        s: "element_dtype"
+      }
+    }
   }
   attr {
     name: "element_dtype"
@@ -55477,6 +55484,13 @@ op {
   output_arg {
     name: "output"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: FT_ARRAY
+      args {
+        type_id: FT_VAR
+        s: "element_dtype"
+      }
+    }
   }
   attr {
     name: "element_dtype"
@@ -55554,6 +55568,13 @@ op {
   output_arg {
     name: "output_handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: FT_ARRAY
+      args {
+        type_id: FT_VAR
+        s: "element_dtype"
+      }
+    }
   }
   attr {
     name: "element_dtype"
@@ -55663,6 +55684,13 @@ op {
   output_arg {
     name: "output_handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: FT_ARRAY
+      args {
+        type_id: FT_VAR
+        s: "element_dtype"
+      }
+    }
   }
   attr {
     name: "element_dtype"
@@ -55682,6 +55710,13 @@ op {
   output_arg {
     name: "output_handles"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: FT_ARRAY
+      args {
+        type_id: FT_VAR
+        s: "element_dtype"
+      }
+    }
   }
   attr {
     name: "element_dtype"
@@ -55701,6 +55736,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: FT_ARRAY
+      args {
+        type_id: FT_VAR
+        s: "element_dtype"
+      }
+    }
   }
   attr {
     name: "element_dtype"
@@ -55749,6 +55791,13 @@ op {
   output_arg {
     name: "output_handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: FT_ARRAY
+      args {
+        type_id: FT_VAR
+        s: "element_dtype"
+      }
+    }
   }
   attr {
     name: "element_dtype"
@@ -55782,6 +55831,13 @@ op {
   output_arg {
     name: "output_handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: FT_ARRAY
+      args {
+        type_id: FT_VAR
+        s: "element_dtype"
+      }
+    }
   }
   attr {
     name: "element_dtype"
@@ -55809,6 +55865,13 @@ op {
   output_arg {
     name: "output_handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: FT_ARRAY
+      args {
+        type_id: FT_VAR
+        s: "element_dtype"
+      }
+    }
   }
   attr {
     name: "element_dtype"
@@ -55842,6 +55905,13 @@ op {
   output_arg {
     name: "output_handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: FT_ARRAY
+      args {
+        type_id: FT_VAR
+        s: "element_dtype"
+      }
+    }
   }
   attr {
     name: "element_dtype"
@@ -55865,6 +55935,13 @@ op {
   output_arg {
     name: "output_handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: FT_ARRAY
+      args {
+        type_id: FT_VAR
+        s: "element_dtype"
+      }
+    }
   }
   attr {
     name: "element_dtype"
