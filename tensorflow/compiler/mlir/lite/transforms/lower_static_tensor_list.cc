@@ -103,6 +103,15 @@ Value CreateI32SplatConst(Location loc, PatternRewriter *rewriter,
   return rewriter->create<ConstantOp>(loc, type, attr);
 }
 
+Value CreateI64SplatConst(Location loc, PatternRewriter *rewriter,
+                          ArrayRef<int64_t> shape, int64_t val) {
+  RankedTensorType type =
+      RankedTensorType::get(shape, rewriter->getIntegerType(64));
+  DenseElementsAttr attr =
+      DenseElementsAttr::get(type, rewriter->getI64IntegerAttr(val));
+  return rewriter->create<ConstantOp>(loc, type, attr);
+}
+
 Value CreateI32SplatTensor(Location loc, PatternRewriter *rewriter,
                            Value shape_tensor, int32_t val) {
   Value scalar_val = CreateI32SplatConst(loc, rewriter, {}, val);
@@ -352,7 +361,7 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
     if (!(dtype.isF16() || dtype.isF32() || dtype.isF64() ||
           dtype.isInteger(1) || dtype.isInteger(8) || dtype.isInteger(16) ||
           dtype.isInteger(32) || dtype.isInteger(64))) {
-      llvm::Twine error_info =
+      const char *error_info =
           "requires element_dtype to be 1-bit/8-bit/16-bit/32-bit/64-bit "
           "integer or 16-bit/32-bit/64-bit float type during TF Lite "
           "transformation pass";
@@ -412,7 +421,7 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
           if (element_shape_acquired) break;
         }
         if (!element_shape_acquired) {
-          llvm::Twine error_info =
+          const char *error_info =
               "requires element_shape to be 1D tensor during TF Lite "
               "transformation pass";
           return allow_tensorlist_pass_through_
@@ -808,6 +817,75 @@ struct ConvertTensorListStack
   }
 };
 
+// Converts `TensorListConcatV2` into Split, Concat, and Squeeze. First we split
+// the input tensorlist along the first dimension, which results in N (where N
+// is the first dim's size) tensors (each with shape [1, element_shape]). Then
+// we concatenate all those tensors along the second dimension. The last step
+// will be squeeze out the first dimension (which is 1) to match the output of
+// this op. The pattern will only match when the `element_shape` is constant and
+// each dimension is known.
+// TODO(b/184168136): Consider rewrite in tablegen.
+struct ConvertTensorListConcatV2
+    : public TensorListOpConverterBase<TF::TensorListConcatV2Op> {
+  using TensorListOpConverterBase<
+      TF::TensorListConcatV2Op>::TensorListOpConverterBase;
+  using TensorListOpConverterBase<
+      TF::TensorListConcatV2Op>::allow_tensorlist_pass_through_;
+
+  LogicalResult matchAndRewrite(
+      TF::TensorListConcatV2Op op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    Value input = operands[0];
+    Value element_shape = operands[1];
+
+    // Only match when `element_shape` is a constant with known dimension sizes.
+    DenseIntElementsAttr dense_elem_attr;
+    if (!matchPattern(element_shape, m_Constant(&dense_elem_attr))) {
+      const char *error_info = "requires element_shape to be a constant";
+      return allow_tensorlist_pass_through_
+                 ? rewriter.notifyMatchFailure(op, error_info)
+                 : op.emitOpError(error_info);
+    }
+    llvm::SmallVector<int64_t, 4> output_shape;
+    for (const auto &dim : dense_elem_attr.getIntValues()) {
+      if (dim.getSExtValue() == -1) {
+        const char *error_info =
+            "all dimensions in element_shape must be known";
+        return allow_tensorlist_pass_through_
+                   ? rewriter.notifyMatchFailure(op, error_info)
+                   : op.emitOpError(error_info);
+      }
+      output_shape.push_back(dim.getSExtValue());
+    }
+
+    // First split the input tensor into `N` sub-tensors (where `N` is the first
+    // dimension size).
+    Value scalar_zero = CreateI32SplatConst(loc, &rewriter, {}, 0);
+    Value scalar_one = CreateI32SplatConst(loc, &rewriter, {}, 1);
+    Type input_element_type = getElementTypeOrSelf(input);
+    auto split = rewriter.create<TF::SplitOp>(
+        loc, UnrankedTensorType::get(input_element_type), scalar_zero, input);
+    // Concatenate the `split` tensors along the second dimension.
+    auto concat = rewriter.create<TF::ConcatOp>(
+        loc, UnrankedTensorType::get(input_element_type), scalar_one,
+        split->getResults());
+    // Apply a squeeze op to remove the first dimension (which is 1).
+    auto squeeze_dim = rewriter.getI64ArrayAttr({0});
+    // Rewrite the first dim of `output_shape` to unknown since it might not
+    // be available at compile time.
+    output_shape[0] = -1;
+    auto squeeze = rewriter.create<TF::SqueezeOp>(
+        loc, RankedTensorType::get(output_shape, input_element_type), concat,
+        squeeze_dim);
+    // `lengths` is only useful for computing gradient. For now we just return
+    // a placeholder tensor.
+    rewriter.replaceOp(op,
+                       {squeeze, CreateI64SplatConst(loc, &rewriter, {0}, 0)});
+    return success();
+  }
+};
+
 struct ConvertIdentity : public OpConversionPattern<TF::IdentityOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -1043,8 +1121,9 @@ void LowerStaticTensorListPass::runOnOperation() {
                   ConvertTensorListSetItem, ConvertTensorListStack,
                   ConvertTensorListResize, ConvertWhile, ConvertWhileRegion>(
       context);
-  patterns.insert<ConvertEmptyTensorList, ConvertTensorListReserve>(
-      context, allow_tensorlist_pass_through);
+  patterns.insert<ConvertEmptyTensorList, ConvertTensorListReserve,
+                  ConvertTensorListConcatV2>(context,
+                                             allow_tensorlist_pass_through);
   if (!allow_tensorlist_pass_through) {
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns)))) {
