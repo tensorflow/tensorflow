@@ -2745,14 +2745,13 @@ class CSVLogger(Callback):
   def on_train_begin(self, logs=None):
     if self.append:
       if file_io.file_exists_v2(self.filename):
-        with open(self.filename, 'r' + self.file_flags) as f:
+        with file_io.FileIO(self.filename, 'r' + self.file_flags) as f:
           self.append_header = not bool(len(f.readline()))
       mode = 'a'
     else:
       mode = 'w'
-    self.csv_file = io.open(self.filename,
-                            mode + self.file_flags,
-                            **self._open_args)
+    self.csv_file = file_io.FileIO(self.filename,
+                            mode + self.file_flags)
 
   def on_epoch_end(self, epoch, logs=None):
     logs = logs or {}
