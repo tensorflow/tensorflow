@@ -1862,6 +1862,7 @@ cc_library(
 tf_cc_test(
     name = "horizontal_loop_fusion_test",
     srcs = ["horizontal_loop_fusion_test.cc"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":fusion_merger",
         ":horizontal_loop_fusion",
