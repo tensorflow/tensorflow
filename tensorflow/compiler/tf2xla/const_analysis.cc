@@ -116,6 +116,11 @@ Status GetCompileTimeConstInputs(const NodeDef& node, const OpKernel* op_kernel,
         Node* ret_i = fbody->ret_nodes[i];
         const Node* ret_i_input_0;
         TF_RETURN_IF_ERROR(ret_i->input_node(0, &ret_i_input_0));
+        if (ret_i_input_0->type_string() == "Identity") {
+          // TODO(b/184727356): Support IdentityN, loop-invariant While.
+          VLOG(2) << "Propagate through Identity: input " << i;
+          TF_RETURN_IF_ERROR(ret_i_input_0->input_node(0, &ret_i_input_0));
+        }
         if (ret_i_input_0->id() == arg_i->id()) {
           const_input_idxs->push_back(i);
         } else {

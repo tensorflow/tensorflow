@@ -286,7 +286,21 @@ Status PropagateConstIntoWhileNode(Graph* g, Node* while_node,
     }
     const OpDef_ArgDef& input_arg = body_func->signature().input_arg(i);
     if (output_arg_input->second != input_arg.name()) {
-      continue;
+      // Attempt to tolerate _Retval = Identity(_Arg).
+      const NodeDef* output_arg_identity = nullptr;
+      for (const NodeDef& node : body_func->node_def()) {
+        if (node.op() == "Identity" &&
+            (node.name() == output_arg_input->second ||
+             node.name() + ":0" == output_arg_input->second ||
+             node.name() + ":output:0" == output_arg_input->second)) {
+          output_arg_identity = &node;
+        }
+      }
+      if (!output_arg_identity ||
+          output_arg_identity->input(0) != input_arg.name()) {
+        VLOG(1) << "While input/output mismatch; not propagating const " << i;
+        continue;
+      }
     }
 
     const_input_index_to_node[i] = input_node;

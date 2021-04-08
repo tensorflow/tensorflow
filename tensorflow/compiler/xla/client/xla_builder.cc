@@ -351,7 +351,7 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
       break;
   }
   if (!*is_constant) {
-    VLOG(1) << "Non-constant: " << instr.name();
+    VLOG(1) << "Non-constant: " << instr.name() << " " << instr.opcode();
   }
   visited->insert(op_handle);
 }
