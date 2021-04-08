@@ -946,7 +946,8 @@ Status IrEmitterUnnested::EmitPadToStaticFromMlir(MlirEmitterInput mlir_input) {
   TF_ASSIGN_OR_RETURN(
       LaunchDimensions launch_dimensions,
       CalculateLaunchDimensions(
-          input_shape, ir_emitter_context_->gpu_device_info(), unroll_factor));
+          input_shape, ir_emitter_context_->gpu_device_info(),
+          {unroll_factor}));
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
                          ir_emitter_context_->llvm_module());
   TF_RETURN_IF_ERROR(
@@ -1070,7 +1071,8 @@ Status IrEmitterUnnested::EmitSliceToDynamicFromMlir(
   TF_ASSIGN_OR_RETURN(
       LaunchDimensions launch_dimensions,
       CalculateLaunchDimensions(
-          input_shape, ir_emitter_context_->gpu_device_info(), unroll_factor));
+          input_shape, ir_emitter_context_->gpu_device_info(),
+          {unroll_factor}));
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
                          ir_emitter_context_->llvm_module());
 
@@ -1946,7 +1948,7 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
                       CalculateLaunchDimensions(
                           element_shape, ir_emitter_context_->gpu_device_info(),
-                          unroll_factor, few_waves, row_optimized));
+                          {unroll_factor, few_waves, row_optimized}));
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk,
                          ir_emitter_context_->llvm_module());
   llvm::Type* index_type = GetIndexTypeForKernelFromMlir(
@@ -2045,7 +2047,7 @@ Status IrEmitterUnnested::EmitFusionFromMlir(MlirEmitterInput mlir_input) {
           LaunchDimensions launch_dimensions,
           CalculateLaunchDimensions(element_shape,
                                     ir_emitter_context_->gpu_device_info(),
-                                    unroll_factor, /*few_waves=*/false));
+                                    {unroll_factor, /*few_waves=*/false}));
       UpdateLaunchDimensions(launch_dimensions, thunks.back().get(),
                              ir_emitter_context_->llvm_module());
       TF_RETURN_IF_ERROR(
@@ -5821,7 +5823,7 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
                       CalculateLaunchDimensions(
                           element_shape, ir_emitter_context_->gpu_device_info(),
-                          unroll_factor));
+                          {unroll_factor}));
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
                          ir_emitter_context_->llvm_module());
 
