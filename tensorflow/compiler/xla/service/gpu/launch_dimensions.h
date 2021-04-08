@@ -84,7 +84,7 @@ struct LaunchDimensionsConfig {
 
 StatusOr<LaunchDimensions> CalculateLaunchDimensions(
     const Shape& shape, GpuDeviceInfo gpu_device_info,
-    LaunchDimensionsConfig dim_config={});
+    LaunchDimensionsConfig dim_config = {});
 
 }  // namespace gpu
 }  // namespace xla
