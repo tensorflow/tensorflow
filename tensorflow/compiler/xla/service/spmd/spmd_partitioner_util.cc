@@ -815,9 +815,17 @@ absl::optional<HloInstruction*> ExchangeHalo(
        max_right_halo_size > input_shard_size)) {
     return absl::nullopt;
   }
+  // Since max halo sizes could be negative, we only need to include data within
+  // certain bounds. Useful region is [left_bound, right_bound).
+  const int64 left_bound = -left_halo_size_function.MaxInRange(0, shard_count);
+  const int64 right_bound =
+      input_shard_size + right_halo_size_function.MaxInRange(0, shard_count);
+  if (left_bound >= right_bound) {
+    return absl::nullopt;
+  }
   // Left halo.
-  for (int64 i = CeilOfRatio(max_left_halo_size, input_shard_size) - 1; i >= 0;
-       --i) {
+  for (int64 i = CeilOfRatio(max_left_halo_size, input_shard_size) - 1;
+       i >= 0 && (-i - 1) * input_shard_size < right_bound; --i) {
     std::vector<std::pair<int64, int64>> source_target_pairs;
     target.tile_assignment().Each(
         [&](absl::Span<const int64> indices, int64 device) {
@@ -828,18 +836,25 @@ absl::optional<HloInstruction*> ExchangeHalo(
                 target.tile_assignment()(source_indices), device);
           }
         });
-    int64 halo_size =
+    int64 halo_size_including_skips =
         std::min(max_left_halo_size - input_shard_size * i, input_shard_size);
+    int64 halo_right_skips =
+        std::max<int64>(-i * input_shard_size - right_bound, 0);
+    int64 halo_size = halo_size_including_skips - halo_right_skips;
     auto halo_shape = hlo->shape();
     auto source_halo_slice = hlo;
     if (halo_size != hlo->shape().dimensions(dim)) {
       halo_shape.set_dimensions(dim, halo_size);
       std::vector<int64> halo_start_indices(halo_shape.rank(), 0);
-      halo_start_indices[dim] = hlo->shape().dimensions(dim) - halo_size;
+      halo_start_indices[dim] =
+          hlo->shape().dimensions(dim) - halo_size_including_skips;
+      std::vector<int64> halo_limit_indices(hlo->shape().dimensions().begin(),
+                                            hlo->shape().dimensions().end());
+      halo_limit_indices[dim] -= halo_right_skips;
       std::vector<int64> halo_slice_strides(halo_shape.rank(), 1);
-      source_halo_slice = b->AddInstruction(HloInstruction::CreateSlice(
-          halo_shape, hlo, halo_start_indices, hlo->shape().dimensions(),
-          halo_slice_strides));
+      source_halo_slice = b->AddInstruction(
+          HloInstruction::CreateSlice(halo_shape, hlo, halo_start_indices,
+                                      halo_limit_indices, halo_slice_strides));
     }
     auto left_halo =
         collective_ops_creator.create_cross_partition_collective_permute(
@@ -847,11 +862,32 @@ absl::optional<HloInstruction*> ExchangeHalo(
     concat_pieces.push_back(left_halo);
   }
 
-  concat_pieces.push_back(hlo);
+  if (left_bound < input_shard_size && right_bound > 0) {
+    int64 self_start = std::max<int64>(0, left_bound);
+    int64 self_limit = std::min<int64>(input_shard_size, right_bound);
+    if (self_start == 0 && self_limit == input_shard_size) {
+      concat_pieces.push_back(hlo);
+    } else {
+      auto self_shape = hlo->shape();
+      self_shape.set_dimensions(dim, self_limit - self_start);
+      std::vector<int64> start_indices(self_shape.rank(), 0);
+      start_indices[dim] = self_start;
+      std::vector<int64> limit_indices(hlo->shape().dimensions().begin(),
+                                       hlo->shape().dimensions().end());
+      limit_indices[dim] = self_limit;
+      std::vector<int64> slice_strides(self_shape.rank(), 1);
+      concat_pieces.push_back(b->AddInstruction(HloInstruction::CreateSlice(
+          self_shape, hlo, start_indices, limit_indices, slice_strides)));
+    }
+  }
 
+  int64 skipped_right_halos =
+      std::min<int64>(std::max<int64>(left_bound - input_shard_size, 0),
+                      std::max<int64>(max_right_halo_size, 0)) /
+      input_shard_size;
   // Right halo.
-  for (int64 i = 0; i < CeilOfRatio(max_right_halo_size, input_shard_size);
-       ++i) {
+  for (int64 i = skipped_right_halos;
+       i < CeilOfRatio(max_right_halo_size, input_shard_size); ++i) {
     std::vector<std::pair<int64, int64>> source_target_pairs;
     target.tile_assignment().Each(
         [&](absl::Span<const int64> indices, int64 device) {
@@ -862,17 +898,24 @@ absl::optional<HloInstruction*> ExchangeHalo(
                 device, target.tile_assignment()(target_indices));
           }
         });
-    int64 halo_size =
+    int64 halo_size_including_skips =
         std::min(max_right_halo_size - input_shard_size * i, input_shard_size);
+    int64 halo_left_skips =
+        std::max<int64>(left_bound - (i + 1) * input_shard_size, 0);
+    int64 halo_size = halo_size_including_skips - halo_left_skips;
     auto halo_shape = hlo->shape();
     HloInstruction* source_halo_slice = hlo;
     if (halo_size != halo_shape.dimensions(dim)) {
       halo_shape.set_dimensions(dim, halo_size);
       std::vector<int64> halo_start_indices(halo_shape.rank(), 0);
+      halo_start_indices[dim] = halo_left_skips;
+      std::vector<int64> halo_limit_indices(halo_shape.dimensions().begin(),
+                                            halo_shape.dimensions().end());
+      halo_limit_indices[dim] += halo_left_skips;
       std::vector<int64> halo_slice_strides(halo_shape.rank(), 1);
-      source_halo_slice = b->AddInstruction(HloInstruction::CreateSlice(
-          halo_shape, hlo, halo_start_indices, halo_shape.dimensions(),
-          halo_slice_strides));
+      source_halo_slice = b->AddInstruction(
+          HloInstruction::CreateSlice(halo_shape, hlo, halo_start_indices,
+                                      halo_limit_indices, halo_slice_strides));
     }
     auto right_halo =
         collective_ops_creator.create_cross_partition_collective_permute(
@@ -880,7 +923,7 @@ absl::optional<HloInstruction*> ExchangeHalo(
     concat_pieces.push_back(right_halo);
   }
 
-  auto concat = hlo;
+  auto concat = concat_pieces[0];
   // Concat with halos/padding.
   if (concat_pieces.size() > 1) {
     auto concat_shape = hlo->shape();
@@ -943,8 +986,7 @@ absl::optional<HloInstruction*> ExchangeHaloAndGetValidData(
   //
   // The max of halo size or the first shard's explicit left padding.
   int64 max_left_halo_or_padding_size =
-      std::max(std::max(int64{0}, max_left_halo_size),
-               explicit_left_padding_on_full_shape);
+      std::max(max_left_halo_size, explicit_left_padding_on_full_shape);
   // The calculation that returns the dynamic slice index for a shard on the
   // padded concat, which is the difference between
   // max_left_halo_or_padding_size and its left halo size.

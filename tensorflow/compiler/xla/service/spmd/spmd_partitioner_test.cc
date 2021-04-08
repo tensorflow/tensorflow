@@ -904,8 +904,7 @@ ENTRY entry {
       AllOf(op::Shape("f32[2,2]"), op::CollectivePermute(op::Parameter(0)));
   auto pre_mask =
       AllOf(op::Shape("f32[4,2]"),
-            op::Slice(AllOf(op::Shape("f32[5,2]"),
-                            op::Concatenate(halo0, halo1, op::Parameter(0)))));
+            op::Concatenate(halo0, halo1, op::Slice(op::Parameter(0))));
   auto masked =
       op::Select(op::Compare(op::Add(op::Iota(), op::Broadcast(op::Multiply())),
                              op::Broadcast(op::Constant())),
@@ -1547,8 +1546,9 @@ ENTRY entry {
 
   auto lhs_masked =
       AllOf(op::Shape("f32[3,128,64]"), op::Select(_, op::Parameter(0), _));
-  auto rhs_left_padded = op::Slice(op::Concatenate(
-      op::CollectivePermute(op::Slice(op::Parameter(1))), op::Parameter(1)));
+  auto rhs_left_padded =
+      op::Concatenate(op::CollectivePermute(op::Slice(op::Parameter(1))),
+                      op::Slice(op::Parameter(1)));
   auto rhs_masked =
       AllOf(op::Shape("f32[3,128,256]"), op::Select(_, rhs_left_padded, _));
 
@@ -2142,13 +2142,16 @@ ENTRY entry {
   auto root = module->entry_computation()->root_instruction();
 
   auto param0 = AllOf(op::Parameter(), op::Shape("f32[4]"));
-  auto after_halo_exchange =
-      AllOf(op::Shape("f32[4]"),
-            op::DynamicSlice(
-                AllOf(op::Shape("f32[5]"),
-                      op::Concatenate(op::CollectivePermute(op::Slice(param0)),
-                                      param0)),
-                _));
+  auto after_halo_exchange = AllOf(
+      op::Shape("f32[4]"),
+      op::DynamicSlice(
+          AllOf(op::Shape("f32[5]"),
+                op::Pad(AllOf(op::Shape("f32[4]"),
+                              op::Concatenate(
+                                  op::CollectivePermute(op::Slice(param0)),
+                                  op::Slice(param0))),
+                        op::Parameter(1))),
+          _));
   auto pad = op::Pad(after_halo_exchange, op::Parameter(1));
   EXPECT_THAT(root, op::DynamicSlice(pad, _));
 }
@@ -2171,13 +2174,16 @@ ENTRY entry {
   auto root = module->entry_computation()->root_instruction();
 
   auto param0 = AllOf(op::Parameter(), op::Shape("f32[11,4]"));
-  auto after_halo_exchange =
-      AllOf(op::Shape("f32[11,4]"),
-            op::DynamicSlice(
-                AllOf(op::Shape("f32[11,5]"),
-                      op::Concatenate(op::CollectivePermute(op::Slice(param0)),
-                                      param0)),
-                op::Constant(), _));
+  auto after_halo_exchange = AllOf(
+      op::Shape("f32[11,4]"),
+      op::DynamicSlice(
+          AllOf(op::Shape("f32[11,5]"),
+                op::Pad(AllOf(op::Shape("f32[11,4]"),
+                              op::Concatenate(
+                                  op::CollectivePermute(op::Slice(param0)),
+                                  op::Slice(param0))),
+                        op::Parameter(1))),
+          op::Constant(), _));
   auto pad = op::Pad(after_halo_exchange, op::Parameter(1));
   EXPECT_THAT(root, AllOf(op::DynamicSlice(pad, op::Constant(), _),
                           op::Shape("f32[27,11]")));
@@ -2211,9 +2217,8 @@ TEST_F(SpmdPartitioningTest, SliceAlongPartitionedDimension) {
 HloModule module
 
 ENTRY entry {
-  %param0 = f32[128,14,257] parameter(0)
-  %param0.copy = f32[128,14,257] copy(%param0), sharding={devices=[1,1,2]0,1}
-  ROOT %slice = f32[63,14,251] slice(%param0.copy),
+  %param0 = f32[128,14,257] parameter(0), sharding={devices=[1,1,2]0,1}
+  ROOT %slice = f32[63,14,251] slice(%param0),
     slice={[2:128:2], [0:14:1], [5:256:1]}, sharding={devices=[1,1,2]0,1}
 })";
 
@@ -2222,22 +2227,39 @@ ENTRY entry {
   VLOG(1) << module->ToString();
 
   auto root = module->entry_computation()->root_instruction();
-  auto param0 = AllOf(
-      op::Copy(op::DynamicSlice(op::Pad(op::Parameter(), op::Constant()),
-                                op::Constant(), op::Constant(), op::Reshape())),
-      op::Shape("f32[128,14,129]"));
+  auto param0 = AllOf(op::Parameter(0), op::Shape("f32[128,14,129]"));
   EXPECT_THAT(
       root,
       AllOf(op::Slice(AllOf(
                 op::DynamicSlice(
                     AllOf(op::Concatenate(
-                              param0,
+                              op::Slice(param0),
                               AllOf(op::CollectivePermute(op::Slice(param0)),
                                     op::Shape("f32[128,14,2]"))),
-                          op::Shape("f32[128,14,131]")),
+                          op::Shape("f32[128,14,129]")),
                     op::Constant(), op::Constant(), op::Add()),
                 op::Shape("f32[128,14,126]"))),
             op::Shape("f32[63,14,126]")));
+}
+
+TEST_F(SpmdPartitioningTest, SliceAlongPartitionedDimension2) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[4] parameter(0), sharding={devices=[4]0,1,2,3}
+  ROOT %slice = f32[1] slice(%param0),
+    slice={[3:4]}, sharding={devices=[4]0,1,2,3}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  auto param0 = AllOf(op::Parameter(0), op::Shape("f32[1]"));
+  EXPECT_THAT(root, AllOf(op::Copy(op::CollectivePermute(param0)),
+                          op::Shape("f32[1]")));
 }
 
 TEST_F(SpmdPartitioningTest,
@@ -2282,10 +2304,10 @@ ENTRY entry {
           op::Slice(AllOf(
               op::DynamicSlice(
                   AllOf(op::Concatenate(
-                            param0,
+                            op::Slice(param0),
                             AllOf(op::CollectivePermute(op::Slice(param0)),
                                   op::Shape("f32[128,14,2]"))),
-                        op::Shape("f32[128,14,131]")),
+                        op::Shape("f32[128,14,129]")),
                   op::Constant(), op::Constant(),
                   op::Add(op::Multiply(op::Reshape(op::DynamicSlice(
                                            op::Constant(), op::PartitionId())),
@@ -3043,8 +3065,8 @@ ENTRY entry {
   auto reshape =
       AllOf(op::Reshape(op::Parameter(0)), op::Shape("s32[3,2,1,8,5]"));
   auto halo = op::CollectivePermute(op::Slice(reshape));
-  auto exchanged =
-      op::DynamicSlice(op::Concatenate(halo, reshape), _, _, _, _, _);
+  auto exchanged = op::DynamicSlice(op::Concatenate(halo, op::Slice(reshape)),
+                                    _, _, _, _, _);
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(exchanged, op::Shape("s32[3,2,1,7,5]")));
 }
@@ -3067,8 +3089,8 @@ ENTRY entry {
   auto reshape =
       AllOf(op::Reshape(op::Parameter(0)), op::Shape("s32[3,2,1,8,5]"));
   auto halo = op::CollectivePermute(op::Slice(reshape));
-  auto exchanged =
-      op::DynamicSlice(op::Concatenate(halo, reshape), _, _, _, _, _);
+  auto exchanged = op::DynamicSlice(op::Concatenate(halo, op::Slice(reshape)),
+                                    _, _, _, _, _);
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(exchanged, op::Shape("s32[3,2,1,7,5]")));
 }
@@ -5002,10 +5024,9 @@ ENTRY entry {
   auto halo_exchange_concat =
       op::Concatenate(AllOf(op::Shape("f32[1]"),
                             op::CollectivePermute(op::Slice(op::Parameter(0)))),
-                      op::Parameter(0));
-  auto after_halo_exchange = op::Slice(halo_exchange_concat);
+                      op::Slice(op::Parameter(0)));
   EXPECT_THAT(root,
-              AllOf(op::Shape("f32[2]"), op::Reverse(after_halo_exchange)));
+              AllOf(op::Shape("f32[2]"), op::Reverse(halo_exchange_concat)));
 }
 
 TEST_F(SpmdPartitioningTest, MixWithManualPartitioning) {
