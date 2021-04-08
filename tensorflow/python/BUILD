@@ -2606,6 +2606,7 @@ py_library(
         ":control_flow_ops",
         ":math_ops",
         ":resource_variable_ops",
+        ":resource_variable_ops_gen",
         ":summary_op_util",
         ":summary_ops_gen",
         ":training_util",
