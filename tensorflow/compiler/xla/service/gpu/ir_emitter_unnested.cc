@@ -1366,7 +1366,7 @@ Status VerifyBatchNormForThunkEmission(
 // broadcasting, we can trigger a kernel that vectorize the row loads.
 // This speed up the kernel, in particular on A100.
 bool RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
-  bool row_optimized = fusion.getFusionResults().size() == 1 && // Not tested with MOF.
+  bool row_vectorized = fusion.getFusionResults().size() == 1 && // Not tested with MOF.
       absl::c_all_of(GetHloOperands(fusion), [](const mlir::Value& value) {
           // Only tested when the inputs are row-major. So only enable that case.
           // Maybe it would works if only the inner dimensions is contiguous.
@@ -1413,12 +1413,12 @@ bool RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
         continue;
       }
     }
-    row_optimized = false;
+    row_vectorized = false;
     VLOG(2) << "Row vectorization not enabled due to this op: " << MlirToString(&op);
     break;
   }
   // Trigger only when there is a row broadcasting.
-  return row_optimized &= some_row_broadcasting;
+  return row_vectorized &= some_row_broadcasting;
 }
 }  // namespace
 
@@ -1943,12 +1943,12 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
     return true;
   }();
 
-  bool row_optimized = RowVectorizationEnabled(fusion);
+  bool row_vectorized = RowVectorizationEnabled(fusion);
   Shape element_shape = context.output_shapes[0];
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
                       CalculateLaunchDimensions(
                           element_shape, ir_emitter_context_->gpu_device_info(),
-                          {unroll_factor, few_waves, row_optimized}));
+                          {unroll_factor, few_waves, row_vectorized}));
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk,
                          ir_emitter_context_->llvm_module());
   llvm::Type* index_type = GetIndexTypeForKernelFromMlir(
