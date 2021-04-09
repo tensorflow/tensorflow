@@ -15,18 +15,17 @@ limitations under the License.
 
 // Unit tests for StatusOr
 
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/core/platform/statusor.h"
 
 #include <memory>
 #include <type_traits>
 
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
-namespace stream_executor {
-namespace port {
+namespace tensorflow {
 namespace {
 
 class Base1 {
@@ -672,5 +671,4 @@ void BM_StatusOrFactoryFailLongMsg(::testing::benchmark::State& state) {
 BENCHMARK(BM_StatusOrFactoryFailLongMsg);
 
 }  // namespace
-}  // namespace port
-}  // namespace stream_executor
+}  // namespace tensorflow
