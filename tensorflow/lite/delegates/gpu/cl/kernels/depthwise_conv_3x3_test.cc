@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/cl_test.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv_3x3_stride_h2_test_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv_3x3_test_util.h"
 
 namespace tflite {
@@ -34,6 +35,11 @@ TEST_F(OpenCLOperationTest, DepthwiseConv3x3SimpleWeights) {
 
 TEST_F(OpenCLOperationTest, DepthwiseConv3x3) {
   auto status = DepthwiseConv3x3Test(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
+TEST_F(OpenCLOperationTest, DepthWiseConv3x3StrideH2SimpleWeights) {
+  auto status = DepthWiseConv3x3StrideH2SimpleWeightsTest(&exec_env_);
   ASSERT_TRUE(status.ok()) << status.error_message();
 }
 

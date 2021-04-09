@@ -128,7 +128,20 @@ def _get_object_count_by_type(exclude=()):
 
 @tf_export("test.gpu_device_name")
 def gpu_device_name():
-  """Returns the name of a GPU device if available or the empty string."""
+  """Returns the name of a GPU device if available or a empty string.
+
+  This method should only be used in tests written with `tf.test.TestCase`.
+
+  >>> class MyTest(tf.test.TestCase):
+  ...
+  ...   def test_add_on_gpu(self):
+  ...     if not tf.test.is_built_with_gpu_support():
+  ...       self.skipTest("test is only applicable on GPU")
+  ...
+  ...     with tf.device(tf.test.gpu_device_name()):
+  ...       self.assertEqual(tf.math.add(1.0, 2.0), 3.0)
+
+  """
   for x in device_lib.list_local_devices():
     if x.device_type == "GPU":
       return compat.as_str(x.name)
@@ -932,6 +945,13 @@ def assert_no_garbage_created(f):
     result = f(self, **kwargs)
     gc.collect()
     new_garbage = len(gc.garbage)
+    if new_garbage > previous_garbage:
+
+      for i, obj in enumerate(gc.garbage[previous_garbage:]):
+        # Known false positive for ast.fix_missing_locations.
+        if getattr(obj, "__module__", "") == "ast":
+          new_garbage -= 3
+
     if new_garbage > previous_garbage:
       logging.error(
           "The decorated test created work for Python's garbage collector, "
@@ -2273,7 +2293,7 @@ class TensorFlowTestCase(googletest.TestCase):
 
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
-  def session(self, graph=None, config=None, use_gpu=False, force_gpu=False):
+  def session(self, graph=None, config=None, use_gpu=True, force_gpu=False):
     """A context manager for a TensorFlow Session for use in executing tests.
 
     Note that this will set this session and the graph as global defaults.
@@ -2289,7 +2309,7 @@ class TensorFlowTestCase(googletest.TestCase):
     ``` python
     class MyOperatorTest(test_util.TensorFlowTestCase):
       def testMyOperator(self):
-        with self.session(use_gpu=True):
+        with self.session():
           valid_input = [1.0, 2.0, 3.0, 4.0, 5.0]
           result = MyOperator(valid_input).eval()
           self.assertEqual(result, [1.0, 2.0, 3.0, 5.0, 8.0]
@@ -2320,7 +2340,7 @@ class TensorFlowTestCase(googletest.TestCase):
   def cached_session(self,
                      graph=None,
                      config=None,
-                     use_gpu=False,
+                     use_gpu=True,
                      force_gpu=False):
     """Returns a TensorFlow Session for use in executing tests.
 
@@ -2339,7 +2359,7 @@ class TensorFlowTestCase(googletest.TestCase):
     ```python
     class MyOperatorTest(test_util.TensorFlowTestCase):
       def testMyOperator(self):
-        with self.cached_session(use_gpu=True) as sess:
+        with self.cached_session() as sess:
           valid_input = [1.0, 2.0, 3.0, 4.0, 5.0]
           result = MyOperator(valid_input).eval()
           self.assertEqual(result, [1.0, 2.0, 3.0, 5.0, 8.0]
@@ -2374,7 +2394,7 @@ class TensorFlowTestCase(googletest.TestCase):
   def test_session(self,
                    graph=None,
                    config=None,
-                   use_gpu=False,
+                   use_gpu=True,
                    force_gpu=False):
     """Use cached_session instead."""
     if self.id().endswith(".test_session"):
@@ -3099,6 +3119,12 @@ class TensorFlowTestCase(googletest.TestCase):
   def assertRaisesOpError(self, expected_err_re_or_predicate):
     return self.assertRaisesWithPredicateMatch(errors.OpError,
                                                expected_err_re_or_predicate)
+
+  def assertRaisesIncompatibleShapesError(
+      self, exception_type=errors.InvalidArgumentError):
+    return self.assertRaisesWithPredicateMatch(
+        exception_type, r"Incompatible shapes|Dimensions must be equal|"
+        r"required broadcastable shapes")
 
   def assertShapeEqual(self, np_array, tf_tensor, msg=None):
     """Asserts that a Numpy ndarray and a TensorFlow tensor have the same shape.

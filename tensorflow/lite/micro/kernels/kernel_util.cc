@@ -37,5 +37,41 @@ const RuntimeShape GetTensorShape(const TfLiteEvalTensor* tensor) {
   return RuntimeShape(dims_size, dims_data);
 }
 
+PaddingType RuntimePaddingType(TfLitePadding padding) {
+  switch (padding) {
+    case TfLitePadding::kTfLitePaddingSame:
+      return PaddingType::kSame;
+    case TfLitePadding::kTfLitePaddingValid:
+      return PaddingType::kValid;
+    case TfLitePadding::kTfLitePaddingUnknown:
+    default:
+      return PaddingType::kNone;
+  }
+}
+
+// Relocate tensor dims from FlatBuffer to the persistent storage arena.
+// The old dims data is copied to the new storage area.
+// The tensor and eval_tensor must be the same tensor.
+// Only use during Prepare phase.
+TfLiteStatus CreateWritableTensorDimsWithCopy(TfLiteContext* context,
+                                              TfLiteTensor* tensor,
+                                              TfLiteEvalTensor* eval_tensor) {
+  TF_LITE_ENSURE(context, tensor != nullptr);
+  TF_LITE_ENSURE(context, eval_tensor != nullptr);
+  int ranks = tensor->dims->size;
+  size_t alloc_size = TfLiteIntArrayGetSizeInBytes(ranks);
+  TfLiteIntArray* new_dims = static_cast<TfLiteIntArray*>(
+      context->AllocatePersistentBuffer(context, alloc_size));
+  TfLiteIntArray* old_dims = tensor->dims;
+  new_dims->size = ranks;
+  tensor->dims = new_dims;
+  eval_tensor->dims = new_dims;
+  for (int i = 0; i < ranks; i++) {
+    new_dims->data[i] = old_dims->data[i];
+  }
+
+  return kTfLiteOk;
+}
+
 }  // namespace micro
 }  // namespace tflite

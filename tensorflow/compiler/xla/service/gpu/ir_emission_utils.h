@@ -168,8 +168,8 @@ bool IsReductionFromOrToContiguousDimensions(mlir::Operation* reduce);
 // Returns whether unnested_hlo is an input fusion whose root is either a slice
 // or a tuple of slices. If verify_no_strides is true, returns false unless all
 // ROOT slices have no strides.
-bool IsInputFusibleSlices(const HloInstruction& unnested_hlo,
-                          bool verify_no_strides = false);
+bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
+                          bool verify_no_strides);
 
 struct ReductionDimensions {
   // Indicates whether the reduction is a row reduction or a column reduction.
@@ -261,7 +261,8 @@ std::vector<T> ToStdVector(const llvm::SmallVectorImpl<T>& v) {
 }
 
 StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
-    mlir::Value v, absl::Span<const BufferAllocation> allocations);
+    mlir::Value v, absl::Span<const BufferAllocation> allocations,
+    std::string* constant_name = nullptr);
 
 bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     mlir::lmhlo::FusionOp fusion,

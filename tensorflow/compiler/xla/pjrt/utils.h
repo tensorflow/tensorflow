@@ -52,6 +52,9 @@ Status DetermineArgumentLayoutsFromCompileOptions(
 StatusOr<absl::flat_hash_set<int>> GetParametersThatMustBeDonated(
     const HloModule& module, bool tuple_inputs);
 
+// Return max parallelism level.
+int DefaultThreadPoolSize();
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_PJRT_UTILS_H_

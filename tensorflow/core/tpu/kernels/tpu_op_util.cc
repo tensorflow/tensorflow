@@ -74,7 +74,8 @@ std::string CreateConfigPrefix(const TPUCompileMetadataProto& metadata) {
 uint64 CreateFingerprintWithNameAndShapes(
     uint64 name, const std::vector<tensorflow::TensorShape>& shapes) {
   std::string shape_prefix = CreateShapePrefix(shapes);
-  LOG(INFO) << "name: " << name << ", shape_prefix: " << shape_prefix;
+  VLOG(2) << "CreateFingerprintWithNameAndShapes, name: " << name
+          << ", shape_prefix: " << shape_prefix;
   return TpuCompileInterface::Get()->FingerprintString(
       absl::StrCat(name, "_", shape_prefix));
 }

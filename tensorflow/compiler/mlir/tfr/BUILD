@@ -17,7 +17,7 @@ package(
     default_visibility = [
         ":friends",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -151,7 +151,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir:passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Shape",
@@ -220,7 +220,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -265,7 +265,7 @@ cc_library(
     deps = [
         ":tfr_decompose_ctx",
         "//tensorflow/core:lib",
-        "//tensorflow/core/common_runtime/eager:core",
+        "//tensorflow/core/common_runtime/eager:core_no_xla",
         "//tensorflow/core/common_runtime/eager:eager_op_rewrite_registry",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings",

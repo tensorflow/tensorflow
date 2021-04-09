@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.compat import compat as tf_compat
 from tensorflow.python.data.experimental.ops.distribute_options import ExternalStatePolicy
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
@@ -29,6 +30,11 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
+from tensorflow.python.util.tf_export import tf_export
+
+SHARD_HINT = -1
+tf_export("data.experimental.SHARD_HINT").export_constant(
+    __name__, "SHARD_HINT")
 
 
 class _AutoShardDataset(dataset_ops.UnaryDataset):
@@ -53,7 +59,7 @@ class _AutoShardDataset(dataset_ops.UnaryDataset):
 
   If the AutoShardPolicy is set to OFF, it does nothing.
 
-  Args:
+  Attributes:
     num_workers: Total number of workers to shard this dataset across.
     index: The current worker index (out of the total number of workers) this
       dataset is for.
@@ -335,15 +341,17 @@ def replicate(dataset, devices):
     # thus an explicit application of options here is needed to avoid losing
     # `dataset` options.
     #
-    # TODO(b/147325552): Propagating options to C++ upon their setting would
-    # allow us to preserve the options across both variant and GraphDef based
-    # serialization, avoiding the need to explicitly apply options here.
+    # TODO(b/183497230): Move options application after deserialization.
     dataset = dataset._apply_options()
-    policy = dataset.options().experimental_external_state_policy
-    if policy is None:
+    if tf_compat.forward_compatible(2021, 4, 12):
       policy = ExternalStatePolicy.WARN
+    else:
+      policy = dataset.options().experimental_external_state_policy
+      if policy is None:
+        policy = ExternalStatePolicy.WARN
     graph_def = dataset._as_serialized_graph(
-        strip_device_assignment=True, external_state_policy=policy)
+        strip_device_assignment=True,
+        external_state_policy=policy)
   for device in devices:
     ds = _RemoteDataset(graph_def, device, dataset.element_spec)
     datasets[device] = ds

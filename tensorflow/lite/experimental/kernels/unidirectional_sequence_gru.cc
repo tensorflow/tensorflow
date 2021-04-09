@@ -62,6 +62,12 @@ void GruImpl(const TfLiteTensor* input, const TfLiteTensor* input_state,
   tflite::FullyConnectedParams fc_params;
   fc_params.float_activation_min = std::numeric_limits<float>::lowest();
   fc_params.float_activation_max = std::numeric_limits<float>::max();
+
+  // The lhs is cacheable only when both gate weight & candidate weight are both
+  // constants.
+  fc_params.lhs_cacheable =
+      IsConstantTensor(gate_weight) && IsConstantTensor(candidate_weight);
+  fc_params.rhs_cacheable = false;
   for (int i = 0; i < n_time; ++i) {
     gru_cell::GruCell(
         input_shape, input_data, state_shape, input_state_data,

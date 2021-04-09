@@ -16,17 +16,17 @@ limitations under the License.
 #include <complex>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/kernels/mlir_generated/gpu_ops_base.h"
+#include "tensorflow/core/kernels/mlir_generated/base_gpu_op.h"
 
 namespace tensorflow {
 
-GENERATE_AND_REGISTER_BINARY_KERNEL2(NotEqual, f16, DT_BOOL, bool, Eigen::half);
-GENERATE_AND_REGISTER_BINARY_KERNEL2(NotEqual, f32, DT_BOOL, bool, float);
-GENERATE_AND_REGISTER_BINARY_KERNEL2(NotEqual, f64, DT_BOOL, bool, double);
-GENERATE_AND_REGISTER_BINARY_KERNEL2(NotEqual, i1, DT_BOOL, bool, bool);
-GENERATE_AND_REGISTER_BINARY_KERNEL2(NotEqual, i8, DT_BOOL, bool, int8);
-GENERATE_AND_REGISTER_BINARY_KERNEL2(NotEqual, i16, DT_BOOL, bool, int16);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL2(NotEqual, DT_HALF, DT_BOOL);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL2(NotEqual, DT_FLOAT, DT_BOOL);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL2(NotEqual, DT_DOUBLE, DT_BOOL);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL2(NotEqual, DT_BOOL, DT_BOOL);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL2(NotEqual, DT_INT8, DT_BOOL);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL2(NotEqual, DT_INT16, DT_BOOL);
 // TODO(b/25387198): We cannot use a regular GPU kernel for int32.
-GENERATE_AND_REGISTER_BINARY_KERNEL2(NotEqual, i64, DT_BOOL, bool, int64);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL2(NotEqual, DT_INT64, DT_BOOL);
 
 }  // namespace tensorflow

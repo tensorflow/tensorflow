@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
 #define EIGEN_USE_THREADS
 
 #include <functional>
@@ -733,4 +733,4 @@ TEST_F(QuantizedConv2DTest, DepthwiseConv2DWithBiasAndRelu) {
   RunQuantizedDepthwiseConv2DOp(true);
 }
 }  // namespace tensorflow
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && ENABLE_MKL

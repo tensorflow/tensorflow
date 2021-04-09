@@ -132,11 +132,11 @@ class SimplifyBroadcastReshape : public OpRewritePattern<BroadcastToOp> {
 // Canonicalize operations in functions.
 struct TFOptimizePass : public PassWrapper<TFOptimizePass, FunctionPass> {
   void runOnFunction() override {
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     auto func = getFunction();
-    populateWithGenerated(&getContext(), patterns);
+    populateWithGenerated(patterns);
     patterns.insert<SimplifyBroadcastReshape>(&getContext());
-    applyPatternsAndFoldGreedily(func, std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
   }
 };
 

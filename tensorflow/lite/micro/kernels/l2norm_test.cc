@@ -77,9 +77,9 @@ void TestL2Normalization(const int* input_dims_data, const T* input_data,
 
   const TfLiteRegistration registration =
       ops::micro::Register_L2_NORMALIZATION();
-  micro::KernelRunner runner(
-      registration, tensors, tensors_size, inputs_array, outputs_array,
-      reinterpret_cast<void*>(&builtin_data), micro_test::reporter);
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array,
+                             reinterpret_cast<void*>(&builtin_data));
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());

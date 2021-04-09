@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/nccl/collective_communicator.h"
@@ -76,7 +77,7 @@ auto* eager_context_created =
 EagerContext::EagerContext(
     const SessionOptions& opts,
     ContextDevicePlacementPolicy default_device_placement_policy, bool async,
-    const DeviceMgr* device_mgr, bool device_mgr_owned, Rendezvous* rendezvous,
+    DeviceMgr* device_mgr, bool device_mgr_owned, Rendezvous* rendezvous,
     DistributedFunctionLibraryRuntime* cluster_flr)
     : ImmediateExecutionContext(kEager),
       opts_(opts),
@@ -125,6 +126,8 @@ EagerContext::EagerContext(
       new CollectiveExecutorMgr(opts.config, local_device_mgr(), std::move(drl),
                                 std::move(cprl), MaybeCreateNcclCommunicator()),
       /*owned=*/true);
+  global_rendezvous_for_functions_ =
+      core::RefCountPtr<Rendezvous>(CreateRendezvous(-1));
 }
 
 AbstractTensorInterface* EagerContext::CreateInt64Scalar(int64 value) {
@@ -522,7 +525,7 @@ EagerContext::~EagerContext() {
 
   // Custom devices may have obtained references to various context components
   // (executors, thread pool). It's safer to run their destructors early.
-  custom_devices_.clear();
+  custom_device_op_handler_.Clear();
 
   ClearCachesAndThreadExecutors();
   std::unordered_map<std::thread::id, EagerExecutor*> executors_copy;
@@ -596,6 +599,23 @@ void EagerContext::ListDevices(
   if (remote_device_mgr()) {
     remote_device_mgr()->ListDeviceAttributes(devices);
   }
+}
+
+Status EagerContext::AddDevices(std::vector<std::unique_ptr<Device>> devices) {
+  if (!devices.empty() && devices[0]->device_type() != "CPU") {
+    return errors::InvalidArgument(
+        "Device: ", devices[0]->device_type(), " is not allowed to be added ",
+        "after the context is initialized. Currently allowed device: CPU. ",
+        "May update this API to allow adding more types of devices.");
+  }
+  TF_RETURN_IF_ERROR(
+      reinterpret_cast<DynamicDeviceMgr*>(local_device_manager_.Get())
+          ->AddDevices(std::move(devices)));
+
+  // Add the devices to pflr's device set.
+  pflr_->InitializeDeviceAndFlr();
+  InitPrioritizedDeviceTypeList();
+  return Status::OK();
 }
 
 void EagerContext::StartStep() {
@@ -834,6 +854,13 @@ Status EagerContext::SyncExecutors() {
     sg.Update(s);
   }
 #endif  // !IS_MOBILE_PLATFORM
+  {
+    // Reset the global function rendezvous, which otherwise stores a failure
+    // state.
+    mutex_lock l(global_rendezvous_mu_);
+    global_rendezvous_for_functions_ =
+        core::RefCountPtr<Rendezvous>(CreateRendezvous(-1));
+  }
   return sg.as_summary_status();
 }
 
@@ -904,38 +931,15 @@ Status EagerContext::FindCompositeDeviceFromName(
   return errors::NotFound("Unknown composite device: ", device_name);
 }
 
-bool EagerContext::FindCustomDeviceFromName(const string& device_name,
-                                            CustomDevice** dev) const {
-  auto dev_it = custom_devices_.find(device_name);
-  if (dev_it == custom_devices_.end()) {
-    return false;
-  }
-  *dev = dev_it->second.get();
-  return true;
-}
-
 Status EagerContext::RegisterCustomDevice(
     const string& device_name, std::unique_ptr<CustomDevice> device) {
-  DeviceNameUtils::ParsedName parsed;
-  if (!DeviceNameUtils::ParseFullName(device_name, &parsed) ||
-      !parsed.has_job || !parsed.has_replica || !parsed.has_task ||
-      !parsed.has_type || !parsed.has_id) {
-    return errors::InvalidArgument(
-        device_name,
-        " could not be parsed as a device name. Use the full "
-        "/job:<name>/replica:<replica>/task:<task>/device:<type>:<device_num> "
-        "format.");
-  }
   Device* existing_physical_device = nullptr;
   if (FindDeviceFromName(device_name.c_str(), &existing_physical_device).ok()) {
     return errors::AlreadyExists(device_name,
                                  " already registered as a physical device.");
   }
-  if (!custom_devices_.emplace(device_name, std::move(device)).second) {
-    return errors::AlreadyExists(device_name,
-                                 " already registered as a custom device.");
-  }
-  return Status::OK();
+  return custom_device_op_handler_.RegisterCustomDevice(device_name,
+                                                        std::move(device));
 }
 
 Status EagerContext::FindOrCreateCompositeDevice(
@@ -1086,11 +1090,19 @@ void EagerContext::IncrementContextViewId() {
 // Set collective ops related state in the context. Passing nullptr to
 // `new_server` will reuse the existing GRPC server in context.
 Status EagerContext::StoreCollectiveOpsServer(
-    std::unique_ptr<ServerInterface> new_server, const DeviceMgr* device_mgr,
+    std::unique_ptr<ServerInterface> new_server, DeviceMgr* device_mgr,
     CollectiveExecutorMgrInterface* rpc_collective_executor_mgr) {
   collective_executor_mgr_.Reset(rpc_collective_executor_mgr);
 
-  local_device_manager_.Reset(device_mgr);
+  if (device_mgr != local_device_manager_.Get()) {
+    if (local_device_manager_.Owned()) {
+      old_local_device_managers_.push_back(
+          std::move(local_device_manager_.owned_object));
+    }
+    local_device_manager_.Reset(device_mgr);
+    if (rendezvous_ != nullptr) rendezvous_->Unref();
+    rendezvous_ = new IntraProcessRendezvous(local_device_manager_.Get());
+  }
   host_cpu_device_ = local_device_manager_.Get()->HostCPU();
 
   InitPrioritizedDeviceTypeList();
@@ -1211,7 +1223,7 @@ Status EagerContext::InitializeRemoteMaster(
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     std::unique_ptr<DynamicDeviceMgr> remote_device_manager,
     const std::vector<string>& remote_contexts, uint64 context_id,
-    Rendezvous* r, const DeviceMgr* local_device_mgr, int keep_alive_secs,
+    Rendezvous* r, DeviceMgr* local_device_mgr, int keep_alive_secs,
     DistributedFunctionLibraryRuntime* cluster_flr,
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
         remote_mgr) {
@@ -1277,7 +1289,7 @@ Status EagerContext::UpdateRemoteMaster(
     context_view_id_++;
 
     remote_eager_workers_ = std::move(remote_eager_workers);
-    pflr_->InitializeDeviceSet();
+    pflr_->InitializeDeviceAndFlr();
     InitPrioritizedDeviceTypeList();
 
     default_executor_.ClearError();
@@ -1308,7 +1320,7 @@ Status EagerContext::SetMasterContextState(
     std::shared_ptr<WorkerSession> worker_session,
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     std::unique_ptr<DynamicDeviceMgr> remote_device_manager, uint64 context_id,
-    uint64 context_view_id, Rendezvous* r, const DeviceMgr* local_device_mgr,
+    uint64 context_view_id, Rendezvous* r, DeviceMgr* local_device_mgr,
     int keep_alive_secs, DistributedFunctionLibraryRuntime* cluster_flr,
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
         remote_mgr) {
@@ -1496,7 +1508,7 @@ Status EagerContext::UpdateRemoteWorker(
     remote_contexts_ = remote_contexts;
     remote_eager_workers_ = std::move(remote_eager_workers);
     InitPrioritizedDeviceTypeList();
-    pflr_->InitializeDeviceSet();
+    pflr_->InitializeDeviceAndFlr();
   }
 
   // No need to update remote_device_manager_ since it's not owned for remote

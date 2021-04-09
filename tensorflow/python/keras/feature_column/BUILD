@@ -5,7 +5,7 @@ package(
         "//tensorflow/python/feature_column:__subpackages__",
         "//tensorflow/python/keras:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -66,6 +66,7 @@ py_library(
         ":dense_features",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/feature_column:feature_column_v2",
+        "//tensorflow/python/keras/utils:tf_contextlib",
         "//tensorflow/python/util:tf_export",
     ],
 )

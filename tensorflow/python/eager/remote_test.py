@@ -38,6 +38,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -45,9 +46,11 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import server_lib
 from tensorflow.python.training.server_lib import ClusterSpec
+from tensorflow.python.util import compat
 
 
 class SingleWorkerTest(test.TestCase, parameterized.TestCase):
@@ -111,20 +114,6 @@ class SingleWorkerTest(test.TestCase, parameterized.TestCase):
                      '/job:localhost/replica:0/task:0/device:CPU:0')
     self.assertEqual(rets[1].backing_device,
                      '/job:worker/replica:0/task:0/device:CPU:0')
-
-  def testMultiDeviceFunctionAmbiguousDevice(self):
-
-    @def_function.function
-    def ambiguous_device(i):
-      with ops.device('cpu:0'):
-        return i + constant_op.constant([2])
-
-    with self.assertRaises(errors.InvalidArgumentError) as cm:
-      with ops.device('/job:worker/replica:0/task:0/cpu:0'):
-        ambiguous_device(constant_op.constant([2])).numpy()
-
-    self.assertIn('the output node must match exactly one device',
-                  cm.exception.message)
 
   def testStreaming(self):
     """A mini stress test for streaming - issuing many RPCs back to back."""
@@ -317,6 +306,21 @@ class MultiWorkersTest(test.TestCase, parameterized.TestCase):
 
     with ops.device('/job:worker/replica:0/task:1'):
       self.assertAllEqual(local_func(x), [2, 1])
+
+  def testMultiDeviceFunctionAmbiguousDevice(self):
+
+    @def_function.function
+    def ambiguous_device(i):
+      with ops.device('/job:worker'):
+        # Multiple worker tasks, thus ambiguous device found error will be
+        # raised.
+        return i + constant_op.constant([2])
+
+    with self.assertRaises(errors.InvalidArgumentError) as cm:
+      ambiguous_device(constant_op.constant([2])).numpy()
+
+    self.assertIn('the output node must match exactly one device',
+                  cm.exception.message)
 
   # Note that the following tests for remote function cancellation only works
   # when non-streaming RPC. We need to disable streaming explicitly and restore
@@ -578,6 +582,32 @@ class MultiJobsTest(test.TestCase, parameterized.TestCase):
     ops.device(None).__enter__()
     # Reset the context to avoid polluting other test cases.
     context._reset_context()
+
+  def testMultipleDeviceFoundCheck(self):
+    remote.connect_to_cluster(self._cluster)
+
+    @def_function.function
+    def func():
+      with ops.device('cpu:0'):
+        # Multiple CPU:0 devices match would be found, but the CPU:0 from the
+        # parent device scope should be picked.
+        x = test_ops.device_placement_op()
+        y = string_ops.string_upper(x)
+        packed_var_0 = array_ops.stack([x, y], 0)
+        return packed_var_0
+
+    with ops.device('/job:my_worker/task:1'):
+      output = self.evaluate(func())
+      self.assertEqual(
+          compat.as_bytes('/job:my_worker/replica:0/task:1/device:CPU:0'),
+          output[0])
+      self.assertIn(compat.as_bytes('/JOB:MY_WORKER'), output[1])
+    with ops.device('/job:my_ps/task:1'):
+      output = self.evaluate(func())
+      self.assertEqual(
+          compat.as_bytes('/job:my_ps/replica:0/task:1/device:CPU:0'),
+          output[0])
+      self.assertIn(compat.as_bytes('/JOB:MY_PS'), output[1])
 
   def testSimpleParameterServer(self):
     remote.connect_to_cluster(self._cluster)

@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
@@ -1419,6 +1420,10 @@ Status LayoutAssignment::PropagateOperandConstraint(
           if (subshape.rank() != operand->shape().rank()) {
             return Status::OK();
           }
+          if (!constraints->points_to_analysis()
+                   .InstructionDefinesBufferAtIndex(user, shape_index)) {
+            return Status::OK();
+          }
           // TODO(b/67641796): Are there cases except fusion that use this code
           // path?
           TF_ASSIGN_OR_RETURN(
@@ -1448,6 +1453,10 @@ Status LayoutAssignment::PropagateOperandConstraint(
           return Status::OK();
         }
         if (subshape.rank() <= 1) {
+          return Status::OK();
+        }
+        if (!constraints->points_to_analysis().InstructionDefinesBufferAtIndex(
+                user, shape_index)) {
           return Status::OK();
         }
         TF_ASSIGN_OR_RETURN(

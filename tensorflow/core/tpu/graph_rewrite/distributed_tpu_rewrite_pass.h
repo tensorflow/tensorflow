@@ -180,13 +180,14 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
     }
 
     bool IsBroadcastArg(int64 index) const {
-      return index >= num_per_replica_args_ &&
+      return (index >= num_per_replica_args_ + num_distributed_args_) &&
              index < (num_per_replica_args_ + num_distributed_args_ +
                       num_broadcast_args_);
     }
 
     bool IsVariableArg(int64 index) const {
-      return index >= (num_per_replica_args_ + num_broadcast_args_) &&
+      return index >= (num_per_replica_args_ + num_distributed_args_ +
+                       num_broadcast_args_) &&
              index < (num_per_replica_args_ + num_distributed_args_ +
                       num_broadcast_args_ + num_variables_);
     }
@@ -362,7 +363,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
       int num_cores_per_replica, const string& compile_device,
       const xla::DeviceAssignment* xla_device_assignment,
       const std::vector<Node*>& dynamic_shape_nodes, Graph* graph,
-      Node** compile_node, int64 autotuner_thresh);
+      Node** compile_node, int64 autotuner_thresh, int num_tasks);
 
   // Builds a TPUCompileSucceededAssert node that verifies that compilation
   // succeeded and replaces the TPUCompilationStatus node in the graph.

@@ -33,14 +33,14 @@ limitations under the License.
 namespace tensorflow {
 namespace kernel_gen {
 
-// Converts TF code to LLVM/NVVM. Lowers the host side to LLVM Dialect.
+// Converts TF code to LLVM with or without GPU support.
 xla::StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
     mlir::MLIRContext& context, llvm::StringRef tf_code,
     llvm::ArrayRef<std::string> architectures = {"sm_75"},
-    llvm::ArrayRef<uint32_t> tile_sizes = {16, 64},
-    llvm::ArrayRef<uint32_t> unroll_factors = {},
+    llvm::ArrayRef<int64_t> tile_sizes = {16, 64},
+    llvm::ArrayRef<int64_t> unroll_factors = {},
     bool embed_memref_prints = false, bool generate_fatbin = true,
-    bool print_ptx = false, bool enable_ftz = false);
+    bool print_ptx = false, bool enable_ftz = false, bool cpu_codegen = false);
 
 }  // namespace kernel_gen
 }  // namespace tensorflow

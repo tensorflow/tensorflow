@@ -52,6 +52,13 @@ if(NOT EIGEN_BUILD_BTL)
   file(WRITE "${eigen_SOURCE_DIR}/bench/spbench/CMakeLists.txt" "")
 endif()
 
+# Patch Eigen to disable doc generation, as it builds C++ standalone apps with
+# the host toolchain which breaks cross compiled builds.
+if(NOT EIGEN_GENERATE_DOCS)
+  file(WRITE "${eigen_SOURCE_DIR}/doc/CMakeLists.txt" "")
+  file(WRITE "${eigen_SOURCE_DIR}/unsupported/doc/CMakeLists.txt" "")
+endif()
+
 set(EIGEN_DISABLED_FORTRAN_COMPILER_CHECK ON CACHE BOOL "Disabled Fortran")
 
 set(EIGEN_LEAVE_TEST_IN_ALL_TARGET OFF CACHE BOOL

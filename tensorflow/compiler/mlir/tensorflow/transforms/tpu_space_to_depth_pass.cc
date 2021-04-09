@@ -199,7 +199,7 @@ void HandleConv2DStride(TF::Conv2DOp conv2d) {
     return IntegerAttr::get(IntegerType::get(context, 64), v);
   });
   // TODO(b/157276506): change type of strides to DenseElementsAttr
-  auto strides = ArrayAttr::get(llvm::to_vector<4>(attrs), context);
+  auto strides = ArrayAttr::get(context, llvm::to_vector<4>(attrs));
   conv2d->setAttr("strides", strides);
 }
 
@@ -353,7 +353,7 @@ void HandleConv2DBackPropFilter(TF::Conv2DBackpropFilterOp backprop,
   auto attrs = llvm::map_range(values, [context](int64_t v) -> Attribute {
     return IntegerAttr::get(IntegerType::get(context, 64), APInt(64, v));
   });
-  auto strides = ArrayAttr::get(llvm::to_vector<4>(attrs), context);
+  auto strides = ArrayAttr::get(context, llvm::to_vector<4>(attrs));
 
   // new result type.
   SmallVector<int64_t, 4> new_shape(new_filter_shape.begin(),

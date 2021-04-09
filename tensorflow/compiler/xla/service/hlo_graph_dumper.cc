@@ -1128,7 +1128,7 @@ string HloDotDumper::GetInstructionNodeMetadata(const HloInstruction* instr) {
   }
   if (!instr->metadata().source_file().empty() &&
       instr->metadata().source_line() != 0) {
-    lines.push_back(StrFormat("op_type: %s:%d", instr->metadata().source_file(),
+    lines.push_back(StrFormat("source: %s:%d", instr->metadata().source_file(),
                               instr->metadata().source_line()));
   }
 

@@ -265,7 +265,7 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
     case toco::IODataType::QUANTIZED_UINT8:
       inference_tensor_type = tflite::TensorType_UINT8;
       break;
-    case toco::IODataType::INT8:
+    case toco::IODataType::QUANTIZED_INT8:
       inference_tensor_type = tflite::TensorType_INT8;
       break;
     default:

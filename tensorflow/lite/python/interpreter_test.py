@@ -22,6 +22,8 @@ import ctypes
 import io
 import sys
 
+from unittest import mock
+
 import numpy as np
 import six
 
@@ -37,6 +39,12 @@ from tensorflow.lite.python.testdata import _pywrap_test_registerer as test_regi
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
+try:
+  from tensorflow.lite.python import metrics_portable
+  metrics = metrics_portable
+except ImportError:
+  from tensorflow.lite.python import metrics_nonportable
+  metrics = metrics_nonportable
 # pylint: enable=g-import-not-at-top
 
 
@@ -67,6 +75,12 @@ class InterpreterCustomOpsTest(test_util.TensorFlowTestCase):
               'testdata/permute_float.tflite'),
           custom_op_registerers=[bogus_name])
 
+  def testNoCustomOps(self):
+    interpreter = interpreter_wrapper.InterpreterWithCustomOps(
+        model_path=resource_loader.get_path_to_datafile(
+            'testdata/permute_float.tflite'))
+    self.assertTrue(interpreter._safe_to_run())
+
 
 class InterpreterTest(test_util.TensorFlowTestCase):
 
@@ -91,37 +105,53 @@ class InterpreterTest(test_util.TensorFlowTestCase):
               'testdata/permute_float.tflite'),
           num_threads=4.2)
 
-  def testFloat(self):
-    interpreter = interpreter_wrapper.Interpreter(
-        model_path=resource_loader.get_path_to_datafile(
-            'testdata/permute_float.tflite'))
-    interpreter.allocate_tensors()
+  def testNotSupportedOpResolverTypes(self):
+    with self.assertRaisesRegex(
+        ValueError, 'Unrecognized passed in op resolver type: test'):
+      interpreter_wrapper.Interpreter(
+          model_path=resource_loader.get_path_to_datafile(
+              'testdata/permute_float.tflite'),
+          experimental_op_resolver_type='test')
 
-    input_details = interpreter.get_input_details()
-    self.assertEqual(1, len(input_details))
-    self.assertEqual('input', input_details[0]['name'])
-    self.assertEqual(np.float32, input_details[0]['dtype'])
-    self.assertTrue(([1, 4] == input_details[0]['shape']).all())
-    self.assertEqual((0.0, 0), input_details[0]['quantization'])
-    self.assertQuantizationParamsEqual(
-        [], [], 0, input_details[0]['quantization_parameters'])
+  def testFloatWithDifferentOpResolverTypes(self):
+    op_resolver_types = [
+        interpreter_wrapper.OpResolverType.BUILTIN,
+        interpreter_wrapper.OpResolverType.BUILTIN_REF,
+        interpreter_wrapper.OpResolverType.BUILTIN_WITHOUT_DEFAULT_DELEGATES
+    ]
 
-    output_details = interpreter.get_output_details()
-    self.assertEqual(1, len(output_details))
-    self.assertEqual('output', output_details[0]['name'])
-    self.assertEqual(np.float32, output_details[0]['dtype'])
-    self.assertTrue(([1, 4] == output_details[0]['shape']).all())
-    self.assertEqual((0.0, 0), output_details[0]['quantization'])
-    self.assertQuantizationParamsEqual(
-        [], [], 0, output_details[0]['quantization_parameters'])
+    for op_resolver_type in op_resolver_types:
+      interpreter = interpreter_wrapper.Interpreter(
+          model_path=resource_loader.get_path_to_datafile(
+              'testdata/permute_float.tflite'),
+          experimental_op_resolver_type=op_resolver_type)
+      interpreter.allocate_tensors()
 
-    test_input = np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32)
-    expected_output = np.array([[4.0, 3.0, 2.0, 1.0]], dtype=np.float32)
-    interpreter.set_tensor(input_details[0]['index'], test_input)
-    interpreter.invoke()
+      input_details = interpreter.get_input_details()
+      self.assertEqual(1, len(input_details))
+      self.assertEqual('input', input_details[0]['name'])
+      self.assertEqual(np.float32, input_details[0]['dtype'])
+      self.assertTrue(([1, 4] == input_details[0]['shape']).all())
+      self.assertEqual((0.0, 0), input_details[0]['quantization'])
+      self.assertQuantizationParamsEqual(
+          [], [], 0, input_details[0]['quantization_parameters'])
 
-    output_data = interpreter.get_tensor(output_details[0]['index'])
-    self.assertTrue((expected_output == output_data).all())
+      output_details = interpreter.get_output_details()
+      self.assertEqual(1, len(output_details))
+      self.assertEqual('output', output_details[0]['name'])
+      self.assertEqual(np.float32, output_details[0]['dtype'])
+      self.assertTrue(([1, 4] == output_details[0]['shape']).all())
+      self.assertEqual((0.0, 0), output_details[0]['quantization'])
+      self.assertQuantizationParamsEqual(
+          [], [], 0, output_details[0]['quantization_parameters'])
+
+      test_input = np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32)
+      expected_output = np.array([[4.0, 3.0, 2.0, 1.0]], dtype=np.float32)
+      interpreter.set_tensor(input_details[0]['index'], test_input)
+      interpreter.invoke()
+
+      output_data = interpreter.get_tensor(output_details[0]['index'])
+      self.assertTrue((expected_output == output_data).all())
 
   def testFloatWithTwoThreads(self):
     interpreter = interpreter_wrapper.Interpreter(
@@ -277,6 +307,14 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(s_params['dim_metadata'][1]['array_segments'],
                         [0, 2, 3])
     self.assertAllEqual(s_params['dim_metadata'][1]['array_indices'], [0, 1, 1])
+
+  @mock.patch.object(metrics.TFLiteMetrics,
+                     'increase_counter_interpreter_creation')
+  def testCreationCounter(self, increase_call):
+    interpreter_wrapper.Interpreter(
+        model_path=resource_loader.get_path_to_datafile(
+            'testdata/permute_float.tflite'))
+    increase_call.assert_called_once()
 
 
 class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
@@ -507,7 +545,7 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegex(
         # Due to exception chaining in PY3, we can't be more specific here and check that
         # the phrase 'Fail argument sent' is present.
-        ValueError,
+        ValueError,  #
         r'Failed to load delegate from'):
       interpreter_wrapper.load_delegate(
           self._delegate_file, options={'fail': 'fail'})

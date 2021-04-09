@@ -535,11 +535,20 @@ public final class TensorTest {
   @Test
   public void testByteArrayStringTensorInput() {
     NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(STRING_MODEL_PATH);
+    // Test input of string[1]
     wrapper.resizeInput(0, new int[] {1});
     Tensor stringTensor = wrapper.getInputTensor(0);
+    byte[][] bytes1DStringData = new byte[][] {{0x00, 0x01, 0x02, 0x03}};
+    stringTensor.setTo(bytes1DStringData);
 
     byte[][] byteArray = new byte[][] {new byte[1]};
     assertThat(stringTensor.dataTypeOf(byteArray)).isEqualTo(DataType.STRING);
     assertThat(stringTensor.shape()).isEqualTo(new int[] {1});
+
+    // Test input of scalar string
+    wrapper.resizeInput(0, new int[] {});
+    byte[] bytesStringData = new byte[] {0x00, 0x01, 0x02, 0x03};
+    stringTensor.setTo(bytesStringData);
+    assertThat(stringTensor.shape()).isEqualTo(new int[] {});
   }
 }

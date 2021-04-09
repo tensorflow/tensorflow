@@ -157,6 +157,21 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose([2., 3., 3., 3., 3.], f(constant_op.constant(10.)))
 
+  def testResourceHandleOutputWithoutHandleData(self):
+    # This is a bit of a weird thing to test since we try to maintain handle
+    # data. But users do create their own resources, and those often do not have
+    # any handle data.
+    h = resource_variable_ops.var_handle_op(
+        shape=[], dtype=dtypes.float32, shared_name='abc')
+
+    with backprop.GradientTape() as tape:
+      x = constant_op.constant(1.)
+      tape.watch(x)
+      tape.watch(h)
+      y, h = array_ops.identity_n([x, h])
+
+    self.assertAllClose(1., tape.gradient(y, x))
+
   def testGradientInsideLoop(self):
     with ops.Graph().as_default():
       v = resource_variable_ops.ResourceVariable(1.0)
@@ -853,6 +868,38 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(
         RuntimeError, 'A non-persistent GradientTape can only'):
       g.jacobian(y, [x])
+
+  @test_util.assert_no_new_tensors
+  def testJacobianInsideGradientTapeScope(self):
+    with backprop.GradientTape() as g:
+      x = constant_op.constant(3.0)
+      g.watch(x)
+      y = x * x
+      z = y * y
+      self.assertAllClose(4. * 3. ** 3., g.jacobian(z, x))
+
+  @test_util.assert_no_new_tensors
+  def testBatchJacobianInsideGradientTapeScope(self):
+    with backprop.GradientTape(persistent=True) as g:
+      x = constant_op.constant([[3.0]])
+      g.watch(x)
+      y = x * x
+      z = y * y
+      self.assertAllClose([[[4. * 3. ** 3.]]], g.batch_jacobian(z, x))
+
+  def testBatchJacobianParallelIterations(self):
+    @def_function.function
+    def f(persistent):
+      with backprop.GradientTape(persistent=persistent) as t:
+        x = constant_op.constant([[3.0]])
+        t.watch(x)
+        y = x * x
+        z = array_ops.tile(y * y, [1, 16])
+      return t.batch_jacobian(z, x, parallel_iterations=8)
+    with self.assertRaisesRegex(RuntimeError,
+                                'persistent=True.*parallel_iterations'):
+      f(persistent=False)
+    self.assertAllClose([[[4. * 3. ** 3.]] * 16], f(persistent=True))
 
   @test_util.assert_no_new_tensors
   def testGradientTapeBatchJacobianCalledMultipleTimes(self):

@@ -40,24 +40,25 @@ class ConvolutionTransposed3x3Thin : public GPUOperation {
   int3 GetGridSize() const override;
 
   // Move only
-  ConvolutionTransposed3x3Thin(ConvolutionTransposed3x3Thin&& operation);
+  ConvolutionTransposed3x3Thin(ConvolutionTransposed3x3Thin&& operation) =
+      default;
   ConvolutionTransposed3x3Thin& operator=(
-      ConvolutionTransposed3x3Thin&& operation);
+      ConvolutionTransposed3x3Thin&& operation) = default;
   ConvolutionTransposed3x3Thin(const ConvolutionTransposed3x3Thin&) = delete;
   ConvolutionTransposed3x3Thin& operator=(const ConvolutionTransposed3x3Thin&) =
       delete;
 
   WeightsDescription GetWeightsDescription() const {
     WeightsDescription desc;
-    desc.layout = WeightsLayout::kOICustomSSpatialI4O4;
+    desc.layout = weights_layout_;
     desc.spatial_remap = GetSpatialWeightsRemap();
     return desc;
   }
 
  private:
-  explicit ConvolutionTransposed3x3Thin(
-      const OperationDef& definition,
-      const ConvolutionTransposedAttributes& attr);
+  ConvolutionTransposed3x3Thin(const GpuInfo& gpu_info,
+                               const OperationDef& definition,
+                               const ConvolutionTransposedAttributes& attr);
 
   friend ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3Thin(
       const GpuInfo& gpu_info, const OperationDef& definition,
@@ -67,47 +68,16 @@ class ConvolutionTransposed3x3Thin : public GPUOperation {
       const GpuInfo& gpu_info, const OperationDef& definition,
       const ConvolutionTransposedAttributes& attr);
 
-  template <DataType T>
-  void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights);
+  void UploadWeights(
+      const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights);
 
   std::vector<int> GetSpatialWeightsRemap() const;
 
   std::string GenerateConvolutionTransposedCode(const OperationDef& op_def,
                                                 int src_depth, int dst_depth);
+
+  WeightsLayout weights_layout_;
 };
-
-template <DataType T>
-void ConvolutionTransposed3x3Thin::UploadWeights(
-    const tflite::gpu::Tensor<OHWI, T>& weights) {
-  const int src_depth = DivideRoundUp(weights.shape.i, 4);
-  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
-  const int kernel_x = 3;  //  This operation support only 3x3 kernel
-  const int kernel_y = 3;
-  const int flt4_count = kernel_x * kernel_y * src_depth * dst_depth * 4;
-
-  const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
-  const int flt4_size = f32_weights ? sizeof(float4) : sizeof(half4);
-
-  BufferDescriptor desc;
-  desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-  desc.element_size = 4;
-  desc.memory_type = MemoryType::CONSTANT;
-  desc.size = flt4_size * flt4_count;
-  desc.data.resize(desc.size);
-
-  if (f32_weights) {
-    float4* gpu_data = reinterpret_cast<float4*>(desc.data.data());
-    RearrangeWeightsToOICustomSpatialI4O4(weights, GetSpatialWeightsRemap(),
-                                          absl::MakeSpan(gpu_data, flt4_count));
-  } else {
-    half4* gpu_data = reinterpret_cast<half4*>(desc.data.data());
-    RearrangeWeightsToOICustomSpatialI4O4(weights, GetSpatialWeightsRemap(),
-                                          absl::MakeSpan(gpu_data, flt4_count));
-  }
-
-  args_.AddObject("weights",
-                  absl::make_unique<BufferDescriptor>(std::move(desc)));
-}
 
 bool IsConvolutionTransposed3x3ThinSupported(
     const ConvolutionTransposedAttributes& attr);

@@ -25,6 +25,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -131,9 +132,10 @@ class DefFunctionTest(xla_test.XLATestCase):
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       self.assertAllClose([2, 3, 3, 4, 4], fn2(inputs, 1))
 
-  @test_util.disable_mlir_bridge('TODO(b/162272821): MLIR bridge returns'
-                                 ' wrong status type')
   def testNestedCallUnsupportedOps(self):
+    if 'tpu' in self.device.lower():
+      self.skipTest('XLA TPU supports tf.unique')
+
     with ops.device('device:{}:0'.format(self.device)):
 
       def fn(x):
@@ -146,12 +148,11 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       func = def_function.function(fn2, jit_compile=False)
       inputs = constant_op.constant([1, 2, 2, 3, 3])
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  'not compilable'):
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, 'legalization failed'
+          if test_util.is_mlir_bridge_enabled() else 'unsupported operations'):
         func(inputs)
 
-  @test_util.disable_mlir_bridge('TODO(b/162272821): MLIR bridge returns'
-                                 ' wrong status type')
   def testUnsupportedOps(self):
     if 'tpu' in self.device.lower():
       self.skipTest('XLA TPU supports tf.unique')
@@ -166,8 +167,9 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       self.assertAllClose([1, 2, 3], func(inputs))
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  'not compilable'):
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, 'legalization failed'
+          if test_util.is_mlir_bridge_enabled() else 'unsupported operations'):
         xla_func(inputs)
 
   @test_util.disable_mlir_bridge('TODO(b/155782411): MLIR bridge does not'
@@ -200,8 +202,6 @@ class DefFunctionTest(xla_test.XLATestCase):
       self.assertIn('def_function_xla_jit_test',
                     g.experimental_get_compiler_ir(inputs, inputs)())
 
-  @test_util.disable_mlir_bridge('TODO(b/155782411): MLIR bridge does not'
-                                 'support stack traces')
   def testPythonStackTrace(self):
     if 'tpu' in self.device.lower():
       self.skipTest('XLA TPU supports tf.unique')
@@ -216,8 +216,8 @@ class DefFunctionTest(xla_test.XLATestCase):
       with self.assertRaisesRegex(errors.InvalidArgumentError, 'COMMENT2'):
         fn(inputs)
 
-  @test_util.disable_mlir_bridge('TODO(b/155782411): MLIR bridge does not'
-                                 'support stack traces')
+  @test_util.disable_mlir_bridge('TODO(b/181176476): Wrong stack trace for '
+                                 'failed legalization in MLIR bridge')
   def testPythonStackTraceControlFlow(self):
     if 'tpu' in self.device.lower():
       self.skipTest('XLA TPU supports tf.unique')
@@ -240,8 +240,6 @@ class DefFunctionTest(xla_test.XLATestCase):
       with self.assertRaisesRegex(errors.InvalidArgumentError, r'\.y\[0\]'):
         f(constant_op.constant(100.0))
 
-  @test_util.disable_mlir_bridge('TODO(b/155782411): MLIR bridge does not'
-                                 'support stack traces')
   def testPythonStackTraceUncompiledWithinCompiled(self):
     if 'tpu' in self.device.lower():
       self.skipTest('XLA TPU supports tf.unique')
@@ -359,6 +357,23 @@ class DefFunctionTest(xla_test.XLATestCase):
       self.assertAllClose(40.0, f.get_concrete_function(2.0)(2.0))
       self.assertAllClose([40.0, 28.0], g.get_concrete_function(2.0)(2.0))
 
+  def testWhileLoopWithUnmodifiedCarriedShape(self):
+    with ops.device('device:{}:0'.format(self.device)):
+      signature = [tensor_spec.TensorSpec(shape=[None], dtype=dtypes.float32)]
+
+      # We define a signature that specifies unknown vector shape, then test
+      # that tf.shape constness gets properly propagated into the while_loop
+      # even when carried as part of the loop state.
+      @def_function.function(input_signature=signature, jit_compile=True)
+      def g(x):
+        return control_flow_ops.while_loop_v2(
+            lambda *_: True,
+            lambda y, shp: (y + random_ops.random_normal(shp)**2, shp),
+            (x, array_ops.shape(x)),
+            maximum_iterations=3)[0]
+
+      self.assertAllGreater(g(array_ops.zeros([7])), 0.)
+
   def testMethodCompilation(self):
 
     with ops.device('device:{}:0'.format(self.device)):
@@ -373,8 +388,6 @@ class DefFunctionTest(xla_test.XLATestCase):
       c = C()
       self.assertAllClose([2, 3, 3, 4, 4], c.f1(inputs, 1))
 
-  @test_util.disable_mlir_bridge('TODO(b/162272821): MLIR bridge returns '
-                                 ' wrong status type')
   def testMethodCompilationUnsupportedFunc(self):
     if 'tpu' in self.device.lower():
       self.skipTest('XLA TPU supports tf.unique')
@@ -389,8 +402,9 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       c = C()
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  'not compilable'):
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, 'legalization failed'
+          if test_util.is_mlir_bridge_enabled() else 'unsupported operations'):
         c.f1(inputs)
 
   def testMustBeConstantPropagation(self):
@@ -413,8 +427,6 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       z()
 
-  @test_util.disable_mlir_bridge('TODO(b/162271237): argmax gives different'
-                                 ' results in MLIR-based bridge')
   def testArgMinMax(self):
     with ops.device('device:{}:0'.format(self.device)):
 
@@ -626,8 +638,6 @@ class DefFunctionTest(xla_test.XLATestCase):
       outer()
       self.assertAllClose(c.v, 3.52)
 
-  @test_util.disable_mlir_bridge('TODO(b/162801728): MLIR bridge causes '
-                                 ' invalid free on TPUs')
   def testUpdateVariableMultipleOutputs(self):
     with ops.device('device:{}:0'.format(self.device)):
       v = variables.Variable(3.1)
@@ -900,7 +910,7 @@ class DefFunctionTest(xla_test.XLATestCase):
         return ta.concat()  # EXPECTED_MESSAGE_OLD
 
       if test_util.is_mlir_bridge_enabled():
-        with self.assertRaisesRegex(errors.InternalError,
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
                                     'EXPECTED_MESSAGE_NEW'):
           f()
       else:
@@ -908,7 +918,7 @@ class DefFunctionTest(xla_test.XLATestCase):
                                     'EXPECTED_MESSAGE_OLD'):
           f()
 
-  def test_counter(self):
+  def testCounter(self):
     cell_nojit = def_function._tf_function_counter.get_cell('0')
     cell_jit = def_function._tf_function_counter.get_cell('1')
     orig_nojit = cell_nojit.value()
@@ -976,6 +986,31 @@ class DefFunctionTest(xla_test.XLATestCase):
       with self.assertRaisesRegex(errors.InvalidArgumentError,
                                   'def_function_xla_jit_test.py'):
         update_var(arg)
+
+  def testMustBeConstantInsideCondition(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def f(x, d):
+        if math_ops.reduce_all(
+            math_ops.greater(x, random_ops.random_normal([10, 10]))):
+          return array_ops.reshape(x * 2, constant_op.constant([100]))
+        else:
+          return array_ops.reshape(x * 3, d)
+
+      f(random_ops.random_normal([10, 10]), constant_op.constant([100]))
+
+  def testConditionalGradientTapeMathRegression(self):
+    with ops.device('device:{}:0'.format(self.device)):
+      with backprop.GradientTape():
+
+        @def_function.function(jit_compile=True, autograph=False)
+        def f(x):
+          return control_flow_ops.cond(
+              math_ops.reduce_all(x > 1), lambda: 1. / x, lambda: x)
+
+        v = variables.Variable([[2.]])
+        self.assertAllClose(f(v), constant_op.constant([[0.5]]))
 
 
 if __name__ == '__main__':

@@ -160,9 +160,12 @@ class BatchResource : public serving::BatchResourceBase {
     opts.cancellation_manager = last_task_context->cancellation_manager();
     opts.collective_executor = last_task_context->collective_executor();
     opts.stats_collector = last_task_context->stats_collector();
-    opts.rendezvous = last_task_context->rendezvous();
     opts.runner = last_task_context->runner();
     opts.run_all_kernels_inline = last_task_context->run_all_kernels_inline();
+    // We do not set 'opts.rendezvous', since if the function is run multiple
+    // times in parallel with the same rendezvous, a _Send node from one run
+    // might be matched with a _Recv node of a different run. Not setting the
+    // rendezvous causes a new rendezvous to be used for each run.
     Notification done_notif;
 
     flib_->Run(opts, fhandle_, inputs, combined_outputs,
@@ -209,15 +212,6 @@ class BatchFunctionKernel : public AsyncOpKernel {
       // Use `shared_name_` and name() as prefix for `batcher_queue_`.
       // Note name() is unique per session (from session metadata).
       batcher_queue_ = name() + "/" + shared_name_ + batcher_queue_;
-
-      // `shared_name_` and `container_` is used to look up an instantiated
-      // scheduler instance in `ComputeAsync`.
-      //
-      // Rewrite `container_` and `shared_name_` to a pre-defined constant so
-      // that a shared shared pool across all models if adaptive shared batch
-      // scheduler is used.
-      container_ = "__adapative_container";
-      shared_name_ = "__adaptive_global_shared_thread_pool";
     }
 
     if (shared_name_.empty()) {

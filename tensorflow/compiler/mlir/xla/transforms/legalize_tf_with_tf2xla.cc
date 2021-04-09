@@ -130,6 +130,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::DivNoNanOp>(),
     TypeID::get<TF::EluGradOp>(),
     TypeID::get<TF::EluOp>(),
+    TypeID::get<TF::EnsureShapeOp>(),
     TypeID::get<TF::EqualOp>(),
     TypeID::get<TF::ErfcOp>(),
     TypeID::get<TF::ErfinvOp>(),
@@ -202,6 +203,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::QuantizeAndDequantizeOp>(),
     TypeID::get<TF::QuantizeAndDequantizeV2Op>(),
     TypeID::get<TF::QuantizeAndDequantizeV3Op>(),
+    TypeID::get<TF::QuantizeAndDequantizeV4Op>(),
     TypeID::get<TF::RFFT2DOp>(),
     TypeID::get<TF::RFFT3DOp>(),
     TypeID::get<TF::RGBToHSVOp>(),
@@ -232,7 +234,6 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::SpaceToBatchOp>(),
     TypeID::get<TF::SpaceToDepthOp>(),
     TypeID::get<TF::SparseToDenseOp>(),
-    TypeID::get<TF::SqrtGradOp>(),
     TypeID::get<TF::SquareOp>(),
     TypeID::get<TF::StatelessMultinomialOp>(),
     TypeID::get<TF::StatelessRandomGetAlgOp>(),
@@ -242,6 +243,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::StatelessRandomNormalV2Op>(),
     TypeID::get<TF::StatelessRandomUniformOp>(),
     TypeID::get<TF::StatelessRandomUniformFullIntOp>(),
+    TypeID::get<TF::StatelessRandomUniformFullIntV2Op>(),
     TypeID::get<TF::StatelessRandomUniformV2Op>(),
     TypeID::get<TF::StatelessRandomUniformIntOp>(),
     TypeID::get<TF::StatelessRandomUniformIntV2Op>(),
@@ -264,7 +266,9 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::UpperBoundOp>(),
     TypeID::get<TF::XlaBroadcastHelperOp>(),
     TypeID::get<TF::XlaConvOp>(),
+    TypeID::get<TF::XlaConvV2Op>(),
     TypeID::get<TF::XlaDotOp>(),
+    TypeID::get<TF::XlaDotV2Op>(),
     TypeID::get<TF::XlaDynamicSliceOp>(),
     TypeID::get<TF::XlaDynamicUpdateSliceOp>(),
     TypeID::get<TF::XlaEinsumOp>(),
@@ -572,10 +576,10 @@ tensorflow::XlaExpression Tf2XlaRewriter::GetExprForOperand(Value operand,
 
 class Tf2XlaRewritePattern : public RewritePattern {
  public:
-  // Set benefit to 0 (= least benefit) so this pattern is only used as a
-  // fallback.
-  explicit Tf2XlaRewritePattern(const std::string& device_type)
-      : RewritePattern(0, MatchAnyOpTypeTag()), device_type_(device_type) {}
+  explicit Tf2XlaRewritePattern(MLIRContext* ctx,
+                                const std::string& device_type)
+      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, ctx),
+        device_type_(device_type) {}
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {
@@ -598,8 +602,8 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
   LegalizeTF(const LegalizeTF&) {}
 
   void runOnFunction() override {
-    OwningRewritePatternList patterns;
-    patterns.insert<Tf2XlaRewritePattern>(device_type_);
+    OwningRewritePatternList patterns(&getContext());
+    patterns.insert<Tf2XlaRewritePattern>(&getContext(), device_type_);
     if (failed(
             applyPatternsAndFoldGreedily(getFunction(), std::move(patterns))))
       signalPassFailure();
@@ -620,8 +624,9 @@ static PassRegistration<LegalizeTF> pass(
 }  // end namespace
 
 void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
-                                          OwningRewritePatternList& patterns) {
-  patterns.insert<Tf2XlaRewritePattern>(device_type.str());
+                                          OwningRewritePatternList& patterns,
+                                          MLIRContext* ctx) {
+  patterns.insert<Tf2XlaRewritePattern>(ctx, device_type.str());
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTfWithTf2XlaPass(

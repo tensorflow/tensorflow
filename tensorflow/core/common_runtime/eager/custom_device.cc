@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/custom_device.h"
 
+#include "tensorflow/core/common_runtime/eager/custom_device_op_handler.h"
+
 namespace tensorflow {
 
 Status CustomDeviceTensorHandle::Shape(PartialTensorShape* shape) const {
@@ -57,8 +59,8 @@ int CustomDeviceTensorHandle::DeviceId(Status* status) const {
 
 AbstractTensorInterface* CustomDeviceTensorHandle::Resolve(Status* status) {
   core::RefCountPtr<ImmediateExecutionTensorHandle> copied_off(
-      context_->CopyTensorHandleToDevice(
-          this,
+      context_->GetCustomDeviceOpHandler().CopyTensorHandleToDevice(
+          context_, this,
           DeviceNameUtils::ParsedNameToString(context_->HostCPUParsedName())
               .c_str(),
           status));

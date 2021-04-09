@@ -3,7 +3,6 @@
 
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load(":build_defs.bzl", "build_test")
 
 package(
@@ -39,11 +38,10 @@ cc_library(
     name = "framework",
     srcs = [],
     hdrs = FRAMEWORK_LIB_HDRS + CC_API_HDRS,
-    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "//tensorflow_lite_support:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
         "//tensorflow/lite:allocation",
@@ -71,7 +69,6 @@ cc_library(
     name = "cc_api",
     srcs = [],
     hdrs = CC_API_HDRS,
-    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
     visibility = ["//tensorflow/lite:__pkg__"],
     deps = [
@@ -100,16 +97,19 @@ cc_library(
 cc_library(
     name = "builtin_ops",
     hdrs = [
+        "cc/kernels/builtin_op_kernels.h",
         "cc/kernels/register.h",
+        # TODO(b/161243354): remove the line below when clients no
+        # longer depend on it.
         "//tensorflow/lite/kernels:builtin_op_kernels.h",
         "//tensorflow/lite/kernels:fully_connected.h",
     ],
-    compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "//tensorflow_lite_support:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
+        ":builtin_ops_list",
         "//tensorflow/lite:cc_api",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
@@ -125,17 +125,56 @@ build_test(
     ],
 )
 
+cc_library(
+    name = "delegate_registry",
+    hdrs = ["cc/experimental/acceleration/configuration/delegate_registry.h"],
+    copts = tflite_copts_warnings(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/acceleration/configuration:delegate_registry",
+    ],
+)
+
+build_test(
+    name = "delegate_registry_build_test",
+    targets = [
+        ":delegate_registry",
+    ],
+)
+
+cc_library(
+    name = "verifier",
+    hdrs = ["cc/tools/verifier.h"],
+    copts = tflite_copts_warnings(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/lite/tools:verifier",
+    ],
+)
+
+build_test(
+    name = "verifier_build_test",
+    targets = [
+        ":verifier",
+    ],
+)
+
 #------------------------------------------------------------------------------
 # C API
 
 cc_library(
     name = "c_api",
     hdrs = ["c/c_api.h"],
-    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "//tensorflow_lite_support:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = ["//tensorflow/lite/c:c_api"],
 )
@@ -143,11 +182,10 @@ cc_library(
 cc_library(
     name = "c_api_experimental",
     hdrs = ["c/c_api_experimental.h"],
-    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "//tensorflow_lite_support:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = ["//tensorflow/lite/c:c_api_experimental"],
 )
@@ -155,11 +193,10 @@ cc_library(
 cc_library(
     name = "common",
     hdrs = ["c/common.h"],
-    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "//tensorflow_lite_support:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = ["//tensorflow/lite/c:common"],
 )
@@ -167,11 +204,10 @@ cc_library(
 cc_library(
     name = "builtin_op_data",
     hdrs = ["c/builtin_op_data.h"],
-    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "//tensorflow_lite_support:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = ["//tensorflow/lite/c:common"],
 )
@@ -186,6 +222,17 @@ build_test(
     ],
 )
 
+cc_library(
+    name = "builtin_ops_list",
+    textual_hdrs = ["builtin_ops_list.inc"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
+)
+
+exports_files(
+    srcs = ["builtin_ops_list.inc"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
+)
+
 #------------------------------------------------------------------------------
 # Testing infrastructure
 
@@ -196,7 +243,7 @@ cc_library(
     hdrs = ["c/shims_test_util.h"],
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "//tensorflow_lite_support:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
 )
 
@@ -206,7 +253,7 @@ cc_library(
     hdrs = ["cc/shims_test_util.h"],
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "//tensorflow_lite_support:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
         ":c_shims_test_util",
@@ -219,6 +266,22 @@ build_test(
     targets = [
         ":c_shims_test_util",
         ":cc_shims_test_util",
+    ],
+)
+
+#------------------------------------------------------------------------------
+# JNI bindings (Java API and Java Tasks library)
+
+# Contains code to initialize TFLite through JNI in the internal version.
+cc_library(
+    name = "jni_initialization",
+    srcs = [],
+    # Prevent automated tools from removing this target as a dependency due to
+    # it being empty.
+    tags = ["keep_dep"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
 )
 

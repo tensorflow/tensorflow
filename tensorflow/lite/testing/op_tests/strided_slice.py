@@ -57,6 +57,13 @@ def _make_strided_slice_tests(options, test_parameters, expected_tf_failures=0):
       tensors = [input_tensor, begin, end]
       if strides is not None:
         tensors.append(strides)
+
+    kwargs = {}
+    if parameters.get("ellipsis_mask", None):
+      kwargs.update({"ellipsis_mask": parameters["ellipsis_mask"]})
+    if parameters.get("new_axis_mask", None):
+      kwargs.update({"new_axis_mask": parameters["new_axis_mask"]})
+
     out = tf.strided_slice(
         input_tensor,
         begin,
@@ -64,7 +71,8 @@ def _make_strided_slice_tests(options, test_parameters, expected_tf_failures=0):
         strides,
         begin_mask=parameters["begin_mask"],
         end_mask=parameters["end_mask"],
-        shrink_axis_mask=parameters["shrink_axis_mask"])
+        shrink_axis_mask=parameters["shrink_axis_mask"],
+        **kwargs)
     return tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
@@ -244,6 +252,37 @@ def make_strided_slice_tests(options):
             "end_mask": [3],
             "shrink_axis_mask": [None],
             "constant_indices": [True, False],
+            "fully_quantize": [False],
+        },
+        # ellipsis_mask and new_axis_mask.
+        {
+            "dtype": [tf.float32],
+            "index_type": [tf.int32],
+            "input_shape": [[5, 5, 7, 7]],
+            "begin": [[0, 0, 0, 0]],
+            "end": [[2, 3, 4, 5]],
+            "strides": [[1, 1, 1, 1]],
+            "begin_mask": [0, 8],
+            "end_mask": [0, 2],
+            "shrink_axis_mask": [0, 4],
+            "ellipsis_mask": [2, 4],
+            "new_axis_mask": [1, 6],
+            "constant_indices": [True],
+            "fully_quantize": [False],
+        },
+        {
+            "dtype": [tf.float32],
+            "index_type": [tf.int32],
+            "input_shape": [[5, 6, 7]],
+            "begin": [[0, 0, 0]],
+            "end": [[2, 3, 4]],
+            "strides": [[1, 1, 1]],
+            "begin_mask": [0],
+            "end_mask": [0],
+            "shrink_axis_mask": [0, 2],
+            "ellipsis_mask": [2],
+            "new_axis_mask": [1, 2, 3, 4, 5],
+            "constant_indices": [False],
             "fully_quantize": [False],
         }
     ]

@@ -632,11 +632,9 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                           module_str, /*replica_count=*/2));
-  auto config = module->config();
-  config.set_num_partitions(2);
-  module->set_config(config);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2,
+                                                /*num_partitions=*/2));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloReplicationAnalysis> replica_analysis,
       HloReplicationAnalysis::Run(module.get(),

@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "ruy/denormal.h"  // from @ruy
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/stderr_reporter.h"
+#include "tensorflow/lite/util.h"
 
 // TODO(b/139446230): Move to portable platform header.
 #if defined(__ANDROID__)
@@ -160,9 +162,9 @@ void Interpreter::SetExternalContext(TfLiteExternalContextType type,
 }
 
 TfLiteStatus Interpreter::SetCustomAllocationForTensor(
-    int tensor_index, const TfLiteCustomAllocation& allocation) {
+    int tensor_index, const TfLiteCustomAllocation& allocation, int64_t flags) {
   return primary_subgraph().SetCustomAllocationForTensor(tensor_index,
-                                                         allocation);
+                                                         allocation, flags);
 }
 
 TfLiteStatus Interpreter::SetInputs(std::vector<int> inputs) {
@@ -280,6 +282,12 @@ TfLiteStatus Interpreter::ReleaseNonPersistentMemory() {
 TfLiteStatus Interpreter::Invoke() {
   ScopedRuntimeInstrumentationProfile scoped_runtime_event(installed_profiler_,
                                                            "invoke");
+
+  // Denormal floating point numbers could cause significant slowdown on
+  // platforms like x86, therefore, we suppress denormals here to prevent this
+  // from happening.
+  ruy::ScopedSuppressDenormals suppress_denormals;
+
   TF_LITE_ENSURE_STATUS_WITH_SCOPED_INSTRUMENTATION(
       scoped_runtime_event, primary_subgraph().Invoke());
 
@@ -353,6 +361,8 @@ TfLiteStatus Interpreter::SetNumThreads(int num_threads) {
     return kTfLiteError;
   }
 
+  // num_threads == 0 has the same effect as num_threads == 1.
+  num_threads = num_threads == 0 ? 1 : num_threads;
   for (auto& subgraph : subgraphs_) {
     subgraph->context()->recommended_num_threads = num_threads;
   }
@@ -386,6 +396,9 @@ bool Interpreter::IsCancelled() { return primary_subgraph().IsCancelled(); }
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   TfLiteStatus status = kTfLiteOk;
   for (auto& subgraph : subgraphs_) {
+    if (IsValidationSubgraph(subgraph->GetName().c_str())) {
+      continue;
+    }
     status = subgraph->ModifyGraphWithDelegate(delegate);
     if (status != kTfLiteOk) {
       break;
@@ -463,6 +476,15 @@ void Interpreter::SetSubgraphProfiler() {
 
 Profiler* Interpreter::GetProfiler() {
   return primary_subgraph().GetProfiler();
+}
+
+TfLiteStatus Interpreter::PreserveAllTensorsExperimental() {
+  for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
+       ++subgraph_index) {
+    TF_LITE_ENSURE_STATUS(
+        subgraphs_[subgraph_index]->PreserveAllTensorsExperimental());
+  }
+  return kTfLiteOk;
 }
 
 }  // namespace tflite

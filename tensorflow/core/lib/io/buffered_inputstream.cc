@@ -60,25 +60,32 @@ Status BufferedInputStream::ReadLineHelper(StringType* result,
                                            bool include_eol) {
   result->clear();
   Status s;
+  size_t start_pos = pos_;
   while (true) {
     if (pos_ == limit_) {
+      result->append(buf_.data() + start_pos, pos_ - start_pos);
       // Get more data into buffer
       s = FillBuffer();
       if (limit_ == 0) {
         break;
       }
+      start_pos = pos_;
     }
-    char c = buf_[pos_++];
+    char c = buf_[pos_];
     if (c == '\n') {
+      result->append(buf_.data() + start_pos, pos_ - start_pos);
       if (include_eol) {
         result->append(1, c);
       }
+      pos_++;
       return Status::OK();
     }
     // We don't append '\r' to *result
-    if (c != '\r') {
-      result->append(1, c);
+    if (c == '\r') {
+      result->append(buf_.data() + start_pos, pos_ - start_pos);
+      start_pos = pos_ + 1;
     }
+    pos_++;
   }
   if (errors::IsOutOfRange(s) && !result->empty()) {
     return Status::OK();
@@ -195,7 +202,7 @@ Status BufferedInputStream::ReadAll(T* result) {
   return status;
 }
 
-template Status BufferedInputStream::ReadAll<string>(string* result);
+template Status BufferedInputStream::ReadAll<std::string>(std::string* result);
 template Status BufferedInputStream::ReadAll<tstring>(tstring* result);
 
 Status BufferedInputStream::Reset() {
@@ -206,7 +213,7 @@ Status BufferedInputStream::Reset() {
   return Status::OK();
 }
 
-Status BufferedInputStream::ReadLine(string* result) {
+Status BufferedInputStream::ReadLine(std::string* result) {
   return ReadLineHelper(result, false);
 }
 
@@ -214,10 +221,33 @@ Status BufferedInputStream::ReadLine(tstring* result) {
   return ReadLineHelper(result, false);
 }
 
-string BufferedInputStream::ReadLineAsString() {
-  string result;
+std::string BufferedInputStream::ReadLineAsString() {
+  std::string result;
   ReadLineHelper(&result, true).IgnoreError();
   return result;
+}
+
+Status BufferedInputStream::SkipLine() {
+  Status s;
+  bool skipped = false;
+  while (true) {
+    if (pos_ == limit_) {
+      // Get more data into buffer
+      s = FillBuffer();
+      if (limit_ == 0) {
+        break;
+      }
+    }
+    char c = buf_[pos_++];
+    skipped = true;
+    if (c == '\n') {
+      return Status::OK();
+    }
+  }
+  if (errors::IsOutOfRange(s) && skipped) {
+    return Status::OK();
+  }
+  return s;
 }
 
 }  // namespace io

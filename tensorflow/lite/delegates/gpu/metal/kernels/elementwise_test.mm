@@ -15,17 +15,9 @@ limitations under the License.
 
 #import <XCTest/XCTest.h>
 
-#include <string>
-#include <vector>
-
-#include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/tensor.h"
-#include "tensorflow/lite/delegates/gpu/common/util.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/elementwise_test_util.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
 
 @interface ElementwiseTest : XCTestCase
 @end
@@ -56,6 +48,21 @@ limitations under the License.
 
 - (void)testExpUnit {
   auto status = ExpTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testFloorUnit {
+  auto status = FloorTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testFloorDivUnit {
+  auto status = FloorDivTest(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testFloorModUnit {
+  auto status = FloorModTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

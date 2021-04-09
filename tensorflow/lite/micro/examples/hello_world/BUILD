@@ -1,10 +1,5 @@
 # Description:
 #   TensorFlow Lite for Microcontrollers "hello world" example.
-
-load(
-    "//tensorflow/lite/micro/testing:micro_test.bzl",
-    "tflite_micro_cc_test",
-)
 load(
     "//tensorflow/lite/micro:build_def.bzl",
     "micro_copts",
@@ -13,7 +8,7 @@ load(
 package(
     default_visibility = ["//visibility:public"],
     features = ["-layering_check"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -27,7 +22,7 @@ cc_library(
     copts = micro_copts(),
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "hello_world_test",
     srcs = [
         "hello_world_test.cc",
@@ -87,6 +82,7 @@ cc_binary(
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:system_setup",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )

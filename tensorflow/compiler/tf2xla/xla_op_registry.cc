@@ -397,9 +397,8 @@ XlaOpRegistry::CompileTimeConstantInputArgNames(const string& op) {
 
   const std::unordered_set<string>* compile_time_constant_inputs;
 
-  if (GetNodeAttr(node_def, kXlaCompileTimeConstantInputsAttr,
-                  &compile_time_constant_inputs_vect_from_attr)
-          .ok()) {
+  if (TryGetNodeAttr(node_def, kXlaCompileTimeConstantInputsAttr,
+                     &compile_time_constant_inputs_vect_from_attr)) {
     absl::c_copy(compile_time_constant_inputs_vect_from_attr,
                  std::inserter(compile_time_constant_inputs_from_attr,
                                compile_time_constant_inputs_from_attr.end()));

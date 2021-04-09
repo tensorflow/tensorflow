@@ -58,6 +58,13 @@ class TpuExecutorInterface
   virtual TpuCoreLocationExternal GetCoreLocationExternal() const {
     LOG(FATAL) << "Unimplemented.";
   }
+
+  virtual Status UnloadAllPrograms() { LOG(FATAL) << "Unimplemented."; }
+
+  virtual Status EnqueueCompactionOnStreamForHbm(
+      stream_executor::Stream* compaction_stream) {
+    LOG(FATAL) << "Unimplemented.";
+  }
 };
 
 }  // namespace tpu

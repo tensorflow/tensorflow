@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
@@ -122,24 +123,28 @@ Operation* CreateRecvAtHostOp(OpBuilder& builder, Location loc,
       /*device_ordinal=*/builder.getI64IntegerAttr(0));
 }
 
-// Creates a IfRegionOp with `predicate` and then/else region with yield op and
-// an empty block.
-TF::IfRegionOp CloneEmptyIfWithPredicate(Value predicate, bool is_stateless,
-                                         Location loc, OpBuilder& builder) {
+// Clones an IfRegionOp 'if_region' and attributes and creates then/else regions
+// with yield op and an empty block.
+TF::IfRegionOp CloneEmptyIfWithPredicate(TF::IfRegionOp if_region,
+                                         OpBuilder& builder) {
   auto host_side_if = builder.create<TF::IfRegionOp>(
-      loc, llvm::SmallVector<Type, 4>{}, predicate, is_stateless);
+      if_region.getLoc(), llvm::SmallVector<Type, 4>{}, if_region.cond(),
+      if_region.is_stateless(), if_region._then_func_nameAttr(),
+      if_region._else_func_nameAttr());
 
   // Create empty then branch region.
   auto& then_branch = host_side_if.then_branch();
   then_branch.push_back(new Block);
   builder.setInsertionPointToEnd(&then_branch.front());
-  builder.create<TF::YieldOp>(loc, /*operands=*/ArrayRef<Value>{});
+  builder.create<TF::YieldOp>(if_region.getLoc(),
+                              /*operands=*/ArrayRef<Value>{});
 
   // Create empty else branch region.
   auto& else_branch = host_side_if.else_branch();
   else_branch.push_back(new Block);
   builder.setInsertionPointToEnd(&else_branch.front());
-  builder.create<TF::YieldOp>(loc, /*operands=*/ArrayRef<Value>{});
+  builder.create<TF::YieldOp>(if_region.getLoc(),
+                              /*operands=*/ArrayRef<Value>{});
   return host_side_if;
 }
 // Creates a WhileRegionOp cond and body regions with yield op and
@@ -242,13 +247,14 @@ TF::_XlaHostComputeMlirOp CreateHostCompute(
       loc_op->getLoc(), device_output_types, inputs.getArrayRef(),
       builder.getStringAttr(args_communication_key),
       builder.getStringAttr(retvals_communication_key),
-      /*tpu_core=*/builder.getI64IntegerAttr(0));
+      /*tpu_core=*/builder.getI64IntegerAttr(0),
+      /*host_mlir_module=*/builder.getStringAttr(""));
   return host_compute;
 }
 
 void MarkOutsideCompiled(Operation* op) {
   op->setAttr(kXlaOutsideCompilationAttr,
-              StringAttr::get("temp", op->getContext()));
+              StringAttr::get(op->getContext(), "temp"));
 }
 
 // Move outside compiled ops in `src` to to `insertion_point` in host
@@ -258,19 +264,36 @@ void MarkOutsideCompiled(Operation* op) {
 // `communication_key_index` which is incremented when used. Communication ops
 // are added only when needed and at the location need.  There are checks to
 // ensure that duplicate communication between device and host is not added.
-void MoveOpsToHost(tf_device::ClusterOp tpu_cluster, Block* src,
-                   Operation* insertion_point, Value compilation_key,
-                   Value device_ordinal, int& communication_key_index) {
+LogicalResult MoveOpsToHost(tf_device::ClusterOp tpu_cluster, Block* src,
+                            Operation* insertion_point, Value compilation_key,
+                            Value device_ordinal,
+                            int& communication_key_index) {
   OpBuilder builder(insertion_point);
   for (Operation& op : llvm::make_early_inc_range(*src)) {
     if (HasOutsideCompilationAncestorExclusive(&op) ||
         !op.hasAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
       continue;
+
     // Get the operands and outputs that need to be communicated between host
     // and device.  External operands are from device -> host and external
     // outputs are from host -> device.
     auto external_operands = GetExternalOperands(tpu_cluster, &op);
     auto external_outputs = GetExternalOutputs(&op);
+
+    // Check if any of the outside compiled input/output shapes can be refined.
+    for (const auto& operand : external_operands) {
+      if (TF::CanBeRefined(operand.getType()))
+        return op.emitOpError(
+            "is outside compiled contains dynamically shaped input which is "
+            "not currently supported.  See b/177523289.");
+    }
+    for (const auto& output : external_outputs) {
+      if (TF::CanBeRefined(output.getType()))
+        return op.emitOpError(
+            "is outside compiled contains dynamically shaped output which is "
+            "not currently supported.  See b/177523289.");
+    }
+
     builder.setInsertionPoint(&op);
     std::string args_communication_key =
         llvm::formatv("host_compute_channel_{0}_args",
@@ -341,6 +364,7 @@ void MoveOpsToHost(tf_device::ClusterOp tpu_cluster, Block* src,
       ++communication_key_index;
     }
   }
+  return success();
 }
 
 // Decompose control flow in `tpu_cluster` into device computation and host
@@ -350,25 +374,28 @@ void MoveOpsToHost(tf_device::ClusterOp tpu_cluster, Block* src,
 // call to MoveOpsToHost moves the host side control flow to the host launch in
 // tf_device.parallel_execute.  Uses `compilation_key, `device_ordinal` and
 // `communication_key_index` when creating communication ops.
-void DecomposeControlFlow(tf_device::ClusterOp tpu_cluster,
-                          Value compilation_key, Value device_ordinal,
-                          int& communication_key_index) {
-  tpu_cluster.GetBody().walk([&](Operation* op) {
+LogicalResult DecomposeControlFlow(tf_device::ClusterOp tpu_cluster,
+                                   Value compilation_key, Value device_ordinal,
+                                   int& communication_key_index) {
+  auto result = tpu_cluster.GetBody().walk([&](Operation* op) {
     if (auto if_op = llvm::dyn_cast<TF::IfRegionOp>(op)) {
-      if (!HasOutsideCompilationNested(op)) return;
+      if (!HasOutsideCompilationNested(op)) return WalkResult::advance();
       OpBuilder builder(if_op);
-      auto host_if = CloneEmptyIfWithPredicate(
-          if_op.cond(), if_op.is_stateless(), if_op.getLoc(), builder);
-      MoveOpsToHost(tpu_cluster, &if_op.then_branch().front(),
-                    host_if.then_branch().front().getTerminator(),
-                    compilation_key, device_ordinal, communication_key_index);
-      MoveOpsToHost(tpu_cluster, &if_op.else_branch().front(),
-                    host_if.else_branch().front().getTerminator(),
-                    compilation_key, device_ordinal, communication_key_index);
+      auto host_if = CloneEmptyIfWithPredicate(if_op, builder);
+      if (failed(MoveOpsToHost(tpu_cluster, &if_op.then_branch().front(),
+                               host_if.then_branch().front().getTerminator(),
+                               compilation_key, device_ordinal,
+                               communication_key_index)))
+        return WalkResult::interrupt();
+      if (failed(MoveOpsToHost(tpu_cluster, &if_op.else_branch().front(),
+                               host_if.else_branch().front().getTerminator(),
+                               compilation_key, device_ordinal,
+                               communication_key_index)))
+        return WalkResult::interrupt();
       MarkOutsideCompiled(host_if.getOperation());
     }
     if (auto while_op = llvm::dyn_cast<TF::WhileRegionOp>(op)) {
-      if (!HasOutsideCompilationNested(op)) return;
+      if (!HasOutsideCompilationNested(op)) return WalkResult::advance();
       OpBuilder builder(while_op);
       auto host_while = CloneEmptyWhile(while_op.is_stateless(),
                                         while_op.parallel_iterations(),
@@ -390,15 +417,21 @@ void DecomposeControlFlow(tf_device::ClusterOp tpu_cluster,
       builder.create<TF::YieldOp>(while_op.getLoc(),
                                   recv_condition_at_host->getResults());
 
-      MoveOpsToHost(tpu_cluster, &while_op.cond().front(),
-                    recv_condition_at_host, compilation_key, device_ordinal,
-                    communication_key_index);
-      MoveOpsToHost(tpu_cluster, &while_op.body().front(),
-                    host_while.body().front().getTerminator(), compilation_key,
-                    device_ordinal, communication_key_index);
+      if (failed(MoveOpsToHost(tpu_cluster, &while_op.cond().front(),
+                               recv_condition_at_host, compilation_key,
+                               device_ordinal, communication_key_index)))
+        return WalkResult::interrupt();
+      if (failed(MoveOpsToHost(tpu_cluster, &while_op.body().front(),
+                               host_while.body().front().getTerminator(),
+                               compilation_key, device_ordinal,
+                               communication_key_index)))
+        return WalkResult::interrupt();
       MarkOutsideCompiled(host_while.getOperation());
     }
+    return WalkResult::advance();
   });
+  if (result.wasInterrupted()) return failure();
+  return success();
 }
 
 // Removes outside compilation from all ops inside `host_launch_op`.  Should
@@ -416,7 +449,7 @@ void RemoveOutsideCompilation(tf_device::LaunchOp host_launch_op) {
 // Creates a `parallel_execute` op with a region for host computation and
 // a region for `tpu_cluster` computation by extracting outside compiled ops to
 // host computation.
-void CreateParallelExecuteForOutsideCompilation(
+LogicalResult CreateParallelExecuteForOutsideCompilation(
     ModuleOp module, tf_device::ClusterOp tpu_cluster,
     llvm::StringRef host_device) {
   OpBuilder builder(tpu_cluster);
@@ -446,13 +479,16 @@ void CreateParallelExecuteForOutsideCompilation(
   int communication_key_index = 0;
   // Decompose control flow into device and host control flow when outside
   // compilation is included.
-  DecomposeControlFlow(tpu_cluster, compilation_key, device_ordinal,
-                       communication_key_index);
+  if (failed(DecomposeControlFlow(tpu_cluster, compilation_key, device_ordinal,
+                                  communication_key_index)))
+    return failure();
 
   // Move all outside compiled ops including control flow to host launch.
-  MoveOpsToHost(tpu_cluster, &tpu_cluster.GetBody(),
-                host_launch_op.GetBody().getTerminator(), compilation_key,
-                device_ordinal, communication_key_index);
+  if (failed(MoveOpsToHost(tpu_cluster, &tpu_cluster.GetBody(),
+                           host_launch_op.GetBody().getTerminator(),
+                           compilation_key, device_ordinal,
+                           communication_key_index)))
+    return failure();
 
   if (communication_key_index == 0) compilation_key_op.erase();
   if (communication_key_index == 0 || device_ordinal == nullptr)
@@ -482,6 +518,7 @@ void CreateParallelExecuteForOutsideCompilation(
       if (!parallel_execute_op.getOperation()->isProperAncestor(use.getOwner()))
         use.set(parallel_execute_result);
   }
+  return success();
 }
 
 void TPUExtractOutsideCompilation::runOnOperation() {
@@ -494,12 +531,18 @@ void TPUExtractOutsideCompilation::runOnOperation() {
   module.walk([&](tf_device::ClusterOp tpu_cluster) {
     if (HasOutsideCompilationNested(tpu_cluster.getOperation())) {
       std::string host_device;
-      tensorflow::GetHostDeviceOutsideComputation(devices, tpu_cluster,
-                                                  &host_device);
-      CreateParallelExecuteForOutsideCompilation(module, tpu_cluster,
-                                                 host_device);
+      (void)tensorflow::GetHostDeviceOutsideComputation(devices, tpu_cluster,
+                                                        &host_device);
+      if (failed(CreateParallelExecuteForOutsideCompilation(module, tpu_cluster,
+                                                            host_device)))
+        return signalPassFailure();
     }
   });
+  // No constant should have an "_xla_outside_compilation" attribute left.
+  // TODO(kfranko): We likely should revisit where is the best place for this
+  // logic to live (canonicalization pattern?).
+  module.walk(
+      [&](TF::ConstOp op) { op->removeAttr("_xla_outside_compilation"); });
 }
 
 }  // namespace

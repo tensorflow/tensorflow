@@ -27,10 +27,11 @@ such as [OpenCL](https://www.khronos.org/opencl/) or
 [OpenGL ES](https://www.khronos.org/opengles/) for mobile GPU and the
 [Qualcomm® Hexagon SDK](https://developer.qualcomm.com/software/hexagon-dsp-sdk)
 for DSP. Typically, you would have to write a lot of custom code to run a neural
-network though these interfaces. Things get even complicated when you consider
-that each accelerator has its pros & cons and cannot execute every operation in
-a neural network. TensorFlow Lite's Delegate API solves this problem by acting
-as a bridge between the TFLite runtime and these lower-level APIs.
+network through these interfaces. Things get even more complicated when you
+consider that each accelerator has its pros & cons and cannot execute every
+operation in a neural network. TensorFlow Lite's Delegate API solves this
+problem by acting as a bridge between the TFLite runtime and these lower-level
+APIs.
 
 ![runtime with delegates](images/delegate_runtime.png)
 

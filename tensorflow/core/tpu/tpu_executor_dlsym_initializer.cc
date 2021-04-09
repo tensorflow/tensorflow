@@ -30,7 +30,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tpu {
-
+namespace {
 #if defined(PLATFORM_GOOGLE)
 Status InitializeTpuLibrary(void* library_handle) {
   return errors::Unimplemented("You must statically link in a TPU library.");
@@ -42,17 +42,18 @@ Status InitializeTpuLibrary(void* library_handle) {
   Status s = SetExecutorStructFn(library_handle);
 
   // Retrieve arguments from environment if applicable
-  std::vector<const char*> argv_ptr = GetLibTpuInitArguments();
+  std::pair<std::vector<std::string>, std::vector<const char*> > args =
+      GetLibTpuInitArguments();
 
   // TPU platform registration must only be performed after the library is
   // loaded. We do not want to register a TPU platform in XLA without the
   // supporting library providing the necessary APIs.
   if (s.ok()) {
-    void (*initialize_fn)(bool init_library, int argc, const char** argv);
+    void (*initialize_fn)(bool init_library, int num_args, const char** args);
     initialize_fn = reinterpret_cast<decltype(initialize_fn)>(
         dlsym(library_handle, "TfTpu_Initialize"));
-    (*initialize_fn)(/*init_library=*/true, /*argc=*/argv_ptr.size() - 1,
-                     /*argv=*/argv_ptr.data());
+    (*initialize_fn)(/*init_library=*/true, args.second.size(),
+                     args.second.data());
 
     RegisterTpuPlatform();
   }
@@ -63,13 +64,17 @@ Status InitializeTpuLibrary(void* library_handle) {
 bool FindAndLoadTpuLibrary() {
   void* library = dlopen("libtpu.so", RTLD_NOW);
   if (library) {
-    InitializeTpuLibrary(library);
+    // We can open the shared library which means we are in a TPU environment.
+    // Try to acquire exclusive access.
+    if (TryAcquireTpuLock()) {
+      InitializeTpuLibrary(library);
+    }
   }
   return true;
 }
 
 static bool tpu_library_finder = FindAndLoadTpuLibrary();
 #endif  // PLATFORM_GOOGLE
-
+}  // namespace
 }  // namespace tpu
 }  // namespace tensorflow

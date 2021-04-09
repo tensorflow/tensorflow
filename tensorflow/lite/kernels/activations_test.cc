@@ -12,11 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 
 #include <algorithm>
+#include <cmath>
 #include <initializer_list>
 #include <limits>
 #include <map>
@@ -1882,6 +1882,26 @@ TEST(FloatActivationsOpTest, Softmax1D) {
       m.GetOutput(),
       ElementsAreArray(ArrayFloatNear(
           {.09752, .05352, .11911, .14548, .13164, .07984, .26509, .10778})));
+}
+
+TEST(FloatActivationsOpTest, Softmax1DMax) {
+  FloatActivationsOpModel m(0.1f, {TensorType_FLOAT32, {8}},
+                            TensorType_FLOAT32);
+  m.SetInput({std::numeric_limits<float>::max(), -6, 2, 4, 3, -2, 10, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({1, 0, 0, 0, 0, 0, 0, 0})));
+}
+
+TEST(FloatActivationsOpTest, Softmax1DInf) {
+  FloatActivationsOpModel m(0.1f, {TensorType_FLOAT32, {8}},
+                            TensorType_FLOAT32);
+  m.SetInput({std::numeric_limits<float>::infinity(), -6, 2, 4, 3, -2, 10, 1});
+  m.Invoke();
+  auto output = m.GetOutput();
+  for (int i = 0; i < 8; ++i) {
+    EXPECT_TRUE(std::isnan(output[i]));
+  }
 }
 
 TEST(QuantizedActivationsOpTest, Softmax1DUint8) {

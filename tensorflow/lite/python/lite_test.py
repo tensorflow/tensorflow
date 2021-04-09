@@ -32,6 +32,7 @@ from tensorflow import keras
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
+from tensorflow.lite.python import util
 from tensorflow.lite.python.convert import ConverterError
 from tensorflow.lite.python.convert import mlir_quantize
 from tensorflow.lite.python.interpreter import Interpreter
@@ -386,6 +387,39 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     self.assertLen(output_details, 2)
     self.assertEqual(output_details[0]['dtype'], expected_ceil_dtype)
     self.assertEqual(output_details[1]['dtype'], expected_dtype)
+
+  @parameterized.named_parameters(
+      ('_PerChannelQuant', False, False),
+      ('_PerChannelMlirQuant', False, True),
+      ('_PerTensorQuant', True, False),
+      ('_PerTensorMlirQuant', True, True))
+  def testDisablePerChannelQuantization(self, disable_per_channel=False,
+                                        enable_mlir_quantizer=False):
+    k_conv_name = 'Conv2D1'
+    k_num_filters = 16
+    with ops.Graph().as_default():
+      inp, output, calibration_gen = self._getIntegerQuantizeModel()
+      sess = session.Session()
+
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [inp], [output])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.representative_dataset = calibration_gen
+    quantized_converter.experimental_new_quantizer = enable_mlir_quantizer
+    if disable_per_channel:
+      quantized_converter._experimental_disable_per_channel = (
+          disable_per_channel)
+    quantized_tflite_model = quantized_converter.convert()
+    self.assertIsNotNone(quantized_tflite_model)
+
+    interpreter = Interpreter(model_content=quantized_tflite_model)
+    interpreter.allocate_tensors()
+    detail = next((d for d in interpreter.get_tensor_details()
+                   if d['name'] == k_conv_name))
+    quant_params = detail['quantization_parameters']
+    expected_num_params = 1 if disable_per_channel else k_num_filters
+    self.assertLen(quant_params['scales'], expected_num_params)
+    self.assertLen(quant_params['zero_points'], expected_num_params)
 
   @parameterized.named_parameters(
       ('EnableMlirConverter', True),  # enable mlir
@@ -1916,6 +1950,44 @@ class FromFrozenGraphObjectDetection(LiteTest):
     self.assertEqual('TFLite_Detection_PostProcess:3',
                      output_details[3]['name'])
     self.assertAllEqual([1], output_details[3]['shape'])
+
+  def testModifyIOToUint8(self):
+    # Tests the object detection model that cannot be loaded in TensorFlow.
+    self._initObjectDetectionArgs()
+
+    def representative_dataset_gen():
+      for _ in range(2):
+        yield [np.random.uniform(low=0, high=1, size=(1, 300, 300, 3)).astype(
+            np.float32)]
+    converter = lite.TFLiteConverter.from_frozen_graph(self._graph_def_file,
+                                                       self._input_arrays,
+                                                       self._output_arrays,
+                                                       self._input_shapes)
+    converter.representative_dataset = representative_dataset_gen
+    converter.target_spec.supported_ops = {lite.OpsSet.TFLITE_BUILTINS_INT8}
+    converter.inference_type = dtypes.int8
+    converter.inference_input_type = dtypes.uint8
+    converter.inference_output_type = dtypes.uint8
+    converter.experimental_new_quantizer = True
+    converter.quantized_input_stats = {
+        'normalized_input_image_tensor': (0., 1.)}  # mean, std_dev
+    converter.allow_custom_ops = True
+    tflite_model = converter.convert()
+
+    self.assertIsNotNone(tflite_model)
+
+    model = util._convert_model_from_bytearray_to_object(tflite_model)
+    quant_opcode_idxs = util.get_quantize_opcode_idx(model)
+
+    subgraph = model.subgraphs[0]
+    tensors = subgraph.tensors
+    operators = subgraph.operators
+    for op in operators:
+      if op.opcodeIndex in quant_opcode_idxs:
+        input_type = util._convert_tflite_enum_type_to_tf_type(
+            tensors[op.inputs[0]].type)
+        if op.outputs[0] in subgraph.outputs:
+          self.assertEqual(input_type, dtypes.float32)
 
 
 class FromSavedModelTest(TestModels):

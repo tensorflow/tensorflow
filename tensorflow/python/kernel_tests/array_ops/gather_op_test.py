@@ -59,7 +59,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     return data
 
   def testScalar1D(self):
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       data = np.array([0, 1, 2, 3, 7, 5])
       for dtype in _TEST_TYPES:
         for indices in 4, [1, 2, 2, 4, 5]:
@@ -74,7 +74,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
             self.assertEqual(np_val.shape, gather_t.get_shape())
 
   def testScalar2D(self):
-    with self.session(use_gpu=True):
+    with self.session():
       data = np.array([[0, 1, 2], [3, 4, 5], [6, 7, 8],
                        [9, 10, 11], [12, 13, 14]])
       for dtype in _TEST_TYPES:
@@ -90,7 +90,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
             self.assertEqual(expected_shape, gather_t.get_shape())
 
   def testSimpleTwoD32(self):
-    with self.session(use_gpu=True):
+    with self.session():
       data = np.array([[0, 1, 2], [3, 4, 5], [6, 7, 8],
                        [9, 10, 11], [12, 13, 14]])
       for dtype in _TEST_TYPES:
@@ -304,7 +304,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     # On GPU the bad indices do not raise error but fetch 0 values
     if not test.is_gpu_available():
       return
-    with self.session(use_gpu=True):
+    with self.session():
       params = [[0, 1, 2], [3, 4, 5]]
       with self.assertRaisesOpError(r"indices\[0,0\] = 7 is not in \[0, 2\)"):
         array_ops.gather(params, [[7]], axis=0).eval()

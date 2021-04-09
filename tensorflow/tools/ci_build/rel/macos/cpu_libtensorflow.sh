@@ -14,9 +14,11 @@
 # limitations under the License.
 # ==============================================================================
 
+set -ex
+
 if [[ "$IS_NIGHTLY" -eq 1 ]]; then
-  echo "chmod go+w lib_package/*" >> tensorflow/tools/ci_build/linux/libtensorflow.sh
-  echo "bazel clean --expunge" >> tensorflow/tools/ci_build/linux/libtensorflow.sh
+  echo "chmod go+w lib_package/*" >> tensorflow/tools/ci_build/osx/libtensorflow.sh
+  echo "bazel clean --expunge" >> tensorflow/tools/ci_build/osx/libtensorflow.sh
 
   # Install latest bazel
   source tensorflow/tools/ci_build/release/common.sh
@@ -38,10 +40,11 @@ if [[ "$IS_NIGHTLY" -eq 1 ]]; then
 
   tar -zcvf macos_cpu_libtensorflow_binaries.tar.gz lib_package
 
-  gsutil cp macos_cpu_libtensorflow_binaries.tar.gz gs://libtensorflow-nightly/prod/tensorflow/release/macos/latest
+  # Using gsutil on Kokoro MacOS VMs is forbidden, so a secondary internal job
+  # tensorflow/release/upload_macos_libtensorflow copies the results into the
+  # bucket path gs://libtensorflow-nightly/prod/tensorflow/release/macos/latest
 
 else
-  set -ex
   # Install latest bazel
   source tensorflow/tools/ci_build/release/common.sh
   install_bazelisk

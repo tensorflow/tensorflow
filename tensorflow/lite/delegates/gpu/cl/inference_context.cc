@@ -144,7 +144,8 @@ absl::Status InferenceContext::InitFromGraph(
   creation_context.queue = env->queue();
   creation_context.cache = env->program_cache();
 
-  ReserveGraphTensors(create_info, creation_context.GetGpuInfo(), graph);
+  RETURN_IF_ERROR(
+      ReserveGraphTensors(create_info, creation_context.GetGpuInfo(), graph));
   precision_ = create_info.precision;
   storage_type_ = create_info.storage_type;
   if (env->device().GetInfo().IsMali()) {
@@ -180,6 +181,7 @@ absl::Status InferenceContext::InitFromGraph(
   }
   RETURN_IF_ERROR(
       Tune(tuning_type, env->device().GetInfo(), env->profiling_queue()));
+  InitRecordableQueue(env);
 
   if (serialized_model) {
     for (auto& node : nodes_) {
@@ -222,8 +224,17 @@ absl::Status InferenceContext::RestoreDeserialized(
     RETURN_IF_ERROR(node.cl_operation.CompileDeserialized(creation_context));
   }
   RETURN_IF_ERROR(UpdateParams());
+  InitRecordableQueue(env);
   ReleaseCPURepresentation();
   return absl::OkStatus();
+}
+
+void InferenceContext::InitRecordableQueue(Environment* env) {
+  std::vector<ClOperation*> ops(nodes_.size());
+  for (int i = 0; i < nodes_.size(); ++i) {
+    ops[i] = &nodes_[i].cl_operation;
+  }
+  recordable_queue_ = CreateRecordableQueue(ops, env->device(), env->context());
 }
 
 absl::Status InferenceContext::InitFromGraphWithTransforms(
@@ -260,7 +271,7 @@ void InferenceContext::CopyInAndOutIds(const GraphFloat32& graph) {
   }
 }
 
-void InferenceContext::ReserveGraphTensors(
+absl::Status InferenceContext::ReserveGraphTensors(
     const CreateInferenceInfo& create_info, const GpuInfo& gpu_info,
     const GraphFloat32& graph) {
   ValueId max_id = 0;
@@ -275,17 +286,19 @@ void InferenceContext::ReserveGraphTensors(
           CanCreateTensorWithShape(
               gpu_info, shape,
               TensorDescriptor{data_type, TensorStorageType::SINGLE_TEXTURE_2D,
-                               layout})) {
+                               layout})
+              .ok()) {
         storage_type = TensorStorageType::SINGLE_TEXTURE_2D;
       }
     }
-    storage_type =
-        SelectBestStorageType(gpu_info, shape, storage_type, data_type, layout);
+    RETURN_IF_ERROR(SelectBestStorageType(gpu_info, shape, storage_type,
+                                          data_type, layout, &storage_type));
     tensor_reserver_.Add(
         t->id, {shape, TensorDescriptor{data_type, storage_type, layout}});
     max_id = std::max(max_id, t->id);
   }
   tensor_reserver_.SetNext(max_id + 1);
+  return absl::OkStatus();
 }
 
 absl::Status InferenceContext::ConvertOperations(const GpuInfo& gpu_info,
@@ -649,6 +662,9 @@ absl::Status InferenceContext::UpdateParams() {
 }
 
 absl::Status InferenceContext::AddToQueue(CLCommandQueue* queue) {
+  if (recordable_queue_->IsSupported()) {
+    return recordable_queue_->Execute(queue);
+  }
   if (need_manual_release_) {
     if (prev_enqueue_start_point_.is_valid()) {
       prev_enqueue_start_point_.Wait();

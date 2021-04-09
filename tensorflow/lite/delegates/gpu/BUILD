@@ -5,7 +5,7 @@ load("@build_bazel_rules_apple//apple:macos.bzl", "macos_dylib")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files([
@@ -172,7 +172,7 @@ ios_static_framework(
         "metal_delegate.h",
         "metal_delegate_internal.h",
     ],
-    minimum_os_version = "11.0",
+    minimum_os_version = "11.4",
     deps = [":metal_delegate"],
 )
 

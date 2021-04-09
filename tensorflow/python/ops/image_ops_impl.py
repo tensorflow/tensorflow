@@ -901,10 +901,17 @@ def central_crop(image, central_fraction):
   """
   with ops.name_scope(None, 'central_crop', [image]):
     image = ops.convert_to_tensor(image, name='image')
-    if central_fraction <= 0.0 or central_fraction > 1.0:
-      raise ValueError('central_fraction must be within (0, 1]')
-    if central_fraction == 1.0:
-      return image
+    central_fraction_static = tensor_util.constant_value(central_fraction)
+    if central_fraction_static is not None:
+      if central_fraction_static <= 0.0 or central_fraction_static > 1.0:
+        raise ValueError('central_fraction must be within (0, 1]')
+      if central_fraction_static == 1.0:
+        return image
+    else:
+      assert_ops = _assert(
+          math_ops.logical_or(central_fraction > 0.0, central_fraction <= 1.0),
+          ValueError, 'central_fraction must be within (0, 1]')
+      image = control_flow_ops.with_dependencies(assert_ops, image)
 
     _AssertAtLeast3DImage(image)
     rank = image.get_shape().ndims
@@ -932,24 +939,29 @@ def central_crop(image, central_fraction):
       img_w, dynamic_w = _get_dim(image, 2)
       img_d = image.get_shape()[3]
 
+    dynamic_h = dynamic_h or (central_fraction_static is None)
+    dynamic_w = dynamic_w or (central_fraction_static is None)
+
     # Compute the bounding boxes for the crop. The type and value of the
     # bounding boxes depend on the `image` tensor's rank and whether / not the
     # dimensions are statically defined.
     if dynamic_h:
       img_hd = math_ops.cast(img_h, dtypes.float64)
-      bbox_h_start = math_ops.cast((img_hd - img_hd * central_fraction) / 2,
-                                   dtypes.int32)
+      bbox_h_start = math_ops.cast(
+          (img_hd - img_hd * math_ops.cast(central_fraction, dtypes.float64)) /
+          2, dtypes.int32)
     else:
       img_hd = float(img_h)
-      bbox_h_start = int((img_hd - img_hd * central_fraction) / 2)
+      bbox_h_start = int((img_hd - img_hd * central_fraction_static) / 2)
 
     if dynamic_w:
       img_wd = math_ops.cast(img_w, dtypes.float64)
-      bbox_w_start = math_ops.cast((img_wd - img_wd * central_fraction) / 2,
-                                   dtypes.int32)
+      bbox_w_start = math_ops.cast(
+          (img_wd - img_wd * math_ops.cast(central_fraction, dtypes.float64)) /
+          2, dtypes.int32)
     else:
       img_wd = float(img_w)
-      bbox_w_start = int((img_wd - img_wd * central_fraction) / 2)
+      bbox_w_start = int((img_wd - img_wd * central_fraction_static) / 2)
 
     bbox_h_size = img_h - bbox_h_start * 2
     bbox_w_size = img_w - bbox_w_start * 2
@@ -1093,33 +1105,50 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
 @dispatch.add_dispatch_support
 def crop_to_bounding_box(image, offset_height, offset_width, target_height,
                          target_width):
-  """Crops an image to a specified bounding box.
+  """Crops an `image` to a specified bounding box.
 
-  This op cuts a rectangular part out of `image`. The top-left corner of the
-  returned image is at `offset_height, offset_width` in `image`, and its
+  This op cuts a rectangular bounding box out of `image`. The top-left corner
+  of the bounding box is at `offset_height, offset_width` in `image`, and the
   lower-right corner is at
   `offset_height + target_height, offset_width + target_width`.
 
+  Example Usage:
+
+  >>> image = tf.constant(np.arange(1, 28, dtype=np.float32), shape=[3, 3, 3])
+  >>> image[:,:,0] # print the first channel of the 3-D tensor
+  <tf.Tensor: shape=(3, 3), dtype=float32, numpy=
+  array([[ 1.,  4.,  7.],
+         [10., 13., 16.],
+         [19., 22., 25.]], dtype=float32)>
+  >>> cropped_image = tf.image.crop_to_bounding_box(image, 0, 0, 2, 2)
+  >>> cropped_image[:,:,0] # print the first channel of the cropped 3-D tensor
+  <tf.Tensor: shape=(2, 2), dtype=float32, numpy=
+  array([[ 1.,  4.],
+         [10., 13.]], dtype=float32)>
+
   Args:
-    image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
-      of shape `[height, width, channels]`.
-    offset_height: Vertical coordinate of the top-left corner of the result in
-      the input.
-    offset_width: Horizontal coordinate of the top-left corner of the result in
-      the input.
-    target_height: Height of the result.
-    target_width: Width of the result.
+    image: 4-D `Tensor` of shape `[batch, height, width, channels]` or 3-D
+      `Tensor` of shape `[height, width, channels]`.
+    offset_height: Vertical coordinate of the top-left corner of the bounding
+      box in `image`.
+    offset_width: Horizontal coordinate of the top-left corner of the bounding
+      box in `image`.
+    target_height: Height of the bounding box.
+    target_width: Width of the bounding box.
 
   Returns:
-    If `image` was 4-D, a 4-D float Tensor of shape
-    `[batch, target_height, target_width, channels]`
-    If `image` was 3-D, a 3-D float Tensor of shape
-    `[target_height, target_width, channels]`
+    If `image` was 4-D, a 4-D `Tensor` of shape
+    `[batch, target_height, target_width, channels]`.
+    If `image` was 3-D, a 3-D `Tensor` of shape
+    `[target_height, target_width, channels]`.
+    It has the same dtype with `image`.
 
   Raises:
-    ValueError: If the shape of `image` is incompatible with the `offset_*` or
-      `target_*` arguments, or either `offset_height` or `offset_width` is
-      negative, or either `target_height` or `target_width` is not positive.
+    ValueError: `image` is not a 3-D or 4-D `Tensor`.
+    ValueError: `offset_width < 0` or `offset_height < 0`.
+    ValueError: `target_width <= 0` or `target_width <= 0`.
+    ValueError: `width < offset_width + target_width` or
+      `height < offset_height + target_height`.
   """
   with ops.name_scope(None, 'crop_to_bounding_box', [image]):
     image = ops.convert_to_tensor(image, name='image')
@@ -1184,9 +1213,44 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
 
   If `width` or `height` is greater than the specified `target_width` or
   `target_height` respectively, this op centrally crops along that dimension.
+
+  For example:
+
+  >>> image = np.arange(75).reshape(5, 5, 3)  # create 3-D image input
+  >>> image[:,:,0]  # print first channel just for demo purposes
+  array([[ 0,  3,  6,  9, 12],
+         [15, 18, 21, 24, 27],
+         [30, 33, 36, 39, 42],
+         [45, 48, 51, 54, 57],
+         [60, 63, 66, 69, 72]])
+  >>> image = tf.image.resize_with_crop_or_pad(image, 3, 3)  # crop
+  >>> # print first channel for demo purposes; centrally cropped output
+  >>> image[:,:,0]
+  <tf.Tensor: shape=(3, 3), dtype=int64, numpy=
+  array([[18, 21, 24],
+         [33, 36, 39],
+         [48, 51, 54]])>
+
   If `width` or `height` is smaller than the specified `target_width` or
   `target_height` respectively, this op centrally pads with 0 along that
   dimension.
+
+  For example:
+
+  >>> image = np.arange(1, 28).reshape(3, 3, 3)  # create 3-D image input
+  >>> image[:,:,0]  # print first channel just for demo purposes
+  array([[ 1,  4,  7],
+         [10, 13, 16],
+         [19, 22, 25]])
+  >>> image = tf.image.resize_with_crop_or_pad(image, 5, 5)  # pad
+  >>> # print first channel for demo purposes; we should see 0 paddings
+  >>> image[:,:,0]
+  <tf.Tensor: shape=(5, 5), dtype=int64, numpy=
+  array([[ 0,  0,  0,  0,  0],
+         [ 0,  1,  4,  7,  0],
+         [ 0, 10, 13, 16,  0],
+         [ 0, 19, 22, 25,  0],
+         [ 0,  0,  0,  0,  0]])>
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
@@ -1832,15 +1896,32 @@ def per_image_standardization(image):
     - `N` is the number of elements in `x`
     - `stddev` is the standard deviation of all values in `x`
 
+  Example Usage:
+
+  >>> image = tf.constant(np.arange(1, 13, dtype=np.int32), shape=[2, 2, 3])
+  >>> image # 3-D tensor
+  <tf.Tensor: shape=(2, 2, 3), dtype=int32, numpy=
+  array([[[ 1,  2,  3],
+          [ 4,  5,  6]],
+         [[ 7,  8,  9],
+          [10, 11, 12]]], dtype=int32)>
+  >>> new_image = tf.image.per_image_standardization(image)
+  >>> new_image # 3-D tensor with mean ~= 0 and variance ~= 1
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+  array([[[-1.593255  , -1.3035723 , -1.0138896 ],
+          [-0.7242068 , -0.4345241 , -0.14484136]],
+         [[ 0.14484136,  0.4345241 ,  0.7242068 ],
+          [ 1.0138896 ,  1.3035723 ,  1.593255  ]]], dtype=float32)>
+
   Args:
-    image: An n-D Tensor with at least 3 dimensions, the last 3 of which are the
-      dimensions of each image.
+    image: An n-D `Tensor` with at least 3 dimensions, the last 3 of which are
+      the dimensions of each image.
 
   Returns:
-    A `Tensor` with the same shape as `image`.
+    A `Tensor` with the same shape as `image` and its dtype is `float32`.
 
   Raises:
-    ValueError: if the shape of 'image' is incompatible with this function.
+    ValueError: The shape of `image` has fewer than 3 dimensions.
   """
   with ops.name_scope(None, 'per_image_standardization', [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
@@ -4273,9 +4354,9 @@ def ssim(img1,
 
   Args:
     img1: First image batch. 4-D Tensor of shape `[batch, height, width,
-      channels]`.
+      channels]` with only Positive Pixel Values.
     img2: Second image batch. 4-D Tensor of shape `[batch, height, width,
-      channels]`.
+      channels]` with only Positive Pixel Values.
     max_val: The dynamic range of the images (i.e., the difference between the
       maximum the and minimum allowed values).
     filter_size: Default value 11 (size of gaussian filter).
@@ -4338,8 +4419,9 @@ def ssim_multiscale(img1,
   Computers, 2004.
 
   Args:
-    img1: First image batch.
-    img2: Second image batch. Must have the same rank as img1.
+    img1: First image batch with only Positive Pixel Values.
+    img2: Second image batch with only Positive Pixel Values. Must have the
+    same rank as img1.
     max_val: The dynamic range of the images (i.e., the difference between the
       maximum the and minimum allowed values).
     power_factors: Iterable of weights for each of the scales. The number of
@@ -5535,7 +5617,8 @@ def non_max_suppression_padded_v2(boxes,
         array_ops.gather(array_ops.reshape(sorted_indices, [-1]),
                          gather_idx),
         [batch_size, -1])
-  invalid_index = array_ops.fill([batch_size, max_output_size], 0)
+  invalid_index = array_ops.zeros([batch_size, max_output_size],
+                                  dtype=dtypes.int32)
   idx_index = array_ops.expand_dims(math_ops.range(max_output_size), 0)
   num_valid_expanded = array_ops.expand_dims(num_valid, 1)
   idx = array_ops.where(idx_index < num_valid_expanded,

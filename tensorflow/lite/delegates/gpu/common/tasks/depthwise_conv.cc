@@ -236,7 +236,8 @@ std::string GenerateDepthwiseConvolutionCode(
 GPUOperation CreateDepthwiseConvolution2D(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr) {
-  bool weights_are_buffer = !gpu_info.SupportsImages() || gpu_info.IsMali();
+  bool weights_are_buffer =
+      !gpu_info.SupportsImages() || gpu_info.IsMali() || gpu_info.IsApple();
   GPUOperation op(definition);
   op.args_.AddInt("kernel_size_x", attr.weights.shape.w);
   op.args_.AddInt("stride_x", attr.strides.w);
@@ -285,8 +286,10 @@ GPUOperation CreateDepthwiseConvolution2DDynamicWeights(
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
 
   TensorLinearDescriptor desc;
-  desc.storage_type = gpu_info.IsMali() ? LinearStorageType::BUFFER
-                                        : LinearStorageType::TEXTURE_2D;
+  desc.storage_type =
+      !gpu_info.SupportsImages() || gpu_info.IsMali() || gpu_info.IsApple()
+          ? LinearStorageType::BUFFER
+          : LinearStorageType::TEXTURE_2D;
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(attr.bias);
   op.args_.AddObject(
@@ -297,7 +300,8 @@ GPUOperation CreateDepthwiseConvolution2DDynamicWeights(
 GPUOperation CreateDepthwiseConvolution3D(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const DepthwiseConvolution3DAttributes& attr) {
-  bool weights_are_buffer = !gpu_info.SupportsImages() || gpu_info.IsMali();
+  bool weights_are_buffer =
+      !gpu_info.SupportsImages() || gpu_info.IsMali() || gpu_info.IsApple();
   GPUOperation op(definition);
   op.args_.AddInt("kernel_size_x", attr.weights.shape.w);
   op.args_.AddInt("stride_x", attr.strides.w);

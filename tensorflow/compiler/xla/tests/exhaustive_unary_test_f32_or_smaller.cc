@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <limits>
+
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/exhaustive_op_test_utils.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -300,7 +302,15 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Exp, {
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Expm1, {
   ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
   if (ty_ == F32) {
-    error_spec_gen = +[](NativeT x) { return ErrorSpec{0, 0.00015}; };
+    if (platform_ == "Host") {
+      error_spec_gen = +[](NativeT x) {
+        // We expect no worse than an error of 8 ULPs.
+        return ErrorSpec{
+            0.0, std::scalbn(8.0f, -std::numeric_limits<float>::digits)};
+      };
+    } else {
+      error_spec_gen = +[](NativeT x) { return ErrorSpec{0, 0.00015}; };
+    }
   }
 
   // Our CPU implementation of expm1 returns one incorrect value: says

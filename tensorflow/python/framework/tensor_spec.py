@@ -220,6 +220,7 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec):
 
 
 # TODO(b/133606651): Should is_compatible_with should check min/max bounds?
+@type_spec.register("tf.BoundedTensorSpec")
 class BoundedTensorSpec(TensorSpec):
   """A `TensorSpec` that specifies minimum and maximum values.
 

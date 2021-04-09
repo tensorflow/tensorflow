@@ -365,6 +365,7 @@ typedef struct {
 
 typedef struct {
   int axis;
+  int batch_dims;
 } TfLiteGatherParams;
 
 typedef struct {
@@ -487,6 +488,12 @@ typedef struct {
 typedef struct {
   int init_subgraph_index;
 } TfLiteCallOnceParams;
+
+typedef struct {
+  int table_id;
+  TfLiteType key_dtype;
+  TfLiteType value_dtype;
+} TfLiteHashtableParams;
 
 #ifdef __cplusplus
 }  // extern "C"

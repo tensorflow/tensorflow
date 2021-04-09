@@ -6,7 +6,7 @@ load(
 )
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Currently pybind extension shared objects must use only C API headers since
@@ -78,9 +78,11 @@ cc_library(
         "//tensorflow/c:tf_status_internal",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/c/eager:tfe_cancellation_manager_internal",
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
@@ -97,9 +99,12 @@ tf_cc_test(
         "//tensorflow/c:c_api_experimental",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/c/eager:tfe_context_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime/eager:context",
     ],
 )
 
@@ -128,8 +133,11 @@ tf_cc_test(
         ":parallel_device_testlib",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
+        "//tensorflow/c:tf_status_internal",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

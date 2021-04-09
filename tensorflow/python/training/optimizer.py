@@ -1153,7 +1153,8 @@ class Optimizer(
     """
     named_slots = self._slot_dict(slot_name)
     if _var_key(var) not in named_slots:
-      new_slot_variable = slot_creator.create_zeros_slot(var, op_name)
+      new_slot_variable = slot_creator.create_zeros_slot(
+          var, op_name, copy_xla_sharding=True)
       self._restore_slot_variable(
           slot_name=slot_name, variable=var,
           slot_variable=new_slot_variable)

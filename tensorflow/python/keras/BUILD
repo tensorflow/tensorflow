@@ -5,10 +5,8 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 filegroup(
     name = "all_py_srcs",
@@ -16,6 +14,12 @@ filegroup(
     visibility = [
         "//tensorflow/python/keras/google/private_tf_api_test:__pkg__",
     ],
+)
+
+config_setting(
+    name = "no_keras_py_deps",
+    define_values = {"no_keras_py_deps": "true"},
+    visibility = ["//visibility:public"],
 )
 
 py_library(
@@ -154,6 +158,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":backend",
+        "//tensorflow/python:errors",
         "//tensorflow/python/keras/distribute:distributed_file_utils",
         "//tensorflow/python/keras/distribute:worker_training_state",
         "//tensorflow/python/keras/protobuf:projector_config_proto_py",
@@ -186,6 +191,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":backend",
+        "//tensorflow/python:errors",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/profiler:profiler_v2",
     ],
@@ -254,7 +260,6 @@ py_library(
         "//tensorflow/python:check_ops",
         "//tensorflow/python:confusion_matrix",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
@@ -276,7 +281,6 @@ py_library(
         "//tensorflow/python/ops/losses",
         "//tensorflow/tools/docs:doc_controls",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -326,7 +330,7 @@ py_library(
     ],
 )
 
-# Internally six.moves.urllib.request.urlretrieve library requires Google
+# Internally urllib.request.urlretrieve library requires Google
 # SSL context to be provided to work in python 3. This isn't needed in OSS.
 # copybara:uncomment_begin(google-only)
 # py_library(
@@ -566,13 +570,14 @@ tf_py_test(
     shard_count = 6,
     tags = [
         "no_oss",
+        "no_tfrt",  # TODO(b/179690526)
         "notsan",
     ],
     deps = [
         ":keras",
+        "//tensorflow/python/profiler:profiler_v2",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@six_archive//:six",
     ],
 )
 

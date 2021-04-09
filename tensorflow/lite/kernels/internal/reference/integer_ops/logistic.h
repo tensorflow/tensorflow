@@ -69,6 +69,7 @@ inline void Logistic(int32_t input_multiplier, int32_t input_left_shift,
   // in TanhPrepare function and it is included in
   // input_multiplier already.
 
+  TFLITE_DCHECK_GE(input_left_shift, 0);
   if (input_multiplier == 0) {  // power of two case
     input_multiplier = 3 << input_left_shift;
     input_left_shift = 0;

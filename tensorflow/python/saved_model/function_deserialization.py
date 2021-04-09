@@ -199,6 +199,20 @@ class RestoredFunction(def_function.Function):
     # warnings.
     self._omit_frequent_tracing_warning = True
 
+  @property
+  def _run_functions_eagerly(self):
+    # We do not have access to the original python function, and thus, we
+    # cannot meaningfully do anything but call our concrete function graphs
+    # under the hood.
+    #
+    # Attempting to call our bespoke python function (i.e.
+    # `restored_function_body`) will work so long as the user passes in all
+    # required and optional arguments. If an optional argument is missing,
+    # however, the call will break. For this reason, we instead skip the
+    # eager call path altogether if a user has enabled eager function execution
+    # via `tf.config.run_functions_eagerly`.
+    return False
+
   def _list_all_concrete_functions_for_serialization(self):
     return self.concrete_functions
 

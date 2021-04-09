@@ -72,3 +72,33 @@ func @broadcast_both_operand(%arg0: tensor<7xf32>, %arg1: tensor<5x1xf32>) -> te
   // CHECK: %[[V0:.*]] = "tf.Add"(%arg0, %arg1) : (tensor<7xf32>, tensor<5x1xf32>) -> tensor<5x7xf32>
   // CHECK: %[[V0]] : tensor<5x7xf32>
 }
+
+// CHECK-LABEL: @broadcast_batch_matmul_v2_rhs
+func @broadcast_batch_matmul_v2_rhs(%arg0: tensor<17x17x17xf32>, %arg1: tensor<17x24xf32>) -> tensor<17x17x24xf32> {
+  %cst = constant dense<[17, 17, 24]> : tensor<3xi64>
+  %0 = "tf.BroadcastTo"(%arg1, %cst) : (tensor<17x24xf32>, tensor<3xi64>) -> tensor<17x17x24xf32>
+  %1 = "tf.BatchMatMulV2"(%arg0, %0) {adj_x = false, adj_y = false} : (tensor<17x17x17xf32>, tensor<17x17x24xf32>) -> tensor<17x17x24xf32>
+  return %1 : tensor<17x17x24xf32>
+  // CHECK: %[[V0:.*]] = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<17x17x17xf32>, tensor<17x24xf32>) -> tensor<17x17x24xf32>
+  // CHECK: %[[V0]] : tensor<17x17x24xf32>
+}
+
+// CHECK-LABEL: @broadcast_batch_matmul_v2_lhs
+func @broadcast_batch_matmul_v2_lhs(%arg0: tensor<17x17xf32>, %arg1: tensor<17x17x24xf32>) -> tensor<17x17x24xf32> {
+  %cst = constant dense<[17, 17, 17]> : tensor<3xi64>
+  %0 = "tf.BroadcastTo"(%arg0, %cst) : (tensor<17x17xf32>, tensor<3xi64>) -> tensor<17x17x17xf32>
+  %1 = "tf.BatchMatMulV2"(%0, %arg1) {adj_x = false, adj_y = false} : (tensor<17x17x17xf32>, tensor<17x17x24xf32>) -> tensor<17x17x24xf32>
+  return %1 : tensor<17x17x24xf32>
+  // CHECK: %[[V0:.*]] = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<17x17xf32>, tensor<17x17x24xf32>) -> tensor<17x17x24xf32>
+  // CHECK: %[[V0]] : tensor<17x17x24xf32>
+}
+
+// CHECK-LABEL: @broadcast_batch_matmul_v2_failed
+func @broadcast_batch_matmul_v2_failed(%arg0: tensor<17x17x1xf32>, %arg1: tensor<17x17x24xf32>) -> tensor<17x17x24xf32> {
+  %cst = constant dense<[17, 17, 17]> : tensor<3xi64>
+  %0 = "tf.BroadcastTo"(%arg0, %cst) : (tensor<17x17x1xf32>, tensor<3xi64>) -> tensor<17x17x17xf32>
+  %1 = "tf.BatchMatMulV2"(%0, %arg1) {adj_x = false, adj_y = false} : (tensor<17x17x17xf32>, tensor<17x17x24xf32>) -> tensor<17x17x24xf32>
+  return %1 : tensor<17x17x24xf32>
+  // CHECK: %[[V0:.*]] = "tf.BroadcastTo"
+  // CHECK: "tf.BatchMatMulV2"(%[[V0]], %arg1)
+}

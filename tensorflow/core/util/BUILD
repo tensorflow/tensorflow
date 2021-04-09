@@ -41,7 +41,7 @@ default_package_visibility = [
 
 package(
     default_visibility = default_package_visibility,
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # List of exported source files.
@@ -161,7 +161,6 @@ filegroup(
         "matmul_bcast.h",
         "mirror_pad_mode.h",
         "mkl_threadpool.h",
-        "mkl_types.h",
         "mkl_util.h",
         "overflow.h",
         "padding.h",
@@ -291,7 +290,6 @@ filegroup(
     name = "mkl_util_hdrs",
     srcs = [
         "mkl_threadpool.h",
-        "mkl_types.h",
         "mkl_util.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -468,7 +466,7 @@ cc_library(
 )
 
 cc_library(
-    name = "abstract_stack_trace",
+    name = "managed_stack_trace",
     hdrs = ["managed_stack_trace.h"],
     visibility = [
         "//tensorflow/c/eager:__pkg__",

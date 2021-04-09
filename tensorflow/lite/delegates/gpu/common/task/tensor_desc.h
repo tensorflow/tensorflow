@@ -133,6 +133,10 @@ struct TensorDescriptor : public GPUObjectDescriptor {
                                           const std::vector<std::string>& args,
                                           std::string* result) const;
 
+  absl::Status PerformWrite2DSelector(const GpuInfo& gpu_info,
+                                      const std::vector<std::string>& args,
+                                      std::string* result) const;
+
   std::string Read(const GpuInfo& gpu_info, DataType read_as_type,
                    const std::vector<std::string>& coords) const;
   std::string Write(const GpuInfo& gpu_info, const std::string& var_name,
@@ -182,13 +186,13 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   void UploadData(const float* src);
 };
 
-template <typename T>
-void DataFromBHWDC(const float* src, const BHWDC& shape,
-                   const TensorDescriptor& desc, T* dst);
+template <typename FromType, typename ToType>
+void DataFromBHWDC(const FromType* src, const BHWDC& shape,
+                   const TensorDescriptor& desc, ToType* dst);
 
-template <typename T>
-void DataToBHWDC(const T* src, const BHWDC& shape, const TensorDescriptor& desc,
-                 float* dst);
+template <typename FromType, typename ToType>
+void DataToBHWDC(const FromType* src, const BHWDC& shape,
+                 const TensorDescriptor& desc, ToType* dst);
 
 std::string ToString(TensorStorageType type);
 

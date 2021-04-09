@@ -47,6 +47,23 @@ inline void CopyDeviceAndUnderscoredAttributes(Operation *from, Operation *to) {
   });
 }
 
+// Forward declare these passthrough ops.
+// TODO(jpienaar): Remove these and use trait instead.
+class IdentityOp;
+class IdentityNOp;
+
+// Returns if a value corresponds to a constant, returns the matched constant
+// as an attribute.
+template <typename AttrT>
+bool GetValueAsConstant(Value val, AttrT &attr) {
+  while (auto result = val.dyn_cast<OpResult>()) {
+    Operation *op = result.getOwner();
+    if (!isa<IdentityOp>(op) && !isa<IdentityNOp>(op)) break;
+    val = op->getOperand(result.getResultNumber());
+  }
+  return matchPattern(val, m_Constant(&attr));
+}
+
 }  // namespace TF
 }  // namespace mlir
 

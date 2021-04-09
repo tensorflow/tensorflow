@@ -188,12 +188,24 @@ class BFCAllocator : public Allocator {
 
     bool in_use() const { return allocation_id != -1; }
 
-#ifdef TENSORFLOW_MEM_DEBUG
     // optional debugging info
     const char* op_name = nullptr;
     uint64 step_id = 0;
-    int64 action_count = 0;
-#endif
+    uint64 action_count = 0;
+
+    // Get the op name used for memory debugging.
+    const char* GetDebugOpName() const {
+      // If chunk is not in use, although the op_name pointer is not nullptr,
+      // the corresponding OpKernel might have already been deallocated, and the
+      // op_name pointer might point to invalid memory. So in this case, return
+      // a special op name "UNUSED";
+      if (!in_use())
+        return "UNUSED";
+      else if (op_name)
+        return op_name;
+      else
+        return "UNKNOWN";
+    }
 
     string DebugString(BFCAllocator* a,
                        bool recurse) TF_NO_THREAD_SAFETY_ANALYSIS {
@@ -210,11 +222,9 @@ class BFCAllocator : public Allocator {
         Chunk* n = a->ChunkFromHandle(next);
         strings::StrAppend(&dbg, ", next: ", n->DebugString(a, false));
       }
-#ifdef TENSORFLOW_MEM_DEBUG
-      strings::StrAppend(&dbg, ", for: ", op_name ? op_name : "UNKNOWN",
+      strings::StrAppend(&dbg, ", for: ", GetDebugOpName(),
                          ", stepid: ", step_id,
                          ", last_action: ", action_count);
-#endif
       return dbg;
     }
   };
@@ -593,13 +603,14 @@ class BFCAllocator : public Allocator {
 
   // Stats.
   AllocatorStats stats_ TF_GUARDED_BY(lock_);
-#ifdef TENSORFLOW_MEM_DEBUG
-  int64 action_counter_ TF_GUARDED_BY(lock_);
-#define MEM_DEBUG_SIZE_HISTORY_SIZE 4096
-  int64 size_history_[MEM_DEBUG_SIZE_HISTORY_SIZE];
-#endif
+  uint64 action_counter_ TF_GUARDED_BY(lock_);
+
+  // The circular buffer used to track memory operation history.
+  static constexpr uint64 kMemDebugHistorySize = 4096;
+  int64 size_history_[kMemDebugHistorySize];
 
   friend class GPUBFCAllocatorPrivateMethodsTest;
+  friend class GPUBFCAllocatorPrivateMethodsTest_SubAllocatorSpecific;
   TF_DISALLOW_COPY_AND_ASSIGN(BFCAllocator);
 };
 

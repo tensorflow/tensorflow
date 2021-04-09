@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/data_service.h"
+#include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/service/utils.h"
 #include "tensorflow/core/data/standalone.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
@@ -37,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/snappy.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -45,16 +48,36 @@ namespace data {
 const constexpr uint64 kRetryIntervalMicros = 5ull * 1000 * 1000;
 
 namespace {
-auto* tf_data_service_created =
-    monitoring::Gauge<bool, 0>::New("/tensorflow/data/service/created",
-                                    "Whether a tf.data service server "
-                                    "has been created.");
+// Moves the element into the response. If the tensor contains a single
+// CompressedElement variant, the move will be zero-copy. Otherwise, the tensor
+// data will be serialized as TensorProtos.
+Status MoveElementToResponse(std::vector<Tensor>&& element,
+                             GetElementResponse& resp) {
+  if (element.size() != 1 || element[0].dtype() != DT_VARIANT ||
+      !TensorShapeUtils::IsScalar(element[0].shape())) {
+    for (const auto& component : element) {
+      UncompressedElement* uncompressed = resp.mutable_uncompressed();
+      component.AsProtoTensorContent(uncompressed->add_components());
+    }
+    return Status::OK();
+  }
+  Variant& variant = element[0].scalar<Variant>()();
+  CompressedElement* compressed = variant.get<CompressedElement>();
+  if (compressed == nullptr) {
+    return errors::FailedPrecondition(
+        "Expected dataset to produce a CompressedElement variant tensor, but "
+        "it produced ",
+        variant.TypeName());
+  }
+  *resp.mutable_compressed() = *compressed;
+  return Status::OK();
+}
 }  // namespace
 
 DataServiceWorkerImpl::DataServiceWorkerImpl(
     const experimental::WorkerConfig& config)
     : config_(config) {
-  tf_data_service_created->GetCell()->Set(true);
+  metrics::RecordTFDataServiceWorkerCreated();
 }
 
 DataServiceWorkerImpl::~DataServiceWorkerImpl() {
@@ -96,6 +119,65 @@ Status DataServiceWorkerImpl::Start(const std::string& worker_address,
   registered_ = true;
   return Status::OK();
 }
+void DataServiceWorkerImpl::Stop() {
+  {
+    mutex_lock l(mu_);
+    cancellation_manager_.StartCancel();
+    cancelled_ = true;
+    while (outstanding_requests_ > 0) {
+      cv_.wait(l);
+    }
+  }
+  // At this point there are no outstanding requests in this RPC handler.
+  // However, requests successfully returned from this RPC handler may still be
+  // in progress within the gRPC server. If we shut down the gRPC server
+  // immediately, it could cause these requests to fail, e.g. with broken pipe.
+  // To mitigate this, we sleep for some time to give the gRPC server time to
+  // complete requests.
+  Env::Default()->SleepForMicroseconds(config_.shutdown_quiet_period_ms() *
+                                       1000);
+}
+
+Status DataServiceWorkerImpl::GetElementResult(
+    const GetElementRequest* request, struct GetElementResult* result) {
+  auto cleanup = gtl::MakeCleanup([&] {
+    mutex_lock l(mu_);
+    outstanding_requests_--;
+    cv_.notify_all();
+  });
+  Task* task;
+  {
+    mutex_lock l(mu_);
+    outstanding_requests_++;
+    if (cancelled_) {
+      return errors::Cancelled("Worker is shutting down");
+    }
+    if (!registered_) {
+      // We need to reject requests until the worker has registered with the
+      // dispatcher, so that we don't return NOT_FOUND for tasks that the worker
+      // had before preemption.
+      return errors::Unavailable(
+          "Worker has not yet registered with dispatcher.");
+    }
+    auto it = tasks_.find(request->task_id());
+    if (it == tasks_.end()) {
+      if (finished_tasks_.contains(request->task_id())) {
+        VLOG(3) << "Task is already finished";
+        result->end_of_sequence = true;
+        result->skip = false;
+        return Status::OK();
+      } else {
+        // Perhaps the workers hasn't gotten the task from the dispatcher yet.
+        // Return Unavailable so that the client knows to continue retrying.
+        return errors::Unavailable("Task ", request->task_id(), " not found");
+      }
+    }
+    task = it->second.get();
+    TF_RETURN_IF_ERROR(EnsureTaskInitialized(*task));
+  }
+  TF_RETURN_IF_ERROR(task->task_runner->GetNext(*request, *result));
+  return Status::OK();
+}
 
 Status DataServiceWorkerImpl::ProcessTask(const ProcessTaskRequest* request,
                                           ProcessTaskResponse* response) {
@@ -107,7 +189,7 @@ Status DataServiceWorkerImpl::ProcessTask(const ProcessTaskRequest* request,
 
 Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  std::unique_ptr<Task>& task = tasks_[task_def.task_id()];
+  std::shared_ptr<Task>& task = tasks_[task_def.task_id()];
   if (task) {
     VLOG(1) << "Received request to process already-processed task "
             << task->task_def.task_id();
@@ -169,8 +251,9 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
   }
   auto task_iterator = absl::make_unique<StandaloneTaskIterator>(
       std::move(dataset), std::move(iterator));
-  TF_RETURN_IF_ERROR(TaskRunner::Create(task.task_def, std::move(task_iterator),
-                                        task.task_runner));
+  TF_RETURN_IF_ERROR(
+      TaskRunner::Create(config_, task.task_def, cancellation_manager_,
+                         std::move(task_iterator), task.task_runner));
 
   task.initialized = true;
   VLOG(3) << "Created iterator for task " << task.task_def.task_id();
@@ -180,81 +263,20 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
 Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
                                          GetElementResponse* response) {
   VLOG(3) << "Received GetElement request for task " << request->task_id();
-  bool end_of_sequence = false;
-  std::vector<tensorflow::Tensor> outputs;
-  Task* task;
-  {
-    mutex_lock l(mu_);
-    if (!registered_) {
-      // We need to reject requests until the worker has registered with the
-      // dispatcher, so that we don't return NOT_FOUND for tasks that the worker
-      // had before preemption.
-      return errors::Unavailable(
-          "Worker has not yet registered with dispatcher.");
-    }
-    auto it = tasks_.find(request->task_id());
-    if (it == tasks_.end()) {
-      if (finished_tasks_.contains(request->task_id())) {
-        VLOG(3) << "Task is already finished";
-        response->set_end_of_sequence(true);
-        return Status::OK();
-      } else {
-        // Perhaps the workers hasn't gotten the task from the dispatcher yet.
-        // Return Unavailable so that the client knows to continue retrying.
-        return errors::Unavailable("Task ", request->task_id(), " not found");
-      }
-    }
-    task = it->second.get();
-    TF_RETURN_IF_ERROR(EnsureTaskInitialized(*task));
-  }
-  TaskRunner::Request get_next_request;
-  if (request->optional_consumer_index_case() ==
-      GetElementRequest::kConsumerIndex) {
-    get_next_request.consumer_index = request->consumer_index();
-  }
-  if (request->optional_round_index_case() == GetElementRequest::kRoundIndex) {
-    get_next_request.round_index = request->round_index();
-  }
-  TF_RETURN_IF_ERROR(
-      task->task_runner->GetNext(get_next_request, outputs, end_of_sequence));
-  if (end_of_sequence) {
+  struct GetElementResult result;
+  TF_RETURN_IF_ERROR(GetElementResult(request, &result));
+  response->set_end_of_sequence(result.end_of_sequence);
+  response->set_skip_task(result.skip);
+  if (response->end_of_sequence()) {
     mutex_lock l(mu_);
     VLOG(3) << "Reached end_of_sequence for task " << request->task_id();
     pending_completed_tasks_.insert(request->task_id());
     task_completion_cv_.notify_one();
-  }
-
-  if (!end_of_sequence) {
+  } else if (!response->skip_task()) {
+    TF_RETURN_IF_ERROR(
+        MoveElementToResponse(std::move(result.components), *response));
     VLOG(3) << "Producing an element for task " << request->task_id();
-    if (outputs.size() != 1) {
-      return errors::FailedPrecondition(
-          "Expected dataset to produce a single scalar variant tensor, but the "
-          "dataset produced ",
-          outputs.size(), " outputs");
-    }
-    if (outputs[0].dtype() != DT_VARIANT) {
-      return errors::FailedPrecondition(
-          "Expected dataset to produce a single scalar variant tensor, but "
-          "the dataset produced a tensor with type ",
-          DataTypeString(outputs[0].dtype()));
-    }
-    if (!TensorShapeUtils::IsScalar(outputs[0].shape())) {
-      return errors::FailedPrecondition(
-          "Expected dataset to produce a single scalar variant tensor, but "
-          "the dataset produced a tensor with shape ",
-          outputs[0].shape());
-    }
-    Variant& variant = outputs[0].scalar<Variant>()();
-    CompressedElement* compressed = variant.get<CompressedElement>();
-    if (compressed == nullptr) {
-      return errors::FailedPrecondition(
-          "Expected dataset to produce a CompressedElement variant tensor, but "
-          "it produced ",
-          variant.TypeName());
-    }
-    *response->mutable_compressed_element() = *compressed;
   }
-  response->set_end_of_sequence(end_of_sequence);
 
   return Status::OK();
 }
@@ -363,6 +385,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
                                    current_tasks, new_tasks, tasks_to_delete));
   mutex_lock l(mu_);
   for (const auto& task : new_tasks) {
+    VLOG(1) << "Received new task from dispatcher with id " << task.task_id();
     Status s = ProcessTaskInternal(task);
     if (!s.ok() && !errors::IsAlreadyExists(s)) {
       LOG(WARNING) << "Failed to start processing task " << task.task_id()

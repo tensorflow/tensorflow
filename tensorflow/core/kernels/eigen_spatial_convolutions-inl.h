@@ -18,11 +18,18 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/eigen_convolution_helpers.h"
 
+#if defined(EIGEN_VECTORIZE_ALTIVEC) || defined(EIGEN_VECTORIZE_VSX)
+#define TF_USE_CUSTOM_EIGEN_PACK 0
+#else
+#define TF_USE_CUSTOM_EIGEN_PACK 1
+#endif
+
 // Note this header is used in both TF and TFLite.
 namespace Eigen {
 
 namespace internal {
 
+#if TF_USE_CUSTOM_EIGEN_PACK
 // WARNING: Most of the code here implicitly assumes that the matrix is in
 // ColMajor layout. This is guaranteed by the tensor contraction (see
 // TensorContraction.h).
@@ -1532,6 +1539,7 @@ struct gemm_pack_rhs<
     }
   }
 };
+#endif
 }  // end namespace internal
 
 /** SpatialConvolution

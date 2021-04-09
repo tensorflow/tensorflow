@@ -240,15 +240,16 @@ def LegalizeGreaterEqual : Pat<(TF_GreaterEqualOp $l, $r),
 // The 'validate_indices' attribute is deprecated.
 def LegalizeGather: Pat<
   (TF_GatherOp $params, $indices, $ignored_validate_indices),
-  (TFL_GatherOp $params, $indices, ConstantAttr<I32Attr, "0">)>;
+  (TFL_GatherOp $params, $indices, ConstantAttr<I32Attr, "0">,
+     ConstantAttr<I32Attr, "0">)>;
 
 def LegalizeGatherNd : Pat<(TF_GatherNdOp $params, $indices),
                            (TFL_GatherNdOp $params, $indices)>;
 
 def LegalizeGatherV2 : Pat<
-  (TF_GatherV2Op $params, $indices, (ConstantOp ElementsAttr:$axis),
-    ConstantAttr<I64Attr, "0">:$batch_dims),
-  (TFL_GatherOp $params, $indices, ExtractSingleElementAsInt32:$axis)>;
+  (TF_GatherV2Op $params, $indices, (ConstantOp ElementsAttr:$axis), $batch_dims),
+  (TFL_GatherOp $params, $indices, ExtractSingleElementAsInt32:$axis,
+    (convertIntAttrTo32Bit $batch_dims))>;
 
 def LegalizeFloorDiv : Pat<(TF_FloorDivOp $l, $r), (TFL_FloorDivOp $l, $r)>;
 
@@ -296,8 +297,8 @@ def LegalizeFakeQuantWithMinMaxVars: Pat<
 
 // TODO(rocky): Not all of the attributes are handled correctly.  Make this
 // more general if there is a need.
-def LegalizeQuantizeAndDequantizeV2 : Pat<
-  (TF_QuantizeAndDequantizeV2Op $inputs, (ConstantOp F32ElementsAttr:$min),
+def LegalizeQuantizeAndDequantizeV4 : Pat<
+  (TF_QuantizeAndDequantizeV4Op $inputs, (ConstantOp F32ElementsAttr:$min),
     (ConstantOp F32ElementsAttr:$max),
     $signed_input, $num_bits, $range_given, $round_mode, $narrow_range, $axis),
   (TFL_DequantizeOp
@@ -349,6 +350,11 @@ def LegalizeProd : Pat<
 def LegalizeAny : Pat<
   (TF_AnyOp $input, $reduction_indices, $keep_dims),
   (TFL_ReduceAnyOp $input, (CreateTFCastToInt32Op $reduction_indices),
+                   $keep_dims)>;
+
+def LegalizeAll : Pat<
+  (TF_AllOp $input, $reduction_indices, $keep_dims),
+  (TFL_ReduceAllOp $input, (CreateTFCastToInt32Op $reduction_indices),
                    $keep_dims)>;
 
 def LegalizeCast : Pat<(TF_CastOp $arg0, BoolAttr:$arg1), (TFL_CastOp $arg0)>;
@@ -480,11 +486,10 @@ def LegalizeReshape : Pat<
 def ZeroIntAttr
   : AttrConstraint<CPred<"$_self.cast<::mlir::IntegerAttr>().getInt() == 0">>;
 
-// ellipsis_mask and new_axis_mask should be zero.
 def LegalizeStridedSlice : Pat<
   (TF_StridedSliceOp
     $input, $begin, $end, $strides, $begin_mask, $end_mask,
-    ZeroIntAttr:$ellipsis_mask, ZeroIntAttr:$new_axis_mask, $shrink_axis_mask),
+    $ellipsis_mask, $new_axis_mask, $shrink_axis_mask),
   (TFL_StridedSliceOp $input,
     (CreateTFCastToInt32Op $begin), (CreateTFCastToInt32Op $end),
     (CreateTFCastToInt32Op $strides), (convertIntAttrTo32Bit $begin_mask),
@@ -495,3 +500,9 @@ def LegalizeStridedSlice : Pat<
 def LegalizeRfft2d : Pat<
   (TF_RFFT2DOp $input, $fft_length),
   (TFL_RFFT2dOp $input, $fft_length)>;
+
+def LegalizeComplexAbs : Pat<(TF_ComplexAbsOp $arg), (TFL_ComplexAbsOp $arg)>;
+
+def LegalizeReal : Pat<(TF_RealOp $arg), (TFL_RealOp $arg)>;
+
+def LegalizeImag : Pat<(TF_ImagOp $arg), (TFL_ImagOp $arg)>;

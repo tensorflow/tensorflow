@@ -64,7 +64,8 @@ void MemoryTypesHelper(const NameRangeMap& name_map,
 
 bool IsFunctionCallOp(const string& op_type) {
   return op_type == "SymbolicGradient" || op_type == "PartitionedCall" ||
-         op_type == "StatefulPartitionedCall" || op_type == "While";
+         op_type == "StatefulPartitionedCall" || op_type == "While" ||
+         op_type == "StatelessWhile";
 }
 
 }  // namespace

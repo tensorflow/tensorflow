@@ -37,7 +37,7 @@ void ValidateQuantizeGoldens(TfLiteTensor* tensors, int tensors_size,
   const TfLiteRegistration registration = Register_QUANTIZE();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array,
-                             /*builtin_data=*/nullptr, micro_test::reporter);
+                             /*builtin_data=*/nullptr);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
@@ -49,7 +49,7 @@ void ValidateQuantizeGoldens(TfLiteTensor* tensors, int tensors_size,
   }
 }
 
-#if !defined(HIFIMINI)
+#if !defined(XTENSA)
 template <typename T>
 void TestQuantizeFloat(const int* input_dims_data, const float* input_data,
                        const int* output_dims_data, const float* golden,
@@ -79,7 +79,7 @@ void TestQuantizeFloat(const int* input_dims_data, const float* input_data,
   ValidateQuantizeGoldens(tensors, tensors_size, golden, golden_quantized,
                           scale, zero_point, output_dims_count, output_data);
 }
-#endif  // defined(HIFIMINI)
+#endif  // defined(XTENSA)
 
 template <typename InputType, typename OutputType>
 void TestRequantize(const int* input_dims_data, const float* input_data,
@@ -121,59 +121,7 @@ void TestRequantize(const int* input_dims_data, const float* input_data,
 
 TF_LITE_MICRO_TESTS_BEGIN
 
-#if !defined(HIFIMINI)
-TF_LITE_MICRO_TEST(QuantizeOpTestUint8) {
-  const int length = 10;
-  const int dims[] = {2, 2, 5};
-  const float values[] = {-63.5, -63,  -62.5, -62,  -61.5,
-                          62,    62.5, 63,    63.5, 64};
-  const float scale = 0.5;
-  const int zero_point = 127;
-  uint8_t output[length];
-  uint8_t values_quantized[length];
-  tflite::testing::TestQuantizeFloat(
-      dims, values, dims, values, values_quantized, scale, zero_point, output);
-}
-
-TF_LITE_MICRO_TEST(QuantizeOpTestUint8NoScale) {
-  const int length = 10;
-  const int dims[] = {2, 2, 5};
-  const float values[] = {-127, -126, -125, -124, -123,
-                          124,  125,  126,  127,  128};
-  const float scale = 1.0;
-  const int zero_point = 127;
-  uint8_t output[length];
-  uint8_t values_quantized[length];
-  tflite::testing::TestQuantizeFloat(
-      dims, values, dims, values, values_quantized, scale, zero_point, output);
-}
-
-TF_LITE_MICRO_TEST(QuantizeOpTestInt8) {
-  const int length = 10;
-  const int dims[] = {2, 2, 5};
-  const float values[] = {-63.5, -63,  -62.5, -62,  -61.5,
-                          62,    62.5, 63,    63.5, 64};
-  const float scale = 0.5;
-  const int zero_point = -1;
-  uint8_t output[length];
-  uint8_t values_quantized[length];
-  tflite::testing::TestQuantizeFloat(
-      dims, values, dims, values, values_quantized, scale, zero_point, output);
-}
-
-TF_LITE_MICRO_TEST(QuantizeOpTestInt8NoScale) {
-  const int length = 10;
-  const int dims[] = {2, 2, 5};
-  const float values[] = {-128, -127, -126, -125, -124,
-                          123,  124,  125,  126,  127};
-  const float scale = 1.0;
-  const int zero_point = 0;
-  uint8_t output[length];
-  uint8_t values_quantized[length];
-  tflite::testing::TestQuantizeFloat(
-      dims, values, dims, values, values_quantized, scale, zero_point, output);
-}
-
+#if !defined(XTENSA)
 TF_LITE_MICRO_TEST(QuantizeOpTestInt16) {
   const int length = 10;
   const int dims[] = {2, 2, 5};
@@ -267,9 +215,9 @@ TF_LITE_MICRO_TEST(QuantizeOpTestInt8toInt8NoZeroPoint) {
                                   values_quantized, output_scale,
                                   output_zero_point, output_quantized);
 }
-#endif  // defined(HIFIMINI)
+#endif  // defined(XTENSA)
 
-#if !defined(HIFIMINI)
+#if !defined(XTENSA)
 // TODO(b/155682734): Hifimini optimized quantize requires input scale to be
 // smaller then output scale.
 TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt8) {
@@ -288,7 +236,24 @@ TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt8) {
                                   values_quantized, output_scale,
                                   output_zero_point, output_quantized);
 }
-#endif  // defined(HIFIMINI)
+#endif  // defined(XTENSA)
+
+TF_LITE_MICRO_TEST(QuantizeOpTestInt8toInt32) {
+  const int length = 10;
+  const int dims[] = {2, 2, 5};
+  const float values[] = {-32, -31, -30, -29, -28, 27, 28, 29, 30, 31};
+  const float input_scale = 1.f;
+  const int input_zero_point = 0;
+  const float output_scale = 0.5;
+  const int output_zero_point = 0;
+  int32_t output_quantized[length];
+  int32_t values_quantized[length];
+  int8_t input_quantized[length];
+  tflite::testing::TestRequantize(dims, values, input_quantized, input_scale,
+                                  input_zero_point, dims, values,
+                                  values_quantized, output_scale,
+                                  output_zero_point, output_quantized);
+}
 
 TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt32) {
   const int length = 10;

@@ -17,10 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from os import path
-from os import makedirs
+import os
 import shutil
 import tempfile
+
 from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.ops import dataset_ops
 
@@ -34,16 +34,16 @@ class ListFilesBenchmark(benchmark_base.DatasetBenchmarkBase):
     depth = 16
     for i in range(width):
       for j in range(depth):
-        new_base = path.join(tmp_dir, str(i),
-                             *[str(dir_name) for dir_name in range(j)])
-        makedirs(new_base)
+        new_base = os.path.join(tmp_dir, str(i),
+                                *[str(dir_name) for dir_name in range(j)])
+        os.makedirs(new_base)
         child_files = ['a.py', 'b.pyc'] if j < depth - 1 else ['c.txt', 'd.log']
         for f in child_files:
-          filename = path.join(new_base, f)
+          filename = os.path.join(new_base, f)
           open(filename, 'w').close()
     patterns = [
-        path.join(tmp_dir, path.join(*['**'
-                                       for _ in range(depth)]), suffix)
+        os.path.join(tmp_dir, os.path.join(*['**'
+                                             for _ in range(depth)]), suffix)
         for suffix in ['*.txt', '*.log']
     ]
     # the num_elements depends on the pattern that has been defined above.
@@ -57,6 +57,10 @@ class ListFilesBenchmark(benchmark_base.DatasetBenchmarkBase):
         dataset=dataset,
         iters=3,
         num_elements=num_elements,
+        extras={
+            'model_name': 'list_files.benchmark.1',
+            'parameters': '%d.%d' % (width, depth),
+        },
         name='nested_directory(%d*%d)' % (width, depth))
     shutil.rmtree(tmp_dir, ignore_errors=True)
 

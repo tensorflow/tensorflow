@@ -98,9 +98,11 @@ foreach fromToBinPair = [[TF_AddV2Op, HLOClient_BroadcastAddOp],
                          [TF_MaximumOp, HLOClient_BroadcastMaxOp],
                          [TF_MinimumOp, HLOClient_BroadcastMinOp],
                          [TF_MulOp, HLOClient_BroadcastMulOp],
+                         [TF_PolygammaOp, HLOClient_BroadcastPolygammaOp],
                          [TF_PowOp, HLOClient_BroadcastPowOp],
                          [TF_RealDivOp, HLOClient_BroadcastDivOp],
-                         [TF_SubOp, HLOClient_BroadcastSubOp]] in
+                         [TF_SubOp, HLOClient_BroadcastSubOp],
+                         [TF_ZetaOp, HLOClient_BroadcastZetaOp]] in
   def : DirectBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
 def LowerRightShiftSigned :
@@ -495,7 +497,7 @@ def : Pat<(TF_EluGradOp AnyStaticShapeTensor:$gradients, AnyRankedTensor:$featur
 
 // TODO(hinsu): Lower unsigned and quantized types after supporting
 // them in GetScalarOfType.
-def : Pat<(TF_ReluOp AnyRankedTensor:$input),
+def : Pat<(TF_ReluOp AnyTensor:$input),
           (HLOClient_BroadcastMaxOp
                (HLO_ConstOp:$zero (GetScalarOfType<0> $input)), $input,
                (BinBroadcastDimensions $zero, $input)),
@@ -549,6 +551,14 @@ def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
             $slice_sizes)]>;
 
 //===----------------------------------------------------------------------===//
+// Select op patterns.
+//===----------------------------------------------------------------------===//
+
+ def : Pat<(TF_SelectV2Op HLO_Tensor:$pred, HLO_Tensor:$on_true,
+            HLO_Tensor:$on_false),
+           (HLOClient_BroadcastSelectOp $pred, $on_true, $on_false)>;
+
+//===----------------------------------------------------------------------===//
 // PartitionedCall and LegacyCall op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -595,13 +605,17 @@ foreach Mapping = [
                    [TF_ComplexAbsOp, HLO_AbsOp],
                    [TF_ConjOp, HLOClient_ConjOp],
                    [TF_CosOp, HLO_CosOp],
+                   [TF_DigammaOp, HLOClient_DigammaOp],
                    [TF_ExpOp, HLO_ExpOp],
+                   [TF_Expm1Op, HLO_Expm1Op],
                    [TF_ErfOp, HLOClient_ErfOp],
                    [TF_ErfcOp, HLOClient_ErfcOp],
                    [TF_FloorOp, HLO_FloorOp],
                    [TF_ImagOp, HLO_ImagOp],
                    [TF_InvertOp, HLO_NotOp],
                    [TF_IsFiniteOp, HLO_IsFiniteOp],
+                   [TF_IsInfOp, HLOClient_IsInfOp],
+                   [TF_LgammaOp, HLOClient_LgammaOp],
                    [TF_LogOp, HLO_LogOp],
                    [TF_Log1pOp, HLO_Log1pOp],
                    [TF_LogicalNotOp, HLO_NotOp],
@@ -613,11 +627,13 @@ foreach Mapping = [
                    [TF_SinOp, HLO_SinOp],
                    [TF_SqrtOp, HLO_SqrtOp],
                    [TF_TanhOp, HLO_TanhOp],
-                   [TF_TanOp, HLOClient_TanOp],
+                   [TF_TanOp, HLOClient_TanOp]
                   ] in {
  def : Pat<(Mapping[0] HLO_Tensor:$input),
            (Mapping[1] $input)>;
 }
+
+def : Pat<(TF_AngleOp $x), (HLO_Atan2Op (HLO_ImagOp $x), (HLO_RealOp $x))>;
 
 // TODO(bixia): Lower Cast with a Complex type source operand or with
 // Truncate=True for floating point value conversions.
@@ -744,3 +760,22 @@ def : Pat<(TF_XlaGatherOp $operand, $start_indices, (ConstantLikeMatcher Element
                         (CastElementsToI64Elements $slice_sizes),
                         $indices_are_sorted),
           [(HasValidGatherDims $dimension_numbers)]>;
+
+
+def ToDotDimNumsAttr : NativeCodeCall<"GetDotDimNumsAttr($0, &$_builder)">;
+
+def ToPrecisionConfigsAttr : NativeCodeCall<"GetPrecisionConfigAttr($0, &$_builder)">;
+
+def HasValidDotDims : Constraint<CPred<"HasValidDotDims($0)">>;
+
+def HasValidPrecisionConfig : Constraint<CPred<"HasValidPrecisionConfig($0)">>;
+
+//===----------------------------------------------------------------------===//
+// XlaDotV2Op op.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_XlaDotV2Op $lhs, $rhs, $dimension_numbers, $precision_config),
+          (HLO_DotGeneralOp $lhs, $rhs,
+                            (ToDotDimNumsAttr $dimension_numbers),
+                            (ToPrecisionConfigsAttr $precision_config)),
+          [(HasValidDotDims $dimension_numbers), (HasValidPrecisionConfig $precision_config)]>;

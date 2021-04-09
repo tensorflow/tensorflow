@@ -326,7 +326,7 @@ tf_device::ClusterOp UpdateClusterResults(
 
   auto new_cluster = builder->create<tf_device::ClusterOp>(
       cluster.getLoc(), new_cluster_result_types,
-      /*operands=*/llvm::ArrayRef<Value>{}, cluster.getAttrs());
+      /*operands=*/llvm::ArrayRef<Value>{}, cluster->getAttrs());
   new_cluster.body().takeBody(cluster.body());
 
   auto operand_not_in_cluster = [&](OpOperand& operand) {
@@ -400,7 +400,7 @@ void RemoveClusterAliasedOutputs(OpBuilder* builder,
   builder->setInsertionPoint(cluster);
   auto new_cluster = builder->create<tf_device::ClusterOp>(
       cluster.getLoc(), new_cluster_result_types,
-      /*operands=*/llvm::ArrayRef<Value>{}, cluster.getAttrs());
+      /*operands=*/llvm::ArrayRef<Value>{}, cluster->getAttrs());
   new_cluster.body().takeBody(cluster.body());
   new_cluster.GetBody().getTerminator()->setOperands(new_cluster_results);
 

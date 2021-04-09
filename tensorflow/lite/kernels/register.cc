@@ -115,9 +115,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
              Register_UNIDIRECTIONAL_SEQUENCE_LSTM(), /* min_version = */ 1,
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_PAD, Register_PAD(), /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_PADV2, Register_PADV2(), /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_RESHAPE, Register_RESHAPE());
   AddBuiltin(BuiltinOperator_RESIZE_BILINEAR, Register_RESIZE_BILINEAR(),
              /* min_version = */ 1,
@@ -135,7 +135,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_GATHER, Register_GATHER(),
              /* min_version = */ 1,
-             /* max_version = */ 4);
+             /* max_version = */ 5);
   AddBuiltin(BuiltinOperator_TRANSPOSE, Register_TRANSPOSE(),
              /* min_version = */ 1,
              /* max_version = */ 5);
@@ -159,7 +159,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_STRIDED_SLICE, Register_STRIDED_SLICE(),
              /* min_version = */ 1,
-             /* max_version = */ 5);
+             /* max_version = */ 6);
   AddBuiltin(BuiltinOperator_EXP, Register_EXP());
   AddBuiltin(BuiltinOperator_TOPK_V2, Register_TOPK_V2(),
              /* min_version = */ 1,
@@ -227,6 +227,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* min_version = */ 1,
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_REDUCE_ANY, Register_REDUCE_ANY());
+  AddBuiltin(BuiltinOperator_REDUCE_ALL, Register_REDUCE_ALL());
   AddBuiltin(BuiltinOperator_EXPAND_DIMS, Register_EXPAND_DIMS());
   AddBuiltin(BuiltinOperator_SPARSE_TO_DENSE, Register_SPARSE_TO_DENSE(),
              /* min_version = */ 1,
@@ -313,6 +314,13 @@ BuiltinOpResolver::BuiltinOpResolver() {
              tflite::ops::builtin::Register_CALL_ONCE());
   AddBuiltin(BuiltinOperator_RFFT2D, Register_RFFT2D());
   AddBuiltin(BuiltinOperator_CONV_3D, Register_CONV_3D());
+  AddBuiltin(BuiltinOperator_IMAG, Register_IMAG());
+  AddBuiltin(BuiltinOperator_REAL, Register_REAL());
+  AddBuiltin(BuiltinOperator_COMPLEX_ABS, Register_COMPLEX_ABS());
+  AddBuiltin(BuiltinOperator_HASHTABLE, Register_HASHTABLE());
+  AddBuiltin(BuiltinOperator_HASHTABLE_FIND, Register_HASHTABLE_FIND());
+  AddBuiltin(BuiltinOperator_HASHTABLE_IMPORT, Register_HASHTABLE_IMPORT());
+  AddBuiltin(BuiltinOperator_HASHTABLE_SIZE, Register_HASHTABLE_SIZE());
   AddCustom("NumericVerify", tflite::ops::custom::Register_NUMERIC_VERIFY());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

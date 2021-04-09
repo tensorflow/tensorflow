@@ -134,9 +134,9 @@ Status GrpcServer::GetHostAndPort(const ServerDef& server_def,
     if (job.name() == server_def.job_name()) {
       auto iter = job.tasks().find(server_def.task_index());
       if (iter == job.tasks().end()) {
-        return errors::InvalidArgument("Task ", server_def.task_index(),
-                                       " was not defined in job \"",
-                                       server_def.job_name(), "\"");
+        return errors::Internal("Task ", server_def.task_index(),
+                                " was not defined in job \"",
+                                server_def.job_name(), "\"");
       }
 
       if (server_def.port() != 0) {
@@ -190,7 +190,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
     std::vector<std::unique_ptr<Device>> devices;
     TF_RETURN_IF_ERROR(
         DeviceFactory::AddDevices(sess_opts, name_prefix, &devices));
-    worker_env_.device_mgr = new StaticDeviceMgr(std::move(devices));
+    worker_env_.device_mgr = new DynamicDeviceMgr(std::move(devices));
     owned_device_manager_.reset(worker_env_.device_mgr);
   } else {
     worker_env_.device_mgr = opts.local_device_mgr;
@@ -521,7 +521,7 @@ std::unique_ptr<Master> GrpcServer::CreateMaster(MasterEnv* master_env) {
 
 /* static */
 Status GrpcServer::Create(const ServerDef& server_def, Env* env,
-                          const DeviceMgr* local_device_mgr,
+                          DeviceMgr* local_device_mgr,
                           std::unique_ptr<ServerInterface>* out_server) {
   std::unique_ptr<GrpcServer> ret(
       new GrpcServer(server_def, env == nullptr ? Env::Default() : env));

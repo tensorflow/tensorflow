@@ -166,9 +166,33 @@ endef
 
 define generate_ceva_bx1_project
 ifeq ($(TARGET), ceva)
-ifeq ($(TARGET_ARCH), bx1)
+ifeq ($(TARGET_ARCH), CEVA_BX1)
 
-$(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/ceva_bx1/ceva_app_makefile.tpl
+$(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/ceva/ceva_app_makefile_v18.0.5.tpl
+	@mkdir -p $$(dir $$@)
+	@sed -E 's#\%\{SRCS\}\%#$(4)#g' $$< | \
+	sed -E 's#\%\{CC\}\%#$(CC_TOOL)#g' | \
+	sed -E 's#\%\{CXX\}\%#$(CXX_TOOL)#g' | \
+	sed -E 's#\%\{LD\}\%#$(LD_TOOL)#g' | \
+	sed -E 's#\%\{EXECUTABLE\}\%#$(3).elf#g' | \
+	sed -E 's#\%\{LD_FLAGS\}\%#$(6)#g' | \
+	sed -E 's#\%\{CXX_FLAGS\}\%#$(7)#g' | \
+	sed -E 's#\%\{CC_FLAGS\}\%#$(8)#g' > $$@
+	
+$(PRJDIR)$(3)/$(1)/%: tensorflow/lite/micro/tools/make/templates/ceva/%.tpl
+	@cp $$< $$@
+
+$(foreach var,$(CEVA_TARGET_FILES_DIRS),$(eval $(call path_changing_copy_file,$(PRJDIR)$(3)/$(1),$(var))))
+
+endif
+endif
+endef
+
+define generate_ceva_sp500_project
+ifeq ($(TARGET), ceva)
+ifeq ($(TARGET_ARCH), CEVA_SP500)
+
+$(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/ceva_SP500/ceva_app_makefile.tpl
 	@mkdir -p $$(dir $$@)
 	@sed -E 's#\%\{SRCS\}\%#$(4)#g' $$< | \
 	sed -E 's#\%\{CC\}\%#$(CC_TOOL)#g' | \
@@ -187,7 +211,7 @@ $(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/ceva_bx1
 	sed -E 's#\%\{APP_DEBUG_CMD\}\%#$(ARC_APP_DEBUG_CMD)#g' | \
 	sed -E 's#\%\{EXTRA_EXECUTE_RULES\}\%#$(ARC_EXTRA_EXECUTE_RULES)#g' > $$@
 
-$(PRJDIR)$(3)/$(1)/%: tensorflow/lite/micro/tools/make/templates/ceva_bx1/%.tpl
+$(PRJDIR)$(3)/$(1)/%: tensorflow/lite/micro/tools/make/templates/ceva_SP500/%.tpl
 	@cp $$< $$@
 
 $(foreach var,$(CEVA_TARGET_FILES_DIRS),$(eval $(call path_changing_copy_file,$(PRJDIR)$(3)/$(1),$(var))))
@@ -435,6 +459,7 @@ define generate_microlite_projects
 $(call generate_project,make,$(MAKE_PROJECT_FILES) $($(1)_MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(MICROLITE_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES),$(TARGET_TOOLCHAIN_ROOT),$(TARGET_TOOLCHAIN_PREFIX))
 $(call generate_arc_project,make,$(MAKE_PROJECT_FILES) $($(1)_MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(GENERATED_PROJECT_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES))
 $(call generate_ceva_bx1_project,make,$(MAKE_PROJECT_FILES) $($(1)_MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(GENERATED_PROJECT_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES))
+$(call generate_ceva_sp500_project,make,$(MAKE_PROJECT_FILES) $($(1)_MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(GENERATED_PROJECT_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES))
 $(call generate_project,mbed,$(MBED_PROJECT_FILES) $($(1)_MBED_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS),$(TARGET_TOOLCHAIN_ROOT),$(TARGET_TOOLCHAIN_PREFIX))
 $(call generate_project,keil,$(KEIL_PROJECT_FILES) $($(1)_KEIL_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS),$(TARGET_TOOLCHAIN_ROOT),$(TARGET_TOOLCHAIN_PREFIX))
 ifeq (,$(findstring _benchmark,$(1)))
@@ -445,10 +470,20 @@ endef
 
 # Handles the details of generating a binary target, including specializing
 # for the current platform, and generating project file targets.
+#
+# Note that while the function is called microlite_test, it is used for both
+# test and non-test binaries.
+
+# Files that end with _test are added as test targets (i.e. can be executed with
+# make test_<target>. ALl others can be executed with make run_<target>
+#
 # Arguments are:
-# 1 - Name of test.
-# 2 - C/C++ source files implementing the test.
-# 3 - C/C++ header files needed for the test.
+# 1 - Name of target.
+# 2 - C/C++ source files
+# 3 - C/C++ header files
+# 4 - if "exclude", then the non-test target will be excluded from
+#     MICROLITE_BUILD_TARGETS. This exception is needed because not all the
+#     microlite_test targets (e.g. the examples) are buildable on all platforms.
 # Calling eval on the output will create the targets that you need.
 define microlite_test
 ifeq (,$(findstring _test, $(1)))
@@ -469,24 +504,21 @@ $$($(1)_BINARY): $$($(1)_LOCAL_OBJS) $$(MICROLITE_LIB_PATH)
 	$$(MICROLITE_LIB_PATH) $$(LDFLAGS) $$(MICROLITE_LIBS)
 $(1): $$($(1)_BINARY)
 $(1)_bin: $$($(1)_BINARY).bin
-test_$(1): $$($(1)_BINARY)
-	@test -f $$(TEST_SCRIPT) || (echo 'Unable to find the test script. Is the software emulation available in $$(TARGET)?'; exit 1)
-	$$(TEST_SCRIPT) $$($(1)_BINARY) $$(TEST_PASS_STRING) $$(TARGET)
 
 ifneq (,$(findstring _test,$(1)))
   MICROLITE_TEST_TARGETS += test_$(1)
   MICROLITE_BUILD_TARGETS += $$($(1)_BINARY)
-endif
 
-# The ifneq can make is seem that the body of the if block is executed when
-# _benchmark is not found in $(1). Actually, the check is saying that if
-# findstring does not return empty, i.e. if _benchmark is found in $(1), we
-# should add something to the MICROLITE_BUILD_TARGETS.
-#
-# This ensures that a `make build` command will builds all the tests and
-# benchmarks, though `make test` will only run the tests.
-ifneq (,$(findstring _benchmark,$(1)))
-  MICROLITE_BUILD_TARGETS += $$($(1)_BINARY)
+test_$(1): $$($(1)_BINARY)
+	$$(TEST_SCRIPT) $$($(1)_BINARY) $$(TEST_PASS_STRING) $$(TARGET)
+
+else
+  ifeq ($(findstring exclude,$(4)),)
+    MICROLITE_BUILD_TARGETS += $$($(1)_BINARY)
+  endif
+
+run_$(1): $$($(1)_BINARY)
+	$$(TEST_SCRIPT) $$($(1)_BINARY) non_test_binary $$(TARGET)
 endif
 
 $(eval $(call generate_microlite_projects,$(1),$(call specialize,$(2)),$(3)))

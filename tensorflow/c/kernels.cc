@@ -81,6 +81,9 @@ void AddTypeConstraint(TF_KernelBuilder* kernel_builder, const char* attr_name,
   // TF_CALL_ALL_TYPES macro can find tensorflow::string as string.
   switch (dtype) {
     TF_CALL_ALL_TYPES(CASE);
+    TF_CALL_QUANTIZED_TYPES(CASE);
+    TF_CALL_quint16(CASE);
+    TF_CALL_qint16(CASE);
     default:
       status->status = errors::Unimplemented("Unexpected type ", dtype);
       return;

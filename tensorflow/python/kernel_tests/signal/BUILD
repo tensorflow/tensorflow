@@ -3,10 +3,8 @@ load("//tensorflow:tensorflow.bzl", "py_test")  # @unused
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 py_library(
     name = "test_util",
@@ -42,7 +40,6 @@ cuda_py_tests(
     python_version = "PY3",
     shard_count = 8,
     tags = [
-        "no_rocm",
         "optonly",
     ],
     # TODO(timshen): re-enable after resolving flakiness (b/149426657).

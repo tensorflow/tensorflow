@@ -2,7 +2,7 @@ load("//tensorflow:tensorflow.bzl", "if_google")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 _selectors_package = (
@@ -99,6 +99,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:storage_type_util",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_conversion",
         "//tensorflow/lite/delegates/gpu/common/tasks:elementwise",
         "//tensorflow/lite/delegates/gpu/common/tasks:mean_stddev_normalization",
         "//tensorflow/lite/delegates/gpu/common/tasks:transpose",
@@ -121,6 +122,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_xy",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_z",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv",
+        "//tensorflow/lite/delegates/gpu/common/tasks:gather",
         "//tensorflow/lite/delegates/gpu/common/tasks:lstm",
         "//tensorflow/lite/delegates/gpu/common/tasks:max_unpooling",
         "//tensorflow/lite/delegates/gpu/common/tasks:padding",
@@ -129,13 +131,16 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:quantize_and_dequantize",
         "//tensorflow/lite/delegates/gpu/common/tasks:reduce",
         "//tensorflow/lite/delegates/gpu/common/tasks:relu",
+        "//tensorflow/lite/delegates/gpu/common/tasks:resampler",
         "//tensorflow/lite/delegates/gpu/common/tasks:reshape",
         "//tensorflow/lite/delegates/gpu/common/tasks:reshapex4",
         "//tensorflow/lite/delegates/gpu/common/tasks:resize",
         "//tensorflow/lite/delegates/gpu/common/tasks:softmax",
         "//tensorflow/lite/delegates/gpu/common/tasks:softmax1x1",
         "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth",
+        "//tensorflow/lite/delegates/gpu/common/tasks:split",
         "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice",
+        "//tensorflow/lite/delegates/gpu/common/tasks:tile",
         "//tensorflow/lite/delegates/gpu/common/tasks:transpose",
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd",
         "@com_google_absl//absl/memory",

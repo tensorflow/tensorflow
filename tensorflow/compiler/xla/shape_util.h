@@ -247,6 +247,11 @@ class ShapeUtil {
   // Precondition: IsArray(lhs) && IsArray(rhs)
   static bool SameDimensions(const Shape& lhs, const Shape& rhs);
 
+  // Returns whether the LHS and RHS shapes have the same rank; note: does
+  // not check element type.
+  // Precondition: IsArray(lhs) && IsArray(rhs)
+  static bool SameRank(const Shape& lhs, const Shape& rhs);
+
   // Returns whether the lhs and rhs shapes have the same element type.
   static bool SameElementType(const Shape& lhs, const Shape& rhs) {
     return lhs.element_type() == rhs.element_type();
@@ -267,35 +272,8 @@ class ShapeUtil {
   // and returns it.
   static PrimitiveType HigherPrecisionElementType(const Shape& a,
                                                   const Shape& b) {
-    // Returns a tuple where the elements are lexicographically ordered in terms
-    // of importance.
-    auto type_properties = [](const Shape& shape) {
-      return std::make_tuple(
-          // Prefer floating point types with more range over other
-          // floating-point types or non-floating point types.
-          ElementIsFloating(shape)
-              ? primitive_util::OverflowExponent(shape.element_type())
-              : -1,
-          // Prefer floating point types with more precision over less precise
-          // types.
-          ElementIsFloating(shape)
-              ? primitive_util::SignificandWidth(shape.element_type())
-              : -1,
-          // Prefer wider types over narrower types.
-          primitive_util::BitWidth(shape.element_type()),
-          // Prefer signed integer types over unsigned integer types.
-          primitive_util::IsSignedIntegralType(shape.element_type()));
-    };
-    auto a_properties = type_properties(a);
-    auto b_properties = type_properties(b);
-    if (a_properties > b_properties) {
-      return a.element_type();
-    }
-    if (b_properties > a_properties) {
-      return b.element_type();
-    }
-    CHECK(SameElementType(a, b));
-    return a.element_type();
+    return primitive_util::HigherPrecisionType(a.element_type(),
+                                               b.element_type());
   }
 
   // Returns true if the rank, dimension sizes, and element type are
@@ -307,6 +285,11 @@ class ShapeUtil {
   // and layout are ignored. Tuple elements are compared recursively for
   // compatibility.
   static bool CompatibleIgnoringElementType(const Shape& lhs, const Shape& rhs);
+
+  // Returns true if the tuple tree shapes and leaf ranks are identical.
+  // Leaf dimensions, element type, and layout are ignored. Tuple elements are
+  // compared recursively for compatibility.
+  static bool CompatibleKind(const Shape& lhs, const Shape& rhs);
 
   // As Compatible, but allow one of lhs and rhs to be BF16 while the other
   // being F32. Tuple elements are compared recursively for compatibility.
@@ -455,6 +438,11 @@ class ShapeUtil {
                                    int64 element_size_in_bits = 0,
                                    int64 memory_space = 0);
 
+  // Constructs a new shape with the given dimension `dim` as the most major
+  // dimension in the layout. If the shape does not have a layout, assumes a
+  // default layout.
+  static Shape MoveDimToMajor(const Shape& shape, int64 dim);
+
   // Returns the same shape except with all dimensions set to be static.
   static Shape MakeShapeWithStaticDimensions(const Shape& shape);
 
@@ -587,13 +575,13 @@ class ShapeUtil {
   static Shape DropDegenerateDimensions(const Shape& shape);
 
   // Permutes the dimensions by the given permutation, so
-  // return_value.dimensions[permutation[i]] = argument.dimensions[i].
+  // return_value.dimensions[i] = argument.dimensions[permutation[i]].
   //
   // Postcondition: For any valid permutation,
   //
   //   !HasLayout(shape) ||
   //   TransposeIsBitcast(shape, PermuteDimensions(permutation, shape),
-  //                      InversePermutation(permutation)).
+  //                      permutation).
   static Shape PermuteDimensions(absl::Span<const int64> permutation,
                                  const Shape& shape);
 

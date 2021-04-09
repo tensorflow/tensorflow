@@ -130,49 +130,6 @@ Status BuildImmediateExecutionContext(bool use_tfrt, AbstractContext** ctx) {
   return Status::OK();
 }
 
-Status TestScalarTensorHandle(AbstractContext* ctx, float value,
-                              AbstractTensorHandle** tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_Context* eager_ctx =
-      TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  TFE_TensorHandle* input_eager = TestScalarTensorHandle(eager_ctx, value);
-  *tensor =
-      unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-  return Status::OK();
-}
-
-Status TestTensorHandleWithDimsFloat(AbstractContext* ctx, float* data,
-                                     int64_t* dims, int num_dims,
-                                     AbstractTensorHandle** tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_Context* eager_ctx =
-      TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  TFE_TensorHandle* input_eager =
-      TestTensorHandleWithDimsFloat(eager_ctx, data, dims, num_dims);
-  *tensor =
-      unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-  return Status::OK();
-}
-
-Status TestTensorHandleWithDimsInt(AbstractContext* ctx, int* data,
-                                   int64_t* dims, int num_dims,
-                                   AbstractTensorHandle** tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_Context* eager_ctx =
-      TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  TFE_TensorHandle* input_eager =
-      TestTensorHandleWithDimsInt(eager_ctx, data, dims, num_dims);
-  *tensor =
-      unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-  return Status::OK();
-}
-
 Status GetValue(AbstractTensorHandle* t, TF_Tensor** result_tensor) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);

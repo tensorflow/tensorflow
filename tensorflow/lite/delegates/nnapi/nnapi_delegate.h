@@ -125,21 +125,44 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // accelerator. This should only be enabled if the target device supports
     // dynamic dimensions of the model.
     bool allow_dynamic_dimensions = false;
+
+    // Use NNAPI Burst mode if supported.
+    // Burst mode allows accelerators to efficiently manage resources, which
+    // would significantly reduce overhead especially if the same delegate
+    // instance is to be used for multiple inferences.
+    // Default: Disabled.
+    bool use_burst_computation = false;
   };
 
   // Uses default options.
   StatefulNnApiDelegate();
 
+  // The ownership of the NnApi instance is left to the caller of the
+  // StatefulNnApiDelegate constructor; the caller must ensure that the lifetime
+  // of the NnApi instance exceeds the lifetime of the StatefulNnApiDelegate.
   explicit StatefulNnApiDelegate(const NnApi* nnapi);
 
   // The constructor that accepts options from user.
+  // This makes a copy of any data that it needs from Options, so
+  // the caller can safely deallocate any storage pointed to by
+  // the 'const char *' members of Options immediately after calling this.
   explicit StatefulNnApiDelegate(Options options);
 
+  // Constructor that accepts both an NnApi instance and options.
+  // The ownership of the NnApi instance is left to the caller of the
+  // StatefulNnApiDelegate constructor; the caller must ensure that the lifetime
+  // of the NnApi instance exceeds the lifetime of the StatefulNnApiDelegate.
+  // This constructor makes a copy of any data that it needs from Options, so
+  // the caller can safely deallocate any storage pointed to by
+  // the 'const char *' members of Options immediately after calling this.
   StatefulNnApiDelegate(const NnApi* nnapi, Options options);
 
   ~StatefulNnApiDelegate() = default;
 
   // Returns the delegate options.
+  // The lifetime of the storage pointed to by the 'const char *' members of the
+  // returned Options object is the same as the lifetime of the supplied
+  // TfLiteDelegate instance.
   static const Options GetOptions(TfLiteDelegate* delegate);
 
   // Callback function which copies data from ANeuralNetworksMemory to host
@@ -235,6 +258,8 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     uint64_t max_execution_loop_timeout_duration_ns = 0;
     // Whether to allow dynamic dimension sizes without re-compilation.
     bool allow_dynamic_dimensions = false;
+    // Whether to use NNAPI Burst mode.
+    bool use_burst_computation = false;
 
     explicit Data(const NnApi* nnapi);
     ~Data();

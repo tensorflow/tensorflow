@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
+#include "tensorflow/compiler/xla/service/xla_debug_info_manager.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -60,7 +61,14 @@ CpuExecutable::CpuExecutable(
     : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
       jit_(std::move(jit)),
-      assignment_(std::move(assignment)) {
+      assignment_(std::move(assignment)),
+      module_name_(entry_function_name) {
+  if (assignment_) {
+    buffer_assignment_.reset(new BufferAssignmentProto(assignment_->ToProto()));
+  }
+  XlaDebugInfoManager::Get()->RegisterModule(module_name_, shared_module(),
+                                             buffer_assignment_);
+
   // Resolve symbols in the constructor rather than at execution time to avoid
   // races because FindSymbol is not thread safe.
   llvm::Expected<llvm::JITEvaluatedSymbol> sym =
@@ -73,6 +81,11 @@ CpuExecutable::CpuExecutable(
   compute_function_ = reinterpret_cast<ComputeFunctionType>(sym->getAddress());
   VLOG(1) << "compute_function_ at address "
           << reinterpret_cast<void*>(compute_function_);
+}
+
+CpuExecutable::~CpuExecutable() {
+  XlaDebugInfoManager::Get()->UnregisterModule(module_name_, shared_module(),
+                                               buffer_assignment_);
 }
 
 static StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
@@ -150,6 +163,10 @@ Status CpuExecutable::ExecuteComputeFunction(
   //
 
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
+
+  XlaDebugInfoManager::Get()->OnModuleStart(module_name_);
+  auto cleanup = MakeCleanup(
+      [&]() { XlaDebugInfoManager::Get()->OnModuleStop(module_name_); });
 
   size_t profile_counters_size =
       hlo_execution_profile ? hlo_execution_profile->profile_counters().size()

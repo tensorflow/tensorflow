@@ -67,7 +67,9 @@ HloSharding HloSharding::PartialTile(
 HloSharding HloSharding::PartialTile(
     const Array<int64>& tile_assignment_last_dim_replicate,
     absl::Span<const OpMetadata> metadata) {
-  if (tile_assignment_last_dim_replicate.num_dimensions() == 1) {
+  if (tile_assignment_last_dim_replicate.num_dimensions() == 1 ||
+      tile_assignment_last_dim_replicate.dimensions().back() ==
+          tile_assignment_last_dim_replicate.num_elements()) {
     return Replicate(metadata);
   }
   if (tile_assignment_last_dim_replicate.dimensions().back() == 1) {

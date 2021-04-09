@@ -51,6 +51,8 @@ const char* kModelWithFCOp = "fc.bin";
 
 const char* kModelWithGatherNDOp = "gather_nd.bin";
 
+const char* kModelWithWhereOp = "where.bin";
+
 const char* kModelMixed = "mixed.bin";
 const char* kModelMixed16x8 = "mixed16x8.bin";
 

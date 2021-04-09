@@ -55,6 +55,124 @@ static TfLiteConvParams common_conv_params = {kTfLitePaddingSame,  // padding
                                               1,
                                               1};
 
+template <typename T>
+TfLiteStatus InvokeTransposeConv(TfLiteTensor* tensors, int tensors_size,
+                                 int output_length,
+                                 TfLiteConvParams* conv_params,
+                                 T* output_data) {
+  int inputs_array_data[] = {4, 0, 1, 2, 3};
+  TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
+  int outputs_array_data[] = {1, 4};
+  TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
+
+  const TfLiteRegistration registration = tflite::Register_TRANSPOSE_CONV();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array, conv_params);
+
+  const char* init_data = reinterpret_cast<const char*>(conv_params);
+  TfLiteStatus status = runner.InitAndPrepare(init_data);
+  if (status != kTfLiteOk) {
+    return status;
+  }
+  return runner.Invoke();
+}
+
+template <typename T>
+TfLiteStatus ValidateTransposeConvGoldens(TfLiteTensor* tensors,
+                                          int tensors_size,
+                                          const T* expected_output_data,
+                                          int output_length,
+                                          TfLiteConvParams* conv_params,
+                                          T* output_data, float tolerance) {
+  TfLiteStatus status = InvokeTransposeConv(
+      tensors, tensors_size, output_length, conv_params, output_data);
+  if (status != kTfLiteOk) {
+    return status;
+  }
+  for (int i = 0; i < output_length; ++i) {
+    TF_LITE_MICRO_EXPECT_NEAR(expected_output_data[i], output_data[i],
+                              tolerance);
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus TestTransposeConvFloat(
+    const int* input_dims_data, const float* input_data,
+    const int* filter_dims_data, const float* filter_data,
+    const int* bias_dims_data, const float* bias_data,
+    const int* output_dims_data, const float* expected_output_data,
+    TfLiteConvParams* conv_params, float* output_data) {
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* filter_dims = IntArrayFromInts(filter_dims_data);
+  TfLiteIntArray* bias_dims = IntArrayFromInts(bias_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
+  const int output_dims_count = ElementCount(*output_dims);
+
+  const int output_shape_dims_data[] = {1, 0};
+  int32_t* output_shape = nullptr;
+  TfLiteIntArray* output_shape_dims = IntArrayFromInts(output_shape_dims_data);
+
+  constexpr int inputs_size = 4;
+  constexpr int outputs_size = 1;
+  constexpr int tensors_size = inputs_size + outputs_size;
+  TfLiteTensor tensors[tensors_size] = {
+      CreateTensor(output_shape, output_shape_dims),
+      CreateTensor(filter_data, filter_dims),
+      CreateTensor(input_data, input_dims),
+      CreateTensor(bias_data, bias_dims),
+      CreateTensor(output_data, output_dims),
+  };
+
+  return ValidateTransposeConvGoldens(tensors, tensors_size,
+                                      expected_output_data, output_dims_count,
+                                      conv_params, output_data, 0.001f);
+}
+
+TfLiteStatus TestTransposeConvQuantized(
+    const int* input_dims_data, const float* input_data,
+    int8_t* input_quantized, float input_scale, int input_zero_point,
+    const int* filter_dims_data, const float* filter_data,
+    int8_t* filter_quantized, float filter_scale, const int* bias_dims_data,
+    const float* bias_data, int32_t* bias_quantized, float* bias_scales,
+    int* bias_zero_points, const int* output_dims_data,
+    const float* expected_output_data, int8_t* expected_output_quantized,
+    float output_scale, int output_zero_point, TfLiteConvParams* conv_params,
+    int8_t* output_data) {
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* filter_dims = IntArrayFromInts(filter_dims_data);
+  TfLiteIntArray* bias_dims = IntArrayFromInts(bias_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
+  const int output_dims_count = ElementCount(*output_dims);
+
+  int filter_zero_points[5];
+  float filter_scales[5];
+  TfLiteAffineQuantization filter_quant;
+  TfLiteTensor filter_tensor = CreateSymmetricPerChannelQuantizedTensor(
+      filter_data, filter_quantized, filter_dims, filter_scales,
+      filter_zero_points, &filter_quant, 0 /* quantized dimension */);
+  tflite::Quantize(expected_output_data, expected_output_quantized,
+                   output_dims_count, output_scale, 0);
+
+  const int output_shape_dims_data[] = {1, 0};
+  int32_t* output_shape = nullptr;
+  TfLiteIntArray* output_shape_dims = IntArrayFromInts(output_shape_dims_data);
+
+  constexpr int inputs_size = 4;
+  constexpr int outputs_size = 1;
+  constexpr int tensors_size = inputs_size + outputs_size;
+  TfLiteTensor tensors[tensors_size] = {
+      CreateTensor(output_shape, output_shape_dims), filter_tensor,
+      CreateQuantizedTensor(input_data, input_quantized, input_dims,
+                            input_scale, input_zero_point),
+      CreateQuantizedBiasTensor(bias_data, bias_quantized, bias_dims,
+                                input_scale, filter_scale),
+      CreateQuantizedTensor(output_data, output_dims, output_scale,
+                            output_zero_point)};
+
+  return ValidateTransposeConvGoldens(
+      tensors, tensors_size, expected_output_quantized, output_dims_count,
+      conv_params, output_data, 1.0f);
+}
 }  // namespace
 }  // namespace testing
 }  // namespace tflite
@@ -66,13 +184,12 @@ TF_LITE_MICRO_TEST(SimpleTestFloat) {
 
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteOk,
-      tflite::testing::TestConvFloat(
+      tflite::testing::TestTransposeConvFloat(
           tflite::testing::kInputShape, tflite::testing::kInputData,
           tflite::testing::kFilterShape, tflite::testing::kFilterData,
           tflite::testing::kBiasShape, tflite::testing::kBiasData,
           tflite::testing::kOutputShape, tflite::testing::kGoldenData,
-          &tflite::testing::common_conv_params,
-          tflite::Register_TRANSPOSE_CONV_2D(), output_data));
+          &tflite::testing::common_conv_params, output_data));
 }
 
 TF_LITE_MICRO_TEST(SimpleTestQuantizedPerChannel) {
@@ -80,6 +197,7 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedPerChannel) {
 
   const float input_scale = 0.5f;
   const float output_scale = 1.0f;
+  const float filter_scale = 1.0f;
   const int input_zero_point = 0;
   const int output_zero_point = 0;
 
@@ -92,16 +210,15 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedPerChannel) {
 
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteOk,
-      tflite::testing::TestConvQuantizedPerChannel(
+      tflite::testing::TestTransposeConvQuantized(
           tflite::testing::kInputShape, tflite::testing::kInputData,
           input_quantized, input_scale, input_zero_point,
           tflite::testing::kFilterShape, tflite::testing::kFilterData,
-          filter_quantized, tflite::testing::kBiasShape,
+          filter_quantized, filter_scale, tflite::testing::kBiasShape,
           tflite::testing::kBiasData, bias_quantized, scales, zero_points,
           tflite::testing::kOutputShape, tflite::testing::kGoldenData,
           golden_quantized, output_scale, output_zero_point,
-          &tflite::testing::common_conv_params,
-          tflite::Register_TRANSPOSE_CONV_2D(), output_data));
+          &tflite::testing::common_conv_params, output_data));
 }
 
 TF_LITE_MICRO_TEST(InputOutputDifferentTypeIsError) {
@@ -114,12 +231,18 @@ TF_LITE_MICRO_TEST(InputOutputDifferentTypeIsError) {
   TfLiteIntArray* bias_dims = IntArrayFromInts(tflite::testing::kBiasShape);
   TfLiteIntArray* output_dims = IntArrayFromInts(tflite::testing::kOutputShape);
   const int output_dims_count = tflite::ElementCount(*output_dims);
-  constexpr int inputs_size = 3;
+  constexpr int inputs_size = 4;
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
 
   int8_t output_data[tflite::testing::kOutputElements];
+
+  const int output_shape_dims_data[] = {1, 0};
+  int32_t* output_shape = nullptr;
+  TfLiteIntArray* output_shape_dims = IntArrayFromInts(output_shape_dims_data);
+
   TfLiteTensor tensors[tensors_size] = {
+      CreateTensor(output_shape, output_shape_dims),
       CreateTensor(tflite::testing::kInputData, input_dims),
       CreateTensor(tflite::testing::kFilterData, filter_dims),
       CreateTensor(tflite::testing::kBiasData, bias_dims),
@@ -127,10 +250,9 @@ TF_LITE_MICRO_TEST(InputOutputDifferentTypeIsError) {
                             /*zero_point=*/0),
   };
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteError, tflite::testing::InvokeConv(
+      kTfLiteError, tflite::testing::InvokeTransposeConv(
                         tensors, tensors_size, output_dims_count,
-                        &tflite::testing::common_conv_params,
-                        tflite::Register_TRANSPOSE_CONV_2D(), output_data));
+                        &tflite::testing::common_conv_params, output_data));
 }
 
 TF_LITE_MICRO_TEST(HybridModeIsError) {
@@ -143,13 +265,20 @@ TF_LITE_MICRO_TEST(HybridModeIsError) {
   TfLiteIntArray* bias_dims = IntArrayFromInts(tflite::testing::kBiasShape);
   TfLiteIntArray* output_dims = IntArrayFromInts(tflite::testing::kOutputShape);
   const int output_dims_count = tflite::ElementCount(*output_dims);
-  constexpr int inputs_size = 3;
+
+  constexpr int inputs_size = 4;
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
 
   int8_t filter_data[tflite::testing::kFilterElements] = {};
   float output_data[tflite::testing::kOutputElements];
+
+  const int output_shape_dims_data[] = {1, 0};
+  int32_t* output_shape = nullptr;
+  TfLiteIntArray* output_shape_dims = IntArrayFromInts(output_shape_dims_data);
+
   TfLiteTensor tensors[tensors_size] = {
+      CreateTensor(output_shape, output_shape_dims),
       CreateTensor(tflite::testing::kInputData, input_dims),
       CreateQuantizedTensor(filter_data, filter_dims,
                             /*scale=*/1.0f,
@@ -157,11 +286,11 @@ TF_LITE_MICRO_TEST(HybridModeIsError) {
       CreateTensor(tflite::testing::kBiasData, bias_dims),
       CreateTensor(output_data, output_dims),
   };
+
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteError, tflite::testing::InvokeConv(
+      kTfLiteError, tflite::testing::InvokeTransposeConv(
                         tensors, tensors_size, output_dims_count,
-                        &tflite::testing::common_conv_params,
-                        tflite::Register_TRANSPOSE_CONV_2D(), output_data));
+                        &tflite::testing::common_conv_params, output_data));
 }
 
 TF_LITE_MICRO_TESTS_END

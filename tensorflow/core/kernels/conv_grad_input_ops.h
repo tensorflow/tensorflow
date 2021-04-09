@@ -311,29 +311,21 @@ struct Conv2DCustomBackpropInputMatMulFunctor<float> {
   void operator()(OpKernelContext* ctx, const T* out_data, const T* filter_data,
                   const int filter_total_size, const int output_image_size,
                   const int dims_out_depth, T* im2col_buf) {
-    // Inputs are in RowMajor order, we "cheat" by swapping the LHS and RHS:
-    //   RowMajor: C   = A   * B
-    //   ColMajor: C^T = B^T * A^T
+    // Inputs are in RowMajor order.
+    //   im2col      = out_data    * filter_data^T
+    //   [ois x fts] = [ois x dod] * [fts x dod]^T
     //
     // Dimension names:
     //   out_image_size    -> ois
     //   filter_total_size -> fts
     //   dims_out_depth    -> dod
-    //
-    // RowMajor:
-    //   im2col      = out_data    * filter_data^T
-    //   [ois x fts] = [ois x dod] * [fts x dod]^T
-    //
-    // ColMajor:
-    //   im2col^T    = filter_data *  out_data^T
-    //   [fts x ois] = [fts x dod] * [dod x ois]*
 
-    const int m = filter_total_size;
-    const int n = output_image_size;
+    const int m = output_image_size;
+    const int n = filter_total_size;
     const int k = dims_out_depth;  // contraction dim
 
-    const char transposeA = 'T';  // sgemm(A) == filter_data
-    const char transposeB = 'N';  // sgemm(B) == out_data
+    const char transposeA = 'N';  // sgemm(A) == filter_data
+    const char transposeB = 'T';  // sgemm(B) == out_data
 
     const int ldA = dims_out_depth;
     const int ldB = dims_out_depth;
@@ -342,17 +334,17 @@ struct Conv2DCustomBackpropInputMatMulFunctor<float> {
     const float alpha = 1.0;
     const float beta = 0.0;
 
-    // mkldnn_sgemm code can't be instrumented with msan.
+    // dnnl_sgemm code can't be instrumented with msan.
     ANNOTATE_MEMORY_IS_INITIALIZED(
         im2col_buf, filter_total_size * output_image_size * sizeof(T));
 
-    mkldnn_status_t st =
-        mkldnn_sgemm(&transposeA, &transposeB, &m, &n, &k, &alpha, filter_data,
-                     &ldA, out_data, &ldB, &beta, im2col_buf, &ldC);
+    dnnl_status_t st =
+        dnnl_sgemm(transposeA, transposeB, m, n, k, alpha, out_data, ldA,
+                   filter_data, ldB, beta, im2col_buf, ldC);
 
     OP_REQUIRES(
         ctx, st == 0,
-        errors::Internal("Failed to call mkldnn_sgemm. Error code: ", st));
+        errors::Internal("Failed to call dnnl_sgemm. Error code: ", st));
   }
 };
 #endif

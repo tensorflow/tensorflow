@@ -41,6 +41,7 @@ using tensorflow::DT_FLOAT;
 using tensorflow::DT_INT16;
 using tensorflow::DT_INT32;
 using tensorflow::DT_INT64;
+using tensorflow::DT_UINT32;
 using tensorflow::DT_UINT8;
 using tensorflow::GraphDef;
 using tensorflow::TensorProto;
@@ -59,6 +60,8 @@ tensorflow::DataType GetTensorFlowDataType(ArrayDataType data_type,
       return tensorflow::DT_UINT8;
     case ArrayDataType::kInt32:
       return tensorflow::DT_INT32;
+    case ArrayDataType::kUint32:
+      return tensorflow::DT_UINT32;
     case ArrayDataType::kInt64:
       return tensorflow::DT_INT64;
     case ArrayDataType::kString:
@@ -2437,6 +2440,9 @@ void AddPlaceholder(const std::string& name, ArrayDataType type,
       break;
     case ArrayDataType::kInt32:
       (*placeholder->mutable_attr())["dtype"].set_type(DT_INT32);
+      break;
+    case ArrayDataType::kUint32:
+      (*placeholder->mutable_attr())["dtype"].set_type(DT_UINT32);
       break;
     case ArrayDataType::kInt64:
       (*placeholder->mutable_attr())["dtype"].set_type(DT_INT64);

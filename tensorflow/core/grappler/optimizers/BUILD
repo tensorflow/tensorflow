@@ -15,7 +15,7 @@ load(
 )
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -295,6 +295,7 @@ cc_library(
         "//tensorflow/core/grappler/utils:traversal",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -654,6 +655,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/grappler/clusters:single_machine",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler/utils:grappler_test",
+        "//tensorflow/core/lib/random",
     ],
 )
 
@@ -663,6 +665,7 @@ cc_library(
     hdrs = [
         "meta_optimizer.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":arithmetic_optimizer",

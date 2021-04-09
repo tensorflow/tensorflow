@@ -75,13 +75,21 @@ if _module_dir:
   _current_module.__path__ = [_module_dir] + _current_module.__path__
 setattr(_current_module, "estimator", estimator)
 
-try:
-  from .python.keras.api._v1 import keras
-  _current_module.__path__ = (
-      [_module_util.get_parent_dir(keras)] + _current_module.__path__)
+if _os.environ.get("_PREFER_OSS_KERAS", False):
+  _keras_module = "keras.api._v1.keras"
+  keras = _LazyLoader("keras", globals(), _keras_module)
+  _module_dir = _module_util.get_parent_dir_for_name(_keras_module)
+  if _module_dir:
+    _current_module.__path__ = [_module_dir] + _current_module.__path__
   setattr(_current_module, "keras", keras)
-except ImportError:
-  pass
+else:
+  try:
+    from .python.keras.api._v1 import keras
+    _current_module.__path__ = (
+        [_module_util.get_parent_dir(keras)] + _current_module.__path__)
+    setattr(_current_module, "keras", keras)
+  except ImportError:
+    pass
 
 # Explicitly import lazy-loaded modules to support autocompletion.
 # pylint: disable=g-import-not-at-top

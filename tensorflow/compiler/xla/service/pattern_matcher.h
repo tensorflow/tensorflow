@@ -2166,6 +2166,7 @@ inline auto WithOperands(Matcher&& m, int64 operand_num, FirstArg&& first_arg,
 // already-bad compile errors even worse.
 XLA_VARIADIC_OP_PATTERN(AfterAll);
 XLA_VARIADIC_OP_PATTERN(Concatenate);
+XLA_VARIADIC_OP_PATTERN(Conditional);
 XLA_VARIADIC_OP_PATTERN(CustomCall);
 XLA_VARIADIC_OP_PATTERN(DynamicSlice)
 XLA_VARIADIC_OP_PATTERN(Fusion);

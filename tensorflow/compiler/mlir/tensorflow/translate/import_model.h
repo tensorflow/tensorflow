@@ -72,12 +72,64 @@ ConvertSavedModelV1ToMlir(const SavedModelBundle& saved_model,
 // Given a V1 SavedModel, returns a MLIR module containing the functions,
 // expressed with tf_executor dialect. It does not require a session to be
 // created and it does not perform any graph transformation.
+//
+// Note that the word `Lite` means it is a lighter version compared to
+// ConvertSavedModelV1ToMlir(), and is not related to TFLite.
+//
+// TODO(b/179683149): Rename this class to avoid confusion with TFLite.
 stream_executor::port::StatusOr<mlir::OwningModuleRef>
 ConvertSavedModelV1ToMlirLite(const MetaGraphDef& meta_graph_def,
                               const GraphDebugInfo& debug_info,
                               absl::Span<std::string> exported_names,
                               mlir::MLIRContext* context,
                               MLIRImportOptions options);
+
+// SavedModelMLIRImportInput is an adapter class for users to inject custom
+// graph transformation logic on Tensorflow graphs before importing to MLIR. It
+// serves as the source that provides the subgraphs requested by the savedmodel
+// MLIR importer, and at the same time it allows the implementation of this
+// class to transform the graph before feeding it to the importer.
+class SavedModelMLIRImportInput {
+ public:
+  SavedModelMLIRImportInput(const MetaGraphDef* meta_graph_def,
+                            const GraphDebugInfo& debug_info)
+      : meta_graph_def_(meta_graph_def), debug_info_(debug_info) {
+    DCHECK(meta_graph_def);
+  }
+
+  virtual ~SavedModelMLIRImportInput();
+
+  // The original MetaGraphDef of the savedmodel.
+  const MetaGraphDef& meta_graph_def() const { return *meta_graph_def_; }
+
+  const GraphDebugInfo& debug_info() const { return debug_info_; }
+
+  // GetSubGraph() is expected to return a tensorflow::Graph that contains the
+  // node set specified in `specs`. The implementation is free to transform the
+  // graph in the original savedmodel as needed, as long as it produces the same
+  // results and effects. `name` is a unique identifier for this subgraph, so
+  // the implementation can use it for eg. debugging or caching compilation
+  // results.
+  virtual stream_executor::port::StatusOr<const Graph*> GetSubGraph(
+      absl::string_view name, const GraphImportConfig& specs) = 0;
+
+ private:
+  const MetaGraphDef* meta_graph_def_ = nullptr;
+  GraphDebugInfo debug_info_;
+};
+
+// Given the SavedModelMLIRImportInput for a saved model, returns a MLIR module
+// containing the functions, expressed with tf_executor dialect. It does not
+// require a session to be created.
+//
+// Note that the word `Lite` means it is a lighter version compared to
+// ConvertSavedModelV1ToMlir(), and is not related to TFLite.
+//
+// TODO(b/179683149): Rename this class to avoid confusion with TFLite.
+stream_executor::port::StatusOr<mlir::OwningModuleRef>
+ConvertSavedModelV1ToMlirLite(SavedModelMLIRImportInput& input,
+                              absl::Span<std::string> exported_names,
+                              mlir::MLIRContext* context);
 
 // Serialize a MLIR module to a string.
 std::string MlirModuleToString(mlir::ModuleOp module,

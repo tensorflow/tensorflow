@@ -30,6 +30,7 @@ from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -48,29 +49,77 @@ def _on_write_update_replica(var, update_fn, value, **kwargs):
   if var.aggregation == vs.VariableAggregation.NONE:
     return update_fn(var._get_on_device_or_primary(), value, **kwargs)  # pylint: disable=protected-access
 
-  def merge_fn(strategy, value, **kwargs):
-    """Aggregate values and update all variables in cross replica context."""
+  if not ds_context.get_strategy().extended._use_merge_call():  # pylint: disable=protected-access
     # Don't allow MEAN with non float dtype, since it may cause unexpected
     # precision loss. Python3 and NumPy automatically upcast integers to
     # float in division, but we should always preserve the type.
-    #
-    # Note that to be backward compatible we allow the case when the value
-    # is *always* the same on each replica. I.E. value is not a
-    # PerReplica. Refer to regroup() to see how values are grouped.
     if var.aggregation == vs.VariableAggregation.MEAN and (
-        not var.dtype.is_floating) and isinstance(value, PerReplica):
+        not var.dtype.is_floating) and tensor_util.is_tf_type(value):
       raise ValueError(
           "Cannot update non-float variables with "
           "tf.VariableAggregation.MEAN aggregation in replica context. "
           "Either change the variable dtype to float or update it in "
           "cross-replica context.")
 
-    assert strategy == var.distribute_strategy
-    v = values_util.apply_aggregation(strategy, value, var.aggregation, var)
-    return var._update_cross_replica(update_fn, v, **kwargs)  # pylint: disable=protected-access
+    aggregated_value = apply_aggregation_replica_context(value, var.aggregation,
+                                                         var)
+    values_util.mark_as_unsaveable()
 
-  return ds_context.get_replica_context().merge_call(
-      merge_fn, args=(value,), kwargs=kwargs)
+    return ds_context.get_replica_context()._update(  # pylint: disable=protected-access
+        var,
+        update_fn,
+        args=(aggregated_value,),
+        kwargs=kwargs, group=True)
+
+  else:
+    def merge_fn(strategy, value, **kwargs):
+      """Aggregate values and update all variables in cross replica context."""
+      # Don't allow MEAN with non float dtype, since it may cause unexpected
+      # precision loss. Python3 and NumPy automatically upcast integers to
+      # float in division, but we should always preserve the type.
+      #
+      # Note that to be backward compatible we allow the case when the value
+      # is *always* the same on each replica. I.E. value is not a
+      # PerReplica. Refer to regroup() to see how values are grouped.
+      if var.aggregation == vs.VariableAggregation.MEAN and (
+          not var.dtype.is_floating) and isinstance(value, PerReplica):
+        raise ValueError(
+            "Cannot update non-float variables with "
+            "tf.VariableAggregation.MEAN aggregation in replica context. "
+            "Either change the variable dtype to float or update it in "
+            "cross-replica context.")
+
+      assert strategy == var.distribute_strategy
+      v = values_util.apply_aggregation(strategy, value, var.aggregation, var)
+      return var._update_cross_replica(update_fn, v, **kwargs)  # pylint: disable=protected-access
+
+    return ds_context.get_replica_context().merge_call(
+        merge_fn, args=(value,), kwargs=kwargs)
+
+
+def apply_aggregation_replica_context(value, aggregation, destinations):
+  """Aggregate `value` to `destinations` as specified by `aggregation`."""
+  # if it is a python literal, return without aggregation
+  if isinstance(value, DistributedValues):
+    raise ValueError("Do not use a DistributedValues update variable in replica"
+                     " context.")
+  if not tensor_util.is_tf_type(value):
+    return value
+
+  if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
+    # Switch to cross-replica context to broadcast
+    def merge_fn(strategy, value):
+      return strategy.extended.broadcast_to(
+          strategy.experimental_local_results(value)[0],
+          destinations=destinations)
+
+    return ds_context.get_replica_context().merge_call(merge_fn, args=(value,))
+
+  else:
+    reduce_op = reduce_util.ReduceOp.from_variable_aggregation(aggregation)
+    aggregated_value = ds_context.get_strategy(  # pylint: disable=protected-access
+    ).extended._replica_ctx_all_reduce(reduce_op, value)
+    return aggregated_value
 
 
 @tf_export("distribute.DistributedValues", v1=[])
@@ -1499,13 +1548,13 @@ class OnReadPolicy(VariablePolicy):
     return values_util.get_on_read_restore_ops(var, tensor, self._aggregation)
 
 
-class AutoPolicy(VariablePolicy):
-  """Policy defined for `tf.VariableSynchronization.AUTO` synchronization.
+class OnWritePolicy(VariablePolicy):
+  """Policy defined for `tf.VariableSynchronization.ON_WRITE` synchronization.
 
-  This policy is created when `synchronization` is set to
-  `tf.VariableSynchronization.AUTO` and `aggregation` is set to
-  `tf.VariableAggregation.NONE` when creating a `tf.Variable` in `tf.distribute`
-  scope.
+  This policy is created when the following `synchronization` and `aggregation`
+  parameters are specified when creating a `tf.Variable` in `tf.distribute`
+  scope and `synchronization` is equal to `tf.VariableSynchronization.ON_WRITE`
+  or `tf.VariableSynchronization.AUTO`.
   """
 
   def _is_mirrored(self):
@@ -1523,7 +1572,9 @@ class AutoPolicy(VariablePolicy):
     return array_ops.identity(var._get_on_device_or_primary())  # pylint: disable=protected-access
 
   def _update_replica(self, var, update_fn, value, **kwargs):
-    return update_fn(var._get_on_device_or_primary(), value, **kwargs)  # pylint: disable=protected-access
+    if var.aggregation == variables_lib.VariableAggregation.NONE:
+      return update_fn(var._get_on_device_or_primary(), value, **kwargs)  # pylint: disable=protected-access
+    return _on_write_update_replica(var, update_fn, value, **kwargs)
 
   def assign(self, var, value, use_locking=False, name=None, read_value=True):
     return values_util.on_write_assign(var, value, use_locking=use_locking,
@@ -1607,21 +1658,3 @@ class AutoPolicy(VariablePolicy):
       options: A `SaveOptions` instance.
     """
     values_util.write_object_proto(var, proto, options)
-
-
-class OnWritePolicy(AutoPolicy):
-  """Policy defined for `tf.VariableSynchronization.ON_WRITE` synchronization.
-
-  This policy is created when the following `synchronization` and
-  `aggregation` parameters are specified when creating a `tf.Variable` in
-  `tf.distribute` scope:
-  * `synchronization` is equal to `tf.VariableSynchronization.AUTO` and
-  aggregation can be any of the following `tf.VariableAggregation` enum
-  values such as `SUM`, `MEAN` or `ONLY_FIRST_REPLICA`.
-  * `synchronization` is equal to `tf.VariableSynchronization.ON_WRITE` and
-  aggregation can be any of the following `tf.VariableAggregation` enum
-  values such as `NONE`, `SUM`, `MEAN` or `ONLY_FIRST_REPLICA`.
-  """
-
-  def _update_replica(self, var, update_fn, value, **kwargs):
-    return _on_write_update_replica(var, update_fn, value, **kwargs)

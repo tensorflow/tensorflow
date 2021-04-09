@@ -29,7 +29,20 @@ namespace tensorflow {
 // MLIR passes running on Tensorflow function graphs (Tensorflow V2).
 // -------------------------------------------------------------------------- //
 
-enum class MlirOptimizationPassState { Disabled, Enabled, ShadowEnabled };
+// Disabled - skip execution of the pass.
+// Enabled - execute the pass, propagate errors to the caller if any.
+// ShadowEnabled - execute the pass in a shadow mode. The pass should not commit
+//   any changes to the MLIR module it's processing. Failures are not propagated
+//   to the caller.
+// FallbackEnabled - execute the pass and commit all the changes to the MLIR
+//   module in case of success. Do not commit any changes in case of failures,
+//   let the rest of the pipeline run.
+enum class MlirOptimizationPassState {
+  Disabled,
+  Enabled,
+  ShadowEnabled,
+  FallbackEnabled
+};
 
 // An API for registering MLIR ModulePass with the Tensorflow runtime. These
 // passes are running only for function graphs built by Tensorflow V2 and
@@ -50,12 +63,16 @@ class MlirOptimizationPass {
   // module will be committed.
   // `device_set` can be nullptr if the devices information is not
   // available or no device specific filtering is required.
+  // `function_library` contains function definitions for function calls in
+  // `graph` not included in the `graph` FunctionLibraryDefinition.
   virtual MlirOptimizationPassState GetPassState(
       const DeviceSet* device_set, const ConfigProto& config_proto,
-      const Graph& graph) const = 0;
+      const Graph& graph,
+      const FunctionLibraryDefinition& function_library) const = 0;
 
   virtual Status Run(const ConfigProto& config_proto, mlir::ModuleOp module,
-                     const Graph& graph) = 0;
+                     const Graph& graph,
+                     const FunctionLibraryDefinition& function_library) = 0;
 };
 
 class MlirOptimizationPassRegistry {
@@ -72,14 +89,18 @@ class MlirOptimizationPassRegistry {
     }
   };
 
-  using Passes = std::multiset<PassRegistration, PriorityComparator>;
+  using Passes = std::set<PassRegistration, PriorityComparator>;
 
   // Returns the global registry of MLIR optimization passes.
   static MlirOptimizationPassRegistry& Global();
 
   // Register optimization `pass` with the given `priority`.
   void Add(int priority, std::unique_ptr<MlirOptimizationPass> pass) {
-    passes_.insert({priority, std::move(pass)});
+    auto inserted = passes_.insert({priority, std::move(pass)});
+    CHECK(inserted.second)
+        << "Pass priority must be unique. "
+        << "Previously registered pass with the same priority: "
+        << inserted.first->pass->name().str();
   }
 
   // Free the memory allocated for all passes.
@@ -137,12 +158,13 @@ class MlirV1CompatOptimizationPass {
   virtual ~MlirV1CompatOptimizationPass() = default;
   virtual llvm::StringRef name() const = 0;
 
-  // Returns true if the pass is enabled for the given graph with specified
-  // config. `device_set` can be nullptr if the devices information is not
-  // available or no device specific filtering is required.
-  virtual bool IsEnabled(const DeviceSet* device_set,
-                         const ConfigProto& config_proto,
-                         const Graph& graph) const = 0;
+  // Returns a MlirOptimizationPassState based on the given graph and
+  // config. See comments on `MlirOptimizationPassState` enum for more info
+  // on exact values.
+  virtual MlirOptimizationPassState GetPassState(
+      const DeviceSet* device_set, const ConfigProto& config_proto,
+      const Graph& graph,
+      const FunctionLibraryDefinition& function_library) const = 0;
 
   virtual Status Run(const GraphOptimizationPassOptions& options,
                      mlir::ModuleOp module) = 0;
@@ -150,31 +172,20 @@ class MlirV1CompatOptimizationPass {
 
 class MlirV1CompatOptimizationPassRegistry {
  public:
-  struct PassRegistration {
-    int priority;
-    std::unique_ptr<MlirV1CompatOptimizationPass> pass;
-  };
-
-  struct PriorityComparator {
-    bool operator()(const PassRegistration& x,
-                    const PassRegistration& y) const {
-      return x.priority < y.priority;
-    }
-  };
-
-  using Passes = std::multiset<PassRegistration, PriorityComparator>;
-
   // Returns the global registry of MLIR optimization passes.
   static MlirV1CompatOptimizationPassRegistry& Global();
 
-  void Add(int priority, std::unique_ptr<MlirV1CompatOptimizationPass> pass) {
-    passes_.insert({priority, std::move(pass)});
+  void Add(std::unique_ptr<MlirV1CompatOptimizationPass> pass) {
+    CHECK(pass_ == nullptr) << "Only a single pass can be registered";
+    pass_ = std::move(pass);
   }
 
-  const Passes& passes() const { return passes_; }
+  MlirV1CompatOptimizationPass* pass() const {
+    return pass_ ? pass_.get() : nullptr;
+  }
 
  private:
-  Passes passes_;
+  std::unique_ptr<MlirV1CompatOptimizationPass> pass_{};
 };
 
 class MlirV1CompatGraphOptimizationPass : public GraphOptimizationPass {
@@ -208,9 +219,8 @@ class MlirOptimizationPassRegistration {
 class MlirV1CompatOptimizationPassRegistration {
  public:
   explicit MlirV1CompatOptimizationPassRegistration(
-      int priority, std::unique_ptr<MlirV1CompatOptimizationPass> pass) {
-    MlirV1CompatOptimizationPassRegistry::Global().Add(priority,
-                                                       std::move(pass));
+      std::unique_ptr<MlirV1CompatOptimizationPass> pass) {
+    MlirV1CompatOptimizationPassRegistry::Global().Add(std::move(pass));
   }
 };
 

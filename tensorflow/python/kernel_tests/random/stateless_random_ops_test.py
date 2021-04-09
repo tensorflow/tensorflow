@@ -240,7 +240,7 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
   def _test_determinism(self, case, seed_type):
     # Stateless values should be equal iff the seeds are equal (roughly)
     seeds = [(x, y) for x in range(5) for y in range(5)] * 3  # pylint: disable=g-complex-comprehension
-    with self.test_session(use_gpu=True), ops.device(get_device().name):
+    with self.test_session(), ops.device(get_device().name):
       _, stateless_op, _ = case
       if context.executing_eagerly():
         values = [

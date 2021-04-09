@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/metrics.h"
+
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
 
@@ -115,6 +117,14 @@ auto* tf_data_iterator_lifetime_counter = monitoring::Counter<0>::New(
 auto* tf_data_optimization_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/optimization", "tf.data optimization", "name");
 
+auto* tf_data_service_workers_created_counter =
+    monitoring::Counter<0>::New("/tensorflow/data/service/workers_created",
+                                "Number of tf.data service workers created");
+
+auto* tf_data_filename_counter = monitoring::Counter<2>::New(
+    "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
+    "name", "filename");
+
 auto* parse_dense_feature_counter = monitoring::Counter<0>::New(
     "/tensorflow/data/dense_feature",
     "The number of dense features parsed by ops for parsing tf.Example.");
@@ -152,6 +162,10 @@ auto* xla_compilations = monitoring::Counter<0>::New(
 auto* xla_compilation_time_usecs = monitoring::Counter<0>::New(
     "/tensorflow/core/xla_compilation_time_usecs",
     "The total time spent on compiling XLA graphs in microseconds.");
+
+auto* xla_tpu_spmd_cores_per_replica = monitoring::Counter<1>::New(
+    "/tensorflow/tpu/xla_spmd_cores_per_replica",
+    "The number of cores used by XLA SPMD-replicated models.", "cores");
 
 auto* mlir_import_failure_count = monitoring::Counter<0>::New(
     "/tensorflow/mlir/import_failure_count",
@@ -218,6 +232,14 @@ void RecordTFDataOptimization(const string& name, int64 num_changes) {
   tf_data_optimization_counter->GetCell(name)->IncrementBy(num_changes);
 }
 
+void RecordTFDataServiceWorkerCreated() {
+  tf_data_service_workers_created_counter->GetCell()->IncrementBy(1);
+}
+
+void RecordTFDataFilename(const string& name, const string& filename) {
+  tf_data_filename_counter->GetCell(name, filename)->IncrementBy(1);
+}
+
 void RecordParseDenseFeature(int64 num_features) {
   static auto* parse_dense_feature_counter_cell =
       parse_dense_feature_counter->GetCell();
@@ -246,6 +268,11 @@ void RecordGraphOutputTensors(const size_t size) {
   static auto* graph_run_output_tensor_bytes_cell =
       graph_run_output_tensor_bytes->GetCell();
   graph_run_output_tensor_bytes_cell->Add(size);
+}
+
+void RecordTPUXlaSpmdCoresPerReplica(int64 cores_per_replica) {
+  xla_tpu_spmd_cores_per_replica->GetCell(absl::StrCat(cores_per_replica))
+      ->IncrementBy(1);
 }
 
 void UpdateGraphExecTime(const uint64 running_time_usecs) {

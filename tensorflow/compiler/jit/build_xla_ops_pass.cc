@@ -309,9 +309,13 @@ xla::StatusOr<Node*> ReplaceFunctionCallWithPartitionedCall(
     }
   }
 
-  ops::PartitionedCall call(
-      root.WithOpName("partitioned_call"), args, n->output_types(), func,
-      ops::PartitionedCall::Attrs{}.ConfigProto(config_string));
+  // In theory we can use PartitionedCall if the XLA cluster does not have any
+  // stateful operations.  However, for now we choose to be conservative since
+  // we don't have any evidence that choosing a stateless partitioned call helps
+  // for performance.
+  ops::StatefulPartitionedCall call(
+      root.WithOpName("stateful_partitioned_call"), args, n->output_types(),
+      func, ops::StatefulPartitionedCall::Attrs{}.ConfigProto(config_string));
 
   for (const Edge* e : n->in_edges()) {
     if (e->IsControlEdge()) {

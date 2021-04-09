@@ -49,7 +49,10 @@ namespace jax {
 // The 3 following structs define how to shard one dimension of an ndarry.
 //
 // `NoSharding` (`None` in Python) means no sharding.
-struct NoSharding {};
+struct NoSharding {
+  bool operator==(const NoSharding& other) const { return true; }
+  bool operator!=(const NoSharding& other) const { return false; }
+};
 
 // `Chunked` means that the dimension is split into np.prod(chunks) chunks
 // and the split dimension itself is preserved inside the map.
@@ -63,20 +66,20 @@ struct Chunked {
  public:
   explicit Chunked(std::vector<int> chunks_) : chunks(std::move(chunks_)) {}
   // The number of chunks per axis.
-  const std::vector<int> chunks;
+  std::vector<int> chunks;
 
   bool operator==(const Chunked& other) const { return chunks == other.chunks; }
   bool operator!=(const Chunked& other) const { return chunks != other.chunks; }
 };
 
 // `Unstacked` means that the dimension is split into chunks of size 1, and
-// doesn't appear inside the map. `size` is alwyays the dimension size.
+// doesn't appear inside the map. `size` is always the dimension size.
 // For example, a Tensor t of shape [N] will be sharded into N tensors of shape
 // [], when using `Unstacked(N)`.
 struct Unstacked {
  public:
-  explicit Unstacked(int size_) : size(size_) {}
-  const int size;
+  explicit Unstacked(int sz) : size(sz) {}
+  int size;
 
   bool operator==(const Unstacked& other) const { return size == other.size; }
   bool operator!=(const Unstacked& other) const { return size != other.size; }
@@ -111,17 +114,8 @@ struct Replicated {
 
 using MeshDimAssignment = absl::variant<ShardedAxis, Replicated>;
 
-// Functions to convert from/to the Python tuple and the C++ vector.
-std::vector<AvalDimSharding> PyShardingToCpp(pybind11::tuple py_sharding);
-pybind11::tuple CppShardingToPy(std::vector<AvalDimSharding> sharding);
-
-std::vector<MeshDimAssignment> PyMeshShardingToCpp(
-    pybind11::tuple py_mesh_mapping);
-pybind11::tuple CppMeshMappingToPy(std::vector<MeshDimAssignment> mesh_mapping);
-
 // Describes how each axis is sharded (if it is), and how it'smapped to the
 // devices mesh.
-// See `AvalDimSharding` and `MeshDimAssignment`.
 class ShardingSpec {
  public:
   ShardingSpec(std::vector<AvalDimSharding> sharding,
@@ -129,29 +123,16 @@ class ShardingSpec {
       : sharding_(std::move(sharding)),
         mesh_mapping_(std::move(mesh_mapping)) {}
 
-  ShardingSpec(pybind11::tuple py_sharding, pybind11::tuple py_mesh_mapping)
-      : sharding_(PyShardingToCpp(py_sharding)),
-        mesh_mapping_(PyMeshShardingToCpp(py_mesh_mapping)),
-        py_sharding_(py_sharding),
-        py_mesh_mapping_(py_mesh_mapping) {}
-
   const std::vector<AvalDimSharding>& GetSharding() const { return sharding_; }
   const std::vector<MeshDimAssignment>& GetMeshMapping() const {
     return mesh_mapping_;
   }
 
-  pybind11::tuple GetPySharding() {
-    if (!py_sharding_) {
-      py_sharding_ = CppShardingToPy(sharding_);
-    }
-    return py_sharding_.value();
+  bool operator==(const ShardingSpec& other) const {
+    return sharding_ == other.sharding_ && mesh_mapping_ == other.mesh_mapping_;
   }
-  pybind11::tuple GetPyMeshMapping() {
-    if (!py_mesh_mapping_) {
-      py_mesh_mapping_ = CppMeshMappingToPy(mesh_mapping_);
-    }
-    return py_mesh_mapping_.value();
-  }
+
+  bool operator!=(const ShardingSpec& other) const { return !(*this == other); }
 
  private:
   //  `sharding` specifies how the array is supposed to get partitioned into
@@ -164,12 +145,6 @@ class ShardingSpec {
   //  data varying along one of the sharded dimensions, or the data can be
   //  replicated.
   std::vector<MeshDimAssignment> mesh_mapping_;
-  // As Python heavily rely on these to be present and to prevent recomputing
-  // them all the time, we cache the access of the Python objects.
-  // TODO(jblespiau): When we have moved the heavy usage to C++, we could
-  // have the accessors without the cached results.
-  absl::optional<pybind11::tuple> py_sharding_ = absl::nullopt;
-  absl::optional<pybind11::tuple> py_mesh_mapping_ = absl::nullopt;
 };
 
 // A ShardedDeviceArray is an ndarray sharded across devices.
@@ -186,7 +161,7 @@ class ShardingSpec {
 
 // Design note: We move to C++, only what will need to be accessed by C++ to
 // execute a pmap computation. A large part of the logic is still in Python.
-class ShardedDeviceArray : xla::DeviceArrayBase {
+class ShardedDeviceArray {
  public:
   ShardedDeviceArray(
       pybind11::handle aval, ShardingSpec sharding_spec,
@@ -195,8 +170,7 @@ class ShardedDeviceArray : xla::DeviceArrayBase {
       // TODO(jblespiau): As soon as PjRtBuffer is supported by all
       // implementations, we should be able to store this with the C++ objects.
       pybind11::list device_buffers)
-      : DeviceArrayBase(),
-        aval_(pybind11::cast<pybind11::object>(aval)),
+      : aval_(pybind11::cast<pybind11::object>(aval)),
         sharding_spec_(std::move(sharding_spec)),
         device_buffers_(device_buffers) {}
 

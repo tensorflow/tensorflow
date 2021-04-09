@@ -78,6 +78,9 @@ extern const char* kModelWithFCOp;
 // Test model with a gather_nd op.
 extern const char* kModelWithGatherNDOp;
 
+// Test model with a Where op.
+extern const char* kModelWithWhereOp;
+
 // Test model with mixed quantizable and un-quantizable ops.
 // reshape->custom->custom->squeeze.
 extern const char* kModelMixed;

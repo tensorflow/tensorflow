@@ -19,6 +19,8 @@ message TaskDef {
   int64 dataset_id = 3;
   int64 task_id = 4;
   int64 job_id = 5;
+  // Address of the worker that the task is assigned to.
+  string worker_address = 8;
   ProcessingModeDef processing_mode = 6;
   // Optional number of consumers. If set, the results of the task will be
   // provided to consumers round-robin.
@@ -36,6 +38,9 @@ message TaskInfo {
   int64 task_id = 2;
   // The id of the job that the task is part of.
   int64 job_id = 3;
+  // The round to start reading from the task in. For non-round-robin reads,
+  // this is always 0.
+  int64 starting_round = 5;
 }
 
 enum ProcessingModeDef {

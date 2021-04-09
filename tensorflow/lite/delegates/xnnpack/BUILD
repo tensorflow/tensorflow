@@ -3,7 +3,7 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 EMSCRIPTEN_LINKOPTS = [
@@ -32,7 +32,7 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
         "@FP16",
-        "@XNNPACK//:xnnpack_f32",
+        "@XNNPACK//:xnnpack_for_tflite",
     ],
 )
 
@@ -395,6 +395,21 @@ cc_test(
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "delegate_test",
+    srcs = ["delegate_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+        "@pthreadpool",
     ],
 )
 

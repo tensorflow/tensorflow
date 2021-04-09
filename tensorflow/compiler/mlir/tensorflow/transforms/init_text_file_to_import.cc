@@ -113,12 +113,12 @@ class ConvertInitializeTableFromTextFileV2
 };
 
 void InitTextFileToImportPass::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   MLIRContext* context = &getContext();
   FuncOp func = getFunction();
 
   patterns.insert<ConvertInitializeTableFromTextFileV2>(context);
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace

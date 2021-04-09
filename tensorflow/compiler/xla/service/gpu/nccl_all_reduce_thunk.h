@@ -35,26 +35,34 @@ struct NcclAllReduceConfig {
 // Thunk that performs a NCCL-based All-Reduce among CUDA GPU-based replicas.
 class NcclAllReduceThunk : public NcclCollectiveThunk {
  public:
-  struct Buffer {
-    int64 element_count;
-    BufferAllocation::Slice source_buffer;
-    BufferAllocation::Slice destination_buffer;
-  };
-
   NcclAllReduceThunk(ThunkInfo thunk_info, mlir::lmhlo::AllReduceOp op,
-                     int64 replica_count, std::vector<Buffer> buffers);
+                     std::vector<Buffer> buffers);
 
   // Returns whether the given instruction can be lowered to a nccl all-reduce
   // call.
   static bool CanImplement(mlir::lmhlo::AllReduceOp op);
 
+  static const char* GetName() { return "AllReduce"; }
+
+  static bool IsDegenerate(mlir::lmhlo::AllReduceOp op, int64 replica_count,
+                           int64 partition_count) {
+    return GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids())
+        .IsDegenerate(replica_count, partition_count);
+  }
+
+  static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::AllReduceOp op) {
+    return GetNcclAllReduceConfig(op).config.group_mode;
+  }
+
  protected:
   Status RunNcclCollective(const ExecuteParams& params,
                            ncclComm_t comm) override;
 
-  const NcclCollectiveConfig& config() const override;
+  const NcclCollectiveConfig& config() const override { return config_.config; }
 
  private:
+  static NcclAllReduceConfig GetNcclAllReduceConfig(
+      mlir::lmhlo::AllReduceOp op);
   const NcclAllReduceConfig config_;
   const std::vector<Buffer> buffers_;
 };

@@ -41,7 +41,7 @@ inline OpaqueElementsAttr CustomOption(OpBuilder* builder,
 
 void ConvertNMSPaddedFunc::RewriteFunc() {
   func_->setAttr(kTFImplements,
-                 StringAttr::get(kTfNMSPadded, func_.getContext()));
+                 StringAttr::get(func_.getContext(), kTfNMSPadded));
   Value boxes = func_.getArgument(0);
   Value scores = func_.getArgument(1);
   Value max_output_size = func_.getArgument(2);
@@ -86,7 +86,7 @@ LogicalResult ConvertSSDPostProcessFunc::RewriteFunc() {
   func_.eraseBody();
   func_.addEntryBlock();
   func_->setAttr(kTFImplements,
-                 StringAttr::get(kCustomSSDPostprocessing, func_.getContext()));
+                 StringAttr::get(func_.getContext(), kCustomSSDPostprocessing));
 
   OpBuilder builder(func_.getBody());
   std::string custom_option_buffer;

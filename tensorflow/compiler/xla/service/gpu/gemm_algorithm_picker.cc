@@ -237,7 +237,6 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   // Don't run autotuning concurrently on the same GPU.
   tensorflow::mutex_lock gpu_lock = LockGpu(stream->parent());
 
-
   GemmCacheKey key =
       std::make_tuple(stream->parent(), lhs->shape(), rhs->shape(),
                       instr->shape(), gemm_config.SerializeAsString());
@@ -253,7 +252,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   if (it != autotune_cache.end()) {
     cache_hits++;
     VLOG(4) << "Autotuning cache hit, using algorithm: "
-            << (it->second.has_value() ? absl::StrCat(it->second.value())
+            << (it->second.has_value() ? absl::StrCat(*(it->second))
                                        : "<generic>");
     return it->second;
   }

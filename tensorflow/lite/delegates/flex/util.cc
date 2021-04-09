@@ -68,6 +68,8 @@ TF_DataType GetTensorFlowDataType(TfLiteType type) {
       return TF_INT16;
     case kTfLiteInt32:
       return TF_INT32;
+    case kTfLiteUInt32:
+      return TF_UINT32;
     case kTfLiteUInt8:
       return TF_UINT8;
     case kTfLiteInt8:
@@ -84,6 +86,10 @@ TF_DataType GetTensorFlowDataType(TfLiteType type) {
       return TF_STRING;
     case kTfLiteBool:
       return TF_BOOL;
+    case kTfLiteResource:
+      return TF_RESOURCE;
+    case kTfLiteVariant:
+      return TF_VARIANT;
   }
 }
 
@@ -115,9 +121,54 @@ TfLiteType GetTensorFlowLiteType(TF_DataType type) {
       return kTfLiteString;
     case TF_BOOL:
       return kTfLiteBool;
+    case TF_RESOURCE:
+      return kTfLiteResource;
+    case TF_VARIANT:
+      return kTfLiteVariant;
     default:
       return kTfLiteNoType;
   }
+}
+
+// Returns the TF data type name to be stored in the FunctionDef.
+const char* TfLiteTypeToTfTypeName(TfLiteType type) {
+  switch (type) {
+    case kTfLiteNoType:
+      return "invalid";
+    case kTfLiteFloat32:
+      return "float";
+    case kTfLiteInt16:
+      return "int16";
+    case kTfLiteInt32:
+      return "int32";
+    case kTfLiteUInt32:
+      return "uint32";
+    case kTfLiteUInt8:
+      return "uint8";
+    case kTfLiteInt8:
+      return "int8";
+    case kTfLiteInt64:
+      return "int64";
+    case kTfLiteUInt64:
+      return "uint64";
+    case kTfLiteBool:
+      return "bool";
+    case kTfLiteComplex64:
+      return "complex64";
+    case kTfLiteComplex128:
+      return "complex128";
+    case kTfLiteString:
+      return "string";
+    case kTfLiteFloat16:
+      return "float16";
+    case kTfLiteFloat64:
+      return "float64";
+    case kTfLiteResource:
+      return "resource";
+    case kTfLiteVariant:
+      return "variant";
+  }
+  return "invalid";
 }
 
 }  // namespace flex

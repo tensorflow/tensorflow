@@ -40,7 +40,7 @@ void ValidateReshapeGoldens(
       tflite::ops::micro::Register_RESHAPE();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array,
-                             /*builtin_data=*/nullptr, micro_test::reporter);
+                             /*builtin_data=*/nullptr);
 
   if (expect_failure) {
     TF_LITE_MICRO_EXPECT_NE(kTfLiteOk, runner.InitAndPrepare());

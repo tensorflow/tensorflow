@@ -1,4 +1,4 @@
-# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -93,7 +93,7 @@ third_party/gemmlowp \
 third_party/flatbuffers/include \
 third_party/ruy
 
-TEST_SCRIPT := tensorflow/lite/micro/testing/test_linux_binary.sh
+TEST_SCRIPT :=
 
 MICROLITE_LIBS := -lm
 
@@ -236,6 +236,14 @@ MICROLITE_LIB_NAME := libtensorflow-microlite.a
 # to bypass this check and allow for deeper directory structures.
 MICRO_LITE_EXAMPLE_TESTS := $(shell find tensorflow/lite/micro/examples/ -maxdepth 2 -name Makefile.inc)
 MICRO_LITE_EXAMPLE_TESTS += $(shell find tensorflow/lite/micro/examples/ -name Makefile_internal.inc)
+
+# Image recognition experimental uses uint8 quantization and is no longer
+# supported (See #44912 for more details). We should consider deleting
+# the image_recognition_experimental example.
+EXCLUDED_EXAMPLE_TESTS := \
+  tensorflow/lite/micro/examples/image_recognition_experimental/Makefile.inc
+MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE_EXAMPLE_TESTS))
+
 MICRO_LITE_BENCHMARKS := $(wildcard tensorflow/lite/micro/benchmarks/Makefile.inc)
 
 # TODO(b/152645559): move all benchmarks to benchmarks directory.
@@ -258,22 +266,32 @@ tensorflow/lite/micro/simple_memory_allocator_test.cc \
 tensorflow/lite/micro/testing_helpers_test.cc \
 tensorflow/lite/micro/kernels/activations_test.cc \
 tensorflow/lite/micro/kernels/add_test.cc \
+tensorflow/lite/micro/kernels/add_n_test.cc \
 tensorflow/lite/micro/kernels/arg_min_max_test.cc \
+tensorflow/lite/micro/kernels/batch_to_space_nd_test.cc \
 tensorflow/lite/micro/kernels/cast_test.cc \
 tensorflow/lite/micro/kernels/ceil_test.cc \
 tensorflow/lite/micro/kernels/circular_buffer_test.cc \
 tensorflow/lite/micro/kernels/comparisons_test.cc \
 tensorflow/lite/micro/kernels/concatenation_test.cc \
 tensorflow/lite/micro/kernels/conv_test.cc \
+tensorflow/lite/micro/kernels/cumsum_test.cc \
 tensorflow/lite/micro/kernels/depthwise_conv_test.cc \
 tensorflow/lite/micro/kernels/dequantize_test.cc \
 tensorflow/lite/micro/kernels/detection_postprocess_test.cc \
 tensorflow/lite/micro/kernels/elementwise_test.cc \
+tensorflow/lite/micro/kernels/elu_test.cc \
 tensorflow/lite/micro/kernels/exp_test.cc \
+tensorflow/lite/micro/kernels/expand_dims_test.cc \
+tensorflow/lite/micro/kernels/fill_test.cc \
 tensorflow/lite/micro/kernels/floor_test.cc \
+tensorflow/lite/micro/kernels/floor_div_test.cc \
+tensorflow/lite/micro/kernels/floor_mod_test.cc \
 tensorflow/lite/micro/kernels/fully_connected_test.cc \
 tensorflow/lite/micro/kernels/hard_swish_test.cc \
 tensorflow/lite/micro/kernels/l2norm_test.cc \
+tensorflow/lite/micro/kernels/l2_pool_2d_test.cc \
+tensorflow/lite/micro/kernels/leaky_relu_test.cc \
 tensorflow/lite/micro/kernels/logical_test.cc \
 tensorflow/lite/micro/kernels/logistic_test.cc \
 tensorflow/lite/micro/kernels/maximum_minimum_test.cc \
@@ -291,42 +309,55 @@ tensorflow/lite/micro/kernels/resize_nearest_neighbor_test.cc \
 tensorflow/lite/micro/kernels/round_test.cc \
 tensorflow/lite/micro/kernels/shape_test.cc \
 tensorflow/lite/micro/kernels/softmax_test.cc \
+tensorflow/lite/micro/kernels/space_to_batch_nd_test.cc \
 tensorflow/lite/micro/kernels/split_test.cc \
 tensorflow/lite/micro/kernels/split_v_test.cc \
+tensorflow/lite/micro/kernels/squeeze_test.cc \
 tensorflow/lite/micro/kernels/strided_slice_test.cc \
 tensorflow/lite/micro/kernels/sub_test.cc \
 tensorflow/lite/micro/kernels/svdf_test.cc \
 tensorflow/lite/micro/kernels/tanh_test.cc \
 tensorflow/lite/micro/kernels/transpose_conv_test.cc \
 tensorflow/lite/micro/kernels/unpack_test.cc \
+tensorflow/lite/micro/kernels/zeros_like_test.cc \
 tensorflow/lite/micro/memory_planner/greedy_memory_planner_test.cc \
 tensorflow/lite/micro/memory_planner/linear_memory_planner_test.cc
 
 MICROLITE_CC_KERNEL_SRCS := \
 tensorflow/lite/micro/kernels/activations.cc \
 tensorflow/lite/micro/kernels/add.cc \
+tensorflow/lite/micro/kernels/add_n.cc \
 tensorflow/lite/micro/kernels/arg_min_max.cc \
+tensorflow/lite/micro/kernels/batch_to_space_nd.cc \
 tensorflow/lite/micro/kernels/cast.cc \
 tensorflow/lite/micro/kernels/ceil.cc \
 tensorflow/lite/micro/kernels/circular_buffer.cc \
 tensorflow/lite/micro/kernels/comparisons.cc \
 tensorflow/lite/micro/kernels/concatenation.cc \
 tensorflow/lite/micro/kernels/conv.cc \
-tensorflow/lite/micro/kernels/conv_test_common.cc \
+tensorflow/lite/micro/kernels/conv_common.cc \
+tensorflow/lite/micro/kernels/cumsum.cc \
 tensorflow/lite/micro/kernels/depthwise_conv.cc \
+tensorflow/lite/micro/kernels/depthwise_conv_common.cc \
 tensorflow/lite/micro/kernels/dequantize.cc \
 tensorflow/lite/micro/kernels/detection_postprocess.cc \
 tensorflow/lite/micro/kernels/elementwise.cc \
+tensorflow/lite/micro/kernels/elu.cc \
 tensorflow/lite/micro/kernels/ethosu.cc \
 tensorflow/lite/micro/kernels/exp.cc \
-tensorflow/lite/micro/kernels/flexbuffers_generated_data.cc \
+tensorflow/lite/micro/kernels/expand_dims.cc \
+tensorflow/lite/micro/kernels/fill.cc \
 tensorflow/lite/micro/kernels/floor.cc \
+tensorflow/lite/micro/kernels/floor_div.cc \
+tensorflow/lite/micro/kernels/floor_mod.cc \
 tensorflow/lite/micro/kernels/fully_connected.cc \
 tensorflow/lite/micro/kernels/fully_connected_common.cc \
 tensorflow/lite/micro/kernels/hard_swish.cc \
 tensorflow/lite/micro/kernels/kernel_runner.cc \
 tensorflow/lite/micro/kernels/kernel_util.cc \
 tensorflow/lite/micro/kernels/l2norm.cc \
+tensorflow/lite/micro/kernels/l2_pool_2d.cc \
+tensorflow/lite/micro/kernels/leaky_relu.cc \
 tensorflow/lite/micro/kernels/logical.cc \
 tensorflow/lite/micro/kernels/logistic.cc \
 tensorflow/lite/micro/kernels/maximum_minimum.cc \
@@ -345,24 +376,25 @@ tensorflow/lite/micro/kernels/round.cc \
 tensorflow/lite/micro/kernels/shape.cc \
 tensorflow/lite/micro/kernels/softmax.cc \
 tensorflow/lite/micro/kernels/softmax_common.cc \
+tensorflow/lite/micro/kernels/space_to_batch_nd.cc \
 tensorflow/lite/micro/kernels/split.cc \
 tensorflow/lite/micro/kernels/split_v.cc \
+tensorflow/lite/micro/kernels/squeeze.cc \
 tensorflow/lite/micro/kernels/strided_slice.cc \
 tensorflow/lite/micro/kernels/sub.cc \
 tensorflow/lite/micro/kernels/svdf.cc \
 tensorflow/lite/micro/kernels/svdf_common.cc \
 tensorflow/lite/micro/kernels/tanh.cc \
 tensorflow/lite/micro/kernels/transpose_conv.cc \
-tensorflow/lite/micro/kernels/unpack.cc
+tensorflow/lite/micro/kernels/unpack.cc \
+tensorflow/lite/micro/kernels/zeros_like.cc
 
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/micro/testing/*.h)
 
 MICROLITE_CC_BASE_SRCS := \
 $(wildcard tensorflow/lite/micro/*.cc) \
-$(wildcard tensorflow/lite/micro/benchmarks/*model_data.cc) \
 $(wildcard tensorflow/lite/micro/memory_planner/*.cc) \
-$(wildcard tensorflow/lite/micro/testing/*model.cc) \
 tensorflow/lite/c/common.c \
 tensorflow/lite/core/api/error_reporter.cc \
 tensorflow/lite/core/api/flatbuffer_conversions.cc \
@@ -387,24 +419,30 @@ tensorflow/lite/c/common.h \
 tensorflow/lite/core/api/error_reporter.h \
 tensorflow/lite/core/api/flatbuffer_conversions.h \
 tensorflow/lite/core/api/op_resolver.h \
-tensorflow/lite/core/api/profiler.h \
 tensorflow/lite/core/api/tensor_utils.h \
 tensorflow/lite/kernels/internal/common.h \
 tensorflow/lite/kernels/internal/compatibility.h \
 tensorflow/lite/kernels/internal/optimized/neon_check.h \
 tensorflow/lite/kernels/internal/quantization_util.h \
 tensorflow/lite/kernels/internal/reference/add.h \
+tensorflow/lite/kernels/internal/reference/add_n.h \
 tensorflow/lite/kernels/internal/reference/arg_min_max.h \
+tensorflow/lite/kernels/internal/reference/batch_to_space_nd.h \
 tensorflow/lite/kernels/internal/reference/binary_function.h \
 tensorflow/lite/kernels/internal/reference/ceil.h \
 tensorflow/lite/kernels/internal/reference/comparisons.h \
 tensorflow/lite/kernels/internal/reference/concatenation.h \
 tensorflow/lite/kernels/internal/reference/conv.h \
+tensorflow/lite/kernels/internal/reference/cumsum.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h \
 tensorflow/lite/kernels/internal/reference/dequantize.h \
+tensorflow/lite/kernels/internal/reference/elu.h \
 tensorflow/lite/kernels/internal/reference/exp.h \
+tensorflow/lite/kernels/internal/reference/fill.h \
 tensorflow/lite/kernels/internal/reference/floor.h \
+tensorflow/lite/kernels/internal/reference/floor_div.h \
+tensorflow/lite/kernels/internal/reference/floor_mod.h \
 tensorflow/lite/kernels/internal/reference/fully_connected.h \
 tensorflow/lite/kernels/internal/reference/hard_swish.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/add.h \
@@ -419,6 +457,7 @@ tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/tanh.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/transpose_conv.h \
 tensorflow/lite/kernels/internal/reference/l2normalization.h \
+tensorflow/lite/kernels/internal/reference/leaky_relu.h \
 tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
 tensorflow/lite/kernels/internal/reference/mul.h \
 tensorflow/lite/kernels/internal/reference/neg.h \
@@ -432,6 +471,7 @@ tensorflow/lite/kernels/internal/reference/requantize.h \
 tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h \
 tensorflow/lite/kernels/internal/reference/round.h \
 tensorflow/lite/kernels/internal/reference/softmax.h \
+tensorflow/lite/kernels/internal/reference/space_to_batch_nd.h \
 tensorflow/lite/kernels/internal/reference/sub.h \
 tensorflow/lite/kernels/internal/reference/logistic.h \
 tensorflow/lite/kernels/internal/reference/strided_slice.h \
@@ -451,22 +491,37 @@ tensorflow/lite/portable_type_to_tflitetype.h \
 tensorflow/lite/schema/schema_generated.h \
 tensorflow/lite/schema/schema_utils.h
 
+# For project generation v1, the headers that are common to all targets need to
+# have a third_party prefix. Other third_party headers (e.g. CMSIS) do not have
+# this requirement and are added to THIRD_PARTY_CC_HDRS with full path from the
+# tensorflow root. This inconsistency may also be the reason why (for
+# example) these different third party libraries are fund in different paths in
+# the Arduino output tree.
+#
+# The convention with the (under development) project generation v2 is for all
+# third party paths to be relative to the root of the git repository. We are
+# keeping backwards compatibility between v1 and v2 by having a
+# THIRD_PARTY_CC_HDRS_BASE variable and adding in a third_party prefix to
+# THIRD_PARTY_CC_HDRS later on in the Makefile logic.
+# TODO(#47413): remove this additional logic once we are ready to switch over to
+# project generation v2.
+THIRD_PARTY_CC_HDRS :=
+
 # TODO(b/165940489): Figure out how to avoid including fixed point
 # platform-specific headers.
-THIRD_PARTY_CC_HDRS := \
-third_party/gemmlowp/fixedpoint/fixedpoint.h \
-third_party/gemmlowp/fixedpoint/fixedpoint_neon.h \
-third_party/gemmlowp/fixedpoint/fixedpoint_sse.h \
-third_party/gemmlowp/internal/detect_platform.h \
-third_party/gemmlowp/LICENSE \
-third_party/flatbuffers/include/flatbuffers/base.h \
-third_party/flatbuffers/include/flatbuffers/stl_emulation.h \
-third_party/flatbuffers/include/flatbuffers/flatbuffers.h \
-third_party/flatbuffers/include/flatbuffers/flexbuffers.h \
-third_party/flatbuffers/include/flatbuffers/util.h \
-third_party/flatbuffers/LICENSE.txt \
-third_party/ruy/ruy/profiler/instrumentation.h
-
+THIRD_PARTY_CC_HDRS_BASE := \
+gemmlowp/fixedpoint/fixedpoint.h \
+gemmlowp/fixedpoint/fixedpoint_neon.h \
+gemmlowp/fixedpoint/fixedpoint_sse.h \
+gemmlowp/internal/detect_platform.h \
+gemmlowp/LICENSE \
+flatbuffers/include/flatbuffers/base.h \
+flatbuffers/include/flatbuffers/stl_emulation.h \
+flatbuffers/include/flatbuffers/flatbuffers.h \
+flatbuffers/include/flatbuffers/flexbuffers.h \
+flatbuffers/include/flatbuffers/util.h \
+flatbuffers/LICENSE.txt \
+ruy/ruy/profiler/instrumentation.h
 
 MAKE_PROJECT_FILES := \
   Makefile \
@@ -552,6 +607,14 @@ ifeq ($(findstring $(TARGET),$(TARGETS_WITHOUT_MAKEFILES)),)
 endif
 
 ifneq ($(OPTIMIZED_KERNEL_DIR),)
+  # Check that OPTIMIZED_KERNEL_DIR is valid to avoid unexpected fallback to
+	# reference kernels. See http://b/183546742 for more context.
+  PATH_TO_OPTIMIZED_KERNELS := tensorflow/lite/micro/kernels/$(OPTIMIZED_KERNEL_DIR)
+  RESULT := $(shell $(MAKEFILE_DIR)/check_optimized_kernel_dir.sh $(PATH_TO_OPTIMIZED_KERNELS))
+  ifneq ($(RESULT), SUCCESS)
+    $(error Incorrect OPTIMIZED_KERNEL_DIR: $(RESULT))
+  endif
+
   include $(MAKEFILE_DIR)/ext_libs/$(OPTIMIZED_KERNEL_DIR).inc
   # Specialize for the optimized kernels
   MICROLITE_CC_KERNEL_SRCS := $(call substitute_specialized_implementations,$(MICROLITE_CC_KERNEL_SRCS),$(OPTIMIZED_KERNEL_DIR))
@@ -569,6 +632,15 @@ ifneq ($(CO_PROCESSOR),)
   # Specialize for the coprocessor kernels.
   MICROLITE_CC_KERNEL_SRCS := $(call substitute_specialized_implementations,$(MICROLITE_CC_KERNEL_SRCS),$(CO_PROCESSOR))
 endif
+
+# TODO(#47413): Remove this logic once we are switched over to the newer version
+# of project generation (v2). Project generation v1 needs the "base" third party
+# headers to have a prefix of third_party/. In order to support v2 prototyping
+# without a lot of changes with the v1 system, we are manually adding in this
+# prefix, and also making a copy in THIRD_PARTY_CC_HDRS_V2 that will be used in
+# the list_third_party_headers target.
+THIRD_PARTY_CC_HDRS_V2 := $(THIRD_PARTY_CC_HDRS)
+THIRD_PARTY_CC_HDRS += $(addprefix third_party/,$(THIRD_PARTY_CC_HDRS_BASE))
 
 # Specialize for debug_log. micro_time etc.
 MICROLITE_CC_SRCS := $(call substitute_specialized_implementations,$(MICROLITE_CC_SRCS),$(TARGET))
@@ -657,11 +729,108 @@ $(BINDIR)%.bin: $(BINDIR)%
 	@mkdir -p $(dir $@)
 	$(OBJCOPY) $< $@ -O binary
 
-# Generate standalone makefile projects for all of the test targets.
+
+# Some tests have additional dependencies (beyond libtensorflow-microlite.a) and
+# those need to be explicitly specified with their own individual call to the
+# microlite_test helper function. For these tests, we also need to make sure to
+# not add targets for them if they have been excluded as part of the target
+# specific Makefile.
+EXPLICITLY_SPECIFIED_TEST:= tensorflow/lite/micro/kernels/detection_postprocess_test.cc
+ifneq ($(findstring $(EXPLICITLY_SPECIFIED_TEST),$(MICROLITE_TEST_SRCS)),)
+  MICROLITE_TEST_SRCS := $(filter-out $(EXPLICITLY_SPECIFIED_TEST), $(MICROLITE_TEST_SRCS))
+  EXPLICITLY_SPECIFIED_TEST_SRCS := \
+  $(EXPLICITLY_SPECIFIED_TEST) \
+  tensorflow/lite/micro/kernels/detection_postprocess_flexbuffers_generated_data.cc
+  EXPLICITLY_SPECIFIED_TEST_HDRS := \
+  tensorflow/lite/micro/kernels/detection_postprocess_flexbuffers_generated_data.h
+  $(eval $(call microlite_test,kernel_detection_postprocess_test,\
+  $(EXPLICITLY_SPECIFIED_TEST_SRCS),$(EXPLICITLY_SPECIFIED_TEST_HDRS)))
+endif
+
+EXPLICITLY_SPECIFIED_TEST:= tensorflow/lite/micro/kernels/circular_buffer_test.cc
+ifneq ($(findstring $(EXPLICITLY_SPECIFIED_TEST),$(MICROLITE_TEST_SRCS)),)
+  MICROLITE_TEST_SRCS := $(filter-out $(EXPLICITLY_SPECIFIED_TEST), $(MICROLITE_TEST_SRCS))
+  EXPLICITLY_SPECIFIED_TEST_SRCS := \
+  $(EXPLICITLY_SPECIFIED_TEST) \
+  tensorflow/lite/micro/kernels/circular_buffer_flexbuffers_generated_data.cc
+  EXPLICITLY_SPECIFIED_TEST_HDRS := \
+  tensorflow/lite/micro/kernels/circular_buffer_flexbuffers_generated_data.h
+  $(eval $(call microlite_test,kernel_circular_buffer_test,\
+  $(EXPLICITLY_SPECIFIED_TEST_SRCS),$(EXPLICITLY_SPECIFIED_TEST_HDRS)))
+endif
+
+EXPLICITLY_SPECIFIED_TEST:= tensorflow/lite/micro/memory_arena_threshold_test.cc
+ifneq ($(findstring $(EXPLICITLY_SPECIFIED_TEST),$(MICROLITE_TEST_SRCS)),)
+  MICROLITE_TEST_SRCS := $(filter-out $(EXPLICITLY_SPECIFIED_TEST), $(MICROLITE_TEST_SRCS))
+  EXPLICITLY_SPECIFIED_TEST_SRCS := \
+  $(EXPLICITLY_SPECIFIED_TEST) \
+  tensorflow/lite/micro/benchmarks/keyword_scrambled_model_data.cc \
+  tensorflow/lite/micro/testing/test_conv_model.cc
+  EXPLICITLY_SPECIFIED_TEST_HDRS := \
+  tensorflow/lite/micro/benchmarks/keyword_scrambled_model_data.h \
+  tensorflow/lite/micro/testing/test_conv_model.h
+  $(eval $(call microlite_test,memory_arena_threshold_test,\
+  $(EXPLICITLY_SPECIFIED_TEST_SRCS),$(EXPLICITLY_SPECIFIED_TEST_HDRS)))
+endif
+
+EXPLICITLY_SPECIFIED_TEST:= tensorflow/lite/micro/micro_allocator_test.cc
+ifneq ($(findstring $(EXPLICITLY_SPECIFIED_TEST),$(MICROLITE_TEST_SRCS)),)
+  MICROLITE_TEST_SRCS := $(filter-out $(EXPLICITLY_SPECIFIED_TEST), $(MICROLITE_TEST_SRCS))
+  EXPLICITLY_SPECIFIED_TEST_SRCS := \
+  $(EXPLICITLY_SPECIFIED_TEST) \
+  tensorflow/lite/micro/testing/test_conv_model.cc
+  EXPLICITLY_SPECIFIED_TEST_HDRS := \
+  tensorflow/lite/micro/testing/test_conv_model.h
+  $(eval $(call microlite_test,micro_allocator_test,\
+  $(EXPLICITLY_SPECIFIED_TEST_SRCS),$(EXPLICITLY_SPECIFIED_TEST_HDRS)))
+endif
+
+EXPLICITLY_SPECIFIED_TEST:= tensorflow/lite/micro/recording_micro_allocator_test.cc
+ifneq ($(findstring $(EXPLICITLY_SPECIFIED_TEST),$(MICROLITE_TEST_SRCS)),)
+  MICROLITE_TEST_SRCS := $(filter-out $(EXPLICITLY_SPECIFIED_TEST), $(MICROLITE_TEST_SRCS))
+  EXPLICITLY_SPECIFIED_TEST_SRCS := \
+  $(EXPLICITLY_SPECIFIED_TEST) \
+  tensorflow/lite/micro/testing/test_conv_model.cc
+  EXPLICITLY_SPECIFIED_TEST_HDRS := \
+  tensorflow/lite/micro/testing/test_conv_model.h
+  $(eval $(call microlite_test,recording_micro_allocator_test,\
+  $(EXPLICITLY_SPECIFIED_TEST_SRCS),$(EXPLICITLY_SPECIFIED_TEST_HDRS)))
+endif
+
+EXPLICITLY_SPECIFIED_TEST:= tensorflow/lite/micro/kernels/conv_test.cc
+ifneq ($(findstring $(EXPLICITLY_SPECIFIED_TEST),$(MICROLITE_TEST_SRCS)),)
+  MICROLITE_TEST_SRCS := $(filter-out $(EXPLICITLY_SPECIFIED_TEST), $(MICROLITE_TEST_SRCS))
+  EXPLICITLY_SPECIFIED_TEST_SRCS := \
+  $(EXPLICITLY_SPECIFIED_TEST) \
+  tensorflow/lite/micro/kernels/conv_test_common.cc
+  EXPLICITLY_SPECIFIED_TEST_HDRS := \
+  tensorflow/lite/micro/kernels/conv_test.h
+  $(eval $(call microlite_test,kernel_conv_test,\
+  $(EXPLICITLY_SPECIFIED_TEST_SRCS),$(EXPLICITLY_SPECIFIED_TEST_HDRS)))
+endif
+
+EXPLICITLY_SPECIFIED_TEST:= tensorflow/lite/micro/kernels/transpose_conv_test.cc
+ifneq ($(findstring $(EXPLICITLY_SPECIFIED_TEST),$(MICROLITE_TEST_SRCS)),)
+  MICROLITE_TEST_SRCS := $(filter-out $(EXPLICITLY_SPECIFIED_TEST), $(MICROLITE_TEST_SRCS))
+  EXPLICITLY_SPECIFIED_TEST_SRCS := \
+  $(EXPLICITLY_SPECIFIED_TEST) \
+  tensorflow/lite/micro/kernels/conv_test_common.cc
+  EXPLICITLY_SPECIFIED_TEST_HDRS := \
+  tensorflow/lite/micro/kernels/conv_test.h
+  $(eval $(call microlite_test,kernel_transpose_conv_test,\
+  $(EXPLICITLY_SPECIFIED_TEST_SRCS),$(EXPLICITLY_SPECIFIED_TEST_HDRS)))
+endif
+
+
+# For all the tests that do not have any additional dependencies, we can
+# add a make target in a common way.
 $(foreach TEST_TARGET,$(filter-out tensorflow/lite/micro/kernels/%,$(MICROLITE_TEST_SRCS)),\
 $(eval $(call microlite_test,$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
+
 $(foreach TEST_TARGET,$(filter tensorflow/lite/micro/kernels/%,$(MICROLITE_TEST_SRCS)),\
 $(eval $(call microlite_test,kernel_$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
+
+
 
 ifeq ($(TARGET_SPECIFIC_MAKE_TEST),0)
 test: $(MICROLITE_TEST_TARGETS)
@@ -676,6 +845,18 @@ ARDUINO_PROJECT_TARGETS := $(foreach TARGET,$(ALL_PROJECT_TARGETS),$(if $(findst
 
 generate_arduino_zip: $(ARDUINO_PROJECT_TARGETS) $(ARDUINO_LIBRARY_ZIPS)
 	python tensorflow/lite/micro/tools/make/merge_arduino_zips.py $(PRJDIR)/tensorflow_lite.zip $(ARDUINO_LIBRARY_ZIPS)
+
+list_library_sources:
+	@echo $(MICROLITE_CC_SRCS)
+
+list_library_headers:
+	@echo $(MICROLITE_CC_HDRS)
+
+list_third_party_sources:
+	@echo $(THIRD_PARTY_CC_SRCS)
+
+list_third_party_headers:
+	@echo $(addprefix $(MAKEFILE_DIR)/downloads/,$(THIRD_PARTY_CC_HDRS_BASE)) $(THIRD_PARTY_CC_HDRS_V2)
 
 # Gets rid of all generated files.
 clean:

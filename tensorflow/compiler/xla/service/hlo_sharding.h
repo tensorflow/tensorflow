@@ -372,7 +372,7 @@ class HloSharding {
   // replications, i.e., elements in slice [..., :] will be replicated.
   bool replicate_on_last_tile_dim_;
   // This field is used to track the source of this sharding, usually derived
-  // from instructions. Multple metadata may be populated if sharding is
+  // from instructions. Multiple metadata may be populated if sharding is
   // combined with other shardings. Metadata are to not be populated when
   // tuple_ == true and instead metadata should be set on individual tuple
   // elements.

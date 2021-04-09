@@ -11,7 +11,7 @@ load(
 
 package(
     default_visibility = ["//tensorflow/compiler/xla:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Filegroup used to collect source files for dependency checking.
@@ -75,8 +75,6 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:testing",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/compiler/xla/service/gpu:infeed_manager",
-        "//tensorflow/compiler/xla/service/gpu:outfeed_manager",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",

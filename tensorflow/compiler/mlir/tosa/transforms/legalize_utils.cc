@@ -398,36 +398,41 @@ Value get1DConstTensorInt48(PatternRewriter& rewriter, Operation* op,
   return const_op.getResult();
 }
 
+static ElementsAttr getDefiningOpConstElementsAttr(Value input) {
+  if (!input.getDefiningOp()) {
+    return nullptr;
+  }
+  if (auto qconst_op = dyn_cast<TFL::QConstOp>(input.getDefiningOp())) {
+    return qconst_op.value().dyn_cast<ElementsAttr>();
+  }
+  if (auto tosa_const_op = dyn_cast<tosa::ConstOp>(input.getDefiningOp())) {
+    return tosa_const_op.value().dyn_cast<ElementsAttr>();
+  }
+  return nullptr;
+}
+
 // Strip off quantization information for bias tensor and return a unquantized
-// bias
+// bias. This assumes that the input is defined as a constant.
 Value getUnquantizedBias(PatternRewriter& rewriter, Operation* op,
                          Value input) {
   auto input_type = input.getType().dyn_cast<mlir::RankedTensorType>();
-  assert(input_type);
+  assert(input_type && "bias input is not a RankedTensorType");
   auto input_element_type = input_type.getElementType();
   auto input_element_qtype =
       input_element_type.dyn_cast<mlir::quant::QuantizedType>();
+  ElementsAttr input_value_attr = getDefiningOpConstElementsAttr(input);
 
-  if (input_element_qtype) {
+  if (input_element_qtype && input_value_attr) {
     auto output_type = RankedTensorType::get(
         input_type.getShape(),
         rewriter.getIntegerType(
             input_element_qtype.getStorageTypeIntegralWidth()));
-
-    auto input_defining_op = dyn_cast<TFL::QConstOp>(input.getDefiningOp());
-    auto dense_attr = input_defining_op.value().dyn_cast<DenseElementsAttr>();
-
-    if (dense_attr) {
-      auto const_op =
-          rewriter.create<tosa::ConstOp>(op->getLoc(), output_type, dense_attr);
-      return const_op.getResult();
-    } else {
-      return input;
-    }
-
-  } else {
-    return input;
+    auto const_op = rewriter.create<tosa::ConstOp>(op->getLoc(), output_type,
+                                                   input_value_attr);
+    return const_op.getResult();
   }
+
+  return input;
 }
 
 }  // namespace tosa

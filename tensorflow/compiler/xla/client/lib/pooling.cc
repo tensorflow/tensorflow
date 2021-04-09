@@ -91,6 +91,7 @@ PaddingConfig MakeSpatialPaddingConfig(
     int num_spatial_dims, absl::Span<const int64> stride,
     const TensorFormat& data_format) {
   PaddingConfig padding_config;
+  padding_config.mutable_dimensions()->Reserve(2 + num_spatial_dims);
   for (int i = 0; i < 2 + num_spatial_dims; ++i) {
     padding_config.add_dimensions();
   }

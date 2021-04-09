@@ -40,7 +40,7 @@ class TensorDeviceCopyConversionPass
  public:
   void runOnFunction() override {
     FuncOp func_op = getFunction();
-    StringAttr empty_string = StringAttr::get("", func_op.getContext());
+    StringAttr empty_string = StringAttr::get(func_op.getContext(), "");
     func_op.walk([&](TF::IdentityOp op) {
       StringAttr arg_device = empty_string;
       mlir::Value arg = op.getOperand();

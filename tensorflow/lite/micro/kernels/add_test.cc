@@ -77,8 +77,7 @@ void ValidateAddGoldens(TfLiteTensor* tensors, int tensors_size,
 
   const TfLiteRegistration registration = ops::micro::Register_ADD();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
-                             outputs_array, &builtin_data,
-                             micro_test::reporter);
+                             outputs_array, &builtin_data);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());

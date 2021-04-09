@@ -1,7 +1,6 @@
 path: "tensorflow.keras.layers.experimental.preprocessing.Normalization"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras.layers.preprocessing.normalization.Normalization\'>"
-  is_instance: "<class \'tensorflow.python.keras.engine.base_preprocessing_layer.CombinerPreprocessingLayer\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_preprocessing_layer.PreprocessingLayer\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"

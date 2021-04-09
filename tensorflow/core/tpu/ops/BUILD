@@ -2,7 +2,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -14,6 +14,7 @@ cc_library(
         ":tpu_compile_op",
         ":tpu_execute_op",
         ":tpu_partitioned_ops",
+        ":tpu_reshard_variables_op",
     ],
     alwayslink = 1,
 )
@@ -85,6 +86,19 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tpu_reshard_variables_op",
+    srcs = [
+        "tpu_reshard_variables_op.cc",
+    ],
+    linkstatic = 1,
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
     ],
     alwayslink = 1,
 )

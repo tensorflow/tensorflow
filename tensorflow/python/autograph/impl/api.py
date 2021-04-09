@@ -106,25 +106,10 @@ class _ErrorMetadata(error_utils.ErrorMetadataBase):
       message = self.get_message()
       init_args = tuple(init_argspec.args)
       # At the time of this writing, TF errors either take 3 or 4 arguments,
-      # with the fourth being error_code.
-      if init_args == ('self', 'node_def', 'op', 'message', 'error_code'):
-        return preferred_type(
-            node_def=source_error.node_def,
-            op=source_error.op,
-            message=message,
-            error_code=self.error_code)
-      elif init_args == ('self', 'node_def', 'op', 'message'):
-        if 'error_code' in init_argspec.kwonlyargs:
-          return preferred_type(
-              node_def=source_error.node_def,
-              op=source_error.op,
-              message=message,
-              errro_code=self.error_code)
-        else:
-          return preferred_type(
-              node_def=source_error.node_def,
-              op=source_error.op,
-              message=message)
+      # the argument '*args' may or may not be used.
+      if init_args == ('self', 'node_def', 'op', 'message'):
+        return preferred_type(source_error.node_def, source_error.op, message,
+                              source_error.experimental_payloads)
 
     elif preferred_type in (errors.PyCTError, AutoGraphError, ConversionError,
                             StagingError, errors_impl.InaccessibleTensorError,
@@ -159,8 +144,8 @@ def _attach_error_metadata(e, f):
 
   cause_tb = traceback.extract_tb(sys.exc_info()[2])[1:]
 
-  e.ag_error_metadata = _ErrorMetadata(
-      cause_tb, metadata, message, source_map, __file__)
+  e.ag_error_metadata = _ErrorMetadata(cause_tb, metadata, message, source_map,
+                                       __file__)
 
 
 class StackTraceMapper(tf_stack.StackTraceMapper):
@@ -312,11 +297,7 @@ def is_autograph_artifact(entity):
   return hasattr(entity, 'autograph_info__')
 
 
-def converted_call(f,
-                   args,
-                   kwargs,
-                   caller_fn_scope=None,
-                   options=None):
+def converted_call(f, args, kwargs, caller_fn_scope=None, options=None):
   """Converts a function call inline.
 
   For internal use only.
@@ -437,8 +418,7 @@ def converted_call(f,
     return _fall_back_unconverted(f, args, kwargs, options, e)
 
   if not hasattr(target_entity, '__code__'):
-    logging.log(2, 'Permanently allowed: %s: native binding',
-                target_entity)
+    logging.log(2, 'Permanently allowed: %s: native binding', target_entity)
     return _call_unconverted(f, args, kwargs, options)
   elif (hasattr(target_entity.__code__, 'co_filename') and
         target_entity.__code__.co_filename == '<string>'):
@@ -511,17 +491,56 @@ def _fall_back_unconverted(f, args, kwargs, options, exc):
 #
 
 
+@tf_export('__internal__.autograph.tf_convert', v1=[])
 def tf_convert(f, ctx, convert_by_default=True, user_requested=False):
   """Decorator that applies AutoGraph to a function.
 
   Use in internal APIs.
 
   This API is suitable for high order functions internal to the TensorFlow API,
-  and more generally any function to which Autograph is not applied.
+  and more generally any function to which AutoGraph is not applied.
 
-  Guidance: convert was a decorator meant for use directly by developers, and
-  will be soon deprecated in favor of tf.function. tf_convert is to be called
-  from high order functions internal to TF.
+  Guidance: `convert` was a decorator meant for use directly by developers, but
+  most of today's uses go through `tf.function`. `tf_convert` is to be called
+  from high order functions internal to TF. By default, all the internal
+  TensorFlow functions are skipped when AutoGraph processes the code. This may
+  lead to user-supplied functions to be incorrectly skipped as well.
+  `tf_convert` helps avoid that. See the following example for more details.
+
+  ```
+  =====tf_internal_module.py=====
+
+  def unconverted(input_fn):
+    return input_fn()
+
+  def converted(input_fn):
+    return tf.__internal__.autograph.tf_convert(
+       input_fn, ctx=tf.__internal__.autograph.control_status_ctx())()
+
+  ======user_module.py======
+
+  @tf.function
+  def foo(input_fn)
+    return unconverted(input_fn)
+
+  @tf.function
+  def bar(input_fn)
+    return converted(input_fn)
+
+  @tf.function(autograph=False)
+  def baz(input_fn)
+    return converted(input_fn)
+  ```
+
+  The `foo` method above will execute the `input_fn` without autograph
+  conversion, while the `bar` method will run an autographed `input_fn`. The
+  `baz` method will run an unconverted `input_fn`, since `tf_convert` respect
+  the control status context.
+
+  Note that both methods in `tf_internal_module` are skipped by autograph when
+  tracing the `tf.function`. The configuration of whether a module/package
+  should be skipped by autograph is controlled in
+  tensorflow/python/autograph/core/config.py.
 
   Args:
     f: Callable.
@@ -572,6 +591,7 @@ def tf_convert(f, ctx, convert_by_default=True, user_requested=False):
 
 def call_with_unspecified_conversion_status(func):
   """Decorator that resets the conversion context to the unspecified status."""
+
   def wrapper(*args, **kwargs):
     with ag_ctx.ControlStatusCtx(status=ag_ctx.Status.UNSPECIFIED):
       return func(*args, **kwargs)

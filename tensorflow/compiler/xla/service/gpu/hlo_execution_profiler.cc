@@ -93,7 +93,7 @@ void HloExecutionProfiler::FinishHloComputation(
     absl::optional<size_t> profile_index) {
   if (do_profile_) {
     profile_->SetCyclesTakenBy(
-        profile_index.value(),
+        *profile_index,
         GetCyclesTaken(&timers_, sub_streams_, stream_, clock_rate_ghz_));
   }
 }

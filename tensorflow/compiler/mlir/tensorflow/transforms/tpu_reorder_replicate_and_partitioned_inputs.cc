@@ -94,13 +94,13 @@ LogicalResult ReorderReplicateAndPartitionedInputs(
   for (const auto& operands_per_replica : operands_per_replica_per_core) {
     auto replicate_op = builder.create<TF::TPUReplicatedInputOp>(
         replicated_input.getLoc(), replicated_input.getType(),
-        operands_per_replica, replicated_input.getAttrs());
+        operands_per_replica, replicated_input->getAttrs());
     operands_per_core.push_back(replicate_op);
   }
 
   auto pi = builder.create<TF::TPUPartitionedInputOp>(
       first_partitioned_input.getLoc(), replicated_input.getType(),
-      operands_per_core, first_partitioned_input.getAttrs());
+      operands_per_core, first_partitioned_input->getAttrs());
   replicated_input.replaceAllUsesWith(pi.output());
   return success();
 }

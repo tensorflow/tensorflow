@@ -248,9 +248,13 @@ bool SubProcess::Start() {
   STARTUPINFOA si;
   ZeroMemory(&si, sizeof(STARTUPINFO));
   si.cb = sizeof(STARTUPINFO);
-  si.dwFlags |= STARTF_USESTDHANDLES;
+
+  // Prevent console window popping in case we are in GUI mode
+  si.dwFlags |= STARTF_USESHOWWINDOW;
+  si.wShowWindow = SW_HIDE;
 
   // Handle the pipes for the child process.
+  si.dwFlags |= STARTF_USESTDHANDLES;
   if (child_pipe_[CHAN_STDIN]) {
     si.hStdInput = child_pipe_[CHAN_STDIN];
   }

@@ -34,7 +34,7 @@ static mlir::Operation* ExtractOnlyOp(mlir::ModuleOp module) {
   // other operation is the operation of interest.
   auto& block = fn.front();
   if (block.getOperations().size() != 2) return nullptr;
-  if (!block.back().isKnownTerminator()) return nullptr;
+  if (!block.back().hasTrait<OpTrait::IsTerminator>()) return nullptr;
 
   return &block.front();
 }

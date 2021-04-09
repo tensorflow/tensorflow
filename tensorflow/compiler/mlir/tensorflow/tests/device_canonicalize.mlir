@@ -24,3 +24,75 @@ func @empty_launch(%arg0 : tensor<i1>, %arg1 : tensor<i32>) -> (tensor<i32>, ten
 
 // CHECK-NOT: tf_device.launch
 // CHECK: return %[[ARG_1]], %[[ARG_0]]
+
+
+// CHECK-LABEL: func @eliminate_passthrough_args_cluster_op
+func @eliminate_passthrough_args_cluster_op(%arg0 : tensor<i32>, %arg1 : tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>) {
+  // CHECK: %[[MUL:.*]] = "tf.Mul"
+  %0 = "tf.Mul"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  // CHECK: %[[RESULT:.*]]:2 = "tf_device.cluster"
+  %1:4 = "tf_device.cluster"() ( {
+    // CHECK: %[[ADD:.*]] = "tf.AddV2"
+    %2 = "tf.AddV2"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    // CHECK: %[[SUB:.*]] = "tf.Sub"
+    %3 = "tf.Sub"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    // CHECK: tf_device.return %[[ADD]], %[[SUB]]
+    tf_device.return %arg0, %2, %0, %3 : tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>
+  }) : () -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>)
+
+  // CHECK: return %arg0, %[[RESULT]]#0, %[[MUL]], %[[RESULT]]#1
+  return %1#0, %1#1, %1#2, %1#3 : tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>
+}
+
+// Verifies handling op a cluster op with only pass through arguments.
+// CHECK-LABEL: func @all_pass_through_args_cluster_op
+func @all_pass_through_args_cluster_op(%arg0 : tensor<i32>, %arg1 : tensor<i32>) -> (tensor<i32>, tensor<i32>) {
+  // CHECK: {{^ *}}"tf_device.cluster"
+  %0:2 = "tf_device.cluster"() ( {
+    // CHECK: "tf.Equal"
+    %1 = "tf.Equal"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    // CHECK: "tf.Assert"
+    "tf.Assert"(%1, %arg0) : (tensor<i1>, tensor<i32>) -> ()
+    // CHECK: tf_device.return{{$}}
+    tf_device.return %arg0, %arg1 : tensor<i32>, tensor<i32>
+  }) : () -> (tensor<i32>, tensor<i32>)
+  // CHECK: return %arg0, %arg1
+  return %0#0, %0#1 : tensor<i32>, tensor<i32>
+}
+
+// Verifies handling op a cluster op requiring no rewrites.
+// CHECK-LABEL: func @canonical_cluster
+func @canonical_cluster(%arg0 : tensor<i32>, %arg1 : tensor<i32>) -> (tensor<i32>, tensor<i32>) {
+  // CHECK: %[[RESULT:.*]]:2 = "tf_device.cluster"
+  %0:2 = "tf_device.cluster"() ( {
+    // CHECK: %[[ADD:.*]] = "tf.AddV2"
+    %1 = "tf.AddV2"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    // CHECK: %[[SUB:.*]] = "tf.Sub"
+    %2 = "tf.Sub"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    // CHECK: tf_device.return %[[ADD]], %[[SUB]]
+    tf_device.return %1, %2 : tensor<i32>, tensor<i32>
+  }) : () -> (tensor<i32>, tensor<i32>)
+  return %0#0, %0#1 : tensor<i32>, tensor<i32>
+}
+
+
+// Verifies handling op a cluster op whose results are used for resource assignment.
+// CHECK-LABEL: func @cluster_result_for_resource_update
+func @cluster_result_for_resource_update(%arg0 : tensor<i32>, %arg1 : tensor<i32>) -> (tensor<i32>, tensor<i32>) {
+  %resource = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<*xi32>>>
+
+  // CHECK: %[[RESULT:.*]] = "tf_device.cluster"
+  %0:2 = "tf_device.cluster"() ( {
+    // CHECK: "tf.Equal"
+    %1 = "tf.Equal"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    // CHECK: "tf.Assert"
+    "tf.Assert"(%1, %arg0) : (tensor<i1>, tensor<i32>) -> ()
+    // CHECK: tf_device.return %arg1
+    tf_device.return %arg0, %arg1 : tensor<i32>, tensor<i32>
+  }) : () -> (tensor<i32>, tensor<i32>)
+  // CHECK: "tf.AssignVariableOp"({{.*}}, %[[RESULT]]
+  "tf.AssignVariableOp"(%resource, %0#1) {dtype = i32} : (tensor<*x!tf.resource<tensor<*xi32>>>, tensor<i32>) -> ()
+
+  // CHECK: return %arg0, %[[RESULT]]
+  return %0#0, %0#1 : tensor<i32>, tensor<i32>
+}

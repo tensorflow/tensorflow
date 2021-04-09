@@ -3338,9 +3338,7 @@ class CUDABlasLtMatmulPlan final : public blas::IBlasLtMatmulPlan {
  private:
   // In some cases cublasLt does not support large batch sizes, so we need to
   // split up such cases into multiple calls.
-  // TODO(reedwm): Making this static or constexpr causes a link error with gcc
-  // in debug mode for unknown reasons. Investigate why.
-  const int kMaxBatchCount = 65535;
+  static constexpr int kMaxBatchCount = 65535;
   blas::BlasLtMatmulPlanParams params_;
   blas::DataType scale_type_;
   UniqueOpDesc op_desc_;
@@ -3357,6 +3355,8 @@ class CUDABlasLtMatmulPlan final : public blas::IBlasLtMatmulPlan {
   UniqueLayoutDesc c_remainder_desc_;
   UniqueLayoutDesc d_remainder_desc_;
 };
+
+/*static*/ constexpr int CUDABlasLtMatmulPlan::kMaxBatchCount;
 
 bool CUDABlasLtMatmulPlan::SetBiasPointer(const void *bias) const {
   return SetCublasLtAttr(op_desc_.get(), CUBLASLT_MATMUL_DESC_BIAS_POINTER,

@@ -14,7 +14,7 @@ load(
 
 package(
     default_visibility = [":internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -1277,6 +1277,7 @@ tf_xla_py_test(
     name = "stateful_random_ops_test",
     size = "medium",
     srcs = ["stateful_random_ops_test.py"],
+    enable_mlir_bridge = True,
     python_version = "PY3",
     shard_count = 10,
     tags = [
@@ -1624,7 +1625,7 @@ cuda_py_test(
     name = "jit_test",
     size = "medium",
     srcs = ["jit_test.py"],
-    shard_count = 5,
+    #shard_count = 5,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
@@ -1641,6 +1642,28 @@ cuda_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python/compiler/xla:compiler_py",
+    ],
+)
+
+cuda_py_test(
+    name = "async_comp_test",
+    size = "medium",
+    srcs = ["async_comp_test.py"],
+    shard_count = 5,
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
+    deps = [
+        ":test_utils",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python/compiler/xla:compiler_py",
     ],
 )

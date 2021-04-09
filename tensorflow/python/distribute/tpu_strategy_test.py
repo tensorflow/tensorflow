@@ -295,8 +295,8 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     def train_fn(iterator):
 
       def step_fn(inputs):
-        _, inputs = inputs
-        return math_ops.reduce_sum(inputs)
+        input0, input1 = inputs
+        return array_ops.size(input0), math_ops.reduce_sum(input1)
 
       return strategy.experimental_local_results(
           strategy.run(step_fn, args=(next(iterator),)))
@@ -392,6 +392,43 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
 
     train_step()
     self.assertEqual(2.0, v.numpy())
+
+  def test_cluster_conditional_with_dynamic_shape(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+
+    @def_function.function
+    def train_step():
+
+      def shape_list(tensor):
+        shape = tensor.shape.as_list()
+
+        non_static_indexes = []
+        for (index, dim) in enumerate(shape):
+          if dim is None:
+            non_static_indexes.append(index)
+
+        if not non_static_indexes:
+          return shape
+
+        dynamic_shape = array_ops.shape(input=tensor)
+        for index in non_static_indexes:
+          shape[index] = dynamic_shape[index]
+
+        return shape
+
+      def step_fn(condition):
+        where = array_ops.where(condition)
+        if array_ops.shape(where)[0] > 0:
+          tensor_shape = shape_list(where)
+          d1 = tensor_shape[0]
+          d2 = tensor_shape[1]
+          where = array_ops.reshape(where, [d1, d2])
+        return where
+
+      return strategy.run(step_fn, args=([True, False, True],))
+
+    outputs = strategy.experimental_local_results(train_step())
+    self.assertAllEqual(outputs[0].numpy(), [[0], [2]])
 
   def test_cluster_in_graph_and_while_body_fn(self, enable_packed_var):
     strategy = get_tpu_strategy(enable_packed_var)
@@ -635,6 +672,56 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual("/job:localhost/replica:0/task:0/device:TPU:1",
                         results[1].backing_device)
 
+  def test_run_passing_and_returning_nones(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+
+    @def_function.function
+    def train_step():
+
+      def computation(x):
+        return x
+
+      # Note that this input None is nested.
+      outputs = strategy.experimental_local_results(
+          strategy.run(computation, args=([1, [2, None]],)))
+      return outputs
+
+    results = train_step()
+
+    self.assertAllEqual(1, results[0][0])
+    self.assertAllEqual(2, results[0][1][0])
+    self.assertIsNone(results[0][1][1])
+
+  def test_run_passing_and_returning_empty_list(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+
+    @def_function.function
+    def train_step():
+
+      def computation(x):
+        return x
+
+      outputs = strategy.experimental_local_results(
+          strategy.run(computation, args=([],)))
+      return outputs
+
+    self.assertEqual([], train_step()[0])
+
+  def test_run_passing_and_returning_empty_dict(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+
+    @def_function.function
+    def train_step():
+
+      def computation(x):
+        return x
+
+      outputs = strategy.experimental_local_results(
+          strategy.run(computation, args=({},)))
+      return outputs
+
+    self.assertEqual({}, train_step()[0])
+
   def test_composite_input_output(self, enable_packed_var):
     strategy = get_tpu_strategy(enable_packed_var)
     if strategy.num_replicas_in_sync != 2:
@@ -673,7 +760,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     dataset = iter(
         strategy.distribute_datasets_from_function(
             dataset_fn,
-            distribute_lib.InputOptions(experimental_prefetch_to_device=False)))
+            distribute_lib.InputOptions(experimental_fetch_to_device=False)))
 
     sparse, result = sparse_lookup(dataset)
 
@@ -723,7 +810,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     dataset = iter(
         strategy.distribute_datasets_from_function(
             dataset_fn,
-            distribute_lib.InputOptions(experimental_prefetch_to_device=False)))
+            distribute_lib.InputOptions(experimental_fetch_to_device=False)))
 
     output = sparse_lookup(dataset)
 
@@ -779,7 +866,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
         strategy.distribute_datasets_from_function(
             dataset_fn,
             options=distribute_lib.InputOptions(
-                experimental_prefetch_to_device=False)))
+                experimental_fetch_to_device=False)))
 
     result = sparse_lookup(dataset)
     self.assertAllEqual(result, [[0.0, 2.0], [1.5, 5.0]])
@@ -829,7 +916,7 @@ class TPUStrategyDataPrefetchTest(test.TestCase):
         output_type=dtypes.float32).batch(strategy.num_replicas_in_sync)
 
     input_options = distribute_lib.InputOptions(
-        experimental_prefetch_to_device=True)
+        experimental_fetch_to_device=True)
     dataset_item = next(iter(strategy.experimental_distribute_dataset(
         dataset, options=input_options)))
     dataset_location = tf_device.DeviceSpec.from_string(
@@ -844,7 +931,7 @@ class TPUStrategyDataPrefetchTest(test.TestCase):
 
     # Should be CPU when prefetch_to_device is False.
     input_options = distribute_lib.InputOptions(
-        experimental_prefetch_to_device=False)
+        experimental_fetch_to_device=False)
     dataset_item = next(iter(strategy.experimental_distribute_dataset(
         dataset, options=input_options)))
     dataset_location = tf_device.DeviceSpec.from_string(

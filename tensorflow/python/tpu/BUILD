@@ -16,7 +16,7 @@ package(
         "//research/graph:__subpackages__",
         "//tensorflow:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files(["tpu_test_wrapper.py"])
@@ -79,6 +79,7 @@ tpu_py_test(
     size = "medium",
     srcs = ["async_checkpoint_test.py"],
     disable_experimental = True,
+    disable_mlir_bridge = False,
     deps = [
         ":async_checkpoint",
         ":tpu_estimator",
@@ -575,13 +576,13 @@ pytype_library(
     srcs_version = "PY3",
     deps = [
         ":tpu_embedding_v2_utils",
+        ":tpu_lib",
+        ":tpu_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/distribute:device_util",
         "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/distribute:tpu_strategy",
-        "//tensorflow/python/tpu:tpu_lib",
-        "//tensorflow/python/tpu:tpu_ops",
         "//tensorflow/python/training/saving:saveable_hook",
         "@six_archive//:six",
     ],

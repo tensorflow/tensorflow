@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -822,7 +823,9 @@ class GroupConnectedBoundaries {
   // search/tuning process.
   std::vector<std::vector<int64>>& move_config_;
   std::vector<std::vector<int64>>& reuse_config_;
-  int& search_config_;
+  std::vector<int64>& search_config_vec_;
+  int64* search_config_;
+  int64 search_subscript_;
   absl::flat_hash_map<const int64*, int64> flipped_;
 
   // The FlipMutation function serves to implement the search of alternative
@@ -834,29 +837,35 @@ class GroupConnectedBoundaries {
       VLOG(2) << "Configured not to search or loc is already flipped.";
       return *loc;
     }
-
-    // The 8-16 digits control the maximum number of times to flip a config.
-    int flip_count = (search_config_ >> 8) & 255;
-    if (flip_count == 0) {
-      VLOG(2) << "Maximum flip count has reached. ";
-      return *loc;
-    }
-
     // The last 8 digits control when to start the first flip.
-    int c = search_config_ & 255;
+    int c = ConditionalCodeMotion::flip_start(*search_config_);
     VLOG(2) << "flip start index = " << c << "\n";
     // Only flip the decision if c reaches 0.
     if (c > 0) {
-      search_config_--;
+      (*search_config_)--;
       return *loc;
     }
-
-    // Decrement flip count so we can stop if it reaches 0.
-    search_config_ -= 256;
+    // The 8-16 digits control the maximum number of times to flip a config.
+    auto flip_count = ConditionalCodeMotion::DecrementMaxFlip(search_config_);
+    VLOG(2) << "max flip count = " << flip_count << "\n";
+    VLOG(2) << "Updating max Flipping configuration = " << *search_config_
+            << "\n";
+    if (flip_count == 0) {
+      VLOG(2) << "Maximum flip count has reached. ";
+      if (search_subscript_ + 1 < search_config_vec_.size()) {
+        VLOG(2) << "search_subscript_ = " << search_subscript_;
+        VLOG(2) << "search config vec size = " << search_config_vec_.size();
+        search_config_ = &search_config_vec_[++search_subscript_];
+      } else {
+        return *loc;
+      }
+    }
     // Reload the 16-23 digits of the configuration, which controls how
     // frequently a configuration should be flipped.
-    search_config_ += (search_config_ >> 16) & 255;
-    VLOG(2) << "Updating Flipping configuration = " << search_config_ << "\n";
+    auto flip_stride = ConditionalCodeMotion::flip_stride(*search_config_);
+    *search_config_ += flip_stride;
+    VLOG(2) << "flip stride = " << flip_stride << "\n";
+    VLOG(2) << "Updating Flipping Stride = " << *search_config_ << "\n";
 
     flipped_[loc] = *loc;
     // Copy the last 8 bits back to the first 8 bits of configuration.
@@ -878,14 +887,23 @@ class GroupConnectedBoundaries {
       HloInstruction* conditional, bool is_layout_sensitive,
       absl::flat_hash_map<HloInstruction*, int>& visited_count,
       std::vector<std::vector<int64>>* move_config,
-      std::vector<std::vector<int64>>* reuse_config, int* search_config)
+      std::vector<std::vector<int64>>* reuse_config,
+      std::vector<int64>* search_config)
       : conditional_(conditional),
         conditional_parent_(conditional->parent()),
         is_layout_sensitive_(is_layout_sensitive),
         visited_count_(visited_count),
         move_config_(*move_config),
         reuse_config_(*reuse_config),
-        search_config_(*search_config) {}
+        search_config_vec_(*search_config),
+        search_subscript_(0) {
+    VLOG(2) << "Initializing Group Connected Boundaries\n";
+    CHECK_NE(search_config, nullptr);
+    if (search_config_vec_.empty()) {
+      search_config_vec_.push_back(0);
+    }
+    search_config_ = &search_config_vec_[0];
+  }
   // Returns estimation of potential reuses carried by a given pair of
   // instructions. Use different integers to classify different levels
   // of reuses. Assume all instructions can be fused to enable data reuses.
@@ -896,7 +914,7 @@ class GroupConnectedBoundaries {
     // When flipping, use -10 if flipping to the default reuse model. Other
     // values can be specified if needed to fine-control the decision making.
     int64 config =
-        (search_config_ < 0)
+        ((*search_config_) < 0)
             ? FlipMutation(&curconfig[static_cast<uint32>(user->opcode())], -10,
                            HloOpcodeString(op->opcode()) + "->" +
                                HloOpcodeString(user->opcode()))
@@ -947,13 +965,14 @@ class GroupConnectedBoundaries {
                    : 0;
     VLOG(2) << "column = " << col << "\n";
     VLOG(2) << "config size = " << curconfig.size() << "\n";
-    VLOG(2) << "search_config = " << search_config_ << "\n";
+    VLOG(2) << "search_config = " << *search_config_ << "\n";
     CHECK(col < curconfig.size());
-    uint32 config = (search_config_ > 0)
+    uint32 config = ((*search_config_) > 0)
                         ? FlipMutation(&curconfig[col], 1,
                                        "Move-" + HloOpcodeString(opcode))
                         : curconfig[col];
     VLOG(2) << "Checking instruction is worth moving: " << config << "\n";
+    VLOG(2) << "after checking search_config = " << *search_config_ << "\n";
     return (config != 0);
   }
 
@@ -1026,7 +1045,8 @@ class GroupConnectedBoundaries {
     return 0;
   }
 
-  int64 BenefitForMovingBoundaries(const std::vector<Boundary>& boundaries) {
+  int64 BenefitForMovingBoundaries(const std::vector<Boundary>& boundaries,
+                                   bool perform_reuse_analysis = true) {
     int64 reuses_before = 0, reuses_after = 0;
     if (boundaries.size() == 1) {
       if (boundaries[0].IsOutsideBranch() &&
@@ -1042,7 +1062,7 @@ class GroupConnectedBoundaries {
       }
     }
     // If trying alternative moving configurations, turn off reuse analysis.
-    if (search_config_ > 0) {
+    if (!perform_reuse_analysis) {
       return 1;
     }
     // For cases like :
@@ -1247,7 +1267,8 @@ ConditionalCodeMotion::Decision ConditionalCodeMotion::ConsiderCodeMotion(
   auto move_in_or_out =
       connect.BoundariesToMoveInOrOut(conditional, cur_boundary);
   if (!move_in_or_out.empty()) {
-    auto benefit = connect.BenefitForMovingBoundaries(move_in_or_out);
+    auto benefit = connect.BenefitForMovingBoundaries(
+        move_in_or_out, search_config_map_.empty());
     VLOG(2) << "benefit of moving in or out "
             << cur_boundary.operands()[0]->ToString() << ":" << benefit << "\n";
     if (benefit >= 0) {
@@ -1289,10 +1310,6 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
     TF_ASSIGN_OR_RETURN(auto cleanup_changed_now, subpipeline.Run(module));
     cleanup_changed |= cleanup_changed_now;
   }
-  // set the default configuration
-  VLOG(2) << "Obtaining default configuration\n";
-  SetDefaultMoveConfig();
-  VLOG(2) << "Done obtaining default configuration\n";
   // Gather all the conditional ops in the module ahead of time, to avoid
   // potential complications of modifying the code that affecting traversal.
   std::vector<HloInstruction*> conditional_ops;
@@ -1328,9 +1345,23 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
     }
   }
 
+  int64 conditional_index = 0;
   // Use to collect mappings between cloned instructions.
   HloCloneContext clone_context(module);
   for (HloInstruction* conditional : conditional_ops) {
+    if (conditional_index == 0 || !search_config_map_.empty()) {
+      auto config_entry = search_config_map_.find(conditional_index);
+      if (config_entry != search_config_map_.end()) {
+        search_config_ = (*config_entry).second;
+        VLOG(2) << "config entry value extracted:" << search_config_.size();
+        search_config_index_ = 0;
+      }
+      VLOG(2) << "Obtaining default configuration for conditional "
+              << conditional_index << "\n";
+      SetDefaultMoveConfig();
+      VLOG(2) << "Done obtaining default configuration\n";
+      conditional_index++;
+    }
     int branch_count = conditional->branch_count();
     // check for shared conditional computations
     bool conditional_is_shared = false;
@@ -1518,11 +1549,27 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
 }
 
 void ConditionalCodeMotion::SetDefaultMoveConfig() {
-  int tuning_option = (search_config_ == 0) ? 0 : (search_config_ > 0) ? 1 : 2;
+  VLOG(2) << "search_config_index = " << search_config_index_ << "\n";
+  VLOG(2) << "search_config_ size = " << search_config_.size() << "\n";
+  int64 cur_search_config = (search_config_index_ < 0 ||
+                             search_config_index_ >= search_config_.size())
+                                ? 0
+                                : search_config_[search_config_index_];
+  enum class TuningOption {
+    kDoNotTune = 0,
+    kTuneTransformationDecision = 1,
+    kTuneReuseModel = 2,
+  };
+  TuningOption tuning_option =
+      (cur_search_config == 0)  ? TuningOption::kDoNotTune
+      : (cur_search_config > 0) ? TuningOption::kTuneTransformationDecision
+                                : TuningOption::kTuneReuseModel;
 
   auto row = HloOpcodeCount();
   auto col = row;
   VLOG(2) << "Start setting default configuration\n";
+  reuse_config_.clear();
+  move_config_.clear();
   reuse_config_.reserve(row);
   move_config_.reserve(row);
   for (int64 opcode = 0; opcode < row; ++opcode) {
@@ -1535,14 +1582,15 @@ void ConditionalCodeMotion::SetDefaultMoveConfig() {
     reuse_config_.push_back(reuse_vec);
     std::vector<int64> move_vec;
     switch (tuning_option) {
-      case 1:
+      case TuningOption::kTuneTransformationDecision:
         // Tuning transformation decision --- start with all yes.
         // Only a single entry is needed if we don't consider operands of an op
         // when searching/tuning transformation decisions.
         move_vec.push_back(1);
         break;
-      case 2:  // Tune the ReusesCarriedBy results only.
-      case 0:
+        // Tune the ReusesCarriedBy results only.
+      case TuningOption::kTuneReuseModel:
+      case TuningOption::kDoNotTune:
         // No tuning --- use the default configuration.
         // Use the opcode of first operand to configure default.
         move_vec.reserve(col);
@@ -1553,6 +1601,36 @@ void ConditionalCodeMotion::SetDefaultMoveConfig() {
         break;
     }
     move_config_.push_back(move_vec);
+  }
+}
+
+// The search configuration is specified using a string in the format of
+// 'config1;config2; ...;config_n', where each config_i is in the format of
+// 'index,start,max,stride' (four integers separated by comma), which specify
+// the index number of the conditional being configured, the index of the first
+// transformation decision to flip for the conditional, the max number of
+// decisions to flip, and how many decisions to skip in between the flips.
+void ConditionalCodeMotion::ParseSearchConfiguration(
+    const std::string& search_config) {
+  if (search_config.empty()) {
+    return;
+  }
+  search_config_index_ = 0;
+  std::vector<std::string> configs = absl::StrSplit(search_config, ';');
+  for (const std::string& config : configs) {
+    std::vector<std::string> specs = absl::StrSplit(config, ',');
+    CHECK_EQ(specs.size(), 4);
+    int64 condition_index;
+    CHECK(absl::SimpleAtoi(specs[0], &condition_index));
+    auto& cur_config_entry = search_config_map_[condition_index];
+    int64 flip_start, max_flip, flip_stride;
+    CHECK(absl::SimpleAtoi(specs[1], &flip_start));
+    CHECK(absl::SimpleAtoi(specs[2], &max_flip));
+    CHECK(absl::SimpleAtoi(specs[3], &flip_stride));
+    int64 cur_config = MakeSearchConfig(flip_start, max_flip, flip_stride);
+    cur_config_entry.push_back(cur_config);
+    VLOG(2) << "Setting search config " << condition_index << "->" << cur_config
+            << "\n";
   }
 }
 

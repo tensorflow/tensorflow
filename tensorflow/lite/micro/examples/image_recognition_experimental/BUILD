@@ -1,14 +1,8 @@
 # Description:
 #   TensorFlow Lite for Microcontrollers image recognition example.
-
-load(
-    "//tensorflow/lite/micro/testing:micro_test.bzl",
-    "tflite_micro_cc_test",
-)
-
 package(
     features = ["-layering_check"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -27,11 +21,12 @@ cc_library(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "image_recognition_test",
     srcs = ["image_recognition_test.cc"],
     tags = [
         "no_oss",  # TODO(b/174680668): Exclude from OSS.
+        "notap",  # TODO(#44912): Consider removing this (uint8) example.
     ],
     deps = [
         ":image_model_data",

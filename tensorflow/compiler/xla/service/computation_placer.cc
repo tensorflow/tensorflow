@@ -42,23 +42,23 @@ using absl::StrCat;
 
 namespace xla {
 
-StatusOr<std::pair<int, int>> DeviceAssignment::LogicalIdsForDevice(
+StatusOr<DeviceAssignment::LogicalID> DeviceAssignment::LogicalIdForDevice(
     GlobalDeviceId device_id) const {
-  absl::optional<std::pair<int, int>> logical_ids;
+  absl::optional<DeviceAssignment::LogicalID> logical_id;
   for (int r = 0; r < replica_count(); ++r) {
     for (int c = 0; c < computation_count(); ++c) {
       if ((*this)(r, c) == device_id.value()) {
-        if (logical_ids.has_value()) {
+        if (logical_id.has_value()) {
           return InternalError(
               "Device %d appears twice in DeviceAssignment: %s",
               device_id.value(), ToString());
         }
-        logical_ids.emplace(r, c);
+        logical_id.emplace(DeviceAssignment::LogicalID{r, c});
       }
     }
   }
-  if (logical_ids.has_value()) {
-    return *logical_ids;
+  if (logical_id.has_value()) {
+    return *logical_id;
   } else {
     return InternalError("Device %d doesn't appear in DeviceAssignment: %s",
                          device_id.value(), ToString());
@@ -67,8 +67,9 @@ StatusOr<std::pair<int, int>> DeviceAssignment::LogicalIdsForDevice(
 
 StatusOr<int> DeviceAssignment::ReplicaIdForDevice(
     GlobalDeviceId device_id) const {
-  TF_ASSIGN_OR_RETURN(auto logical_ids, LogicalIdsForDevice(device_id));
-  return logical_ids.first;
+  TF_ASSIGN_OR_RETURN(const LogicalID logical_id,
+                      LogicalIdForDevice(device_id));
+  return logical_id.replica_id;
 }
 
 Status DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {

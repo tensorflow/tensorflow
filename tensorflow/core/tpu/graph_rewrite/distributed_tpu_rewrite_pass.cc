@@ -97,6 +97,16 @@ const char kVarHandleOp[] = "VarHandleOp";
 static const char* const kTPUCompilationResultAttr = "_tpu_compilation_status";
 static const char* const kPostDeviceRewriteAttr = "_post_device_rewrite";
 
+using NodeAndId = std::pair<const Node*, int>;
+
+struct NodeAndPort {
+  explicit NodeAndPort(Node* node, int port) : node(node), port(port) {}
+
+  Node* node;
+  // Port of the node, e.g. this can be the `src_output` index of an Edge.
+  int port;
+};
+
 class IntrusiveHeapLink {
  public:
   using size_type = size_t;
@@ -562,23 +572,6 @@ Status ReplaceCompilationResultNodeWithIdentity(Graph* graph, Node** node) {
   graph->RemoveNode(old_node);
 
   *node = id_node;
-  return Status::OK();
-}
-
-Status FillPaddingMap(
-    const Node& replicate_node,
-    protobuf::RepeatedPtrField<tpu::PaddingMap>* padding_maps) {
-  std::vector<string> padding_map_strs;
-  TF_RETURN_IF_ERROR(
-      GetNodeAttr(replicate_node.attrs(), "padding_map", &padding_map_strs));
-  padding_maps->Reserve(padding_map_strs.size());
-  for (const string& padding_map_str : padding_map_strs) {
-    tpu::PaddingMap* padding_map = padding_maps->Add();
-    if (!padding_map->ParseFromString(padding_map_str)) {
-      return errors::InvalidArgument(
-          "Malformed padding_map serialized string: ", padding_map_str);
-    }
-  }
   return Status::OK();
 }
 
@@ -1482,7 +1475,7 @@ static Status ParseDeviceAssignmentAttr(
             ") are not valid for the current TPU topology");
       }
       tpu::TpuCoreLocationExternal core_location =
-          tpu_topology.Core(x, y, z, kTensorCore, core);
+          tpu_topology.Core(kTensorCore, x, y, z, core);
 
       if (replica_assignment(x, y, z, core) != -1) {
         return errors::InvalidArgument("Duplicate coordinates (", x, ",", y,
@@ -1974,6 +1967,16 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
   const bool use_spmd = (UseSpmdForXlaPartitioning(replicate_node) ||
                          replicate_inputs_outputs_by_default_for_xla_spmd_) &&
                         allow_parameter_replication_for_spmd;
+
+  // Offset _TPUReplicate non per replica argument indices by
+  // (num_replicas - 1) * num_per_replica_args as _TPUReplicate nodes are
+  // constructed with all per replica args across all replicas while the
+  // encapsulated function only has 1 replica's per replica args. Per replica
+  // args are ordered by replica first, so the index here does not require an
+  // offset and the first replica's input nodes is sufficient for determining
+  // argument sharding.
+  const int index_offset =
+      (params_info.NumReplicas() - 1) * params_info.NumPerReplicaArgs();
   for (int i = 0; i < args.size(); ++i) {
     const Node* n = args[i];
     absl::optional<int64> assigned_core;
@@ -1983,9 +1986,11 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
         *n, num_cores_per_replica, flr, &cached_function_handles,
         &node_and_sharding, &is_fast_mem));
 
-    if (params_info.IsPerReplicaArg(i) || params_info.IsDistributedArg(i)) {
+    const bool is_per_replica_arg = params_info.IsPerReplicaArg(i);
+    if (is_per_replica_arg || params_info.IsDistributedArg(i)) {
       Node* input_node;
-      TF_RETURN_IF_ERROR(replicate_node->input_node(i, &input_node));
+      TF_RETURN_IF_ERROR(replicate_node->input_node(
+          i + (is_per_replica_arg ? 0 : index_offset), &input_node));
       if (input_node->type_string() == kTPUPartitionedInput) {
         TF_ASSIGN_OR_RETURN(
             absl::optional<xla::OpSharding> parsed_sharding,
@@ -2002,7 +2007,8 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
 
     if (params_info.IsVariableArg(i)) {
       Node* input_node;
-      TF_RETURN_IF_ERROR(replicate_node->input_node(i, &input_node));
+      TF_RETURN_IF_ERROR(
+          replicate_node->input_node(i + index_offset, &input_node));
       if (input_node->type_string() == kVarHandleOp) {
         TF_ASSIGN_OR_RETURN(
             absl::optional<xla::OpSharding> parsed_sharding,
@@ -2070,10 +2076,12 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     } else if (node_and_sharding->sharding.type() == xla::OpSharding::OTHER) {
       for (int64 core : node_and_sharding->sharding.tile_assignment_devices()) {
         args_device_selector.ReportDeviceAssigned(core, i);
-        VLOG(3) << "Assigning argument " << i << " (" << n->DebugString()
-                << ") with tiled sharding to core " << core
-                << FormatNodeAndShardingMsg(node_and_sharding);
       }
+      VLOG(3) << "Assigning argument " << i << " (" << n->DebugString()
+              << ") with tiled sharding to cores "
+              << absl::StrJoin(
+                     node_and_sharding->sharding.tile_assignment_devices(), ",")
+              << " " << FormatNodeAndShardingMsg(node_and_sharding);
     } else {
       DCHECK_EQ(node_and_sharding->sharding.type(),
                 xla::OpSharding::REPLICATED);
@@ -2173,10 +2181,12 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     } else if (node_and_sharding->sharding.type() == xla::OpSharding::OTHER) {
       for (int64 core : node_and_sharding->sharding.tile_assignment_devices()) {
         retvals_device_selector.ReportDeviceAssigned(core, i);
-        VLOG(3) << "Assigning return value " << i << " ("
-                << retvals[i]->DebugString() << ") with tiled sharding to core "
-                << core << FormatNodeAndShardingMsg(node_and_sharding);
       }
+      VLOG(3) << "Assigning return value " << i << " ("
+              << retvals[i]->DebugString() << ") with tiled sharding to cores "
+              << absl::StrJoin(
+                     node_and_sharding->sharding.tile_assignment_devices(), ",")
+              << " " << FormatNodeAndShardingMsg(node_and_sharding);
     } else {
       DCHECK_EQ(node_and_sharding->sharding.type(),
                 xla::OpSharding::REPLICATED);
@@ -2282,6 +2292,42 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
   return Status::OK();
 }
 
+namespace {
+
+bool XlaBroadcastTypeSupported(const DataType dtype) {
+  return (dtype == DT_FLOAT || dtype == DT_BFLOAT16 || dtype == DT_INT32 ||
+          dtype == DT_BOOL);
+}
+
+bool XlaBroadcastKindSupported(
+    const DistributedTPURewritePass::ParameterInfo& params_info,
+    int param_num) {
+  // NOTE: This is intended to cover non-sharded data parallel variables, for
+  // training only. . Is it correct to just check if the arg_type is
+  // DT_RESOURCE?
+  return params_info.IsVariableArg(param_num) &&
+         !(params_info.IsPerReplicaArg(param_num) ||
+           params_info.IsDistributedArg(param_num) ||
+           params_info.IsBroadcastArg(param_num) ||
+           params_info.IsConstantArg(param_num));
+}
+
+bool EnableXlaParamBroadcast(
+    bool enable_xla_param_broadcast,
+    const DistributedTPURewritePass::ParameterInfo& params_info, int param_num,
+    DataType dtype, int num_cores_per_replica) {
+  // Conditions necessary to use XLA collectives for arg broadcast:
+  // 1. Globally enabled via enable_xla_param_broadcast.
+  // 2. DataType must be supported.
+  // 3. Parameter must be a variable, and not distributed or broadcasted.
+  // 4. Model parallelism is not currently supported.
+  return enable_xla_param_broadcast && XlaBroadcastTypeSupported(dtype) &&
+         XlaBroadcastKindSupported(params_info, param_num) &&
+         (num_cores_per_replica == 1);
+}
+
+}  // namespace
+
 // Builds a TPUCompile node that compiles the bodies of the function call
 // `nodes`.
 Status DistributedTPURewritePass::BuildCompileNode(
@@ -2298,7 +2344,7 @@ Status DistributedTPURewritePass::BuildCompileNode(
     int num_cores_per_replica, const string& compile_device,
     const xla::DeviceAssignment* xla_device_assignment,
     const std::vector<Node*>& dynamic_shape_nodes, Graph* graph,
-    Node** compile_node, int64 autotuner_thresh) {
+    Node** compile_node, int64 autotuner_thresh, int num_tasks) {
   VLOG(1) << "BuildCompileNode";
 
   tpu::TPUCompileMetadataProto proto;
@@ -2317,13 +2363,9 @@ Status DistributedTPURewritePass::BuildCompileNode(
         return s.type() == xla::OpSharding::MAXIMAL;
       });
   proto.set_use_spmd_for_xla_partitioning(use_spmd);
-  proto.set_broadcast_replicated_parameters_via_collectives(
-      enable_xla_param_broadcast_);
 
   // Get and fill padding map.
   if (replicate_node != nullptr) {
-    TF_RETURN_IF_ERROR(
-        FillPaddingMap(*replicate_node, proto.mutable_padding_maps()));
     xla::DebugOptions::StepMarkerLocation location;
     TF_RETURN_IF_ERROR(GetStepMarkerLocation(*replicate_node, &location));
     proto.set_step_marker_location(location);
@@ -2366,6 +2408,15 @@ Status DistributedTPURewritePass::BuildCompileNode(
         arg->set_kind(tpu::TPUCompileMetadataProto::Arg::PARAMETER);
       }
     }
+
+    // Use XLA collective primitives to distribute variables to all replicas,
+    // for multi-host systems.
+    arg->set_requires_xla_broadcast(
+        num_tasks > 1 &&
+        EnableXlaParamBroadcast(enable_xla_param_broadcast_, params_info, i,
+                                arg_shape.handle_type /*arg.dtype?*/,
+                                num_cores_per_replica));
+
     // As long as the argument is not a per-replica one, it should have the same
     // value for all replicas. For clarity, we keep the (redundant) checks for
     // variable, broadcast and constant types, to prevent bugs in case new types
@@ -2669,20 +2720,39 @@ Status DistributedTPURewritePass::BuildVariableWrites(
 namespace {
 
 // Creates nodes for zero-initialized dummy arguments for TPUExecute nodes.
-xla::StatusOr<Node*> CreatePerHostDummyArgs(const InferredShape& raw_var_shape,
-                                            const string& host_cpu_device,
-                                            Node* var_read,
-                                            absl::string_view name_prefix,
-                                            Graph* graph) {
+xla::StatusOr<Node*> MaybeCreatePerHostDummyArgs(
+    const std::vector<InferredShape>& arg_shapes, const string& host_cpu_device,
+    const DistributedTPURewritePass::ParameterInfo& params_info, Node* var_read,
+    int var_num, int num_cores_per_replica, Graph* graph) {
   Status status;
-  DataType dtype;
-  TF_RETURN_IF_ERROR(GetNodeAttr(var_read->def(), "dtype", &dtype));
 
-  if (!(dtype == DT_FLOAT || dtype == DT_BFLOAT16 || dtype == DT_INT32 ||
-        dtype == DT_BOOL)) {
+  if (num_cores_per_replica > 1) {
+    LOG_FIRST_N(WARNING, 1) << "XLA parameter broadcast is not supported for "
+                               "model-partitioned parameters. Falling back to "
+                               "non-broadcast mode for all parameters.";
     return var_read;
   }
 
+  DataType dtype;
+  TF_RETURN_IF_ERROR(GetNodeAttr(var_read->def(), "dtype", &dtype));
+
+  DeviceNameUtils::ParsedName parsed_device;
+  TF_RET_CHECK(DeviceNameUtils::ParseFullName(host_cpu_device, &parsed_device));
+  TF_RET_CHECK(parsed_device.has_task);
+
+  // Task 0 behaves as the primary task, where variables are assigned. Use the
+  // variable reads as arguments to TPUExecute.
+  // For other tasks, create dummies if the graph meets preconditions.
+  int64 orig_arg_num = var_num + params_info.NumPerReplicaArgs() +
+                       params_info.NumDistributedArgs() +
+                       params_info.NumBroadcastArgs();
+  if (parsed_device.task == 0 ||
+      !EnableXlaParamBroadcast(/*enable_xla_param_broadcast=*/true, params_info,
+                               orig_arg_num, dtype, num_cores_per_replica)) {
+    return var_read;
+  }
+
+  auto raw_var_shape = arg_shapes[orig_arg_num];
   TensorShape var_shape;
   if (!raw_var_shape.handle_shape.AsTensorShape(&var_shape) &&
       !raw_var_shape.shape.AsTensorShape(&var_shape)) {
@@ -2690,6 +2760,8 @@ xla::StatusOr<Node*> CreatePerHostDummyArgs(const InferredShape& raw_var_shape,
   }
 
   // Const - shape_as_tensor
+  const std::string name_prefix = strings::StrCat(
+      var_read->name(), absl::StrFormat("/dummy_%d", parsed_device.task));
   NodeDef shape_tensor_def;
   shape_tensor_def.set_op("Const");
   shape_tensor_def.set_name(graph->NewName(
@@ -2784,12 +2856,6 @@ xla::StatusOr<NodeOut> CreateOrGetPerHostVariableCopy(
     return it->second[var_index];
   }
 
-  // Variable replication relies on identification of a master.
-  DeviceNameUtils::ParsedName parsed_device;
-  TF_RET_CHECK(DeviceNameUtils::ParseFullName(host_cpu_device, &parsed_device));
-  TF_RET_CHECK(parsed_device.has_task);
-  VLOG(1) << "Creating per-host IdentityN node for task " << parsed_device.task;
-
   DataTypeVector dtypes;
   // Per-variable data source for TPUExecute.
   std::vector<NodeOut> index_mapping;
@@ -2797,8 +2863,9 @@ xla::StatusOr<NodeOut> CreateOrGetPerHostVariableCopy(
   dtypes.reserve(variable_reads.size());
   for (int64 i = 0; i < variable_reads.size(); ++i) {
     Node* read = variable_reads[i];
-    int64 orig_arg_num =
-        i + params_info.NumPerReplicaArgs() + params_info.NumBroadcastArgs();
+    int64 orig_arg_num = i + params_info.NumPerReplicaArgs() +
+                         params_info.NumDistributedArgs() +
+                         params_info.NumBroadcastArgs();
     if (arg_shardings[orig_arg_num].type() != xla::OpSharding::OTHER) {
       // We haven't built the IdentityN node yet, so temporarily use nullptr.
       index_mapping.push_back(
@@ -2826,34 +2893,18 @@ xla::StatusOr<NodeOut> CreateOrGetPerHostVariableCopy(
     if (index_mapping[i].node == nullptr) {
       // Fill index_mapping with the actual IdentityN node.
       index_mapping[i].node = id_node;
-      if (parsed_device.task == 0 || !enable_xla_param_broadcast) {
-        // XLA broadcast mode is not enabled, so use the variable reads as args
-        // to TPUExecuteOp. For task 0, variable reads are always used
-        // regardless of XLA broadcast.
-
+      if (!enable_xla_param_broadcast) {
         // Add the variable read edge to id_node.
         graph->AddEdge(variable_reads[i], 0, id_node, index_mapping[i].index);
       } else {
-        // XLA broadcast mode is enabled. Create zero-valued dummy tensors to
-        // use as variable args in the TPUExecuteOp.
-        int64 orig_arg_num = i + params_info.NumPerReplicaArgs() +
-                             params_info.NumBroadcastArgs();
-        if (num_cores_per_replica > 1) {
-          LOG(WARNING) << "XLA parameter broadcast is only supported for "
-                          "replicated parameters. Falling back to "
-                          "non-broadcast mode for the parameter associated "
-                          "with the following variable read: "
-                       << variable_reads[i]->name();
-          graph->AddEdge(variable_reads[i], 0, id_node, index_mapping[i].index);
-          continue;
-        }
-        string dummy_name =
-            strings::StrCat(variable_reads[i]->name(),
-                            absl::StrFormat("/dummy_%d", parsed_device.task));
+        // XLA param broadcast mode is enabled.  Create zero-valued dummy
+        // tensors to use as variable args in the TPUExecuteOp, instead of
+        // original variable reads.
         TF_ASSIGN_OR_RETURN(
             Node * var_read,
-            CreatePerHostDummyArgs(arg_shapes[orig_arg_num], host_cpu_device,
-                                   variable_reads[i], dummy_name, graph));
+            MaybeCreatePerHostDummyArgs(arg_shapes, host_cpu_device,
+                                        params_info, variable_reads[i], i,
+                                        num_cores_per_replica, graph));
         graph->AddEdge(var_read, 0, id_node, index_mapping[i].index);
       }
     }
@@ -2890,7 +2941,8 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
   TF_RETURN_IF_ERROR(replicate_node.input_edges(&replicate_input_edges));
 
   // Map from replicate input index to the fan_in node;
-  absl::flat_hash_map<int, std::vector<Node*>> replicate_input_fan_in_nodes;
+  absl::flat_hash_map<int, std::vector<NodeAndPort>>
+      replicate_input_fan_in_nodes;
   absl::flat_hash_map<int, std::vector<Node*>> replicate_output_fan_out_nodes;
   absl::flat_hash_map<int, std::vector<int>>
       replicate_output_fan_out_dst_inputs;
@@ -2907,8 +2959,9 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
             e->src()->name(), " must only have one user. Found ", num_users);
       }
       to_be_removed_nodes.push_back(e->src());
-      std::vector<Node*>& nodes = replicate_input_fan_in_nodes[e->dst_input()];
-      nodes.resize(num_cores_per_replica, nullptr);
+      std::vector<NodeAndPort>& nodes =
+          replicate_input_fan_in_nodes[e->dst_input()];
+      nodes.resize(num_cores_per_replica, NodeAndPort(nullptr, 0));
       VLOG(2) << "allocate " << num_cores_per_replica
               << " for replicate_input_fan_in_nodes[" << e->dst_input() << "]";
       std::vector<const Edge*> fan_in_edges;
@@ -2916,7 +2969,8 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
       TF_RET_CHECK(fan_in_edges.size() == num_cores_per_replica);
 
       for (const Edge* fe : fan_in_edges) {
-        nodes[fe->dst_input()] = fe->src();
+        nodes[fe->dst_input()].node = fe->src();
+        nodes[fe->dst_input()].port = fe->src_output();
         VLOG(2) << "replicate_input_fan_in_nodes[" << e->dst_input() << "]["
                 << fe->dst_input() << "] = " << fe->src()->name();
       }
@@ -3134,10 +3188,12 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
             // Don't automatically add a split node when input node is
             // kTPUPartitionedInput
             if (edge->src()->type_string() == kTPUPartitionedInput) {
-              VLOG(2) << "Connect "
-                      << replicate_input_fan_in_nodes[input_num][core]->name()
-                      << " to " << node->name() << " at " << i;
-              graph->AddEdge(replicate_input_fan_in_nodes[input_num][core], 0,
+              VLOG(2)
+                  << "Connect "
+                  << replicate_input_fan_in_nodes[input_num][core].node->name()
+                  << " to " << node->name() << " at " << i;
+              graph->AddEdge(replicate_input_fan_in_nodes[input_num][core].node,
+                             replicate_input_fan_in_nodes[input_num][core].port,
                              node, i);
             } else {
               if (dtype == DT_RESOURCE) {
@@ -3165,7 +3221,8 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
           } else if (edge->src()->type_string() == kTPUPartitionedInput &&
                      arg_shardings[orig_arg_num].type() ==
                          xla::OpSharding::REPLICATED) {
-            graph->AddEdge(replicate_input_fan_in_nodes[input_num][core], 0,
+            graph->AddEdge(replicate_input_fan_in_nodes[input_num][core].node,
+                           replicate_input_fan_in_nodes[input_num][core].port,
                            node, i);
           } else {
             graph->AddEdge(edge->src(), edge->src_output(), node, i);
@@ -3917,6 +3974,7 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
   TF_RETURN_IF_ERROR(GetTPUDeviceNames(replicate_node.requested_device(),
                                        device_set, tpu_compilation_device,
                                        &num_tpus_per_task, &tpu_devices));
+  *num_tasks = tpu_devices.size();
 
   string topology;
   TF_RETURN_IF_ERROR(
@@ -4305,7 +4363,7 @@ DistributedTPURewritePass::BuildCompilationStatusReturnNodes(
       arg_types, guaranteed_constant_nodes, session_handle, arg_sharding,
       arg_fast_mem, arg_names, retval_sharding, num_cores_per_replica,
       /*compile_device=*/tpu_compilation_device, xla_device_assignment.get(),
-      dynamic_shape_nodes, graph, &compile_node, autotuner_thresh));
+      dynamic_shape_nodes, graph, &compile_node, autotuner_thresh, num_tasks));
 
   // Compilation must be sequenced after the control node if the TPU computation
   // in a control-flow construct, such as a loop.

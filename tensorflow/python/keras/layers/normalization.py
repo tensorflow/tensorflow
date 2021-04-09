@@ -14,16 +14,13 @@
 # ==============================================================================
 """Normalization layers."""
 # pylint: disable=g-classes-have-attributes
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
@@ -54,7 +51,7 @@ class BatchNormalizationBase(Layer):
   with the argument `training=True`), the layer normalizes its output using
   the mean and standard deviation of the current batch of inputs. That is to
   say, for each channel being normalized, the layer returns
-  `(batch - mean(batch)) / (var(batch) + epsilon) * gamma + beta`, where:
+  `gamma * (batch - mean(batch)) / sqrt(var(batch) + epsilon) + beta`, where:
 
   - `epsilon` is small constant (configurable as part of the constructor
   arguments)
@@ -68,7 +65,7 @@ class BatchNormalizationBase(Layer):
   default), the layer normalizes its output using a moving average of the
   mean and standard deviation of the batches it has seen during training. That
   is to say, it returns
-  `(batch - self.moving_mean) / (self.moving_var + epsilon) * gamma + beta`.
+  `gamma * (batch - self.moving_mean) / sqrt(self.moving_var + epsilon) + beta`.
 
   `self.moving_mean` and `self.moving_var` are non-trainable variables that
   are updated each time the layer in called in training mode, as such:
@@ -238,25 +235,27 @@ class BatchNormalizationBase(Layer):
     """Raises a ValueError if fused implementation cannot be used.
 
     In addition to the checks done in this function, the input tensors rank must
-    be 4. The input rank check can only be done once the input shape is known.
+    be 4 or 5. The input rank check can only be done once the input shape is
+    known.
     """
     # Note the ValueErrors in this function are caught and not reraised in
     # _fused_can_be_used(). No other exception besides ValueError should be
     # raised here.
 
     # Currently fused batch norm doesn't support renorm. It also only supports a
-    # channel dimension on axis 1 or 3, when no virtual batch size or adjustment
-    # is used.
+    # channel dimension on axis 1 or 3 (rank=4) / 1 or 4 (rank5), when no
+    # virtual batch size or adjustment is used.
     if self.renorm:
       raise ValueError('Passing both `fused=True` and `renorm=True` is '
                        'not supported')
     axis = [self.axis] if isinstance(self.axis, int) else self.axis
-    # Axis -3 is equivalent to 1, and axis -1 is equivalent to 3, because the
-    # input rank is required to be 4 (which is checked later).
-    # TODO(b/173253101): Once the input rank can be 5, update this check.
-    if len(axis) > 1 or axis[0] not in (-3, -1, 1, 3):
+    # Axis -3 is equivalent to 1, and axis -1 is equivalent to 3, when the
+    # input rank is 4. Similarly, the valid axis is -4, -1, 1, 4 when the rank
+    # is 5. The combination of ranks and axes will be checked later.
+    if len(axis) > 1 or axis[0] not in (-4, -3, -1, 1, 3, 4):
       raise ValueError('Passing `fused=True` is only supported when axis is 1 '
-                       'or 3. Got axis %s' % (axis,))
+                       'or 3 for input rank = 4 or 1 or 4 for input rank = 5. '
+                       'Got axis %s' % (axis,))
     if self.virtual_batch_size is not None:
       raise ValueError('Passing `fused=True` is not supported when '
                        '`virtual_batch_size` is specified.')
@@ -337,19 +336,16 @@ class BatchNormalizationBase(Layer):
       # TODO(yaozhang): if input is not 4D, reshape it to 4D and reshape the
       # output back to its original shape accordingly.
       if self._USE_V2_BEHAVIOR:
-        # TODO(b/173253101): Using fused in the 5D case is currently disabled
-        # due to a regression on UNet, so it is only currently only supported in
-        # the 4D case.
         if self.fused is None:
-          self.fused = ndims == 4
-        elif self.fused and ndims != 4:
+          self.fused = ndims in (4, 5)
+        elif self.fused and ndims not in (4, 5):
           raise ValueError('Batch normalization layers with `fused=True` only '
                            'support 4D or 5D input tensors. '
                            'Received tensor with shape: %s' %
                            (tuple(input_shape),))
       else:
         assert self.fused is not None
-        self.fused = (ndims == 4 and self._fused_can_be_used())
+        self.fused = (ndims in (4, 5) and self._fused_can_be_used())
       # TODO(chrisying): fused batch norm is currently not supported for
       # multi-axis batch norm and by extension virtual batches. In some cases,
       # it might be possible to use fused batch norm but would require reshaping
@@ -417,7 +413,7 @@ class BatchNormalizationBase(Layer):
     else:
       self.gamma = None
       if self.fused:
-        self._gamma_const = K.constant(
+        self._gamma_const = backend.constant(
             1.0, dtype=self._param_dtype, shape=param_shape)
 
     if self.center:
@@ -433,7 +429,7 @@ class BatchNormalizationBase(Layer):
     else:
       self.beta = None
       if self.fused:
-        self._beta_const = K.constant(
+        self._beta_const = backend.constant(
             0.0, dtype=self._param_dtype, shape=param_shape)
 
     try:
@@ -518,22 +514,33 @@ class BatchNormalizationBase(Layer):
     self.built = True
 
   def _assign_moving_average(self, variable, value, momentum, inputs_size):
-    with K.name_scope('AssignMovingAvg') as scope:
-      with ops.colocate_with(variable):
-        decay = ops.convert_to_tensor_v2_with_dispatch(
-            1.0 - momentum, name='decay')
-        if decay.dtype != variable.dtype.base_dtype:
-          decay = math_ops.cast(decay, variable.dtype.base_dtype)
-        update_delta = (variable - math_ops.cast(value, variable.dtype)) * decay
-        if inputs_size is not None:
-          update_delta = array_ops.where(inputs_size > 0, update_delta,
-                                         K.zeros_like(update_delta))
-        return state_ops.assign_sub(variable, update_delta, name=scope)
+
+    def calculate_update_delta():
+      decay = ops.convert_to_tensor_v2_with_dispatch(
+          1.0 - momentum, name='decay')
+      if decay.dtype != variable.dtype.base_dtype:
+        decay = math_ops.cast(decay, variable.dtype.base_dtype)
+      update_delta = (variable - math_ops.cast(value, variable.dtype)) * decay
+      if inputs_size is not None:
+        update_delta = array_ops.where(inputs_size > 0, update_delta,
+                                       backend.zeros_like(update_delta))
+      return update_delta
+
+    with backend.name_scope('AssignMovingAvg') as scope:
+      if ops.executing_eagerly_outside_functions():
+        return variable.assign_sub(calculate_update_delta(), name=scope)
+      else:
+        with ops._colocate_with(variable):  # pylint: disable=protected-access
+          return state_ops.assign_sub(
+              variable, calculate_update_delta(), name=scope)
 
   def _assign_new_value(self, variable, value):
-    with K.name_scope('AssignNewValue') as scope:
-      with ops.colocate_with(variable):
-        return state_ops.assign(variable, value, name=scope)
+    with backend.name_scope('AssignNewValue') as scope:
+      if ops.executing_eagerly_outside_functions():
+        return variable.assign(value, name=scope)
+      else:
+        with ops._colocate_with(variable):  # pylint: disable=protected-access
+          return state_ops.assign(variable, value, name=scope)
 
   def _fused_batch_norm(self, inputs, training):
     """Returns the output of fused batch norm."""
@@ -720,14 +727,15 @@ class BatchNormalizationBase(Layer):
     # code as well.
     if self._support_zero_size_input():
       input_batch_size = array_ops.shape(inputs)[0]
-      mean = array_ops.where(input_batch_size > 0, mean, K.zeros_like(mean))
+      mean = array_ops.where(
+          input_batch_size > 0, mean, backend.zeros_like(mean))
       variance = array_ops.where(input_batch_size > 0, variance,
-                                 K.zeros_like(variance))
+                                 backend.zeros_like(variance))
     return mean, variance
 
   def _get_training_value(self, training=None):
     if training is None:
-      training = K.learning_phase()
+      training = backend.learning_phase()
     if self._USE_V2_BEHAVIOR:
       if isinstance(training, int):
         training = bool(training)
@@ -884,7 +892,7 @@ class BatchNormalizationBase(Layer):
               self.moving_variance,
               # Apply relu in case floating point rounding causes it to go
               # negative.
-              K.relu(moving_stddev * moving_stddev - self.epsilon))
+              backend.relu(moving_stddev * moving_stddev - self.epsilon))
 
         if self.renorm:
           true_branch = true_branch_renorm
@@ -1259,15 +1267,12 @@ class LayerNormalization(Layer):
 
       inputs = array_ops.reshape(inputs, squeezed_shape)
 
-      def _set_const_tensor(val, dtype, shape):
-        return array_ops.fill(shape, constant_op.constant(val, dtype=dtype))
-
       # self.gamma and self.beta have the wrong shape for fused_batch_norm, so
       # we cannot pass them as the scale and offset parameters. Therefore, we
       # create two constant tensors in correct shapes for fused_batch_norm and
       # later construct a separate calculation on the scale and offset.
-      scale = _set_const_tensor(1.0, self.dtype, [pre_dim])
-      offset = _set_const_tensor(0.0, self.dtype, [pre_dim])
+      scale = array_ops.ones([pre_dim], dtype=self.dtype)
+      offset = array_ops.zeros([pre_dim], dtype=self.dtype)
 
       # Compute layer normalization using the fused_batch_norm function.
       outputs, _, _ = nn.fused_batch_norm(

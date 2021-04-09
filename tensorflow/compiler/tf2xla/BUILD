@@ -18,7 +18,7 @@ load("//tensorflow/compiler/xla/service/cpu:build_defs.bzl", "runtime_copts")
 
 package(
     default_visibility = [":internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -41,6 +41,7 @@ package_group(
         "//learning/brain/tools/tf_replay/...",
         "//tensorflow/...",
         "//tensorflow_models/...",
+        "//third_party/mlir_edge/model_curriculum/iree/...",
         "//third_party/mlperf/submissions/training/v0_7/models/...",
         "//third_party/py/keras/...",
     ],
@@ -361,6 +362,7 @@ cc_library(
         "//tensorflow/compiler/jit:shape_inference",
         "//tensorflow/compiler/mlir:array_container_utils",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
+        "//tensorflow/compiler/xla/client:value_inference",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -485,6 +487,7 @@ cc_library(
         ":xla_resource",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client",
+        "//tensorflow/compiler/xla/client:value_inference",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -557,7 +560,9 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
     ],
     alwayslink = 1,
 )
@@ -859,6 +864,7 @@ cc_library(
     hdrs = [
         "functionalize_control_flow.h",
     ],
+    visibility = [":friends"],
     deps = [
         ":functionalize_cond",
         ":functionalize_control_flow_util",
@@ -1118,6 +1124,18 @@ tf_cuda_cc_test(
         "//third_party/eigen3",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "mlir_xla_op_kernel",
+    srcs = ["mlir_xla_op_kernel.cc"],
+    hdrs = ["mlir_xla_op_kernel.h"],
+    deps = [
+        ":xla_compiler",
+        "//tensorflow/compiler/jit:xla_compilation_cache",
+        "//tensorflow/compiler/mlir:array_container_utils",
+        "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
     ],
 )
 

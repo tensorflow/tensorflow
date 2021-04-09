@@ -40,16 +40,11 @@ const char* const kDlTensorCapsuleName = "dltensor";
 struct DLPackTensor {
   ~DLPackTensor();
 
-  // At most one of owned_buffer and buffer_reference/external_reference_hold is
-  // populated.
-
-  // `owned_buffer` is populated if we have exclusive (read-write) access.
-  std::shared_ptr<void> owned_buffer;
-
-  // `buffer_reference` and `external_reference_hold` are populated if we have
-  // shared (read-only) access.
+  // `buffer_reference` is populated if we have shared (read-only) access.
   py::object buffer_reference;
-  std::unique_ptr<PjRtBuffer::ExternalReferenceHold> external_reference_hold;
+
+  // `external_reference` is always populated.
+  std::unique_ptr<PjRtBuffer::ExternalReference> external_reference;
 
   std::vector<int64> shape;
   std::vector<int64> strides;
@@ -254,19 +249,22 @@ StatusOr<PjRtDevice*> DeviceForDLContext(const PjRtClient& client,
 
 StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
                                                   bool take_ownership) {
-  PyBuffer* buffer = py::cast<PyBuffer*>(py_buffer);
+  TF_ASSIGN_OR_RETURN(PyBuffer * buffer, PyBuffer::AsPyBuffer(py_buffer));
   auto pack = std::make_unique<DLPackTensor>();
   if (buffer->buffer()->on_device_shape().IsTuple()) {
     return Unimplemented(
         "unsafe_buffer_pointer is not implemented for tuple "
         "buffers.");
   }
+  if (buffer->buffer()->on_device_shape().is_dynamic()) {
+    return Unimplemented("DynamicShape is not implemented in DLPack.");
+  }
 
   DLTensor& dt = pack->tensor.dl_tensor;
   if (take_ownership) {
     // Block on outstanding operations, so that it is safe to read or mutate the
     // returned buffer.
-    StatusOr<absl::optional<std::shared_ptr<void>>> buffer_or =
+    StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>> buffer_or =
         buffer->buffer()->ReleaseDeviceMemoryOwnership(
             /*wait_for_operations_to_complete=*/true);
     if (!buffer_or.ok()) {
@@ -274,36 +272,33 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
           "Buffer synchronization failed converting to DLPack tensor: %s",
           buffer_or.status().ToString());
     }
-    absl::optional<std::shared_ptr<void>> owned_buffer_opt =
-        buffer_or.ConsumeValueOrDie();
-    if (!owned_buffer_opt.has_value()) {
+    pack->external_reference = buffer_or.ConsumeValueOrDie();
+    if (!pack->external_reference) {
       return InvalidArgument(
           "Cannot convert deleted/invalid buffer to DLPack tensor.");
     }
-    pack->owned_buffer = owned_buffer_opt.value();
-    dt.data = pack->owned_buffer.get();
   } else {
     // Block on outstanding operations, so that it is safe to read or mutate the
     // returned buffer.
     TF_RETURN_IF_ERROR(buffer->BlockHostUntilReady());
     pack->buffer_reference = py::reinterpret_borrow<py::object>(py_buffer);
-    TF_ASSIGN_OR_RETURN(pack->external_reference_hold,
+    TF_ASSIGN_OR_RETURN(pack->external_reference,
                         buffer->buffer()->AcquireExternalReference());
-    dt.data = pack->external_reference_hold->OpaqueDeviceMemoryDataPointer();
   }
+  dt.data = pack->external_reference->OpaqueDeviceMemoryDataPointer();
   pack->tensor.manager_ctx = pack.get();
   pack->tensor.deleter = DLPackTensorDeleter;
   TF_ASSIGN_OR_RETURN(dt.ctx, DLContextForDevice(*buffer->buffer()->device()));
   dt.ctx.device_id = buffer->buffer()->device()->local_hardware_id();
-  dt.ndim = buffer->buffer()->on_host_shape().dimensions_size();
+  dt.ndim = buffer->buffer()->on_device_shape().dimensions_size();
   TF_ASSIGN_OR_RETURN(dt.dtype,
                       PrimitiveTypeToDLDataType(
-                          buffer->buffer()->on_host_shape().element_type()));
+                          buffer->buffer()->on_device_shape().element_type()));
 
-  pack->shape =
-      std::vector<int64>(buffer->buffer()->on_host_shape().dimensions().begin(),
-                         buffer->buffer()->on_host_shape().dimensions().end());
-  pack->strides = StridesForShape(buffer->buffer()->on_host_shape());
+  pack->shape = std::vector<int64>(
+      buffer->buffer()->on_device_shape().dimensions().begin(),
+      buffer->buffer()->on_device_shape().dimensions().end());
+  pack->strides = StridesForShape(buffer->buffer()->on_device_shape());
   dt.shape = reinterpret_cast<std::int64_t*>(pack->shape.data());
   dt.strides = reinterpret_cast<std::int64_t*>(pack->strides.data());
   dt.byte_offset = 0;
@@ -323,7 +318,7 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
   return capsule;
 }
 
-StatusOr<std::unique_ptr<PyBuffer>> DLPackManagedTensorToBuffer(
+StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
     const pybind11::capsule& tensor, std::shared_ptr<PyClient> client) {
   if (absl::string_view(tensor.name()) != kDlTensorCapsuleName) {
     return InvalidArgument(
@@ -372,8 +367,8 @@ StatusOr<std::unique_ptr<PyBuffer>> DLPackManagedTensorToBuffer(
   // capsule it cannot be used again.
   PyCapsule_SetName(tensor.ptr(), "used_dltensor");
   PyCapsule_SetDestructor(tensor.ptr(), nullptr);
-  return std::make_unique<PyBuffer>(std::move(client), std::move(pjrt_buffer),
-                                    Traceback::Get());
+  return PyBuffer::Make(std::move(client), std::move(pjrt_buffer),
+                        Traceback::Get());
 }
 
 }  // namespace xla

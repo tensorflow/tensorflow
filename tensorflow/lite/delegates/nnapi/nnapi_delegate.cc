@@ -57,6 +57,7 @@ limitations under the License.
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 #include "tensorflow/lite/nnapi/nnapi_util.h"
 #include "tensorflow/lite/util.h"
+#include <farmhash.h>
 
 namespace tflite {
 namespace {
@@ -675,7 +676,7 @@ NNMemory::~NNMemory() {
   if (nn_memory_handle_) {
     nnapi_->ANeuralNetworksMemory_free(nn_memory_handle_);
   }
-  if (fd_ > 0) close(fd_);
+  if (fd_ >= 0) close(fd_);
 #endif
 }
 
@@ -2056,7 +2057,11 @@ bool NNAPIDelegateKernel::Validate(
              NNAPIValidationFailureType::kUnsupportedOperandRank,
              "Input rank should be less than 4", &val_ctx);
 
-      if (context->tensors[node->inputs->data[0]].type == kTfLiteUInt8 &&
+      const auto& input_type = context->tensors[node->inputs->data[0]].type;
+      EXPECT_INPUT_TYPE_IN(input_type, kTfLiteFloat16, kTfLiteFloat32,
+                           kTfLiteUInt8, kTfLiteInt8);
+
+      if (input_type == kTfLiteUInt8 &&
           android_sdk_version < kMinSdkVersionForNNAPI12) {
         auto first_param = context->tensors[node->inputs->data[0]].params;
         for (int i = 1; i < node->inputs->size; i++) {
@@ -3657,9 +3662,10 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
     // TODO(b/133342794): use a generic token generator class.
     uint64_t token_parts[4];
     // Create bits from model_token.
-    // TODO(b/172237993): should not use std::hash, as that is not
+    // Using farmhash fingerprint instead of std::hash, as the latter is not
     // guaranteed to be stable across program invocations.
-    token_parts[0] = std::hash<std::string>{}(model_token);
+    token_parts[0] =
+        ::util::Fingerprint64(model_token, std::strlen(model_token));
     // Create bits from params->nodes_to_replace.
     token_parts[1] = GetHash(params->nodes_to_replace);
     // Create bits from params->input_tensors. These include the input tensor
@@ -3772,6 +3778,22 @@ TfLiteStatus NNAPIDelegateKernel::Prepare(TfLiteContext* context,
   RETURN_TFLITE_ERROR_IF_NN_ERROR(context, finish_result,
                                   "completing NNAPI compilation", nnapi_errno);
   nn_compilation_.reset(compilation);
+
+  // Create burst object to be reused across a sequence of executions
+  if (delegate_options.use_burst_computation &&
+      nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI12 &&
+      nnapi_->ANeuralNetworksBurst_create) {
+    ANeuralNetworksBurst* burst = nullptr;
+    const int create_burst_result =
+        nnapi_->ANeuralNetworksBurst_create(nn_compilation_.get(), &burst);
+    if (create_burst_result != ANEURALNETWORKS_NO_ERROR) {
+      nnapi_->ANeuralNetworksBurst_free(burst);
+      burst = nullptr;
+    }
+    RETURN_TFLITE_ERROR_IF_NN_ERROR(context, create_burst_result,
+                                    "creating NNAPI burst", nnapi_errno);
+    nn_burst_.reset(burst);
+  }
 
   return kTfLiteOk;
 }
@@ -4077,10 +4099,19 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
                                     "waiting for async computation completion",
                                     nnapi_errno);
   } else {
-    // Use synchronous execution for NNAPI 1.2+.
-    RETURN_TFLITE_ERROR_IF_NN_ERROR(
-        context, nnapi_->ANeuralNetworksExecution_compute(execution),
-        "running computation", nnapi_errno);
+    // Use Burst mode by default for NNAPI 1.2+.
+    if (nn_burst_) {
+      RETURN_TFLITE_ERROR_IF_NN_ERROR(
+          context,
+          nnapi_->ANeuralNetworksExecution_burstCompute(execution,
+                                                        nn_burst_.get()),
+          "running burst computation", nnapi_errno);
+    } else {
+      // Use synchronous execution for NNAPI 1.2+ as a fallback.
+      RETURN_TFLITE_ERROR_IF_NN_ERROR(
+          context, nnapi_->ANeuralNetworksExecution_compute(execution),
+          "running computation", nnapi_errno);
+    }
   }
 
   // copy results from shared memory to the destination.
@@ -4836,6 +4867,7 @@ StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* nnapi,
   if (nnapi->android_sdk_version >= kMinSdkVersionForNNAPI11) {
     delegate_data_.allow_dynamic_dimensions = options.allow_dynamic_dimensions;
   }
+  delegate_data_.use_burst_computation = options.use_burst_computation;
   TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                        "Created TensorFlow Lite delegate for NNAPI.");
   Prepare = DoPrepare;
@@ -4878,6 +4910,7 @@ const StatefulNnApiDelegate::Options StatefulNnApiDelegate::GetOptions(
   options.max_execution_loop_timeout_duration_ns =
       delegate_data->max_execution_loop_timeout_duration_ns;
   options.allow_dynamic_dimensions = delegate_data->allow_dynamic_dimensions;
+  options.use_burst_computation = delegate_data->use_burst_computation;
   return options;
 }
 

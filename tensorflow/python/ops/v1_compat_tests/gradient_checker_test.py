@@ -65,7 +65,7 @@ class GradientCheckerTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testAddSimpleGPU(self):
     np.random.seed(2)  # Fix seed to avoid flakiness
-    with self.session(use_gpu=True):
+    with self.session():
       # a test case for Add operation
       size = (2, 3)
       x1 = constant_op.constant(2.0, shape=size, name="x1")
@@ -225,7 +225,7 @@ class MiniMNISTTest(test.TestCase):
     s = label_data.sum(axis=1)
     label_data /= s[:, None]
 
-    with self.session(use_gpu=True):
+    with self.session():
       # We treat the inputs as "parameters" here
       inp = constant_op.constant(
           inp_data.tolist(),

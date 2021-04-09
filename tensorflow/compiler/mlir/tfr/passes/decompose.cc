@@ -100,11 +100,11 @@ struct DecomposeTFOpsPass
 
 void DecomposeTFOpsPass::ApplyCanonicalization() {
   FuncOp func = getFunction();
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
 
   populateCanonicalizationPatterns(func, patterns);
 
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {

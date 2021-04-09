@@ -14,10 +14,6 @@
 # ==============================================================================
 """Keras Input Tensor used to track functional API Topology."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -32,25 +28,6 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import nest
 
 # pylint: disable=g-classes-have-attributes
-
-_KERAS_TENSORS_ENABLED = True
-
-
-def enable_keras_tensors():
-  """Enable using KerasTensors in Keras's functional API."""
-  global _KERAS_TENSORS_ENABLED
-  _KERAS_TENSORS_ENABLED = True
-
-
-def disable_keras_tensors():
-  """Disable using KerasTensors in Keras's functional API."""
-  global _KERAS_TENSORS_ENABLED
-  _KERAS_TENSORS_ENABLED = False
-
-
-def keras_tensors_enabled():
-  """Return a bool specifying if KerasTensors are enabled."""
-  return _KERAS_TENSORS_ENABLED and ops.executing_eagerly_outside_functions()
 
 
 # Tensorflow tensors have a maximum rank of 254
@@ -568,8 +545,6 @@ class _KerasTensorIterator(object):
     result = self._tensor[self._index]
     self._index += 1
     return result
-
-  next = __next__  # python2.x compatibility.
 
 
 # Specify the mappings of tensor class to KerasTensor class.

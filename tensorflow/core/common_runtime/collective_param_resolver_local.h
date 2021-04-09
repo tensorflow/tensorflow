@@ -85,7 +85,8 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   typedef std::function<void(const Status& s, const GroupRec* gr)>
       GroupRecCallback;
   void CompleteGroupLocal(const DeviceAttributes& device, CollectiveParams* cp,
-                          const GroupRecCallback& done)
+                          const GroupRecCallback& done,
+                          CancellationManager* cancel_mgr)
       TF_LOCKS_EXCLUDED(group_mu_);
 
   // Finishes the group parameters once all members of the group are there.
@@ -98,7 +99,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   struct InstanceRec {
     mutex mu;
     // Values to be shared by all instances, constant after initialization.
-    CollectiveParams shared;
+    CollectiveParams* shared;
     // If an error occurs during initialization this structure stays in the
     // table with a non-OK status. Purging the table and restarting needs to be
     // done at a higher level.
@@ -113,17 +114,21 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
     std::vector<bool> known TF_GUARDED_BY(mu);
     std::vector<IRConsumer> known_waiters TF_GUARDED_BY(mu);
 
-    InstanceRec() : source_rank(-1), known_count(0) {}
+    InstanceRec()
+        : shared(new CollectiveParams()), source_rank(-1), known_count(0) {}
+    ~InstanceRec() { shared->Unref(); }
   };
 
   // Find the InstanceRec with the same instance_key as cp.  If it doesn't
   // already exist, create and initialize from gr and cp.
+  // created is set to true if a new IRec is created, false otherwise.
   //
   // Precondition: *gr must be a complete GroupRec, i.e. the value set
   // by CompleteGroupLocal. *cp must be populated with all the fields
   // required by InitInstanceSharedParams.  Ownership of InstanceRec stays
   // with this object and does not pass to the callback.
-  InstanceRec* GetOrCreateInstanceRec(const GroupRec* gr, CollectiveParams* cp)
+  InstanceRec* GetOrCreateInstanceRec(const GroupRec* gr, CollectiveParams* cp,
+                                      bool* created)
       TF_LOCKS_EXCLUDED(instance_mu_, gr->mu, group_mu_);
 
   // Populate *ir with device membership from gr, then initialize to be specific

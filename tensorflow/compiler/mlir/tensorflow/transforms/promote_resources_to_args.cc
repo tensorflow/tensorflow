@@ -395,8 +395,8 @@ void PromoteVarHandlesToArgsPass::runOnOperation() {
     if (failed(CheckSingleBlockFunction(function))) return signalPassFailure();
 
     llvm::SmallVector<std::string, 4> var_handle_shared_names;
-    PromoteVarHandlesToArguments(function, /*add_validation=*/false,
-                                 &var_handle_shared_names);
+    (void)PromoteVarHandlesToArguments(function, /*add_validation=*/false,
+                                       &var_handle_shared_names);
 
     // Add resource names for each `tf.VarHandleOp` that were promoted to
     // resource arguments.
@@ -405,7 +405,7 @@ void PromoteVarHandlesToArgsPass::runOnOperation() {
     for (auto var_name_and_index : llvm::enumerate(var_handle_shared_names))
       function.setArgAttr(var_name_and_index.index() + var_handle_args_offset,
                           kResourceNameArgAttr,
-                          StringAttr::get(var_name_and_index.value(), context));
+                          StringAttr::get(context, var_name_and_index.value()));
   }
 }
 

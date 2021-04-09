@@ -200,6 +200,8 @@ using namespace metal;
   const bool use_local_id = code->find("LOCAL_ID_") != std::string::npos;
   const bool use_group_id = code->find("GROUP_ID_") != std::string::npos;
   const bool use_group_size = code->find("GROUP_SIZE_") != std::string::npos;
+  const bool use_simd_id =
+      code->find("SUB_GROUP_LOCAL_ID") != std::string::npos;
   if (use_global_id) {
     AppendArgument("uint3 reserved_gid[[thread_position_in_grid]]", &arguments);
   }
@@ -213,6 +215,10 @@ using namespace metal;
   }
   if (use_group_size) {
     AppendArgument("uint3 reserved_group_size[[threads_per_threadgroup]]",
+                   &arguments);
+  }
+  if (use_simd_id) {
+    AppendArgument("uint reserved_simd_id[[thread_index_in_simdgroup]]",
                    &arguments);
   }
   if (!use_global_id && !use_local_id && !use_group_id && !use_group_size &&
@@ -485,6 +491,9 @@ std::string MetalArguments::GetListOfArgs(int buffer_offset,
   for (auto& t : images2d_) {
     std::string access = AccessToMetalTextureAccess(t.second.desc.access_type);
     std::string data_type = ToMetalDataType(t.second.desc.data_type);
+    if (t.second.desc.normalized) {
+      data_type = ToMetalDataType(t.second.desc.normalized_type);
+    }
     AppendArgument(absl::StrCat("texture2d<", data_type, ", ", access, "> ",
                                 t.first, "[[texture(", textures_offset, ")]]"),
                    &result);

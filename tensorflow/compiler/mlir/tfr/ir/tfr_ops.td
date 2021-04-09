@@ -267,7 +267,7 @@ def TFR_ConstOp : TFR_Op<"constant", [ConstantLike, NoSideEffect]> {
   let hasFolder = 1;
 
   let builders = [
-    OpBuilderDAG<(ins "Attribute":$value),
+    OpBuilder<(ins "Attribute":$value),
     [{
       auto* ctx = value.getContext();
       $_state.addAttribute("value", value);
@@ -425,7 +425,7 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
   let skipDefaultBuilders = 1;
 
   let builders = [
-    OpBuilderDAG<(ins "StringRef":$name, "FunctionType":$type,
+    OpBuilder<(ins "StringRef":$name, "FunctionType":$type,
       CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>
   ];
 
@@ -441,7 +441,7 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
     // non-derived ones.
     llvm::StringSet<> getDefinedAttributeNames() {
       llvm::StringSet<> all_attrs;
-      for (auto& attr : getAttrs()) {
+      for (auto& attr : (*this)->getAttrs()) {
         all_attrs.insert(attr.first.strref());
       }
       for (const auto& operand : llvm::enumerate(getType().getInputs())) {

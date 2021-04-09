@@ -52,13 +52,13 @@ class PythonTracer : public ProfilerInterface {
  private:
   bool recording_ = false;
   const PythonHooksOptions options_;
+  std::unique_ptr<tensorflow::profiler::PythonHookContext> context_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(PythonTracer);
 };
 
 PythonTracer::~PythonTracer() {
   Stop().IgnoreError();
-  PythonHooks::GetSingleton()->Finalize(nullptr);
 }
 
 Status PythonTracer::Start() {
@@ -76,7 +76,7 @@ Status PythonTracer::Stop() {
     return errors::Internal("TraceMeRecorder not started");
   }
   VLOG(1) << __FUNCTION__;
-  PythonHooks::GetSingleton()->Stop();
+  context_ = PythonHooks::GetSingleton()->Stop();
   recording_ = false;
   return Status::OK();
 }
@@ -88,13 +88,16 @@ Status PythonTracer::CollectData(RunMetadata* run_metadata) {
   // We had assumed HostTracer::Stop is called when ProfilerSession try to
   // serialize PythonTracer.
   VLOG(2) << "Collecting data to RunMetaData from PythonTracer.";
-  PythonHooks::GetSingleton()->Finalize(nullptr);
+  context_.reset();
   return Status::OK();
 }
 
 Status PythonTracer::CollectData(XSpace* space) {
   VLOG(2) << "Collecting data to XSpace from PythonTracer.";
-  PythonHooks::GetSingleton()->Finalize(space);
+  if (context_) {
+    context_->Finalize(space);
+    context_.reset();
+  }
   return Status::OK();
 }
 

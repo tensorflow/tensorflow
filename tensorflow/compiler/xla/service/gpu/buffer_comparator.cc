@@ -615,8 +615,15 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
   gpu_device_info.threads_per_core_limit =
       executor->GetDeviceDescription().threads_per_core_limit();
   gpu_device_info.core_count = executor->GetDeviceDescription().core_count();
-  LaunchDimensions dim =
-      CalculateLaunchDimensions(buffer_shape, gpu_device_info);
+  gpu_device_info.block_dim_limit_x =
+      executor->GetDeviceDescription().block_dim_limit().x;
+  gpu_device_info.block_dim_limit_y =
+      executor->GetDeviceDescription().block_dim_limit().y;
+  gpu_device_info.block_dim_limit_z =
+      executor->GetDeviceDescription().block_dim_limit().z;
+
+  TF_ASSIGN_OR_RETURN(LaunchDimensions dim,
+                      CalculateLaunchDimensions(buffer_shape, gpu_device_info));
 
   LaunchDimensions::Dim3D thread_counts = dim.thread_counts_per_block();
   LaunchDimensions::Dim3D block_counts = dim.block_counts();

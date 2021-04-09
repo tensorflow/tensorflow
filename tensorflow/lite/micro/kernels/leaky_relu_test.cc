@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,64 +12,101 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <math.h>
-#include <stdint.h>
-#include <stdlib.h>
 
-#include <algorithm>
-#include <initializer_list>
 #include <limits>
-#include <map>
-#include <memory>
-#include <random>
-#include <string>
-#include <utility>
-#include <vector>
+#include <type_traits>
 
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/core/api/op_resolver.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/string_type.h"
+#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
+#include "tensorflow/lite/micro/testing/micro_test.h"
 
 namespace tflite {
+namespace testing {
 namespace {
 
-using ::testing::ElementsAreArray;
+// min/max are used to compute scale, zero-point, compare tolerance
+template <typename T>
+struct TestLeakyReluParams {
+  // general parameters
+  float alpha;  // alpha multiplier
 
-class BaseActivationsOpModel : public SingleOpModel {
- public:
-  // A dedicated constructor for LeakyRelu, which does some options.
-  BaseActivationsOpModel(TensorData input, float alpha) {
-    input_ = AddInput(input);
-    // The output scale and input scale might be different.
-    if (input.type == TensorType_UINT8 || input.type == TensorType_INT8 ||
-        input.type == TensorType_INT16) {
-      auto output_min = (input.min >= 0) ? input.min : input.min * alpha;
-      auto output_max = (input.max >= 0) ? input.max : input.max * alpha;
-      if (input.type == TensorType_INT16) {
-        output_ = AddOutput({TensorType_INT16,
-                             {},
-                             0,
-                             0,
-                             output_max / (std::numeric_limits<int16_t>::max()),
-                             0});
-      } else {
-        output_ = AddOutput({input.type, {}, output_min, output_max});
-      }
-    } else {
-      output_ = AddOutput({input.type, {}});
-    }
-    SetBuiltinOp(BuiltinOperator_LEAKY_RELU, BuiltinOptions_LeakyReluOptions,
-                 CreateLeakyReluOptions(builder_, alpha).Union());
-    BuildInterpreter({GetShape(input_)});
-  }
-
- protected:
-  int input_;
-  int output_;
+  // quantization parameters
+  float data_min;   // input and output data minimum value
+  float data_max;   // input and output data maximum value
+  T* input_data;    // quantized input storage
+  T* output_data;   // quantized output storage
+  float tolerance;  // output vs expected value tolerance
 };
+
+void ExecuteLeakyReluTest(const float alpha, const int tensors_count,
+                          TfLiteTensor* tensors) {
+  TfLiteLeakyReluParams builtin_data = {};
+  builtin_data.alpha = alpha;
+
+  constexpr int kInputArrayData[] = {1, 0};
+  TfLiteIntArray* inputs_array = IntArrayFromInts(kInputArrayData);
+  constexpr int kOutputArrayData[] = {1, 1};
+  TfLiteIntArray* outputs_array = IntArrayFromInts(kOutputArrayData);
+
+  const TfLiteRegistration registration = tflite::Register_LEAKY_RELU();
+  micro::KernelRunner runner(registration, tensors, tensors_count, inputs_array,
+                             outputs_array, static_cast<void*>(&builtin_data));
+
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
+}
+
+template <typename T>
+void TestLeakyRelu(const TestLeakyReluParams<T>& params,
+                   const int* input_dims_data, const T* input_data,
+                   const int* expected_dims, const T* expected_data,
+                   T* output_data) {
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(expected_dims);
+  const int output_count = ElementCount(*output_dims);
+
+  TfLiteTensor tensors[] = {
+      CreateTensor(input_data, input_dims),
+      CreateTensor(output_data, output_dims),
+  };
+  constexpr int tensors_count = std::extent<decltype(tensors)>::value;
+  ExecuteLeakyReluTest(params.alpha, tensors_count, tensors);
+
+  for (int i = 0; i < output_count; i++) {
+    TF_LITE_MICRO_EXPECT_EQ(expected_data[i], output_data[i]);
+  }
+}
+
+template <typename T>
+void TestLeakyReluQuantized(const TestLeakyReluParams<T>& params,
+                            const int* input_dims_data, const float* input_data,
+                            const int* expected_dims,
+                            const float* expected_data, float* output_data) {
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(expected_dims);
+  const int output_count = ElementCount(*output_dims);
+
+  const float scale = ScaleFromMinMax<T>(params.data_min, params.data_max);
+  const int zero_point =
+      ZeroPointFromMinMax<T>(params.data_min, params.data_max);
+
+  TfLiteTensor tensors[] = {
+      CreateQuantizedTensor(input_data, params.input_data, input_dims, scale,
+                            zero_point),
+      CreateQuantizedTensor(params.output_data, output_dims, scale, zero_point),
+  };
+  constexpr int kTensorsCount = std::extent<decltype(tensors)>::value;
+
+  ExecuteLeakyReluTest(params.alpha, kTensorsCount, tensors);
+
+  Dequantize(params.output_data, output_count, scale, zero_point, output_data);
+  const float kTolerance = params.tolerance;
+  for (int i = 0; i < output_count; i++) {
+    TF_LITE_MICRO_EXPECT_NEAR(expected_data[i], output_data[i], kTolerance);
+  }
+}
 
 // Our fixed-point math function implementations have roughly 12 bits of
 // accuracy, when specialized to 16-bit fixed-point arithmetic.
@@ -88,123 +125,90 @@ class BaseActivationsOpModel : public SingleOpModel {
 // is 2, our representable values are often diluted by a factor of 2, whence
 // the factor of 2 below.
 const float kQuantizedTolerance = 2 * (1. / 256);
-const float kQuantizedToleranceInt16 = 2 * (1. / 4096);
 
-class QuantizedActivationsOpModel : public BaseActivationsOpModel {
- public:
-  using BaseActivationsOpModel::BaseActivationsOpModel;
-
-  template <typename T>
-  void SetInput(const std::vector<float>& data) {
-    QuantizeAndPopulate<T>(input_, data);
-  }
-  template <typename T>
-  std::vector<T> GetOutput() {
-    return ExtractVector<T>(output_);
-  }
-
-  template <typename T>
-  std::vector<float> GetDequantizedOutput() {
-    return Dequantize<T>(ExtractVector<T>(output_), GetScale(output_),
-                         GetZeroPoint(output_));
-  }
-};
-
-TEST(QuantizedActivationsOpTest, LeakyReluUint8) {
-  const float kMin = -1;
-  const float kMax = 127.f / 128.f;
-  QuantizedActivationsOpModel m(
-      /*input=*/{TensorType_UINT8, {2, 3}, 8 * kMin, 8 * kMax}, 0.5);
-
-  m.SetInput<uint8_t>({
-      0.0f, 1.0f, 3.0f,    // Row 1
-      1.0f, -1.0f, -2.0f,  // Row 2
-  });
-  m.Invoke();
-  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
-              ElementsAreArray(ArrayFloatNear(
-                  {
-                      0.0f, 1.0f, 3.0f,    // Row 1
-                      1.0f, -0.5f, -1.0f,  // Row 2
-                  },
-                  kQuantizedTolerance * 8)));
-}
-
-template <TensorType tensor_type, typename integer_dtype>
+template <typename integer_dtype>
 void QuantizedActivationsOpTestLeakyRelu() {
-  const float kMin = -1;
-  const float kMax =
-      std::numeric_limits<integer_dtype>::max() /
-      static_cast<float>(std::numeric_limits<integer_dtype>::max() + 1);
-
-  QuantizedActivationsOpModel m(
-      /*input=*/{tensor_type, {5, 5}, 5 * kMin, 5 * kMax}, 0.1);
-
-  m.SetInput<integer_dtype>({
+  constexpr int kDims[] = {2, 5, 5};
+  constexpr float kInput[] = {
       -5.0f, -4.6f, -4.2f, -3.8f, -3.4f,  // Row 1
       -3.0f, -2.6f, -2.2f, -1.8f, -1.4f,  // Row 2
       -1.0f, -0.6f, -0.2f, 0.2f,  0.6f,   // Row 3
       1.0f,  1.4f,  1.8f,  2.2f,  2.6f,   // Row 4
       3.0f,  3.4f,  3.8f,  4.2f,  4.6f,   // Row 5
-  });
-  m.Invoke();
+  };
+  constexpr float kExpect[] = {
+      -0.50f, -0.46f, -0.42f, -0.38f, -0.34f,  // Row 1
+      -0.30f, -0.26f, -0.22f, -0.18f, -0.14f,  // Row 2
+      -0.10f, -0.06f, -0.02f, 0.20f,  0.60f,   // Row 3
+      1.00f,  1.40f,  1.80f,  2.20f,  2.60f,   // Row 4
+      3.00f,  3.40f,  3.80f,  4.20f,  4.60f,   // Row 5
+  };
+  constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
+  float output_data[kOutputCount];
 
-  float kTestQuantizedTolerance = tensor_type == TensorType_INT16
-                                      ? kQuantizedToleranceInt16
-                                      : kQuantizedTolerance * 5;
+  // setup quantization storage and parameters
+  integer_dtype q_output_data[kOutputCount];
+  integer_dtype q_input_data[kOutputCount];
+  constexpr float kMin = -1;
+  constexpr float kMax =
+      std::numeric_limits<integer_dtype>::max() /
+      static_cast<float>(std::numeric_limits<integer_dtype>::max() + 1);
+  TestLeakyReluParams<integer_dtype> params = {};
+  params.alpha = 0.1f;
+  params.data_min = 5 * kMin;
+  params.data_max = 5 * kMax;
+  params.input_data = q_input_data;
+  params.output_data = q_output_data;
+  params.tolerance = kQuantizedTolerance * 5;
 
-  EXPECT_THAT(m.GetDequantizedOutput<integer_dtype>(),
-              ElementsAreArray(ArrayFloatNear(
-                  {
-                      -0.50f, -0.46f, -0.42f, -0.38f, -0.34f,  // Row 1
-                      -0.30f, -0.26f, -0.22f, -0.18f, -0.14f,  // Row 2
-                      -0.10f, -0.06f, -0.02f, 0.20f,  0.60f,   // Row 3
-                      1.00f,  1.40f,  1.80f,  2.20f,  2.60f,   // Row 4
-                      3.00f,  3.40f,  3.80f,  4.20f,  4.60f,   // Row 5
-                  },
-                  kTestQuantizedTolerance)));
-}
-
-TEST(QuantizedActivationsOpTest, LeakyReluInt8) {
-  QuantizedActivationsOpTestLeakyRelu<TensorType_INT8, int8_t>();
-}
-
-TEST(QuantizedActivationsOpTest, LeakyReluInt16) {
-  QuantizedActivationsOpTestLeakyRelu<TensorType_INT16, int16_t>();
-}
-
-class LeakyReluOpModel : public SingleOpModel {
- public:
-  LeakyReluOpModel(const TensorData& input, float alpha) {
-    input_ = AddInput(input);
-    output_ = AddOutput(input);
-    SetBuiltinOp(BuiltinOperator_LEAKY_RELU, BuiltinOptions_LeakyReluOptions,
-                 CreateLeakyReluOptions(builder_, alpha).Union());
-    BuildInterpreter({GetShape(input_)});
-  }
-  void SetInput(std::initializer_list<float> data) {
-    PopulateTensor(input_, data);
-  }
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
-
- protected:
-  int input_;
-  int output_;
-};
-
-TEST(FloatActivationsOpTest, LeakyRelu) {
-  LeakyReluOpModel m({TensorType_FLOAT32, {2, 3}}, 0.5f);
-
-  m.SetInput({
-      0.0f, 1.0f, 3.0f,    // Row 1
-      1.0f, -1.0f, -2.0f,  // Row 2
-  });
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
-                                 0.0f, 1.0f, 3.0f,    // Row 1
-                                 1.0f, -0.5f, -1.0f,  // Row 2
-                             }));
+  TestLeakyReluQuantized(params, kDims, kInput, kDims, kExpect, output_data);
 }
 
 }  // namespace
+}  // namespace testing
 }  // namespace tflite
+
+TF_LITE_MICRO_TESTS_BEGIN
+
+TF_LITE_MICRO_TEST(QuantizedActivationsOpTestLeakyReluInt8_1) {
+  constexpr int kDims[] = {2, 2, 3};
+  constexpr float kInput[] = {0.0f, 1.0f, 3.0f, 1.0f, -1.0f, -2.0f};
+  constexpr float kExpect[] = {0.0f, 1.0f, 3.0f, 1.0f, -0.5f, -1.0f};
+  constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
+  float output_data[kOutputCount];
+
+  // setup quantization storage and parameters
+  int8_t q_output_data[kOutputCount];
+  int8_t q_input_data[kOutputCount];
+  constexpr float kMin = -1;
+  constexpr float kMax = 127.f / 128.f;
+  tflite::testing::TestLeakyReluParams<int8_t> params = {};
+  params.alpha = 0.5f;
+  params.data_min = 8 * kMin;
+  params.data_max = 8 * kMax;
+  params.input_data = q_input_data;
+  params.output_data = q_output_data;
+  params.tolerance = tflite::testing::kQuantizedTolerance * 8;
+
+  tflite::testing::TestLeakyReluQuantized(params, kDims, kInput, kDims, kExpect,
+                                          output_data);
+}
+
+TF_LITE_MICRO_TEST(QuantizedActivationsOpTestLeakyReluInt8_2) {
+  tflite::testing::QuantizedActivationsOpTestLeakyRelu<int8_t>();
+}
+
+TF_LITE_MICRO_TEST(FloatActivationsOpTestLeakyRelu) {
+  constexpr int kDims[] = {2, 2, 3};
+  constexpr float kInput[] = {0.0f, 1.0f, 3.0f, 1.0f, -1.0f, -2.0f};
+  constexpr float kExpect[] = {0.0f, 1.0f, 3.0f, 1.0f, -0.5f, -1.0f};
+  constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
+  float output_data[kOutputCount];
+  tflite::testing::TestLeakyReluParams<float> params = {};
+  params.alpha = 0.5f;
+
+  tflite::testing::TestLeakyRelu(params, kDims, kInput, kDims, kExpect,
+                                 output_data);
+}
+
+TF_LITE_MICRO_TESTS_END

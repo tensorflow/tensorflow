@@ -25,20 +25,6 @@ limitations under the License.
 
 namespace xla {
 
-namespace {
-
-void RemoveDummyMetadataNames(HloModule* module) {
-  for (xla::HloComputation* computation : module->computations()) {
-    for (xla::HloInstruction* instruction : computation->instructions()) {
-      if (absl::StartsWith(instruction->metadata().op_name(), "DUMMY")) {
-        instruction->set_metadata_op_name("");
-      }
-    }
-  }
-}
-
-}  // namespace
-
 void LlvmIrGenTestBase::SetIrHook(bool match_optimized_ir) {
   auto llvm_compiler = GetLLVMCompiler();
   using std::placeholders::_1;
@@ -102,7 +88,6 @@ void LlvmIrGenTestBase::MatchOptimizedHlo(absl::string_view hlo,
                                           bool print_operand_shape) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                           GetOptimizedModule(hlo));
-  RemoveDummyMetadataNames(optimized_module.get());
   HloPrintOptions print_opts;
   print_opts.set_print_operand_shape(print_operand_shape);
   StatusOr<bool> filecheck_result =

@@ -229,6 +229,9 @@ class HloModule {
   const HloModuleConfig& config() const { return config_; }
   void set_config(const HloModuleConfig& config) { config_ = config; }
 
+  bool is_dynamic() const { return is_dynamic_; }
+  void set_is_dynamic(bool is_dynamic) { is_dynamic_ = is_dynamic; }
+
   // Return a string representation of the module.
   //
   // (We express the default options using an overload rather than a default
@@ -432,6 +435,9 @@ class HloModule {
 
   // Metadata for this module, such as its canonical id and the HLO passes run.
   HloModuleMetadata metadata_;
+
+  // True if the module contains dynamic computation.
+  bool is_dynamic_ = false;
 };
 
 }  // namespace xla

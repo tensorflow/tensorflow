@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -38,6 +39,7 @@ class XlaConvOp : public XlaOpKernel {
     OP_REQUIRES(context,
                 precision_config_.ParsePartialFromString(precision_config_attr),
                 errors::InvalidArgument("Error parsing precision config."));
+    preferred_element_type_ = absl::nullopt;
   }
 
   void Compile(XlaOpKernelContext* context) override {
@@ -77,9 +79,12 @@ class XlaConvOp : public XlaOpKernel {
     xla::XlaOp output = xla::ConvGeneralDilated(
         context->Input(0), context->Input(1), window_strides, padding,
         lhs_dilation, rhs_dilation, dnums_, feature_group_count,
-        /*batch_group_count=*/1, &precision_config_);
+        /*batch_group_count=*/1, &precision_config_, preferred_element_type_);
     context->SetOutput(0, output);
   }
+
+ protected:
+  absl::optional<xla::PrimitiveType> preferred_element_type_;
 
  private:
   xla::ConvolutionDimensionNumbers dnums_;
@@ -89,6 +94,30 @@ class XlaConvOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("XlaConv")
+                    .CompileTimeConstantInput("window_strides")
+                    .CompileTimeConstantInput("lhs_dilation")
+                    .CompileTimeConstantInput("rhs_dilation")
+                    .CompileTimeConstantInput("feature_group_count")
+                    .CompileTimeConstantInput("padding"),
+                XlaConvOp);
+
+class XlaConvV2Op : public XlaConvOp {
+ public:
+  explicit XlaConvV2Op(OpKernelConstruction* context) : XlaConvOp(context) {
+    DataType preferred_element_dtype;
+    OP_REQUIRES_OK(context, context->GetAttr("preferred_element_type",
+                                             &preferred_element_dtype));
+    xla::PrimitiveType preferred_element_type;
+    OP_REQUIRES_OK(context, DataTypeToPrimitiveType(preferred_element_dtype,
+                                                    &preferred_element_type));
+    preferred_element_type_ = preferred_element_type;
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(XlaConvV2Op);
+};
+
+REGISTER_XLA_OP(Name("XlaConvV2")
                     .CompileTimeConstantInput("window_strides")
                     .CompileTimeConstantInput("lhs_dilation")
                     .CompileTimeConstantInput("rhs_dilation")

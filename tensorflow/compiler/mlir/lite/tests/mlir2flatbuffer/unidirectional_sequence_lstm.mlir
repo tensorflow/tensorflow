@@ -1,6 +1,6 @@
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s --dump-input=always
 
-func @main(tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32> {
+func @main(tensor<4x4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4x4xf32> {
 // CHECK: {
 // CHECK-NEXT:   version: 3,
 // CHECK-NEXT:   operator_codes: [ {
@@ -10,7 +10,7 @@ func @main(tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, t
 // CHECK-NEXT:   } ],
 // CHECK-NEXT:   subgraphs: [ {
 // CHECK-NEXT:     tensors: [ {
-// CHECK-NEXT:       shape: [ 4, 4 ],
+// CHECK-NEXT:       shape: [ 4, 4, 4 ],
 // CHECK-NEXT:       buffer: 1,
 // CHECK-NEXT:       name: "arg0",
 // CHECK-NEXT:       quantization: {
@@ -198,7 +198,7 @@ func @main(tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, t
 // CHECK-NEXT:         zero_point: [ 0 ]
 // CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
-// CHECK-NEXT:       shape: [ 4, 4 ],
+// CHECK-NEXT:       shape: [ 4, 4, 4 ],
 // CHECK-NEXT:       buffer: 25,
 // CHECK-NEXT:       name: "tfl.unidirectional_sequence_lstm",
 // CHECK-NEXT:       quantization: {
@@ -282,7 +282,7 @@ func @main(tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, t
 // CHECK-NEXT: }
 // CHECK-EMPTY:
 
-^bb0(%arg0: tensor<4x4xf32>,
+^bb0(%arg0: tensor<4x4x4xf32>,
   %arg1: tensor<4x4xf32>, %arg2: tensor<4x4xf32>, %arg3: tensor<4x4xf32>, %arg4: tensor<4x4xf32>,
   %arg5: tensor<4x4xf32>, %arg6: tensor<4x4xf32>, %arg7: tensor<4x4xf32>, %arg8: tensor<4x4xf32>,
   %arg9: tensor<4xf32>, %arg10: tensor<4xf32>, %arg11: tensor<4xf32>,
@@ -305,13 +305,13 @@ func @main(tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, t
       input_to_forget_intermediate = tensor<0xf32>,
       input_to_input_intermediate = tensor<0xf32>,
       input_to_output_intermediate = tensor<0xf32>, time_major = true}
-  : (tensor<4x4xf32>,
+  : (tensor<4x4x4xf32>,
     tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>,
     tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>,
     tensor<4xf32>, tensor<4xf32>, tensor<4xf32>,
     tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>,
     tensor<4x4xf32>, tensor<4xf32>,
     tensor<4x4xf32>, tensor<4x4xf32>,
-    tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
-  return %2 : tensor<4x4xf32>
+    tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4x4xf32>
+  return %2 : tensor<4x4x4xf32>
 }

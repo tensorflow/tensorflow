@@ -5,7 +5,7 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
     default_visibility = [":friends"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -29,7 +29,7 @@ package_group(
 )
 
 gentbl(
-    name = "xla_legalize_tf_inc_gen",
+    name = "legalize_tf_patterns_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         ("-gen-rewriters", "transforms/generated_legalize_tf.inc"),
@@ -45,6 +45,22 @@ gentbl(
         "@llvm-project//mlir:StdOpsTdFiles",
         "@llvm-project//mlir:TensorOpsTdFiles",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+    ],
+)
+
+gentbl(
+    name = "xla_legalize_tf_passes_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        ("-gen-pass-decls -name XLA", "transforms/xla_legalize_tf_passes.h.inc"),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/xla_legalize_tf_passes.td",
+    td_relative_includes = [
+        "../hlo/include",
+    ],
+    td_srcs = [
+        "@llvm-project//mlir:PassBaseTdFiles",
     ],
 )
 
@@ -72,8 +88,8 @@ gentbl(
 cc_library(
     name = "xla_passes",
     srcs = [
-        "transforms/passes_detail.h",
         "transforms/prepare_for_export.cc",
+        "transforms/xla_passes_detail.h",
     ],
     hdrs = [
         "transforms/passes.h",
@@ -96,19 +112,25 @@ cc_library(
         "transforms/legalize_tf.cc",
         "transforms/legalize_tf_communication.cc",
         "transforms/legalize_tf_control_flow.cc",
+        "transforms/legalize_tf_types.cc",
+        "transforms/xla_legalize_tf_passes_detail.h",
     ],
     hdrs = [
         "transforms/passes.h",
     ],
     deps = [
         ":attribute_importer",
+        ":legalize_tf_patterns_inc_gen",
         ":type_to_shape",
+        ":xla_legalize_tf_passes_inc_gen",
         ":xla_legalize_tf_with_tf2xla",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:chlo_legalize_to_hlo",
         "//tensorflow/compiler/mlir/hlo:convert_op_folder",
+        "//tensorflow/compiler/mlir/hlo:hlo_ops_base_structs",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:padding",
@@ -117,6 +139,8 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "//tensorflow/core/platform:bfloat16",
+        "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/stream_executor/tpu:c_api_conversions",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:Dialect",
@@ -205,6 +229,7 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Translation",
@@ -317,6 +342,7 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:quantize",
         "//tensorflow/compiler/xla/client/lib:slicing",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -384,6 +410,8 @@ cc_library(
     hdrs = ["attribute_importer.h"],
     deps = [
         "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core/platform:types",
         "@llvm-project//mlir:IR",

@@ -5,7 +5,7 @@ load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 package(
     default_visibility = ["//visibility:public"],
     features = ["parse_headers"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_kernel_library(

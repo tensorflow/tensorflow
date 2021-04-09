@@ -15,34 +15,90 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_initializer_helper.h"
 
+#include <fcntl.h>
 #include <stdlib.h>
+#include <unistd.h>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
+#include "absl/synchronization/mutex.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace tpu {
+namespace {
 
-std::vector<const char*> GetLibTpuInitArguments() {
-  std::vector<const char*> argv_ptr;
-  std::vector<absl::string_view> argv;
+static std::string GetEnvVar(const char* name) {
+  // Constructing a std::string directly from nullptr is undefined behavior.
+  return absl::StrCat(getenv(name));
+}
 
-  // Retrieve arguments from environment if applicable
+}  // namespace
+
+bool TryAcquireTpuLock() {
+  static absl::Mutex* mu = new absl::Mutex();
+  absl::MutexLock l(mu);
+
+  static bool attempted_file_open = false;
+  static bool should_load_library = false;
+
+  if (!attempted_file_open) {
+    std::string load_library_override =
+        absl::StrCat(getenv("TPU_LOAD_LIBRARY"));
+
+    if (load_library_override == "1") {
+      return true;
+    } else if (load_library_override == "0") {
+      return false;
+    }
+    should_load_library = true;
+
+    // if the TPU_HOST_BOUNDS or TPU_VISIBLE_DEVICES env var is set, that means
+    // we are loading each chip in a different process and thus multiple libtpu
+    // loads are OK.
+    if (GetEnvVar("TPU_HOST_BOUNDS").empty() &&
+        GetEnvVar("TPU_VISIBLE_DEVICES").empty()) {
+      int fd = open("/tmp/libtpu_lockfile", O_CREAT | O_RDWR, 0644);
+
+      // This lock is held until the process exits intentionally. The underlying
+      // TPU device will be held on until it quits.
+      if (lockf(fd, F_TLOCK, 0) != 0) {
+        LOG(INFO) << "libtpu.so already in used by another process. Not "
+                     "attempting to load libtpu.so in this process.";
+        should_load_library = false;
+      } else {
+        should_load_library = true;
+      }
+    } else {
+      VLOG(1) << "TPU_HOST_BOUNDS or TPU_VISIBLE_DEVICES is not empty, "
+                 "therefore allowing multiple libtpu.so loads.";
+      should_load_library = true;
+    }
+  }
+
+  return should_load_library;
+}
+
+std::pair<std::vector<std::string>, std::vector<const char*>>
+GetLibTpuInitArguments() {
+  // We make copies of the arguments returned by getenv because the memory
+  // returned may be altered or invalidated by further calls to getenv.
+  std::vector<std::string> args;
+  std::vector<const char*> arg_ptrs;
+
+  // Retrieve arguments from environment if applicable.
   char* env = getenv("LIBTPU_INIT_ARGS");
   if (env != nullptr) {
     // TODO(frankchn): Handles quotes properly if necessary.
-    // env pointer is already pointing to an allocated memory block.
-    // absl::StrSplit returns a string_view that returns a vector of pointers
-    // into that memory block. This means that we don't need to manage memory.
-    argv = absl::StrSplit(env, ' ');
+    args = absl::StrSplit(env, ' ');
   }
 
-  argv_ptr.reserve(argv.size());
-  for (int i = 0; i < argv.size(); ++i) {
-    argv_ptr.push_back(argv[i].data());
+  arg_ptrs.reserve(args.size());
+  for (int i = 0; i < args.size(); ++i) {
+    arg_ptrs.push_back(args[i].data());
   }
-  argv_ptr.push_back(nullptr);
 
-  return argv_ptr;
+  return {std::move(args), std::move(arg_ptrs)};
 }
 
 }  // namespace tpu

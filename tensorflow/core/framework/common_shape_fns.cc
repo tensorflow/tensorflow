@@ -1137,7 +1137,7 @@ Status FusedBatchNormShape(shape_inference::InferenceContext* c) {
                                    data_format_str);
   }
   const int rank =
-      (data_format_str == "NDHWC" or data_format_str == "NCDHW") ? 5 : 4;
+      (data_format_str == "NDHWC" || data_format_str == "NCDHW") ? 5 : 4;
   ShapeHandle x;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), rank, &x));
 
@@ -1210,7 +1210,7 @@ Status FusedBatchNormGradShape(shape_inference::InferenceContext* c) {
                                    data_format_str);
   }
   const int rank =
-      (data_format_str == "NDHWC" or data_format_str == "NCDHW") ? 5 : 4;
+      (data_format_str == "NDHWC" || data_format_str == "NCDHW") ? 5 : 4;
   ShapeHandle y_backprop;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), rank, &y_backprop));
   ShapeHandle x;

@@ -1,12 +1,8 @@
-// RUN: tf-opt %s -tf-mark-ops-for-outside-compilation | FILECHECK_OPTS="" FileCheck %s
+// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-mark-ops-for-outside-compilation | FILECHECK_OPTS="" FileCheck %s
 
-// CHECK-LABEL: func @unsupported_op_missing_soft_placement_attribute
 func @unsupported_op_missing_soft_placement_attribute() -> tensor<i32> {
   %0 = "tf_device.cluster"() ( {
-    // CHECK: "tf.UnsupportedOp"
-    // CHECK-NOT: _xla_outside_compilation
-    // CHECK: "tf.Identity"
-    // CHECK-NOT: _xla_outside_compilation
+    // expected-error@+1 {{'tf.UnsupportedOp' op isn't compilable for TPU device}}
     %1 = "tf.UnsupportedOp"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %2 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
     tf_device.return %2 : tensor<i32>
@@ -14,19 +10,19 @@ func @unsupported_op_missing_soft_placement_attribute() -> tensor<i32> {
   return %0 : tensor<i32>
 }
 
-// CHECK-LABEL: func @unsupported_op_soft_placement_false
+// -----
+
 func @unsupported_op_soft_placement_false() -> tensor<i32> {
   %0 = "tf_device.cluster"() ( {
-    // CHECK: "tf.UnsupportedOp"
-    // CHECK-NOT: _xla_outside_compilation
-    // CHECK: "tf.Identity"
-    // CHECK-NOT: _xla_outside_compilation
+    // expected-error@+1 {{'tf.UnsupportedOp' op isn't compilable for TPU device}}
     %1 = "tf.UnsupportedOp"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %2 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
     tf_device.return %2 : tensor<i32>
   }) {allow_soft_placement = false, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<i32>
   return %0 : tensor<i32>
 }
+
+// -----
 
 // CHECK-LABEL: func @assert_op_string_operand
 func @assert_op_string_operand(%arg0: tensor<!tf.string>) -> tensor<i32> {
@@ -360,12 +356,13 @@ func @check_op_with_resource_string_subtypes_outside_compiled(%arg0: tensor<i32>
 
 // CHECK-LABEL: func @single_variant_input
 func @single_variant_input() {
-  // CHECK: "tf.opA"
+  // CHECK: "tf.EmptyTensorList"
   // CHECK-SAME: _xla_outside_compilation
   "tf_device.cluster"() ( {
-    %1= "tf.opA"() : () -> tensor<!tf.variant<tensor<f32>>>
-    "tf.opB"(%1) {_xla_outside_compilation = "0"} : (tensor<!tf.variant<tensor<f32>>>) -> ()
-    "tf.opC"() : () -> ()
+    %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+    %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+    %1 = "tf.EmptyTensorList"(%elem_shape, %max_size) : (tensor<0xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<f32>>>
+    "tf.Identity"(%1) {_xla_outside_compilation = "0"} : (tensor<!tf.variant<tensor<f32>>>) -> (tensor<!tf.variant<tensor<f32>>>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
   return
@@ -373,13 +370,15 @@ func @single_variant_input() {
 
 // CHECK-LABEL: func @chained_variant_input
 func @chained_variant_input() {
-  // CHECK: "tf.opA"
+  // CHECK: "tf.EmptyTensorList"
   // CHECK-SAME: _xla_outside_compilation
-  // CHECK: "tf.opB"
+  // CHECK: "tf.Identity"
   // CHECK-SAME: _xla_outside_compilation
   "tf_device.cluster"() ( {
-    %1 = "tf.opA"() : () -> tensor<!tf.variant<tensor<f32>>>
-    %2 = "tf.opB"(%1) : (tensor<!tf.variant<tensor<f32>>>) -> (tensor<!tf.variant<tensor<f32>>>)
+    %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+    %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+    %1 = "tf.EmptyTensorList"(%elem_shape, %max_size) : (tensor<0xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<f32>>>
+    %2 = "tf.Identity"(%1) : (tensor<!tf.variant<tensor<f32>>>) -> (tensor<!tf.variant<tensor<f32>>>)
     "tf.opC"(%2) {_xla_outside_compilation = "0"} : (tensor<!tf.variant<tensor<f32>>>) -> ()
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
@@ -388,12 +387,13 @@ func @chained_variant_input() {
 
 // CHECK-LABEL: func @single_variant_output
 func @single_variant_output() {
-  // CHECK: "tf.opB"
+  // CHECK: "tf.Identity"
   // CHECK-SAME: _xla_outside_compilation
   "tf_device.cluster"() ( {
-    %1= "tf.opA"() {_xla_outside_compilation = "0"} : () -> tensor<!tf.variant<tensor<f32>>>
-    "tf.opB"(%1) : (tensor<!tf.variant<tensor<f32>>>) -> ()
-    "tf.opC"() : () -> ()
+    %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+    %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+    %1 = "tf.EmptyTensorList"(%elem_shape, %max_size) { _xla_outside_compilation="0" } : (tensor<0xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<f32>>>
+    "tf.Identity"(%1) {} : (tensor<!tf.variant<tensor<f32>>>) -> (tensor<!tf.variant<tensor<f32>>>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
   return
@@ -401,14 +401,16 @@ func @single_variant_output() {
 
 // CHECK-LABEL: func @chained_variant_output
 func @chained_variant_output() {
-  // CHECK: "tf.opB"
+  // CHECK: "tf.Identity"
   // CHECK-SAME: _xla_outside_compilation
-  // CHECK: "tf.opC"
+  // CHECK: "tf.Identity"
   // CHECK-SAME: _xla_outside_compilation
   "tf_device.cluster"() ( {
-    %1 = "tf.opA"() {_xla_outside_compilation = "0"} : () -> tensor<!tf.variant<tensor<f32>>>
-    %2 = "tf.opB"(%1) : (tensor<!tf.variant<tensor<f32>>>) -> (tensor<!tf.variant<tensor<f32>>>)
-    "tf.opC"(%2) : (tensor<!tf.variant<tensor<f32>>>) -> ()
+    %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+    %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+    %1 = "tf.EmptyTensorList"(%elem_shape, %max_size) { _xla_outside_compilation="0" } : (tensor<0xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<f32>>>
+    %2 = "tf.Identity"(%1) : (tensor<!tf.variant<tensor<f32>>>) -> (tensor<!tf.variant<tensor<f32>>>)
+    "tf.Identity"(%2) : (tensor<!tf.variant<tensor<f32>>>) -> (tensor<!tf.variant<tensor<f32>>>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
   return
@@ -416,14 +418,17 @@ func @chained_variant_output() {
 
 // CHECK-LABEL: func @variant_input_output
 func @variant_input_output() {
-  // CHECK: "tf.opA"
+  // CHECK: "tf.EmptyTensorList"
   // CHECK-SAME: _xla_outside_compilation
-  // CHECK: "tf.opC"
+  // CHECK: "tf.Identity"
+  // CHECK: "tf.Identity"
   // CHECK-SAME: _xla_outside_compilation
   "tf_device.cluster"() ( {
-    %1 = "tf.opA"() : () -> tensor<!tf.variant<tensor<f32>>>
-    %2 = "tf.opB"(%1) {_xla_outside_compilation = "0"} : (tensor<!tf.variant<tensor<f32>>>) -> (tensor<!tf.variant<tensor<f32>>>)
-    "tf.opC"(%2) : (tensor<!tf.variant<tensor<f32>>>) -> ()
+    %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+    %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+    %1 = "tf.EmptyTensorList"(%elem_shape, %max_size) : (tensor<0xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<f32>>>
+    %2 = "tf.Identity"(%1) {_xla_outside_compilation = "0"} : (tensor<!tf.variant<tensor<f32>>>) -> (tensor<!tf.variant<tensor<f32>>>)
+    "tf.Identity"(%2) : (tensor<!tf.variant<tensor<f32>>>) -> (tensor<!tf.variant<tensor<f32>>>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
   return
@@ -438,7 +443,6 @@ func @variant_input_output_already_marked() {
   "tf_device.cluster"() ( {
     %1= "tf.opA"() {_xla_outside_compilation = "0"} : () -> tensor<!tf.variant<tensor<f32>>>
     "tf.opB"(%1) {_xla_outside_compilation = "0"} : (tensor<!tf.variant<tensor<f32>>>) -> ()
-    "tf.opC"() : () -> ()
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
   return
@@ -446,14 +450,16 @@ func @variant_input_output_already_marked() {
 
 // CHECK-LABEL: func @variant_input_nested
 func @variant_input_nested(%arg0 : tensor<*x!tf.resource>) {
-  // CHECK:        "tf.C"
+  // CHECK:        "tf.EmptyTensorList"
   // CHECK-SAME:   _xla_outside_compilation
   // CHECK:        "tf.opD"
   // CHECK-NOT:    _xla_outside_compilation
   // CHECK:        "tf.Yield"
   "tf_device.cluster"() ( {
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
-    %2 = "tf.C"() : () -> (tensor<!tf.variant<tensor<f32>>>)
+    %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+    %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+    %2 = "tf.EmptyTensorList"(%elem_shape, %max_size) : (tensor<0xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<f32>>>
     "tf.IfRegion"(%0) ( {
       %1 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
       "tf.opD"(%2) : (tensor<!tf.variant<tensor<f32>>>) -> ()
@@ -461,7 +467,7 @@ func @variant_input_nested(%arg0 : tensor<*x!tf.resource>) {
       }, {
       %1 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
       "tf.Yield"(%1) : (tensor<i1>) -> ()
-      }) { is_stateless = true, _xla_outside_compilation = "auto1" } : (tensor<i1>) -> tensor<i1>
+      }) { is_stateless = true, _xla_outside_compilation = "0" } : (tensor<i1>) -> tensor<i1>
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
   return
@@ -476,7 +482,7 @@ func @variant_output_nested(%arg0 : tensor<*x!tf.resource>) {
   // CHECK:        "tf.D"
   // CHECK-NOT: _xla_outside_compilation
   // CHECK:        "tf.Yield"
-  // CHECK:        "tf.E"
+  // CHECK:        "tf.Identity"
   // CHECK-SAME:   _xla_outside_compilation
   "tf_device.cluster"() ( {
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
@@ -486,8 +492,8 @@ func @variant_output_nested(%arg0 : tensor<*x!tf.resource>) {
       }, {
       %2 = "tf.D"() : () -> (tensor<!tf.variant<tensor<f32>>>)
       "tf.Yield"(%2) : (tensor<!tf.variant<tensor<f32>>>) -> ()
-      }) { is_stateless = true, _xla_outside_compilation = "auto1" } : (tensor<i1>) -> tensor<!tf.variant<tensor<f32>>>
-    "tf.E"(%1) : (tensor<!tf.variant<tensor<f32>>>) -> ()
+      }) { is_stateless = true, _xla_outside_compilation = "0" } : (tensor<i1>) -> tensor<!tf.variant<tensor<f32>>>
+    "tf.Identity"(%1) : (tensor<!tf.variant<tensor<f32>>>) -> (tensor<!tf.variant<tensor<f32>>>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
   return
@@ -495,20 +501,25 @@ func @variant_output_nested(%arg0 : tensor<*x!tf.resource>) {
 
 // CHECK-LABEL: func @variant_output_terminator
 func @variant_output_terminator(%arg0 : tensor<*x!tf.resource>) {
-  // CHECK:        "tf.D"
+  // CHECK:        "tf.IfRegion"
+  // CHECK:        "tf.EmptyTensorList"
+  // CHECK:        "tf.EmptyTensorList"
   // CHECK-SAME:   _xla_outside_compilation
   // CHECK:        "tf.Yield"
   // CHECK-NOT:    _xla_outside_compilation
   "tf_device.cluster"() ( {
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     %1 = "tf.IfRegion"(%0) ( {
-      %2 = "tf.C"()  : () -> (tensor<!tf.variant<tensor<f32>>>)
+      %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+      %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+      %2 = "tf.EmptyTensorList"(%elem_shape, %max_size) : (tensor<0xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<f32>>>
       "tf.Yield"(%2) : (tensor<!tf.variant<tensor<f32>>>) -> ()
       }, {
-      %2 = "tf.D"()  {_xla_outside_compilation = "auto1"} : () -> (tensor<!tf.variant<tensor<f32>>>)
+      %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+      %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+      %2 = "tf.EmptyTensorList"(%elem_shape, %max_size) { _xla_outside_compilation="0" } : (tensor<0xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<f32>>>
       "tf.Yield"(%2) : (tensor<!tf.variant<tensor<f32>>>) -> ()
       }) { is_stateless = true} : (tensor<i1>) -> tensor<!tf.variant<tensor<f32>>>
-    "tf.E"(%1) : (tensor<!tf.variant<tensor<f32>>>) -> ()
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
   return
@@ -517,14 +528,16 @@ func @variant_output_terminator(%arg0 : tensor<*x!tf.resource>) {
 // CHECK-LABEL: func @variant_block_arg
 func @variant_block_arg(tensor<!tf.variant<tensor<f32>>>) -> () {
   // CHECK-NOT:    _xla_outside_compilation
-  // CHECK:        "tf.A"
+  // CHECK:        "tf.EmptyTensorList"
   // CHECK-SAME:   _xla_outside_compilation
-  // CHECK:        "tf.B"
+  // CHECK:        "tf.Identity"
   // CHECK-SAME:   _xla_outside_compilation
   ^bb0(%arg0: tensor<!tf.variant<tensor<f32>>>):
     "tf_device.cluster"() ( {
-      %1 = "tf.A"() {_xla_outside_compilation = "auto1"} : () -> (tensor<!tf.variant<tensor<f32>>>)
-      "tf.B"(%1) : (tensor<!tf.variant<tensor<f32>>>) -> ()
+      %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+      %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+      %1 = "tf.EmptyTensorList"(%elem_shape, %max_size) { _xla_outside_compilation="0" } : (tensor<0xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<f32>>>
+      "tf.Identity"(%1) : (tensor<!tf.variant<tensor<f32>>>) -> (tensor<!tf.variant<tensor<f32>>>)
       tf_device.return
     }) : () -> ()
     return

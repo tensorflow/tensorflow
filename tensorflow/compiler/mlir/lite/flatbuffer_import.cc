@@ -863,7 +863,7 @@ static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
     Value full_range_const = value;
     for (auto& use : value.getUses()) {
       Operation* user = use.getOwner();
-      if (user->isKnownTerminator()) return;
+      if (user->hasTrait<mlir::OpTrait::IsTerminator>()) return;
       auto qtype = mlir::quant::UniformQuantizedType::getQuantizedElementType(
           value.getType());
       // Only the 8-bit constants are imported with narrow range.
@@ -1192,11 +1192,11 @@ void AddRegionsForTflWhileOp(mlir::ModuleOp module) {
     auto cond = symbol_table.lookup<mlir::FuncOp>(
         while_op->getAttr("cond").cast<mlir::FlatSymbolRefAttr>().getValue());
     AddCallOpInWhileOpRegion(while_op.cond(), cond);
-    while_op.removeAttr("cond");
+    while_op->removeAttr("cond");
     auto body = symbol_table.lookup<mlir::FuncOp>(
         while_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
     AddCallOpInWhileOpRegion(while_op.body(), body);
-    while_op.removeAttr("body");
+    while_op->removeAttr("body");
   });
 }
 }  // namespace

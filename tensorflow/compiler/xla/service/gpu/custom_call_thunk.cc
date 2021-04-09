@@ -28,8 +28,8 @@ namespace xla {
 namespace gpu {
 
 CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info, void* call_target,
-                                 std::vector<BufferAllocation::Slice> operands,
-                                 std::vector<BufferAllocation::Slice> results,
+                                 std::vector<OptionalSlice> operands,
+                                 std::vector<OptionalSlice> results,
                                  const std::string& opaque)
     : Thunk(Thunk::kCustomCall, thunk_info),
       call_target_(call_target),
@@ -41,13 +41,16 @@ Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
   // gpu_stream is CUstream or e.g. the equivalent type in ROCm.
   std::vector<void*> buffers;
   buffers.reserve(operands_.size() + results_.size());
-  for (const std::vector<BufferAllocation::Slice>& slices :
-       {operands_, results_}) {
-    for (const BufferAllocation::Slice& slice : slices) {
-      if (!slice.allocation())
-        return InternalError("custom call input missing buffer allocation");
-      buffers.push_back(
-          params.buffer_allocations->GetDeviceAddress(slice).opaque());
+  for (const std::vector<OptionalSlice>& slices : {operands_, results_}) {
+    for (const OptionalSlice& slice : slices) {
+      if (slice) {
+        if (!slice->allocation())
+          return InternalError("custom call input missing buffer allocation");
+        buffers.push_back(
+            params.buffer_allocations->GetDeviceAddress(*slice).opaque());
+      } else {
+        buffers.push_back(nullptr);
+      }
     }
   }
 

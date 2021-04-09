@@ -10,7 +10,7 @@ package(
     default_visibility = [
         "//tensorflow/lite/android:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tflite_flex_jni_library(
@@ -108,11 +108,13 @@ ios_static_framework(
 
 build_test(
     name = "framework_build_test",
-    # build_test targets are not meant to be run with sanitizers.
+    # build_test targets are not meant to be run with sanitizers, and can also
+    # cause problems with coverage testing.
     tags = [
         "noasan",
         "nomsan",
         "notsan",
+        "nozapfhahn",
     ],
     targets = [
         ":TestTensorFlowLiteSelectTfOps_framework",

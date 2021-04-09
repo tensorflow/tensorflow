@@ -127,6 +127,13 @@ class FakeCache : public TestWorkerCache {
 };
 
 class DeviceResDistTest : public ::testing::Test {
+ public:
+  ~DeviceResDistTest() override {
+    for (auto& name_param : cp_) {
+      name_param.second->Unref();
+    }
+  }
+
  protected:
   void DefineWorkers(int num_workers, int num_devices,
                      const string& device_type, bool nccl) {
@@ -181,20 +188,20 @@ class DeviceResDistTest : public ::testing::Test {
     }
   }
 
-  CollectiveParams CreateCollectiveParams(int num_workers, int num_devices,
-                                          const string& device_type) {
+  CollectiveParams* CreateCollectiveParams(int num_workers, int num_devices,
+                                           const string& device_type) {
     const int kGroupKey = 5;
     const int kInstanceKey = 3;
-    CollectiveParams cp;
-    cp.group.group_key = kGroupKey;
-    cp.group.group_size = num_workers * num_devices;
-    cp.group.device_type = DeviceType(device_type);
-    cp.group.num_tasks = num_workers;
-    cp.instance.instance_key = kInstanceKey;
-    cp.instance.type = REDUCTION_COLLECTIVE;
-    cp.instance.data_type = DT_FLOAT;
-    cp.instance.shape = TensorShape({64});
-    cp.instance.impl_details.subdiv_offsets.push_back(0);
+    auto* cp = new CollectiveParams();
+    cp->group.group_key = kGroupKey;
+    cp->group.group_size = num_workers * num_devices;
+    cp->group.device_type = DeviceType(device_type);
+    cp->group.num_tasks = num_workers;
+    cp->instance.instance_key = kInstanceKey;
+    cp->instance.type = REDUCTION_COLLECTIVE;
+    cp->instance.data_type = DT_FLOAT;
+    cp->instance.shape = TensorShape({64});
+    cp->instance.impl_details.subdiv_offsets.push_back(0);
     return cp;
   }
 
@@ -217,7 +224,7 @@ class DeviceResDistTest : public ::testing::Test {
                     int group_size) {
     Device* device = nullptr;
     TF_CHECK_OK(device_mgrs_[task_name]->LookupDevice(device_name, &device));
-    CollectiveParams* cp = &cp_[device_name];
+    CollectiveParams* cp = cp_[device_name];
     CollectiveParamResolverDistributed* cp_res = cp_resolvers_[task_name].get();
     CHECK(cp_res);
     cp_res->CompleteParamsAsync(
@@ -252,19 +259,19 @@ class DeviceResDistTest : public ::testing::Test {
         string device_name = strings::StrCat(task_name, "/device:CPU:", di);
         int idx = wi * num_devices + di;
         TF_ASSERT_OK(status_[device_name]);
-        EXPECT_EQ(cp_[device_name].default_rank, idx);
-        EXPECT_EQ(cp_[device_name].group.device_names.size(), dev_count);
-        EXPECT_EQ(cp_[device_name].group.device_names[idx], device_name);
-        EXPECT_EQ(cp_[device_name].group.task_names[idx], task_name);
-        ValidateDeviceResolver(cp_[device_name], task_name);
+        EXPECT_EQ(cp_[device_name]->default_rank, idx);
+        EXPECT_EQ(cp_[device_name]->group.device_names.size(), dev_count);
+        EXPECT_EQ(cp_[device_name]->group.device_names[idx], device_name);
+        EXPECT_EQ(cp_[device_name]->group.task_names[idx], task_name);
+        ValidateDeviceResolver(*cp_[device_name], task_name);
         if (idx > 0) {
-          EXPECT_EQ(cp_[dev0].group.runtime_details.communicator_key,
-                    cp_[device_name].group.runtime_details.communicator_key);
+          EXPECT_EQ(cp_[dev0]->group.runtime_details.communicator_key,
+                    cp_[device_name]->group.runtime_details.communicator_key);
           for (int i = 0; i < dev_count; ++i) {
-            EXPECT_EQ(cp_[dev0].group.device_names[i],
-                      cp_[device_name].group.device_names[i]);
-            EXPECT_EQ(cp_[dev0].group.task_names[i],
-                      cp_[device_name].group.task_names[i]);
+            EXPECT_EQ(cp_[dev0]->group.device_names[i],
+                      cp_[device_name]->group.device_names[i]);
+            EXPECT_EQ(cp_[dev0]->group.task_names[i],
+                      cp_[device_name]->group.task_names[i]);
           }
         }
       }
@@ -287,6 +294,9 @@ class DeviceResDistTest : public ::testing::Test {
     for (int i = 0; i < num_devices; ++i) {
       string device_name =
           strings::StrCat(worker_name, "/device:", device_type, ":", i);
+      if (cp_.find(device_name) != cp_.end()) {
+        cp_[device_name]->Unref();
+      }
       cp_[device_name] =
           CreateCollectiveParams(num_workers, num_devices, device_type);
       status_.erase(device_name);
@@ -305,7 +315,7 @@ class DeviceResDistTest : public ::testing::Test {
   absl::flat_hash_map<string, std::vector<string>> dev_by_task_;
   absl::flat_hash_map<string, std::unique_ptr<FakeWorker>> workers_;
   // Below are keyed by device names;
-  absl::flat_hash_map<string, CollectiveParams> cp_;
+  absl::flat_hash_map<string, CollectiveParams*> cp_;
   absl::flat_hash_map<string, Status> status_;
   mutex mu_;
   int num_done_ TF_GUARDED_BY(mu_);

@@ -37,7 +37,8 @@ class Shape;
 // dialect. HloModuleImporter does not take ownership.
 class HloModuleImporter {
  public:
-  explicit HloModuleImporter(mlir::ModuleOp module);
+  explicit HloModuleImporter(mlir::ModuleOp module,
+                             bool import_all_computation = false);
 
   // Import the HloModule into the MLIR Module.
   Status Import(const xla::HloModule& module);
@@ -46,6 +47,7 @@ class HloModuleImporter {
   Status Import(const xla::HloModuleProto& module);
 
  private:
+  bool import_all_computation_;
   mlir::ModuleOp module_;
   mlir::Builder builder_;
 

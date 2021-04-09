@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
@@ -77,6 +78,18 @@ XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(std::string&& name) {
     metadata->set_name(std::move(name));
   }
   return metadata;
+}
+
+XEventMetadata* XPlaneBuilder::GetEventMetadata(absl::string_view name) const {
+  auto result = event_metadata_by_name_.find(name);
+  if (result == event_metadata_by_name_.end()) return nullptr;
+  return result->second;
+}
+
+XStatMetadata* XPlaneBuilder::GetStatMetadata(absl::string_view name) const {
+  auto result = stat_metadata_by_name_.find(name);
+  if (result == stat_metadata_by_name_.end()) return nullptr;
+  return result->second;
 }
 
 XStatMetadata* XPlaneBuilder::GetOrCreateStatMetadata(int64 metadata_id) {

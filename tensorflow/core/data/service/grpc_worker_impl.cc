@@ -36,6 +36,8 @@ Status GrpcWorkerImpl::Start(const std::string& worker_address,
   return impl_.Start(worker_address, transfer_address);
 }
 
+void GrpcWorkerImpl::Stop() { impl_.Stop(); }
+
 #define HANDLER(method)                                                 \
   ::grpc::Status GrpcWorkerImpl::method(ServerContext* context,         \
                                         const method##Request* request, \

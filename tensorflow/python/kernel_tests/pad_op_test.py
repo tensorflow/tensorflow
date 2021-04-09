@@ -111,7 +111,8 @@ class PadOpTest(test.TestCase):
 
     with self.cached_session():
       jacob_t, jacob_n = gradient_checker_v2.compute_gradient(pad, [x])
-      self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
+      tol = 1e-3 if x.dtype == np.float16 else 4e-5
+      self.assertAllClose(jacob_t, jacob_n, rtol=tol, atol=tol)
 
   def _testAll(self, np_inputs, paddings, constant_values):
     for mode in ("CONSTANT", "REFLECT", "SYMMETRIC", "reflect", "symmetric",
@@ -257,10 +258,13 @@ class PadOpTest(test.TestCase):
           [[0, 0], [0, 0], [0, 0], [0, 0]], -123)
 
   def testFloatTypes(self):
-    for t in [np.float32, np.float64]:
+    self.skipTest("b/183965033")
+    for t in [np.float16, np.float32, np.float64]:
       self._testAll(np.random.rand(2, 5).astype(t), [[1, 0], [2, 0]], 0.0)
-      self._testAll(np.random.rand(2, 3, 4).astype(t),
-                    [[0, 0], [0, 0], [0, 0]], -1234.0)
+      self._testAll(
+          np.random.rand(2, 3, 4).astype(t), [[0, 0], [0, 0], [0, 0]], -12.34)
+      self._testAll(
+          np.random.rand(12, 13, 14).astype(t), [[0, 0], [3, 3], [3, 3]], 1.41)
       self._testAll(np.random.rand(0, 3, 4).astype(t),
                     [[0, 0], [2, 1], [2, 3]], 0.0)
 
@@ -372,7 +376,7 @@ class PadOpTest(test.TestCase):
     for dtype in [dtypes.int32, dtypes.int64]:
       paddings = np.zeros((0, 2))
       inp = np.asarray(7)
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         tf_val = array_ops.pad(inp, constant_op.constant(paddings, dtype=dtype))
         out = self.evaluate(tf_val)
       self.assertAllEqual(inp, out)
@@ -397,7 +401,7 @@ class PadOpTest(test.TestCase):
             padded,
             [paddings_value[i][0] + inp.shape.dims[i].value for i in range(4)],
             [-1, -1, -1, -1])
-        with self.cached_session(use_gpu=True):
+        with self.cached_session():
           self.assertAllEqual(inp, self.evaluate(middle))
           self.assertAllEqual(
               np.zeros([row[0] for row in paddings_value]), self.evaluate(left))

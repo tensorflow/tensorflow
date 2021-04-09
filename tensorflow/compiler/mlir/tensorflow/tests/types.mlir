@@ -20,27 +20,31 @@ func private @variantref(!tf.variantref) -> ()
 
 // -----
 
-// expected-error @+1 {{encountered unexpected token}}
+// expected-error @+1 {{unexpected token}}
 func private @invalid_type(!tf<"variant>">) -> ()
 
 // -----
 
-// expected-error @+1 {{expected non-function type}}
+// expected-error @+2 {{expected non-function type}}
+// expected-error @+1 {{invalid variant type}}
 func private @invalid_type(!tf.variant<>) -> ()
 
 // -----
 
-// expected-error @+1 {{expected 'x' in dimension list}}
+// expected-error @+2 {{expected 'x' in dimension list}}
+// expected-error @+1 {{invalid variant type}}
 func private @invalid_type(!tf.variant<tensor<??xf32>>) -> ()
 
 // -----
 
-// expected-error @+1 {{invalid kind of type specified}}
+// expected-error @+2 {{invalid kind of type specified}}
+// expected-error @+1 {{invalid variant type}}
 func private @invalid_type(!tf.variant<vector<3xf32>>) -> ()
 
 // -----
 
-// expected-error @+1 {{invalid VariantType subtype: 'tensor<vector<2xf32>>'}}
+// expected-error @+2 {{invalid subtype: 'tensor<vector<2xf32>>'}}
+// expected-error @+1 {{invalid variant type}}
 func private @invalid_type(!tf.variant<tensor<vector<2xf32>>>) -> ()
 
 // -----
@@ -70,22 +74,26 @@ func private @invalid_type(!tf<"resource>">) -> ()
 
 // -----
 
-// expected-error @+1 {{expected non-function type}}
+// expected-error @+2 {{expected non-function type}}
+// expected-error @+1 {{invalid resource type}}
 func private @invalid_type(!tf.resource<>) -> ()
 
 // -----
 
-// expected-error @+1 {{expected 'x' in dimension list}}
+// expected-error @+2 {{expected 'x' in dimension list}}
+// expected-error @+1 {{invalid resource type}}
 func private @invalid_type(!tf.resource<tensor<??xf32>>) -> ()
 
 // -----
 
-// expected-error @+1 {{invalid kind of type specified}}
+// expected-error @+2 {{invalid kind of type specified}}
+// expected-error @+1 {{invalid resource type}}
 func private @invalid_type(!tf.resource<vector<3xf32>>) -> ()
 
 // -----
 
-// expected-error @+1 {{invalid ResourceType subtype: 'tensor<vector<2xf32>>'}}
+// expected-error @+2 {{invalid subtype: 'tensor<vector<2xf32>>'}}
+// expected-error @+1 {{invalid resource type}}
 func private @invalid_type(!tf.resource<tensor<vector<2xf32>>>) -> ()
 
 // -----

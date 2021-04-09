@@ -319,9 +319,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     ~ParallelInterleaveIterator() override {
       CancelThreads(/*wait=*/true);
-      if (deregister_fn_) deregister_fn_();
     }
 
+    // TODO(jsimsa): Register cancellation callback once the implementation is
+    // refactored not to hold mu_ while calling `GetNext` on the input.
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
       // Note that if `ctx->thread_pool()` is non-null, then instead of creating
@@ -344,11 +345,12 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       if (num_parallel_calls_->value == model::kAutotune) {
         num_parallel_calls_->value = dataset()->cycle_length_;
       }
-      // TODO(jsimsa): Register cancellation callback once the implementation is
-      // refactored not to hold mu_ while calling `GetNext` on the input.
       ctx_ = std::make_unique<IteratorContext>(*ctx);
-      TF_RETURN_IF_ERROR(
-          dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
+      cancellation_manager_ = absl::make_unique<CancellationManager>();
+      IteratorContext::Params params(ctx);
+      params.cancellation_manager = cancellation_manager_.get();
+      TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
+          IteratorContext(params), this, prefix(), &input_impl_));
       return dataset()->captured_func_->Instantiate(
           ctx, &instantiated_captured_func_);
     }
@@ -499,7 +501,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       auto result = dataset()->traceme_metadata_;
       result.push_back(std::make_pair(
           "parallelism",
-          strings::Printf("%lld", static_cast<long long>(parallelism))));
+          parallelism == -1
+              ? kTraceInfoUnavailable
+              : strings::Printf("%lld", static_cast<long long>(parallelism))));
       return result;
     }
 
@@ -561,6 +565,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // cancelled. Optionally, the method waits until all threads finish
     // executing.
     void CancelThreads(bool wait) TF_LOCKS_EXCLUDED(mu_) {
+      cancellation_manager_->StartCancel();
       mutex_lock l(*mu_);
       cancelled_ = true;
       // Wake up all threads so that they can exit. This will also wake up any
@@ -1278,6 +1283,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                 absl::StrCat(kResultsSuffix, "[", i, "][", j, "]"),
                 &result->return_values.back()));
           }
+          RecordBufferEnqueue(ctx, result->return_values);
           element->results[i] = std::move(result);
         }
         if (!reader->Contains(iterator_name,
@@ -1339,6 +1345,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(
           ReadElementsParallel(ctx, reader, size, kCurrentElements, &elements));
       mutex_lock l(*mu_);
+      for (auto& element : current_elements_) {
+        DCHECK(element == nullptr);
+      }
       for (int idx = 0; idx < size; ++idx) {
         current_elements_[idx] = std::move(elements[idx]);
       }
@@ -1361,6 +1370,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(
           ReadElementsParallel(ctx, reader, size, kFutureElements, &elements));
       mutex_lock l(*mu_);
+      for (auto& element : future_elements_) {
+        DCHECK(element == nullptr);
+      }
       for (int idx = 0; idx < size; ++idx) {
         future_elements_[idx] = std::move(elements[idx]);
       }
@@ -1494,6 +1506,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // Determines whether outputs can be produced in deterministic order.
     const bool deterministic_;
 
+    // Controls cancellation of `input_impl_`. Must be ordered before
+    // `input_impl_` so that `input_impl_` is destroyed first.
+    std::unique_ptr<CancellationManager> cancellation_manager_;
+
     // Iterator for input elements.
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
 
@@ -1541,9 +1557,6 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     // Identifies whether background threads should be cancelled.
     bool cancelled_ TF_GUARDED_BY(mu_) = false;
-
-    // Method for deregistering the cancellation callback.
-    std::function<void()> deregister_fn_;
   };
 
   const DatasetBase* const input_;

@@ -597,6 +597,7 @@ class EagerPyFuncTest(PyFuncTestBase):
         self.assertIsNone(ret)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_tfrt("b/180469928")
   def testEagerPyFuncInDefun(self):
     with test_util.device(use_gpu=True):
       def wrapper():
@@ -755,7 +756,7 @@ class EagerPyFuncTest(PyFuncTestBase):
       y = script_ops.eager_py_func(func=f, inp=[x], Tout=dtypes.float32)
       z = script_ops.eager_py_func(func=g, inp=[y], Tout=dtypes.float32)
 
-    with self.session(use_gpu=True) as sess:
+    with self.session() as sess:
       output = sess.run(z, feed_dict={x: 3.0})
       self.assertEqual(output, 18.0)
 

@@ -22,9 +22,11 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
@@ -32,6 +34,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -48,6 +51,10 @@ namespace quant {
 // added by the quantization passes. These ops can be removed erased without
 // losing accuracy.
 constexpr char kVolatileOpAttrName[] = "volatile";
+
+enum QuantizationTrait { FullyQuantizable, NotQuantizable };
+extern const char kQuantTraitAttr[];
+extern const absl::string_view QuantTraitValues[];
 
 using QuantParams = quant::QuantizedType;
 using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
@@ -86,9 +93,12 @@ typedef std::unique_ptr<OpQuantSpec> (*OpQuantSpecGetter)(Operation* op);
 // scales.
 QuantizedType DownCastScale(QuantizedType type,
                             const SmallVectorImpl<double>& mins,
-                            const SmallVectorImpl<double>& maxs);
+                            const SmallVectorImpl<double>& maxs, Location loc);
 
-QuantizedType DownCastScale(QuantizedType type, double min, double max);
+QuantizedType DownCastScale(QuantizedType type, double min, double max,
+                            Location loc);
+
+bool IsOpNotQuantizable(Operation* op);
 
 template <typename Q, typename DQ>
 struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
@@ -128,7 +138,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
           quant::fakeQuantAttrsToType(op.getLoc(), num_bits, *op.axis(), mins,
                                       maxs, narrow_range, expressed, is_signed);
       if (legacy_float_scale) {
-        quant_type = DownCastScale(quant_type, mins, maxs);
+        quant_type = DownCastScale(quant_type, mins, maxs, op->getLoc());
       }
     } else if (auto stats = op.layerStats().dyn_cast<DenseFPElementsAttr>()) {
       double rmin = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({0}));
@@ -143,7 +153,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
           quant::fakeQuantAttrsToType(op.getLoc(), num_bits, rmin, rmax,
                                       narrow_range, expressed, is_signed);
       if (legacy_float_scale) {
-        quant_type = DownCastScale(quant_type, rmin, rmax);
+        quant_type = DownCastScale(quant_type, rmin, rmax, op->getLoc());
       }
     } else {
       return failure();
@@ -152,6 +162,8 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
     rewriter.setInsertionPointAfter(op.getOperation());
     Type result_type = quant_type.castFromExpressedType(op.getType());
     auto q = rewriter.create<Q>(op.getLoc(), result_type, op.arg());
+    q->setAttr(kVolatileOpAttrName, rewriter.getUnitAttr());
+
     auto dq = rewriter.create<DQ>(op.getLoc(), op.getType(), q);
     op.getResult().replaceAllUsesWith(dq);
     q.getOperation()->replaceUsesOfWith(dq, op.arg());
@@ -224,11 +236,24 @@ struct QuantizationPattern : public RewritePattern {
 
       // If it is terminator or not quantizable or any ops form the mlir quant
       // ops dialect, we shouldn't rewrite.
-      if (quantized_op->isKnownTerminator() ||
-          quantized_op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
-          llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp>(
-              quantized_op)) {
+      if (IsOpNotQuantizable(quantized_op)) {
         return failure();
+      }
+
+      // An op with float inputs and outputs are expected when it's used by a
+      // NumericVerify op. Skip this op and look at next users.
+      if (enable_verify) {
+        bool used_by_verifier = false;
+        for (auto result : quantized_op->getResults()) {
+          if (used_by_verifier) break;
+          for (auto user : result.getUsers()) {
+            if (llvm::isa<VERIFIER>(user)) {
+              used_by_verifier = true;
+              break;
+            }
+          }
+        }
+        if (used_by_verifier) continue;
       }
 
       // Collect all the quantized inputs and "clone" the matched op by these
@@ -303,8 +328,9 @@ struct QuantizationPattern : public RewritePattern {
       if (quantized_op->getNumRegions() != 0) {
         for (auto indexed_regions :
              llvm::enumerate(quantized_op->getRegions())) {
-          new_op->getRegion(indexed_regions.index())
-              .takeBody(indexed_regions.value());
+          Region& target_region = new_op->getRegion(indexed_regions.index());
+          BlockAndValueMapping mapping;
+          indexed_regions.value().cloneInto(&target_region, mapping);
         }
       }
       for (auto output : outputs_replaced) {
@@ -400,10 +426,10 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
     QType new_qtype;
     if (auto uqtype = qtype.template dyn_cast<quant::UniformQuantizedType>()) {
       new_qtype = quant::UniformQuantizedType::getChecked(
-          flags, qtype.getStorageType(), qtype.getExpressedType(),
+          op.getLoc(), flags, qtype.getStorageType(), qtype.getExpressedType(),
           uqtype.getScale(), uqtype.getZeroPoint() - offset,
           uqtype.getStorageTypeMin() - offset,
-          uqtype.getStorageTypeMax() - offset, op.getLoc());
+          uqtype.getStorageTypeMax() - offset);
     } else if (auto aqtype = qtype.template dyn_cast<
                              quant::UniformQuantizedPerAxisType>()) {
       auto zero_points = aqtype.getZeroPoints();
@@ -413,10 +439,10 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
         new_zero_points[i] -= offset;
       }
       new_qtype = quant::UniformQuantizedPerAxisType::getChecked(
-          flags, qtype.getStorageType(), qtype.getExpressedType(),
+          op.getLoc(), flags, qtype.getStorageType(), qtype.getExpressedType(),
           aqtype.getScales(), new_zero_points, aqtype.getQuantizedDimension(),
           aqtype.getStorageTypeMin() - offset,
-          aqtype.getStorageTypeMax() - offset, op.getLoc());
+          aqtype.getStorageTypeMax() - offset);
     } else {
       return failure();
     }

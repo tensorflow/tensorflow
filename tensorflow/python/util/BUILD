@@ -36,7 +36,7 @@ visibility = [
 
 package(
     default_visibility = visibility,
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_strict_library(
@@ -87,6 +87,34 @@ tf_python_pybind_extension(
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_nest",
+    srcs = ["nest_wrapper.cc"],
+    hdrs = ["nest.h"],
+    module_name = "_pywrap_nest",
+    deps = [
+        "//tensorflow/python:pybind11_lib",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
+cc_library(
+    name = "cpp_nest",
+    srcs = ["nest.cc"],
+    hdrs = ["nest.h"],
+    deps = [
+        ":cpp_python_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
+        "//third_party/python_runtime:headers",
+    ],
+    alwayslink = 1,
 )
 
 tf_python_pybind_extension(
@@ -344,7 +372,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/core/util:abstract_stack_trace",
+        "//tensorflow/core/util:managed_stack_trace",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -469,6 +497,7 @@ py_library(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

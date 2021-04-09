@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 
+#include <cstdarg>
 #include <cstddef>
 #include <cstring>
 #include <functional>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -115,6 +117,8 @@ extern const char* const kReleaseOutfeedBufferAfterPopulationSymbolName =
     "__xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation";
 extern const char* const kParallelForkJoinSymbolName =
     "__xla_cpu_runtime_ParallelForkJoin";
+extern const char* const kPrintfToStderrSymbolName =
+    "__xla_cpu_runtime_PrintfToStderr";
 extern const char* const kKeyValueSortSymbolName =
     "__xla_cpu_runtime_KeyValueSort";
 extern const char* const kTopKF32SymbolName = "__xla_cpu_runtime_TopKF32";
@@ -208,9 +212,30 @@ tensorflow::string ShapeString(const void* shape_ptr, xla::int32 shape_length) {
   return "<invalid shape>";
 }
 
+// TODO(zhangqiaorjc): Prefer to make callers set and use device_ordinal
+// directly since callers may not have a Stream*.
+int GetDeviceOrdinal(const xla::ExecutableRunOptions* run_options) {
+  if (!run_options) {
+    return 0;
+  } else if (run_options->device_ordinal() != -1) {
+    return run_options->device_ordinal();
+  }
+  return run_options->stream()->parent()->device_ordinal();
+}
+
 }  // namespace
 
 extern "C" {
+
+TF_ATTRIBUTE_NO_SANITIZE_MEMORY int __xla_cpu_runtime_PrintfToStderr(
+    const char* format, ...) {
+  VLOG(3) << "__xla_cpu_runtime_PrintfToStderr " << format;
+  va_list args;
+  va_start(args, format);
+  int result = vfprintf(stderr, format, args);
+  va_end(args);
+  return result;
+}
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY xla::int64 __xla_cpu_runtime_TracingStart(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
@@ -232,8 +257,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void*
 __xla_cpu_runtime_AcquireInfeedBufferForDequeue(
     const xla::ExecutableRunOptions* run_options, xla::int32 buffer_length,
     const void* shape, xla::int32 shape_length) {
-  int device_ordinal =
-      run_options ? run_options->stream()->parent()->device_ordinal() : 0;
+  int device_ordinal = GetDeviceOrdinal(run_options);
 
   VLOG(2) << "AcquireInfeedBufferForDequeue: "
           << ShapeString(shape, shape_length) << " on stream executor "
@@ -256,8 +280,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
 __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(
     const xla::ExecutableRunOptions* run_options, xla::int32 buffer_length,
     void* buffer_ptr, const void* shape_ptr, xla::int32 shape_length) {
-  int device_ordinal =
-      run_options ? run_options->stream()->parent()->device_ordinal() : 0;
+  int device_ordinal = GetDeviceOrdinal(run_options);
 
   VLOG(2) << "ReleaseInfeedBufferAfterDeque: "
           << ShapeString(shape_ptr, shape_length) << " on stream executor "
@@ -275,8 +298,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void*
 __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
     const xla::ExecutableRunOptions* run_options, xla::int32 buffer_length,
     const void* shape_ptr, xla::int32 shape_length) {
-  int device_ordinal =
-      run_options ? run_options->stream()->parent()->device_ordinal() : 0;
+  int device_ordinal = GetDeviceOrdinal(run_options);
 
   VLOG(2) << "AcquireOutfeedBufferForPopulation: "
           << ShapeString(shape_ptr, shape_length) << " on stream executor "
@@ -299,8 +321,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
 __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
     const xla::ExecutableRunOptions* run_options, xla::int32 buffer_length,
     void* buffer_ptr, const void* shape_ptr, xla::int32 shape_length) {
-  int device_ordinal =
-      run_options ? run_options->stream()->parent()->device_ordinal() : 0;
+  int device_ordinal = GetDeviceOrdinal(run_options);
 
   VLOG(2) << "ReleaseOutfeedBufferAfterPopulation: "
           << ShapeString(shape_ptr, shape_length) << " on stream executor "
@@ -584,14 +605,6 @@ GlobalAllToAllRendezvousMap() {
   return m;
 }
 
-int GetDeviceOrdinal(const xla::ExecutableRunOptions* run_options) {
-  if (run_options->stream()) {
-    return run_options->stream()->parent()->device_ordinal();
-  } else {
-    return run_options->device_ordinal();
-  }
-}
-
 xla::RendezvousKey GetRendezvousKey(
     const xla::ExecutableRunOptions* run_options,
     std::vector<xla::ReplicaGroup> group, xla::int32 channel_id_present,
@@ -604,8 +617,8 @@ xla::RendezvousKey GetRendezvousKey(
                          : xla::RendezvousKey::kCrossReplica;
   std::vector<xla::GlobalDeviceId> participating_devices =
       xla::GetParticipatingDevices(xla::GlobalDeviceId(device_ordinal),
-                                   device_assignment,
-                                   device_assignment.replica_count(), group)
+                                   device_assignment, group,
+                                   xla::CollectiveOpGroupMode::kCrossReplica)
           .ValueOrDie();
   int num_local_participants = participating_devices.size();
   return xla::RendezvousKey{run_options->run_id(),
@@ -636,7 +649,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllToAll(
                                       run_options->stream());
   participant.replica_id = replica_id;
   participant.replica_ids_to_copy_to =
-      xla::GetParticipatingReplicas(
+      xla::GetParticipatingIDs(
           replica_id, run_options->device_assignment()->replica_count(), group)
           .ValueOrDie();
   for (int i = 0; i < num_buffers; i++) {

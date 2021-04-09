@@ -736,7 +736,109 @@ TEST_P(QuantizeConvModel2Test, VerifyConvQuantization) {
   EXPECT_EQ(weights_tensor->type, TensorType_INT8);
 
   ASSERT_TRUE(weights_tensor->quantization);
+  ASSERT_TRUE(bias_tensor->quantization);
+  ASSERT_TRUE(weights_tensor->quantization);
+  const std::vector<float>& bias_scales = bias_tensor->quantization->scale;
+  const std::vector<float>& weights_scales =
+      weights_tensor->quantization->scale;
+  const std::vector<int64_t>& weights_zero_points =
+      weights_tensor->quantization->zero_point;
   const int out_channel_size = weights_tensor->shape[0];
+  ASSERT_EQ(bias_scales.size(), out_channel_size);
+  ASSERT_EQ(weights_scales.size(), out_channel_size);
+  ASSERT_EQ(weights_zero_points.size(), out_channel_size);
+  ASSERT_EQ(input_tensor->quantization->scale.size(), 1);
+  ASSERT_EQ(output_tensor->quantization->scale.size(), 1);
+
+  const float eps = 1e-7;
+
+  // Bias scale should be input * per_channel_weight_scale.
+  for (size_t i = 0; i < out_channel_size; i++) {
+    EXPECT_NEAR(bias_scales[i],
+                input_tensor->quantization->scale[0] * weights_scales[i], eps);
+  }
+
+  const auto bias_buffer = model_.buffers[bias_tensor->buffer].get();
+  auto control_size = tensor_type_ == TensorType_INT8
+                          ? sizeof(int32_t) * bias_tensor->shape[0]
+                          : sizeof(int64_t) * bias_tensor->shape[0];
+
+  ASSERT_EQ(bias_buffer->data.size(), control_size);
+  const auto original_bias_buffer =
+      readonly_model_->buffers()->Get(bias_tensor->buffer);
+  const float* bias_float_buffer =
+      reinterpret_cast<const float*>(original_bias_buffer->data()->data());
+
+  if (tensor_type_ == TensorType_INT8) {
+    int32_t* bias_values = reinterpret_cast<int32_t*>(bias_buffer->data.data());
+    for (size_t i = 0; i < out_channel_size; i++) {
+      auto dequantized_value = bias_values[i] * bias_scales[i];
+      EXPECT_NEAR(dequantized_value, bias_float_buffer[i], bias_scales[i] / 2);
+    }
+  } else if (tensor_type_ == TensorType_INT16) {
+    int64_t* bias_values = reinterpret_cast<int64_t*>(bias_buffer->data.data());
+    for (size_t i = 0; i < out_channel_size; i++) {
+      auto dequantized_value = bias_values[i] * bias_scales[i];
+      EXPECT_NEAR(dequantized_value, bias_float_buffer[i], bias_scales[i] / 2);
+    }
+  }
+
+  const auto weights_buffer = model_.buffers[weights_tensor->buffer].get();
+  const auto original_weights_buffer =
+      readonly_model_->buffers()->Get(weights_tensor->buffer);
+  const int8_t* weight_values =
+      reinterpret_cast<int8_t*>(weights_buffer->data.data());
+  const float* weights_float_buffer =
+      reinterpret_cast<const float*>(original_weights_buffer->data()->data());
+  ASSERT_EQ(sizeof(float) * weights_buffer->data.size(),
+            original_weights_buffer->data()->size());
+  int num_values_in_channel = weights_buffer->data.size() / out_channel_size;
+  for (size_t channel_idx = 0; channel_idx < out_channel_size; channel_idx++) {
+    for (size_t j = 0; j < num_values_in_channel; j++) {
+      size_t element_idx = channel_idx * out_channel_size + j;
+      auto scale = weights_scales[channel_idx];
+      auto zero_point = weights_zero_points[channel_idx];
+      auto dequantized_value = weight_values[element_idx] * scale;
+      EXPECT_NEAR(dequantized_value, weights_float_buffer[element_idx],
+                  scale / 2);
+      EXPECT_EQ(zero_point, 0);
+    }
+  }
+
+  // check op and versioning.
+  EXPECT_EQ(model_.operator_codes.size(), 1);
+  EXPECT_EQ(GetBuiltinCode(model_.operator_codes[0].get()),
+            BuiltinOperator_CONV_2D);
+  EXPECT_EQ(model_.operator_codes[0]->version, 3);
+}
+
+TEST_P(QuantizeConvModel2Test, VerifyConvDisablePerChannelQuantization) {
+  auto status = QuantizeModelAllOperators(
+      &builder_, &model_, tensor_type_, tensor_type_, false, tensor_type_,
+      /*disable_per_channel=*/true, &error_reporter_);
+  ASSERT_EQ(kTfLiteOk, status);
+  const auto& subgraph = model_.subgraphs[0];
+  auto conv_op = subgraph->operators[0].get();
+  const int input_tensor_idx = 0;
+  const int weights_tensor_idx = 1;
+  const int bias_tensor_index = 2;
+  const int output_tensor_idx = 0;
+  const auto bias_tensor =
+      subgraph->tensors[conv_op->inputs[bias_tensor_index]].get();
+  const auto input_tensor =
+      subgraph->tensors[conv_op->inputs[input_tensor_idx]].get();
+  const auto weights_tensor =
+      subgraph->tensors[conv_op->inputs[weights_tensor_idx]].get();
+  const auto output_tensor =
+      subgraph->tensors[conv_op->outputs[output_tensor_idx]].get();
+
+  EXPECT_EQ(bias_tensor->type, tensor_type_ == TensorType_INT8
+                                   ? TensorType_INT32
+                                   : TensorType_INT64);
+  EXPECT_EQ(input_tensor->type, tensor_type_);
+  EXPECT_EQ(weights_tensor->type, TensorType_INT8);
+
+  ASSERT_TRUE(weights_tensor->quantization);
   ASSERT_TRUE(bias_tensor->quantization);
   ASSERT_TRUE(weights_tensor->quantization);
   const std::vector<float>& bias_scales = bias_tensor->quantization->scale;
@@ -745,6 +847,7 @@ TEST_P(QuantizeConvModel2Test, VerifyConvQuantization) {
   const std::vector<int64_t>& weights_zero_points =
       weights_tensor->quantization->zero_point;
 
+  const int out_channel_size = 1;
   ASSERT_EQ(bias_scales.size(), out_channel_size);
   ASSERT_EQ(weights_scales.size(), out_channel_size);
   ASSERT_EQ(weights_zero_points.size(), out_channel_size);
@@ -1843,6 +1946,59 @@ TEST_P(QuantizeGatherNDModelTest, QuantizeGatherND) {
   EXPECT_EQ(model_.operator_codes.size(), 1);
   EXPECT_EQ(model_.operator_codes[0]->builtin_code, BuiltinOperator_GATHER_ND);
   EXPECT_EQ(model_.operator_codes[0]->version, 3);
+}
+
+class QuantizeWhereModelTest : public QuantizeModelTest {
+ protected:
+  QuantizeWhereModelTest() {
+    input_model_ = ReadModel(internal::kModelWithWhereOp);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+  }
+};
+
+TEST_F(QuantizeWhereModelTest, QuantizeWhere) {
+  // Where operator takes a BOOL tensor as input
+  // and outputs INT64 indices, both of which
+  // should not be quantized
+  auto status = QuantizeModel(&builder_, &model_, TensorType_BOOL,
+                              TensorType_INT64, &error_reporter_);
+  EXPECT_EQ(status, kTfLiteOk);
+
+  // There is only one subgraph.
+  const int32_t subgraph_idx = 0;
+  const auto& subgraph = model_.subgraphs[subgraph_idx];
+  const auto& readonly_subgraph =
+      readonly_model_->subgraphs()->Get(subgraph_idx);
+
+  // There should be a single where op.
+  EXPECT_EQ(readonly_subgraph->operators()->size(), 1);
+  EXPECT_EQ(subgraph->operators.size(), 1);
+  const auto& where = subgraph->operators[0];
+  EXPECT_EQ(model_.operator_codes[where->opcode_index]->builtin_code,
+            BuiltinOperator_WHERE);
+
+  // There should be 2 tensors: input and output.
+  EXPECT_EQ(subgraph->tensors.size(), 2);
+
+  // Testing input tensor type and ensuring it
+  // was not quantized
+  EXPECT_EQ(subgraph->tensors[0]->type, TensorType_BOOL);
+  EXPECT_EQ(subgraph->tensors[0]->name, "input");
+  EXPECT_EQ(subgraph->tensors[0]->quantization->scale.size(), 0);
+  EXPECT_EQ(subgraph->tensors[0]->quantization->zero_point.size(), 0);
+
+  // Testing output (indices) tensor type and ensuring it
+  // was not quantized
+  EXPECT_EQ(subgraph->tensors[1]->type, TensorType_INT64);
+  EXPECT_EQ(subgraph->tensors[1]->name, "indices");
+  EXPECT_EQ(subgraph->tensors[1]->quantization->scale.size(), 0);
+  EXPECT_EQ(subgraph->tensors[1]->quantization->zero_point.size(), 0);
+
+  // check op and versioning.
+  EXPECT_EQ(model_.operator_codes.size(), 1);
+  EXPECT_EQ(model_.operator_codes[0]->builtin_code, BuiltinOperator_WHERE);
+  EXPECT_EQ(model_.operator_codes[0]->version, 1);
 }
 
 }  // namespace

@@ -14,7 +14,7 @@ package(
         "//tensorflow/python/feature_column:__pkg__",
         "//tensorflow/python/keras:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -58,6 +58,7 @@ py_library(
         "//tensorflow/python/distribute:parameter_server_strategy",
         "//tensorflow/python/distribute:parameter_server_strategy_v2",
         "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/distribute/coordinator:cluster_coordinator",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras:activations",
         "//tensorflow/python/keras:backend",
@@ -88,7 +89,6 @@ py_library(
         "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
-        "@six_archive//:six",
     ],
 )
 
@@ -125,7 +125,6 @@ py_library(
         ":input_spec",
         ":node",
         "//third_party/py/numpy",
-        "@six_archive//:six",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:auto_control_deps",
         "//tensorflow/python:constant_op",
@@ -184,6 +183,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/keras/utils:dataset_creator",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:tf_utils",
     ],
@@ -199,7 +199,6 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/keras:backend",
-        "@six_archive//:six",
     ],
 )
 
@@ -212,7 +211,6 @@ py_library(
         "//tensorflow/python:lib",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/keras/utils:object_identity",
-        "@six_archive//:six",
     ],
 )
 
@@ -220,7 +218,6 @@ py_library(
     name = "base_preprocessing_layer",
     srcs = [
         "base_preprocessing_layer.py",
-        "base_preprocessing_layer_v1.py",
     ],
     srcs_version = "PY3",
     deps = [
@@ -476,7 +473,6 @@ tf_py_test(
         "//tensorflow/python/keras/layers",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@six_archive//:six",
     ],
 )
 

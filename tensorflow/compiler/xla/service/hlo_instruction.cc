@@ -328,7 +328,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         instruction = CreateConstant(std::move(literal));
         // Literal's shape may have no/different tiling info.
         TF_RET_CHECK(Shape::Equal().MinorToMajorOnlyInLayout()(
-            instruction->shape(), shape));
+            instruction->shape(), shape))
+            << instruction->shape().ToString(true) << " vs "
+            << shape.ToString(true);
         *instruction->mutable_shape() = shape;
       } else {
         instruction = absl::make_unique<HloConstantInstruction>(shape);
@@ -415,11 +417,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 
       TF_RET_CHECK(proto.dimensions_size() == 1)
           << "AllGather cannot have more than 1 all-gather dimensions";
-      TF_RET_CHECK(all_operands().size() == 1)
-          << "AllGather must have a single operand";
       int64 all_gather_dimension = proto.dimensions(0);
       instruction = CreateAllGather(
-          shape, operands(0), all_gather_dimension,
+          shape, all_operands(), all_gather_dimension,
           std::vector<ReplicaGroup>(proto.replica_groups().begin(),
                                     proto.replica_groups().end()),
           proto.constrain_layout(), channel_id, proto.use_global_device_ids());
@@ -577,6 +577,12 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           Cast<HloCustomCallInstruction>(instruction.get());
       if (proto.has_window()) {
         custom_call_instr->set_window(proto.window());
+      }
+      if (proto.has_literal()) {
+        TF_ASSIGN_OR_RETURN(
+            auto literal,
+            Literal::CreateFromProto(proto.literal(), prohibit_empty_literal));
+        custom_call_instr->set_literal(std::move(literal));
       }
       if (proto.has_convolution_dimension_numbers()) {
         custom_call_instr->set_convolution_dimension_numbers(
@@ -1033,11 +1039,12 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllGather(
-    const Shape& shape, HloInstruction* operand, int64 all_gather_dimension,
-    const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
-    const absl::optional<int64>& channel_id, bool use_global_device_ids) {
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    int64 all_gather_dimension, const std::vector<ReplicaGroup>& replica_groups,
+    bool constrain_layout, const absl::optional<int64>& channel_id,
+    bool use_global_device_ids) {
   return absl::make_unique<HloAllGatherInstruction>(
-      shape, operand, all_gather_dimension, replica_groups, constrain_layout,
+      shape, operands, all_gather_dimension, replica_groups, constrain_layout,
       channel_id, use_global_device_ids);
 }
 
@@ -1498,11 +1505,11 @@ void HloInstruction::set_single_sharding(const HloSharding& sharding) {
 
 void HloInstruction::SetupDerivedInstruction(
     HloInstruction* derived_instruction) const {
-  if (sharding_ != nullptr && ShapeUtil::CompatibleIgnoringElementType(
-                                  shape_, derived_instruction->shape())) {
-    // Only copy sharding if the shape of the two instruction is compatible
-    // because copying it between differently shaped instructions can produce
-    // invalid shardings.
+  if (sharding_ != nullptr &&
+      ShapeUtil::CompatibleKind(shape_, derived_instruction->shape())) {
+    // Only copy sharding if the tuple tree shape of the two instruction is
+    // compatible because copying it between differently shaped instructions
+    // can produce invalid shardings.
     derived_instruction->set_sharding(*sharding_);
   } else {
     derived_instruction->clear_sharding();
@@ -1522,6 +1529,8 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
+    case HloOpcode::kCollectivePermuteStart:
+    case HloOpcode::kCollectivePermuteDone:
       return true;
     case HloOpcode::kAllReduce:
       return channel_id().has_value() ||
@@ -2742,11 +2751,19 @@ string HloInstruction::OperandsToStringWithCanonicalNameMap(
       slice.size() > kMaxOperandsToShowIfCompact) {
     slice.remove_suffix(slice.size() - kMaxOperandsToShowIfCompact);
   }
-  operands = StrJoin(slice, ", ", [&](string* out, HloInstruction* operand) {
+  for (int64 i = 0; i < slice.size(); ++i) {
+    HloInstruction* operand = slice[i];
+    if (i != 0) {
+      StrAppend(&operands, ", ");
+      if (options.print_operand_index_annotation_interval() != 0 &&
+          i % options.print_operand_index_annotation_interval() == 0) {
+        StrAppend(&operands, absl::StrFormat("/*index=%lld*/", i));
+      }
+    }
     // If operand is already been deleted, put `null` to the string output.
     if (operand == nullptr) {
-      StrAppend(out, "null ");
-      return;
+      StrAppend(&operands, "null ");
+      continue;
     }
     std::vector<string> str;
     if (options.print_operand_shape()) {
@@ -2766,8 +2783,8 @@ string HloInstruction::OperandsToStringWithCanonicalNameMap(
     } else if (options.print_operand_names()) {
       str.push_back(PrintNameInternal(operand->name(), options));
     }
-    StrAppend(out, StrJoin(str, " "));
-  });
+    StrAppend(&operands, StrJoin(str, " "));
+  }
   const int64 remaining = operands_.size() - slice.size();
   if (slice.size() != operands_.size()) {
     StrAppend(&operands, ", ...(+", remaining, ")");
@@ -2775,13 +2792,29 @@ string HloInstruction::OperandsToStringWithCanonicalNameMap(
   return operands;
 }
 
+namespace {
+
+bool IsSequentialCall(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kCall:
+    case HloOpcode::kConditional:
+    case HloOpcode::kWhile:
+      return true;
+    default:
+      return false;
+  }
+}
+
+}  // namespace
+
 std::vector<string> HloInstruction::ExtraAttributesToString(
     const HloPrintOptions& options) const {
   std::vector<string> extra = options.print_extra_attributes()
                                   ? ExtraAttributesToStringImpl(options)
                                   : std::vector<string>();
 
-  if (options.print_subcomputation_mode() ==
+  const auto subcomputation_mode = options.print_subcomputation_mode();
+  if (subcomputation_mode ==
       HloPrintOptions::PrintSubcomputationMode::kNameOnly) {
     if (opcode() == HloOpcode::kWhile) {
       extra.push_back(StrCat(
@@ -2839,8 +2872,11 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
                               PrintNameInternal(computation->name(), options));
                   })));
     }
-  } else if (options.print_subcomputation_mode() ==
-             HloPrintOptions::PrintSubcomputationMode::kFullBodies) {
+  } else if ((subcomputation_mode ==
+              HloPrintOptions::PrintSubcomputationMode::kFullBodies) ||
+             (subcomputation_mode == HloPrintOptions::PrintSubcomputationMode::
+                                         kNonSequentialBodies &&
+              !IsSequentialCall(opcode()))) {
     HloPrintOptions new_options = options;
     new_options.set_is_in_nested_computation(true);
     switch (opcode()) {

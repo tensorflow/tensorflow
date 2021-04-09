@@ -126,18 +126,17 @@ std::string GenerateCode(const OperationDef& op_def,
   result->args_.AddInt("dilation_y", dw_attr.dilations.h);
 
   std::string c;
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
+  c += "MAIN_FUNCTION($0) {\n";
   if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
-    c += "  int linear_id = get_global_id(0);\n";
+    c += "  int linear_id = GLOBAL_ID_0;\n";
     c += "  int X = linear_id / args.dst_tensor.Batch();\n";
     c += "  int B = linear_id % args.dst_tensor.Batch();\n";
     c += "  args.dst_tensor.SetBatchRef(B);\n";
     c += "  args.src_tensor.SetBatchRef(B);\n";
   } else {
-    c += "  int X = get_global_id(0);\n";
+    c += "  int X = GLOBAL_ID_0;\n";
   }
-  c += "  int Y = get_global_id(1);\n";
+  c += "  int Y = GLOBAL_ID_1;\n";
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height()) { "
        "\n";
   c += "    return; \n";
@@ -194,7 +193,8 @@ std::string GenerateCode(const OperationDef& op_def,
       for (int d = 0; d < intermediate_depth; ++d) {
         const int src_ch_count = std::min(4, dw_attr.weights.shape.i - d * 4);
         const std::string s_postfix = postfixes[src_ch_count - 1];
-        std::string multiplier = check.empty() ? "" : " * (FLT)(" + check + ")";
+        std::string multiplier =
+            check.empty() ? "" : " * INIT_FLT(" + check + ")";
         c += "  src" + s_postfix + " = args.src_tensor.Read(x_c, y_c, " +
              std::to_string(d) + ")" + s_postfix + multiplier + ";\n";
         c += "  dw_res_" + std::to_string(d) + s_postfix + " += src" +

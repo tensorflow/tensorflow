@@ -26,7 +26,6 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import os
 import random
 import re
 
@@ -56,7 +55,7 @@ def read_model(input_tflite_file):
   Returns:
     A python object corresponding to the input tflite file.
   """
-  if not os.path.exists(input_tflite_file):
+  if not gfile.Exists(input_tflite_file):
     raise RuntimeError('Input file not found at %r\n' % input_tflite_file)
   with gfile.GFile(input_tflite_file, 'rb') as input_file_handle:
     model_bytearray = bytearray(input_file_handle.read())

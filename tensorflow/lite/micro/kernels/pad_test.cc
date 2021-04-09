@@ -36,7 +36,7 @@ TfLiteStatus ValidatePadGoldens(TfLiteTensor* tensors, int tensors_size,
   const TfLiteRegistration registration = tflite::ops::micro::Register_PAD();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array,
-                             /*builtin_data=*/nullptr, micro_test::reporter);
+                             /*builtin_data=*/nullptr);
 
   // Prepare should catch dimension mismatches.
   TfLiteStatus prepare_status = runner.InitAndPrepare();
@@ -68,7 +68,7 @@ TfLiteStatus ValidatePadV2Goldens(TfLiteTensor* tensors, int tensors_size,
   const TfLiteRegistration registration = tflite::ops::micro::Register_PADV2();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array,
-                             /*builtin_data=*/nullptr, micro_test::reporter);
+                             /*builtin_data=*/nullptr);
 
   // Prepare should catch dimension mismatches.
   TfLiteStatus prepare_status = runner.InitAndPrepare();

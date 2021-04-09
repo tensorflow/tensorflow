@@ -12,38 +12,41 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# pylint: disable=g-classes-have-attributes
 """Built-in loss functions."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import abc
-
-import six
+import functools
 
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops.losses import losses_impl
+from tensorflow.python.ops.ragged import ragged_map_ops
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
 
 @keras_export('keras.losses.Loss')
-class Loss(object):
+class Loss:
   """Loss base class.
 
   To be implemented by subclasses:
@@ -70,6 +73,7 @@ class Loss(object):
   details on this.
 
   You can implement 'SUM_OVER_BATCH_SIZE' using global batch size like:
+
   ```python
   with strategy.scope():
     loss_obj = tf.keras.losses.CategoricalCrossentropy(
@@ -143,7 +147,7 @@ class Loss(object):
     # accepted in scope name.
     graph_ctx = tf_utils.graph_context_for_symbolic_tensors(
         y_true, y_pred, sample_weight)
-    with K.name_scope(self._name_scope), graph_ctx:
+    with backend.name_scope(self._name_scope), graph_ctx:
       if context.executing_eagerly():
         call_fn = self.call
       else:
@@ -234,7 +238,7 @@ class LossFunctionWrapper(Loss):
       name: (Optional) name for the loss.
       **kwargs: The keyword arguments that are passed on to `fn`.
     """
-    super(LossFunctionWrapper, self).__init__(reduction=reduction, name=name)
+    super().__init__(reduction=reduction, name=name)
     self.fn = fn
     self._fn_kwargs = kwargs
 
@@ -250,14 +254,15 @@ class LossFunctionWrapper(Loss):
     """
     if tensor_util.is_tf_type(y_pred) and tensor_util.is_tf_type(y_true):
       y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(y_pred, y_true)
+
     ag_fn = autograph.tf_convert(self.fn, ag_ctx.control_status_ctx())
     return ag_fn(y_true, y_pred, **self._fn_kwargs)
 
   def get_config(self):
     config = {}
-    for k, v in six.iteritems(self._fn_kwargs):
-      config[k] = K.eval(v) if tf_utils.is_tensor_or_variable(v) else v
-    base_config = super(LossFunctionWrapper, self).get_config()
+    for k, v in self._fn_kwargs.items():
+      config[k] = backend.eval(v) if tf_utils.is_tensor_or_variable(v) else v
+    base_config = super().get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
 
@@ -316,8 +321,7 @@ class MeanSquaredError(LossFunctionWrapper):
             more details.
       name: Optional name for the op. Defaults to 'mean_squared_error'.
     """
-    super(MeanSquaredError, self).__init__(
-        mean_squared_error, name=name, reduction=reduction)
+    super().__init__(mean_squared_error, name=name, reduction=reduction)
 
 
 @keras_export('keras.losses.MeanAbsoluteError')
@@ -375,8 +379,7 @@ class MeanAbsoluteError(LossFunctionWrapper):
             more details.
       name: Optional name for the op. Defaults to 'mean_absolute_error'.
     """
-    super(MeanAbsoluteError, self).__init__(
-        mean_absolute_error, name=name, reduction=reduction)
+    super().__init__(mean_absolute_error, name=name, reduction=reduction)
 
 
 @keras_export('keras.losses.MeanAbsolutePercentageError')
@@ -436,7 +439,7 @@ class MeanAbsolutePercentageError(LossFunctionWrapper):
       name: Optional name for the op. Defaults to
         'mean_absolute_percentage_error'.
     """
-    super(MeanAbsolutePercentageError, self).__init__(
+    super().__init__(
         mean_absolute_percentage_error, name=name, reduction=reduction)
 
 
@@ -497,7 +500,7 @@ class MeanSquaredLogarithmicError(LossFunctionWrapper):
       name: Optional name for the op. Defaults to
         'mean_squared_logarithmic_error'.
     """
-    super(MeanSquaredLogarithmicError, self).__init__(
+    super().__init__(
         mean_squared_logarithmic_error, name=name, reduction=reduction)
 
 
@@ -576,7 +579,6 @@ class BinaryCrossentropy(LossFunctionWrapper):
       from_logits: Whether to interpret `y_pred` as a tensor of
         [logit](https://en.wikipedia.org/wiki/Logit) values. By default, we
           assume that `y_pred` contains probabilities (i.e., values in [0, 1]).
-          **Note - Using from_logits=True may be more numerically stable.
       label_smoothing: Float in [0, 1]. When 0, no smoothing occurs. When > 0,
         we compute the loss between the predicted labels and a smoothed version
         of the true labels, where the smoothing squeezes the labels towards 0.5.
@@ -592,7 +594,7 @@ class BinaryCrossentropy(LossFunctionWrapper):
             more details.
       name: (Optional) Name for the op. Defaults to 'binary_crossentropy'.
     """
-    super(BinaryCrossentropy, self).__init__(
+    super().__init__(
         binary_crossentropy,
         name=name,
         reduction=reduction,
@@ -656,10 +658,9 @@ class CategoricalCrossentropy(LossFunctionWrapper):
     Args:
       from_logits: Whether `y_pred` is expected to be a logits tensor. By
         default, we assume that `y_pred` encodes a probability distribution.
-        **Note - Using from_logits=True is more numerically stable.**
       label_smoothing: Float in [0, 1]. When > 0, label values are smoothed,
         meaning the confidence on label values are relaxed. For example, if
-        `0.1`, use `0.1 / num_classes` for non-target labels and 
+        `0.1`, use `0.1 / num_classes` for non-target labels and
         `0.9 + 0.1 / num_classes` for target labels.
       reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to
         loss. Default value is `AUTO`. `AUTO` indicates that the reduction
@@ -672,7 +673,7 @@ class CategoricalCrossentropy(LossFunctionWrapper):
             more details.
       name: Optional name for the op. Defaults to 'categorical_crossentropy'.
     """
-    super(CategoricalCrossentropy, self).__init__(
+    super().__init__(
         categorical_crossentropy,
         name=name,
         reduction=reduction,
@@ -737,7 +738,6 @@ class SparseCategoricalCrossentropy(LossFunctionWrapper):
     Args:
       from_logits: Whether `y_pred` is expected to be a logits tensor. By
         default, we assume that `y_pred` encodes a probability distribution.
-        **Note - Using from_logits=True may be more numerically stable.
       reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to
         loss. Default value is `AUTO`. `AUTO` indicates that the reduction
         option will be determined by the usage context. For almost all cases
@@ -750,7 +750,7 @@ class SparseCategoricalCrossentropy(LossFunctionWrapper):
       name: Optional name for the op. Defaults to
         'sparse_categorical_crossentropy'.
     """
-    super(SparseCategoricalCrossentropy, self).__init__(
+    super().__init__(
         sparse_categorical_crossentropy,
         name=name,
         reduction=reduction,
@@ -813,7 +813,7 @@ class Hinge(LossFunctionWrapper):
             more details.
       name: Optional name for the op. Defaults to 'hinge'.
     """
-    super(Hinge, self).__init__(hinge, name=name, reduction=reduction)
+    super().__init__(hinge, name=name, reduction=reduction)
 
 
 @keras_export('keras.losses.SquaredHinge')
@@ -874,8 +874,7 @@ class SquaredHinge(LossFunctionWrapper):
             more details.
       name: Optional name for the op. Defaults to 'squared_hinge'.
     """
-    super(SquaredHinge, self).__init__(
-        squared_hinge, name=name, reduction=reduction)
+    super().__init__(squared_hinge, name=name, reduction=reduction)
 
 
 @keras_export('keras.losses.CategoricalHinge')
@@ -934,8 +933,7 @@ class CategoricalHinge(LossFunctionWrapper):
             more details.
       name: Optional name for the op. Defaults to 'categorical_hinge'.
     """
-    super(CategoricalHinge, self).__init__(
-        categorical_hinge, name=name, reduction=reduction)
+    super().__init__(categorical_hinge, name=name, reduction=reduction)
 
 
 @keras_export('keras.losses.Poisson')
@@ -991,7 +989,7 @@ class Poisson(LossFunctionWrapper):
             more details.
       name: Optional name for the op. Defaults to 'poisson'.
     """
-    super(Poisson, self).__init__(poisson, name=name, reduction=reduction)
+    super().__init__(poisson, name=name, reduction=reduction)
 
 
 @keras_export('keras.losses.LogCosh')
@@ -1048,7 +1046,7 @@ class LogCosh(LossFunctionWrapper):
             more details.
       name: Optional name for the op. Defaults to 'log_cosh'.
     """
-    super(LogCosh, self).__init__(log_cosh, name=name, reduction=reduction)
+    super().__init__(log_cosh, name=name, reduction=reduction)
 
 
 @keras_export('keras.losses.KLDivergence')
@@ -1108,8 +1106,7 @@ class KLDivergence(LossFunctionWrapper):
             more details.
       name: Optional name for the op. Defaults to 'kl_divergence'.
     """
-    super(KLDivergence, self).__init__(
-        kl_divergence, name=name, reduction=reduction)
+    super().__init__(kl_divergence, name=name, reduction=reduction)
 
 
 @keras_export('keras.losses.Huber')
@@ -1176,8 +1173,7 @@ class Huber(LossFunctionWrapper):
             more details.
       name: Optional name for the op. Defaults to 'huber_loss'.
     """
-    super(Huber, self).__init__(
-        huber, name=name, reduction=reduction, delta=delta)
+    super().__init__(huber, name=name, reduction=reduction, delta=delta)
 
 
 @keras_export('keras.metrics.mean_squared_error', 'keras.metrics.mse',
@@ -1210,7 +1206,102 @@ def mean_squared_error(y_true, y_pred):
   """
   y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
-  return K.mean(math_ops.squared_difference(y_pred, y_true), axis=-1)
+  return backend.mean(math_ops.squared_difference(y_pred, y_true), axis=-1)
+
+
+def _ragged_tensor_apply_loss(loss_fn, y_true, y_pred, y_pred_extra_dim=False):
+  """Apply a loss function on a per batch basis.
+
+  Args:
+    loss_fn: The loss function
+    y_true: truth values (RaggedTensor)
+    y_pred: predicted values (RaggedTensor)
+    y_pred_extra_dim: whether y_pred has an additional dimension compared to
+      y_true
+
+  Returns:
+    Loss-function result. A dense tensor if the output has a single dimension
+    (per-batch loss value); a ragged tensor otherwise.
+  """
+
+  def rt_is_equiv_dense(rt):
+    """Returns true if this RaggedTensor has the same row_lenghts across
+
+       all ragged dimensions and thus can be converted to a dense tensor
+       without loss of information.
+
+    Args:
+      rt: RaggedTensor.
+    """
+    return math_ops.reduce_all([
+        math_ops.equal(
+            math_ops.reduce_variance(math_ops.cast(row_lens, backend.floatx())),
+            constant_op.constant([0.])) for row_lens in rt.nested_row_lengths()
+    ])
+
+  def _convert_to_dense(inputs):
+    return tuple(
+        rt.to_tensor() if isinstance(rt, ragged_tensor.RaggedTensor) else rt
+        for rt in inputs)
+
+  def _call_loss(inputs, ragged_output):
+    """ Adapt the result to ragged or dense tensor according to the expected
+
+        output type. This is done so that all the return values of the map
+        operation have the same type.
+    """
+    r = loss_fn(*inputs)
+    if ragged_output and not isinstance(r, ragged_tensor.RaggedTensor):
+      r = ragged_tensor.RaggedTensor.from_tensor(r)
+    elif not ragged_output and isinstance(r, ragged_tensor.RaggedTensor):
+      r = r.to_tensor()
+    return r
+
+  def _wrapper(inputs, ragged_output):
+    _, y_pred = inputs
+    if isinstance(y_pred, ragged_tensor.RaggedTensor):
+      return control_flow_ops.cond(
+          rt_is_equiv_dense(y_pred),
+          lambda: _call_loss(_convert_to_dense(inputs), ragged_output),
+          lambda: _call_loss(inputs, ragged_output))
+
+    return loss_fn(*inputs)
+
+  if not isinstance(y_true, ragged_tensor.RaggedTensor):
+    return loss_fn(y_true, y_pred.to_tensor())
+
+  lshape = y_pred.shape.as_list()[1:-1]
+  if len(lshape) > 0:
+    spec = ragged_tensor.RaggedTensorSpec(shape=lshape, dtype=y_pred.dtype)
+  else:
+    spec = tensor_spec.TensorSpec(shape=[], dtype=y_pred.dtype)
+
+  nested_splits_list = [rt.nested_row_splits for rt in (y_true, y_pred)]
+  if y_pred_extra_dim:
+    nested_splits_list[1] = nested_splits_list[1][:-1]
+
+  map_fn = functools.partial(_wrapper, ragged_output=len(lshape) > 1)
+
+  assertion_list = ragged_util.assert_splits_match(nested_splits_list)
+  with ops.control_dependencies(assertion_list):
+    return ragged_map_ops.map_fn(map_fn, elems=(y_true, y_pred), dtype=spec)
+
+
+@dispatch.dispatch_for_types(mean_squared_error, ragged_tensor.RaggedTensor)
+def _ragged_tensor_mse(y_true, y_pred):
+  """Implements support for handling RaggedTensors.
+
+  Args:
+    y_true: RaggedTensor truth values. shape = `[batch_size, d0, .. dN]`.
+    y_pred: RaggedTensor predicted values. shape = `[batch_size, d0, .. dN]`.
+
+  Returns:
+    Mean squared error values. shape = `[batch_size, d0, .. dN-1]`.
+    When the number of dimensions of the batch feature vector [d0, .. dN] is
+    greater than one the return value is a RaggedTensor. Otherwise a Dense
+    tensor with dimensions [batch_size] is returned.
+  """
+  return _ragged_tensor_apply_loss(mean_squared_error, y_true, y_pred)
 
 
 @keras_export('keras.metrics.mean_absolute_error', 'keras.metrics.mae',
@@ -1240,7 +1331,13 @@ def mean_absolute_error(y_true, y_pred):
   """
   y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
-  return K.mean(math_ops.abs(y_pred - y_true), axis=-1)
+  return backend.mean(math_ops.abs(y_pred - y_true), axis=-1)
+
+
+@dispatch.dispatch_for_types(mean_absolute_error, ragged_tensor.RaggedTensor)
+def _ragged_tensor_mae(y_true, y_pred):
+  """RaggedTensor adapter for mean_absolute_error."""
+  return _ragged_tensor_apply_loss(mean_absolute_error, y_true, y_pred)
 
 
 @keras_export('keras.metrics.mean_absolute_percentage_error',
@@ -1274,8 +1371,17 @@ def mean_absolute_percentage_error(y_true, y_pred):
   y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   diff = math_ops.abs(
-      (y_true - y_pred) / K.maximum(math_ops.abs(y_true), K.epsilon()))
-  return 100. * K.mean(diff, axis=-1)
+      (y_true - y_pred) / backend.maximum(math_ops.abs(y_true),
+                                          backend.epsilon()))
+  return 100. * backend.mean(diff, axis=-1)
+
+
+@dispatch.dispatch_for_types(mean_absolute_percentage_error,
+                             ragged_tensor.RaggedTensor)
+def _ragged_tensor_mape(y_true, y_pred):
+  """Support RaggedTensors."""
+  return _ragged_tensor_apply_loss(mean_absolute_percentage_error, y_true,
+                                   y_pred)
 
 
 @keras_export('keras.metrics.mean_squared_logarithmic_error',
@@ -1310,9 +1416,18 @@ def mean_squared_logarithmic_error(y_true, y_pred):
   """
   y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
-  first_log = math_ops.log(K.maximum(y_pred, K.epsilon()) + 1.)
-  second_log = math_ops.log(K.maximum(y_true, K.epsilon()) + 1.)
-  return K.mean(math_ops.squared_difference(first_log, second_log), axis=-1)
+  first_log = math_ops.log(backend.maximum(y_pred, backend.epsilon()) + 1.)
+  second_log = math_ops.log(backend.maximum(y_true, backend.epsilon()) + 1.)
+  return backend.mean(
+      math_ops.squared_difference(first_log, second_log), axis=-1)
+
+
+@dispatch.dispatch_for_types(mean_squared_logarithmic_error,
+                             ragged_tensor.RaggedTensor)
+def _ragged_tensor_msle(y_true, y_pred):
+  """Implements support for handling RaggedTensors."""
+  return _ragged_tensor_apply_loss(mean_squared_logarithmic_error, y_true,
+                                   y_pred)
 
 
 def _maybe_convert_labels(y_true):
@@ -1359,7 +1474,7 @@ def squared_hinge(y_true, y_pred):
   y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   y_true = _maybe_convert_labels(y_true)
-  return K.mean(
+  return backend.mean(
       math_ops.square(math_ops.maximum(1. - y_true * y_pred, 0.)), axis=-1)
 
 
@@ -1392,7 +1507,7 @@ def hinge(y_true, y_pred):
   y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   y_true = _maybe_convert_labels(y_true)
-  return K.mean(math_ops.maximum(1. - y_true * y_pred, 0.), axis=-1)
+  return backend.mean(math_ops.maximum(1. - y_true * y_pred, 0.), axis=-1)
 
 
 @keras_export('keras.losses.categorical_hinge')
@@ -1404,7 +1519,7 @@ def categorical_hinge(y_true, y_pred):
   where `neg=maximum((1-y_true)*y_pred) and pos=sum(y_true*y_pred)`
 
   Standalone usage:
-  
+
   >>> y_true = np.random.randint(0, 3, size=(2,))
   >>> y_true = tf.keras.utils.to_categorical(y_true, num_classes=3)
   >>> y_pred = np.random.random(size=(2, 3))
@@ -1413,7 +1528,7 @@ def categorical_hinge(y_true, y_pred):
   >>> pos = np.sum(y_true * y_pred, axis=-1)
   >>> neg = np.amax((1. - y_true) * y_pred, axis=-1)
   >>> assert np.array_equal(loss.numpy(), np.maximum(0., neg - pos + 1.))
-  
+
   Args:
     y_true: The ground truth values. `y_true` values are expected to be
     either `{-1, +1}` or `{0, 1}` (i.e. a one-hot-encoded tensor).
@@ -1439,7 +1554,7 @@ def huber(y_true, y_pred, delta=1.0):
 
   ```
   loss = 0.5 * x^2                  if |x| <= d
-  loss = 0.5 * d^2 + d * (|x| - d)  if |x| > d
+  loss = d * |x| - 0.5 * d^2        if |x| > d
   ```
   where d is `delta`. See: https://en.wikipedia.org/wiki/Huber_loss
 
@@ -1452,16 +1567,15 @@ def huber(y_true, y_pred, delta=1.0):
   Returns:
     Tensor with one scalar loss entry per sample.
   """
-  y_pred = math_ops.cast(y_pred, dtype=K.floatx())
-  y_true = math_ops.cast(y_true, dtype=K.floatx())
-  delta = math_ops.cast(delta, dtype=K.floatx())
+  y_pred = math_ops.cast(y_pred, dtype=backend.floatx())
+  y_true = math_ops.cast(y_true, dtype=backend.floatx())
+  delta = math_ops.cast(delta, dtype=backend.floatx())
   error = math_ops.subtract(y_pred, y_true)
   abs_error = math_ops.abs(error)
   half = ops.convert_to_tensor_v2_with_dispatch(0.5, dtype=abs_error.dtype)
-  return K.mean(
-      array_ops.where_v2(
-          abs_error <= delta, half * math_ops.pow(error, 2),
-          half * math_ops.pow(delta, 2) + delta * (abs_error - delta)),
+  return backend.mean(
+      array_ops.where_v2(abs_error <= delta, half * math_ops.square(error),
+                         delta * abs_error - half * math_ops.square(delta)),
       axis=-1)
 
 
@@ -1499,9 +1613,10 @@ def log_cosh(y_true, y_pred):
   y_true = math_ops.cast(y_true, y_pred.dtype)
 
   def _logcosh(x):
-    return x + nn.softplus(-2. * x) - math_ops.cast(math_ops.log(2.), x.dtype)
+    return x + math_ops.softplus(-2. * x) - math_ops.cast(
+        math_ops.log(2.), x.dtype)
 
-  return K.mean(_logcosh(y_pred - y_true), axis=-1)
+  return backend.mean(_logcosh(y_pred - y_true), axis=-1)
 
 
 @keras_export('keras.metrics.categorical_crossentropy',
@@ -1537,7 +1652,7 @@ def categorical_crossentropy(y_true,
   y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   label_smoothing = ops.convert_to_tensor_v2_with_dispatch(
-      label_smoothing, dtype=K.floatx())
+      label_smoothing, dtype=backend.floatx())
 
   def _smooth_labels():
     num_classes = math_ops.cast(array_ops.shape(y_true)[-1], y_pred.dtype)
@@ -1545,7 +1660,45 @@ def categorical_crossentropy(y_true,
 
   y_true = smart_cond.smart_cond(label_smoothing, _smooth_labels,
                                  lambda: y_true)
-  return K.categorical_crossentropy(y_true, y_pred, from_logits=from_logits)
+  return backend.categorical_crossentropy(
+      y_true, y_pred, from_logits=from_logits)
+
+
+@dispatch.dispatch_for_types(categorical_crossentropy,
+                             ragged_tensor.RaggedTensor)
+def _ragged_tensor_categorical_crossentropy(y_true,
+                                            y_pred,
+                                            from_logits=False,
+                                            label_smoothing=0):
+  """Implements support for handling RaggedTensors.
+
+  Args:
+    y_true: Tensor of one-hot true targets.
+    y_pred: Tensor of predicted targets.
+    from_logits: Whether `y_pred` is expected to be a logits tensor. By default,
+      we assume that `y_pred` encodes a probability distribution.
+    label_smoothing: Float in [0, 1]. If > `0` then smooth the labels. For
+      example, if `0.1`, use `0.1 / num_classes` for non-target labels
+      and `0.9 + 0.1 / num_classes` for target labels.
+
+  Returns:
+    Categorical crossentropy loss value.
+
+  Expected shape: (batch, sequence_len, n_classes) with sequence_len
+  being variable per batch.
+  Return shape: (batch, sequence_len).
+
+  When used by CategoricalCrossentropy() with the default reduction
+  (SUM_OVER_BATCH_SIZE), the reduction averages the loss over the
+  number of elements independent of the batch. E.g. if the RaggedTensor
+  has 2 batches with [2, 1] values respectivly the resulting loss is
+  the sum of the individual loss values divided by 3.
+  """
+  fn = functools.partial(
+      categorical_crossentropy,
+      from_logits=from_logits,
+      label_smoothing=label_smoothing)
+  return _ragged_tensor_apply_loss(fn, y_true, y_pred)
 
 
 @keras_export('keras.metrics.sparse_categorical_crossentropy',
@@ -1576,8 +1729,31 @@ def sparse_categorical_crossentropy(y_true, y_pred, from_logits=False, axis=-1):
   """
   y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
-  return K.sparse_categorical_crossentropy(
+  return backend.sparse_categorical_crossentropy(
       y_true, y_pred, from_logits=from_logits, axis=axis)
+
+
+@dispatch.dispatch_for_types(sparse_categorical_crossentropy,
+                             ragged_tensor.RaggedTensor)
+def _ragged_tensor_sparse_categorical_crossentropy(y_true,
+                                                   y_pred,
+                                                   from_logits=False,
+                                                   axis=-1):
+  """ Implements support for handling RaggedTensors.
+
+      Expected y_pred shape: (batch, sequence_len, n_classes) with sequence_len
+      being variable per batch.
+      Return shape: (batch, sequence_len).
+
+      When used by SparseCategoricalCrossentropy() with the default reduction
+      (SUM_OVER_BATCH_SIZE), the reduction averages the loss over the
+      number of elements independent of the batch. E.g. if the RaggedTensor
+      has 2 batches with [2, 1] values respectively, the resulting loss is
+      the sum of the individual loss values divided by 3.
+  """
+  fn = functools.partial(
+      sparse_categorical_crossentropy, from_logits=from_logits, axis=axis)
+  return _ragged_tensor_apply_loss(fn, y_true, y_pred, y_pred_extra_dim=True)
 
 
 @keras_export('keras.metrics.binary_crossentropy',
@@ -1600,7 +1776,7 @@ def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0):
     y_pred: The predicted values. shape = `[batch_size, d0, .. dN]`.
     from_logits: Whether `y_pred` is expected to be a logits tensor. By default,
       we assume that `y_pred` encodes a probability distribution.
-    label_smoothing: Float in [0, 1]. If > `0` then smooth the labels by 
+    label_smoothing: Float in [0, 1]. If > `0` then smooth the labels by
       squeezing them towards 0.5 That is, using `1. - 0.5 * label_smoothing`
       for the target class and `0.5 * label_smoothing` for the non-target class.
 
@@ -1610,15 +1786,50 @@ def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0):
   y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   label_smoothing = ops.convert_to_tensor_v2_with_dispatch(
-      label_smoothing, dtype=K.floatx())
+      label_smoothing, dtype=backend.floatx())
 
   def _smooth_labels():
     return y_true * (1.0 - label_smoothing) + 0.5 * label_smoothing
 
   y_true = smart_cond.smart_cond(label_smoothing, _smooth_labels,
                                  lambda: y_true)
-  return K.mean(
-      K.binary_crossentropy(y_true, y_pred, from_logits=from_logits), axis=-1)
+  return backend.mean(
+      backend.binary_crossentropy(
+          y_true, y_pred, from_logits=from_logits), axis=-1)
+
+
+@dispatch.dispatch_for_types(binary_crossentropy, ragged_tensor.RaggedTensor)
+def _ragged_tensor_binary_crossentropy(y_true,
+                                       y_pred,
+                                       from_logits=False,
+                                       label_smoothing=0):
+  """Implements support for handling RaggedTensors.
+
+  Args:
+    y_true: Tensor of one-hot true targets.
+    y_pred: Tensor of predicted targets.
+    from_logits: Whether `y_pred` is expected to be a logits tensor. By default,
+      we assume that `y_pred` encodes a probability distribution.
+    label_smoothing: Float in [0, 1]. If > `0` then smooth the labels. For
+      example, if `0.1`, use `0.1 / num_classes` for non-target labels
+      and `0.9 + 0.1 / num_classes` for target labels.
+
+  Returns:
+    Binary crossentropy loss value.
+
+  Expected shape: (batch, sequence_len) with sequence_len being variable
+  per batch.
+  Return shape: (batch,); returns the per batch mean of the loss values.
+
+  When used by BinaryCrossentropy() with the default reduction
+  (SUM_OVER_BATCH_SIZE), the reduction averages the per batch losses over
+  the number of batches.
+  """
+  fn = functools.partial(
+      binary_crossentropy,
+      from_logits=from_logits,
+      label_smoothing=label_smoothing)
+  return _ragged_tensor_apply_loss(fn, y_true, y_pred)
 
 
 @keras_export('keras.metrics.kl_divergence',
@@ -1657,8 +1868,8 @@ def kl_divergence(y_true, y_pred):
   """
   y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
-  y_true = K.clip(y_true, K.epsilon(), 1)
-  y_pred = K.clip(y_pred, K.epsilon(), 1)
+  y_true = backend.clip(y_true, backend.epsilon(), 1)
+  y_pred = backend.clip(y_pred, backend.epsilon(), 1)
   return math_ops.reduce_sum(y_true * math_ops.log(y_true / y_pred), axis=-1)
 
 
@@ -1693,7 +1904,8 @@ def poisson(y_true, y_pred):
   """
   y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
-  return K.mean(y_pred - y_true * math_ops.log(y_pred + K.epsilon()), axis=-1)
+  return backend.mean(
+      y_pred - y_true * math_ops.log(y_pred + backend.epsilon()), axis=-1)
 
 
 @keras_export(
@@ -1810,7 +2022,7 @@ class CosineSimilarity(LossFunctionWrapper):
                axis=-1,
                reduction=losses_utils.ReductionV2.AUTO,
                name='cosine_similarity'):
-    super(CosineSimilarity, self).__init__(
+    super().__init__(
         cosine_similarity, reduction=reduction, name=name, axis=axis)
 
 
@@ -1894,7 +2106,7 @@ def get(identifier):
   Args:
     identifier: A loss identifier. One of None or string name of a loss
       function/class or loss configuration dictionary or a loss function or a
-      loss class instance
+      loss class instance.
 
   Returns:
     A Keras loss as a `function`/ `Loss` class instance.
@@ -1904,16 +2116,15 @@ def get(identifier):
   """
   if identifier is None:
     return None
-  if isinstance(identifier, six.string_types):
+  if isinstance(identifier, str):
     identifier = str(identifier)
     return deserialize(identifier)
   if isinstance(identifier, dict):
     return deserialize(identifier)
-  elif callable(identifier):
+  if callable(identifier):
     return identifier
-  else:
-    raise ValueError(
-        'Could not interpret loss function identifier: {}'.format(identifier))
+  raise ValueError(
+      f'Could not interpret loss function identifier: {identifier}')
 
 
 LABEL_DTYPES_FOR_LOSSES = {

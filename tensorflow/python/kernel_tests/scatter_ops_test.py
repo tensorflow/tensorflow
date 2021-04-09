@@ -134,7 +134,7 @@ class ScatterTest(test.TestCase):
                         repeat_indices=False,
                         updates_are_scalar=False):
     np.random.seed(8)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       for indices_shape in (), (2,), (3, 7), (3, 4, 7):
         for extra_shape in (), (5,), (5, 9):
           # Generate random indices with no duplicates for easy numpy comparison

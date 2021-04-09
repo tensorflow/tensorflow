@@ -392,6 +392,37 @@ ENTRY %broadcast {
   }
 }
 
+TEST_P(ParameterizedMetadataTest, BroadcastMerge) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %broadcast {
+  %param0 = f32[3,2048]parameter(0),
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dim_replicate metadata={op_name="a"}}
+  %broadcast = f32[3,2048,3] broadcast(%param0), dimensions={0,1}
+  ROOT %copy = f32[3,2048,3] copy(%broadcast),
+    sharding={devices=[1,1,2,2]0,2,1,3 last_tile_dim_replicate metadata={op_name="b"}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* instruction = FindInstruction(module.get(), "broadcast");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{devices=[1,2,2]0,1,2,3}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(instruction->sharding(),
+                ShardingMetadata({CreateMetadata("a"), CreateMetadata("b")}));
+  } else {
+    EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
+  }
+}
+
 TEST_P(ParameterizedMetadataTest, BroadcastUser) {
   const char* const hlo_string = R"(
 HloModule module
@@ -4729,6 +4760,44 @@ ENTRY %module {
     EXPECT_THAT(gather->sharding(), ShardingMetadata({CreateMetadata("a")}));
   } else {
     EXPECT_THAT(gather->sharding(), ShardingMetadata({}));
+  }
+}
+
+TEST_P(ParameterizedMetadataTest, CorrectlyReplicateGatherIndex) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY %module {
+  %parameter.0 = bf16[1,2,2,2,8]{4,3,2,1,0} parameter(0)
+  %parameter.1 = s32[1,2,2]{2,1,0} parameter(1)
+  %index = s32[1,2,2]{2,1,0} copy(%parameter.1)
+  %gather = bf16[1,2,2,2,8]{4,3,2,1,0} gather(
+    bf16[1,2,2,2,8]{4,3,2,1,0} %parameter.0, s32[1,2,2]{2,1,0} %index),
+    offset_dims={2,3,4}, collapsed_slice_dims={0,1}, start_index_map={0,1},
+    index_vector_dim=2, slice_sizes={1,1,2,2,8},
+    sharding={devices=[1,1,2,1,1]0,1 metadata={op_name="a"}}
+  ROOT %copy = bf16[1,2,2,2,8]{4,3,2,1,0} copy(%gather)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  const HloInstruction* index = FindInstruction(module.get(), "index");
+
+  ASSERT_NE(index, nullptr);
+
+  EXPECT_THAT(index, op::Sharding("{replicated}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(index->sharding(), ShardingMetadata({CreateMetadata("a")}));
+  } else {
+    EXPECT_THAT(index->sharding(), ShardingMetadata({}));
   }
 }
 

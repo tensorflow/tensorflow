@@ -17,6 +17,17 @@ limitations under the License.
 
 #include "tensorflow/core/platform/init_main.h"
 
+static llvm::cl::extrahelp FlagSplittingHelp(R"(
+The command line parsing is split between the two flag parsing libraries used by
+TensorFlow and LLVM:
+  * Flags before the first '--' are parsed by tensorflow::InitMain while those
+    post are parsed by LLVM's command line parser.
+  * If there is no separator, then no flags are parsed by InitMain and only
+    LLVM command line parser used.
+The above help options reported are for LLVM's parser, run with `--help --` for
+TensorFlow's help.
+)");
+
 namespace tensorflow {
 
 InitMlir::InitMlir(int *argc, char ***argv) : init_llvm_(*argc, *argv) {

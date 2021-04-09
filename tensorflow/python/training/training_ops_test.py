@@ -368,10 +368,6 @@ class TrainingOpsTest(TensorFlowTestCase):
     for (dtype, index_type,
          use_gpu) in itertools.product([np.float16, np.float32, np.float64],
                                        [np.int32, np.int64], [False, True]):
-      # TODO(b/178042695): This configuration leads to a "too many resources
-      # requested for launch" error.
-      if (dtype, index_type, use_gpu) == (np.float64, np.int64, True):
-        continue
       x_val = [[0.0], [0.0], [0.0]]
       y_val = [[4.0], [5.0], [6.0]]
       z_val = [[0.0], [0.0], [0.0]]

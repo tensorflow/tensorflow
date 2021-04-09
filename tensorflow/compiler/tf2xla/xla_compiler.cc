@@ -760,7 +760,10 @@ Status XlaCompiler::CompileFunction(
     if (absl::holds_alternative<xla::Shape>(args[i].shape)) {
       xla::Shape xla_shape = absl::get<xla::Shape>(args[i].shape);
       TensorShape tensor_shape;
-      if (XLAShapeToTensorShape(xla_shape, &tensor_shape).ok()) {
+      // If xla_shape is dynamic, prevent constant folding by not setting
+      // output_shapes.
+      if (XLAShapeToTensorShape(xla_shape, &tensor_shape).ok() &&
+          xla_shape.is_static()) {
         fbody->arg_nodes[i]->ClearAttr("_output_shapes");
         fbody->arg_nodes[i]->AddAttr("_output_shapes",
                                      std::vector<TensorShape>{tensor_shape});
@@ -801,8 +804,12 @@ Status XlaCompiler::CompileFunction(
   }
 
   VLOG(1) << "====================================================";
-  MlirBridgeRolloutPolicy policy =
-      GetMlirBridgeRolloutPolicy(*graph, config_proto);
+  MlirBridgeRolloutPolicy policy = MlirBridgeRolloutPolicy::kDisabledByUser;
+  if (options.is_entry_computation) {
+    policy = GetMlirBridgeRolloutPolicy(
+        *graph, /*function_library=*/nullptr, config_proto,
+        /*uses_uninitialized_resource_args=*/AnyUninitializedResourceArg(args));
+  }
   if (policy == MlirBridgeRolloutPolicy::kEnabledByUser) {
     VLOG(1) << "Using MLIR bridge";
     GraphDebugInfo debug_info;
@@ -1107,18 +1114,6 @@ Status XlaCompiler::BuildArguments(
     }
   }
 
-  for (int i = 0, end = input_to_args->size(); i < end; ++i) {
-    const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
-    for (const auto& dim_and_arg_num : arg.dynamic_dim_to_arg_num_map) {
-      int dynamic_size_param_index = arg_to_inputs.at(dim_and_arg_num.second);
-      VLOG(1) << "Setting dynamic size " << i << " -> "
-              << dynamic_size_param_index;
-      arg_handles[i] = xla::SetDimensionSize(
-          arg_handles[i], arg_handles[dynamic_size_param_index],
-          dim_and_arg_num.first);
-    }
-  }
-
   builder->ClearOpMetadata();
 
   // Fill in the handles in non-constant arguments, and reshape parameters
@@ -1155,6 +1150,10 @@ Status XlaCompiler::BuildArguments(
               xla::Reshape(arg_handles[i], arg.DimensionSizes()), arg.type);
         } else {
           arg_expression = XlaExpression::XlaOp(arg_handles[i], arg.type);
+          if (arg.value_bound) {
+            // Propagate upper bound to arg_expression.
+            arg_expression.set_value_bound(arg.value_bound.value());
+          }
         }
         break;
       case XlaCompiler::Argument::kTensorList: {
@@ -1224,14 +1223,27 @@ Status ValidateGraph(const Graph* graph,
 
   auto maybe_error = [&](const Node* node, const Status& s) -> Status {
     if (!s.ok()) {
-      return errors::InvalidArgument(absl::StrCat(
+      std::string errmsg = absl::StrCat(
           "Detected unsupported operations when trying to compile graph ", name,
           " on ", device_type.type_string(), ": ", node->def().op(), " (",
-          s.error_message(), ")", FormatNodeForError(*node),
-          "One approach is to outside compile the unsupported ops to run on "
-          "CPUs by enabling soft placement "
-          "`tf.config.set_soft_device_placement(True)`."
-          " This has a potential performance penalty."));
+          s.error_message(), ")", FormatNodeForError(*node));
+      if (absl::StrContains(device_type.type_string(), "TPU")) {
+        absl::StrAppend(&errmsg,
+                        "\nOne approach is to outside compile the unsupported "
+                        "ops to run on CPUs by enabling soft placement "
+                        "`tf.config.set_soft_device_placement(True)`."
+                        " This has a potential performance penalty.\n");
+      }
+      if (std::shared_ptr<AbstractStackTrace> stack_trace =
+              node->GetStackTrace()) {
+        absl::StrAppend(
+            &errmsg, "\nThe op is created at: \n",
+            stack_trace->ToString({/*show_line_contents =*/true,
+                                   /*filter_common_prefix =*/true,
+                                   /*drop_internal_frames =*/true}));
+      }
+
+      return errors::InvalidArgument(errmsg);
     }
     return Status::OK();
   };
@@ -1299,7 +1311,6 @@ Status XlaCompiler::CompileGraph(
   // FunctionalizeControlFlow may remove some nodes from the graph.
   TF_RETURN_IF_ERROR(ValidateGraph(graph.get(), *options_.flib_def,
                                    options_.device_type, name));
-
   xla::XlaBuilder builder(name);
   XlaContext* context = new XlaContext(this, &builder, graph.get());
   core::ScopedUnref context_unref(context);
@@ -1390,6 +1401,7 @@ Status XlaCompiler::CompileGraph(
           << " nonconstant: " << num_nonconst_outputs;
   VLOG(2) << "XLA output shape: "
           << xla::ShapeUtil::HumanStringWithLayout(result->xla_output_shape);
+  result->collective_reduce_info = context->GetCollectiveReduceV2OpInfo();
   return Status::OK();
 }
 

@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from typing import Union
+
 from tensorflow.python.eager import context
 from tensorflow.python.util import _pywrap_tensor_float_32_execution
 from tensorflow.python.util import deprecation
@@ -145,31 +147,42 @@ def set_inter_op_parallelism_threads(num_threads):
 
 
 @tf_export('config.optimizer.get_jit')
-def get_optimizer_jit():
-  """Get if JIT compilation is enabled.
+def get_optimizer_jit() -> str:
+  """Returns JIT compilation configuration for code inside `tf.function`.
 
-  Note that optimizations are only applied to code that is compiled into a
-  graph. In eager mode, which is the TF2 API default, that means only code that
-  is defined under a tf.function decorator.
-
-  Returns:
-    If JIT compilation is enabled.
+  Possible return values:
+     -`"autoclustering"` if
+     [autoclustering](https://www.tensorflow.org/xla#auto-clustering) is enabled
+     - `""` when no default compilation is applied.
   """
-  return context.context().optimizer_jit
+  if context.context().optimizer_jit:
+    return 'autoclustering'
+  return ''
 
 
 @tf_export('config.optimizer.set_jit')
-def set_optimizer_jit(enabled):
-  """Set if JIT compilation is enabled.
+@deprecation.deprecated_arg_values(
+    None,
+    '`True` setting is deprecated, use `autoclustering` instead.',
+    warn_once=True,
+    jit_config=True)
+def set_optimizer_jit(enabled: Union[bool, str]):
+  """Configure JIT compilation.
 
-  Note that optimizations are only applied to code that is compiled into a
-  graph. In eager mode, which is the TF2 API default, that means only code that
-  is defined under a tf.function decorator.
+  Note: compilation is only applied to code that is compiled into a
+  graph (in TF2 that's only a code inside `tf.function`).
 
   Args:
-    enabled: Whether to enable JIT compilation.
+    enabled: JIT compilation configuration.
+    Possible values:
+     - `"autoclustering"` (`True` is a deprecated alias): perform
+     [autoclustering](https://www.tensorflow.org/xla#auto-clustering)
+     (automatically identify and compile clusters of nodes) on all graphs using
+     [XLA](https://www.tensorflow.org/xla).
+     - `False`: do not automatically compile any graphs.
   """
-  context.context().optimizer_jit = enabled
+  autoclustering_enabled = enabled in (True, 'autoclustering')
+  context.context().optimizer_jit = autoclustering_enabled
 
 
 @tf_export('config.optimizer.get_experimental_options')

@@ -20,7 +20,7 @@ import tensorflow as tf
 
 
 def TestOneInput(input_bytes):
-  """Test randomized integer fuzzing input for tf.raw_ops.RaggedCountSparseOutput."""
+  """Test randomized integer/float fuzzing input for tf.raw_ops.RaggedCountSparseOutput."""
   fh = FuzzingHelper(input_bytes)
 
   splits = fh.get_int_list()

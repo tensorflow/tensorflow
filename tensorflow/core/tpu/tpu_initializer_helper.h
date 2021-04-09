@@ -16,14 +16,22 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_TPU_INITIALIZER_HELPER_H_
 #define TENSORFLOW_CORE_TPU_TPU_INITIALIZER_HELPER_H_
 
+#include <string>
 #include <vector>
 
 namespace tensorflow {
 namespace tpu {
 
-// This returns an extra nullptr at the end (per the C standard), but this
-// should not be counted for 'argc'.
-std::vector<const char*> GetLibTpuInitArguments();
+// This will acquire a system-wide lock on behalf of the whole process. Follow
+// up calls to this function will return true if the lock has been acquired and
+// false if we failed to acquire the lock.
+bool TryAcquireTpuLock();
+
+// Returns arguments (e.g. flags) set in the LIBTPU_INIT_ARGS environment
+// variable. The first return value is the arguments, the second return value is
+// pointers to the arguments suitable for passing into the C API.
+std::pair<std::vector<std::string>, std::vector<const char*>>
+GetLibTpuInitArguments();
 
 }  // namespace tpu
 }  // namespace tensorflow

@@ -1028,7 +1028,7 @@ DotImplementationStrategy GetDotImplementationStrategy(
 
   if (IsAlignedGemm(dot_info, target_machine_features)) {
     if (CanEmitTiledLlvmIrGemm(config, dot_info, target_machine_features)) {
-      return DotImplementationStrategy::kLinalgMatmul;
+      return DotImplementationStrategy::kTiledLlvmIrGemm;
     }
     return DotImplementationStrategy::kEigen;
   }

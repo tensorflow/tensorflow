@@ -33,14 +33,18 @@ using mkldnn::stream;
 
 namespace tensorflow {
 
+#define L1_SIZE 32 * 1024
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-#ifdef INTEL_MKL_DNN_ONLY
-// Temporarily copying some definitions from mkl_cblas.h so the same code can
-// be used when calling oneDNN or CBLAS batchmatmul in mkl_batch_matmul_op.cc.
-typedef enum { CblasRowMajor, CblasColumnMajor } CBLAS_LAYOUT;
-#define MKL_INT int
-#endif
+inline bool ExecuteSingleThreadedGemm(int m, int n, int k) {
+  // Ideally we would like to determine blocking and then come up with
+  // a heuristic but what we are targeting are very small models whose
+  // total size is < few L1's. So we will do this simple calculation
+  // to determine if the matrix multiplication should be run on a single thread.
+  constexpr int kHeuristicMultiplier = 8;
+  return ((sizeof(float) * (m * n + k * (m + n))) <
+          L1_SIZE * kHeuristicMultiplier);
+}
 
 // This structure aggregates multiple inputs to MklDnnMatMul* methods.
 struct MklDnnMatMulFwdParams {
@@ -48,9 +52,9 @@ struct MklDnnMatMulFwdParams {
   memory::dims weight_dims;
   memory::dims bias_dims;
   memory::dims dst_dims;
-  MEMORY_FORMAT src_format;
-  MEMORY_FORMAT weight_format;
-  MEMORY_FORMAT dst_format;
+  memory::format_tag src_format;
+  memory::format_tag weight_format;
+  memory::format_tag dst_format;
   string dtypes = string("");
   struct PostOpParam {
     string name;
@@ -58,11 +62,12 @@ struct MklDnnMatMulFwdParams {
   };
   std::vector<PostOpParam> post_op_params;
 
-  MklDnnMatMulFwdParams(memory::dims src_dims, memory::dims weight_dims,
-                        memory::dims bias_dims, memory::dims dst_dims,
-                        MEMORY_FORMAT src_format = MEMORY_FORMAT::any,
-                        MEMORY_FORMAT weight_format = MEMORY_FORMAT::any,
-                        MEMORY_FORMAT dst_format = MEMORY_FORMAT::any)
+  MklDnnMatMulFwdParams(
+      memory::dims src_dims, memory::dims weight_dims, memory::dims bias_dims,
+      memory::dims dst_dims,
+      memory::format_tag src_format = memory::format_tag::any,
+      memory::format_tag weight_format = memory::format_tag::any,
+      memory::format_tag dst_format = memory::format_tag::any)
       : src_dims(src_dims),
         weight_dims(weight_dims),
         bias_dims(bias_dims),
@@ -101,7 +106,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
   void Execute(const Tinput* src_data, const Tweight* weight_data,
                const Tbias* bias_data, Toutput* dst_data,
                std::shared_ptr<stream> fwd_stream) {
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<Tinput*>(src_data)), *fwd_stream);
     context_.weight_mem->set_data_handle(
@@ -118,7 +123,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     context_.bias_mem->set_data_handle(
         static_cast<void*>(const_cast<Tbias*>(bias_data)));
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
 
     execute_primitives(context_.fwd_primitives, fwd_stream, context_.net_args);
 
@@ -540,7 +545,7 @@ class MklMatMulPrimitive : public MklPrimitive {
 
   void Execute(const T* a_data, const T* b_data, T* c_data,
                std::shared_ptr<stream> stream) {
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
     context_.a_mem->set_data_handle(static_cast<void*>(const_cast<T*>(a_data)),
                                     *stream);
     context_.b_mem->set_data_handle(static_cast<void*>(const_cast<T*>(b_data)),
@@ -551,7 +556,7 @@ class MklMatMulPrimitive : public MklPrimitive {
     context_.a_mem->set_data_handle(static_cast<void*>(const_cast<T*>(a_data)));
     context_.b_mem->set_data_handle(static_cast<void*>(const_cast<T*>(b_data)));
     context_.c_mem->set_data_handle(static_cast<void*>(const_cast<T*>(c_data)));
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
     execute_primitives(context_.matmul_primitives, stream, context_.net_args);
 
     // After execution, set data handle back
@@ -718,7 +723,8 @@ void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
 
   // Execute matmul primitive.
   std::shared_ptr<stream> cpu_stream;
-  cpu_stream.reset(CreateStream(ctx, matmul_prim->GetEngine()));
+  MklDnnThreadPool eigen_tp(ctx);
+  cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
   matmul_prim->Execute(a, b, c, cpu_stream);
 }
 
