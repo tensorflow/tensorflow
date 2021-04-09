@@ -820,7 +820,7 @@ class RNN(Layer):
 
     if self.return_sequences:
       output = backend.maybe_convert_to_ragged(
-          is_ragged_input, outputs, row_lengths)
+          is_ragged_input, outputs, row_lengths, go_backwards=self.go_backwards)
     else:
       output = last_output
 
