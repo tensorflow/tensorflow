@@ -19,7 +19,6 @@
 import collections
 import copy
 import csv
-import io
 import json
 import os
 import re
