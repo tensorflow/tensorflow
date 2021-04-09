@@ -240,6 +240,22 @@ struct QuantizationPattern : public RewritePattern {
         return failure();
       }
 
+      // An op with float inputs and outputs are expected when it's used by a
+      // NumericVerify op. Skip this op and look at next users.
+      if (enable_verify) {
+        bool used_by_verifier = false;
+        for (auto result : quantized_op->getResults()) {
+          if (used_by_verifier) break;
+          for (auto user : result.getUsers()) {
+            if (llvm::isa<VERIFIER>(user)) {
+              used_by_verifier = true;
+              break;
+            }
+          }
+        }
+        if (used_by_verifier) continue;
+      }
+
       // Collect all the quantized inputs and "clone" the matched op by these
       // inputs.
       SmallVector<Value, 4> inputs;
