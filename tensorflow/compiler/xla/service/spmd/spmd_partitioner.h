@@ -239,9 +239,14 @@ class SpmdPartitioner : public HloModulePass {
       const SPMDCollectiveOpsCreator& collectives_creator,
       HloComputation* reduction, bool per_dim_ar);
 
-  // Verify that the sharding of instructions in the module are valid, and also
-  // fill in missing sharding information.
+  // Verifies that the sharding of instructions in the module are valid, and
+  // also fill in missing sharding information.
   Status PreprocessSharding(HloModule* module);
+
+  // Preprocesses the graph to simplify some communication patterns. E.g., merge
+  // pad->slice into a single pad with potentially negative padding to avoid
+  // multiple halo exchanges.
+  Status PreprocessHlos(HloModule* module);
 
   const int64 num_partitions_;
   const int64 num_replicas_;

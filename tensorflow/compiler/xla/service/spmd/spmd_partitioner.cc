@@ -3696,6 +3696,7 @@ std::unique_ptr<SpmdPartitioningVisitor> SpmdPartitioner::CreateVisitor(
 
 StatusOr<bool> SpmdPartitioner::Run(HloModule* module) {
   TF_RETURN_IF_ERROR(PreprocessSharding(module));
+  TF_RETURN_IF_ERROR(PreprocessHlos(module));
 
   XLA_VLOG_LINES(1, SpmdLogger::ReportBeforePartition(
                         *module, options_.report_instruction_count));
@@ -3840,6 +3841,74 @@ Status SpmdPartitioner::PreprocessSharding(HloModule* module) {
     }
   }
 
+  return Status::OK();
+}
+
+Status SpmdPartitioner::PreprocessHlos(HloModule* module) {
+  auto skip_copy_operands = [](HloInstruction* operand) -> HloInstruction* {
+    while (operand->user_count() == 1 &&
+           operand->opcode() == HloOpcode::kCopy) {
+      operand = operand->mutable_operand(0);
+    }
+    if (operand->user_count() != 1) {
+      return nullptr;
+    }
+    return operand;
+  };
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* hlo : computation->MakeInstructionPostOrder()) {
+      if (hlo->sharding().IsTileMaximal()) {
+        // No need to optimize for tile-maximal sharding.
+        continue;
+      }
+      if (hlo->opcode() == HloOpcode::kSlice) {
+        HloInstruction* operand = skip_copy_operands(hlo->mutable_operand(0));
+        if (operand == nullptr || operand->sharding() != hlo->sharding()) {
+          continue;
+        }
+
+        // Merge pad->slice to avoid multiple halo exchanges.
+        if (operand->opcode() == HloOpcode::kPad) {
+          absl::optional<PaddingConfig> merged_padding =
+              operand->padding_config();
+          bool may_have_multi_halo_exchanges = false;
+          for (int64 i = 0; i < hlo->shape().rank(); ++i) {
+            const auto& dim = operand->padding_config().dimensions(i);
+            if (dim.interior_padding() != 0 || hlo->slice_strides(i) != 1) {
+              merged_padding = absl::nullopt;
+              break;
+            }
+            if (hlo->sharding().tile_assignment().dim(i) != 1 &&
+                (dim.edge_padding_low() != 0 || dim.edge_padding_high() != 0) &&
+                hlo->shape().dimensions(i) != operand->shape().dimensions(i)) {
+              // There are padding, slicing, and sharding on this dim.
+              may_have_multi_halo_exchanges = true;
+            }
+
+            auto* merged_dim = merged_padding->mutable_dimensions(i);
+            merged_dim->set_edge_padding_low(dim.edge_padding_low() -
+                                             hlo->slice_starts(i));
+            merged_dim->set_edge_padding_high(hlo->slice_limits(i) -
+                                              dim.edge_padding_low() -
+                                              operand->shape().dimensions(i));
+          }
+          if (merged_padding.has_value() && may_have_multi_halo_exchanges) {
+            // Rewrite to a single Pad.
+            HloInstruction* new_pad =
+                computation->AddInstruction(HloInstruction::CreatePad(
+                    hlo->shape(), operand->mutable_operand(0),
+                    operand->mutable_operand(1), *merged_padding));
+            new_pad->set_metadata(operand->metadata());
+            new_pad->set_sharding(hlo->sharding());
+            TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_pad));
+            TF_RETURN_IF_ERROR(
+                computation->RemoveInstructionAndUnusedOperands(hlo));
+          }
+          continue;
+        }
+      }
+    }
+  }
   return Status::OK();
 }
 
