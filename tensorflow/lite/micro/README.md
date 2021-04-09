@@ -71,4 +71,4 @@ project, we have additional documentation in the [docs](docs/) folder.
 
 # RFCs
 
-1. [TensorFlow Lite for Microcontrollers Port of 16x8 Quantized Operators](docs/rfc-16x8-quantization-port.md)
+1. [TensorFlow Lite for Microcontrollers Port of 16x8 Quantized Operators](docs/001-rfc-16x8-quantization-port.md)
