@@ -2107,6 +2107,8 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
   patterns->insert<ReduceRegionXLAOpConversion<mhlo::AddOp>,
                    ReduceRegionXLAOpConversion<mhlo::MinOp>,
                    ReduceRegionXLAOpConversion<mhlo::MaxOp>,
+                   ReduceRegionXLAOpConversion<mhlo::AndOp>,
+                   ReduceRegionXLAOpConversion<mhlo::OrOp>,
                    ReduceRegionReturnOpConversion>(context);
 }
 
