@@ -1,8 +1,6 @@
 name: ci
 
-on:
-  push:
-
+on: [push, pull_request]
 jobs:
   buildx:
     runs-on: ubuntu-latest
