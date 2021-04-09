@@ -898,6 +898,7 @@ static LogicalResult Verify(DynamicBroadcastInDimOp op) {
   return success();
 }
 
+namespace {
 // If a DynamicBroadCastInDimOp is not actually dynamic, use an ordinary
 // BroadcastInDimOp.
 class DynamicBroadcastInDimOpNotActuallyDynamic
@@ -915,9 +916,40 @@ class DynamicBroadcastInDimOpNotActuallyDynamic
   }
 };
 
+class ChainedDynamicBroadcastInDimCanonicalization
+    : public OpRewritePattern<DynamicBroadcastInDimOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(DynamicBroadcastInDimOp bcast,
+                                PatternRewriter& rewriter) const override {
+    auto preceding_bcast =
+        bcast.operand().getDefiningOp<DynamicBroadcastInDimOp>();
+    if (!preceding_bcast) return failure();
+
+    // Compose broadcast dimensions.
+    DenseIntElementsAttr preceding_bcast_dims =
+        preceding_bcast.broadcast_dimensions();
+    DenseIntElementsAttr bcast_dims = bcast.broadcast_dimensions();
+    SmallVector<APInt, 4> composition;
+    for (APInt preceding_dim : preceding_bcast_dims) {
+      auto composed_dim = bcast_dims.getValue({preceding_dim.getZExtValue()})
+                              .cast<IntegerAttr>();
+      composition.push_back(composed_dim.getValue());
+    }
+    auto composed_bcast_dims =
+        DenseIntElementsAttr::get(preceding_bcast_dims.getType(), composition);
+
+    rewriter.replaceOpWithNewOp<DynamicBroadcastInDimOp>(
+        bcast, bcast.getType(), preceding_bcast.operand(),
+        bcast.output_dimensions(), composed_bcast_dims);
+    return success();
+  }
+};
+}  // namespace
+
 void DynamicBroadcastInDimOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
-  results.insert<DynamicBroadcastInDimOpNotActuallyDynamic,
+  results.insert<ChainedDynamicBroadcastInDimCanonicalization,
+                 DynamicBroadcastInDimOpNotActuallyDynamic,
                  DynamicBroadcastToOwnShape_1, DynamicBroadcastToOwnShape_2,
                  DynamicBroadcastToOwnShape_3, DynamicBroadcastToOwnShape_4>(
       context);
