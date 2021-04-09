@@ -1,7 +1,7 @@
-# Builtin Ops Header Generator.
+# Builtin Ops List Generator.
 
 This directory contains a code generator to generate a pure C header for
-builtin op definition.
+builtin ops lists.
 
 Whenever you add a new builtin op, please execute:
 
