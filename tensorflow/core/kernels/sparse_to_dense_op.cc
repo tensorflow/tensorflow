@@ -273,6 +273,9 @@ class SparseToDenseGPU : public AsyncOpKernel {
   bool validate_indices_;
 };
 
+// TODO(b/184077412): SparseToDense causes an illegal access error.
+
+#if 0
 #define REGISTER_GPU_KERNELS(type, index_type)                         \
   REGISTER_KERNEL_BUILDER(Name("SparseToDense")                        \
                               .Device(DEVICE_GPU)                      \
@@ -292,6 +295,7 @@ REGISTER_GPU_KERNELS_ALL(bool)
 
 #undef REGISTER_GPU_KERNELS_ALL
 #undef REGISTER_GPU_KERNELS
+#endif
 
 #endif  // GOOGLE_CUDA
 
