@@ -131,8 +131,8 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
   }
 
   // When enable_row_index is true, it means the inner most dimensions
-  // match the block sizes.  So we can generates a simpler indexing
-  // for that dimensions.  This help LLVM generates vectorized codes
+  // match the block sizes.  So we can generate a simpler indexing
+  // for that dimensions.  This helps LLVM generate vectorized codes
   // in that cases.
   LaunchDimensions::Dim3D dim3 = launch_dimensions_.thread_counts_per_block();
   bool enable_row_index = shape_.rank() > 1 && unroll_factor_ > 1 &&
