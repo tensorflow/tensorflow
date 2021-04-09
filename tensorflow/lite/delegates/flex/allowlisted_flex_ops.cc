@@ -603,6 +603,8 @@ const std::set<std::string>& GetFlexAllowlist() {
           "StackV2",
           "StatelessMultinomial",
           "StatelessRandomGammaV2",
+          "StatelessRandomGetAlg",
+          "StatelessRandomGetKeyCounter",
           "StatelessRandomGetKeyCounterAlg",
           "StatelessRandomNormal",
           "StatelessRandomNormalV2",
