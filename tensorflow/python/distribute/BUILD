@@ -1869,6 +1869,7 @@ distribute_py_test(
     disable_mlir_bridge = False,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm" # flaky/timeout with 4.1
     ],
     deps = [
         ":combinations",
