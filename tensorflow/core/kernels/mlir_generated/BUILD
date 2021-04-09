@@ -234,12 +234,12 @@ tf_kernel_library(
         "gpu_op_polygamma.cc",
         "gpu_op_pow.cc",
         "gpu_op_right_shift.cc",
+        "gpu_op_select.cc",
         "gpu_op_sub.cc",
         "gpu_op_zeta.cc",
     ]) + if_mlir_generated_experimental_kernels_enabled([
         "gpu_op_floor_div.cc",
         "gpu_op_squared_difference.cc",
-        "gpu_op_select.cc",
     ]),
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
@@ -266,13 +266,13 @@ tf_kernel_library(
         ":gpu_polygamma_kernels",
         ":gpu_pow_kernels",
         ":gpu_right_shift_kernels",
+        ":gpu_select_v2_kernels",
         ":gpu_sub_kernels",
         ":gpu_zeta_kernels",
         "//third_party/eigen3",
     ]) + if_mlir_generated_experimental_kernels_enabled([
         ":gpu_floor_div_kernels",
         ":gpu_squared_difference_kernels",
-        ":gpu_select_v2_kernels",
     ]),
 )
 
