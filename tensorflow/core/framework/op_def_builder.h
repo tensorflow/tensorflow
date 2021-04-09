@@ -21,15 +21,12 @@ limitations under the License.
 
 #include <string>
 #include <vector>
-
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
-
-typedef std::function<Status(OpDef* c)> OpTypeConstructor;
 
 class FunctionDefHelper;
 
@@ -49,33 +46,6 @@ struct OpRegistrationData {
 
   OpDef op_def;
   OpShapeInferenceFn shape_inference_fn;
-
-  // Type constructor. This callable initializes the type of this op.
-  // It is provided as a programmatic mechanism for defining an op's
-  // type, as part of its registration. It is to be eventually replaced by a
-  // textual language.
-  //
-  // Important: historically, op registrations only contained partial
-  // input/output type information in non-standardized attribute declarations
-  // (e.g. typically, input types were held in a `dtype` attribute). The type
-  // constructor currently duplicates such attribute information, with the aim
-  // of entirely subsuming it, and eventually deprecating all type-related
-  // attributes.
-  //
-  // Since ops are typically parametrized, the type created by this constructor
-  // is also parametric.
-  //
-  // Example: for an op `Foo(x: T) -> Bar[T]`:
-  //
-  //  * typically, its op registration included a single attribute `T: type`;
-  //    then the respective input was defined as `x: T`; the output type `Bar`
-  //    was implied by the op name.
-  //  * the type constructor creates a FullType object containing `Bar[T]`; this
-  //    still relies on the `T` attribute which it references.
-  //  * in the future, the type constructor will create a FullType containing
-  //    `Callable[(x: T), Bar[T]]`, and the attribute `T` will be deprecated.
-  OpTypeConstructor type_ctor;
-
   bool is_function_op = false;
 };
 
@@ -164,11 +134,6 @@ class OpDefBuilder {
 #else
   OpDefBuilder& Doc(string text) { return *this; }
 #endif
-
-  // Sets the function to be used as type constructor. Type constructors are
-  // called just before a graph node is finalized, which also happens before
-  // shape inference.
-  OpDefBuilder& SetTypeConstructor(OpTypeConstructor c);
 
   // Sets the shape function to be used for shape inference.
   //

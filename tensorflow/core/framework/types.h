@@ -27,7 +27,6 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
 // clang-format on
 #include "tensorflow/core/framework/bfloat16.h"
-#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -535,45 +534,6 @@ MemoryType MTypeFromDTypeIntsOnDevice(const DataType dtype);
 // For DT_RESOURCE, the handle always sits on host (even if the underlying
 // object has device-allocated resources).
 bool DataTypeAlwaysOnHost(DataType dt);
-
-// FullType implementation.
-
-// Reference container for a type definition. These values are usually interned.
-// These containers admit a notion of ordering for efficient access. The
-// ordering has no semantic otherwise.
-struct TypeRef {
-  std::shared_ptr<FullTypeDef> full_type;
-
-  // TypeRef() : full_type(new FullTypeDef()) {}
-
-  // explicit TypeRef(const FullTypeDef& ft)
-  //     : full_type(std::make_shared<FullTypeDef>(ft)) {}
-  //   TypeRef(TypeRef&& t) : full_type(std::move(t.full_type)) {}
-
-  //   TypeRef& operator=(const TypeRef& t) {
-  //     this->full_type = t.full_type;
-  //     return *this;
-  //   }
-
-  bool operator==(const TypeRef& other) const {
-    // TODO(mdan): This should be more efficient.
-    return full_type->SerializeAsString() ==
-           other.full_type->SerializeAsString();
-  }
-  bool operator<(const TypeRef& other) const {
-    return full_type->SerializeAsString() <
-           other.full_type->SerializeAsString();
-  }
-};
-
-struct TypeHasher {
-  std::size_t operator()(const TypeRef& k) const {
-    return std::hash<std::string>()(k.full_type->SerializeAsString());
-  }
-};
-
-// Maps a legacy DType proto enum to an equivalent FullType Tensor.
-void map_dtype_to_tensor(const DataType& dtype, FullTypeDef* t);
 
 }  // namespace tensorflow
 

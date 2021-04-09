@@ -119,7 +119,6 @@ exports_files(
         "cost_graph.proto",
         "dataset_options.proto",
         "device_attributes.proto",
-        "full_type.proto",
         "function.proto",
         "graph.proto",
         "graph_transfer_info.proto",
@@ -155,7 +154,6 @@ exports_files(
         "node_properties.h",
         "op.h",
         "op_def_builder.h",
-        "full_type_util.h",
         "op_def_util.h",
         "shape_inference.h",
     ],
@@ -184,7 +182,6 @@ filegroup(
         "device.h",
         "device_base.h",
         "device_factory.h",
-        "full_type_util.h",
         "function.h",
         "function_handle_cache.h",
         "graph_def_util.h",
@@ -355,8 +352,6 @@ filegroup(
         "device_base.h",
         "device_factory.cc",
         "device_factory.h",
-        "full_type_util.cc",
-        "full_type_util.h",
         "function.cc",
         "function.h",
         "function_handle_cache.cc",
@@ -773,7 +768,6 @@ tf_cuda_library(
         ":allocation_description_proto_cc",
         ":allocator",
         ":bfloat16",
-        ":full_type_proto_cc",
         ":log_memory_proto_cc",
         ":numeric_types",
         ":resource_handle",
@@ -979,19 +973,8 @@ cc_library(
         "//tensorflow/core/lib/strings:scanner",
         "//tensorflow/core/lib/strings:str_util",
         "//tensorflow/core/lib/strings:strcat",
-        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:macros",
         "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "full_type_util",
-    srcs = ["full_type_util.cc"],
-    hdrs = ["full_type_util.h"],
-    deps = [
-        ":full_type_proto_cc",
-        ":op_def_builder",
     ],
 )
 
@@ -1000,8 +983,6 @@ cc_library(
     srcs = ["op.cc"],
     hdrs = ["op.h"],
     deps = [
-        ":full_type_proto_cc",
-        ":full_type_util",
         ":op_def_builder",
         ":op_def_util",
         "//tensorflow/core/framework/registration",
@@ -1288,7 +1269,7 @@ tf_cc_test(
 # protos from the same package, so we can build the protos here and then
 # link them from core:protos_all without circular dependencies.
 
-# Generate the C++ sources for some of the protos.
+# Generate the C++ sources for tsome of the protos.
 tf_generate_proto_text_sources(
     name = "attr_value_proto_text",
     srcs = [
@@ -1421,7 +1402,6 @@ tf_proto_library(
     make_default_target_header_only = True,
     protodeps = [
         ":attr_value_proto",
-        ":full_type_proto",
         ":resource_handle_proto",
         ":tensor_proto",
         ":tensor_shape_proto",
@@ -1514,7 +1494,6 @@ tf_proto_library(
     make_default_target_header_only = True,
     protodeps = [
         ":attr_value_proto",
-        ":full_type_proto",
         ":resource_handle_proto",
         ":tensor_proto",
         ":tensor_shape_proto",
@@ -1533,14 +1512,6 @@ tf_proto_library(
         ":tensor_shape_proto",
         ":types_proto",
     ],
-)
-
-tf_proto_library(
-    name = "full_type_proto",
-    srcs = ["full_type.proto"],
-    cc_api_version = 2,
-    make_default_target_header_only = True,
-    protodeps = [],
 )
 
 tf_proto_library(
@@ -1665,7 +1636,6 @@ tf_proto_library(
         ":cost_graph_proto",
         ":dataset_options_proto",
         ":device_attributes_proto",
-        ":full_type_proto",
         ":function_proto",
         ":graph_proto",
         ":graph_transfer_info_proto",

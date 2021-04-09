@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/errors.h"
 
 using ::tensorflow::strings::Scanner;
 
@@ -626,11 +625,6 @@ OpDefBuilder& OpDefBuilder::Deprecated(int version, string explanation) {
   return *this;
 }
 
-OpDefBuilder& OpDefBuilder::SetTypeConstructor(OpTypeConstructor c) {
-  op_reg_data_.type_ctor = c;
-  return *this;
-}
-
 OpDefBuilder& OpDefBuilder::SetShapeFn(OpShapeInferenceFn fn) {
   if (op_reg_data_.shape_inference_fn != nullptr) {
     errors_.push_back(
@@ -664,10 +658,6 @@ Status OpDefBuilder::Finalize(OpRegistrationData* op_reg_data) const {
     FinalizeControlOutput(control_output, op_def, &errors);
   }
   FinalizeDoc(doc_, op_def, &errors);
-
-  if (op_reg_data->type_ctor != nullptr) {
-    TF_RETURN_IF_ERROR(op_reg_data->type_ctor(op_def));
-  }
 
   if (errors.empty()) return Status::OK();
   return errors::InvalidArgument(absl::StrJoin(errors, "\n"));

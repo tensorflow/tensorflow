@@ -1,17 +1,14 @@
 syntax = "proto3";
 
 package tensorflow;
-
-import "tensorflow/core/framework/attr_value.proto";
-import "tensorflow/core/framework/full_type.proto";
-import "tensorflow/core/framework/resource_handle.proto";
-import "tensorflow/core/framework/types.proto";
-
 option cc_enable_arenas = true;
 option java_outer_classname = "OpDefProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/op_def_go_proto";
+import "tensorflow/core/framework/attr_value.proto";
+import "tensorflow/core/framework/types.proto";
+import "tensorflow/core/framework/resource_handle.proto";
 
 // Defines an operation. A NodeDef in a GraphDef specifies an Op by
 // using the "op" field which should match the name of a OpDef.
@@ -53,18 +50,7 @@ message OpDef {
     //   By default, inputs can be either refs or non-refs.
     // For outputs: if true, outputs are refs, otherwise they are not.
     bool is_ref = 16;
-
-    // Experimental. Full type declaration for this argument.
-    // The full type specification combines type, type_attr, type_list_attr,
-    // etc. into a unified representation.
-    // This declaration may contain non-concrete types (for example,
-    // Tensor<TypeVar<'T'>> is a valid type declaration.
-    //
-    // Note: this is a transient field. The long-term aim is to represent the
-    // entire OpDef as a single type: a callable. In that context, this field is
-    // just the type of a single argument.
-    FullTypeDef experimental_full_type = 17;
-  }
+  };
 
   // Description of the input(s).
   repeated ArgDef input_arg = 2;
@@ -169,7 +155,7 @@ message OpDef {
   // field to true, to allow the Op to take an uninitialized Tensor as
   // input.
   bool allows_uninitialized_input = 19;  // for Assign, etc.
-}
+};
 // LINT.ThenChange(
 //     https://www.tensorflow.org/code/tensorflow/core/framework/op_def_util.cc)
 
@@ -180,9 +166,9 @@ message OpDeprecation {
 
   // Explanation of why it was deprecated and what to use instead.
   string explanation = 2;
-}
+};
 
 // A collection of OpDefs
 message OpList {
   repeated OpDef op = 1;
-}
+};
