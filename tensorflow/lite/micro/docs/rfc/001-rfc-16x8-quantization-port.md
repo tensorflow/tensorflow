@@ -150,4 +150,7 @@ For each kernel:
 - PR1: Refactor the implementation to support the new kernel variant registration API.
 - PR2: Add 16x8 support and make sure that the benchmark binary and arena sizes are unchanged.
 
+Note that @njeffrie from the TF Lite Micro team also plans to prepare PR(s) for the kernels that are of interest internally
+(without using the kernel variant registation API for binary size). This will provide some quick examples of porting the kernels.
+
 ## Questions and Discussion Topics
