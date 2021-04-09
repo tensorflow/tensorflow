@@ -119,7 +119,13 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addNestedPass<FuncOp>(createCanonicalizerPass());
   pm.addPass(CreateTPUClusterCleanupAttributesPass());
   pm.addPass(TFDevice::CreateResourceOpLiftingPass());
+  // Re-run the canonicalizer pass as some cleanup during resource op lifting
+  // pass opens up some opportunities for canonicalization of cluster ops.
+  // Specifically, we want to eliminate pass through results from the cluster
+  // op.
+  pm.addNestedPass<FuncOp>(createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(createCSEPass());
+
   pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
   pm.addPass(CreateTPUExtractHeadTailOutsideCompilationPass());
   pm.addPass(CreateTPUExtractOutsideCompilationPass());
