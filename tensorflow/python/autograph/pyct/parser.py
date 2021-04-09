@@ -392,7 +392,10 @@ def unparse(node, indentation=None, include_encoding_marker=True):
     codes.append('# coding=utf-8')
   for n in node:
     if isinstance(n, gast.AST):
-      n = gast.gast_to_ast(n)
-    codes.append(astunparse.unparse(n).strip())
+      ast_n = gast.gast_to_ast(n)
+    else:
+      ast_n = n
+    ast_n = ast.fix_missing_locations(ast_n)
+    codes.append(astunparse.unparse(ast_n).strip())
 
   return '\n'.join(codes)
