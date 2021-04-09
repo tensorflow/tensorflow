@@ -1353,25 +1353,6 @@ Status VerifyBatchNormForThunkEmission(
   return Status::OK();
 }
 
-// Returns true if the fusion contain a row broadcasting (i.e. a
-// broadcast of a vector on the inner dimension of the output)
-bool ContainRowBroadcasting(mlir::lmhlo::FusionOp fusion) {
-  for (mlir::Operation& op : fusion.region().front()) {
-    if (auto broadcast = mlir::dyn_cast<mlir::mhlo::BroadcastInDimOp>(op)) {
-      std::vector<int64> broadcast_dimensions;
-      for (const llvm::APInt& int_value : broadcast.broadcast_dimensions()) {
-        broadcast_dimensions.push_back(int_value.getSExtValue());
-      }
-      auto rank = TypeToShape(broadcast.getResult().getType()).rank();
-      if (broadcast_dimensions.size() == 1 &&
-          broadcast_dimensions.back() == (rank - 1)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
 // Determine if we enable the row optimized codegen.  When we have a
 // fusion with only point-wise operations, scalar broadcasting and row
 // broadcasting, we can trigger a kernel that vectorize the row loads.
@@ -1400,6 +1381,10 @@ bool RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
   // only unrolls and relies on LLVM to vectorize. But this is brittle.
   // Currently tested and supported operations:
   // Elementwise, scalar and row broadcasting.
+  //
+  // We also detect at the same time if there is a row broadcasting
+  // operation.
+  bool some_row_broadcasting = false;
   for (mlir::Operation& op : fusion.region().front()) {
     if (mlir::isa<mlir::memref::TensorLoadOp, mlir::memref::TensorStoreOp,
                   mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp,
@@ -1423,6 +1408,7 @@ bool RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
       auto rank = TypeToShape(broadcast.getResult().getType()).rank();
       if (broadcast_dimensions.size() == 1 &&
           broadcast_dimensions.back() == (rank - 1)) {
+        some_row_broadcasting = true;
         continue;
       }
     }
@@ -1430,9 +1416,7 @@ bool RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
             << MlirToString(&op);
     return false;
   }
-
   // Trigger only when there is a row broadcasting.
-  bool some_row_broadcasting = ContainRowBroadcasting(fusion);
   return row_vectorized && some_row_broadcasting;
 }
 }  // namespace
