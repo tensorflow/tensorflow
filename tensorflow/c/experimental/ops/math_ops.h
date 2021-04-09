@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,14 +28,14 @@ Status Mul(AbstractContext* ctx, AbstractTensorHandle* const x,
 Status Conj(AbstractContext* ctx, AbstractTensorHandle* const input,
             absl::Span<AbstractTensorHandle*> output, const char* name);
 
-Status Add(AbstractContext* ctx, AbstractTensorHandle* const x,
-           AbstractTensorHandle* const y, absl::Span<AbstractTensorHandle*> z,
-           const char* name);
+Status AddV2(AbstractContext* ctx, AbstractTensorHandle* const x,
+             AbstractTensorHandle* const y, absl::Span<AbstractTensorHandle*> z,
+             const char* name);
 
 Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a,
               AbstractTensorHandle* const b,
               absl::Span<AbstractTensorHandle*> product, const char* name,
-              bool transpose_a, bool transpose_b);
+              bool transpose_a = false, bool transpose_b = false);
 
 Status Neg(AbstractContext* ctx, AbstractTensorHandle* const x,
            absl::Span<AbstractTensorHandle*> y, const char* name);

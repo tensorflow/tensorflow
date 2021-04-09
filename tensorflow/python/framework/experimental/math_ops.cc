@@ -38,7 +38,7 @@ PYBIND11_MODULE(_math_ops, m) {
       name = "Add";
     }
     MaybeRaiseRegisteredFromStatus(
-        ops::Add(ctx, a, b, absl::MakeSpan(outputs), name));
+        ops::AddV2(ctx, a, b, absl::MakeSpan(outputs), name));
     return outputs[0];
   });
   m.def("mat_mul", [](AbstractContext* ctx, AbstractTensorHandle* a,

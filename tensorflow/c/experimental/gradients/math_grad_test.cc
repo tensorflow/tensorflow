@@ -34,7 +34,7 @@ using tensorflow::TF_StatusPtr;
 Status AddModel(AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle* const> inputs,
                 absl::Span<AbstractTensorHandle*> outputs) {
-  return ops::Add(ctx, inputs[0], inputs[1], outputs, "Add");
+  return ops::AddV2(ctx, inputs[0], inputs[1], outputs, "Add");
 }
 
 Status ExpModel(AbstractContext* ctx,
