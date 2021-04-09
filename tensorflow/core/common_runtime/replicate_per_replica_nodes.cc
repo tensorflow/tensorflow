@@ -98,7 +98,10 @@ class ReplicateHelper {
     Node* dst = edge->dst();
     if (edge->IsControlEdge()) {
       for (Node* replicated_node : src_replicated_nodes) {
-        graph->AddControlEdge(replicated_node, dst);
+        // Duplication check in `Graph::AddControlEdge` is expensive for the dst
+        // node with a lot of input edges. Here each (src, dst) pair will only
+        // occur once so it is safe to skip the duplication check.
+        graph->AddControlEdge(replicated_node, dst, /*allow_duplicates=*/true);
       }
     } else {
       const string& dst_device = dst->assigned_device_name();
@@ -157,6 +160,16 @@ class ReplicateHelper {
       }
     }
     return Status::OK();
+  }
+
+  void RemoveDeadReplicatedArgs(Graph* graph) {
+    for (const auto& entry : replicated_nodes_map_) {
+      for (Node* replicated_node : entry.second) {
+        if (replicated_node->IsArg() && replicated_node->out_edges().empty()) {
+          graph->RemoveNode(replicated_node);
+        }
+      }
+    }
   }
 
  private:
@@ -256,6 +269,8 @@ Status ReplicatePerReplicaNodesInFunctionGraph(
     for (auto* n : cluster_nodes) {
       graph->RemoveNode(n);
     }
+
+    helper.RemoveDeadReplicatedArgs(graph);
   }
   return Status::OK();
 }

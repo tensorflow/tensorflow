@@ -17,16 +17,17 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 
 namespace tensorflow {
 namespace tpu {
 
+// TODO(b/162241759): consider merging TpuCompilationCacheLookup and
+// TpuCompilationCacheInterface.
 // Base class allowing Execute Ops to look up TPU programs. Different subclasses
 // are used when the execute Op is in the same address space as the compile Op,
 // and when they need to communicate over RPC.
-template <typename TpuCompilationCacheEntryRefType>
 class TpuCompilationCacheLookup : public ResourceBase {
  public:
   ~TpuCompilationCacheLookup() override = default;
@@ -43,12 +44,11 @@ class TpuCompilationCacheLookup : public ResourceBase {
   // fetch_target requests one of them, then after this call
   //   (*entry)->get().get_executable() will return nullptr.
   virtual Status Lookup(const string& proto_key,
-                        std::unique_ptr<TpuCompilationCacheEntryRefType>* entry,
+                        std::unique_ptr<CompilationCacheEntryRef>* entry,
                         CompilationCacheFetchTarget fetch_target) = 0;
 
-  virtual Status Lookup(
-      const string& proto_key,
-      std::unique_ptr<TpuCompilationCacheEntryRefType>* entry) {
+  virtual Status Lookup(const string& proto_key,
+                        std::unique_ptr<CompilationCacheEntryRef>* entry) {
     return Lookup(proto_key, std::move(entry),
                   CompilationCacheFetchTarget::MAIN);
   }
@@ -58,17 +58,15 @@ class TpuCompilationCacheLookup : public ResourceBase {
   // returned in program. The wrapper is guaranteed to be valid only during the
   // execution of the Op requesting the proto.
   virtual Status Lookup(int64 uid, int proto_index,
-                        std::unique_ptr<TpuCompilationCacheEntryRefType>* entry,
+                        std::unique_ptr<CompilationCacheEntryRef>* entry,
                         CompilationCacheFetchTarget fetch_target) = 0;
 
-  virtual Status Lookup(
-      int64 uid, int proto_index,
-      std::unique_ptr<TpuCompilationCacheEntryRefType>* entry) {
+  virtual Status Lookup(int64 uid, int proto_index,
+                        std::unique_ptr<CompilationCacheEntryRef>* entry) {
     return Lookup(uid, proto_index, std::move(entry),
                   CompilationCacheFetchTarget::MAIN);
   }
 };
-
 }  // namespace tpu
 }  // namespace tensorflow
 

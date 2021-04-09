@@ -68,8 +68,8 @@ class S3FileSystemTest : public ::testing::Test {
                          bool use_multi_part_download = true) {
     std::unique_ptr<RandomAccessFile> reader;
 
-    TF_RETURN_IF_ERROR(
-        s3fs.NewRandomAccessFile(fname, &reader, use_multi_part_download));
+    TF_RETURN_IF_ERROR(s3fs.NewRandomAccessFile(fname, nullptr, &reader,
+                                                use_multi_part_download));
 
     uint64 file_size = 0;
     TF_RETURN_IF_ERROR(s3fs.GetFileSize(fname, &file_size));
@@ -228,13 +228,13 @@ TEST_F(S3FileSystemTest, FileExists) {
 
 TEST_F(S3FileSystemTest, GetChildren) {
   const string base = TmpDir("GetChildren");
-  TF_EXPECT_OK(s3fs.CreateDir(base));
+  TF_EXPECT_OK(s3fs.CreateDir(base, nullptr));
 
   const string file = io::JoinPath(base, "TestFile.csv");
   TF_EXPECT_OK(WriteString(file, "test"));
 
   const string subdir = io::JoinPath(base, "SubDir");
-  TF_EXPECT_OK(s3fs.CreateDir(subdir));
+  TF_EXPECT_OK(s3fs.CreateDir(subdir, nullptr));
   // s3 object storage doesn't support empty directory, we create file in the
   // directory
   const string subfile = io::JoinPath(subdir, "TestSubFile.csv");
@@ -264,7 +264,7 @@ TEST_F(S3FileSystemTest, CreateDir) {
   // s3 object storage doesn't support empty directory, we create file in the
   // directory
   const string dir = TmpDir("CreateDir");
-  TF_EXPECT_OK(s3fs.CreateDir(dir));
+  TF_EXPECT_OK(s3fs.CreateDir(dir, nullptr));
 
   const string file = io::JoinPath(dir, "CreateDirFile.csv");
   TF_EXPECT_OK(WriteString(file, "test"));

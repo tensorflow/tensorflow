@@ -18,8 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import functools
-import weakref
+import warnings
 
 from absl import logging
 
@@ -49,6 +48,7 @@ class NotTrackable(object):
   pass
 
 
+@tf_export("__internal__.tracking.AutoTrackable", v1=[])
 class AutoTrackable(base.Trackable):
   """Manages dependencies on other objects.
 
@@ -92,8 +92,7 @@ class AutoTrackable(base.Trackable):
     super(AutoTrackable, self).__setattr__(name, value)
 
   def __delattr__(self, name):
-    self._maybe_initialize_trackable()
-    delete_tracking(self, name)
+    self._delete_tracking(name)
     super(AutoTrackable, self).__delattr__(name)
 
   def _no_dependency(self, value):
@@ -108,7 +107,9 @@ class AutoTrackable(base.Trackable):
       logging_verbosity = logging.get_verbosity()
       try:
         logging.set_verbosity(logging.FATAL)
-        attribute_value = getattr(self, attribute_name, None)
+        with warnings.catch_warnings():
+          warnings.simplefilter("ignore")
+          attribute_value = getattr(self, attribute_name, None)
       except Exception:  # pylint: disable=broad-except
         # We really don't want to throw an exception just because some object's
         # attribute accessor is broken.
@@ -123,18 +124,16 @@ class AutoTrackable(base.Trackable):
         functions[attribute_name] = attribute_value
     return functions
 
-
-def delete_tracking(obj, name):
-  """Removes the tracking of name from object."""
-  # pylint: disable=protected-access
-  if name in obj._unconditional_dependency_names:
-    del obj._unconditional_dependency_names[name]
-    for index, (dep_name, _) in enumerate(
-        obj._unconditional_checkpoint_dependencies):
-      if dep_name == name:
-        del obj._unconditional_checkpoint_dependencies[index]
-        break
-  # pylint: enable=protected-access
+  def _delete_tracking(self, name):
+    """Removes the tracking of name."""
+    self._maybe_initialize_trackable()
+    if name in self._unconditional_dependency_names:
+      del self._unconditional_dependency_names[name]
+      for index, (dep_name, _) in enumerate(
+          self._unconditional_checkpoint_dependencies):
+        if dep_name == name:
+          del self._unconditional_checkpoint_dependencies[index]
+          break
 
 
 class ResourceTracker(object):
@@ -182,30 +181,6 @@ def resource_tracker_scope(resource_tracker):
     _RESOURCE_TRACKER_STACK = old
 
 
-class CapturableResourceDeleter(object):
-  """Deleter to destroy CapturableResource without overriding its __del__()."""
-
-  __slots__ = ["_destruction_context", "_destroy_resource"]
-
-  def __init__(self, destroy_resource_fn=None):
-    if destroy_resource_fn:
-      self._destroy_resource = destroy_resource_fn
-      self._destruction_context = (
-          context.eager_mode if context.executing_eagerly()
-          else ops.get_default_graph().as_default)
-    else:
-      self._destroy_resource = None
-
-  def destroy_resource(self):
-    if self._destroy_resource:
-      return self._destroy_resource()
-
-  def __del__(self):
-    if self._destroy_resource:
-      with self._destruction_context():
-        self._destroy_resource()
-
-
 class CapturableResource(base.Trackable):
   """Holds a Tensor which a tf.function can capture.
 
@@ -216,7 +191,7 @@ class CapturableResource(base.Trackable):
   `CapturableResource` directly.
   """
 
-  def __init__(self, device="", deleter=None):
+  def __init__(self, device=""):
     """Initialize the `CapturableResource`.
 
     Args:
@@ -224,12 +199,12 @@ class CapturableResource(base.Trackable):
         e.g. "CPU" if this resource must be created on a CPU device. A blank
         device allows the user to place resource creation, so generally this
         should be blank unless the resource only makes sense on one device.
-      deleter: A CapturableResourceDeleter that will destroy the created
-        resource during destruction.
     """
     self._resource_handle = None
     self._resource_device = device
-    self._resource_deleter = deleter or CapturableResourceDeleter()
+    self._destruction_context = (
+        context.eager_mode if context.executing_eagerly()
+        else ops.get_default_graph().as_default)
 
   def _create_resource(self):
     """A function that creates a resource handle."""
@@ -238,6 +213,10 @@ class CapturableResource(base.Trackable):
 
   def _initialize(self):
     """A function that initializes the resource. Optional."""
+    pass
+
+  def _destroy_resource(self):
+    """A function that destroys the resource. Optional."""
     pass
 
   @property
@@ -273,7 +252,7 @@ class CapturableResource(base.Trackable):
 
     @def_function.function(input_signature=[], autograph=False)
     def _destroyer():
-      self._resource_deleter.destroy_resource()
+      self._destroy_resource()
       return 1  # Dummy return
 
     return {
@@ -282,11 +261,69 @@ class CapturableResource(base.Trackable):
         "_destroy_resource": _destroyer,
     }
 
+  def __del__(self):
+    try:
+      # Outer race condition: on program exit, the destruction context may be
+      # deleted before this __del__ is called. At this point we can safely
+      # exit without calling _destroy_resource() and let Python handle things.
+      with self._destruction_context():
+        # Inner race condition: possible between this and `ScopedTFFunction`
+        # whereby if an entire garbage collection chain containing both
+        # objects is moved to unreachable during the same garbage collection
+        # cycle, the __del__ for `ScopedTFFunction` can be collected before
+        # this method is called. In that case, we can't do much but
+        # continue.
+        try:
+          self._destroy_resource()
 
+        except defun.FunctionAlreadyGarbageCollectedError:
+          pass
+    except TypeError:
+      pass
+
+
+@tf_export("saved_model.experimental.TrackableResource")
 class TrackableResource(CapturableResource):
-  """Adds scope tracking to CapturableResource."""
+  """Holds a Tensor which a tf.function can capture.
 
-  def __init__(self, device="", deleter=None):
+  A TrackableResource is most useful for stateful Tensors that require
+  initialization, such as `tf.lookup.StaticHashTable`. `TrackableResource`s
+  are discovered by traversing the graph of object attributes, e.g. during
+  `tf.saved_model.save`.
+
+  A TrackableResource has three methods to override:
+
+  * `_create_resource` should create the resource tensor handle.
+  * `_initialize` should initialize the resource held at `self.resource_handle`.
+  * `_destroy_resource` is called upon a `TrackableResource`'s destruction
+    and should decrement the resource's ref count. For most resources, this
+    should be done with a call to `tf.raw_ops.DestroyResourceOp`.
+
+  Example usage:
+
+  >>> class DemoResource(tf.saved_model.experimental.TrackableResource):
+  ...   def __init__(self):
+  ...     super().__init__()
+  ...     self._initialize()
+  ...   def _create_resource(self):
+  ...     return tf.raw_ops.VarHandleOp(dtype=tf.float32, shape=[2])
+  ...   def _initialize(self):
+  ...     return tf.raw_ops.AssignVariableOp(
+  ...         resource=self.resource_handle, value=tf.ones([2]))
+  ...   def _destroy_resource(self):
+  ...     return tf.raw_ops.DestroyResourceOp(resource=self.resource_handle)
+  >>> class DemoModule(tf.Module):
+  ...   def __init__(self):
+  ...     self.resource = DemoResource()
+  ...   def increment(self, tensor):
+  ...     return tensor + tf.raw_ops.ReadVariableOp(
+  ...         resource=self.resource.resource_handle, dtype=tf.float32)
+  >>> demo = DemoModule()
+  >>> demo.increment([5, 1])
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([6., 2.], dtype=float32)>
+  """
+
+  def __init__(self, device=""):
     """Initialize the `TrackableResource`.
 
     Args:
@@ -294,13 +331,11 @@ class TrackableResource(CapturableResource):
         e.g. "CPU" if this resource must be created on a CPU device. A blank
         device allows the user to place resource creation, so generally this
         should be blank unless the resource only makes sense on one device.
-      deleter: A CapturableResourceDeleter that will destroy the created
-        resource during destruction.
     """
     global _RESOURCE_TRACKER_STACK
     for resource_tracker in _RESOURCE_TRACKER_STACK:
       resource_tracker.add_resource(self)
-    super(TrackableResource, self).__init__(device=device, deleter=deleter)
+    super(TrackableResource, self).__init__(device=device)
 
 
 @tf_export("saved_model.Asset")
@@ -355,101 +390,6 @@ class Asset(base.Trackable):
   def asset_path(self):
     """Fetch the current asset path."""
     return self._path
-
-
-def cached_per_instance(f):
-  """Lightweight decorator for caching lazily constructed properties.
-
-  When to use:
-  This decorator provides simple caching with minimal overhead. It is designed
-  for properties which are expensive to compute and static over the life of a
-  class instance, and provides no mechanism for cache invalidation. Thus it is
-  best suited for lazily exposing derived properties of other static data.
-
-  For classes with custom getattr / setattr behavior (such as trackable
-  objects), storing cache results as object attributes is not performant.
-  Instead, a specialized cache can significantly reduce property lookup
-  overhead. (While still allowing the decorated property to be lazily computed.)
-  Consider the following class:
-
-  ```
-  class MyClass(object):
-    def __setattr__(self, key, value):
-      # Some expensive class specific code
-      # ...
-      # ...
-
-      super(MyClass, self).__setattr__(key, value)
-
-    @property
-    def thing(self):
-      # `thing` is expensive to compute (and may not even be requested), so we
-      # want to lazily compute it and then cache it.
-      output = getattr(self, '_thing', None)
-      if output is None:
-        self._thing = output = compute_thing(self)
-      return output
-  ```
-
-  It's also worth noting that ANY overriding of __setattr__, even something as
-  simple as:
-  ```
-    def __setattr__(self, key, value):
-      super(MyClass, self).__setattr__(key, value)
-  ```
-
-  Slows down attribute assignment by nearly 10x.
-
-  By contrast, replacing the definition of `thing` with the following sidesteps
-  the expensive __setattr__ altogether:
-
-  '''
-  @property
-  @tracking.cached_per_instance
-  def thing(self):
-    # `thing` is expensive to compute (and may not even be requested), so we
-    # want to lazily compute it and then cache it.
-    return compute_thing(self)
-  '''
-
-  Performance:
-  The overhead for this decorator is ~0.4 us / call. A much lower overhead
-  implementation (~0.085 us / call) can be achieved by using a custom dict type:
-
-  ```
-  def dict_based_cache(f):
-    class Cache(dict):
-      __slots__ = ()
-      def __missing__(self, key):
-        self[key] = output = f(key)
-        return output
-
-    return property(Cache().__getitem__)
-  ```
-
-  However, that implementation holds class instances as keys, and as a result
-  blocks garbage collection. (And modifying it to use weakref's as keys raises
-  the lookup overhead to ~0.4 us) As a result, the WeakKeyDictionary
-  implementation below turns out to be more prudent.
-
-  Args:
-    f: The function to cache.
-
-  Returns:
-    f decorated with simple caching behavior.
-  """
-
-  cache = weakref.WeakKeyDictionary()
-
-  @functools.wraps(f)
-  def wrapped(item):
-    output = cache.get(item)
-    if output is None:
-      cache[item] = output = f(item)
-    return output
-
-  wrapped.cache = cache
-  return wrapped
 
 
 ops.register_tensor_conversion_function(

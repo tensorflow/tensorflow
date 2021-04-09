@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cctype>
 #include <map>
+#include <memory>
 #include <string>
 
 #include "absl/strings/string_view.h"
@@ -51,14 +52,26 @@ void CanonicalizeValues(std::map<std::string, std::string>* variable_values) {
 
 }  // namespace
 
-GPUCompatibilityList::GPUCompatibilityList()
-    : GPUCompatibilityList(g_tflite_acceleration_gpu_compatibility_binary) {}
-
 GPUCompatibilityList::GPUCompatibilityList(
     const unsigned char* compatibility_list_flatbuffer) {
   if (!compatibility_list_flatbuffer) return;
   database_ =
       flatbuffers::GetRoot<DeviceDatabase>(compatibility_list_flatbuffer);
+}
+
+std::unique_ptr<GPUCompatibilityList> GPUCompatibilityList::Create() {
+  return Create(g_tflite_acceleration_gpu_compatibility_binary,
+                g_tflite_acceleration_gpu_compatibility_binary_len);
+}
+
+std::unique_ptr<GPUCompatibilityList> GPUCompatibilityList::Create(
+    const unsigned char* compatibility_list_flatbuffer, int length) {
+  if (!compatibility_list_flatbuffer ||
+      !IsValidFlatbuffer(compatibility_list_flatbuffer, length)) {
+    return nullptr;
+  }
+  return std::unique_ptr<GPUCompatibilityList>(
+      new GPUCompatibilityList(compatibility_list_flatbuffer));
 }
 
 std::map<std::string, std::string> GPUCompatibilityList::CalculateVariables(
@@ -70,10 +83,11 @@ std::map<std::string, std::string> GPUCompatibilityList::CalculateVariables(
   variables[kDeviceModel] = android_info.model;
   variables[kDeviceName] = android_info.device;
   variables[kManufacturer] = android_info.manufacturer;
-  variables[kGPUModel] = gpu_info.renderer_name;
+  const auto& gl_info = gpu_info.opengl_info;
+  variables[kGPUModel] = gl_info.renderer_name;
   char buffer[128];
-  int len = snprintf(buffer, 128 - 1, "%d.%d", gpu_info.major_version,
-                     gpu_info.minor_version);
+  int len = snprintf(buffer, 128 - 1, "%d.%d", gl_info.major_version,
+                     gl_info.minor_version);
   buffer[len] = '\0';
   variables[kOpenGLESVersion] = std::string(buffer);
   CanonicalizeValues(&variables);
@@ -96,6 +110,14 @@ TfLiteGpuDelegateOptionsV2 GPUCompatibilityList::GetBestOptionsFor(
   // information about which backend to choose (OpenGL/OpenCL/Vulkan) or other
   // options.
   return TfLiteGpuDelegateOptionsV2Default();
+}
+
+// static
+bool GPUCompatibilityList::IsValidFlatbuffer(const unsigned char* data,
+                                             int len) {
+  // Verify opensource db.
+  flatbuffers::Verifier verifier(reinterpret_cast<const uint8_t*>(data), len);
+  return tflite::acceleration::VerifyDeviceDatabaseBuffer(verifier);
 }
 
 }  // namespace acceleration

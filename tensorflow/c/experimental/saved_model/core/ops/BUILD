@@ -1,3 +1,5 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 # This package contains written convenience helpers for Eager Operations
 # used by SavedModel. Once we autogenerate C++ Eager Op wrappers, we can remove these.
 load(
@@ -11,7 +13,7 @@ package(
         "//tensorflow/c/experimental/saved_model/core:__subpackages__",
         "//tensorflow/c/experimental/saved_model/internal:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(

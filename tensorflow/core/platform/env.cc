@@ -395,11 +395,7 @@ bool Env::LocalTempFilename(string* filename) {
 
 bool Env::CreateUniqueFileName(string* prefix, const string& suffix) {
   int32 tid = GetCurrentThreadId();
-#ifdef PLATFORM_WINDOWS
-  int32 pid = static_cast<int32>(GetCurrentProcessId());
-#else
-  int32 pid = static_cast<int32>(getpid());
-#endif
+  int32 pid = GetProcessId();
   long long now_microsec = NowMicros();  // NOLINT
 
   *prefix += strings::Printf("%s-%x-%d-%llx", port::Hostname().c_str(), tid,
@@ -414,6 +410,14 @@ bool Env::CreateUniqueFileName(string* prefix, const string& suffix) {
   } else {
     return true;
   }
+}
+
+int32 Env::GetProcessId() {
+#ifdef PLATFORM_WINDOWS
+  return static_cast<int32>(GetCurrentProcessId());
+#else
+  return static_cast<int32>(getpid());
+#endif
 }
 
 Thread::~Thread() {}
@@ -544,15 +548,7 @@ Status ReadBinaryProto(Env* env, const string& fname,
   std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file));
   std::unique_ptr<FileStream> stream(new FileStream(file.get()));
-
-  // TODO(jiayq): the following coded stream is for debugging purposes to allow
-  // one to parse arbitrarily large messages for MessageLite. One most likely
-  // doesn't want to put protobufs larger than 64MB on Android, so we should
-  // eventually remove this and quit loud when a large protobuf is passed in.
   protobuf::io::CodedInputStream coded_stream(stream.get());
-  // Total bytes hard limit / warning limit are set to 1GB and 512MB
-  // respectively.
-  coded_stream.SetTotalBytesLimit(1024LL << 20, 512LL << 20);
 
   if (!proto->ParseFromCodedStream(&coded_stream) ||
       !coded_stream.ConsumedEntireMessage()) {

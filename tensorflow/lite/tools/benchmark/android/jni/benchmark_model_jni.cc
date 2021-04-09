@@ -39,6 +39,8 @@ class AndroidBenchmarkLoggingListener : public BenchmarkListener {
                    << "Init: " << init_us << ", "
                    << "Inference: " << inference_us.avg();
     results_output << "Overall " << results.overall_mem_usage();
+    results_output << std::endl
+                   << "Inference time us:" << results.inference_time_us();
 
 #ifdef __ANDROID__
     __android_log_print(ANDROID_LOG_ERROR, "tflite", "%s",
@@ -60,9 +62,7 @@ void Run(int argc, char** argv) {
 }  // namespace benchmark
 }  // namespace tflite
 
-#ifdef __cplusplus
 extern "C" {
-#endif
 
 JNIEXPORT void JNICALL
 Java_org_tensorflow_lite_benchmark_BenchmarkModel_nativeRun(JNIEnv* env,
@@ -88,6 +88,4 @@ Java_org_tensorflow_lite_benchmark_BenchmarkModel_nativeRun(JNIEnv* env,
   env->ReleaseStringUTFChars(args_obj, args_chars);
 }
 
-#ifdef __cplusplus
 }  // extern "C"
-#endif  // __cplusplus

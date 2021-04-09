@@ -39,8 +39,8 @@ uint32 Skewed(random::SimplePhilox* rnd, int max_log) {
   return rnd->Rand32() % space;
 }
 
-void BM_ParseTensorName(int iters, int arg) {
-  testing::StopTiming();
+void BM_ParseTensorName(::testing::benchmark::State& state) {
+  const int arg = state.range(0);
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
   std::vector<string> names;
@@ -78,11 +78,11 @@ void BM_ParseTensorName(int iters, int arg) {
     }
     names.push_back(name);
   }
-  testing::StartTiming();
+
   TensorId id;
   int index = 0;
   int sum = 0;
-  while (--iters > 0) {
+  for (auto s : state) {
     id = ParseTensorName(names[index++ % names.size()]);
     sum += id.second;
   }

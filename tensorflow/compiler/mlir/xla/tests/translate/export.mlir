@@ -1,4 +1,5 @@
 // RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s
+// RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo-text-via-builder %s | FileCheck %s
 
 // CHECK:  HloModule
 func @main(%arg0: !mhlo.token, %arg1: !mhlo.token) -> !mhlo.token {
@@ -36,7 +37,36 @@ func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 // CHECK:  %[[ARG0:.*]] = f32[10] parameter(0)
 // CHECK:  ROOT %[[RESULT:.*]] = f32[10] all-reduce(f32[10] %[[ARG0]])
 // CHECK-SAME:  channel_id=5
-// CHECK-SAME:  replica_groups={{[{][{]}}0,2,4,6},{1,3,5,7{{[}][}]}}
+// CHECK-SAME{LITERAL}:  replica_groups={{0,2,4,6},{1,3,5,7}}
+// CHECK-SAME:  to_apply=%[[COMPUTATION]]
+
+// -----
+// Test non-uniform sized replica groups.
+
+// CHECK:  HloModule
+func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
+  %0 = "mhlo.all_reduce"(%arg0) ({
+  // Perform max reduction inside the region
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    %max = mhlo.maximum %lhs, %rhs : tensor<f32>
+    "mhlo.return"(%max) : (tensor<f32>) -> ()
+  })
+  {
+    replica_groups = dense<[[0, 2, 4, -1], [1, 3, 5, 7]]> : tensor<2x4xi64>,
+    channel_id = {
+      handle = 5 : i64,
+      type = 2 : i64
+    }
+  } : (tensor<10xf32>) -> tensor<10xf32>
+  return %0 : tensor<10xf32>
+}
+
+// CHECK:  %[[COMPUTATION:.*]] ({{.*}}: f32[], {{.*}}: f32[]) -> f32[]
+// CHECK:  ENTRY
+// CHECK:  %[[ARG0:.*]] = f32[10] parameter(0)
+// CHECK:  ROOT %[[RESULT:.*]] = f32[10] all-reduce(f32[10] %[[ARG0]])
+// CHECK-SAME:  channel_id=5
+// CHECK-SAME{LITERAL}:  replica_groups={{0,2,4},{1,3,5,7}}
 // CHECK-SAME:  to_apply=%[[COMPUTATION]]
 
 // -----
@@ -139,6 +169,27 @@ func @main() -> !mhlo.token {
 }
 
 // CHECK:  ROOT [[TOKEN:%.*]] = token[] after-all()
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg0: tensor<4xi32>) -> tensor<4xi32> {
+  call @empty_callee() : () -> ()
+  return %arg0 : tensor<4xi32>
+}
+
+func @empty_callee() {
+  return
+}
+
+// CHECK:       [[CALLEE:%.*]] () -> () {
+// CHECK-NEXT:    ROOT %{{.*}} = () tuple()
+// CHECK-NEXT:  }
+
+// CHECK:       ENTRY [[MAIN:%.*]] ([[ARG:.*]]: s32[4]) -> s32[4] {
+// CHECK-NEXT:    ROOT %[[ARG]] = s32[4] parameter(0)
+// CHECK-NEXT:    [[CALL:%.*]] = () call(), to_apply=[[CALLEE]]
+// CHECK-NEXT:  }
 
 // -----
 
@@ -310,6 +361,40 @@ func @main(%arg0 : tensor<100x26x26x32xf32>, %arg1 : tensor<3x3x1x32xf32>) -> te
 
 // -----
 
+// Test convolution i8xi8 -> i32.
+// CHECK:  HloModule
+func @main(%arg0 : tensor<100x26x26x32xi8>, %arg1 : tensor<3x3x1x32xi8>) -> tensor<100x28x28x1xi32> {
+  %result = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = {
+      input_batch_dimension = 0 : i64,
+      input_feature_dimension = 3 : i64,
+      input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>,
+      kernel_input_feature_dimension = 3 : i64,
+      kernel_output_feature_dimension = 2 : i64,
+      kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>,
+      output_batch_dimension = 0 : i64,
+      output_feature_dimension = 3 : i64,
+      output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>
+    },
+    feature_group_count = 1 : i64,
+    lhs_dilation = dense<1> : tensor<2xi64>,
+    padding = dense<2> : tensor<2x2xi64>,
+    rhs_dilation = dense<1> : tensor<2xi64>,
+    window_strides = dense<1> : tensor<2xi64>
+  } : (tensor<100x26x26x32xi8>, tensor<3x3x1x32xi8>) -> tensor<100x28x28x1xi32>
+  return %result : tensor<100x28x28x1xi32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  %[[ARG0:.*]] = s8[100,26,26,32] parameter(0)
+// CHECK:  %[[ARG1:.*]] = s8[3,3,1,32] parameter(1)
+// CHECK:  ROOT %[[RESULT:.*]] = s32[100,28,28,1] convolution(s8[100,26,26,32] %[[ARG0]], s8[3,3,1,32] %[[ARG1]]),
+// CHECK-SAME:  window={size=3x3 pad=2_2x2_2},
+// CHECK-SAME:  dim_labels=b01f_01oi->b01f
+
+// -----
+
 // CHECK:  HloModule
 func @main(%arg0: tensor<2xi32>) -> tensor<2xf32> {
   %0 = "mhlo.convert"(%arg0) : (tensor<2xi32>) -> tensor<2xf32>
@@ -347,7 +432,7 @@ func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 // CHECK:  ENTRY
 // CHECK:  %[[ARG0:.*]] = f32[10] parameter(0)
 // CHECK:  ROOT %[[RESULT:.*]] = f32[10] all-reduce(f32[10] %[[ARG0]])
-// CHECK-SAME:  replica_groups={{[{][{]}}0,2,4,6},{1,3,5,7{{[}][}]}}
+// CHECK-SAME{LITERAL}:  replica_groups={{0,2,4,6},{1,3,5,7}}
 // CHECK-SAME:  to_apply=%[[SUM_COMPUTATION]]
 
 // -----
@@ -362,7 +447,9 @@ func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3xf32> 
 // CHECK:  [[VAL_1:%.*]] = f32[2,3] parameter(0)
 // CHECK:  [[VAL_2:%.*]] = f32[5,5] parameter(1)
 // CHECK:  ROOT
-// CHECK-SAME:  f32[1,2,3] custom-call(f32[2,3] [[VAL_1]], f32[5,5] [[VAL_2]]), custom_call_target="foo", backend_config="bar"
+// CHECK-SAME:  f32[1,2,3] custom-call(f32[2,3] [[VAL_1]], f32[5,5] [[VAL_2]])
+// CHECK-SAME:  custom_call_target="foo"
+// CHECK-SAME:  backend_config="bar"
 
 // -----
 
@@ -404,6 +491,32 @@ func @main(%arg: tensor<16x16xi32>) -> tensor<16x32xbf16> {
 
 // -----
 
+// Test dot i8xi8 -> i32.
+// CHECK:  HloModule
+func @main(%arg0: tensor<2x2x2xi8>, %arg1: tensor<2x2x3xi8>) -> tensor<2x2x3xi32> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = {
+      lhs_batching_dimensions = dense<0> : tensor<1xi64>,
+      lhs_contracting_dimensions = dense<2> : tensor<1xi64>,
+      rhs_batching_dimensions = dense<0> : tensor<1xi64>,
+      rhs_contracting_dimensions = dense<1> : tensor<1xi64>},
+    precision_config = []} : (tensor<2x2x2xi8>, tensor<2x2x3xi8>) -> tensor<2x2x3xi32>
+  return %0 : tensor<2x2x3xi32>
+}
+
+// CHECK: ENTRY
+// CHECK-SAME: ([[ARG0:.*]]: s8[2,2,2], [[ARG1:.*]]: s8[2,2,3]) -> s32[2,2,3] {
+// CHECK: %[[ARG0]] = s8[2,2,2] parameter(0)
+// CHECK: %[[ARG1]] = s8[2,2,3] parameter(1)
+// CHECK: ROOT
+// CHECK-SAME: s32[2,2,3] dot(s8[2,2,2] %[[ARG0]], s8[2,2,3] %[[ARG1]]),
+// CHECK-SAME: lhs_batch_dims={0}
+// CHECK-SAME: lhs_contracting_dims={2}
+// CHECK-SAME: rhs_batch_dims={0}
+// CHECK-SAME: rhs_contracting_dims={1}
+
+// -----
+
 // CHECK:  HloModule
 func @main(%arg0: tensor<3x4xi32>, %arg1: tensor<4x5xi32>) -> tensor<3x5xi32> {
   // Simple einsum is lowered to HLO dot op.
@@ -437,7 +550,7 @@ func @main(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) -> tensor<10
   // CHECK-SAME:  index_vector_dim=1
   // CHECK-SAME:  slice_sizes={1,1,300}
   // CHECK-SAME:  indices_are_sorted=true
-  %0 = "mhlo.gather"(%arg0, %arg1) {dimension_numbers = {collapsed_slice_dims = dense<[0, 1]> : tensor<2xi64>, index_vector_dim = 1 : i64, offset_dims = dense<1> : tensor<1xi64>, start_index_map = dense<[0, 1]> : tensor<2xi64>}, indices_are_sorted = true, name = "gather", slice_sizes = dense<[1, 1, 300]> : tensor<3xi64>} : (tensor<200x100x300xf32>, tensor<10x2xi32>) -> tensor<10x300xf32>
+  %0 = "mhlo.gather"(%arg0, %arg1) {dimension_numbers = {collapsed_slice_dims = dense<[0, 1]> : tensor<2xi64>, index_vector_dim = 1 : i64, offset_dims = dense<1> : tensor<1xi64>, start_index_map = dense<[0, 1]> : tensor<2xi64>}, indices_are_sorted = true, slice_sizes = dense<[1, 1, 300]> : tensor<3xi64>} : (tensor<200x100x300xf32>, tensor<10x2xi32>) -> tensor<10x300xf32>
     return %0 : tensor<10x300xf32>
 }
 
@@ -445,8 +558,8 @@ func @main(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) -> tensor<10
 
 // CHECK:  HloModule
 func @main(%arg: tensor<4x2xf32>, %size: tensor<i32>) -> tensor<i32> {
-  %0 = "mhlo.set_dimension_size"(%arg, %size) {dimension = 1 : i32} : (tensor<4x2xf32>, tensor<i32>) -> tensor<4x2xf32>
-  %1 = "mhlo.get_dimension_size"(%0) {dimension = 1 : i32} : (tensor<4x2xf32>) -> tensor<i32>
+  %0 = "mhlo.set_dimension_size"(%arg, %size) {dimension = 1 : i64} : (tensor<4x2xf32>, tensor<i32>) -> tensor<4x2xf32>
+  %1 = "mhlo.get_dimension_size"(%0) {dimension = 1 : i64} : (tensor<4x2xf32>) -> tensor<i32>
   return %1 : tensor<i32>
 }
 
@@ -472,14 +585,14 @@ func @main(%arg0: tuple<tensor<f32>, tensor<i32>>) -> tensor<f32> {
 // -----
 
 // CHECK:  HloModule
-func @main(%arg0: !mhlo.token) -> tuple<tuple<tensor<3xi32>, tensor<i1>>, !mhlo.token> {
-  %0 = "mhlo.infeed"(%arg0) {infeed_config = "foobar"} : (!mhlo.token) -> tuple<tuple<tensor<3xi32>, tensor<i1>>, !mhlo.token>
-  return %0 : tuple<tuple<tensor<3xi32>, tensor<i1>>, !mhlo.token>
+func @main(%arg0: !mhlo.token) -> tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token> {
+  %0 = "mhlo.infeed"(%arg0) {infeed_config = "foobar", layout=[[[0,1], [0]], unit]} : (!mhlo.token) -> tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token>
+  return %0 : tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token>
 }
 
 // CHECK:  ENTRY
 // CHECK:  [[ARG:%.*]] = token[] parameter(0)
-// CHECK:  ROOT %[[RESULT:.*]] = ((s32[3], pred[]), token[]) infeed(token[] [[ARG]]), infeed_config="foobar"
+// CHECK:  ROOT %[[RESULT:.*]] = ((s32[3,3], pred[]), token[]) infeed(token[] [[ARG]]), infeed_config="foobar"
 
 // -----
 
@@ -500,7 +613,7 @@ func @main() -> tensor<1x10xf32> {
 func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   %0 = "mhlo.map"(%arg0, %arg1) ( {
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):       // no predecessors
-    %1 = mhlo.add %arg2, %arg3 {name = "add"} : tensor<f32>
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   return %0 : tensor<4xf32>
@@ -530,7 +643,7 @@ func @main(%data: tensor<3xi32>, %token: !mhlo.token) -> !mhlo.token {
 // CHECK:  ENTRY
 // CHECK:  [[DATA:%.*]] = s32[3] parameter(0)
 // CHECK:  [[TOKEN:%.*]] = token[] parameter(1)
-// CHECK:  ROOT %[[RESULT:.*]] = token[] outfeed(s32[3] [[DATA]], token[] [[TOKEN]]), outfeed_config="foobar"
+// CHECK:  ROOT %[[RESULT:.*]] = token[] outfeed(s32[3] [[DATA]], token[] [[TOKEN]]), outfeed_shape=s32[3]{0}, outfeed_config="foobar"
 
 // -----
 
@@ -737,7 +850,7 @@ func @main(%arg0: tensor<i1>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32>) ->
   // CHECK:  %[[ARG2:.*]] = s32[2,3] parameter(2)
 
   // CHECK:  ROOT %[[RES:.*]] = s32[2,3] select(pred[2,3] %[[COND]], s32[2,3] %[[ARG1]], s32[2,3] %[[ARG2]])
-  %0 = "mhlo.select"(%arg0, %arg1, %arg2) {name = "select.4"} : (tensor<i1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
+  %0 = "mhlo.select"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
   return %0 : tensor<2x3xi32>
 }
 
@@ -748,7 +861,7 @@ func @main(%arg0: tensor<10x24x24x64xf32>, %arg1: tensor<10x12x12x64xf32>) -> te
   %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
   %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ( {
   ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):	// no predecessors
-    %2 = "mhlo.compare"(%arg3, %arg4) {comparison_direction = "GE"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %2 = "mhlo.compare"(%arg3, %arg4) {compare_type = "TOTALORDER", comparison_direction = "GE"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%2) : (tensor<i1>) -> ()
   },  {
   ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):	// no predecessors
@@ -762,7 +875,7 @@ func @main(%arg0: tensor<10x24x24x64xf32>, %arg1: tensor<10x12x12x64xf32>) -> te
 }
 
 // CHECK:  %[[SELECT_COMPUTATION:.*]] ([[ARG0:.*]]: f32[], [[ARG1:.*]]: f32[]) -> pred[] {
-// CHECK:  ROOT %[[RESULT:.*]] = pred[] compare(f32[] %[[ARG0]], f32[] %[[ARG1]]), direction=GE
+// CHECK:  ROOT %[[RESULT:.*]] = pred[] compare(f32[] %[[ARG0]], f32[] %[[ARG1]]), direction=GE, type=TOTALORDER
 
 // CHECK:  %[[SCATTER_COMPUTATION:.*]] ([[ARG0:.*]]: f32[], [[ARG1:.*]]: f32[]) -> f32[] {
 // CHECK:  ROOT %[[RESULT:.*]] = f32[] add(f32[] %[[ARG0]], f32[] %[[ARG1]])
@@ -823,7 +936,7 @@ func @main(%arg: tensor<3x4xi32>, %token: !mhlo.token) -> !mhlo.token {
 
 // CHECK:  HloModule
 func @main(%arg: tensor<4x4xf32>, %size: tensor<i32>) -> tensor<4x4xf32> {
-  %0 = "mhlo.set_dimension_size"(%arg, %size) {dimension = 1 : i32} : (tensor<4x4xf32>, tensor<i32>) -> tensor<4x4xf32>
+  %0 = "mhlo.set_dimension_size"(%arg, %size) {dimension = 1 : i64} : (tensor<4x4xf32>, tensor<i32>) -> tensor<4x4xf32>
   return %0 : tensor<4x4xf32>
 }
 
@@ -946,20 +1059,37 @@ func @main(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4xi1> {
 
 // CHECK:  HloModule
 func @main(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
-  %0 = "mhlo.sort"(%input0, %input1) ( {
+  %0:2 = "mhlo.sort"(%input0, %input1) ( {
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
-    %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %7 = "mhlo.compare"(%arg0, %arg1) {compare_type = "FLOAT", comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
-  }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> tuple<tensor<16x16xf32>, tensor<16x16xi32>>
+  }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
   return
 }
 
 // CHECK: %[[SORT_CMP:.*]] ([[ARG0:.*]]: f32[], [[ARG1:.*]]: f32[], {{.*}}: s32[], {{.*}}: s32[]) -> pred[] {
 // CHECK:   ROOT %compare.8 = pred[] compare(f32[] %[[ARG0]], f32[] %[[ARG1]]), direction=GT
 
-// CHECK: ENTRY %{{.*}} ([[MAIN_ARG0:.*]]: f32[16,16], [[MAIN_ARG1:.*]]: s32[16,16]) -> (f32[16,16], s32[16,16]) {
-// CHECK:   ROOT %{{.*}} = (f32[16,16], s32[16,16]) sort(f32[16,16] %[[MAIN_ARG0]], s32[16,16] %[[MAIN_ARG1]]), dimensions={1}, is_stable=true, to_apply=%[[SORT_CMP]]
+// CHECK: [[SORT:%.+]] = (f32[16,16], s32[16,16]) sort(f32[16,16] %Arg_0.1, s32[16,16] %Arg_1.2), dimensions={1}, is_stable=true, to_apply=%[[SORT_CMP]]
+// CHECK: [[GET0:%.+]] = f32[16,16] get-tuple-element((f32[16,16], s32[16,16]) [[SORT]]), index=0
+// CHECK: [[GET1:%.+]] = s32[16,16] get-tuple-element((f32[16,16], s32[16,16]) [[SORT]]), index=1
 
+// -----
+
+// CHECK:  HloModule
+func @main(%input0: tensor<16x16xf32>) {
+  %0 = "mhlo.sort"(%input0) ( {
+  ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
+    %7 = "mhlo.compare"(%arg0, %arg1) {compare_type = "FLOAT", comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    "mhlo.return"(%7) : (tensor<i1>) -> ()
+  }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>) -> (tensor<16x16xf32>)
+  return
+}
+
+// CHECK: %[[SORT_CMP:.*]] ([[ARG0:.*]]: f32[], [[ARG1:.*]]: f32[]) -> pred[] {
+// CHECK:   ROOT %[[CMP:.*]] = pred[] compare(f32[] %[[ARG0]], f32[] %[[ARG1]]), direction=GT
+
+// CHECK: %[[RESULT:.*]] = f32[16,16] sort(f32[16,16] %Arg_0.1), dimensions={1}, is_stable=true, to_apply=%[[SORT_CMP]]
 
 // -----
 
@@ -982,22 +1112,6 @@ func @main(%arg0: tensor<16x16xf32>) -> tensor<16x16xf32> {
 // CHECK:  ENTRY
 // CHECK:  %[[ARG0:.*]] = f32[16,16] parameter(0)
 // CHECK:  ROOT %[[RESULT:.*]] = f32[16,16] custom-call(f32[16,16] %[[ARG0]]), custom_call_target="Sharding", sharding={devices=[1,2]0,1}
-
-// -----
-
-// Tests that the exported HLO module keeps parameter replication annotation.
-
-// CHECK:  HloModule
-func @main(%arg0: tensor<16x16xf32>, %arg1: tensor<16x16xf32> {mhlo.is_same_data_across_replicas}) -> tensor<16x16xf32> {
-  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xf32>
-  return %0 : tensor<16x16xf32>
-}
-
-// CHECK:  ENTRY
-// CHECK:  %[[ARG0:.*]] = f32[16,16] parameter(0)
-// CHECK-NOT: parameter_replication={true}
-// CHECK:  %[[ARG1:.*]] = f32[16,16] parameter(1), parameter_replication={true}
-// CHECK:  ROOT %[[RESULT:.*]] = f32[16,16] add(f32[16,16] %[[ARG0]], f32[16,16] %[[ARG1]])
 
 // -----
 
@@ -1032,7 +1146,7 @@ func @main(%arg0: tensor<4xui8>) -> tensor<4xui8> {
 // CHECK:  HloModule
 func @main(%arg0: tensor<4xi32>) -> tensor<*xi32> {
   %0 = "mhlo.not"(%arg0) : (tensor<4xi32>) -> tensor<4xi32>
-  %1 = tensor_cast %0 : tensor<4xi32> to tensor<*xi32>
+  %1 = tensor.cast %0 : tensor<4xi32> to tensor<*xi32>
   return %1 : tensor<*xi32>
 }
 
@@ -1087,3 +1201,90 @@ func @main(%arg: tensor<3x4xf32>, %token: !mhlo.token) -> !mhlo.token {
 }
 
 // CHECK-NOT:  frontend_attributes
+
+// -----
+
+// Checks exporting rng-bit-generator.
+
+// CHECK:  HloModule
+func @main(%arg: tensor<3xui64>) -> tuple<tensor<3xui64>, tensor<2x2xui32>> {
+// CHECK: %[[ARG0:.*]] = u64[3] parameter(0)
+// CHECK: ROOT %[[RESULT:.*]] = (u64[3], u32[2,2]) rng-bit-generator(u64[3] %[[ARG0]]), algorithm=rng_philox
+  %0 = "mhlo.rng_bit_generator"(%arg) {rng_algorithm = 2 : i32} : (tensor<3xui64>) -> tuple<tensor<3xui64>, tensor<2x2xui32>>
+  return %0 : tuple<tensor<3xui64>, tensor<2x2xui32>>
+}
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> {
+// CHECK: %[[ARG0:.*]] = f32[3,4] parameter(0)
+// CHECK: ROOT %[[RESULT:.*]] = f32[3,4] cbrt(f32[3,4] %[[ARG0]])
+  %0 = "mhlo.cbrt"(%arg) : (tensor<3x4xf32>) -> tensor<3x4xf32>
+  return %0 : tensor<3x4xf32>
+}
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> {
+// CHECK: %[[ARG0:.*]] = f32[3,4] parameter(0)
+// CHECK: ROOT %[[RESULT:.*]] = f32[3,4] reduce-precision(f32[3,4] %[[ARG0]]), exponent_bits=8, mantissa_bits=10
+  %0 = "mhlo.reduce_precision"(%arg) {exponent_bits = 8 : i32, mantissa_bits = 10 : i32} : (tensor<3x4xf32>) -> tensor<3x4xf32>
+  return %0 : tensor<3x4xf32>
+}
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg: tensor<3x4xf32>) -> tensor<3x4x1xf32> {
+// CHECK: %[[ARG0:.*]] = f32[3,4] parameter(0)
+// CHECK: ROOT %[[RESULT:.*]] = f32[3,4,1] bitcast(f32[3,4] %[[ARG0]])
+  %0 = "mhlo.bitcast"(%arg) : (tensor<3x4xf32>) -> tensor<3x4x1xf32>
+  return %0 : tensor<3x4x1xf32>
+}
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<3x4xf32>) -> tensor<3x4xf32> {
+// CHECK: %[[ARG0:.*]] = f32[4,4] parameter(0)
+// CHECK: %[[ARG1:.*]] = f32[3,4] parameter(1)
+// CHECK: ROOT %[[RESULT:.*]] = f32[3,4] triangular-solve(f32[4,4] %[[ARG0]], f32[3,4] %[[ARG1]]), lower=true, transpose_a=NO_TRANSPOSE
+  %0 = "mhlo.triangular_solve"(%arg0, %arg1) {left_side = false, lower = true, transpose_a = "NO_TRANSPOSE", unit_diagonal = false} : (tensor<4x4xf32>, tensor<3x4xf32>) -> tensor<3x4xf32>
+  return %0: tensor<3x4xf32>
+}
+
+// -----
+
+// CHECK: HloModule
+// CHECK: %[[APPLYFN:.*]] ({{.*}}) -> (f32[], s32[]) {
+// CHECK: %[[A0:.*]] = f32[] parameter(0)
+// CHECK: %[[B0:.*]] = f32[] parameter(2)
+// CHECK: %[[ADDF32:.*]] = f32[] add(f32[] %[[A0]], f32[] %[[B0]])
+// CHECK: %[[A1:.*]] = s32[] parameter(1)
+// CHECK: %[[B1:.*]] = s32[] parameter(3)
+// CHECK: %[[ADDS32:.*]] = s32[] add(s32[] %[[A1]], s32[] %[[B1]])
+// CHECK: ROOT %{{.*}} = (f32[], s32[]) tuple(f32[] %[[ADDF32]], s32[] %[[ADDS32]])
+
+// CHECK: ENTRY
+// CHECK: %[[ARG0:.*]] = f32[4,2] parameter(0)
+// CHECK: %[[ARG1:.*]] = s32[4,2] parameter(1)
+// CHECK: %[[ARG2:.*]] = f32[] parameter(2)
+// CHECK: %[[ARG3:.*]] = s32[] parameter(3)
+// CHECK: (f32[2,2], s32[2,2]) reduce-window(f32[4,2] %[[ARG0]], s32[4,2] %[[ARG1]], f32[] %[[ARG2]], s32[] %[[ARG3]])
+// CHECK-SAME: window={size=5x1 stride=3x1 pad=2_2x0_0}
+// CHECK-SAME: to_apply=%[[APPLYFN]]
+func @main(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>, %init0: tensor<f32>, %init1: tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>) {
+  %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
+         ^bb0(%a0: tensor<f32>, %a1: tensor<i32>, %b0: tensor<f32>, %b1: tensor<i32>):  // no predecessors
+              %2 = mhlo.add %a0, %b0 : tensor<f32>
+              %3 = mhlo.add %a1, %b1 : tensor<i32>
+              %4 = "mhlo.tuple"(%2, %3) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
+              "mhlo.return"(%4) : (tuple<tensor<f32>, tensor<i32>>) -> ()
+            })
+         { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
+           window_dimensions = dense<[5, 1]> : tensor<2xi64>,
+           window_strides = dense<[3, 1]> : tensor<2xi64> } : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>)
+  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+}

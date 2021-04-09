@@ -19,7 +19,9 @@ namespace tensorflow {
 REGISTER_KERNEL_BUILDER(Name("LogicalAnd").Device(DEVICE_CPU),
                         BinaryOp<CPUDevice, functor::logical_and>);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER_KERNEL_BUILDER(Name("LogicalAnd").Device(DEVICE_GPU),
                         BinaryOp<GPUDevice, functor::logical_and>);
-#endif
+#endif  // !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }  // namespace tensorflow

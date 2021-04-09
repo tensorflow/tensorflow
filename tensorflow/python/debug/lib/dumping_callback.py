@@ -125,15 +125,21 @@ class _DumpingCallback(object):
     self._placeholder_to_debug_tensor = dict()
     self._writer = None
 
-  def function_callback(self, function):
+  def function_callback(self, function, name, graph, inputs, outputs):
     """A callback to be called on creation of Functions.
 
     Used to establish a join between function name and graph (context) ID.
 
     Args:
       function: The just-created Function.
+      name: Name of the function.
+      graph: FuncGraph, the graph containing the operations in the function.
+      inputs: the tensors in the graph to be used as inputs to the function
+      outputs: the tensors in the graph which will be outputs from the function
     """
-    graph_id = self._get_context_id(function.graph)
+    del name, inputs, outputs
+
+    graph_id = self._get_context_id(graph)
     with self._context_lock:
       # NOTE(cais): We currently store the function (_EagerDefinedFunction)
       # as keys of this dict, because weakrefs to them sometimes become

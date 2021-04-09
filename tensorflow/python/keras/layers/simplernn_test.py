@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for SimpleRNN layer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 
 from absl.testing import parameterized
@@ -26,7 +22,6 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
@@ -47,7 +42,7 @@ class SimpleRNNLayerTest(test.TestCase, parameterized.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
-  @tf_test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_float64_SimpleRNN(self):
     num_samples = 2
     timesteps = 3

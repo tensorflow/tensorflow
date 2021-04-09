@@ -113,13 +113,13 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context,
 }  // namespace
 
 TfLiteDelegate* TfLiteDelegateFactory::CreateSimpleDelegate(
-    std::unique_ptr<SimpleDelegateInterface> simple_delegate) {
+    std::unique_ptr<SimpleDelegateInterface> simple_delegate, int64_t flag) {
   if (simple_delegate == nullptr) {
     return nullptr;
   }
   auto delegate = new TfLiteDelegate();
   delegate->Prepare = &DelegatePrepare;
-  delegate->flags = kTfLiteDelegateFlagsNone;
+  delegate->flags = flag;
   delegate->CopyFromBufferHandle = nullptr;
   delegate->CopyToBufferHandle = nullptr;
   delegate->FreeBufferHandle = nullptr;

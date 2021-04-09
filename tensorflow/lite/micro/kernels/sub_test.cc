@@ -17,9 +17,9 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
 
 namespace tflite {
 namespace testing {
@@ -66,47 +66,20 @@ void ValidateSubGoldens(TfLiteTensor* tensors, int tensors_size,
                         const T* golden, T* output, int output_size,
                         TfLiteFusedActivation activation,
                         float tolerance = 1e-5) {
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-
-  ::tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(::tflite::BuiltinOperator_SUB);
-
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
   TfLiteSubParams builtin_data;
   builtin_data.activation = activation;
-
-  const char* init_data = reinterpret_cast<const char*>(&builtin_data);
-  const size_t init_data_size = 0;
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, init_data, init_data_size);
-  }
 
   int inputs_array_data[] = {2, 0, 1};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = user_data;
-  node.builtin_data = reinterpret_cast<void*>(&builtin_data);
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
+  const TfLiteRegistration registration = tflite::ops::micro::Register_SUB();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array, &builtin_data);
 
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
-
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   for (int i = 0; i < output_size; ++i) {
     TF_LITE_MICRO_EXPECT_NEAR(golden[i], output[i], tolerance);
@@ -125,9 +98,9 @@ void TestSubFloat(const int* input1_dims_data, const float* input1_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input1_data, input1_dims),
-      CreateFloatTensor(input2_data, input2_dims),
-      CreateFloatTensor(output_data, output_dims),
+      CreateTensor(input1_data, input1_dims),
+      CreateTensor(input2_data, input2_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   ValidateSubGoldens(tensors, tensors_size, expected_output, output_data,
@@ -161,9 +134,8 @@ void TestSubQuantized(const int* input1_dims_data, const float* input1_data,
       tflite::testing::CreateQuantizedTensor(output_data, output_dims,
                                              output_scale, output_zero_point),
   };
-  tflite::AsymmetricQuantize(golden, golden_quantized,
-                             ElementCount(*output_dims), output_scale,
-                             output_zero_point);
+  tflite::Quantize(golden, golden_quantized, ElementCount(*output_dims),
+                   output_scale, output_zero_point);
 
   ValidateSubGoldens(tensors, tensors_size, golden_quantized, output_data,
                      ElementCount(*output_dims), activation);
@@ -431,12 +403,6 @@ TF_LITE_MICRO_TEST(QuantizedSubWithScalarBroadcastUint8) {
   }
 }
 TF_LITE_MICRO_TEST(QuantizedSubWithScalarBroadcastFloat) {
-  const float scales[] = {0.1, 0.05, 0.1};
-  const int zero_points[] = {127, 131, 139};
-  uint8_t input1_quantized[tflite::testing::broadcast_output_dims_count];
-  uint8_t input2_quantized[tflite::testing::broadcast_output_dims_count];
-  uint8_t golden_quantized[tflite::testing::broadcast_output_dims_count];
-  uint8_t output[tflite::testing::broadcast_output_dims_count];
   float output_float[tflite::testing::broadcast_output_dims_count];
 
   for (int i = 0; i < tflite::testing::broadcast_num_shapes; ++i) {
@@ -491,7 +457,6 @@ TF_LITE_MICRO_TEST(QuantizedSubWithMixedBroadcastUint8) {
   uint8_t input2_quantized[tflite::testing::broadcast_output_dims_count];
   uint8_t golden_quantized[tflite::testing::broadcast_output_dims_count];
   uint8_t output[tflite::testing::broadcast_output_dims_count];
-  float output_float[tflite::testing::broadcast_output_dims_count];
 
   for (int i = 0; i < tflite::testing::broadcast_num_shapes; ++i) {
     tflite::testing::TestSubQuantized(
@@ -512,7 +477,6 @@ TF_LITE_MICRO_TEST(QuantizedSubWithMixedBroadcastInt8) {
   int8_t input2_quantized[tflite::testing::broadcast_output_dims_count];
   int8_t golden_quantized[tflite::testing::broadcast_output_dims_count];
   int8_t output[tflite::testing::broadcast_output_dims_count];
-  float output_float[tflite::testing::broadcast_output_dims_count];
 
   for (int i = 0; i < tflite::testing::broadcast_num_shapes; ++i) {
     tflite::testing::TestSubQuantized(

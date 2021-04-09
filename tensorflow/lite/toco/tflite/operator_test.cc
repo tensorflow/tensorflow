@@ -738,9 +738,7 @@ TEST_F(OperatorTest, TestShouldExportAsFlexOp) {
   EXPECT_TRUE(ShouldExportAsFlexOp(true, "EluGrad"));
   EXPECT_TRUE(ShouldExportAsFlexOp(true, "RFFT"));
   EXPECT_FALSE(ShouldExportAsFlexOp(true, "MyAwesomeCustomOp"));
-  // While the RandomShuffle op is available on desktop, it is not in the kernel
-  // set available on mobile and should be excluded.
-  EXPECT_FALSE(ShouldExportAsFlexOp(true, "RandomShuffle"));
+  EXPECT_TRUE(ShouldExportAsFlexOp(true, "RandomShuffle"));
 }
 
 TEST_F(OperatorTest, BuiltinMirrorPad) {
@@ -956,6 +954,8 @@ TEST_F(OperatorTest, VersioningTanhTest) {
 TEST_F(OperatorTest, VersioningStridedSliceTest) {
   StridedSliceOperator op;
   op.inputs = {"input1"};
+  op.ellipsis_mask = 0;
+  op.new_axis_mask = 0;
   auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
   const BaseOperator* base_op = operator_by_type_map.at(op.type).get();
 

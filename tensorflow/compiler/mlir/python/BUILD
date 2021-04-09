@@ -1,6 +1,9 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -8,8 +11,11 @@ cc_library(
     srcs = ["mlir.cc"],
     hdrs = ["mlir.h"],
     deps = [
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:tfe_context_internal",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
@@ -35,6 +41,12 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "//tensorflow/compiler/mlir/tensorflow:translate_lib",
+        "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/common_runtime:core_cpu_base_no_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
     ],
     alwayslink = 1,
 )

@@ -48,14 +48,23 @@ size_t AlignSizeUp(size_t size, size_t alignment) {
 
 TfLiteStatus TfLiteTypeSizeOf(TfLiteType type, size_t* size) {
   switch (type) {
+    case kTfLiteFloat16:
+      *size = sizeof(int16_t);
+      break;
     case kTfLiteFloat32:
       *size = sizeof(float);
+      break;
+    case kTfLiteFloat64:
+      *size = sizeof(double);
       break;
     case kTfLiteInt16:
       *size = sizeof(int16_t);
       break;
     case kTfLiteInt32:
       *size = sizeof(int32_t);
+      break;
+    case kTfLiteUInt32:
+      *size = sizeof(uint32_t);
       break;
     case kTfLiteUInt8:
       *size = sizeof(uint8_t);
@@ -65,6 +74,9 @@ TfLiteStatus TfLiteTypeSizeOf(TfLiteType type, size_t* size) {
       break;
     case kTfLiteInt64:
       *size = sizeof(int64_t);
+      break;
+    case kTfLiteUInt64:
+      *size = sizeof(uint64_t);
       break;
     case kTfLiteBool:
       *size = sizeof(bool);
@@ -101,6 +113,23 @@ TfLiteStatus BytesRequiredForTensor(const tflite::Tensor& flatbuffer_tensor,
   return kTfLiteOk;
 }
 
+TfLiteStatus TfLiteEvalTensorByteLength(const TfLiteEvalTensor* eval_tensor,
+                                        size_t* out_bytes) {
+  TFLITE_DCHECK(out_bytes != nullptr);
+
+  int element_count = 1;
+  // If eval_tensor->dims == nullptr, then tensor is a scalar so has 1 element.
+  if (eval_tensor->dims != nullptr) {
+    for (int n = 0; n < eval_tensor->dims->size; ++n) {
+      element_count *= eval_tensor->dims->data[n];
+    }
+  }
+  size_t type_size;
+  TF_LITE_ENSURE_STATUS(TfLiteTypeSizeOf(eval_tensor->type, &type_size));
+  *out_bytes = element_count * type_size;
+  return kTfLiteOk;
+}
+
 TfLiteStatus AllocateOutputDimensionsFromInput(TfLiteContext* context,
                                                const TfLiteTensor* input1,
                                                const TfLiteTensor* input2,
@@ -114,7 +143,7 @@ TfLiteStatus AllocateOutputDimensionsFromInput(TfLiteContext* context,
   input = input1->dims->size > input2->dims->size ? input1 : input2;
   TF_LITE_ENSURE(context, output->type == input->type);
 
-  size_t size;
+  size_t size = 0;
   TfLiteTypeSizeOf(input->type, &size);
   const int dimensions_count = tflite::GetTensorShape(input).DimensionsCount();
   for (int i = 0; i < dimensions_count; i++) {
@@ -123,9 +152,9 @@ TfLiteStatus AllocateOutputDimensionsFromInput(TfLiteContext* context,
 
   output->bytes = size;
 
-  TF_LITE_ENSURE_STATUS(context->AllocatePersistentBuffer(
-      context, TfLiteIntArrayGetSizeInBytes(size),
-      reinterpret_cast<void**>(&output->dims)));
+  output->dims =
+      reinterpret_cast<TfLiteIntArray*>(context->AllocatePersistentBuffer(
+          context, TfLiteIntArrayGetSizeInBytes(size)));
 
   output->dims->size = input->dims->size;
   for (int i = 0; i < dimensions_count; i++) {

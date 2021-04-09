@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <limits>
 #include <vector>
+
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -69,8 +70,8 @@ inline void StridedSlicePadIndices(tflite::StridedSliceParams* p,
 }
 
 // Return the index for the first element along that axis. This index will be a
-// positive integer between [0, axis_size - 1] that can be used to index
-// directly into the data.
+// positive integer between [0, axis_size] (or [-1, axis_size -1] if stride < 0)
+// that can be used to index directly into the data.
 inline int StartForAxis(const tflite::StridedSliceParams& params,
                         const RuntimeShape& input_shape, int axis) {
   const auto begin_mask = params.begin_mask;
@@ -102,7 +103,13 @@ inline int StartForAxis(const tflite::StridedSliceParams& params,
   }
 
   // Clamping
-  start = Clamp(start, 0, axis_size - 1);
+  if (strides[axis] > 0) {
+    // Forward iteration
+    start = Clamp(start, 0, axis_size);
+  } else {
+    // Backward iteration
+    start = Clamp(start, -1, axis_size - 1);
+  }
 
   return start;
 }
@@ -133,7 +140,7 @@ inline int StopForAxis(const tflite::StridedSliceParams& params,
   // start_for_axis + 1 to generate a length 1 slice, since start_for_axis has
   // already been adjusted for negative indices.
   if (shrink_axis) {
-    stop = start_for_axis + 1;
+    return start_for_axis + 1;
   }
 
   // end_mask override

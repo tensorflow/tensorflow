@@ -15,6 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_REWRITE_UTILS_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_REWRITE_UTILS_H_
 
+#include "tensorflow/core/platform/platform.h"
+
+// On mobile we do not provide this functionality because not all of its
+// dependencies are available there.
+#if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
@@ -31,5 +36,6 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
 
 }  // namespace data
 }  // namespace tensorflow
+#endif  // !IS_MOBILE_PLATFORM
 
 #endif  // TENSORFLOW_CORE_KERNELS_DATA_REWRITE_UTILS_H_

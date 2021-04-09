@@ -29,13 +29,13 @@ def _arm_linux_toolchain_configure_impl(repository_ctx):
         )),
         "%{PYTHON_INCLUDE_PATH}%": python_include_path,
     })
-    repository_ctx.symlink(repository_ctx.attr.build_file, "BUILD")
+    repository_ctx.symlink(Label(repository_ctx.attr.build_file), "BUILD")
 
 arm_linux_toolchain_configure = repository_rule(
     implementation = _arm_linux_toolchain_configure_impl,
     attrs = {
         "aarch64_repo": attr.string(mandatory = True, default = ""),
         "armhf_repo": attr.string(mandatory = True, default = ""),
-        "build_file": attr.label(),
+        "build_file": attr.string(),
     },
 )

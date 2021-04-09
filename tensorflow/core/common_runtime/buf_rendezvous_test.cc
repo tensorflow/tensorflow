@@ -68,6 +68,7 @@ class BufRendezvousTest : public ::testing::Test {
   DeviceContext* fake_device_context_;
   std::unique_ptr<DeviceMgr> dev_mgr_;
   std::unique_ptr<BufRendezvous> br_;
+  CancellationManager cm_;
   static const string* const kDefaultKey;
   static const string* const kDefaultDeviceName;
   static const uint64 kDefaultIncarnation;
@@ -90,19 +91,22 @@ TEST_F(BufRendezvousTest, CorrectUseProducerFirst) {
         prod_status = s;
         prod_callback_called = true;
         note.Notify();
-      });
+      },
+      &cm_);
   EXPECT_FALSE(prod_callback_called);
-  br_->ConsumeBuf(*kDefaultKey, *kDefaultDeviceName, kDefaultIncarnation,
-                  [this, &cons_status, &cons_callback_called](
-                      const Status& s, BufRendezvous::Hook* h) {
-                    cons_status = s;
-                    cons_callback_called = true;
-                    ASSERT_TRUE(h != nullptr);
-                    EXPECT_EQ(h->prod_dev, default_device_);
-                    EXPECT_EQ(h->prod_ctx, fake_device_context_);
-                    EXPECT_EQ(h->prod_value, &a_);
-                    br_->DoneWithHook(h);
-                  });
+  br_->ConsumeBuf(
+      *kDefaultKey, *kDefaultDeviceName, kDefaultIncarnation,
+      [this, &cons_status, &cons_callback_called](const Status& s,
+                                                  BufRendezvous::Hook* h) {
+        cons_status = s;
+        cons_callback_called = true;
+        ASSERT_TRUE(h != nullptr);
+        EXPECT_EQ(h->prod_dev, default_device_);
+        EXPECT_EQ(h->prod_ctx, fake_device_context_);
+        EXPECT_EQ(h->prod_value, &a_);
+        br_->DoneWithHook(h);
+      },
+      &cm_);
   EXPECT_TRUE(cons_callback_called);
   note.WaitForNotification();
   EXPECT_TRUE(prod_callback_called);
@@ -116,17 +120,19 @@ TEST_F(BufRendezvousTest, CorrectUseConsumerFirst) {
   bool prod_callback_called = false;
   bool cons_callback_called = false;
   Notification note;
-  br_->ConsumeBuf(*kDefaultKey, *kDefaultDeviceName, kDefaultIncarnation,
-                  [this, &cons_status, &cons_callback_called](
-                      const Status& s, BufRendezvous::Hook* h) {
-                    cons_status = s;
-                    cons_callback_called = true;
-                    ASSERT_TRUE(h != nullptr);
-                    EXPECT_EQ(h->prod_dev, default_device_);
-                    EXPECT_EQ(h->prod_ctx, fake_device_context_);
-                    EXPECT_EQ(h->prod_value, &a_);
-                    br_->DoneWithHook(h);
-                  });
+  br_->ConsumeBuf(
+      *kDefaultKey, *kDefaultDeviceName, kDefaultIncarnation,
+      [this, &cons_status, &cons_callback_called](const Status& s,
+                                                  BufRendezvous::Hook* h) {
+        cons_status = s;
+        cons_callback_called = true;
+        ASSERT_TRUE(h != nullptr);
+        EXPECT_EQ(h->prod_dev, default_device_);
+        EXPECT_EQ(h->prod_ctx, fake_device_context_);
+        EXPECT_EQ(h->prod_value, &a_);
+        br_->DoneWithHook(h);
+      },
+      &cm_);
   EXPECT_FALSE(cons_callback_called);
   br_->ProvideBuf(
       *kDefaultKey, default_device_, fake_device_context_, &a_, aa_,
@@ -134,7 +140,8 @@ TEST_F(BufRendezvousTest, CorrectUseConsumerFirst) {
         prod_status = s;
         prod_callback_called = true;
         note.Notify();
-      });
+      },
+      &cm_);
   EXPECT_TRUE(cons_callback_called);
   note.WaitForNotification();
   EXPECT_TRUE(prod_callback_called);
@@ -144,17 +151,19 @@ TEST_F(BufRendezvousTest, CorrectUseConsumerFirst) {
 
 TEST_F(BufRendezvousTest, ErrorDuplicatePut) {
   bool prod_callback_called = false;
-  br_->ProvideBuf(*kDefaultKey, default_device_, fake_device_context_, &a_, aa_,
-                  [&prod_callback_called](const Status& s) {
-                    prod_callback_called = true;
-                  });
+  br_->ProvideBuf(
+      *kDefaultKey, default_device_, fake_device_context_, &a_, aa_,
+      [&prod_callback_called](const Status& s) { prod_callback_called = true; },
+      &cm_);
   Status bad_status;
   Notification note;
-  br_->ProvideBuf(*kDefaultKey, default_device_, fake_device_context_, &a_, aa_,
-                  [&bad_status, &note](const Status& s) {
-                    bad_status = s;
-                    note.Notify();
-                  });
+  br_->ProvideBuf(
+      *kDefaultKey, default_device_, fake_device_context_, &a_, aa_,
+      [&bad_status, &note](const Status& s) {
+        bad_status = s;
+        note.Notify();
+      },
+      &cm_);
   note.WaitForNotification();
   EXPECT_FALSE(bad_status.ok());
   EXPECT_EQ(absl::StrCat("BufRendezvous::ProvideBuf already called for key ",
@@ -166,11 +175,13 @@ TEST_F(BufRendezvousTest, ErrorDuplicatePut) {
 
 TEST_F(BufRendezvousTest, ErrorDeleteNonEmpty) {
   Status cons_status;
-  br_->ConsumeBuf(*kDefaultKey, *kDefaultDeviceName, kDefaultIncarnation,
-                  [&cons_status](const Status& s, BufRendezvous::Hook* h) {
-                    cons_status = s;
-                    EXPECT_EQ(h, nullptr);
-                  });
+  br_->ConsumeBuf(
+      *kDefaultKey, *kDefaultDeviceName, kDefaultIncarnation,
+      [&cons_status](const Status& s, BufRendezvous::Hook* h) {
+        cons_status = s;
+        EXPECT_EQ(h, nullptr);
+      },
+      &cm_);
   EXPECT_TRUE(cons_status.ok());
   br_.reset();
   EXPECT_FALSE(cons_status.ok());
@@ -188,12 +199,15 @@ TEST_F(BufRendezvousTest, AbortNonEmpty) {
       [&cons_note, &cons_status](const Status& s, BufRendezvous::Hook* h) {
         cons_status = s;
         cons_note.Notify();
-      });
-  br_->ProvideBuf("key1", default_device_, fake_device_context_, &a_, aa_,
-                  [&prod_note, &prod_status](const Status& s) {
-                    prod_status = s;
-                    prod_note.Notify();
-                  });
+      },
+      &cm_);
+  br_->ProvideBuf(
+      "key1", default_device_, fake_device_context_, &a_, aa_,
+      [&prod_note, &prod_status](const Status& s) {
+        prod_status = s;
+        prod_note.Notify();
+      },
+      &cm_);
   br_->StartAbort(errors::Internal("Falling sky detected"));
   prod_note.WaitForNotification();
   cons_note.WaitForNotification();
@@ -218,12 +232,15 @@ TEST_F(BufRendezvousTest, UseAfterAbort) {
       [&cons_note, &cons_status](const Status& s, BufRendezvous::Hook* h) {
         cons_status = s;
         cons_note.Notify();
-      });
-  br_->ProvideBuf("key1", default_device_, fake_device_context_, &a_, aa_,
-                  [&prod_note, &prod_status](const Status& s) {
-                    prod_status = s;
-                    prod_note.Notify();
-                  });
+      },
+      &cm_);
+  br_->ProvideBuf(
+      "key1", default_device_, fake_device_context_, &a_, aa_,
+      [&prod_note, &prod_status](const Status& s) {
+        prod_status = s;
+        prod_note.Notify();
+      },
+      &cm_);
   prod_note.WaitForNotification();
   cons_note.WaitForNotification();
   EXPECT_FALSE(prod_status.ok());
@@ -237,17 +254,160 @@ TEST_F(BufRendezvousTest, UseAfterAbort) {
 TEST_F(BufRendezvousTest, DeviceIncarnationMismatch) {
   Status cons_status;
   Notification note;
-  br_->ProvideBuf(*kDefaultKey, default_device_, fake_device_context_, &a_, aa_,
-                  [](const Status&) {});
+  br_->ProvideBuf(
+      *kDefaultKey, default_device_, fake_device_context_, &a_, aa_,
+      [](const Status&) {}, /*cancellation_manager=*/nullptr);
   const uint64 incorrect_incarnation = 23456;
   br_->ConsumeBuf(
       *kDefaultKey, *kDefaultDeviceName, incorrect_incarnation,
       [&note, &cons_status](const Status& s, BufRendezvous::Hook* h) {
         cons_status = s;
         note.Notify();
-      });
+      },
+      /*cancellation_manager=*/nullptr);
   note.WaitForNotification();
   EXPECT_TRUE(errors::IsFailedPrecondition(cons_status));
+}
+
+TEST_F(BufRendezvousTest, ProvideThenCancel) {
+  Status status;
+  Notification note;
+  br_->ProvideBuf(
+      *kDefaultKey, default_device_, fake_device_context_, &a_, aa_,
+      [&status, &note](const Status& s) {
+        status = s;
+        note.Notify();
+      },
+      &cm_);
+  cm_.StartCancel();
+  note.WaitForNotification();
+  EXPECT_TRUE(errors::IsCancelled(status));
+  EXPECT_NE(
+      status.error_message().find(absl::StrCat(
+          "Operation was cancelled for BufRendezvous key ", *kDefaultKey)),
+      string::npos);
+}
+
+TEST_F(BufRendezvousTest, CancelThenProvide) {
+  Status status;
+  Notification note;
+  cm_.StartCancel();
+  br_->ProvideBuf(
+      *kDefaultKey, default_device_, fake_device_context_, &a_, aa_,
+      [&status, &note](const Status& s) {
+        status = s;
+        note.Notify();
+      },
+      &cm_);
+  note.WaitForNotification();
+  EXPECT_TRUE(errors::IsCancelled(status));
+  EXPECT_NE(
+      status.error_message().find(absl::StrCat(
+          "Operation was cancelled for BufRendezvous key ", *kDefaultKey)),
+      string::npos);
+}
+
+TEST_F(BufRendezvousTest, ConsumeThenCancel) {
+  Status status;
+  Notification note;
+  br_->ConsumeBuf(
+      *kDefaultKey, *kDefaultDeviceName, kDefaultIncarnation,
+      [&status, &note](const Status& s, BufRendezvous::Hook* h) {
+        status = s;
+        note.Notify();
+      },
+      &cm_);
+  cm_.StartCancel();
+  note.WaitForNotification();
+  EXPECT_TRUE(errors::IsCancelled(status));
+  EXPECT_NE(
+      status.error_message().find(absl::StrCat(
+          "Operation was cancelled for BufRendezvous key ", *kDefaultKey)),
+      string::npos);
+}
+
+TEST_F(BufRendezvousTest, CancelThenConsume) {
+  Status status;
+  Notification note;
+  cm_.StartCancel();
+  br_->ConsumeBuf(
+      *kDefaultKey, *kDefaultDeviceName, kDefaultIncarnation,
+      [&status, &note](const Status& s, BufRendezvous::Hook* h) {
+        status = s;
+        note.Notify();
+      },
+      &cm_);
+  note.WaitForNotification();
+  EXPECT_TRUE(errors::IsCancelled(status));
+  EXPECT_NE(
+      status.error_message().find(absl::StrCat(
+          "Operation was cancelled for BufRendezvous key ", *kDefaultKey)),
+      string::npos);
+}
+
+TEST_F(BufRendezvousTest, ProvideConsumeThenCancel) {
+  Status prod_status;
+  Status cons_status;
+  bool prod_callback_called = false;
+  bool cons_callback_called = false;
+  Notification note;
+  br_->ProvideBuf(
+      *kDefaultKey, default_device_, fake_device_context_, &a_, aa_,
+      [&note, &prod_status, &prod_callback_called](const Status& s) {
+        prod_status = s;
+        prod_callback_called = true;
+        note.Notify();
+      },
+      &cm_);
+  EXPECT_FALSE(prod_callback_called);
+  br_->ConsumeBuf(
+      *kDefaultKey, *kDefaultDeviceName, kDefaultIncarnation,
+      [this, &cons_status, &cons_callback_called](const Status& s,
+                                                  BufRendezvous::Hook* h) {
+        cons_status = s;
+        cons_callback_called = true;
+        ASSERT_TRUE(h != nullptr);
+        EXPECT_EQ(h->prod_dev, default_device_);
+        EXPECT_EQ(h->prod_ctx, fake_device_context_);
+        EXPECT_EQ(h->prod_value, &a_);
+        br_->DoneWithHook(h);
+      },
+      &cm_);
+  note.WaitForNotification();
+  cm_.StartCancel();
+  EXPECT_TRUE(cons_callback_called);
+  EXPECT_TRUE(prod_callback_called);
+  TF_EXPECT_OK(cons_status);
+  TF_EXPECT_OK(prod_status);
+}
+
+TEST_F(BufRendezvousTest, CancelThenProvideConsume) {
+  Status prod_status;
+  Status cons_status;
+  bool prod_callback_called = false;
+  bool cons_callback_called = false;
+  cm_.StartCancel();
+  br_->ProvideBuf(
+      *kDefaultKey, default_device_, fake_device_context_, &a_, aa_,
+      [&prod_status, &prod_callback_called](const Status& s) {
+        prod_status = s;
+        EXPECT_TRUE(errors::IsCancelled(prod_status));
+        prod_callback_called = true;
+      },
+      &cm_);
+  EXPECT_TRUE(prod_callback_called);
+  EXPECT_TRUE(errors::IsCancelled(prod_status));
+  br_->ConsumeBuf(
+      *kDefaultKey, *kDefaultDeviceName, kDefaultIncarnation,
+      [&cons_status, &cons_callback_called](const Status& s,
+                                            BufRendezvous::Hook* h) {
+        cons_status = s;
+        EXPECT_TRUE(errors::IsCancelled(cons_status));
+        cons_callback_called = true;
+      },
+      &cm_);
+  EXPECT_TRUE(cons_callback_called);
+  EXPECT_TRUE(errors::IsCancelled(cons_status));
 }
 
 }  // namespace

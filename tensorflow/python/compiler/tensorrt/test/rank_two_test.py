@@ -67,9 +67,14 @@ class RankTwoTest(trt_test.TfTrtIntegrationTestBase):
             "abs0_2", "expand0_0", "expand0_1", "axis"
         ],
         "TRTEngineOp_1": [
-            "add", "add1_1", "add1_2", "add1_3", "c1_1", "c1_2", "c1_3",
-            "abs1_1", "abs1_2", "reciprocal0", "reciprocal1"
+            "add1_1", "add1_2", "add1_3", "c1_1", "c1_2", "c1_3", "abs1_1",
+            "abs1_2", "reciprocal1"
         ],
+        # The two ops can't be in the same cluster as the ops in TRTEngineOp_0
+        # due to trt_incompatible_op. They can't be in the same cluster as the
+        # ops in TRTEngineOP_1 because their batch size belongs to a different
+        # equivalent class.
+        "TRTEngineOp_2": ["add", "reciprocal0"]
     }
 
 

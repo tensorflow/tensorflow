@@ -22,8 +22,9 @@ namespace tflite {
 namespace reference_integer_ops {
 
 inline void AveragePool(const PoolParams& params,
-                        const RuntimeShape& input_shape, const int8* input_data,
-                        const RuntimeShape& output_shape, int8* output_data) {
+                        const RuntimeShape& input_shape,
+                        const int8_t* input_data,
+                        const RuntimeShape& output_shape, int8_t* output_data) {
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
@@ -52,7 +53,7 @@ inline void AveragePool(const PoolParams& params,
           const int filter_y_start = std::max(0, -in_y_origin);
           const int filter_y_end =
               std::min(params.filter_height, input_height - in_y_origin);
-          int32 acc = 0;
+          int32_t acc = 0;
           int filter_count = 0;
           for (int filter_y = filter_y_start; filter_y < filter_y_end;
                ++filter_y) {
@@ -71,7 +72,7 @@ inline void AveragePool(const PoolParams& params,
           acc = std::max(acc, params.quantized_activation_min);
           acc = std::min(acc, params.quantized_activation_max);
           output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
-              static_cast<int8>(acc);
+              static_cast<int8_t>(acc);
         }
       }
     }
@@ -79,8 +80,8 @@ inline void AveragePool(const PoolParams& params,
 }
 
 inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
-                    const int8* input_data, const RuntimeShape& output_shape,
-                    int8* output_data) {
+                    const int8_t* input_data, const RuntimeShape& output_shape,
+                    int8_t* output_data) {
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
   TFLITE_DCHECK_GE(params.quantized_activation_min,
@@ -137,8 +138,9 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
 
 inline void AveragePool(const PoolParams& params,
                         const RuntimeShape& input_shape,
-                        const int16* input_data,
-                        const RuntimeShape& output_shape, int16* output_data) {
+                        const int16_t* input_data,
+                        const RuntimeShape& output_shape,
+                        int16_t* output_data) {
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
@@ -167,7 +169,7 @@ inline void AveragePool(const PoolParams& params,
           const int filter_y_start = std::max(0, -in_y_origin);
           const int filter_y_end =
               std::min(params.filter_height, input_height - in_y_origin);
-          int32 acc = 0;
+          int32_t acc = 0;
           int filter_count = 0;
           for (int filter_y = filter_y_start; filter_y < filter_y_end;
                ++filter_y) {
@@ -186,7 +188,7 @@ inline void AveragePool(const PoolParams& params,
           acc = std::max(acc, params.quantized_activation_min);
           acc = std::min(acc, params.quantized_activation_max);
           output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
-              static_cast<int16>(acc);
+              static_cast<int16_t>(acc);
         }
       }
     }
@@ -194,8 +196,8 @@ inline void AveragePool(const PoolParams& params,
 }
 
 inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
-                    const int16* input_data, const RuntimeShape& output_shape,
-                    int16* output_data) {
+                    const int16_t* input_data, const RuntimeShape& output_shape,
+                    int16_t* output_data) {
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
   TFLITE_DCHECK_GE(params.quantized_activation_min,

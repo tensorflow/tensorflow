@@ -56,6 +56,51 @@ const char kCastToFp16[] = "CastToFp16";
 const char kCastToBf16[] = "CastToBf16";
 const char kCastToFp32[] = "CastToFp32";
 
+#if GOOGLE_CUDA
+// Returns the GPU architecture (compute capability) as a (major, minor) pair.
+std::pair<int, int> GetDeviceGPUArch(
+    const DeviceProperties& device_properties) {
+  if (device_properties.type() != "GPU") return {0, 0};
+  string arch_str = device_properties.environment().at("architecture");
+  std::vector<string> split_arch_str = str_util::Split(arch_str, '.');
+  if (split_arch_str.empty()) {
+    return {0, 0};
+  }
+
+  int major, minor;
+  if (!strings::safe_strto32(split_arch_str[0], &major)) {
+    return {0, 0};
+  }
+
+  if (split_arch_str.size() > 1) {
+    if (strings::safe_strto32(split_arch_str[1], &minor)) {
+      return {major, minor};
+    } else {
+      return {0, 0};
+    }
+  } else {
+    return {major, 0};
+  }
+}
+#endif
+
+// Returns true if FP16Support is valid
+// For CUDA, We compare the GPUArch with the kMinGPUArch, if GPUArch is >= min,
+// return true. For AMD the corresponding gfx arch string for the detected AMD
+// GPU is in the list for FP16 supported compute. Returns false otherwise.
+bool HasFastFP16Support(const DeviceProperties& props) {
+#if GOOGLE_CUDA
+  return GetDeviceGPUArch(props) >= kMinGPUArch;
+#elif TENSORFLOW_USE_ROCM
+  absl::flat_hash_set<std::string> FP16SupportedDevices = {{"gfx906"},
+                                                           {"gfx908"}};
+  std::string gcnArchName = props.environment().at("architecture");
+  std::vector<std::string> gpu_arch = absl::StrSplit(gcnArchName, ":");
+  return !gpu_arch.empty() && FP16SupportedDevices.contains(gpu_arch[0]);
+#endif
+  return false;
+}
+
 // Instances of this class represent unique type attribute identifiers within a
 // node. It handles regular type attributes, list type attributes (where
 // type_index is set to the index in the type list), and fixed types.
@@ -293,7 +338,7 @@ class NodeTypeAttrMap {
     }
     // Note that the mappings generated here include inputs/outputs with fixed
     // types. This makes the mappings complete (all inputs and outputs are
-    // included), and allows the graph rewriter to propagate black paint
+    // included), and allows the graph rewriter to propagate deny paint
     // from/through ops with fixed types.
     io2type_entry.first.reserve(input_arg_inds.size());
     for (int i = 0; i < static_cast<int>(input_arg_inds.size()); ++i) {
@@ -843,10 +888,10 @@ DataTypeSet AllowedDataTypes(const OpDef& op_def, const TypeAttrId& t_attr_id) {
 }
 
 Status ValidateLists(const gtl::FlatSet<string>& allow_list,
-                     const gtl::FlatSet<string>& black_list,
-                     const gtl::FlatSet<string>& gray_list,
+                     const gtl::FlatSet<string>& deny_list,
+                     const gtl::FlatSet<string>& infer_list,
                      const gtl::FlatSet<string>& clear_list) {
-  std::vector<gtl::FlatSet<string>> lists{allow_list, black_list, gray_list,
+  std::vector<gtl::FlatSet<string>> lists{allow_list, deny_list, infer_list,
                                           clear_list};
   std::multiset<string> counts;
   for (const auto& list : lists) {
@@ -965,25 +1010,27 @@ class AutoMixedPrecisionImpl {
   bool NodeImplicitlyReadsNonResourceVariable(const NodeDef& node) const;
   void ConvertBatchNormOpsToV2();
   bool SupportsF16(const NodeTypeId& node_type) const;
+  bool SupportsF16DataType(const NodeTypeId& node_type) const;
   const NodeTypeId* GetTensorListFloat32NodeTypeId(const NodeDef& node) const;
   bool IsSourceOrSinkOp(const string& op) const;
-  void FindFloat32TensorListOpClustersAndBlacklistUnsafe(
+  void FindFloat32TensorListOpClustersAndDenylistUnsafe(
       std::vector<absl::flat_hash_set<const NodeDef*>>* clusters,
-      absl::flat_hash_set<int>* black_set) const;
+      absl::flat_hash_set<int>* deny_set) const;
   void FindTensorListImplicitFloat32Edges(
       const absl::flat_hash_set<const NodeDef*>& tensor_list_nodes,
       std::vector<NodeTypeIdEdge>* implicit_data_edges) const;
   void AddAllowlistOps(absl::flat_hash_set<int>* allow_set) const;
-  void PropagateBlackFwdThroughClearAndGray(
-      absl::flat_hash_set<int>* black_set) const;
+  void RemoveAllowsetWithFp32(absl::flat_hash_set<int>* allow_set) const;
+  void PropagateDenyFwdThroughClearAndInfer(
+      absl::flat_hash_set<int>* deny_set) const;
   void ForceColorMatchBetweenTensorListOps(
       const absl::flat_hash_set<const NodeDef*>& tensor_list_nodes,
       absl::flat_hash_set<int>* allow_set,
-      absl::flat_hash_set<int>* black_set) const;
-  void AddClearAndGrayToAllowIfBetweenAllow(
-      const absl::flat_hash_set<int>& black_set,
+      absl::flat_hash_set<int>* deny_set) const;
+  void AddClearAndInferToAllowIfBetweenAllow(
+      const absl::flat_hash_set<int>& deny_set,
       absl::flat_hash_set<int>* allow_set) const;
-  void PropagateAllowThroughClear(const absl::flat_hash_set<int>& black_set,
+  void PropagateAllowThroughClear(const absl::flat_hash_set<int>& deny_set,
                                   absl::flat_hash_set<int>* allow_set) const;
   Status ForceColorMatchOnRecurrentEdges(
       absl::flat_hash_set<int>* allow_set) const;
@@ -1006,8 +1053,8 @@ class AutoMixedPrecisionImpl {
   bool force_all_fp16_;
   AutoMixedPrecisionMode mode_;
   gtl::FlatSet<string> f16_allowlist_;
-  gtl::FlatSet<string> f16_blacklist_;
-  gtl::FlatSet<string> f16_graylist_;
+  gtl::FlatSet<string> f16_denylist_;
+  gtl::FlatSet<string> f16_inferlist_;
   gtl::FlatSet<string> f16_clearlist_;
   absl::flat_hash_set<const NodeDef*> should_process_nodes_;
   DataType target_dtype_;  // Either DT_HALF or DT_BFLOAT16
@@ -1083,12 +1130,12 @@ Status AutoMixedPrecisionImpl::PrintDebugLogs(bool preop, size_t timestamp) {
     for (const auto& x : mp_lists->AllowList()) {
       f << x << "\n";
     }
-    f << "\nBlackList:\n";
-    for (const auto& x : mp_lists->BlackList()) {
+    f << "\nDenyList:\n";
+    for (const auto& x : mp_lists->DenyList()) {
       f << x << "\n";
     }
-    f << "\nGrayList:\n";
-    for (const auto& x : mp_lists->GrayList()) {
+    f << "\nInferList:\n";
+    for (const auto& x : mp_lists->InferList()) {
       f << x << "\n";
     }
     f << "\nClearList:\n";
@@ -1131,34 +1178,8 @@ bool AutoMixedPrecisionImpl::IsOnDevice(const NodeDef& node,
   return false;
 }
 
-// Returns the GPU architecture (compute capability) as a (major, minor) pair.
-std::pair<int, int> GetDeviceGPUArch(
-    const DeviceProperties& device_properties) {
-  if (device_properties.type() != "GPU") return {0, 0};
-  string arch_str = device_properties.environment().at("architecture");
-  std::vector<string> split_arch_str = str_util::Split(arch_str, '.');
-  if (split_arch_str.empty()) {
-    return {0, 0};
-  }
-
-  int major, minor;
-  if (!strings::safe_strto32(split_arch_str[0], &major)) {
-    return {0, 0};
-  }
-
-  if (split_arch_str.size() > 1) {
-    if (strings::safe_strto32(split_arch_str[1], &minor)) {
-      return {major, minor};
-    } else {
-      return {0, 0};
-    }
-  } else {
-    return {major, 0};
-  }
-}
-
 bool AutoMixedPrecisionImpl::IsOnSuitableGPUArch(const NodeDef& node) const {
-  return GetDeviceGPUArch(virtual_placer_.get_device(node)) >= kMinGPUArch;
+  return HasFastFP16Support(virtual_placer_.get_device(node));
 }
 
 bool AutoMixedPrecisionImpl::ShouldProcess(const NodeDef& node) const {
@@ -1198,6 +1219,15 @@ bool AutoMixedPrecisionImpl::SupportsF16(const NodeTypeId& node_type) const {
   return AllowedDataTypes(*op_def, node_type.type_attr)
              .Contains(target_dtype_) &&
          NodeHasF16KernelForTypeAttr(*node_type.node, node_type.type_attr);
+}
+
+bool AutoMixedPrecisionImpl::SupportsF16DataType(
+    const NodeTypeId& node_type) const {
+  const OpDef* op_def;
+  Status status =
+      OpRegistry::Global()->LookUpOpDef(node_type.node->op(), &op_def);
+  if (!status.ok()) return false;
+  return AllowedDataTypes(*op_def, node_type.type_attr).Contains(target_dtype_);
 }
 
 // TODO(mconley): Make this change the node's name (to aid debugging). Need to
@@ -1255,11 +1285,11 @@ Status AutoMixedPrecisionImpl::Optimize() {
   std::unique_ptr<AutoMixedPrecisionLists> mp_lists =
       get_mixed_precision_lists();
   f16_allowlist_ = mp_lists->AllowList();
-  f16_blacklist_ = mp_lists->BlackList();
-  f16_graylist_ = mp_lists->GrayList();
+  f16_denylist_ = mp_lists->DenyList();
+  f16_inferlist_ = mp_lists->InferList();
   f16_clearlist_ = mp_lists->ClearList();
-  TF_RETURN_IF_ERROR(ValidateLists(f16_allowlist_, f16_blacklist_,
-                                   f16_graylist_, f16_clearlist_));
+  TF_RETURN_IF_ERROR(ValidateLists(f16_allowlist_, f16_denylist_,
+                                   f16_inferlist_, f16_clearlist_));
 
   size_t timestamp = Env::Default()->NowMicros() / 1000;
   TF_RETURN_IF_ERROR(PrintDebugLogs(/* preop = */ true, timestamp));
@@ -1294,11 +1324,11 @@ Status AutoMixedPrecisionImpl::Optimize() {
   TF_RETURN_IF_ERROR(
       graph_type_view_.InitializeFromGraph(*graph_, node_type_map_));
 
-  absl::flat_hash_set<int> black_set;
+  absl::flat_hash_set<int> deny_set;
 
   std::vector<absl::flat_hash_set<const NodeDef*>> tensor_list_clusters;
-  FindFloat32TensorListOpClustersAndBlacklistUnsafe(&tensor_list_clusters,
-                                                    &black_set);
+  FindFloat32TensorListOpClustersAndDenylistUnsafe(&tensor_list_clusters,
+                                                   &deny_set);
   std::vector<NodeTypeIdEdge> ephemeral_edges;
   for (const auto& cluster : tensor_list_clusters) {
     VLOG(1) << "Found safe Tensor List cluster of size " << cluster.size();
@@ -1320,14 +1350,14 @@ Status AutoMixedPrecisionImpl::Optimize() {
   //    This is done under the assumption that allowlist ops are always
   //    numerically-safe in f16 and that they are the most important ops for
   //    improving performance.
-  // 2) Add nodes to the black_set iff they are numerically-dangerous (aka
-  //    "blacklist" ops) or they are on a forward path from a blacklist node to
-  //    a black/gray node (including the node at the end of the path) through
-  //    non-numerically-dangerous ops (aka "greylist" and "clearlist" ops).
+  // 2) Add nodes to the deny_set iff they are numerically-dangerous (aka
+  //    "denylist" ops) or they are on a forward path from a denylist node to
+  //    a deny/infer node (including the node at the end of the path) through
+  //    non-numerically-dangerous ops (aka "inferlist" and "clearlist" ops).
   //    This is done to prevent numerically-dangerous ops and their downstream
   //    effects from being changed to f16, which would risk breaking the
   //    numerical accuracy of the model.
-  // 3) For all remaining nodes that are not considered dangerous (greylist
+  // 3) For all remaining nodes that are not considered dangerous (inferlist
   //    and clearlist ops), find those that are between (i.e., both upstream
   //    and downstream of) allow nodes, and add them to the allow_set.
   //    This is done to avoid unnecessary casts between allowlist ops.
@@ -1346,29 +1376,35 @@ Status AutoMixedPrecisionImpl::Optimize() {
     return Status::OK();
   }
 
-  VLOG(2) << "Beginning pass 2 to propagate black forwards from blacklist ops "
-             "through clear/graylist ops";
-  PropagateBlackFwdThroughClearAndGray(&black_set);
+  VLOG(2) << "Beginning pass 2 to propagate deny forwards from denylist ops "
+             "through clear/inferlist ops";
+  PropagateDenyFwdThroughClearAndInfer(&deny_set);
   VLOG(2) << "Finished pass 2";
 
   VLOG(2) << "Forcing color match between data structure ops";
   for (const auto& cluster : tensor_list_clusters) {
-    ForceColorMatchBetweenTensorListOps(cluster, &allow_set, &black_set);
+    ForceColorMatchBetweenTensorListOps(cluster, &allow_set, &deny_set);
   }
 
-  VLOG(2) << "Beginning pass 3 to set clear and gray nodes to allow if they "
+  VLOG(2) << "Beginning pass 3 to set clear and infer nodes to allow if they "
              "are between allow ops";
-  AddClearAndGrayToAllowIfBetweenAllow(black_set, &allow_set);
+  AddClearAndInferToAllowIfBetweenAllow(deny_set, &allow_set);
   VLOG(2) << "Finished pass 3";
 
   VLOG(2) << "Beginning pass 4 to propagate allow from allow nodes through "
              "clearlist ops";
-  PropagateAllowThroughClear(black_set, &allow_set);
+  PropagateAllowThroughClear(deny_set, &allow_set);
   VLOG(2) << "Finished pass 4";
+
+  VLOG(2) << "Beginning pass 5 to remove some nodes which could not be changed "
+             "to F16"
+             "from allow set";
+  RemoveAllowsetWithFp32(&allow_set);
+  VLOG(2) << "Finished pass 5";
 
   VLOG(2) << "Forcing color match between data structure ops";
   for (const auto& cluster : tensor_list_clusters) {
-    ForceColorMatchBetweenTensorListOps(cluster, &allow_set, &black_set);
+    ForceColorMatchBetweenTensorListOps(cluster, &allow_set, &deny_set);
   }
 
   VLOG(2) << "Forcing color match on loop edges";
@@ -1426,11 +1462,11 @@ bool AutoMixedPrecisionImpl::IsSourceOrSinkOp(const string& op) const {
 // Finds all clusters of float32 Tensor List nodes that are connected via their
 // handle edges. Unsafe clusters (those with unprocessable nodes, or with edges
 // that cross untraversable boundaries via _Arg, _Ret, PartitionedCall etc.
-// nodes) are added to black_set. The caller should paint all nodes in a cluster
+// nodes) are added to deny_set. The caller should paint all nodes in a cluster
 // the same color, as they may all refer to the same Tensor List.
-void AutoMixedPrecisionImpl::FindFloat32TensorListOpClustersAndBlacklistUnsafe(
+void AutoMixedPrecisionImpl::FindFloat32TensorListOpClustersAndDenylistUnsafe(
     std::vector<absl::flat_hash_set<const NodeDef*>>* tensor_list_clusters,
-    absl::flat_hash_set<int>* black_set) const {
+    absl::flat_hash_set<int>* deny_set) const {
   absl::flat_hash_set<const NodeDef*> tensor_list_prop_set;
   for (int root_idx = 0; root_idx < graph_type_view_.num_nodes(); ++root_idx) {
     const NodeTypeId& root = *graph_type_view_.GetNode(root_idx);
@@ -1463,7 +1499,7 @@ void AutoMixedPrecisionImpl::FindFloat32TensorListOpClustersAndBlacklistUnsafe(
                          cluster.insert(node);
                          if (!ShouldProcess(*node)) {
                            // The cluster contains an un-processable node.
-                           black_set->insert(root_fp32_idx);
+                           deny_set->insert(root_fp32_idx);
                          }
                          // TODO(benbarsdell): In a theoretical pathological
                          // case of a Tensor List of Tensor List handles, the
@@ -1471,7 +1507,7 @@ void AutoMixedPrecisionImpl::FindFloat32TensorListOpClustersAndBlacklistUnsafe(
                          // sink.
                        } else if (IsSourceOrSinkOp(node->op())) {
                          // The cluster crosses an untraversable boundary.
-                         black_set->insert(root_fp32_idx);
+                         deny_set->insert(root_fp32_idx);
                        }
                      }));
     tensor_list_clusters->push_back(cluster);
@@ -1534,21 +1570,21 @@ void AutoMixedPrecisionImpl::AddAllowlistOps(
   }
 }
 
-// Adds nodes to black_set iff they are on the blacklist or they are on a
-// forward path from a blacklist node to a black/gray node (including the node
-// at the end of the path) through clear and gray nodes.
-// E.g., black -> gray -> clear -> gray -> clear -> allow -> gray
-// becomes: black -> black -> black -> black -> clear -> allow -> gray.
-void AutoMixedPrecisionImpl::PropagateBlackFwdThroughClearAndGray(
-    absl::flat_hash_set<int>* black_set) const {
+// Adds nodes to deny_set iff they are on the denylist or they are on a
+// forward path from a denylist node to a deny/infer node (including the node
+// at the end of the path) through clear and infer nodes.
+// E.g., deny -> infer -> clear -> infer -> clear -> allow -> infer
+// becomes: deny -> deny -> deny -> deny -> clear -> allow -> infer.
+void AutoMixedPrecisionImpl::PropagateDenyFwdThroughClearAndInfer(
+    absl::flat_hash_set<int>* deny_set) const {
   if (force_all_fp16_) return;
 
-  // Find clear nodes that are upstream of black or gray.
-  absl::flat_hash_set<int> upstream_of_black_or_gray_set;
+  // Find clear nodes that are upstream of deny or infer.
+  absl::flat_hash_set<int> upstream_of_deny_or_infer_set;
   for (int root_idx = 0; root_idx < graph_type_view_.num_nodes(); ++root_idx) {
     const NodeTypeId& root = *graph_type_view_.GetNode(root_idx);
-    if (!(f16_blacklist_.count(root.node->op()) ||
-          f16_graylist_.count(root.node->op()))) {
+    if (!(f16_denylist_.count(root.node->op()) ||
+          f16_inferlist_.count(root.node->op()))) {
       continue;
     }
     DfsTypeTraversal(graph_type_view_, {&root},
@@ -1556,42 +1592,42 @@ void AutoMixedPrecisionImpl::PropagateBlackFwdThroughClearAndGray(
                      DfsTypePredicates::Enter([&](int idx) -> bool {
                        const NodeTypeId& item = *graph_type_view_.GetNode(idx);
                        return idx == root_idx ||
-                              (!upstream_of_black_or_gray_set.count(idx) &&
+                              (!upstream_of_deny_or_infer_set.count(idx) &&
                                f16_clearlist_.count(item.node->op()));
                      }),
                      DfsTypeCallbacks::PreOrder([&](int idx) {
-                       upstream_of_black_or_gray_set.insert(idx);
+                       upstream_of_deny_or_infer_set.insert(idx);
                      }));
   }
 
-  // Propagate black forward through nodes in upstream_of_black_or_gray_set.
+  // Propagate deny forward through nodes in upstream_of_deny_or_infer_set.
   for (int root_idx = 0; root_idx < graph_type_view_.num_nodes(); ++root_idx) {
     const NodeTypeId& root = *graph_type_view_.GetNode(root_idx);
-    if (black_set->count(root_idx) || !f16_blacklist_.count(root.node->op())) {
+    if (deny_set->count(root_idx) || !f16_denylist_.count(root.node->op())) {
       continue;
     }
     DfsTypeTraversal(
         graph_type_view_, {&root}, TypeTraversalDirection::kFollowOutputs,
         DfsTypePredicates::Enter([&](int idx) -> bool {
-          return idx == root_idx || (!black_set->count(idx) &&
-                                     upstream_of_black_or_gray_set.count(idx));
+          return idx == root_idx || (!deny_set->count(idx) &&
+                                     upstream_of_deny_or_infer_set.count(idx));
         }),
         DfsTypeCallbacks::PreOrder([&](int idx) {
-          bool inserted = black_set->insert(idx).second;
+          bool inserted = deny_set->insert(idx).second;
           if (VLOG_IS_ON(2) && inserted) {
             const NodeTypeId& item = *graph_type_view_.GetNode(idx);
             VLOG(2) << "Painting type " << item.type_attr.DebugString()
                     << " of " << item.node->op() << " node "
-                    << item.node->name() << " BLACK";
+                    << item.node->name() << " DENY";
           }
         }));
   }
 }
 
-void AutoMixedPrecisionImpl::AddClearAndGrayToAllowIfBetweenAllow(
-    const absl::flat_hash_set<int>& black_set,
+void AutoMixedPrecisionImpl::AddClearAndInferToAllowIfBetweenAllow(
+    const absl::flat_hash_set<int>& deny_set,
     absl::flat_hash_set<int>* allow_set) const {
-  // Find clear/graylist ops that are downstream of allow ops.
+  // Find clear/inferlist ops that are downstream of allow ops.
   absl::flat_hash_set<int> downstream_of_allow_set;
   for (int root_idx = 0; root_idx < graph_type_view_.num_nodes(); ++root_idx) {
     const NodeTypeId& root = *graph_type_view_.GetNode(root_idx);
@@ -1605,13 +1641,13 @@ void AutoMixedPrecisionImpl::AddClearAndGrayToAllowIfBetweenAllow(
           return idx == root_idx ||
                  (!downstream_of_allow_set.count(idx) &&
                   !f16_allowlist_.count(item.node->op()) &&
-                  !black_set.count(idx) && ShouldProcess(*item.node) &&
+                  !deny_set.count(idx) && ShouldProcess(*item.node) &&
                   // TODO(benbarsdell): Consider allowing propagation through
                   // ops that are already float16 in order to reduce the number
                   // of casts.
                   IsFloat32(item) && SupportsF16(item) &&
                   (f16_clearlist_.count(item.node->op()) ||
-                   f16_graylist_.count(item.node->op())));
+                   f16_inferlist_.count(item.node->op())));
         }),
         DfsTypeCallbacks::PreOrder(
             [&](int idx) { downstream_of_allow_set.insert(idx); }));
@@ -1645,7 +1681,7 @@ void AutoMixedPrecisionImpl::AddClearAndGrayToAllowIfBetweenAllow(
 }
 
 void AutoMixedPrecisionImpl::PropagateAllowThroughClear(
-    const absl::flat_hash_set<int>& black_set,
+    const absl::flat_hash_set<int>& deny_set,
     absl::flat_hash_set<int>* allow_set) const {
   // Propagate allow from allow nodes through clearlist ops.
   absl::flat_hash_set<int> clear_prop_set;
@@ -1661,7 +1697,7 @@ void AutoMixedPrecisionImpl::PropagateAllowThroughClear(
         DfsTypePredicates::Enter([&](int idx) -> bool {
           const NodeTypeId& item = *graph_type_view_.GetNode(idx);
           return idx == root_idx ||
-                 (!allow_set->count(idx) && !black_set.count(idx) &&
+                 (!allow_set->count(idx) && !deny_set.count(idx) &&
                   ShouldProcess(*item.node) && IsFloat32(item) &&
                   SupportsF16(item) &&
                   (f16_clearlist_.count(item.node->op())) &&
@@ -1681,6 +1717,25 @@ void AutoMixedPrecisionImpl::PropagateAllowThroughClear(
                     << item.node->name() << " ALLOW";
           }
         }));
+  }
+}
+
+// If ops have one or more type_attr, But this type_attr could not be converted
+// to F16. Such as FusedBatchNormV2/FusedBatchNormV3, its type_attr 'U' only
+// support float. So we will remove this node from allow_set.
+void AutoMixedPrecisionImpl::RemoveAllowsetWithFp32(
+    absl::flat_hash_set<int>* allow_set) const {
+  for (int root_idx = 0; root_idx < graph_type_view_.num_nodes(); ++root_idx) {
+    const NodeTypeId& root = *graph_type_view_.GetNode(root_idx);
+    if (f16_allowlist_.count(root.node->op()) && allow_set->count(root_idx) &&
+        !SupportsF16DataType(root)) {
+      auto erased = allow_set->erase(root_idx);
+      if (VLOG_IS_ON(2) && erased) {
+        VLOG(2) << "UnPainting type " << root.type_attr.DebugString()
+                << " of node " << root.node->name() << " ALLOW because its op "
+                << root.node->op() << " is not support F16 DataType";
+      }
+    }
   }
 }
 
@@ -1727,14 +1782,14 @@ Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
           if (allow_set->erase(merge_idx)) {
             VLOG(2) << "Painting type T of Merge node "
                     << graph_type_view_.GetNode(merge_idx)->node->name()
-                    << " BLACK to match the color of its sibling Merge nodes "
+                    << " DENY to match the color of its sibling Merge nodes "
                        "with common NextIteration node "
                     << node.name();
           }
         }
         if (allow_set->erase(nextiter_idx)) {
           VLOG(2) << "Painting type T of NextIteration node " << node.name()
-                  << " BLACK to match the color of its output Merge node(s)";
+                  << " DENY to match the color of its output Merge node(s)";
         }
       } else {
         if (allow_set->insert(nextiter_idx).second) {
@@ -1751,8 +1806,8 @@ Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
 void AutoMixedPrecisionImpl::ForceColorMatchBetweenTensorListOps(
     const absl::flat_hash_set<const NodeDef*>& tensor_list_nodes,
     absl::flat_hash_set<int>* allow_set,
-    absl::flat_hash_set<int>* black_set) const {
-  bool any_black = false;
+    absl::flat_hash_set<int>* deny_set) const {
+  bool any_deny = false;
   bool any_allow = false;
   std::vector<int> node_type_idxs;
   node_type_idxs.reserve(tensor_list_nodes.size());
@@ -1766,24 +1821,24 @@ void AutoMixedPrecisionImpl::ForceColorMatchBetweenTensorListOps(
     node_type_idxs.push_back(maybe_node_type_idx.value());
   }
   for (int node_type_idx : node_type_idxs) {
-    if (black_set->count(node_type_idx)) {
-      any_black = true;
+    if (deny_set->count(node_type_idx)) {
+      any_deny = true;
       break;
     } else if (allow_set->count(node_type_idx)) {
       any_allow = true;
     }
   }
-  if (!any_black && !any_allow) return;
+  if (!any_deny && !any_allow) return;
   for (int node_type_idx : node_type_idxs) {
     const NodeTypeId& node_type = *graph_type_view_.GetNode(node_type_idx);
     VLOG(2) << "Painting type " << node_type.type_attr.DebugString() << " of "
             << node_type.node->op() << " node " << node_type.node->name() << " "
-            << (any_black ? "BLACK" : "ALLOW")
+            << (any_deny ? "DENY" : "ALLOW")
             << " because at least one of its siblings is "
-            << (any_black ? "BLACK" : "ALLOW");
-    if (any_black) {
+            << (any_deny ? "DENY" : "ALLOW");
+    if (any_deny) {
       allow_set->erase(node_type_idx);
-      black_set->insert(node_type_idx);
+      deny_set->insert(node_type_idx);
     } else {
       allow_set->insert(node_type_idx);
     }
@@ -1928,14 +1983,13 @@ Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
   return Status::OK();
 }
 
-int GetNumGPUs(const Cluster& cluster,
-               const std::pair<int, int>& min_arch = {0, 0}) {
+int GetNumGPUs(const Cluster& cluster) {
   auto devices = cluster.GetDevices();
   int num_gpus = 0;
   for (const auto& device : devices) {
     const DeviceProperties& device_properties = device.second;
-    std::pair<int, int> arch = GetDeviceGPUArch(device_properties);
-    if (device_properties.type() == "GPU" && arch >= min_arch) {
+    if (device_properties.type() == "GPU" &&
+        (ShouldIgnorePerformance() || HasFastFP16Support(device_properties))) {
       num_gpus++;
     }
   }
@@ -1950,7 +2004,7 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
     return errors::InvalidArgument("cluster == nullptr");
   }
 
-#if !defined(INTEL_MKL) || !defined(ENABLE_INTEL_MKL_BFLOAT16)
+#if !defined(INTEL_MKL)
   if (mode_ == AutoMixedPrecisionMode::MKL) {
     return errors::Unimplemented(
         "The auto_mixed_precision_mkl optimizer cannot be used since "
@@ -1960,13 +2014,12 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
         "https://software.intel.com/en-us/articles/intel-optimization-for-"
         "tensorflow-installation-guide");
   }
-#endif
+#endif  // INTEL_MKL
 
   // Start by copying input graph to output.
   *output = item.graph;
 
-  int num_gpus = ShouldIgnorePerformance() ? GetNumGPUs(*cluster)
-                                           : GetNumGPUs(*cluster, kMinGPUArch);
+  int num_gpus = GetNumGPUs(*cluster);
   if (num_gpus < 1 && mode_ == AutoMixedPrecisionMode::CUDA) {
     // AutoMixedPrecision is currently only tuned for GPU.
     LOG(WARNING) << "No (suitable) GPUs detected, skipping " << name()

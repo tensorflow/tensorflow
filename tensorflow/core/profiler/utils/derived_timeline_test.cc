@@ -78,10 +78,10 @@ TEST(DerivedTimelineTest, TfOpLineTest) {
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
   CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
-               {{StatType::kLevel0, kTfOpName},
+               {{StatType::kTfOp, kTfOpName},
                 {StatType::kKernelDetails, kKernelDetails}});
   CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300,
-               {{StatType::kLevel0, kTfOpName},
+               {{StatType::kTfOp, kTfOpName},
                 {StatType::kKernelDetails, kKernelDetails}});
   GenerateDerivedTimeLines(group_metadata_map, &space);
   XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);
@@ -115,11 +115,11 @@ TEST(DerivedTimelineTest, DependencyTest) {
   auto line_builder = plane_builder.GetOrCreateLine(0);
   CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
                {{StatType::kGroupId, kFirstGroupId},
-                {StatType::kLevel0, kTfOpName},
+                {StatType::kTfOp, kTfOpName},
                 {StatType::kKernelDetails, kKernelDetails}});
   CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300,
                {{StatType::kGroupId, kSecondGroupId},
-                {StatType::kLevel0, kTfOpName},
+                {StatType::kTfOp, kTfOpName},
                 {StatType::kKernelDetails, kKernelDetails}});
   GenerateDerivedTimeLines(group_metadata_map, &space);
   XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);
@@ -143,10 +143,10 @@ TEST(DerivedTimelineTest, TfOpNameScopeTest) {
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
   CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
-               {{StatType::kLevel0, kTfOpName},
+               {{StatType::kTfOp, kTfOpName},
                 {StatType::kKernelDetails, kKernelDetails}});
   CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300,
-               {{StatType::kLevel0, kTfOpName},
+               {{StatType::kTfOp, kTfOpName},
                 {StatType::kKernelDetails, kKernelDetails}});
   GenerateDerivedTimeLines(group_metadata_map, &space);
   XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);

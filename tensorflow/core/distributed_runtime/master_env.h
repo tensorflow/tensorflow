@@ -62,7 +62,7 @@ struct WorkerCacheFactoryOptions {
 struct MasterEnv {
   Env* env = nullptr;
 
-  // Object from which WorkerInterface instances can be obtained.
+  // Object from which WorkerInterface instances can be obtained. Not owned.
   WorkerCacheInterface* worker_cache = nullptr;
 
   // The operation definitions to use.  Must be filled before use.
@@ -93,7 +93,7 @@ struct MasterEnv {
       worker_cache_factory;
 
   // Generates per-step CollectiveExecutors and has access to utilities
-  // supporting collective operations.
+  // supporting collective operations. Not owned.
   CollectiveExecutorMgrInterface* collective_executor_mgr = nullptr;
 };
 

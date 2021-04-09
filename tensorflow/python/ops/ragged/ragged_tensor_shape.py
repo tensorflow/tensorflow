@@ -582,10 +582,12 @@ def _broadcast_to_ragged_shape(rt_input, dst_shape, broadcast_inner_dimensions):
     rt_input = ragged_array_ops.tile(rt_input, multiples)
 
   if broadcast_inner_dimensions:
+    new_shape = array_ops.broadcast_dynamic_shape(
+        array_ops.shape(
+            rt_input.flat_values, out_type=dst_shape.dim_size_dtype),
+        array_ops.concat([[1], dst_shape.inner_dim_sizes], axis=0))
     rt_input = rt_input.with_flat_values(
-        array_ops.reshape(
-            rt_input.flat_values,
-            array_ops.concat([[-1], dst_shape.inner_dim_sizes], axis=0)))
+        array_ops.broadcast_to(rt_input.flat_values, new_shape))
 
   # Do broadcasting for dimensions that become ragged.  We must do these from
   # outermost to innermost.

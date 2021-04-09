@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 
 from absl.testing import parameterized
+import wrapt
 
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_utils
@@ -81,6 +82,29 @@ class RegroupAndSelectDeviceTest(test.TestCase, parameterized.TestCase):
     result = distribute_utils.regroup(
         (DictBasedClass(a="a1", b="b1"), DictBasedClass(a="a2", b="b2")))
     self.assertIsInstance(result, DictBasedClass)
+    self._is_per_replica(result["a"], ["a1", "a2"])
+    self._is_per_replica(result["b"], ["b1", "b2"])
+
+  def testRegroupCollectionsMapping(self):
+    class CollectionsMappingBasedClass(collections.Mapping):
+      """Class inherited from collections.Mapping."""
+
+      def __init__(self, *args, **kwargs):
+        self._d = dict(*args, **kwargs)
+
+      def __getitem__(self, key):
+        return self._d.__getitem__(key)
+
+      def __iter__(self):
+        return iter(self._d)
+
+      def __len__(self):
+        return len(self._d)
+
+    result = distribute_utils.regroup(
+        (CollectionsMappingBasedClass(a="a1", b="b1"),
+         CollectionsMappingBasedClass(a="a2", b="b2")))
+    self.assertIsInstance(result, CollectionsMappingBasedClass)
     self._is_per_replica(result["a"], ["a1", "a2"])
     self._is_per_replica(result["b"], ["b1", "b2"])
 
@@ -211,6 +235,15 @@ class RegroupAndSelectDeviceTest(test.TestCase, parameterized.TestCase):
                          distribute_utils.select_replica(
                              device_id, merged_estimator_spec))
 
+  def testWrappedNamedTuple(self):
+    Point = collections.namedtuple("Point", ["x", "y"])
+    point1 = Point(x=0, y=2)
+    point2 = Point(x=1, y=3)
+    wrapped1 = wrapt.ObjectProxy(point1)
+    wrapped2 = wrapt.ObjectProxy(point2)
+    result = distribute_utils.regroup([wrapped1, wrapped2])
+    self.assertEqual(result.x.values, (0, 1))
+    self.assertEqual(result.y.values, (2, 3))
 
 if __name__ == "__main__":
   test.main()

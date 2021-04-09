@@ -16,7 +16,6 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_SOFTMAX_H_
 
 #include <limits>
-#include <vector>
 
 #include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -49,26 +48,27 @@ inline void Softmax(const SoftmaxParams& params,
     // Compute sum.
     float sum = 0.f;
     for (int c = 0; c < depth; ++c) {
-      sum += std::exp((input_data[i * depth + c] - max) *
-                      static_cast<float>(params.beta));
+      const float exp_c = std::exp((input_data[i * depth + c] - max) *
+                                   static_cast<float>(params.beta));
+      output_data[i * depth + c] = exp_c;
+      sum += exp_c;
     }
 
     // Compute result.
     for (int c = 0; c < depth; ++c) {
-      output_data[i * depth + c] = std::exp((input_data[i * depth + c] - max) *
-                                            static_cast<float>(params.beta)) /
-                                   sum;
+      output_data[i * depth + c] = output_data[i * depth + c] / sum;
     }
   }
 }
 
-// Quantized softmax with int8/uint8 input and int8/uint8/int16 output.
+// Quantized softmax with int8_t/uint8_t input and int8_t/uint8_t/int16_t
+// output.
 template <typename InputT, typename OutputT>
 inline void Softmax(const SoftmaxParams& params,
                     const RuntimeShape& input_shape, const InputT* input_data,
                     const RuntimeShape& output_shape, OutputT* output_data) {
-  const int32 input_beta_multiplier = params.input_multiplier;
-  const int32 input_beta_left_shift = params.input_left_shift;
+  const int32_t input_beta_multiplier = params.input_multiplier;
+  const int32_t input_beta_left_shift = params.input_left_shift;
   const int diff_min = params.diff_min;
   // The representation chosen for the input to the exp() function is Q5.26.
   // We need to leave extra space since values that we skip might be as large as
@@ -78,9 +78,10 @@ inline void Softmax(const SoftmaxParams& params,
   static const int kScaledDiffIntegerBits = 5;
   static const int kAccumulationIntegerBits = 12;
   using FixedPointScaledDiff =
-      gemmlowp::FixedPoint<int32, kScaledDiffIntegerBits>;
-  using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
-  using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
+      gemmlowp::FixedPoint<int32_t, kScaledDiffIntegerBits>;
+  using FixedPointAccum =
+      gemmlowp::FixedPoint<int32_t, kAccumulationIntegerBits>;
+  using FixedPoint0 = gemmlowp::FixedPoint<int32_t, 0>;
 
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =
@@ -96,10 +97,10 @@ inline void Softmax(const SoftmaxParams& params,
 
     FixedPointAccum sum_of_exps = FixedPointAccum::Zero();
     for (int c = 0; c < depth; ++c) {
-      int32 input_diff =
-          static_cast<int32>(input_data[i * depth + c]) - max_in_row;
+      int32_t input_diff =
+          static_cast<int32_t>(input_data[i * depth + c]) - max_in_row;
       if (input_diff >= diff_min) {
-        const int32 input_diff_rescaled =
+        const int32_t input_diff_rescaled =
             MultiplyByQuantizedMultiplierGreaterThanOne(
                 input_diff, input_beta_multiplier, input_beta_left_shift);
         const FixedPointScaledDiff scaled_diff_f8 =
@@ -114,28 +115,28 @@ inline void Softmax(const SoftmaxParams& params,
         sum_of_exps.raw(), kAccumulationIntegerBits, &num_bits_over_unit));
 
     for (int c = 0; c < depth; ++c) {
-      int32 input_diff =
-          static_cast<int32>(input_data[i * depth + c]) - max_in_row;
+      int32_t input_diff =
+          static_cast<int32_t>(input_data[i * depth + c]) - max_in_row;
       if (input_diff >= diff_min) {
-        const int32 input_diff_rescaled =
+        const int32_t input_diff_rescaled =
             MultiplyByQuantizedMultiplierGreaterThanOne(
                 input_diff, input_beta_multiplier, input_beta_left_shift);
         const FixedPointScaledDiff scaled_diff_f8 =
             FixedPointScaledDiff::FromRaw(input_diff_rescaled);
 
         FixedPoint0 exp_in_0 = exp_on_negative_values(scaled_diff_f8);
-        int32 unsat_output = gemmlowp::RoundingDivideByPOT(
+        int32_t unsat_output = gemmlowp::RoundingDivideByPOT(
             (shifted_scale * exp_in_0).raw(),
             num_bits_over_unit + 31 - (sizeof(OutputT) * 8));
 
-        const int32 shifted_output =
+        const int32_t shifted_output =
             unsat_output +
-            static_cast<int32>(std::numeric_limits<OutputT>::min());
+            static_cast<int32_t>(std::numeric_limits<OutputT>::min());
 
         output_data[i * depth + c] = static_cast<OutputT>(std::max(
             std::min(shifted_output,
-                     static_cast<int32>(std::numeric_limits<OutputT>::max())),
-            static_cast<int32>(std::numeric_limits<OutputT>::min())));
+                     static_cast<int32_t>(std::numeric_limits<OutputT>::max())),
+            static_cast<int32_t>(std::numeric_limits<OutputT>::min())));
       } else {
         output_data[i * depth + c] = std::numeric_limits<OutputT>::min();
       }
@@ -143,7 +144,24 @@ inline void Softmax(const SoftmaxParams& params,
   }
 }
 
-// Quantized softmax with int16 input and int16 output.
+// Computes exp(input - max_input)
+inline int16_t SoftMaxCalculateExp(const SoftmaxParams& params,
+                                   const int16_t* input_data, const int depth,
+                                   int16_t max_in_row, int i, int c) {
+  int32_t input_diff = input_data[i * depth + c] - max_in_row;
+  // scale the input_diff such that [-65535, 0] correspond to [-10.0, 0.0]
+  // exp lut generated with range [-10, 0], as exp(-10) is negligible.
+  int32_t scaled_diff = MultiplyByQuantizedMultiplier(
+      input_diff, params.input_multiplier, params.input_left_shift);
+  // recenter to [-32768, 32767]
+  int32_t sym_scaled_diff = scaled_diff + 32767;
+  int16_t sat_sym_scaled_diff =
+      std::min(std::max(sym_scaled_diff, static_cast<int32_t>(-32768)),
+               static_cast<int32_t>(32767));
+  // apply the exp() LUT activation function
+  return generic_int16_table_lookup(sat_sym_scaled_diff, params.exp_lut);
+}
+// Quantized softmax with int16_t input and int16_t output.
 inline void SoftmaxInt16(const SoftmaxParams& params,
                          const RuntimeShape& input_shape,
                          const int16_t* input_data,
@@ -162,28 +180,16 @@ inline void SoftmaxInt16(const SoftmaxParams& params,
       max_in_row = std::max(max_in_row, input_data[i * depth + c]);
     }
 
-    // Compute exp(input - max_input)
-    std::vector<int16_t> exp_result_Q015(depth);
+    // This loops computes the exp values and their sum. We will need the exp
+    // values later on in the function so we cache them in the output_data
+    // buffer. This is an optimization done to avoid calculating the exp values
+    // twice making use of the output_data buffer as scratch memory.
+    int32_t sum_of_exps = 0;  // Q16.15 fixed point format.
+    int16_t* exp_results_Q015 = output_data + i * depth;
     for (int c = 0; c < depth; ++c) {
-      int32_t input_diff = input_data[i * depth + c] - max_in_row;
-      // scale the input_diff such that [-65535, 0] correspond to [-10.0, 0.0]
-      int32_t scaled_diff = MultiplyByQuantizedMultiplier(
-          input_diff, params.input_multiplier, params.input_left_shift);
-      // recenter to [-32768, 32767]
-      int32_t sym_scaled_diff = scaled_diff + 32767;
-      int16_t sat_sym_scaled_diff =
-          std::min(std::max(sym_scaled_diff, static_cast<int32_t>(-32768)),
-                   static_cast<int32_t>(32767));
-      // apply the exp() LUT activation function
-      exp_result_Q015[c] =
-          generic_int16_table_lookup(sat_sym_scaled_diff, params.exp_lut);
-    }
-
-    // sum_of_exps is a Q16.15 fixed point format.
-    int32_t sum_of_exps = 0;
-    for (int c = 0; c < depth; ++c) {
-      // Q16.15 + Q0.15
-      sum_of_exps += exp_result_Q015[c];
+      exp_results_Q015[c] =
+          SoftMaxCalculateExp(params, input_data, depth, max_in_row, i, c);
+      sum_of_exps += exp_results_Q015[c];
     }
 
     // Compute the reciprocal 1/sum_of_exps
@@ -209,7 +215,7 @@ inline void SoftmaxInt16(const SoftmaxParams& params,
     for (int c = 0; c < depth; ++c) {
       uint8_t right_shift = 31 - headroom_plus_one;
       int64_t round = 1 << (right_shift - 1);
-      int32_t result = (static_cast<int64_t>(exp_result_Q015[c]) *
+      int32_t result = (static_cast<int64_t>(exp_results_Q015[c]) *
                             static_cast<int64_t>(reciprocal_scale_Q015) +
                         round) >>
                        right_shift;

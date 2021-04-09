@@ -90,6 +90,15 @@ class QuantizedConcatenationOpModel : public BaseConcatenationOpModel {
   }
 };
 
+class BoolConcatenationOpModel : public BaseConcatenationOpModel {
+ public:
+  using BaseConcatenationOpModel::BaseConcatenationOpModel;
+  void SetInput(int index, std::initializer_list<bool> data) {
+    PopulateTensor(index, data);
+  }
+  std::vector<bool> GetOutput() { return ExtractVector<bool>(output_); }
+};
+
 TEST(ConcatenationOpTest, ThreeDimensionalOneInput) {
   ConcatenationOpModel m0({TensorType_FLOAT32, {2, 1, 2}}, /*axis=*/1,
                           /*num_inputs=*/1);
@@ -287,8 +296,13 @@ TYPED_TEST_CASE(ConcatenationOpTestTyped, TestTypes);
 TYPED_TEST(ConcatenationOpTestTyped, FourInputsQuantizedInt8) {
   using TestType = typename TestFixture::TestType;
 
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<TestType>::max() /
+      static_cast<float>(std::numeric_limits<TestType>::max() + 1);
+
   QuantizedConcatenationOpModel m0(
-      {TestFixture::tensor_type, {2, 1, 2}, -12.7, 12.8},
+      {TestFixture::tensor_type, {2, 1, 2}, 12.8f * kMin, 12.8f * kMax},
       /*axis=*/2,
       /*num_inputs=*/4);
 
@@ -302,20 +316,6 @@ TYPED_TEST(ConcatenationOpTestTyped, FourInputsQuantizedInt8) {
                   1, 3, 1.1, 3.1, 1.2, 3.2, 1.3, 3.3,  //
                   4, 7, 4.1, 7.1, 4.2, 7.2, 4.3, 7.3   //
               })));
-
-  if (TestFixture::tensor_type == TensorType_INT8) {
-    EXPECT_THAT(m0.GetOutput<int8_t>(), ElementsAreArray({
-                                            9, 29, 10, 30, 11, 31, 12, 32,   //
-                                            39, 69, 40, 70, 41, 71, 42, 72,  //
-                                        }));
-  }
-
-  if (TestFixture::tensor_type == TensorType_INT16) {
-    EXPECT_THAT(m0.GetOutput<int16_t>(),
-                ElementsAreArray({2441, 7581, 2698, 7838, 2955,    //
-                                  8095, 3212, 8352, 10151, 17861,  //
-                                  10408, 18118, 10665, 18375, 10922, 18632}));
-  }
 }
 
 TEST(ConcatenationOpTest, FourInputsQuantizedMixedRange) {
@@ -445,6 +445,28 @@ TEST(ConcatenationOpTest, TwoInputsTwoAxesNegativeAxesNonQuantized) {
   m1_negative.Invoke();
   EXPECT_THAT(m1_negative.GetOutput<uint8_t>(),
               ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
+}
+
+TEST(ConcatenationOpTest, BoolTypeOneInput) {
+  BoolConcatenationOpModel m0({TensorType_BOOL, {2, 1, 2}}, /*axis=*/1,
+                              /*num_inputs=*/1);
+  m0.SetInput(0, {true, false, false, true});
+  m0.Invoke();
+  EXPECT_THAT(m0.GetOutput(), ElementsAreArray({true, false, false, true}));
+}
+
+TEST(ConcatenationOpTest, BoolTypeTwoInputs) {
+  BoolConcatenationOpModel m0(
+      {{TensorType_BOOL, {2, 1, 2}}, {TensorType_BOOL, {2, 3, 2}}},
+      /*axis=*/1, /*num_inputs=*/2, TensorType_BOOL);
+  m0.SetInput(0, {false, false, false, false});
+  m0.SetInput(1, {true, true, true, true, true, true, true, true, true, true,
+                  true, true});
+  m0.Invoke();
+  EXPECT_THAT(
+      m0.GetOutput(),
+      ElementsAreArray({false, false, true, true, true, true, true, true, false,
+                        false, true, true, true, true, true, true}));
 }
 
 }  // namespace

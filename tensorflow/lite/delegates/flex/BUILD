@@ -1,5 +1,8 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_opts_nortti_if_lite_protos")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_cc_library")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 #
 # This is a TF Lite delegate that is powered by TensorFlow's Eager.
@@ -10,7 +13,7 @@ package(
         "//tensorflow/lite/android:__subpackages__",
         "//tensorflow/lite/toco/tflite:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files([
@@ -58,12 +61,14 @@ tf_cc_test(
 
 # Define the standard flex delegate library, that pulls in the standard set
 # of TensorFlow ops and kernels, using tflite_flex_cc_library with no
-# portable_tensorflow_lib parameter. Custom flex delegate can be defined with
-# tflite_flex_cc_library if the parameter portable_tensorflow_lib
-# is provided. Ex:
+# models parameter. Custom flex delegate can be defined with
+# tflite_flex_cc_library if the parameter models is provided. Tensorflow
+# user-provided ops could also be supported by passing to additional_deps.
+# Ex:
 # tflite_flex_cc_library(
-#   name = "sample",
-#   portable_tensorflow_lib = custom_portable_tensorflow_lib,
+#   name = "sample_delegate",
+#   models = ["model1.tflite", "model2.tflite"],
+#   additional_deps = ["your_custom_ops_lib"],
 # )
 tflite_flex_cc_library(
     name = "delegate",
@@ -82,6 +87,7 @@ cc_library(
     hdrs = [
         "delegate.h",
     ],
+    copts = tflite_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":buffer_map",
@@ -92,6 +98,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:macros",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
@@ -121,10 +128,13 @@ tf_cc_test(
     name = "delegate_test",
     size = "small",
     srcs = ["delegate_test.cc"],
-    tags = ["no_gpu"],  # GPU + flex is not officially supported.
+    tags = [
+        "no_gpu",  # GPU + flex is not officially supported.
+    ],
     deps = [
         ":delegate",
         ":test_util",
+        "//tensorflow/lite:shared_library",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
@@ -137,7 +147,11 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":buffer_map",
+        ":subgraph_resource",
+        ":util",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/lite:cc_api",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -149,6 +163,7 @@ cc_library(
             "//tensorflow/core/common_runtime/eager:context",
             "//tensorflow/core/common_runtime/eager:core",
             "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
             "//tensorflow/core:lib",
         ],
     }),
@@ -160,12 +175,35 @@ tf_cc_test(
     srcs = ["delegate_data_test.cc"],
     deps = [
         ":delegate_data",
+        "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/platform:protobuf",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/testing:util",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
+)
+
+cc_library(
+    name = "subgraph_resource",
+    hdrs = ["subgraph_resource.h"],
+    deps = [
+        "//tensorflow/lite:cc_api",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework_headers_lib",
+        ],
+    }),
 )
 
 tf_cc_test(
@@ -174,8 +212,8 @@ tf_cc_test(
     srcs = ["kernel_test.cc"],
     tags = ["no_gpu"],  # GPU + flex is not officially supported.
     deps = [
+        ":delegate",
         ":delegate_data",
-        ":delegate_only_runtime",
         ":test_util",
         "@com_google_googletest//:gtest",
     ],
@@ -238,6 +276,19 @@ cc_library(
         "allowlisted_flex_ops.h",
         "allowlisted_flex_ops_internal.h",
     ],
+    compatible_with = get_compatible_with_cloud(),
+    visibility = internal_visibility_allowlist(),
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+        ],
+    }),
 )
 
 tf_cc_test(
@@ -258,6 +309,43 @@ tf_cc_test(
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "//tensorflow/core:framework",
+        ],
+    }),
+)
+
+# Alias to support selective build of image ops.
+# TODO(b/163285312): Remove after tensorflow/core refactoring completed.
+cc_library(
+    name = "portable_images_lib",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:portable_jpeg_internal",
+        "//tensorflow/core/lib/png:png_io",
+    ],
+)
+
+cc_library(
+    name = "tflite_subgraph_execute",
+    srcs = ["tflite_subgraph_execute.cc"],
+    deps = [
+        ":subgraph_resource",
+        "//tensorflow/lite:cc_api",
+        "//tensorflow/lite:string_util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:kernel_util",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:lib",
             "//tensorflow/core:framework",
         ],
     }),

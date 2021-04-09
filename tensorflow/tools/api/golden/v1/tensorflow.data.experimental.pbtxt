@@ -25,6 +25,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "ExternalStatePolicy"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
     name: "INFINITE_CARDINALITY"
     mtype: "<type \'int\'>"
   }
@@ -51,6 +55,10 @@ tf_module {
   member {
     name: "Reducer"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SHARD_HINT"
+    mtype: "<type \'int\'>"
   }
   member {
     name: "SqlDataset"
@@ -137,6 +145,10 @@ tf_module {
     argspec: "args=[\'batch_size\', \'row_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "enable_debug_mode"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "enumerate_dataset"
     argspec: "args=[\'start\'], varargs=None, keywords=None, defaults=[\'0\'], "
   }
@@ -166,7 +178,7 @@ tf_module {
   }
   member_method {
     name: "ignore_errors"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'log_warning\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "latency_stats"
@@ -182,7 +194,7 @@ tf_module {
   }
   member_method {
     name: "make_saveable_from_iterator"
-    argspec: "args=[\'iterator\', \'external_state_policy\'], varargs=None, keywords=None, defaults=[\'fail\'], "
+    argspec: "args=[\'iterator\', \'external_state_policy\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "map_and_batch"

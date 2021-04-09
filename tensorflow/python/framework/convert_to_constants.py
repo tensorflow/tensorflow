@@ -28,6 +28,7 @@ from tensorflow.core.framework import variable_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
@@ -294,7 +295,7 @@ class _Node(_Convertible):
       The object referred to by 'input_name'.
     """
 
-    # The logic below oversimplifes the semantics, but is good enough for the
+    # The logic below oversimplifies the semantics, but is good enough for the
     # purposes of converting to constants. The introduction of new types of
     # operations may change this, forcing the code to be more generic.
     #
@@ -612,12 +613,14 @@ class _While(_FunctionCaller):
   def convert_variable_to_constant(self, incoming_edge, tensor_data):
     super(_While, self).convert_variable_to_constant(incoming_edge, tensor_data)
     node = self.converted_self()
-    node.node.attr["output_shapes"].list.shape[
-        incoming_edge.destination.index].CopyFrom(
-            tensor_shape_pb2.TensorShapeProto(dim=[
-                tensor_shape_pb2.TensorShapeProto.Dim(size=dim)
-                for dim in tensor_data.numpy.shape
-            ]))
+    if node.node.attr["output_shapes"].list.shape:
+      node.node.attr["output_shapes"].list.shape[
+          incoming_edge.destination.index].CopyFrom(
+              tensor_shape_pb2.TensorShapeProto(dim=[
+                  tensor_shape_pb2.TensorShapeProto.Dim(size=dim)
+                  for dim in tensor_data.numpy.shape
+              ]))
+
     # The while's body inputs and outputs have the same type, so here we can go
     # ahead and change that function's output type.
     body_name = self._node.attr["body"].func.name
@@ -711,12 +714,12 @@ class _ConverterData(object):
   def __init__(self,
                graph_def,
                variable_names_allowlist=None,
-               variable_names_blacklist=None):
+               variable_names_denylist=None):
     self._graph_def = graph_def
     self._tensor_data = {}
     self._build_node_defs_list()
     self._variable_names_allowlist = variable_names_allowlist
-    self._variable_names_blacklist = variable_names_blacklist
+    self._variable_names_denylist = variable_names_denylist
 
   @property
   def graph_def(self):
@@ -742,8 +745,8 @@ class _ConverterData(object):
     """Checks whether to convert the given variable name to a constant."""
     return (self._variable_names_allowlist is None or
             name in self._variable_names_allowlist) and (
-                self._variable_names_blacklist is None or
-                name not in self._variable_names_blacklist)
+                self._variable_names_denylist is None or
+                name not in self._variable_names_denylist)
 
   def _build_node_defs_list(self):
     """Builds the list of NodeDefs in the GraphDef.
@@ -777,19 +780,19 @@ class _FunctionConverterData(_ConverterData):
                lower_control_flow,
                aggressive_inlining,
                variable_names_allowlist=None,
-               variable_names_blacklist=None):
+               variable_names_denylist=None):
     """Creates the conversion data for the given function.
 
     Args:
       func: ConcreteFunction.
       lower_control_flow: Boolean indicating whether or not to lower control
         flow ops such as If and While.
-      aggressive_inlining: Boolean indicating whether or not to to aggressive
+      aggressive_inlining: Boolean indicating whether or not to do aggressive
         function inlining (might be unsafe if function has stateful ops, not
         properly connected to control outputs).
       variable_names_allowlist: The set of variable names to convert (by
         default, all variables are converted).
-      variable_names_blacklist: The set of variable names to omit converting to
+      variable_names_denylist: The set of variable names to omit converting to
         constants.
     """
 
@@ -800,7 +803,7 @@ class _FunctionConverterData(_ConverterData):
     super(_FunctionConverterData, self).__init__(
         graph_def,
         variable_names_allowlist=variable_names_allowlist,
-        variable_names_blacklist=variable_names_blacklist)
+        variable_names_denylist=variable_names_denylist)
     self._build_tensor_data()
 
   def _build_tensor_data(self):
@@ -820,7 +823,7 @@ class _FunctionConverterData(_ConverterData):
       if idx in map_index_to_variable:
         data = map_index_to_variable[idx].numpy()
       else:
-        data = val_tensor.numpy()
+        data = np.array(val_tensor.numpy())
       self._tensor_data[tensor_name] = _TensorData(
           numpy=data,
           dtype=dtypes.as_dtype(data.dtype).as_datatype_enum,
@@ -850,12 +853,12 @@ class _SessionConverterData(_ConverterData):
                graph_def,
                output_node_names,
                variable_names_allowlist=None,
-               variable_names_blacklist=None):
+               variable_names_denylist=None):
     graph_def = graph_util.extract_sub_graph(graph_def, output_node_names)
     super(_SessionConverterData, self).__init__(
         graph_def,
         variable_names_allowlist=variable_names_allowlist,
-        variable_names_blacklist=variable_names_blacklist)
+        variable_names_denylist=variable_names_denylist)
 
     nodes_to_convert = []
     tensor_names_to_convert = []
@@ -916,7 +919,7 @@ def _run_inline_graph_optimization(func, lower_control_flow,
     func: ConcreteFunction.
     lower_control_flow: Boolean indicating whether or not to lower control flow
       ops such as If and While. (default True)
-    aggressive_inlining: Boolean indicating whether or not to to aggressive
+    aggressive_inlining: Boolean indicating whether or not to do aggressive
       function inlining (might be unsafe if function has stateful ops not
       properly connected to control outputs).
 
@@ -996,6 +999,12 @@ def _construct_concrete_function(func, output_graph_def,
 
   new_input_names = [tensor.name for tensor in not_converted_inputs]
   new_output_names = [tensor.name for tensor in func.outputs]
+
+  # Remove old functions to use updated functions from graph def.
+  for f in output_graph_def.library.function:
+    if context.context().has_function(f.signature.name):
+      context.context().remove_function(f.signature.name)
+
   new_func = wrap_function.function_from_graph_def(output_graph_def,
                                                    new_input_names,
                                                    new_output_names)
@@ -1055,7 +1064,7 @@ def convert_variables_to_constants_v2(func,
     func: ConcreteFunction.
     lower_control_flow: Boolean indicating whether or not to lower control flow
       ops such as If and While. (default True)
-    aggressive_inlining: Boolean indicating whether or not to to aggressive
+    aggressive_inlining: Boolean indicating whether or not to do aggressive
       function inlining (might be unsafe if function has stateful ops, not
       properly connected to control outputs). (default False)
 
@@ -1088,7 +1097,7 @@ def convert_variables_to_constants_v2_as_graph(func,
     func: ConcreteFunction.
     lower_control_flow: Boolean indicating whether or not to lower control flow
       ops such as If and While. (default True)
-    aggressive_inlining: Boolean indicating whether or not to to aggressive
+    aggressive_inlining: Boolean indicating whether or not to do aggressive
       function inlining (might be unsafe if function has stateful ops, not
       properly connected to control outputs).
 
@@ -1115,7 +1124,7 @@ def convert_variables_to_constants_from_session_graph(
     graph_def,
     output_node_names,
     variable_names_allowlist=None,
-    variable_names_blacklist=None):
+    variable_names_denylist=None):
   """Replaces all the variables in a graph with constants of the same values.
 
   This function works similarly to convert_variables_to_constants_v2, but it
@@ -1131,17 +1140,27 @@ def convert_variables_to_constants_from_session_graph(
     output_node_names: List of name strings for the result nodes of the graph.
     variable_names_allowlist: The set of variable names to convert (by default,
       all variables are converted).
-    variable_names_blacklist: The set of variable names to omit converting to
+    variable_names_denylist: The set of variable names to omit converting to
       constants.
 
   Returns:
     An optimized GraphDef.
   """
+  # TODO(b/176982859): Find a more satisfying way to update shape information
+  # than clearing it, or migrate users to a workflow that does not require
+  # freezing.
+  for function in graph_def.library.function:
+    if "_input_shapes" in function.attr:
+      for input_arg, shape_attribute in zip(
+          function.signature.input_arg,
+          function.attr["_input_shapes"].list.shape):
+        if dtypes.as_dtype(input_arg.type) == dtypes.resource:
+          shape_attribute.unknown_rank = True
   graph_def, _ = _replace_variables_by_constants(
       converter_data=_SessionConverterData(
           session=session,
           graph_def=graph_def,
           output_node_names=output_node_names,
           variable_names_allowlist=variable_names_allowlist,
-          variable_names_blacklist=variable_names_blacklist))
+          variable_names_denylist=variable_names_denylist))
   return graph_def

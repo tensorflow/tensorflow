@@ -21,13 +21,17 @@ import tempfile
 
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import summary_ops_v2
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
 _DEFAULT_MAX_QUEUE = 10
 
 
+# TODO(b/147325552): Remove this API after we switch to using C++ based
+# implementation for tf.data options (on 4/12/2021).
 @tf_export("data.experimental.StatsAggregator", v1=[])
+@deprecation.deprecated_endpoints("data.experimental.StatsAggregator")
 class StatsAggregatorV2(object):
   """A stateful resource that aggregates statistics from one or more iterators.
 
@@ -60,6 +64,12 @@ class StatsAggregatorV2(object):
   different ways of exporting statistics, and add more types of statistics.
   """
 
+  # This deprecation warning on __init__ is necessary to print deprecation
+  # messages.
+  @deprecation.deprecated(
+      None,
+      "Use TF Profiler to analyze performance instead."
+  )
   def __init__(self):
     self._resource = ged_ops.stats_aggregator_handle_v2()
     # There could be a conflict with multiple file writer in the same logdir,
@@ -78,7 +88,10 @@ class StatsAggregatorV2(object):
                                                 self._summary_writer._resource)  # pylint: disable=protected-access
 
 
+# TODO(b/147325552): Remove this API after we switch to using C++ based
+# implementation for tf.data options (on 4/12/2021).
 @tf_export(v1=["data.experimental.StatsAggregator"])
+@deprecation.deprecated_endpoints("data.experimental.StatsAggregator")
 class StatsAggregatorV1(object):
   """A stateful resource that aggregates statistics from one or more iterators.
 
@@ -123,6 +136,12 @@ class StatsAggregatorV1(object):
   different ways of exporting statistics, and add more types of statistics.
   """
 
+  # This deprecation warning on __init__ is necessary to print deprecation
+  # messages.
+  @deprecation.deprecated(
+      None,
+      "Use TF Profiler to analyze performance instead."
+  )
   def __init__(self):
     """Creates a `StatsAggregator`."""
     self._resource = ged_ops.stats_aggregator_handle()

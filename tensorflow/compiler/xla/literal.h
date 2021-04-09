@@ -94,9 +94,17 @@ class LiteralBase {
   // element Literals.
   string ToString() const;
 
+  // Similar to ToString, but return the result in a compact
+  // one-line form.
+  string ToStringOneline() const;
+
   // Returns a string representation of the literal value which does *not*
   // include the shape string.
   string ToStringWithoutShape() const;
+
+  // Similar to ToStringWithoutShape, but return the result in a compact
+  // one-line form.
+  string ToStringWithoutShapeOneline() const;
 
   // Returns a string representation of the literal value which includes the
   // shape string with its layout.does *not* include the shape string.
@@ -111,6 +119,10 @@ class LiteralBase {
   // array-shaped and dense.
   template <typename NativeT>
   NativeT Get(absl::Span<const int64> multi_index) const;
+
+  // Get the dynamic size on dim_index in the literal at the given shape_index.
+  int32 GetDynamicSize(int64 dim_index, const ShapeIndex& shape_index) const;
+  int32 GetDynamicSize(int64 dim_index) const;
 
   // Returns the element value at index (0, ..., 0), however many zeroes are
   // required for that index.
@@ -281,6 +293,18 @@ class LiteralBase {
   // than being limited to a single array within the shape.
   Literal Relayout(const Shape& shape_with_layout) const;
 
+  // Generate a new literal whose static sizes are equal to the previous
+  // literal's dynamic sizes.
+  Literal ToStatic() const;
+
+  // Expand a static literal into a new one with a bounded dyanmic literal. The
+  // static dimensions of the original literal becomes dynamic dimensions of the
+  // new literal, where the argument `bounded_shape` becomes the bounded shape
+  // of the new literal.
+  //
+  // Precondition: bounded_shape.is_dynamic()
+  Literal ToBoundedDynamic(const Shape& bounded_shape) const;
+
   // Creates a new literal by reshaping this literal to have the given
   // dimensions. The total number of elements must not change; The
   // implementation currently only supports monotonic dim0-major layouts.
@@ -354,9 +378,21 @@ class LiteralBase {
     template <typename NativeT>
     void Set(absl::Span<const int64> index, NativeT value);
 
+    int32 GetDynamicSize(int64 dim_index) const;
+    void SetDynamicSize(int64 dim_index, int32 size);
     // Gets/sets the buffer holding the array data.
     char* buffer() const { return buffer_; }
     void set_buffer(char* buffer) { buffer_ = buffer; }
+
+    // Gets/sets the buffer holding dynamic sizes.
+    int32* dynamic_size_buffer() const { return dynamic_size_buffer_; }
+    void set_dynamic_size_buffer(int32* dynamic_size_buffer) {
+      dynamic_size_buffer_ = dynamic_size_buffer;
+    }
+
+    int64 dynamic_size_buffer_bytes() const {
+      return subshape().dimensions_size() * sizeof(int32);
+    }
 
     // Gets or sets the subshape of this piece. This reference points to a
     // subshape within the shape in the containing Literal (Literal::shape_).
@@ -434,15 +470,21 @@ class LiteralBase {
     }
 
     // Returns true if this piece and 'other' contain the same data. This piece
-    // and 'other' must be array-shaped and compatible.
+    // and 'other' must be array-shaped and compatible. If a literal has dynamic
+    // shape, comparison is done only for the valid elements.
     bool EqualElements(const Piece& other) const;
+
+    // Returns true if this piece and other pieces have the same dynamic
+    // dimension sizes.
+    bool EqualDynamicSize(const Piece& other) const;
 
     // Writes the shape and data (if array-shaped) into the given proto.
     void WriteToProto(LiteralProto* proto) const;
 
     // Copy the data from 'src' into this piece's buffer. Shapes of this piece
-    // and src must be compatible.
-    Status CopyFrom(const Piece& src);
+    // and src must be compatible. If only_dynamic_bound is true, only elements
+    // within dynamic bounds will be copied.
+    Status CopyFrom(const Piece& src, bool only_dynamic_bound);
 
     // Copies the data from the given proto into this piece. The shape of this
     // piece must be equal (not just compatible) to the shape of the proto.
@@ -497,8 +539,14 @@ class LiteralBase {
     bool EqualElementsInternal(const Piece& other,
                                std::vector<int64>* multi_index) const;
 
+    // Internal helper to copy elements from another given piece
+    template <typename NativeT>
+    void CopyElementsWithDynamicBound(const LiteralBase::Piece& src);
+
     // For array-shaped pieces, this is the buffer holding the literal data.
     char* buffer_ = nullptr;
+
+    int32* dynamic_size_buffer_ = nullptr;
 
     // The shape of piece. This points into the shape of the containing Literal
     // (Literal::shape_).
@@ -550,6 +598,11 @@ class MutableLiteralBase : public LiteralBase {
   // mutate the shape as this can produce malformed Literals.
   Shape* mutable_shape_do_not_use() { return shape_.get(); }
 
+  // Set the dynamic size on dim_index in the literal at the given shape_index.
+  void SetDynamicSize(int64 dim_index, const ShapeIndex& shape_index,
+                      int32 size);
+  void SetDynamicSize(int64 dim_index, int32 size);
+
   // Returns a pointer to the underlying buffer holding the array at the given
   // shape index. CHECKs if the subshape of the literal at the given ShapeIndex
   // is not array.
@@ -557,13 +610,20 @@ class MutableLiteralBase : public LiteralBase {
   // Unhide const method from parent class.
   using LiteralBase::untyped_data;
 
+  template <typename NativeT>
+  void MutableEachCell(
+      std::function<NativeT(absl::Span<const int64> indices, NativeT value)>
+          per_cell);
+
   // Copy values from 'src_literal' rooted at 'src_shape_index' into this
   // literal rooted at 'dest_shape_index'. The subshape of this literal rooted
   // at 'dest_shape_index' must be compatible with the subshape of 'src_literal'
-  // rooted at 'src_shape_index', but need not be arrays.
+  // rooted at 'src_shape_index', but need not be arrays. If only_dynamic_bound
+  // is true, only elements within dynamic bounds will be copied.
   Status CopyFrom(const LiteralSlice& src_literal,
                   const ShapeIndex& dest_shape_index = {},
-                  const ShapeIndex& src_shape_index = {});
+                  const ShapeIndex& src_shape_index = {},
+                  bool only_dynamic_bound = false);
 
   // Copies the values from src_literal, starting at src_base shape indexes,
   // to this literal, starting at dest_base, where the copy size in each
@@ -924,9 +984,32 @@ void LiteralBase::EachCell(
     return;
   }
   std::vector<int64> indices(shape().rank(), 0);
+
+  Shape shape_dynamic = shape();
+  for (int64 i = 0; i < shape_dynamic.rank(); ++i) {
+    shape_dynamic.set_dimensions(i, GetDynamicSize(i));
+  }
   do {
     per_cell(indices, Get<NativeT>(indices));
-  } while (IndexUtil::BumpIndices(shape(), absl::MakeSpan(indices)));
+  } while (IndexUtil::BumpIndices(shape_dynamic, absl::MakeSpan(indices)));
+}
+
+template <typename NativeT>
+void MutableLiteralBase::MutableEachCell(
+    std::function<NativeT(absl::Span<const int64> indices, NativeT value)>
+        per_cell) {
+  if (ShapeUtil::IsZeroElementArray(shape())) {
+    return;
+  }
+  std::vector<int64> indices(shape().rank(), 0);
+
+  Shape shape_dynamic = shape();
+  for (int64 i = 0; i < shape_dynamic.rank(); ++i) {
+    shape_dynamic.set_dimensions(i, GetDynamicSize(i));
+  }
+  do {
+    Set<NativeT>(indices, per_cell(indices, Get<NativeT>(indices)));
+  } while (IndexUtil::BumpIndices(shape_dynamic, absl::MakeSpan(indices)));
 }
 
 template <typename NativeT>

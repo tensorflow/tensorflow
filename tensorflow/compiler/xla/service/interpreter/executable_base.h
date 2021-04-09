@@ -44,6 +44,7 @@ class InterpreterExecutableBase : public Executable {
 
  protected:
   virtual StatusOr<Literal> Evaluate(
+      const ServiceExecutableRunOptions* run_options,
       const HloComputation& computation,
       absl::Span<const Literal> arg_literals) = 0;
 

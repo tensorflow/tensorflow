@@ -56,6 +56,34 @@ CHECK: private unnamed_addr constant [48 x i8]
                                 /*match_optimized_ir=*/false);
 }
 
+TEST_F(CpuOutfeedTest, OutfeedEmpty) {
+  const string hlo_text = R"(
+HloModule Outfeed
+
+ENTRY main {
+  const_a = f32[2,0] constant({{}, {}})
+  token0 = token[] after-all()
+  outfeed = token[] outfeed(f32[2,0] const_a, token0)
+  ROOT root = () tuple()
+}
+)";
+
+  string filecheck_pattern = R"(
+CHECK: private unnamed_addr constant [0 x i8]
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  CpuAotCompilationOptions options{
+      /*triple=*/kTargetTripleForHost, /*cpu_name=*/kTargetCpuForHost,
+      /*features=*/"",
+      /*entry_point_name=*/"entry",
+      /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::Static};
+
+  CompileAheadOfTimeAndVerifyIr(std::move(module), options, filecheck_pattern,
+                                /*match_optimized_ir=*/false);
+}
+
 TEST_F(CpuOutfeedTest, OutfeedTokenInTuple) {
   const string hlo_text = R"(
 HloModule OutfeedTokenInTuple

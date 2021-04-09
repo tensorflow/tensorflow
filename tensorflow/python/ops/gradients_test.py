@@ -749,7 +749,7 @@ class HessianTest(test_util.TensorFlowTestCase):
     mat_value = rng.randn(m, m).astype("float32")
     x_value = rng.randn(m).astype("float32")
     hess_value = mat_value + mat_value.T
-    with self.session(use_gpu=True):
+    with self.session():
       mat = constant_op.constant(mat_value)
       x = constant_op.constant(x_value)
       x_mat_x = math_ops.reduce_sum(x[:, None] * mat * x[None, :])
@@ -766,7 +766,7 @@ class HessianTest(test_util.TensorFlowTestCase):
     mat_values = [rng.randn(m, m).astype("float32") for _ in range(n)]
     x_values = [rng.randn(m).astype("float32") for _ in range(n)]
     hess_values = [mat_value + mat_value.T for mat_value in mat_values]
-    with self.session(use_gpu=True):
+    with self.session():
       mats = [constant_op.constant(mat_value) for mat_value in mat_values]
       xs = [constant_op.constant(x_value) for x_value in x_values]
       xs_mats_xs = [
@@ -781,7 +781,7 @@ class HessianTest(test_util.TensorFlowTestCase):
   @test_util.run_v1_only("b/120545219")
   def testHessianInvalidDimension(self):
     for shape in [(10, 10), None]:
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         x = array_ops.placeholder(dtypes.float32, shape)
         # Expect a ValueError because the dimensions are wrong
         with self.assertRaises(ValueError):
@@ -795,7 +795,7 @@ class HessianTest(test_util.TensorFlowTestCase):
     m = 3
     rng = np.random.RandomState([1, 2, 3])
     x_value = rng.randn(m, m).astype("float32")
-    with self.session(use_gpu=True):
+    with self.session():
       x = constant_op.constant(x_value)
       x_square = math_ops.reduce_sum(
           math_ops.matmul(array_ops.transpose(x), x) * 0.5
@@ -815,7 +815,7 @@ class HessianTest(test_util.TensorFlowTestCase):
     n = 4
     rng = np.random.RandomState([1, 2, 3])
     x_value = rng.randn(m, n).astype("float32")
-    with self.session(use_gpu=True):
+    with self.session():
       x = constant_op.constant(x_value)
       x_square = math_ops.reduce_sum(
           math_ops.matmul(array_ops.transpose(x), x) * 0.5
@@ -1172,6 +1172,30 @@ class CustomGradientTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       dw = self.evaluate(math_ops.reduce_sum(grads[1]))
       self.assertEqual(12., dw)
 
+  def testCustomGradientWithCapture(self):
+    with ops.Graph().as_default():
+      x = constant(3.)
+
+      @framework_function.Defun(dtypes.float32)
+      def F(y):
+
+        @custom_gradient.custom_gradient
+        def MyMultiply(x1, x2):
+          result = x1 * x2
+
+          def Grad(dy):
+            # Switched the ordering here.
+            return [dy * x1, dy * x2]
+
+          return result, Grad
+
+        res = MyMultiply(x, y)
+        return gradients.gradients(res, [y])
+
+      y = constant(5.)
+      dy = F(y)
+      self.assertAllEqual(5., self.evaluate(dy))
+
   def testCustomGradientWithVariablesNoFalsePositives(self):
 
     @custom_gradient.custom_gradient
@@ -1420,7 +1444,8 @@ class TensorListGradientsTest(test_util.TensorFlowTestCase):
       self.assertEqual(self.evaluate(grad), 5.)
 
 
-class VariablesGradientTest(test_util.TensorFlowTestCase):
+class VariablesGradientTest(test_util.TensorFlowTestCase,
+                            parameterized.TestCase):
 
   def _TestFnVariablesGradient(self, inputs, test_fn, vars_to_grad):
     """Returns gradients of `test_model` with respect to `vars_to_grad`."""
@@ -1526,8 +1551,8 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
       for g, g_re in zip(grads, grads_re):
         self.assertAllClose(g, g_re)
 
-  @test_util.deprecated_graph_mode_only
-  def testFnRecomputeWithScopeGradientTape(self):
+  @parameterized.parameters(set((True, context.executing_eagerly())))
+  def testFnRecomputeWithScopeGradient(self, use_tape):
     """Checks that recompute_grad works with var scope and GradientTape."""
 
     def TestFn(input_t):
@@ -1537,7 +1562,6 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
             shape=10,
             trainable=True,
         )
-        self.evaluate(test_var.assign(np.ones([10])))
         return input_t * test_var
 
     test_input_t = constant(np.zeros((10, 10), dtype=np.float32))
@@ -1546,49 +1570,18 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
         "output_scope", reuse=variable_scope.AUTO_REUSE, use_resource=True):
       test_fn_re = custom_gradient.recompute_grad(TestFn)
 
-      with backprop.GradientTape(persistent=True) as tape:
+      with test_util.AbstractGradientTape(
+          use_tape=use_tape, persistent=True) as tape:
         out_re = test_fn_re(test_input_t)
         out = TestFn(test_input_t)
 
+    self.evaluate(variables.global_variables_initializer())
     grads_re = tape.gradient(out_re, variables.trainable_variables())
     grads = tape.gradient(out, variables.trainable_variables())
 
     grads_re = self.evaluate(grads_re)
     grads = self.evaluate(grads)
     for g, g_re in zip(grads, grads_re):
-      self.assertAllClose(g, g_re)
-      self.assertAllClose(g, g_re)
-
-  @test_util.deprecated_graph_mode_only
-  def testFnRecomputeWithScopeGradients(self):
-    """Checks that recompute_grad works with var scope and gradients(..)."""
-
-    def TestFn(input_t):
-      with variable_scope.variable_scope("inner_scope"):
-        test_var = variable_scope.get_variable(
-            name="test_var",
-            shape=10,
-            trainable=True,
-        )
-        return input_t * test_var
-
-    test_input_t = constant(np.zeros((10, 10), dtype=np.float32))
-
-    with variable_scope.variable_scope(
-        "output_scope", reuse=variable_scope.AUTO_REUSE, use_resource=True):
-      test_fn_re = custom_gradient.recompute_grad(TestFn)
-      out_re = test_fn_re(test_input_t)
-      out = TestFn(test_input_t)
-
-    init = variables.global_variables_initializer()
-    self.evaluate(init)
-    grads_re = gradients.gradients(out_re, variables.trainable_variables())
-    grads = gradients.gradients(out, variables.trainable_variables())
-
-    grads_re = self.evaluate(grads_re)
-    grads = self.evaluate(grads)
-    for g, g_re in zip(grads, grads_re):
-      self.assertAllClose(g, g_re)
       self.assertAllClose(g, g_re)
 
   @test_util.run_in_graph_and_eager_modes

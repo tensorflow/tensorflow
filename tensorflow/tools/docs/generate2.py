@@ -49,6 +49,15 @@ from tensorflow.python.util import tf_inspect
 # Caution: the google and oss versions of this import are different.
 import base_dir
 
+# pylint: disable=g-import-not-at-top
+try:
+  from tensorflow.python.types import doc_typealias
+  _EXTRA_DOCS = getattr(doc_typealias, "_EXTRA_DOCS", {})
+  del doc_typealias
+except ImportError:
+  _EXTRA_DOCS = {}
+# pylint: enable=g-import-not-at-top
+
 # `tf` has an `__all__` that doesn't list important things like `keras`.
 # The doc generator recognizes `__all__` as the list of public symbols.
 # So patch `tf.__all__` to list everything.
@@ -76,6 +85,10 @@ flags.DEFINE_string(
     "site_path", "",
     "The path prefix (up to `.../api_docs/python`) used in the "
     "`_toc.yaml` and `_redirects.yaml` files")
+
+flags.DEFINE_bool("gen_report", False,
+                  ("Generate an API report containing the health of the"
+                   "docstrings of the public API."))
 
 _PRIVATE_MAP = {
     "tf": ["python", "core", "compiler", "examples", "tools", "contrib"],
@@ -151,35 +164,15 @@ class TfExportAwareVisitor(doc_generator_visitor.DocGeneratorVisitor):
     return (canonical_score,) + scores
 
 
-def _hide_layer_and_module_methods():
-  """Hide methods and properties defined in the base classes of keras layers."""
-  # __dict__ only sees attributes defined in *this* class, not on parent classes
-  module_contents = list(tf.Module.__dict__.items())
-  layer_contents = list(tf.keras.layers.Layer.__dict__.items())
-
-  for name, obj in module_contents + layer_contents:
-    if name == "__init__":
-      continue
-
-    if isinstance(obj, property):
-      obj = obj.fget
-
-    if isinstance(obj, (staticmethod, classmethod)):
-      obj = obj.__func__
-
-    try:
-      doc_controls.do_not_doc_in_subclasses(obj)
-    except AttributeError:
-      pass
-
-
-def build_docs(output_dir, code_url_prefix, search_hints=True):
+def build_docs(output_dir, code_url_prefix, search_hints, gen_report):
   """Build api docs for tensorflow v2.
 
   Args:
     output_dir: A string path, where to put the files.
     code_url_prefix: prefix for "Defined in" links.
     search_hints: Bool. Include meta-data search hints at the top of each file.
+    gen_report: Bool. Generates an API report containing the health of the
+      docstrings of the public API.
   """
   # The custom page will be used for raw_ops.md not the one generated above.
   doc_controls.set_custom_page_content(tf.raw_ops, generate_raw_ops_doc())
@@ -189,7 +182,16 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
     if not name.startswith("_"):
       doc_controls.hide_from_search(obj)
 
-  _hide_layer_and_module_methods()
+  for cls in [tf.Module, tf.keras.layers.Layer, tf.keras.optimizers.Optimizer]:
+    doc_controls.decorate_all_class_attributes(
+        decorator=doc_controls.do_not_doc_in_subclasses,
+        cls=cls,
+        skip=["__init__"])
+
+  try:
+    doc_controls.do_not_generate_docs(tf.__internal__)
+  except AttributeError:
+    pass
 
   try:
     doc_controls.do_not_generate_docs(tf.__operators__)
@@ -226,9 +228,15 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
       code_url_prefix=code_url_prefixes,
       site_path=FLAGS.site_path,
       visitor_cls=TfExportAwareVisitor,
-      private_map=_PRIVATE_MAP)
+      private_map=_PRIVATE_MAP,
+      gen_report=gen_report,
+      extra_docs=_EXTRA_DOCS
+  )
 
   doc_generator.build(output_dir)
+
+  if gen_report:
+    return
 
   out_path = pathlib.Path(output_dir)
 
@@ -241,6 +249,8 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
           "python/ops/nn_impl.py",
       "tf/keras/Model.md":
           "tensorflow/python/keras/engine/training.py",
+      "tf/keras/preprocessing/image/random_brightness.md":
+          "keras_preprocessing/image/affine_transformations.py"
   }
 
   all_passed = True
@@ -285,7 +295,8 @@ def main(argv):
   build_docs(
       output_dir=FLAGS.output_dir,
       code_url_prefix=FLAGS.code_url_prefix,
-      search_hints=FLAGS.search_hints)
+      search_hints=FLAGS.search_hints,
+      gen_report=FLAGS.gen_report,)
 
 
 if __name__ == "__main__":

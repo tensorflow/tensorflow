@@ -38,12 +38,12 @@ class AnnotatedTraceMe {
     bool annotation_enabled = ScopedAnnotation::IsEnabled();
     bool traceme_enabled = TraceMe::Active(level);
     if (TF_PREDICT_FALSE(annotation_enabled || traceme_enabled)) {
-      string label = name_generator();
+      string name = name_generator();
       if (annotation_enabled) {
-        scoped_annotation_.emplace(absl::string_view(label));
+        scoped_annotation_.emplace(absl::string_view(name));
       }
       if (TF_PREDICT_TRUE(traceme_enabled)) {
-        trace_me_.emplace(std::move(label), level);
+        trace_me_.emplace([&name] { return std::move(name); }, level);
       }
     }
   }

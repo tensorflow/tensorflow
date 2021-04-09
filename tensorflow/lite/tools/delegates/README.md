@@ -1,10 +1,11 @@
 # TFLite Delegate Utilities for Tooling
 
 ## TFLite Delegate Registrar
+
 [A TFLite delegate registrar](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/delegates/delegate_provider.h)
 is provided here. The registrar keeps a list of TFLite delegate providers, each
 of which defines a list parameters that could be initialized from commandline
-argumenents and provides a TFLite delegate instance creation based on those
+arguments and provides a TFLite delegate instance creation based on those
 parameters. This delegate registrar has been used in TFLite evaluation tools and
 the benchmark model tool.
 
@@ -77,7 +78,7 @@ Only Android and iOS devices support GPU delegate.
     The relative priority for executions of the model in NNAPI. Should be one
     of the following: default, low, medium and high. This option requires
     Android 11+.
-*   `disable_nnapi_cpu`: `bool` (default=false) \
+*   `disable_nnapi_cpu`: `bool` (default=true) \
     Excludes the
     [NNAPI CPU reference implementation](https://developer.android.com/ndk/guides/neuralnetworks#device-assignment)
     from the possible devices to be used by NNAPI to execute the model. This
@@ -102,7 +103,7 @@ Only Android and iOS devices support GPU delegate.
 
 ### CoreML delegate provider
 *   `use_coreml`: `bool` (default=false) \
-    Whether to use the [Core ML delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/delegates/coreml).
+    Whether to use the [Core ML delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/coreml).
     This option is only available in iOS.
 *   `coreml_version`: `int` (default=0) \
     Target Core ML version for model conversion. The default value is 0 and it

@@ -34,7 +34,7 @@ ${TEST_SRCDIR}${SCRIPT_BASE_DIR}/tensorflow/lite/python/convert_file_to_c_source
   --line_width=80 \
   --include_guard="SOME_GUARD_H_" \
   --include_path="some/guard.h" \
-  --use_tensorflow_license
+  --use_tensorflow_license=True
 
 if ! grep -q 'const unsigned char g_some_array' ${OUTPUT_SOURCE_FILE}; then
   echo "ERROR: No array found in output '${OUTPUT_SOURCE_FILE}'"

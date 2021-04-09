@@ -40,7 +40,7 @@ SnappyOutputBuffer::~SnappyOutputBuffer() {
 
 Status SnappyOutputBuffer::Append(StringPiece data) { return Write(data); }
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
 Status SnappyOutputBuffer::Append(const absl::Cord& cord) {
   for (absl::string_view fragment : cord.Chunks()) {
     TF_RETURN_IF_ERROR(Append(fragment));

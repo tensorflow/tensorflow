@@ -4,15 +4,18 @@
 // CHECK-LABEL: func @min_op
 func @min_op(%lhs: memref<4x3x2x1xf32>, %rhs: memref<4x3x2x1xf32>,
              %result: memref<4x3x2x1xf32>) -> () {
+  // CHECK-NEXT: %[[NAN:.*]] = constant 0x7FC00000 : f32
   // CHECK-NEXT: affine.for %[[I:.*]] = 0 to 4 {
   // CHECK-NEXT:   affine.for %[[J:.*]] = 0 to 3 {
   // CHECK-NEXT:     affine.for %[[K:.*]] = 0 to 2 {
   // CHECK-NEXT:       affine.for %[[L:.*]] = 0 to 1 {
   // CHECK-NEXT:         %[[LHS:.*]] = affine.load %{{.*}}[%[[I]], %[[J]], %[[K]], %[[L]]] : memref<4x3x2x1xf32>
   // CHECK-NEXT:         %[[RHS:.*]] = affine.load %{{.*}}[%[[I]], %[[J]], %[[K]], %[[L]]] : memref<4x3x2x1xf32>
-  // CHECK-NEXT:         %[[MIN_PREDICATE:.*]] = cmpf "olt", %[[LHS]], %[[RHS]] : f32
+  // CHECK-NEXT:         %[[MIN_PREDICATE:.*]] = cmpf olt, %[[LHS]], %[[RHS]] : f32
   // CHECK-NEXT:         %[[MIN:.*]] = select %[[MIN_PREDICATE]], %[[LHS]], %[[RHS]] : f32
-  // CHECK-NEXT:         affine.store %[[MIN]], %{{.*}}[%[[I]], %[[J]], %[[K]], %[[L]]] : memref<4x3x2x1xf32>
+  // CHECK-NEXT:         %[[ISNAN:.*]] = cmpf uno, %[[LHS]], %[[RHS]] : f32
+  // CHECK-NEXT:         %[[MIN_NONAN:.*]] = select %[[ISNAN]], %[[NAN]], %[[MIN]] : f32
+  // CHECK-NEXT:         affine.store %[[MIN_NONAN]], %{{.*}}[%[[I]], %[[J]], %[[K]], %[[L]]] : memref<4x3x2x1xf32>
   // CHECK:      return
   "lmhlo.minimum"(%lhs, %rhs, %result) {name = "min.1"} :
       (memref<4x3x2x1xf32>, memref<4x3x2x1xf32>, memref<4x3x2x1xf32>) -> ()
@@ -69,8 +72,11 @@ func @int_div_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
 // CHECK-LABEL: func @float_max_op
 func @float_max_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
                    %result: memref<7xf32>) -> () {
-  // CHECK: %[[CHECK:.*]] = cmpf "ogt", %[[ONE:.*]], %[[TWO:.*]] : f32
-  // CHECK: select %[[CHECK]], %[[ONE]], %[[TWO]] : f32
+  // CHECK: %[[NAN:.*]] = constant 0x7FC00000 : f32
+  // CHECK: %[[CMP:.*]] = cmpf ogt, %[[LHS_IN:.*]], %[[RHS_IN:.*]] : f32
+  // CHECK: %[[MIN:.*]] = select %[[CMP]], %[[LHS_IN]], %[[RHS_IN]] : f32
+  // CHECK: %[[ISNAN:.*]] = cmpf uno, %[[LHS_IN]], %[[RHS_IN]] : f32
+  // CHECK: select %[[ISNAN]], %[[NAN]], %[[MIN]] : f32
   "lmhlo.maximum"(%lhs, %rhs, %result) {name = "max.1"}
       : (memref<7xf32>, memref<7xf32>, memref<7xf32>) -> ()
   return
@@ -79,7 +85,7 @@ func @float_max_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
 // CHECK-LABEL: func @int_max_op
 func @int_max_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
                  %result: memref<7xi32>) -> () {
-  // CHECK: %[[CHECK:.*]] = cmpi "sgt", %[[ONE:.*]], %[[TWO:.*]] : i32
+  // CHECK: %[[CHECK:.*]] = cmpi sgt, %[[ONE:.*]], %[[TWO:.*]] : i32
   // CHECK: select %[[CHECK]], %[[ONE]], %[[TWO]] : i32
   "lmhlo.maximum"(%lhs, %rhs, %result) {name = "max.1"}
       : (memref<7xi32>, memref<7xi32>, memref<7xi32>) -> ()
@@ -90,8 +96,11 @@ func @int_max_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
 // CHECK-LABEL: func @float_min_op
 func @float_min_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
                    %result: memref<7xf32>) -> () {
-  // CHECK: %[[CHECK:.*]] = cmpf "olt", %[[ONE:.*]], %[[TWO:.*]] : f32
-  // CHECK: select %[[CHECK]], %[[ONE]], %[[TWO]] : f32
+  // CHECK: %[[NAN:.*]] = constant 0x7FC00000 : f32
+  // CHECK: %[[CMP:.*]] = cmpf olt, %[[LHS_IN:.*]], %[[RHS_IN:.*]] : f32
+  // CHECK: %[[MIN:.*]] = select %[[CMP]], %[[LHS_IN]], %[[RHS_IN]] : f32
+  // CHECK: %[[ISNAN:.*]] = cmpf uno, %[[LHS_IN]], %[[RHS_IN]] : f32
+  // CHECK: select %[[ISNAN]], %[[NAN]], %[[MIN]] : f32
   "lmhlo.minimum"(%lhs, %rhs, %result) {name = "min.1"}
       : (memref<7xf32>, memref<7xf32>, memref<7xf32>) -> ()
   return
@@ -100,7 +109,7 @@ func @float_min_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
 // CHECK-LABEL: func @int_min_op
 func @int_min_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
                  %result: memref<7xi32>) -> () {
-  // CHECK: %[[CHECK:.*]] = cmpi "slt", %[[ONE:.*]], %[[TWO:.*]] : i32
+  // CHECK: %[[CHECK:.*]] = cmpi slt, %[[ONE:.*]], %[[TWO:.*]] : i32
   // CHECK: select %[[CHECK]], %[[ONE]], %[[TWO]] : i32
   "lmhlo.minimum"(%lhs, %rhs, %result) {name = "min.1"}
       : (memref<7xi32>, memref<7xi32>, memref<7xi32>) -> ()
@@ -158,7 +167,14 @@ func @float_dot_op(%lhs: memref<7x3xf32>, %rhs:
     // CHECK-NEXT:      %[[ADD:.*]] =  addf %[[MULT]], %[[RESULT]] : f32
     // CHECK-NEXT:      affine.store %[[ADD]], %{{.*}}[%[[I]], %[[J]]] : memref<7x4xf32>
     // CHECK: return
-  "lmhlo.dot"(%lhs, %rhs, %result) :
+  "lmhlo.dot"(%lhs, %rhs, %result) {
+      dot_dimension_numbers = {
+        lhs_batching_dimensions = dense<> : tensor<0xi64>,
+        rhs_batching_dimensions = dense<> : tensor<0xi64>,
+        lhs_contracting_dimensions = dense<1> : tensor<1xi64>,
+        rhs_contracting_dimensions = dense<0> : tensor<1xi64>
+      }
+    } :
     (memref<7x3xf32>, memref<3x4xf32>, memref<7x4xf32>) -> ()
   return
 }
@@ -175,7 +191,14 @@ func @int_dot_op(%lhs: memref<7x3xi32>, %rhs:
     // CHECK-NEXT:      %[[ADD:.*]] =  addi %[[MULT]], %[[RESULT]] : i32
     // CHECK-NEXT:      affine.store %[[ADD]], %{{.*}}[%[[I]], %[[J]]] : memref<7x4xi32>
     // CHECK: return
-  "lmhlo.dot"(%lhs, %rhs, %result) :
+  "lmhlo.dot"(%lhs, %rhs, %result) {
+      dot_dimension_numbers = {
+        lhs_batching_dimensions = dense<> : tensor<0xi64>,
+        rhs_batching_dimensions = dense<> : tensor<0xi64>,
+        lhs_contracting_dimensions = dense<1> : tensor<1xi64>,
+        rhs_contracting_dimensions = dense<0> : tensor<1xi64>
+      }
+     } :
     (memref<7x3xi32>, memref<3x4xi32>, memref<7x4xi32>) -> ()
   return
 }

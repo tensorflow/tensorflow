@@ -18,10 +18,11 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/portable_tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
 namespace ops {
@@ -49,12 +50,14 @@ inline int CalculatePositiveAxis(int axis, const TfLiteTensor* output_tensor) {
 // class VectorOfTensors and class VectorOfQuantizedTensors in TFLite.
 
 // Gets shapes from a list of tensors.
-inline void GetAllTensorShapes(const TfLiteContext& context,
-                               const TfLiteIntArray& tensor_list,
-                               RuntimeShape all_shapes[kMaxInputNum]) {
-  for (int i = 0; i < tensor_list.size; ++i) {
-    const TfLiteTensor* t = &context.tensors[tensor_list.data[i]];
-    RuntimeShape shape = GetTensorShape(t);
+inline void GetAllInputTensorShapes(const TfLiteContext* context,
+                                    const TfLiteNode* node,
+                                    RuntimeShape all_shapes[kMaxInputNum]) {
+  TFLITE_DCHECK(context != nullptr);
+  TFLITE_DCHECK(node != nullptr);
+  for (int i = 0; i < node->inputs->size; ++i) {
+    const TfLiteEvalTensor* t = tflite::micro::GetEvalInput(context, node, i);
+    RuntimeShape shape = tflite::micro::GetTensorShape(t);
     all_shapes[i].ReplaceWith(shape.DimensionsCount(), shape.DimsData());
   }
 }
@@ -69,12 +72,14 @@ inline void GetShapesPointers(const RuntimeShape* shapes, size_t num,
 
 // Gets data pointers from a list of tensors.
 template <typename T>
-inline void GetAllTensorData(const TfLiteContext& context,
-                             const TfLiteIntArray& tensor_list,
-                             T* all_data[kMaxInputNum]) {
-  for (int i = 0; i < tensor_list.size; ++i) {
-    const TfLiteTensor* t = &context.tensors[tensor_list.data[i]];
-    all_data[i] = GetTensorData<T>(t);
+inline void GetAllInputTensorData(const TfLiteContext* context,
+                                  const TfLiteNode* node,
+                                  T* all_data[kMaxInputNum]) {
+  TFLITE_DCHECK(context != nullptr);
+  TFLITE_DCHECK(node != nullptr);
+  for (int i = 0; i < node->inputs->size; ++i) {
+    const TfLiteEvalTensor* t = tflite::micro::GetEvalInput(context, node, i);
+    all_data[i] = tflite::micro::GetTensorData<T>(t);
   }
 }
 
@@ -84,18 +89,19 @@ void EvalUnquantized(TfLiteContext* context, TfLiteNode* node) {
   RuntimeShape inputs_shape[kMaxInputNum];
   const RuntimeShape* inputs_shape_ptr[kMaxInputNum];
   const data_type* inputs_data[kMaxInputNum];
-  GetAllTensorShapes(*context, *node->inputs, inputs_shape);
+  GetAllInputTensorShapes(context, node, inputs_shape);
   GetShapesPointers(inputs_shape, node->inputs->size, inputs_shape_ptr);
-  GetAllTensorData(*context, *node->inputs, inputs_data);
+  GetAllInputTensorData(context, node, inputs_data);
 
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
 
   TFLITE_DCHECK(node->user_data != nullptr);
   const OpData* data = static_cast<const OpData*>(node->user_data);
 
   reference_ops::Concatenation(data->params, inputs_shape_ptr, inputs_data,
-                               GetTensorShape(output),
-                               GetTensorData<data_type>(output));
+                               tflite::micro::GetTensorShape(output),
+                               tflite::micro::GetTensorData<data_type>(output));
 }
 
 void EvalQuantizedUInt8(TfLiteContext* context, TfLiteNode* node) {
@@ -103,28 +109,25 @@ void EvalQuantizedUInt8(TfLiteContext* context, TfLiteNode* node) {
   RuntimeShape inputs_shape[kMaxInputNum];
   const RuntimeShape* inputs_shape_ptr[kMaxInputNum];
   const uint8_t* inputs_data[kMaxInputNum];
-  GetAllTensorShapes(*context, *node->inputs, inputs_shape);
+  GetAllInputTensorShapes(context, node, inputs_shape);
   GetShapesPointers(inputs_shape, node->inputs->size, inputs_shape_ptr);
-  GetAllTensorData(*context, *node->inputs, inputs_data);
+  GetAllInputTensorData(context, node, inputs_data);
 
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
 
   TFLITE_DCHECK(node->user_data != nullptr);
   const OpData* data = static_cast<const OpData*>(node->user_data);
 
-  reference_ops::ConcatenationWithScaling(data->params, inputs_shape_ptr,
-                                          inputs_data, GetTensorShape(output),
-                                          GetTensorData<uint8>(output));
+  reference_ops::ConcatenationWithScaling(
+      data->params, inputs_shape_ptr, inputs_data,
+      tflite::micro::GetTensorShape(output),
+      tflite::micro::GetTensorData<uint8_t>(output));
 }
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  void* data = nullptr;
-  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
-      kTfLiteError) {
-    return nullptr;
-  }
-  return data;
+  return context->AllocatePersistentBuffer(context, sizeof(OpData));
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -133,8 +136,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteConcatenationParams* params =
       reinterpret_cast<TfLiteConcatenationParams*>(node->builtin_data);
 
-  TfLiteType input_type = GetInput(context, node, 0)->type;
-  TfLiteType output_type = GetOutput(context, node, kOutputTensor)->type;
+  const TfLiteTensor* input_tensor = GetInput(context, node, 0);
+  TF_LITE_ENSURE(context, input_tensor != nullptr);
+  TfLiteType input_type = input_tensor->type;
+  const TfLiteTensor* output_tensor = GetOutput(context, node, kOutputTensor);
+  TF_LITE_ENSURE(context, output_tensor != nullptr);
+  TfLiteType output_type = output_tensor->type;
 
   // Check activation and input type
   TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActNone);
@@ -153,6 +160,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Shapes with dimensions >4 are not yet supported with static allocation.
   for (int i = 0; i < num_inputs; ++i) {
     const TfLiteTensor* input = GetInput(context, node, i);
+    TF_LITE_ENSURE(context, input != nullptr);
     int num_dimensions = NumDimensions(input);
 
     if (num_dimensions > 4) {
@@ -170,6 +178,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = static_cast<OpData*>(node->user_data);
 
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TF_LITE_ENSURE(context, output != nullptr);
 
   switch (output_type) {  // Already know in/outtypes are same.
     case kTfLiteFloat32:
@@ -184,20 +193,19 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       data->params.axis = CalculatePositiveAxis(params->axis, output);
       data->params.inputs_count = node->inputs->size;
 
-      float* input_scales = nullptr;
-      TF_LITE_ENSURE_STATUS(context->AllocatePersistentBuffer(
-          context, node->inputs->size * sizeof(float),
-          reinterpret_cast<void**>(&input_scales)));
+      float* input_scales =
+          reinterpret_cast<float*>(context->AllocatePersistentBuffer(
+              context, node->inputs->size * sizeof(float)));
 
-      int32_t* input_zero_points = nullptr;
-      TF_LITE_ENSURE_STATUS(context->AllocatePersistentBuffer(
-          context, node->inputs->size * sizeof(int32_t),
-          reinterpret_cast<void**>(&input_zero_points)));
+      int32_t* input_zero_points =
+          reinterpret_cast<int32_t*>(context->AllocatePersistentBuffer(
+              context, node->inputs->size * sizeof(int32_t)));
 
       // Allocate persistent scale and zeropoint buffers.
       // Store input scale and zero point values in OpParams:
       for (int i = 0; i < node->inputs->size; ++i) {
         const TfLiteTensor* t = GetInput(context, node, i);
+        TF_LITE_ENSURE(context, t != nullptr);
         input_scales[i] = t->params.scale;
         input_zero_points[i] = t->params.zero_point;
       }
@@ -219,7 +227,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteType output_type = GetOutput(context, node, kOutputTensor)->type;
+  const TfLiteTensor* output_tensor = GetOutput(context, node, kOutputTensor);
+  TF_LITE_ENSURE(context, output_tensor != nullptr);
+  TfLiteType output_type = output_tensor->type;
 
   switch (output_type) {  // Already know in/outtypes are same.
     case kTfLiteFloat32:

@@ -17,14 +17,15 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_OPERATIONS_H_
 
 #include <cstdint>
+#include <set>
 #include <string>
 #include <vector>
 
 #include "absl/types/variant.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
-#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
 namespace gpu {
@@ -36,30 +37,51 @@ enum class OperationType {
   ADD,
   BATCH_TO_SPACE,
   BATCH_NORMALIZATION,
+  BATCHED_MATMUL,
   CONCAT,
-  CONST,
+  CONSTANT,
   CONVOLUTION_2D,
   CONVOLUTION_TRANSPOSED,
+  COPY,
   COS,
   DEPTHWISE_CONVOLUTION,
   DIV,
+  ELU,
+  EQUAL,
   EXP,
+  FLOOR,
+  FLOOR_DIV,
+  FLOOR_MOD,
   FULLY_CONNECTED,
+  FULLY_CONNECTED_INT8,
+  GATHER,
+  GREATER,
+  GREATER_EQUAL,
   HARD_SWISH,
+  LESS,
+  LESS_EQUAL,
   LOG,
   LSTM,
   MAXIMUM,
   MAX_UNPOOLING_2D,
   MEAN,
+  MEAN_STDDEV_NORMALIZATION,
   MINIMUM,
   MUL,
+  NEG,
+  NOT_EQUAL,
   PAD,
   POOLING_2D,
   POW,
   PRELU,
   // Used to accurately run inference on quantized models.
   QUANTIZE_AND_DEQUANTIZE,
+  REDUCE_MAXIMUM,
+  REDUCE_MINIMUM,
+  REDUCE_PRODUCT,
+  REDUCE_SUM,
   RELU,
+  RESAMPLER,
   RESHAPE,
   RESIZE,
   RSQRT,
@@ -69,11 +91,13 @@ enum class OperationType {
   SOFTMAX,
   SPACE_TO_BATCH,
   SPACE_TO_DEPTH,
+  SPLIT,
   SQRT,
   SQUARE,
   SQUARED_DIFF,
   SUB,
   TANH,
+  TILE,
   TRANSPOSE,
 };
 
@@ -355,6 +379,10 @@ struct PReLUAttributes {
       alpha;
 };
 
+struct ReduceAttributes {
+  std::set<Axis> dims;
+};
+
 struct SoftmaxAttributes {
   Axis axis = Axis::UNKNOWN;
 };
@@ -366,10 +394,6 @@ enum LstmKernelType {
 
 struct LstmAttributes {
   LstmKernelType kernel_type = LstmKernelType::BASIC;
-};
-
-struct MultiplyAttributes {
-  TensorOrScalar param;
 };
 
 enum class SamplingType {
@@ -386,8 +410,7 @@ struct Resize2DAttributes {
   // If true, the centers of the 4 corner pixels of the input and output tensors
   // are aligned, preserving the values at the corner pixels. Defaults to false.
   bool align_corners = false;
-  // half_pixel_centers assumes pixels are of half the actual dimensions, and
-  // yields more accurate resizes. Only applicable to BILINEAR sampling.
+
   bool half_pixel_centers = false;
 };
 
@@ -400,8 +423,7 @@ struct Resize3DAttributes {
   // If true, the centers of the 8 corner pixels of the input and output tensors
   // are aligned, preserving the values at the corner pixels. Defaults to false.
   bool align_corners = false;
-  // half_pixel_centers assumes pixels are of half the actual dimensions, and
-  // yields more accurate resizes. Only applicable to BILINEAR sampling.
+
   bool half_pixel_centers = false;
 };
 
@@ -478,14 +500,20 @@ struct Slice3DAttributes {
 //         input.
 BHWDC CalculateOutputShape(const BHWDC& input, const Slice3DAttributes& attr);
 
-struct AddAttributes {
-  TensorOrScalar param;
-};
-
 struct FullyConnectedAttributes {
   Tensor<OHWI, DataType::FLOAT32> weights;
   Tensor<Linear, DataType::FLOAT32> bias;
 };
+
+struct FullyConnectedInt8Attributes {
+  Tensor<OHWI, DataType::INT8> weights;
+  Tensor<Linear, DataType::FLOAT32> bias;
+  float scale;
+  int zero_point;
+};
+
+FullyConnectedAttributes DequatizeFullyConnectedAttr(
+    const FullyConnectedInt8Attributes& attr);
 
 // @return shape of a tensor after FullyConnected operation is applied to
 // the given input.
@@ -495,8 +523,15 @@ BHWC CalculateOutputShape(const BHWC& input,
 // @return shape of a tensor after Mean operation is applied to the given input.
 BHWC CalculateOutputShape(const BHWC& input, const MeanAttributes& attr);
 
+// @return shape of a tensor after Mean operation is applied to the given input.
+BHWDC CalculateOutputShape(const BHWDC& input, const MeanAttributes& attr);
+
 struct ElementwiseAttributes {
   TensorOrScalar param;
+  // For elementwise operation with 2 inputs op(A, B), runtime_tensor_is_second
+  // true when runtime tensor is B(on second position). this is important for
+  // ops that non commutative, for example substract.
+  bool runtime_tensor_is_second = false;
 };
 
 struct ReshapeAttributes {
@@ -530,12 +565,21 @@ struct SpaceToDepthAttributes {
   int block_size;
 };
 
+struct SplitAttributes {
+  // Defines axis by which to split.
+  Axis axis = Axis::UNKNOWN;
+};
+
 // These help perform a combination of Quantize & Dequantize to adjust float
 // values like quantized inference would.
 struct QuantizeAndDequantizeAttributes {
   float min = 0;
   float max = 0;
   float scale = 0;
+};
+
+struct GatherAttributes {
+  Axis axis = Axis::UNKNOWN;
 };
 
 }  // namespace gpu

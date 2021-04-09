@@ -14,15 +14,10 @@
 # ==============================================================================
 """Tests for convolutional recurrent layers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
@@ -32,7 +27,7 @@ from tensorflow.python.platform import test
 class ConvLSTMTest(keras_parameterized.TestCase):
 
   @parameterized.named_parameters(
-      *test_util.generate_combinations_with_testcase_name(
+      *testing_utils.generate_combinations_with_testcase_name(
           data_format=['channels_first', 'channels_last'],
           return_sequences=[True, False]))
   def test_conv_lstm(self, data_format, return_sequences):
@@ -202,6 +197,9 @@ class ConvLSTMTest(keras_parameterized.TestCase):
       outputs = clone.predict(test_inputs)
       self.assertAllClose(reference_outputs, outputs, atol=1e-5)
 
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Skipping the test as OOM occurred with 1 GB budget.')
   def test_conv_lstm_with_initial_state(self):
     num_samples = 32
     sequence_len = 5

@@ -20,43 +20,18 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/time/time.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_event.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/profiling_info.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
-
-struct ProfilingInfo {
-  struct DispatchInfo {
-    std::string label;
-    absl::Duration duration;
-  };
-
-  std::vector<DispatchInfo> dispatches;
-
-  absl::Duration GetTotalTime() const;
-
-  // Returns report (string of lines delimited by \n)
-  // This method uses GPU counters and measure GPU time only.
-  // Report has next structure:
-  // Per kernel timing(K kernels):
-  //   conv2d 3.2ms
-  //   ...
-  // --------------------
-  // Accumulated time per operation type:
-  //   conv2d - 14.5ms
-  //   ....
-  // --------------------
-  // Ideal total time: 23.4ms // Total time for all kernels
-  std::string GetDetailedReport() const;
-};
 
 // A wrapper around opencl command queue
 class CLCommandQueue {
@@ -74,13 +49,14 @@ class CLCommandQueue {
 
   cl_command_queue queue() const { return queue_; }
 
-  virtual absl::Status DispatchImplicit(const CLKernel& kernel, int3 grid,
-                                        int3 work_group_size);
+  virtual absl::Status Dispatch(const CLKernel& kernel,
+                                const int3& work_groups_count,
+                                const int3& work_group_size);
+
+  absl::Status Dispatch(const CLKernel& kernel, const int3& work_groups_count,
+                        const int3& work_group_size, CLEvent* event);
 
   absl::Status EnqueueEvent(CLEvent* event);
-
-  absl::Status DispatchImplicit(const CLKernel& kernel, int3 grid,
-                                int3 work_group_size, CLEvent* event);
 
   absl::Status EnqueueWriteImage(cl_mem memory, int3 region, const void* data);
   absl::Status EnqueueReadImage(cl_mem memory, int3 region, void* data);
@@ -110,13 +86,13 @@ class ProfilingCommandQueue : public CLCommandQueue {
   ProfilingCommandQueue(const ProfilingCommandQueue&) = delete;
   ProfilingCommandQueue& operator=(const ProfilingCommandQueue&) = delete;
 
-  absl::Status DispatchImplicit(const CLKernel& kernel, int3 grid,
-                                int3 work_group_size) override;
+  absl::Status Dispatch(const CLKernel& kernel, const int3& work_groups_count,
+                        const int3& work_group_size) override;
 
   // will write index for fastest work_group among work_group_sizes
   absl::Status GetBestWorkGroupIndex(const CLKernel& kernel,
-                                     const DeviceInfo& device_info,
-                                     const int3& grid,
+                                     const GpuInfo& gpu_info,
+                                     const std::vector<int3>& work_groups_count,
                                      const std::vector<int3>& work_group_sizes,
                                      int* index);
 

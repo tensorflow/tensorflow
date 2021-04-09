@@ -104,6 +104,7 @@ class TensorInterface : public AbstractTensorInterface {
   void* Data() const override;
   bool IsAligned() const override;
   bool CanMove() const override;
+  std::string SummarizeValue() const override;
 
   Status ToTensor(tensorflow::Tensor* dst) const;
   Status BitcastFrom(const TensorInterface& from, DataType type,

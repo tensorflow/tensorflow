@@ -9,7 +9,7 @@ work. Errors may be silently ignored.
 </p>
 
 Figure 1 shows how an array F32[3,5] is laid out in memory with 2x2 tiling. A
-shape with this layout is written as F32[3,5]{1,0:(2,2)}, where 1,0 relates to
+shape with this layout is written as F32[3,5]{1,0:T(2,2)}, where 1,0 relates to
 the physical order of dimensions (minor_to_major field in Layout) while (2,2)
 after the colon indicates tiling of the physical dimensions by a 2x2 tile.
 

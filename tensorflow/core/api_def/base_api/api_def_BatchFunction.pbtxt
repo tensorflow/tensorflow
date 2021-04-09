@@ -117,6 +117,7 @@ So, for example, in the following code
           batch_timeout_micros=100000,  # 100ms
           allowed_batch_sizes=[3, 10],
           batching_queue="")
+  ```
 
 If more than one session.run call is simultaneously trying to compute `b`
 the values of `a` will be gathered, non-deterministically concatenated

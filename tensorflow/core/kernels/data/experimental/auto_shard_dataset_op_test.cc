@@ -25,12 +25,14 @@ class AutoShardDatasetParams : public DatasetParams {
  public:
   template <typename T>
   AutoShardDatasetParams(T input_dataset_params, int64 num_workers, int64 index,
-                         int auto_shard_policy, DataTypeVector output_dtypes,
+                         int auto_shard_policy, int64 num_replicas,
+                         DataTypeVector output_dtypes,
                          std::vector<PartialTensorShape> output_shapes,
                          string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         num_workers_(num_workers),
+        num_replicas_(num_replicas),
         index_(index),
         auto_shard_policy_(auto_shard_policy) {
     input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
@@ -55,6 +57,7 @@ class AutoShardDatasetParams : public DatasetParams {
     attr_vector->clear();
     attr_vector->emplace_back(AutoShardDatasetOp::kAutoShardPolicy,
                               auto_shard_policy_);
+    attr_vector->emplace_back(AutoShardDatasetOp::kNumReplicas, num_replicas_);
     attr_vector->emplace_back(AutoShardDatasetOp::kOutputTypes, output_dtypes_);
     attr_vector->emplace_back(AutoShardDatasetOp::kOutputShapes,
                               output_shapes_);
@@ -67,6 +70,7 @@ class AutoShardDatasetParams : public DatasetParams {
 
  private:
   int64 num_workers_;
+  int64 num_replicas_;
   int64 index_;
   int auto_shard_policy_;
 };
@@ -79,6 +83,7 @@ AutoShardDatasetParams AutoShardDatasetParams1() {
                                 /*num_workers=*/5,
                                 /*index=*/2,
                                 /*auto_shard_policy=*/0,
+                                /*num_replicas=*/5,
                                 /*output_dtypes=*/{DT_INT64},
                                 /*output_shapes=*/{PartialTensorShape({})},
                                 /*node_name=*/kNodeName);
@@ -90,6 +95,7 @@ AutoShardDatasetParams AutoShardDatasetParams2() {
                                 /*num_workers=*/5,
                                 /*index=*/2,
                                 /*auto_shard_policy=*/0,
+                                /*num_replicas=*/5,
                                 /*output_dtypes=*/{DT_INT64},
                                 /*output_shapes=*/{PartialTensorShape({})},
                                 /*node_name=*/kNodeName);
@@ -102,6 +108,7 @@ AutoShardDatasetParams AutoShardDatasetParams3() {
                                 /*num_workers=*/4,
                                 /*index=*/3,
                                 /*auto_shard_policy=*/0,
+                                /*num_replicas=*/4,
                                 /*output_dtypes=*/{DT_INT64},
                                 /*output_shapes=*/{PartialTensorShape({})},
                                 /*node_name=*/kNodeName);
@@ -116,6 +123,7 @@ AutoShardDatasetParams AutoShardDatasetParams4() {
                                 /*num_workers=*/5,
                                 /*index=*/7,
                                 /*auto_shard_policy=*/0,
+                                /*num_replicas=*/5,
                                 /*output_dtypes=*/{DT_INT64},
                                 /*output_shapes=*/{PartialTensorShape({})},
                                 /*node_name=*/kNodeName);
@@ -127,6 +135,7 @@ AutoShardDatasetParams AutoShardDatasetParams5() {
                                 /*num_workers=*/5,
                                 /*index=*/-3,
                                 /*auto_shard_policy=*/0,
+                                /*num_replicas=*/5,
                                 /*output_dtypes=*/{DT_INT64},
                                 /*output_shapes=*/{PartialTensorShape({})},
                                 /*node_name=*/kNodeName);
@@ -138,6 +147,7 @@ AutoShardDatasetParams AutoShardDatasetParams6() {
                                 /*num_workers=*/-3,
                                 /*index=*/1,
                                 /*auto_shard_policy=*/0,
+                                /*num_replicas=*/5,
                                 /*output_dtypes=*/{DT_INT64},
                                 /*output_shapes=*/{PartialTensorShape({})},
                                 /*node_name=*/kNodeName);
@@ -149,6 +159,7 @@ AutoShardDatasetParams AutoShardDatasetParams7() {
                                 /*num_workers=*/0,
                                 /*index=*/1,
                                 /*auto_shard_policy=*/0,
+                                /*num_replicas=*/5,
                                 /*output_dtypes=*/{DT_INT64},
                                 /*output_shapes=*/{PartialTensorShape({})},
                                 /*node_name=*/kNodeName);

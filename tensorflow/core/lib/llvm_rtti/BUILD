@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
 # Library for using LLVM style RTTI in TensorFlow.
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -8,7 +10,7 @@ package(
     default_visibility = [
         "//tensorflow:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(

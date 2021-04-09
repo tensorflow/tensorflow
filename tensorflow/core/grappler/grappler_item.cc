@@ -31,6 +31,24 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+GrapplerItem::OptimizationOptions CreateOptOptionsForEager() {
+  GrapplerItem::OptimizationOptions optimization_options;
+  // Tensorflow 2.0 in eager mode with automatic control dependencies will
+  // prune all nodes that are not in the transitive fanin of the fetch nodes.
+  // However because the function will be executed via FunctionLibraryRuntime,
+  // and current function implementation does not prune stateful and dataset
+  // ops, we rely on Grappler to do the correct graph pruning.
+  optimization_options.allow_pruning_stateful_and_dataset_ops = true;
+
+  optimization_options.is_eager_mode = true;
+
+  // All the nested function calls will be executed and optimized via
+  // PartitionedCallOp, there is no need to optimize functions now.
+  optimization_options.optimize_function_library = false;
+
+  return optimization_options;
+}
+
 GrapplerItem GrapplerItem::WithGraph(GraphDef&& graph_def) const {
   GrapplerItem item;
   item.id = id;

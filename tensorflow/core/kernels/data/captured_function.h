@@ -48,6 +48,16 @@ Status MakeIteratorFromInputElement(
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator);
 
+// Creates an iterator for a dataset which is created by applying the given
+// function to the given input element. Pass non-null `node` to record
+// processing time for modeling Iterator's GetNext() resource usage.
+Status MakeIteratorFromInputElement(
+    IteratorContext* ctx, const IteratorBase* parent,
+    const std::vector<Tensor>& input_element, int64 thread_index,
+    const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
+    std::unique_ptr<IteratorBase>* out_iterator,
+    const std::shared_ptr<model::Node>& node);
+
 // Determines whether the given node is stateful.
 Status IsNodeStateful(const FunctionLibraryDefinition& library,
                       const NodeDef& node);
@@ -215,12 +225,30 @@ class InstantiatedCapturedFunction {
   Status Run(IteratorContext* ctx, std::vector<Tensor>&& args,
              std::vector<Tensor>* rets) const;
 
+  // Runs the instantiated captured function. This method takes ownership of
+  // the tensors in `args`, in order to be able to deallocate them as early as
+  // possible. Use `RunWithBorrowedArgs()` if the caller needs to retain
+  // ownership of the `args`. Pass non-null `node` to record processing time
+  // for modeling Iterator's GetNext() resource usage.
+  Status Run(IteratorContext* ctx, std::vector<Tensor>&& args,
+             std::vector<Tensor>* rets,
+             const std::shared_ptr<model::Node>& node) const;
+
   // Synchronously runs the captured function on the given `args`, and stores
   // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
   // possible.
   Status RunWithBorrowedArgs(IteratorContext* ctx,
                              const std::vector<Tensor>& args,
                              std::vector<Tensor>* rets) const;
+
+  // Synchronously runs the captured function on the given `args`, and stores
+  // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
+  // possible. Pass non-null `node` to record processing time for modeling
+  // Iterator's GetNext() resource usage.
+  Status RunWithBorrowedArgs(IteratorContext* ctx,
+                             const std::vector<Tensor>& args,
+                             std::vector<Tensor>* rets,
+                             const std::shared_ptr<model::Node>& node) const;
 
   // Synchronously runs the captured function on the given `args`, and stores
   // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
@@ -234,7 +262,8 @@ class InstantiatedCapturedFunction {
   // Asynchronously runs the captured function on the given `args`, stores the
   // results in `*rets`, and calls the given `done` callback when the function
   // returns. This method takes ownership of the tensors in `args`, in order to
-  // be able to deallocate them as early as possible.
+  // be able to deallocate them as early as possible. Pass non-null `node` to
+  // record processing time for modeling Iterator's GetNext() resource usage.
   void RunAsync(IteratorContext* ctx, std::vector<Tensor>&& args,
                 std::vector<Tensor>* rets,
                 FunctionLibraryRuntime::DoneCallback done,
@@ -264,11 +293,6 @@ class InstantiatedCapturedFunction {
 };
 
 }  // namespace data
-
-// TODO(b/114112161): Remove these aliases when all users have moved over to the
-// `tensorflow::data` namespace.
-using data::CapturedFunction;
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_DATA_CAPTURED_FUNCTION_H_

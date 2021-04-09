@@ -89,7 +89,7 @@ absl::Status CreateClEventFromEglSync(cl_context context,
 }
 
 bool IsClEventFromEglSyncSupported(const CLDevice& device) {
-  return device.SupportsExtension("cl_khr_egl_event");
+  return device.GetInfo().SupportsExtension("cl_khr_egl_event");
 }
 
 absl::Status CreateClMemoryFromGlBuffer(GLuint gl_ssbo_id,
@@ -126,7 +126,7 @@ absl::Status CreateClMemoryFromGlTexture(GLenum texture_target,
 
 bool IsGlSharingSupported(const CLDevice& device) {
   return clCreateFromGLBuffer && clCreateFromGLTexture &&
-         device.SupportsExtension("cl_khr_gl_sharing");
+         device.GetInfo().SupportsExtension("cl_khr_gl_sharing");
 }
 
 AcquiredGlObjects::~AcquiredGlObjects() { Release({}, nullptr).IgnoreError(); }
@@ -209,14 +209,16 @@ absl::Status GlInteropFabric::Start() {
   //   c) EglSync->CLEvent or GlSync->CLEvent mapping
   //      Fast, as it allows to map sync to CL event and use it as a dependency
   //      later without stalling GPU pipeline.
+  CLEvent inbound_event;
+  std::vector<cl_event> inbound_events;
   if (is_egl_sync_supported_) {
     EglSync sync;
     RETURN_IF_ERROR(EglSync::NewFence(egl_display_, &sync));
     if (is_egl_to_cl_mapping_supported_) {
       // (c) EglSync->CLEvent or GlSync->CLEvent mapping
       glFlush();
-      RETURN_IF_ERROR(
-          CreateClEventFromEglSync(context_, sync, &inbound_event_));
+      RETURN_IF_ERROR(CreateClEventFromEglSync(context_, sync, &inbound_event));
+      inbound_events.push_back(inbound_event.event());
     } else {
       // (b) EglSync + ClientWait
       RETURN_IF_ERROR(sync.ClientWait());
@@ -227,25 +229,20 @@ absl::Status GlInteropFabric::Start() {
   }
 
   // Acquire all GL objects needed while processing.
-  auto make_acquire_wait = [&]() -> std::vector<cl_event> {
-    if (inbound_event_.is_valid()) {
-      return {inbound_event_.event()};
-    }
-    return {};
-  };
-  return AcquiredGlObjects::Acquire(memory_, queue_, make_acquire_wait(),
-                                    nullptr, &gl_objects_);
+  return AcquiredGlObjects::Acquire(memory_, queue_, inbound_events, nullptr,
+                                    &gl_objects_);
 }
 
 absl::Status GlInteropFabric::Finish() {
   if (!is_enabled()) {
     return absl::OkStatus();
   }
-  RETURN_IF_ERROR(gl_objects_.Release({}, &outbound_event_));
+  CLEvent outbound_event;
+  RETURN_IF_ERROR(gl_objects_.Release({}, &outbound_event));
 
   // if (is_egl_sync_supported_ && is_cl_to_egl_mapping_supported_) {
   //   EglSync egl_outbound_sync;
-  //   RETURN_IF_ERROR(CreateEglSyncFromClEvent(outbound_event_.event(),
+  //   RETURN_IF_ERROR(CreateEglSyncFromClEvent(outbound_event.event(),
   //                                            egl_display_,
   //                                            &egl_outbound_sync));
   //   // Instruct GL pipeline to wait until corresponding CL event is signaled.
@@ -254,12 +251,12 @@ absl::Status GlInteropFabric::Finish() {
   // } else {
   //   // Slower option if proper sync is not supported. It is equivalent to
   //   // clFinish, but, hopefully, faster.
-  //   outbound_event_.Wait();
+  //   outbound_event.Wait();
   // }
 
   // This slow sync is the only working solution right now. We have to debug why
   // above version is not working fast and reliable.
-  outbound_event_.Wait();
+  outbound_event.Wait();
   return absl::OkStatus();
 }
 

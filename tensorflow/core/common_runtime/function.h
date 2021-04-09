@@ -43,15 +43,11 @@ const CustomKernelCreator* GetDefaultCustomKernelCreator();
 // interpreter op kernel to execute a function. Else c->CreateKernel() can be
 // used to create a kernel that will compile the function with XLA and run the
 // resulting program.
-//
-// TODO(zhifengc/phawkins): b/32379046
 void RegisterDefaultCustomKernelCreator(CustomKernelCreator* c);
 
 // Creates a FunctionLibraryRuntime, which instantiates functions
 // defined in "lib_def" and executes functions on the "device".
-// "device_mgr" must contain the "device". If not nullptr,
-// "custom_kernel_creator" is consulted by the returned runtime to
-// create kernels.
+// "device_mgr" must contain the "device".
 //
 // The returned object does not take ownerships of "device" or
 // "lib_def".  The caller must ensure "device" and "lib_def" outlives
@@ -65,7 +61,6 @@ std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
     Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def, thread::ThreadPool* thread_pool,
     const OptimizerOptions& optimizer_options,
-    const CustomKernelCreator* custom_kernel_creator,
     const SessionMetadata* session_metadata,
     ProcessFunctionLibraryRuntime* parent);
 

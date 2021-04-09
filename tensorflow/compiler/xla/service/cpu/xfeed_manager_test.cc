@@ -128,6 +128,22 @@ TEST_F(InfeedManagerTest, MultiThreaded) {
   ProcessNextBuffer(length);
 }
 
+TEST_F(InfeedManagerTest, OutfeedBasic) {
+  TestInfeedBuffer* b = new TestInfeedBuffer(32, /*expect_shape_match=*/true);
+  cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager(0);
+  xfeed->outfeed()->EnqueueBuffersAtomically({b});
+
+  ProcessNextOutfeedBuffer(32, ShapeUtil::MakeShape(U8, {32}));
+}
+
+TEST_F(InfeedManagerTest, OutfeedEmpty) {
+  TestInfeedBuffer* b = new TestInfeedBuffer(0, /*expect_shape_match=*/true);
+  cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager(0);
+  xfeed->outfeed()->EnqueueBuffersAtomically({b});
+
+  ProcessNextOutfeedBuffer(0, ShapeUtil::MakeShape(U8, {0}));
+}
+
 TEST_F(InfeedManagerTest, OutfeedWrongShape) {
   TestInfeedBuffer* b = new TestInfeedBuffer(32, /*expect_shape_match=*/false);
   cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager(0);

@@ -1,0 +1,42 @@
+op {
+  name: "RiscBinaryArithmetic"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "op_type"
+    type: "string"
+    allowed_values {
+      list {
+        s: "ADD"
+        s: "SUB"
+        s: "MUL"
+        s: "DIV"
+        s: "REM"
+        s: "MIN"
+        s: "POW"
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}

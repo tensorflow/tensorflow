@@ -56,9 +56,29 @@ You can get further latency improvements, reductions in peak memory usage, and
 compatibility with integer only hardware devices or accelerators by making sure
 all model math is integer quantized.
 
-For full integer quantization, you need to measure the dynamic range of
-activations and inputs by supplying sample input data to the converter. Refer to
-the `representative_dataset_gen()` function used in the following code.
+For full integer quantization, you need to calibrate or estimate the range, i.e,
+(min, max) of all floating-point tensors in the model. Unlike constant tensors
+such as weights and biases, variable tensors such as model input, activations
+(outputs of intermediate layers) and model output cannot be calibrated unless we
+run a few inference cycles. As a result, the converter requires a representative
+dataset to calibrate them. This dataset can be a small subset (around ~100-500
+samples) of the training or validation data. Refer to the
+`representative_dataset()` function below.
+
+<pre>
+def representative_dataset():
+  for data in tf.data.Dataset.from_tensor_slices((images)).batch(1).take(100):
+    yield [tf.dtypes.cast(data, tf.float32)]
+</pre>
+
+For testing purposes, you can use a dummy dataset as follows:
+
+<pre>
+def representative_dataset():
+    for _ in range(100):
+      data = np.random.rand(1, 244, 244, 3)
+      yield [data.astype(np.float32)]
+ </pre>
 
 #### Integer with float fallback (using default float input/output)
 
@@ -70,11 +90,7 @@ the following steps:
 import tensorflow as tf
 converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 <b>converter.optimizations = [tf.lite.Optimize.DEFAULT]
-def representative_dataset_gen():
-  for _ in range(num_calibration_steps):
-    # Get sample input data as a numpy array in a method of your choosing.
-    yield [input]
-converter.representative_dataset = representative_dataset_gen</b>
+converter.representative_dataset = representative_dataset</b>
 tflite_quant_model = converter.convert()
 </pre>
 
@@ -89,6 +105,9 @@ interface as the original float only model.
 [TensorFlow Lite for Microcontrollers](https://www.tensorflow.org/lite/microcontrollers)
 and [Coral Edge TPUs](https://coral.ai/).*
 
+Note: Starting TensorFlow 2.3.0, we support the `inference_input_type` and
+`inference_output_type` attributes.
+
 Additionally, to ensure compatibility with integer only devices (such as 8-bit
 microcontrollers) and accelerators (such as the Coral Edge TPU), you can enforce
 full integer quantization for all ops including the input and output, by using
@@ -98,11 +117,7 @@ the following steps:
 import tensorflow as tf
 converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 converter.optimizations = [tf.lite.Optimize.DEFAULT]
-def representative_dataset_gen():
-  for _ in range(num_calibration_steps):
-    # Get sample input data as a numpy array in a method of your choosing.
-    yield [input]
-converter.representative_dataset = representative_dataset_gen
+converter.representative_dataset = representative_dataset
 <b>converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]</b>
 <b>converter.inference_input_type = tf.int8</b>  # or tf.uint8
 <b>converter.inference_output_type = tf.int8</b>  # or tf.uint8
@@ -155,13 +170,9 @@ significantly, but only slightly increase model size.
 <pre>
 import tensorflow as tf
 converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
-def representative_dataset_gen():
-  for _ in range(num_calibration_steps):
-    # Get sample input data as a numpy array in a method of your choosing.
-    yield [input]
-converter.representative_dataset = representative_dataset_gen
+converter.representative_dataset = representative_dataset
 <b>converter.optimizations = [tf.lite.Optimize.DEFAULT]
-converter.target_spec.supported_ops = [tf.lite.constants.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8]</b>
+converter.target_spec.supported_ops = [tf.lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8]</b>
 tflite_quant_model = converter.convert()
 </pre>
 
@@ -171,13 +182,9 @@ The following option should be added to the target_spec to allow this.
 <pre>
 import tensorflow as tf
 converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
-def representative_dataset_gen():
-  for _ in range(num_calibration_steps):
-    # Get sample input data as a numpy array in a method of your choosing.
-    yield [input]
-converter.representative_dataset = representative_dataset_gen
+converter.representative_dataset = representative_dataset
 converter.optimizations = [tf.lite.Optimize.DEFAULT]
-converter.target_spec.supported_ops = [tf.lite.constants.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
+converter.target_spec.supported_ops = [tf.lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
 <b>tf.lite.OpsSet.TFLITE_BUILTINS</b>]
 tflite_quant_model = converter.convert()
 </pre>
@@ -195,6 +202,9 @@ The disadvantage of this quantization is:
     delegates.
 
 Note: This is an experimental feature.
+
+A tutorial for this quantization mode can be found
+[here](post_training_integer_quant_16x8.ipynb).
 
 ### Model accuracy
 

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/c/experimental/saved_model/core/saved_model_utils.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stringpiece.h"
@@ -300,80 +301,70 @@ nodes {
 
 TEST(ObjectGraphTraversalTest, Success) {
   SavedObjectGraph object_graph = ParseSavedObjectGraph(kSingleChildFoo);
-  const SavedObject* obj = internal::FindNodeAtPath("foo", object_graph);
-  ASSERT_NE(nullptr, obj);
-  EXPECT_EQ(obj->kind_case(), SavedObject::kUserObject);
-  EXPECT_EQ(obj->user_object().identifier(), "_generic_user_object");
+  absl::optional<int> node = internal::FindNodeAtPath("foo", object_graph);
+  ASSERT_TRUE(node.has_value());
+  EXPECT_EQ(*node, 1);
 }
 
 TEST(ObjectGraphTraversalTest, ObjectNotFound) {
   SavedObjectGraph object_graph = ParseSavedObjectGraph(kSingleChildFoo);
-  const SavedObject* obj = internal::FindNodeAtPath("bar", object_graph);
-  EXPECT_EQ(nullptr, obj);
+  absl::optional<int> node = internal::FindNodeAtPath("bar", object_graph);
+  EXPECT_FALSE(node.has_value());
 }
 
 TEST(ObjectGraphTraversalTest, CaseSensitiveMismatch) {
   SavedObjectGraph object_graph = ParseSavedObjectGraph(kSingleChildFoo);
-  const SavedObject* obj = internal::FindNodeAtPath("FOO", object_graph);
-  EXPECT_EQ(nullptr, obj);
+  absl::optional<int> node = internal::FindNodeAtPath("FOO", object_graph);
+  EXPECT_FALSE(node.has_value());
 }
 
 TEST(ObjectGraphTraversalTest, NestedObjectFound) {
   SavedObjectGraph object_graph =
       ParseSavedObjectGraph(kSingleChildFooWithFuncBar);
-  const SavedObject* obj = internal::FindNodeAtPath("foo.bar", object_graph);
-  ASSERT_NE(nullptr, obj);
-  EXPECT_EQ(obj->kind_case(), SavedObject::kFunction);
-  EXPECT_EQ(obj->function().concrete_functions_size(), 1);
-  EXPECT_EQ(obj->function().concrete_functions(0), "__inference_my_func_5");
+  absl::optional<int> node = internal::FindNodeAtPath("foo.bar", object_graph);
+  ASSERT_TRUE(node.has_value());
+  EXPECT_EQ(*node, 2);
 }
 
 TEST(ObjectGraphTraversalTest, MultiplePathsAliasSameObject) {
   SavedObjectGraph object_graph = ParseSavedObjectGraph(kMultiplePathsToChild);
-  const SavedObject* foo_baz =
+  absl::optional<int> foo_baz_node =
       internal::FindNodeAtPath("foo.baz", object_graph);
-  ASSERT_NE(nullptr, foo_baz);
-  EXPECT_EQ(foo_baz->kind_case(), SavedObject::kUserObject);
-  EXPECT_EQ(foo_baz->user_object().identifier(), "_generic_user_object");
+  ASSERT_TRUE(foo_baz_node.has_value());
+  EXPECT_EQ(*foo_baz_node, 4);
 
-  const SavedObject* bar_wombat =
+  absl::optional<int> bar_wombat_node =
       internal::FindNodeAtPath("bar.wombat", object_graph);
-  ASSERT_NE(nullptr, bar_wombat);
-  EXPECT_EQ(bar_wombat->kind_case(), SavedObject::kUserObject);
-  EXPECT_EQ(bar_wombat->user_object().identifier(), "_generic_user_object");
+  ASSERT_TRUE(bar_wombat_node.has_value());
+  EXPECT_EQ(*bar_wombat_node, 4);
 
-  EXPECT_EQ(foo_baz, bar_wombat);
+  EXPECT_EQ(*foo_baz_node, *bar_wombat_node);
 }
 
 TEST(ObjectGraphTraversalTest, CyclesAreOK) {
   SavedObjectGraph object_graph =
       ParseSavedObjectGraph(kCycleBetweenParentAndChild);
-  const SavedObject* foo = internal::FindNodeAtPath("foo", object_graph);
-  ASSERT_NE(nullptr, foo);
-  EXPECT_EQ(foo->kind_case(), SavedObject::kUserObject);
-  EXPECT_EQ(foo->user_object().identifier(), "_generic_user_object");
+  absl::optional<int> foo = internal::FindNodeAtPath("foo", object_graph);
+  ASSERT_TRUE(foo.has_value());
+  EXPECT_EQ(*foo, 1);
 
-  const SavedObject* foo_bar =
+  absl::optional<int> foo_bar =
       internal::FindNodeAtPath("foo.bar", object_graph);
-  ASSERT_NE(nullptr, foo_bar);
-  EXPECT_EQ(foo_bar->kind_case(), SavedObject::kUserObject);
-  EXPECT_EQ(foo_bar->user_object().identifier(), "_generic_user_object");
+  ASSERT_TRUE(foo_bar.has_value());
+  EXPECT_EQ(*foo_bar, 3);
 
-  const SavedObject* foo_bar_parent =
+  absl::optional<int> foo_bar_parent =
       internal::FindNodeAtPath("foo.bar.parent", object_graph);
-  ASSERT_NE(nullptr, foo_bar_parent);
-  EXPECT_EQ(foo_bar_parent->kind_case(), SavedObject::kUserObject);
-  EXPECT_EQ(foo_bar_parent->user_object().identifier(), "_generic_user_object");
+  ASSERT_TRUE(foo_bar_parent.has_value());
+  EXPECT_EQ(*foo_bar_parent, 1);
 
-  const SavedObject* foo_bar_parent_bar =
+  absl::optional<int> foo_bar_parent_bar =
       internal::FindNodeAtPath("foo.bar.parent.bar", object_graph);
-  ASSERT_NE(nullptr, foo_bar_parent_bar);
-  EXPECT_EQ(foo_bar_parent_bar->kind_case(), SavedObject::kUserObject);
-  EXPECT_EQ(foo_bar_parent_bar->user_object().identifier(),
-            "_generic_user_object");
+  ASSERT_TRUE(foo_bar_parent_bar.has_value());
+  EXPECT_EQ(*foo_bar_parent_bar, 3);
 
-  EXPECT_EQ(foo, foo_bar_parent);
-  EXPECT_EQ(foo_bar, foo_bar_parent_bar);
+  EXPECT_EQ(*foo, *foo_bar_parent);
+  EXPECT_EQ(*foo_bar, *foo_bar_parent_bar);
 }
 
 }  // namespace

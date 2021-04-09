@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/platform/logging.h"
@@ -33,11 +34,11 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-KernelStatsDb ConvertDeviceTraceXPlaneToKernelStatsDb(
+void ConvertDeviceTraceXPlaneToKernelReports(
     const XPlane& device_trace,
     const std::function<void(const XEventVisitor&, KernelReport*)>&
-        on_kernel_fn) {
-  KernelStatsDb result;
+        on_kernel_fn,
+    KernelReportMap* reports) {
   XPlaneVisitor plane = CreateTfXPlaneVisitor(&device_trace);
   plane.ForEachLine([&](const XLineVisitor& line) {
     if (IsDerivedThreadId(line.Id())) {
@@ -51,18 +52,21 @@ KernelStatsDb ConvertDeviceTraceXPlaneToKernelStatsDb(
       event.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
         if (!stat.Type().has_value()) return;
         switch (stat.Type().value()) {
-          case StatType::kLevel0:
+          case StatType::kTfOp:
+          case StatType::kLevel0:  // old way to deliver tf_op info.
             tf_op_fullname = stat.StrOrRefValue();
             break;
-          case StatType::kKernelDetails:
+          case StatType::kKernelDetails: {
             kernel.set_name(event.Name().data(), event.Name().size());
             kernel.set_is_kernel_using_tensor_core(
                 IsKernelUsingTensorCore(event.Name()));
             kernel.set_total_duration_ns(event.DurationNs());
             kernel.set_min_duration_ns(event.DurationNs());
             kernel.set_max_duration_ns(event.DurationNs());
-            ParseKernelLaunchParams(stat.StrOrRefValue(), &kernel);
+            absl::string_view launch_params = stat.StrOrRefValue();
+            ParseKernelLaunchParams(launch_params, &kernel);
             break;
+          }
           case StatType::kEquation:
             equation = stat.StrOrRefValue();
             break;
@@ -92,12 +96,15 @@ KernelStatsDb ConvertDeviceTraceXPlaneToKernelStatsDb(
       }
 
       if (kernel.total_duration_ns()) {
-        *result.add_reports() = kernel;
+        KernelReportValue value;
+        value.total_duration_ns = event.DurationNs();
+        value.min_duration_ns = event.DurationNs();
+        value.max_duration_ns = event.DurationNs();
+        value.occurrences = 1;
+        InsertOrUpdateKernelReport(kernel, value, reports);
       }
     });
   });
-
-  return result;
 }
 
 }  // namespace profiler

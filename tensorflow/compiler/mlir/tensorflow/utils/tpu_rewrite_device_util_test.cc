@@ -20,8 +20,8 @@ limitations under the License.
 
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -625,8 +625,8 @@ TEST(TPURewriteDeviceUtilTest, TestInvalidAttrForDeviceAssignmentDisallowed) {
 }
 
 TEST(TPURewriteDeviceUtilTest, TestGetHostFailDeviceMissingAttributes) {
-  mlir::registerDialect<mlir::tf_device::TensorFlowDeviceDialect>();
   mlir::MLIRContext context;
+  context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
   mlir::OwningModuleRef module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());
@@ -641,8 +641,8 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostFailDeviceMissingAttributes) {
 }
 
 TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailModelParallelism) {
-  mlir::registerDialect<mlir::tf_device::TensorFlowDeviceDialect>();
   mlir::MLIRContext context;
+  context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
   mlir::OwningModuleRef module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());
@@ -650,10 +650,10 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailModelParallelism) {
   llvm::SmallVector<mlir::Type, 8> result_types;
   auto cluster = builder.create<mlir::tf_device::ClusterOp>(
       mlir::UnknownLoc::get(&context), result_types);
-  cluster.setAttr(kNumCoresPerReplicaAttr,
-                  builder.getIntegerAttr(builder.getIntegerType(64), 5));
-  cluster.setAttr(kTopologyAttr, builder.getStringAttr(""));
-  cluster.setAttr(kDeviceAssignmentAttr, builder.getArrayAttr({}));
+  cluster->setAttr(kNumCoresPerReplicaAttr,
+                   builder.getIntegerAttr(builder.getIntegerType(64), 5));
+  cluster->setAttr(kTopologyAttr, builder.getStringAttr(""));
+  cluster->setAttr(kDeviceAssignmentAttr, builder.getArrayAttr({}));
 
   mlir::TF::RuntimeDevices runtime_devices;
   std::string host_device;
@@ -662,8 +662,8 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailModelParallelism) {
 }
 
 TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailMissingTopology) {
-  mlir::registerDialect<mlir::tf_device::TensorFlowDeviceDialect>();
   mlir::MLIRContext context;
+  context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
   mlir::OwningModuleRef module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());
@@ -671,9 +671,9 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailMissingTopology) {
   llvm::SmallVector<mlir::Type, 8> result_types;
   auto cluster = builder.create<mlir::tf_device::ClusterOp>(
       mlir::UnknownLoc::get(&context), result_types);
-  cluster.setAttr(kNumCoresPerReplicaAttr,
-                  builder.getIntegerAttr(builder.getIntegerType(64), 1));
-  cluster.setAttr(kDeviceAssignmentAttr, builder.getArrayAttr({}));
+  cluster->setAttr(kNumCoresPerReplicaAttr,
+                   builder.getIntegerAttr(builder.getIntegerType(64), 1));
+  cluster->setAttr(kDeviceAssignmentAttr, builder.getArrayAttr({}));
 
   mlir::TF::RuntimeDevices runtime_devices;
   std::string host_device;
@@ -682,8 +682,8 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailMissingTopology) {
 }
 
 TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailMissingDeviceAssignment) {
-  mlir::registerDialect<mlir::tf_device::TensorFlowDeviceDialect>();
   mlir::MLIRContext context;
+  context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
   mlir::OwningModuleRef module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());
@@ -691,9 +691,9 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailMissingDeviceAssignment) {
   llvm::SmallVector<mlir::Type, 8> result_types;
   auto cluster = builder.create<mlir::tf_device::ClusterOp>(
       mlir::UnknownLoc::get(&context), result_types);
-  cluster.setAttr(kNumCoresPerReplicaAttr,
-                  builder.getIntegerAttr(builder.getIntegerType(64), 1));
-  cluster.setAttr(kTopologyAttr, builder.getStringAttr(""));
+  cluster->setAttr(kNumCoresPerReplicaAttr,
+                   builder.getIntegerAttr(builder.getIntegerType(64), 1));
+  cluster->setAttr(kTopologyAttr, builder.getStringAttr(""));
 
   mlir::TF::RuntimeDevices runtime_devices;
   std::string host_device;
@@ -702,8 +702,8 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailMissingDeviceAssignment) {
 }
 
 TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailBadDeviceAssignment) {
-  mlir::registerDialect<mlir::tf_device::TensorFlowDeviceDialect>();
   mlir::MLIRContext context;
+  context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
   mlir::OwningModuleRef module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());
@@ -711,12 +711,12 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailBadDeviceAssignment) {
   llvm::SmallVector<mlir::Type, 8> result_types;
   auto cluster = builder.create<mlir::tf_device::ClusterOp>(
       mlir::UnknownLoc::get(&context), result_types);
-  cluster.setAttr(kNumCoresPerReplicaAttr,
-                  builder.getIntegerAttr(builder.getIntegerType(64), 1));
-  cluster.setAttr(kTopologyAttr, builder.getStringAttr(""));
-  cluster.setAttr(kDeviceAssignmentAttr,
-                  builder.getStrArrayAttr(llvm::ArrayRef<llvm::StringRef>(
-                      {"bad_device_assigment"})));
+  cluster->setAttr(kNumCoresPerReplicaAttr,
+                   builder.getIntegerAttr(builder.getIntegerType(64), 1));
+  cluster->setAttr(kTopologyAttr, builder.getStringAttr(""));
+  cluster->setAttr(kDeviceAssignmentAttr,
+                   builder.getStrArrayAttr(llvm::ArrayRef<llvm::StringRef>(
+                       {"bad_device_assigment"})));
 
   mlir::TF::RuntimeDevices runtime_devices;
   std::string host_device;
@@ -725,33 +725,34 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailBadDeviceAssignment) {
 }
 
 TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailBadDeviceName) {
-  mlir::registerDialect<mlir::tf_device::TensorFlowDeviceDialect>();
   mlir::MLIRContext context;
+  context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
   mlir::OwningModuleRef module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());
-  module_ref->setAttr(
-      "tf.devices", builder.getStrArrayAttr(
-                        llvm::ArrayRef<llvm::StringRef>({"bad_device_name"})));
+  (*module_ref)
+      ->setAttr("tf.devices",
+                builder.getStrArrayAttr(
+                    llvm::ArrayRef<llvm::StringRef>({"bad_device_name"})));
 
   llvm::SmallVector<mlir::Type, 8> result_types;
   auto cluster = builder.create<mlir::tf_device::ClusterOp>(
       mlir::UnknownLoc::get(&context), result_types);
-  cluster.setAttr(kNumCoresPerReplicaAttr,
-                  builder.getIntegerAttr(builder.getIntegerType(64), 1));
-  cluster.setAttr(kTopologyAttr, builder.getStringAttr(""));
-  cluster.setAttr(kDeviceAssignmentAttr, builder.getArrayAttr({}));
+  cluster->setAttr(kNumCoresPerReplicaAttr,
+                   builder.getIntegerAttr(builder.getIntegerType(64), 1));
+  cluster->setAttr(kTopologyAttr, builder.getStringAttr(""));
+  cluster->setAttr(kDeviceAssignmentAttr, builder.getArrayAttr({}));
 
   mlir::TF::RuntimeDevices runtime_devices;
-  GetDevicesFromOp(*module_ref, &runtime_devices);
+  (void)GetDevicesFromOp(*module_ref, &runtime_devices);
   std::string host_device;
   EXPECT_TRUE(mlir::failed(
       GetHostDeviceOutsideComputation(runtime_devices, cluster, &host_device)));
 }
 
 TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceTPUReplicate) {
-  mlir::registerDialect<mlir::tf_device::TensorFlowDeviceDialect>();
   mlir::MLIRContext context;
+  context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
   mlir::OwningModuleRef module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());
@@ -760,8 +761,8 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceTPUReplicate) {
       devices;
   auto replicate = builder.create<mlir::tf_device::ReplicateOp>(
       mlir::UnknownLoc::get(&context), /*num_replicas=*/2, devices,
-      llvm::ArrayRef<std::pair<llvm::ArrayRef<mlir::Value>, mlir::Type>>{},
-      llvm::ArrayRef<mlir::Value>{}, llvm::ArrayRef<mlir::Type>{});
+      llvm::ArrayRef<std::pair<mlir::ValueRange, mlir::Type>>{},
+      mlir::ValueRange{}, mlir::TypeRange{});
   builder.setInsertionPoint(&replicate.body().front(),
                             replicate.body().front().begin());
 
@@ -777,31 +778,38 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceTPUReplicate) {
 }
 
 TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceNotReplicated) {
-  mlir::registerDialect<mlir::tf_device::TensorFlowDeviceDialect>();
   mlir::MLIRContext context;
+  context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
   mlir::OwningModuleRef module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());
-  module_ref->setAttr(
-      "tf.devices", builder.getStrArrayAttr(llvm::ArrayRef<llvm::StringRef>(
-                        {"/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0",
-                         "/job:localhost/replica:0/task:0/device:TPU:0",
-                         "/job:worker/replica:0/task:0/device:CPU:0"})));
+  (*module_ref)
+      ->setAttr("tf.devices",
+                builder.getStrArrayAttr(llvm::ArrayRef<llvm::StringRef>(
+                    {"/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0",
+                     "/job:localhost/replica:0/task:0/device:TPU:0",
+                     "/job:worker/replica:0/task:0/device:CPU:0"})));
 
   llvm::SmallVector<mlir::Type, 8> result_types;
   auto cluster = builder.create<mlir::tf_device::ClusterOp>(
       mlir::UnknownLoc::get(&context), result_types);
-  cluster.setAttr(kNumCoresPerReplicaAttr,
-                  builder.getIntegerAttr(builder.getIntegerType(64), 1));
-  cluster.setAttr(kTopologyAttr, builder.getStringAttr(""));
-  cluster.setAttr(kDeviceAssignmentAttr, builder.getArrayAttr({}));
+  cluster->setAttr(kNumCoresPerReplicaAttr,
+                   builder.getIntegerAttr(builder.getIntegerType(64), 1));
+  cluster->setAttr(kTopologyAttr, builder.getStringAttr(""));
+  cluster->setAttr(kDeviceAssignmentAttr, builder.getArrayAttr({}));
 
   mlir::TF::RuntimeDevices runtime_devices;
-  GetDevicesFromOp(*module_ref, &runtime_devices);
+  (void)GetDevicesFromOp(*module_ref, &runtime_devices);
   std::string host_device;
   EXPECT_TRUE(mlir::succeeded(
       GetHostDeviceOutsideComputation(runtime_devices, cluster, &host_device)));
   EXPECT_EQ(host_device, "/job:localhost/replica:0/task:0/device:CPU:0");
+}
+
+TEST(TPURewriteDeviceUtilTest, TestIsTPUDevice) {
+  EXPECT_TRUE(IsTPUDevice("/job:localhost/replica:0/task:0/device:TPU:0"));
+  EXPECT_FALSE(IsTPUDevice("/job:localhost/replica:0/task:0/device:CPU:0"));
+  EXPECT_FALSE(IsTPUDevice("INVALID_DEVICE"));
 }
 
 }  // anonymous namespace

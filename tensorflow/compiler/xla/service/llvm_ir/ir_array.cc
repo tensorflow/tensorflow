@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -285,7 +286,7 @@ IrArray::Index IrArray::Index::SourceIndexOfTranspose(
     const Shape& shape, const Shape& operand_shape,
     absl::Span<const int64> dimension_mapping) const {
   std::vector<llvm::Value*> operand_multidim_index =
-      Permute(dimension_mapping, multidim());
+      PermuteInverse(multidim(), dimension_mapping);
 
   if (linear() != nullptr && LayoutUtil::HasLayout(operand_shape) &&
       LayoutUtil::HasLayout(shape) &&
@@ -503,7 +504,7 @@ llvm::Value* IrArray::EmitReadArrayElement(const Index& index,
                                            bool use_linear_index) const {
   llvm::Value* element_address =
       EmitArrayElementAddress(index, b, name, use_linear_index);
-  llvm::LoadInst* load = b->CreateLoad(element_address);
+  llvm::LoadInst* load = b->CreateLoad(element_address, name.data());
   AnnotateLoadStoreInstructionWithMetadata(load);
   return load;
 }
@@ -525,6 +526,28 @@ IrArray IrArray::CastToShape(const Shape& new_shape,
       b->CreatePointerCast(base_ptr_, new_ir_type->getPointerTo()), new_shape);
   new_irarray.metadata_ = metadata_;
   return new_irarray;
+}
+
+bool IrArray::Index::ShapeIsCompatible(const Shape& a, const Shape& b) {
+  // Compute strides for two sides of the comparison. Sometimes different shapes
+  // give the same strides:
+  //   [10, 20, 30, 1]{3,2,1,0} vs [10, 20, 1, 30]{3,2,1,0}
+  // which should be considered compatible.
+  const auto get_strides = [](const Shape& shape) {
+    int rank = shape.dimensions().size();
+    int64 stride = 1;
+    std::vector<int64> strides;
+    for (int i = 0; i < rank; i++) {
+      auto dim = shape.dimensions(shape.layout().minor_to_major(i));
+      if (dim != 1) {
+        stride *= dim;
+        strides.push_back(stride);
+      }
+    }
+    return strides;
+  };
+
+  return get_strides(a) == get_strides(b);
 }
 
 }  // namespace llvm_ir

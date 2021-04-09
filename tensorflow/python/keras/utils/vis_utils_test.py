@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Keras Vis utils."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python import keras
 from tensorflow.python.keras.utils import vis_utils
 from tensorflow.python.lib.io import file_io
@@ -38,8 +34,8 @@ class ModelToDotFormatTest(test.TestCase):
     try:
       vis_utils.plot_model(
           model, to_file=dot_img_file, show_shapes=True, show_dtype=True)
-      self.assertTrue(file_io.file_exists(dot_img_file))
-      file_io.delete_file(dot_img_file)
+      self.assertTrue(file_io.file_exists_v2(dot_img_file))
+      file_io.delete_file_v2(dot_img_file)
     except ImportError:
       pass
 
@@ -68,8 +64,8 @@ class ModelToDotFormatTest(test.TestCase):
           show_shapes=True,
           show_dtype=True,
           expand_nested=True)
-      self.assertTrue(file_io.file_exists(dot_img_file))
-      file_io.delete_file(dot_img_file)
+      self.assertTrue(file_io.file_exists_v2(dot_img_file))
+      file_io.delete_file_v2(dot_img_file)
     except ImportError:
       pass
 
@@ -86,8 +82,8 @@ class ModelToDotFormatTest(test.TestCase):
           show_shapes=True,
           show_dtype=True,
           expand_nested=True)
-      self.assertTrue(file_io.file_exists(dot_img_file))
-      file_io.delete_file(dot_img_file)
+      self.assertTrue(file_io.file_exists_v2(dot_img_file))
+      file_io.delete_file_v2(dot_img_file)
     except ImportError:
       pass
 
@@ -102,8 +98,8 @@ class ModelToDotFormatTest(test.TestCase):
           show_shapes=True,
           show_dtype=True,
           expand_nested=True)
-      self.assertTrue(file_io.file_exists(dot_img_file))
-      file_io.delete_file(dot_img_file)
+      self.assertTrue(file_io.file_exists_v2(dot_img_file))
+      file_io.delete_file_v2(dot_img_file)
     except ImportError:
       pass
 

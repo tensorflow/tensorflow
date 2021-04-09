@@ -20,10 +20,12 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor.h"
+#include "tensorflow/stream_executor/tpu/tpu_platform_id.h"
 
 namespace tensorflow {
+namespace tpu {
 
-PLATFORM_DEFINE_ID(TpuPlatform::kId);
+const ::stream_executor::Platform::Id TpuPlatform::kId = GetTpuPlatformId();
 TpuPlatform* tpu_registered_platform = nullptr;
 
 using Status = ::stream_executor::port::Status;
@@ -99,8 +101,7 @@ TpuPlatform::GetUncachedExecutor(
     return status.status();
   }
   return std::make_unique<stream_executor::StreamExecutor>(
-      this, std::make_unique<tensorflow::TpuExecutor>(this, executor),
-      config.ordinal);
+      this, std::make_unique<TpuExecutor>(this, executor), config.ordinal);
 }
 
 ::stream_executor::Platform::Id TpuPlatform::id() const {
@@ -116,6 +117,20 @@ int64 TpuPlatform::TpuMemoryLimit() {
 bool TpuPlatform::ShouldRegisterTpuDeviceToDeviceCopy() {
   return tpu::ExecutorApiFn()
       ->TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopyFn(platform_);
+}
+
+const tensorflow::tpu::TpuTopologyPtr TpuPlatform::GetTopologyPtr() {
+  return tpu::ExecutorApiFn()->TpuPlatform_GetTopologyPtrFn(platform_);
+}
+
+const tensorflow::tpu::TpuHostLocationExternal TpuPlatform::GetTpuHostLocation()
+    const {
+  return tpu::TpuHostLocationExternal(
+      tpu::ExecutorApiFn()->TpuPlatform_GetHostLocationFn(platform_));
+}
+
+TpuRuntimeVersion TpuPlatform::version() const {
+  return tpu::ExecutorApiFn()->TpuPlatform_GetRuntimeVersionFn(platform_);
 }
 
 void TpuPlatform::InsertEvent(stream_executor::internal::EventInterface* key,
@@ -137,7 +152,13 @@ void TpuPlatform::EraseEvent(stream_executor::internal::EventInterface* key) {
 
 Status TpuPlatform::TpusPerHost(int* tpus) {
   TF_Status* status = TF_NewStatus();
-  tpu::ConfigApiFn()->TpuConfigurationApi_TpusPerHostFn(tpus, status);
+
+  if (tpu::OpsApiFn()->TpuConfigurationApi_TpusPerHostFn == nullptr) {
+    *tpus = 0;
+    return Status::OK();
+  }
+
+  tpu::OpsApiFn()->TpuConfigurationApi_TpusPerHostFn(tpus, status);
   auto ret_status = StatusFromTF_Status(status);
   TF_DeleteStatus(status);
   return ret_status;
@@ -145,7 +166,13 @@ Status TpuPlatform::TpusPerHost(int* tpus) {
 
 Status TpuPlatform::TpuMemoryLimit(int64* memory_limit) {
   TF_Status* status = TF_NewStatus();
-  tpu::ConfigApiFn()->TpuConfigurationApi_TpuMemoryLimitFn(
+
+  if (tpu::OpsApiFn()->TpuConfigurationApi_TpuMemoryLimitFn == nullptr) {
+    *memory_limit = 0;
+    return Status::OK();
+  }
+
+  tpu::OpsApiFn()->TpuConfigurationApi_TpuMemoryLimitFn(
       reinterpret_cast<int64_t*>(memory_limit), status);
   auto ret_status = StatusFromTF_Status(status);
   TF_DeleteStatus(status);
@@ -153,11 +180,17 @@ Status TpuPlatform::TpuMemoryLimit(int64* memory_limit) {
 }
 
 bool RegisterTpuPlatform() {
+  // Silently bail if the underlying TPU C API isn't initialized. This is useful
+  // for code that unconditionally calls RegisterTpuPlatform() but doesn't link
+  // in the underlying TPU library when not running on TPU.
+  if (!tpu::IsInitialized(tpu::ExecutorApiFn())) {
+    return true;
+  }
   static bool tpu_platform_registered = false;
   if (!tpu_platform_registered) {
-    tensorflow::tpu_registered_platform = new tensorflow::TpuPlatform();
+    tpu_registered_platform = new TpuPlatform();
     std::unique_ptr<stream_executor::Platform> platform(
-        tensorflow::tpu_registered_platform);
+        tpu_registered_platform);
     SE_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
         std::move(platform)));
     tpu_platform_registered = true;
@@ -165,4 +198,5 @@ bool RegisterTpuPlatform() {
   return true;
 }
 
+}  // namespace tpu
 }  // namespace tensorflow

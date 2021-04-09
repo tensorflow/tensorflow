@@ -19,23 +19,28 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H_
 
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
-#include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
-#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Dialect.h"
+#include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/TypeUtilities.h"
+#include "mlir/IR/Types.h"
+#include "mlir/Interfaces/InferTypeOpInterface.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
+
+// clang-format off
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h"
+#include "mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.h"
+// clang-format on
 
 namespace mlir {
 class OpBuilder;
-
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_structs.h.inc"
 
 namespace mhlo {
 
@@ -56,22 +61,9 @@ class MhloDialect : public Dialect {
   void printType(Type type, DialectAsmPrinter &os) const override;
 };
 
-namespace HLOTypes {
-enum Kind {
-  Token = Type::FIRST_XLA_HLO_TYPE,
-};
-}  // namespace HLOTypes
-
 class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
  public:
   using Base::Base;
-
-  static TokenType get(MLIRContext *context) {
-    return Base::get(context, HLOTypes::Token);
-  }
-
-  // Support method to enable LLVM-style type casting.
-  static bool kindof(unsigned kind) { return kind == HLOTypes::Token; }
 };
 
 // Shape derivation function that computes the shape of the result based on
@@ -90,10 +82,13 @@ LogicalResult deriveShapeFromFirstOperand(
     OpBuilder *builder, Operation *op,
     SmallVectorImpl<Value> *reifiedReturnShapes);
 
-#define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"
+// Type derivation function that returns a tensor type with a new element type.
+TensorType getSameShapeTensorType(TensorType tensor_type, Type element_type);
 
 }  // end namespace mhlo
 }  // end namespace mlir
+
+#define GET_OP_CLASSES
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"
 
 #endif  //  TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H_

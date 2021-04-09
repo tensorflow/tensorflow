@@ -37,6 +37,17 @@ from tensorflow.python.platform import test as test_lib
 # os.environ["TF_MATMUL_AUTOTUNE_ENABLE"] = "1" to enable it.
 
 
+class MatMulMixedType(test_lib.TestCase):
+  """Simple test for tf.matmul where Tout is different from T."""
+
+  def testBatchMatMulV3OutputType(self):
+    a = np.array([[1, 2], [3, 4]], dtype=np.int8)
+    b = np.array([[1, 2], [3, 4]], dtype=np.int8)
+    c = math_ops.batch_mat_mul_v3(a, b, adj_y=True, Tout=np.int32)
+    self.assertAllEqual((2, 2), c.shape)
+    self.assertAllEqual([[5, 11], [11, 25]], c)
+
+
 class MatVecTest(test_lib.TestCase):
   """Simple test for matvec, which is sugar on top of matmul."""
 
@@ -70,6 +81,7 @@ class MatMulTest(test_lib.TestCase):
 
 def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
 
+  @test_util.run_without_tensor_float_32("Tests matmul")
   def Test(self):
     np_val = np.matrix(a_np_) * np.matrix(b_np_)
 
@@ -196,14 +208,16 @@ class MatMulInfixOperatorTest(test_lib.TestCase):
 
   def testMismatchedShape(self):
     with self.assertRaisesRegex(
-        Exception, "(Shape must be rank 2 but is rank 1|is not a matrix)"):
+        Exception, (r"(In\[0\] and In\[1\] has different ndims|In\[0\] "
+                    r"ndims must be >= 2|Shape must be rank 2 but is rank 1)")):
       infix_matmul(
           ops.convert_to_tensor([10.0, 20.0, 30.0]),
           ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
 
   def testMismatchedDimensions(self):
     with self.assertRaisesRegex(
-        Exception, "(Dimensions must be equal|Matrix size-incompatible)"):
+        Exception,
+        r"(In\[0\] mismatch In\[1\] shape|Dimensions must be equal)"):
       infix_matmul(
           ops.convert_to_tensor([[10.0, 20.0, 30.0]]),
           ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
@@ -233,9 +247,10 @@ if __name__ == "__main__":
   # TF2 does not support placeholders under eager so we skip it
   for use_static_shape in set([True, tf2.enabled()]):
     for dtype in dtypes_to_test:
-      if not use_static_shape and (dtype == np.int32 or dtype == np.int64):
-        # TODO(rmlarsen): Re-enable this test when we have fixed the underlying
-        # bug in Windows (b/35935459).
+      if test_util.is_xla_enabled() and (dtype == np.int32 or
+                                         dtype == np.int64):
+        # TODO(b/171924639): Enable this test when XLA DOT supports
+        # integer types.
         continue
       for m in sizes:
         for n in sizes:

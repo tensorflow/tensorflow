@@ -294,4 +294,12 @@ se::Stream* XlaDeviceContext::GetDeviceToDeviceStream() {
   return device_to_device_stream(stream);
 }
 
+Status XlaDeviceContext::ThenExecute(Device* device,
+                                     stream_executor::Stream* stream,
+                                     std::function<void()> func) {
+  VLOG(2) << "XlaDeviceContext::ThenExecute";
+  stream->ThenDoHostCallback(std::move(func));
+  return Status::OK();
+}
+
 }  // namespace tensorflow

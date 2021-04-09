@@ -17,25 +17,27 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/SCF.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
 namespace lmhlo {
@@ -95,9 +97,10 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
 
       // Load the initial value and store it to the output.
       for (auto pair : llvm::zip(reduce_op.init_values(), reduce_op.out())) {
-        auto init_value = rewriter.create<mlir::LoadOp>(loc, std::get<0>(pair));
-        rewriter.create<mlir::StoreOp>(loc, init_value, std::get<1>(pair),
-                                       ArrayRef<Value>{index});
+        auto init_value =
+            rewriter.create<mlir::memref::LoadOp>(loc, std::get<0>(pair));
+        rewriter.create<mlir::memref::StoreOp>(
+            loc, init_value, std::get<1>(pair), ArrayRef<Value>{index});
       }
 
       // Insert a loop into the body to compute the reduction. The loop ranges
@@ -118,39 +121,39 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       // Compute memrefs for the value to reduce. This makes it easier to just
       // inline the body.
       auto output = *reduce_op.out().begin();
-      // TODO(herhut) Move this to the SliceOp builder.
       auto resType = MemRefType::get(
-          llvm::None, output.getType().cast<MemRefType>().getElementType(),
+          llvm::None, getElementTypeOrSelf(output.getType()),
           makeStridedLinearLayoutMap(llvm::None,
                                      MemRefType::getDynamicStrideOrOffset(),
                                      rewriter.getContext()));
-      auto accumulator = rewriter.create<mlir::linalg::SliceOp>(
-          loc, resType, output, ArrayRef<Value>{launch_op.getThreadIds().x});
+      OpFoldResult offset = launch_op.getThreadIds().x;
+      auto oneAttr = rewriter.getI64IntegerAttr(1);
+      OpFoldResult size = oneAttr;
+      OpFoldResult stride = oneAttr;
+      auto accumulator = rewriter.create<memref::SubViewOp>(
+          loc, resType, output, offset, size, stride);
       llvm::SmallVector<Value, 4> indexings;
       auto input_buffer = *reduce_op.operands().begin();
-      auto input_type = input_buffer.getType().cast<MemRefType>();
-      for (int64_t dim = 0; dim < input_type.getRank(); ++dim) {
-        indexings.push_back(dim == reducing_dimension
-                                ? loop.getInductionVar()
-                                : launch_op.getThreadIds().x);
-      }
-      // TODO(herhut) Move this to the SliceOp builder.
-      auto input = *reduce_op.operand_begin();
-      auto rhs = rewriter.create<mlir::linalg::SliceOp>(
-          loc,
-          MemRefType::get(
-              llvm::None, input_type.getElementType(),
-              makeStridedLinearLayoutMap(llvm::None,
-                                         MemRefType::getDynamicStrideOrOffset(),
-                                         rewriter.getContext())),
-          input, indexings);
+      auto input_type_rank =
+          input_buffer.getType().cast<MemRefType>().getRank();
+
+      Value input = *reduce_op.operand_begin();
+      SmallVector<OpFoldResult> offsets = llvm::to_vector<4>(llvm::map_range(
+          llvm::seq<int>(0, input_type_rank), [&](int dim) -> OpFoldResult {
+            return dim == reducing_dimension ? loop.getInductionVar()
+                                             : launch_op.getThreadIds().x;
+          }));
+      SmallVector<OpFoldResult> sizes(input_type_rank, oneAttr);
+      SmallVector<OpFoldResult> strides(input_type_rank, oneAttr);
+      auto rhs = rewriter.create<memref::SubViewOp>(
+          loc, accumulator.getType(), input, offsets, sizes, strides);
 
       // Now copy over the actual body of the reduction, leaving out the
       // terminator.
       BlockAndValueMapping mapping;
-      mapping.map(reduce_op.body().front().getArgument(0), accumulator);
-      mapping.map(reduce_op.body().front().getArgument(1), rhs);
-      mapping.map(reduce_op.body().front().getArgument(2), accumulator);
+      mapping.map(reduce_op.body().getArgument(0), accumulator);
+      mapping.map(reduce_op.body().getArgument(1), rhs);
+      mapping.map(reduce_op.body().getArgument(2), accumulator);
       for (auto& nested : reduce_op.body().front().without_terminator()) {
         auto clone = rewriter.clone(nested, mapping);
         for (auto pair : llvm::zip(nested.getResults(), clone->getResults())) {
@@ -168,16 +171,23 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
   };
 };
 
-struct LhloLegalizeToGpu : public PassWrapper<LhloLegalizeToGpu, FunctionPass> {
+struct LhloLegalizeToGpuPass
+    : public PassWrapper<LhloLegalizeToGpuPass, FunctionPass> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<AffineDialect, gpu::GPUDialect, linalg::LinalgDialect,
+                    memref::MemRefDialect, scf::SCFDialect>();
+  }
+
   void runOnFunction() override {
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     ConversionTarget target(getContext());
-    target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect,
-                           gpu::GPUDialect, scf::SCFDialect, LmhloDialect>();
+    target.addLegalDialect<linalg::LinalgDialect, memref::MemRefDialect,
+                           StandardOpsDialect, gpu::GPUDialect, scf::SCFDialect,
+                           LmhloDialect>();
     target.addIllegalOp<ReduceOp>();
     auto func = getFunction();
     patterns.insert<LhloReduceToGPULaunchConverter>(func.getContext());
-    if (failed(applyPartialConversion(func, target, patterns))) {
+    if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }
@@ -185,12 +195,9 @@ struct LhloLegalizeToGpu : public PassWrapper<LhloLegalizeToGpu, FunctionPass> {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeToGpuPass() {
-  return absl::make_unique<LhloLegalizeToGpu>();
+std::unique_ptr<FunctionPass> createLegalizeToGpuPass() {
+  return std::make_unique<LhloLegalizeToGpuPass>();
 }
-
-static PassRegistration<LhloLegalizeToGpu> legalize_pass(
-    "lhlo-legalize-to-gpu", "Legalize from LHLO dialect to GPU dialect");
 
 }  // namespace lmhlo
 }  // namespace mlir

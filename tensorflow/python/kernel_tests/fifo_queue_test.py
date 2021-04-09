@@ -415,7 +415,9 @@ class GPUCompatibleFIFOQueueTests(test.TestCase):
     with test_util.use_gpu():
       q = data_flow_ops.GPUCompatibleFIFOQueue(10, dtypes_lib.float32)
       elems_numpy = [10.0, 20.0, 30.0]
-      elems = [constant_op.constant(x) for x in elems_numpy]
+      # The identity ensures constants are copied to the GPU immediately
+      elems = [array_ops.identity(constant_op.constant(x))
+               for x in elems_numpy]
 
       for x in elems:
         self.evaluate(q.enqueue((x,)))
@@ -456,7 +458,7 @@ class UnconvertedFIFOQueueTests(test.TestCase):
 
       dequeued_elems = []
       for _ in dequeue_counts:
-        dequeued_elems.extend(dequeued_t.eval())
+        dequeued_elems.extend(self.evaluate(dequeued_t))
       self.assertEqual(elems, dequeued_elems)
 
   def testDequeueFromClosedQueue(self):
@@ -485,7 +487,7 @@ class UnconvertedFIFOQueueTests(test.TestCase):
 
       enqueue_op.run()
       for _ in range(500):
-        self.assertEqual(size_t.eval(), [1])
+        self.assertEqual(self.evaluate(size_t), [1])
 
   def testSharedQueueSameSession(self):
     with self.cached_session():
@@ -499,23 +501,23 @@ class UnconvertedFIFOQueueTests(test.TestCase):
       q1_size_t = q1.size()
       q2_size_t = q2.size()
 
-      self.assertEqual(q1_size_t.eval(), [1])
-      self.assertEqual(q2_size_t.eval(), [1])
+      self.assertEqual(self.evaluate(q1_size_t), [1])
+      self.assertEqual(self.evaluate(q2_size_t), [1])
 
       self.assertEqual(q2.dequeue().eval(), [10.0])
 
-      self.assertEqual(q1_size_t.eval(), [0])
-      self.assertEqual(q2_size_t.eval(), [0])
+      self.assertEqual(self.evaluate(q1_size_t), [0])
+      self.assertEqual(self.evaluate(q2_size_t), [0])
 
       q2.enqueue((20.0,)).run()
 
-      self.assertEqual(q1_size_t.eval(), [1])
-      self.assertEqual(q2_size_t.eval(), [1])
+      self.assertEqual(self.evaluate(q1_size_t), [1])
+      self.assertEqual(self.evaluate(q2_size_t), [1])
 
       self.assertEqual(q1.dequeue().eval(), [20.0])
 
-      self.assertEqual(q1_size_t.eval(), [0])
-      self.assertEqual(q2_size_t.eval(), [0])
+      self.assertEqual(self.evaluate(q1_size_t), [0])
+      self.assertEqual(self.evaluate(q2_size_t), [0])
 
   def testIncompatibleSharedQueueErrors(self):
     with self.cached_session():
@@ -796,7 +798,7 @@ class FIFOQueueParallelTests(test.TestCase):
       # Dequeue every element using a single thread.
       results = []
       for _ in xrange(len(elems)):
-        results.append(dequeued_t.eval())
+        results.append(self.evaluate(dequeued_t))
       self.assertItemsEqual(elems, results)
 
   def testParallelDequeue(self):
@@ -906,27 +908,28 @@ class FIFOQueueParallelTests(test.TestCase):
 
       # The enqueue should start and then block.
       results = []
-      results.append(deq.eval())  # Will only complete after the enqueue starts.
+      results.append(
+          self.evaluate(deq))  # Will only complete after the enqueue starts.
       self.assertEqual(len(enq_done), 1)
       self.assertEqual(self.evaluate(size_op), 5)
 
       for _ in range(3):
-        results.append(deq.eval())
+        results.append(self.evaluate(deq))
 
       time.sleep(0.1)
       self.assertEqual(len(enq_done), 1)
       self.assertEqual(self.evaluate(size_op), 5)
 
       # This dequeue will unblock the thread.
-      results.append(deq.eval())
+      results.append(self.evaluate(deq))
       time.sleep(0.1)
       self.assertEqual(len(enq_done), 2)
       thread.join()
 
       for i in range(5):
-        self.assertEqual(size_op.eval(), 5 - i)
-        results.append(deq.eval())
-        self.assertEqual(size_op.eval(), 5 - i - 1)
+        self.assertEqual(self.evaluate(size_op), 5 - i)
+        results.append(self.evaluate(deq))
+        self.assertEqual(self.evaluate(size_op), 5 - i - 1)
 
       self.assertAllEqual(elem, results)
 
@@ -1404,7 +1407,7 @@ class FIFOQueueParallelTests(test.TestCase):
       for thread in threads:
         thread.join()
 
-      self.assertItemsEqual(dequeued_t.eval(), elems * 10)
+      self.assertCountEqual(self.evaluate(dequeued_t), elems * 10)
 
   def testParallelDequeueMany(self):
     # We need each thread to keep its own device stack or the device scopes

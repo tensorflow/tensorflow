@@ -35,8 +35,6 @@ limitations under the License.
 
 namespace xla {
 
-namespace {
-
 // The Cholesky–Banachiewicz algorithm. See
 // https://en.wikipedia.org/wiki/Cholesky_decomposition#The_Cholesky–Banachiewicz_and_Cholesky–Crout_algorithms
 // for a description.
@@ -54,78 +52,81 @@ namespace {
 //     l = temp / l[..., j, j) * mask + l
 //   return l
 // Returns a (result, error) pair.
-std::pair<XlaOp, XlaOp> CholeskyUnblocked(
+StatusOr<std::pair<XlaOp, XlaOp>> CholeskyExpander::CholeskyUnblocked(
     XlaOp a, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  auto result = [&]() -> StatusOr<std::pair<XlaOp, XlaOp>> {
-    TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-    const int n_dims = a_shape.rank();
-    const int64 n = ShapeUtil::GetDimension(a_shape, -1);
-    auto major_dims = AsInt64Slice(a_shape.dimensions())
-                          .subspan(
-                              /*pos=*/0,
-                              /*len=*/n_dims - 2);
+  TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+  const int ndims = a_shape.rank();
+  const int64 n = ShapeUtil::GetDimension(a_shape, -1);
+  std::vector<int64> error_dims(a_shape.dimensions().begin(),
+                                a_shape.dimensions().end());
+  error_dims.back() = error_dims.at(ndims - 2) = 1;
 
-    auto matrix_dims = AsInt64Slice(a_shape.dimensions())
-                           .subspan(
-                               /*pos=*/0,
-                               /*len=*/n_dims);
+  auto major_dims = AsInt64Slice(a_shape.dimensions())
+                        .subspan(
+                            /*pos=*/0,
+                            /*len=*/ndims - 2);
 
-    XlaOp l = ZerosLike(a);
+  auto matrix_dims = AsInt64Slice(a_shape.dimensions())
+                         .subspan(
+                             /*pos=*/0,
+                             /*len=*/ndims);
 
-    // Construct the for loop body to iterate over rows.
-    auto body_fn =
-        [&](XlaOp i, absl::Span<const XlaOp> loop_vars,
-            XlaBuilder* body_builder) -> StatusOr<std::vector<XlaOp>> {
-      std::vector<int64> row_shape_dims(major_dims.begin(), major_dims.end());
-      std::vector<int64> col_shape_dims(major_dims.begin(), major_dims.end());
-      auto body_a = loop_vars[0];
-      auto body_l = loop_vars[1];
-      auto seen_error = loop_vars[2];
-      auto iota_row = Iota(body_builder, ShapeUtil::MakeShape(S32, matrix_dims),
-                           n_dims - 1);
-      auto iota_col = Iota(body_builder, ShapeUtil::MakeShape(S32, matrix_dims),
-                           n_dims - 2);
+  XlaOp l = ZerosLike(a);
 
-      auto mask_pred = Ge(iota_col, iota_row);
-      mask_pred = And(mask_pred, Eq(iota_row, i));
-      auto mask_zeros =
-          Zeros(body_builder,
-                ShapeUtil::MakeShape(a_shape.element_type(), matrix_dims));
-      // L * L.T, This matrix has of a lot of multiplying with zero
-      // (namely, L[:, j:] = 0) and redundant computation, but it is faster
-      // than slice.
-      auto l_square = BatchDot(body_l, false, body_l, true, precision);
+  // Construct the for loop body to iterate over rows.
+  auto body_fn = [&](XlaOp i, absl::Span<const XlaOp> loop_vars,
+                     XlaBuilder* body_builder) -> StatusOr<std::vector<XlaOp>> {
+    std::vector<int64> row_shape_dims(major_dims.begin(), major_dims.end());
+    std::vector<int64> col_shape_dims(major_dims.begin(), major_dims.end());
+    auto body_a = loop_vars[0];
+    auto body_l = loop_vars[1];
+    auto seen_error = loop_vars[2];
+    auto iota_row =
+        Iota(body_builder, ShapeUtil::MakeShape(S32, matrix_dims), ndims - 1);
+    auto iota_col =
+        Iota(body_builder, ShapeUtil::MakeShape(S32, matrix_dims), ndims - 2);
 
-      // A - L*L.T
-      l_square = body_a - l_square;
-      auto l_ii = DynamicSliceInMinorDims(l_square, {i, i}, {1, 1});
+    auto mask_pred = Ge(iota_col, iota_row);
+    mask_pred = And(mask_pred, Eq(iota_row, i));
+    auto mask_zeros =
+        Zeros(body_builder,
+              ShapeUtil::MakeShape(a_shape.element_type(), matrix_dims));
+    // L * L.T, This matrix has of a lot of multiplying with zero
+    // (namely, L[:, j:] = 0) and redundant computation, but it is faster
+    // than slice.
+    auto l_square =
+        BatchDot(body_l, false, MaybeConjugate(body_l, true), true, precision);
+
+    // A - L*L.T
+    l_square = body_a - l_square;
+    auto l_ii = DynamicSliceInMinorDims(l_square, {i, i}, {1, 1});
+    if (ShapeUtil::ElementIsComplex(a_shape)) {
+      auto sqrt = Sqrt(Real(l_ii));
+      l_ii = Complex(sqrt, ZerosLike(sqrt));
+      seen_error = Or(seen_error, IsNan(sqrt));
+    } else {
       l_ii = Sqrt(l_ii);
-      // L = (A - L*L.T) / l_ii * mask + L
-      body_l = Select(mask_pred, l_square / l_ii, mask_zeros) + body_l;
+      seen_error = Or(seen_error, IsNan(l_ii));
+    }
+    // L = (A - L*L.T) / l_ii * mask + L
+    body_l = Select(mask_pred, l_square / l_ii, mask_zeros) + body_l;
 
-      seen_error =
-          Or(seen_error, Any(Or(Le(l_ii, ZerosLike(l_ii)), IsNan(l_ii))));
+    return std::vector<XlaOp>{body_a, body_l, seen_error};
+  };
 
-      return std::vector<XlaOp>{body_a, body_l, seen_error};
-    };
+  TF_ASSIGN_OR_RETURN(
+      auto cholesky_while,
+      ForEachIndex(
+          n, S32, body_fn,
+          {a, l, Zeros(builder, ShapeUtil::MakeShape(PRED, error_dims))},
+          "unblocked", builder));
 
-    TF_ASSIGN_OR_RETURN(
-        auto cholesky_while,
-        ForEachIndex(n, S32, body_fn, {a, l, ConstantR0<bool>(builder, false)},
-                     "unblocked", builder));
-
-    return std::make_pair(cholesky_while[1], cholesky_while[2]);
-  }();
-  if (!result.ok()) {
-    XlaOp error = builder->ReportError(result.status());
-    return {error, error};
-  }
-  return result.ValueOrDie();
+  return std::make_pair(cholesky_while[1], cholesky_while[2]);
 }
 
-XlaOp BuildCholesky(XlaOp a, int64 block_size,
-                    PrecisionConfig::Precision precision) {
+XlaOp CholeskyExpander::BuildCholesky(XlaOp a, int64 block_size,
+                                      PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
@@ -143,63 +144,76 @@ XlaOp BuildCholesky(XlaOp a, int64 block_size,
           ShapeUtil::HumanString(a_shape));
     }
 
-    if (primitive_util::IsComplexType(a_shape.element_type())) {
-      return Unimplemented(
-          "Complex types are not implemented in Cholesky; got shape %s",
-          ShapeUtil::HumanString(a_shape));
-    }
-
     if (block_size < 1) {
       return InvalidArgument(
           "block_size argument to Cholesky must be >= 1; got %d", block_size);
     }
+
+    std::vector<int64> error_dims(a_shape.dimensions().begin(),
+                                  a_shape.dimensions().end());
+    error_dims.back() = error_dims.at(ndims - 2) = 1;
+    std::vector<int64> error_dim_indices(ndims);
+    absl::c_iota(error_dim_indices, 0);
 
     // Blocked left-looking Cholesky factorization.
     // Algorithm 1 from
     // Haidar, Azzam, et al. "High-performance Cholesky factorization for
     // GPU-only execution." Proceedings of General Purpose GPUs. ACM, 2017.
     XlaOp l = ZerosLike(a);
-    XlaOp seen_error = ConstantR0<bool>(builder, false);
+    XlaOp seen_error = Zeros(builder, ShapeUtil::MakeShape(PRED, error_dims));
     for (int64 i = 0; i < n; i += block_size) {
       int64 k = std::min(block_size, n - i);
+      auto panel = SliceInMinorDims(a, {i, i}, {n, i + k});
       if (i > 0) {
         // TODO(phawkins): consider implementing SYRK for the diagonal part of
         // the panel.
         // a[i:, i:i+k] -= np.dot(l[i:, :i], np.transpose(l[i:i+k, :i]))
         auto lhs = SliceInMinorDims(l, {i, 0}, {n, i});
         auto rhs = SliceInMinorDims(l, {i, 0}, {i + k, i});
-        auto delta = BatchDot(lhs, false, rhs, true, precision);
-        auto before = SliceInMinorDims(a, {i, i}, {n, i + k});
-        a = UpdateSliceInMinorDims(a, before - delta, {i, i});
+        auto delta =
+            BatchDot(lhs, false, MaybeConjugate(rhs, true), true, precision);
+        panel = panel - delta;
       }
 
       // l[i:i+k, i:i+k] = cholesky_unblocked(a[i:i+k, i:i+k])
-      auto x = SliceInMinorDims(a, {i, i}, {i + k, i + k});
+      auto x = SliceInMinorDims(panel, {0, 0}, {k, k});
       XlaOp factorized;
+      // TODO(b/167896062): A failure in one element of a batch shouldn't fail
+      // other elements.
       XlaOp factorized_error;
-      std::tie(factorized, factorized_error) = CholeskyUnblocked(x, precision);
+      if (k == 1) {
+        if (ShapeUtil::ElementIsComplex(a_shape)) {
+          auto sqrt = Sqrt(Real(x));
+          factorized = Complex(sqrt, ZerosLike(sqrt));
+          factorized_error = IsNan(sqrt);
+        } else {
+          factorized = Sqrt(x);
+          factorized_error = IsNan(factorized);
+        }
+      } else {
+        TF_ASSIGN_OR_RETURN(auto tile_output, CholeskyUnblocked(x, precision));
+        std::tie(factorized, factorized_error) = tile_output;
+      }
       seen_error = Or(seen_error, factorized_error);
       l = UpdateSliceInMinorDims(l, factorized, {i, i});
 
       if (i + k < n) {
         // l[i+k:, i:i+k] =
         //     trsm_right_transpose(l[i:i+k, i:i+k], a[i+k:, i:i+k])
-        auto panel = SliceInMinorDims(a, {i + k, i}, {n, i + k});
-        auto update =
-            TriangularSolve(factorized, panel,
-                            /*left_side=*/false,
-                            /*lower=*/true,
-                            /*unit_diagonal=*/false,
-                            /*transpose_a=*/TriangularSolveOptions::TRANSPOSE);
+        auto update = TriangularSolve(
+            factorized, SliceInMinorDims(panel, {k, 0}, {n - i, k}),
+            /*left_side=*/false,
+            /*lower=*/true,
+            /*unit_diagonal=*/false,
+            /*transpose_a=*/TriangularSolveOptions::ADJOINT);
         l = UpdateSliceInMinorDims(l, update, {i + k, i});
       }
     }
-    return Select(seen_error,
-                  FullLike(l, std::numeric_limits<float>::quiet_NaN()), l);
+    return Select(
+        BroadcastInDim(seen_error, a_shape.dimensions(), error_dim_indices),
+        FullLike(l, std::numeric_limits<float>::quiet_NaN()), l);
   });
 }
-
-}  // namespace
 
 bool CholeskyExpander::InstructionMatchesPattern(HloInstruction* instruction) {
   return instruction->opcode() == HloOpcode::kCholesky;

@@ -17,3 +17,29 @@ op {
     type: "type"
   }
 }
+op {
+  name: "TensorListPushBack"
+  input_arg {
+    name: "input_handle"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "tensor"
+    type_attr: "element_dtype"
+  }
+  output_arg {
+    name: "output_handle"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: FT_ARRAY
+      args {
+        type_id: FT_VAR
+        s: "element_dtype"
+      }
+    }
+  }
+  attr {
+    name: "element_dtype"
+    type: "type"
+  }
+}

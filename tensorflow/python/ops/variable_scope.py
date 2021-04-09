@@ -233,6 +233,9 @@ def enable_resource_variables():
   """
   global _DEFAULT_USE_RESOURCE
   _DEFAULT_USE_RESOURCE = True
+  # copybara:comment_begin(Reduce verbosity for OSS users)
+  logging.info("Enabling resource variables")
+  # copybara:comment_end
   _api_usage_gauge.get_cell().set(True)
 
 
@@ -267,7 +270,28 @@ def disable_resource_variables():
   """
   global _DEFAULT_USE_RESOURCE
   _DEFAULT_USE_RESOURCE = False
+  # copybara:comment_begin(Reduce verbosity for OSS users)
+  logging.info("Disabling resource variables")
+  # copybara:comment_end
   _api_usage_gauge.get_cell().set(False)
+
+
+def _needs_no_arguments(python_callable):
+  """Returns true if the callable needs no arguments to call."""
+  # TODO(bfontain): Switch to inspect.signature when we are python 3 only.
+  # signature = inspect.signature(python_callable)
+  # return not [1 for param in signature.parameters.values()
+  #             if param.default == param.empty]
+  num_arguments = len(tf_inspect.getargspec(python_callable).args)
+  if not tf_inspect.isfunction(python_callable) and not isinstance(
+      python_callable, functools.partial):
+    # getargspec includes self for function objects (which aren't
+    # functools.partial). This has no default so we need to remove it.
+    # It is not even an argument so its odd that getargspec returns this.
+    # Note that this is fixed with inspect.signature in Python 3.
+    num_arguments -= 1
+  return num_arguments == len(
+      tf_inspect.getargspec(python_callable).defaults or [])
 
 
 class _VariableStore(object):
@@ -905,18 +929,17 @@ class _VariableStore(object):
         # Instantiate initializer if provided initializer is a type object.
         if tf_inspect.isclass(initializer):
           initializer = initializer()
-        if shape is not None and shape.is_fully_defined():
+        if shape.is_fully_defined():
           if "partition_info" in tf_inspect.getargspec(initializer).args:
-            init_val = lambda: initializer(  # pylint: disable=g-long-lambda
-                shape.as_list(),
-                dtype=dtype,
-                partition_info=partition_info)
+            init_val = functools.partial(initializer,
+                                         shape.as_list(),
+                                         dtype=dtype,
+                                         partition_info=partition_info)
           else:
-            init_val = lambda: initializer(  # pylint: disable=g-long-lambda
-                shape.as_list(), dtype=dtype)
+            init_val = functools.partial(initializer,
+                                         shape.as_list(), dtype=dtype)
           variable_dtype = dtype.base_dtype
-        elif len(tf_inspect.getargspec(initializer).args) == len(
-            tf_inspect.getargspec(initializer).defaults or []):
+        elif _needs_no_arguments(initializer):
           init_val = initializer
           variable_dtype = None
         else:
@@ -2067,6 +2090,12 @@ class variable_scope(object):
   ones while providing checks to not create or share by accident. For details,
   see the [Variable Scope How To](https://tensorflow.org/guide/variables), here
   we present only a few basic examples.
+
+  The Variable Scope works as expected when the Eager Execution is Disabled.
+
+  ```python
+  tf.compat.v1.disable_eager_execution()
+  ```
 
   Simple example of how to create a new variable:
 

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
@@ -42,13 +43,6 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 namespace {
-
-// TODO(profiler): Once we capture HLO protos for xla/gpu, we should use that
-// to look up tensorflow op name from hlo_module/hlo_op.
-absl::string_view DummySymbolResolver(absl::string_view hlo_module,
-                                      absl::string_view hlo_op) {
-  return absl::string_view();
-}
 
 const absl::string_view kAnnotationDelimiter = "::";
 
@@ -130,8 +124,7 @@ void DerivedXLineBuilder::ExpandOrAddLevelEvent(const XEvent& event,
 }
 
 void DerivedXLineBuilder::ResetLastEvents(int level) {
-  for (int i = level, iter_limit = last_event_by_level_.size(); i < iter_limit;
-       ++i) {
+  for (int i = level, end = last_event_by_level_.size(); i < end; ++i) {
     last_event_by_level_[i] = absl::nullopt;
   }
   if (level == 0) ResetDependentLines();
@@ -165,6 +158,9 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
                                   {&tf_name_scope, &hlo_ops});
   DerivedXLineBuilder steps(&plane, kThreadIdStepInfo, kStepLineName,
                             start_timestamp_ns, {&hlo_modules});
+  DerivedXLineBuilder source(&plane, kThreadIdSource, kSourceLineName,
+                             start_timestamp_ns, {});
+
   int64 group_id_stat_metadata_id =
       plane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId))->id();
   int64 step_name_stat_metadata_id =
@@ -182,7 +178,8 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
     event.ForEachStat([&](const XStatVisitor& stat) {
       if (stat.Type() == StatType::kGroupId) {
         group_id = stat.IntValue();
-      } else if (stat.Type() == StatType::kLevel0) {
+      } else if (stat.Type() == StatType::kLevel0 ||  // old way to carry tf_op
+                 stat.Type() == StatType::kTfOp) {
         tf_op_full_name = stat.StrOrRefValue();
       } else if (stat.Type() == StatType::kHloOp) {
         hlo_op_names =
@@ -229,10 +226,15 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
             duration_ps, group_id_stat_metadata_id, group_id));
       }
       hlo_ops.ExpandOrAddEvents(hlo_op_event_per_level);
-      auto tf_op_name = symbol_resolver(hlo_module_name, hlo_op_names.back());
-      if (!tf_op_name.empty()) {
-        ProcessTfOpEvent(tf_op_name, offset_ps, duration_ps, group_id, &plane,
-                         &tf_name_scope, &tf_ops);
+      auto symbol = symbol_resolver(hlo_module_name, hlo_op_names.back());
+      if (!symbol.tf_op_name.empty()) {
+        ProcessTfOpEvent(symbol.tf_op_name, offset_ps, duration_ps, group_id,
+                         &plane, &tf_name_scope, &tf_ops);
+      }
+      if (!symbol.source_info.empty()) {
+        source.ExpandOrAddEvent(CreateXEvent(
+            *plane.GetOrCreateEventMetadata(symbol.source_info), offset_ps,
+            duration_ps, group_id_stat_metadata_id, group_id));
       }
     } else if (!tf_op_full_name.empty()) {  // GPU kernel not compiled by XLA
       ProcessTfOpEvent(tf_op_full_name, offset_ps, duration_ps, group_id,
@@ -272,7 +274,7 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
         if (stat.Type() == StatType::kGroupId) {
           group_id = stat.IntValue();
         } else if (stat.Type() == StatType::kDeviceId) {
-          device_id = stat.IntValue();
+          device_id = stat.IntOrUintValue();
         } else if (stat.Type() == StatType::kCorrelationId) {
           correlation_id = stat.IntValue();
         }
@@ -285,10 +287,7 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
         Timespan& group_span = group_launch_info.timespan;
         Timespan event_span = event.GetTimespan();
         if (group_launch_info.num_launches) {  // Existing group.
-          uint64 begin_ps =
-              std::min(group_span.begin_ps(), event_span.begin_ps());
-          uint64 end_ps = std::max(group_span.end_ps(), event_span.end_ps());
-          group_span = Timespan::FromEndPoints(begin_ps, end_ps);
+          group_span.ExpandToInclude(event_span);
         } else {
           group_span = event_span;
         }
@@ -339,21 +338,17 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
 
 void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
                               XSpace* space, bool step_info_only) {
-  for (XPlane& plane : *space->mutable_planes()) {
-    // Derived timelines only generated for device traces.
-    if (IsGpuPlaneName(plane.name())) {
-      DeriveEventsFromAnnotations(DummySymbolResolver, group_metadata_map,
-                                  &plane, step_info_only);
-    }
-  }
-}
-
-void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
-                              const std::vector<XPlane*>& device_traces,
-                              bool step_info_only) {
+  // TODO(profiler): Once we capture HLO protos for xla/gpu, we should use that
+  // to look up tensorflow op name from hlo_module/hlo_op.
+  auto dummy_symbol_resolver = [](absl::string_view hlo_module,
+                                  absl::string_view hlo_op) {
+    return tensorflow::profiler::Symbol();
+  };
+  std::vector<XPlane*> device_traces =
+      FindMutablePlanesWithPrefix(space, kGpuPlanePrefix);
   for (XPlane* plane : device_traces) {
-    DeriveEventsFromAnnotations(DummySymbolResolver, group_metadata_map, plane,
-                                step_info_only);
+    DeriveEventsFromAnnotations(dummy_symbol_resolver, group_metadata_map,
+                                plane, step_info_only);
   }
 }
 

@@ -40,6 +40,10 @@ XlaCaseOp::XlaCaseOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kPropagateCompileTimeConsts,
                                      &propagate_compile_time_consts_));
   }
+  if (!ctx->GetAttr(kXlaOriginalOutsideCompilationNodeName,
+                    &original_node_name_)
+           .ok())
+    original_node_name_ = name();
 }
 
 std::pair<std::vector<NameAttrList>, xla::XlaOp>
@@ -160,17 +164,15 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
   XlaCompiler* compiler = ctx->compiler();
 
   std::vector<XlaCompiler::CompilationResult> branch_results(num_branches);
-  std::vector<XlaCompiler::CompilationResult*> branch_results_p(num_branches);
   for (int j = 0; j < num_branches; ++j) {
     OP_REQUIRES_OK(ctx,
                    compiler->CompileFunction(options, branches[j], arguments,
                                              &branch_results[j]));
-    branch_results_p[j] = &branch_results[j];
   }
 
   bool has_tensor_array_gradients = false;
-  for (XlaCompiler::CompilationResult* result : branch_results_p) {
-    for (const XlaCompiler::ResourceUpdate& update : result->resource_updates) {
+  for (XlaCompiler::CompilationResult& result : branch_results) {
+    for (const XlaCompiler::ResourceUpdate& update : result.resource_updates) {
       XlaResource* resource;
       OP_REQUIRES_OK(ctx,
                      ctx->GetResourceInput(update.input_index + 1, &resource));
@@ -343,7 +345,8 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
                 errors::FailedPrecondition(
                     "Token output is not token type: ",
                     xla::ShapeUtil::HumanString(shape_or.ValueOrDie())));
-    OP_REQUIRES_OK(ctx, compiler->SetNodeToken(name(), token_output));
+    OP_REQUIRES_OK(ctx,
+                   compiler->SetNodeToken(original_node_name_, token_output));
   }
 
   // Updates the values of any resource variables modified by the conditional
@@ -372,6 +375,8 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
 }
 
 REGISTER_XLA_OP(Name("Case").AllowResourceTypes().AllowVariantTypes(),
+                XlaCaseOp);
+REGISTER_XLA_OP(Name("StatelessCase").AllowResourceTypes().AllowVariantTypes(),
                 XlaCaseOp);
 
 }  // namespace tensorflow

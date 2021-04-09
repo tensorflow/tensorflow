@@ -61,16 +61,5 @@ TF_CALL_POD_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 #endif
 
-#if TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SyclDevice;
-#define REGISTER_SYCL_KERNEL(TYPE)                                    \
-  REGISTER_KERNEL_BUILDER(                                            \
-      Name("Snapshot").Device(DEVICE_SYCL).TypeConstraint<TYPE>("T"), \
-      SnapshotOp<SyclDevice, TYPE>);
-
-TF_CALL_POD_TYPES(REGISTER_SYCL_KERNEL);
-
-#undef REGISTER_SYCL_KERNEL
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

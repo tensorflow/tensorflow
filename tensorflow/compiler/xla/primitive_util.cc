@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/primitive_util.h"
 
+#include <limits>
+
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
+#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
@@ -31,9 +34,42 @@ int SignificandWidth(PrimitiveType type) {
     case F64:
       return std::numeric_limits<double>::digits;
     case BF16:
-      return kBFloat16MantissaBits + 1;
+      return std::numeric_limits<bfloat16>::digits;
     case F16:
-      return 11;
+      return std::numeric_limits<half>::digits;
+    default:
+      LOG(FATAL) << "Not a floating data type " << type;
+  }
+}
+
+int ExponentWidth(PrimitiveType type) {
+  // Per the IEEE-754 standard: a floating point type is stored as a sign bit, a
+  // biased exponent and a trailing significand field.
+  int total_bit_width = BitWidth(type);
+  // This field contains all bits in the significand other than the leading
+  // digit which is implied by the exponent.
+  int trailing_significand_field_width = SignificandWidth(type) - 1;
+  // The sign is encoded with a single bit.
+  int kSignBitWidth = 1;
+  // The remaining bits are used for encoding the biased exponent.
+  return total_bit_width - (trailing_significand_field_width + kSignBitWidth);
+}
+
+int OverflowExponent(PrimitiveType type) {
+  // |std::numeric_limits<float>::max_exponent| is defined as: "Maximum positive
+  // integer such that radix raised to the power one less than that integer is a
+  // representable finite floating-point number." as such it does not actually
+  // yield the maximum exponent but the exponent of the first integer which
+  // overflows.
+  switch (type) {
+    case F32:
+      return std::numeric_limits<float>::max_exponent;
+    case F64:
+      return std::numeric_limits<double>::max_exponent;
+    case BF16:
+      return std::numeric_limits<bfloat16>::max_exponent;
+    case F16:
+      return std::numeric_limits<half>::max_exponent;
     default:
       LOG(FATAL) << "Not a floating data type " << type;
   }
@@ -107,6 +143,21 @@ xla::PrimitiveType UnsignedIntegralTypeForBitWidth(int64 src_bitwidth) {
       return xla::U32;
     case 64:
       return xla::U64;
+    default:
+      return xla::PRIMITIVE_TYPE_INVALID;
+  }
+}
+
+xla::PrimitiveType SignedIntegralTypeForBitWidth(int64 src_bitwidth) {
+  switch (src_bitwidth) {
+    case 8:
+      return xla::S8;
+    case 16:
+      return xla::S16;
+    case 32:
+      return xla::S32;
+    case 64:
+      return xla::S64;
     default:
       return xla::PRIMITIVE_TYPE_INVALID;
   }

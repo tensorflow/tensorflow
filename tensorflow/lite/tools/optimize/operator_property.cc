@@ -15,34 +15,22 @@ limitations under the License.
 #include "tensorflow/lite/tools/optimize/operator_property.h"
 
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 
 namespace tflite {
 namespace optimize {
 namespace operator_property {
 
 namespace {
-
-// The op as well as it variants.
-// TODO(jianlijianli): extend it to support ops that has multiple variants.
-struct OpVariant {
-  BuiltinOperator op_code;
-  bool use_layer_norm = false;
-  bool use_projection = false;
-  bool use_peephole = false;
-  // An attribute to indicate if quantization is supported for this Op.
-  // This attribute is equivalent to the "quantizable" attribute in
-  // "OperatorProperty". It added here since OpVariants peeks inside the Op and
-  // determines its quantization related properties.
-  bool is_quantizable = true;
-};
-
 const OpVariant GetOperatorVariant(const ModelT* model, int subgraph_index,
                                    int op_index) {
   OpVariant op_variant;
   OperatorT* op =
       model->subgraphs.at(subgraph_index)->operators[op_index].get();
-  op_variant.op_code = model->operator_codes[op->opcode_index]->builtin_code;
-  if (op_variant.op_code == BuiltinOperator_LSTM) {
+  op_variant.op_code =
+      GetBuiltinCode(model->operator_codes[op->opcode_index].get());
+  if (op_variant.op_code == BuiltinOperator_LSTM ||
+      op_variant.op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM) {
     if (op->inputs.size() == 5) {
       // The 5 input ("basic") LSTM is not supported in this tooling (yet).
       op_variant.is_quantizable = false;
@@ -67,9 +55,27 @@ const OpVariant GetOperatorVariant(const ModelT* model, int subgraph_index,
 OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
                                      int op_index) {
   OpVariant op_variant = GetOperatorVariant(model, subgraph_index, op_index);
+  return GetOperatorProperty(op_variant);
+}
+
+// Update operation defintions in TensorFlow Lite dialect accordingly when there
+// are any needs on updating the kernel support level.
+// LINT.IfChange
+OperatorProperty GetOperatorProperty(OpVariant op_variant) {
   BuiltinOperator op_code = op_variant.op_code;
   OperatorProperty property;
   switch (op_code) {
+    case BuiltinOperator_ABS:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 2;
+      property.restrict_same_input_output_scale = true;
+      break;
+    case BuiltinOperator_RSQRT:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 2;
+      break;
     case BuiltinOperator_ADD:
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};
@@ -92,12 +98,26 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};
       property.version = 2;
+      property.quantize_input_as_activations = true;
       break;
     }
     case BuiltinOperator_BATCH_TO_SPACE_ND:
     case BuiltinOperator_SPACE_TO_BATCH_ND:
     case BuiltinOperator_SPACE_TO_DEPTH:
       // We skip inputs 1 and 2 since they aren't real valued (they are shapes).
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 2;
+      property.quantizable_int16 = false;
+      break;
+    case BuiltinOperator_BROADCAST_TO:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 3;
+      break;
+    case BuiltinOperator_DEPTH_TO_SPACE:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
@@ -177,6 +197,13 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.outputs = {{0, {}}};
       property.version = 1;
       break;
+    case BuiltinOperator_FILL: {
+      property.inputs = {{1, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 3;
+      break;
+    }
     case BuiltinOperator_FULLY_CONNECTED: {
       TensorProperty tensor_property;
       tensor_property.symmetric = true;
@@ -190,8 +217,14 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
+      property.quantize_input_as_activations = true;
       property.version = 2;
-      property.quantizable_int16 = false;
+      break;
+    case BuiltinOperator_GATHER_ND:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 3;
       break;
     case BuiltinOperator_HARD_SWISH: {
       property.inputs = {{0, {}}};
@@ -222,14 +255,15 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.version = 2;
       break;
     }
-    case BuiltinOperator_LSTM: {
+    case BuiltinOperator_LSTM:
+    case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM: {
       if (!op_variant.is_quantizable) {
         // Early exist for 5 input LSTM.
         // It is not supported in this tooling yet.
         property.quantizable = false;
         break;
       }
-      // TODO(jianlijianli): extend LSTM op spec to inlucde input, bias etc.
+      // TODO(jianlijianli): extend LSTM op spec to include input, bias etc.
       // LSTM needs 5 intermediate tensors. This agrees with the fully quantized
       // kernels in lstm_eval.cc
       if (op_variant.use_layer_norm && op_variant.use_projection &&
@@ -512,7 +546,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
         tensor_property_9.symmetric = true;
         // Without layer norm, we choose to quantize bias with the scale of
         // input and its corresponding weight. The other choice will
-        // be to ues the scale of recurrent and its corresponding weight but we
+        // be to use the scale of recurrent and its corresponding weight but we
         // choose to use the smaller scale, which means higher resolution.
         TensorProperty tensor_property_12;
         tensor_property_12.use_derived_scale = true;
@@ -564,7 +598,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
         property.outputs = {{0, {}}};
         property.intermediates = {
             // Without layer normalization, intermediate tensors 0, 1, 2, 3 are
-            // not used and and their quantization parameters are ignored.
+            // not used and their quantization parameters are ignored.
             {0, {}},
             {1, {}},
             {2, {}},
@@ -579,7 +613,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
           !op_variant.use_peephole) {
         // Without layer norm, we choose to quantize bias with the scale of
         // input and its corresponding weight. The other choice will
-        // be to ues the scale of recurrent and its corresponding weight but we
+        // be to use the scale of recurrent and its corresponding weight but we
         // choose to use the smaller scale, which means higher resolution.
         TensorProperty tensor_property_12;
         tensor_property_12.use_derived_scale = true;
@@ -646,7 +680,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
         tensor_property_9.symmetric = true;
         // Without layer norm, we choose to quantize bias with the scale of
         // input and its corresponding weight. The other choice will
-        // be to ues the scale of recurrent and its corresponding weight but we
+        // be to use the scale of recurrent and its corresponding weight but we
         // choose to use the smaller scale, which means higher resolution.
         TensorProperty tensor_property_12;
         tensor_property_12.use_derived_scale = true;
@@ -712,7 +746,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
           !op_variant.use_peephole) {
         // Without layer norm, we choose to quantize bias with the scale of
         // input and its corresponding weight. The other choice will
-        // be to ues the scale of recurrent and its corresponding weight but we
+        // be to use the scale of recurrent and its corresponding weight but we
         // choose to use the smaller scale, which means higher resolution.
         TensorProperty tensor_property_12;
         tensor_property_12.use_derived_scale = true;
@@ -802,7 +836,6 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.version = 2;
-      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_MINIMUM:
       property.arbitrary_inputs = true;
@@ -821,7 +854,6 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.arbitrary_inputs = true;
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
-      property.restrict_same_input_output_scale = true;
       property.version = 2;
       break;
     case BuiltinOperator_PAD:
@@ -830,7 +862,6 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
       property.version = 2;
-      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_QUANTIZE:
       property.inputs = {{0, {}}};
@@ -842,6 +873,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = false;
       property.version = 1;
+      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_LEAKY_RELU:
       property.inputs = {{0, {}}};
@@ -853,7 +885,6 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.version = 2;
-      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_RELU_N1_TO_1:
       property.inputs = {{0, {}}};
@@ -873,7 +904,18 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
       property.version = 2;
-      property.quantizable_int16 = false;
+      break;
+    case BuiltinOperator_REVERSE_V2:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 3;
+      break;
+    case BuiltinOperator_SELECT:
+      property.inputs = {{1, {}}, {2, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 1;
       break;
     case BuiltinOperator_SHAPE:
       property.inputs = {{0, {}}};
@@ -911,16 +953,17 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.restrict_same_input_output_scale = true;
       property.version = 2;
       break;
+    case BuiltinOperator_SQUARED_DIFFERENCE:
     case BuiltinOperator_SUB:
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};
       property.version = 2;
+      property.quantize_input_as_activations = true;
       break;
     case BuiltinOperator_SUM:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.version = 2;
-      property.quantizable_int16 = false;
       break;
     case BuiltinOperator_TANH: {
       property.inputs = {{0, {}}};
@@ -936,7 +979,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
     case BuiltinOperator_SVDF: {
       TensorProperty tensor_property_time;
       // Only 10bits are needed because 6bits are reserved for the reduce
-      // operation after elemement-wise multiplication between state and time
+      // operation after element-wise multiplication between state and time
       // weights.
       tensor_property_time.number_of_bits = 10;
       TensorProperty tensor_property_bias;
@@ -974,6 +1017,19 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
       property.version = 2;
+      property.quantizable_int16 = false;
+      break;
+    case BuiltinOperator_REDUCE_MAX:
+    case BuiltinOperator_REDUCE_MIN:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 2;
+      break;
+    case BuiltinOperator_WHERE:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 1;
       break;
     default:
       // No quantized implementation exists for this operation.
@@ -981,7 +1037,8 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.quantizable_int16 = false;
   }
   return property;
-}
+}  // NOLINT(readability/fn_size)
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/ir/tfl_ops.td)
 
 }  // namespace operator_property
 }  // namespace optimize

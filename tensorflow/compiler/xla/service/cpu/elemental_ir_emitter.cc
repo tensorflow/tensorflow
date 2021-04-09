@@ -33,16 +33,16 @@ using xla::llvm_ir::IrArray;
 namespace xla {
 namespace cpu {
 
-StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(PrimitiveType prim_type,
-                                                        llvm::Value* lhs,
-                                                        llvm::Value* rhs) {
+StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
+    PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs,
+    absl::string_view /*name*/) {
   string function_name;
   bool cast_result_to_fp16 = false;
   switch (prim_type) {
     case F16:
       cast_result_to_fp16 = true;
-      lhs = FPCast(lhs, b_->getFloatTy());
-      rhs = FPCast(rhs, b_->getFloatTy());
+      lhs = FPCast(lhs, b()->getFloatTy());
+      rhs = FPCast(rhs, b()->getFloatTy());
       TF_FALLTHROUGH_INTENDED;
     case F32:
       function_name = "atan2f";
@@ -55,7 +55,7 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(PrimitiveType prim_type,
   }
   // Create a function declaration.
   llvm::Function* function = llvm::dyn_cast<llvm::Function>(
-      module_
+      module()
           ->getOrInsertFunction(function_name, lhs->getType(), lhs->getType(),
                                 rhs->getType())
           .getCallee());
@@ -65,7 +65,7 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(PrimitiveType prim_type,
   // Create an instruction to call the function.
   llvm::Value* result = Call(function, {lhs, rhs});
   if (cast_result_to_fp16) {
-    result = FPCast(result, b_->getHalfTy());
+    result = FPCast(result, b()->getHalfTy());
   }
   return result;
 }
@@ -77,7 +77,7 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
   switch (prim_type) {
     case F16:
       cast_result_to_fp16 = true;
-      value = FPCast(value, b_->getFloatTy());
+      value = FPCast(value, b()->getFloatTy());
       TF_FALLTHROUGH_INTENDED;
     case F32:
       function_name = "tanhf";
@@ -90,7 +90,7 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
   }
   // Create a function declaration.
   llvm::Function* function = llvm::dyn_cast<llvm::Function>(
-      module_
+      module()
           ->getOrInsertFunction(function_name, value->getType(),
                                 value->getType())
           .getCallee());
@@ -100,26 +100,10 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
   // Create an instruction to call the function.
   llvm::Value* result = Call(function, value);
   if (cast_result_to_fp16) {
-    result = FPCast(result, b_->getHalfTy());
+    result = FPCast(result, b()->getHalfTy());
   }
   return result;
 }
 
-llvm_ir::ElementGenerator CpuElementalIrEmitter::MakeElementGenerator(
-    const HloInstruction* hlo,
-    const HloToElementGeneratorMap& operand_to_generator) {
-  switch (hlo->opcode()) {
-    case HloOpcode::kConvolution:
-      return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
-        return ir_emitter_->EmitElementalConvolution(
-            Cast<HloConvolutionInstruction>(hlo),
-            operand_to_generator.at(hlo->operand(0)),
-            operand_to_generator.at(hlo->operand(1)), index);
-      };
-    default:
-      return ElementalIrEmitter::MakeElementGenerator(hlo,
-                                                      operand_to_generator);
-  }
-}
 }  // namespace cpu
 }  // namespace xla

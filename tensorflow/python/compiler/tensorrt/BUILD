@@ -3,7 +3,10 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 
 # cuda_py_test and cuda_py_tests enable XLA tests by default. We can't
@@ -12,10 +15,8 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 exports_files(glob([
     "test/testdata/*",
@@ -24,7 +25,7 @@ exports_files(glob([
 py_library(
     name = "init_py",
     srcs = ["__init__.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":tf_trt_integration_test_base",
         ":trt_convert_py",
@@ -33,10 +34,14 @@ py_library(
 
 py_library(
     name = "trt_convert_py",
-    srcs = ["trt_convert.py"],
-    srcs_version = "PY2AND3",
+    srcs = [
+        "trt_convert.py",
+        "utils.py",
+    ],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
+        "//tensorflow/compiler/tf2tensorrt:trt_engine_instance_proto_py",
         "//tensorflow/compiler/tf2tensorrt:trt_ops_loader",
         "//tensorflow/python:convert_to_constants",
         "//tensorflow/python:func_graph",
@@ -57,7 +62,7 @@ py_library(
 py_library(
     name = "trt_convert_windows",
     srcs = ["trt_convert_windows.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
     ],
@@ -66,6 +71,7 @@ py_library(
 py_library(
     name = "tf_trt_integration_test_base",
     srcs = ["test/tf_trt_integration_test_base.py"],
+    srcs_version = "PY3",
     deps = [
         ":trt_convert_py",
         "//tensorflow/python:client_testlib",
@@ -93,13 +99,13 @@ cuda_py_test(
     tags = [
         "no_cuda_on_cpu_tap",
         "no_pip",
-        "no_rocm",
         "no_windows",
         "nomac",
     ],
     xla_enable_strict_auto_jit = False,
     deps = [
         ":trt_convert_py",
+        "//tensorflow/compiler/tf2tensorrt:trt_engine_instance_proto_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:graph_util",
@@ -118,6 +124,7 @@ cuda_py_test(
 cuda_py_tests(
     name = "tf_trt_integration_test",
     srcs = [
+        "test/annotate_max_batch_sizes_test.py",
         "test/base_test.py",
         "test/batch_matmul_test.py",
         "test/biasadd_matmul_test.py",
@@ -137,6 +144,7 @@ cuda_py_tests(
         "test/quantization_test.py",
         "test/rank_two_test.py",
         "test/reshape_transpose_test.py",
+        "test/tf_function_test.py",
         "test/topk_test.py",
         "test/trt_mode_test.py",
         "test/unary_test.py",
@@ -146,6 +154,7 @@ cuda_py_tests(
     python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_oss",  # TODO(b/165611343): Need to address the failures for CUDA 11 in OSS build.
         "no_rocm",
         "no_windows",
         "nomac",
@@ -172,7 +181,6 @@ cuda_py_test(
         "no_oss",  # TODO(b/125290478): allow running in at least some OSS configurations.
         "no_pip",
         "no_rocm",
-        "no_tap",  # It is not able to download the mnist data.
         "no_windows",
         "nomac",
     ],

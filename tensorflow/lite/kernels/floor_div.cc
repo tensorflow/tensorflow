@@ -41,12 +41,6 @@ struct OpData {
   bool requires_broadcast;
 };
 
-template <typename T>
-T FloorDiv(T input1, T input2) {
-  return std::floor(std::divides<double>()(static_cast<double>(input1),
-                                           static_cast<double>(input2)));
-}
-
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   auto* data = new OpData;
   data->requires_broadcast = false;
@@ -64,9 +58,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Reinterprete the opaque data provided by user.
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
-  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input1;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensor1, &input1));
+  const TfLiteTensor* input2;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensor2, &input2));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   TF_LITE_ENSURE_TYPES_EQ(context, input1->type, input2->type);
 
@@ -112,12 +112,13 @@ TfLiteStatus EvalImpl(TfLiteContext* context, bool requires_broadcast,
     reference_ops::BroadcastBinaryFunction4DSlow<T, T, T>(
         GetTensorShape(input1), GetTensorData<T>(input1),
         GetTensorShape(input2), denominator_data, GetTensorShape(output),
-        GetTensorData<T>(output), FloorDiv<T>);
+        GetTensorData<T>(output), reference_ops::FloorDiv<T>);
   } else {
     reference_ops::BinaryFunction<T, T, T>(
         GetTensorShape(input1), GetTensorData<T>(input1),
         GetTensorShape(input2), GetTensorData<T>(input2),
-        GetTensorShape(output), GetTensorData<T>(output), FloorDiv<T>);
+        GetTensorShape(output), GetTensorData<T>(output),
+        reference_ops::FloorDiv<T>);
   }
 
   return kTfLiteOk;
@@ -126,9 +127,15 @@ TfLiteStatus EvalImpl(TfLiteContext* context, bool requires_broadcast,
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
-  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input1;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensor1, &input1));
+  const TfLiteTensor* input2;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensor2, &input2));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   switch (input1->type) {
     case kTfLiteInt32: {

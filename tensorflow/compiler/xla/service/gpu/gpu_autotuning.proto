@@ -15,19 +15,19 @@ message ConvInstructionLog {
   repeated uint64 operand_addresses = 4;
 }
 
-message BlacklistedAlgorithm {
+message DenylistedAlgorithm {
   int64 id = 1;
   bool tensor_ops = 2;
 }
 
-message AlgorithmBlacklistEntry {
+message AlgorithmDenylistEntry {
   string hlo = 1;
   tensorflow.ComputeCapability cc = 2;
   tensorflow.CudnnVersion cudnn_version = 3;
   string blas_version = 5;
-  repeated BlacklistedAlgorithm algos = 4;
+  repeated DenylistedAlgorithm algos = 4;
 }
 
-message AlgorithmBlacklist {
-  repeated AlgorithmBlacklistEntry entries = 1;
+message AlgorithmDenylist {
+  repeated AlgorithmDenylistEntry entries = 1;
 }

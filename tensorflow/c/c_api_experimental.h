@@ -86,7 +86,7 @@ TF_CAPI_EXPORT void TF_SetXlaConstantFoldingDisabled(
 
 // Create a serialized tensorflow.ConfigProto proto, where:
 //
-// a) ConfigProto.optimizer_options.global_jit_level is set to to ON_1 if
+// a) ConfigProto.optimizer_options.global_jit_level is set to ON_1 if
 // `enable_xla_compilation` is non-zero, and OFF otherwise.
 // b) ConfigProto.gpu_options.allow_growth is set to `gpu_memory_allow_growth`.
 // c) ConfigProto.device_count is set to `num_cpu_devices`.
@@ -230,6 +230,21 @@ TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
                                                    size_t proto_len,
                                                    TF_Status* status);
 
+// Aborts all ongoing collectives with the specified status. After abortion,
+// subsequent collectives will error with this status immediately. To reset the
+// collectives, create a new EagerContext.
+//
+// This is intended to be used when a peer failure is detected.
+TF_CAPI_EXPORT extern void TFE_AbortCollectiveOps(TFE_Context* ctx,
+                                                  TF_Status* status);
+
+// Checks the health of collective ops peers. Explicit health check is needed in
+// multi worker collective ops to detect failures in the cluster.  If a peer is
+// down, collective ops may hang.
+TF_CAPI_EXPORT extern void TFE_CollectiveOpsCheckPeerHealth(
+    TFE_Context* ctx, const char* task, int64_t timeout_in_ms,
+    TF_Status* status);
+
 // Information about the shape of a Tensor and its type.
 struct TF_ShapeAndType {
   // Number of dimensions. -1 indicates unknown rank.
@@ -288,6 +303,27 @@ TF_CAPI_EXPORT extern void TFE_InferShapes(
 TF_CAPI_EXPORT extern void
 TF_ImportGraphDefOptionsSetValidateColocationConstraints(
     TF_ImportGraphDefOptions* opts, unsigned char enable);
+
+// Load the library specified by library_filename and register the pluggable
+// device and related kernels present in that library. This function is not
+// supported on embedded on mobile and embedded platforms and will fail if
+// called.
+//
+// Pass "library_filename" to a platform-specific mechanism for dynamically
+// loading a library. The rules for determining the exact location of the
+// library are platform-specific and are not documented here.
+//
+// On success, returns the newly created library handle and places OK in status.
+// The caller owns the library handle.
+//
+// On failure, returns nullptr and places an error status in status.
+TF_CAPI_EXPORT extern TF_Library* TF_LoadPluggableDeviceLibrary(
+    const char* library_filename, TF_Status* status);
+
+// Frees the memory associated with the library handle.
+// Does NOT unload the library.
+TF_CAPI_EXPORT extern void TF_DeletePluggableDeviceLibraryHandle(
+    TF_Library* lib_handle);
 
 #ifdef __cplusplus
 } /* end extern "C" */

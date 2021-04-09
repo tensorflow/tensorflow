@@ -37,9 +37,9 @@ namespace tensorflow {
 namespace {
 
 template <typename T>
-const std::unordered_map<string, T>* GetSpecialNumsSingleton() {
-  static const std::unordered_map<string, T>* special_nums =
-      CHECK_NOTNULL((new const std::unordered_map<string, T>{
+const std::unordered_map<std::string, T>* GetSpecialNumsSingleton() {
+  static const std::unordered_map<std::string, T>* special_nums =
+      CHECK_NOTNULL((new const std::unordered_map<std::string, T>{
           {"inf", std::numeric_limits<T>::infinity()},
           {"+inf", std::numeric_limits<T>::infinity()},
           {"-inf", -std::numeric_limits<T>::infinity()},
@@ -59,7 +59,7 @@ T locale_independent_strtonum(const char* str, const char** endptr) {
   std::stringstream s(str);
 
   // Check if str is one of the special numbers.
-  string special_num_str;
+  std::string special_num_str;
   s >> special_num_str;
 
   for (size_t i = 0; i < special_num_str.length(); ++i) {
@@ -185,6 +185,14 @@ size_t DoubleToBuffer(double value, char* buffer) {
   // is significantly larger -- and risks overflowing our buffer -- we have
   // this assert.
   static_assert(DBL_DIG < 20, "DBL_DIG is too big");
+
+  if (std::isnan(value)) {
+    int snprintf_result = snprintf(buffer, kFastToBufferSize, "%snan",
+                                   std::signbit(value) ? "-" : "");
+    // Paranoid check to ensure we don't overflow the buffer.
+    DCHECK(snprintf_result > 0 && snprintf_result < kFastToBufferSize);
+    return snprintf_result;
+  }
 
   if (std::abs(value) <= kDoublePrecisionCheckMax) {
     int snprintf_result =
@@ -365,6 +373,14 @@ size_t FloatToBuffer(float value, char* buffer) {
   // this assert.
   static_assert(FLT_DIG < 10, "FLT_DIG is too big");
 
+  if (std::isnan(value)) {
+    int snprintf_result = snprintf(buffer, kFastToBufferSize, "%snan",
+                                   std::signbit(value) ? "-" : "");
+    // Paranoid check to ensure we don't overflow the buffer.
+    DCHECK(snprintf_result > 0 && snprintf_result < kFastToBufferSize);
+    return snprintf_result;
+  }
+
   int snprintf_result =
       snprintf(buffer, kFastToBufferSize, "%.*g", FLT_DIG, value);
 
@@ -383,13 +399,13 @@ size_t FloatToBuffer(float value, char* buffer) {
   return snprintf_result;
 }
 
-string FpToString(Fprint fp) {
+std::string FpToString(Fprint fp) {
   char buf[17];
   snprintf(buf, sizeof(buf), "%016llx", static_cast<long long>(fp));
-  return string(buf);
+  return std::string(buf);
 }
 
-bool StringToFp(const string& s, Fprint* fp) {
+bool StringToFp(const std::string& s, Fprint* fp) {
   char junk;
   uint64_t result;
   if (sscanf(s.c_str(), "%" SCNx64 "%c", &result, &junk) == 1) {
@@ -432,8 +448,8 @@ bool HexStringToUint64(const StringPiece& s, uint64* result) {
   return true;
 }
 
-string HumanReadableNum(int64 value) {
-  string s;
+std::string HumanReadableNum(int64 value) {
+  std::string s;
   if (value < 0) {
     s += "-";
     value = -value;
@@ -456,7 +472,7 @@ string HumanReadableNum(int64 value) {
   return s;
 }
 
-string HumanReadableNumBytes(int64 num_bytes) {
+std::string HumanReadableNumBytes(int64 num_bytes) {
   if (num_bytes == kint64min) {
     // Special case for number with not representable negation.
     return "-8E";
@@ -473,7 +489,7 @@ string HumanReadableNumBytes(int64 num_bytes) {
     char buf[8];  // Longest possible string is '-XXXXB'
     snprintf(buf, sizeof(buf), "%s%lldB", neg_str,
              static_cast<long long>(num_bytes));
-    return string(buf);
+    return std::string(buf);
   }
 
   static const char units[] = "KMGTPE";  // int64 only goes up to E.
@@ -488,11 +504,11 @@ string HumanReadableNumBytes(int64 num_bytes) {
   char buf[16];
   snprintf(buf, sizeof(buf), ((*unit == 'K') ? "%s%.1f%ciB" : "%s%.2f%ciB"),
            neg_str, num_bytes / 1024.0, *unit);
-  return string(buf);
+  return std::string(buf);
 }
 
-string HumanReadableElapsedTime(double seconds) {
-  string human_readable;
+std::string HumanReadableElapsedTime(double seconds) {
+  std::string human_readable;
 
   if (seconds < 0) {
     human_readable = "-";

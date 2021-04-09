@@ -160,20 +160,16 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
     }
 
     // Adding the 2 input state tensors.
-    fw_input_activation_state_ =
-        AddInput(TensorData{TensorType_FLOAT32, {n_fw_output_ * n_batch_}},
-                 /*is_variable=*/true);
-    fw_input_cell_state_ =
-        AddInput(TensorData{TensorType_FLOAT32, {n_fw_cell_ * n_batch_}},
-                 /*is_variable=*/true);
+    fw_input_activation_state_ = AddVariableInput(
+        TensorData{TensorType_FLOAT32, {n_fw_output_ * n_batch_}});
+    fw_input_cell_state_ = AddVariableInput(
+        TensorData{TensorType_FLOAT32, {n_fw_cell_ * n_batch_}});
 
     // Adding the 2 input state tensors.
-    bw_input_activation_state_ =
-        AddInput(TensorData{TensorType_FLOAT32, {n_bw_output_ * n_batch_}},
-                 /*is_variable=*/true);
-    bw_input_cell_state_ =
-        AddInput(TensorData{TensorType_FLOAT32, {n_bw_cell_ * n_batch_}},
-                 /*is_variable=*/true);
+    bw_input_activation_state_ = AddVariableInput(
+        TensorData{TensorType_FLOAT32, {n_bw_output_ * n_batch_}});
+    bw_input_cell_state_ = AddVariableInput(
+        TensorData{TensorType_FLOAT32, {n_bw_cell_ * n_batch_}});
 
     fw_output_ = AddOutput(TensorType_FLOAT32);
 

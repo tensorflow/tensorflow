@@ -32,10 +32,13 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export(v1=["lite.experimental.nn.TfLiteRNNCell"])
+@deprecation.deprecated(
+    None, "Use `keras.layers.RNN` instead for TF2.x.")
 class TfLiteRNNCell(rnn_cell_impl.LayerRNNCell):
   """The most basic RNN cell.
 
@@ -159,6 +162,8 @@ class TfLiteRNNCell(rnn_cell_impl.LayerRNNCell):
 
 
 @tf_export(v1=["lite.experimental.nn.TFLiteLSTMCell"])
+@deprecation.deprecated(
+    None, "Use `keras.layers.LSTM` instead.")
 class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 

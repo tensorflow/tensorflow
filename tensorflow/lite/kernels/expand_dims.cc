@@ -1,5 +1,3 @@
-
-#include <stdint.h>
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
 #include <string.h>
 
 #include "tensorflow/lite/c/common.h"
@@ -73,9 +72,12 @@ TfLiteStatus GetAxisValueFromTensor(TfLiteContext* context,
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-  const TfLiteTensor* input = GetInput(context, node, kInput);
-  const TfLiteTensor* axis = GetInput(context, node, kAxis);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInput, &input));
+  const TfLiteTensor* axis;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kAxis, &axis));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
   output->type = input->type;
   if (IsConstantTensor(axis)) {
     int axis_value;
@@ -89,9 +91,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Just copy input to output.
-  const TfLiteTensor* input = GetInput(context, node, kInput);
-  TfLiteTensor* output = GetOutput(context, node, 0);
-  const TfLiteTensor* axis = GetInput(context, node, kAxis);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInput, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+  const TfLiteTensor* axis;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kAxis, &axis));
   if (IsDynamicTensor(output)) {
     int axis_value;
     TF_LITE_ENSURE_OK(context,

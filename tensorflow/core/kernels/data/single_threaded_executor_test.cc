@@ -273,10 +273,10 @@ TEST_F(ExecutorTest, ControlDependenciesFromSpecialNodes) {
   EXPECT_EQ(3.0, V(retvals[0]));  // out = 1.0 + 2.0 = 3.0
 }
 
-static void BM_executor(int iters, int width, int depth) {
-#ifdef PLATFORM_GOOGLE
-  BenchmarkUseRealTime();
-#endif  // PLATFORM_GOOGLE
+void BM_executor(::testing::benchmark::State& state) {
+  const int width = state.range(0);
+  const int depth = state.range(1);
+
   Graph* g = new Graph(OpRegistry::Global());
   random::PhiloxRandom philox(1729, 17);
   random::SimplePhilox rand(&philox);
@@ -306,30 +306,28 @@ static void BM_executor(int iters, int width, int depth) {
     }
   }
   FixupSourceAndSinkEdges(g);
-#ifdef PLATFORM_GOOGLE
-  SetBenchmarkLabel(strings::StrCat("Nodes = ", cur));
-  SetBenchmarkItemsProcessed(cur * static_cast<int64>(iters));
-#endif  // PLATFORM_GOOGLE
   test::Benchmark("cpu", g, nullptr, nullptr, nullptr,
-                  "SINGLE_THREADED_EXECUTOR")
-      .Run(iters);
+                  "SINGLE_THREADED_EXECUTOR", /*old_benchmark_api=*/false)
+      .Run(state);
+  state.SetLabel(strings::StrCat("Nodes = ", cur));
+  state.SetItemsProcessed(cur * static_cast<int64>(state.iterations()));
 }
 
 // Tall skinny graphs
-BENCHMARK(BM_executor)->ArgPair(16, 1024);
-BENCHMARK(BM_executor)->ArgPair(32, 8192);
+BENCHMARK(BM_executor)->UseRealTime()->ArgPair(16, 1024);
+BENCHMARK(BM_executor)->UseRealTime()->ArgPair(32, 8192);
 
 // Short fat graphs
-BENCHMARK(BM_executor)->ArgPair(1024, 16);
-BENCHMARK(BM_executor)->ArgPair(8192, 32);
+BENCHMARK(BM_executor)->UseRealTime()->ArgPair(1024, 16);
+BENCHMARK(BM_executor)->UseRealTime()->ArgPair(8192, 32);
 
 // Tall fat graph
-BENCHMARK(BM_executor)->ArgPair(1024, 1024);
+BENCHMARK(BM_executor)->UseRealTime()->ArgPair(1024, 1024);
 
-static void BM_const_identity(int iters, int width, int outputs_per_const) {
-#ifdef PLATFORM_GOOGLE
-  BenchmarkUseRealTime();
-#endif  // PLATFORM_GOOGLE
+void BM_const_identity(::testing::benchmark::State& state) {
+  const int width = state.range(0);
+  const int outputs_per_const = state.range(1);
+
   Graph* g = new Graph(OpRegistry::Global());
   for (int i = 0; i < width; ++i) {
     Tensor i_t(i);
@@ -339,22 +337,20 @@ static void BM_const_identity(int iters, int width, int outputs_per_const) {
     }
   }
   FixupSourceAndSinkEdges(g);
-#ifdef PLATFORM_GOOGLE
-  SetBenchmarkLabel(
-      strings::StrCat("Nodes = ", (1 + outputs_per_const) * width));
-  SetBenchmarkItemsProcessed((1 + outputs_per_const) * width *
-                             static_cast<int64>(iters));
-#endif  // PLATFORM_GOOGLE
   test::Benchmark("cpu", g, nullptr, nullptr, nullptr,
-                  "SINGLE_THREADED_EXECUTOR")
-      .Run(iters);
+                  "SINGLE_THREADED_EXECUTOR",
+                  /*old_benchmark_api=*/false)
+      .Run(state);
+  state.SetLabel(strings::StrCat("Nodes = ", (1 + outputs_per_const) * width));
+  state.SetItemsProcessed((1 + outputs_per_const) * width *
+                          static_cast<int64>(state.iterations()));
 }
 
 // Graph with actual op execution.
-BENCHMARK(BM_const_identity)->ArgPair(1, 1);
-BENCHMARK(BM_const_identity)->ArgPair(1, 100);
-BENCHMARK(BM_const_identity)->ArgPair(100, 1);
-BENCHMARK(BM_const_identity)->ArgPair(100, 100);
+BENCHMARK(BM_const_identity)->UseRealTime()->ArgPair(1, 1);
+BENCHMARK(BM_const_identity)->UseRealTime()->ArgPair(1, 100);
+BENCHMARK(BM_const_identity)->UseRealTime()->ArgPair(100, 1);
+BENCHMARK(BM_const_identity)->UseRealTime()->ArgPair(100, 100);
 
 // TODO(mrry): This benchmark currently crashes with a use-after free, because
 // test::Benchmark::RunWithArgs() assumes that the executor will take ownership
@@ -368,7 +364,7 @@ BENCHMARK(BM_const_identity)->ArgPair(100, 100);
 #define ALICE "/job:j/replica:0/task:0/cpu:0"
 #define BOB "/job:j/replica:0/task:0/gpu:0"
 
-static void BM_FeedInputFetchOutput(int iters) {
+static void BM_FeedInputFetchOutput(::testing::benchmark::State& state) {
   Graph* g = new Graph(OpRegistry::Global());
   // z = x + y: x and y are provided as benchmark inputs.  z is the
   // output of the benchmark.  Conceptually, the caller is ALICE, the
@@ -380,10 +376,10 @@ static void BM_FeedInputFetchOutput(int iters) {
   FixupSourceAndSinkEdges(g);
   Tensor val(DT_FLOAT, TensorShape({}));
   val.scalar<float>()() = 3.14;
-  SetBenchmarkItemsProcessed(static_cast<int64>(iters));
   test::Benchmark("cpu", g, nullptr, nullptr, nullptr,
-                  "SINGLE_THREADED_EXECUTOR")
-      .RunWithArgs({{x, val}, {y, val}}, {z}, iters);
+                  "SINGLE_THREADED_EXECUTOR", /*old_benchmark_api=*/false)
+      .RunWithArgs({{x, val}, {y, val}}, {z}, state);
+  state.SetItemsProcessed(state.iterations());
 }
 BENCHMARK(BM_FeedInputFetchOutput);
 #endif

@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_EIGEN_POOLING_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/kernels/eigen_volume_patch.h"
 
 namespace Eigen {
 
@@ -131,8 +130,8 @@ SpatialMaxPooling(const Input& input, DenseIndex patchRows,
       .extract_image_patches(
           patchRows, patchCols, strideRows, strideCols, in_strideRows,
           in_strideCols, padding_type,
-          -Eigen::NumTraits<typename internal::remove_const<
-              typename internal::traits<Input>::Scalar>::type>::highest())
+          Eigen::NumTraits<typename internal::remove_const<
+              typename internal::traits<Input>::Scalar>::type>::lowest())
       .maximum(reduction_dims)
       .reshape(post_reduce_dims);
 }

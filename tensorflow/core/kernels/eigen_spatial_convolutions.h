@@ -180,6 +180,7 @@ struct gemm_pack_colmajor_block<
 
     const StorageIndex start_col = rhs.colOffset();
     const StorageIndex max_col = rhs.maxCol(peeled_k);
+    const StorageIndex rhs_depth_offset = rhs.depthOffset();
 
     for (StorageIndex col = 0; col < cols; ++col) {
       SubMapper lm = rhs.getLinearMapper(0, col);
@@ -199,7 +200,7 @@ struct gemm_pack_colmajor_block<
         if (!has_padding ||
             (!pad_col && !lm.padAnyRow(start_row, max_row - 1))) {
           const StorageIndex start_depth =
-              (c == start_col) ? rhs.depthOffset() : 0;
+              (c == start_col) ? rhs_depth_offset : 0;
 
           const StorageIndex max_depth =
               std::min<StorageIndex>(start_depth + (peeled_k - k),
@@ -286,7 +287,7 @@ struct gemm_pack_colmajor_block<
           eigen_assert(k <= peeled_k);
 
           const StorageIndex start_depth =
-              ((c == start_col) && (r == start_row)) ? rhs.depthOffset() : 0;
+              ((c == start_col) && (r == start_row)) ? rhs_depth_offset : 0;
           const StorageIndex max_depth =
               rhs.maxDepth(peeled_k - k, start_depth);
 
@@ -359,11 +360,12 @@ struct gemm_pack_colmajor_block<
 
     const StorageIndex start_col = rhs.colOffset();
     const StorageIndex max_col = rhs.maxCol(peeled_k);
+    const StorageIndex rhs_depth_offset = rhs.depthOffset();
 
     // Original input column and row after applying all non-standard strides and
     // dilations. Computed by padOrSkip{Row,Col}.
-    Index orig_c;
-    Index orig_r;
+    Index orig_c = 0;
+    Index orig_r = 0;
 
     for (StorageIndex col = 0; col < cols; ++col) {
       SubMapper lm = rhs.getLinearMapper(0, col);
@@ -380,7 +382,7 @@ struct gemm_pack_colmajor_block<
           eigen_assert(k <= peeled_k);
 
           const StorageIndex start_depth =
-              ((c == start_col) && (r == start_row)) ? rhs.depthOffset() : 0;
+              ((c == start_col) && (r == start_row)) ? rhs_depth_offset : 0;
           const StorageIndex max_depth =
               rhs.maxDepth(peeled_k - k, start_depth);
 

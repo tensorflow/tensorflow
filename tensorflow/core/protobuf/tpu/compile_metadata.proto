@@ -59,6 +59,13 @@ message TPUCompileMetadataProto {
     // Whether to let XLA to decide the layout during compilation, as opposed to
     // using a fixed layout determined by the shape.
     bool unrestricted_layout = 9;
+
+    // Name of the node that the arg comes from.
+    string name = 10;
+
+    // Whether to use XLA collectives to broadcast this parameter to all
+    // replicas, instead of using TensorFlow Send/Recv among the tasks.
+    bool requires_xla_broadcast = 11;
   }
   repeated Arg args = 1;
 
@@ -112,4 +119,6 @@ message TPUCompileMetadataProto {
   // Whether to use XLA's SPMD or MPMD partitioner when compiler partitioning is
   // requested.
   bool use_spmd_for_xla_partitioning = 15;
+
+  reserved 16;  // Was broadcast_replicated_parameters_via_collectives
 }

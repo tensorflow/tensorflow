@@ -52,11 +52,11 @@ struct SimpleConfig {
 class ReadAccelerationConfigTest : public ::testing::Test {
  public:
   std::unordered_map<std::string, SimpleConfig> allowlist_;
-  std::unordered_map<std::string, SimpleConfig> blacklist_;
+  std::unordered_map<std::string, SimpleConfig> denylist_;
   std::function<void(std::string, std::string, bool)> consumer_ =
-      [this](std::string key, std::string value, bool is_blacklist) {
-        if (is_blacklist) {
-          blacklist_[key] = {value};
+      [this](std::string key, std::string value, bool is_denylist) {
+        if (is_denylist) {
+          denylist_[key] = {value};
         } else {
           allowlist_[key] = {value};
         }
@@ -67,13 +67,13 @@ TEST_F(ReadAccelerationConfigTest, ReadsAKeyOnlyLine) {
   ReadAccelerationConfig("key", consumer_);
 
   EXPECT_THAT(allowlist_.find("key"), Not(Eq(allowlist_.end())));
-  EXPECT_TRUE(blacklist_.empty());
+  EXPECT_TRUE(denylist_.empty());
 }
 
-TEST_F(ReadAccelerationConfigTest, ReadsABlacklistKeyOnlyLine) {
+TEST_F(ReadAccelerationConfigTest, ReadsADenylistKeyOnlyLine) {
   ReadAccelerationConfig("-key", consumer_);
 
-  EXPECT_THAT(blacklist_.find("key"), Not(Eq(allowlist_.end())));
+  EXPECT_THAT(denylist_.find("key"), Not(Eq(allowlist_.end())));
   EXPECT_TRUE(allowlist_.empty());
 }
 
@@ -81,13 +81,13 @@ TEST_F(ReadAccelerationConfigTest, ReadsAKeyValueLine) {
   ReadAccelerationConfig("key,value", consumer_);
 
   EXPECT_THAT(allowlist_["key"].value, Eq("value"));
-  EXPECT_TRUE(blacklist_.empty());
+  EXPECT_TRUE(denylist_.empty());
 }
 
-TEST_F(ReadAccelerationConfigTest, ReadsABlackListKeyValueLine) {
+TEST_F(ReadAccelerationConfigTest, ReadsADenyListKeyValueLine) {
   ReadAccelerationConfig("-key,value", consumer_);
 
-  EXPECT_THAT(blacklist_["key"].value, Eq("value"));
+  EXPECT_THAT(denylist_["key"].value, Eq("value"));
   EXPECT_TRUE(allowlist_.empty());
 }
 
@@ -95,13 +95,13 @@ TEST_F(ReadAccelerationConfigTest, KeysAreLeftTrimmed) {
   ReadAccelerationConfig("  key,value", consumer_);
 
   EXPECT_THAT(allowlist_["key"].value, Eq("value"));
-  EXPECT_TRUE(blacklist_.empty());
+  EXPECT_TRUE(denylist_.empty());
 }
 
 TEST_F(ReadAccelerationConfigTest, BlKeysAreLeftTrimmed) {
   ReadAccelerationConfig("  -key,value", consumer_);
 
-  EXPECT_THAT(blacklist_["key"].value, Eq("value"));
+  EXPECT_THAT(denylist_["key"].value, Eq("value"));
   EXPECT_TRUE(allowlist_.empty());
 }
 
@@ -109,14 +109,14 @@ TEST_F(ReadAccelerationConfigTest, IgnoresCommentedLines) {
   ReadAccelerationConfig("#key,value", consumer_);
 
   EXPECT_TRUE(allowlist_.empty());
-  EXPECT_TRUE(blacklist_.empty());
+  EXPECT_TRUE(denylist_.empty());
 }
 
 TEST_F(ReadAccelerationConfigTest, CommentCanHaveTrailingBlanks) {
   ReadAccelerationConfig("  #key,value", consumer_);
 
   EXPECT_TRUE(allowlist_.empty());
-  EXPECT_TRUE(blacklist_.empty());
+  EXPECT_TRUE(denylist_.empty());
 }
 
 TEST_F(ReadAccelerationConfigTest, CommentsAreOnlyForTheFullLine) {
@@ -129,7 +129,7 @@ TEST_F(ReadAccelerationConfigTest, IgnoresEmptyLines) {
   ReadAccelerationConfig("", consumer_);
 
   EXPECT_TRUE(allowlist_.empty());
-  EXPECT_TRUE(blacklist_.empty());
+  EXPECT_TRUE(denylist_.empty());
 }
 
 TEST_F(ReadAccelerationConfigTest, ParsesMultipleLines) {
@@ -137,7 +137,7 @@ TEST_F(ReadAccelerationConfigTest, ParsesMultipleLines) {
 
   EXPECT_THAT(allowlist_["key1"].value, Eq("value1"));
   EXPECT_THAT(allowlist_["key2"].value, Eq("value2"));
-  EXPECT_THAT(blacklist_["key3"].value, Eq("value3"));
+  EXPECT_THAT(denylist_["key3"].value, Eq("value3"));
 }
 
 TEST_F(ReadAccelerationConfigTest, ParsesMultipleLinesWithCommentsAndSpaces) {
@@ -177,7 +177,7 @@ TEST(GetAccelerationTestParam, SupportsWildcards) {
   ASSERT_THAT(config_value_maybe.value().value, Eq("data-4"));
 }
 
-TEST(GetAccelerationTestParam, SupportBlacklist) {
+TEST(GetAccelerationTestParam, SupportDenylist) {
   const auto config_value_maybe =
       GetAccelerationTestParam<SimpleConfig>("test-5");
   ASSERT_FALSE(config_value_maybe.has_value());

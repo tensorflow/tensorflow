@@ -33,6 +33,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
@@ -42,6 +43,8 @@ from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_list_ops
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import map_fn
@@ -171,10 +174,150 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
       self.assertAllEqual(fnWithLoop(), 4.0)
 
+  def checkIteratedGradients(self, func):
+    with context.eager_mode():
+
+      def _Grad(f):
+        def _GradFunction(primal):
+          with backprop.GradientTape() as tape:
+            tape.watch(primal)
+            primal_out = f(primal)
+          return tape.gradient(primal_out, primal)
+        return _GradFunction
+
+      f = func
+      one = constant_op.constant(1.)
+
+      for _ in range(3):
+        theoretical, numerical = gradient_checker_v2.compute_gradient(
+            def_function.function(f), [one])
+        self.assertAllClose(theoretical, numerical, rtol=1e-3)
+        f = _Grad(f)
+        self.assertAllClose(array_ops.reshape(numerical, []),
+                            def_function.function(f)(one),
+                            rtol=1e-3)
+
+  def testIteratedGradients(self):
+
+    def _Func(x):
+      _, z = while_loop_v2(
+          lambda i, _: i < 2,
+          lambda i, y: (i + 1, math_ops.cos(y)),
+          [0, x])
+      return z
+
+    self.checkIteratedGradients(_Func)
+
+  def testIteratedGradientsWithList(self):
+
+    def _Func(x):
+      results = list_ops.empty_tensor_list(
+          element_shape=[], element_dtype=dtypes.float32)
+
+      def _LoopBody(i, y, handle):
+        return (i + 1, math_ops.cos(y),
+                list_ops.tensor_list_push_back(handle, y))
+
+      _, z, results = while_loop_v2(
+          lambda i, _, h: i < 2, _LoopBody, [0, x, results])
+      return z + math_ops.reduce_sum(list_ops.tensor_list_stack(
+          results, dtypes.float32))
+
+    self.checkIteratedGradients(_Func)
+
+  def testGradWhileGradWhileWithVariable(self):
+    with context.eager_mode():
+      v = variables.Variable(1.)
+
+      @def_function.function
+      def _Func(x):
+
+        def _Inner(a):
+          with backprop.GradientTape() as tape:
+            tape.watch(a)
+            _, b = while_loop_v2(
+                lambda i, _: i < 2,
+                lambda i, y: (i + 1, math_ops.cos(v + y)),
+                [0, a])
+          return tape.gradient(b, a)
+
+        _, z = while_loop_v2(
+            lambda i, _: i < 2,
+            lambda i, y: (i + 1, _Inner(y)),
+            [0, x])
+        return z
+
+      with backprop.GradientTape(persistent=True) as tape:
+        x = constant_op.constant(1.)
+        tape.watch(x)
+        y = _Func(x)
+      dx, _ = tape.gradient(y, [x, v])
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          _Func, [x])
+      self.assertAllClose(numerical, theoretical, rtol=1e-3)
+      self.assertAllClose(array_ops.reshape(numerical, []),
+                          dx, rtol=1e-3)
+
+  def testThreeNestWithLists(self):
+    with context.eager_mode():
+      def _WrapInWhile(f):
+        def _Wrapped(x):
+          results = list_ops.empty_tensor_list(
+              element_shape=[], element_dtype=dtypes.float32)
+
+          def _LoopBody(i, y, handle):
+            return (i + 1, f(math_ops.cos(y)),
+                    list_ops.tensor_list_push_back(handle, y))
+
+          _, z, results = control_flow_ops.while_loop(
+              lambda i, _, h: i < 2, _LoopBody, [0, x, results])
+          return z + math_ops.reduce_sum(list_ops.tensor_list_stack(
+              results, dtypes.float32))
+        return _Wrapped
+
+      f = math_ops.sin
+
+      target_function = _WrapInWhile(_WrapInWhile(_WrapInWhile(f)))
+
+      @def_function.function
+      def _TapeFromGraphMode(x):
+        with backprop.GradientTape(persistent=True) as tape:
+          tape.watch(x)
+          y = target_function(x)
+        return tape.gradient(y, x)
+
+      x = constant_op.constant(1.)
+      dx = _TapeFromGraphMode(x)
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          target_function, [x])
+      self.assertAllClose(numerical, theoretical, rtol=3e-3)
+      self.assertAllClose(array_ops.reshape(numerical, []), dx, rtol=3e-3)
+
+  def testDeviceLabelsInherited(self):
+    def _LoopBody(i, y):
+      result = math_ops.cos(y)
+      self.assertIn("CPU:10", result.device)
+      with ops.device("CPU:11"):
+        result = array_ops.identity(result)
+      self.assertIn("CPU:11", result.device)
+      return i + 1, result
+
+    @def_function.function
+    def _FunctionWithWhileLoop():
+      x = constant_op.constant(1.)
+      with ops.device("CPU:10"):
+        _, z = while_loop_v2(
+            lambda i, _: i < 2,
+            _LoopBody,
+            [0, x])
+      return z
+    # The test assertion runs at trace time.
+    _FunctionWithWhileLoop.get_concrete_function()
+
   def testExternalControlDependencies(self):
     with ops.Graph().as_default(), self.test_session():
       v = variables.Variable(1.)
-      v.initializer.run()
+      self.evaluate(v.initializer)
       op = v.assign_add(1.)
 
       def body_fn(i):  # pylint: disable=invalid-name
@@ -1175,6 +1318,50 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
     Fn()
 
+  def testDoNotAccumulateForwardTensorsForTensorListReductionOps(self):
+
+    @def_function.function
+    def Fn():
+      with backprop.GradientTape() as tape:
+        e = constant_op.constant(2.)
+        x = list_ops.empty_tensor_list(
+            element_dtype=dtypes.float32, element_shape=e.shape)
+        x = list_ops.tensor_list_push_back(x, e)
+        tape.watch(x)
+
+        def Body(i, x):
+          forward_graph = ops.get_default_graph()
+
+          @custom_gradient.custom_gradient
+          def IdentityWithZeroGrad(x):
+
+            def Grad(unused_g, variables=None):  # pylint: disable=redefined-outer-name
+              del variables
+              gradient_graph = ops.get_default_graph()
+              shape = gen_list_ops.tensor_list_element_shape(
+                  x, shape_type=dtypes.int32)
+              assert shape.graph is forward_graph
+              size = gen_list_ops.tensor_list_length(x)
+              assert size.graph is forward_graph
+              zeros = gen_list_ops.tensor_list_reserve(shape, size,
+                                                       dtypes.float32)
+              assert zeros.graph is gradient_graph
+              return zeros
+
+            return x, Grad
+
+          return i + 1, IdentityWithZeroGrad(x)
+
+        _, result = while_loop_v2(lambda i, _: i < 2, Body, [0, x])
+      ones_like = list_ops.tensor_list_from_tensor(
+          array_ops.ones_like(
+              list_ops.tensor_list_stack(result, element_dtype=dtypes.float32)),
+          element_shape=tensor_shape.TensorShape([]))
+      grad = tape.gradient(result, x, output_gradients=[ones_like])
+      return grad
+
+    Fn()
+
   @test_util.run_v2_only
   def testInheritParentNameScope(self):
 
@@ -1240,6 +1427,26 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     config = config_pb2.ConfigProto()
     config.experimental.executor_type = "SINGLE_THREADED_EXECUTOR"
     self._runBasicWithConfig(config)
+
+  def testIsControlFlowGraph(self):
+    x = constant_op.constant(0)
+
+    @def_function.function
+    def F(c):
+
+      def Cond(i):
+        self.assertTrue(i.graph.is_control_flow_graph)
+        return i < 2
+
+      def Body(i):
+        i = i + 1
+        self.assertTrue(i.graph.is_control_flow_graph)
+        return i
+
+      return while_loop_v2(Cond, Body, [c])
+
+    ret, = F(x)
+    self.assertEqual(2, self.evaluate(ret))
 
   def testImportFromSerializedWithFunctionInBody(self):
     serialized = """node {
@@ -1809,6 +2016,18 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       grad_out, = gradients_impl.gradients(y, x)
       return grad_out
     self.assertAllEqual(F(), 8.0)
+
+  def testIndexedSlicesInIncomingGrads(self):
+    @def_function.function
+    def F():
+      x = constant_op.constant([2.])
+      # Computes x^4
+      ret = while_loop_v2(
+          lambda _: True, lambda v: v * v, [x], return_same_structure=False,
+          maximum_iterations=2)
+      v = array_ops.gather(ret, [0])
+      return gradients_impl.gradients(v, [x])[0]  # 4*x^3
+    self.assertAllEqual(self.evaluate(F()), [32.])
 
 
 def ScalarShape():

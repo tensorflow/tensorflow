@@ -1,6 +1,6 @@
 package(
     default_visibility = ["//tensorflow/lite/delegates/gpu/gl:__subpackages__"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -10,7 +10,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/gl:gl_buffer",
-        "//tensorflow/lite/delegates/gpu/gl:gl_call",
         "//tensorflow/lite/delegates/gpu/gl:object",
         "//tensorflow/lite/delegates/gpu/gl:portable",
     ],

@@ -19,14 +19,9 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
-namespace custom {
+
 TfLiteRegistration* Register_ETHOSU() { return nullptr; }
 
 const char* GetString_ETHOSU() { return ""; }
 
-}  // namespace custom
-}  // namespace micro
-}  // namespace ops
 }  // namespace tflite

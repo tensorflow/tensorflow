@@ -14,16 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/gpu/common/testing/tflite_model_reader.h"
 
+#include <stddef.h>
+
 #include <memory>
 
-#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
+#include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/transformations/general_transformations.h"
+#include "tensorflow/lite/delegates/gpu/common/transformations/model_transformations.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/model_builder.h"
 
 namespace tflite {
@@ -32,13 +34,21 @@ namespace {
 
 class DelegateContext {
  public:
+  struct DelegateData {
+    std::vector<int> input_ids;
+    std::vector<int> output_ids;
+    GraphFloat32* graph;
+  };
   bool Init(TfLiteContext* context,
             const TfLiteDelegateParams* delegate_params) {
-    auto denormalized_graph =
-        reinterpret_cast<GraphFloat32*>(delegate_params->delegate->data_);
-    return denormalized_graph
-               ? BuildModel(context, delegate_params, denormalized_graph).ok()
-               : false;
+    const auto* delegate_data =
+        reinterpret_cast<DelegateData*>(delegate_params->delegate->data_);
+
+    return delegate_data->graph &&
+           BuildModelEnforceIO(context, delegate_params,
+                               delegate_data->input_ids,
+                               delegate_data->output_ids, delegate_data->graph)
+               .ok();
   }
 };
 
@@ -79,9 +89,12 @@ absl::Status BuildFromFlatBuffer(const tflite::FlatBufferModel& flatbuffer,
   if (interpreter_builder(&interpreter) != kTfLiteOk || !interpreter) {
     return absl::InternalError("Unable to prepare TfLite interpreter.");
   }
-  interpreter->UseNNAPI(false);
   TfLiteDelegate delegate;
-  delegate.data_ = graph;
+
+  DelegateContext::DelegateData delegate_data{interpreter->inputs(),
+                                              interpreter->outputs(), graph};
+
+  delegate.data_ = &delegate_data;
   delegate.flags = kTfLiteDelegateFlagsNone;
   delegate.Prepare = DelegatePrepare;
   delegate.CopyFromBufferHandle = nullptr;
@@ -94,8 +107,8 @@ absl::Status BuildFromFlatBuffer(const tflite::FlatBufferModel& flatbuffer,
 
   NullTransformationReporter reporter;
   ModelTransformer transformer(graph, &reporter);
-  if (!ApplyGeneralTransformations(&transformer)) {
-    return absl::InternalError("Graph general transformations failed");
+  if (!ApplyModelTransformations(&transformer)) {
+    return absl::InternalError("Graph transformations failed");
   }
 
   return absl::OkStatus();

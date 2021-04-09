@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -47,6 +48,8 @@ namespace se = ::stream_executor;
 // List of parameters for lowering Mlir to HLO IR.
 struct MlirToHloArgs {
   const std::string& mlir_module;
+  ConfigProto::Experimental::MlirBridgeRollout rollout_state =
+      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED;
 };
 
 // Variant of guaranteed constant tensors types.
@@ -138,22 +141,23 @@ se::port::Status CreateHloModules(
     const absl::optional<xla::DeviceAssignment>& device_assignment,
     std::vector<std::unique_ptr<xla::HloModule>>* hlo_modules);
 
-se::port::StatusOr<TpuAotCompilationRequestProto>
-CreateTpuAotCompilationRequest(
-    const xla::HloModuleGroup& module_group,
-    const XlaCompiler::CompilationResult& compilation_result,
-    const TPUCompileMetadataProto& metadata,
-    const std::vector<std::vector<xla::Shape>>& per_core_arg_shapes,
-    const std::vector<std::vector<xla::Shape>>& per_core_output_shapes,
-    const std::vector<std::vector<std::pair<int, bool>>>&
-        per_core_variable_indices,
-    const absl::optional<xla::DeviceAssignment>& device_assignment);
-
 se::port::StatusOr<TpuCompilationRequestProto> CreateTpuCompilationRequest(
     const absl::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
     const TPUCompileMetadataProto& metadata,
     const std::vector<TensorShape>& arg_shapes);
 
+se::port::Status CompileOpMetadataFromContext(OpKernelConstruction* ctx,
+                                              TPUCompileMetadataProto* metadata,
+                                              NameAttrList* function_name,
+                                              std::string* mlir_module);
+
+// Computes shapes for each argument. Uses both the static shape from the
+// metadata, and the dynamic shapes where the static shape is not
+// defined. There must be one dynamic_shape for each argument with a
+// partially defined shape, in index order.
+Status ComputeArgumentShapes(const TPUCompileMetadataProto& metadata,
+                             const std::vector<TensorShape>& dynamic_shapes,
+                             std::vector<TensorShape>* arg_shapes);
 }  // namespace tpu
 }  // namespace tensorflow
 

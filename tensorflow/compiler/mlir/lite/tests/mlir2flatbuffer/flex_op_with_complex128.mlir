@@ -5,8 +5,9 @@ func @main(tensor<4xcomplex<f64>>, tensor<4xcomplex<f64>>) -> tensor<4xcomplex<f
 // CHECK:  {
 // CHECK-NEXT:  version: 3,
 // CHECK-NEXT:  operator_codes: [ {
-// CHECK-NEXT:    builtin_code: CUSTOM,
-// CHECK-NEXT:    custom_code: "FlexAdd"
+// CHECK-NEXT:    deprecated_builtin_code: 32,
+// CHECK-NEXT:    custom_code: "FlexAdd",
+// CHECK-NEXT:    builtin_code: CUSTOM
 // CHECK-NEXT:  } ],
 // CHECK-NEXT:  subgraphs: [ {
 // CHECK-NEXT:    tensors: [ {
@@ -59,6 +60,7 @@ func @main(tensor<4xcomplex<f64>>, tensor<4xcomplex<f64>>) -> tensor<4xcomplex<f
 // CHECK-NEXT:    name: "min_runtime_version",
 // CHECK-NEXT:    buffer: 4
 // CHECK-NEXT:  } ]
+// CHECK-NEXT:  signature_defs: [ ]
 // CHECK-NEXT:}
 
   %0 = "tf.Add"(%arg0, %arg1)  : (tensor<4xcomplex<f64>>, tensor<4xcomplex<f64>>) -> tensor<4xcomplex<f64>> loc("add")

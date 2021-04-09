@@ -1229,10 +1229,10 @@ TEST_P(HloDataflowAnalysisTest, CopyStartAndCopyDone) {
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto copy_start = builder.AddInstruction(HloInstruction::CreateUnary(
+  auto copy_start = builder.AddInstruction(HloInstruction::CreateCopyStart(
       ShapeUtil::MakeTupleShape({constant->shape(), constant->shape(),
                                  ShapeUtil::MakeShape(U32, {})}),
-      HloOpcode::kCopyStart, constant));
+      constant));
   auto copy_done = builder.AddInstruction(HloInstruction::CreateUnary(
       constant->shape(), HloOpcode::kCopyDone, copy_start));
   module_->AddEntryComputation(builder.Build());
@@ -2324,36 +2324,6 @@ TEST_F(CanShareOperandBufferWithUserTest,
       dataflow_analysis_->CanShareOperandBufferWithUser(param, {}, fusion, {}));
 }
 
-TEST_F(CanShareOperandBufferWithUserTest, DUSWithSliceWithDifferentIndices) {
-  const char* kModule = R"(
-    HloModule test
-
-    fused_computation {
-      p0 = f32[10,20,30] parameter(0)
-      p1 = s32[] parameter(1)
-      p2 = s32[] parameter(2)
-      p3 = s32[] parameter(3)
-      slice = f32[1,1,30] dynamic-slice(p0, p1, p2, p3), dynamic_slice_sizes={1,1,30}
-      ROOT dus = f32[10,20,30] dynamic-update-slice(p0, slice, p1, p3, p2)
-    }
-
-    ENTRY test {
-      p0 = f32[10,20,30] parameter(0)
-      p1 = s32[] parameter(1)
-      p2 = s32[] parameter(2)
-      p3 = s32[] parameter(3)
-      ROOT fusion = f32[10,20,30] fusion(p0, p1, p2, p3), kind=kLoop, calls=fused_computation
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(kModule));
-  auto* fusion = module_->entry_computation()->root_instruction();
-  auto* param = module_->entry_computation()->parameter_instruction(0);
-
-  RunAnalysis();
-  EXPECT_FALSE(
-      dataflow_analysis_->CanShareOperandBufferWithUser(param, {}, fusion, {}));
-}
-
 TEST_F(CanShareOperandBufferWithUserTest, DUSWithSliceWithSameIndices) {
   const char* kModule = R"(
     HloModule test
@@ -2823,6 +2793,151 @@ TEST_F(CanShareOperandBufferWithUserTest, CallToComputationWithFusionRoot) {
 
   EXPECT_TRUE(
       dataflow_analysis_->CanShareOperandBufferWithUser(reverse, {}, call, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, ConcatSliceWithElementwise) {
+  const char* kModule = R"(
+    HloModule test
+
+    fused_computation {
+      p0 = f32[10,20] parameter(0)
+      p1 = f32[10,20] parameter(1)
+      p2 = f32[10,10] parameter(2)
+      p3 = f32[10,10] parameter(3)
+      add0 = f32[10, 20] add(p0, p1)
+      sub0 = f32[10, 10] subtract(p2, p3)
+      reshape0 = f32[200] reshape(add0)
+      reshape1 = f32[100] reshape(sub0)
+      concat0 = f32[300] concatenate(reshape0, reshape1), dimensions={0}
+      slice0 = f32[200] slice(concat0), slice={[0:200]}
+      slice1 = f32[100] slice(concat0), slice={[200:300]}
+      ROOT tuple = (f32[200], f32[100]) tuple(slice0, slice1)
+    }
+
+    ENTRY test {
+      p0 = f32[10,20] parameter(0)
+      p1 = f32[10,20] parameter(1)
+      p2 = f32[10,10] parameter(2)
+      p3 = f32[10,10] parameter(3)
+      ROOT fusion = (f32[200], f32[100]) fusion(p0, p1, p2, p3), kind=kInput, calls=fused_computation
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(kModule));
+  auto* fusion = module_->entry_computation()->root_instruction();
+  auto* param0 = module_->entry_computation()->parameter_instruction(0);
+  auto* param1 = module_->entry_computation()->parameter_instruction(1);
+  auto* param2 = module_->entry_computation()->parameter_instruction(2);
+  auto* param3 = module_->entry_computation()->parameter_instruction(3);
+
+  RunAnalysis();
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                fusion, {0}));
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
+                                                                fusion, {0}));
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(param2, {},
+                                                                fusion, {1}));
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(param3, {},
+                                                                fusion, {1}));
+  // Tensors of different sizes cannot share buffer.
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                 fusion, {1}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, ConcatSliceNegativeTest) {
+  const char* kModule = R"(
+    HloModule test
+
+    fused_computation {
+      // p0 has multiple transitive uses fed to concat. So, p0 cannot share
+      // buffer with outputs because the aliased output could be written before
+      // all the uses of p0 are finished.
+      p0 = f32[100] parameter(0)
+      p1 = f32[100] parameter(1)
+      add0 = f32[100] add(p0, p1)
+      concat0 = f32[200] concatenate(p0, add0), dimensions={0}
+      slice0 = f32[100] slice(concat0), slice={[0:100]}
+      slice1 = f32[100] slice(concat0), slice={[100:200]}
+      ROOT tuple = (f32[100], f32[100]) tuple(slice0, slice1)
+    }
+
+    ENTRY test {
+      p0 = f32[100] parameter(0)
+      p1 = f32[100] parameter(1)
+      ROOT fusion = (f32[100], f32[100]) fusion(p0, p1),
+                        kind=kInput, calls=fused_computation
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(kModule));
+  auto* fusion = module_->entry_computation()->root_instruction();
+  auto* param0 = module_->entry_computation()->parameter_instruction(0);
+  auto* param1 = module_->entry_computation()->parameter_instruction(1);
+
+  RunAnalysis();
+  // p0 cannot share with either fusion{0} or fusion{1}.
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                 fusion, {0}));
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                 fusion, {1}));
+  // p1 cannot share with fusion{0} because we're not sure about their
+  // relationship.
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
+                                                                 fusion, {0}));
+  // p1 can share with fusion{1} because they will be executed in an
+  // elementwise manner.
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
+                                                                fusion, {1}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, MultipleConcatenates) {
+  const char* kModule = R"(
+    HloModule test
+
+    fused_computation {
+      p0 = f32[100] parameter(0)
+      p1 = f32[100] parameter(1)
+      add0 = f32[100] add(p0, p1)
+      sub0 = f32[100] subtract(p1, p1)
+      concat0 = f32[200] concatenate(p0, add0), dimensions={0}
+      slice0 = f32[100] slice(concat0), slice={[0:100]}
+      slice1 = f32[100] slice(concat0), slice={[100:200]}
+      concat1 = f32[200] concatenate(p0, sub0), dimensions={0}
+      slice2 = f32[100] slice(concat1), slice={[0:100]}
+      slice3 = f32[100] slice(concat1), slice={[100:200]}
+      ROOT tuple = (f32[100], f32[100], f32[100], f32[100])
+                       tuple(slice0, slice1, slice2, slice3)
+    }
+
+    ENTRY test {
+      p0 = f32[100] parameter(0)
+      p1 = f32[100] parameter(1)
+      ROOT fusion = (f32[100], f32[100], f32[100], f32[100])
+          fusion(p0, p1), kind=kInput, calls=fused_computation
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(kModule));
+  auto* fusion = module_->entry_computation()->root_instruction();
+  auto* param0 = module_->entry_computation()->parameter_instruction(0);
+  auto* param1 = module_->entry_computation()->parameter_instruction(1);
+
+  RunAnalysis();
+  // p0 cannot share.
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                 fusion, {0}));
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                 fusion, {1}));
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                 fusion, {2}));
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                 fusion, {3}));
+  // p1 can share with either fusion{1} or fusion{3}.
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
+                                                                fusion, {1}));
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
+                                                                fusion, {3}));
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
+                                                                 fusion, {0}));
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
+                                                                 fusion, {2}));
 }
 
 }  // namespace

@@ -89,7 +89,7 @@ absl::Status EglEnvironment::Init() {
     }
   }
 
-  if (gpu_info_.type == GpuType::UNKNOWN) {
+  if (gpu_info_.vendor == GpuVendor::kUnknown) {
     RETURN_IF_ERROR(RequestGpuInfo(&gpu_info_));
   }
   // TODO(akulik): when do we need ForceSyncTurning?
@@ -110,7 +110,7 @@ absl::Status EglEnvironment::InitSurfacelessContext() {
   // PowerVR support EGL_KHR_surfaceless_context, but glFenceSync crashes on
   // PowerVR when it is surface-less.
   RETURN_IF_ERROR(RequestGpuInfo(&gpu_info_));
-  if (gpu_info_.type == GpuType::POWERVR) {
+  if (gpu_info_.IsPowerVR()) {
     return absl::UnavailableError(
         "Surface-less context is not properly supported on powervr.");
   }

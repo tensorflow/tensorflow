@@ -18,68 +18,73 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 from absl.testing import parameterized
 
 from tensorflow.python import tf2
+from tensorflow.python.compat import v2_compat
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.framework import combinations
+from tensorflow.python.platform import _pywrap_tf2
 from tensorflow.python.platform import test
-
-
-def set_environ():
-  os.environ['TF2_BEHAVIOR'] = '1'
-
-
-def unset_environ():
-  os.environ['TF2_BEHAVIOR'] = '0'
 
 
 class EnablingTF2Behavior(test.TestCase, parameterized.TestCase):
 
-  def setUp(self):
-    super(EnablingTF2Behavior, self).setUp()
-    tf2._force_enable = None
-    if 'TF2_BEHAVIOR' in os.environ:
-      del os.environ['TF2_BEHAVIOR']
+  def __init__(self, methodName):
+    super().__init__(methodName)
+    self._set_default_seed = False
 
-  actions = [tf2.enable, tf2.disable, set_environ, unset_environ]
+  @combinations.generate(test_base.v1_only_combinations())
+  def test_tf1_enable_tf2_behaviour(self):
+    self.assertFalse(tf2.enabled())
+    self.assertFalse(_pywrap_tf2.is_enabled())
 
-  @combinations.generate(
-      combinations.combine(
-          action_0=actions, action_1=actions,
-          action_2=actions, action_3=actions))
-  def test_scenarios(self, action_0, action_1, action_2, action_3):
+    v2_compat.enable_v2_behavior()
+    self.assertTrue(tf2.enabled())
+    self.assertTrue(_pywrap_tf2.is_enabled())
 
-    def state(action, enabled, disabled):
-      """Returns bool tuple (tf2_enabled, force_enabled, force_disabled)."""
-      if action is tf2.enable:
-        return True, True, False
-      elif action is tf2.disable:
-        return False, False, True
-      elif action is set_environ:
-        return not disabled, enabled, disabled
-      elif action is unset_environ:
-        return enabled, enabled, disabled
-      else:
-        raise ValueError('Unexpected action {}. {} are supported'.format(
-            action, EnablingTF2Behavior.actions))
+    v2_compat.disable_v2_behavior()
+    self.assertFalse(tf2.enabled())
+    self.assertFalse(_pywrap_tf2.is_enabled())
 
-    action_0()
-    expected, enabled, disabled = state(action_0, False, False)
-    self.assertEqual(tf2.enabled(), expected)
+  @combinations.generate(test_base.v1_only_combinations())
+  def test_tf1_disable_tf2_behaviour(self):
+    self.assertFalse(tf2.enabled())
+    self.assertFalse(_pywrap_tf2.is_enabled())
 
-    action_1()
-    expected, enabled, disabled = state(action_1, enabled, disabled)
-    self.assertEqual(tf2.enabled(), expected)
+    v2_compat.disable_v2_behavior()
+    self.assertFalse(tf2.enabled())
+    self.assertFalse(_pywrap_tf2.is_enabled())
 
-    action_2()
-    expected, enabled, disabled = state(action_2, enabled, disabled)
-    self.assertEqual(tf2.enabled(), expected)
+    v2_compat.enable_v2_behavior()
+    self.assertTrue(tf2.enabled())
+    self.assertTrue(_pywrap_tf2.is_enabled())
 
-    action_3()
-    expected, enabled, disabled = state(action_3, enabled, disabled)
-    self.assertEqual(tf2.enabled(), expected)
+  @combinations.generate(test_base.v2_only_combinations())
+  def test_tf2_enable_tf2_behaviour(self):
+    self.assertTrue(tf2.enabled())
+    self.assertTrue(_pywrap_tf2.is_enabled())
+
+    v2_compat.enable_v2_behavior()
+    self.assertTrue(tf2.enabled())
+    self.assertTrue(_pywrap_tf2.is_enabled())
+
+    v2_compat.disable_v2_behavior()
+    self.assertFalse(tf2.enabled())
+    self.assertFalse(_pywrap_tf2.is_enabled())
+
+  @combinations.generate(test_base.v2_only_combinations())
+  def test_tf2_disable_tf2_behaviour(self):
+    self.assertTrue(tf2.enabled())
+    self.assertTrue(_pywrap_tf2.is_enabled())
+
+    v2_compat.disable_v2_behavior()
+    self.assertFalse(tf2.enabled())
+    self.assertFalse(_pywrap_tf2.is_enabled())
+
+    v2_compat.enable_v2_behavior()
+    self.assertTrue(tf2.enabled())
+    self.assertTrue(_pywrap_tf2.is_enabled())
 
 
 if __name__ == '__main__':

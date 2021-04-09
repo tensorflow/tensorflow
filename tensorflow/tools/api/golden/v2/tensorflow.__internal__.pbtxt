@@ -1,0 +1,135 @@
+path: "tensorflow.__internal__"
+tf_module {
+  member {
+    name: "CompositeTensor"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "EagerTensor"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FuncGraph"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "autograph"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "decorator"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "dispatch"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "distribute"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "eager_context"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "feature_column"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "function"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "graph_util"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "mixed_precision"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "monitoring"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "nest"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "ops"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "saved_model"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "smart_cond"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "test"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "tf2"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "tracking"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "train"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "types"
+    mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "create_c_op"
+    argspec: "args=[\'graph\', \'node_def\', \'inputs\', \'control_inputs\', \'op_def\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "execute_fn_for_device"
+    argspec: "args=[\'device_branch_fns\', \'default_fn\', \'name\'], varargs=None, keywords=None, defaults=[\'execute_fn\'], "
+  }
+  member_method {
+    name: "get_enclosing_xla_context"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_name_scope"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_tfrt_enabled"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "lift_to_graph"
+    argspec: "args=[\'tensors\', \'graph\', \'sources\', \'disallowed_placeholders\', \'add_sources\', \'handle_captures\', \'base_graph\', \'op_map\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "record_gradient"
+    argspec: "args=[\'op_name\', \'inputs\', \'attrs\', \'outputs\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "register_call_context_function"
+    argspec: "args=[\'func\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "register_clear_session_function"
+    argspec: "args=[\'func\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "register_get_session_function"
+    argspec: "args=[\'func\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "register_load_model_function"
+    argspec: "args=[\'func\'], varargs=None, keywords=None, defaults=None"
+  }
+}

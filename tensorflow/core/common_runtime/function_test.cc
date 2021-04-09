@@ -162,8 +162,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     pflr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), &options.config,
         TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, /*thread_pool=*/nullptr,
-        /*parent=*/nullptr, /*custom_kernel_creator=*/nullptr,
-        /*session_metadata=*/nullptr,
+        /*parent=*/nullptr, /*session_metadata=*/nullptr,
         Rendezvous::Factory{
             [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
               *r = new IntraProcessRendezvous(device_mgr);
@@ -392,6 +391,37 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesTwo) {
   TF_CHECK_OK(InstantiateAndRunViaCallFrameInterface(
       flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, {x}, {&y}));
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+}
+
+TEST_F(FunctionLibraryRuntimeTest, InstantiationStackTraceCopying) {
+  class DummyStackTrace : public AbstractStackTrace {
+    absl::Span<StackFrame const> ToFrames() const override { return {}; }
+
+    std::string ToString(const TracePrintingOptions& opts) const override {
+      return "DummyStackTrace";
+    }
+
+    StackFrame LastUserFrame() const override { return StackFrame{}; }
+  };
+
+  FunctionDef func = test::function::XTimesTwo();
+  Init({});
+
+  StackTracesMap stack_traces;
+  stack_traces["two"] = std::make_shared<DummyStackTrace>();
+
+  TF_CHECK_OK(lib_def_->AddFunctionDef(func, stack_traces));
+
+  FunctionLibraryRuntime::Handle handle;
+  TF_CHECK_OK(Instantiate(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, {}, &handle));
+
+  const FunctionBody* func_body = flr0_->GetFunctionBody(handle);
+  for (const Node* node : func_body->graph->nodes()) {
+    if (node->name() == "two") {
+      EXPECT_EQ(node->GetStackTrace()->ToString({}), "DummyStackTrace");
+    }
+  }
+  TF_CHECK_OK(flr0_->ReleaseHandle(handle));
 }
 
 TEST_F(FunctionLibraryRuntimeTest, XTimesTwo_MultiDeviceBacked) {
@@ -1259,7 +1289,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndPlaceInlinedNodes) {
     auto g = absl::make_unique<Graph>(OpRegistry::Global());
     TF_ASSERT_OK(construct_graph(&g));
 
-    const string merged_device = "/job:call/replica:0/task:1/device:CPU:*";
+    const string merged_device = "/job:body/replica:0/task:1/device:CPU:*";
 
     ExpandInlineFunctions(flr0_, g.get(), opts);
     GraphDef expected = expected_graph({/*a*/ arg_device,                //

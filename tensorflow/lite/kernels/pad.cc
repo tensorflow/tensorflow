@@ -118,7 +118,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                             op_context.constant_values->type);
   }
 
-  // TODO(nupurgarg): Current implementations rely on the inputs being <= 4D.
+  // Ensure we do not exceed maximum dimension count.
   TF_LITE_ENSURE(
       context, op_context.dims <= reference_ops::PadKernelMaxDimensionCount());
 
@@ -156,7 +156,7 @@ TfLiteStatus EvalInt(TfLiteContext* context, const PadContext& op_context,
   }
   const integer_type pad_value_copy = pad_value;
   if (op_context.resizing_category == ResizingCategory::kImageStyle) {
-    reference_ops::PadImageStyle(
+    optimized_ops::PadImageStyle(
         op_params, GetTensorShape(op_context.input),
         GetTensorData<integer_type>(op_context.input), &pad_value_copy,
         GetTensorShape(op_context.output),

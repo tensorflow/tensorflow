@@ -19,7 +19,7 @@ namespace tpu {
 
 // TODO(henrytan): remove this once `TpuCompilationCache` migration to OSS is
 // completed.
-#if defined(LIBTFTPU)
+#if defined(LIBTPU_ON_GCE)
 /* static */
 void TpuCompilationMetrics::IncrementCacheLookupCount(
     bool is_cache_hit, absl::string_view session_name) {
@@ -36,7 +36,7 @@ void TpuCompilationMetrics::IncrementCompilationCount(
     absl::string_view session_name) {
   // A placeholder for tracking metrics.
 }
-#endif  // LIBTFTPU
+#endif  // LIBTPU_ON_GCE
 
 }  // namespace tpu
 }  // namespace tensorflow

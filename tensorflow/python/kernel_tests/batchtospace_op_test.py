@@ -89,7 +89,7 @@ class BatchToSpaceErrorHandlingTest(test.TestCase, PythonOpImpl):
     block_size = 0
     with self.assertRaises(ValueError):
       out_tf = self.batch_to_space(x_np, crops, block_size)
-      out_tf.eval()
+      self.evaluate(out_tf)
 
   @test_util.run_deprecated_v1
   def testBlockSizeOne(self):
@@ -109,7 +109,7 @@ class BatchToSpaceErrorHandlingTest(test.TestCase, PythonOpImpl):
     block_size = 10
     with self.assertRaises(ValueError):
       out_tf = self.batch_to_space(x_np, crops, block_size)
-      out_tf.eval()
+      self.evaluate(out_tf)
 
   @test_util.run_deprecated_v1
   def testBlockSizeSquaredNotDivisibleBatch(self):

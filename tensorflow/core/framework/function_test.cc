@@ -406,7 +406,7 @@ XTimesTwo[T:{float, double, int32, int64}](x:T) -> (y:T) {
 TEST(TFunc, WXPlusB) {
   auto expect = R"P(
 WXPlusB[T:{float, double}](w:T, x:T, b:T) -> (y:T) {
-  mm = MatMul[T=$T, _kernel="eigen", transpose_a=false, transpose_b=false](w, x)
+  mm = MatMul[T=$T, transpose_a=false, transpose_b=false](w, x)
   y = Add[T=$T](mm:product:0, b)
   return y = y:z:0
 }
@@ -1066,6 +1066,16 @@ TEST(FunctionLibraryDefinitionTest, RemoveFunction) {
   EXPECT_TRUE(lib_def.Contains("XTimesTwo"));
   TF_EXPECT_OK(lib_def.RemoveFunction("XTimesTwo"));
   EXPECT_FALSE(lib_def.Contains("XTimesTwo"));
+}
+
+TEST(FunctionLibraryDefinitionTest, Clear) {
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
+  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XAddX()));
+
+  lib_def.Clear();
+  EXPECT_FALSE(lib_def.Contains("XTimesTwo"));
+  EXPECT_FALSE(lib_def.Contains("XAddX"));
 }
 
 TEST(FunctionLibraryDefinitionTest, AddLibrary) {

@@ -12,15 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import functools
 import os
 import weakref
-
-import six
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -30,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
@@ -38,7 +34,6 @@ from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.module import module
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
@@ -89,7 +84,7 @@ class InterfaceTests(test.TestCase):
 
   def testSaveWithOnlyKerasSession(self):
 
-    with ops.Graph().as_default():
+    with ops.Graph().as_default(), self.cached_session():
       inp = input_layer.Input([1])
       dense = core.Dense(1)(inp)
       model = training.Model(inp, dense)
@@ -97,22 +92,6 @@ class InterfaceTests(test.TestCase):
       model.fit([1.], [2.])
       checkpoint = trackable_utils.Checkpoint(model=model)
       checkpoint.save(os.path.join(self.get_temp_dir(), "ckpt"))
-
-  def testObjectMetadata(self):
-    with context.eager_mode():
-      checkpoint_directory = self.get_temp_dir()
-      checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-      dense = core.Dense(1)
-      checkpoint = trackable_utils.Checkpoint(dense=dense)
-      dense(constant_op.constant([[1.]]))
-      save_path = checkpoint.save(checkpoint_prefix)
-
-    objects = trackable_utils.object_metadata(save_path)
-    all_variable_names = []
-    for obj in objects.nodes:
-      for attribute in obj.attributes:
-        all_variable_names.append(attribute.full_name)
-    self.assertIn("dense/kernel", all_variable_names)
 
 
 class CheckpointingTests(keras_parameterized.TestCase):
@@ -174,8 +153,8 @@ class CheckpointingTests(keras_parameterized.TestCase):
     expected_checkpoint_names = [
         name + suffix for name in expected_checkpoint_names]
     named_variables = {v.name: v for v in named_variables}
-    six.assertCountEqual(self, expected_checkpoint_names,
-                         named_variables.keys())
+    self.assertEqual(len(expected_checkpoint_names),
+                     len(named_variables.keys()))
     # Check that we've mapped to the right variable objects (not exhaustive)
     self.assertEqual(
         "global_step",
@@ -196,20 +175,18 @@ class CheckpointingTests(keras_parameterized.TestCase):
     optimizer_node = serialized_graph.nodes[
         serialized_graph.nodes[0].children[1].node_id]
     children = [node.local_name for node in optimizer_node.children]
-    six.assertCountEqual(
-        self,
+    self.assertEqual(
         # hyper variable dependencies
-        ["beta_1", "beta_2", "iter", "decay", "learning_rate"],
-        children)
+        len(["beta_1", "beta_2", "iter", "decay", "learning_rate"]),
+        len(children))
     serialized_slot_keys = []
     for slot in optimizer_node.slot_variables:
       for attribute in (
           serialized_graph.nodes[slot.slot_variable_node_id].attributes):
         serialized_slot_keys.append(attribute.checkpoint_key)
-    six.assertCountEqual(
-        self,
-        [key + suffix for key in expected_slot_keys],
-        serialized_slot_keys)
+    self.assertEqual(
+        len([key + suffix for key in expected_slot_keys]),
+        len(serialized_slot_keys))
 
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testSaveRestore(self):
@@ -270,7 +247,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
       # Optimizer slot variables are created when the original variable is
       # restored.
       self.assertAllEqual([1.5], self.evaluate(on_create_m_bias_slot))
-      dummy_var = resource_variable_ops.ResourceVariable([1.])
+      dummy_var = variables_lib.Variable([1.])
       on_create_optimizer.minimize(loss=dummy_var.read_value,
                                    var_list=[dummy_var])
       status.assert_existing_objects_matched()
@@ -353,6 +330,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
     with self.test_session():
       num_training_steps = 10
       checkpoint_directory = self.get_temp_dir()
+      optimizer = adam.Adam(0.001)
       def _train_fn(model, input_value):
         with backprop.GradientTape() as tape:
           loss = model(input_value)
@@ -360,9 +338,8 @@ class CheckpointingTests(keras_parameterized.TestCase):
         gradients = tape.gradient(loss, variables)
         return optimizer.apply_gradients(zip(gradients, variables))
       for training_continuation in range(3):
-        with test_util.device(use_gpu=True):
+        with testing_utils.device(should_use_gpu=True):
           model = MyModel()
-          optimizer = adam.Adam(0.001)
           root = trackable_utils.Checkpoint(
               optimizer=optimizer, model=model)
           manager = checkpoint_management.CheckpointManager(
@@ -381,41 +358,40 @@ class CheckpointingTests(keras_parameterized.TestCase):
           self.assertEqual(training_continuation + 1,
                            self.evaluate(root.save_counter))
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testPartialRestoreWarningObject(self):
-    with context.eager_mode():
-      optimizer = adam.Adam(0.0)
-      original_root = trackable_utils.Checkpoint(v1=variables_lib.Variable(2.),
-                                                 v2=variables_lib.Variable(3.),
-                                                 optimizer=optimizer)
-      # Create a slot variable to save
-      optimizer.minimize(original_root.v1.read_value, [original_root.v1])
-      prefix = os.path.join(self.get_temp_dir(), "ckpt")
-      save_path = original_root.save(prefix)
-      partial_root = trackable_utils.Checkpoint(v1=variables_lib.Variable(0.))
-      weak_partial_root = weakref.ref(partial_root)
-      weak_v1 = weakref.ref(partial_root.v1)
-      partial_root.restore(save_path)
-      self.assertEqual(2., partial_root.v1.numpy())
-      with test.mock.patch.object(logging, "warning") as mock_log:
-        del partial_root
-        self.assertIsNone(weak_partial_root())
-        self.assertIsNone(weak_v1())
-        messages = str(mock_log.call_args_list)
-      self.assertIn("(root).v2'", messages)
-      self.assertIn("(root).optimizer's state 'm' for (root).v1", messages)
-      self.assertNotIn("(root).v1'", messages)
-      self.assertIn("expect_partial()", messages)
+    optimizer = adam.Adam(0.0)
+    original_root = trackable_utils.Checkpoint(v1=variables_lib.Variable(2.),
+                                               v2=variables_lib.Variable(3.),
+                                               optimizer=optimizer)
+    # Create a slot variable to save
+    optimizer.minimize(original_root.v1.read_value, [original_root.v1])
+    prefix = os.path.join(self.get_temp_dir(), "ckpt")
+    save_path = original_root.save(prefix)
+    partial_root = trackable_utils.Checkpoint(v1=variables_lib.Variable(0.))
+    weak_partial_root = weakref.ref(partial_root)
+    weak_v1 = weakref.ref(partial_root.v1)
+    partial_root.restore(save_path)
+    self.assertEqual(2., partial_root.v1.numpy())
+    with test.mock.patch.object(logging, "warning") as mock_log:
+      del partial_root
+      self.assertIsNone(weak_partial_root())
+      self.assertIsNone(weak_v1())
+      messages = str(mock_log.call_args_list)
+    self.assertIn("(root).v2'", messages)
+    self.assertIn("(root).optimizer's state 'm' for (root).v1", messages)
+    self.assertNotIn("(root).v1'", messages)
+    self.assertIn("expect_partial()", messages)
 
   # pylint: disable=cell-var-from-loop
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
-  @test_util.run_v1_only("b/120545219")
   def testWithDefun(self):
     with self.test_session():
       num_training_steps = 2
       checkpoint_directory = self.get_temp_dir()
       checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
       for training_continuation in range(3):
-        with test_util.device(use_gpu=True):
+        with testing_utils.device(should_use_gpu=True):
           model = MyModel()
           # Don't actually train so we can test variable values
           optimizer = adam.Adam(0.)
@@ -450,34 +426,34 @@ class CheckpointingTests(keras_parameterized.TestCase):
                            self.evaluate(root.save_counter))
   # pylint: enable=cell-var-from-loop
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testAnonymousVarsInInit(self):
 
     class Model(training.Model):
 
       def __init__(self):
         super(Model, self).__init__()
-        self.w = resource_variable_ops.ResourceVariable(0.0)
-        self.b = resource_variable_ops.ResourceVariable(0.0)
+        self.w = variables_lib.Variable(0.0)
+        self.b = variables_lib.Variable(0.0)
         self.vars = [self.w, self.b]
 
       def call(self, x):
         return x * self.w + self.b
 
-    with context.eager_mode():
-      model = Model()
-      optimizer = adam.Adam(learning_rate=0.05)
-      checkpoint_directory = self.get_temp_dir()
-      checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-      checkpoint = trackable_utils.Checkpoint(
-          model=model, optimizer=optimizer)
-      for _ in range(2):
-        checkpoint.save(checkpoint_prefix)
-        with backprop.GradientTape() as tape:
-          loss = (constant_op.constant(1.)
-                  - model(constant_op.constant(1.))) ** 2
-        grad = tape.gradient(loss, model.vars)
-        optimizer.apply_gradients(
-            [(g, v) for g, v in zip(grad, model.vars)])
+    model = Model()
+    optimizer = adam.Adam(learning_rate=0.05)
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    checkpoint = trackable_utils.Checkpoint(
+        model=model, optimizer=optimizer)
+    for _ in range(2):
+      checkpoint.save(checkpoint_prefix)
+      with backprop.GradientTape() as tape:
+        loss = (constant_op.constant(1.)
+                - model(constant_op.constant(1.))) ** 2
+      grad = tape.gradient(loss, model.vars)
+      optimizer.apply_gradients(
+          [(g, v) for g, v in zip(grad, model.vars)])
 
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testDeferredSlotRestoration(self):
@@ -623,7 +599,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
       checkpoint_directory = self.get_temp_dir()
       checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
       optimizer_only_prefix = os.path.join(checkpoint_directory, "opt")
-      with test_util.device(use_gpu=True):
+      with testing_utils.device(should_use_gpu=True):
         model = MyModel()
         optimizer = adam.Adam(0.001)
         root = trackable_utils.Checkpoint(
@@ -659,7 +635,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
       del train_fn
 
       # Restore into a graph with the optimizer
-      with test_util.device(use_gpu=True):
+      with testing_utils.device(should_use_gpu=True):
         model = MyModel()
         optimizer = adam.Adam(0.001)
         root = trackable_utils.Checkpoint(
@@ -683,7 +659,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
       del train_fn1
 
       # Make sure initialization doesn't clobber later restores
-      with test_util.device(use_gpu=True):
+      with testing_utils.device(should_use_gpu=True):
         model = MyModel()
         optimizer = adam.Adam(0.001, beta_1=1.0)
         root = trackable_utils.Checkpoint(
@@ -738,11 +714,10 @@ class TemplateTests(keras_parameterized.TestCase):
 
       save_template = template.make_template("s1", _templated)
       v1_save, _, v2_save, manual_scope, manual_scope_v = save_template()
-      six.assertCountEqual(
-          self,
-          [id(v1_save), id(v2_save), id(manual_scope),
-           id(manual_scope_v), id(save_template)],
-          map(id, trackable_utils.list_objects(save_template)))
+      self.assertEqual(
+          set([id(v1_save), id(v2_save), id(manual_scope),
+               id(manual_scope_v), id(save_template)]),
+          set(map(id, trackable_utils.list_objects(save_template))))
       manual_dep, = manual_scope._checkpoint_dependencies
       self.assertEqual("in_manual_scope", manual_dep.name)
       self.assertIs(manual_scope_v, manual_dep.ref)
@@ -837,7 +812,7 @@ class CheckpointCompatibilityTests(keras_parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testLoadFromNameBasedSaver(self):
     """Save a name-based checkpoint, load it using the object-based API."""
-    with test_util.device(use_gpu=True):
+    with testing_utils.device(should_use_gpu=True):
       with self.test_session():
         save_path = self._write_name_based_checkpoint()
         root = self._initialized_model()
@@ -872,8 +847,7 @@ class CheckpointCompatibilityTests(keras_parameterized.TestCase):
         self._check_sentinels(root)
         # Check that there is no error when keys are missing from the name-based
         # checkpoint.
-        root.not_in_name_checkpoint = resource_variable_ops.ResourceVariable(
-            [1.])
+        root.not_in_name_checkpoint = variables_lib.Variable([1.])
         status = object_saver.restore(save_path)
         with self.assertRaises(AssertionError):
           status.assert_existing_objects_matched()

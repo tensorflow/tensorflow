@@ -47,8 +47,7 @@ TEST(EagerOpRewriteRegistryTest, RegisterRewritePass) {
       "CPU", {}, "/job:localhost/replica:0/task:0/device:CPU:0"));
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       SessionOptions(),
-      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      tensorflow::ContextMirroringPolicy::MIRRORING_NONE, false, false,
+      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
       &device_mgr, false, nullptr, nullptr);
   EagerOperation orig_op(ctx);
   std::unique_ptr<tensorflow::EagerOperation> out_op;

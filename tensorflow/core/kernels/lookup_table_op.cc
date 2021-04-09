@@ -26,9 +26,15 @@ limitations under the License.
 #include "tensorflow/core/kernels/initializable_lookup_table.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/platform/random.h"
 
 namespace tensorflow {
 namespace lookup {
+
+std::string UniqueNodeName(const std::string& base) {
+  static std::atomic<int64> counter(0);
+  return strings::StrCat(base, "/", counter.fetch_add(1), "/", random::New64());
+}
 
 // Lookup table that wraps an unordered_map, where the key and value data type
 // is specified. Each individual value must be a scalar. If vector values are
@@ -56,14 +62,25 @@ class MutableHashTableOfScalars final : public LookupInterface {
 
   Status Find(OpKernelContext* ctx, const Tensor& key, Tensor* value,
               const Tensor& default_value) override {
-    const V default_val = default_value.flat<V>()(0);
     const auto key_values = key.flat<K>();
     auto value_values = value->flat<V>();
+    const auto default_flat = default_value.flat<V>();
+
+    int64 total = value_values.size();
+    int64 default_total = default_flat.size();
+    bool is_full_size_default = (total == default_total);
 
     tf_shared_lock l(mu_);
     for (int64 i = 0; i < key_values.size(); ++i) {
+      // is_full_size_default is true:
+      //   Each key has an independent default value, key_values(i)
+      //   corresponding uses default_flat(i) as its default value.
+      //
+      // is_full_size_default is false:
+      //   All keys will share the default_flat(0) as default value.
       value_values(i) = gtl::FindWithDefault(
-          table_, SubtleMustCopyIfIntegral(key_values(i)), default_val);
+          table_, SubtleMustCopyIfIntegral(key_values(i)),
+          is_full_size_default ? default_flat(i) : default_flat(0));
     }
 
     return Status::OK();
@@ -114,14 +131,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
         ctx->allocate_output("keys", TensorShape({size}), &keys));
     TF_RETURN_IF_ERROR(
         ctx->allocate_output("values", TensorShape({size}), &values));
-
-    auto keys_data = keys->flat<K>();
-    auto values_data = values->flat<V>();
-    int64 i = 0;
-    for (auto it = table_.begin(); it != table_.end(); ++it, ++i) {
-      keys_data(i) = it->first;
-      values_data(i) = it->second;
-    }
+    ExportKeysAndValues(keys, values);
     return Status::OK();
   }
 
@@ -147,7 +157,57 @@ class MutableHashTableOfScalars final : public LookupInterface {
     return sizeof(MutableHashTableOfScalars) + ret;
   }
 
+  Status AsGraphDef(GraphDefBuilder* builder, Node** out) const override {
+    tf_shared_lock l(mu_);
+    int64 size = table_.size();
+    Tensor keys(key_dtype(), TensorShape({size}));
+    Tensor values(value_dtype(), TensorShape({size}));
+    ExportKeysAndValues(&keys, &values);
+
+    // We set use_node_name_sharing with a unique node name so that the resource
+    // can outlive the MutableHashTableV2 kernel. This means that the lifetime
+    // of the resource will be tied to the lifetime of the resource manager it
+    // is created in.
+    // TODO(b/181695913): Provide a mechanism for deleting this resource
+    // earlier when appropriate.
+    Node* table = ops::SourceOp(
+        "MutableHashTableV2",
+        builder->opts()
+            .WithName(UniqueNodeName("MutableHashTableFromGraphDef"))
+            .WithAttr("use_node_name_sharing", true)
+            .WithAttr("key_dtype", key_dtype())
+            .WithAttr("value_dtype", value_dtype()));
+    Node* keys_node = ops::SourceOp(
+        "Const",
+        builder->opts().WithAttr("dtype", key_dtype()).WithAttr("value", keys));
+    Node* values_node =
+        ops::SourceOp("Const", builder->opts()
+                                   .WithAttr("dtype", value_dtype())
+                                   .WithAttr("value", values));
+    Node* import_table =
+        ops::TernaryOp("LookupTableImportV2", table, keys_node, values_node,
+                       builder->opts()
+                           .WithAttr("Tin", key_dtype())
+                           .WithAttr("Tout", value_dtype()));
+    *out = ops::UnaryOp("Identity", table,
+                        builder->opts().WithControlInput(import_table));
+    return Status::OK();
+  }
+
  private:
+  // Writes all keys and values into `keys` and `values`. `keys` and `values`
+  // must point to tensors of size `table_.size()`.
+  void ExportKeysAndValues(Tensor* keys, Tensor* values) const
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
+    auto keys_data = keys->flat<K>();
+    auto values_data = values->flat<V>();
+    int64 i = 0;
+    for (auto it = table_.begin(); it != table_.end(); ++it, ++i) {
+      keys_data(i) = it->first;
+      values_data(i) = it->second;
+    }
+  }
+
   mutable mutex mu_;
   std::unordered_map<K, V> table_ TF_GUARDED_BY(mu_);
 };
@@ -173,10 +233,14 @@ class MutableHashTableOfTensors final : public LookupInterface {
 
   Status Find(OpKernelContext* ctx, const Tensor& key, Tensor* value,
               const Tensor& default_value) override {
-    const auto default_flat = default_value.flat<V>();
+    const auto default_flat = default_value.flat_inner_dims<V, 2>();
     const auto key_values = key.flat<K>();
     auto value_values = value->flat_inner_dims<V, 2>();
     int64 value_dim = value_shape_.dim_size(0);
+
+    int64 total = value_values.size();
+    int64 default_total = default_flat.size();
+    bool is_full_size_default = (total == default_total);
 
     tf_shared_lock l(mu_);
     for (int64 i = 0; i < key_values.size(); ++i) {
@@ -187,8 +251,15 @@ class MutableHashTableOfTensors final : public LookupInterface {
           value_values(i, j) = value_vec->at(j);
         }
       } else {
+        // is_full_size_default is true:
+        //   Each key has an independent default value, key_values(i)
+        //   corresponding uses default_flat(i) as its default value.
+        //
+        // is_full_size_default is false:
+        //   All keys will share the default_flat(0) as default value.
         for (int64 j = 0; j < value_dim; j++) {
-          value_values(i, j) = default_flat(j);
+          value_values(i, j) =
+              is_full_size_default ? default_flat(i, j) : default_flat(0, j);
         }
       }
     }
@@ -248,18 +319,7 @@ class MutableHashTableOfTensors final : public LookupInterface {
         ctx->allocate_output("keys", TensorShape({size}), &keys));
     TF_RETURN_IF_ERROR(ctx->allocate_output(
         "values", TensorShape({size, value_dim}), &values));
-
-    auto keys_data = keys->flat<K>();
-    auto values_data = values->matrix<V>();
-    int64 i = 0;
-    for (auto it = table_.begin(); it != table_.end(); ++it, ++i) {
-      K key = it->first;
-      ValueArray value = it->second;
-      keys_data(i) = key;
-      for (int64 j = 0; j < value_dim; j++) {
-        values_data(i, j) = value[j];
-      }
-    }
+    ExportKeysAndValues(keys, values);
     return Status::OK();
   }
 
@@ -285,7 +345,63 @@ class MutableHashTableOfTensors final : public LookupInterface {
     return sizeof(MutableHashTableOfTensors) + ret;
   }
 
+  Status AsGraphDef(GraphDefBuilder* builder, Node** out) const override {
+    tf_shared_lock l(mu_);
+    int64 size = table_.size();
+    Tensor keys(key_dtype(), TensorShape({size}));
+    Tensor values(value_dtype(), TensorShape({size, value_shape_.dim_size(0)}));
+    ExportKeysAndValues(&keys, &values);
+
+    // We set use_node_name_sharing with a unique node name so that the resource
+    // can outlive the MutableHashTableOfTensorsV2 kernel. This means that the
+    // lifetime of the resource will be tied to the lifetime of the resource
+    // manager it is created in.
+    // TODO(b/181695913): Provide a mechanism for deleting this resource
+    // earlier when appropriate.
+    Node* table =
+        ops::SourceOp("MutableHashTableOfTensorsV2",
+                      builder->opts()
+                          .WithName(UniqueNodeName("MutableHashTableOfTensors"))
+                          .WithAttr("use_node_name_sharing", true)
+                          .WithAttr("key_dtype", key_dtype())
+                          .WithAttr("value_dtype", value_dtype())
+                          .WithAttr("value_shape", value_shape_));
+    Node* keys_node = ops::SourceOp(
+        "Const",
+        builder->opts().WithAttr("dtype", key_dtype()).WithAttr("value", keys));
+    Node* values_node =
+        ops::SourceOp("Const", builder->opts()
+                                   .WithAttr("dtype", value_dtype())
+                                   .WithAttr("value", values));
+    Node* import_table =
+        ops::TernaryOp("LookupTableImportV2", table, keys_node, values_node,
+                       builder->opts()
+                           .WithAttr("Tin", key_dtype())
+                           .WithAttr("Tout", value_dtype()));
+    *out = ops::UnaryOp("Identity", table,
+                        builder->opts().WithControlInput(import_table));
+    return Status::OK();
+  }
+
  private:
+  // Writes all keys and values into `keys` and `values`. `keys` and `values`
+  // must point to tensors of size `table_.size()`.
+  void ExportKeysAndValues(Tensor* keys, Tensor* values) const
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
+    int64 value_dim = value_shape_.dim_size(0);
+    auto keys_data = keys->flat<K>();
+    auto values_data = values->matrix<V>();
+    int64 i = 0;
+    for (auto it = table_.begin(); it != table_.end(); ++it, ++i) {
+      K key = it->first;
+      ValueArray value = it->second;
+      keys_data(i) = key;
+      for (int64 j = 0; j < value_dim; j++) {
+        values_data(i, j) = value[j];
+      }
+    }
+  }
+
   TensorShape value_shape_;
   mutable mutex mu_;
   typedef gtl::InlinedVector<V, 4> ValueArray;

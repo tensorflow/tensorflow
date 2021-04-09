@@ -27,15 +27,8 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/cwise_ops.h"
-#include "tensorflow/core/platform/types.h"
-
 #include "tensorflow/core/platform/logging.h"
-
-#ifdef __HIP_DEVICE_COMPILE__
-// Provide ldexp float overload for HIP, it's missing in their headers.
-__device__ inline float ldexp(float x, int exp) { return ldexpf(x, exp); }
-#endif
-
+#include "tensorflow/core/platform/types.h"
 namespace tensorflow {
 namespace functor {
 

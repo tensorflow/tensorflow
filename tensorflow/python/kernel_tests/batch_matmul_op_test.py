@@ -130,6 +130,7 @@ class BatchMatmulOpTest(test.TestCase):
 
 def _GetBatchMatmulOpTest(dtype, adjoint_a, adjoint_b, use_static_shape):
 
+  @test_util.run_without_tensor_float_32("Tests batch matmul")
   def Test(self):
     np.random.seed(42)
     self._testNonEmpty(dtype, adjoint_a, adjoint_b, use_static_shape)
@@ -141,6 +142,7 @@ def _GetBatchMatmulOpTest(dtype, adjoint_a, adjoint_b, use_static_shape):
 def _GetBatchMatmulOpBroadcastingTest(dtype, adjoint_a, adjoint_b,
                                       use_static_shape):
 
+  @test_util.run_without_tensor_float_32("Tests batch matmul")
   def Test(self):
     np.random.seed(42)
     self._testBroadcasting(dtype, adjoint_a, adjoint_b, use_static_shape)
@@ -164,7 +166,7 @@ class BatchMatmulGradientTest(test.TestCase):
     def Loss(x, y):
       return math_ops.reduce_sum(math_ops.matmul(x, y, adjoint_a, adjoint_b))
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       ((x_jacob_t, y_jacob_t),
        (x_jacob_n, y_jacob_n)) = gradient_checker_v2.compute_gradient(
            Loss, [x, y], delta=delta)

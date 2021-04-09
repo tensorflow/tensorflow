@@ -17,6 +17,7 @@ limitations under the License.
 #include "flatbuffers/flexbuffers.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
 #include "tensorflow/lite/toco/tflite/types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
@@ -42,9 +43,9 @@ void LoadOperatorsTable(const ::tflite::Model& input_model,
   auto opcodes = input_model.operator_codes();
   if (!opcodes) return;
   for (const auto* opcode : *opcodes) {
-    if (opcode->builtin_code() != ::tflite::BuiltinOperator_CUSTOM) {
-      operators_table->push_back(
-          EnumNameBuiltinOperator(opcode->builtin_code()));
+    auto builtin_code = GetBuiltinCode(opcode);
+    if (builtin_code != ::tflite::BuiltinOperator_CUSTOM) {
+      operators_table->push_back(EnumNameBuiltinOperator(builtin_code));
     } else {
       operators_table->push_back(opcode->custom_code()->c_str());
     }
@@ -157,7 +158,7 @@ void ImportOperators(
       }
     }
     auto outputs = input_op->outputs();
-    for (int i = 0; i < outputs->Length(); i++) {
+    for (int i = 0, end = outputs->Length(); i < end; i++) {
       auto output_index = outputs->Get(i);
       const std::string& output_name = tensors_table.at(output_index);
       op->outputs.push_back(output_name);

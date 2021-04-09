@@ -57,7 +57,7 @@ inline void InfiniteLoop() {
 
 #endif  // TF_LITE_MCU_DEBUG_LOG
 
-#ifdef NDEBUG
+#if defined(NDEBUG) || defined(ARDUINO)
 #define TFLITE_ASSERT_FALSE (static_cast<void>(0))
 #else
 #define TFLITE_ASSERT_FALSE TFLITE_ABORT

@@ -64,6 +64,7 @@ REGISTER_OP("AutoShardDataset")
     .Attr("auto_shard_policy: int = 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("num_replicas: int = 0")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalAutoShardDataset")
@@ -144,6 +145,11 @@ REGISTER_OP("UncompressElement")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::DatasetIteratorShape);
+
+REGISTER_OP("ComputeBatchSize")
+    .Input("input_dataset : variant")
+    .Output("batch_size : int64")
+    .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("CSVDataset")
     .Input("filenames: string")
@@ -432,6 +438,7 @@ REGISTER_OP("IgnoreErrorsDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("log_warning: bool = false")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalIgnoreErrorsDataset")
@@ -439,6 +446,7 @@ REGISTER_OP("ExperimentalIgnoreErrorsDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("log_warning: bool = false")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("IteratorGetDevice")
@@ -787,6 +795,15 @@ REGISTER_OP("RebatchDataset")
     .Attr("use_fallback: bool = true")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("RebatchDatasetV2")
+    .Input("input_dataset: variant")
+    .Input("batch_sizes: int64")
+    .Input("drop_remainder: bool")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("SamplingDataset")
     .Input("input_dataset: variant")
     .Input("rate: float32")
@@ -949,6 +966,10 @@ REGISTER_OP("SnapshotDatasetV2")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("compression: string = ''")
+    .Attr("reader_prefix: string = ''")
+    .Attr("writer_prefix: string = ''")
+    .Attr("hash_valid: bool = false")
+    .Attr("hash: int = 0")
     .Attr("reader_func: func")
     .Attr("shard_func: func")
     .Attr("Treader_func_args: list(type) >= 0")
@@ -968,11 +989,12 @@ REGISTER_OP("SaveDataset")
     .Attr("shard_func: func")
     .Attr("use_shard_func: bool = true")
     .Attr("Tshard_func_args: list(type) >= 0")
+    .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // `path` should be a scalar.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      return shape_inference::ScalarShape(c);
+      return Status::OK();
     });
 
 REGISTER_OP("LoadDataset")
@@ -1162,6 +1184,27 @@ REGISTER_OP("DataServiceDataset")
     .Attr("task_refresh_interval_hint_ms: int = -1")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("data_transfer_protocol: string = ''")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape);
+
+// Adds `consumer_index` and `num_consumers` arguments to support round-robin
+// reads.
+REGISTER_OP("DataServiceDatasetV2")
+    .Input("dataset_id: int64")
+    .Input("processing_mode: string")
+    .Input("address: string")
+    .Input("protocol: string")
+    .Input("job_name: string")
+    .Input("consumer_index: int64")
+    .Input("num_consumers: int64")
+    .Input("max_outstanding_requests: int64")
+    .Input("iteration_counter: resource")
+    .Output("handle: variant")
+    .Attr("task_refresh_interval_hint_ms: int = -1")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("data_transfer_protocol: string = ''")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape);
 

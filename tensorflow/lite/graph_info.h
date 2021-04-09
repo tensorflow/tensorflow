@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_GRAPH_INFO_H_
 #define TENSORFLOW_LITE_GRAPH_INFO_H_
 
+#include <stddef.h>
+
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"
@@ -34,15 +36,21 @@ class GraphInfo {
   // num_tensors().
   virtual TfLiteTensor* tensor(size_t index) = 0;
 
-  // Total number of nodes in the graph.
-  virtual size_t num_nodes() const = 0;
+  // Number of nodes in the current execution plan.
+  virtual size_t num_execution_nodes() const = 0;
 
-  // Returns a node given its index which is expected to be between 0 and
-  // num_nodes().
+  // Total number of known nodes, which may include nodes that are no longer in
+  // the execution plan. This happens in case of applying multiple delegates.
+  // Should be >= num_execution_nodes()
+  virtual size_t num_total_nodes() const = 0;
+
+  // Returns a node given its index in the execution plan, which is expected to
+  // be between 0 and num_execution_nodes().
   virtual const TfLiteNode& node(size_t index) const = 0;
 
   // Returns an implementation-specific node index which may be different from
-  // index.
+  // execution-plan index.
+  // Expected to be between 0 and num_total_nodes().
   virtual size_t node_index(size_t index) const = 0;
 
   // Returns the indices of the input tensors.

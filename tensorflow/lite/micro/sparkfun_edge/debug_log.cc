@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,22 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-// Implementation for the DebugLog() function that prints to the UART on the
-// SparkFun Edge microcontroller. The same should work for other targets using
-// the Ambiq Apollo 3.
-
-#include "tensorflow/lite/micro/debug_log.h"
-
-#include "am_bsp.h"   // NOLINT
-#include "am_util.h"  // NOLINT
-
-extern "C" void DebugLog(const char* s) {
-  static bool is_initialized = false;
-  if (!is_initialized) {
-    am_bsp_uart_printf_enable();
-    is_initialized = true;
-  }
-
-  am_util_stdio_printf("%s", s);
-}
+// This file is empty to ensure that a specialized implementation of
+// debug_log.h is used (instead of the default implementation from
+// tensorflow/lite/micro/debug_log.cc).
+//
+// The actual target-specific implementation of debug_log.h is in
+// system_setup.cc since that allows us to consolidate all the target-specific
+// specializations into one source file.

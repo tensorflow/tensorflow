@@ -17,7 +17,7 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
 
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 common_linkopts = tflite_linkopts() + select({
@@ -51,7 +51,7 @@ cc_library(
         "//tensorflow/lite/tools/evaluation/proto:preprocessing_steps_cc_proto",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_jpeg_internal",
+            "//tensorflow/core:portable_jpeg_internal",
         ],
         "//conditions:default": [
             "//tensorflow/core:jpeg_internal",

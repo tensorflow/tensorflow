@@ -23,16 +23,22 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
-#include "tensorflow/stream_executor/tpu/tpu_node_context_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 
 namespace tensorflow {
 namespace tpu {
 
+// A TpuNodeContext object represents a specific TPU node (core). The static
+// class methods represent host-wide actions.
+//
+// First call Initialize in a freshly reset system. Then call Create to talk to
+// individual nodes.
 class TpuNodeContext final {
  public:
   using Status = stream_executor::port::Status;
@@ -47,41 +53,27 @@ class TpuNodeContext final {
   }
   ~TpuNodeContext();
 
-  TpuNodeContext(const TpuNodeContext&) = delete;
-  TpuNodeContext& operator=(const TpuNodeContext&) = delete;
-
-  static Status Initialize(int device_ordinal);
-
   static Status StopChipHeartbeats();
 
   static Status CloseTpuHost();
 
-  static tensorflow::tpu::TpuPlatformInterface* platform();
+  static Status Initialize(int device_ordinal);
 
-  static stream_executor::DeviceMemoryAllocator* memory_allocator();
+  static TpuPlatformInterface* platform();
 
-  static xla::TransferManager* transfer_manager();
+  int device_ordinal() const;
 
-  static xla::Backend* backend();
+  xla::Backend* backend() const;
 
-  static StatusOr<xla::StreamPool::Ptr> BorrowStream(int device_ordinal);
+  stream_executor::StreamExecutor* stream_executor() const;
 
-  static StatusOr<xla::StreamPool::Ptr> BorrowStream(
-      stream_executor::StreamExecutor* executor);
-
-  stream_executor::StreamExecutor* stream_executor() {
-    LOG(FATAL) << "Not implemented yet.";
-  }
-
-  std::string tensor_core_location() { LOG(FATAL) << "Not implemented yet."; }
-
-  int index_on_host() { LOG(FATAL) << "Not implemented yet."; }
-
-  int device_ordinal() const { return device_ordinal_; }
+  bool CompactionSupported(int device_ordinal) const;
 
  private:
   const int device_ordinal_;
   XLA_TpuNodeContext* const node_context_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(TpuNodeContext);
 };
 
 }  // namespace tpu

@@ -1,7 +1,6 @@
 """Build rules for Tensorflow/XLA testing."""
 
-load("@local_config_cuda//cuda:build_defs.bzl", "cuda_is_configured")
-load("@local_config_rocm//rocm:build_defs.bzl", "rocm_is_configured")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow/compiler/tests:plugin.bzl", "plugins")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -9,12 +8,7 @@ load(
     "tf_exec_properties",
 )
 
-def all_backends():
-    b = ["cpu"] + plugins.keys()
-    if cuda_is_configured() or rocm_is_configured():
-        return b + ["gpu"]
-    else:
-        return b
+all_backends = ["cpu", "gpu"] + plugins.keys()
 
 def tf_xla_py_test(
         name,
@@ -31,7 +25,7 @@ def tf_xla_py_test(
     """Generates py_test targets, one per XLA backend.
 
     This rule generates py_test() targets named name_backend, for each backend
-    in all_backends(). The rule also generates a test suite with named `name` that
+    in all_backends. The rule also generates a test suite with named `name` that
     tests all backends for the test.
 
     For example, the following rule generates test cases foo_test_cpu,
@@ -61,7 +55,7 @@ def tf_xla_py_test(
       **kwargs: keyword arguments passed onto the generated py_test() rules.
     """
     if enabled_backends == None:
-        enabled_backends = all_backends()
+        enabled_backends = all_backends
     if disabled_backends == None:
         disabled_backends = []
     if type(disabled_backends) != "list":
@@ -121,10 +115,10 @@ def tf_xla_py_test(
                     updated_name = updated_name[:-5]
                 updated_name += "_mlir_bridge_test"
 
-            native.py_test(
+            py_test(
                 name = updated_name,
                 srcs = srcs,
-                srcs_version = "PY2AND3",
+                srcs_version = "PY3",
                 args = backend_args,
                 main = "{}.py".format(name) if main == None else main,
                 data = data + backend_data,
@@ -139,6 +133,6 @@ def tf_xla_py_test(
 def generate_backend_suites(backends = []):
     """Generates per-backend test_suites that run all tests for a backend."""
     if not backends:
-        backends = all_backends()
+        backends = all_backends
     for backend in backends:
         native.test_suite(name = "%s_tests" % backend, tags = ["tf_xla_%s" % backend])

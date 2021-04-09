@@ -97,7 +97,7 @@ __global__ void ScatterOpCustomKernel(T* __restrict__ params,
       // Ignore indices that are out of range.
       continue;
     }
-    int params_i = param_first_index * update_block + (i % update_block);
+    int64 params_i = param_first_index * update_block + (i % update_block);
     body(&params[params_i], ldg(updates + updates_i));
   }
 }

@@ -1074,7 +1074,7 @@ void CheckEachArray(const Model& model) {
     // Check name.  Either "name_with_suffix_8", "name_with_port:3", but not
     // "name_with_both:3_8".
     const std::string& name = array_entry.first;
-    auto colon_pos = name.find_first_of(":");
+    auto colon_pos = name.find_first_of(':');
     if (colon_pos != std::string::npos) {
       CHECK_EQ(name.substr(colon_pos + 1).find_first_not_of("0123456789"),
                std::string::npos)
@@ -2299,16 +2299,23 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
   switch (type) {
     case FLOAT:
       return ArrayDataType::kFloat;
+    case UINT8:
     case QUANTIZED_UINT8:
       return ArrayDataType::kUint8;
     case INT8:
+    case QUANTIZED_INT8:
       return ArrayDataType::kInt8;
+    case INT16:
     case QUANTIZED_INT16:
       return ArrayDataType::kInt16;
     case INT32:
       return ArrayDataType::kInt32;
+    case UINT32:
+      return ArrayDataType::kUint32;
     case INT64:
       return ArrayDataType::kInt64;
+    case UINT64:
+      return ArrayDataType::kUint64;
     case BOOL:
       return ArrayDataType::kBool;
     case STRING:
@@ -2321,6 +2328,8 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kFloat16;
     case FLOAT64:
       return ArrayDataType::kFloat64;
+    case RESOURCE:
+    case VARIANT:
     default:
       return ArrayDataType::kNone;
   }

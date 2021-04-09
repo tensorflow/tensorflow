@@ -18,40 +18,78 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import _pywrap_tf32_execution
+from typing import Union
+
 from tensorflow.python.eager import context
+from tensorflow.python.util import _pywrap_tensor_float_32_execution
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-# No tf_export until TF is built against CUDA11 which is required for TF32.
-def tensor_float_32_execution_allowed():
-  """Get if TensorFloat-32 operations are enabled on supported hardware.
+@tf_export('config.experimental.tensor_float_32_execution_enabled')
+def tensor_float_32_execution_enabled():
+  """Returns whether TensorFloat-32 is enabled.
+
+  By default, TensorFloat-32 is enabled, but this can be changed with
+  `tf.config.experimental.enable_tensor_float_32_execution`.
 
   Returns:
-    True if TensorFloat-32 execution is enabled and False otherwise.
+    True if TensorFloat-32 is enabled (the default) and False otherwise
   """
-  return _pywrap_tf32_execution.is_allowed()
+  return _pywrap_tensor_float_32_execution.is_enabled()
 
 
-# No tf_export until TF is built against CUDA11 which is required for TF32.
-def allow_tensor_float_32_execution(allowed):
-  """Allow use of TensorFloat-32 with float32 ops on supported hardware.
+@tf_export('config.experimental.enable_tensor_float_32_execution')
+def enable_tensor_float_32_execution(enabled):
+  """Enable or disable the use of TensorFloat-32 on supported hardware.
 
-  TensorFloat-32 is a math mode introduced with the NVIDIA Ampere architecture.
-  TensorFloat-32 kernels take float32 inputs and produce float32 outputs.
-  Internally, the inputs are cast to a custom representation with 10-bit
-  mantissa (similar to float16) and 8-bit exponent (similar to float32) and are
-  executed using TensorCores with float32 accumulation. For more information,
-  see https://blogs.nvidia.com/blog/2020/05/14/tensorfloat-32-precision-format/.
+  [TensorFloat-32](https://blogs.nvidia.com/blog/2020/05/14/tensorfloat-32-precision-format),
+  or TF32 for short, is a math mode for NVIDIA Ampere GPUs. TensorFloat-32
+  execution causes certain float32 ops, such as matrix multiplications and
+  convolutions, to run much faster on Ampere GPUs but with reduced precision.
+  This reduced precision should not impact convergence of deep learning models
+  in practice.
 
-  TensorFloat-32 execution is disabled by default, but this may change in a
-  future version.
+  TensorFloat-32 is enabled by default. TensorFloat-32 is only supported on
+  Ampere GPUs, so all other hardware will use the full float32 precision
+  regardless of whether TensorFloat-32 is enabled or not. If you want to use the
+  full float32 precision on Ampere, you can disable TensorFloat-32 execution
+  with this function. For example:
+
+  ```python
+  x = tf.fill((2, 2), 1.0001)
+  y = tf.fill((2, 2), 1.)
+  # TensorFloat-32 is enabled, so matmul is run with reduced precision
+  print(tf.linalg.matmul(x, y))  # [[2., 2.], [2., 2.]]
+  tf.config.experimental.enable_tensor_float_32_execution(False)
+  # Matmul is run with full precision
+  print(tf.linalg.matmul(x, y))  # [[2.0002, 2.0002], [2.0002, 2.0002]]
+  ```
+
+  To check whether TensorFloat-32 execution is currently enabled, use
+  `tf.config.experimental.tensor_float_32_execution_enabled`.
+
+  If TensorFloat-32 is enabled, float32 inputs of supported ops, such as
+  `tf.linalg.matmul`, will be rounded from 23 bits of precision to 10 bits of
+  precision in most cases. This allows the ops to execute much faster by
+  utilizing the GPU's tensor cores. TensorFloat-32 has the same dynamic range as
+  float32, meaning it is no more likely to underflow or overflow than float32.
+  Ops still use float32 accumulation when TensorFloat-32 is enabled. Enabling or
+  disabling TensorFloat-32 only affects Ampere GPUs and subsequent GPUs that
+  support TensorFloat-32.
+
+  Note TensorFloat-32 is not always used in supported ops, as only inputs of
+  certain shapes are supported. Support for more input shapes and more ops may
+  be added in the future. As a result, precision of float32 ops may decrease in
+  minor versions of TensorFlow.
+
+  TensorFloat-32 is also used for some complex64 ops. Currently, TensorFloat-32
+  is used in fewer cases for complex64 as it is for float32.
 
   Args:
-    allowed: whether to allow TensorFloat-32 execution
+    enabled: Bool indicating whether to enable TensorFloat-32 execution.
   """
-  _pywrap_tf32_execution.allow(allowed)
+  _pywrap_tensor_float_32_execution.enable(enabled)
 
 
 @tf_export('config.threading.get_intra_op_parallelism_threads')
@@ -109,31 +147,42 @@ def set_inter_op_parallelism_threads(num_threads):
 
 
 @tf_export('config.optimizer.get_jit')
-def get_optimizer_jit():
-  """Get if JIT compilation is enabled.
+def get_optimizer_jit() -> str:
+  """Returns JIT compilation configuration for code inside `tf.function`.
 
-  Note that optimizations are only applied to code that is compiled into a
-  graph. In eager mode, which is the TF2 API default, that means only code that
-  is defined under a tf.function decorator.
-
-  Returns:
-    If JIT compilation is enabled.
+  Possible return values:
+     -`"autoclustering"` if
+     [autoclustering](https://www.tensorflow.org/xla#auto-clustering) is enabled
+     - `""` when no default compilation is applied.
   """
-  return context.context().optimizer_jit
+  if context.context().optimizer_jit:
+    return 'autoclustering'
+  return ''
 
 
 @tf_export('config.optimizer.set_jit')
-def set_optimizer_jit(enabled):
-  """Set if JIT compilation is enabled.
+@deprecation.deprecated_arg_values(
+    None,
+    '`True` setting is deprecated, use `autoclustering` instead.',
+    warn_once=True,
+    jit_config=True)
+def set_optimizer_jit(enabled: Union[bool, str]):
+  """Configure JIT compilation.
 
-  Note that optimizations are only applied to code that is compiled into a
-  graph. In eager mode, which is the TF2 API default, that means only code that
-  is defined under a tf.function decorator.
+  Note: compilation is only applied to code that is compiled into a
+  graph (in TF2 that's only a code inside `tf.function`).
 
   Args:
-    enabled: Whether to enable JIT compilation.
+    enabled: JIT compilation configuration.
+    Possible values:
+     - `"autoclustering"` (`True` is a deprecated alias): perform
+     [autoclustering](https://www.tensorflow.org/xla#auto-clustering)
+     (automatically identify and compile clusters of nodes) on all graphs using
+     [XLA](https://www.tensorflow.org/xla).
+     - `False`: do not automatically compile any graphs.
   """
-  context.context().optimizer_jit = enabled
+  autoclustering_enabled = enabled in (True, 'autoclustering')
+  context.context().optimizer_jit = autoclustering_enabled
 
 
 @tf_export('config.optimizer.get_experimental_options')
@@ -472,6 +521,87 @@ def set_visible_devices(devices, device_type=None):
     RuntimeError: Runtime is already initialized.
   """
   context.context().set_visible_devices(devices, device_type)
+
+
+@tf_export('config.experimental.get_memory_info')
+def get_memory_info(device):
+  """Get memory info for the chosen device, as a dict.
+
+  This function returns a dict containing information about the device's memory
+  usage. For example:
+
+  >>> if tf.config.list_physical_devices('GPU'):
+  ...   # Returns a dict in the form {'current': <current mem usage>,
+  ...   #                             'peak': <peak mem usage>}
+  ...   tf.config.experimental.get_memory_info('GPU:0')
+
+  Currently returns the following keys:
+    `'current'`: The current memory used by the device, in bytes.
+    `'peak'`: The peak memory used by the device across the run of the program,
+        in bytes.
+
+  More keys may be added in the future, including device-specific keys.
+
+  Currently raises an exception for the CPU.
+
+  For GPUs, TensorFlow will allocate all the memory by default, unless changed
+  with `tf.config.experimental.set_memory_growth`. The dict specifies only the
+  current and peak memory that TensorFlow is actually using, not the memory that
+  TensorFlow has allocated on the GPU.
+
+  Args:
+    device: Device string to get the memory information for, e.g. `"GPU:0"`. See
+      https://www.tensorflow.org/api_docs/python/tf/device for specifying device
+      strings.
+
+  Returns:
+    A dict with keys `'current'` and `'peak'`, specifying the current and peak
+    memory usage respectively.
+
+  Raises:
+    ValueError: Non-existent or CPU device specified.
+
+  """
+  return context.context().get_memory_info(device)
+
+
+@deprecation.deprecated(
+    None,
+    "Use tf.config.experimental.get_memory_info(device)['current'] instead.")
+@tf_export('config.experimental.get_memory_usage')
+def get_memory_usage(device):
+  """Get the current memory usage, in bytes, for the chosen device.
+
+  This function is deprecated in favor of
+  `tf.config.experimental.get_memory_info`. Calling this function is equivalent
+  to calling `tf.config.experimental.get_memory_info()['current']`.
+
+  See https://www.tensorflow.org/api_docs/python/tf/device for specifying device
+  strings.
+
+  For example:
+
+  >>> gpu_devices = tf.config.list_physical_devices('GPU')
+  >>> if gpu_devices:
+  ...   tf.config.experimental.get_memory_usage('GPU:0')
+
+  Does not work for CPU.
+
+  For GPUs, TensorFlow will allocate all the memory by default, unless changed
+  with `tf.config.experimental.set_memory_growth`. This function only returns
+  the memory that TensorFlow is actually using, not the memory that TensorFlow
+  has allocated on the GPU.
+
+  Args:
+    device: Device string to get the bytes in use for, e.g. `"GPU:0"`
+
+  Returns:
+    Total memory usage in bytes.
+
+  Raises:
+    ValueError: Non-existent or CPU device specified.
+  """
+  return get_memory_info(device)['current']
 
 
 @tf_export('config.experimental.get_memory_growth')

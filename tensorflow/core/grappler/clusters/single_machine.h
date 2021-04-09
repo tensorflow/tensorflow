@@ -45,7 +45,7 @@ class SingleMachine : public Cluster {
 
   const DeviceSet* GetDeviceSet() const override { return device_set_.get(); }
 
-  Status EnablePeakMemoryStats(bool enable) override;
+  Status EnablePeakMemoryStats() override;
 
   // It requires EnableAllocatorStats(true) be called before Provision().
   Status GetPeakMemoryUsage(

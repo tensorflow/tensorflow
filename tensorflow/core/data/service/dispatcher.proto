@@ -1,0 +1,193 @@
+syntax = "proto3";
+
+package tensorflow.data;
+
+import "tensorflow/core/data/service/common.proto";
+import "tensorflow/core/framework/tensor.proto";
+
+message TaskProgress {
+  // The task that this message is about.
+  int64 task_id = 1;
+  // Whether the task has completed.
+  bool completed = 2;
+}
+
+message WorkerHeartbeatRequest {
+  string worker_address = 1;
+  string transfer_address = 3;
+  repeated int64 current_tasks = 2;
+}
+
+message WorkerHeartbeatResponse {
+  repeated TaskDef new_tasks = 1;
+  repeated int64 tasks_to_delete = 2;
+}
+
+message WorkerUpdateRequest {
+  string worker_address = 1;
+  repeated TaskProgress updates = 2;
+}
+
+message WorkerUpdateResponse {}
+
+message GetDatasetDefRequest {
+  int64 dataset_id = 1;
+}
+
+message GetDatasetDefResponse {
+  DatasetDef dataset_def = 1;
+}
+
+message GetSplitRequest {
+  int64 job_id = 1;
+  int64 repetition = 2;
+}
+
+message GetSplitResponse {
+  TensorProto split = 1;
+  bool end_of_splits = 2;
+}
+
+message GetVersionRequest {}
+
+message GetVersionResponse {
+  int64 version = 1;
+}
+
+message GetOrRegisterDatasetRequest {
+  // The dataset to register.
+  DatasetDef dataset = 1;
+}
+
+message GetOrRegisterDatasetResponse {
+  // The id for the registered dataset.
+  int64 dataset_id = 1;
+}
+
+message JobKey {
+  // A name for the job.
+  string job_name = 1;
+  // An index for the job. Multiple jobs can be created for the same name, if
+  // they have different indices.
+  int64 job_name_index = 2;
+}
+
+message GetOrCreateJobRequest {
+  reserved 3, 4;
+  // The id of the dataset to create a job for.
+  int64 dataset_id = 1;
+  // A mode controlling how the tf.data service produces data for the job.
+  ProcessingModeDef processing_mode = 2;
+  // Optional job key identifying a shared job. If not set, the RPC will always
+  // create a new job.
+  JobKey job_key = 5;
+  // Optional number of consumers. If set, the job's tasks will provide their
+  // elements to consumers round-robin.
+  oneof optional_num_consumers {
+    int64 num_consumers = 7;
+  }
+}
+
+message GetOrCreateJobResponse {
+  // An id for the client that will read from the job. When the client is done
+  // with the job, they should call ReleaseJobClient with this id.
+  int64 job_client_id = 1;
+}
+
+message MaybeRemoveTaskRequest {
+  int64 task_id = 1;
+  int64 consumer_index = 2;
+  int64 round = 3;
+}
+
+message MaybeRemoveTaskResponse {
+  bool removed = 1;
+}
+
+message ReleaseJobClientRequest {
+  int64 job_client_id = 1;
+}
+
+message ReleaseJobClientResponse {}
+
+message ClientHeartbeatRequest {
+  // The job client id to heartbeat for.
+  int64 job_client_id = 1;
+  // Reports which round the client is currently reading from when doing
+  // round-robin reads.
+  oneof optional_current_round {
+    int64 current_round = 2;
+  }
+  // Reports whether the client has successfully blocked the indicated round
+  // from starting. This enables the dispatcher to add a new task in the
+  // blocked round or later.
+  oneof optional_blocked_round {
+    int64 blocked_round = 4;
+  }
+}
+
+message ClientHeartbeatResponse {
+  // A list of all tasks that the client should read from.
+  repeated TaskInfo task_info = 1;
+  // Tells the client not to start the given round if possible.
+  oneof optional_block_round {
+    int64 block_round = 3;
+  }
+  // Whether the job has finished.
+  bool job_finished = 2;
+}
+
+message WorkerInfo {
+  string address = 1;
+  int64 id = 2;
+}
+
+message GetWorkersRequest {}
+
+message GetWorkersResponse {
+  // A list of all workers.
+  repeated WorkerInfo workers = 1;
+}
+
+service DispatcherService {
+  // Performs a periodic worker heartbeat.
+  rpc WorkerHeartbeat(WorkerHeartbeatRequest) returns (WorkerHeartbeatResponse);
+
+  // Updates the dispatcher with information about the worker's state.
+  rpc WorkerUpdate(WorkerUpdateRequest) returns (WorkerUpdateResponse);
+
+  // Gets a dataset defintion.
+  rpc GetDatasetDef(GetDatasetDefRequest) returns (GetDatasetDefResponse);
+
+  // Gets the next split for a given job.
+  rpc GetSplit(GetSplitRequest) returns (GetSplitResponse);
+
+  // Returns the API version of the server.
+  rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
+
+  // Registers a dataset with the server, or returns its id if it is already
+  // registered.
+  //
+  // The dataset is constructed in a new graph, so it must not refer to
+  // external resources or variables.
+  rpc GetOrRegisterDataset(GetOrRegisterDatasetRequest)
+      returns (GetOrRegisterDatasetResponse);
+
+  // Gets a job if it already exists, otherwise creates it.
+  rpc GetOrCreateJob(GetOrCreateJobRequest) returns (GetOrCreateJobResponse);
+
+  // Attempts to remove a task from a round-robin read job.
+  rpc MaybeRemoveTask(MaybeRemoveTaskRequest) returns (MaybeRemoveTaskResponse);
+
+  // Releases a job client so that a job may eventually be cleaned up.
+  rpc ReleaseJobClient(ReleaseJobClientRequest)
+      returns (ReleaseJobClientResponse);
+
+  // Heartbeats from the client. This lets the dispatcher know that the client
+  // is still active, and gives the dispatcher a chance to notify the client
+  // of new tasks.
+  rpc ClientHeartbeat(ClientHeartbeatRequest) returns (ClientHeartbeatResponse);
+
+  // Reports a list of all workers registered with the dispatcher.
+  rpc GetWorkers(GetWorkersRequest) returns (GetWorkersResponse);
+}

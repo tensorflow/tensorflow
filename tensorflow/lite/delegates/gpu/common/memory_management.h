@@ -16,16 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_H_
 
-#include <cstdint>
-#include <memory>
+#include <stddef.h>
+
 #include <vector>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management/equality_assignment.h"
-#include "tensorflow/lite/delegates/gpu/common/memory_management/greedy_by_breadth_assignment.h"
-#include "tensorflow/lite/delegates/gpu/common/memory_management/greedy_by_size_assignment.h"
-#include "tensorflow/lite/delegates/gpu/common/memory_management/greedy_in_order_assignment.h"
-#include "tensorflow/lite/delegates/gpu/common/memory_management/min_cost_flow_assignment.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management/naive_assignment.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management/types.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"

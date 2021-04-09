@@ -19,9 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python import pywrap_tfe
 
-
-_VALID_DEVICE_TYPES = frozenset({"CPU", "GPU", "TPU", "CUSTOM"})
+# EPU represents for TPU embedding for now. Subject to change in future.
+_VALID_DEVICE_TYPES = frozenset({"CPU", "GPU", "TPU", "CUSTOM", "EPU"})
 
 
 # ==============================================================================
@@ -69,17 +70,17 @@ class DeviceSpecV2(object):
   With eager execution disabled (by default in TensorFlow 1.x and by calling
   disable_eager_execution() in TensorFlow 2.x), the following syntax
   can be used:
- 
+
   ```python
   tf.compat.v1.disable_eager_execution()
- 
+
   # Same as previous
   device_spec = DeviceSpec(job="ps", device_type="GPU", device_index=0)
   # No need of .to_string() method.
   with tf.device(device_spec):
     my_var = tf.Variable(..., name="my_variable")
     squared_var = tf.square(my_var)
-   ```
+  ```
 
   If a `DeviceSpec` is partially specified, it will be merged with other
   `DeviceSpec`s according to the scope in which it is defined. `DeviceSpec`
@@ -159,39 +160,43 @@ class DeviceSpecV2(object):
   def parse_from_string(self, spec):
     """Parse a `DeviceSpec` name into its components.
 
-    2.x behavior change:
-      In TensorFlow 1.x, this function mutates its own state and returns itself.
-      In 2.x, DeviceSpecs are immutable, and this function will return a
-        DeviceSpec which contains the spec.
+    **2.x behavior change**:
 
-      Recommended:
-        ```
-        # my_spec and my_updated_spec are unrelated.
-        my_spec = tf.DeviceSpec.from_string("/CPU:0")
-        my_updated_spec = tf.DeviceSpec.from_string("/GPU:0")
-        with tf.device(my_updated_spec):
-          ...
-        ```
+    In TensorFlow 1.x, this function mutates its own state and returns itself.
+    In 2.x, DeviceSpecs are immutable, and this function will return a
+      DeviceSpec which contains the spec.
 
-      Will work in 1.x and 2.x (though deprecated in 2.x):
-        ```
-        my_spec = tf.DeviceSpec.from_string("/CPU:0")
-        my_updated_spec = my_spec.parse_from_string("/GPU:0")
-        with tf.device(my_updated_spec):
-          ...
-        ```
+    * Recommended:
 
-      Will NOT work in 2.x:
-        ```
-        my_spec = tf.DeviceSpec.from_string("/CPU:0")
-        my_spec.parse_from_string("/GPU:0")  # <== Will not update my_spec
-        with tf.device(my_spec):
-          ...
-        ```
+      ```
+      # my_spec and my_updated_spec are unrelated.
+      my_spec = tf.DeviceSpec.from_string("/CPU:0")
+      my_updated_spec = tf.DeviceSpec.from_string("/GPU:0")
+      with tf.device(my_updated_spec):
+        ...
+      ```
 
-      In general, `DeviceSpec.from_string` should completely replace
-      `DeviceSpec.parse_from_string`, and `DeviceSpec.replace` should
-      completely replace setting attributes directly.
+    * Will work in 1.x and 2.x (though deprecated in 2.x):
+
+      ```
+      my_spec = tf.DeviceSpec.from_string("/CPU:0")
+      my_updated_spec = my_spec.parse_from_string("/GPU:0")
+      with tf.device(my_updated_spec):
+        ...
+      ```
+
+    * Will NOT work in 2.x:
+
+      ```
+      my_spec = tf.DeviceSpec.from_string("/CPU:0")
+      my_spec.parse_from_string("/GPU:0")  # <== Will not update my_spec
+      with tf.device(my_spec):
+        ...
+      ```
+
+    In general, `DeviceSpec.from_string` should completely replace
+    `DeviceSpec.parse_from_string`, and `DeviceSpec.replace` should
+    completely replace setting attributes directly.
 
     Args:
       spec: an optional string of the form
@@ -298,6 +303,15 @@ class DeviceSpecV2(object):
     )
 
   @staticmethod
+  def _get_valid_device_types():
+    valid_device_types = set({})
+    physical_devices = pywrap_tfe.TF_ListPluggablePhysicalDevices()
+    for device in physical_devices:
+      valid_device_types.add(device.decode().split(":")[1])
+    valid_device_types = valid_device_types | _VALID_DEVICE_TYPES
+    return valid_device_types
+
+  @staticmethod
   def _string_to_components(spec=None):
     """Stateless portion of device spec string parsing.
 
@@ -318,6 +332,7 @@ class DeviceSpecV2(object):
 
     spec = spec or ""
     splits = [x.split(":") for x in spec.split("/")]
+    valid_device_types = DeviceSpecV2._get_valid_device_types()
     for y in splits:
       ly = len(y)
       if y:
@@ -328,7 +343,7 @@ class DeviceSpecV2(object):
           replica = y[1]
         elif ly == 2 and y[0] == "task":
           task = y[1]
-        elif ((ly == 1 or ly == 2) and (y[0].upper() in _VALID_DEVICE_TYPES)):
+        elif ((ly == 1 or ly == 2) and (y[0].upper() in valid_device_types)):
           if device_type is not None:
             raise ValueError("Cannot specify multiple device types: %s" % spec)
           device_type = y[0].upper()

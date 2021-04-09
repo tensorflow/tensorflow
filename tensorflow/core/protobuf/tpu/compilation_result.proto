@@ -7,7 +7,8 @@ import "tensorflow/core/protobuf/error_codes.proto";
 
 option cc_enable_arenas = true;
 
-// Describes the result of a TPU compilation.
+// Describes the result of a TPU compilation. This is also used as TPU
+// compilation result status payload.
 message CompilationResultProto {
   // The error message, if any, returned during compilation.
   error.Code status_code = 1;

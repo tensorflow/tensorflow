@@ -31,7 +31,7 @@ limitations under the License.
 
 namespace tflite {
 namespace ops {
-namespace custom {
+namespace builtin {
 namespace rfft2d {
 
 using std::complex;
@@ -73,16 +73,20 @@ static TfLiteStatus InitTemporaryTensors(TfLiteContext* context,
   data->fft_double_working_area_id = first_new_index + 1;
 
   // Set up FFT integer working area buffer.
-  TfLiteTensor* fft_integer_working_area =
-      GetTemporary(context, node, kFftIntegerWorkingAreaTensor);
+  TfLiteTensor* fft_integer_working_area;
+  TF_LITE_ENSURE_OK(
+      context, GetTemporarySafe(context, node, kFftIntegerWorkingAreaTensor,
+                                &fft_integer_working_area));
   fft_integer_working_area->type = kTfLiteInt32;
   // If fft_length is not a constant tensor, fft_integer_working_area will be
   // set to dynamic later in Prepare.
   fft_integer_working_area->allocation_type = kTfLiteArenaRw;
 
   // Set up FFT double working area buffer.
-  TfLiteTensor* fft_double_working_area =
-      GetTemporary(context, node, kFftDoubleWorkingAreaTensor);
+  TfLiteTensor* fft_double_working_area;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, kFftDoubleWorkingAreaTensor,
+                                     &fft_double_working_area));
   // fft_double_working_area is a double tensor. Ideally, double should be
   // added into tflite data types. However, since fft_double_working_area is a
   // temporary tensor, and there are no ops having double input/output tensors
@@ -100,10 +104,13 @@ static TfLiteStatus InitTemporaryTensors(TfLiteContext* context,
 
 TfLiteStatus ResizeOutputandTemporaryTensors(TfLiteContext* context,
                                              TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
   const int num_dims = NumDimensions(input);
   TF_LITE_ENSURE(context, num_dims >= 2);
-  const TfLiteTensor* fft_length = GetInput(context, node, kFftLengthTensor);
+  const TfLiteTensor* fft_length;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kFftLengthTensor, &fft_length));
   const int32_t* fft_length_data = GetTensorData<int32_t>(fft_length);
   // The lib, fft2d, can only handle fft_lengths of power of 2.
   TF_LITE_ENSURE(context, IsPowerOfTwo(fft_length_data[0]));
@@ -116,15 +123,19 @@ TfLiteStatus ResizeOutputandTemporaryTensors(TfLiteContext* context,
   int half_fft_working_length = fft_working_length / 2;
 
   // Resize output tensor.
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
   TfLiteIntArray* output_shape = TfLiteIntArrayCopy(input->dims);
   output_shape->data[num_dims - 2] = fft_length_data[0];
   output_shape->data[num_dims - 1] = fft_length_data[1] / 2 + 1;
   TF_LITE_ENSURE_STATUS(context->ResizeTensor(context, output, output_shape));
 
   // Resize temporary tensors, fft_integer_working_area.
-  TfLiteTensor* fft_integer_working_area =
-      GetTemporary(context, node, kFftIntegerWorkingAreaTensor);
+  TfLiteTensor* fft_integer_working_area;
+  TF_LITE_ENSURE_OK(
+      context, GetTemporarySafe(context, node, kFftIntegerWorkingAreaTensor,
+                                &fft_integer_working_area));
   TfLiteIntArray* fft_integer_working_area_shape = TfLiteIntArrayCreate(1);
   fft_integer_working_area_shape->data[0] =
       2 + static_cast<int>(sqrt(fft_working_length));
@@ -132,8 +143,10 @@ TfLiteStatus ResizeOutputandTemporaryTensors(TfLiteContext* context,
                                               fft_integer_working_area_shape));
 
   // Resize temporary tensors, fft_double_working_area.
-  TfLiteTensor* fft_double_working_area =
-      GetTemporary(context, node, kFftDoubleWorkingAreaTensor);
+  TfLiteTensor* fft_double_working_area;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, kFftDoubleWorkingAreaTensor,
+                                     &fft_double_working_area));
   TfLiteIntArray* fft_double_working_area_shape = TfLiteIntArrayCreate(1);
   fft_double_working_area_shape->data[0] =
       half_fft_working_length + fft_width / 4;
@@ -157,7 +170,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   // Check type and shape of the input tensor
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
   TF_LITE_ENSURE(context, NumDimensions(input) >= 2);
   if (input->type != kTfLiteFloat32) {
     context->ReportError(context,
@@ -167,7 +181,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   // Check type and shape of the fft_length tensor
-  const TfLiteTensor* fft_length = GetInput(context, node, kFftLengthTensor);
+  const TfLiteTensor* fft_length;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kFftLengthTensor, &fft_length));
   const RuntimeShape fft_length_shape = GetTensorShape(fft_length);
 
   TF_LITE_ENSURE_EQ(context, NumDimensions(fft_length), 1);
@@ -183,17 +199,23 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_STATUS(InitTemporaryTensors(context, node));
 
   // Set output type
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
   output->type = kTfLiteComplex64;
 
   // Exit early if fft_length is a non-const tensor. Set output tensor and
   // temporary tensors to dynamic, so that their tensor sizes can be determined
   // in Eval.
   if (!IsConstantTensor(fft_length)) {
-    TfLiteTensor* fft_integer_working_area =
-        GetTemporary(context, node, kFftIntegerWorkingAreaTensor);
-    TfLiteTensor* fft_double_working_area =
-        GetTemporary(context, node, kFftDoubleWorkingAreaTensor);
+    TfLiteTensor* fft_integer_working_area;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, kFftIntegerWorkingAreaTensor,
+                                  &fft_integer_working_area));
+    TfLiteTensor* fft_double_working_area;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, kFftDoubleWorkingAreaTensor,
+                                  &fft_double_working_area));
     SetTensorToDynamic(fft_integer_working_area);
     SetTensorToDynamic(fft_double_working_area);
     SetTensorToDynamic(output);
@@ -248,13 +270,15 @@ void Rfft2dReorder(int fft_height, int fft_width, double** fft_input_output) {
     fft_input_output[i][0] = fft_input_output[fft_height - i][0];
     fft_input_output[i][1] = -fft_input_output[fft_height - i][1];
   }
-  fft_input_output[0][fft_width] = fft_input_output[0][1];
+
+  double temp = fft_input_output[0][1];
   fft_input_output[0][fft_width + 1] = 0;
   fft_input_output[0][1] = 0;
   fft_input_output[fft_height_half][fft_width] =
       fft_input_output[fft_height_half][1];
   fft_input_output[fft_height_half][fft_width + 1] = 0;
   fft_input_output[fft_height_half][1] = 0;
+  fft_input_output[0][fft_width] = temp;
 
   // Reorder the frequency matrix from
   //    [[F(0, 0),  F(0, -1/4),   F(0, -2/4)],
@@ -323,11 +347,16 @@ void PrepareOutputBuffer(complex<float>* output_data, int fft_height,
 }
 
 TfLiteStatus Rfft2dHelper(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
   const float* input_data = GetTensorData<float>(input);
-  const TfLiteTensor* fft_length = GetInput(context, node, kFftLengthTensor);
+  const TfLiteTensor* fft_length;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kFftLengthTensor, &fft_length));
   const int32_t* fft_length_data = GetTensorData<int32_t>(fft_length);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
   complex<float>* output_data = GetTensorData<complex<float>>(output);
 
   int fft_height, fft_width;
@@ -356,14 +385,18 @@ TfLiteStatus Rfft2dHelper(TfLiteContext* context, TfLiteNode* node) {
   }
 
   // Get buffer for integer working area.
-  TfLiteTensor* fft_integer_working_area =
-      GetTemporary(context, node, kFftIntegerWorkingAreaTensor);
+  TfLiteTensor* fft_integer_working_area;
+  TF_LITE_ENSURE_OK(
+      context, GetTemporarySafe(context, node, kFftIntegerWorkingAreaTensor,
+                                &fft_integer_working_area));
   int* fft_integer_working_area_data =
       GetTensorData<int>(fft_integer_working_area);
 
   // Get buffer for double working area.
-  TfLiteTensor* fft_double_working_area =
-      GetTemporary(context, node, kFftDoubleWorkingAreaTensor);
+  TfLiteTensor* fft_double_working_area;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, kFftDoubleWorkingAreaTensor,
+                                     &fft_double_working_area));
   // Get double value out of the memory of fft_double_working_area_data.
   double* fft_double_working_area_data = reinterpret_cast<double*>(
       GetTensorData<int64_t>(fft_double_working_area));
@@ -391,10 +424,15 @@ TfLiteStatus Rfft2dHelper(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const TfLiteTensor* fft_length = GetInput(context, node, kFftLengthTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  const TfLiteTensor* fft_length;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kFftLengthTensor, &fft_length));
   const int32_t* fft_length_data = GetTensorData<int32_t>(fft_length);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   if (output->type != kTfLiteComplex64) {
     context->ReportError(context,
@@ -429,6 +467,6 @@ TfLiteRegistration* Register_RFFT2D() {
   return &r;
 }
 
-}  // namespace custom
+}  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

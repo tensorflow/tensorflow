@@ -17,19 +17,14 @@ Examples:
 >>> tf.math.minimum(x, y)
 <tf.Tensor: shape=(4,), dtype=float32, numpy=array([-5., -2., 0., 0.], dtype=float32)>
 
-Note that `minimum` supports broadcast semantics.
+Note that `minimum` supports [broadcast semantics](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html) for `x` and `y`.
 
 >>> x = tf.constant([-5., 0., 0., 0.])
 >>> y = tf.constant([-3.])
 >>> tf.math.minimum(x, y)
 <tf.Tensor: shape=(4,), dtype=float32, numpy=array([-5., -3., -3., -3.], dtype=float32)>
 
-If inputs are not tensors, they will be converted to tensors.  See
-`tf.convert_to_tensor`.
-
->>> x = tf.constant([-3.], dtype=tf.float32)
->>> tf.math.minimum([-5], x)
-<tf.Tensor: shape=(1,), dtype=float32, numpy=array([-5.], dtype=float32)>
+The reduction version of this elementwise operation is `tf.math.reduce_min`
 
 END
 }

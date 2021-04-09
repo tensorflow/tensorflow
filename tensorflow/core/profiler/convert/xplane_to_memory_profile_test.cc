@@ -85,7 +85,7 @@ TEST(ConvertXPlaneToMemoryProfile, OneAllocatorMultiActivitiesTest) {
                 {StatType::kRegionType, "temp"},
                 {StatType::kTensorShapes, "[1, 2]"}});
 
-  tensorflow::profiler::GroupTfEvents(&space, nullptr);
+  tensorflow::profiler::GroupTfEvents(&space);
   MemoryProfile memory_profile = ConvertXPlaneToMemoryProfile(*host_plane);
   EXPECT_EQ(memory_profile.memory_profile_per_allocator().size(), 1);
   EXPECT_EQ(memory_profile.num_hosts(), 1);

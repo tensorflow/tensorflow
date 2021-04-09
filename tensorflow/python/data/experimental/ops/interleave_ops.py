@@ -37,7 +37,7 @@ from tensorflow.python.util.tf_export import tf_export
 @deprecation.deprecated(
     None,
     "Use `tf.data.Dataset.interleave(map_func, cycle_length, block_length, "
-    "num_parallel_calls=tf.data.experimental.AUTOTUNE)` instead. If sloppy "
+    "num_parallel_calls=tf.data.AUTOTUNE)` instead. If sloppy "
     "execution is desired, use `tf.data.Options.experimental_deterministic`.")
 @tf_export("data.experimental.parallel_interleave")
 def parallel_interleave(map_func,
@@ -111,11 +111,17 @@ class _DirectedInterleaveDataset(dataset_ops.DatasetV2):
     first_output_types = dataset_ops.get_legacy_output_types(data_inputs[0])
     first_output_classes = dataset_ops.get_legacy_output_classes(data_inputs[0])
 
-    for data_input in data_inputs[1:]:
+    for i, data_input in enumerate(data_inputs[1:]):
       if (dataset_ops.get_legacy_output_types(data_input) != first_output_types
           or dataset_ops.get_legacy_output_classes(data_input)
           != first_output_classes):
-        raise TypeError("All datasets must have the same type and class.")
+        raise TypeError("All datasets must have the same type and class.\n"
+                        "dataset 0 vs dataset %s types: %s ; %s\n"
+                        "classes: %s ; %s" %
+                        (i + 1, first_output_types,
+                         dataset_ops.get_legacy_output_types(data_input),
+                         first_output_classes,
+                         dataset_ops.get_legacy_output_classes(data_input)))
 
     output_shapes = dataset_ops.get_legacy_output_shapes(self._data_inputs[0])
     for data_input in self._data_inputs[1:]:
@@ -145,6 +151,29 @@ class _DirectedInterleaveDataset(dataset_ops.DatasetV2):
 @tf_export("data.experimental.sample_from_datasets", v1=[])
 def sample_from_datasets_v2(datasets, weights=None, seed=None):
   """Samples elements at random from the datasets in `datasets`.
+
+  Creates a dataset by interleaving elements of `datasets` with the `weight[i]`
+  probability of picking an element from dataset `i`. For example, suppose we
+  have 2 datasets:
+
+  ```python
+  dataset1 = tf.data.Dataset.range(0, 3)
+  dataset2 = tf.data.Dataset.range(100, 103)
+  ```
+
+  Suppose also that we sample from these 2 datasets with the following weights:
+
+  ```python
+  sample_dataset = tf.data.experimental.sample_from_datasets(
+      [dataset1, dataset2], weights=[0.5, 0.5])
+  ```
+
+  One possible outcome of elements in sample_dataset is:
+
+  ```
+  print(list(sample_dataset.as_numpy_iterator()))
+  # [100, 0, 1, 101, 2, 102]
+  ```
 
   Args:
     datasets: A list of `tf.data.Dataset` objects with compatible structure.

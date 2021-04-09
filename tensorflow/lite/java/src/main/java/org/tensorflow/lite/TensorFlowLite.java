@@ -85,7 +85,7 @@ public final class TensorFlowLite {
     }
   }
 
-  public static native String nativeRuntimeVersion();
+  private static native String nativeRuntimeVersion();
 
-  public static native String nativeSchemaVersion();
+  private static native String nativeSchemaVersion();
 }

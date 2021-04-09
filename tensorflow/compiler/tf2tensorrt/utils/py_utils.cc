@@ -26,45 +26,22 @@ namespace tensorrt {
 
 bool IsGoogleTensorRTEnabled() {
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
+#if TF_USE_TENSORRT_STATIC
+  LOG(INFO) << "TensorRT libraries are statically linked, skip dlopen check";
+  return true;
+#else   // TF_USE_TENSORRT_STATIC
   auto handle_or = se::internal::DsoLoader::TryDlopenTensorRTLibraries();
   if (!handle_or.ok()) {
     LOG_WARNING_WITH_PREFIX
         << "Cannot dlopen some TensorRT libraries. If you would like "
            "to use Nvidia GPU with TensorRT, please make sure the "
            "missing libraries mentioned above are installed properly.";
-    return false;
-  } else {
-    return true;
   }
-#else
+  return handle_or.ok();
+#endif  // TF_USE_TENSORRT_STATIC
+#else   // GOOGLE_CUDA && GOOGLE_TENSORRT
   return false;
-#endif
-}
-
-void GetLinkedTensorRTVersion(int* major, int* minor, int* patch) {
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
-  *major = NV_TENSORRT_MAJOR;
-  *minor = NV_TENSORRT_MINOR;
-  *patch = NV_TENSORRT_PATCH;
-#else
-  *major = 0;
-  *minor = 0;
-  *patch = 0;
-#endif
-}
-
-void GetLoadedTensorRTVersion(int* major, int* minor, int* patch) {
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
-  int ver = getInferLibVersion();
-  *major = ver / 1000;
-  ver = ver - *major * 1000;
-  *minor = ver / 100;
-  *patch = ver - *minor * 100;
-#else
-  *major = 0;
-  *minor = 0;
-  *patch = 0;
-#endif
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 }
 
 }  // namespace tensorrt

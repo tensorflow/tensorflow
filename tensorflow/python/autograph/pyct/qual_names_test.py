@@ -66,7 +66,7 @@ class QNTest(test.TestCase):
     self.assertEqual(str(a_sub_b), 'a[b]')
     self.assertEqual(a_sub_b.ssf(), 'a_sub_b')
     self.assertEqual(a_sub_b.ast().value.id, 'a')
-    self.assertEqual(a_sub_b.ast().slice.value.id, 'b')
+    self.assertEqual(a_sub_b.ast().slice.id, 'b')
     self.assertTrue(a_sub_b.is_composite())
     self.assertTrue(a_sub_b.has_subscript())
     self.assertEqual(a_sub_b.parent.qn, ('a',))
@@ -81,9 +81,9 @@ class QNTest(test.TestCase):
     self.assertEqual(str(a_sub_b_sub_c), 'a[b[c]]')
     self.assertEqual(a_sub_b_sub_c.ssf(), 'a_sub_b_sub_c')
     self.assertEqual(a_sub_b_sub_c.ast().value.id, 'a')
-    self.assertEqual(a_sub_b_sub_c.ast().slice.value.value.id, 'b')
-    self.assertEqual(a_sub_b_sub_c.ast().slice.value.slice.value.id, 'c')
-    self.assertEqual(b_sub_c.ast().slice.value.id, 'c')
+    self.assertEqual(a_sub_b_sub_c.ast().slice.value.id, 'b')
+    self.assertEqual(a_sub_b_sub_c.ast().slice.slice.id, 'c')
+    self.assertEqual(b_sub_c.ast().slice.id, 'c')
     self.assertEqual(a_sub_b_sub_c.parent.qn, ('a',))
     with self.assertRaises(ValueError):
       QN('a', 'b')
@@ -157,12 +157,12 @@ class QNTest(test.TestCase):
 
     self.assertNotEqual(a_sub_str_b, a_sub_b)
     self.assertNotEqual(hash(a_sub_str_b), hash(a_sub_b))
-    self.assertEqual(a_sub_str_b.ast().slice.value.value, 'b')
+    self.assertEqual(a_sub_str_b.ast().slice.value, 'b')
     self.assertEqual(str(a_sub_str_b), "a['b']")
 
     a_sub_three = QN(a, subscript=QN(qual_names.Literal(3)))
-    self.assertEqual(a_sub_three.ast().slice.value.value, 3)
-    self.assertEqual(str(a_sub_three), "a[3]")
+    self.assertEqual(a_sub_three.ast().slice.value, 3)
+    self.assertEqual(str(a_sub_three), 'a[3]')
 
   def test_support_set(self):
     a = QN('a')
@@ -178,6 +178,15 @@ class QNTest(test.TestCase):
     self.assertSetEqual(a_dot_b.support_set, set((a,)))
     self.assertSetEqual(a_dot_b_dot_c.support_set, set((a,)))
     self.assertSetEqual(a_dot_b_sub_c.support_set, set((a, c)))
+
+  def test_comparison(self):
+    less_than_apos = chr(ord('\'') - 1)
+
+    self.assertGreater(QN('z'), QN(qual_names.Literal('a')))
+    self.assertLess(QN(less_than_apos), QN(qual_names.Literal('a')))
+
+    self.assertGreater(QN(qual_names.Literal('z')), QN(less_than_apos))
+    self.assertLess(QN(qual_names.Literal('a')), QN('z'))
 
 
 class QNResolverTest(test.TestCase):

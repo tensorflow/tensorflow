@@ -35,8 +35,15 @@ import tensorflow as tf
 import tensorflow.compat.v1 as tf1
 
 from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import multi_worker_test_base
+from tensorflow.python.distribute import parameter_server_strategy_v2
+from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import test_util
+from tensorflow.python.distribute import values
+from tensorflow.python.eager import context
 from tensorflow.python.eager import test
+from tensorflow.python.ops import lookup_ops
 
 
 @combinations.generate(
@@ -68,25 +75,9 @@ class SaveAndLoadForServingTest(test.TestCase, parameterized.TestCase):
   # context and the cross-replica context. Saving happens in the cross replica
   # context or the default startegy's replica context.
 
-  def test_read_sync_on_read_variable_broken(self, strategy):
+  def test_read_sync_on_read_variable(self, strategy):
     # synchronizaiton=ON_READ variables are typically used in Keras metrics and
     # batch norm layers.
-    #
-    # This is broken now since the saved variable already has the aggregated
-    # value, but the saved tf.function is traced under the cross-replica context
-    # and contains the aggregation.
-    #
-    # Impacts:
-    #   - MirroredStrategy, TPUStrategy
-    #     - aggregation=NONE: error when saving.
-    #     - aggregation=SUM: incorrect results.
-    #     - aggregation=MEAN: slight computation overhead.
-    #     - aggregation=ONLY_FIRST_REPLICA: none.
-    #   - MultiWorkerMirroredStrategy:
-    #     - aggregation=NONE: error when saving
-    #     - aggregation=MEAN, SUM: error or hanging when using the loaded model.
-    #     - aggregation=ONLY_FIRST_REPLICA: none.
-    # Note that batch norm uses aggregation=MEAN.
 
     class Model(tf.Module):
 
@@ -113,9 +104,7 @@ class SaveAndLoadForServingTest(test.TestCase, parameterized.TestCase):
     loaded = tf.saved_model.load(export_dir)
     # The variable already has the aggregated value.
     self.assertEqual(self.evaluate(loaded.v.read_value()), 1.)
-    # TODO(b/159752793): reading the variable aggregates the values again.
-    # got 2., want 1.
-    self.assertEqual(self.evaluate(loaded()), 2.)
+    self.assertEqual(self.evaluate(loaded()), 1.)
 
   def test_read_mirrored_variable(self, strategy):
     # synchronizaiton=ON_WRITE is the default variable created under
@@ -142,14 +131,10 @@ class SaveAndLoadForServingTest(test.TestCase, parameterized.TestCase):
     loaded = tf.saved_model.load(export_dir)
     self.assertEqual(self.evaluate(loaded()), 1.)
 
-  def test_update_sync_on_read_variable_broken(self, strategy):
+  def test_update_sync_on_read_variable(self, strategy):
     # It's rare to update aggregation=ON_READ variables in serving, but it's
     # possible that the SavedModel contains both serving and training graphs,
     # and the training may contain metrics layers.
-    #
-    # This is now partially broken since assign_add() and assign_sub() are not
-    # allowed in the cross-replica context if aggregation=SUM, which blocks
-    # saving the model.
 
     class Model(tf.Module):
 
@@ -167,23 +152,15 @@ class SaveAndLoadForServingTest(test.TestCase, parameterized.TestCase):
     export_dir = self.get_temp_dir()
     with strategy.scope():
       m = Model()
-      # got error, want no error.
-      with self.assertRaisesRegex(ValueError,
-                                  "SyncOnReadVariable does not support"):
-        tf.saved_model.save(m, export_dir)
+      tf.saved_model.save(m, export_dir)
 
-    # TODO(b/159752793): Uncomment after fix.
-    # loaded = tf.saved_model.load(export_dir)
-    # loaded.update()
-    # self.assertEqual(self.evaluate(loaded.v), 1.)
+    loaded = tf.saved_model.load(export_dir)
+    loaded.update()
+    self.assertEqual(self.evaluate(loaded.v), 1.)
 
-  def test_update_mirrored_variable_broken(self, strategy):
+  def test_update_mirrored_variable(self, strategy):
     # It's very rare to update aggregation=ON_WRITE variables in the forward
     # path, and this test case is mainly for completeness.
-    #
-    # The saved tf.function updates each components of the distributed variable,
-    # which effectively updates the variable in the saved model N times where N
-    # equals the number of local replicas during training.
 
     class Model(tf.Module):
 
@@ -205,9 +182,7 @@ class SaveAndLoadForServingTest(test.TestCase, parameterized.TestCase):
     loaded = tf.saved_model.load(export_dir)
     self.assertEqual(self.evaluate(loaded.v), 0.)
     loaded.update()
-    # TODO(b/159752793): Change after fix.
-    # got 2., want 1.
-    self.assertEqual(self.evaluate(loaded.v), 2.)
+    self.assertEqual(self.evaluate(loaded.v), 1.)
 
   def test_training_only_device(self, strategy):
     # tf.distribute APIs may enter device scopes, but the saved model should not
@@ -237,16 +212,14 @@ class SaveAndLoadForServingTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(op.device, "")
     self.assertEqual(loaded().numpy(), 1.)
 
-  def test_model_with_loaded_layer_broken(self, strategy):
-    # If a model contains a layer loaded from SavedModel, including tf.hub
-    # layers, and if the model is created under tf.distribute.Strategy, it
-    # cannot be saved again. The saving won't error but the saved model cannot
-    # be used.
+  def test_model_with_loaded_layer(self, strategy):
+    # When a model is loaded under strategy, we wrap it so that when it's passed
+    # to strategy.run(), the captured variables resolve to the ones of the
+    # current replica. Since the saved tf.function may contain updates to the
+    # variables, we don't allow using the model outside of strategy.run().
     #
-    # The reason is that if a saved model is loaded under
-    # tf.distribute.Strategy, the tf.functions are wrapped by
-    # saved_model._WrapperFunction, which generates an assertion node in the
-    # cross-replica context.
+    # That is to say, a loaded model is different from the original Python one.
+    # We need to test save-load-save-load to make sure things work correctly.
 
     class Layer(tf.Module):
 
@@ -272,28 +245,13 @@ class SaveAndLoadForServingTest(test.TestCase, parameterized.TestCase):
     with strategy.scope():
       m = Model(tf.saved_model.load(layer_export_dir))
       export_dir = self.get_temp_dir()
-      # It happens to work if we save the model outside of strategy.scope(),
-      # because DistributedVariable.handle and _WrapperFunction behaved
-      # differently under the cross-replica context and the default strategy's
-      # replica context.
       tf.saved_model.save(m, export_dir)
 
     loaded = tf.saved_model.load(export_dir)
-    # got error, want [1., 1.]
-    if isinstance(strategy, tf.distribute.MirroredStrategy):
-      with self.assertRaisesRegex(
-          tf.errors.InvalidArgumentError,
-          "from the cross-replica context in an in-replica context"):
-        strategy.run(loaded)
-    else:
-      with self.assertRaisesRegex(tf.errors.InvalidArgumentError,
-                                  "No registered 'Placeholder'"):
-        strategy.run(loaded)
-    # TODO(b/160646235): Uncomment after fix.
-    #  self.assertAllEqual(
-    #      self.evaluate(
-    #          strategy.experimental_local_results(strategy.run(loaded)),
-    #          [1., 1.]))
+    self.assertAllEqual(
+        self.evaluate(
+            strategy.experimental_local_results(strategy.run(loaded))),
+        [1., 1.])
 
 
 @combinations.generate(
@@ -314,12 +272,14 @@ class SaveAndLoadForTrainingTest(test.TestCase, parameterized.TestCase):
   # can workaround most issues since Keras loader restructs the layers with
   # saved configs if possible, in which case the saved graph is not used.
 
-  def test_read_sync_on_read_variable_broken(self, strategy):
-    # Reading a synchronizaiton=ON_READ in the replica context should only read
-    # the local value, however with a loaded model, reading in the replica
-    # context triggers aggregation as well. While one may argue the behavior is
-    # desirable, note that aggregation can cause hanging if the originall model
-    # is trained with MultiWorkerMirroredStrategy.
+  def test_read_sync_on_read_variable(self, strategy):
+    # Reading a synchronizaiton=ON_READ in the replica context should just read
+    # the local value. Reading it in the cross replica context aggregates the
+    # value from all replicas. Both are true with a loaded model.
+    #
+    # Note that if aggregation=SUM, the value of each replica is the saved value
+    # divided by the number of replicas. In this way if you load a model and
+    # save it again, the values of the variables don't change.
 
     class Model(tf.Module):
 
@@ -334,26 +294,45 @@ class SaveAndLoadForTrainingTest(test.TestCase, parameterized.TestCase):
         return self.v.read_value()
 
     export_dir = self.get_temp_dir()
+    value = strategy.experimental_distribute_values_from_function(
+        lambda ctx: tf.identity([3., 7.][ctx.replica_id_in_sync_group]))
     with strategy.scope():
       m = Model()
-      m.v.assign(1.)
+      strategy.run(m.v.assign, args=(value,))
       self.assertAllEqual(
-          self.evaluate(strategy.experimental_local_results(m.v)), [0.5, 0.5])
+          self.evaluate(strategy.experimental_local_results(m.v)), [3., 7.])
+      self.assertEqual(self.evaluate(m.v.read_value()), 10.)
       tf.saved_model.save(m, export_dir)
+      del m
 
     with strategy.scope():
       loaded = tf.saved_model.load(export_dir)
-    # After loading, reading in the replica context is the same as reading in
-    # the cross-replica context.
-    # TODO(b/159752793): change after fix.
+    # It's intended that we don't save the each replica, but just the aggregated
+    # value.
     self.assertAllEqual(
         self.evaluate(
             strategy.experimental_local_results(strategy.run(loaded))),
-        [1., 1.])
-    self.assertEqual(self.evaluate(loaded.v.read_value()), 1.)
+        [5., 5.])
+    self.assertEqual(self.evaluate(loaded.v.read_value()), 10.)
 
-  def test_update_sync_on_read_variable_broken(self, strategy):
-    # Can't even save.
+    # save and load again.
+    export_dir2 = self.get_temp_dir()
+    tf.saved_model.save(loaded, export_dir2)
+    # loaded.v.read_value() is still 1., both with and without strategy.
+    loaded = tf.saved_model.load(export_dir2)
+    self.assertEqual(self.evaluate(loaded.v.read_value()), 10.)
+    with strategy.scope():
+      loaded = tf.saved_model.load(export_dir2)
+      self.assertEqual(self.evaluate(loaded.v.read_value()), 10.)
+
+  def test_update_sync_on_read_variable(self, strategy):
+    # Updating a synchronizaiton=ON_READ in the replica context should just
+    # update the local value. Updating it in the cross replica context updates
+    # each component of the variable. Both are true with a loaded model.
+    #
+    # Note that if assigning a variable whose aggregation=SUM in the cross
+    # replica context, each replica is assigned with the value divided by the
+    # number of replicas.
 
     class Model(tf.Module):
 
@@ -363,19 +342,36 @@ class SaveAndLoadForTrainingTest(test.TestCase, parameterized.TestCase):
             synchronization=tf.VariableSynchronization.ON_READ,
             aggregation=tf.VariableAggregation.SUM)
 
-      @tf.function(input_signature=[tf.TensorSpec(shape=[1], dtype=tf.float32)])
+      @tf.function(input_signature=[tf.TensorSpec(shape=(), dtype=tf.float32)])
       def update(self, value):
         self.v.assign_add(value)
 
     export_dir = self.get_temp_dir()
+    value = strategy.experimental_distribute_values_from_function(
+        lambda ctx: tf.identity([3., 7.][ctx.replica_id_in_sync_group]))
     with strategy.scope():
       m = Model()
-      # got error, want no error.
-      with self.assertRaisesRegex(ValueError,
-                                  "SyncOnReadVariable does not support"):
-        tf.saved_model.save(m, export_dir)
+      tf.saved_model.save(m, export_dir)
+      self.evaluate(m.v.assign(10.))
+      self.assertAllEqual(
+          self.evaluate(strategy.experimental_local_results(m.v)), [5., 5.])
+      del m
+      # TODO(b/161488560): strategy.run doesn't work with tf.function with
+      # input_signature.
+      # self.evaluate(strategy.run(m.update, args=(value,)))
+      # self.assertAllEqual(
+      #     self.evaluate(strategy.experimental_local_results(m.v)), [8., 12.])
 
-    # TODO(b/159752793): Complete the test after the saving issue is fixed.
+    with strategy.scope():
+      loaded = tf.saved_model.load(export_dir)
+      self.evaluate(loaded.v.assign(10.))
+      self.assertAllEqual(
+          self.evaluate(strategy.experimental_local_results(loaded.v)),
+          [5., 5.])
+      self.evaluate(strategy.run(loaded.update, args=(value,)))
+      self.assertAllEqual(
+          self.evaluate(strategy.experimental_local_results(loaded.v)),
+          [8., 12.])
 
   def test_read_mirrored_variable(self, strategy):
 
@@ -402,13 +398,18 @@ class SaveAndLoadForTrainingTest(test.TestCase, parameterized.TestCase):
             strategy.experimental_local_results(strategy.run(loaded))),
         [1., 1.])
 
-  def test_update_mirrored_variable_broken(self, strategy):
+  def test_update_mirrored_variable(self, strategy):
     # This is also uncommon since most model parameters should be updated by
     # optimizer, and this test case is for completeness.
     #
-    # It's broken the saved model may not contain the aggregation logic. Even if
-    # it does, it's wrong since all inputs to the aggregation are the same
-    # variable.
+    # In the cross replica context, assigning to the variable assigns the same
+    # value to all replicas. This is true with the loaded model as well.
+    #
+    # However in replica context, MirroredVariable (synchronization=ON_WRITE)
+    # in a loaded model behaves differently. Updating MirroredVariable only
+    # update the current replica's variable with the current replica's value.
+    # There's no aggregation. This doesn't affect variables that are updated
+    # through optimizer. This is work as intended but can be surprising.
 
     class Model(tf.Module):
 
@@ -418,24 +419,28 @@ class SaveAndLoadForTrainingTest(test.TestCase, parameterized.TestCase):
             synchronization=tf.VariableSynchronization.ON_WRITE,
             aggregation=tf.VariableAggregation.MEAN)
 
-      @tf.function(input_signature=[tf.TensorSpec(shape=[1], dtype=tf.float32)])
+      @tf.function(input_signature=[tf.TensorSpec(shape=(), dtype=tf.float32)])
       def update(self, value):
-        self.v.assign_add(value[0])
+        self.v.assign_add(value)
 
     export_dir = self.get_temp_dir()
+    value = strategy.experimental_distribute_values_from_function(
+        lambda ctx: tf.identity([1., 2.][ctx.replica_id_in_sync_group]))
     with strategy.scope():
       m = Model()
       tf.saved_model.save(m, export_dir)
+      del m
 
     with strategy.scope():
       loaded = tf.saved_model.load(export_dir)
-    value = strategy.experimental_distribute_dataset(
-        tf.data.Dataset.from_tensor_slices([1., 2.]).batch(2))
-    strategy.run(loaded.update, args=(next(iter(value)),))
-    # TODO(b/159752793): Change after fix.
-    # got [2., 4.], want [1.5, 1.5].
     self.assertAllEqual(
-        self.evaluate(strategy.experimental_local_results(loaded.v)), [2., 4.])
+        self.evaluate(strategy.experimental_local_results(loaded.v)), [0., 0.])
+    self.evaluate(loaded.v.assign(1.))
+    self.assertAllEqual(
+        self.evaluate(strategy.experimental_local_results(loaded.v)), [1., 1.])
+    strategy.run(loaded.update, args=(value,))
+    self.assertAllEqual(
+        self.evaluate(strategy.experimental_local_results(loaded.v)), [2., 3.])
 
   # TODO(crccw): add a test case that trains a saved model with optimizer.
 
@@ -480,5 +485,153 @@ class SaveAndLoadForTrainingTest(test.TestCase, parameterized.TestCase):
         tf.saved_model.load(v2_export_dir)
 
 
+class PSStrategySaveAndLoadTest(test.TestCase):
+  # Test saved_model saving and loading for parameter server strategy. These
+  # tests are different enough than the tests in `SaveAndLoadForXXX` so we make
+  # a separate test class for them.
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    cluster_def = multi_worker_test_base.create_in_process_cluster(
+        num_workers=2, num_ps=2)
+    cls.cluster_resolver = tf.distribute.cluster_resolver.SimpleClusterResolver(
+        tf.train.ClusterSpec(cluster_def))
+
+  def tearDown(self):
+    super().tearDown()
+    context._reset_context()
+
+  def load_and_run_v1(self,
+                      model_dir,
+                      inputs,
+                      signature_key=tf1.saved_model.signature_constants
+                      .DEFAULT_SERVING_SIGNATURE_DEF_KEY):
+    """Load a SavedModel into a TF 1.x-style graph and run `signature_key`."""
+    graph = tf.Graph()
+    with graph.as_default(), tf1.Session() as session:
+      meta_graph_def = tf1.saved_model.load(
+          session, [tf1.saved_model.tag_constants.SERVING], model_dir)
+      signature = meta_graph_def.signature_def[signature_key]
+      feed_dict = {}
+      for arg_name in inputs.keys():
+        input_tensor = session.graph.get_tensor_by_name(
+            signature.inputs[arg_name].name)
+        feed_dict[input_tensor] = inputs[arg_name]
+      output_dict = {}
+      for output_name, output_tensor_info in signature.outputs.items():
+        output_dict[output_name] = session.graph.get_tensor_by_name(
+            output_tensor_info.name)
+      return session.run(output_dict, feed_dict)["output_0"]
+
+  class Model(tf.Module):
+
+    def __init__(self):
+      self.v1 = tf.Variable([0, 0, 0, 0])
+      self.v2 = tf.Variable([1, 1, 1, 1])
+      self.table = lookup_ops.MutableHashTable(
+          key_dtype=tf.int32, value_dtype=tf.int32, default_value=-1)
+
+    def train(self):
+      # simulate a training process to mutate the state of the model.
+      self.v1.assign([2, 2, 2, 2])
+      self.v2.assign([3, 3, 3, 3])
+      self.table.insert(keys=1, values=1)
+
+    @tf.function(input_signature=[
+        tf.TensorSpec(shape=(), dtype=tf.dtypes.int32, name="x")
+    ])
+    def __call__(self, x):
+      t = tf.math.add(self.v1, self.v2)
+      return tf.math.add(t, self.table.lookup(x))
+
+  def test_basic(self):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+    model_dir = self.get_temp_dir()
+    with strategy.scope():
+      m = self.Model()
+    m.train()
+    tf.saved_model.save(m, model_dir)
+
+    # Load via V2 API.
+    loaded = tf.saved_model.load(model_dir)
+    self.assertRegex(loaded.v1.device, "/job:chief/replica:0/task:0")
+    self.assertRegex(loaded.v2.device, "/job:chief/replica:0/task:0")
+    self.assertAllEqual(loaded(tf.identity(1)), [6, 6, 6, 6])
+    loaded.v2.assign([1, 1, 1, 1])
+    self.assertAllEqual(loaded(tf.identity(1)), [4, 4, 4, 4])
+
+    # Load via V1 API.
+    self.assertAllEqual(self.load_and_run_v1(model_dir, {"x": 1}), [6, 6, 6, 6])
+
+  def test_load_to_same_strategy(self):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+    model_dir = self.get_temp_dir()
+    with strategy.scope():
+      m = self.Model()
+    m.train()
+    tf.saved_model.save(m, model_dir)
+
+    with strategy.scope():
+      loaded = tf.saved_model.load(model_dir)
+    self.assertRegex(loaded.v1.device, "/job:ps/replica:0/task:0")
+    self.assertRegex(loaded.v2.device, "/job:ps/replica:0/task:1")
+    self.assertAllEqual(loaded(tf.identity(1)), [6, 6, 6, 6])
+
+  def test_load_to_different_strategy(self):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+    model_dir = self.get_temp_dir()
+    with strategy.scope():
+      m = self.Model()
+    m.train()
+    tf.saved_model.save(m, model_dir)
+
+    del m  # Garbage collect variables before we reset the context.
+    context._reset_context()
+
+    mirrored_strategy = tf.distribute.MirroredStrategy(devices=["CPU:0"])
+    with mirrored_strategy.scope():
+      loaded = tf.saved_model.load(model_dir)
+    self.assertIsInstance(loaded.v1, values.DistributedVariable)
+    self.assertAllEqual(loaded(tf.identity(1)), [6, 6, 6, 6])
+
+  def test_sharded_variable(self):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver, tf1.fixed_size_partitioner(2))
+    model_dir = self.get_temp_dir()
+    with strategy.scope():
+      m = self.Model()
+      self.assertIsInstance(m.v1, sharded_variable.ShardedVariable)
+    m.train()
+    tf.saved_model.save(m, model_dir)
+
+    # ShardedVariable loading only works in v1.
+    self.assertAllEqual(self.load_and_run_v1(model_dir, {"x": 1}), [6, 6, 6, 6])
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError, "Loading `ShardedVariable` is not supported"):
+      with strategy.scope():
+        tf.saved_model.load(model_dir)
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError, "Loading `ShardedVariable` is not supported"):
+      tf.saved_model.load(model_dir)
+
+  def test_load_with_partitioner_raises_error(self):
+    model = self.Model()
+    model_dir = self.get_temp_dir()
+    tf.saved_model.save(model, model_dir)
+
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver, tf1.fixed_size_partitioner(2))
+    with self.assertRaisesRegex(ValueError, "`variable_partitioner`"):
+      with strategy.scope():
+        tf.saved_model.load(model_dir)
+
+
 if __name__ == "__main__":
-  combinations.main()
+  # TODO(b/172304955): enable logical devices.
+  test_util.main(config_logical_devices=False)

@@ -17,19 +17,22 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
+#include "tensorflow/stream_executor/tpu/tpu_platform_id.h"
 #include "tensorflow/stream_executor/tpu/tpu_transfer_manager.h"
 
 namespace tensorflow {
+namespace tpu {
 
 static std::unique_ptr<xla::TransferManager> CreateTpuTransferManager() {
   return std::make_unique<TpuTransferManager>();
 }
 
 static bool InitModule() {
-  xla::TransferManager::RegisterTransferManager(TpuPlatform::kId,
+  xla::TransferManager::RegisterTransferManager(GetTpuPlatformId(),
                                                 CreateTpuTransferManager);
   return true;
 }
 static bool module_initialized = InitModule();
 
+}  // namespace tpu
 }  // namespace tensorflow

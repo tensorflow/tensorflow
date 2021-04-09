@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Contains private utilities used mainly by the base Layer class."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import functools
 import threading
@@ -29,15 +26,14 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
+from tensorflow.python.keras.utils import control_flow_util
+from tensorflow.python.keras.utils import tf_inspect
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_util
-from tensorflow.python.ops import control_flow_util_v2
-from tensorflow.python.ops import control_flow_v2_func_graphs
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training.tracking import base as tracking
+from tensorflow.python.util import keras_deps
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
@@ -77,7 +73,7 @@ def make_variable(name,
 
   TODO(fchollet): remove this method when no longer needed.
 
-  Arguments:
+  Args:
     name: Variable name.
     shape: Variable shape.
     dtype: The type of the variable. Defaults to `self.dtype` or `float32`.
@@ -118,9 +114,7 @@ def make_variable(name,
     variable_dtype = None
   else:
     # Instantiate initializer if provided initializer is a type object.
-    if isinstance(
-        initializer,
-        (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
+    if tf_inspect.isclass(initializer):
       initializer = initializer()
     init_val = functools.partial(initializer, shape, dtype=dtype)
     variable_dtype = dtype.base_dtype
@@ -148,7 +142,7 @@ def make_variable(name,
 def collect_previous_mask(input_tensors):
   """Retrieves the output mask(s) of the previous node.
 
-  Arguments:
+  Args:
       input_tensors: An arbitrary structure of Tensors.
 
   Returns:
@@ -180,7 +174,7 @@ def create_keras_history(tensors):
   Any Tensors not originating from a Keras `Input` Layer will be treated as
   constants when constructing `TensorFlowOpLayer` instances.
 
-  Arguments:
+  Args:
     tensors: A structure of Tensors, some of which come from raw TensorFlow
       operations and need to have Keras metadata assigned to them.
 
@@ -192,10 +186,23 @@ def create_keras_history(tensors):
   return created_layers
 
 
+# Unsafe Internal attribute.
+# If True, Keras will not evaluate the constant-foldable inputs to tf op
+# layers in TF1 graphs. This *might* speed up model construction time in
+# certain settings, but it means
+# the models will not be serializable/deserializable via get_config
+# (Only via Savedmodels). It may also change the semantics of whether
+# generated random numbers are generated once and re-used, or recomputed
+# each time.
+# Note: This path triggers for TPUEstimators / xla compiled graphs regardless
+# of this setting.
+_UNSAFE_GRAPH_OP_LAYER_CREATION = False
+
+
 def _create_keras_history_helper(tensors, processed_ops, created_layers):
   """Helper method for `create_keras_history`.
 
-  Arguments:
+  Args:
     tensors: A structure of Tensors for which to create Keras metadata.
     processed_ops: Set. TensorFlow operations that have already been wrapped in
       `TensorFlowOpLayer` instances.
@@ -206,23 +213,27 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
     have been wrapped in `TensorFlowOpLayer` instances. Second element is
     a list of the `TensorFlowOpLayer` instances created.
   """
+  if ops.executing_eagerly_outside_functions():
+    raise ValueError(
+        '`create_keras_history` should only be called if eager is disabled!')
   # Import of `base_layer` needed in order to create `TensorFlowOpLayer`.
   # Cannot be imported at top because of circular dependencies.
   # TODO(omalleyt): Resolve circular dependency.
   from tensorflow.python.keras.engine import base_layer  # pylint: disable=g-import-not-at-top
   tensor_list = nest.flatten(tensors)
+  sparse_ops = []
+  ragged_tensors = []
   for tensor in tensor_list:
     if getattr(tensor, '_keras_history', None) is not None:
       continue
-    if sparse_tensor.is_sparse(tensor) or ragged_tensor.is_ragged(tensor):
-      example = """
-      weights_mult = lambda x: tf.sparse.sparse_dense_matmul(x, weights)
-      output = tf.keras.layers.Lambda(weights_mult)(input)
-      """
-      raise ValueError('Tensorflow ops that generate ragged or sparse tensor '
-                       'outputs are currently not supported by Keras automatic '
-                       'op wrapping. Please wrap these ops in a Lambda layer: '
-                       '\n\n```\n{example}\n```\n'.format(example=example))
+    if isinstance(
+        tensor, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
+      sparse_ops.append(tensor.op)
+      continue
+    if tf_utils.is_ragged(tensor):
+      # Ragged tensors don't have an op property
+      ragged_tensors.append(tensor)
+      continue
     op = tensor.op  # The Op that created this Tensor.
     if op not in processed_ops:
       # Recursively set `_keras_history`.
@@ -240,17 +251,14 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
               not ops.executing_eagerly_outside_functions())
           using_xla = control_flow_util.GraphOrParentsInXlaContext(
               ops.get_default_graph())
-          if ds_with_session or using_xla:
+          if ds_with_session or using_xla or _UNSAFE_GRAPH_OP_LAYER_CREATION:
             # In Legacy Graph mode, evaluating here makes Session be
             # configured improperly. The downside of this is that saving
             # via `get_config` breaks, but SavedModel still works.
             constants[i] = op_input
           else:
             with ops.init_scope():
-              if ops.executing_eagerly_outside_functions():
-                constants[i] = backend.eval_in_eager_or_function(op_input)
-              else:
-                constants[i] = backend.function([], op_input)([])
+              constants[i] = backend.function([], op_input)([])
       layer_inputs = unnest_if_single_tensor(layer_inputs)
       processed_ops, created_layers = _create_keras_history_helper(
           layer_inputs, processed_ops, created_layers)
@@ -264,6 +272,21 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
           kwargs={},
           outputs=op.outputs)
       processed_ops.update([op])
+  if sparse_ops or ragged_tensors:
+    lambda_example = """
+    weights_mult = lambda x: tf.sparse.sparse_dense_matmul(x, weights)
+    output = tf.keras.layers.Lambda(weights_mult)(input)
+    """
+    raise ValueError(
+        'Tensorflow ops that generate ragged or sparse tensor '
+        'outputs are currently not supported by Keras automatic '
+        'op wrapping. Please wrap these ops in a Lambda layer: '
+        '\n\n```\n{example}\n```\n'
+        'Sparse ops encountered: {sparse_ops}\n'
+        'Ragged tensors encountered: {ragged_tensors}\n'.format(
+            example=lambda_example,
+            sparse_ops=str(sparse_ops),
+            ragged_tensors=str(ragged_tensors)))
   return processed_ops, created_layers
 
 
@@ -286,7 +309,7 @@ def needs_keras_history(tensors, ignore_call_context=False):
   if one or more of `tensors` originates from a `keras.Input` and
   does not have `_keras_history` set.
 
-  Arguments:
+  Args:
     tensors: An arbitrary nested structure of Tensors.
     ignore_call_context: Whether to ignore the check of if currently
       outside of a `call` context. This is `True` when creating
@@ -344,7 +367,7 @@ def uses_keras_history(tensors):
   already been checked to not originate from a `keras.Input`
   are marked as `_keras_history_checked`.
 
-  Arguments:
+  Args:
     tensors: An arbitrary nested structure of Tensors.
 
   Returns:
@@ -386,7 +409,7 @@ def mark_checked(tensors):
   This prevents Layers from attempting to create TensorFlowOpLayers
   for these Tensors.
 
-  Arguments:
+  Args:
     tensors: An arbitrary structure of Tensors.
   """
 
@@ -405,7 +428,9 @@ def call_context():
   return call_ctx
 
 
-control_flow_util_v2._register_keras_layer_context_function(call_context)  # pylint: disable=protected-access
+# Inject the call_context function to keras_deps to remove the dependency
+# from TFLite to Keras.
+keras_deps.register_call_context_function(call_context)
 
 
 class CallContext(object):
@@ -441,7 +466,7 @@ class CallContext(object):
   def enter(self, layer, inputs, build_graph, training, saving=None):
     """Push a Layer and its inputs and state onto the current call context.
 
-    Arguments:
+    Args:
       layer: The `Layer` whose `call` is currently active.
       inputs: The inputs to the currently active `Layer`.
       build_graph: Whether currently inside a Graph or FuncGraph.
@@ -556,7 +581,7 @@ def check_graph_consistency(tensor=None, method='add_loss', force_raise=False):
   the underlying tensor gets created in a FuncGraph managed by control_flow_v2.
   We need to raise clear error messages in such cases.
 
-  Arguments:
+  Args:
     tensor: Tensor to check, or `False` if it is known that an error
       should be raised.
     method: Caller method, one of {'add_metric', 'add_loss', 'add_update'}.
@@ -567,11 +592,7 @@ def check_graph_consistency(tensor=None, method='add_loss', force_raise=False):
   """
   if (force_raise or
       (ops.executing_eagerly_outside_functions() and
-       hasattr(tensor, 'graph') and
-       isinstance(tensor.graph,
-                  (control_flow_v2_func_graphs.CondBranchFuncGraph,
-                   control_flow_v2_func_graphs.WhileCondFuncGraph,
-                   control_flow_v2_func_graphs.WhileBodyFuncGraph)))):
+       hasattr(tensor, 'graph') and tensor.graph.is_control_flow_graph)):
     if method == 'activity_regularizer':
       bad_example = """
       class TestModel(tf.keras.Model):
@@ -682,7 +703,7 @@ def mark_as_return(outputs, acd):
 
   def _mark_as_return(tensor):
     """Marks `tensor` as the return value for automatic control deps."""
-    if not tensor_util.is_tensor(tensor):
+    if not tensor_util.is_tf_type(tensor):
       return tensor
 
     # pylint: disable=protected-access
@@ -733,9 +754,9 @@ def enable_v2_dtype_behavior():
   autocasting part of the V2 behavior for that layer, but not the defaulting to
   floatx part of the V2 behavior.
 
-  When a global `tf.keras.mixed_precision.experimental.Policy` is set, a Keras
-  layer's dtype will default to the global policy instead of floatx. Layers
-  will automatically cast inputs to the policy's compute_dtype.
+  When a global `tf.keras.mixed_precision.Policy` is set, a Keras layer's dtype
+  will default to the global policy instead of floatx. Layers will automatically
+  cast inputs to the policy's compute_dtype.
   """
   global V2_DTYPE_BEHAVIOR
   V2_DTYPE_BEHAVIOR = True
@@ -778,35 +799,46 @@ class TrackableWeightHandler(object):
 
     # TODO(b/141682913): Figure out why this is private and fix it.
     saveables = trackable._gather_saveables_for_checkpoint().values()  # pylint: disable=protected-access
-    if len(saveables) != 1:
-      raise ValueError('Only Trackables with one Saveable are supported.')
-    saveable = list(saveables)[0]
+    # 'Saveables' won't exist when we're passed a legacy TF1 table like
+    # a StaticHashTable.
+    if not saveables:
+      self._num_tensors = 0
+      self._setter = lambda weights: None
+      self._getter = lambda: []
 
-    if ops.executing_eagerly_outside_functions():
-      # If we're in eager mode, we need to defer calling the Trackable's
-      # saveable() callable until data export time.
-      # However, it is safe to call the saveable as many times as we want, so
-      # we will call it now to figure out how many tensors this Trackable will
-      # produce.
-      self._saveable = saveable
-      self._num_tensors = len(self._saveable().specs)
-      self._setter = lambda weights: self._saveable().restore(weights, None)
-      self._getter = lambda: [spec.tensor for spec in self._saveable().specs]
+    elif len(saveables) == 1:
+      saveable = list(saveables)[0]
+
+      if ops.executing_eagerly_outside_functions():
+        # If we're in eager mode, we need to defer calling the Trackable's
+        # saveable() callable until data export time.
+        # However, it is safe to call the saveable as many times as we want, so
+        # we will call it now to figure out how many tensors this Trackable will
+        # produce.
+        self._saveable = saveable
+        self._num_tensors = len(self._saveable().specs)
+        self._setter = lambda weights: self._saveable().restore(weights, None)
+        self._getter = lambda: [spec.tensor for spec in self._saveable().specs]
+      else:
+        # If we're in Graph mode, we need to evaluate the Saveable only once and
+        # cache the resulting restore graph. Failing to do this will result in
+        # new assignment ops being added to the graph each time set_weights() is
+        # called.
+        self._placeholder_tensors = []
+        self._saveable = saveable()
+        self._num_tensors = len(self._saveable.specs)
+        for spec in self._saveable.specs:
+          tensor = spec.tensor
+          self._placeholder_tensors.append(
+              array_ops.placeholder(tensor.dtype, tensor.shape))
+        self._assign_op = self._saveable.restore(self._placeholder_tensors,
+                                                 None)
+        self._setter = self._set_weights_v1
+        self._getter = lambda: [spec.tensor for spec in self._saveable.specs]
     else:
-      # If we're in Graph mode, we need to evaluate the Saveable only once and
-      # cache the resulting restore graph. Failing to do this will result in
-      # new assignment ops being added to the graph each time set_weights() is
-      # called.
-      self._placeholder_tensors = []
-      self._saveable = saveable()
-      self._num_tensors = len(self._saveable.specs)
-      for spec in self._saveable.specs:
-        tensor = spec.tensor
-        self._placeholder_tensors.append(
-            array_ops.placeholder(tensor.dtype, tensor.shape))
-      self._assign_op = self._saveable.restore(self._placeholder_tensors, None)
-      self._setter = self._set_weights_v1
-      self._getter = lambda: [spec.tensor for spec in self._saveable.specs]
+      raise ValueError('Only Trackables with one Saveable are supported. '
+                       'The Trackable %s has %d Saveables.' %
+                       (trackable, len(saveables)))
 
   @property
   def num_tensors(self):
@@ -830,12 +862,39 @@ class TrackableWeightHandler(object):
     backend.get_session().run(self._assign_op, feed_dict)
 
 
+class StaticTableHandler(TrackableWeightHandler):
+  """Wrapper for handling weight collection for static hash tables."""
+
+  def __init__(self, getter_lambda):  # pylint: disable=super-init-not-called
+    self._num_tensors = 2
+    self._getter = getter_lambda
+    self._distribute_strategy = distribution_strategy_context.get_strategy()
+
+    def raise_error(_):
+      raise RuntimeError('This layer contains a static lookup table, which '
+                         'cannot be changed via set_weights().')
+
+    self._setter = raise_error
+
+
 def no_ragged_support(inputs, layer_name):
   input_list = nest.flatten(inputs)
   if any(isinstance(x, ragged_tensor.RaggedTensor) for x in input_list):
     raise ValueError('Layer %s does not support RaggedTensors as input. '
                      'Inputs received: %s. You can try converting your '
                      'input to an uniform tensor.' % (layer_name, inputs))
+
+
+def is_split_variable(v):
+  """Returns True if `v` is either a PartionedVariable or a ShardedVariable."""
+  return hasattr(v, '_variable_list') or hasattr(v, '_variables')
+
+
+def has_weights(obj):
+  obj_type = type(obj)
+  return (hasattr(obj_type, 'trainable_weights') and
+          hasattr(obj_type, 'non_trainable_weights') and
+          not isinstance(obj, type))
 
 
 # TODO(kathywu): This is a temporary hack. When a network of layers is revived

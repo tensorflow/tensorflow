@@ -37,8 +37,9 @@ from __future__ import print_function
 
 import six as _six
 
-from tensorflow.python import _pywrap_utils
 from tensorflow.python.framework import sparse_tensor as _sparse_tensor
+from tensorflow.python.util import _pywrap_utils
+from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc as _collections_abc
 
 
@@ -50,36 +51,8 @@ def _sorted(dict_):
     raise TypeError("nest only supports dicts with sortable keys.")
 
 
-def _sequence_like(instance, args):
-  """Converts the sequence `args` to the same type as `instance`.
-
-  Args:
-    instance: an instance of `tuple`, `list`, or a `namedtuple` class.
-    args: elements to be converted to a sequence.
-
-  Returns:
-    `args` with the type of `instance`.
-  """
-  if isinstance(instance, dict):
-    # Pack dictionaries in a deterministic order by sorting the keys.
-    # Notice this means that we ignore the original order of `OrderedDict`
-    # instances. This is intentional, to avoid potential bugs caused by mixing
-    # ordered and plain dicts (e.g., flattening a dict but using a
-    # corresponding `OrderedDict` to pack it back).
-    result = dict(zip(_sorted(instance), args))
-    return type(instance)((key, result[key]) for key in instance)
-  elif (isinstance(instance, tuple) and hasattr(instance, "_fields") and
-        isinstance(instance._fields, _collections_abc.Sequence) and
-        all(isinstance(f, _six.string_types) for f in instance._fields)):
-    # This is a namedtuple
-    return type(instance)(*args)
-  else:
-    # Not a namedtuple
-    return type(instance)(args)
-
-
 def _yield_value(iterable):
-  if isinstance(iterable, dict):
+  if isinstance(iterable, _collections_abc.Mapping):
     # Iterate through dictionaries in a deterministic order by sorting the
     # keys. Notice this means that we ignore the original order of `OrderedDict`
     # instances. This is intentional, to avoid potential bugs caused by mixing
@@ -146,7 +119,7 @@ def _packed_nest_with_indices(structure, flat, index):
   for s in _yield_value(structure):
     if is_sequence(s):
       new_index, child = _packed_nest_with_indices(s, flat, index)
-      packed.append(_sequence_like(s, child))
+      packed.append(nest._sequence_like(s, child))  # pylint: disable=protected-access
       index = new_index
     else:
       packed.append(flat[index])
@@ -189,7 +162,7 @@ def pack_sequence_as(structure, flat_sequence):
         % (len(flat_structure), len(flat_sequence), structure, flat_sequence))
 
   _, packed = _packed_nest_with_indices(structure, flat_sequence, 0)
-  return _sequence_like(structure, packed)
+  return nest._sequence_like(structure, packed)  # pylint: disable=protected-access
 
 
 def map_structure(func, *structure, **check_types_dict):
@@ -238,7 +211,7 @@ def map_structure(func, *structure, **check_types_dict):
   for other in structure[1:]:
     assert_same_structure(structure[0], other, check_types=check_types)
 
-  flat_structure = [flatten(s) for s in structure]
+  flat_structure = (flatten(s) for s in structure)
   entries = zip(*flat_structure)
 
   return pack_sequence_as(
@@ -310,14 +283,14 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
           "structure has length %s, while shallow structure has length %s."
           % (len(input_tree), len(shallow_tree)))
 
-    if check_types and isinstance(shallow_tree, dict):
+    if check_types and isinstance(shallow_tree, _collections_abc.Mapping):
       if set(input_tree) != set(shallow_tree):
         raise ValueError(
             "The two structures don't have the same keys. Input "
             "structure has keys %s, while shallow structure has keys %s." %
             (list(input_tree), list(shallow_tree)))
-      input_tree = list(sorted(_six.iteritems(input_tree)))
-      shallow_tree = list(sorted(_six.iteritems(shallow_tree)))
+      input_tree = sorted(_six.iteritems(input_tree))
+      shallow_tree = sorted(_six.iteritems(shallow_tree))
 
     for shallow_branch, input_branch in zip(shallow_tree, input_tree):
       assert_shallow_structure(shallow_branch, input_branch,
@@ -465,8 +438,8 @@ def map_structure_up_to(shallow_tree, func, *inputs):
 
   # Flatten each input separately, apply the function to corresponding elements,
   # then repack based on the structure of the first input.
-  all_flattened_up_to = [flatten_up_to(shallow_tree, input_tree)
-                         for input_tree in inputs]
+  all_flattened_up_to = (
+      flatten_up_to(shallow_tree, input_tree) for input_tree in inputs)
 
   results = [func(*tensors) for tensors in zip(*all_flattened_up_to)]
   return pack_sequence_as(structure=shallow_tree, flat_sequence=results)

@@ -22,7 +22,7 @@ import numpy as np
 from six.moves import range
 import tensorflow.compat.v1 as tf
 
-from tensorflow.examples.tutorials.mnist import input_data
+from tensorflow.lite.experimental.examples.lstm import input_data
 from tensorflow.lite.experimental.examples.lstm.rnn import bidirectional_dynamic_rnn
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test

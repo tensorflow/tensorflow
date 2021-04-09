@@ -22,6 +22,7 @@ import copy
 import functools
 import itertools
 import multiprocessing.pool
+import os
 import sys
 import time
 import weakref
@@ -56,6 +57,7 @@ from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.layers import convolutional
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
@@ -69,6 +71,7 @@ from tensorflow.python.ops import gen_sendrecv_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -79,9 +82,12 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.structured import structured_tensor
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model.load import load
+from tensorflow.python.saved_model.save import save
 from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
 try:
@@ -118,6 +124,16 @@ def _spec_for_value(value):
     return value
 
 
+# This dummy decorator imitates ordinary decorators utilizing tf_decorator.
+def dummy_tf_decorator(method):
+
+  def wrapper(*args, **kwargs):
+    return method(*args, **kwargs)
+
+  return tf_decorator.make_decorator(method, wrapper)
+
+
+# TODO(mdan): Organize these tests.
 class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
@@ -189,6 +205,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(AttributeError, 'no attribute'):
       add(c)
 
+  @test_util.disable_tfrt('Packed tensor is not supported in tfrt yet.')
   def testPackedVariable(self):
     with ops.device('/cpu:0'):
       v0_0 = resource_variable_ops.ResourceVariable(1.0)
@@ -270,6 +287,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       functions = ops.get_default_graph().as_graph_def().library.function
       self.assertEmpty(functions)
 
+  def testImplementsAttributeWorksWithGradientTape(self):
+    add = lambda x, y: x + y ** 2
+    add = def_function.function(experimental_implements='MyFunc')(add)
+    x = variables.Variable(3.0)
+    y = variables.Variable(2.0)
+
+    with backprop.GradientTape() as tape:
+      g = add(x, y)
+
+    dg_dy, dg_dx = tape.gradient(g, [y, x])
+    self.assertEqual(dg_dy.numpy(), 4.0)
+    self.assertEqual(dg_dx.numpy(), 1.0)
+
   def testImplementsAttributeWorksOnVariables(self):
     with context.graph_mode(), self.cached_session():
       v = def_function.function(
@@ -321,6 +351,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       a.initializer.run()
       numpy.testing.assert_equal(r1.eval(), [3.])
       numpy.testing.assert_equal(r2.eval(), [3., 3.])
+
+  def testImplementsWorksWithTensorSpec(self):
+    v = def_function.function(
+        experimental_implements='func')(lambda x, y: x + y)
+    v = v.get_concrete_function(
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32),
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32))
+    x = v(1., 2.)
+    self.assertEqual(x.numpy(), 3.)
 
   def testImplementsAttributeAsNameAttrList(self):
     implements_attr = (
@@ -841,6 +880,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     expected = [4.0] * 100
     self.assertSequenceEqual(outputs, expected)
 
+  @test_util.disable_tfrt('b/169431085: This test is flaky on tfrt')
   def testExecutingStatefulDefunConcurrently(self):
 
     v = resource_variable_ops.ResourceVariable(1.0)
@@ -1370,6 +1410,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(f(constant_op.constant(1.0))['name'], 2.0)
 
+  def testWeakrefInputsRejected(self):
+
+    @def_function.function
+    def f(x):
+      return x
+
+    class Dummy:
+      pass
+    o = Dummy()
+    wr = weakref.ref(o)
+
+    with self.assertRaisesRegex(ValueError, 'weakref'):
+      f(wr)
+
   def testTensorConversionWithDefun(self):
 
     @def_function.function
@@ -1759,6 +1813,18 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertIn('CPU', has_device.v.device)
 
   @test_util.run_in_graph_and_eager_modes
+  def testMultipleDeviceCheck(self):
+
+    def f():
+      with ops.device('cpu'):
+        return test_ops.device_placement_op()
+
+    func = function.defun(f)
+    with ops.device('cpu:0'):
+      output = self.evaluate(func())
+      self.assertIn(compat.as_bytes('CPU:0'), output)
+
+  @test_util.run_in_graph_and_eager_modes
   def testDeviceAnnotationsRespected(self):
 
     def multi_device_fn():
@@ -1970,10 +2036,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return tuple(key[0] for key in total_function_cache(defined))
 
     # `True` corresponds to the fact that we're executing eagerly
-    self.assertIn(('URRRu', (0, 1, 20)), cache_keys())
+    self.assertIn(('UURRRuDu', (0, 1, 20)), cache_keys())
 
     defined(1)  # bar=1, baz=2
-    self.assertIn(('URRRu', (1, 1, 2)), cache_keys())
+    self.assertIn(('UURRRuDu', (1, 1, 2)), cache_keys())
 
     # This matches the previous call.
     defined(foo=1)
@@ -1981,7 +2047,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     defined(1, 2, 3)
     self.assertLen(total_function_cache(defined), 3)
-    self.assertIn(('URRRu', (1, 2, 3)), cache_keys())
+    self.assertIn(('UURRRuDu', (1, 2, 3)), cache_keys())
 
     # This matches the previous call.
     defined(1, bar=2, baz=3)
@@ -2038,6 +2104,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     out = defined(b)
     self.assertLen(total_function_cache(defined), 1)
     self.assertAllEqual(out, b)
+
+  def testInputSignatureWithDictInPositionalArgs(self):
+
+    @function.defun
+    def f(*_args, **_kwargs):
+      return None
+
+    f(1, x=2)
+    self.assertLen(total_function_cache(f), 1)
+    f(1, x=2)
+    self.assertLen(total_function_cache(f), 1)
+    f(1, {'x': 2})
+    self.assertLen(total_function_cache(f), 2)
 
   def testInputSignatureWithCompatibleInputs(self):
 
@@ -2801,6 +2880,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         # Grappler fallback to use the CPU impl even called with GPU function.
         self.assertEqual(y_value, 3.0)
 
+  @test_util.disable_tfrt('b/174712583: TFRT doesn\'t support behavior '
+                          'equivalent to implementation_selector for function')
   def testSwapImplementationInEager(self):
     if not context.executing_eagerly():
       self.skipTest('eager only')
@@ -3154,6 +3235,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       modify_same_flat(nested_input)
 
+  @test_util.disable_tfrt('b/173429686')
   def testExecutorType(self):
     @function.defun
     def add_five(x):
@@ -3346,6 +3428,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     test_fn()
     self.assertEqual(ag_ctx.control_status_ctx().status, prev_status)
 
+  @test_util.disable_tfrt('b/170435618')
   def testCancelBeforeFunctionExecution(self):
     if not context.executing_eagerly():
       self.skipTest('eager only')
@@ -3363,6 +3446,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(errors.CancelledError):
       cancelable_func()
 
+  @test_util.disable_tfrt('b/170435618')
   def testCancelBlockedFunctionExecution(self):
     if not context.executing_eagerly():
       self.skipTest('eager only')
@@ -3386,6 +3470,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       cancelable_func()
     t.join()
 
+  @test_util.disable_tfrt('b/170435618')
   def testCancelAfterFunctionExecution(self):
     if not context.executing_eagerly():
       self.skipTest('eager only')
@@ -3407,7 +3492,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testAddFunctionCallback(self):
     functions = []
-    def function_callback(f):
+    def function_callback(f, name, graph, inputs, outputs):
+      del name, graph, inputs, outputs
       functions.append(f)
 
     @def_function.function
@@ -3430,13 +3516,41 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     finally:
       function.clear_function_callbacks()
 
+  def testFunctionCallbackAddOps(self):
+    file_name = os.path.join(self.get_temp_dir(), 'test')
+
+    def function_callback(f, name, graph, inputs, outputs):
+      del f, name, inputs
+
+      with graph.as_default():
+        printer = logging_ops.print_v2(
+            'hello',
+            output_stream='file://' + file_name
+        )
+        outputs[0].op._add_control_input(printer)
+
+    @def_function.function
+    def plus_one(x):
+      return x + 1
+
+    self.addCleanup(function.clear_function_callbacks)
+    function.add_function_callback(function_callback)
+    x_float32 = numpy.array(3.0, dtype=numpy.float32)
+
+    self.assertAllClose(plus_one(x_float32), 4.0)
+
+    with open(file_name, 'r') as f:
+      self.assertEqual(f.read().strip(), 'hello')
+
   def testRemoveFunctionCallback(self):
     functions_1 = []
-    def function_callback_1(f):
+    def function_callback_1(f, name, graph, inputs, outputs):
+      del name, graph, inputs, outputs
       functions_1.append(f)
 
     functions_2 = []
-    def function_callback_2(f):
+    def function_callback_2(f, name, graph, inputs, outputs):
+      del name, graph, inputs, outputs
       functions_2.append(f)
 
     @def_function.function
@@ -3519,6 +3633,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         self.assertAllEqual(output[0] + output[1], 1253)
 
   @test_util.run_in_graph_and_eager_modes
+  def testConcreteFunctionWithNonTensorStringInputs(self):
+
+    @def_function.function
+    def f(x, y):
+      return string_ops.string_join([x, y])
+
+    a = constant_op.constant('a')
+    b = 'b'
+
+    cf = f.get_concrete_function(a, b)
+    for output in [cf(a), cf(x=a), cf(a, b), cf(x=a, y=b)]:
+      self.assertAllEqual(output, b'ab')
+
+  @test_util.run_in_graph_and_eager_modes
   def testConcreteFunctionWithBoundNestedNonTensorInputs(self):
 
     @def_function.function
@@ -3549,6 +3677,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     cf = f.get_concrete_function(a, b)
     for output in [cf(), cf(a), cf(y=b)]:
       self.assertAllEqual(output[0] + output[1], 5555)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConcreteFunctionMethodWithVarargs(self):
+    float32_scalar = tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)
+
+    class MyModel(module.Module):
+
+      @def_function.function(input_signature=[float32_scalar, float32_scalar])
+      def add(self, *arg):
+        return math_ops.add(*arg)
+
+    m = MyModel()
+    cf = m.add.get_concrete_function()
+    cf(-12.0, 3.0)
 
   @test_util.run_in_graph_and_eager_modes
   def testConcreteFunctionStructuredSignatureKeywordOrder(self):
@@ -3909,6 +4051,31 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         '  Returns:\n'
         '    float32 Tensor, shape=<unknown>')
 
+  def testPrettyPrintedSignatureLoadedNamedTuple(self):
+    Point = collections.namedtuple('Point', ['x', 'y'])
+
+    @def_function.function
+    def fn(b, a):  # pylint: disable=unused-argument
+      return 1.
+
+    b = Point(
+        x=constant_op.constant(1., dtype=dtypes.float32),
+        y=constant_op.constant(1., dtype=dtypes.float32))
+    a = Point(
+        x=constant_op.constant(1, dtype=dtypes.int32),
+        y=constant_op.constant(1, dtype=dtypes.int32))
+
+    mod = module.Module()
+    f = fn.get_concrete_function(b, a)
+    save(mod, '/tmp/f', signatures=f)
+    loaded = load('/tmp/f')
+
+    printed = loaded.signatures['serving_default'].pretty_printed_signature()
+    self.assertIn('a: int32 Tensor, shape=()', printed)
+    self.assertIn('a_1: int32 Tensor, shape=()', printed)
+    self.assertIn('b: float32 Tensor, shape=()', printed)
+    self.assertIn('b_1: float32 Tensor, shape=()', printed)
+
   @test_util.run_in_graph_and_eager_modes
   def testIndexedSlicesAsGradientsForConcreteFunctions(self):
 
@@ -3926,6 +4093,623 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return tape.gradient(loss, inputs)
 
     gradients(constant_op.constant([[[1.0], [2.0]]]))  # No error is raised
+
+  def testFollowTypeHintsTraceBasic(self):
+    trace_count = [0]
+
+    def func(x: ops.Tensor):
+      trace_count[0] += 1
+      return x
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+    disabled = def_function.function(func, experimental_follow_type_hints=False)
+
+    enabled(1)  # Initial call gets traced
+    enabled(2)
+    enabled(3)
+    self.assertEqual(trace_count[0], 1)
+
+    trace_count = [0]
+    disabled(1)
+    disabled(2)  # Retrace
+    disabled(3)  # Retrace
+    self.assertEqual(trace_count[0], 3)
+
+  def testFollowTypeHintsTraceWithArgs(self):
+    trace_count = [0]
+
+    def func(*args: ops.Tensor):
+      trace_count[0] += 1
+      return args
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+    disabled = def_function.function(func, experimental_follow_type_hints=False)
+
+    args = (
+        'abc',
+        'def',
+    ) * 20
+    args2 = (
+        'def',
+        'abc',
+    ) * 20
+
+    enabled(args)
+    enabled(args2)
+    self.assertEqual(trace_count[0], 1)
+
+    trace_count = [0]
+    disabled(args)
+    disabled(args2)  # Retrace
+    self.assertEqual(trace_count[0], 2)
+
+  def testFollowTypeHintsTraceWithKwargs(self):
+    trace_count = [0]
+
+    def func(t: ops.Tensor, **kwargs: ops.Tensor):
+      del kwargs
+      trace_count[0] += 1
+      return t
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+    disabled = def_function.function(func, experimental_follow_type_hints=False)
+
+    enabled(1, x=1, y=1.0, z='one')
+    enabled(2, x=2, y=2.0, z='two')
+    self.assertEqual(trace_count[0], 1)
+
+    trace_count = [0]
+    disabled(1, x=1, y=1.0, z='one')
+    disabled(2, x=2, y=2.0, z='two')  # Retrace
+    self.assertEqual(trace_count[0], 2)
+
+  def testFollowTypeHintsTraceWithMultipleInputTypes(self):
+    trace_count = [0]
+
+    def func(t: ops.Tensor, *args: ops.Tensor, **kwargs: ops.Tensor):
+      del args, kwargs
+      trace_count[0] += 1
+      return t
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+    disabled = def_function.function(func, experimental_follow_type_hints=False)
+
+    enabled(1, constant_op.constant(1), 'str', x=4.0)
+    enabled(2, constant_op.constant(2), 'str2', x=5.0)
+    self.assertEqual(trace_count[0], 1)
+
+    trace_count = [0]
+    disabled(1, constant_op.constant(1), 'str', x=4.0)
+    disabled(2, constant_op.constant(2), 'str2', x=5.0)  # Retrace
+    self.assertEqual(trace_count[0], 2)
+
+  def testFollowTypeHintsTraceWithOnlyArgNamed(self):
+    trace_count = [0]
+
+    def func(t: ops.Tensor, i: int = 1, **kwargs):  # pylint: disable=bad-whitespace
+      del i, kwargs
+      trace_count[0] += 1
+      return t
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(1, 3, x=4.0, y='str')
+    enabled(2, 4, x=4.0, y='str')  # Retrace
+    self.assertEqual(trace_count[0], 2)
+
+  def testFollowTypeHintsTraceWithNotAllNamed(self):
+    trace_count = [0]
+
+    def func(x, y: ops.Tensor, z: int):
+      del y, z
+      trace_count[0] += 1
+      return x
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(1, 2, 3)
+    enabled(1, 20, 3)  # No retrace - change in ops.Tensor typed arg
+    enabled(2, 2, 3)  # Retrace - change in untyped arg
+    enabled(2, 2, 4)  # Retrace - change in typed arg
+    self.assertEqual(trace_count[0], 3)
+
+  def testFollowTypeHintsTraceWithOnlyArgsNamed(self):
+    trace_count = [0]
+
+    def func(x, y, *args: ops.Tensor):
+      del y, args
+      trace_count[0] += 1
+      return x
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(1, 20, 3, 4, 5, 6)
+    enabled(1, 20, 3, 4, 5, 60)  # No retrace - change in *args
+    enabled(1, 30, 7, 8, 9, 10)  # Retrace - change in args
+    self.assertEqual(trace_count[0], 2)
+
+  def testFollowTypeHintsTraceWithOnlyKwargsNamed(self):
+    trace_count = [0]
+
+    def func(x, y, *args, **kwargs: ops.Tensor):
+      del y, args, kwargs
+      trace_count[0] += 1
+      return x
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(1, 2, 3, 4, 5, 6, a=1.0, b=2.0, c=3.0)
+    enabled(
+        1, 2, 3, 4, 5, 6, a=1.5, b=2.5,
+        c=3.5)  # No retrace - change in **kwargs
+    enabled(100, 2, 3, 4, 5, 6, a=1.0, b=2.0, c=3.0)  # Retrace - change in args
+    enabled(
+        1, 2, 3, 4, 5, 100, a=1.0, b=2.0, c=3.0)  # Retrace - change in *args
+    self.assertEqual(trace_count[0], 3)
+
+  def testFollowTypeHintsTraceWithArgsEquals(self):
+    trace_count = [0]
+
+    def func(
+        x: ops.Tensor = 0,  # pylint:disable=bad-whitespace
+        y: int = 1,  # pylint:disable=bad-whitespace
+        **kwargs: ops.Tensor):
+      del y, kwargs
+      trace_count[0] += 1
+      return x
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(x=1, y=2, z=3)
+    enabled(x=1, y=3, z=3)  # Retrace - change in args
+    enabled(x=2, y=2, z=4)  # No retrace - change in args and **kwargs
+    enabled(x=2, y=2, z=4, u=5)  # Retrace - change in **kwargs
+    self.assertEqual(trace_count[0], 3)
+
+  def testFollowTypeHintsWithTensorSpec(self):
+    def func(x: ops.Tensor, y):
+      return x + y
+    v = def_function.function(experimental_follow_type_hints=True)(func)
+    v = v.get_concrete_function(
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32), 3)
+    x = v(constant_op.constant(1.), 3)
+    self.assertEqual(x.numpy(), 4.)
+
+  def testFollowTypeHintsTraceWithKwArgsAndNoVarKws(self):
+    trace_count = [0]
+
+    def func(a: int, b: ops.Tensor,
+             x: ops.Tensor = 0, y: int = 1):
+      del a, b, y
+      trace_count[0] += 1
+      return x
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(0, 0, x=1, y=2)
+    enabled(0, 0, x=2, y=2,)  # No retrace, since only tensor changed
+    self.assertEqual(trace_count[0], 1)
+
+    # Pass args as keyword args.
+    enabled(a=0, b=0, x=2, y=2,)  # No retrace, args are the same
+    self.assertEqual(trace_count[0], 1)
+
+    enabled(a=1, b=0, x=2, y=2,)  # Retrace, since non-tensor arg changed
+    self.assertEqual(trace_count[0], 2)
+
+    enabled(a=1, b=2, x=2, y=2)  # No retrace, since only tensor changed
+    self.assertEqual(trace_count[0], 2)
+
+    trace_count[0] = 0
+    disabled = def_function.function(func, experimental_follow_type_hints=False)
+    disabled(0, 0, x=1, y=2)
+    disabled(0, 0, x=2, y=2,)  # Retrace
+    self.assertEqual(trace_count[0], 2)
+
+  def testFollowTypeHintsTraceWithArgsEqualsTypedKwargs(self):
+    trace_count = [0]
+
+    def func(x, y, **kwargs: ops.Tensor):
+      del y, kwargs
+      trace_count[0] += 1
+      return x
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(x=1, y=2, z=3)
+    enabled(x=1, y=3, z=3)  # Retrace
+    enabled(x=1, y=2, z=4)  # No retrace
+    enabled(x=2, y=2, z=4)  # Retrace
+    enabled(x=2, y=2, z=4, u=5)  # Retrace
+    self.assertEqual(trace_count[0], 4)
+
+  def testFollowTypeHintsTraceWithArgsEqualsTypedArgs(self):
+    trace_count = [0]
+
+    def func(x: ops.Tensor, y: int, **kwargs):
+      del y, kwargs
+      trace_count[0] += 1
+      return x
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(x=1, y=2, z=3)
+    enabled(x=1, y=3, z=3)  # Retrace
+    enabled(x=1, y=2, z=4)  # Retrace
+    enabled(x=2, y=2, z=3)  # No retrace
+    enabled(x=2, y=2, z=4, u=5)  # Retrace
+    self.assertEqual(trace_count[0], 4)
+
+  def testFollowTypeHintsTraceWithKwOnlyArgsBasic(self):
+    trace_count = [0]
+
+    def func(*, a: ops.Tensor = None, b=1):  # pylint: disable=bad-whitespace
+      del b
+      trace_count[0] += 1
+      return a
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(a=1, b=2)
+    enabled(a=2, b=2)  # No retrace
+    enabled(a=1, b=1)  # Retrace
+    self.assertEqual(trace_count[0], 2)
+
+  def testFollowTypeHintsTraceWithArgsKwOnlyArgsKwargsAndTypedArg(self):
+    trace_count = [0]
+
+    def func(arg: ops.Tensor, *args, kwonly, **kwargs):
+      del args, kwonly, kwargs
+      trace_count[0] += 1
+      return arg
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(1, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7)
+    enabled(100, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7)  # No retrace
+    enabled(1000, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7)  # No retrace
+    enabled(1, 20, 30, 40, kwonly=5, kwarg1=6, kwarg2=7)  # Retrace
+    enabled(1, 2, 3, 4, kwonly=50, kwarg1=6, kwarg2=7)  # Retrace
+    enabled(1, 2, 3, 4, kwonly=5, kwarg1=60, kwarg2=70)  # Retrace
+    self.assertEqual(trace_count[0], 4)
+
+  def testFollowTypeHintsTraceWithArgsKwOnlyArgsKwargsAndTypedArgs(self):
+    trace_count = [0]
+
+    def func(arg, *args: ops.Tensor, kwonly, **kwargs):
+      del args, kwonly, kwargs
+      trace_count[0] += 1
+      return arg
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(1, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7)
+    enabled(100, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7)  # Retrace
+    enabled(1, 20, 30, 40, kwonly=5, kwarg1=6, kwarg2=7)  # No retrace
+    enabled(1, 200, 300, 400, kwonly=5, kwarg1=6, kwarg2=7)  # No retrace
+    enabled(1, 2, 3, 4, kwonly=50, kwarg1=6, kwarg2=7)  # Retrace
+    enabled(1, 2, 3, 4, kwonly=5, kwarg1=60, kwarg2=70)  # Retrace
+    self.assertEqual(trace_count[0], 4)
+
+  def testFollowTypeHintsTraceWithArgsKwOnlyArgsKwargsAndTypedKwOnlyArg(self):
+    trace_count = [0]
+
+    def func(arg, *args, kwonly: ops.Tensor, **kwargs):
+      del args, kwonly, kwargs
+      trace_count[0] += 1
+      return arg
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(1, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7)
+    enabled(100, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7)  # Retrace
+    enabled(1, 20, 30, 40, kwonly=5, kwarg1=6, kwarg2=7)  # Retrace
+    enabled(1, 2, 3, 4, kwonly=50, kwarg1=6, kwarg2=7)  # No retrace
+    enabled(1, 2, 3, 4, kwonly=500, kwarg1=6, kwarg2=7)  # No retrace
+    enabled(1, 2, 3, 4, kwonly=5, kwarg1=60, kwarg2=70)  # Retrace
+    self.assertEqual(trace_count[0], 4)
+
+  def testFollowTypeHintsTraceWithArgsKwOnlyArgsKwargsAndTypedKwargs(self):
+    trace_count = [0]
+
+    def func(arg, *args, kwonly, **kwargs: ops.Tensor):
+      del args, kwonly, kwargs
+      trace_count[0] += 1
+      return arg
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(1, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7)
+    enabled(100, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7)  # Retrace
+    enabled(1, 20, 30, 40, kwonly=5, kwarg1=6, kwarg2=7)  # Retrace
+    enabled(1, 2, 3, 4, kwonly=50, kwarg1=6, kwarg2=7)  # Retrace
+    enabled(1, 2, 3, 4, kwonly=5, kwarg1=60, kwarg2=70)  # No retrace
+    enabled(1, 2, 3, 4, kwonly=5, kwarg1=600, kwarg2=700)  # No retrace
+    self.assertEqual(trace_count[0], 4)
+
+  def testWithExtraWrapper(self):
+
+    class Foo(module.Module):
+
+      def __init__(self):
+        super().__init__()
+        self.var = None
+
+      @def_function.function
+      @dummy_tf_decorator
+      def add(self, x, y, z=1):
+        if self.var is None:
+          return x + y + z
+
+    foo = Foo()
+    self.assertEqual(foo.add(2, 3).numpy(), 6)
+
+  @parameterized.parameters([(def_function.function, dummy_tf_decorator),
+                             (dummy_tf_decorator, def_function.function),
+                             (def_function.function, def_function.function)])
+  def testWithExtraWrapperRedundantArgs(self, decorator1, decorator2):
+
+    class Foo(module.Module):
+
+      def __init__(self):
+        super().__init__()
+        self.var = None
+
+      @decorator1
+      @decorator2
+      def add1(self, x, y):
+        if self.var is None:
+          return x + y
+
+    foo = Foo()
+    with self.assertRaisesRegex(TypeError, 'got two values for argument'):
+      foo.add1(2, x=3)  # pylint: disable=redundant-keyword-arg,no-value-for-parameter
+
+  def testWithExtraWrapperMissingArgs(self):
+
+    class Foo(module.Module):
+
+      def __init__(self):
+        super().__init__()
+        self.var = None
+
+      @def_function.function
+      @dummy_tf_decorator
+      def add1(self, x, y):
+        if self.var is None:
+          return x + y
+
+      @def_function.function
+      @dummy_tf_decorator
+      def add2(self, x, y):
+        if self.var is None:
+          return x + y
+
+      @def_function.function
+      @def_function.function
+      def add3(self, x, y):
+        if self.var is None:
+          return x + y
+
+    foo = Foo()
+    with self.assertRaisesRegex(
+        TypeError, 'missing 1 required positional argument: \'y\''):
+      foo.add1(2)  # pylint: disable=no-value-for-parameter
+
+    with self.assertRaisesRegex(TypeError, 'missing 1 required argument: x'):
+      foo.add1(y=2)  # pylint: disable=no-value-for-parameter
+
+    with self.assertRaisesRegex(
+        TypeError, 'missing 1 required positional argument: \'y\''):
+      foo.add2(2)  # pylint: disable=no-value-for-parameter
+
+    with self.assertRaisesRegex(TypeError, 'missing 1 required argument: x'):
+      foo.add2(y=2)  # pylint: disable=no-value-for-parameter
+
+    with self.assertRaisesRegex(
+        TypeError, 'missing 1 required positional argument: \'y\''):
+      foo.add3(2)  # pylint: disable=no-value-for-parameter
+
+    with self.assertRaisesRegex(TypeError, 'missing 1 required argument: x'):
+      foo.add3(y=2)  # pylint: disable=no-value-for-parameter
+
+  def testMissingArgsTfFunctionedMethod(self):
+
+    class A(object):
+
+      def func(self, position_arg1, position_arg2):
+        return position_arg1, position_arg2
+
+      @def_function.function
+      def decorated_method(self, position_arg1, position_arg2):
+        return position_arg1, position_arg2
+
+    a_instance = A()
+    tf_method_pos = def_function.function(a_instance.func)
+    with self.assertRaisesRegex(
+        TypeError, '.* missing 1 required argument: position_arg1'):
+      tf_method_pos(position_arg2='foo')
+
+    # tf.function-decorated instance methods need to be tested because of
+    # the __get__ method implementation.
+    tf_func_decorated_method = def_function.function(
+        a_instance.decorated_method)
+    tf_func_decorated_method(position_arg1='foo', position_arg2='bar')
+    with self.assertRaisesRegex(
+        TypeError, '.* missing 1 required argument: position_arg1'):
+      tf_func_decorated_method(position_arg2='bar')
+
+  def testMissingArgsTfFunctionedObject(self):
+
+    class A(object):
+
+      def __call__(self, position_arg1, position_arg2):
+        return position_arg1, position_arg2
+
+    a_instance = A()
+
+    # A tf.function-decorated callable object needs to be tested because of
+    # the special inspect results.
+    tf_func_obj = def_function.function(a_instance)
+    tf_func_obj(position_arg1=1, position_arg2=2)
+    with self.assertRaisesRegex(
+        TypeError, '.* missing 1 required argument: position_arg1'):
+      tf_func_obj(position_arg2='bar')
+
+  def testMissingArgsTfFunctionedFunctions(self):
+
+    def func_pos(position_arg1, position_arg2):
+      return position_arg1, position_arg2
+
+    def func_with_default(position_arg, named_arg=None):
+      return position_arg, named_arg
+
+    def func_pos_3args(position_arg1, position_arg2, position_arg3):
+      return position_arg1, position_arg2, position_arg3
+
+    tf_func_pos = def_function.function(func_pos)
+    with self.assertRaisesRegex(
+        TypeError, '.* missing 1 required argument: position_arg1'):
+      tf_func_pos(position_arg2='foo')
+
+    tf_func_with_default = def_function.function(func_with_default)
+    tf_func_with_default(position_arg='bar')
+    with self.assertRaisesRegex(TypeError,
+                                '.* missing 1 required argument: position_arg'):
+      tf_func_with_default(named_arg='foo')
+
+    tf_func_pos_3args = def_function.function(func_pos_3args)
+    with self.assertRaisesRegex(
+        TypeError,
+        '.* missing required arguments: position_arg1, position_arg3'):
+      tf_func_pos_3args(position_arg2='foo')
+
+  def testShapeInferencePropagateConstNestedStack(self):
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec((None, None), dtype=dtypes.int32),
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+    ])
+    def f(x, s):
+      old_shape = array_ops.shape(x)
+      new_shape = array_ops.stack([old_shape[0], s], axis=0)
+      y = array_ops.ones(shape=new_shape, dtype=dtypes.int32)
+      return y
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=(3, 6), dtype=dtypes.int32)
+    ])
+    def g(x):
+      y = f(x, s=5)
+      assert y.shape.as_list() == [3, 5], y.shape.as_list()
+      return y
+
+    self.assertAllEqual(
+        g(array_ops.zeros([3, 6], dtype=dtypes.int32)), array_ops.ones([3, 5]))
+
+  def testShapeInferencePropagateConstNestedUnstackStack(self):
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec((None, None), dtype=dtypes.int32),
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+    ])
+    def f(x, s):
+      s0, _ = array_ops.unstack(array_ops.shape(x), axis=0)
+      new_shape = array_ops.stack([s0, s], axis=0)
+      y = array_ops.ones(shape=new_shape, dtype=dtypes.int32)
+      return y
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=(3, 6), dtype=dtypes.int32)
+    ])
+    def g(x):
+      y = f(x, s=5)
+      assert y.shape.as_list() == [3, 5], y.shape.as_list()
+      return y
+
+    self.assertAllEqual(
+        g(array_ops.zeros([3, 6], dtype=dtypes.int32)), array_ops.ones([3, 5]))
+
+  def testShapeInferencePropagateConstNestedConcat(self):
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+    ])
+    def f(d1, d2, d3):
+      new_shape = array_ops.concat([[d1], [d2], [d3]], axis=-1)
+      y = array_ops.ones(shape=new_shape, dtype=dtypes.int32)
+      return y
+
+    @def_function.function()
+    def g():
+      y = f(1, 2, 3)
+      assert y.shape.as_list() == [1, 2, 3], y.shape.as_list()
+      return y
+
+    self.assertAllEqual(g(), array_ops.ones([1, 2, 3]))
+
+  def testShapeInferencePropagateConstDoubleNested(self):
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+        tensor_spec.TensorSpec((), dtype=dtypes.int32),
+    ])
+    def f(d1, d2, d3):
+      new_shape = array_ops.concat([[d1], [d2], [d3]], axis=-1)
+      y = array_ops.ones(shape=new_shape, dtype=dtypes.int32)
+      return y
+
+    @def_function.function()
+    def g():
+      y = def_function.function(f)(1, 2, 3)
+      assert y.shape.as_list() == [1, 2, 3], y.shape.as_list()
+      return y
+
+    self.assertAllEqual(g(), array_ops.ones([1, 2, 3]))
+
+  @test_util.run_v2_only
+  def testControlDependencyAfterInline(self):
+    v = variables.Variable(0.)
+
+    @def_function.function
+    def assign():
+      return v.assign(1.)
+
+    @def_function.function
+    def assign_add():
+      return v.assign_add(1.)
+
+    @def_function.function
+    def f():
+      check_ops.assert_equal_v2(assign(), 1.)
+      check_ops.assert_equal_v2(assign_add(), 2.)
+
+    # We don't have a way to inspect the inlined graph in Python, so we run it
+    # multiple times to have more confidence the dependency is correct.
+    for _ in range(30):
+      f()
+
+  @test_util.run_v2_only
+  def testReadInFuncWriteOutside(self):
+    # Run many times since we are testing for a potential race condition.
+    for _ in range(30):
+      # pylint: disable=cell-var-from-loop
+      v = variables.Variable(1.)
+
+      @def_function.function
+      def add_one():
+        return v + 1.
+
+      @def_function.function
+      def get_v_plus_one():
+        v_plus_one = add_one()
+        v.assign_add(2.0)
+        return v_plus_one
+
+      self.assertAllEqual(get_v_plus_one(), 2.0)
 
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):

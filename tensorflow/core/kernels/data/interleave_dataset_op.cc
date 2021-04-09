@@ -87,6 +87,11 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override {
     TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
     return input_->CheckExternalState();
@@ -177,7 +182,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
             TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
                 ctx, this, args_list_[cycle_index_], cycle_index_,
                 *instantiated_captured_func_, prefix(),
-                &current_elements_[cycle_index_]));
+                &current_elements_[cycle_index_], model_node()));
             ++num_open_;
           }
         } else {
@@ -271,9 +276,10 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
                 full_name(strings::StrCat(kArgsList, "[", idx, "][", i, "]")),
                 &args_list_[idx][i]));
           }
+          // NOTE: We intentionally ignore resource modeling outside GetNext().
           TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
               ctx, this, args_list_[idx], idx, *instantiated_captured_func_,
-              prefix(), &current_elements_[idx]));
+              prefix(), &current_elements_[idx], /*node=*/nullptr));
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, current_elements_[idx]));
         } else {
           current_elements_[idx].reset();

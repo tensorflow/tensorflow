@@ -12,12 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/macros.h"
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
@@ -30,7 +36,7 @@ TEST(FloatModel, WithXnnpackDelegate) {
 
   std::unique_ptr<Interpreter> interpreter;
   ASSERT_EQ(InterpreterBuilder(*model,
-                               ops::builtin::BuiltinOpResolver{})(&interpreter),
+                               ops::builtin::BuiltinOpResolver())(&interpreter),
             kTfLiteOk);
   ASSERT_TRUE(interpreter);
 
@@ -45,6 +51,34 @@ TEST(FloatModel, WithXnnpackDelegate) {
       interpreter->node_and_registration(first_node_id)->second;
   const std::string op_name = GetOpNameByRegistration(first_node_reg);
   EXPECT_EQ("DELEGATE TfLiteXNNPackDelegate", op_name);
+#endif
+}
+
+TEST(FloatModel, DefaultXnnpackDelegateNotAllowed) {
+  // Note: this graph will be fully delegated by the XNNPACK delegate.
+  auto model = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/multi_add.bin");
+  ASSERT_TRUE(model);
+
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(
+      InterpreterBuilder(
+          *model, ops::builtin::BuiltinOpResolverWithoutDefaultDelegates())(
+          &interpreter),
+      kTfLiteOk);
+  ASSERT_TRUE(interpreter);
+
+  ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteOk);
+
+#if TFLITE_HAS_ATTRIBUTE_WEAK || defined(TFLITE_BUILD_WITH_XNNPACK_DELEGATE)
+  // As we don't allow applying xnnpack delegate by default, we will expect the
+  // following:
+  EXPECT_LT(1, interpreter->execution_plan().size());
+  int first_node_id = interpreter->execution_plan()[0];
+  const auto& first_node_reg =
+      interpreter->node_and_registration(first_node_id)->second;
+  const std::string op_name = GetOpNameByRegistration(first_node_reg);
+  EXPECT_EQ("ADD", op_name);
 #endif
 }
 

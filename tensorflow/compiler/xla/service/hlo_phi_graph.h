@@ -78,7 +78,7 @@ class PhiGraph {
 
   Node* CreateOrReuseNode(const HloValue& value);
 
-  // Relace `node` with `replace`. Redirect all users to the `replace` and
+  // Replace `node` with `replace`. Redirect all users to the `replace` and
   // all HloValues pointing to the `node` to `replace`. Also mark `node` as
   // dead.
   //

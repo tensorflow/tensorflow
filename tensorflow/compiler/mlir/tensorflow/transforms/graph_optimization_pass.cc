@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/graph_optimization_pass.h"
 
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
 namespace mlir {
@@ -27,11 +28,15 @@ namespace TF {
 namespace {
 using Status = ::tensorflow::Status;
 using ConfigProto = ::tensorflow::ConfigProto;
+using Graph = ::tensorflow::Graph;
 }  // namespace
 
-Status MlirGraphOptimizationPass::Run(const ConfigProto& config_proto,
-                                      ModuleOp module) {
-  if (!config_proto.experimental().enable_mlir_graph_optimization()) {
+Status MlirGraphOptimizationPass::Run(
+    const ConfigProto& config_proto, ModuleOp module, const Graph& graph,
+    const tensorflow::FunctionLibraryDefinition& function_library) {
+  if (GetPassState(/*device_set=*/nullptr, config_proto, graph,
+                   function_library) ==
+      ::tensorflow::MlirOptimizationPassState::Disabled) {
     VLOG(1) << "Skipping MLIR Graph Optimization Pass"
             << ", session flag not enabled";
     return Status::OK();
@@ -39,6 +44,7 @@ Status MlirGraphOptimizationPass::Run(const ConfigProto& config_proto,
 
   VLOG(1) << "Run MLIR Graph Optimization Passes";
   PassManager pm(module.getContext());
+  ::tensorflow::applyTensorflowAndCLOptions(pm);
 
   // Run island coarsening before shape inference to allow more exact shape
   // inference using constant folding within islands.
@@ -48,10 +54,11 @@ Status MlirGraphOptimizationPass::Run(const ConfigProto& config_proto,
   // Assign optimal data layout to layout sensitive operations and delete
   // redundant transposes from the IR.
   LayoutOptimizationPipelineOptions layout_optimization_options;
-  CreateLayoutOptimizationPipeline(pm, layout_optimization_options);
+  CreateLayoutOptimizationPipeline(pm.nest<FuncOp>(),
+                                   layout_optimization_options);
 
   // Prepare IR for exporting.
-  pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
+  pm.addPass(CreateBreakUpIslandsPass());
 
   // In case of failure, the `diag_handler` converts MLIR errors emitted to the
   // MLIRContext into a tensorflow::Status.

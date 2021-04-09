@@ -70,7 +70,7 @@ struct TF_Library {
 struct TF_Graph {
   TF_Graph();
 
-  tensorflow::mutex mu;
+  mutable tensorflow::mutex mu;
   tensorflow::Graph graph TF_GUARDED_BY(mu);
 
   // Runs shape inference.
@@ -157,6 +157,7 @@ struct TF_DeviceList {
 
 struct TF_Function {
   tensorflow::FunctionDef fdef;
+  tensorflow::StackTracesMap stack_traces;
 };
 
 struct TF_ApiDefMap {
@@ -188,6 +189,9 @@ namespace tensorflow {
 
 Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
                        TF_Buffer* out);
+
+Status BufferToMessage(const TF_Buffer* in,
+                       tensorflow::protobuf::MessageLite* out);
 
 // Set the shapes and types of the output's handle.
 //

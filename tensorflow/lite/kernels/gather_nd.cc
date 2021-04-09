@@ -33,14 +33,19 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* params = GetInput(context, node, kParams);
-  const TfLiteTensor* indices = GetInput(context, node, kIndices);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* params;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kParams, &params));
+  const TfLiteTensor* indices;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kIndices, &indices));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   switch (params->type) {
     case kTfLiteFloat32:
     case kTfLiteUInt8:
     case kTfLiteInt8:
+    case kTfLiteInt16:
     case kTfLiteInt64:
     case kTfLiteInt32:
     case kTfLiteString:
@@ -125,6 +130,8 @@ TfLiteStatus EvalGatherNd(TfLiteContext* context, const TfLiteTensor* params,
       return GatherNd<uint8_t, IndicesT>(params, indices, output);
     case kTfLiteInt8:
       return GatherNd<int8_t, IndicesT>(params, indices, output);
+    case kTfLiteInt16:
+      return GatherNd<int16_t, IndicesT>(params, indices, output);
     case kTfLiteInt32:
       return GatherNd<int32_t, IndicesT>(params, indices, output);
     case kTfLiteInt64:
@@ -140,9 +147,13 @@ TfLiteStatus EvalGatherNd(TfLiteContext* context, const TfLiteTensor* params,
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* params = GetInput(context, node, kParams);
-  const TfLiteTensor* indices = GetInput(context, node, kIndices);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* params;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kParams, &params));
+  const TfLiteTensor* indices;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kIndices, &indices));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   switch (indices->type) {
     case kTfLiteInt32:

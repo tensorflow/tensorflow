@@ -236,17 +236,24 @@ void ValidateParams(
   (void)detail::ValidateTypes<LhsScalar, RhsScalar, AccumScalar, DstScalar,
                               quantization_flavor>();
   ValidateGemmParams(params);
-  // For now, Gemm only supports this particular combination of storage orders.
-  // Actually the generic ruy path already supports all combinations (with
-  // various performance penalties). On the other hand, gemmlowp and Eigen
-  // paths would require more source code and larger binary code to handle
-  // other combinations (because orders are template parameters in gemmlowp
-  // and Eigen). Since this is TFLite's own internal Gemm library, there is
-  // no point in supporting more than what TFlite currently uses, and that
-  // is for now this single combination.
-  TFLITE_DCHECK(lhs_params.order == Order::kRowMajor);
-  TFLITE_DCHECK(rhs_params.order == Order::kColMajor);
-  TFLITE_DCHECK(dst_params.order == Order::kColMajor);
+}
+
+// Test if the Gemm is degenerate in some way, e.g. nonsensical dimenions.
+template <typename LhsScalar, typename RhsScalar, typename DstScalar>
+bool IsValidGemm(const MatrixParams<LhsScalar>& lhs_params,
+                 const MatrixParams<RhsScalar>& rhs_params,
+                 const MatrixParams<DstScalar>& dst_params) {
+  bool valid = true;
+  valid &= lhs_params.rows >= 1;
+  valid &= lhs_params.cols >= 1;
+  valid &= rhs_params.rows >= 1;
+  valid &= rhs_params.cols >= 1;
+  valid &= dst_params.rows >= 1;
+  valid &= dst_params.cols >= 1;
+  valid &= lhs_params.cols == rhs_params.rows;
+  valid &= rhs_params.cols == dst_params.cols;
+  valid &= lhs_params.rows == lhs_params.rows;
+  return valid;
 }
 
 }  // namespace cpu_backend_gemm

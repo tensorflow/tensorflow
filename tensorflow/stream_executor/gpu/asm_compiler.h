@@ -24,6 +24,9 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
+namespace gpu {
+class GpuContext;
+}
 
 // Compiles the given PTX string using ptxas and returns the resulting machine
 // code (i.e. a cubin) as a byte array. The generated cubin matches the compute
@@ -51,6 +54,31 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
 // A copy of the string provided in ptx will be made.
 port::StatusOr<absl::Span<const uint8>> CompileGpuAsmOrGetCached(
     int device_ordinal, const char* ptx, GpuAsmOpts compilation_options);
+
+struct CubinOrPTXImage {
+  std::string profile;
+  std::vector<uint8> bytes;
+};
+
+// Bundles the GPU machine code (cubins) and PTX if requested and returns the
+// resulting binary (i.e. a fatbin) as a byte array.
+port::StatusOr<std::vector<uint8>> BundleGpuAsm(
+    std::vector<CubinOrPTXImage> images, GpuAsmOpts options);
+
+struct HsacoImage {
+  std::string gfx_arch;
+  std::vector<uint8> bytes;
+};
+
+// Bundles the GPU machine code (HSA Code Object) and returns the resulting
+// binary (i.e. a fatbin) as a byte array.
+port::StatusOr<std::vector<uint8>> BundleGpuAsm(
+    std::vector<HsacoImage> images, const std::string rocm_root_dir);
+
+// Links multiple relocatable GPU images (e.g. results of ptxas -c) into a
+// single image.
+port::StatusOr<std::vector<uint8>> LinkGpuAsm(
+    gpu::GpuContext* context, std::vector<CubinOrPTXImage> images);
 
 }  // namespace stream_executor
 

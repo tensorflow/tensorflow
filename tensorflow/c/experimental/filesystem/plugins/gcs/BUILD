@@ -1,8 +1,10 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 # Experimental gcs filesystem plugin.
 load("//tensorflow:tensorflow.bzl", "get_win_copts", "tf_cc_shared_object", "tf_cc_test")
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Filesystem implementation for GCS environments
@@ -25,12 +27,16 @@ cc_library(
         "//tensorflow:windows": get_win_copts(),
     }),
     deps = [
+        ":expiring_lru_cache",
         ":gcs_helper",
+        ":ram_file_block_cache",
         "//tensorflow/c:env",
+        "//tensorflow/c:logging",
         "//tensorflow/c:tf_status",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "@com_github_googlecloudplatform_google_cloud_cpp//:storage_client",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -45,14 +51,6 @@ cc_library(
 )
 
 cc_library(
-    name = "file_block_cache",
-    hdrs = ["file_block_cache.h"],
-    deps = [
-        "//tensorflow/c:tf_status",
-    ],
-)
-
-cc_library(
     name = "cleanup",
     hdrs = ["cleanup.h"],
 )
@@ -63,8 +61,8 @@ cc_library(
     hdrs = ["ram_file_block_cache.h"],
     deps = [
         ":cleanup",
-        ":file_block_cache",
         "//tensorflow/c:env",
+        "//tensorflow/c:logging",
         "//tensorflow/c:tf_status",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",

@@ -16,9 +16,11 @@ limitations under the License.
 // Functions to read images in GIF format.
 
 #include "tensorflow/core/lib/gif/gif_io.h"
+
 #include <algorithm>
+
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/gif.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
@@ -68,22 +70,21 @@ uint8* Decode(const void* srcdata, int datasize,
     }
   });
   if (error_code != D_GIF_SUCCEEDED) {
-    *error_string = strings::StrCat("failed to open gif file: ",
-                                    GifErrorStringNonNull(error_code));
+    *error_string = absl::StrCat("failed to open gif file: ",
+                                 GifErrorStringNonNull(error_code));
     return nullptr;
   }
   if (DGifSlurp(gif_file) != GIF_OK) {
-    *error_string = strings::StrCat("failed to slurp gif file: ",
-                                    GifErrorStringNonNull(gif_file->Error));
+    *error_string = absl::StrCat("failed to slurp gif file: ",
+                                 GifErrorStringNonNull(gif_file->Error));
     return nullptr;
   }
   if (gif_file->ImageCount <= 0) {
-    *error_string = strings::StrCat("gif file does not contain any image");
+    *error_string = "gif file does not contain any image";
     return nullptr;
   }
 
   int target_num_frames = gif_file->ImageCount;
-  if (!expand_animations) target_num_frames = 1;
 
   // Don't request more memory than needed for each frame, preventing OOM
   int max_frame_width = 0;
@@ -99,6 +100,7 @@ uint8* Decode(const void* srcdata, int datasize,
   const int width = max_frame_width;
   const int height = max_frame_height;
   const int channel = 3;
+  if (!expand_animations) target_num_frames = 1;
 
   uint8* const dstdata =
       allocate_output(target_num_frames, width, height, channel);
@@ -109,25 +111,19 @@ uint8* Decode(const void* srcdata, int datasize,
     SavedImage* this_image = &gif_file->SavedImages[k];
     GifImageDesc* img_desc = &this_image->ImageDesc;
 
+    // The Graphics Control Block tells us which index in the color map
+    // correspond to "transparent color", i.e. no need to update the pixel
+    // on the canvas. The "transparent color index" is specific to each
+    // sub-frame.
+    GraphicsControlBlock gcb;
+    DGifSavedExtensionToGCB(gif_file, k, &gcb);
+
     int imgLeft = img_desc->Left;
     int imgTop = img_desc->Top;
     int imgRight = img_desc->Left + img_desc->Width;
     int imgBottom = img_desc->Top + img_desc->Height;
 
-    if (img_desc->Left != 0 || img_desc->Top != 0 || img_desc->Width != width ||
-        img_desc->Height != height) {
-      // If the first frame does not fill the entire canvas then return error.
-      if (k == 0) {
-        *error_string =
-            strings::StrCat("the first frame does not fill the canvas");
-        return nullptr;
-      }
-      // Otherwise previous frame will be reused to fill the unoccupied canvas.
-      imgLeft = std::max(imgLeft, 0);
-      imgTop = std::max(imgTop, 0);
-      imgRight = std::min(imgRight, width);
-      imgBottom = std::min(imgBottom, height);
-
+    if (k > 0) {
       uint8* last_dst = dstdata + (k - 1) * width * channel * height;
       for (int i = 0; i < height; ++i) {
         uint8* p_dst = this_dst + i * width * channel;
@@ -140,11 +136,32 @@ uint8* Decode(const void* srcdata, int datasize,
       }
     }
 
+    if (img_desc->Left != 0 || img_desc->Top != 0 || img_desc->Width != width ||
+        img_desc->Height != height) {
+      // If the first frame does not fill the entire canvas then fill the
+      // unoccupied canvas with zeros (black).
+      if (k == 0) {
+        for (int i = 0; i < height; ++i) {
+          uint8* p_dst = this_dst + i * width * channel;
+          for (int j = 0; j < width; ++j) {
+            p_dst[j * channel + 0] = 0;
+            p_dst[j * channel + 1] = 0;
+            p_dst[j * channel + 2] = 0;
+          }
+        }
+      }
+
+      imgLeft = std::max(imgLeft, 0);
+      imgTop = std::max(imgTop, 0);
+      imgRight = std::min(imgRight, width);
+      imgBottom = std::min(imgBottom, height);
+    }
+
     ColorMapObject* color_map = this_image->ImageDesc.ColorMap
                                     ? this_image->ImageDesc.ColorMap
                                     : gif_file->SColorMap;
     if (color_map == nullptr) {
-      *error_string = strings::StrCat("missing color map for frame ", k);
+      *error_string = absl::StrCat("missing color map for frame ", k);
       return nullptr;
     }
 
@@ -156,10 +173,16 @@ uint8* Decode(const void* srcdata, int datasize,
                                    (j - img_desc->Left)];
 
         if (color_index >= color_map->ColorCount) {
-          *error_string = strings::StrCat("found color index ", color_index,
-                                          " outside of color map range ",
-                                          color_map->ColorCount);
+          *error_string = absl::StrCat("found color index ", color_index,
+                                       " outside of color map range ",
+                                       color_map->ColorCount);
           return nullptr;
+        }
+
+        if (color_index == gcb.TransparentColor) {
+          // Use the pixel from the previous frame. In other words, no need to
+          // update our canvas for this pixel.
+          continue;
         }
 
         const GifColorType& gif_color = color_map->Colors[color_index];

@@ -24,10 +24,10 @@ import contextlib
 from six.moves import xrange, zip  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import ops
@@ -171,9 +171,8 @@ def _DefaultGradYs(grad_ys,
               "Gradients of complex tensors must set grad_ys (y.dtype = %r)" %
               y.dtype)
         new_grad_ys.append(
-            array_ops.fill(
-                array_ops.shape(y),
-                constant_op.constant(1, dtype=y.dtype, name="grad_ys_%d" % i)))
+            array_ops.ones(
+                array_ops.shape(y), dtype=y.dtype, name="grad_ys_%d" % i))
         continue
       if y.dtype.is_floating or y.dtype.is_integer:
         if not grad_y.dtype.is_floating and not grad_y.dtype.is_integer:
@@ -333,7 +332,7 @@ def _MaybeCompile(scope, op, func, grad_fn):
           "_XlaSeparateCompiledGradients")
       xla_scope = op.get_attr("_XlaScope").decode()
     except ValueError:
-      return grad_fn()  # Exit early
+      xla_compile = False
 
   if not xla_compile:
     return grad_fn()  # Exit early
@@ -415,7 +414,7 @@ def _NonEagerInputs(op, xs_set):
   """Returns the inputs of op, crossing closure boundaries where necessary.
 
   Does not return any captured EagerTensors, i.e., the number of tensors
-  returned may be less than than the actual number of inputs.
+  returned may be less than the actual number of inputs.
 
   Args:
     op: Operation
@@ -910,7 +909,7 @@ class AggregationMethod(object):
   be supported in future releases:
 
   * `EXPERIMENTAL_TREE`: Gradient terms are summed in pairs using
-    using the "AddN" op. This method of summing gradients may reduce
+    the "AddN" op. This method of summing gradients may reduce
     performance, but it can improve memory utilization because the
     gradients can be released earlier.
 
@@ -1007,3 +1006,15 @@ def _AggregatedGrads(grads,
       # out_grads[i] is [], thus its aggregation is simply None.
       out_grads[i] = None
   return out_grads
+
+
+# Represents the output of TFE_Py_TapeSetPossibleGradientTypes. Real enums are
+# unfortunately too slow to use here.
+POSSIBLE_GRADIENT_TYPES_NONE = 0
+POSSIBLE_GRADIENT_TYPES_FIRST_ORDER = 1
+POSSIBLE_GRADIENT_TYPES_HIGHER_ORDER = 2
+
+
+def PossibleTapeGradientTypes(tensors):
+  """Determines whether and how `args` may require tape gradients."""
+  return pywrap_tfe.TFE_Py_TapeSetPossibleGradientTypes(tensors)

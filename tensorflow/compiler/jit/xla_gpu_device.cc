@@ -43,15 +43,15 @@ static xla::StatusOr<absl::optional<std::set<int>>> ParseVisibleDeviceList(
   }
   const std::vector<string> visible_devices =
       absl::StrSplit(visible_device_list, ',');
-  for (const string& platform_gpu_id_str : visible_devices) {
-    int32 platform_gpu_id;
-    if (!absl::SimpleAtoi(platform_gpu_id_str, &platform_gpu_id)) {
+  for (const string& platform_device_id_str : visible_devices) {
+    int32 platform_device_id;
+    if (!absl::SimpleAtoi(platform_device_id_str, &platform_device_id)) {
       return errors::InvalidArgument(
           "Could not parse entry in 'visible_device_list': '",
-          platform_gpu_id_str,
+          platform_device_id_str,
           "'. visible_device_list = ", visible_device_list);
     }
-    gpu_ids.insert(platform_gpu_id);
+    gpu_ids.insert(platform_device_id);
   }
   return {{gpu_ids}};
 }
@@ -66,7 +66,7 @@ class XlaGpuDeviceFactory : public DeviceFactory {
 Status XlaGpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
   if (!flags->tf_xla_enable_xla_devices) {
-    LOG(INFO) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
+    VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
     return Status::OK();
   }
 
@@ -96,7 +96,7 @@ Status XlaGpuDeviceFactory::CreateDevices(
     std::vector<std::unique_ptr<Device>>* devices) {
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
   if (!flags->tf_xla_enable_xla_devices) {
-    LOG(INFO) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
+    VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
     return Status::OK();
   }
 

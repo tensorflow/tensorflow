@@ -24,17 +24,20 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/strings/str_format.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/profiler/protobuf/memory_profile.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
@@ -48,29 +51,6 @@ constexpr int64 kInvalidStepId = -1;
 // MemoryActivityMetadata proto it contains.
 using IndexMetaPair = std::pair<int64 /*index*/, const MemoryActivityMetadata*>;
 
-// Aggregated memory stats from an allocator. Temporary container to fill
-// MemoryAggregationStats.
-struct AggregationStats {
-  int64 bytes_reserved = 0;
-  int64 bytes_allocated = 0;
-  int64 bytes_available = 0;
-  double fragmentation = 0;
-  int64 peak_bytes_in_use = 0;
-};
-
-// Metadata associated with each memory allocation/deallocation activity.
-// Temporary container to fill MemoryActivityMetadata.
-struct ActivityMetadata {
-  int64 requested_bytes = 0;
-  int64 allocation_bytes = 0;
-  uint64 address = 0;
-  absl::string_view tf_op_name;
-  int64 step_id = kInvalidStepId;
-  absl::string_view region_type;
-  int64 data_type = 0;
-  absl::string_view tensor_shape;
-};
-
 bool IsMemoryAllocation(int64 event_type) {
   return event_type == HostEventType::kMemoryAllocation;
 }
@@ -79,51 +59,22 @@ bool IsMemoryDeallocation(int64 event_type) {
   return event_type == HostEventType::kMemoryDeallocation;
 }
 
-void FillAggregationStats(const AggregationStats& src,
-                          MemoryAggregationStats* dst) {
-  dst->set_stack_reserved_bytes(src.bytes_reserved);
-  dst->set_heap_allocated_bytes(src.bytes_allocated);
-  dst->set_free_memory_bytes(src.bytes_available);
-  dst->set_fragmentation(src.fragmentation);
-  dst->set_peak_bytes_in_use(src.peak_bytes_in_use);
-}
-
-void FillActivityMetadata(int64 event_type, const ActivityMetadata& src,
-                          MemoryActivityMetadata* dst) {
-  if (IsMemoryAllocation(event_type)) {
-    dst->set_memory_activity(ALLOCATION);
-  } else if (IsMemoryDeallocation(event_type)) {
-    dst->set_memory_activity(DEALLOCATION);
-  }
-  dst->set_requested_bytes(src.requested_bytes);
-  dst->set_allocation_bytes(src.allocation_bytes);
-  dst->set_address(src.address);
-  dst->set_tf_op_name(std::string(src.tf_op_name));
-  dst->set_step_id(src.step_id);
-  dst->set_region_type(std::string(src.region_type));
-  dst->set_data_type(tensorflow::DataTypeString(
-      static_cast<tensorflow::DataType>(src.data_type)));
-  dst->set_tensor_shape(std::string(src.tensor_shape));
-}
-
-void UpdateProfileSummary(const AggregationStats& stats, int64 time_offset_ps,
-                          MemoryProfileSummary* summary) {
+void UpdateProfileSummary(const MemoryAggregationStats& stats,
+                          int64 time_offset_ps, MemoryProfileSummary* summary) {
   // Update the peak memory usage over allocator's lifetime.
-  summary->set_peak_bytes_usage_lifetime(stats.peak_bytes_in_use);
+  summary->set_peak_bytes_usage_lifetime(stats.peak_bytes_in_use());
   MemoryAggregationStats* peak_stats = summary->mutable_peak_stats();
   // If we reach (or stay at) peak memory usage within the profiling window,
   // update memory profile summary.
-  if (stats.bytes_reserved + stats.bytes_allocated >=
+  if (stats.stack_reserved_bytes() + stats.heap_allocated_bytes() >=
       peak_stats->peak_bytes_in_use()) {
-    peak_stats->set_peak_bytes_in_use(stats.bytes_reserved +
-                                      stats.bytes_allocated);
-    peak_stats->set_stack_reserved_bytes(stats.bytes_reserved);
-    peak_stats->set_heap_allocated_bytes(stats.bytes_allocated);
-    peak_stats->set_free_memory_bytes(stats.bytes_available);
-    peak_stats->set_fragmentation(stats.fragmentation);
+    *peak_stats = stats;
+    peak_stats->set_peak_bytes_in_use(stats.stack_reserved_bytes() +
+                                      stats.heap_allocated_bytes());
     summary->set_peak_stats_time_ps(time_offset_ps);
-    summary->set_memory_capacity(stats.bytes_reserved + stats.bytes_allocated +
-                                 stats.bytes_available);
+    summary->set_memory_capacity(stats.stack_reserved_bytes() +
+                                 stats.heap_allocated_bytes() +
+                                 stats.free_memory_bytes());
   }
 }
 
@@ -142,73 +93,80 @@ MemoryProfile GenerateMemoryProfile(const XPlane* host_trace) {
         return;
       }
 
-      AggregationStats stats;
-      ActivityMetadata metadata;
+      MemoryAggregationStats stats;
+      MemoryActivityMetadata metadata;
+      if (IsMemoryAllocation(event_type)) {
+        metadata.set_memory_activity(ALLOCATION);
+      } else if (IsMemoryDeallocation(event_type)) {
+        metadata.set_memory_activity(DEALLOCATION);
+      }
+      metadata.set_step_id(kInvalidStepId);
+
       std::string memory_id;
       event.ForEachStat([&](const XStatVisitor& stat) {
         if (!stat.Type().has_value()) return;
         switch (stat.Type().value()) {
           case StatType::kIndexOnHost:
           case StatType::kDeviceOrdinal:
-            memory_id = absl::StrFormat("%d", stat.IntValue());
+            memory_id = absl::StrCat(stat.IntValue());
             break;
           case StatType::kAllocatorName:
             memory_id = std::string(stat.StrOrRefValue());
             break;
           case StatType::kBytesReserved:
-            stats.bytes_reserved = stat.IntValue();
+            stats.set_stack_reserved_bytes(stat.IntValue());
             break;
           case StatType::kBytesAllocated:
-            stats.bytes_allocated = stat.IntValue();
+            stats.set_heap_allocated_bytes(stat.IntValue());
             break;
           case StatType::kBytesAvailable:
-            stats.bytes_available = stat.IntValue();
+            stats.set_free_memory_bytes(stat.IntValue());
             break;
           case StatType::kFragmentation:
-            stats.fragmentation = stat.DoubleValue();
+            stats.set_fragmentation(stat.DoubleValue());
             break;
           case StatType::kPeakBytesInUse:
-            stats.peak_bytes_in_use = stat.IntValue();
+            stats.set_peak_bytes_in_use(stat.IntValue());
             break;
           case StatType::kRequestedBytes:
-            metadata.requested_bytes = stat.IntValue();
+            metadata.set_requested_bytes(stat.IntValue());
             break;
           case StatType::kAllocationBytes:
-            metadata.allocation_bytes = stat.IntValue();
+            metadata.set_allocation_bytes(stat.IntValue());
             break;
           case StatType::kAddress:
-            metadata.address = stat.IntValue();
+            metadata.set_address(stat.IntValue());
             break;
           case StatType::kTfOp:
-            metadata.tf_op_name = stat.StrOrRefValue();
+            metadata.set_tf_op_name(std::string(stat.StrOrRefValue()));
             break;
           case StatType::kGroupId:
-            metadata.step_id = stat.IntValue();
+            metadata.set_step_id(stat.IntValue());
             break;
           case StatType::kRegionType:
-            metadata.region_type = stat.StrOrRefValue();
+            metadata.set_region_type(std::string(stat.StrOrRefValue()));
             break;
           case StatType::kDataType:
-            metadata.data_type = stat.IntValue();
+            metadata.set_data_type(tensorflow::DataTypeString(
+                static_cast<tensorflow::DataType>(stat.IntValue())));
             break;
           case StatType::kTensorShapes:
-            metadata.tensor_shape = stat.StrOrRefValue();
+            metadata.set_tensor_shape(std::string(stat.StrOrRefValue()));
             break;
         }
       });
-
-      MemoryProfileSnapshot* snapshot =
-          (*memory_profile.mutable_memory_profile_per_allocator())[memory_id]
-              .add_memory_profile_snapshots();
-      snapshot->set_time_offset_ps(event.OffsetPs());
-      FillAggregationStats(stats, snapshot->mutable_aggregation_stats());
-      FillActivityMetadata(event_type, metadata,
-                           snapshot->mutable_activity_metadata());
 
       MemoryProfileSummary* summary =
           (*memory_profile.mutable_memory_profile_per_allocator())[memory_id]
               .mutable_profile_summary();
       UpdateProfileSummary(stats, event.OffsetPs(), summary);
+
+      MemoryProfileSnapshot* snapshot =
+          (*memory_profile.mutable_memory_profile_per_allocator())[memory_id]
+              .add_memory_profile_snapshots();
+      snapshot->set_time_offset_ps(event.OffsetPs());
+      *snapshot->mutable_aggregation_stats() = std::move(stats);
+      *snapshot->mutable_activity_metadata() = std::move(metadata);
     });
   });
   return memory_profile;
@@ -317,11 +275,16 @@ void InsertSpecialAllocations(int64 unmapped_allocation_bytes, int64 step_id,
   if (unmapped_allocation_bytes > 0) {
     MemoryActivityMetadata* special_allocation =
         memory_profile->add_special_allocations();
-    FillActivityMetadata(
-        HostEventType::kMemoryAllocation,
-        {unmapped_allocation_bytes, unmapped_allocation_bytes, 0,
-         "preallocated/unknown", step_id, "persist/dynamic", 0, "unknown"},
-        special_allocation);
+    special_allocation->set_memory_activity(ALLOCATION);
+    special_allocation->set_requested_bytes(unmapped_allocation_bytes);
+    special_allocation->set_allocation_bytes(unmapped_allocation_bytes);
+    special_allocation->set_address(0);
+    special_allocation->set_tf_op_name("unused preallocated device memory");
+    special_allocation->set_step_id(step_id);
+    special_allocation->set_region_type("persist/dynamic");
+    special_allocation->set_data_type(
+        tensorflow::DataTypeString(static_cast<tensorflow::DataType>(0)));
+    special_allocation->set_tensor_shape("unknown");
     active_allocs->push_back({--index, special_allocation});
   }
   int64 stack_bytes =
@@ -329,10 +292,16 @@ void InsertSpecialAllocations(int64 unmapped_allocation_bytes, int64 step_id,
   if (stack_bytes > 0) {
     MemoryActivityMetadata* special_allocation =
         memory_profile->add_special_allocations();
-    FillActivityMetadata(
-        HostEventType::kMemoryAllocation,
-        {stack_bytes, stack_bytes, 0, "stack", step_id, "stack", 0, "unknown"},
-        special_allocation);
+    special_allocation->set_memory_activity(ALLOCATION);
+    special_allocation->set_requested_bytes(stack_bytes);
+    special_allocation->set_allocation_bytes(stack_bytes);
+    special_allocation->set_address(0);
+    special_allocation->set_tf_op_name("stack");
+    special_allocation->set_step_id(step_id);
+    special_allocation->set_region_type("stack");
+    special_allocation->set_data_type(
+        tensorflow::DataTypeString(static_cast<tensorflow::DataType>(0)));
+    special_allocation->set_tensor_shape("unknown");
     active_allocs->push_back({--index, special_allocation});
   }
 }
@@ -403,7 +372,7 @@ void ProcessActiveAllocations(int64 peak_bytes_profile_step_id,
 
   // Fill the sorted active_allocations proto messages at peak memory usage.
   // Merge identical allocations and show occurrences.
-  for (int i = 0; i < active_allocs.size(); i++) {
+  for (int i = 0, end = active_allocs.size(); i < end; i++) {
     ActiveAllocation* allocation = memory_profile->add_active_allocations();
     allocation->set_snapshot_index(active_allocs[i].first);
     if (active_allocs[i].first < 0) {
@@ -412,8 +381,8 @@ void ProcessActiveAllocations(int64 peak_bytes_profile_step_id,
       allocation->set_special_index(-1);
     }
     allocation->set_num_occurrences(1);
-    while (i < active_allocs.size() - 1 &&
-           active_allocs[i] == active_allocs[i + 1]) {
+    const int last_alloc = active_allocs.size() - 1;
+    while (i < last_alloc && active_allocs[i] == active_allocs[i + 1]) {
       allocation->set_num_occurrences(allocation->num_occurrences() + 1);
       i++;
     }
@@ -423,23 +392,86 @@ void ProcessActiveAllocations(int64 peak_bytes_profile_step_id,
           << memory_profile->active_allocations_size();
 }
 
+struct Sample {
+  int64 orig_index;  // original index to the snapshot.
+  MemoryProfileSnapshot* snapshot;
+};
+
+// This function samples max_num_snapshots from snapshots. We first keep the
+// snapshots referenced by active_allocations in the samples. After this, if
+// there is still room for more samples, we pick more from snapshots into the
+// samples. Then, we sort the samples in time (so that they can be correctly
+// displayed on the timeline). Finally, we need to adjust the original indices
+// (to snapshots) in active_allocations to the new indices in the samples.
 void SampleSnapshots(
     int64 max_num_snapshots,
-    protobuf::RepeatedPtrField<MemoryProfileSnapshot>* snapshots) {
+    protobuf::RepeatedPtrField<MemoryProfileSnapshot>* snapshots,
+    protobuf::RepeatedPtrField<ActiveAllocation>* active_allocations) {
   if (snapshots->size() <= max_num_snapshots) return;
-  absl::c_partial_sort(
-      *snapshots, snapshots->begin() + max_num_snapshots,
-      [](const MemoryProfileSnapshot& a, const MemoryProfileSnapshot& b) {
-        return a.aggregation_stats().free_memory_bytes() <
-               b.aggregation_stats().free_memory_bytes();
-      });
-  snapshots->erase(snapshots->begin() + max_num_snapshots, snapshots->end());
-  // Sort the memory_profile_snapshots by time_offset_ps (ascending) after
-  // sampling.
-  absl::c_sort(*snapshots, [](const MemoryProfileSnapshot& a,
-                              const MemoryProfileSnapshot& b) {
-    return a.time_offset_ps() < b.time_offset_ps();
+
+  std::vector<Sample> samples;
+
+  // First, puts the snapshots referenced by active_allocations in samples[].
+  absl::flat_hash_set<int64> allocation_snapshot_indices;
+  for (const auto& allocation : *active_allocations) {
+    auto orig_index = allocation.snapshot_index();
+    if (orig_index < 0) continue;
+    allocation_snapshot_indices.insert(orig_index);
+    samples.push_back({orig_index, &(*snapshots)[orig_index]});
+    if (allocation_snapshot_indices.size() >= max_num_snapshots) break;
+  }
+
+  // Second, extracts remaining samples from snapshots.
+  int64 num_samples_remained =
+      max_num_snapshots - allocation_snapshot_indices.size();
+  if (num_samples_remained > 0) {
+    std::vector<Sample> remaining;
+    for (int64 i = 0; i < snapshots->size(); i++) {
+      if (allocation_snapshot_indices.contains(i)) continue;
+      // snapshots[i] is not yet sampled; put it in remaining[] for further
+      // consideration.
+      remaining.push_back({i, &(*snapshots)[i]});
+    }
+    // Moves the num_samples_remained snapshots with least free bytes to the
+    // beginning of remaining[].
+    absl::c_partial_sort(
+        remaining, remaining.begin() + num_samples_remained,
+        [](const Sample& a, const Sample& b) {
+          return a.snapshot->aggregation_stats().free_memory_bytes() <
+                 b.snapshot->aggregation_stats().free_memory_bytes();
+        });
+    // Copies the first num_samples_remained in remaining[] to samples[].
+    for (int64 i = 0; i < num_samples_remained; i++)
+      samples.push_back(remaining[i]);
+  }
+
+  // Third, sorts samples[] in ascending order of time_offset_ps.
+  absl::c_sort(samples, [](const Sample& a, const Sample& b) {
+    return a.snapshot->time_offset_ps() < b.snapshot->time_offset_ps();
   });
+
+  // Fourth, constructs a map from the original snapshot index to samples index.
+  absl::flat_hash_map</*original=*/int64, /*new=*/int64> index_map;
+  for (int64 i = 0; i < samples.size(); i++) {
+    index_map[samples[i].orig_index] = i;
+  }
+
+  // Fifth, changes the original snapshot indices in active_allocations to the
+  // sample indices.
+  for (auto& allocation : *active_allocations) {
+    auto orig_index = allocation.snapshot_index();
+    if (orig_index < 0) continue;
+    auto new_index = gtl::FindWithDefault(index_map, orig_index, -1);
+    allocation.set_snapshot_index(new_index);
+  }
+
+  // Sixth, replaces *snapshot by samples[]
+  protobuf::RepeatedPtrField<MemoryProfileSnapshot> new_snapshots;
+  new_snapshots.Reserve(samples.size());
+  for (const auto& sample : samples) {
+    *new_snapshots.Add() = std::move(*sample.snapshot);
+  }
+  *snapshots = std::move(new_snapshots);
 }
 
 // Post-process the memory profile to correctly update proto fields, and break
@@ -477,8 +509,26 @@ void ProcessMemoryProfileProto(int64 max_num_snapshots,
                               .peak_bytes_in_use(),
                           allocator_memory_profile);
     ProcessActiveAllocations(peak_step_id, allocator_memory_profile);
-    SampleSnapshots(max_num_snapshots, snapshots);
+    SampleSnapshots(max_num_snapshots, snapshots,
+                    allocator_memory_profile->mutable_active_allocations());
   }
+}
+
+template <typename Proto>
+Status ConvertProtoToJson(const Proto& proto_output, std::string* json_output) {
+  protobuf::util::JsonPrintOptions json_options;
+  json_options.always_print_primitive_fields = true;
+  auto status = protobuf::util::MessageToJsonString(proto_output, json_output,
+                                                    json_options);
+  if (!status.ok()) {
+    // Convert error_msg google::protobuf::StringPiece (or absl::string_view) to
+    // tensorflow::StringPiece.
+    auto error_msg = status.message();
+    return errors::Internal(
+        "Could not convert proto to JSON string: ",
+        absl::string_view(error_msg.data(), error_msg.length()));
+  }
+  return Status::OK();
 }
 
 }  // namespace
@@ -488,6 +538,16 @@ MemoryProfile ConvertXPlaneToMemoryProfile(const XPlane& host_plane,
   MemoryProfile memory_profile = GenerateMemoryProfile(&host_plane);
   ProcessMemoryProfileProto(max_num_snapshots, &memory_profile);
   return memory_profile;
+}
+
+Status ConvertXSpaceToMemoryProfileJson(const XSpace& xspace,
+                                        std::string* json_output) {
+  if (const XPlane* host_plane =
+          FindPlaneWithName(xspace, kHostThreadsPlaneName)) {
+    MemoryProfile memory_profile = ConvertXPlaneToMemoryProfile(*host_plane);
+    TF_RETURN_IF_ERROR(ConvertProtoToJson(memory_profile, json_output));
+  }
+  return Status::OK();
 }
 
 }  // namespace profiler

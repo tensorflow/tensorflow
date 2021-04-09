@@ -15,7 +15,21 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 
+#include <stdint.h>
+
+#include <algorithm>
+#include <iterator>
+#include <map>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
 namespace gpu {
@@ -30,6 +44,11 @@ std::vector<Value*> GraphFloat32::values() const {
 
 std::vector<Value*> GraphFloat32::inputs() const {
   return FilterValues([](const ValueDef& v) { return v.producer == nullptr; });
+}
+
+std::vector<Value*> GraphFloat32::variable_inputs() const {
+  return FilterValues(
+      [](const ValueDef& v) { return v.value->tensor.is_variable_input; });
 }
 
 std::vector<Value*> GraphFloat32::outputs() const {
@@ -397,25 +416,57 @@ absl::Status RemoveFollowingNode(GraphFloat32* graph, const Node* to_remove,
   return graph->DeleteNode(to_remove->id);
 }
 
-absl::Status RemoveOneInputOneOutputNode(GraphFloat32* graph,
-                                         const Node* to_remove) {
-  auto inputs = graph->FindInputs(to_remove->id);
-  auto outputs = graph->FindOutputs(to_remove->id);
+absl::Status RemoveSimpleNodeKeepInput(GraphFloat32* graph,
+                                       const Node* simple_node) {
+  const auto inputs = graph->FindInputs(simple_node->id);
+  const auto outputs = graph->FindOutputs(simple_node->id);
   if (inputs.size() != 1 || outputs.size() != 1) {
-    return absl::InvalidArgumentError(
-        "To_remove node must have 1 input and 1 output");
+    return absl::FailedPreconditionError(
+        "simple_node node must have 1 input and 1 output");
   }
-  auto input_id = inputs[0]->id;
-  auto output_id = outputs[0]->id;
-  Node* producer = graph->FindProducer(input_id);
-  auto consumers = graph->FindConsumers(output_id);
-  RETURN_IF_ERROR(graph->DeleteNode(to_remove->id));
+  const auto input_id = inputs[0]->id;
+  const auto output_id = outputs[0]->id;
+  const Node* producer = graph->FindProducer(input_id);
+  const auto consumers = graph->FindConsumers(output_id);
+  RETURN_IF_ERROR(graph->DeleteNode(simple_node->id));
   for (auto& consumer : consumers) {
     RETURN_IF_ERROR(graph->ReplaceInput(consumer->id, output_id, input_id));
   }
   RETURN_IF_ERROR(graph->DeleteValue(output_id));
   if (!producer && consumers.empty()) {
     RETURN_IF_ERROR(graph->DeleteValue(input_id));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status RemoveSimpleNodeKeepOutput(GraphFloat32* graph,
+                                        const Node* simple_node) {
+  const auto inputs = graph->FindInputs(simple_node->id);
+  const auto outputs = graph->FindOutputs(simple_node->id);
+  if (inputs.size() != 1 || outputs.size() != 1) {
+    return absl::FailedPreconditionError(
+        "simple_node must have 1 input and 1 output");
+  }
+  const auto input_id = inputs[0]->id;
+  const auto output_id = outputs[0]->id;
+  const Node* producer = graph->FindProducer(input_id);
+  const auto input_consumers = graph->FindConsumers(input_id);
+  if (input_consumers.size() != 1) {
+    return absl::FailedPreconditionError(
+        "simple_node should be the only consumer on the node.");
+  }
+
+  RETURN_IF_ERROR(graph->DeleteNode(simple_node->id));
+  if (producer) {
+    RETURN_IF_ERROR(graph->RemoveProducer(input_id));
+    RETURN_IF_ERROR(graph->SetProducer(producer->id, output_id));
+  }
+
+  RETURN_IF_ERROR(graph->DeleteValue(input_id));
+
+  const auto output_consumers = graph->FindConsumers(output_id);
+  if (!producer && output_consumers.empty()) {
+    RETURN_IF_ERROR(graph->DeleteValue(output_id));
   }
   return absl::OkStatus();
 }
@@ -430,14 +481,27 @@ absl::Status AddOutput(GraphFloat32* graph, const Node* from_node,
 
 absl::Status ConnectTwoNodes(GraphFloat32* graph, const Node* from_node,
                              const Node* to_node, Value** output) {
-  Value* link;
-  RETURN_IF_ERROR(AddOutput(graph, from_node, &link));
-  RETURN_IF_ERROR(graph->AddConsumer(to_node->id, link->id));
-  *output = link;
+  const Node* output_producer =
+      *output ? graph->FindProducer((*output)->id) : nullptr;
+  // Output is already initialized, but producer is not from_node.
+  if (*output && output_producer && output_producer->id != from_node->id) {
+    return absl::InvalidArgumentError("Wrong output is passed.");
+  }
+  // Output is already initialized, and producer is from_node.
+  if (*output) {
+    RETURN_IF_ERROR(graph->AddConsumer(to_node->id, (*output)->id));
+  } else {
+    // Output is not initialized.
+    Value* link;
+    RETURN_IF_ERROR(AddOutput(graph, from_node, &link));
+    RETURN_IF_ERROR(graph->AddConsumer(to_node->id, link->id));
+    *output = link;
+  }
   return absl::OkStatus();
 }
 
 bool IsBatchMatchesForAllValues(const GraphFloat32& model) {
+  if (model.values().empty()) return true;
   const int32_t b = model.values()[0]->tensor.shape.b;
   for (auto value : model.values()) {
     if (value->tensor.shape.b != b) {

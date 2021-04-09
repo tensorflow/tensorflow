@@ -31,27 +31,7 @@ StatusOr<bool> AllReduceSimplifier::Run(HloModule* module) {
   TF_ASSIGN_OR_RETURN(
       auto replication,
       HloReplicationAnalysis::Run(module, /*cross_partition_spmd=*/false));
-  std::vector<HloInstruction*> all_reduces_to_replace;
-  for (auto computation : module->computations()) {
-    for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
-      if (!inst->shape().IsArray()) {
-        // We currently do not change tuple-shaped all-reduce.
-        // Until XLA will support Token fed AllReduce(), the PyTorch client code
-        // uses a fake data token (constant) which relies on this pass to not
-        // optimize out (being fed within a tuple input).
-        continue;
-      }
-      if (inst->IsCrossReplicaAllReduce() &&
-          replication->HloInstructionIsReplicatedAt(inst->operand(0), {})) {
-        all_reduces_to_replace.push_back(inst);
-      }
-    }
-  }
-
-  bool changed = false;
-  if (all_reduces_to_replace.empty()) {
-    return changed;
-  }
+  std::vector<std::pair<HloInstruction*, int64>> all_reduces_to_replace;
 
   // Returns the size of a replica group if all groups have the same size, or -1
   // if they have different sizes.
@@ -71,7 +51,40 @@ StatusOr<bool> AllReduceSimplifier::Run(HloModule* module) {
     return replica_group_size;
   };
 
-  for (auto all_reduce : all_reduces_to_replace) {
+  for (auto computation : module->computations()) {
+    for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
+      if (!inst->shape().IsArray()) {
+        // We currently do not change tuple-shaped all-reduce.
+        // Until XLA will support Token fed AllReduce(), the PyTorch client code
+        // uses a fake data token (constant) which relies on this pass to not
+        // optimize out (being fed within a tuple input).
+        continue;
+      }
+      if (!inst->IsCrossReplicaAllReduce()) {
+        continue;
+      }
+      int64 group_size = get_replica_group_size(inst);
+      if (group_size == -1) {
+        continue;
+      }
+      if (replication->HloInstructionIsReplicatedAt(inst->operand(0), {}) ||
+          group_size == 1) {
+        all_reduces_to_replace.push_back({inst, group_size});
+      }
+    }
+  }
+
+  bool changed = false;
+
+  for (auto all_reduce_and_group_size : all_reduces_to_replace) {
+    auto all_reduce = all_reduce_and_group_size.first;
+    const int64 replica_group_size = all_reduce_and_group_size.second;
+    if (replica_group_size == 1) {
+      TF_RETURN_IF_ERROR(all_reduce->parent()->ReplaceInstruction(
+          all_reduce, all_reduce->mutable_operand(0)));
+      changed = true;
+      continue;
+    }
     if (all_reduce->to_apply()->instruction_count() != 3 ||
         all_reduce->to_apply()->num_parameters() != 2) {
       continue;
@@ -79,10 +92,6 @@ StatusOr<bool> AllReduceSimplifier::Run(HloModule* module) {
     HloInstruction* replacement;
     switch (all_reduce->to_apply()->root_instruction()->opcode()) {
       case HloOpcode::kAdd: {
-        int64 replica_group_size = get_replica_group_size(all_reduce);
-        if (replica_group_size == -1) {
-          continue;
-        }
         // Create the multiplier:
         //   broadcast(convert_to_matching_type(s32 group size))
         auto multiplier =

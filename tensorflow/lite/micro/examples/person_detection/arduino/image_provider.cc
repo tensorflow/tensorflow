@@ -150,7 +150,7 @@ TfLiteStatus ReadData(tflite::ErrorReporter* error_reporter) {
 // Decode the JPEG image, crop it, and convert it to greyscale
 TfLiteStatus DecodeAndProcessImage(tflite::ErrorReporter* error_reporter,
                                    int image_width, int image_height,
-                                   uint8_t* image_data) {
+                                   int8_t* image_data) {
   TF_LITE_REPORT_ERROR(error_reporter,
                        "Decoding JPEG and converting to greyscale");
   // Parse the JPEG headers. The image will be decoded as a sequence of Minimum
@@ -221,11 +221,14 @@ TfLiteStatus DecodeAndProcessImage(tflite::ErrorReporter* error_reporter,
         // See https://en.wikipedia.org/wiki/Grayscale for magic numbers
         float gray_value = (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
 
+        // Convert to signed 8-bit integer by subtracting 128.
+        gray_value -= 128;
+
         // The x coordinate of this pixel in the output image
         int current_x = x_origin + mcu_col;
         // The index of this pixel in our flat output buffer
         int index = (current_y * image_width) + current_x;
-        image_data[index] = static_cast<uint8_t>(gray_value);
+        image_data[index] = static_cast<int8_t>(gray_value);
       }
     }
   }
@@ -235,7 +238,7 @@ TfLiteStatus DecodeAndProcessImage(tflite::ErrorReporter* error_reporter,
 
 // Get an image from the camera module
 TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int image_width,
-                      int image_height, int channels, uint8_t* image_data) {
+                      int image_height, int channels, int8_t* image_data) {
   static bool g_is_camera_initialized = false;
   if (!g_is_camera_initialized) {
     TfLiteStatus init_status = InitCamera(error_reporter);

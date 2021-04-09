@@ -176,6 +176,7 @@ def _header_paths():
       "include/*-linux-gnu",
       "extras/CUPTI/include",
       "include/cuda/CUPTI",
+      "local/cuda/extras/CUPTI/include",
   ]
 
 
@@ -188,6 +189,8 @@ def _library_paths():
       "lib/*-linux-gnu",
       "lib/x64",
       "extras/CUPTI/*",
+      "local/cuda/lib64",
+      "local/cuda/extras/CUPTI/lib64",
   ]
 
 
@@ -268,12 +271,14 @@ def _find_cuda_config(base_paths, required_version):
   nvcc_path, nvcc_version = _find_versioned_file(base_paths, [
       "",
       "bin",
+      "local/cuda/bin",
   ], nvcc_name, cuda_version, get_nvcc_version)
 
   nvvm_path = _find_file(base_paths, [
       "nvvm/libdevice",
       "share/cuda",
       "lib/nvidia-cuda-toolkit/libdevice",
+      "local/cuda/nvvm/libdevice",
   ], "libdevice*.10.bc")
 
   cupti_header_path = _find_file(base_paths, _header_paths(), "cupti.h")
@@ -640,7 +645,7 @@ def main():
     for key, value in sorted(find_cuda_config().items()):
       print("%s: %s" % (key, value))
   except ConfigError as e:
-    sys.stderr.write(str(e))
+    sys.stderr.write(str(e) + '\n')
     sys.exit(1)
 
 

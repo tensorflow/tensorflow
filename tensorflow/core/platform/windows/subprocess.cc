@@ -248,9 +248,13 @@ bool SubProcess::Start() {
   STARTUPINFOA si;
   ZeroMemory(&si, sizeof(STARTUPINFO));
   si.cb = sizeof(STARTUPINFO);
-  si.dwFlags |= STARTF_USESTDHANDLES;
+
+  // Prevent console window popping in case we are in GUI mode
+  si.dwFlags |= STARTF_USESHOWWINDOW;
+  si.wShowWindow = SW_HIDE;
 
   // Handle the pipes for the child process.
+  si.dwFlags |= STARTF_USESTDHANDLES;
   if (child_pipe_[CHAN_STDIN]) {
     si.hStdInput = child_pipe_[CHAN_STDIN];
   }
@@ -305,8 +309,6 @@ bool SubProcess::WaitInternal(int* status) {
     if (wait_status == WAIT_OBJECT_0) {
       DWORD process_exit_code = 0;
       if (GetExitCodeProcess(pi_.hProcess, &process_exit_code)) {
-        LOG(INFO) << "SubProcess ended with return code: " << process_exit_code
-                  << std::endl;
         *status = static_cast<int>(process_exit_code);
       } else {
         LOG(FATAL) << "Wait failed with code: " << GetLastError();

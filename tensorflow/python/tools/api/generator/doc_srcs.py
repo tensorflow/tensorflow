@@ -17,21 +17,27 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-
 from tensorflow.python.util import tf_export
 
 
-# Specifies docstring source for a module.
-# Only one of docstring or docstring_module_name should be set.
-# * If docstring is set, then we will use this docstring when
-#   for the module.
-# * If docstring_module_name is set, then we will copy the docstring
-#   from docstring source module.
-DocSource = collections.namedtuple(
-    'DocSource', ['docstring', 'docstring_module_name'])
-# Each attribute of DocSource is optional.
-DocSource.__new__.__defaults__ = (None,) * len(DocSource._fields)
+class DocSource(object):
+  """Specifies docstring source for a module.
+
+  Only one of docstring or docstring_module_name should be set.
+  * If docstring is set, then we will use this docstring when
+    for the module.
+  * If docstring_module_name is set, then we will copy the docstring
+    from docstring source module.
+  """
+
+  def __init__(self, docstring=None, docstring_module_name=None):
+    self.docstring = docstring
+    self.docstring_module_name = docstring_module_name
+
+    if self.docstring is not None and self.docstring_module_name is not None:
+      raise ValueError('Only one of `docstring` or `docstring_module_name` can '
+                       'be set.')
+
 
 _TENSORFLOW_DOC_SOURCES = {
     'app': DocSource(docstring_module_name='platform.app'),
@@ -41,6 +47,7 @@ _TENSORFLOW_DOC_SOURCES = {
     'distributions': DocSource(
         docstring_module_name='ops.distributions.distributions'),
     'errors': DocSource(docstring_module_name='framework.errors'),
+    'experimental.numpy': DocSource(docstring_module_name='ops.numpy_ops'),
     'gfile': DocSource(docstring_module_name='platform.gfile'),
     'graph_util': DocSource(docstring_module_name='framework.graph_util'),
     'image': DocSource(docstring_module_name='ops.image_ops'),

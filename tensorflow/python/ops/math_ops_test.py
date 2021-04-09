@@ -58,11 +58,11 @@ class ReduceTest(test_util.TensorFlowTestCase):
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
     with test_util.device(use_gpu=True):
       for axis in (0, -2):
-        self.assertAllEqual(self.evaluate(math_ops.reduce_sum(x, axis=axis)),
-                            [5, 7, 9])
+        self.assertAllEqual(
+            self.evaluate(math_ops.reduce_sum(x, axis=axis)), [5, 7, 9])
       for axis in (1, -1):
-        self.assertAllEqual(self.evaluate(math_ops.reduce_sum(x, axis=axis)),
-                            [6, 15])
+        self.assertAllEqual(
+            self.evaluate(math_ops.reduce_sum(x, axis=axis)), [6, 15])
       for axis in (None, (0, 1), (1, 0), (-1, 0), (0, -1), (-2, 1), (1, -2),
                    (-1, -2), (-2, -1)):
         self.assertEqual(self.evaluate(math_ops.reduce_sum(x, axis=axis)), 21)
@@ -261,7 +261,10 @@ class ModTest(test_util.TensorFlowTestCase):
 class SquaredDifferenceTest(test_util.TensorFlowTestCase):
 
   def testSquaredDifference(self):
-    for dtype in [np.float16, np.float32, np.float64, np.int32, np.int64]:
+    for dtype in [
+        np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype,
+        np.int32, np.int64
+    ]:
       x = np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype)
       y = np.array([-3, -2, -1], dtype=dtype)
       z = (x - y) * (x - y)
@@ -354,8 +357,8 @@ class ScalarMulTest(test_util.TensorFlowTestCase):
     indices = constant_op.constant([0, 2, 5])
     x = math_ops.scalar_mul(-3, ops.IndexedSlices(values, indices))
     with test_util.device(use_gpu=True):
-      self.assertAllEqual(self.evaluate(x.values),
-                          [[-6, -9], [-15, -21], [0, 3]])
+      self.assertAllEqual(
+          self.evaluate(x.values), [[-6, -9], [-15, -21], [0, 3]])
       self.assertAllEqual(self.evaluate(x.indices), [0, 2, 5])
 
 
@@ -432,9 +435,11 @@ class AddNTest(test_util.TensorFlowTestCase):
 
   def test_iterable(self):
     """Test that add_n supports iterables (e.g. generators and dict values)."""
+
     def fn():
       yield 1
       yield 2
+
     values_dict = {"a": 1, "b": 2}
     with test_util.use_gpu():
       self.assertAllEqual(3, math_ops.add_n(fn()))
@@ -457,21 +462,33 @@ class DivAndModTest(test_util.TensorFlowTestCase):
 
   def testFloorModInt(self):
     nums, divs = self.intTestData()
-    # TODO(aselle): Change test to use % after switch
-    # tf_result = math_ops.floor_mod(nums, divs)
-    tf_result = math_ops.floormod(nums, divs)
-    np_result = nums % divs
-    self.assertAllEqual(tf_result, np_result)
+    for dtype in [np.int32, np.int64]:
+      x = nums.astype(dtype)
+      y = divs.astype(dtype)
+      tf_result = math_ops.floormod(x, y)
+      np_result = x % y
+      self.assertAllEqual(tf_result, np_result)
+      tf2_result = (array_ops.constant(x) % array_ops.constant(y))
+      self.assertAllEqual(tf2_result, tf_result)
 
   def testFloorModFloat(self):
     nums, divs = self.floatTestData()
-    tf_result = math_ops.floormod(nums, divs)
+    for dtype in [np.float16, np.float32, np.float64]:
+      x = nums.astype(dtype)
+      y = divs.astype(dtype)
+      tf_result = math_ops.floormod(x, y)
+      np_result = x % y
+      self.assertAllEqual(tf_result, np_result)
+      tf2_result = (array_ops.constant(x) % array_ops.constant(y))
+      self.assertAllEqual(tf2_result, tf_result)
+
+  def testFloorModBfloat16(self):
+    nums, divs = self.floatTestData()
+    tf_result = math_ops.floormod(
+        math_ops.cast(nums, dtypes.bfloat16),
+        math_ops.cast(divs, dtypes.bfloat16))
     np_result = nums % divs
     self.assertAllEqual(tf_result, np_result)
-    # TODO(aselle): put this test in once % switched to floormod
-    # tf2_result = (array_ops.constant(nums)
-    #               % array_ops.constant(divs))
-    # self.assertAllEqual(tf2_result, tf_result)
 
   def testTruncateModInt(self):
     nums, divs = self.intTestData()
@@ -490,10 +507,8 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     tf_result = math_ops.floor_div(nums, divs)
     np_result = nums // divs
     self.assertAllEqual(tf_result, np_result)
-    # TODO(aselle): Put this test in once // is switched to floordiv
-    # tf2_result = (array_ops.constant(nums)
-    #               // array_ops.constant(divs))
-    # self.assertAllEqual(tf2_result, tf_result)
+    tf2_result = (array_ops.constant(nums) // array_ops.constant(divs))
+    self.assertAllEqual(tf2_result, tf_result)
 
   @test_util.deprecated_graph_mode_only
   def testDivideName(self):
@@ -729,10 +744,8 @@ class NextAfterTest(test_util.TensorFlowTestCase):
 
       self.assertAllEqual(math_ops.nextafter(one, two) - one, eps)
       self.assertAllLess(math_ops.nextafter(one, zero) - one, 0)
-      self.assertAllEqual(
-          math_ops.is_nan(math_ops.nextafter(nan, one)), [True])
-      self.assertAllEqual(
-          math_ops.is_nan(math_ops.nextafter(one, nan)), [True])
+      self.assertAllEqual(math_ops.is_nan(math_ops.nextafter(nan, one)), [True])
+      self.assertAllEqual(math_ops.is_nan(math_ops.nextafter(one, nan)), [True])
       self.assertAllEqual(math_ops.nextafter(one, one), one)
 
   def testBroadcasting(self):
@@ -773,13 +786,13 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
           r"Attempt to convert a value .* with an unsupported type")
     else:
       error = TypeError
-      error_message = (
-          r"Failed to convert object of type .* to Tensor")
+      error_message = (r"Failed to convert object of type .* to Tensor")
 
     class RHSReturnsTrue(object):
 
       def __radd__(self, other):
         return True
+
     a = array_ops.ones([1], dtype=dtypes.int32) + RHSReturnsTrue()
     self.assertEqual(a, True)
 
@@ -870,6 +883,15 @@ class RangeTest(test_util.TensorFlowTestCase):
     tensor = ops.convert_to_tensor(values)
     self.assertAllEqual((5,), tensor.get_shape().as_list())
     self.assertAllEqual(values, self.evaluate(tensor))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class ErfcinvTest(test_util.TensorFlowTestCase):
+
+  def testErfcinv(self):
+    values = np.random.uniform(0.1, 1.9, size=int(1e4)).astype(np.float32)
+    approx_id = math_ops.erfc(math_ops.erfcinv(values))
+    self.assertAllClose(values, self.evaluate(approx_id))
 
 
 if __name__ == "__main__":

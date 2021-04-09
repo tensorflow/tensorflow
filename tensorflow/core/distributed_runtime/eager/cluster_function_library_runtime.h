@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
@@ -64,11 +65,12 @@ class EagerClusterFunctionLibraryRuntime
            gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) override;
 
-  // The component function inputs `args` can be RemoteTensorHandles, which will
-  // be lazily resolved remotely where the inputs are actually consumed.
+  // The component function inputs `args` and outputs `rets` may refer to remote
+  // tensors on a remote device, which will be lazily resolved remotely where
+  // the inputs/outputs are actually consumed.
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::LocalHandle handle,
-           gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,
+           gtl::ArraySlice<FunctionArg> args, std::vector<FunctionRet>* rets,
            FunctionLibraryRuntime::DoneCallback done) override;
 
   void CleanUp(uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,
@@ -83,12 +85,15 @@ class EagerClusterFunctionLibraryRuntime
 
   struct FunctionData {
     const string target;
+    const absl::optional<std::vector<int>> ret_indices;
     core::RefCountPtr<EagerClient> eager_client;
     std::unique_ptr<EagerOperation> op;
 
-    FunctionData(const string& target, EagerClient* eager_client,
-                 std::unique_ptr<EagerOperation> op)
+    FunctionData(const string& target,
+                 const absl::optional<std::vector<int>>& ret_indices,
+                 EagerClient* eager_client, std::unique_ptr<EagerOperation> op)
         : target(target),
+          ret_indices(ret_indices),
           eager_client(core::RefCountPtr<EagerClient>(eager_client)),
           op(std::move(op)) {
       eager_client->Ref();

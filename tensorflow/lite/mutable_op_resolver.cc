@@ -15,18 +15,43 @@ limitations under the License.
 
 #include "tensorflow/lite/mutable_op_resolver.h"
 
+#include <string>
+#include <unordered_map>
+#include <utility>
+
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+
 namespace tflite {
 
 const TfLiteRegistration* MutableOpResolver::FindOp(tflite::BuiltinOperator op,
                                                     int version) const {
   auto it = builtins_.find(std::make_pair(op, version));
-  return it != builtins_.end() ? &it->second : nullptr;
+  if (it != builtins_.end()) {
+    return &it->second;
+  }
+  for (const OpResolver* other : other_op_resolvers_) {
+    const TfLiteRegistration* result = other->FindOp(op, version);
+    if (result != nullptr) {
+      return result;
+    }
+  }
+  return nullptr;
 }
 
 const TfLiteRegistration* MutableOpResolver::FindOp(const char* op,
                                                     int version) const {
   auto it = custom_ops_.find(std::make_pair(op, version));
-  return it != custom_ops_.end() ? &it->second : nullptr;
+  if (it != custom_ops_.end()) {
+    return &it->second;
+  }
+  for (const OpResolver* other : other_op_resolvers_) {
+    const TfLiteRegistration* result = other->FindOp(op, version);
+    if (result != nullptr) {
+      return result;
+    }
+  }
+  return nullptr;
 }
 
 void MutableOpResolver::AddBuiltin(tflite::BuiltinOperator op,
@@ -76,6 +101,13 @@ void MutableOpResolver::AddAll(const MutableOpResolver& other) {
   for (const auto& other_custom_op : other.custom_ops_) {
     custom_ops_[other_custom_op.first] = other_custom_op.second;
   }
+  other_op_resolvers_.insert(other_op_resolvers_.begin(),
+                             other.other_op_resolvers_.begin(),
+                             other.other_op_resolvers_.end());
+}
+
+void MutableOpResolver::ChainOpResolver(const OpResolver* other) {
+  other_op_resolvers_.push_back(other);
 }
 
 }  // namespace tflite

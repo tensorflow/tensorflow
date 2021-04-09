@@ -3,15 +3,13 @@ load("//tensorflow:tensorflow.bzl", "py_test")  # @unused
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 py_library(
     name = "test_util",
     srcs = ["test_util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/lite/python:interpreter",
@@ -25,6 +23,7 @@ cuda_py_tests(
     name = "dct_ops_test",
     srcs = ["dct_ops_test.py"],
     python_version = "PY3",
+    shard_count = 16,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -41,7 +40,6 @@ cuda_py_tests(
     python_version = "PY3",
     shard_count = 8,
     tags = [
-        "no_rocm",
         "optonly",
     ],
     # TODO(timshen): re-enable after resolving flakiness (b/149426657).
@@ -125,6 +123,7 @@ cuda_py_tests(
     srcs = ["spectral_ops_test.py"],
     python_version = "PY3",
     tags = [
+        "no_rocm",
         "nomac",
     ],
     deps = [

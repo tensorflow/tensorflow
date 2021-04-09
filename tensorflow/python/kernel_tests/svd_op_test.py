@@ -163,7 +163,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
       if use_static_shape_:
         s_tf_val, u_tf_val, v_tf_val = self.evaluate([s_tf, u_tf, v_tf])
       else:
-        with self.session(use_gpu=True) as sess:
+        with self.session() as sess:
           s_tf_val, u_tf_val, v_tf_val = sess.run(
               [s_tf, u_tf, v_tf], feed_dict={x_tf: x_np})
     else:
@@ -172,7 +172,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
       if use_static_shape_:
         s_tf_val = self.evaluate(s_tf)
       else:
-        with self.session(use_gpu=True) as sess:
+        with self.session() as sess:
           s_tf_val = sess.run(s_tf, feed_dict={x_tf: x_np})
 
     if compute_uv_:
@@ -284,7 +284,7 @@ def _GetSvdGradGradOpTest(dtype_, shape_, compute_uv_, full_matrices_):
     epsilon = np.finfo(dtype_).eps
     delta = 0.1 * epsilon**(1.0 / 3.0)
     tol = 1e-5
-    with self.session(use_gpu=True):
+    with self.session():
       tf_a = constant_op.constant(a)
       if compute_uv_:
         tf_s, tf_u, tf_v = _NormalizingSvd(tf_a, full_matrices_)

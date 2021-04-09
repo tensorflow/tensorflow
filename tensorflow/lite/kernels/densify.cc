@@ -80,14 +80,21 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                              GetTensorShape(op_context.input),
                              GetTensorData<float>(op_context.input),
                              GetTensorShape(op_context.output),
-                             GetTensorData<float>(op_context.output));
+                             GetTensorData<float>(op_context.output), context);
+      break;
+    case kTfLiteFloat16:
+      reference_ops::Densify(
+          op_context.input->sparsity, GetTensorShape(op_context.input),
+          GetTensorData<Eigen::half>(op_context.input),
+          GetTensorShape(op_context.output),
+          GetTensorData<Eigen::half>(op_context.output), context);
       break;
     case kTfLiteInt8:
       reference_ops::Densify(op_context.input->sparsity,
                              GetTensorShape(op_context.input),
                              GetTensorData<int8_t>(op_context.input),
                              GetTensorShape(op_context.output),
-                             GetTensorData<int8_t>(op_context.output));
+                             GetTensorData<int8_t>(op_context.output), context);
       break;
 
     default:

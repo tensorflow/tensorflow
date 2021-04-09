@@ -20,10 +20,14 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
+#include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
+#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -34,13 +38,16 @@ class TpuProgramGroupInterface {
  public:
   virtual ~TpuProgramGroupInterface() = default;
 
+  // Check if whether sharding/unsharding program exists.
+  virtual bool has_sharding_program() const = 0;
+
   // Computes program count.
   virtual size_t program_count() const = 0;
 
   // Computes total program size.
   virtual int64_t program_size() const = 0;
 
-  // Unloads and destroys safely Tpu programs.
+  // Unloads and destroys safely TPU programs.
   virtual void UnloadAndDestroyPrograms() = 0;
 
   // Logs program memory summary.
@@ -56,7 +63,21 @@ class TpuProgramGroupInterface {
 
   // Boolean array to indicate if the modification of variables are
   // allowed.
-  virtual const std::vector<bool>& may_modify_variables() const = 0;
+  virtual const std::vector<bool>& may_modify_variables_list() const = 0;
+
+  // Gets may modify variables value of the TPU program for the given core
+  // `index`.
+  virtual bool may_modify_variables(int index) const = 0;
+
+  // Get Executable Info Proto
+  virtual const TPUExecutableInfoProto& executable_info(int index) const = 0;
+
+  // Get HostTransferInfo Proto
+  virtual const TPUHostTransferInfoProto& host_transfer_info(
+      int index) const = 0;
+
+  // Get XLA_TpuProgram Proto
+  virtual const XLA_TpuProgram* tpu_program(int index) const = 0;
 };
 
 }  // namespace tpu

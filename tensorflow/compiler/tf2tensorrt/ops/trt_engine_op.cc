@@ -37,6 +37,7 @@ REGISTER_OP("TRTEngineOp")
     .Attr("OutT: list({int8,float16,float32,int32})")
     .Attr("input_shapes: list(shape) = []")
     .Attr("max_cached_engines_count: int = 1")
+    .Attr("max_batch_size: int = 1")
     .Attr("workspace_size_bytes: int")
     .Attr("precision_mode: {'FP32', 'FP16', 'INT8'}")
     .Attr("calibration_data: string = ''")
@@ -55,7 +56,8 @@ REGISTER_OP("TRTEngineOp")
     .Attr("cached_engine_batches: list(int) >= 0 = []")
     .Attr("fixed_input_size: bool = true")
     .Attr("output_shapes: list(shape) = []")
-    .Attr("static_engine: bool = true");
+    .Attr("static_engine: bool = true")
+    .Attr("profile_strategy: string = ''");
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

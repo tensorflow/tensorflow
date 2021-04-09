@@ -1,9 +1,30 @@
 # Use a prebuilt Python image instead of base Ubuntu to speed up the build process,
 # since it has all the build dependencies we need for Micro and downloads much faster
 # than the install process.
-FROM python:3.5-stretch
+FROM python:3.9.0-buster
 
 LABEL maintainer="Pete Warden <petewarden@google.com>"
 
-RUN apt-get update && apt-get install -y zip xxd
+RUN echo deb http://apt.llvm.org/buster/ llvm-toolchain-buster-12 main > /etc/apt/sources.list.d/llvm.list
+RUN wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
+
+RUN apt-get update
+
+RUN apt-get install -y zip xxd sudo
+
+RUN apt-get install -y clang-12 clang-format-12
+# Set clang-12 and clang-format-12 as the default to ensure that the pigweed
+# formatting scripts use the desired version.
+RUN ln -s /usr/bin/clang-12 /usr/bin/clang
+RUN ln -s /usr/bin/clang++-12 /usr/bin/clang++
+RUN ln -s /usr/bin/clang-format-12 /usr/bin/clang-format
+
 RUN pip install six
+# Install Renode test dependencies
+RUN pip install pyyaml requests psutil robotframework==3.1
+
+# Install bazel and buildifier so that the bazel presubmit checks can be run
+# from the micro docker container and are consistent with the rest of the CI.
+COPY install/*.sh /install/
+RUN /install/install_bazel.sh
+RUN /install/install_buildifier.sh

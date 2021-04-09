@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
@@ -26,23 +27,50 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 
 struct TFE_Op;
 
 namespace tensorflow {
+
+class ImmediateExecutionContext;
+class AbstractOpAttrs;
+class CancellationManager;
 
 // Abstract interface to an operation.
 class ImmediateExecutionOperation : public AbstractOperation {
  public:
   virtual void Clear() = 0;
 
+  // Returns the inputs of this op.
+  virtual absl::Span<ImmediateExecutionTensorHandle* const> GetInputs()
+      const = 0;
+  virtual Status SetInput(size_t index,
+                          ImmediateExecutionTensorHandle* input) = 0;
+
+  virtual ImmediateExecutionContext* GetContext() const = 0;
+
+  // Following two methods are used to support custom device.
+  // Return true if the inputs contain custom device tensor handle. It means
+  // that the argument need to be handled by a custom device.
+  virtual bool HasCustomDeviceInput() const = 0;
+
   virtual const tensorflow::OpDef* OpDef() const = 0;
 
   virtual Status InputLength(const char* input_name, int* length) = 0;
   virtual Status OutputLength(const char* output_name, int* length) = 0;
 
-  // Experimental
-  virtual Status SetUseXla(bool enable) = 0;
+  // Set stack trace to be used for potential async error reporting.
+  virtual void SetStackTrace(ManagedStackTrace stack_trace) = 0;
+
+  virtual const tensorflow::AbstractOpAttrs* GetOpAttrs() const = 0;
+  virtual void AddAttrs(const AbstractOpAttrs* op_attrs) = 0;
+
+  virtual void SetCancellationManager(
+      CancellationManager* cancellation_manager) = 0;
+
+  // Returns the stack trace set by `SetStackTrace` if exists.
+  virtual absl::optional<ManagedStackTrace> GetStackTrace() = 0;
 
   // For LLVM style RTTI.
   static bool classof(const AbstractOperation* ptr) {

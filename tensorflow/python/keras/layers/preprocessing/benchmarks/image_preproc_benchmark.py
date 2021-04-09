@@ -13,14 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 """Benchmark for Keras image preprocessing layer."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import functools
 import time
 
-from absl import flags
 import numpy as np
 
 from tensorflow.python import keras
@@ -35,8 +31,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
-
-FLAGS = flags.FLAGS
 
 v2_compat.enable_v2_behavior()
 
@@ -85,7 +79,7 @@ def image_augmentation(inputs, batch_size):
   return img
 
 
-class BenchmarkLayer(benchmark.Benchmark):
+class BenchmarkLayer(benchmark.TensorFlowBenchmark):
   """Benchmark the layer forward pass."""
 
   def run_dataset_implementation(self, batch_size):

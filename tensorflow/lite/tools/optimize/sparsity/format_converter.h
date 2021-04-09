@@ -15,9 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_SPARSITY_FORMAT_CONVERTER_H_
 #define TENSORFLOW_LITE_TOOLS_OPTIMIZE_SPARSITY_FORMAT_CONVERTER_H_
 
-#include <memory>
 #include <vector>
 
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/c/common.h"
 
 namespace tflite {
@@ -53,18 +53,31 @@ class FormatConverter {
   FormatConverter(const std::vector<int>& shape,
                   const TfLiteSparsity& sparsity);
 
-  std::vector<T> GetData() { return data_; }
-  std::vector<std::vector<int>> GetDimMetadata() { return dim_metadata_; }
+  const std::vector<T>& GetData() { return data_; }
+  const std::vector<std::vector<int>>& GetDimMetadata() {
+    return dim_metadata_;
+  }
 
+  // Method for dense to sparse conversion. Need to call GetData() method to get
+  // the compressed data.
   TfLiteStatus DenseToSparse(const T* src_data);
 
+  // Method for sparse to dense conversion. Need to call GetData() method to get
+  // the decompressed data.
   TfLiteStatus SparseToDense(const T* src_data);
+  // Method for sparse to dense conversion with caller provided buffer. No need
+  // to call GetData() with this method.
+  TfLiteStatus SparseToDense(const T* src_data, const size_t dest_size,
+                             T* dest_data, TfLiteContext* context = nullptr);
 
  private:
   // A recursive function to fetch data from the compressed src_data buffer and
   // populate the dense buffer.
   void Populate(const T* src_data, std::vector<int> indices, int level,
-                int prev_idx, int* src_data_ptr);
+                int prev_idx, int* src_data_ptr, T* dest_data);
+
+  // Check if val is equal to zero.
+  bool IsZero(const T val);
 
   // Shape of the conceptual dense tensor.
   std::vector<int> dense_shape_;
@@ -72,7 +85,7 @@ class FormatConverter {
   // tensor with (2, 2) block has blocked_shape (2, 2).
   std::vector<int> blocked_shape_;
   // Total number of elements in the dense tensor.
-  uint64_t dense_size_;
+  size_t dense_size_;
   // Has n(original dimension)+k(block_dimension) elements.
   std::vector<int> traversal_order_;
   // Format of each dimension in the traversal order.
@@ -92,9 +105,13 @@ class FormatConverter {
   std::vector<T> data_;
 };
 
+template <>
+bool FormatConverter<Eigen::half>::IsZero(const Eigen::half val);
+
 extern template class FormatConverter<int32_t>;
 extern template class FormatConverter<int8_t>;
 extern template class FormatConverter<float>;
+extern template class FormatConverter<Eigen::half>;
 }  // namespace sparsity
 }  // namespace optimize
 }  // namespace tflite

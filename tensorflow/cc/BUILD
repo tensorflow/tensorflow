@@ -2,19 +2,24 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "cc_library_with_android_deps",
-    "tf_cc_binary",
     "tf_cc_test",
     "tf_copts",
-    "tf_gen_op_wrappers_cc",
     "transitive_hdrs",
 )
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrappers_cc")
+
 package(
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 filegroup(
@@ -155,6 +160,7 @@ cc_library(
     deps = [
         ":array_grad",
         ":data_flow_grad",
+        ":functional_grad",
         ":image_grad",
         ":manip_grad",
         ":math_grad",
@@ -245,7 +251,6 @@ cc_library_with_android_deps(
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_experimental",
         "//tensorflow/core:protos_all_cc",
     ],
 )
@@ -260,7 +265,6 @@ tf_cc_test(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_experimental",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -522,6 +526,40 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "functional_grad",
+    srcs = ["gradients/functional_grad.cc"],
+    deps = [
+        ":cc_ops",
+        ":cc_ops_internal",
+        ":functional_ops",
+        ":grad_op_registry",
+        ":gradients",
+        "//tensorflow/core:lib_proto_parsing",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "gradients_functional_grad_test",
+    srcs = ["gradients/functional_grad_test.cc"],
+    deps = [
+        ":cc_ops",
+        ":cc_ops_internal",
+        ":functional_grad",
+        ":functional_ops",
+        ":grad_op_registry",
+        ":grad_testutil",
+        ":gradient_checker",
+        ":math_grad",
+        ":testutil",
+        "//tensorflow/cc:ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 # Generates separate libraries for array_ops and math_ops to reduce the dependency count of targets that depend on only these
 tf_gen_op_wrappers_cc(
     name = "math_ops",
@@ -558,6 +596,7 @@ tf_gen_op_wrappers_cc(
         "io_ops",
         "linalg_ops",
         "list_ops",
+        "map_ops",
         "logging_ops",
         "lookup_ops",
         "manip_ops",
@@ -641,14 +680,6 @@ tf_gen_op_wrappers_cc(
     include_internal_ops = 1,
     op_lib_names = [
         "resource_variable_ops",
-    ],
-    pkg = "//tensorflow/core",
-)
-
-tf_gen_op_wrappers_cc(
-    name = "remote_fused_graph_ops",
-    op_lib_names = [
-        "remote_fused_graph_ops",
     ],
     pkg = "//tensorflow/core",
 )
@@ -743,36 +774,6 @@ tf_gen_op_wrappers_cc(
     ],
 )
 
-tf_cc_binary(
-    name = "tutorials_example_trainer",
-    srcs = ["tutorials/example_trainer.cc"],
-    copts = tf_copts(),
-    linkopts = select({
-        "//tensorflow:windows": [],
-        "//tensorflow:macos": [
-            "-lm",
-            "-lpthread",
-        ],
-        "//tensorflow:ios": [
-            "-lm",
-            "-lpthread",
-        ],
-        "//conditions:default": [
-            "-lm",
-            "-lpthread",
-            "-lrt",
-        ],
-    }),
-    deps = [
-        ":cc_ops",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
-    ],
-)
-
 cc_library(
     name = "queue_runner",
     srcs = ["training/queue_runner.cc"],
@@ -849,9 +850,7 @@ transitive_hdrs(
         ":gradients",
         ":ops",
         ":queue_runner",
-        ":remote_fused_graph_ops",
         ":scope",
-        "//tensorflow/cc/profiler",
         "//tensorflow/cc/saved_model:constants",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/cc/saved_model:reader",

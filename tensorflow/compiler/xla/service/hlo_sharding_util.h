@@ -19,6 +19,7 @@ limitations under the License.
 #include <map>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -28,6 +29,25 @@ limitations under the License.
 
 namespace xla {
 namespace hlo_sharding_util {
+
+struct GatherParallelDims {
+  absl::InlinedVector<int64, 1> indices_parallel_dims;
+  absl::InlinedVector<int64, 1> operand_parallel_dims;
+  std::vector<int64> index_parallel_in_dim;
+};
+
+// Returns true if the lhs sharding is preferable over the rhs sharding.
+// The most specific sharding is tile maximal followed by single device tile
+// maximal and finally replicated. This order aims to primarily reduce memory
+// usage and secondly reduce total compute.
+// Note: This does NOT provide a total ordering as we can have 2 different
+// sharding with same preference level.
+bool IsShardingMoreSpecific(const HloSharding& lhs, const HloSharding& rhs);
+
+// Tries to refine `to_merge` by combining with `old`. Returns if the final
+// `to_merge` is more specific than `old`.
+bool MergeSharding(const HloSharding& old, HloSharding* to_merge,
+                   bool may_combine_partial_sharding);
 
 // Given a map<device, occurrence_count>, selects the device with higher
 // occurrence count (if any). If top_count in not nullptr, it will receive the
@@ -127,6 +147,27 @@ HloSharding ScatterEffectiveIndexSharding(const HloSharding& index_sharding,
 HloSharding ScatterEffectiveDataSharding(const HloSharding& data_sharding,
                                          const HloInstruction& hlo);
 
+// Returns an output sharding of gather by passing through the data operand's
+// sharding.
+absl::optional<HloSharding> GatherOutputShardingFromDataOperand(
+    const HloSharding& data_operand_sharding, const HloInstruction& hlo,
+    const Shape& output_shape, const Shape& operand_shape);
+
+// Returns a data operand sharding of gather by passing through the output's
+// sharding.
+absl::optional<HloSharding> GatherDataOperandShardingFromOutput(
+    const HloSharding& output_sharding, const HloInstruction& hlo);
+
+// Returns an output sharding of scatter by passing through the update operand's
+// sharding.
+absl::optional<HloSharding> ScatterOutputShardingFromUpdate(
+    const HloSharding& update_sharding, const HloInstruction& hlo);
+
+// Returns an update operand sharding of scatter by passing through the output's
+// sharding.
+absl::optional<HloSharding> ScatterUpdateShardingFromOutput(
+    const HloSharding& output_sharding, const HloInstruction& hlo);
+
 // Returns an identity value and an HloOpcode for reduce computation of scatter
 // instruction.
 // - If computation is add/or, return 0/false with corresponding op code;
@@ -142,6 +183,39 @@ IdentityValueAndHloOpcodeForScatterReduceComputation(
 // list of the devices that `sharding` applies to.
 std::vector<int64> DevicesForSharding(
     const HloSharding& sharding, const std::vector<int64>& available_devices);
+
+// Returns a sharding that replicates data across devices along the given
+// dimensions in the original sharding.
+HloSharding PartiallyReplicateTiledShardingOnDims(
+    const HloSharding& sharding, absl::Span<const int64> dims_to_replicate);
+
+// Returns a sharding the removes given tile dimensions.
+//
+// Precondition: if not tile maximal, the size of each tile dimension must be 1.
+HloSharding RemoveShapeDimensions(const HloSharding& sharding,
+                                  const std::vector<int64>& dims_to_remove);
+
+// Similar to TransposeSharding(), but allows removing/adding non-partitioned
+// dimensions. In src_to_tgt and tgt_to_src, -1 represents a non-existing
+// dimension.
+absl::optional<HloSharding> TransposeShardingWithCollapsedDims(
+    const HloSharding& source, absl::Span<int64 const> src_to_tgt,
+    absl::Span<int64 const> tgt_to_src);
+
+// Returns identified parallel dimensions for Gather.
+absl::optional<GatherParallelDims> GetGatherBatchParallelDims(
+    const HloInstruction& hlo);
+
+// Returns the parallel dimensions of the output of a gather based on the
+// parallel dimensions of the input.
+absl::InlinedVector<int64, 1> GatherParallelOutputDims(
+    const HloInstruction& gather, const GatherParallelDims& parallel_dim);
+
+// Returns the parallel dimensions of the data operand of a gather with the
+// order of the parallel dimensions matching that of the parallel dimensions
+// of the output.
+absl::InlinedVector<int64, 1> GatherOutputAlignedOperandParallelDims(
+    const HloInstruction& gather, const GatherParallelDims& parallel_dims);
 
 }  // namespace hlo_sharding_util
 }  // namespace xla

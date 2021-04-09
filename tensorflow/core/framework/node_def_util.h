@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_NODE_DEF_UTIL_H_
 
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -62,16 +63,16 @@ extern const char* const kColocationGroupPrefix;
 // The parameter `max_inputs_in_summary` specifies how many inputs at most to
 // serialize in the output (in order not to get a string which is overly large).
 // The value `-1` specifies that all inputs will be shown.
-string SummarizeNodeDef(const NodeDef& node_def,
-                        int max_inputs_in_summary = -1);
-string SummarizeAttrs(const NodeDef& node_def);
-string SummarizeAttrsHelper(AttrSlice attrs, StringPiece device);
+std::string SummarizeNodeDef(const NodeDef& node_def,
+                             int max_inputs_in_summary = -1);
+std::string SummarizeAttrs(const NodeDef& node_def);
+std::string SummarizeAttrsHelper(AttrSlice attrs, StringPiece device);
 
 // Produces a formatted string pattern from the node which can uniquely identify
 // this node upstream to produce an informative error message. The pattern
 // followed is: {{node <node_name>}}
-string FormatNodeDefForError(const NodeDef& node_def);
-string FormatNodeDefForError(
+std::string FormatNodeDefForError(const NodeDef& node_def);
+std::string FormatNodeDefForError(
     StringPiece node_name, bool has_experimental_debug_info,
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info);
 
@@ -148,7 +149,7 @@ class AttrSlice {
   // Returns the attr with attr_name if found.  Otherwise, returns
   // nullptr.
   const AttrValue* Find(StringPiece attr_name) const;
-  const AttrValue* FindByString(const string& attr_name) const;
+  const AttrValue* FindByString(const std::string& attr_name) const;
 
   // Returns the attr_value for attr_name if found. Otherwise, returns a
   // NotFound status.
@@ -157,8 +158,8 @@ class AttrSlice {
   // Helper class to avoid allocations in EqualAttrs.
   // TODO(irving): Will go away once NodeInfo is used.
   struct Scratch {
-    string a;
-    string b;
+    std::string a;
+    std::string b;
   };
 
   // Check if all attrs and attr values match.  Does not take defaults into
@@ -175,13 +176,13 @@ class AttrSlice {
   // If this AttrSlice has an attached NodeDef, summarize it.  This is for
   // error messages only: we intentionally do not provide direct access to the
   // NodeDef, since it is not always there.
-  string SummarizeNode() const;
+  std::string SummarizeNode() const;
 
   // Iteration over all attrs
   AttrValueMap::const_iterator begin() const { return attrs_->begin(); }
   AttrValueMap::const_iterator end() const { return attrs_->end(); }
 
-  string DebugString() const;
+  std::string DebugString() const;
 
  private:
   const NodeDef* ndef_;
@@ -195,7 +196,7 @@ bool HasNodeAttr(const NodeDef& node_def, StringPiece attr_name);
 // attr with attr_name is found in node_def, or the attr does not have
 // a matching type, a non-ok status will be returned.
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
-                   string* value);  // type: "string"
+                   std::string* value);  // type: "string"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    tstring* value);  // type: "tstring"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
@@ -266,7 +267,7 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
 // attr with attr_name is found in node_def, or the attr does not have
 // a matching type, false is returned.
 bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
-                    string* value);  // type: "string"
+                    std::string* value);  // type: "string"
 bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                     int64* value);  // type: "int"
 bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
@@ -309,7 +310,8 @@ bool TryGetNodeAttr(
 // If no attr with attr_name is found in node_def, or the attr does not have
 // a matching type, a reference to an empty string is returned.
 // REQUIRES: Must not use the returned value beyond the lifetime of node_def.
-const string& GetNodeAttrString(const AttrSlice& attrs, StringPiece attr_name);
+const std::string& GetNodeAttrString(const AttrSlice& attrs,
+                                     StringPiece attr_name);
 
 // Specialization to parse an attribute directly into a Padding enum.
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
@@ -390,6 +392,13 @@ Status AttachDef(const Status& status, const NodeDef& node_def,
 Status AddPrefixAndSuffixToNode(StringPiece prefix, StringPiece suffix,
                                 NodeDef* node_def,
                                 bool uniquify_frame_name = true);
+
+// Appends the given prefix to the colocation group name if the name exists
+// in `to_match`.
+Status MaybeAddPrefixToColocationConstraints(
+    const std::unordered_set<string>& match, StringPiece prefix,
+    NodeDef* node_def);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_NODE_DEF_UTIL_H_

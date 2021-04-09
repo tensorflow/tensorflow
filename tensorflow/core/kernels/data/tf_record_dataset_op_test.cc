@@ -126,7 +126,7 @@ TFRecordDatasetParams TFRecordDatasetParams3() {
       absl::StrCat(testing::TmpDir(), "/tf_record_UNCOMPRESSED_2")};
   std::vector<std::vector<string>> contents = {{"1", "22", "333"},
                                                {"a", "bb", "ccc"}};
-  CompressionType compression_type = CompressionType::GZIP;
+  CompressionType compression_type = CompressionType::UNCOMPRESSED;
   if (!CreateTestFiles(filenames, contents, compression_type).ok()) {
     VLOG(WARNING) << "Failed to create the test files: "
                   << absl::StrJoin(filenames, ", ");
@@ -153,6 +153,44 @@ std::vector<GetNextTestCase<TFRecordDatasetParams>> GetNextTestCases() {
 
 ITERATOR_GET_NEXT_TEST_P(TFRecordDatasetOpTest, TFRecordDatasetParams,
                          GetNextTestCases())
+
+std::vector<SkipTestCase<TFRecordDatasetParams>> SkipTestCases() {
+  return {{/*dataset_params=*/TFRecordDatasetParams1(),
+           /*num_to_skip*/ 2, /*expected_num_skipped*/ 2, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<tstring>(TensorShape({}), {{"333"}})},
+          {/*dataset_params=*/TFRecordDatasetParams1(),
+           /*num_to_skip*/ 4, /*expected_num_skipped*/ 4, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<tstring>(TensorShape({}), {{"bb"}})},
+          {/*dataset_params=*/TFRecordDatasetParams1(),
+           /*num_to_skip*/ 7, /*expected_num_skipped*/ 6},
+
+          {/*dataset_params=*/TFRecordDatasetParams2(),
+           /*num_to_skip*/ 2, /*expected_num_skipped*/ 2, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<tstring>(TensorShape({}), {{"333"}})},
+          {/*dataset_params=*/TFRecordDatasetParams2(),
+           /*num_to_skip*/ 4, /*expected_num_skipped*/ 4, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<tstring>(TensorShape({}), {{"bb"}})},
+          {/*dataset_params=*/TFRecordDatasetParams2(),
+           /*num_to_skip*/ 7, /*expected_num_skipped*/ 6},
+
+          {/*dataset_params=*/TFRecordDatasetParams3(),
+           /*num_to_skip*/ 2, /*expected_num_skipped*/ 2, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<tstring>(TensorShape({}), {{"333"}})},
+          {/*dataset_params=*/TFRecordDatasetParams3(),
+           /*num_to_skip*/ 4, /*expected_num_skipped*/ 4, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<tstring>(TensorShape({}), {{"bb"}})},
+          {/*dataset_params=*/TFRecordDatasetParams3(),
+           /*num_to_skip*/ 7, /*expected_num_skipped*/ 6}};
+}
+
+ITERATOR_SKIP_TEST_P(TFRecordDatasetOpTest, TFRecordDatasetParams,
+                     SkipTestCases())
 
 TEST_F(TFRecordDatasetOpTest, DatasetNodeName) {
   auto dataset_params = TFRecordDatasetParams1();

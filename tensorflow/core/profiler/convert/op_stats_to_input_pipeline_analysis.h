@@ -59,7 +59,7 @@ BottleneckAnalysis ComputeBottleneckAnalysis(
         any_step_details);
 
 InputPipelineAnalysisResult ConvertOpStatsToInputPipelineAnalysis(
-    const OpStats& op_stats, const HardwareType& hardware_type);
+    const OpStats& op_stats);
 
 // Returns true if explanation for "All Others" time is also included in
 // input_statement.

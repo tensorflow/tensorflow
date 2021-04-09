@@ -272,6 +272,7 @@ struct NnApi {
    *
    * See {@link ANeuralNetworksModel} for information on multithreaded usage.
    *
+   * @return ANEURALNETWORKS_NO_ERROR if successful.
    */
   int (*ANeuralNetworksModel_identifyInputsAndOutputs)(
       ANeuralNetworksModel* model, uint32_t inputCount, const uint32_t* inputs,
@@ -298,6 +299,8 @@ struct NnApi {
    * Available since API level 28.
    *
    * See {@link ANeuralNetworksModel} for information on multithreaded usage.
+   *
+   * @return ANEURALNETWORKS_NO_ERROR if successful.
    */
   int (*ANeuralNetworksModel_relaxComputationFloat32toFloat16)(
       ANeuralNetworksModel* model, bool allow);

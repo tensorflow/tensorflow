@@ -19,24 +19,6 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-
-#define DEFINE_TYPE(T)                        \
-  template struct Tile<SYCLDevice, T, int32>; \
-  template struct Tile<SYCLDevice, T, int64>;
-
-TF_CALL_bool(DEFINE_TYPE);
-TF_CALL_float(DEFINE_TYPE);
-TF_CALL_bfloat16(DEFINE_TYPE);
-TF_CALL_double(DEFINE_TYPE);
-TF_CALL_uint8(DEFINE_TYPE);
-TF_CALL_int32(DEFINE_TYPE);
-TF_CALL_int16(DEFINE_TYPE);
-TF_CALL_int64(DEFINE_TYPE);
-
-#undef DEFINE_TYPE
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace functor
 }  // end namespace tensorflow

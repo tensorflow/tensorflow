@@ -93,9 +93,14 @@ void FillFn(Tensor* tensor, std::function<T(int)> fn) {
   for (int i = 0; i < flat.size(); ++i) flat(i) = fn(i);
 }
 
-// Expects "x" and "y" are tensors of the same type, same shape, and
-// identical values (within 4 ULPs for floating point types).
-void ExpectEqual(const Tensor& x, const Tensor& y);
+// Expects "x" and "y" are tensors of the same type, same shape, and identical
+// values (within 4 ULPs for floating point types unless explicitly disabled).
+enum class Tolerance {
+  kNone,
+  kDefault,
+};
+void ExpectEqual(const Tensor& x, const Tensor& y,
+                 Tolerance t = Tolerance ::kDefault);
 
 // Expects "x" and "y" are tensors of the same (floating point) type,
 // same shape and element-wise difference between x and y is no more
@@ -105,7 +110,7 @@ void ExpectClose(const Tensor& x, const Tensor& y, double atol = -1.0,
                  double rtol = -1.0);
 
 // Expects "x" and "y" are tensors of the same type T, same shape, and
-// equal equal values. Consider using ExpectEqual above instead.
+// equal values. Consider using ExpectEqual above instead.
 template <typename T>
 void ExpectTensorEqual(const Tensor& x, const Tensor& y) {
   EXPECT_EQ(x.dtype(), DataTypeToEnum<T>::value);

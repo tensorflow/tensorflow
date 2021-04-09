@@ -29,9 +29,9 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_info.pb.h"
@@ -61,6 +61,10 @@ class ImportQuantStatsPass
       : op_to_name_(op_to_name) {}
 
   void runOnFunction() override;
+
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<quant::QuantizationDialect>();
+  }
 
   // Parses the serialized quant stats protobuf and initialize the internal
   // data structure. This method must be called after the pass is created.
@@ -173,7 +177,7 @@ void ImportQuantStatsPass::runOnFunction() {
   OpBuilder builder(func);
 
   func.walk([&](Operation *op) {
-    if (op->isKnownTerminator()) return;
+    if (op->hasTrait<OpTrait::IsTerminator>()) return;
     auto op_name = op_to_name_(op);
 
     // Check the named info collection first.

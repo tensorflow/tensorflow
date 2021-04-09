@@ -150,7 +150,11 @@ std::pair<xla::XlaOp, xla::XlaOp> CrossEntropyWithLogits(
   // along classes
   // (The subtraction broadcasts along the batch dimension.)
   auto sub = xla::Sub(shifted_logits, log_sum_exp, {kBatchDim});
-  auto mul = xla::Mul(xla::Neg(labels), sub);
+  // Make sure the multiplication doesn't result in -inf * 0.
+  auto safe_sub = xla::Select(xla::Eq(labels, xla::ZerosLike(labels)),
+                              xla::ZerosLike(sub), sub);
+  auto mul = xla::Mul(xla::Neg(labels), safe_sub);
+
   auto sum = xla::Reduce(XlaHelpers::ConvertElementType(mul, accumulation_type),
                          XlaHelpers::Zero(b, accumulation_type),
                          *ctx->GetOrCreateAdd(accumulation_type), {kClassDim});

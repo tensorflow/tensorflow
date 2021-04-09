@@ -72,7 +72,8 @@ class DeviceSet {
   void ForEach(FnTy func) const {
     // This is really a poor man's iterator, we should consider writing a proper
     // iterator if this ends up being used widely.
-    for (int word_index = 0; word_index < storage_.size(); word_index++) {
+    for (int word_index = 0, end = storage_.size(); word_index < end;
+         word_index++) {
       uint64 word = storage_[word_index];
       while (word != 0) {
         uint64 only_lowest_bit_set = word & -word;

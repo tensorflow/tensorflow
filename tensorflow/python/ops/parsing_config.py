@@ -448,9 +448,10 @@ class _ParseOpParams(object):
       for key in sorted(features.keys()):
         feature = features[key]
         if not isinstance(feature, tuple(types)):
-          raise ValueError("Unsupported %s %s." %
-                           (type(feature).__name__, feature))
+          raise ValueError("Unsupported %s %s for key '%s')." %
+                           (type(feature).__name__, feature, key))
         params._add_feature(key, feature)  # pylint: disable=protected-access
+    params._validate()  # pylint: disable=protected-access
     return params
 
   @property

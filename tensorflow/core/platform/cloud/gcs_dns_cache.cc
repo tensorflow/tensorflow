@@ -64,7 +64,7 @@ GcsDnsCache::GcsDnsCache(Env* env, int64 refresh_rate_secs)
     : env_(env), refresh_rate_secs_(refresh_rate_secs) {}
 
 void GcsDnsCache::AnnotateRequest(HttpRequest* request) {
-  // TODO(saeta): Blacklist failing IP addresses.
+  // TODO(saeta): Denylist failing IP addresses.
   mutex_lock l(mu_);
   if (!started_) {
     VLOG(1) << "Starting GCS DNS cache.";

@@ -19,23 +19,12 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_ATTRIBUTES_H_
 
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 
 namespace mlir {
 namespace TF {
-
-namespace AttrKind {
-
-// List of supported custom TensorFlow Attribute kinds, necessary for
-// isa/dyn_cast.
-enum Kind {
-  FIRST_USED_TENSORFLOW_ATTR = Attribute::FIRST_TENSORFLOW_ATTR,
-  SHAPE = FIRST_USED_TENSORFLOW_ATTR,
-  FUNC,
-  LAST_USED_TENSORFLOW_ATTR,
-};
-
-}  // namespace AttrKind
 
 namespace detail {
 
@@ -56,6 +45,9 @@ class ShapeAttr : public Attribute::AttrBase<ShapeAttr, Attribute,
   static ShapeAttr get(mlir::MLIRContext* context,
                        llvm::Optional<ArrayRef<int64_t>> shape);
 
+  // Get or create a shape attribute from a ShapedType type.
+  static ShapeAttr get(mlir::MLIRContext* context, ShapedType shaped_type);
+
   llvm::Optional<ArrayRef<int64_t>> getValue() const;
 
   bool hasRank() const;
@@ -70,8 +62,6 @@ class ShapeAttr : public Attribute::AttrBase<ShapeAttr, Attribute,
   // have static shape. If all dimensions have known size (>= 0), it has static
   // shape.
   bool hasStaticShape() const;
-
-  static bool kindof(unsigned kind) { return kind == AttrKind::SHAPE; }
 };
 
 // Custom attribute to model AttrValue.value.func (NameAttrList type attribute).
@@ -97,8 +87,6 @@ class FuncAttr
   SymbolRefAttr GetName() const;
 
   DictionaryAttr GetAttrs() const;
-
-  static bool kindof(unsigned kind) { return kind == AttrKind::FUNC; }
 };
 
 }  // namespace TF

@@ -187,7 +187,7 @@ def _SumGrad(op, grad):
 
           # Compute and cache `output_shape_kept_dims` and `tile_scaling`.
           def EvaluateAsTuple(t):
-            if tensor_util.is_tensor(t):
+            if tensor_util.is_tf_type(t):
               value = c_api.TF_TryEvaluateConstant_wrapper(
                   t.graph._c_graph, t._as_tf_output())  # pylint: disable=protected-access
               assert value is not None
@@ -297,7 +297,7 @@ def _ProdGrad(op, grad):
     reduction_indices = (reduction_indices + rank) % rank
     reduced = math_ops.cast(reduction_indices, dtypes.int32)
     idx = math_ops.range(0, rank)
-    other, _ = array_ops.setdiff1d(idx, reduced)
+    other, _ = gen_array_ops.list_diff(idx, reduced, dtypes.int32)
     perm = array_ops.concat([reduced, other], 0)
     reduced_num = math_ops.reduce_prod(array_ops.gather(input_shape, reduced))
     other_num = math_ops.reduce_prod(array_ops.gather(input_shape, other))
@@ -330,9 +330,10 @@ def _SegmentMeanGrad(op, grad):
   input_rank = array_ops.rank(op.inputs[0])
   ones_shape = array_ops.concat([
       array_ops.shape(op.inputs[1]),
-      array_ops.fill(array_ops.expand_dims(input_rank - 1, 0), 1)
+      array_ops.ones(
+          array_ops.expand_dims(input_rank - 1, 0), dtype=dtypes.int32)
   ], 0)
-  ones = array_ops.fill(ones_shape, constant_op.constant(1, dtype=grad.dtype))
+  ones = array_ops.ones(ones_shape, dtype=grad.dtype)
   scaled_grad = math_ops.divide(grad, math_ops.segment_sum(ones, op.inputs[1]))
   return array_ops.gather(scaled_grad, op.inputs[1]), None
 
@@ -412,6 +413,46 @@ def _SegmentMinGrad(op, grad):
 def _SegmentMaxGrad(op, grad):
   """Gradient for SegmentMax."""
   return _SegmentMinOrMaxGrad(op, grad)
+
+
+@ops.RegisterGradient("SegmentProd")
+def _SegmentProdGrad(op, grad):
+  """Gradient for SegmentProd.
+
+  The gradient can be expressed for each segment by dividing the segment's
+  product by each element of the segment input tensor, but this approach can't
+  deal with zeros in the input.
+  Unlike reduce_prod we can't use cumsum here as individual segments may have
+  a different number of elements. Therefore we consider three cases:
+  1) A segment input contains no zeros and we can safely divide by the input
+     tensor.
+  2) A segment contains exactly one zero. Then the gradient of each input of
+     the segment is zero except for the 0-input, there the gradient is
+     the product of the remaining segment entries.
+  3) A segment contains at least two zeros. The gradient is zero for all
+     segment inputs.
+  """
+  data = op.inputs[0]
+  segment_ids = op.inputs[1]
+  is_zero = math_ops.equal(data, 0)
+  num_zeros = gen_math_ops.segment_sum(
+      math_ops.cast(is_zero, dtype=dtypes.int32), segment_ids)
+  # handle case 3 and set the gradient to 0 for segments with more than one
+  # 0 as input
+  grad = array_ops.where_v2(
+      math_ops.greater(num_zeros, 1), array_ops.zeros_like(grad), grad)
+  # replace all zeros with ones and compute the segment_prod
+  non_zero_data = array_ops.where_v2(is_zero, array_ops.ones_like(data), data)
+  non_zero_prod = gen_math_ops.segment_prod(non_zero_data, segment_ids)
+  gathered_prod = array_ops.gather(op.outputs[0], segment_ids)
+  gathered_non_zero_prod = array_ops.gather(non_zero_prod, segment_ids)
+  prod_divided_by_el = gathered_prod / non_zero_data
+  # Now fetch the individual results for segments containing 0 and those that
+  # don't.
+  partial_derivative = array_ops.where_v2(is_zero, gathered_non_zero_prod,
+                                          prod_divided_by_el)
+  gathered_grad = array_ops.gather(grad, segment_ids)
+  return gathered_grad * partial_derivative, None
 
 
 def _GatherDropNegatives(params,
@@ -1138,7 +1179,7 @@ def _SigmoidGradGrad(op, grad):
 def _SignGrad(op, _):
   """Returns 0."""
   x = op.inputs[0]
-  return array_ops.zeros(array_ops.shape(x), dtype=x.dtype)
+  return array_ops.zeros_like(x)
 
 
 @ops.RegisterGradient("Sin")
@@ -1520,11 +1561,9 @@ def _MaximumMinimumGrad(op, grad, selector_op):
     # No gradient skipping, so do the full gradient computation
     pass
   x = op.inputs[0]
-  gdtype = grad.dtype
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
-  gradshape = array_ops.shape(grad)
-  zeros = array_ops.zeros(gradshape, gdtype)
+  zeros = array_ops.zeros_like(grad)
   xmask = selector_op(x, y)
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   if skip_input_indices is not None and 0 in skip_input_indices:
@@ -1805,6 +1844,7 @@ def _BatchMatMul(op, grad):
 
 
 @ops.RegisterGradient("BatchMatMulV2")
+@ops.RegisterGradient("BatchMatMulV3")
 def _BatchMatMulV2(op, grad):
   """Returns the gradient of x and y given the gradient of x * y."""
   x = op.inputs[0]
@@ -1827,18 +1867,25 @@ def _BatchMatMulV2(op, grad):
       grad_x = math_ops.matmul(y, grad, adjoint_a=True, adjoint_b=True)
       grad_y = math_ops.matmul(grad, x, adjoint_a=True, adjoint_b=True)
 
-  # Reduce along the broadcasted batch dimensions, if broadcasting is required.
+  # Possibly reduce along the broadcasted batch dimensions, if broadcasting
+  # is required.
   shape_x_static = x.get_shape()
   shape_y_static = y.get_shape()
-  if not (shape_x_static.is_fully_defined() and
-          shape_y_static.is_fully_defined() and
-          shape_x_static == shape_y_static):
-    sx = array_ops.shape(x)
-    sy = array_ops.shape(y)
-    rx, ry = gen_array_ops.broadcast_gradient_args(sx[:-2], sy[:-2])
-    grad_x = array_ops.reshape(math_ops.reduce_sum(grad_x, rx), sx)
-    grad_y = array_ops.reshape(math_ops.reduce_sum(grad_y, ry), sy)
+  output_may_have_non_empty_batch_shape = (
+      (shape_x_static.rank is None or shape_x_static.rank > 2) or
+      (shape_y_static.rank is None or shape_y_static.rank > 2))
+  batch_shapes_match = (
+      shape_x_static[:-2].is_fully_defined() and
+      shape_y_static[:-2].is_fully_defined() and
+      shape_x_static[:-2] == shape_y_static[:-2])
+  if (not output_may_have_non_empty_batch_shape) or batch_shapes_match:
+    return grad_x, grad_y
 
+  sx = array_ops.shape(x)
+  sy = array_ops.shape(y)
+  rx, ry = gen_array_ops.broadcast_gradient_args(sx[:-2], sy[:-2])
+  grad_x = array_ops.reshape(math_ops.reduce_sum(grad_x, rx), sx)
+  grad_y = array_ops.reshape(math_ops.reduce_sum(grad_y, ry), sy)
   return grad_x, grad_y
 
 
@@ -1940,11 +1987,10 @@ def _CumprodGrad(op, grad):
   exclusive = op.get_attr("exclusive")
   reverse = op.get_attr("reverse")
 
-  # TODO This fails when x contains 0 and should be fixed
   prod = math_ops.cumprod(x, axis, exclusive=exclusive, reverse=reverse)
   out = math_ops.cumsum(
       prod * grad, axis, exclusive=exclusive, reverse=not reverse)
-  return [out / x, None]
+  return [math_ops.div_no_nan(out, x), None]
 
 
 @ops.RegisterGradient("CumulativeLogsumexp")

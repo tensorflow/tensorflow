@@ -39,7 +39,9 @@ template <class T, EnableIfDerivedFromHlo<T>* = nullptr>
 const T* Cast(const HloInstruction* instruction) {
   CHECK(instruction != nullptr);
   const T* casted = dynamic_cast<const T*>(instruction);
-  CHECK(casted != nullptr);
+  CHECK(casted != nullptr)
+      << "Invalid HloInstruction casting. Destination Type: "
+      << typeid(T).name();
   return casted;
 }
 

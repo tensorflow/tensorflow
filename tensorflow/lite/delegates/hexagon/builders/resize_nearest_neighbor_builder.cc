@@ -32,12 +32,6 @@ TfLiteStatus ResizeNearestNeighborOpBuilder::PopulateSubGraph(
   int tensor_id = inputs->data[0];
   const auto& input_tensor = context->tensors[tensor_id];
   AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
-  TF_LITE_ENSURE_STATUS(
-      ComputeMinAndMaxQuantValues(input_tensor, &input_min_, &input_max_));
-  auto* input_min_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&input_min_), sizeof(input_min_));
-  auto* input_max_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&input_max_), sizeof(input_max_));
 
   // Output dimensions tensor.
   tensor_id = inputs->data[1];
@@ -53,17 +47,21 @@ TfLiteStatus ResizeNearestNeighborOpBuilder::PopulateSubGraph(
   }
 
   // Min/max values for input tensor.
-  AddInput(TensorID(input_min_const->GetID(), 0));
-  AddInput(TensorID(input_max_const->GetID(), 0));
+  TF_LITE_ENSURE_STATUS(ComputeAndAddMinAndMax(context, input_tensor));
 
   // Align corners.
   const TfLiteResizeNearestNeighborParams* params =
       reinterpret_cast<const TfLiteResizeNearestNeighborParams*>(builtin_data_);
-  align_corners_ = params->align_corners;
+  int align_corners = params->align_corners ? 1 : 0;
   auto* align_corners_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&align_corners_),
-      sizeof(align_corners_));
+      kScalarShape, reinterpret_cast<char*>(&align_corners),
+      sizeof(align_corners));
   AddInput(TensorID(align_corners_const->GetID(), 0));
+  int half_pixel_centers = params->half_pixel_centers ? 1 : 0;
+  auto* half_pixel_centers_const = graph_builder_->AddConstNodeWithData(
+      kScalarShape, reinterpret_cast<char*>(&half_pixel_centers),
+      sizeof(half_pixel_centers));
+  AddInput(TensorID(half_pixel_centers_const->GetID(), 0));
 
   // Hexagon outputs for this node.
   int output_batch_size, output_height_size, output_width_size,

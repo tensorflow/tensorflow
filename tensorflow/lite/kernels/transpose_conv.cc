@@ -21,12 +21,11 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
-#include "tensorflow/lite/kernels/eigen_support.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-// NOLINTNEXTLINE - This header file should't go to the top.
+// NOLINTNEXTLINE - This header file shouldn't go to the top.
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/transpose_conv.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
-// NOLINTNEXTLINE - This header file should't go to the top.
+// NOLINTNEXTLINE - This header file shouldn't go to the top.
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/transpose_conv.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -81,8 +80,6 @@ struct OpData {
   int output_shift;
 
   // Per channel output multiplier and shift.
-  // TODO(b/144846950): Add channel dimension index for the kernel to be more
-  // flexible.
   std::vector<int32_t> per_channel_output_multiplier;
   std::vector<int32_t> per_channel_output_shift;
 
@@ -96,13 +93,10 @@ struct OpData {
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  auto* data = new OpData;
-  eigen_support::IncrementUsageCounter(context);
-  return data;
+  return new OpData;
 }
 
 void Free(TfLiteContext* context, void* buffer) {
-  eigen_support::DecrementUsageCounter(context);
   delete reinterpret_cast<OpData*>(buffer);
 }
 
@@ -208,7 +202,7 @@ TfLiteStatus ResizeAndTransposeWeights(TfLiteContext* context,
   TF_LITE_ENSURE_STATUS(context->ResizeTensor(context, transposed_weights,
                                               transposed_weights_shape_array));
 
-  // Transpose the weights from from OHWI order to HWOI order.
+  // Transpose the weights from OHWI order to HWOI order.
   TransposeParams transpose_params;
   transpose_params.perm_count = 4;
   transpose_params.perm[0] = 1;
@@ -254,13 +248,20 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   // Retrieve tensors
-  const TfLiteTensor* output_shape =
-      GetInput(context, node, kOutputShapeTensor);
-  const TfLiteTensor* weights = GetInput(context, node, kWeightsTensor);
-  const TfLiteTensor* input = GetInput(context, node, kDataInputTensor);
+  const TfLiteTensor* output_shape;
+  TF_LITE_ENSURE_OK(
+      context, GetInputSafe(context, node, kOutputShapeTensor, &output_shape));
+  const TfLiteTensor* weights;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kWeightsTensor, &weights));
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kDataInputTensor, &input));
   const TfLiteTensor* bias = nullptr;
 
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   // Tensor sanity checks
   TF_LITE_ENSURE_EQ(context, NumDimensions(output_shape), 1);
@@ -310,7 +311,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* col2im = nullptr;
   if (data->has_col2im) {
     node->temporaries->data[data->col2im_index] = data->col2im_id;
-    col2im = GetTemporary(context, node, user_data->col2im_index);
+    TF_LITE_ENSURE_OK(
+        context,
+        GetTemporarySafe(context, node, user_data->col2im_index, &col2im));
   }
 
   if (!IsConstantTensor(output_shape)) {
@@ -330,8 +333,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   if (data->weights_are_transposed) {
     node->temporaries->data[data->transposed_weights_index] =
         data->transposed_weights_id;
-    TfLiteTensor* transposed_weights =
-        GetTemporary(context, node, user_data->transposed_weights_index);
+    TfLiteTensor* transposed_weights;
+    TF_LITE_ENSURE_OK(
+        context,
+        GetTemporarySafe(context, node, user_data->transposed_weights_index,
+                         &transposed_weights));
     if (!IsConstantTensor(weights)) {
       SetTensorToDynamic(transposed_weights);
     } else {
@@ -343,8 +349,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       input->type == kTfLiteInt16) {
     node->temporaries->data[data->scratch_tensor_index] =
         data->scratch_tensor_id;
-    TfLiteTensor* scratch_buffer =
-        GetTemporary(context, node, data->scratch_tensor_index);
+    TfLiteTensor* scratch_buffer;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, data->scratch_tensor_index,
+                                  &scratch_buffer));
     if (input->type == kTfLiteInt16) {
       scratch_buffer->type = kTfLiteInt64;
     } else {
@@ -364,17 +372,20 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     const auto* affine_quantization =
         reinterpret_cast<TfLiteAffineQuantization*>(
             weights->quantization.params);
+    const int channels_out = weights->dims->data[0];
     TF_LITE_ENSURE(context, affine_quantization);
     TF_LITE_ENSURE(context, affine_quantization->scale);
-    const int number_channel = affine_quantization->scale->size;
-    data->per_channel_output_multiplier.resize(number_channel);
-    data->per_channel_output_shift.resize(number_channel);
+    TF_LITE_ENSURE(context, (affine_quantization->scale->size == 1 ||
+                             affine_quantization->scale->size == channels_out));
+
+    data->per_channel_output_multiplier.resize(channels_out);
+    data->per_channel_output_shift.resize(channels_out);
     TF_LITE_ENSURE_STATUS(tflite::PopulateConvolutionQuantizationParams(
         context, input, weights, bias, output, kTfLiteActNone,
         &data->output_multiplier, &data->output_shift,
         &data->output_activation_min, &data->output_activation_max,
         data->per_channel_output_multiplier.data(),
-        data->per_channel_output_shift.data()));
+        data->per_channel_output_shift.data(), channels_out));
   }
 
   return kTfLiteOk;
@@ -553,15 +564,22 @@ void EvalQuantizedPerChannel16x8(
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Retrieve tensors (All should be allocated by now)
-  const TfLiteTensor* output_shape =
-      GetInput(context, node, kOutputShapeTensor);
-  const TfLiteTensor* weights = GetInput(context, node, kWeightsTensor);
-  const TfLiteTensor* input = GetInput(context, node, kDataInputTensor);
+  const TfLiteTensor* output_shape;
+  TF_LITE_ENSURE_OK(
+      context, GetInputSafe(context, node, kOutputShapeTensor, &output_shape));
+  const TfLiteTensor* weights;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kWeightsTensor, &weights));
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kDataInputTensor, &input));
   const TfLiteTensor* bias =
       (NumInputs(node) == 4)
           ? GetOptionalInputTensor(context, node, kBiasTensor)
           : nullptr;
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
   TfLiteTensor* col2im = data->has_col2im
                              ? GetTemporary(context, node, data->col2im_index)
@@ -608,8 +626,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
     case kTfLiteUInt8: {
-      TfLiteTensor* scratch_buffer =
-          GetTemporary(context, node, data->scratch_tensor_index);
+      TfLiteTensor* scratch_buffer;
+      TF_LITE_ENSURE_OK(
+          context, GetTemporarySafe(context, node, data->scratch_tensor_index,
+                                    &scratch_buffer));
       if (IsDynamicTensor(scratch_buffer)) {
         TF_LITE_ENSURE_OK(context,
                           ResizeTensor(context, output_shape, scratch_buffer));
@@ -625,8 +645,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
     case kTfLiteInt8: {
-      TfLiteTensor* scratch_buffer =
-          GetTemporary(context, node, data->scratch_tensor_index);
+      TfLiteTensor* scratch_buffer;
+      TF_LITE_ENSURE_OK(
+          context, GetTemporarySafe(context, node, data->scratch_tensor_index,
+                                    &scratch_buffer));
       if (IsDynamicTensor(scratch_buffer)) {
         TF_LITE_ENSURE_OK(context,
                           ResizeTensor(context, output_shape, scratch_buffer));
@@ -640,8 +662,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
     case kTfLiteInt16: {
-      TfLiteTensor* scratch_buffer =
-          GetTemporary(context, node, data->scratch_tensor_index);
+      TfLiteTensor* scratch_buffer;
+      TF_LITE_ENSURE_OK(
+          context, GetTemporarySafe(context, node, data->scratch_tensor_index,
+                                    &scratch_buffer));
       if (IsDynamicTensor(scratch_buffer)) {
         TF_LITE_ENSURE_OK(context,
                           ResizeTensor(context, output_shape, scratch_buffer));

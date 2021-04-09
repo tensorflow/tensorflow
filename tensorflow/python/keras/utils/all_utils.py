@@ -18,10 +18,6 @@ This module is used as a shortcut to access all the symbols. Those symbols was
 exposed under __init__, and was causing some hourglass import issue.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=unused-import
 from tensorflow.python.keras.utils.data_utils import GeneratorEnqueuer
 from tensorflow.python.keras.utils.data_utils import get_file
@@ -34,15 +30,9 @@ from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import get_custom_objects
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
-from tensorflow.python.keras.utils.io_utils import HDF5Matrix
-from tensorflow.python.keras.utils.layer_utils import convert_all_kernels_in_model
 from tensorflow.python.keras.utils.layer_utils import get_source_inputs
 from tensorflow.python.keras.utils.multi_gpu_utils import multi_gpu_model
 from tensorflow.python.keras.utils.np_utils import normalize
 from tensorflow.python.keras.utils.np_utils import to_categorical
 from tensorflow.python.keras.utils.vis_utils import model_to_dot
 from tensorflow.python.keras.utils.vis_utils import plot_model
-
-del absolute_import
-del division
-del print_function

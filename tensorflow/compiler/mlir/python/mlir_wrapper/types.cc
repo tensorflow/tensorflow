@@ -13,18 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/python/mlir_wrapper/mlir_wrapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 void init_types(py::module& m) {
   // Type
   py::class_<mlir::Type> Type(m, "Type");
-  Type.def("getKind", &mlir::Type::getKind);
-
-  // Type Enums
-  py::enum_<mlir::StandardTypes::Kind>(Type, "StandardTypes_Kind")
-      .value("BF16", mlir::StandardTypes::BF16);
 
   // Type Sub-classes
   py::class_<mlir::FunctionType, mlir::Type>(m, "FunctionType")
@@ -32,11 +27,16 @@ void init_types(py::module& m) {
            [](mlir::FunctionType& ft) { return ft.getResults().vec(); });
 
   py::class_<mlir::FloatType, mlir::Type>(m, "FloatType")
-      .def("get", &mlir::FloatType::get);
+      .def("getBF16", &mlir::FloatType::getBF16)
+      .def("getF16", &mlir::FloatType::getF16)
+      .def("getF32", &mlir::FloatType::getF32)
+      .def("getF64", &mlir::FloatType::getF64);
 
   py::class_<mlir::IntegerType, mlir::Type>(m, "IntegerType")
-      .def("get", py::overload_cast<unsigned, mlir::MLIRContext*>(
-                      &mlir::IntegerType::get));
+      .def("get", [](mlir::MLIRContext* context, unsigned width) {
+        return mlir::IntegerType::get(context, width,
+                                      mlir::IntegerType::Signless);
+      });
 
   py::class_<mlir::UnrankedTensorType, mlir::Type>(m, "UnrankedTensorType")
       .def("get", &mlir::UnrankedTensorType::get);

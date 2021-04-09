@@ -19,6 +19,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -71,8 +73,7 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
 // Runs loaded kernel on the stream with the provided arguments.
 Status ExecuteKernelOnStream(const se::KernelBase& kernel,
                              absl::Span<const se::DeviceMemoryBase> args,
-                             int64 threads_per_block, int64 block_count,
-                             se::Stream* stream);
+                             const LaunchDimensions& dims, se::Stream* stream);
 
 // Create GpuAsmOpts out of HloModuleConfig.
 se::GpuAsmOpts PtxOptsFromConfig(const HloModuleConfig& hlo_module_config);
@@ -85,6 +86,10 @@ se::GpuAsmOpts PtxOptsFromConfig(const HloModuleConfig& hlo_module_config);
 // initialized to zero on the first use.
 void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
                       int64* rng_state, se::DeviceMemoryBase buffer);
+
+StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
+    CudnnConvKind kind);
+StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(PrimitiveType type);
 
 }  // namespace gpu
 }  // namespace xla

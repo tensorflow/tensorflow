@@ -15,13 +15,17 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_ESTIMATORS_ARITHMETIC_COUNT_UTIL_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_ESTIMATORS_ARITHMETIC_COUNT_UTIL_H_
 
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+
 // For add/mul/div/sub and other broadcastable ops.
 class ArithmeticCountUtilHelper {
  public:
   static bool GetArithmeticCountForBroadcastableOp(mlir::Operation* op,
                                                    int64_t* count) {
     auto output = op->getResult(0);
-    auto output_type = output.getType().dyn_cast_or_null<RankedTensorType>();
+    auto output_type =
+        output.getType().dyn_cast_or_null<mlir::RankedTensorType>();
     if (!output_type || !output_type.hasStaticShape()) return false;
 
     *count = output_type.getNumElements();
@@ -31,7 +35,8 @@ class ArithmeticCountUtilHelper {
   static bool GetInputTensorTotalSize(mlir::Operation* op, int64_t* count) {
     int64_t total_count = 0;
     for (auto input : op->getOperands()) {
-      auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
+      auto input_type =
+          input.getType().dyn_cast_or_null<mlir::RankedTensorType>();
       if (!input_type || !input_type.hasStaticShape()) {
         return false;
       }
@@ -43,14 +48,16 @@ class ArithmeticCountUtilHelper {
 
   // For conv2d/depthwise_conv/fully_connected ops.
   // This algorithm actually comes from TOCO tooling_util.cc
-  static bool GetArithmeticCountForConvAndFullyconnectedOp(Operation* op,
+  static bool GetArithmeticCountForConvAndFullyconnectedOp(mlir::Operation* op,
                                                            int64_t* count) {
     auto weight = op->getOperand(1);
-    auto weight_type = weight.getType().dyn_cast_or_null<RankedTensorType>();
+    auto weight_type =
+        weight.getType().dyn_cast_or_null<mlir::RankedTensorType>();
     if (weight_type == nullptr || !weight_type.hasStaticShape()) return false;
 
     auto output = op->getResult(0);
-    auto output_type = output.getType().dyn_cast_or_null<RankedTensorType>();
+    auto output_type =
+        output.getType().dyn_cast_or_null<mlir::RankedTensorType>();
     if (output_type == nullptr || !output_type.hasStaticShape()) return false;
 
     int64_t cols = 1;
@@ -63,7 +70,8 @@ class ArithmeticCountUtilHelper {
 
     auto bias = op->getOperand(2);
     if (bias) {
-      auto bias_type = bias.getType().dyn_cast_or_null<RankedTensorType>();
+      auto bias_type =
+          bias.getType().dyn_cast_or_null<mlir::RankedTensorType>();
       if (bias_type && bias_type.hasStaticShape()) {
         *count += bias_type.getNumElements();
       }

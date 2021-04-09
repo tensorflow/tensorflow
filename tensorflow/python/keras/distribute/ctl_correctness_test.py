@@ -12,12 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Custom Training Loop correctness test.
-"""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Custom Training Loop correctness test."""
 
 from absl.testing import parameterized
 import numpy as np
@@ -25,17 +20,20 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
+from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import reduce_util
-from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import strategy_combinations as tf_strategy_combinations
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras.distribute import optimizer_combinations
+from tensorflow.python.keras.distribute import strategy_combinations
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.platform import test
 
 _NUM_SAMPLES = 66
 _BATCH_SIZE = 32
@@ -95,8 +93,13 @@ def compute_loss(labels, logits, reg_losses):
   return scaled_loss + l2_loss
 
 
-def iteration_inside_func(initial_weights, dataset, optimizer_fn,
-                          iteration_type, strategy=None, sync_batchnorm=None):
+def iteration_inside_func(initial_weights,
+                          dataset,
+                          optimizer_fn,
+                          iteration_type,
+                          strategy=None,
+                          sync_batchnorm=None,
+                          jit_compile=False):
   """Helper function to test iterating over data inside a tf.function."""
   with MaybeStrategyScope(strategy):
     if strategy and sync_batchnorm:
@@ -112,6 +115,8 @@ def iteration_inside_func(initial_weights, dataset, optimizer_fn,
     @def_function.function
     def train_epoch(dist_input):
       """Training StepFn."""
+
+      @def_function.function(jit_compile=jit_compile)
       def step_fn(inputs):
         samples, labels = inputs
         with backprop.GradientTape() as tape:
@@ -159,8 +164,13 @@ def iteration_inside_func(initial_weights, dataset, optimizer_fn,
             training_accuracy.result())
 
 
-def iteration_outside_func(initial_weights, dataset, optimizer_fn,
-                           iteration_type, strategy=None, sync_batchnorm=None):
+def iteration_outside_func(initial_weights,
+                           dataset,
+                           optimizer_fn,
+                           iteration_type,
+                           strategy=None,
+                           sync_batchnorm=None,
+                           jit_compile=False):
   """Helper function to test iterating over data outside a tf.function."""
   with MaybeStrategyScope(strategy):
     model = get_model(sync_batchnorm=sync_batchnorm)
@@ -173,6 +183,8 @@ def iteration_outside_func(initial_weights, dataset, optimizer_fn,
     @def_function.function
     def train_step(dist_inputs):
       """Training StepFn."""
+
+      @def_function.function(jit_compile=jit_compile)
       def step_fn(inputs):
         samples, labels = inputs
         with backprop.GradientTape() as tape:
@@ -223,26 +235,55 @@ class TestDistributionStrategyDnnCorrectness(test.TestCase,
     np.random.seed(_RANDOM_SEED)
     random_seed.set_random_seed(_RANDOM_SEED)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.combine(
           distribution=strategy_combinations.all_strategies,
           optimizer_fn=optimizer_combinations.optimizers_v2,
           mode=['eager'],
           iteration_type=['iterator', 'dataset'],
           inside_func=[False, True],
-          sync_batchnorm=[True, False]
-      ))
+          sync_batchnorm=[True, False],
+          jit_compile=[False]) + combinations.combine(
+              distribution=strategy_combinations.multiworker_strategies,
+              optimizer_fn=[
+                  optimizer_combinations.gradient_descent_optimizer_keras_v2_fn,
+                  optimizer_combinations.adagrad_optimizer_keras_v2_fn
+              ],
+              mode=['eager'],
+              iteration_type=['iterator', 'dataset'],
+              inside_func=[False, True],
+              sync_batchnorm=[True, False],
+              jit_compile=[False]) +
+      combinations.combine(
+          distribution=[
+              tf_strategy_combinations.one_device_strategy_gpu,
+              tf_strategy_combinations.mirrored_strategy_with_two_gpus,
+          ],
+          optimizer_fn=[
+              optimizer_combinations.gradient_descent_optimizer_keras_v2_fn,
+              optimizer_combinations.adagrad_optimizer_keras_v2_fn
+          ],
+          mode=['eager'],
+          iteration_type=['iterator', 'dataset'],
+          inside_func=[False, True],
+          sync_batchnorm=[True, False],
+          jit_compile=[True]))
   def test_dnn_correctness_minus_tpus(self, distribution, optimizer_fn,
                                       iteration_type, inside_func,
-                                      sync_batchnorm):
+                                      sync_batchnorm, jit_compile):
     # TODO(anjs): Identify why this particular V1 optimizer needs a higher tol.
     if 'FtrlV1' in optimizer_fn._name and 'TPU' in type(distribution).__name__:
       self.skipTest('Reduced tolerance of the order of 1e-1 required.')
     self.dnn_correctness(distribution, optimizer_fn, iteration_type,
-                         inside_func, sync_batchnorm)
+                         inside_func, sync_batchnorm, jit_compile)
 
-  def dnn_correctness(self, distribution, optimizer_fn, iteration_type,
-                      inside_func, sync_batchnorm=None):
+  def dnn_correctness(self,
+                      distribution,
+                      optimizer_fn,
+                      iteration_type,
+                      inside_func,
+                      sync_batchnorm=None,
+                      jit_compile=False):
     model = get_model(sync_batchnorm)
     initial_weights = model.get_weights()
     dataset = get_data()
@@ -250,12 +291,22 @@ class TestDistributionStrategyDnnCorrectness(test.TestCase,
       iteration_func = iteration_inside_func
     else:
       iteration_func = iteration_outside_func
+
     wts_with_ds, loss_with_ds, acc_with_ds = iteration_func(
-        initial_weights, dataset, optimizer_fn, iteration_type,
-        strategy=distribution, sync_batchnorm=sync_batchnorm)
-    wts, loss, acc = iteration_func(initial_weights, dataset, optimizer_fn,
-                                    iteration_type,
-                                    sync_batchnorm=sync_batchnorm)
+        initial_weights,
+        dataset,
+        optimizer_fn,
+        iteration_type,
+        strategy=distribution,
+        sync_batchnorm=sync_batchnorm,
+        jit_compile=jit_compile)
+    wts, loss, acc = iteration_func(
+        initial_weights,
+        dataset,
+        optimizer_fn,
+        iteration_type,
+        sync_batchnorm=sync_batchnorm,
+        jit_compile=False)
 
     self.assertAllClose(wts, wts_with_ds, atol=1e-3, rtol=1e-3)
     self.assertAllClose(loss, loss_with_ds, atol=1e-3, rtol=1e-3)
@@ -263,4 +314,4 @@ class TestDistributionStrategyDnnCorrectness(test.TestCase,
 
 
 if __name__ == '__main__':
-  test.main()
+  multi_process_runner.test_main()

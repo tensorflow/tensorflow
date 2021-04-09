@@ -88,43 +88,57 @@ ClientAndPtr<T> WrapWithClient(std::shared_ptr<PyClient> client, T* contents) {
 // We use a wrapper class to add Python-specific functionality.
 class PyClient : public std::enable_shared_from_this<PyClient> {
  public:
+  explicit PyClient(std::unique_ptr<PjRtClient> pjrt_client);
   explicit PyClient(std::shared_ptr<PjRtClient> pjrt_client);
 
   PjRtClient* pjrt_client() const { return pjrt_client_.get(); }
   std::shared_ptr<PjRtClient> shared_pjrt_client() { return pjrt_client_; }
 
-  const std::string& platform_name() const {
+  absl::string_view platform_name() const {
     return pjrt_client_->platform_name();
   }
-  int local_device_count() const { return pjrt_client_->local_device_count(); }
+  absl::string_view platform_version() const {
+    return pjrt_client_->platform_version();
+  }
+  int addressable_device_count() const {
+    return pjrt_client_->addressable_device_count();
+  }
   int device_count() const { return pjrt_client_->device_count(); }
-  int host_id() const { return pjrt_client_->host_id(); }
+  int process_index() const { return pjrt_client_->process_index(); }
 
-  std::vector<ClientAndPtr<Device>> Devices();
-  std::vector<ClientAndPtr<Device>> LocalDevices();
+  std::vector<ClientAndPtr<PjRtDevice>> Devices();
+  std::vector<ClientAndPtr<PjRtDevice>> LocalDevices();
 
-  StatusOr<std::vector<std::vector<ClientAndPtr<Device>>>>
+  // Returns a vector of live PyBuffer objects. PyBuffer objects may share
+  // PjRtBuffers, so there may be duplicates of the same underlying device
+  // buffer.
+  std::vector<pybind11::object> LiveBuffers();
+
+  // TODO(zhangqiaorjc): Remove when we have transparent defragmentation.
+  Status Defragment();
+
+  StatusOr<std::vector<std::vector<ClientAndPtr<PjRtDevice>>>>
   GetDefaultDeviceAssignment(int num_replicas, int num_partitions);
 
   // TODO(skye): delete after all callers can handle 2D output
-  StatusOr<std::vector<ClientAndPtr<Device>>> GetDefaultDeviceAssignment1D(
+  StatusOr<std::vector<ClientAndPtr<PjRtDevice>>> GetDefaultDeviceAssignment1D(
       int num_replicas);
 
   StatusOr<ChannelHandle> CreateChannelHandle() {
-    return pjrt_client_->client()->CreateChannelHandle();
+    return pjrt_client_->CreateChannelHandle();
   }
   StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() {
-    return pjrt_client_->client()->CreateDeviceToHostChannelHandle();
+    return pjrt_client_->CreateDeviceToHostChannelHandle();
   }
   StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() {
-    return pjrt_client_->client()->CreateHostToDeviceChannelHandle();
+    return pjrt_client_->CreateHostToDeviceChannelHandle();
   }
 
-  StatusOr<std::unique_ptr<PyBuffer>> BufferFromPyal(
-      const pybind11::object& argument, Device* device, bool force_copy,
-      PjRtBuffer::HostBufferSemantics host_buffer_semantics);
+  StatusOr<pybind11::object> BufferFromPyval(
+      pybind11::handle argument, PjRtDevice* device, bool force_copy,
+      PjRtClient::HostBufferSemantics host_buffer_semantics);
 
-  StatusOr<std::unique_ptr<PyExecutable>> Compile(
+  StatusOr<std::shared_ptr<PyExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options);
 
   pybind11::bytes HeapProfile();

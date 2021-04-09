@@ -12,18 +12,18 @@ func @main() {
 // -----
 
 // CHECK-LABEL: func @no_args
-// CHECK-SAME: (%arg0: tensor<!tf.resource> {tf.resource_name = "x"})
+// CHECK-SAME: (%arg0: tensor<!tf.resource<tensor<f32>>> {tf.resource_name = "x"})
 // CHECK-NOT: "tf.VarHandleOp"
 func @no_args() {
-  %0 = "tf.VarHandleOp"() {container = "", shape = "tfshape$", shared_name = "x"} : () -> tensor<!tf.resource>
+  %0 = "tf.VarHandleOp"() {container = "", shape = "tfshape$", shared_name = "x"} : () -> tensor<!tf.resource<tensor<f32>>>
   return
 }
 
 // CHECK-LABEL: func @some_args
-// CHECK-SAME: (%arg0: tensor<i1>, %arg1: tensor<!tf.resource> {tf.resource_name = "x"})
+// CHECK-SAME: (%arg0: tensor<i1>, %arg1: tensor<!tf.resource<tensor<f32>>> {tf.resource_name = "x"})
 // CHECK-NOT: "tf.VarHandleOp"
 func @some_args(%arg0: tensor<i1>) {
-  %0 = "tf.VarHandleOp"() {container = "", shape = "tfshape$", shared_name = "x"} : () -> tensor<!tf.resource>
+  %0 = "tf.VarHandleOp"() {container = "", shape = "tfshape$", shared_name = "x"} : () -> tensor<!tf.resource<tensor<f32>>>
   return
 }
 

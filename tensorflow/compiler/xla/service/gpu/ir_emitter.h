@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_builder_mixin.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
@@ -76,9 +77,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   Status DefaultAction(HloInstruction* hlo) override;
   Status HandleConstant(HloInstruction* constant) override;
-  Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
-  Status HandleDot(HloInstruction* dot) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleFft(HloInstruction* fft) override;
   Status HandleAllReduce(HloInstruction* crs) override;
@@ -91,7 +90,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleParameter(HloInstruction* parameter) override;
   Status HandleTuple(HloInstruction* tuple) override;
   Status HandleScatter(HloInstruction* scatter) override;
-  Status HandleSelect(HloInstruction* select) override;
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleFusion(HloInstruction* fusion) override;
   Status HandleCall(HloInstruction* call) override;
@@ -104,6 +102,10 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status FinishVisit(HloInstruction* root) override { return Status::OK(); }
 
   llvm::IRBuilder<>* builder() { return &b_; }
+
+  // Emits constants to generated LLVM IR, and also populate related
+  // inforamtion to ir_emitter_context for large-constant initializations.
+  Status EmitConstants(const HloComputation& computation);
 
  protected:
   // Constructs an IrEmitter with the given IrEmitter context.
@@ -176,18 +178,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   const HloModuleConfig& hlo_module_config_;
 
  protected:
-  GeneratorForOperandIrArrays GetGeneratorForOperandIrArrays(
-      const HloInstruction* fusion) {
-    return [=]() {
-      std::vector<llvm_ir::IrArray> ir_arrays;
-      ir_arrays.reserve(fusion->operand_count());
-      absl::c_transform(fusion->operands(), std::back_inserter(ir_arrays),
-                        [&](const HloInstruction* operand) {
-                          return GetIrArray(*operand, *fusion);
-                        });
-      return ir_arrays;
-    };
-  }
+  // Bind all argument IrArrays of `fusion` to `fused_emitter`.
+  void BindFusionArguments(const HloInstruction* fusion,
+                           FusedIrEmitter* fused_emitter);
 
  private:
   // A helper method for EmitAtomicOperationForNestedComputation. Certain

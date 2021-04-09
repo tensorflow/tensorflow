@@ -534,7 +534,7 @@ class SavedModelBuilder(_SavedModelBuilder):
 
     # legacy_init_op is deprecated, and going away in TF 2.0.
     # Re-mapping to main_op, as treatment is identical regardless.
-    main_op = main_op or legacy_init_op
+    main_op = main_op if main_op is not None else legacy_init_op
 
     # Add assets and ops
     self._add_collections(assets_collection, main_op, None)

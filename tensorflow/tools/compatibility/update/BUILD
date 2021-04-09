@@ -1,13 +1,13 @@
 package(
     default_visibility = ["//visibility:private"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 py_binary(
     name = "generate_v2_renames_map",
     srcs = ["generate_v2_renames_map.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:lib",
@@ -23,7 +23,7 @@ py_binary(
     name = "generate_v2_reorders_map",
     srcs = ["generate_v2_reorders_map.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:lib",

@@ -2,7 +2,7 @@ load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
 package(
     default_visibility = ["//tensorflow/core/profiler:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -62,6 +62,27 @@ tf_proto_library(
     name = "op_metrics_proto",
     srcs = ["op_metrics.proto"],
     cc_api_version = 2,
+    visibility = [":friends"],
+)
+
+tf_proto_library(
+    name = "pod_stats_proto",
+    srcs = ["pod_stats.proto"],
+    cc_api_version = 2,
+    protodeps = [
+        ":diagnostics_proto",
+    ],
+    visibility = [":friends"],
+)
+
+tf_proto_library(
+    name = "pod_viewer_proto",
+    srcs = ["pod_viewer.proto"],
+    cc_api_version = 2,
+    protodeps = [
+        ":diagnostics_proto",
+        ":pod_stats_proto",
+    ],
     visibility = [":friends"],
 )
 
@@ -148,3 +169,26 @@ tf_proto_library(
     cc_api_version = 2,
     visibility = [":friends"],
 )
+
+tf_proto_library(
+    name = "tf_data_stats_proto",
+    srcs = ["tf_data_stats.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "xplane_py_pb2",
+#     api_version = 2,
+#     visibility = [":friends"],
+#     deps = [":xplane_proto"],
+# )
+#
+# py_proto_library(
+#     name = "trace_events_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":trace_events_proto"],
+# )
+# copybara:uncomment_end

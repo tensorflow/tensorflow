@@ -13,19 +13,28 @@
 # limitations under the License.
 # ==============================================================================
 
-load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library", "flatbuffer_java_library")
+load("//tensorflow/core/platform:build_config_root.bzl", "tf_gpu_tests_tags")
+load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps", "tflite_portable_test_suite")
 
 package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 flatbuffer_cc_library(
     name = "database_fbs",
     srcs = ["database.fbs"],
+)
+
+exports_files(srcs = ["database.fbs"])
+
+flatbuffer_java_library(
+    name = "database_fbs_java",
+    srcs = ["database.fbs"],
+    package_prefix = "org.tensorflow",
 )
 
 cc_library(
@@ -71,7 +80,7 @@ py_binary(
     name = "convert_binary_to_cc_source",
     srcs = ["convert_binary_to_cc_source.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
 )
 
@@ -94,21 +103,29 @@ genrule(
     tools = [":convert_binary_to_cc_source"],
 )
 
+cc_library(
+    name = "devicedb_sample",
+    srcs = ["devicedb-sample.cc"],
+    hdrs = ["devicedb-sample.h"],
+    deps = [":database_fbs"],
+)
+
 cc_test(
     name = "devicedb_test",
     srcs = [
-        "devicedb-sample.cc",
-        "devicedb-sample.h",
         "devicedb_test.cc",
     ],
     deps = [
         ":database_fbs",
         ":devicedb",
+        ":devicedb_sample",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
 )
+
+exports_files(["gpu_compatibility.bin"])
 
 genrule(
     name = "gpu_compatibility_binary",
@@ -152,11 +169,24 @@ cc_library(
         ":android_info",
         ":database_fbs",
         ":devicedb",
-        "//tensorflow/lite/delegates/gpu:delegate",
-        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
+        "//tensorflow/lite/delegates/gpu:delegate",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
+    ] + tflite_extra_gles_deps(),
+)
+
+cc_test(
+    name = "gpu_compatibility_test",
+    srcs = ["gpu_compatibility_test.cc"],
+    tags = tf_gpu_tests_tags() + [
+        "no_cuda_asan",  # TODO(b/181032551).
+    ],
+    deps = [
+        ":devicedb_sample",
+        ":gpu_compatibility",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

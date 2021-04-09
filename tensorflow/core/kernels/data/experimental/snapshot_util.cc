@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/protobuf/data/experimental/snapshot.pb.h"
+#include "tensorflow/core/protobuf/snapshot.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -117,11 +117,19 @@ Status TFRecordWriter::WriteTensors(const std::vector<Tensor>& tensors) {
   for (const auto& tensor : tensors) {
     TensorProto proto;
     tensor.AsProtoTensorContent(&proto);
-#if defined(PLATFORM_GOOGLE)
-    TF_RETURN_IF_ERROR(record_writer_->WriteRecord(proto.SerializeAsCord()));
-#else   // PLATFORM_GOOGLE
+#if defined(TF_CORD_SUPPORT)
+    // Creating raw pointer here because std::move() in a releases in OSS TF
+    // will result in a smart pointer being moved upon function creation, which
+    // will result in proto_buffer == nullptr when WriteRecord happens.
+    auto proto_buffer = new std::string();
+    proto.SerializeToString(proto_buffer);
+    absl::Cord proto_serialized = absl::MakeCordFromExternal(
+        *proto_buffer,
+        [proto_buffer](absl::string_view) { delete proto_buffer; });
+    TF_RETURN_IF_ERROR(record_writer_->WriteRecord(proto_serialized));
+#else   // TF_CORD_SUPPORT
     TF_RETURN_IF_ERROR(record_writer_->WriteRecord(proto.SerializeAsString()));
-#endif  // PLATFORM_GOOGLE
+#endif  // TF_CORD_SUPPORT
   }
   return Status::OK();
 }
@@ -197,16 +205,16 @@ Status CustomWriter::WriteTensors(const std::vector<Tensor>& tensors) {
       TensorProto* t = record.add_tensor();
       tensor.AsProtoTensorContent(t);
     }
-#if defined(PLATFORM_GOOGLE)
-    return WriteRecord(record.SerializeAsCord());
-#else   // PLATFORM_GOOGLE
+#if defined(TF_CORD_SUPPORT)
+    auto record_buffer = new std::string();
+    record.SerializeToString(record_buffer);
+    absl::Cord record_serialized = absl::MakeCordFromExternal(
+        *record_buffer,
+        [record_buffer](absl::string_view) { delete record_buffer; });
+    return WriteRecord(record_serialized);
+#else   // TF_CORD_SUPPORT
     return WriteRecord(record.SerializeAsString());
-#endif  // PLATFORM_GOOGLE
-  }
-
-  if (compression_type_ != io::compression::kSnappy) {
-    return errors::InvalidArgument("Compression ", compression_type_,
-                                   " is not supported.");
+#endif  // TF_CORD_SUPPORT
   }
 
   std::vector<const TensorBuffer*> tensor_buffers;
@@ -215,7 +223,7 @@ Status CustomWriter::WriteTensors(const std::vector<Tensor>& tensors) {
   tensor_protos.reserve(num_complex_);
   experimental::SnapshotTensorMetadata metadata;
   int64 total_size = 0;
-  for (int i = 0; i < tensors.size(); ++i) {
+  for (int i = 0, end = tensors.size(); i < end; ++i) {
     const Tensor& tensor = tensors[i];
     experimental::TensorMetadata* tensor_metadata =
         metadata.add_tensor_metadata();
@@ -239,7 +247,7 @@ Status CustomWriter::WriteTensors(const std::vector<Tensor>& tensors) {
   char* position = uncompressed.data();
   int buffer_index = 0;
   int proto_index = 0;
-  for (int i = 0; i < tensors.size(); ++i) {
+  for (int i = 0, end = tensors.size(); i < end; ++i) {
     const auto& tensor_metadata = metadata.tensor_metadata(i);
     if (simple_tensor_mask_[i]) {
       memcpy(position, tensor_buffers[buffer_index]->data(),
@@ -258,11 +266,16 @@ Status CustomWriter::WriteTensors(const std::vector<Tensor>& tensors) {
   if (!port::Snappy_Compress(uncompressed.data(), total_size, &output)) {
     return errors::Internal("Failed to compress using snappy.");
   }
-#if defined(PLATFORM_GOOGLE)
-  absl::Cord metadata_serialized = metadata.SerializeAsCord();
-#else   // PLATFORM_GOOGLE
+
+#if defined(TF_CORD_SUPPORT)
+  auto metadata_buffer = new std::string();
+  metadata.SerializeToString(metadata_buffer);
+  absl::Cord metadata_serialized = absl::MakeCordFromExternal(
+      *metadata_buffer,
+      [metadata_buffer](absl::string_view) { delete metadata_buffer; });
+#else
   std::string metadata_serialized = metadata.SerializeAsString();
-#endif  // PLATFORM_GOOGLE
+#endif  // TF_CORD_SUPPORT
   TF_RETURN_IF_ERROR(WriteRecord(metadata_serialized));
   TF_RETURN_IF_ERROR(WriteRecord(output));
   return Status::OK();
@@ -296,14 +309,14 @@ Status CustomWriter::WriteRecord(const StringPiece& data) {
   return dest_->Append(data);
 }
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
 Status CustomWriter::WriteRecord(const absl::Cord& data) {
   char header[kHeaderSize];
   core::EncodeFixed64(header, data.size());
   TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
   return dest_->Append(data);
 }
-#endif  // PLATFORM_GOOGLE
+#endif  // TF_CORD_SUPPORT
 
 Status Reader::Create(Env* env, const std::string& filename,
                       const string& compression_type, int version,
@@ -361,6 +374,10 @@ class Reader::Dataset : public DatasetBase {
 
   std::string DebugString() const override {
     return "snapshot_util::Reader::Dataset";
+  }
+
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    return Status::OK();
   }
 
   Status CheckExternalState() const override { return Status::OK(); }
@@ -483,6 +500,11 @@ class Reader::NestedDataset : public DatasetBase {
     return "snapshot_util::Reader::NestedDataset";
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->clear();
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override { return Status::OK(); }
 
  protected:
@@ -514,7 +536,8 @@ class Reader::NestedDataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
-      *end_of_sequence = dataset()->datasets_.size() == index_;
+      const int64 num_datasets = dataset()->datasets_.size();
+      *end_of_sequence = num_datasets == index_;
       if (!*end_of_sequence) {
         Tensor tensor(DT_VARIANT, TensorShape({}));
 
@@ -575,10 +598,13 @@ Status Reader::MakeNestedDataset(Env* env,
   }
 
   // Rotate the vector such that the first dataset contains the next element
-  // to be produced.
-  std::rotate(datasets.begin(),
-              datasets.begin() + (start_index % shard_dirs.size()),
-              datasets.end());
+  // to be produced, but not if there are no shards at all (then we just
+  // construct an empty dataset).
+  if (!shard_dirs.empty()) {
+    std::rotate(datasets.begin(),
+                datasets.begin() + (start_index % shard_dirs.size()),
+                datasets.end());
+  }
 
   *output = new NestedDataset(
       datasets, DatasetContext::Params({"snapshot_util::Reader::NestedDataset",
@@ -704,7 +730,7 @@ Status CustomReader::ReadTensors(std::vector<Tensor>* read_tensors) {
 
   int simple_index = 0;
   int complex_index = 0;
-  for (int i = 0; i < simple_tensor_mask_.size(); ++i) {
+  for (int i = 0, end = simple_tensor_mask_.size(); i < end; ++i) {
     if (simple_tensor_mask_[i]) {
       read_tensors->push_back(std::move(simple_tensors[simple_index]));
       simple_index++;
@@ -712,19 +738,9 @@ Status CustomReader::ReadTensors(std::vector<Tensor>* read_tensors) {
       auto tensor_proto_str = std::move(tensor_proto_strs[complex_index].first);
       size_t tensor_proto_size = tensor_proto_strs[complex_index].second;
       TensorProto tp;
-#if defined(PLATFORM_GOOGLE)
-      absl::string_view tensor_proto_view(tensor_proto_str.get(),
-                                          tensor_proto_size);
-      absl::Cord c = absl::MakeCordFromExternal(
-          tensor_proto_view, [s = std::move(tensor_proto_str)] {});
-      if (!tp.ParseFromCord(c)) {
-        return errors::Internal("Could not parse TensorProto");
-      }
-#else   // PLATFORM_GOOGLE
       if (!tp.ParseFromArray(tensor_proto_str.get(), tensor_proto_size)) {
         return errors::Internal("Could not parse TensorProto");
       }
-#endif  // PLATFORM_GOOGLE
       Tensor t;
       if (!t.FromProto(tp)) {
         return errors::Internal("Could not parse Tensor");
@@ -774,7 +790,7 @@ Status CustomReader::SnappyUncompress(
   std::vector<struct iovec> iov(num_tensors);
   int index = 0;
   int64 total_size = 0;
-  for (int i = 0; i < simple_tensor_mask_.size(); ++i) {
+  for (int i = 0, end = simple_tensor_mask_.size(); i < end; ++i) {
     const auto& tensor_metadata = metadata->tensor_metadata(i);
     if (simple_tensor_mask_[i]) {
       TensorShape shape(tensor_metadata.tensor_shape());
@@ -794,7 +810,8 @@ Status CustomReader::SnappyUncompress(
     total_size += iov[index].iov_len;
     index++;
   }
-  if (size != total_size) {
+  const int64 size_int = size;
+  if (size_int != total_size) {
     return errors::Internal("Uncompressed size mismatch. Snappy expects ", size,
                             " whereas the tensor metadata suggests ",
                             total_size);
@@ -813,7 +830,7 @@ Status CustomReader::ReadRecord(tstring* record) {
   return input_stream_->ReadNBytes(length, record);
 }
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
 Status CustomReader::ReadRecord(absl::Cord* record) {
   tstring header;
   TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
@@ -821,15 +838,15 @@ Status CustomReader::ReadRecord(absl::Cord* record) {
   if (compression_type_ == io::compression::kNone) {
     return input_stream_->ReadNBytes(length, record);
   } else {
-    auto tmp_str = absl::make_unique<tstring>();
-    TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(length, tmp_str.get()));
+    auto tmp_str = new tstring();
+    TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(length, tmp_str));
     absl::string_view tmp_str_view(*tmp_str);
-    record->Append(
-        absl::MakeCordFromExternal(tmp_str_view, [s = std::move(tmp_str)] {}));
+    record->Append(absl::MakeCordFromExternal(
+        tmp_str_view, [tmp_str](absl::string_view) { delete tmp_str; }));
     return Status::OK();
   }
 }
-#endif
+#endif  // TF_CORD_SUPPORT
 
 Status WriteMetadataFile(Env* env, const string& dir,
                          const experimental::SnapshotMetadataRecord* metadata) {
@@ -904,9 +921,10 @@ Status DetermineOpState(const std::string& mode_string, bool file_exists,
     return Status::OK();
   }
 
-  if (metadata->creation_timestamp() >=
-      (static_cast<int64>(EnvTime::NowMicros()) -
-       pending_snapshot_expiry_seconds * 1000000)) {
+  int64 expiration_timer = static_cast<int64>(EnvTime::NowMicros()) -
+                           pending_snapshot_expiry_seconds * 1000000;
+
+  if (metadata->creation_timestamp() >= expiration_timer) {
     // Someone else is already writing and time has not expired.
     *mode = PASSTHROUGH;
     return Status::OK();

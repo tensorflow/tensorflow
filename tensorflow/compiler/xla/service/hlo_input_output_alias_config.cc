@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
 namespace xla {
@@ -24,9 +25,10 @@ bool HloInputOutputAliasConfig::OutputHasAlias(
   return alias_.element(output_index).has_value();
 }
 
-Status HloInputOutputAliasConfig::SetUpAlias(const ShapeIndex& output_index,
-                                             int64 param_number,
-                                             const ShapeIndex& param_index) {
+Status HloInputOutputAliasConfig::SetUpAlias(
+    const ShapeIndex& output_index, int64 param_number,
+    const ShapeIndex& param_index,
+    HloInputOutputAliasConfig::AliasKind must_alias) {
   TF_RET_CHECK(ShapeUtil::IndexIsValid(alias_.shape(), output_index))
       << "Trying to set up alias at " << output_index.ToString()
       << " which is an invalid index for shape "
@@ -41,7 +43,8 @@ Status HloInputOutputAliasConfig::SetUpAlias(const ShapeIndex& output_index,
       param_number, param_index.ToString(), output_index.ToString(),
       alias_.element(output_index)->parameter_number,
       alias_.element(output_index)->parameter_index.ToString());
-  (*alias_.mutable_element(output_index)) = Alias(param_number, param_index);
+  (*alias_.mutable_element(output_index)) =
+      Alias(param_number, param_index, must_alias);
   VLOG(4) << "Set up alias between output index " << output_index.ToString()
           << " and parameter " << param_index << " at index "
           << param_index.ToString();
@@ -61,6 +64,11 @@ HloInputOutputAliasProto HloInputOutputAliasConfig::ToProto() const {
           for (int64 i : data->parameter_index) {
             entry.add_parameter_shape_index(i);
           }
+          if (data->must_alias()) {
+            entry.set_kind(Kind::MUST_ALIAS);
+          } else {
+            entry.set_kind(Kind::MAY_ALIAS);
+          }
           result.add_entries()->Swap(&entry);
         }
       });
@@ -77,8 +85,9 @@ StatusOr<HloInputOutputAliasConfig> HloInputOutputAliasConfig::CreateFromProto(
     int64 param_number = entry.parameter_number();
     ShapeIndex param_index(entry.parameter_shape_index().begin(),
                            entry.parameter_shape_index().end());
+    AliasKind kind = entry.kind() == Kind::MAY_ALIAS ? kMayAlias : kMustAlias;
     TF_RETURN_IF_ERROR(
-        result.SetUpAlias(output_index, param_number, param_index));
+        result.SetUpAlias(output_index, param_number, param_index, kind));
   }
   return result;
 }
@@ -93,9 +102,9 @@ string HloInputOutputAliasConfig::ToString() const {
 
   ForEachAlias([&](const ShapeIndex& output_index, const Alias& alias) {
     pieces.push_back(absl::StrFormat(
-        "  OutputIndex %s is aliased with parameter %lld at %s:",
-        output_index.ToString(), alias.parameter_number,
-        alias.parameter_index.ToString()));
+        "  OutputIndex %s is %saliased with parameter %lld at %s:",
+        output_index.ToString(), alias.kind == kMustAlias ? "must-" : "may-",
+        alias.parameter_number, alias.parameter_index.ToString()));
   });
   return absl::StrJoin(pieces, "\n");
 }
@@ -110,6 +119,19 @@ string HloInputOutputAliasConfig::ToShortString() const {
     }
   }
   return absl::StrJoin(pieces, ", ");
+}
+
+bool HloInputOutputAliasConfig::ParameterMustAlias(
+    int64 param_number, const ShapeIndex& param_index) const {
+  bool result = false;
+  alias_.ForEachElement(
+      [&](const xla::ShapeIndex&, absl::optional<Alias> alias) {
+        if (alias && alias->parameter_number == param_number &&
+            alias->parameter_index == param_index && alias->must_alias()) {
+          result = true;
+        }
+      });
+  return result;
 }
 
 absl::optional<ShapeIndex> HloInputOutputAliasConfig::GetAliasedOutput(

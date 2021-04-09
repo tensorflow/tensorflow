@@ -64,11 +64,24 @@ typedef struct {
       bool need_broadcast;
     } broadcast;
     struct {
+      bool pot_scale_int16;
+      int32_t num_dims;
+      bool need_broadcast;
+    } addsub;
+    struct {
       bool is_per_channel_quantized;
     } conv_2d;
     struct {
       bool asymmetric_quantize_inputs;
     } input_quantization;
+    struct {
+      int32_t batch_dims;
+    } gather;
+    struct {
+      int32_t num_dims;
+      int32_t ellipsis_mask;
+      int32_t new_axis_mask;
+    } strided_slice;
   } options;
 } OpSignature;
 

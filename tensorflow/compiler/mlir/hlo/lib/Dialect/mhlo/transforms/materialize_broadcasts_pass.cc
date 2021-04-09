@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
 namespace mhlo {
@@ -31,7 +31,7 @@ struct TestMaterializeBroadcastsPass
     : public PassWrapper<TestMaterializeBroadcastsPass, FunctionPass> {
   void runOnFunction() override {
     ConversionTarget conversionTarget(getContext());
-    OwningRewritePatternList conversionPatterns;
+    OwningRewritePatternList conversionPatterns(&getContext());
 
     // Consider the mhlo dialect legal for tests.
     conversionTarget.addLegalDialect<MhloDialect>();
@@ -42,7 +42,7 @@ struct TestMaterializeBroadcastsPass
     PopulateMaterializeBroadcastsPatterns(&getContext(), &conversionPatterns);
 
     if (failed(applyPartialConversion(getFunction(), conversionTarget,
-                                      conversionPatterns))) {
+                                      std::move(conversionPatterns)))) {
       return signalPassFailure();
     }
   }
@@ -50,9 +50,9 @@ struct TestMaterializeBroadcastsPass
 
 }  // namespace
 
+std::unique_ptr<::mlir::Pass> createTestMaterializeBroadcastsPass() {
+  return std::make_unique<TestMaterializeBroadcastsPass>();
+}
+
 }  // namespace mhlo
 }  // namespace mlir
-
-static mlir::PassRegistration<mlir::mhlo::TestMaterializeBroadcastsPass> pass(
-    "mhlo-test-materialize-broadcasts",
-    "Test pass for materializing 'broadcast_dimensions' attributes");

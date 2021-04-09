@@ -27,9 +27,11 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
@@ -53,6 +55,10 @@ class _CustomMapping(collections_abc.Mapping):
 
   def __len__(self):
     return len(self._wrapped)
+
+
+class _CustomList(list):
+  pass
 
 
 class _CustomSequenceThatRaisesException(collections.Sequence):
@@ -280,6 +286,14 @@ class NestTest(parameterized.TestCase, test.TestCase):
         "Structure had 2 elements, but flat_sequence had 3 elements."):
       nest.pack_sequence_as(["hello", "world"],
                             ["and", "goodbye", "again"])
+
+  def testPackSequenceAs_CompositeTensor(self):
+    val = ragged_tensor.RaggedTensor.from_row_splits(values=[1],
+                                                     row_splits=[0, 1])
+    with self.assertRaisesRegex(
+        ValueError,
+        "Structure had 2 elements, but flat_sequence had 1 elements."):
+      nest.pack_sequence_as(val, [val], expand_composites=True)
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testIsNested(self):
@@ -541,30 +555,31 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(nt.a[1][::-1], rev_nt.a[1])
     self.assertEqual(nt.b[::-1], rev_nt.b)
 
-  @test_util.run_deprecated_v1
   def testMapStructureOverPlaceholders(self):
-    inp_a = (array_ops.placeholder(dtypes.float32, shape=[3, 4]),
-             array_ops.placeholder(dtypes.float32, shape=[3, 7]))
-    inp_b = (array_ops.placeholder(dtypes.float32, shape=[3, 4]),
-             array_ops.placeholder(dtypes.float32, shape=[3, 7]))
+    # Test requires placeholders and thus requires graph mode
+    with ops.Graph().as_default():
+      inp_a = (array_ops.placeholder(dtypes.float32, shape=[3, 4]),
+               array_ops.placeholder(dtypes.float32, shape=[3, 7]))
+      inp_b = (array_ops.placeholder(dtypes.float32, shape=[3, 4]),
+               array_ops.placeholder(dtypes.float32, shape=[3, 7]))
 
-    output = nest.map_structure(lambda x1, x2: x1 + x2, inp_a, inp_b)
+      output = nest.map_structure(lambda x1, x2: x1 + x2, inp_a, inp_b)
 
-    nest.assert_same_structure(output, inp_a)
-    self.assertShapeEqual(np.zeros((3, 4)), output[0])
-    self.assertShapeEqual(np.zeros((3, 7)), output[1])
+      nest.assert_same_structure(output, inp_a)
+      self.assertShapeEqual(np.zeros((3, 4)), output[0])
+      self.assertShapeEqual(np.zeros((3, 7)), output[1])
 
-    feed_dict = {
-        inp_a: (np.random.randn(3, 4), np.random.randn(3, 7)),
-        inp_b: (np.random.randn(3, 4), np.random.randn(3, 7))
-    }
+      feed_dict = {
+          inp_a: (np.random.randn(3, 4), np.random.randn(3, 7)),
+          inp_b: (np.random.randn(3, 4), np.random.randn(3, 7))
+      }
 
-    with self.cached_session() as sess:
-      output_np = sess.run(output, feed_dict=feed_dict)
-    self.assertAllClose(output_np[0],
-                        feed_dict[inp_a][0] + feed_dict[inp_b][0])
-    self.assertAllClose(output_np[1],
-                        feed_dict[inp_a][1] + feed_dict[inp_b][1])
+      with self.cached_session() as sess:
+        output_np = sess.run(output, feed_dict=feed_dict)
+      self.assertAllClose(output_np[0],
+                          feed_dict[inp_a][0] + feed_dict[inp_b][0])
+      self.assertAllClose(output_np[1],
+                          feed_dict[inp_a][1] + feed_dict[inp_b][1])
 
   def testAssertShallowStructure(self):
     inp_ab = ["a", "b"]
@@ -601,6 +616,13 @@ class NestTest(parameterized.TestCase, test.TestCase):
     # name and field names are considered to be identical.
     inp_shallow = NestTest.SameNameab(1, 2)
     inp_deep = NestTest.SameNameab2(1, [1, 2, 3])
+    nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=False)
+    nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=True)
+
+    # This assertion is expected to pass: two list-types with same number
+    # of fields are considered identical.
+    inp_shallow = _CustomList([1, 2])
+    inp_deep = [1, 2]
     nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=False)
     nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=True)
 
@@ -1215,6 +1237,18 @@ class NestTest(parameterized.TestCase, test.TestCase):
         nest.list_to_tuple(input_sequence),
         expected,
     )
+
+  def testInvalidCheckTypes(self):
+    with self.assertRaises((ValueError, TypeError)):
+      nest.assert_same_structure(
+          nest1=array_ops.zeros((1)),
+          nest2=array_ops.ones((1, 1, 1)),
+          check_types=array_ops.ones((2)))
+    with self.assertRaises((ValueError, TypeError)):
+      nest.assert_same_structure(
+          nest1=array_ops.zeros((1)),
+          nest2=array_ops.ones((1, 1, 1)),
+          expand_composites=array_ops.ones((2)))
 
 
 class NestBenchmark(test.Benchmark):

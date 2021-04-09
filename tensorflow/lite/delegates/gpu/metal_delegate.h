@@ -16,19 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_DELEGATE_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_METAL_DELEGATE_H_
 
-#ifdef SWIG
-#define TFL_CAPI_EXPORT
-#else
-#if defined(_WIN32)
-#ifdef TFL_COMPILE_LIBRARY
-#define TFL_CAPI_EXPORT __declspec(dllexport)
-#else
-#define TFL_CAPI_EXPORT __declspec(dllimport)
-#endif  // TFL_COMPILE_LIBRARY
-#else
-#define TFL_CAPI_EXPORT __attribute__((visibility("default")))
-#endif  // _WIN32
-#endif  // SWIG
+#include "tensorflow/lite/c/common.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -61,6 +49,12 @@ typedef struct {
   // Allows execution of integer quantized models
   bool enable_quantization;
 } TFLGpuDelegateOptions;
+
+// Populates TFLGpuDelegateOptions as follows:
+//   allow_precision_loss = false;
+//   wait_type = TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive;
+//   enable_quantization = true;
+TFL_CAPI_EXPORT extern TFLGpuDelegateOptions TFLGpuDelegateOptionsDefault(void);
 
 // Creates a new delegate instance that need to be destroyed with
 // `TFLDeleteTfLiteGpuDelegate` when delegate is no longer used by TFLite.

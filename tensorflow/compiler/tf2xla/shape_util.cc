@@ -123,6 +123,11 @@ xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
     dimensions[d] = tensor_shape.dim_size(d);
     if (dimensions[d] < 0) {
       dynamic_dimensions[d] = true;
+      // TODO(b/177329258): Consider improving this/enabling MakeShapeWithLayout
+      // to work wuith dynamic shapes.
+      LOG(WARNING) << "Unable to convert TF shape with dynamic size to XLA "
+                      "shape; returning unknown sentinel value";
+      return xla::ShapeUtil::MakeShapeWithLayout(type, {0}, {0});
     }
   }
   // XLA uses minor-to-major; Tensorflow uses major-to-minor.

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
@@ -90,7 +91,9 @@ void SameWorkerRecvDone(const DeviceMgr* device_mgr,
       safe_alloc_frontier = dst_device->SafeAllocFrontier(safe_alloc_frontier);
       return safe_alloc_frontier;
     };
-    if (parsed.dst.type == "GPU" && safe_alloc_frontier > 0) {
+    if ((parsed.dst.type == "GPU" ||
+         DeviceFactory::IsPluggableDevice(parsed.dst.type)) &&
+        safe_alloc_frontier > 0) {
       // There's a timestamped allocator at work, so use it instead
       // of sync_dst_compute.
       aa.freed_by_func = &freed_by_func;
@@ -151,7 +154,7 @@ void IntraProcessRecvAsyncImpl(const DeviceMgr* device_mgr,
 
 RefCountedIntraProcessRendezvous::RefCountedIntraProcessRendezvous(
     const DeviceMgr* device_mgr)
-    : device_mgr_(device_mgr) {}
+    : device_mgr_(device_mgr), local_(this) {}
 
 RefCountedIntraProcessRendezvous::~RefCountedIntraProcessRendezvous() {}
 
@@ -176,7 +179,7 @@ void RefCountedIntraProcessRendezvous::StartAbort(const Status& s) {
 
 PrivateIntraProcessRendezvous::PrivateIntraProcessRendezvous(
     const DeviceMgr* device_mgr)
-    : device_mgr_(device_mgr) {}
+    : device_mgr_(device_mgr), local_(nullptr) {}
 
 PrivateIntraProcessRendezvous::~PrivateIntraProcessRendezvous() {}
 

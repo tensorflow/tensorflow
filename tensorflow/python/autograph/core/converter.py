@@ -143,7 +143,7 @@ class ConversionOptions(object):
       classes that the converted function may use.
     user_requested: bool, whether the conversion was explicitly requested by
       the user, as opposed to being performed as a result of other logic. This
-      value always auto-resets resets to False in child conversions.
+      value always auto-resets to False in child conversions.
     optional_features: Union[Feature, Set[Feature]], controls the use of
       optional features in the conversion process. See Feature for available
       options.

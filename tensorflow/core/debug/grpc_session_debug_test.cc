@@ -283,12 +283,10 @@ TEST_F(GrpcSessionDebugTest, MultiDevices_String) {
 
         DeleteDumpDir();
       } else {
-        // CUDA and SYCL devices do not have an Identity op for strings
+        // The CUDA device does not have an Identity op for strings
         LOG(ERROR) << "Error: " << s;
         ASSERT_TRUE((a_dev.device_type() == DEVICE_GPU) ||
-                    (a_dev.device_type() == DEVICE_SYCL) ||
-                    (b_dev.device_type() == DEVICE_GPU) ||
-                    (b_dev.device_type() == DEVICE_SYCL));
+                    (b_dev.device_type() == DEVICE_GPU));
         ASSERT_FALSE(s.ok());
       }
     }

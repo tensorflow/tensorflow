@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import gc
 
 import tensorflow as tf
+
+from tensorflow.python.platform import test as test_lib
+
 layers = tf.keras.layers
 optimizers = tf.keras.optimizers
 
@@ -150,6 +150,10 @@ class GradientCheckpointTest(tf.test.TestCase):
   def test_does_not_raise_oom_exception(self):
     if not _limit_gpu_memory():
       self.skipTest('No virtual GPUs found')
+    if test_lib.is_built_with_rocm():
+      self.skipTest(
+          'ROCm MIOpen does not support searching for memory-limited'
+          'solvers yet so skip the subtest which would result in OOM.')
     n_step = 2
     losses = _train_with_recompute(n_step)
     self.assertLen(losses, n_step)

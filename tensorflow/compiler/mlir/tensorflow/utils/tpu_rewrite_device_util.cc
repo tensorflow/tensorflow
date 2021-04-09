@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/utils/string_container_utils.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -149,7 +150,8 @@ Status GetTPUDevices(
            std::next(system_devices.begin()), system_devices.end())) {
     auto host_tpu_devices = lookup(device_spec);
     // Check number of TPU devices per host all match.
-    if (num_tpus_per_host != host_tpu_devices.size())
+    const int64 host_tpu_devices_size = host_tpu_devices.size();
+    if (num_tpus_per_host != host_tpu_devices_size)
       return errors::InvalidArgument(
           "expected the number of TPU devices per host to be ",
           num_tpus_per_host, ", got ", host_tpu_devices.size());
@@ -354,7 +356,8 @@ GetGeneralTPUExecutionDeviceAssignment(
 
   const int expected_device_assignment_size =
       num_replicas * num_cores_per_replica * kTPUTopologyRank;
-  if (device_assignment_attr.size() != expected_device_assignment_size)
+  const int device_assignment_attr_size = device_assignment_attr.size();
+  if (device_assignment_attr_size != expected_device_assignment_size)
     return errors::InvalidArgument(
         "length of '", kDeviceAssignmentAttr,
         "' must be 'num_replicas' * 'num_cores_per_replica' * ",
@@ -372,9 +375,8 @@ GetGeneralTPUExecutionDeviceAssignment(
     return (x + bound_x * (y + bound_y * z)) * bound_core + core;
   };
 
-  std::vector<bool> used_device_ids(
-      location_to_id(bound_x - 1, bound_y - 1, bound_z - 1, bound_core - 1),
-      false);
+  std::vector<bool> used_device_ids(bound_x * bound_y * bound_z * bound_core,
+                                    false);
   TPUDevicesAndHosts devices_and_hosts(
       num_replicas, llvm::SmallVector<TPUDeviceAndHost, 8>(
                         num_cores_per_replica, TPUDeviceAndHost()));
@@ -487,13 +489,13 @@ std::string GetDeviceAliasForLogicalCore(int core_index) {
 mlir::LogicalResult GetHostDeviceOutsideComputation(
     mlir::TF::RuntimeDevices devices, mlir::tf_device::ClusterOp cluster,
     std::string* host_device) {
-  auto replicate = cluster.getParentOfType<mlir::tf_device::ReplicateOp>();
+  auto replicate = cluster->getParentOfType<mlir::tf_device::ReplicateOp>();
   if (replicate) {
     *host_device = tensorflow::kTPUReplicatedHost;
     return mlir::success();
   }
 
-  auto num_cores_per_replica_attr = cluster.getAttrOfType<mlir::IntegerAttr>(
+  auto num_cores_per_replica_attr = cluster->getAttrOfType<mlir::IntegerAttr>(
       tensorflow::kNumCoresPerReplicaAttr);
   if (!num_cores_per_replica_attr)
     return cluster.emitOpError(
@@ -504,12 +506,12 @@ mlir::LogicalResult GetHostDeviceOutsideComputation(
         "outside compilation is not supported with model parallelism.");
 
   auto topology_attr =
-      cluster.getAttrOfType<mlir::StringAttr>(tensorflow::kTopologyAttr);
+      cluster->getAttrOfType<mlir::StringAttr>(tensorflow::kTopologyAttr);
   if (!topology_attr)
     return cluster.emitOpError("cluster op missing `topology` attribute");
 
-  auto device_assignment_attr =
-      cluster.getAttrOfType<mlir::ArrayAttr>(tensorflow::kDeviceAssignmentAttr);
+  auto device_assignment_attr = cluster->getAttrOfType<mlir::ArrayAttr>(
+      tensorflow::kDeviceAssignmentAttr);
   if (!device_assignment_attr)
     return cluster.emitOpError(llvm::formatv("requires attribute '{0}'",
                                              tensorflow::kDeviceAssignmentAttr)
@@ -539,4 +541,19 @@ mlir::LogicalResult GetHostDeviceOutsideComputation(
   return mlir::success();
 }
 
+bool IsTPUDevice(llvm::StringRef device) {
+  Device parsed_device;
+  if (!DeviceNameUtils::ParseFullName(mlir::StringRefToView(device),
+                                      &parsed_device))
+    return false;
+  return parsed_device.has_type && parsed_device.type == kDeviceTPU;
+}
+
+bool IsTPUReplicatedCore(llvm::StringRef device) {
+  Device parsed_device;
+  if (!DeviceNameUtils::ParseFullName(mlir::StringRefToView(device),
+                                      &parsed_device))
+    return false;
+  return parsed_device.has_type && parsed_device.type == kTPUReplicatedCore;
+}
 }  // namespace tensorflow

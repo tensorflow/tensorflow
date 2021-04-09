@@ -19,7 +19,7 @@
 set -e
 
 TARGET=stm32f4
-TAGS=cmsis-nn
+OPTIMIZED_KERNEL_DIR=cmsis_nn
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR=${SCRIPT_DIR}/../../../../..
 cd "${ROOT_DIR}"
@@ -30,12 +30,13 @@ source tensorflow/lite/micro/tools/ci_build/helper_functions.sh
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
 
 # TODO(b/143715361): downloading first to allow for parallel builds.
-readable_run make -f tensorflow/lite/micro/tools/make/Makefile TAGS=${TAGS} TARGET=${TARGET} third_party_downloads
+readable_run make -f tensorflow/lite/micro/tools/make/Makefile OPTIMIZED_KERNEL_DIR=${OPTIMIZED_KERNEL_DIR} TARGET=${TARGET} third_party_downloads
 
-# Build test binaries first
-readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TAGS=${TAGS} TARGET=${TARGET} build
+# First make sure that the release build succeeds.
+readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
+readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile BUILD_TYPE=release OPTIMIZED_KERNEL_DIR=${OPTIMIZED_KERNEL_DIR} TARGET=${TARGET} build
 
-# TODO(b/149597202): Disabled until we can get Docker running inside Docker.
-# Parallell builds doesn't work very well with this
-#readable_run make -f tensorflow/lite/micro/tools/make/Makefile TAGS=${TAGS} TARGET=${TARGET} test
-
+# Next, build w/o release so that we can run the tests and get additional
+# debugging info on failures.
+readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
+readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile OPTIMIZED_KERNEL_DIR=${OPTIMIZED_KERNEL_DIR} TARGET=${TARGET} test

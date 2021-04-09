@@ -39,9 +39,11 @@ from tensorflow.python.eager import executor
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
+from tensorflow.python.framework import tfrt_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
 GRAPH_MODE = 0
@@ -67,14 +69,17 @@ DEVICE_PLACEMENT_SILENT_FOR_INT32 = (
 SYNC = 0
 ASYNC = 1
 
-MIRRORING_NONE = pywrap_tfe.TFE_MIRRORING_NONE
-MIRRORING_ALL = pywrap_tfe.TFE_MIRRORING_ALL
-
 _KEEP_ALIVE_SECS = 600
 
 _python_eager_context_create_counter = monitoring.Counter(
     "/tensorflow/api/python/eager_context_create_counter",
     "Counter for number of eager contexts created in Python.")
+
+# Re-exporting through context.
+is_tfrt_enabled = tfrt_utils.enabled
+
+# Expose it as internally public APIs for Keras use cases in b/171080602.
+tf_export("__internal__.is_tfrt_enabled", v1=[])(is_tfrt_enabled)
 
 
 class _EagerTensorCache(object):
@@ -183,21 +188,6 @@ class _TensorCaches(threading.local):
     if not self._zeros_cache:
       self._zeros_cache = _EagerTensorCache()
     return self._zeros_cache
-
-
-class _ThreadLocalData(threading.local):
-  """Thread local storage for the eager context."""
-
-  def __init__(self):
-    super(_ThreadLocalData, self).__init__()
-    self.device_spec = _starting_device_spec
-    self.device_name = ""
-    self.is_eager = default_execution_mode == EAGER_MODE
-    self.scope_name = ""
-    self.function_call_options = None
-    self.executor = None
-    self.op_callbacks = []
-    self.invoking_op_callbacks = False
 
 
 ContextSwitch = collections.namedtuple(
@@ -352,19 +342,6 @@ class _TensorCacheDeleter(object):
       del _tensor_caches_map[self._context_id]
 
 
-# If the below import is made available through the BUILD rule, then this
-# function is overridden and will instead return True and cause Tensorflow
-# graphs to run with TFRT.
-def is_tfrt_enabled():
-  return None
-
-
-try:
-  from tensorflow.python.framework.is_tfrt_test_true import is_tfrt_enabled  # pylint: disable=g-import-not-at-top
-except:  # pylint: disable=bare-except
-  pass
-
-
 # TODO(agarwal): rename to EagerContext / EagerRuntime ?
 # TODO(agarwal): consider keeping the corresponding Graph here.
 class Context(object):
@@ -422,7 +399,10 @@ class Context(object):
     _tensor_caches_map[self._id] = _TensorCaches()
 
     self._config = config
-    self._thread_local_data = _ThreadLocalData()
+    self._thread_local_data = pywrap_tfe.EagerContextThreadLocalData(
+        self,
+        is_eager=lambda: default_execution_mode == EAGER_MODE,
+        device_spec=_starting_device_spec)
     self._context_switches = _ContextSwitchStack(self.executing_eagerly())
     self._context_handle = None
     self._context_devices = None
@@ -437,9 +417,8 @@ class Context(object):
       raise ValueError(
           "execution_mode should be None/SYNC/ASYNC. Got %s" % execution_mode)
     if execution_mode is None:
-      execution_mode = ASYNC if is_tfrt_enabled() else SYNC
+      execution_mode = SYNC
     self._default_is_async = execution_mode == ASYNC
-    self._lazy_remote_inputs_copy = None
     self._use_tfrt = is_tfrt_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
@@ -541,9 +520,6 @@ class Context(object):
               opts, self._mirroring_policy)
         if self._default_is_async == ASYNC:
           pywrap_tfe.TFE_ContextOptionsSetAsync(opts, True)
-        if self._lazy_remote_inputs_copy is not None:
-          pywrap_tfe.TFE_ContextOptionsSetLazyRemoteInputsCopy(
-              opts, self._lazy_remote_inputs_copy)
         if self._use_tfrt is not None:
           pywrap_tfe.TFE_ContextOptionsSetTfrt(opts, self._use_tfrt)
         context_handle = pywrap_tfe.TFE_NewContext(opts)
@@ -656,7 +632,7 @@ class Context(object):
     """Sync both local executors and the ones on remote workers.
 
     In async execution mode, local function calls can return before the
-    coresponding remote op/function execution requests are completed. Calling
+    corresponding remote op/function execution requests are completed. Calling
     this method creates a synchronization barrier for remote executors. It only
     returns when all remote pending nodes are finished, potentially with errors
     if any remote executors are in error state.
@@ -682,6 +658,17 @@ class Context(object):
     """
     if self._context_handle:
       pywrap_tfe.TFE_ContextClearExecutors(self._context_handle)
+    else:
+      raise ValueError("Context is not initialized.")
+
+  def clear_kernel_cache(self):
+    """Clear kernel cache and reset all stateful kernels.
+
+    Raises:
+      ValueError: if context is not initialized.
+    """
+    if self._context_handle is not None:
+      pywrap_tfe.TFE_ContextClearCaches(self._context_handle)
     else:
       raise ValueError("Context is not initialized.")
 
@@ -755,6 +742,43 @@ class Context(object):
     self._collective_scoped_allocator_enabled_ops = scoped_allocator_enabled_ops
     self._collective_use_nccl_communication = use_nccl_communication
     self._collective_device_filters = device_filters
+
+  def abort_collective_ops(self, code, message):
+    """Abort the collective ops.
+
+    This is intended to be used when a peer failure is detected, which allows
+    the user to handle the case instead of hanging. This aborts all on-going
+    collectives. After all subsequent collectives error immediately, and you
+    need to reset_context() to use collectives again.
+
+    Args:
+      code: a `tf.errors` error code.
+      message: a string. The error message.
+    """
+    self.ensure_initialized()
+    pywrap_tfe.TFE_AbortCollectiveOps(self._handle, code, message)
+
+  def check_collective_ops_peer_health(self, task, timeout_in_ms):
+    """Check collective peer health.
+
+    This probes each task to see if they're still alive. Note that restarted
+    tasks are considered a different one, and they're considered not healthy.
+
+    This should only be used in multi client multi worker training.
+
+    Args:
+      task: a task string, must be in the format of /job:xxx/replica:0/task:N.
+      timeout_in_ms: an integer, the timeout. If zero, there's no timeout.
+
+    Raises:
+      tf.errors.UnavailableError: when a peer is down.
+      tf.errors.FailedPreconditionError: when a peer is a different one from the
+        one this task has talked to, e.g. the peer has restarted.
+      tf.errors.InvalidArgumentError: when the task string is invalid.
+    """
+    self.ensure_initialized()
+    pywrap_tfe.TFE_CollectiveOpsCheckPeerHealth(self._handle, task,
+                                                timeout_in_ms)
 
   @property
   def _handle(self):
@@ -936,7 +960,12 @@ class Context(object):
     if self._log_device_placement is not None:
       config.log_device_placement = self._log_device_placement
 
-    config.experimental.enable_mlir_bridge = pywrap_tfe.TF_IsMlirBridgeEnabled()
+    is_mlir_bridge_enabled = pywrap_tfe.TF_IsMlirBridgeEnabled()
+    config.experimental.mlir_bridge_rollout = is_mlir_bridge_enabled
+    if (is_mlir_bridge_enabled ==
+        config_pb2.ConfigProto.Experimental.MLIR_BRIDGE_ROLLOUT_ENABLED):
+      config.experimental.enable_mlir_bridge = True
+
     if self._enable_mlir_graph_optimization is not None:
       config.experimental.enable_mlir_graph_optimization = (
           self._enable_mlir_graph_optimization)
@@ -974,6 +1003,7 @@ class Context(object):
     rewriter_toggle("pin_to_host_optimization")
     rewriter_toggle("implementation_selector")
     rewriter_toggle("auto_mixed_precision")
+    rewriter_toggle("use_plugin_optimizers")
     rewriter_bool("disable_meta_optimizer")
     nodes = self._optimizer_experimental_options.get("min_graph_nodes", None)
     if nodes is not None:
@@ -1155,11 +1185,16 @@ class Context(object):
       A packed EagerTensor.
     """
     self.ensure_initialized()
-    if self._lazy_remote_inputs_copy is not None and (
-        not self._lazy_remote_inputs_copy):
-      raise ValueError("Packing eager tensors is not supported when "
-                       "lazy_remote_inputs_copy is disabled.")
     return pywrap_tfe.TFE_Py_PackEagerTensors(self._handle, tensors)
+
+  def list_function_names(self):
+    """Get a list of names of registered functions.
+
+    Returns:
+      A set of names of all registered functions for the context.
+    """
+    self.ensure_initialized()
+    return set(pywrap_tfe.TFE_ContextListFunctionNames(self._handle))
 
   def remove_function(self, name):
     """Remove a function from the context.
@@ -1223,12 +1258,17 @@ class Context(object):
   def invoking_op_callbacks(self, value):
     self._thread_local_data.invoking_op_callbacks = value
 
-  def _initialize_physical_devices(self):
-    """Get local devices visible to the system."""
+  def _initialize_physical_devices(self, reinitialize=False):
+    """Gets local devices visible to the system.
+
+    Args:
+      reinitialize: If True, reinitializes self._physical_devices  so that
+        dynamic registered devices will also be visible to the python front-end.
+    """
     # We lazy initialize self._physical_devices since we do not want to do this
     # the constructor since the backend may not be initialized yet.
     with self._device_lock:
-      if self._physical_devices is not None:
+      if not reinitialize and self._physical_devices is not None:
         return
 
       devs = pywrap_tfe.TF_ListPhysicalDevices()
@@ -1239,18 +1279,19 @@ class Context(object):
           p: i for i, p in enumerate(self._physical_devices)
       }
 
-      # Construct the visible device list from all physical devices but ignore
-      # XLA devices
-      self._visible_device_list = [
-          d for d in self._physical_devices
-          if not d.device_type.startswith("XLA")
-      ]
+      self._visible_device_list = list(self._physical_devices)
       self._memory_growth_map = {
           d: None for d in self._physical_devices if d.device_type == "GPU"
       }
 
     # Import device settings that may have been passed into the constructor
     self._import_config()
+
+  def reinitialize_physical_devices(self):
+    """Gets local devices visible to the system."""
+    # Reinitialize the physical device list after registering
+    # the pluggable device.
+    self._initialize_physical_devices(True)
 
   def list_physical_devices(self, device_type=None):
     """List local devices visible to the system.
@@ -1398,6 +1439,17 @@ class Context(object):
 
     self._visible_device_list = visible_device_list
 
+  def get_memory_info(self, dev):
+    """Returns a dict of memory info for the device."""
+    self._initialize_physical_devices()
+    self.ensure_initialized()
+    return pywrap_tfe.TFE_GetMemoryInfo(self._context_handle, dev)
+
+  # TODO(reedwm): Remove this function
+  def get_total_memory_usage(self, dev):
+    """Returns total memory usage in bytes for the current device."""
+    return self.get_memory_info(dev)["current"]
+
   def get_memory_growth(self, dev):
     """Get if memory growth is enabled for a PhysicalDevice."""
     self._initialize_physical_devices()
@@ -1472,6 +1524,39 @@ class Context(object):
 
     self._virtual_device_map[dev] = virtual_devices
 
+  def set_logical_cpu_devices(self, num_cpus, prefix=""):
+    """Set virtual CPU devices in context.
+
+    If virtual CPU devices are already configured at context initialization
+    by tf.config.set_logical_device_configuration(), this method should not be
+    called.
+
+    Args:
+      num_cpus: Number of virtual CPUs.
+      prefix: Device name prefix.
+
+    Raises:
+     RuntimeError: If virtual CPUs are already configured at context
+     initialization.
+    """
+    self.ensure_initialized()
+    # Error out if there are already multiple logical CPU in the context.
+    if len(self.list_logical_devices("CPU")) > 1:
+      raise RuntimeError("Virtual CPUs already set, cannot modify again.")
+
+    pywrap_tfe.TFE_SetLogicalCpuDevices(self._context_handle, num_cpus, prefix)
+    self._initialize_logical_devices()
+
+  def get_compiler_ir(self, device_name, function_name, args, stage="hlo"):
+    return pywrap_tfe.TF_GetCompilerIr(self._context_handle, function_name,
+                                       stage, device_name, args)
+
+  @deprecated(
+      None, "XLA:CPU and XLA:GPU devices are deprecated", warn_once=True)
+  def enable_xla_devices(self):
+    """Enables XLA:CPU and XLA:GPU devices registration."""
+    pywrap_tfe.TF_EnableXlaDevices()
+
   @property
   def enable_mlir_bridge(self):
     return pywrap_tfe.TF_IsMlirBridgeEnabled()
@@ -1533,6 +1618,7 @@ class Context(object):
     rewriter_toggle("pin_to_host_optimization")
     rewriter_toggle("implementation_selector")
     rewriter_toggle("auto_mixed_precision")
+    rewriter_toggle("use_plugin_optimizers")
     rewriter_bool("disable_meta_optimizer")
 
     if rewrite_options.min_graph_nodes != 0:
@@ -1626,43 +1712,6 @@ class Context(object):
             self._handle, self._device_policy)
 
   @property
-  def mirroring_policy(self):
-    # Only get the policy from the context if it has already been initialized
-    if self._context_handle is not None:
-      return pywrap_tfe.TFE_ContextGetMirroringPolicy(self._handle)
-
-    return self._mirroring_policy
-
-  @mirroring_policy.setter
-  def mirroring_policy(self, policy):
-    if policy is None:
-      policy = MIRRORING_NONE
-
-    if self._mirroring_policy is None or self._mirroring_policy != policy:
-      self._mirroring_policy = policy
-
-      # Only set the policy if the context has already been initialized
-      if self._context_handle is not None:
-        pywrap_tfe.TFE_ContextSetThreadLocalMirroringPolicy(
-            self._handle, self._mirroring_policy)
-
-  @property
-  def lazy_remote_inputs_copy(self):
-    return self._lazy_remote_inputs_copy
-
-  @lazy_remote_inputs_copy.setter
-  def lazy_remote_inputs_copy(self, lazy_copy):
-    """Sets whether to copy remote inputs lazily for functions."""
-    if not isinstance(lazy_copy, bool):
-      raise ValueError("Expecting a boolean but got %s" % type(lazy_copy))
-
-    if self._lazy_remote_inputs_copy != lazy_copy:
-      if self._initialized:
-        raise ValueError(
-            "lazy_remote_inputs_copy should be set before being initialized.")
-      self._lazy_remote_inputs_copy = lazy_copy
-
-  @property
   def use_tfrt(self):
     return self._use_tfrt
 
@@ -1729,12 +1778,6 @@ class Context(object):
   def context_switches(self):
     """Returns a stack of context switches."""
     return self._context_switches
-
-  def start_step(self):
-    pywrap_tfe.TFE_ContextStartStep(self._handle)
-
-  def end_step(self):
-    pywrap_tfe.TFE_ContextEndStep(self._handle)
 
 
 class _EagerDeviceContext(object):
@@ -1820,11 +1863,13 @@ def _reset_context():
   Should only be used for testing.
   """
   global _context
+  global _device_parsing_cache
   with _context_lock:
     if _context is not None:
       _context._clear_caches()
       _context = None
   _create_context()
+  _device_parsing_cache = {}
   pywrap_tfe.TFE_ClearScalarCache()
 
 
@@ -1843,6 +1888,11 @@ def context_safe():
 def ensure_initialized():
   """Initialize the context."""
   context().ensure_initialized()
+
+
+def initialize_logical_devices():
+  """Initialize the virtual devices."""
+  context()._initialize_logical_devices()  # pylint: disable=protected-access
 
 
 def set_global_seed(seed):
@@ -2015,6 +2065,8 @@ def graph_mode():
   return context()._mode(GRAPH_MODE)  # pylint: disable=protected-access
 
 
+# Used by b/167638505 for keras backend API and Lambda layer.
+@tf_export("__internal__.eager_context.eager_mode", v1=[])
 def eager_mode():
   """Context-manager to enable eager execution for the current thread."""
   return context()._mode(EAGER_MODE)  # pylint: disable=protected-access
@@ -2049,6 +2101,47 @@ def device(name):
   return context().device(name)
 
 
+# Expose some properties of Context as internally public APIs (b/160348781).
+@tf_export("__internal__.eager_context.get_config", v1=[])
+def get_config():
+  """Get the ConfigProto of Context.
+
+  Returns:
+    The ConfigProto of Context.
+  """
+  return context().config
+
+
+@tf_export("__internal__.eager_context.get_device_name", v1=[])
+def get_device_name():
+  """Get the device name for the current thread.
+
+  Returns:
+    The device name for the current thread.
+  """
+  return context().device_name
+
+
+@tf_export("__internal__.eager_context.set_soft_device_placement", v1=[])
+def set_soft_device_placement(enabled):
+  """Set if soft device placements should be allowed.
+
+  Args:
+    enabled: Whether to enable soft device placement.
+  """
+  context().soft_device_placement = enabled
+
+
+@tf_export("__internal__.eager_context.get_executor", v1=[])
+def get_executor():
+  """Get the Executor of the current thread.
+
+  Returns:
+    The Executor of the current thread.
+  """
+  return context().executor
+
+
 @tf_export("debugging.get_log_device_placement")
 def get_log_device_placement():
   """Get if device placements are logged.
@@ -2061,7 +2154,32 @@ def get_log_device_placement():
 
 @tf_export("debugging.set_log_device_placement")
 def set_log_device_placement(enabled):
-  """Set if device placements should be logged.
+  """Turns logging for device placement decisions on or off.
+
+  Operations execute on a particular device, producing and consuming tensors on
+  that device. This may change the performance of the operation or require
+  TensorFlow to copy data to or from an accelerator, so knowing where operations
+  execute is useful for debugging performance issues.
+
+  For more advanced profiling, use the [TensorFlow
+  profiler](https://www.tensorflow.org/guide/profiler).
+
+  Device placement for operations is typically controlled by a `tf.device`
+  scope, but there are exceptions, for example operations on a `tf.Variable`
+  which follow the initial placement of the variable. Turning off soft device
+  placement (with `tf.config.set_soft_device_placement`) provides more explicit
+  control.
+
+  >>> tf.debugging.set_log_device_placement(True)
+  >>> tf.ones([])
+  >>> # [...] op Fill in device /job:localhost/replica:0/task:0/device:GPU:0
+  >>> with tf.device("CPU"):
+  ...  tf.ones([])
+  >>> # [...] op Fill in device /job:localhost/replica:0/task:0/device:CPU:0
+  >>> tf.debugging.set_log_device_placement(False)
+
+  Turning on `tf.debugging.set_log_device_placement` also logs the placement of
+  ops inside `tf.function` when the function is called.
 
   Args:
     enabled: Whether to enabled device placement logging.
@@ -2079,18 +2197,6 @@ def device_policy(policy):
     yield
   finally:
     ctx.device_policy = old_policy
-
-
-@tf_contextlib.contextmanager
-def mirroring_policy(policy):
-  """Context manager for setting mirroring policy for current thread."""
-  ctx = context()
-  old_policy = ctx.mirroring_policy
-  try:
-    ctx.mirroring_policy = policy
-    yield
-  finally:
-    ctx.mirroring_policy = old_policy
 
 
 def set_execution_mode(mode):
@@ -2282,7 +2388,7 @@ def async_scope():
   execution, potentially raising exceptions if async execution results in
   an error state.
 
-  Users may write the following code to asynchronuously invoke `train_step_fn`
+  Users may write the following code to asynchronously invoke `train_step_fn`
   and log the `loss` metric for every `num_steps` steps in a training loop.
   `train_step_fn` internally consumes data using `iterator.get_next()`, and may
   throw OutOfRangeError when running out of data. In the case:
@@ -2295,7 +2401,7 @@ def async_scope():
         train_step_fn()
   except tf.errors.OutOfRangeError:
     tf.experimental.async_clear_error()
-  logging.info('loss =', loss.numpy())
+  logging.info('loss = %s', loss.numpy())
   ```
 
   Yields:
@@ -2349,7 +2455,7 @@ def async_clear_error():
     except tf.errors.OutOfRangeError:
       tf.experimental.async_clear_error()
       break
-  logging.info('loss =', loss.numpy())
+  logging.info('loss = %s', loss.numpy())
   ```
   """
   context().clear_executor_errors()

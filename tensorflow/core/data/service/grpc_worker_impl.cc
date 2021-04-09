@@ -23,28 +23,30 @@ namespace data {
 
 using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
-using ::grpc::Status;
 
-GrpcWorkerImpl::GrpcWorkerImpl(ServerBuilder* server_builder,
-                               const std::string& master_address,
-                               const std::string& protocol)
-    : impl_(master_address, protocol) {
-  server_builder->RegisterService(this);
+GrpcWorkerImpl::GrpcWorkerImpl(const experimental::WorkerConfig& config,
+                               ServerBuilder& server_builder)
+    : impl_(config) {
+  server_builder.RegisterService(this);
   VLOG(1) << "Registered data service worker";
 }
 
-void GrpcWorkerImpl::Start(const std::string& worker_address) {
-  impl_.Start(worker_address);
+Status GrpcWorkerImpl::Start(const std::string& worker_address,
+                             const std::string& transfer_address) {
+  return impl_.Start(worker_address, transfer_address);
 }
 
-#define HANDLER(method)                                         \
-  Status GrpcWorkerImpl::method(ServerContext* context,         \
-                                const method##Request* request, \
-                                method##Response* response) {   \
-    return ToGrpcStatus(impl_.method(request, response));       \
+void GrpcWorkerImpl::Stop() { impl_.Stop(); }
+
+#define HANDLER(method)                                                 \
+  ::grpc::Status GrpcWorkerImpl::method(ServerContext* context,         \
+                                        const method##Request* request, \
+                                        method##Response* response) {   \
+    return ToGrpcStatus(impl_.method(request, response));               \
   }
 HANDLER(ProcessTask);
 HANDLER(GetElement);
+HANDLER(GetWorkerTasks);
 #undef HANDLER
 
 }  // namespace data

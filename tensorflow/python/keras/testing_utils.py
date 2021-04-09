@@ -14,18 +14,19 @@
 # ==============================================================================
 """Utilities for unit-testing Keras."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import collections
+import contextlib
 import functools
+import itertools
 import threading
 
 import numpy as np
 
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
@@ -33,7 +34,6 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import layers
 from tensorflow.python.keras import models
 from tensorflow.python.keras.engine import base_layer_utils
-from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.optimizer_v2 import adadelta as adadelta_v2
 from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_v2
 from tensorflow.python.keras.optimizer_v2 import adam as adam_v2
@@ -41,9 +41,9 @@ from tensorflow.python.keras.optimizer_v2 import adamax as adamax_v2
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_v2
 from tensorflow.python.keras.optimizer_v2 import nadam as nadam_v2
 from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
-from tensorflow.python.util import tf_contextlib
+from tensorflow.python.keras.utils import tf_contextlib
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import tf_inspect
 
 
 def string_test(actual, expected):
@@ -61,7 +61,7 @@ def get_test_data(train_samples,
                   random_seed=None):
   """Generates test data to train a model on.
 
-  Arguments:
+  Args:
     train_samples: Integer, how many training samples to generate.
     test_samples: Integer, how many test samples to generate.
     input_shape: Tuple of integers, shape of the inputs.
@@ -95,10 +95,11 @@ def layer_test(layer_cls,
                validate_training=True,
                adapt_data=None,
                custom_objects=None,
-               test_harness=None):
+               test_harness=None,
+               supports_masking=None):
   """Test routine for a layer with a single input and single output.
 
-  Arguments:
+  Args:
     layer_cls: Layer class object.
     kwargs: Optional dictionary of keyword arguments for instantiating the
       layer.
@@ -117,6 +118,8 @@ def layer_test(layer_cls,
       in the layer class. This is helpful for testing custom layers.
     test_harness: The Tensorflow test, if any, that this function is being
       called in.
+    supports_masking: Optional boolean to check the `supports_masking` property
+      of the layer. If None, the check will not be performed.
 
   Returns:
     The output data (Numpy array) returned by the layer, for additional
@@ -159,6 +162,13 @@ def layer_test(layer_cls,
   # instantiation
   kwargs = kwargs or {}
   layer = layer_cls(**kwargs)
+
+  if (supports_masking is not None
+      and layer.supports_masking != supports_masking):
+    raise AssertionError(
+        'When testing layer %s, the `supports_masking` property is %r'
+        'but expected to be %r.\nFull kwargs: %s' %
+        (layer_cls.__name__, layer.supports_masking, supports_masking, kwargs))
 
   # Test adapt, if data was passed.
   if adapt_data is not None:
@@ -299,6 +309,7 @@ _thread_local_data = threading.local()
 _thread_local_data.model_type = None
 _thread_local_data.run_eagerly = None
 _thread_local_data.saved_model_format = None
+_thread_local_data.save_kwargs = None
 
 
 @tf_contextlib.contextmanager
@@ -307,7 +318,7 @@ def model_type_scope(value):
 
   The model type gets restored to its original value upon exiting the scope.
 
-  Arguments:
+  Args:
      value: model type value
 
   Yields:
@@ -328,7 +339,7 @@ def run_eagerly_scope(value):
 
   The boolean gets restored to its original value upon exiting the scope.
 
-  Arguments:
+  Args:
      value: Bool specifying if we should run models eagerly in the active test.
      Should be True or False.
 
@@ -344,29 +355,6 @@ def run_eagerly_scope(value):
     _thread_local_data.run_eagerly = previous_value
 
 
-@tf_contextlib.contextmanager
-def use_keras_tensors_scope(value):
-  """Provides a scope within which we use KerasTensors in the func. API or not.
-
-  The boolean gets restored to its original value upon exiting the scope.
-
-  Arguments:
-     value: Bool specifying if we should build functional models
-      using KerasTensors in the active test.
-     Should be True or False.
-
-  Yields:
-    The provided value.
-  """
-  previous_value = keras_tensor._KERAS_TENSORS_ENABLED  # pylint: disable=protected-access
-  try:
-    keras_tensor._KERAS_TENSORS_ENABLED = value  # pylint: disable=protected-access
-    yield value
-  finally:
-    # Restore KerasTensor usage to initial value.
-    keras_tensor._KERAS_TENSORS_ENABLED = previous_value  # pylint: disable=protected-access
-
-
 def should_run_eagerly():
   """Returns whether the models we are testing should be run eagerly."""
   if _thread_local_data.run_eagerly is None:
@@ -378,25 +366,29 @@ def should_run_eagerly():
 
 
 @tf_contextlib.contextmanager
-def saved_model_format_scope(value):
+def saved_model_format_scope(value, **kwargs):
   """Provides a scope within which the savde model format to test is `value`.
 
   The saved model format gets restored to its original value upon exiting the
   scope.
 
-  Arguments:
+  Args:
      value: saved model format value
+     **kwargs: optional kwargs to pass to the save function.
 
   Yields:
     The provided value.
   """
-  previous_value = _thread_local_data.saved_model_format
+  previous_format = _thread_local_data.saved_model_format
+  previous_kwargs = _thread_local_data.save_kwargs
   try:
     _thread_local_data.saved_model_format = value
-    yield value
+    _thread_local_data.save_kwargs = kwargs
+    yield
   finally:
     # Restore saved model format to initial value.
-    _thread_local_data.saved_model_format = previous_value
+    _thread_local_data.saved_model_format = previous_format
+    _thread_local_data.save_kwargs = previous_kwargs
 
 
 def get_save_format():
@@ -406,6 +398,15 @@ def get_save_format():
         '`saved_model_format_scope()` or `run_with_all_saved_model_formats` '
         'decorator.')
   return _thread_local_data.saved_model_format
+
+
+def get_save_kwargs():
+  if _thread_local_data.save_kwargs is None:
+    raise ValueError(
+        'Cannot call `get_save_kwargs()` outside of a '
+        '`saved_model_format_scope()` or `run_with_all_saved_model_formats` '
+        'decorator.')
+  return _thread_local_data.save_kwargs or {}
 
 
 def get_model_type():
@@ -440,8 +441,13 @@ def get_small_functional_mlp(num_hidden, num_classes, input_dim):
 class SmallSubclassMLP(models.Model):
   """A subclass model based small MLP."""
 
-  def __init__(self, num_hidden, num_classes, use_bn=False, use_dp=False):
-    super(SmallSubclassMLP, self).__init__(name='test_model')
+  def __init__(self,
+               num_hidden,
+               num_classes,
+               use_bn=False,
+               use_dp=False,
+               **kwargs):
+    super(SmallSubclassMLP, self).__init__(name='test_model', **kwargs)
     self.use_bn = use_bn
     self.use_dp = use_dp
 
@@ -917,3 +923,164 @@ def _set_v2_dtype_behavior(fn, enabled):
       base_layer_utils.V2_DTYPE_BEHAVIOR = v2_dtype_behavior
 
   return tf_decorator.make_decorator(fn, wrapper)
+
+
+@contextlib.contextmanager
+def device(should_use_gpu):
+  """Uses gpu when requested and available."""
+  if should_use_gpu and test_util.is_gpu_available():
+    dev = '/device:GPU:0'
+  else:
+    dev = '/device:CPU:0'
+  with ops.device(dev):
+    yield
+
+
+@contextlib.contextmanager
+def use_gpu():
+  """Uses gpu when requested and available."""
+  with device(should_use_gpu=True):
+    yield
+
+
+def for_all_test_methods(decorator, *args, **kwargs):
+  """Generate class-level decorator from given method-level decorator.
+
+  It is expected for the given decorator to take some arguments and return
+  a method that is then called on the test method to produce a decorated
+  method.
+
+  Args:
+    decorator: The decorator to apply.
+    *args: Positional arguments
+    **kwargs: Keyword arguments
+  Returns: Function that will decorate a given classes test methods with the
+    decorator.
+  """
+
+  def all_test_methods_impl(cls):
+    """Apply decorator to all test methods in class."""
+    for name in dir(cls):
+      value = getattr(cls, name)
+      if callable(value) and name.startswith('test') and (name !=
+                                                          'test_session'):
+        setattr(cls, name, decorator(*args, **kwargs)(value))
+    return cls
+
+  return all_test_methods_impl
+
+
+# The description is just for documentation purposes.
+def run_without_tensor_float_32(description):  # pylint: disable=unused-argument
+  """Execute test with TensorFloat-32 disabled.
+
+  While almost every real-world deep learning model runs fine with
+  TensorFloat-32, many tests use assertAllClose or similar methods.
+  TensorFloat-32 matmuls typically will cause such methods to fail with the
+  default tolerances.
+
+  Args:
+    description: A description used for documentation purposes, describing why
+      the test requires TensorFloat-32 to be disabled.
+
+  Returns:
+    Decorator which runs a test with TensorFloat-32 disabled.
+  """
+
+  def decorator(f):
+
+    @functools.wraps(f)
+    def decorated(self, *args, **kwargs):
+      allowed = config.tensor_float_32_execution_enabled()
+      try:
+        config.enable_tensor_float_32_execution(False)
+        f(self, *args, **kwargs)
+      finally:
+        config.enable_tensor_float_32_execution(allowed)
+
+    return decorated
+
+  return decorator
+
+
+# The description is just for documentation purposes.
+def run_all_without_tensor_float_32(description):  # pylint: disable=unused-argument
+  """Execute all tests in a class with TensorFloat-32 disabled."""
+  return for_all_test_methods(run_without_tensor_float_32, description)
+
+
+def run_v2_only(func=None):
+  """Execute the decorated test only if running in v2 mode.
+
+  This function is intended to be applied to tests that exercise v2 only
+  functionality. If the test is run in v1 mode it will simply be skipped.
+
+  See go/tf-test-decorator-cheatsheet for the decorators to use in different
+  v1/v2/eager/graph combinations.
+
+  Args:
+    func: function to be annotated. If `func` is None, this method returns a
+      decorator the can be applied to a function. If `func` is not None this
+      returns the decorator applied to `func`.
+
+  Returns:
+    Returns a decorator that will conditionally skip the decorated test method.
+  """
+
+  def decorator(f):
+    if tf_inspect.isclass(f):
+      raise ValueError('`run_v2_only` only supports test methods.')
+
+    def decorated(self, *args, **kwargs):
+      if not tf2.enabled():
+        self.skipTest('Test is only compatible with v2')
+
+      return f(self, *args, **kwargs)
+
+    return decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
+
+
+def generate_combinations_with_testcase_name(**kwargs):
+  """Generate combinations based on its keyword arguments using combine().
+
+  This function calls combine() and appends a testcase name to the list of
+  dictionaries returned. The 'testcase_name' key is a required for named
+  parameterized tests.
+
+  Args:
+    **kwargs: keyword arguments of form `option=[possibilities, ...]` or
+      `option=the_only_possibility`.
+
+  Returns:
+    a list of dictionaries for each combination. Keys in the dictionaries are
+    the keyword argument names.  Each key has one value - one of the
+    corresponding keyword argument values.
+  """
+  sort_by_key = lambda k: k[0]
+  combinations = []
+  for key, values in sorted(kwargs.items(), key=sort_by_key):
+    if not isinstance(values, list):
+      values = [values]
+    combinations.append([(key, value) for value in values])
+
+  combinations = [collections.OrderedDict(result)
+                  for result in itertools.product(*combinations)]
+  named_combinations = []
+  for combination in combinations:
+    assert isinstance(combination, collections.OrderedDict)
+    name = ''.join([
+        '_{}_{}'.format(''.join(filter(str.isalnum, key)),
+                        ''.join(filter(str.isalnum, str(value))))
+        for key, value in combination.items()
+    ])
+    named_combinations.append(
+        collections.OrderedDict(
+            list(combination.items()) +
+            [('testcase_name', '_test{}'.format(name))]))
+
+  return named_combinations

@@ -98,18 +98,20 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       reinterpret_cast<TfLiteDepthwiseConvParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
-  // TODO(ahentz): use could use GetOptionalInputTensor() here, but we need to
-  // decide whether we are OK with optional tensors being completely absent, as
-  // opposed to having -1 as their index.
   bool hasBias = NumInputs(node) == 3;
 
   TF_LITE_ENSURE(context, hasBias || NumInputs(node) == 2);
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  const TfLiteTensor* filter;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kFilterTensor, &filter));
   const TfLiteTensor* bias = nullptr;
 
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
   TF_LITE_ENSURE_EQ(context, NumDimensions(filter), 4);
@@ -128,19 +130,22 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                    filter->type == data_type || data_type == kTfLiteInt16);
   }
 
+  if (data_type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+  }
+
   // Filter in DepthwiseConv is expected to be [1, H, W, O].
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(filter, 0), 1);
 
   if (hasBias) {
-    bias = GetInput(context, node, kBiasTensor);
+    TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kBiasTensor, &bias));
     if (data_type == kTfLiteUInt8 || data_type == kTfLiteInt8) {
       TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteInt32);
       TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
     } else if (data_type == kTfLiteInt16) {
       TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteInt64);
       TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
-      TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
-      TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
     } else {
       TF_LITE_ENSURE_TYPES_EQ(context, bias->type, data_type);
     }
@@ -224,8 +229,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
     node->temporaries->data[data->input_quantized_index] =
         data->input_quantized_id;
-    TfLiteTensor* input_quantized =
-        GetTemporary(context, node, data->input_quantized_index);
+    TfLiteTensor* input_quantized;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, data->input_quantized_index,
+                                  &input_quantized));
     input_quantized->type = kTfLiteInt8;
     input_quantized->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqual(input_quantized->dims, input->dims)) {
@@ -235,8 +242,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
     node->temporaries->data[data->scaling_factors_index] =
         data->scaling_factors_id;
-    TfLiteTensor* scaling_factors =
-        GetTemporary(context, node, data->scaling_factors_index);
+    TfLiteTensor* scaling_factors;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, data->scaling_factors_index,
+                                  &scaling_factors));
     scaling_factors->type = kTfLiteFloat32;
     scaling_factors->allocation_type = kTfLiteArenaRw;
     const int batch_size = SizeOfDimension(input, 0);
@@ -248,8 +257,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                                        scaling_factors_size));
     }
     node->temporaries->data[data->input_offset_index] = data->input_offset_id;
-    TfLiteTensor* input_offsets =
-        GetTemporary(context, node, data->input_offset_index);
+    TfLiteTensor* input_offsets;
+    TF_LITE_ENSURE_OK(context,
+                      GetTemporarySafe(context, node, data->input_offset_index,
+                                       &input_offsets));
     input_offsets->type = kTfLiteInt32;
     input_offsets->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqualsArray(input_offsets->dims, 1, scaling_dims)) {
@@ -446,13 +457,21 @@ TfLiteStatus EvalHybridPerChannel(TfLiteContext* context, TfLiteNode* node,
                            &output_activation_max);
   const int input_size = NumElements(input) / SizeOfDimension(input, 0);
   const int batch_size = SizeOfDimension(input, 0);
-  const TfLiteTensor* input_quantized =
-      GetTemporary(context, node, data->input_quantized_index);
+  TfLiteTensor* input_quantized;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, data->input_quantized_index,
+                                     &input_quantized));
   int8_t* quantized_input_ptr_batch = input_quantized->data.int8;
-  float* scaling_factors_ptr = GetTensorData<float>(
-      GetTemporary(context, node, data->scaling_factors_index));
-  int32_t* input_offset_ptr = GetTensorData<int32_t>(
-      GetTemporary(context, node, data->input_offset_index));
+  TfLiteTensor* scaling_factors_tensor;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, data->scaling_factors_index,
+                                     &scaling_factors_tensor));
+  float* scaling_factors_ptr = GetTensorData<float>(scaling_factors_tensor);
+  TfLiteTensor* input_offset_tensor;
+  TF_LITE_ENSURE_OK(context,
+                    GetTemporarySafe(context, node, data->input_offset_index,
+                                     &input_offset_tensor));
+  int32_t* input_offset_ptr = GetTensorData<int32_t>(input_offset_tensor);
 
   for (int b = 0; b < batch_size; ++b) {
     const int offset = b * input_size;
@@ -504,9 +523,14 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
       reinterpret_cast<TfLiteDepthwiseConvParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  const TfLiteTensor* filter;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kFilterTensor, &filter));
   const TfLiteTensor* bias =
       (NumInputs(node) == 3) ? GetInput(context, node, kBiasTensor) : nullptr;
   TFLITE_DCHECK_EQ(input_type, input->type);
@@ -547,7 +571,8 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
 
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
 
   switch (input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:

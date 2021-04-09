@@ -30,7 +30,10 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.feature_column import dense_features
 from tensorflow.python.keras.feature_column import sequence_feature_column as ksfc
+from tensorflow.python.keras.layers import core
+from tensorflow.python.keras.layers import merge
 from tensorflow.python.keras.layers import recurrent
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables
@@ -94,13 +97,14 @@ class SequenceFeatureColumnIntegrationTest(test.TestCase):
 
     # Tile the context features across the sequence features
     sequence_input_layer = ksfc.SequenceFeatures(seq_cols)
-    seq_layer, _ = sequence_input_layer(features)
-    input_layer = dense_features.DenseFeatures(ctx_cols)
-    ctx_layer = input_layer(features)
-    input_layer = sfc.concatenate_context_input(ctx_layer, seq_layer)
+    seq_input, _ = sequence_input_layer(features)
+    dense_input_layer = dense_features.DenseFeatures(ctx_cols)
+    ctx_input = dense_input_layer(features)
+    ctx_input = core.RepeatVector(array_ops.shape(seq_input)[1])(ctx_input)
+    concatenated_input = merge.concatenate([seq_input, ctx_input])
 
     rnn_layer = recurrent.RNN(recurrent.SimpleRNNCell(10))
-    output = rnn_layer(input_layer)
+    output = rnn_layer(concatenated_input)
 
     with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())

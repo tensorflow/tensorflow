@@ -25,8 +25,9 @@ limitations under the License.
 namespace xla {
 namespace dot_as_convolution_util {
 
-// Describes the dimensions of a convolution that can be interpreted as a dot.
-struct DotGeneralAsConvolutionDimsInfo {
+// Describes the dimensions of a convolution that can be interpreted as a dot
+// or a normal convolution.
+struct DotConvolutionDimsInfo {
   // The dimension numbers for the operands and output corresponding to a
   // logical dimension (e.g., batch, contracting, non-contracting). If an
   // operand or the output doesn't have the logical dimension, it is set to
@@ -43,24 +44,33 @@ struct DotGeneralAsConvolutionDimsInfo {
   std::vector<DimNums> contracting_dims;
   std::vector<DimNums> lhs_non_contracting_dims;
   std::vector<DimNums> rhs_non_contracting_dims;
+  std::vector<DimNums> conv_spatial_dims;
 };
 
-// Parses a convolution and returns a DotGeneralAsConvolutionDimsInfo if it can
-// be interpreted as a dot, or absl::nullopt otherwise.
-absl::optional<DotGeneralAsConvolutionDimsInfo> ParseDotGeneralFromConvolution(
-    const HloInstruction* conv);
+// Parses a convolution and returns a DotGeneralAsConvolutionDimsInfo. If it can
+// be interpreted as a dot, there is no conv_spatial_dims.
+DotConvolutionDimsInfo ParseConvolutionDimsInfo(const HloInstruction* conv);
 
 // Creates sharded convolution instruction that can be interpreted as a dot.
 // This is a utility for per-op partitioners.
 //  - 'conv' is the original convolution instruction.
-//  - 'dot_dnums' is the result of ParseDotGeneralFromConvolution() for 'conv'.
+//  - 'dot_dnums' is the result of ParseDotConvolutionDimsInfo() for 'conv'.
 //  - 'sharded_lhs_hlo' and 'sharded_rhs_hlo' are sharded inputs for the result
 //    convolution instruction.
 StatusOr<std::unique_ptr<HloInstruction>>
 CreateShardedConvForDotGeneralConvolution(
-    const HloInstruction& conv,
-    const DotGeneralAsConvolutionDimsInfo& dot_dnums,
+    const HloInstruction& conv, const DotConvolutionDimsInfo& dot_dnums,
     HloInstruction* sharded_lhs_hlo, HloInstruction* sharded_rhs_hlo);
+
+// Check if a spatial dim is parallel batch dimension.
+// A parallel batch dimension in DotGeneral is represented as a spatial
+// dimension with window size B (batch dimension size), stride B - 1, and base
+// dilation B.
+bool ConvSpatialDimensionIsParallel(const WindowDimension& wd, int64 lhs_size);
+
+// Returns a DotConvolutionDimsInfo from a kDot instruction, where all
+// the spatial_dim values are set to -1.
+DotConvolutionDimsInfo ParseDotGeneralFromDot(const HloInstruction* dot);
 
 }  // namespace dot_as_convolution_util
 }  // namespace xla

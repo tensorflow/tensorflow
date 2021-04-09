@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Core Keras layers.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Core Keras layers."""
 
 import copy
 import functools
@@ -30,9 +26,11 @@ import numpy as np
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend as K
@@ -42,24 +40,36 @@ from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
-from tensorflow.python.keras.layers.ops import core as core_ops
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import get_canonical_name_for_symbol
 from tensorflow.python.util.tf_export import get_symbol_from_name
 from tensorflow.python.util.tf_export import keras_export
+
+# TODO(b/168039935): track dropout rate to decide whether/how to make a
+# dropout rate fastpath.
+keras_temporary_dropout_rate = monitoring.BoolGauge(
+    '/tensorflow/api/keras/dropout/temp_rate_is_zero',
+    'Temporarily record if Keras dropout layer was created w/'
+    'constant rate = 0')
 
 
 # pylint: disable=g-classes-have-attributes
@@ -166,7 +176,7 @@ class Dropout(Layer):
    [ 7.5   8.75]
    [10.    0.  ]], shape=(5, 2), dtype=float32)
 
-  Arguments:
+  Args:
     rate: Float between 0 and 1. Fraction of the input units to drop.
     noise_shape: 1D integer tensor representing the shape of the
       binary dropout mask that will be multiplied with the input.
@@ -185,6 +195,10 @@ class Dropout(Layer):
   def __init__(self, rate, noise_shape=None, seed=None, **kwargs):
     super(Dropout, self).__init__(**kwargs)
     self.rate = rate
+    if isinstance(rate, (int, float)) and not rate:
+      keras_temporary_dropout_rate.get_cell().set(True)
+    else:
+      keras_temporary_dropout_rate.get_cell().set(False)
     self.noise_shape = noise_shape
     self.seed = seed
     self.supports_masking = True
@@ -200,7 +214,7 @@ class Dropout(Layer):
     noise_shape = []
     for i, value in enumerate(self.noise_shape):
       noise_shape.append(concrete_inputs_shape[i] if value is None else value)
-    return ops.convert_to_tensor_v2(noise_shape)
+    return ops.convert_to_tensor_v2_with_dispatch(noise_shape)
 
   def call(self, inputs, training=None):
     if training is None:
@@ -213,9 +227,8 @@ class Dropout(Layer):
           seed=self.seed,
           rate=self.rate)
 
-    output = tf_utils.smart_cond(training,
-                                 dropped_inputs,
-                                 lambda: array_ops.identity(inputs))
+    output = control_flow_util.smart_cond(training, dropped_inputs,
+                                          lambda: array_ops.identity(inputs))
     return output
 
   def compute_output_shape(self, input_shape):
@@ -243,7 +256,7 @@ class SpatialDropout1D(Dropout):
   decrease. In this case, SpatialDropout1D will help promote independence
   between feature maps and should be used instead.
 
-  Arguments:
+  Args:
     rate: Float between 0 and 1. Fraction of the input units to drop.
 
   Call arguments:
@@ -285,7 +298,7 @@ class SpatialDropout2D(Dropout):
   decrease. In this case, SpatialDropout2D will help promote independence
   between feature maps and should be used instead.
 
-  Arguments:
+  Args:
     rate: Float between 0 and 1. Fraction of the input units to drop.
     data_format: 'channels_first' or 'channels_last'.
       In 'channels_first' mode, the channels dimension
@@ -344,7 +357,7 @@ class SpatialDropout3D(Dropout):
   decrease. In this case, SpatialDropout3D will help promote independence
   between feature maps and should be used instead.
 
-  Arguments:
+  Args:
     rate: Float between 0 and 1. Fraction of the input units to drop.
     data_format: 'channels_first' or 'channels_last'.
         In 'channels_first' mode, the channels dimension (the depth)
@@ -394,7 +407,7 @@ class SpatialDropout3D(Dropout):
 class Activation(Layer):
   """Applies an activation function to an output.
 
-  Arguments:
+  Args:
     activation: Activation function, such as `tf.nn.relu`, or string name of
       built-in activation function, such as "relu".
 
@@ -485,7 +498,7 @@ class Reshape(Layer):
     This is a near direct port of the internal Numpy function
     `_fix_unknown_dimension` in `numpy/core/src/multiarray/shape.c`
 
-    Arguments:
+    Args:
       input_shape: Shape of array being reshaped
       output_shape: Desired shape of the array with at most
         a single -1 which indicates a dimension that should be
@@ -565,7 +578,7 @@ class Permute(Layer):
   # note: `None` is the batch dimension
   ```
 
-  Arguments:
+  Args:
     dims: Tuple of integers. Permutation pattern does not include the
       samples dimension. Indexing starts at 1.
       For instance, `(2, 1)` permutes the first and second dimensions
@@ -615,7 +628,7 @@ class Flatten(Layer):
   Note: If inputs are shaped `(batch,)` without a feature axis, then
   flattening adds an extra channel dimension and output shape is `(batch, 1)`.
 
-  Arguments:
+  Args:
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -659,7 +672,7 @@ class Flatten(Layer):
       # Full static shape is guaranteed to be available.
       # Performance: Using `constant_op` is much faster than passing a list.
       flattened_shape = constant_op.constant([inputs.shape[0], -1])
-      return gen_array_ops.reshape(inputs, flattened_shape)
+      return array_ops.reshape(inputs, flattened_shape)
     else:
       input_shape = inputs.shape
       rank = input_shape.rank
@@ -679,7 +692,7 @@ class Flatten(Layer):
         return array_ops.reshape(inputs, flattened_shape)
 
   def compute_output_shape(self, input_shape):
-    input_shape = tensor_shape.as_shape(input_shape).as_list()
+    input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if not input_shape:
       output_shape = tensor_shape.TensorShape([1])
     else:
@@ -712,7 +725,7 @@ class RepeatVector(Layer):
   # now: model.output_shape == (None, 3, 32)
   ```
 
-  Arguments:
+  Args:
     n: Integer, repetition factor.
 
   Input shape:
@@ -744,18 +757,21 @@ class RepeatVector(Layer):
 class Lambda(Layer):
   """Wraps arbitrary expressions as a `Layer` object.
 
-  The `Lambda` layer exists so that arbitrary TensorFlow functions
-  can be used when constructing `Sequential` and Functional API
-  models. `Lambda` layers are best suited for simple operations or
-  quick experimentation. For more advanced use cases, follow
+  The `Lambda` layer exists so that arbitrary expressions can be used
+  as a `Layer` when constructing `Sequential`
+  and Functional API models. `Lambda` layers are best suited for simple
+  operations or quick experimentation. For more advanced use cases, follow
   [this guide](https://www.tensorflow.org/guide/keras/custom_layers_and_models)
   for subclassing `tf.keras.layers.Layer`.
 
+  WARNING: `tf.keras.layers.Lambda` layers have (de)serialization limitations!
+
   The main reason to subclass `tf.keras.layers.Layer` instead of using a
   `Lambda` layer is saving and inspecting a Model. `Lambda` layers
-  are saved by serializing the Python bytecode, whereas subclassed
-  Layers can be saved via overriding their `get_config` method. Overriding
-  `get_config` improves the portability of Models. Models that rely on
+  are saved by serializing the Python bytecode, which is fundamentally
+  non-portable. They should only be loaded in the same environment where
+  they were saved. Subclassed layers can be saved in a more portable way
+  by overriding their `get_config` method. Models that rely on
   subclassed Layers are also often easier to visualize and reason about.
 
   Examples:
@@ -808,7 +824,7 @@ class Lambda(Layer):
     In general, Lambda layers can be convenient for simple stateless
     computation, but anything more complex should use a subclass Layer instead.
 
-  Arguments:
+  Args:
     function: The function to be evaluated. Takes input tensor as first
       argument.
     output_shape: Expected output shape from function. This argument can be
@@ -949,7 +965,7 @@ class Lambda(Layer):
   def _warn(self, msg):
     # This method will be overridden in a unit test to raise an error, because
     # self.assertWarns is not universally implemented.
-    return tf_logging.warn(msg)
+    return tf_logging.warning(msg)
 
   def compute_mask(self, inputs, mask=None):
     if callable(self.mask):
@@ -1072,7 +1088,8 @@ class Dense(Layer):
   where `activation` is the element-wise activation function
   passed as the `activation` argument, `kernel` is a weights matrix
   created by the layer, and `bias` is a bias vector created by the layer
-  (only applicable if `use_bias` is `True`).
+  (only applicable if `use_bias` is `True`). These are all attributes of
+  `Dense`.
 
   Note: If the input to the layer has a rank greater than 2, then `Dense`
   computes the dot product between the `inputs` and the `kernel` along the
@@ -1085,6 +1102,9 @@ class Dense(Layer):
 
   Besides, layer attributes cannot be modified after the layer has been called
   once (except the `trainable` attribute).
+  When a popular kwarg `input_shape` is passed, then keras will create
+  an input layer to insert before the current layer. This can be treated
+  equivalent to explicitly defining an `InputLayer`.
 
   Example:
 
@@ -1100,7 +1120,7 @@ class Dense(Layer):
   >>> model.output_shape
   (None, 32)
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use.
       If you don't specify anything, no activation is applied
@@ -1190,12 +1210,51 @@ class Dense(Layer):
     self.built = True
 
   def call(self, inputs):
-    return core_ops.dense(
-        inputs,
-        self.kernel,
-        self.bias,
-        self.activation,
-        dtype=self._compute_dtype_object)
+    if inputs.dtype.base_dtype != self._compute_dtype_object.base_dtype:
+      inputs = math_ops.cast(inputs, dtype=self._compute_dtype_object)
+
+    rank = inputs.shape.rank
+    if rank == 2 or rank is None:
+      # We use embedding_lookup_sparse as a more efficient matmul operation for
+      # large sparse input tensors. The op will result in a sparse gradient, as
+      # opposed to sparse_ops.sparse_tensor_dense_matmul which results in dense
+      # gradients. This can lead to sigfinicant speedups, see b/171762937.
+      if isinstance(inputs, sparse_tensor.SparseTensor):
+        # We need to fill empty rows, as the op assumes at least one id per row.
+        inputs, _ = sparse_ops.sparse_fill_empty_rows(inputs, 0)
+        # We need to do some munging of our input to use the embedding lookup as
+        # a matrix multiply. We split our input matrix into separate ids and
+        # weights tensors. The values of the ids tensor should be the column
+        # indices of our input matrix and the values of the weights tensor
+        # can continue to the actual matrix weights.
+        # The column arrangement of ids and weights
+        # will be summed over and does not matter. See the documentation for
+        # sparse_ops.sparse_tensor_dense_matmul a more detailed explanation
+        # of the inputs to both ops.
+        ids = sparse_tensor.SparseTensor(
+            indices=inputs.indices,
+            values=inputs.indices[:, 1],
+            dense_shape=inputs.dense_shape)
+        weights = inputs
+        outputs = embedding_ops.embedding_lookup_sparse_v2(
+            self.kernel, ids, weights, combiner='sum')
+      else:
+        outputs = gen_math_ops.MatMul(a=inputs, b=self.kernel)
+    # Broadcast kernel to inputs.
+    else:
+      outputs = standard_ops.tensordot(inputs, self.kernel, [[rank - 1], [0]])
+      # Reshape the output back to the original ndim of the input.
+      if not context.executing_eagerly():
+        shape = inputs.shape.as_list()
+        output_shape = shape[:-1] + [self.kernel.shape[-1]]
+        outputs.set_shape(output_shape)
+
+    if self.use_bias:
+      outputs = nn_ops.bias_add(outputs, self.bias)
+
+    if self.activation is not None:
+      outputs = self.activation(outputs)
+    return outputs
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
@@ -1203,32 +1262,23 @@ class Dense(Layer):
     if tensor_shape.dimension_value(input_shape[-1]) is None:
       raise ValueError(
           'The innermost dimension of input_shape must be defined, but saw: %s'
-          % input_shape)
+          % (input_shape,))
     return input_shape[:-1].concatenate(self.units)
 
   def get_config(self):
     config = super(Dense, self).get_config()
     config.update({
-        'units':
-            self.units,
-        'activation':
-            activations.serialize(self.activation),
-        'use_bias':
-            self.use_bias,
-        'kernel_initializer':
-            initializers.serialize(self.kernel_initializer),
-        'bias_initializer':
-            initializers.serialize(self.bias_initializer),
-        'kernel_regularizer':
-            regularizers.serialize(self.kernel_regularizer),
-        'bias_regularizer':
-            regularizers.serialize(self.bias_regularizer),
+        'units': self.units,
+        'activation': activations.serialize(self.activation),
+        'use_bias': self.use_bias,
+        'kernel_initializer': initializers.serialize(self.kernel_initializer),
+        'bias_initializer': initializers.serialize(self.bias_initializer),
+        'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
+        'bias_regularizer': regularizers.serialize(self.bias_regularizer),
         'activity_regularizer':
             regularizers.serialize(self.activity_regularizer),
-        'kernel_constraint':
-            constraints.serialize(self.kernel_constraint),
-        'bias_constraint':
-            constraints.serialize(self.bias_constraint)
+        'kernel_constraint': constraints.serialize(self.kernel_constraint),
+        'bias_constraint': constraints.serialize(self.bias_constraint)
     })
     return config
 
@@ -1237,7 +1287,7 @@ class Dense(Layer):
 class ActivityRegularization(Layer):
   """Layer that applies an update to the cost function based input activity.
 
-  Arguments:
+  Args:
     l1: L1 regularization factor (positive float).
     l2: L2 regularization factor (positive float).
 
@@ -1292,8 +1342,20 @@ class TFOpLambda(Layer):
                                       api_name='keras',
                                       add_prefix_to_v1_names=True))
     if 'name' not in kwargs:
+      # Generate a name.
+      # TFOpLambda layers avoid already-observed names,
+      # because users cannot easily control the generated names.
+      # Without this avoidance, users would be more likely to run
+      # into unavoidable duplicate layer name collisions.
+      # (For standard layers users could just set `name` when creating the
+      # layer to work around a collision, but they can't do that for
+      # auto-generated layers)
+      if self.symbol:
+        name = 'tf.' + self.symbol
+      else:
+        name = self.function.__name__
       kwargs['name'] = K.unique_object_name(
-          'tf.' + self.symbol, zero_based=True)
+          name, zero_based=True, avoid_observed_names=True)
     kwargs['autocast'] = False
 
     # Decorate the function to produce this layer's call method
@@ -1305,6 +1367,10 @@ class TFOpLambda(Layer):
     self._must_restore_from_config = True
 
     super(TFOpLambda, self).__init__(**kwargs)
+
+    # Preserve all argument data structures when saving/loading a config
+    # (e.g., don't unnest lists that contain one element)
+    self._preserve_input_structure_in_config = True
 
     # Warning on every invocation will be quite irksome in Eager mode.
     self._already_warned = False
@@ -1375,7 +1441,7 @@ class TFOpLambda(Layer):
   def _warn(self, msg):
     # This method will be overridden in a unit test to raise an error, because
     # self.assertWarns is not universally implemented.
-    return tf_logging.warn(msg)
+    return tf_logging.warning(msg)
 
   def get_config(self):
     if not self.symbol:
@@ -1422,3 +1488,352 @@ class KerasOpDispatcher(dispatch.GlobalOpDispatcher):
       return self.NOT_SUPPORTED
 
 KerasOpDispatcher().register()
+
+
+def _slice_to_dict(x):
+  if isinstance(x, slice):
+    return {'start': x.start, 'stop': x.stop, 'step': x.step}
+  return x
+
+
+def _dict_to_slice(x):
+  if isinstance(x, dict):
+    return slice(x['start'], x['stop'], x['step'])
+  return x
+
+
+class SlicingOpLambda(TFOpLambda):
+  """Wraps TF API symbols in a `Layer` object.
+
+  It is inserted by the Functional API construction whenever users call
+  a supported TF symbol on KerasTensors.
+
+  Like Lambda layers, this layer tries to raise warnings when it detects users
+  explicitly use variables in the call. (To let them know
+  that the layer will not capture the variables).
+
+  This is useful in the case where users do something like:
+  x = keras.Input(...)
+  y = tf.Variable(...)
+  out = x * tf_variable
+  """
+
+  @trackable.no_automatic_dependency_tracking
+  def __init__(self, function, **kwargs):
+    super(SlicingOpLambda, self).__init__(function, **kwargs)
+
+    original_call = self.call
+    # Decorate the function to produce this layer's call method
+    def _call_wrapper(*args, **kwargs):
+      # Turn any slice dicts in the args back into `slice` objects.
+      # This conversion cannot use nest.flatten/map_structure,
+      # because dicts are flattened by nest while slices aren't.
+      # So, map_structure would only see the individual elements in the
+      # dict.
+      # This can't use map_structure_up_to either because the 'shallowness' of
+      # the shallow tree would have to vary depending on if only one dim or
+      # multiple are being sliced.
+      new_args = []
+      for arg in args:
+        arg = _dict_to_slice(arg)
+        if isinstance(arg, (list, tuple)):
+          new_arg = []
+          for sub_arg in arg:
+            new_arg.append(_dict_to_slice(sub_arg))
+          arg = new_arg
+        new_args.append(arg)
+
+      # Handle the kwargs too.
+      new_kwargs = {}
+      for key, value in kwargs.items():
+        value = _dict_to_slice(value)
+        if isinstance(value, (list, tuple)):
+          new_value = []
+          for v in value:
+            new_value.append(_dict_to_slice(v))
+          value = new_value
+        new_kwargs[key] = value
+
+      return original_call(*new_args, **new_kwargs)
+    self.call = tf_decorator.make_decorator(original_call, _call_wrapper)
+
+
+class TFSlicingOpDispatcher(dispatch.OpDispatcher):
+  """A global dispatcher that allows building a functional model with TF Ops."""
+
+  def __init__(self, op):
+    self.op = op
+
+  def handle(self, args, kwargs):
+    """Handle the specified operation with the specified arguments."""
+    args = nest.map_structure(_slice_to_dict, args)
+    kwargs = nest.map_structure(_slice_to_dict, kwargs)
+    if any(
+        isinstance(x, keras_tensor.KerasTensor)
+        for x in nest.flatten([args, kwargs])):
+      return SlicingOpLambda(self.op)(*args, **kwargs)
+    else:
+      return self.NOT_SUPPORTED
+
+for slicing_op in [array_ops._slice_helper,  # pylint: disable=protected-access
+                   array_ops.boolean_mask,
+                   array_ops.boolean_mask_v2]:
+  TFSlicingOpDispatcher(slicing_op).register(slicing_op)
+
+
+class InstanceProperty(Layer):
+  """Wraps an instance property access (e.g. `x.foo`) in a Keras Layer.
+
+  This layer takes an attribute name `attr_name` in the constructor and,
+  when called on input tensor `obj` returns `obj.attr_name`.
+
+  KerasTensors specialized for specific extension types use it to
+  represent instance property accesses on the represented object in the
+  case where the property needs to be dynamically accessed as opposed to
+  being statically computed from the typespec, e.g.
+
+  x = keras.Input(..., ragged=True)
+  out = x.flat_values
+  """
+
+  @trackable.no_automatic_dependency_tracking
+  def __init__(self, attr_name, **kwargs):
+    self.attr_name = attr_name
+
+    if 'name' not in kwargs:
+      kwargs['name'] = K.unique_object_name(
+          'input.' + self.attr_name, zero_based=True, avoid_observed_names=True)
+    kwargs['autocast'] = False
+
+    # Do not individually trace op layers in the SavedModel.
+    self._must_restore_from_config = True
+
+    super(InstanceProperty, self).__init__(**kwargs)
+
+    # Preserve all argument data structures when saving/loading a config
+    # (e.g., don't unnest lists that contain one element)
+    self._preserve_input_structure_in_config = True
+
+  def call(self, obj):
+    return getattr(obj, self.attr_name)
+
+  def get_config(self):
+    config = {
+        'attr_name': self.attr_name
+    }
+    base_config = super(InstanceProperty, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+  @classmethod
+  def from_config(cls, config, custom_objects=None):
+    return cls(**config)
+
+
+class InstanceMethod(InstanceProperty):
+  """Wraps an instance method access (e.g. `x.foo(arg)` in a Keras Layer.
+
+  This layer takes an attribute name `attr_name` in the constructor and,
+  when called on input tensor `obj` with additional arguments `args` and
+  `kwargs` returns `obj.attr_name(*args, **kwargs)`.
+
+  KerasTensors specialized for specific extension types use it to
+  represent dynamic instance method calls on the represented object, e.g.
+
+  x = keras.Input(..., ragged=True)
+  new_values = keras.Input(...)
+  out = x.with_values(new_values)
+  """
+
+  def call(self, obj, args, kwargs):
+    method = getattr(obj, self.attr_name)
+    return method(*args, **kwargs)
+
+
+def _delegate_property(keras_tensor_cls, property_name):  # pylint: disable=invalid-name
+  """Register property on a KerasTensor class.
+
+  Calling this multiple times with the same arguments should be a no-op.
+
+  This method exposes a property on the KerasTensor class that will use an
+  `InstanceProperty` layer to access the property on the represented
+  intermediate values in the model.
+
+  Args:
+    keras_tensor_cls: The KerasTensor subclass that should expose the property.
+    property_name: The name of the property to expose and delegate to the
+      represented (Composite)Tensor.
+  """
+  # We use a lambda because we can't create a Keras layer at import time
+  # due to dynamic layer class versioning.
+  property_access = property(lambda self: InstanceProperty(property_name)(self))  # pylint: disable=unnecessary-lambda
+  setattr(keras_tensor_cls, property_name, property_access)
+
+
+def _delegate_method(keras_tensor_cls, method_name):  # pylint: disable=invalid-name
+  """Register method on a KerasTensor class.
+
+  Calling this function times with the same arguments should be a no-op.
+
+  This method exposes an instance method on the KerasTensor class that will use
+  an `InstanceMethod` layer to run the desired method on the represented
+  intermediate values in the model.
+
+  Args:
+    keras_tensor_cls: The KerasTensor subclass that should expose the property.
+    method_name: The name of the method to expose and delegate to the
+      represented (Composite)Tensor.
+  """
+  def delegate(self, *args, **kwargs):
+    return InstanceMethod(method_name)(self, args, kwargs)
+  setattr(keras_tensor_cls, method_name, delegate)
+
+# We do not support the `uniform_row_length` property because it
+# returns either `None` or an int tensor, and code that relies on it tends
+# to check `is None` directly. Delegating it here would always return a
+# `KerasTensor`, regardless of what can be statically inferred. This would
+# never equal `None`, breaking code that expects it to be partially-static
+# in unpredictable ways.
+for ragged_property in [
+    'values',
+    'flat_values',
+    'row_splits',
+    'nested_row_splits'
+]:
+  _delegate_property(keras_tensor.RaggedKerasTensor, ragged_property)
+
+for ragged_method_name in [
+    'value_rowids',
+    'nested_value_rowids',
+    'nrows',
+    'row_starts',
+    'row_limits',
+    'row_lengths',
+    'nested_row_lengths',
+    'bounding_shape',
+    'with_values',
+    'with_flat_values',
+    'with_row_splits_dtype',
+    'merge_dims',
+    'to_tensor',
+    'to_sparse',
+]:
+  _delegate_method(keras_tensor.RaggedKerasTensor, ragged_method_name)
+
+for sparse_property in [
+    'indices',
+    'values',
+]:
+  _delegate_property(keras_tensor.SparseKerasTensor, sparse_property)
+
+for sparse_method in [
+    'with_values',
+]:
+  _delegate_method(keras_tensor.SparseKerasTensor, sparse_method)
+
+
+class ClassMethod(Layer):
+  """Wraps a TF API Class's class method  in a `Layer` object.
+
+  It is inserted by the Functional API construction whenever users call
+  a supported TF Class's class method on KerasTensors.
+
+  This is useful in the case where users do something like:
+  x = keras.Input(...)
+  y = keras.Input(...)
+  out = tf.RaggedTensor.from_row_splits(x, y)
+  """
+
+  @trackable.no_automatic_dependency_tracking
+  def __init__(self, cls_ref, method_name, **kwargs):
+    self.cls_ref = cls_ref
+    self.method_name = method_name
+    self.cls_symbol = (
+        get_canonical_name_for_symbol(self.cls_ref,
+                                      add_prefix_to_v1_names=True) or
+        get_canonical_name_for_symbol(self.cls_ref,
+                                      api_name='keras',
+                                      add_prefix_to_v1_names=True))
+    if 'name' not in kwargs:
+      kwargs['name'] = K.unique_object_name(
+          'tf.' + self.cls_symbol + '.' + self.method_name, zero_based=True,
+          avoid_observed_names=True)
+    kwargs['autocast'] = False
+
+    # Do not individually trace op layers in the SavedModel.
+    self._must_restore_from_config = True
+
+    super(ClassMethod, self).__init__(**kwargs)
+
+    # Preserve all argument data structures when saving/loading a config
+    # (e.g., don't unnest lists that contain one element)
+    self._preserve_input_structure_in_config = True
+
+    self._expects_training_arg = False
+    self._expects_mask_arg = False
+
+  def call(self, args, kwargs):
+    return getattr(self.cls_ref, self.method_name)(*args, **kwargs)
+
+  def get_config(self):
+    if not self.cls_symbol:
+      raise ValueError('This Keras class method conversion tried to convert '
+                       'a method belonging to class %s, a class '
+                       'that is not an exposed in the TensorFlow API. '
+                       'To ensure cross-version compatibility of Keras models '
+                       'that use op layers, only op layers produced from '
+                       'exported TF API symbols can be serialized.'
+                       % self.cls_symbol)
+    config = {
+        'cls_symbol': self.cls_symbol,
+        'method_name': self.method_name
+    }
+
+    base_config = super(ClassMethod, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+  @classmethod
+  def from_config(cls, config, custom_objects=None):
+    config = config.copy()
+    symbol_name = config.pop('cls_symbol')
+    cls_ref = get_symbol_from_name(symbol_name)
+    if not cls_ref:
+      raise ValueError(
+          'TF symbol `tf.%s` could not be found.' % symbol_name)
+
+    config['cls_ref'] = cls_ref
+
+    return cls(**config)
+
+
+class TFClassMethodDispatcher(dispatch.OpDispatcher):
+  """A class method dispatcher that allows building a functional model with TF class methods."""
+
+  def __init__(self, cls, method_name):
+    self.cls = cls
+    self.method_name = method_name
+
+  def handle(self, args, kwargs):
+    """Handle the specified operation with the specified arguments."""
+    if any(
+        isinstance(x, keras_tensor.KerasTensor)
+        for x in nest.flatten([args, kwargs])):
+      return ClassMethod(self.cls, self.method_name)(args[1:], kwargs)
+    else:
+      return self.NOT_SUPPORTED
+
+for ragged_class_method in [
+    'from_value_rowids',
+    'from_row_splits',
+    'from_row_lengths',
+    'from_row_starts',
+    'from_row_limits',
+    'from_uniform_row_length',
+    'from_nested_value_rowids',
+    'from_nested_row_splits',
+    'from_nested_row_lengths',
+    'from_tensor',
+    'from_sparse',
+]:
+  TFClassMethodDispatcher(
+      ragged_tensor.RaggedTensor, ragged_class_method).register(
+          getattr(ragged_tensor.RaggedTensor, ragged_class_method))

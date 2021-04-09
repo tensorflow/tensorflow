@@ -1259,9 +1259,8 @@ XLA_TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileInfeedCondition)) {
   ComputeAndCompareR0<int32>(&builder, 2, {});
 }
 
-void BM_WhileLoop(int num_iters) {
+void BM_WhileLoop(::testing::benchmark::State& state) {
   // Benchmark a simple kernel to measure while loop overheads.
-  tensorflow::testing::StopTiming();
 
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().ValueOrDie();
   auto executors = PlatformUtil::GetStreamExecutors(platform).ValueOrDie();
@@ -1330,8 +1329,7 @@ void BM_WhileLoop(int num_iters) {
   }
 
   // Run benchmark.
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i < num_iters; ++i) {
+  for (auto s : state) {
     auto result =
         executable->Run(absl::Span<const ShapedBuffer* const>(), options);
     ASSERT_TRUE(result.ok());

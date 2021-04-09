@@ -21,6 +21,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ast
 import inspect
 import linecache
 import re
@@ -35,6 +36,11 @@ import six
 from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.util import tf_inspect
+
+
+if sys.version_info >= (3, 9):
+  # ast has an unparse function in 3.9+
+  astunparse = ast
 
 
 PY2_PREAMBLE = textwrap.dedent("""
@@ -339,7 +345,7 @@ def parse(src, preamble_len=0, single_node=True):
     nodes = nodes[preamble_len:]
   if single_node:
     if len(nodes) != 1:
-      raise ValueError('expected exactly one node node, found {}'.format(nodes))
+      raise ValueError('expected exactly one node, found {}'.format(nodes))
     return nodes[0]
   return nodes
 
@@ -370,7 +376,7 @@ def unparse(node, indentation=None, include_encoding_marker=True):
     node: The code to compile, as an AST object.
     indentation: Unused, deprecated. The returning code will always be indented
       at 4 spaces.
-    include_encoding_marker: Bool, thether to include a comment on the first
+    include_encoding_marker: Bool, whether to include a comment on the first
       line to explicitly specify UTF-8 encoding.
 
   Returns:

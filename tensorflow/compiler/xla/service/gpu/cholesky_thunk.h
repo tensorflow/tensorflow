@@ -63,10 +63,6 @@ class CholeskyThunk : public Thunk {
   const int64 batch_size_;
   const int64 a_batch_stride_;
   const int64 n_;
-
-  tensorflow::mutex mu_;
-  absl::flat_hash_map<se::Stream*, CusolverContext> contexts_
-      TF_GUARDED_BY(mu_);
 };
 
 }  // namespace gpu

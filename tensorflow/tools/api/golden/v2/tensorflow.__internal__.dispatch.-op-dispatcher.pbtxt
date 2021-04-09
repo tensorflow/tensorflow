@@ -1,0 +1,20 @@
+path: "tensorflow.__internal__.dispatch.OpDispatcher"
+tf_class {
+  is_instance: "<class \'tensorflow.python.util.dispatch.OpDispatcher\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "NOT_SUPPORTED"
+    mtype: "<type \'object\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "handle"
+    argspec: "args=[\'self\', \'args\', \'kwargs\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "register"
+    argspec: "args=[\'self\', \'op\'], varargs=None, keywords=None, defaults=None"
+  }
+}

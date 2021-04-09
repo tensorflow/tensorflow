@@ -27,48 +27,17 @@ TfLiteStatus MinMaxOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   int b_tensor_id = inputs->data[1];
   const auto& a_tensor = context->tensors[a_tensor_id];
   const auto& b_tensor = context->tensors[b_tensor_id];
-  if (a_tensor.allocation_type == kTfLiteMmapRo)
-    graph_builder_->AddConstNodeWithData(a_tensor_id, a_tensor);
-  if (b_tensor.allocation_type == kTfLiteMmapRo)
-    graph_builder_->AddConstNodeWithData(b_tensor_id, b_tensor);
   AddInput(graph_builder_->GetHexagonTensorId(a_tensor_id));
   AddInput(graph_builder_->GetHexagonTensorId(b_tensor_id));
 
   // Add Inputs A & B min/max
-  TF_LITE_ENSURE_STATUS(
-      ComputeMinAndMaxQuantValues(a_tensor, &a_input_min_, &a_input_max_));
-  auto* a_input_min_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&a_input_min_),
-      sizeof(a_input_min_));
-  auto* a_input_max_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&a_input_max_),
-      sizeof(a_input_max_));
-  AddInput(TensorID(a_input_min_const->GetID(), 0));
-  AddInput(TensorID(a_input_max_const->GetID(), 0));
-
-  TF_LITE_ENSURE_STATUS(
-      ComputeMinAndMaxQuantValues(b_tensor, &b_input_min_, &b_input_max_));
-  auto* b_input_min_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&b_input_min_),
-      sizeof(b_input_min_));
-  auto* b_input_max_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&b_input_max_),
-      sizeof(b_input_max_));
-  AddInput(TensorID(b_input_min_const->GetID(), 0));
-  AddInput(TensorID(b_input_max_const->GetID(), 0));
+  TF_LITE_ENSURE_STATUS(ComputeAndAddMinAndMax(context, a_tensor));
+  TF_LITE_ENSURE_STATUS(ComputeAndAddMinAndMax(context, b_tensor));
 
   // Add output min/max
   const int output_tensor_id = outputs->data[0];
   const auto& output_tensor = context->tensors[output_tensor_id];
-  float output_min, output_max;
-  TF_LITE_ENSURE_STATUS(
-      ComputeMinAndMaxQuantValues(output_tensor, &output_min, &output_max));
-  auto* output_min_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&output_min), sizeof(output_min));
-  auto* output_max_const = graph_builder_->AddConstNodeWithData(
-      kScalarShape, reinterpret_cast<char*>(&output_max), sizeof(output_max));
-  AddInput(TensorID(output_min_const->GetID(), 0));
-  AddInput(TensorID(output_max_const->GetID(), 0));
+  TF_LITE_ENSURE_STATUS(ComputeAndAddMinAndMax(context, output_tensor));
 
   // Add outputs.
   int output_batch_size, output_height_size, output_width_size,

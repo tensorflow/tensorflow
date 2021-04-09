@@ -48,12 +48,6 @@ void TileSimple(const Eigen::ThreadPoolDevice& d, Tensor* out,
                 const Tensor& in) {
   return TileSimpleImpl<Eigen::ThreadPoolDevice, T>(d, out, in);
 }
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-void TileSimple(const Eigen::SyclDevice& d, Tensor* out, const Tensor& in) {
-  return TileSimpleImpl<Eigen::SyclDevice, T>(d, out, in);
-}
-#endif
 
 }  // namespace internal
 }  // end namespace tensorflow

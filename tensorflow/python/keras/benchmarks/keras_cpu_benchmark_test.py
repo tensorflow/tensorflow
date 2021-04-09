@@ -13,25 +13,21 @@
 # limitations under the License.
 # ==============================================================================
 """Benchmark tests for CPU performance of Keras models."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import numpy as np
-import six
 
 import tensorflow as tf
 
 from tensorflow.python.keras.benchmarks import benchmark_util
-from tensorflow.python.platform import benchmark
+from tensorflow.python.platform import benchmark   # pylint: disable=unused-import
 
 # Loss function and optimizer.
 _LOSS = 'binary_crossentropy'
 _OPTIMIZER = 'rmsprop'
 
 
-class KerasModelCPUBenchmark(
-    six.with_metaclass(benchmark.ParameterizedBenchmark, tf.test.Benchmark)):
+class KerasModelCPUBenchmark(  # pylint: disable=undefined-variable
+    tf.test.Benchmark, metaclass=benchmark.ParameterizedBenchmark):
   """Required Arguments for measure_performance.
 
       x: Input data, it could be Numpy or load from tfds.
@@ -95,7 +91,7 @@ class KerasModelCPUBenchmark(
     """Benchmark for MLP model on synthetic mnist data."""
     mlp_x = np.random.random((5000, 784))
     mlp_y = np.random.random((5000, 10))
-    results = benchmark_util.measure_performance(
+    metrics, wall_time, extras = benchmark_util.measure_performance(
         self._mnist_mlp,
         x=mlp_x,
         y=mlp_y,
@@ -104,13 +100,13 @@ class KerasModelCPUBenchmark(
         optimizer=_OPTIMIZER,
         loss=_LOSS)
     self.report_benchmark(
-        iters=run_iters, wall_time=results['wall_time'], extras=results)
+        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
 
   def benchmark_mnist_convnet(self, batch_size, run_iters):
     """Benchmark for Convnet model on synthetic mnist data."""
     convnet_x = np.random.random((5000, 28, 28, 1))
     convnet_y = np.random.random((5000, 10))
-    results = benchmark_util.measure_performance(
+    metrics, wall_time, extras = benchmark_util.measure_performance(
         self._mnist_convnet,
         x=convnet_x,
         y=convnet_y,
@@ -119,13 +115,13 @@ class KerasModelCPUBenchmark(
         optimizer=_OPTIMIZER,
         loss=_LOSS)
     self.report_benchmark(
-        iters=run_iters, wall_time=results['wall_time'], extras=results)
+        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
 
   def benchmark_imdb_lstm(self, batch_size, run_iters):
     """Benchmark for LSTM model on synthetic imdb review dataset."""
     lstm_x = np.random.randint(0, 1999, size=(2500, 100))
     lstm_y = np.random.random((2500, 1))
-    results = benchmark_util.measure_performance(
+    metrics, wall_time, extras = benchmark_util.measure_performance(
         self._imdb_lstm,
         x=lstm_x,
         y=lstm_y,
@@ -134,7 +130,7 @@ class KerasModelCPUBenchmark(
         optimizer=_OPTIMIZER,
         loss=_LOSS)
     self.report_benchmark(
-        iters=run_iters, wall_time=results['wall_time'], extras=results)
+        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
 
 
 if __name__ == '__main__':

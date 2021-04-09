@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -38,9 +39,15 @@ namespace {
 class SavedVariableLoadingTest : public ::testing::TestWithParam<
                                      std::tuple<DataType, std::vector<int64>>> {
  public:
-  SavedVariableLoadingTest()
-      : device_mgr_(testing::CreateTestingDeviceMgr()),
-        ctx_(testing::CreateTestingEagerContext(device_mgr_.get())) {}
+  SavedVariableLoadingTest() {
+    SessionOptions options;
+    options.config.mutable_device_count()->insert({"CPU", 3});
+    std::vector<std::unique_ptr<Device>> devices;
+    TF_CHECK_OK(DeviceFactory::AddDevices(
+        options, "/job:localhost/replica:0/task:0", &devices));
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
+    ctx_ = testing::CreateTestingEagerContext(device_mgr_.get());
+  }
 
   EagerContext* context() { return ctx_.get(); }
 
@@ -67,6 +74,39 @@ TEST_P(SavedVariableLoadingTest, LoadSavedVariableSuccessful) {
   EXPECT_EQ(var->shape(), shape);
 }
 
+// Verify that a device specified in the SavedVariable is kept.
+TEST_P(SavedVariableLoadingTest, LoadSavedVariableWithDevice) {
+  auto& test_params = GetParam();
+  DataType dtype = std::get<0>(test_params);
+  TensorShape shape(std::get<1>(test_params));
+
+  SavedVariable saved_variable;
+  saved_variable.set_dtype(dtype);
+  saved_variable.set_device("/job:localhost/replica:0/task:0/device:CPU:1"),
+      shape.AsProto(saved_variable.mutable_shape());
+
+  std::unique_ptr<Variable> var;
+  TF_ASSERT_OK(internal::LoadSavedVariable(context(), saved_variable, &var));
+  EXPECT_EQ(down_cast<TensorHandle*>(var->handle())->resource_device()->name(),
+            "/job:localhost/replica:0/task:0/device:CPU:1");
+}
+
+// Verify load failure if a non-existing device is specified.
+TEST_P(SavedVariableLoadingTest, LoadSavedVariableWithInvalidDevice) {
+  auto& test_params = GetParam();
+  DataType dtype = std::get<0>(test_params);
+  TensorShape shape(std::get<1>(test_params));
+
+  SavedVariable saved_variable;
+  saved_variable.set_dtype(dtype);
+  saved_variable.set_device("/job:localhost/replica:0/task:0/device:CPU:99"),
+      shape.AsProto(saved_variable.mutable_shape());
+
+  std::unique_ptr<Variable> var;
+  ASSERT_NE(Status::OK(),
+            internal::LoadSavedVariable(context(), saved_variable, &var));
+}
+
 // Assigning and reading values should yield
 // consistent results.
 TEST_P(SavedVariableLoadingTest, AssignAndReadVariableSuccesful) {
@@ -79,7 +119,7 @@ TEST_P(SavedVariableLoadingTest, AssignAndReadVariableSuccesful) {
   Status status;
   std::unique_ptr<Variable> var;
   TF_EXPECT_OK(Variable::CreateUninitialized(context(), dtype, shape,
-                                             absl::nullopt, &var));
+                                             absl::nullopt, nullptr, {}, &var));
 
   // Create a TensorHandle
   ImmediateTensorHandlePtr expected_handle =

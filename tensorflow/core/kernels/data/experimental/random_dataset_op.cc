@@ -64,6 +64,10 @@ class RandomDatasetOp::Dataset : public DatasetBase {
 
   int64 Cardinality() const override { return kInfiniteCardinality; }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override { return Status::OK(); }
 
  protected:

@@ -2,30 +2,29 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
-)
-
-exports_files(["LICENSE"])
-
-tf_py_test(
-    name = "meta_benchmark",
-    srcs = ["meta_benchmark.py"],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:session",
-        "//tensorflow/python/data/experimental/ops:testing",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-    ],
+    licenses = ["notice"],
 )
 
 py_library(
     name = "benchmark_base",
     srcs = ["benchmark_base.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:session",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "meta_benchmark",
+    srcs = ["meta_benchmark.py"],
+    deps = [
+        ":benchmark_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:session",
+        "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -57,6 +56,21 @@ tf_py_test(
     deps = [
         ":benchmark_base",
         "//tensorflow/python/data/experimental/ops:get_single_element",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "interleave_benchmark",
+    srcs = ["interleave_benchmark.py"],
+    deps = [
+        ":benchmark_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python/data/experimental/ops:interleave_ops",
+        "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],

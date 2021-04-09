@@ -68,7 +68,7 @@ public class GpuDelegate implements Delegate, Closeable {
      *
      * <p>WARNING: This is an experimental API and subject to change.
      *
-     * @param quantizedModelsAllowed When {@code true}, the GPU may run quantized models.
+     * @param quantizedModelsAllowed When {@code true} (default), the GPU may run quantized models.
      */
     public Options setQuantizedModelsAllowed(boolean quantizedModelsAllowed) {
       this.quantizedModelsAllowed = quantizedModelsAllowed;
@@ -87,7 +87,7 @@ public class GpuDelegate implements Delegate, Closeable {
     }
 
     boolean precisionLossAllowed = true;
-    boolean quantizedModelsAllowed = false;
+    boolean quantizedModelsAllowed = true;
     int inferencePreference = INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER;
   }
 

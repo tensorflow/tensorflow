@@ -19,8 +19,8 @@ namespace tensorflow {
 REGISTER5(UnaryOp, CPU, "Inv", functor::inverse, float, Eigen::half, double,
           complex64, complex128);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-REGISTER4(UnaryOp, GPU, "Inv", functor::inverse, float, Eigen::half, double,
-          int64);
+REGISTER6(UnaryOp, GPU, "Inv", functor::inverse, float, Eigen::half, double,
+          int64, complex64, complex128);
 #endif
 
 REGISTER5(SimpleBinaryOp, CPU, "InvGrad", functor::inverse_grad, float,
@@ -30,30 +30,17 @@ REGISTER3(SimpleBinaryOp, GPU, "InvGrad", functor::inverse_grad, float,
           Eigen::half, double);
 #endif
 
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
-// Since Eigen backend does not support bfloat16 ops, we are selectively
-// enabling them for MKL backend.
 REGISTER6(UnaryOp, CPU, "Reciprocal", functor::inverse, float, Eigen::half,
-          double, complex64, complex128, bfloat16);
-#else
-REGISTER5(UnaryOp, CPU, "Reciprocal", functor::inverse, float, Eigen::half,
-          double, complex64, complex128);
-#endif  // ENABLE_INTEL_MKL_BFLOAT16
+          bfloat16, double, complex64, complex128);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-REGISTER4(UnaryOp, GPU, "Reciprocal", functor::inverse, float, Eigen::half,
-          double, int64);
+REGISTER6(UnaryOp, GPU, "Reciprocal", functor::inverse, float, Eigen::half,
+          double, int64, complex64, complex128);
 #endif
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER(UnaryOp, SYCL, "Reciprocal", functor::inverse, float);
-#endif  // TENSORFLOW_USE_SYCL
 
-REGISTER5(SimpleBinaryOp, CPU, "ReciprocalGrad", functor::inverse_grad, float,
-          Eigen::half, double, complex64, complex128);
+REGISTER6(SimpleBinaryOp, CPU, "ReciprocalGrad", functor::inverse_grad, float,
+          Eigen::half, bfloat16, double, complex64, complex128);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER3(SimpleBinaryOp, GPU, "ReciprocalGrad", functor::inverse_grad, float,
           Eigen::half, double);
 #endif
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER(SimpleBinaryOp, SYCL, "ReciprocalGrad", functor::inverse_grad, float);
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

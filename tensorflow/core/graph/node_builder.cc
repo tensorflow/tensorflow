@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/graph/node_builder.h"
 
+#include <unordered_map>
 #include <vector>
+
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 
@@ -112,6 +116,66 @@ NodeBuilder& NodeBuilder::XlaCluster(StringPiece xla_cluster) {
   return *this;
 }
 
+namespace {
+
+Status run_type_constructor(Graph* graph, NodeDef* node_def, FullTypeDef* ft) {
+  // TODO(mdan): Decouple this from graph building, or run again after.
+  // TODO(mdan): Also run in eager.
+  // TODO(mdan): Merge with shape inference.
+  const auto* op_registry = graph->op_registry();
+  const tensorflow::OpRegistrationData* op_reg_data;
+  TF_RETURN_IF_ERROR(op_registry->LookUp(node_def->op(), &op_reg_data));
+  if (op_reg_data->type_ctor == nullptr) {
+    return Status::OK();
+  }
+
+  ft->set_type_id(FT_PRODUCT);
+
+  for (int i = 0; i < op_reg_data->op_def.output_arg_size(); i++) {
+    auto* t = ft->add_args();
+
+    t->CopyFrom(op_reg_data->op_def.output_arg(i).experimental_full_type());
+
+    // Resolve dependent types. The convention for op registrations is to use
+    // attributes as type variables.
+    // See https://www.tensorflow.org/guide/create_op#type_polymorphism.
+    // Once the op signature can be defined entirely in FullType, this
+    // convention can be deprecated.
+    //
+    // Note: While this code performs some basic verifications, it generally
+    // assumes consistent op defs and attributes. If more complete
+    // verifications are needed, they should be done by separately, and in a
+    // way that can be reused for type inference.
+    for (int j = 0; j < t->args_size(); j++) {
+      auto* arg = t->mutable_args(i);
+      if (arg->type_id() == FT_VAR) {
+        const auto& attr_val = node_def->attr().at(arg->s());
+        if (attr_val.value_case() == AttrValue::kList) {
+          const auto& attr_list = attr_val.list();
+          arg->set_type_id(FT_PRODUCT);
+          for (int i = 0; i < attr_list.type_size(); i++) {
+            map_dtype_to_tensor(attr_list.type(i), arg->add_args());
+          }
+
+        } else if (attr_val.value_case() == AttrValue::kType) {
+          map_dtype_to_tensor(attr_val.type(), arg);
+
+        } else {
+          return Status(error::UNIMPLEMENTED,
+                        absl::StrCat("unknown attribute type",
+                                     node_def->DebugString().c_str()));
+        }
+
+        arg->clear_s();
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
+}  // namespace
+
 Status NodeBuilder::Finalize(Graph* graph, Node** created_node, bool consume) {
   // In case of error, set *created_node to nullptr.
   if (created_node != nullptr) *created_node = nullptr;
@@ -124,9 +188,17 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node, bool consume) {
   TF_RETURN_IF_ERROR(ValidateNodeDef(node_def, def_builder_.op_def()));
   TF_RETURN_IF_ERROR(
       CheckOpDeprecation(def_builder_.op_def(), graph->versions().producer()));
-  Status status;
+
+  FullTypeDef ft;
+  Status status = run_type_constructor(graph, &node_def, &ft);
+  if (!status.ok()) return status;
+
   Node* node = graph->AddNode(std::move(node_def), &status);
   if (!status.ok()) return status;
+
+  if (ft.type_id() != FT_UNSET) {
+    graph->SetNodeType(node->name(), ft);
+  }
 
   node->set_assigned_device_name(assigned_device_);
 

@@ -94,6 +94,10 @@ def _test_combinations():
           lambda _: dataset_ops.Dataset.from_tensors(0),
           cycle_length=1,
           num_parallel_calls=1), dataset_ops.UNKNOWN),
+      ("Interleave3", lambda: dataset_ops.Dataset.range(5).repeat().interleave(
+          lambda _: dataset_ops.Dataset.from_tensors(0),
+          cycle_length=1,
+          num_parallel_calls=1), dataset_ops.INFINITE),
       ("PaddedBatch1", lambda: dataset_ops.Dataset.range(5).padded_batch(
           2, [], drop_remainder=True), 2),
       ("PaddedBatch2", lambda: dataset_ops.Dataset.range(5).padded_batch(

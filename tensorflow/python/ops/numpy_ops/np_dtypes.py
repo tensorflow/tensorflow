@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops.numpy_ops import np_export
 
 
@@ -63,7 +64,25 @@ _to_float32 = {
 
 _cached_np_dtypes = {}
 
+
+# Difference between is_prefer_float32 and is_allow_float64: is_prefer_float32
+# only decides which dtype to use for Python floats; is_allow_float64 decides
+# whether float64 dtypes can ever appear in programs. The latter is more
+# restrictive than the former.
+_prefer_float32 = False
+
+
+# TODO(b/178862061): Consider removing this knob
 _allow_float64 = True
+
+
+def is_prefer_float32():
+  return _prefer_float32
+
+
+def set_prefer_float32(b):
+  global _prefer_float32
+  _prefer_float32 = b
 
 
 def is_allow_float64():
@@ -85,8 +104,13 @@ def canonicalize_dtype(dtype):
 
 
 def _result_type(*arrays_and_dtypes):
+  def preprocess_float(x):
+    if is_prefer_float32() and isinstance(x, float):
+      return np.float32(x)
+    return x
+  arrays_and_dtypes = [preprocess_float(x) for x in arrays_and_dtypes]
   dtype = np.result_type(*arrays_and_dtypes)
-  return canonicalize_dtype(dtype)
+  return dtypes.as_dtype(canonicalize_dtype(dtype))
 
 
 def _get_cached_dtype(dtype):
@@ -105,9 +129,10 @@ def default_float_type():
   """Gets the default float type.
 
   Returns:
-    If `is_allow_float64()` is true, returns float64; otherwise returns float32.
+    If `is_prefer_float32()` is false and `is_allow_float64()` is true, returns
+    float64; otherwise returns float32.
   """
-  if is_allow_float64():
+  if not is_prefer_float32() and is_allow_float64():
     return float64
   else:
     return float32

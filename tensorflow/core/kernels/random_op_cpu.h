@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/random_op.h"
+#include "tensorflow/core/kernels/random_ops_util.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
@@ -48,9 +49,6 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 namespace functor {
 using random::PhiloxRandom;
@@ -62,8 +60,9 @@ using random::SingleSampleAdapter;
 template <typename Device, class Distribution>
 struct FillPhiloxRandom {
   typedef typename Distribution::ResultElementType T;
-  void operator()(OpKernelContext* ctx, const Device&, random::PhiloxRandom gen,
-                  T* data, int64 size, Distribution dist) {
+  void operator()(OpKernelContext* ctx, const Device&, const uint64* key,
+                  const uint64* counter, random::PhiloxRandom gen, T* data,
+                  int64 size, Distribution dist) {
     OP_REQUIRES(
         ctx, false,
         errors::Internal(
@@ -157,18 +156,24 @@ struct FillPhiloxRandomTask<Distribution, true> {
 // It splits the work into several tasks and run them in parallel
 template <class Distribution>
 void FillPhiloxRandom<CPUDevice, Distribution>::operator()(
-    OpKernelContext* context, const CPUDevice&, random::PhiloxRandom gen,
+    OpKernelContext* ctx, const CPUDevice&, const uint64* key,
+    const uint64* counter, random::PhiloxRandom gen,
     typename Distribution::ResultElementType* data, int64 size,
     Distribution dist) {
   const int kGroupSize = Distribution::kResultElementCount;
 
-  auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
+  auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
 
   int64 total_group_count = (size + kGroupSize - 1) / kGroupSize;
 
   const int kGroupCost =
       random::PhiloxRandom::kResultElementCount *
       (random::PhiloxRandom::kElementCost + Distribution::kElementCost);
+
+  if (key != nullptr && counter != nullptr) {
+    gen = GetPhiloxRandomFromCounterKeyMem(counter, key);
+  }
+
   Shard(worker_threads.num_threads, worker_threads.workers, total_group_count,
         kGroupCost,
         [&gen, data, size, dist](int64 start_group, int64 limit_group) {
@@ -182,146 +187,6 @@ void FillPhiloxRandom<CPUDevice, Distribution>::operator()(
 
 }  // namespace functor
 
-#ifdef TENSORFLOW_USE_SYCL
-
-namespace functor {
-
-template <class Distribution, bool VariableSamplesPerOutput>
-struct FillPhiloxRandomKernel;
-
-template <class Distribution>
-struct FillPhiloxRandomKernel<Distribution, false> {
-  typedef typename Distribution::ResultElementType T;
-  using write_accessor = sycl::accessor<uint8_t, 1, sycl::access::mode::write,
-                                        sycl::access::target::global_buffer>;
-
-  FillPhiloxRandomKernel(write_accessor& data, random::PhiloxRandom& gen,
-                         Distribution& dist)
-      : data_(data), gen_(gen), dist_(dist) {}
-
-  void operator()(sycl::nd_item<1> item) {
-    const size_t kGroupSize = Distribution::kResultElementCount;
-
-    const size_t item_id = item.get_global(0);
-    const size_t total_item_count = item.get_global_range();
-    size_t offset = item_id * kGroupSize;
-    gen_.Skip(item_id);
-
-    const size_t size = data_.get_size() / sizeof(T);
-    T* data = ConvertToActualTypeSycl(T, data_);
-
-    while (offset + kGroupSize <= size) {
-      const typename Distribution::ResultType samples = dist_(&gen_);
-      for (size_t i = 0; i < kGroupSize; ++i) {
-        data[offset + i] = samples[i];
-      }
-
-      offset += (total_item_count - 1) * kGroupSize;
-      gen_.Skip(total_item_count - 1);
-    }
-
-    const typename Distribution::ResultType samples = dist_(&gen_);
-    for (size_t i = 0; i < kGroupSize; ++i) {
-      if (offset >= size) {
-        return;
-      }
-      data[offset] = samples[i];
-      ++offset;
-    }
-  }
-
- private:
-  write_accessor data_;
-  random::PhiloxRandom gen_;
-  Distribution dist_;
-};
-
-template <class Distribution>
-struct FillPhiloxRandomKernel<Distribution, true> {
-  typedef typename Distribution::ResultElementType T;
-  using write_accessor = sycl::accessor<uint8_t, 1, sycl::access::mode::write,
-                                        sycl::access::target::global_buffer>;
-
-  FillPhiloxRandomKernel(write_accessor& data, random::PhiloxRandom& gen,
-                         Distribution& dist)
-      : data_(data), gen_(gen), dist_(dist) {}
-
-  void operator()(sycl::nd_item<1> item) {
-    using random::PhiloxRandom;
-    using random::SingleSampleAdapter;
-
-    const size_t kReservedSamplesPerOutput = 256;
-    const size_t kGroupSize = Distribution::kResultElementCount;
-    const size_t kGeneratorSkipPerOutputGroup =
-        kGroupSize * kReservedSamplesPerOutput /
-        PhiloxRandom::kResultElementCount;
-
-    const size_t item_id = item.get_global(0);
-    const size_t total_item_count = item.get_global_range();
-    size_t group_index = item_id;
-    size_t offset = group_index * kGroupSize;
-
-    T* data = ConvertToActualTypeSycl(T, data_);
-    const size_t size = data_.get_size() / sizeof(T);
-
-    while (offset < size) {
-      // Since each output takes a variable number of samples, we need to
-      // realign the generator to the beginning for the current output group
-      PhiloxRandom gen = gen_;
-      gen.Skip(group_index * kGeneratorSkipPerOutputGroup);
-      SingleSampleAdapter<PhiloxRandom> single_samples(&gen);
-
-      const typename Distribution::ResultType samples = dist_(&single_samples);
-
-      for (size_t i = 0; i < kGroupSize; ++i) {
-        if (offset >= size) {
-          return;
-        }
-        data[offset] = samples[i];
-        ++offset;
-      }
-
-      offset += (total_item_count - 1) * kGroupSize;
-      group_index += total_item_count;
-    }
-  }
-
- private:
-  write_accessor data_;
-  random::PhiloxRandom gen_;
-  Distribution dist_;
-};
-
-template <typename T>
-class FillRandomKernel;
-// Partial specialization for SYCL to fill the entire region with randoms
-// It splits the work into several tasks and run them in parallel
-template <class Distribution>
-void FillPhiloxRandom<SYCLDevice, Distribution>::operator()(
-    OpKernelContext* context, const SYCLDevice& device,
-    random::PhiloxRandom gen, typename Distribution::ResultElementType* data,
-    int64 size, Distribution dist) {
-  const size_t group_size = device.maxSyclThreadsPerBlock();
-  const size_t group_count = (size + group_size - 1) / group_size;
-
-  auto buffer = device.get_sycl_buffer(data);
-
-  device.sycl_queue().submit([&](sycl::handler& cgh) {
-    auto access = buffer.template get_access<sycl::access::mode::write>(cgh);
-
-    FillPhiloxRandomKernel<Distribution,
-                           Distribution::kVariableSamplesPerOutput>
-        task(access, gen, dist);
-    cgh.parallel_for<class FillRandomKernel<Distribution>>(
-        sycl::nd_range<1>(sycl::range<1>(group_count * group_size),
-                          sycl::range<1>(group_size)),
-        task);
-  });
-}
-
-}  // namespace functor
-
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace tensorflow
 

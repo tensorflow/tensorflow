@@ -198,6 +198,9 @@ class DfsHloVisitorWithDefaultBase
   Status HandlePad(HloInstructionPtr pad) override {
     return DefaultAction(pad);
   }
+  Status HandleDynamicReshape(HloInstructionPtr dynamic_reshape) override {
+    return DefaultAction(dynamic_reshape);
+  }
   Status HandleReshape(HloInstructionPtr reshape) override {
     return DefaultAction(reshape);
   }

@@ -57,11 +57,12 @@ namespace data {
 
 namespace {
 
+constexpr char kComponent[] = "component";
 constexpr char kInvocationResults[] = "invocation_results";
-constexpr char kSizeSuffix[] = ".size";
-constexpr char kEndOfInputSuffix[] = ".end_of_input";
-constexpr char kCodeSuffix[] = ".code";
-constexpr char kErrorMessage[] = ".error_message";
+constexpr char kSize[] = "size";
+constexpr char kEndOfInput[] = "end_of_input";
+constexpr char kErrorCode[] = "code";
+constexpr char kErrorMessage[] = "error_message";
 
 // Period between reporting dataset statistics.
 constexpr int kStatsReportingPeriodMillis = 1000;
@@ -117,6 +118,11 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     } else {
       return kUnknownCardinality;
     }
+  }
+
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
   }
 
   Status CheckExternalState() const override {
@@ -207,6 +213,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
     ~Iterator() override {
       CancelThreads(/*wait=*/true);
+      input_impl_.reset();
       if (deregister_fn_) deregister_fn_();
     }
 
@@ -215,11 +222,14 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       if (num_parallel_calls_->value == model::kAutotune) {
         num_parallel_calls_->value = ctx->runner_threadpool_size();
       }
+      cancellation_manager_ = absl::make_unique<CancellationManager>();
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(),
           [this]() { CancelThreads(/*wait=*/false); }, &deregister_fn_));
-      TF_RETURN_IF_ERROR(
-          dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
+      IteratorContext::Params params(ctx);
+      params.cancellation_manager = cancellation_manager_.get();
+      TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
+          IteratorContext(params), this, prefix(), &input_impl_));
       return dataset()->captured_func_->Instantiate(
           ctx, &instantiated_captured_func_);
     }
@@ -245,7 +255,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       RecordStart(ctx);
       profiler::TraceMe traceme([&] {
         return profiler::TraceMeEncode("ParallelMapConsume",
-                                       {{"element_id", result->id}});
+                                       {{"element_id", result->uid}});
       });
       return ProcessResult(ctx, result, out_tensors, end_of_sequence);
     }
@@ -274,27 +284,25 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
             "Unexpected outstanding calls encountered.");
       }
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-      TF_RETURN_IF_ERROR(writer->WriteScalar(
-          full_name(strings::StrCat(kInvocationResults, kSizeSuffix)),
-          invocation_results_.size()));
+      TF_RETURN_IF_ERROR(
+          writer->WriteScalar(absl::StrCat(prefix(), "::", kInvocationResults),
+                              kSize, invocation_results_.size()));
       for (size_t i = 0; i < invocation_results_.size(); i++) {
         const auto& result = *(invocation_results_[i]);
-        TF_RETURN_IF_ERROR(WriteStatusLocked(writer, i, result.status));
-        TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(
-                strings::StrCat(kInvocationResults, "[", i, "]", kSizeSuffix)),
-            result.return_values.size()));
+        std::string element_prefix =
+            absl::StrCat(prefix(), "::", kInvocationResults, "::", i);
+        TF_RETURN_IF_ERROR(
+            WriteStatusLocked(writer, element_prefix, result.status));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(element_prefix, kSize,
+                                               result.return_values.size()));
         for (size_t j = 0; j < result.return_values.size(); j++) {
           TF_RETURN_IF_ERROR(writer->WriteTensor(
-              full_name(
-                  strings::StrCat(kInvocationResults, "[", i, "][", j, "]")),
+              element_prefix, absl::StrCat(kComponent, "[", j, "]"),
               result.return_values[j]));
         }
         if (result.end_of_input) {
-          TF_RETURN_IF_ERROR(writer->WriteScalar(
-              full_name(strings::StrCat(kInvocationResults, "[", i, "]",
-                                        kEndOfInputSuffix)),
-              ""));
+          TF_RETURN_IF_ERROR(
+              writer->WriteScalar(element_prefix, kEndOfInput, ""));
         }
       }
       return Status::OK();
@@ -305,39 +313,37 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(*mu_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       int64 invocation_results_size;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(
-          full_name(strings::StrCat(kInvocationResults, kSizeSuffix)),
-          &invocation_results_size));
-      if (!invocation_results_.empty()) invocation_results_.clear();
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(absl::StrCat(prefix(), "::", kInvocationResults),
+                             kSize, &invocation_results_size));
+      DCHECK(invocation_results_.empty());
       for (size_t i = 0; i < invocation_results_size; i++) {
         invocation_results_.push_back(std::make_shared<InvocationResult>());
         auto& result = *invocation_results_.back();
-        TF_RETURN_IF_ERROR(ReadStatusLocked(reader, i, &result.status));
+        std::string element_prefix =
+            absl::StrCat(prefix(), "::", kInvocationResults, "::", i);
+        TF_RETURN_IF_ERROR(
+            ReadStatusLocked(reader, element_prefix, &result.status));
         size_t num_return_values;
         {
           int64 size;
-          TF_RETURN_IF_ERROR(reader->ReadScalar(
-              full_name(strings::StrCat(kInvocationResults, "[", i, "]",
-                                        kSizeSuffix)),
-              &size));
+          TF_RETURN_IF_ERROR(reader->ReadScalar(element_prefix, kSize, &size));
           num_return_values = static_cast<size_t>(size);
           if (num_return_values != size) {
-            return errors::InvalidArgument(strings::StrCat(
-                full_name(strings::StrCat(kInvocationResults, "[", i, "]",
-                                          kSizeSuffix)),
-                ": ", size, " is not a valid value of type size_t."));
+            return errors::InvalidArgument(
+                element_prefix, ",", kSize, ": ", size,
+                " is not a valid value of type size_t.");
           }
         }
         result.return_values.reserve(num_return_values);
         for (size_t j = 0; j < num_return_values; j++) {
           result.return_values.emplace_back();
-          TF_RETURN_IF_ERROR(
-              reader->ReadTensor(full_name(strings::StrCat(
-                                     kInvocationResults, "[", i, "][", j, "]")),
-                                 &result.return_values.back()));
+          TF_RETURN_IF_ERROR(reader->ReadTensor(
+              element_prefix, absl::StrCat(kComponent, "[", j, "]"),
+              &result.return_values.back()));
         }
-        result.end_of_input = reader->Contains(full_name(strings::StrCat(
-            kInvocationResults, "[", i, "]", kEndOfInputSuffix)));
+        result.end_of_input = reader->Contains(element_prefix, kEndOfInput);
+        RecordBufferEnqueue(ctx, result.return_values);
         result.notification.Notify();
       }
       return Status::OK();
@@ -358,23 +364,25 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           std::make_pair("deterministic", deterministic_ ? "true" : "false"));
       result.push_back(std::make_pair(
           "parallelism",
-          strings::Printf("%lld", static_cast<long long>(parallelism))));
+          parallelism == -1
+              ? kTraceInfoUnavailable
+              : strings::Printf("%lld", static_cast<long long>(parallelism))));
       return result;
     }
 
    private:
     struct InvocationResult {
-      InvocationResult() = default;
-      explicit InvocationResult(int64 id) : id(id) {}
+      InvocationResult() : uid(tensorflow::EnvTime::NowNanos()) {}
 
       Notification notification;
       Status status;
       std::vector<Tensor> return_values;
       bool end_of_input = false;
-      int64 id = -1;
+      const int64 uid;
     };
 
     void CancelThreads(bool wait) TF_LOCKS_EXCLUDED(mu_) {
+      cancellation_manager_->StartCancel();
       mutex_lock l(*mu_);
       cancelled_ = true;
       cond_var_->notify_all();
@@ -404,7 +412,6 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         TF_LOCKS_EXCLUDED(*mu_) {
       mutex_lock l(*mu_);
       num_calls_--;
-      RecordBufferEnqueue(ctx.get(), result->return_values);
       result->notification.Notify();
       cond_var_->notify_all();
     }
@@ -414,7 +421,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         TF_LOCKS_EXCLUDED(*mu_) {
       profiler::TraceMe traceme([&] {
         return profiler::TraceMeEncode("ParallelMapProduce",
-                                       {{"element_id", result->id}});
+                                       {{"element_id", result->uid}});
       });
       // Get the next input element.
       std::vector<Tensor> input_element;
@@ -427,6 +434,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
       auto done = [this, ctx, result](Status status) {
         result->status.Update(status);
+        RecordBufferEnqueue(ctx.get(), result->return_values);
         CallCompleted(ctx, result);
       };
 
@@ -443,21 +451,24 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         auto fn = std::bind(
             [this, ctx, result](std::vector<Tensor> input_element) {
               return instantiated_captured_func_->Run(
-                  ctx.get(), std::move(input_element), &result->return_values);
+                  ctx.get(), std::move(input_element), &result->return_values,
+                  model_node());
             },
             std::move(input_element));
-        // `ctx->runner()` may execute its logic synchronously so we wrap it in
-        // `RecordStop` and `RecordStart` to prevent invalid nesting of
-        // `RecordStart` calls.
-        RecordStop(ctx.get());
         (*ctx->runner())(
             [this, ctx, fn = std::move(fn), done = std::move(done)]() {
-              RecordStart(ctx.get());
-              auto cleanup =
-                  gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
-              done(fn());
+              Status s;
+              // Check whether we are already recording to prevent invalid
+              // nesting of `RecordStart` calls.
+              if (IsRecording(ctx.get())) {
+                s = fn();
+              } else {
+                RecordStart(ctx.get());
+                s = fn();
+                RecordStop(ctx.get());
+              }
+              done(s);
             });
-        RecordStart(ctx.get());
       }
     }
 
@@ -504,8 +515,6 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         return num_calls_ >= num_parallel_calls ||
                invocation_results_.size() >= num_parallel_calls;
       };
-      // Counts the total number of calls to use as an id of InvocationResult.
-      int64 num_total_calls = 0;
       while (true) {
         {
           mutex_lock l(*mu_);
@@ -518,8 +527,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
             return;
           }
           while (!busy()) {
-            invocation_results_.push_back(
-                std::make_shared<InvocationResult>(num_total_calls++));
+            invocation_results_.push_back(std::make_shared<InvocationResult>());
             new_calls.push_back(invocation_results_.back());
             num_calls_++;
           }
@@ -540,7 +548,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         return false;
       }
       if (!deterministic_) {
-        // Iterate through in-flight results and returns the first one that is
+        // Iterate through in-flight results and return the first one that is
         // found to be available and not end-of-input. If the first result (in
         // order) is end-of-input, we know that all earlier iterations have
         // already been completed, so it is safe to return that result for the
@@ -592,43 +600,33 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    Status WriteStatusLocked(IteratorStateWriter* writer, size_t index,
-                             const Status& status)
+    Status WriteStatusLocked(IteratorStateWriter* writer,
+                             const std::string& key, const Status& status)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          CodeKey(index), static_cast<int64>(status.code())));
+          key, kErrorCode, static_cast<int64>(status.code())));
       if (!status.ok()) {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(ErrorMessageKey(index),
-                                               status.error_message()));
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(key, kErrorMessage, status.error_message()));
       }
       return Status::OK();
     }
 
-    Status ReadStatusLocked(IteratorStateReader* reader, size_t index,
+    Status ReadStatusLocked(IteratorStateReader* reader, const std::string& key,
                             Status* status) TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       int64 code_int;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(CodeKey(index), &code_int));
+      TF_RETURN_IF_ERROR(reader->ReadScalar(key, kErrorCode, &code_int));
       error::Code code = static_cast<error::Code>(code_int);
 
       if (code != error::Code::OK) {
         tstring error_message;
         TF_RETURN_IF_ERROR(
-            reader->ReadScalar(ErrorMessageKey(index), &error_message));
+            reader->ReadScalar(key, kErrorMessage, &error_message));
         *status = Status(code, error_message);
       } else {
         *status = Status::OK();
       }
       return Status::OK();
-    }
-
-    string CodeKey(size_t index) {
-      return full_name(
-          strings::StrCat(kInvocationResults, "[", index, "]", kCodeSuffix));
-    }
-
-    string ErrorMessageKey(size_t index) {
-      return full_name(
-          strings::StrCat(kInvocationResults, "[", index, "]", kErrorMessage));
     }
 
     // Used for coordination between the main thread and the runner thread.
@@ -646,12 +644,16 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     const bool autotune_;
     // Counts the number of outstanding calls.
     int64 num_calls_ TF_GUARDED_BY(*mu_) = 0;
+    // Controls cancellation of `input_impl_`. Must be ordered before
+    // `input_impl_` so that `input_impl_` is destroyed first.
+    std::unique_ptr<CancellationManager> cancellation_manager_;
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
+    // Must be ordered after `cancellation_manager_` so that `input_impl_` is
+    // destroyed first.
     std::unique_ptr<IteratorBase> input_impl_;
     // Buffer for storing the invocation results.
     std::deque<std::shared_ptr<InvocationResult>> invocation_results_
         TF_GUARDED_BY(*mu_);
-
     std::unique_ptr<Thread> runner_thread_ TF_GUARDED_BY(*mu_);
     std::unique_ptr<Thread> stats_thread_ TF_GUARDED_BY(*mu_);
     bool cancelled_ TF_GUARDED_BY(*mu_) = false;

@@ -12,13 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/toco/toco_port.h"
+
 #include <cstring>
 
-#include "tensorflow/lite/toco/toco_port.h"
-#include "tensorflow/lite/toco/toco_types.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/toco/toco_types.h"
 
 #if defined(__ANDROID__) && defined(__ARM_ARCH_7A__)
 namespace std {
@@ -69,7 +71,7 @@ void CheckInitGoogleIsDone(const char* message) {
 namespace file {
 
 // Conversion to our wrapper Status.
-tensorflow::Status ToStatus(const ::util::Status& uts) {
+tensorflow::Status ToStatus(const absl::Status& uts) {
   if (!uts.ok()) {
     return tensorflow::Status(
         tensorflow::errors::Code(::util::RetrieveErrorCode(uts)),

@@ -24,7 +24,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/match.h"
-#include "include/json/json.h"
+#include "json/json.h"
 #include "tensorflow/core/platform/base64.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"

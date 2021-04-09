@@ -29,9 +29,11 @@ RpcCollectiveExecutorMgr::RpcCollectiveExecutorMgr(
     const ConfigProto& config, const DeviceMgr* dev_mgr,
     std::unique_ptr<DeviceResolverDistributed> dev_resolver,
     std::unique_ptr<CollectiveParamResolverDistributed> param_resolver,
+    std::unique_ptr<NcclCommunicatorInterface> nccl_communicator,
     WorkerCacheInterface* worker_cache, const string& task_name)
     : CollectiveExecutorMgr(config, dev_mgr, std::move(dev_resolver),
-                            std::move(param_resolver)),
+                            std::move(param_resolver),
+                            std::move(nccl_communicator)),
       worker_cache_(worker_cache),
       task_name_(task_name) {
   group_leader_ = (task_name == config.experimental().collective_group_leader())
@@ -47,10 +49,11 @@ RpcCollectiveExecutorMgr::~RpcCollectiveExecutorMgr() {
 
 CollectiveExecutor* RpcCollectiveExecutorMgr::Create(int64 step_id) {
   CollectiveRemoteAccessDistributed* rma =
-      new CollectiveRemoteAccessDistributed(
-          dev_mgr_, dev_resolver_.get(), work_queue_, worker_cache_, step_id);
+      new CollectiveRemoteAccessDistributed(dev_mgr_, dev_resolver_.get(),
+                                            work_queue_, worker_cache_, step_id,
+                                            task_name_);
   return new BaseCollectiveExecutor(this, rma, step_id, dev_mgr_,
-                                    &gpu_ring_order_);
+                                    &gpu_ring_order_, work_queue_);
 }
 
 namespace {

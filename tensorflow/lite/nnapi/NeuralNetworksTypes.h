@@ -627,6 +627,26 @@ typedef enum {
   // such as that of the runtime itself and the IPC needed for the runtime to
   // communicate with the driver.
   ANEURALNETWORKS_DURATION_IN_DRIVER = 1,
+  // Execution time on hardware, after all dependencies have been signaled.
+  // If no dependencies specified (for example, if the execution was scheduled
+  // other
+  // than with {@link ANeuralNetworksExecution_startComputeWithDependencies}),
+  // the
+  // reported time will be the same as ANEURALNETWORKS_DURATION_ON_HARDWARE.
+  // Available since API level 30.
+  ANEURALNETWORKS_FENCED_DURATION_ON_HARDWARE = 2,
+  // Execution time in driver, after all dependencies have been signaled.
+  // Excludes
+  // overhead such as that of the runtime itself and the IPC needed for the
+  // runtime
+  // to communicate with the driver.
+  // If no dependencies specified (for example, if the execution was scheduled
+  // other
+  // than with {@link ANeuralNetworksExecution_startComputeWithDependencies}),
+  // the
+  // reported time will be the same as ANEURALNETWORKS_DURATION_IN_DRIVER.
+  // Available since API level 30.
+  ANEURALNETWORKS_FENCED_DURATION_IN_DRIVER = 3,
 } DurationCode;
 
 typedef int (*ANeuralNetworksExecution_getDuration_fn)(

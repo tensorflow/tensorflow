@@ -103,11 +103,11 @@ class Comparison {
   bool Compare(const T a, const T b) const {
     return GetComparator<T>()(a, b);
   }
+  static Type DefaultComparisonType(PrimitiveType t);
 
  private:
   static Direction Converse(Direction dir);
   static Direction Inverse(Direction dir);
-  static const char* ComparisonTypeToString(Type type);
 
   const Direction dir_;
   Type type_;
@@ -117,9 +117,13 @@ inline std::ostream& operator<<(std::ostream& os, const Comparison& cmp) {
   return os << cmp.ToString();
 }
 string ComparisonDirectionToString(Comparison::Direction direction);
+std::string ComparisonTypeToString(Comparison::Type type);
 
 StatusOr<Comparison::Direction> StringToComparisonDirection(
     absl::string_view direction_name);
+
+StatusOr<Comparison::Type> StringToComparisonType(
+    absl::string_view compare_type_name);
 
 using ComparisonDirection = Comparison::Direction;
 

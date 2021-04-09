@@ -57,9 +57,9 @@ The binary takes the following parameters:
 
 and the following optional parameters:
 
-*   `blacklist_file_path`: `string` \
-    Path to blacklist file. This file contains the indices of images that are
-    blacklisted for evaluation. 1762 images are blacklisted in ILSVRC dataset.
+*   `denylist_file_path`: `string` \
+    Path to denylist file. This file contains the indices of images that are
+    denylisted for evaluation. 1762 images are denylisted in ILSVRC dataset.
     For details please refer to readme.txt of ILSVRC2014 devkit.
 
 *   `num_images`: `int` (default=0) \
@@ -96,6 +96,9 @@ This script also supports runtime/delegate arguments introduced by the
 If there is any conflict (for example, `num_threads` vs
 `num_interpreter_threads` here), the parameters of this
 script are given precedence.
+
+Note, one could specify `--help` when launching the binary to see the full list
+of supported arguments.
 
 ## Downloading ILSVRC
 

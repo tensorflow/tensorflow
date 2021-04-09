@@ -222,7 +222,7 @@ class ParseExampleOp : public OpKernel {
     for (int d = 0; d < attrs_.num_sparse; ++d) {
       config.sparse.emplace_back(sparse_keys_t[d], attrs_.sparse_types[d]);
     }
-    config.sparse.reserve(attrs_.num_ragged);
+    config.ragged.reserve(attrs_.num_ragged);
     for (int d = 0; d < attrs_.num_ragged; ++d) {
       config.ragged.emplace_back(ragged_keys_t[d], attrs_.ragged_value_types[d],
                                  attrs_.ragged_split_types[d]);

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_STRONG_HASH_H_
 #define TENSORFLOW_CORE_PLATFORM_STRONG_HASH_H_
 
+#include "highwayhash/sip_hash.h"  // from @highwayhash
+#include "highwayhash/state_helpers.h"  // from @highwayhash
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -32,14 +34,12 @@ namespace tensorflow {
 //   string input = "input string";
 //   uint64 hash_value = StrongKeyedHash(key, input);
 //
-uint64 StrongKeyedHash(const uint64 (&)[2], const string&);
+inline uint64 StrongKeyedHash(const tensorflow::uint64 (&key)[2],
+                              const string& s) {
+  return highwayhash::StringHasher<highwayhash::SipHashState>()(
+      {key[0], key[1]}, s);
+}
 
 }  // namespace tensorflow
-
-#if defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/platform/google/strong_hash.h"
-#else
-#include "tensorflow/core/platform/default/strong_hash.h"
-#endif
 
 #endif  // TENSORFLOW_CORE_PLATFORM_STRONG_HASH_H_

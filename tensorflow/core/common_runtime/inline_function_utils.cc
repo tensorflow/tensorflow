@@ -231,17 +231,19 @@ class MultiDeviceFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
     if (!DeviceNameUtils::ParseFullName(ndef.device(), &ndef_parsed_device))
       return ndef.device();
 
-    if (caller_parsed_device_.has_job) {
+    // Nodes with explicit device placements in the function body have those
+    // respected, but otherwise the function's placement provides a default.
+    if (caller_parsed_device_.has_job && !ndef_parsed_device.has_job) {
       ndef_parsed_device.has_job = caller_parsed_device_.has_job;
       ndef_parsed_device.job = caller_parsed_device_.job;
     }
 
-    if (caller_parsed_device_.has_replica) {
+    if (caller_parsed_device_.has_replica && !ndef_parsed_device.has_replica) {
       ndef_parsed_device.has_replica = caller_parsed_device_.has_replica;
       ndef_parsed_device.replica = caller_parsed_device_.replica;
     }
 
-    if (caller_parsed_device_.has_task) {
+    if (caller_parsed_device_.has_task && !ndef_parsed_device.has_task) {
       ndef_parsed_device.has_task = caller_parsed_device_.has_task;
       ndef_parsed_device.task = caller_parsed_device_.task;
     }
@@ -587,6 +589,10 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   //
   // If 'x' is a node in fbody->graph and its copy in 'g' is 'y', we
   // remember 'y' in node_map[x->id()].
+  std::unordered_set<string> fn_nodes;
+  for (Node* n : fbody->graph->op_nodes()) {
+    fn_nodes.insert(n->name());
+  }
   std::vector<Node*> node_map(fbody->graph->num_node_ids());
   for (Node* n : fbody->graph->op_nodes()) {
     NodeDef ndef = n->def();
@@ -605,11 +611,14 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     const string prefix = strings::StrCat(caller->name(), "/");
     TF_RETURN_IF_ERROR(AddPrefixAndSuffixToNode(prefix, /*suffix=*/"", &ndef,
                                                 options.uniquify_frame_names));
+    TF_RETURN_IF_ERROR(
+        MaybeAddPrefixToColocationConstraints(fn_nodes, prefix, &ndef));
 
     Status added_node;
     Node* clone = g->AddNode(ndef, &added_node);
     TF_CHECK_OK(added_node);
     node_map[n->id()] = clone;
+    clone->SetStackTrace(n->GetStackTrace());
 
     // If there is an input control node, and one of:
     // a) the node has no data or control inputs, or
@@ -779,10 +788,9 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   // always have input_control_node when we need it.
   if (output_control_node && output_control_node->in_edges().empty()) {
     if (input_control_node) {
-      VLOG(4)
-          << "Add add a control edge between input and output control nodes: "
-          << input_control_node->name() << " to "
-          << output_control_node->name();
+      VLOG(4) << "Add a control edge between input and output control nodes: "
+              << input_control_node->name() << " to "
+              << output_control_node->name();
       g->AddControlEdge(input_control_node, output_control_node,
                         kDoNotCheckDuplicates);
     } else {

@@ -84,6 +84,12 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
   return MakeLayout(layout);
 }
 
+/* static */ Layout LayoutUtil::MakeAscendingLayout(int64 rank) {
+  std::vector<int64> layout(rank);
+  std::iota(layout.begin(), layout.end(), static_cast<int64>(0));
+  return MakeLayout(layout);
+}
+
 /* static */ Layout LayoutUtil::MakeLayoutFromMajorToMinor(
     absl::Span<const int64> major_to_minor) {
   Layout layout;
@@ -342,7 +348,8 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 /* static */ std::vector<int64> LayoutUtil::MakeLogicalToPhysical(
     const Layout& layout) {
   std::vector<int64> logical_to_physical(layout.minor_to_major_size());
-  for (int64 physical = 0; physical < logical_to_physical.size(); ++physical) {
+  for (int64 physical = 0, end = logical_to_physical.size(); physical < end;
+       ++physical) {
     const int64 logical = Major(layout, physical);
     logical_to_physical[logical] = physical;
   }
@@ -430,6 +437,19 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
     }
   }
   return true;
+}
+
+/*static*/ Layout LayoutUtil::MoveDimToMajor(const Layout& layout, int64 dim) {
+  if (dim == MinorToMajor(layout).back()) return layout;
+  Layout ret = layout;
+  ret.clear_minor_to_major();
+  for (auto d : MinorToMajor(layout)) {
+    if (d != dim) {
+      ret.add_minor_to_major(d);
+    }
+  }
+  ret.add_minor_to_major(dim);
+  return ret;
 }
 
 /*static*/ size_t LayoutUtil::Hash(const Layout& layout) {

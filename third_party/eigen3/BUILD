@@ -1,6 +1,9 @@
 # Description:
 #   Eigen is a C++ template library for linear algebra: vectors,
 #   matrices, and related algorithms.
+# This is the BUILD file with extra code to patch into @eigen_archive.
+
+load("//third_party/mkl:build_defs.bzl", "if_mkl")
 
 licenses([
     # Note: Eigen is an MPL2 library that includes GPL v3 and LGPL v2.1+ code.
@@ -10,8 +13,6 @@ licenses([
 ])
 
 exports_files(["LICENSE"])
-
-load("//third_party/mkl:build_defs.bzl", "if_mkl")
 
 EIGEN3_THIRD_PARTY_HEADERS = [
     "Eigen/Core",
@@ -36,8 +37,7 @@ cc_library(
     includes = if_mkl(["./mkl_include"]),
     visibility = ["//visibility:public"],
     deps = [
-        "@eigen_archive//:eigen",
-        "@local_config_sycl//sycl",
+        "@eigen_archive//:eigen3",
     ],
 )
 

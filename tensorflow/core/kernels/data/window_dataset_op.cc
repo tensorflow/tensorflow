@@ -105,6 +105,11 @@ class WindowDatasetOp::Dataset : public DatasetBase {
     return cardinality;
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override {
     return input_->CheckExternalState();
   }
@@ -150,14 +155,17 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       std::vector<std::vector<Tensor>> window_elements;
       Status status = Status::OK();
       {
+        const size_t target_size = TargetBufferSize(window_size, window_stride);
+
         mutex_lock l(mu_);
-        if (!input_impl_ && buffer_.empty()) {
+        if (!input_impl_ &&
+            (buffer_.empty() ||
+             (dataset()->drop_remainder_ && buffer_.size() < target_size))) {
           *end_of_sequence = true;
           return Status::OK();
         }
 
         // Add elements to the buffer.
-        size_t target_size = TargetBufferSize(window_size, window_stride);
         if (input_impl_) {
           *end_of_sequence = false;
           for (size_t i = buffer_.size(); i < target_size && !*end_of_sequence;

@@ -104,7 +104,7 @@ class RandomPoissonTest(test.TestCase):
     merged.
     """
     for dtype in dtypes.float16, dtypes.float32, dtypes.float64:
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         rnd1 = random_ops.random_poisson(2.0, [24], dtype=dtype)
         rnd2 = random_ops.random_poisson(2.0, [24], dtype=dtype)
         diff = rnd2 - rnd1
@@ -170,6 +170,11 @@ class RandomPoissonTest(test.TestCase):
           random_ops.random_poisson(
               constant_op.constant([1], dtype=lam_dt), [10],
               dtype=out_dt).eval()
+
+  @test_util.run_deprecated_v1
+  def testInfRate(self):
+    sample = random_ops.random_poisson(shape=[2], lam=np.inf)
+    self.assertAllEqual([np.inf, np.inf], self.evaluate(sample))
 
 
 if __name__ == "__main__":

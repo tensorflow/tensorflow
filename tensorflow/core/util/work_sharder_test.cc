@@ -89,12 +89,14 @@ TEST(Shard, OverflowTest) {
   }
 }
 
-void BM_Sharding(int iters, int arg) {
+void BM_Sharding(::testing::benchmark::State& state) {
+  const int arg = state.range(0);
+
   thread::ThreadPool threads(Env::Default(), "test", 16);
   const int64 total = 1LL << 30;
   auto lambda = [](int64 start, int64 limit) {};
   auto work = std::cref(lambda);
-  for (; iters > 0; iters -= arg) {
+  for (auto s : state) {
     Shard(arg - 1, &threads, total, 1, work);
   }
 }

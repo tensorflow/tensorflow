@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/resize.h"
-
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -22,9 +20,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/cl_test.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-
-using ::testing::FloatNear;
-using ::testing::Pointwise;
+#include "tensorflow/lite/delegates/gpu/common/tasks/resize_test_util.h"
 
 namespace tflite {
 namespace gpu {
@@ -32,155 +28,38 @@ namespace cl {
 namespace {
 
 TEST_F(OpenCLOperationTest, ResizeBilinearAligned) {
-  TensorFloat32 src_tensor;
-  src_tensor.shape = BHWC(1, 2, 3, 1);
-  src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
-
-  Resize2DAttributes attr;
-  attr.type = SamplingType::BILINEAR;
-  attr.new_shape = HW(4, 4);
-  attr.align_corners = true;
-
-  for (auto storage : env_.GetSupportedStorages()) {
-    for (auto precision : env_.GetSupportedPrecisions()) {
-      const float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
-      OperationDef op_def;
-      op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
-      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
-      TensorFloat32 dst_tensor;
-      Resize operation = CreateResize(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 4, 4, 1), &dst_tensor));
-      EXPECT_THAT(dst_tensor.data,
-                  Pointwise(FloatNear(eps),
-                            {0.0f, 0.666667f, 1.33333f, 2.0f, 1.0f, 1.66667f,
-                             2.33333f, 3.0f, 2.0f, 2.66667f, 3.33333f, 4.0f,
-                             3.0f, 3.66667f, 4.33333f, 5.0f}));
-    }
-  }
+  auto status = ResizeBilinearAlignedTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
 TEST_F(OpenCLOperationTest, ResizeBilinearNonAligned) {
-  TensorFloat32 src_tensor;
-  src_tensor.shape = BHWC(1, 2, 3, 1);
-  src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
-
-  Resize2DAttributes attr;
-  attr.type = SamplingType::BILINEAR;
-  attr.new_shape = HW(4, 4);
-  attr.align_corners = false;
-
-  for (auto storage : env_.GetSupportedStorages()) {
-    for (auto precision : env_.GetSupportedPrecisions()) {
-      const float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
-      OperationDef op_def;
-      op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
-      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
-      TensorFloat32 dst_tensor;
-      Resize operation = CreateResize(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 4, 4, 1), &dst_tensor));
-      EXPECT_THAT(
-          dst_tensor.data,
-          Pointwise(FloatNear(eps),
-                    {0.0f, 0.75f, 1.5f, 2.0f, 1.5f, 2.25f, 3.0f, 3.5f, 3.0f,
-                     3.75f, 4.5f, 5.0f, 3.0f, 3.75f, 4.5f, 5.0f}));
-    }
-  }
+  auto status = ResizeBilinearNonAlignedTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
 TEST_F(OpenCLOperationTest, ResizeBilinearWithoutHalfPixel) {
-  TensorFloat32 src_tensor;
-  src_tensor.shape = BHWC(1, 2, 2, 1);
-  src_tensor.data = {1.0f, 2.0f, 3.0f, 4.0f};
-
-  Resize2DAttributes attr;
-  attr.type = SamplingType::BILINEAR;
-  attr.new_shape = HW(3, 3);
-  attr.align_corners = false;
-  attr.half_pixel_centers = false;
-
-  for (auto storage : env_.GetSupportedStorages()) {
-    for (auto precision : env_.GetSupportedPrecisions()) {
-      const float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
-      OperationDef op_def;
-      op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
-      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
-      TensorFloat32 dst_tensor;
-      Resize operation = CreateResize(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 3, 3, 1), &dst_tensor));
-      EXPECT_THAT(
-          dst_tensor.data,
-          Pointwise(FloatNear(eps), {1.0f, 1.666666f, 2.0f, 2.333333f, 3.0f,
-                                     3.333333f, 3.0f, 3.666666f, 4.0f}));
-    }
-  }
+  auto status = ResizeBilinearWithoutHalfPixelTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
 TEST_F(OpenCLOperationTest, ResizeBilinearWithHalfPixel) {
-  TensorFloat32 src_tensor;
-  src_tensor.shape = BHWC(1, 2, 2, 1);
-  src_tensor.data = {1.0f, 2.0f, 3.0f, 4.0f};
-
-  Resize2DAttributes attr;
-  attr.type = SamplingType::BILINEAR;
-  attr.new_shape = HW(3, 3);
-  attr.align_corners = false;
-  attr.half_pixel_centers = true;
-
-  for (auto storage : env_.GetSupportedStorages()) {
-    for (auto precision : env_.GetSupportedPrecisions()) {
-      const float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
-      OperationDef op_def;
-      op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
-      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
-      TensorFloat32 dst_tensor;
-      Resize operation = CreateResize(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 3, 3, 1), &dst_tensor));
-      EXPECT_THAT(dst_tensor.data,
-                  Pointwise(FloatNear(eps), {1.0f, 1.5f, 2.0f, 2.0f, 2.5f, 3.0f,
-                                             3.0f, 3.5f, 4.0f}));
-    }
-  }
+  auto status = ResizeBilinearWithHalfPixelTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
 TEST_F(OpenCLOperationTest, ResizeNearest) {
-  TensorFloat32 src_tensor;
-  src_tensor.shape = BHWC(1, 1, 2, 1);
-  src_tensor.data = {1.0f, 2.0f};
+  auto status = ResizeNearestTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
 
-  Resize2DAttributes attr;
-  attr.align_corners = false;
-  attr.new_shape = HW(2, 4);
-  attr.type = SamplingType::NEAREST;
+TEST_F(OpenCLOperationTest, ResizeNearestAlignCorners) {
+  auto status = ResizeNearestAlignCornersTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
 
-  for (auto storage : env_.GetSupportedStorages()) {
-    for (auto precision : env_.GetSupportedPrecisions()) {
-      const float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
-      OperationDef op_def;
-      op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
-      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
-      TensorFloat32 dst_tensor;
-      Resize operation = CreateResize(op_def, attr);
-      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                    BHWC(1, 2, 4, 1), &dst_tensor));
-      EXPECT_THAT(dst_tensor.data,
-                  Pointwise(FloatNear(eps),
-                            {1.0f, 1.0f, 2.0f, 2.0f, 1.0f, 1.0f, 2.0f, 2.0f}));
-    }
-  }
+TEST_F(OpenCLOperationTest, ResizeNearestHalfPixelCenters) {
+  auto status = ResizeNearestHalfPixelCentersTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
 }  // namespace

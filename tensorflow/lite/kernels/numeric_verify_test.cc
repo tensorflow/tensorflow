@@ -21,8 +21,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
 #include "third_party/eigen3/Eigen/Core"
+#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -42,15 +45,23 @@ class NumericVerifyOpModel : public SingleOpModel {
  public:
   NumericVerifyOpModel(TensorType type, std::initializer_list<int> shape,
                        float scale, int32_t zero_point, int version,
-                       float tolerance = 5.0) {
+                       float tolerance = 5.0, bool log_if_failed = true) {
     const TensorData input_tensor_data = {type, shape, 0, 0, scale, zero_point};
     input_ = AddInput(input_tensor_data);
     ref_ = AddInput({TensorType_FLOAT32, shape});
+    // The output tensor has the same shape with that of the input tensor.
+    output_ = AddOutput({TensorType_FLOAT32, shape});
 
     std::vector<uint8_t> custom_options(sizeof(float));
-    memcpy(custom_options.data(), &tolerance, sizeof(float));
 
-    SetCustomOp("NUMERIC_VERIFY", custom_options,
+    flexbuffers::Builder fbb;
+    fbb.Map([&]() {
+      fbb.Float("tolerance", tolerance);
+      fbb.Bool("log_if_failed", log_if_failed);
+    });
+    fbb.Finish();
+
+    SetCustomOp("NUMERIC_VERIFY", fbb.GetBuffer(),
                 ops::custom::Register_NUMERIC_VERIFY);
 
     BuildInterpreter({GetShape(input_), GetShape(ref_)});
@@ -63,9 +74,12 @@ class NumericVerifyOpModel : public SingleOpModel {
     PopulateTensor(ref_, ref_data);
   }
 
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+
  private:
   int input_;
   int ref_;
+  int output_;
 };
 
 TEST(NumericVerifyOpTest, Uint8) {
@@ -117,5 +131,18 @@ TEST(NumericVerifyOpFailedTest, Int8) {
   EXPECT_EQ(m.InvokeUnchecked(), kTfLiteError);
 }
 
+TEST(NumericVerifyOpDebugModeTest, Int8) {
+  // [-63.5, 64] -> scale=0.5, zero_point=1 for INT8
+  NumericVerifyOpModel m(TensorType_INT8, {2, 5}, 0.5, -1, 2, 5.0, false);
+
+  // The 5th element is set to 0.
+  m.SetInputs<int8_t>({-128, -127, -126, -125, -124, 0, 124, 125, 126, 127},
+                      {-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64});
+  EXPECT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  // The 5th element has discrepancy -61.5 (=dequantized - reference=0-(61.5)).
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear({0, 0, 0, 0, 0, -61.5, 0, 0, 0, 0})));
+}
 }  // namespace
 }  // namespace tflite

@@ -20,7 +20,7 @@ HloModule tfcompile.20
 ENTRY %tfcompile.20 {
   %arg0.1 = f32[] parameter(0), parameter_replication={false}, metadata={op_name="XLA_Args"}
 
-  // CHECK: [[C0:%.+]] = constant
+  // CHECK: [[C0:%.+]] = mhlo.constant
   %constant.3 = f32[] constant(10), metadata={op_type="Less" op_name="Less"}
 
   // CHECK: [[R1:%.+]] = "mhlo.compare"([[A0]], [[C0]])

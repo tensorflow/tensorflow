@@ -305,6 +305,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "MultiHeadAttention"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Multiply"
     mtype: "<type \'type\'>"
   }
@@ -422,7 +426,7 @@ tf_module {
   }
   member_method {
     name: "Input"
-    argspec: "args=[\'shape\', \'batch_size\', \'name\', \'dtype\', \'sparse\', \'tensor\', \'ragged\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'False\', \'None\', \'False\'], "
+    argspec: "args=[\'shape\', \'batch_size\', \'name\', \'dtype\', \'sparse\', \'tensor\', \'ragged\', \'type_spec\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "add"

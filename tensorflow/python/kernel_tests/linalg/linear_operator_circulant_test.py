@@ -283,6 +283,18 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
     operator = linalg.LinearOperatorCirculant(
         lin_op_spectrum, input_output_dtype=dtype)
 
+    self.assertEqual(
+        operator.parameters,
+        {
+            "input_output_dtype": dtype,
+            "is_non_singular": None,
+            "is_positive_definite": None,
+            "is_self_adjoint": None,
+            "is_square": True,
+            "name": "LinearOperatorCirculant",
+            "spectrum": lin_op_spectrum,
+        })
+
     mat = self._spectrum_to_circulant_1d(spectrum, shape, dtype=dtype)
 
     return operator, mat
@@ -526,6 +538,20 @@ class LinearOperatorCirculant2DTestHermitianSpectrum(
         is_self_adjoint=True if ensure_self_adjoint_and_pd else None,
         input_output_dtype=dtype)
 
+    self.assertEqual(
+        operator.parameters,
+        {
+            "input_output_dtype": dtype,
+            "is_non_singular": None,
+            "is_positive_definite": (
+                True if ensure_self_adjoint_and_pd else None),
+            "is_self_adjoint": (
+                True if ensure_self_adjoint_and_pd else None),
+            "is_square": True,
+            "name": "LinearOperatorCirculant2D",
+            "spectrum": lin_op_spectrum,
+        })
+
     mat = self._spectrum_to_circulant_2d(spectrum, shape, dtype=dtype)
 
     return operator, mat
@@ -569,6 +595,19 @@ class LinearOperatorCirculant2DTestNonHermitianSpectrum(
 
     operator = linalg.LinearOperatorCirculant2D(
         lin_op_spectrum, input_output_dtype=dtype)
+
+    self.assertEqual(
+        operator.parameters,
+        {
+            "input_output_dtype": dtype,
+            "is_non_singular": None,
+            "is_positive_definite": None,
+            "is_self_adjoint": None,
+            "is_square": True,
+            "name": "LinearOperatorCirculant2D",
+            "spectrum": lin_op_spectrum,
+        }
+    )
 
     mat = self._spectrum_to_circulant_2d(spectrum, shape, dtype=dtype)
 
@@ -674,6 +713,18 @@ class LinearOperatorCirculant3DTest(test.TestCase):
           shape=(2, 2, 3, 5), dtype=dtypes.float32)
       operator = linalg.LinearOperatorCirculant3D(spectrum)
       self.assertAllEqual((2, 2 * 3 * 5, 2 * 3 * 5), operator.shape)
+
+      self.assertEqual(
+          operator.parameters,
+          {
+              "input_output_dtype": dtypes.complex64,
+              "is_non_singular": None,
+              "is_positive_definite": None,
+              "is_self_adjoint": None,
+              "is_square": True,
+              "name": "LinearOperatorCirculant3D",
+              "spectrum": spectrum,
+          })
 
       matrix_tensor = operator.to_dense()
       self.assertEqual(matrix_tensor.dtype, dtypes.complex64)

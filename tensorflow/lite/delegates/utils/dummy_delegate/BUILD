@@ -5,7 +5,7 @@ package(
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -19,6 +19,21 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/utils:simple_delegate",
+    ],
+)
+
+cc_binary(
+    name = "dummy_external_delegate.so",
+    srcs = [
+        "external_delegate_adaptor.cc",
+    ],
+    linkshared = 1,
+    linkstatic = 1,
+    deps = [
+        ":dummy_delegate",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools:logging",
     ],
 )
 

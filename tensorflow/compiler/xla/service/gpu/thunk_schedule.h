@@ -55,6 +55,9 @@ class ThunkSchedule {
       std::unique_ptr<StreamAssignment> stream_assignment,
       absl::flat_hash_map<const Thunk*, const HloInstruction*> thunk_to_hlo);
 
+  // Single stream, trivial schedule in the ThunkSequence order.
+  explicit ThunkSchedule(std::unique_ptr<ThunkSequence> thunks);
+
   // Returns the total order of executing all the thunks.
   const std::vector<Thunk*>& TotalOrder() const { return thunk_total_order_; }
 
@@ -66,9 +69,17 @@ class ThunkSchedule {
   }
 
   // Delegates to StreamAssignment.
-  int StreamCount() const { return stream_assignment_->StreamCount(); }
+  int StreamCount() const {
+    if (stream_assignment_) {
+      return stream_assignment_->StreamCount();
+    }
+    return 1;
+  }
   int StreamNumberForThunk(const Thunk* thunk) const {
-    return stream_assignment_->StreamNumberForHlo(*thunk_to_hlo_.at(thunk));
+    if (stream_assignment_) {
+      return stream_assignment_->StreamNumberForHlo(*thunk_to_hlo_.at(thunk));
+    }
+    return 0;
   }
 
   string ToString() const;

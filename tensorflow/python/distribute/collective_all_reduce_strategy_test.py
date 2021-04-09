@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import functools
 
 from absl.testing import parameterized
@@ -29,14 +30,16 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import cluster_resolver as cluster_resolver_lib
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
+from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config as tf_config
@@ -54,6 +57,14 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training.server_lib import ClusterSpec
+
+
+CollectiveAllReduceStrategy = (
+    collective_all_reduce_strategy.CollectiveAllReduceStrategy)
+CollectiveAllReduceExtended = (
+    collective_all_reduce_strategy.CollectiveAllReduceExtended)
+_CollectiveAllReduceStrategyExperimental = (
+    collective_all_reduce_strategy._CollectiveAllReduceStrategyExperimental)
 
 
 def create_test_objects(cluster_spec=None,
@@ -86,14 +97,10 @@ def create_test_objects(cluster_spec=None,
 class CollectiveAllReduceStrategyTestBase(
     multi_worker_test_base.MultiWorkerTestBase):
 
-  collective_key_base = 0
-
   def setUp(self):
     # We use a different key_base for each test so that collective keys won't be
     # reused.
-    # TODO(yuefengz, ayushd): enable it to reuse collective keys in different
-    # tests.
-    CollectiveAllReduceStrategyTestBase.collective_key_base += 100000
+    CollectiveAllReduceStrategy._collective_key_base += 100000
     super(CollectiveAllReduceStrategyTestBase, self).setUp()
 
   def _get_test_object(self, task_type, task_id, num_gpus=0):
@@ -102,18 +109,6 @@ class CollectiveAllReduceStrategyTestBase(
         task_type=task_type,
         task_id=task_id,
         num_gpus=num_gpus)
-
-    collective_keys = cross_device_utils.CollectiveKeys(
-        group_key_start=10 +
-        CollectiveAllReduceStrategyTestBase.collective_key_base,
-        op_instance_key_start=100 +
-        CollectiveAllReduceStrategyTestBase.collective_key_base,
-        variable_instance_key_start=10000 +
-        CollectiveAllReduceStrategyTestBase.collective_key_base)
-    strategy.extended._collective_keys = collective_keys
-    strategy.extended._cross_device_ops._collective_keys = collective_keys
-    strategy.extended._host_cross_device_ops._collective_keys = collective_keys
-
     return strategy, target, session_config
 
   def _test_minimize_loss_graph(self, task_type, task_id, num_gpus):
@@ -298,7 +293,7 @@ class DistributedCollectiveAllReduceStrategyTest(
       input_options = None
     else:
       input_options = distribute_lib.InputOptions(
-          experimental_prefetch_to_device=prefetch_to_device)
+          experimental_fetch_to_device=prefetch_to_device)
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.batch(distribution.num_replicas_in_sync)
     dataset = distribution.experimental_distribute_dataset(
@@ -319,7 +314,7 @@ class DistributedCollectiveAllReduceStrategyTest(
         task_id=0,
         num_gpus=2)
     input_options = distribute_lib.InputOptions(
-        experimental_prefetch_to_device=False)
+        experimental_fetch_to_device=False)
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.batch(distribution.num_replicas_in_sync)
     dataset = distribution.experimental_distribute_dataset(
@@ -351,31 +346,35 @@ class DistributedCollectiveAllReduceStrategyTest(
       combinations.combine(
           mode=['graph'], required_gpus=[0, 1, 2], use_dataset=[True, False]))
   def testMakeInputFnIterator(self, required_gpus, use_dataset):
-    if use_dataset:
-      fn = lambda: dataset_ops.Dataset.range(100)
-    else:
-      def fn():
-        dataset = dataset_ops.Dataset.range(100)
-        it = dataset_ops.make_one_shot_iterator(dataset)
-        return it.get_next
-    # We use CPU as the device when required_gpus = 0
-    devices_per_worker = max(1, required_gpus)
-    expected_values = [[i+j for j in range(devices_per_worker)]
-                       for i in range(0, 100, devices_per_worker)]
+    def _worker_fn(task_type, task_id, required_gpus):
+      if use_dataset:
+        fn = lambda: dataset_ops.Dataset.range(20)
+      else:
+        def fn():
+          dataset = dataset_ops.Dataset.range(20)
+          it = dataset_ops.make_one_shot_iterator(dataset)
+          return it.get_next
+      # We use CPU as the device when required_gpus = 0
+      devices_per_worker = max(1, required_gpus)
+      expected_values = [[i+j for j in range(devices_per_worker)]
+                         for i in range(0, 20, devices_per_worker)]
 
-    input_fn = self._input_fn_to_test_input_context(
-        fn,
-        expected_num_replicas_in_sync=3*devices_per_worker,
-        expected_num_input_pipelines=3,
-        expected_input_pipeline_id=1)  # because task_id = 1
-    self._test_input_fn_iterator(
-        'worker',
-        1,
-        required_gpus,
-        input_fn,
-        expected_values,
-        test_reinitialize=use_dataset,
-        ignore_order=not use_dataset)
+      input_fn = self._input_fn_to_test_input_context(
+          fn,
+          expected_num_replicas_in_sync=3*devices_per_worker,
+          expected_num_input_pipelines=3,
+          expected_input_pipeline_id=task_id)
+      self._test_input_fn_iterator(
+          task_type,
+          task_id,
+          required_gpus,
+          input_fn,
+          expected_values,
+          test_reinitialize=use_dataset,
+          ignore_order=not use_dataset)
+
+    self._run_between_graph_clients(_worker_fn, self._cluster_spec,
+                                    required_gpus)
 
   @combinations.generate(combinations.combine(mode=['graph']))
   def testUpdateConfigProto(self):
@@ -401,40 +400,6 @@ class DistributedCollectiveAllReduceStrategyTest(
                      new_rewrite_options.scoped_allocator_optimization)
     self.assertEqual(['CollectiveReduce'],
                      new_rewrite_options.scoped_allocator_opts.enable_op)
-
-  def _get_strategy_with_mocked_methods(self):
-    mock_called = [False]
-
-    # pylint: disable=dangerous-default-value
-    def mock_enable_collective_ops(server_def, mock_called=mock_called):
-      self.assertEqual('worker', server_def.job_name)
-      self.assertEqual(1, server_def.task_index)
-      self.assertEqual('grpc', server_def.protocol)
-      mock_called[0] = True
-
-    def mock_configure_collective_ops(*args, **kwargs):
-      del args, kwargs
-
-    with test.mock.patch.object(context.context(), 'enable_collective_ops',
-                                mock_enable_collective_ops), \
-         test.mock.patch.object(context.context(), 'configure_collective_ops',
-                                mock_configure_collective_ops):
-      strategy, _, _ = self._get_test_object(
-          task_type='worker', task_id=1, num_gpus=2)
-
-    return strategy, mock_called
-
-  @combinations.generate(combinations.combine(mode=['eager']))
-  def testEnableCollectiveOps(self):
-    strategy, mock_called = self._get_strategy_with_mocked_methods()
-    self.assertTrue(strategy.extended._std_server_started)
-    self.assertTrue(mock_called[0])
-
-  @combinations.generate(combinations.combine(mode=['eager']))
-  def testEnableCollectiveOpsAndClusterResolver(self):
-    strategy, _ = self._get_strategy_with_mocked_methods()
-    self.assertEqual(strategy.cluster_resolver.task_type, 'worker')
-    self.assertEqual(strategy.cluster_resolver.task_id, 1)
 
 
 class DistributedCollectiveAllReduceStrategyTestWithChief(
@@ -556,6 +521,11 @@ class LocalCollectiveAllReduceStrategy(
     self._test_numpy_dataset(
         strategy, session=self.cached_session(config=config, target=target))
 
+  @combinations.generate(combinations.combine(mode=['graph']))
+  def testDeepCopy(self):
+    distribution, _, _ = self._get_test_object(None, None)
+    copy.deepcopy(distribution)
+
 
 class LogicalDeviceTest(test.TestCase, parameterized.TestCase):
 
@@ -582,5 +552,66 @@ class LogicalDeviceTest(test.TestCase, parameterized.TestCase):
     context._reset_context()  # pylint: disable=protected-access
 
 
+@combinations.generate(
+    combinations.combine(
+        strategy=[
+            strategy_combinations.multi_worker_mirrored_2x1_cpu,
+            strategy_combinations.multi_worker_mirrored_2x1_gpu,
+            strategy_combinations.multi_worker_mirrored_2x2_gpu,
+            strategy_combinations.multi_worker_mirrored_2x2_gpu_no_merge_call,
+        ],
+        mode=['eager']))
+class CollectiveAllReduceStrategyV2Test(test.TestCase, parameterized.TestCase):
+
+  def test_replica_id_in_sync_group(self, strategy):
+
+    def replica_fn():
+      replica_ctx = distribution_strategy_context.get_replica_context()
+      return replica_ctx.replica_id_in_sync_group, replica_ctx._replica_id
+
+    results = test_util.gather(strategy, strategy.run(replica_fn))
+    self.assertAllEqual(list(range(strategy.extended._num_replicas_in_sync)),
+                        results[0].numpy())
+    self.assertAllEqual(
+        list(range(len(strategy.extended.worker_devices))) *
+        strategy.extended._num_workers, results[1].numpy())
+
+  def test_deep_copy_not_allowed(self, strategy):
+    # Check health is disabled in tests by default. We need to enable it for
+    # this test to simulate the real world.
+    strategy.extended._start_check_health_thread()
+    try:
+      with self.assertRaisesRegex(ValueError, 'cannot be deep copied'):
+        copy.deepcopy(strategy)
+      with self.assertRaisesRegex(ValueError, 'cannot be deep copied'):
+        with ops.Graph().as_default():
+          copy.deepcopy(strategy)
+    finally:
+      strategy.extended._stop_check_health_thread()
+
+
+class ExperimentalCompatibilityTest(test.TestCase):
+
+  def testIsInstance(self):
+    # It's not uncommon for people to special case MultiWorkerMirroredStrategy,
+    # so we need to make sure isinstance check works for combinations between
+    # the experimental and non-experimental endpoints.
+    strategy = CollectiveAllReduceStrategy()
+    experimental_strategy = _CollectiveAllReduceStrategyExperimental()
+    self.assertIsInstance(strategy, CollectiveAllReduceStrategy)
+    self.assertIsInstance(strategy, _CollectiveAllReduceStrategyExperimental)
+    self.assertIsInstance(experimental_strategy, CollectiveAllReduceStrategy)
+    self.assertIsInstance(experimental_strategy,
+                          _CollectiveAllReduceStrategyExperimental)
+
+  def testName(self):
+    # Estimator checks the __name__ to special case MultiWorkerMirroredStrategy.
+    self.assertEqual(CollectiveAllReduceStrategy.__name__,
+                     'CollectiveAllReduceStrategy')
+    self.assertEqual(_CollectiveAllReduceStrategyExperimental.__name__,
+                     'CollectiveAllReduceStrategy')
+
+
 if __name__ == '__main__':
-  test.main()
+  # TODO(b/172304955): enable logical devices.
+  test_util.main(config_logical_devices=False)

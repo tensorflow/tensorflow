@@ -45,10 +45,6 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
         dataset, ["/cpu:1", "/cpu:2"])
     dataset = multi_device_iterator._dataset  # pylint: disable=protected-access
-    self.assertIn("slack", dataset.options()._graph_rewrites())
-    self.assertIn("slack:slack_period:2",
-                  dataset.options()._graph_rewrite_configs())
-
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
     with self.test_session(config=config):
       self.evaluate(multi_device_iterator.initializer)
@@ -69,9 +65,6 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
     options = dataset_ops.Options()
     options.experimental_slack = True
     dataset = dataset.with_options(options)
-    self.assertIn("slack", dataset.options()._graph_rewrites())
-    self.assertIn("slack:slack_period:1",
-                  dataset.options()._graph_rewrite_configs())
     self.assertDatasetProduces(dataset, range(10))
 
   @combinations.generate(test_base.default_test_combinations())
@@ -86,18 +79,16 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, range(1, 11))
 
   @combinations.generate(test_base.default_test_combinations())
-  def testErrorWithoutPrefetch(self):
-    """The rewrite fails if there is no prefetch() in the pipeline."""
+  def testNoErrorWithoutPrefetch(self):
+    """The rewrite should not fail if there is no prefetch() in the pipeline."""
     dataset = dataset_ops.Dataset.range(10)
     options = dataset_ops.Options()
     options.experimental_slack = True
     dataset = dataset.with_options(options)
-    with self.assertRaises(errors.InvalidArgumentError):
-      get_next = self.getNext(dataset)
-      self.evaluate(get_next())
+    self.assertDatasetProduces(dataset, range(10))
 
   @combinations.generate(test_base.default_test_combinations())
-  def testErrorWithInvalidDataset(self):
+  def testNoErrorWithInvalidDataset(self):
     """With a nested dataset op after prefetch, the rewrite should fail."""
     dataset = dataset_ops.Dataset.range(10)
     dataset = dataset.prefetch(1)
@@ -105,9 +96,7 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
     options = dataset_ops.Options()
     options.experimental_slack = True
     dataset = dataset.with_options(options)
-    with self.assertRaises(errors.InvalidArgumentError):
-      get_next = self.getNext(dataset)
-      self.evaluate(get_next())
+    self.assertDatasetProduces(dataset, range(10))
 
 
 if __name__ == "__main__":

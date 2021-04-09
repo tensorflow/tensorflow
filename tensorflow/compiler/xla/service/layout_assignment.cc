@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
@@ -1357,6 +1358,20 @@ Status LayoutAssignment::PropagateOperandConstraint(
   // Propagate layouts between operands of the same instruction. This is a
   // constraint on non-layout-changing instructions.
   if (!instruction_can_change_layout_func_(user)) {
+    // Only propgate the layout of the largest concatenate operand.
+    if (user->opcode() == HloOpcode::kConcatenate) {
+      for (int64 operand_no = 0; operand_no < user->operand_count();
+           ++operand_no) {
+        const HloInstruction* sibling = user->operand(operand_no);
+        if (sibling == operand) {
+          continue;
+        }
+        if (sibling->shape().dimensions(user->concatenate_dimension()) >
+            operand->shape().dimensions(user->concatenate_dimension())) {
+          return Status::OK();
+        }
+      }
+    }
     // Make sure all siblings have the same layout as the operand.
     for (int64 operand_no = 0; operand_no < user->operand_count();
          ++operand_no) {
@@ -1405,6 +1420,10 @@ Status LayoutAssignment::PropagateOperandConstraint(
           if (subshape.rank() != operand->shape().rank()) {
             return Status::OK();
           }
+          if (!constraints->points_to_analysis()
+                   .InstructionDefinesBufferAtIndex(user, shape_index)) {
+            return Status::OK();
+          }
           // TODO(b/67641796): Are there cases except fusion that use this code
           // path?
           TF_ASSIGN_OR_RETURN(
@@ -1434,6 +1453,10 @@ Status LayoutAssignment::PropagateOperandConstraint(
           return Status::OK();
         }
         if (subshape.rank() <= 1) {
+          return Status::OK();
+        }
+        if (!constraints->points_to_analysis().InstructionDefinesBufferAtIndex(
+                user, shape_index)) {
           return Status::OK();
         }
         TF_ASSIGN_OR_RETURN(
@@ -1877,7 +1900,7 @@ Status LayoutAssignment::RunOnComputation(
             ? ShapeUtil::GetSubshape(instruction->literal().shape(),
                                      buffer.index())
                   .layout()
-            : LayoutUtil::GetDefaultLayoutForShape(buffer.shape());
+            : GetUnconstrainedLayout(buffer);
     TF_RETURN_IF_ERROR(constraints.SetBufferLayout(new_layout, buffer,
                                                    /*mandatory=*/false));
 
@@ -2264,6 +2287,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kReduce:
     case HloOpcode::kReplicaId:
     case HloOpcode::kReshape:
+    case HloOpcode::kDynamicReshape:
     case HloOpcode::kRng:
     case HloOpcode::kRngBitGenerator:
     case HloOpcode::kRngGetAndUpdateState:

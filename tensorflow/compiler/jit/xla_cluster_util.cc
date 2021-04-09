@@ -489,7 +489,7 @@ Status GetNodesRelatedToRefVariablesInDirection(
                  /*stable_comparator=*/NodeComparatorName());
   }
 
-  int old_result_size;
+  size_t old_result_size;
   int iterations = 0;
 
   const int kMaxIterations = 10 * 1000;

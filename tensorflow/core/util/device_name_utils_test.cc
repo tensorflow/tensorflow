@@ -105,6 +105,8 @@ TEST(DeviceNameUtilsTest, Basic) {
     DeviceNameUtils::ParsedName p;
     EXPECT_TRUE(DeviceNameUtils::ParseFullName(
         "/job:foo_bar/replica:1/task:2/device:GPU:3", &p));
+    EXPECT_TRUE(DeviceNameUtils::ParseFullOrLocalName(
+        "/job:foo_bar/replica:1/task:2/device:GPU:3", &p));
     EXPECT_TRUE(p.has_job);
     EXPECT_TRUE(p.has_replica);
     EXPECT_TRUE(p.has_task);
@@ -246,12 +248,14 @@ TEST(DeviceNameUtilsTest, Basic) {
   {
     DeviceNameUtils::ParsedName p;
     EXPECT_TRUE(DeviceNameUtils::ParseLocalName("CPU:10", &p));
+    EXPECT_TRUE(DeviceNameUtils::ParseFullOrLocalName("CPU:10", &p));
     EXPECT_EQ(p.type, "CPU");
     EXPECT_EQ(p.id, 10);
     EXPECT_FALSE(DeviceNameUtils::ParseLocalName("cpu:abc", &p));
     EXPECT_FALSE(DeviceNameUtils::ParseLocalName("abc:", &p));
     EXPECT_FALSE(DeviceNameUtils::ParseLocalName("abc", &p));
     EXPECT_FALSE(DeviceNameUtils::ParseLocalName("myspecialdevice", &p));
+    EXPECT_FALSE(DeviceNameUtils::ParseFullOrLocalName("myspecialdevice", &p));
   }
 
   // Test that all parts are round-tripped correctly.
@@ -568,9 +572,9 @@ TEST(DeviceNameUtilsTest, CanonicalizeDeviceName) {
   }
 }
 
-static void BM_ParseFullName(int iters) {
+static void BM_ParseFullName(::testing::benchmark::State& state) {
   DeviceNameUtils::ParsedName p;
-  while (iters--) {
+  for (auto s : state) {
     DeviceNameUtils::ParseFullName("/job:worker/replica:3/task:0/cpu:0", &p);
   }
 }

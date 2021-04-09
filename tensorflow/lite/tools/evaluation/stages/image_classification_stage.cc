@@ -150,32 +150,31 @@ EvaluationStageMetrics ImageClassificationStage::LatestMetrics() {
   return metrics;
 }
 
-TfLiteStatus FilterBlackListedImages(const std::string& blacklist_file_path,
-                                     std::vector<ImageLabel>* image_labels) {
-  if (!blacklist_file_path.empty()) {
+TfLiteStatus FilterDenyListedImages(const std::string& denylist_file_path,
+                                    std::vector<ImageLabel>* image_labels) {
+  if (!denylist_file_path.empty()) {
     std::vector<std::string> lines;
-    if (!tflite::evaluation::ReadFileLines(blacklist_file_path, &lines)) {
-      LOG(ERROR) << "Could not read: " << blacklist_file_path;
+    if (!tflite::evaluation::ReadFileLines(denylist_file_path, &lines)) {
+      LOG(ERROR) << "Could not read: " << denylist_file_path;
       return kTfLiteError;
     }
-    std::vector<int> blacklist_ids;
-    blacklist_ids.reserve(lines.size());
-    // Populate blacklist_ids with indices of images.
-    std::transform(lines.begin(), lines.end(),
-                   std::back_inserter(blacklist_ids),
+    std::vector<int> denylist_ids;
+    denylist_ids.reserve(lines.size());
+    // Populate denylist_ids with indices of images.
+    std::transform(lines.begin(), lines.end(), std::back_inserter(denylist_ids),
                    [](const std::string& val) { return std::stoi(val) - 1; });
 
     std::vector<ImageLabel> filtered_images;
-    std::sort(blacklist_ids.begin(), blacklist_ids.end());
+    std::sort(denylist_ids.begin(), denylist_ids.end());
     const size_t size_post_filtering =
-        image_labels->size() - blacklist_ids.size();
+        image_labels->size() - denylist_ids.size();
     filtered_images.reserve(size_post_filtering);
-    int blacklist_index = 0;
+    int denylist_index = 0;
     for (int image_index = 0; image_index < image_labels->size();
          image_index++) {
-      if (blacklist_index < blacklist_ids.size() &&
-          blacklist_ids[blacklist_index] == image_index) {
-        blacklist_index++;
+      if (denylist_index < denylist_ids.size() &&
+          denylist_ids[denylist_index] == image_index) {
+        denylist_index++;
         continue;
       }
       filtered_images.push_back((*image_labels)[image_index]);

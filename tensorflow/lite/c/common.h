@@ -40,15 +40,11 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include "tensorflow/lite/c/c_api_types.h"  // IWYU pragma: export
+
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
-
-typedef enum TfLiteStatus {
-  kTfLiteOk = 0,
-  kTfLiteError = 1,
-  kTfLiteDelegateError = 2
-} TfLiteStatus;
 
 // The list of external context types known to TF Lite. This list exists solely
 // to avoid conflicts and to ensure ops can share the external contexts they
@@ -70,7 +66,7 @@ struct TfLiteRegistration;
 
 // An external context is a collection of information unrelated to the TF Lite
 // framework, but useful to a subset of the ops. TF Lite knows very little
-// about about the actual contexts, but it keeps a list of them, and is able to
+// about the actual contexts, but it keeps a list of them, and is able to
 // refresh them if configurations like the number of recommended threads
 // change.
 typedef struct TfLiteExternalContext {
@@ -88,7 +84,8 @@ typedef struct TfLiteIntArray {
 // https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
 #if (!defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
      __GNUC_MINOR__ >= 1) ||                                      \
-    defined(HEXAGON)
+    defined(HEXAGON) ||                                           \
+    (defined(__clang__) && __clang_major__ == 7 && __clang_minor__ == 1)
   int data[0];
 #else
   int data[];
@@ -225,6 +222,17 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
     }                                                                      \
   } while (0)
 
+#define TF_LITE_ENSURE_NEAR(context, a, b, epsilon)                          \
+  do {                                                                       \
+    auto delta = ((a) > (b)) ? ((a) - (b)) : ((b) - (a));                    \
+    if (delta > epsilon) {                                                   \
+      TF_LITE_KERNEL_LOG((context), "%s:%d %s not near %s (%f != %f)",       \
+                         __FILE__, __LINE__, #a, #b, static_cast<double>(a), \
+                         static_cast<double>(b));                            \
+      return kTfLiteError;                                                   \
+    }                                                                        \
+  } while (0)
+
 #define TF_LITE_ENSURE_OK(context, status) \
   do {                                     \
     const TfLiteStatus s = (status);       \
@@ -248,23 +256,6 @@ typedef struct TfLiteFloat16 {
   uint16_t data;
 } TfLiteFloat16;
 
-// Types supported by tensor
-typedef enum {
-  kTfLiteNoType = 0,
-  kTfLiteFloat32 = 1,
-  kTfLiteInt32 = 2,
-  kTfLiteUInt8 = 3,
-  kTfLiteInt64 = 4,
-  kTfLiteString = 5,
-  kTfLiteBool = 6,
-  kTfLiteInt16 = 7,
-  kTfLiteComplex64 = 8,
-  kTfLiteInt8 = 9,
-  kTfLiteFloat16 = 10,
-  kTfLiteFloat64 = 11,
-  kTfLiteComplex128 = 12,
-} TfLiteType;
-
 // Return the name of a given type, for error reporting purposes.
 const char* TfLiteTypeGetName(TfLiteType type);
 
@@ -281,21 +272,11 @@ typedef enum TfLiteQuantizationType {
 typedef struct TfLiteQuantization {
   // The type of quantization held by params.
   TfLiteQuantizationType type;
-  // Holds a reference to one of the quantization param structures specified
-  // below.
+  // Holds an optional reference to a quantization param structure. The actual
+  // type depends on the value of the `type` field (see the comment there for
+  // the values and corresponding types).
   void* params;
 } TfLiteQuantization;
-
-// Legacy. Will be deprecated in favor of TfLiteAffineQuantization.
-// If per-layer quantization is specified this field will still be populated in
-// addition to TfLiteAffineQuantization.
-// Parameters for asymmetric quantization. Quantized values can be converted
-// back to float using:
-//     real_value = scale * (quantized_value - zero_point)
-typedef struct TfLiteQuantizationParams {
-  float scale;
-  int32_t zero_point;
-} TfLiteQuantizationParams;
 
 // Parameters for asymmetric quantization across a dimension (i.e per output
 // channel quantization).
@@ -316,7 +297,9 @@ typedef union TfLitePtrUnion {
    * GetTensorData<TYPE>(tensor) instead, otherwise only access .data, as other
    * members are deprecated. */
   int32_t* i32;
+  uint32_t* u32;
   int64_t* i64;
+  uint64_t* u64;
   float* f;
   TfLiteFloat16* f16;
   double* f64;
@@ -342,6 +325,8 @@ typedef union TfLitePtrUnion {
 //  * kTfLitePersistentRo: Allocated and populated during prepare. This is
 //        useful for tensors that can be computed during prepare and treated
 //        as constant inputs for downstream ops (also in prepare).
+//  * kTfLiteCustom: Custom memory allocation provided by the user. See
+//        TfLiteCustomAllocation below.
 typedef enum TfLiteAllocationType {
   kTfLiteMemNone = 0,
   kTfLiteMmapRo,
@@ -349,6 +334,7 @@ typedef enum TfLiteAllocationType {
   kTfLiteArenaRwPersistent,
   kTfLiteDynamic,
   kTfLitePersistentRo,
+  kTfLiteCustom,
 } TfLiteAllocationType;
 
 // The delegates should use zero or positive integers to represent handles.
@@ -381,7 +367,27 @@ typedef struct TfLiteSparsity {
   int dim_metadata_size;
 } TfLiteSparsity;
 
-// An tensor in the interpreter system which is a wrapper around a buffer of
+// Defines a custom memory allocation not owned by the runtime.
+// `data` should be aligned to kDefaultTensorAlignment defined in
+// lite/util.h. (Currently 64 bytes)
+// NOTE: See Interpreter.SetCustomAllocationForTensor for details on usage.
+typedef struct TfLiteCustomAllocation {
+  void* data;
+  size_t bytes;
+} TfLiteCustomAllocation;
+
+// The flags used in `Interpreter::SetCustomAllocationForTensor`.
+// Note that this is a bitmask, so the values should be 1, 2, 4, 8, ...etc.
+typedef enum TfLiteCustomAllocationFlags {
+  kTfLiteCustomAllocationFlagsNone = 0,
+  // Skips checking whether allocation.data points to an aligned buffer as
+  // expected by the TFLite runtime.
+  // NOTE: Setting this flag can cause crashes when calling Invoke().
+  // Use with caution.
+  kTfLiteCustomAllocationFlagsSkipAlignCheck = 1,
+} TfLiteCustomAllocationFlags;
+
+// A tensor in the interpreter system which is a wrapper around a buffer of
 // data including a dimensionality (or NULL if not currently defined).
 #ifndef TF_LITE_STATIC_MEMORY
 typedef struct TfLiteTensor {
@@ -485,7 +491,7 @@ typedef struct TfLiteNode {
   // WARNING: This is an experimental interface that is subject to change.
   struct TfLiteDelegate* delegate;
 } TfLiteNode;
-#else  // defined(TF_LITE_STATIC_MEMORY)?
+#else   // defined(TF_LITE_STATIC_MEMORY)?
 // NOTE: This flag is opt-in only at compile time.
 //
 // Specific reduced TfLiteTensor struct for TF Micro runtime. This struct
@@ -700,12 +706,11 @@ typedef struct TfLiteContext {
   void* profiler;
 
   // Allocate persistent buffer which has the same life time as the interpreter.
+  // Returns nullptr on failure.
   // The memory is allocated from heap for TFL, and from tail in TFLM.
-  // If *ptr is not nullptr, the pointer will be reallocated.
-  // This method is only available in Prepare stage.
+  // This method is only available in Init or Prepare stage.
   // WARNING: This is an experimental interface that is subject to change.
-  TfLiteStatus (*AllocatePersistentBuffer)(struct TfLiteContext* ctx,
-                                           size_t bytes, void** ptr);
+  void* (*AllocatePersistentBuffer)(struct TfLiteContext* ctx, size_t bytes);
 
   // Allocate a buffer which will be deallocated right after invoke phase.
   // The memory is allocated from heap in TFL, and from volatile arena in TFLM.
@@ -761,16 +766,17 @@ typedef struct TfLiteContext {
       struct TfLiteContext* context, const TfLiteIntArray* nodes_to_replace,
       TfLiteDelegateParams** partition_params_array, int* num_partitions);
 
-  // Returns a TfLiteTensor struct for a given index in the subgraph.
+  // Returns a TfLiteTensor struct for a given index.
   // WARNING: This is an experimental interface that is subject to change.
   // WARNING: This method may not be available on all platforms.
-  TfLiteTensor* (*GetTensor)(struct TfLiteContext* context, int subgraph_idx);
+  TfLiteTensor* (*GetTensor)(const struct TfLiteContext* context,
+                             int tensor_idx);
 
-  // Returns a TfLiteEvalTensor struct for a given index in the subgraph.
+  // Returns a TfLiteEvalTensor struct for a given index.
   // WARNING: This is an experimental interface that is subject to change.
   // WARNING: This method may not be available on all platforms.
-  TfLiteEvalTensor* (*GetEvalTensor)(struct TfLiteContext* context,
-                                     int subgraph_idx);
+  TfLiteEvalTensor* (*GetEvalTensor)(const struct TfLiteContext* context,
+                                     int tensor_idx);
 } TfLiteContext;
 
 typedef struct TfLiteRegistration {
@@ -845,7 +851,26 @@ typedef enum TfLiteDelegateFlags {
   //
   // If the delegate isn't capable to handle dynamic tensors, this flag need
   // to be set to false.
-  kTfLiteDelegateFlagsAllowDynamicTensors = 1
+  kTfLiteDelegateFlagsAllowDynamicTensors = 1,
+
+  // This flag can be used by delegates (that allow dynamic tensors) to ensure
+  // applicable tensor shapes are automatically propagated in the case of tensor
+  // resizing.
+  // This means that non-dynamic (allocation_type != kTfLiteDynamic) I/O tensors
+  // of a delegate kernel will have correct shapes before its Prepare() method
+  // is called. The runtime leverages TFLite builtin ops in the original
+  // execution plan to propagate shapes.
+  //
+  // A few points to note:
+  // 1. This requires kTfLiteDelegateFlagsAllowDynamicTensors. If that flag is
+  // false, this one is redundant since the delegate kernels are re-initialized
+  // every time tensors are resized.
+  // 2. Enabling this flag adds some overhead to AllocateTensors(), since extra
+  // work is required to prepare the original execution plan.
+  // 3. This flag requires that the original execution plan only have ops with
+  // valid registrations (and not 'dummy' custom ops like with Flex).
+  // WARNING: This feature is experimental and subject to change.
+  kTfLiteDelegateFlagsRequirePropagatedShapes = 2
 } TfLiteDelegateFlags;
 
 // WARNING: This is an experimental interface that is subject to change.

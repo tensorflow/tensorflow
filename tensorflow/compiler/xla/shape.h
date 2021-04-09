@@ -39,6 +39,15 @@ class Shape {
   // Construct a shape from a ShapeProto.
   explicit Shape(const ShapeProto& shape_proto);
 
+  Shape(PrimitiveType element_type, absl::Span<const int64> dimensions,
+        absl::Span<const bool> dynamic_dimensions,
+        std::vector<Shape> tuple_shapes)
+      : element_type_(element_type),
+        dimensions_(dimensions.begin(), dimensions.end()),
+        dynamic_dimensions_(dynamic_dimensions.begin(),
+                            dynamic_dimensions.end()),
+        tuple_shapes_(std::move(tuple_shapes)) {}
+
   // Returns a ShapeProto representation of the Shape.
   ShapeProto ToProto() const;
 
@@ -49,7 +58,7 @@ class Shape {
   // Returns the rank (number of dimensions) of the given shape. Shape must be
   // an array.
   int64 rank() const {
-    CHECK(IsArray()) << "Non-arrays do not have a rank, shape: " << ToString();
+    DCHECK(IsArray()) << "Non-arrays do not have a rank, shape: " << ToString();
     return dimensions_.size();
   }
 
@@ -58,6 +67,10 @@ class Shape {
   bool IsTuple() const { return element_type() == TUPLE; }
   bool IsToken() const { return element_type() == TOKEN; }
   bool IsOpaque() const { return element_type() == OPAQUE_TYPE; }
+
+  // Returns whether all elements in the shape are integer.
+  // A nested tuple of integers is considered as integer.
+  bool IsInteger() const;
 
   // Returns true if no array dimension in the shape is dynamically sized. Tuple
   // shapes are traversed recursively.
@@ -211,6 +224,10 @@ class Shape {
       ignore_dynamic_dimension_ = true;
       return *this;
     }
+    Equal& IgnoreDimensions() {
+      ignore_dimensions_ = true;
+      return *this;
+    }
 
    private:
     bool ignore_layout_ = false;
@@ -220,6 +237,7 @@ class Shape {
     bool ignore_element_type_ = false;
     bool ignore_fp_precision_ = false;
     bool ignore_dynamic_dimension_ = false;
+    bool ignore_dimensions_ = false;
   };
 
   // Test that all fields of the shape are the same, equivalent to Equal().

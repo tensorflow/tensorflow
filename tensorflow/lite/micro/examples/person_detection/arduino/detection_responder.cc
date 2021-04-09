@@ -25,7 +25,7 @@ limitations under the License.
 
 // Flash the blue LED after each inference
 void RespondToDetection(tflite::ErrorReporter* error_reporter,
-                        uint8_t person_score, uint8_t no_person_score) {
+                        int8_t person_score, int8_t no_person_score) {
   static bool is_initialized = false;
   if (!is_initialized) {
     // Pins for the built-in RGB LEDs on the Arduino Nano 33 BLE Sense

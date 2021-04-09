@@ -18,12 +18,13 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
@@ -124,7 +125,7 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
 
     SmallVector<Location, 3> locations{contraction.getLoc(), bias_add.getLoc()};
     SmallVector<Attribute, 2> fused_ops{StringAttr::get(
-        bias_add.getOperation()->getName().stripDialect(), context)};
+        context, bias_add.getOperation()->getName().stripDialect())};
 
     // BiasAdd may or may not feed into an activation function.
     auto activation = GetActivation(bias_add);
@@ -138,7 +139,7 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     if (fuse_activation) {
       locations.push_back(activation->getLoc());
       fused_ops.push_back(
-          StringAttr::get(activation->getName().stripDialect(), context));
+          StringAttr::get(context, activation->getName().stripDialect()));
       result_type = activation->getResultTypes().front();
     } else {
       result_type = bias_add.getResult().getType();
@@ -155,8 +156,8 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     // The fused contraction has the same attributes as the original
     // contraction, with two additions: the list of ops which have been fused
     // together; epsilon (only with FusedBatchNorm).
-    std::vector<NamedAttribute> attrs = contraction.getAttrs();
-    ArrayAttr fused_ops_attr = ArrayAttr::get(fused_ops, context);
+    std::vector<NamedAttribute> attrs = contraction->getAttrs();
+    ArrayAttr fused_ops_attr = ArrayAttr::get(context, fused_ops);
     attrs.push_back(
         NamedAttribute(Identifier::get("fused_ops", context), fused_ops_attr));
     // Epsilon is used only in fusions with the FusedBatchNorm op, so we zero it
@@ -164,6 +165,12 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     Attribute epsilon = rewriter.getF32FloatAttr(0);
     attrs.push_back(
         NamedAttribute(Identifier::get("epsilon", context), epsilon));
+
+    // Insert fused operation right before the BiasAdd operation to guarantee
+    // that bias value dominates the fused operation. We already verified that
+    // original operation has a single use, so this is safe to do.
+    auto *bias_add_op = bias_add.getOperation();
+    if (bias_add_op) rewriter.setInsertionPoint(bias_add_op);
 
     Value fused_op = rewriter.create<FusedOpT>(fused_loc, result_type,
                                                ValueRange(operands), attrs);
@@ -187,9 +194,17 @@ class FuseConv2DBiasAdd
                          PatternRewriter &rewriter) const override {
     // Verify that the data formats match and are valid for fusion.
     if (conv.data_format() != bias_add.data_format()) {
-      rewriter.notifyMatchFailure(conv, [&](Diagnostic &diag) {
+      (void)rewriter.notifyMatchFailure(conv, [&](Diagnostic &diag) {
         diag << "data format does not match Conv2D data format ("
              << bias_add.data_format() << " vs " << conv.data_format() << ")";
+      });
+      return false;
+    }
+    // Verify the data type is supported.
+    if (!conv.T().isF32() && !conv.T().isF64()) {
+      (void)rewriter.notifyMatchFailure(conv, [&](Diagnostic &diag) {
+        diag << "supported data types for _FusedConv2D are float and double, "
+             << " but got " << conv.T();
       });
       return false;
     }
@@ -199,14 +214,31 @@ class FuseConv2DBiasAdd
 
 // Performs a fusion of the following pattern(s), if possible:
 //   MatMulOp + BiasAdd + <Activation> -> _FusedMatMulOp
-using FuseMatMulBiasAdd = FuseContractionWithBiasAdd<MatMulOp, _FusedMatMulOp>;
+class FuseMatMulBiasAdd
+    : public FuseContractionWithBiasAdd<MatMulOp, _FusedMatMulOp> {
+  using FuseContractionWithBiasAdd<MatMulOp,
+                                   _FusedMatMulOp>::FuseContractionWithBiasAdd;
+
+  bool AreFuseCompatible(MatMulOp matmul, BiasAddOp bias_add,
+                         PatternRewriter &rewriter) const override {
+    // FusedMatMul kernel supports limited set of data types.
+    if (!matmul.T().isF32() && !matmul.T().isBF16()) {
+      (void)rewriter.notifyMatchFailure(matmul, [&](Diagnostic &diag) {
+        diag << "supported data types for _FusedMatMul are float and bfloat16, "
+             << " but got " << matmul.T();
+      });
+      return false;
+    }
+    return true;
+  }
+};
 
 void FusedKernelMatcherPass::runOnFunction() {
-  OwningRewritePatternList patterns;
+  OwningRewritePatternList patterns(&getContext());
   auto func = getFunction();
   patterns.insert<FuseConv2DBiasAdd, FuseMatMulBiasAdd>(&getContext());
 
-  applyPatternsAndFoldGreedily(func, patterns);
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace

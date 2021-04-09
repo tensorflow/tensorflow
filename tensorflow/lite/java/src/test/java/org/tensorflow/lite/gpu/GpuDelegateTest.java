@@ -39,7 +39,7 @@ public final class GpuDelegateTest {
   private static final ByteBuffer MODEL_BUFFER = TestUtils.getTestFileAsBuffer(MODEL_PATH);
   private static final ByteBuffer MOBILENET_QUANTIZED_MODEL_BUFFER =
       TestUtils.getTestFileAsBuffer(
-          "third_party/tensorflow/lite/java/demo/app/src/main/assets/mobilenet_v1_1.0_224_quant.tflite");
+          "tensorflow/lite/java/demo/app/src/main/assets/mobilenet_v1_1.0_224_quant.tflite");
 
   @Test
   public void testBasic() throws Exception {
@@ -76,8 +76,8 @@ public final class GpuDelegateTest {
             "tensorflow/lite/java/src/testdata/grace_hopper_224.jpg");
 
     Interpreter.Options options = new Interpreter.Options();
-    try (GpuDelegate delegate =
-            new GpuDelegate(new GpuDelegate.Options().setQuantizedModelsAllowed(true));
+    // Default behavior allows quantized models.
+    try (GpuDelegate delegate = new GpuDelegate();
         Interpreter interpreter =
             new Interpreter(MOBILENET_QUANTIZED_MODEL_BUFFER, options.addDelegate(delegate))) {
       byte[][] output = new byte[1][1001];
@@ -98,12 +98,13 @@ public final class GpuDelegateTest {
             "tensorflow/lite/java/src/testdata/grace_hopper_224.jpg");
 
     Interpreter.Options options = new Interpreter.Options();
-    try (GpuDelegate delegate = new GpuDelegate();
+    try (GpuDelegate delegate =
+            new GpuDelegate(new GpuDelegate.Options().setQuantizedModelsAllowed(false));
         Interpreter interpreter =
             new Interpreter(MOBILENET_QUANTIZED_MODEL_BUFFER, options.addDelegate(delegate))) {
       byte[][] output = new byte[1][1001];
       interpreter.run(img, output);
-      // Original execution plan remains since default behavior doesn't allow quantized models.
+      // Original execution plan remains since we disabled quantized models.
       assertThat(InterpreterTestHelper.executionPlanLength(interpreter)).isEqualTo(31);
       assertThat(interpreter.getInputTensor(0).shape()).isEqualTo(new int[] {1, 224, 224, 3});
       assertThat(interpreter.getOutputTensor(0).shape()).isEqualTo(new int[] {1, 1001});

@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_TEST_COLLECTIVE_EXECUTOR_MGR_H_
 
 #include "tensorflow/core/framework/collective.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace tensorflow {
@@ -28,29 +29,34 @@ class TestCollectiveExecutor : public CollectiveExecutor {
  public:
   explicit TestCollectiveExecutor(CollectiveExecutorMgrInterface* cem)
       : CollectiveExecutor(cem) {}
-  void RecvFromPeer(const string& peer_device, const string& peer_task,
-                    bool peer_is_local, const string& key, Device* to_device,
-                    DeviceContext* to_device_ctx,
-                    const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
-                    const DeviceLocality& client_locality,
-                    int dev_to_dev_stream_index,
-                    const StatusCallback& done) override {
-    done(errors::Internal("Unimplemented"));
-  }
-
-  void PostToPeer(const string& peer_device, const string& peer_task,
-                  const string& key, Device* from_device,
-                  DeviceContext* from_device_ctx,
-                  const AllocatorAttributes& from_alloc_attr,
-                  const Tensor* from_tensor,
-                  const DeviceLocality& client_locality,
-                  const StatusCallback& done) override {
-    done(errors::Internal("Unimplemented"));
-  }
 
   void RunClosure(std::function<void()>) override {
     LOG(FATAL) << "Unimplemented";
   }
+};
+
+class TestParamResolver : public ParamResolverInterface {
+  void CompleteParamsAsync(const DeviceAttributes& device, CollectiveParams* cp,
+                           CancellationManager* cancel_mgr,
+                           const StatusCallback& done) override {
+    done(errors::Internal("Unimplemented"));
+  }
+
+  void CompleteGroupAsync(const CompleteGroupRequest* request,
+                          CompleteGroupResponse* response,
+                          CancellationManager* cancel_mgr,
+                          const StatusCallback& done) override {
+    done(errors::Internal("Unimplemented"));
+  }
+
+  void CompleteInstanceAsync(const CompleteInstanceRequest* request,
+                             CompleteInstanceResponse* response,
+                             CancellationManager* cancel_mgr,
+                             const StatusCallback& done) override {
+    done(errors::Internal("Unimplemented"));
+  }
+
+  void StartAbort(const Status& s) override { return; }
 };
 
 class TestCollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
@@ -87,12 +93,15 @@ class TestCollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
   }
 
   ParamResolverInterface* GetParamResolver() const override {
-    LOG(FATAL);
-    return nullptr;
+    return &param_resolver_;
   }
 
   DeviceResolverInterface* GetDeviceResolver() const override {
     LOG(FATAL);
+    return nullptr;
+  }
+
+  NcclCommunicatorInterface* GetNcclCommunicator() const override {
     return nullptr;
   }
 
@@ -115,6 +124,7 @@ class TestCollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
 
   mutex mu_;
   gtl::FlatMap<int64, CollectiveExecutor*> table_ TF_GUARDED_BY(mu_);
+  mutable TestParamResolver param_resolver_;
 };
 
 }  // namespace tensorflow

@@ -15,18 +15,26 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/transformations/make_padding.h"
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
 namespace gpu {
 namespace {
 
 bool IsConstZeros(const Node& node) {
-  if (node.operation.type != ToString(OperationType::CONST)) {
+  if (node.operation.type != ToString(OperationType::CONSTANT)) {
     return false;
   }
   auto& attr =

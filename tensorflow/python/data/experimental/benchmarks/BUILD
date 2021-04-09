@@ -2,17 +2,15 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 py_binary(
     name = "autotune_benchmark_binary",
     srcs = ["autotune_benchmark.py"],
     main = "autotune_benchmark.py",
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",
@@ -29,6 +27,21 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python/data/benchmarks:benchmark_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "parameter_value_benchmark",
+    srcs = ["parameter_value_benchmark.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python/data/benchmarks:benchmark_base",
+        "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -42,6 +55,7 @@ tf_py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -72,6 +86,7 @@ tf_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:session",
+        "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/experimental/ops:readers",
         "//tensorflow/python/data/ops:readers",
         "//third_party/py/numpy",
@@ -90,6 +105,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/experimental/ops:batching",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
@@ -106,6 +122,7 @@ tf_py_test(
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/experimental/ops:map_defun",
         "//tensorflow/python/eager:function",
     ],
@@ -123,6 +140,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//third_party/py/numpy",
@@ -139,6 +157,7 @@ tf_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:util",
+        "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/experimental/ops:matching_files",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
@@ -153,20 +172,7 @@ tf_py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "parallel_interleave_benchmark",
-    srcs = ["parallel_interleave_benchmark.py"],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:session",
-        "//tensorflow/python/data/experimental/ops:interleave_ops",
-        "//tensorflow/python/data/experimental/ops:testing",
+        "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -178,6 +184,7 @@ tf_py_test(
     tags = ["no_pip"],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/experimental/ops:resampling",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
@@ -212,6 +219,7 @@ tf_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/experimental/ops:batching",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",

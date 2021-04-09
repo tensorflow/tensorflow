@@ -273,12 +273,12 @@ def experimental_set_strategy(strategy):
 
 @contextlib.contextmanager
 def enter_or_assert_strategy(strategy):
-  if not has_strategy():
-    with strategy.scope():
-      yield
-  else:
+  if has_strategy():
     _assert_strategy(strategy)
     yield
+  else:
+    with strategy.scope():
+      yield
 
 
 # ------------------------------------------------------------------------------
@@ -334,8 +334,10 @@ def _get_default_replica_context():
     # Avoid race condition causing two defaults to be created
     with _default_replica_context_lock:
       if _defaults["replica_context"] is None:
-        _defaults["replica_context"] = distribute_lib.ReplicaContext(
+        # pylint: disable=protected-access
+        _defaults["replica_context"] = distribute_lib._DefaultReplicaContext(
             _get_default_strategy(), replica_id_in_sync_group=0)
+        # pylint: enable=protected-access
   return _defaults["replica_context"]
 
 

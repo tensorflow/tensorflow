@@ -23,6 +23,10 @@ limitations under the License.
 #include <windows.h>
 #endif
 
+#if defined(__APPLE__)
+#include <sys/sysctl.h>
+#endif
+
 #include "absl/base/call_once.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/profile_utils/android_armv7a_cpu_utils_helper.h"
@@ -58,8 +62,12 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
   GetCpuUtilsHelperSingletonInstance().ResetClockCycle();
 }
 
-/* static */ void CpuUtils::EnableClockCycleProfiling(const bool enable) {
-  GetCpuUtilsHelperSingletonInstance().EnableClockCycleProfiling(enable);
+/* static */ void CpuUtils::EnableClockCycleProfiling() {
+  GetCpuUtilsHelperSingletonInstance().EnableClockCycleProfiling();
+}
+
+/* static */ void CpuUtils::DisableClockCycleProfiling() {
+  GetCpuUtilsHelperSingletonInstance().DisableClockCycleProfiling();
 }
 
 /* static */ std::chrono::duration<double> CpuUtils::ConvertClockCycleToTime(
@@ -90,6 +98,8 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
     freq_factor = 1.0;
 #elif defined(__s390x__)
     retval = sscanf(line.c_str(), "bogomips per cpu: %lf", &cpu_freq);
+#elif defined(__aarch64__)
+    retval = sscanf(line.c_str(), "BogoMIPS : %lf", &cpu_freq);
 #else
     retval = sscanf(line.c_str(), "bogomips : %lf", &cpu_freq);
 #endif
@@ -110,17 +120,11 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
          "CPU frequency";
   return INVALID_FREQUENCY;
 #elif defined(__APPLE__)
-  int64 freq_hz;
-  FILE* fp =
-      popen("sysctl hw | grep hw.cpufrequency_max: | cut -d' ' -f 2", "r");
-  if (fp == nullptr) {
-    return INVALID_FREQUENCY;
-  }
-  if (fscanf(fp, "%lld", &freq_hz) != 1) {
-    return INVALID_FREQUENCY;
-  }
-  pclose(fp);
-  if (freq_hz < 1e6) {
+  int64 freq_hz = 0;
+  size_t freq_size = sizeof(freq_hz);
+  int retval =
+      sysctlbyname("hw.cpufrequency_max", &freq_hz, &freq_size, NULL, 0);
+  if (retval != 0 || freq_hz < 1e6) {
     LOG(WARNING) << "Failed to get CPU frequency: " << freq_hz << " Hz";
     return INVALID_FREQUENCY;
   }

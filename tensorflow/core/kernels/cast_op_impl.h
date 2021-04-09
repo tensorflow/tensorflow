@@ -27,9 +27,6 @@ namespace functor {
 
 CAST_FUNCTORS(Eigen::ThreadPoolDevice);
 
-#ifdef TENSORFLOW_USE_SYCL
-CAST_FUNCTORS(Eigen::SyclDevice);
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 
@@ -134,27 +131,6 @@ CastFunctorType GetGpuCastFromBfloat(DataType dst_dtype);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef TENSORFLOW_USE_SYCL
-CastFunctorType GetSyclCastFromBool(DataType dst_dtype);
-
-CastFunctorType GetSyclCastFromUint8(DataType dst_dtype);
-
-CastFunctorType GetSyclCastFromUint16(DataType dst_dtype);
-
-CastFunctorType GetSyclCastFromUint32(DataType dst_dtype);
-
-CastFunctorType GetSyclCastFromUint64(DataType dst_dtype);
-
-CastFunctorType GetSyclCastFromInt16(DataType dst_dtype);
-
-CastFunctorType GetSyclCastFromInt32(DataType dst_dtype);
-
-CastFunctorType GetSyclCastFromInt64(DataType dst_dtype);
-
-CastFunctorType GetSyclCastFromFloat(DataType dst_dtype);
-
-CastFunctorType GetSyclCastFromDouble(DataType dst_dtype);
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
 

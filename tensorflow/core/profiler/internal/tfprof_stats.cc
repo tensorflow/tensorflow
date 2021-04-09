@@ -33,7 +33,7 @@ namespace {
 const char* const kProfilePrefix = "Profile:\n";
 
 bool CreateRunMetadataNode(const string& name, NodeDef* def) {
-  // TODO(xpan): Better solution than blacklisting this 2 nodes. They
+  // TODO(xpan): Better solution than denylisting this 2 nodes. They
   // actually cost some resources, maybe include them. Some nodes, such
   // as _SOURCE appear in multiple devices, which breaks tfprof's assumption.
   if (name == "RecvTensor" || name == "_SOURCE" ||
@@ -212,7 +212,7 @@ void TFStats::AddGraph(std::unique_ptr<GraphDef> graph) {
       int output_idx = 0;
       // input name format can be: "^node:src_output"
       // if not :src_output, then it's the first one (further verify?)
-      auto prefix_pos = node_input.find(":");
+      auto prefix_pos = node_input.find(':');
       if (prefix_pos != node_input.npos) {
         std::vector<string> input_parts = absl::StrSplit(node_input, ':');
         DCHECK(input_parts.size() == 2)
@@ -287,7 +287,7 @@ void TFStats::AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta) {
     for (const NodeExecStats& node_stat : dev_stat.node_stats()) {
       string name = node_stat.node_name();
       // Sometimes the node_name is suffixed with unnecessary information.
-      auto split_pos = node_stat.node_name().find(":");
+      auto split_pos = node_stat.node_name().find(':');
       if (split_pos != node_stat.node_name().npos) {
         name = node_stat.node_name().substr(0, split_pos);
       }

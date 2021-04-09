@@ -33,7 +33,7 @@ class NnapiDelegateProvider : public DelegateProvider {
     default_params_.AddParam("nnapi_accelerator_name",
                              ToolParam::Create<std::string>(""));
     default_params_.AddParam("disable_nnapi_cpu",
-                             ToolParam::Create<bool>(false));
+                             ToolParam::Create<bool>(true));
     default_params_.AddParam("nnapi_allow_fp16",
                              ToolParam::Create<bool>(false));
   }
@@ -104,8 +104,8 @@ TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
         params.Get<std::string>("nnapi_accelerator_name");
     if (!accelerator_name.empty()) {
       options.accelerator_name = accelerator_name.c_str();
-    } else if (params.Get<bool>("disable_nnapi_cpu")) {
-      options.disallow_nnapi_cpu = true;
+    } else {
+      options.disallow_nnapi_cpu = params.Get<bool>("disable_nnapi_cpu");
     }
 
     if (params.Get<bool>("nnapi_allow_fp16")) {

@@ -13,7 +13,7 @@ py_library(
         "Cython/Utility/*.*",
         "Cython/Includes/**/*.pxd",
     ]),
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
 )
 
@@ -22,7 +22,7 @@ py_binary(
     name = "cython_binary",
     srcs = ["cython.py"],
     main = "cython.py",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = ["cython_lib"],
 )

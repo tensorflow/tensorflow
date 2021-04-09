@@ -14,26 +14,67 @@
 # ==============================================================================
 # pylint: disable=protected-access
 """Utilities related to loss functions."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import ops
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.losses import loss_reduction
-from tensorflow.python.ops.losses import util as tf_losses_utils
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util.tf_export import keras_export
 
 
-# TODO(joshl/psv): Update references to ReductionV2 to point to its
-# new location.
-ReductionV2 = keras_export(  # pylint: disable=invalid-name
-    'keras.losses.Reduction', v1=[])(loss_reduction.ReductionV2)
+@keras_export('keras.losses.Reduction', v1=[])
+class ReductionV2(object):
+  """Types of loss reduction.
+
+  Contains the following values:
+
+  * `AUTO`: Indicates that the reduction option will be determined by the usage
+     context. For almost all cases this defaults to `SUM_OVER_BATCH_SIZE`. When
+     used with `tf.distribute.Strategy`, outside of built-in training loops such
+     as `tf.keras` `compile` and `fit`, we expect reduction value to be
+     `SUM` or `NONE`. Using `AUTO` in that case will raise an error.
+  * `NONE`: Weighted losses with one dimension reduced (axis=-1, or axis
+     specified by loss function). When this reduction type used with built-in
+     Keras training loops like `fit`/`evaluate`, the unreduced vector loss is
+     passed to the optimizer but the reported loss will be a scalar value.
+  * `SUM`: Scalar sum of weighted losses.
+  * `SUM_OVER_BATCH_SIZE`: Scalar `SUM` divided by number of elements in losses.
+     This reduction type is not supported when used with
+     `tf.distribute.Strategy` outside of built-in training loops like `tf.keras`
+     `compile`/`fit`.
+
+     You can implement 'SUM_OVER_BATCH_SIZE' using global batch size like:
+     ```
+     with strategy.scope():
+       loss_obj = tf.keras.losses.CategoricalCrossentropy(
+           reduction=tf.keras.losses.Reduction.NONE)
+       ....
+       loss = tf.reduce_sum(loss_obj(labels, predictions)) *
+           (1. / global_batch_size)
+     ```
+
+  Please see the [custom training guide](
+  https://www.tensorflow.org/tutorials/distribute/custom_training) for more
+  details on this.
+  """
+
+  AUTO = 'auto'
+  NONE = 'none'
+  SUM = 'sum'
+  SUM_OVER_BATCH_SIZE = 'sum_over_batch_size'
+
+  @classmethod
+  def all(cls):
+    return (cls.AUTO, cls.NONE, cls.SUM, cls.SUM_OVER_BATCH_SIZE)
+
+  @classmethod
+  def validate(cls, key):
+    if key not in cls.all():
+      raise ValueError('Invalid Reduction Key %s.' % key)
 
 
 def remove_squeezable_dimensions(
@@ -62,13 +103,14 @@ def remove_squeezable_dimensions(
   Returns:
     Tuple of `labels` and `predictions`, possibly with last dim squeezed.
   """
-  with ops.name_scope(name, 'remove_squeezable_dimensions',
-                      [labels, predictions]):
-    predictions = ops.convert_to_tensor_v2_with_dispatch(predictions)
-    labels = ops.convert_to_tensor_v2_with_dispatch(labels)
-    predictions_shape = predictions.get_shape()
+  with backend.name_scope(name or 'remove_squeezable_dimensions'):
+    if not isinstance(predictions, ragged_tensor.RaggedTensor):
+      predictions = ops.convert_to_tensor_v2_with_dispatch(predictions)
+    if not isinstance(labels, ragged_tensor.RaggedTensor):
+      labels = ops.convert_to_tensor_v2_with_dispatch(labels)
+    predictions_shape = predictions.shape
     predictions_rank = predictions_shape.ndims
-    labels_shape = labels.get_shape()
+    labels_shape = labels.shape
     labels_rank = labels_shape.ndims
     if (labels_rank is not None) and (predictions_rank is not None):
       # Use static rank.
@@ -204,7 +246,7 @@ def _safe_mean(losses, num_present):
 
 def _num_elements(losses):
   """Computes the number of elements in `losses` tensor."""
-  with K.name_scope('num_elements') as scope:
+  with backend.name_scope('num_elements') as scope:
     return math_ops.cast(array_ops.size(losses, name=scope), dtype=losses.dtype)
 
 
@@ -249,19 +291,28 @@ def compute_weighted_loss(losses,
     reduction = ReductionV2.SUM_OVER_BATCH_SIZE
   if sample_weight is None:
     sample_weight = 1.0
-  with K.name_scope(name or 'weighted_loss'):
+  with backend.name_scope(name or 'weighted_loss'):
     # Save the `reduction` argument for loss normalization when distributing
     # to multiple replicas. Used only for estimator + v1 optimizer flow.
     ops.get_default_graph()._last_loss_reduction = reduction  # pylint: disable=protected-access
 
-    if not isinstance(losses, keras_tensor.KerasTensor):
-      losses = ops.convert_to_tensor_v2(losses)
+    if not isinstance(losses,
+                      (keras_tensor.KerasTensor, ragged_tensor.RaggedTensor)):
+      losses = ops.convert_to_tensor_v2_with_dispatch(losses)
     input_dtype = losses.dtype
 
     if not isinstance(sample_weight, keras_tensor.KerasTensor):
-      sample_weight = ops.convert_to_tensor_v2(sample_weight)
-    weighted_losses = tf_losses_utils.scale_losses_by_sample_weight(
-        losses, sample_weight)
+      sample_weight = ops.convert_to_tensor_v2_with_dispatch(sample_weight)
+
+    # TODO(psv): Handle casting here in a better way, eg. if losses is float64
+    # we do not want to lose precision.
+    losses = math_ops.cast(losses, 'float32')
+    sample_weight = math_ops.cast(sample_weight, 'float32')
+    # Update dimensions of `sample_weight` to match with `losses` if possible.
+    losses, _, sample_weight = squeeze_or_expand_dimensions(  # pylint: disable=unbalanced-tuple-unpacking
+        losses, None, sample_weight)
+    weighted_losses = math_ops.multiply(losses, sample_weight)
+
     # Apply reduction function to the individual weighted losses.
     loss = reduce_weighted_loss(weighted_losses, reduction)
     # Convert the result back to the input type.

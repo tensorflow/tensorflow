@@ -20,16 +20,12 @@ helpful for finding memory leaks since not all PyObject leaks are found by
 introspection (test_util decorators). Please be careful adding new tests here.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python import keras
 from tensorflow.python.eager import backprop
-from tensorflow.python.eager import test
 from tensorflow.python.eager.memory_tests import memory_test_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
 
 
 class SingleLayerNet(keras.Model):

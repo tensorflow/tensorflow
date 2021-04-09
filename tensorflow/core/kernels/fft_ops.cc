@@ -372,7 +372,7 @@ class CufftScratchAllocator : public se::ScratchAllocator {
       return se::port::StatusOr<se::DeviceMemory<uint8>>();
     }
     AllocationAttributes allocation_attr;
-    allocation_attr.no_retry_on_failure = true;
+    allocation_attr.retry_on_failure = false;
     Status allocation_status(context_->allocate_temp(
         DT_UINT8, TensorShape({byte_size}), &temporary_memory,
         AllocatorAttributes(), allocation_attr));
@@ -529,10 +529,12 @@ class FFTGPUBase : public FFTBase {
                      se::fft::Plan* plan, const se::fft::Type fft_type,
                      const uint64 output_distance, const Tensor& in,
                      Tensor* out) {
-    auto src = AsDeviceMemory<InT>(in.flat<InT>().data());
-    auto dst = AsDeviceMemory<OutT>(out->flat<OutT>().data());
     const TensorShape& input_shape = in.shape();
     const TensorShape& output_shape = out->shape();
+    auto src =
+        AsDeviceMemory<InT>(in.flat<InT>().data(), input_shape.num_elements());
+    auto dst = AsDeviceMemory<OutT>(out->flat<OutT>().data(),
+                                    output_shape.num_elements());
     OP_REQUIRES(
         ctx, stream->ThenFft(plan, src, &dst).ok(),
         errors::Internal("fft failed : type=", static_cast<int>(fft_type),

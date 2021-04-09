@@ -14,18 +14,24 @@
 # ==============================================================================
 """Tests for saving and loading using tf's saved_model APIs with DS."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from tensorflow.python.distribute import combinations
-from tensorflow.python.eager import test
+import os
+from tensorflow.python.distribute import combinations as ds_combinations
+from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_combinations as combinations
+from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.distribute import model_combinations
 from tensorflow.python.keras.distribute import saved_model_test_base as test_base
 from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
+from tensorflow.python.saved_model import load_options as load_options_lib
+from tensorflow.python.saved_model import save_options as save_options_lib
 from tensorflow.python.saved_model import saved_model
 
 
+@testing_utils.run_all_without_tensor_float_32(
+    'Uses Dense layers, which call matmul')
 class SavedModelKerasModelTest(test_base.TestSavedModelBase):
 
   def setUp(self):
@@ -44,13 +50,13 @@ class SavedModelKerasModelTest(test_base.TestSavedModelBase):
                                                        predict_dataset,
                                                        output_name)
 
-  @combinations.generate(test_base.simple_models_with_strategies())
+  @ds_combinations.generate(test_base.simple_models_with_strategies())
   def test_save_no_strategy_restore_strategy(self, model_and_input,
                                              distribution):
     self.run_test_save_no_strategy_restore_strategy(
         model_and_input, distribution)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.times(test_base.simple_models_with_strategies(),
                          combinations.combine(save_in_scope=[True, False])))
   def test_save_strategy_restore_no_strategy(self, model_and_input,
@@ -58,7 +64,7 @@ class SavedModelKerasModelTest(test_base.TestSavedModelBase):
     self.run_test_save_strategy_restore_no_strategy(
         model_and_input, distribution, save_in_scope)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.times(test_base.simple_models_with_strategy_pairs(),
                          combinations.combine(save_in_scope=[True, False])))
   def test_save_strategy_restore_strategy(self, model_and_input,
@@ -70,7 +76,7 @@ class SavedModelKerasModelTest(test_base.TestSavedModelBase):
                                                  distribution_for_restoring,
                                                  save_in_scope)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.times(test_base.simple_models_with_strategies(),
                          combinations.combine(save_in_scope=[True, False])))
   def test_no_variable_device_placement(self, model_and_input, distribution,
@@ -120,13 +126,13 @@ class SavedModelTFModuleTest(test_base.TestSavedModelBase):
     model = saved_model.load(saved_dir)
     return self._predict_with_model(distribution, model, predict_dataset)
 
-  @combinations.generate(test_base.tfmodule_models_with_strategies())
+  @ds_combinations.generate(test_base.tfmodule_models_with_strategies())
   def test_save_no_strategy_restore_strategy(self, model_and_input,
                                              distribution):
     self.run_test_save_no_strategy_restore_strategy(
         model_and_input, distribution)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.times(test_base.tfmodule_models_with_strategies(),
                          combinations.combine(save_in_scope=[True, False])))
   def test_save_strategy_restore_no_strategy(
@@ -134,7 +140,7 @@ class SavedModelTFModuleTest(test_base.TestSavedModelBase):
     self.run_test_save_strategy_restore_no_strategy(
         model_and_input, distribution, save_in_scope)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.times(test_base.tfmodule_models_with_strategy_pairs(),
                          combinations.combine(save_in_scope=[True, False])))
   def test_save_strategy_restore_strategy(self, model_and_input,
@@ -146,6 +152,30 @@ class SavedModelTFModuleTest(test_base.TestSavedModelBase):
                                                  distribution_for_restoring,
                                                  save_in_scope)
 
+  @ds_combinations.generate(
+      combinations.combine(
+          model_and_input=[model_combinations.simple_tfmodule_model],
+          distribution=test_base.strategies +
+          [strategy_combinations.cloud_tpu_strategy]))
+  def test_save_load_io_device(self, model_and_input, distribution):
+    saved_dir = os.path.join(self.get_temp_dir(), 'io_device')
+    with distribution.scope():
+      model = model_and_input.get_model()
+      x_train, y_train, _ = model_and_input.get_data()
+      batch_size = model_and_input.get_batch_size()
+      self._train_model(model, x_train, y_train, batch_size)
+    call = model.__call__.get_concrete_function(tensor_spec.TensorSpec(None))
+    save_options = save_options_lib.SaveOptions(
+        experimental_io_device='/job:localhost')
+    saved_model.save(model, saved_dir, signatures=call, options=save_options)
+    load_options = load_options_lib.LoadOptions(
+        experimental_io_device='/job:localhost')
+    # Check that the model can be loaded and training continued without error.
+    with distribution.scope():
+      loaded_model = saved_model.load(saved_dir, options=load_options)
+      self._train_model(loaded_model, x_train, y_train, batch_size)
+
 
 if __name__ == '__main__':
+  ops.enable_eager_execution()
   test.main()

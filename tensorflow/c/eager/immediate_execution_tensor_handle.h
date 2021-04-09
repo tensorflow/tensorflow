@@ -44,11 +44,42 @@ class ImmediateExecutionTensorHandle : public AbstractTensorHandle {
   virtual const char* DeviceName(Status* status) const = 0;
   // Returns the device where the tensor was placed.
   virtual const char* BackingDeviceName(Status* status) const = 0;
+  // Returns the device type which created the handle.
+  virtual const char* DeviceType(Status* status) const = 0;
+  // Returns the device ID which created the handle.
+  virtual int DeviceId(Status* status) const = 0;
   // Returns a tensor for the handle. If tensor is remote, it will be copied.
   virtual AbstractTensorInterface* Resolve(Status* status) = 0;
 
   // Return a copy of the handle.
   virtual ImmediateExecutionTensorHandle* Copy() = 0;
+
+  std::string DebugString() const override;
+
+  // Returns a Boolean hint indicating whether callers should prefer
+  // `SummarizeValue` to resolving this handle and formatting the tensor.
+  //
+  // For example some tensor handles may represent distributed values, in which
+  // case placement information is lost when resolving the handle.
+  //
+  // If false, a caller might implement pretty-printing by resolving and
+  // iterating over the resulting tensor. This may still be viable if resolving
+  // the handle loses information, but `SummarizeValue` would be more precise.
+  virtual bool HasCustomSummarizer() const { return false; }
+
+  // Returns a string which summarizes the value of this TensorHandle, for
+  // debugging. Does not include a shape or dtype.
+  //
+  // Included in the default implementation of DebugString.
+  virtual Status SummarizeValue(std::string& summary) const;
+
+  // Release any underlying resources, including the interface object.
+  //
+  // WARNING: The destructor of this class is marked as protected to disallow
+  // clients from directly destroying this object since it may manage it's own
+  // lifetime through ref counting. Thus this must be allocated on the heap and
+  // clients MUST call Release() in order to destroy an instance of this class.
+  virtual void Release() = 0;
 
   // For LLVM style RTTI.
   static bool classof(const AbstractTensorHandle* ptr) {

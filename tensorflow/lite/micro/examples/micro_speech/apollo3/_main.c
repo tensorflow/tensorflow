@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <stdint.h>
+
 #include "am_bsp.h"
 #include "am_mcu_apollo.h"  // Defines AM_CMSIS_REGS
 #include "am_util.h"

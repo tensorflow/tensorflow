@@ -59,6 +59,14 @@ def make_concat_tests(options):
       "fully_quantize": [False],
       "quant_16x8": [False],
       "dynamic_range_quantize": [True],
+  }, {
+      "base_shape": [[1, 3, 4, 3]],
+      "num_tensors": [6],
+      "axis": [1],
+      "type": [tf.bool],
+      "fully_quantize": [False],
+      "quant_16x8": [False],
+      "dynamic_range_quantize": [True],
   }]
 
   def get_shape(parameters, delta):

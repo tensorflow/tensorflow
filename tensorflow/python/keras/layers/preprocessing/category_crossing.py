@@ -12,11 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras categorical preprocessing layers."""
+"""Keras category crossing preprocessing layers."""
 # pylint: disable=g-classes-have-attributes
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import itertools
 import numpy as np
@@ -26,7 +23,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine import base_preprocessing_layer
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
@@ -35,7 +33,7 @@ from tensorflow.python.util.tf_export import keras_export
 
 
 @keras_export('keras.layers.experimental.preprocessing.CategoryCrossing')
-class CategoryCrossing(Layer):
+class CategoryCrossing(base_preprocessing_layer.PreprocessingLayer):
   """Category crossing layer.
 
   This layer concatenates multiple categorical inputs into a single categorical
@@ -62,7 +60,7 @@ class CategoryCrossing(Layer):
            [b'b-e'],
            [b'c-f']], dtype=object)>
 
-  Arguments:
+  Args:
     depth: depth of input crossing. By default None, all inputs are crossed into
       one output. It can also be an int or tuple/list of ints. Passing an
       integer will create combinations of crossed outputs with depth up to that
@@ -113,11 +111,11 @@ class CategoryCrossing(Layer):
     `[[b'1_X_2_X_3'], [b'4_X_5_X_6']]`
   """
 
-  def __init__(self, depth=None, name=None, separator=None, **kwargs):
+  def __init__(self, depth=None, name=None, separator='_X_', **kwargs):
     super(CategoryCrossing, self).__init__(name=name, **kwargs)
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        'CategoryCrossing').set(True)
     self.depth = depth
-    if separator is None:
-      separator = '_X_'
     self.separator = separator
     if isinstance(depth, (tuple, list)):
       self._depth_tuple = depth
@@ -141,7 +139,7 @@ class CategoryCrossing(Layer):
 
   def _preprocess_input(self, inp):
     if isinstance(inp, (list, tuple, np.ndarray)):
-      inp = ops.convert_to_tensor(inp)
+      inp = ops.convert_to_tensor_v2_with_dispatch(inp)
     if inp.shape.rank == 1:
       inp = array_ops.expand_dims(inp, axis=-1)
     return inp
@@ -150,7 +148,7 @@ class CategoryCrossing(Layer):
     inputs = [self._preprocess_input(inp) for inp in inputs]
     depth_tuple = self._depth_tuple if self.depth else (len(inputs),)
     ragged_out = sparse_out = False
-    if any(ragged_tensor.is_ragged(inp) for inp in inputs):
+    if any(tf_utils.is_ragged(inp) for inp in inputs):
       ragged_out = True
     elif any(isinstance(inp, sparse_tensor.SparseTensor) for inp in inputs):
       sparse_out = True

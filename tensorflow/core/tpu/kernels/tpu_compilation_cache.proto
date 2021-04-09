@@ -16,10 +16,27 @@ syntax = "proto3";
 
 package tensorflow.tpu;
 
-// Target type for compilation cache fetch operation.
-enum CompilationCacheFetchTarget {
-  INVALID = 0;
-  MAIN = 1;
-  SHARDING = 2;
-  UNSHARDING = 3;
+import "tensorflow/compiler/tf2xla/host_compute_metadata.proto";
+import "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.proto";
+
+// Response for GetTpuProgram RPC.
+message GetTpuProgramResponseExternal {
+  message Blob {
+    bytes data = 1;
+  }
+
+  Blob proto = 1;
+  tf2xla.HostComputeMetadata host_compute_metadata = 2;
+  bool may_modify_variables = 3;
+  Blob compiler_metadata = 4;
+  // Whether the program is empty, which could be true for sharding/unsharding
+  // entries.
+  bool is_empty = 5;
+}
+
+service TpuCompilationCacheServiceExternal {
+  // This method requests the cached proto that the TPU execute op has been
+  // instructed to execute.
+  rpc GetTpuProgram(GetTpuProgramRequest)
+      returns (GetTpuProgramResponseExternal) {}
 }

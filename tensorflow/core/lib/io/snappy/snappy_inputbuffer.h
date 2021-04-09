@@ -113,10 +113,10 @@ class SnappyInputBuffer : public InputStreamInterface {
   // Next unread byte in `output_buffer_`
   char* next_out_;
 
-  // Number of unread bytes bytes available at `next_in_` in `input_buffer_`.
+  // Number of unread bytes available at `next_in_` in `input_buffer_`.
   size_t avail_in_ = 0;
 
-  // Number of unread bytes bytes available at `next_out_` in `output_buffer_`.
+  // Number of unread bytes available at `next_out_` in `output_buffer_`.
   size_t avail_out_ = 0;
 
   // Number of *uncompressed* bytes that have been read from this stream.

@@ -1,14 +1,11 @@
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_kernel_library",
-)
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 # Implementation of Special Functions kernels.
 
 package(
     default_visibility = ["//visibility:public"],
     features = ["parse_headers"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_kernel_library(

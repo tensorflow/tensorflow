@@ -28,6 +28,9 @@ class TpuCompileInterface {
   static bool RegisterImplementation(TpuCompileInterface* impl);
 
   virtual uint64_t FingerprintString(absl::string_view str) = 0;
+
+  static inline constexpr char kTpuCompileErrorPayloadKey[] =
+      "https://www.tensorflow.org/tpu-compile-error";
 };
 
 #endif  // TENSORFLOW_CORE_TPU_TPU_COMPILE_INTERFACE_H_

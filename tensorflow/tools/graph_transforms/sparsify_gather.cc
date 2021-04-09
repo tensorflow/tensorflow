@@ -340,7 +340,7 @@ Status SparsifyGatherInternal(
                 weights_node.name(), ckpt_reader,
                 (*shapes_and_slices)[weights_node.name()], &weight));
           }
-          // Add both both weight and identity node names.
+          // Add both weight and identity node names.
           removed_node_names.push_back(weights_node.name());
           removed_node_names.push_back(match.inputs[0].node.name());
           for (auto input_node : match.inputs[0].node.input()) {

@@ -19,8 +19,13 @@ namespace tensorflow {
 REGISTER8(BinaryOp, CPU, "Maximum", functor::maximum, float, Eigen::half,
           bfloat16, double, uint8, int16, int32, int64);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER6(BinaryOp, GPU, "Maximum", functor::maximum, float, Eigen::half,
           double, uint8, int16, int64);
+#else
+// TODO(b/172804967): We do not generate unsigned kernels for GPU via mlir.
+REGISTER(BinaryOp, GPU, "Maximum", functor::maximum, uint8);
+#endif
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -34,14 +39,4 @@ REGISTER_KERNEL_BUILDER(Name("Maximum")
                         BinaryOp<CPUDevice, functor::maximum<int32>>);
 #endif
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER3(BinaryOp, SYCL, "Maximum", functor::maximum, float, double, int64);
-REGISTER_KERNEL_BUILDER(Name("Maximum")
-                            .Device(DEVICE_SYCL)
-                            .HostMemory("x")
-                            .HostMemory("y")
-                            .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::maximum<int32>>);
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

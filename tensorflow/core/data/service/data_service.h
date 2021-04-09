@@ -16,33 +16,41 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_DATA_SERVICE_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_DATA_SERVICE_H_
 
-#include "tensorflow/core/data/service/master.grpc.pb.h"
+#include "grpcpp/impl/codegen/client_context.h"
+#include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/data/service/data_transfer.h"
+#include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
+#include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 namespace data {
 
+// Increment this when making backwards-incompatible changes to communication
+// between tf.data servers.
+constexpr int kDataServiceVersion = 3;
+
 // Modes for how a tf.data service job should process a dataset.
 enum class ProcessingMode : int64 {
+  UNSET = 0,
   // Each tf.data worker processes an entire epoch. If a dataset contains 2
   // elements and there are 3 workers, the job will produce 6 elements.
-  PARALLEL_EPOCHS = 0,
+  PARALLEL_EPOCHS = 1,
   // Processing of a single epoch is distributed across all tf.data workers.
-  ONE_EPOCH = 1,
+  DISTRIBUTED_EPOCH = 2,
 };
 
 // Parses a string representing a processing mode and stores the result in
-// *mode. Returns an InvalidArgument status if the string is not recognized.
-Status ParseProcessingMode(const std::string& s, ProcessingMode* mode);
+// `mode`. Returns an InvalidArgument status if the string is not recognized.
+Status ParseProcessingMode(const std::string& s, ProcessingMode& mode);
 
 // Converts a processing mode to its corresponding string.
 std::string ProcessingModeToString(ProcessingMode mode);
 
 // Base class for data service clients. Data service clients are
-// thread-compatible, requiring external synchronization when used from multiple
-// threads.
+// threadsafe.
 class DataServiceClientBase {
  public:
   DataServiceClientBase(const std::string& address, const std::string& protocol)
@@ -67,75 +75,113 @@ class DataServiceClientBase {
   const std::string protocol_;
 };
 
-// Client for communicating with the tf.data service master.
-class DataServiceMasterClient : public DataServiceClientBase {
+// Client for communicating with the tf.data service dispatcher.
+class DataServiceDispatcherClient : public DataServiceClientBase {
  public:
-  DataServiceMasterClient(const std::string& address,
-                          const std::string& protocol)
+  DataServiceDispatcherClient(const std::string& address,
+                              const std::string& protocol)
       : DataServiceClientBase(address, protocol) {}
 
+  // Sends a heartbeat to the dispatcher. If the worker wasn't already
+  // registered with the dispatcher, this will register the worker. The
+  // dispatcher will report which new tasks the worker should run, and which
+  // tasks it should delete. This is stored into `new_tasks` and
+  // `tasks_to_delete`.
+  Status WorkerHeartbeat(const std::string& worker_address,
+                         const std::string& transfer_address,
+                         const std::vector<int64>& current_tasks,
+                         std::vector<TaskDef>& new_tasks,
+                         std::vector<int64>& tasks_to_delete);
+
+  // Updates the dispatcher with information about the worker's state.
+  Status WorkerUpdate(const std::string& worker_address,
+                      std::vector<TaskProgress>& task_progress);
+
+  // Gets a dataset definition for the given dataset id, and stores the
+  // definition in `dataset_def`.
+  Status GetDatasetDef(int64 dataset_id, DatasetDef& dataset_def);
+
+  // Gets the next split for the specified job id and repetition.
+  Status GetSplit(int64 job_id, int64 repetition, Tensor& split,
+                  bool& end_of_splits);
+
   // Registers a dataset with the tf.data service, and stores the generated
-  // dataset id in `*dataset_id`.
-  Status RegisterDataset(GraphDef dataset, int64* dataset_id);
+  // dataset id in `dataset_id`.
+  Status RegisterDataset(GraphDef dataset, int64& dataset_id);
 
-  // Creates a new tf.data service job for the specified dataset. The id for the
-  // created job will be stored in `*job_id`.
-  Status CreateJob(int64 dataset_id, ProcessingMode processing_mode,
-                   int64* job_id);
-
-  // Gets the job id for the job represented by the tuple
-  // (job_name, job_name_index), and stores the id in *job_id. If the
-  // job doesn't exist yet, it will be created.
+  // If `job_key` is set, looks up a job matching `job_key`. If `job_key` is
+  // absent or no matching job is found, creates a new job. The resulting job
+  // id is stored in `job_client_id`.
   Status GetOrCreateJob(int64 dataset_id, ProcessingMode processing_mode,
-                        const std::string& job_name, int job_name_index,
-                        int64* job_id);
+                        const absl::optional<JobKey>& job_key,
+                        absl::optional<int64> num_consumers,
+                        int64& job_client_id);
 
-  // Queries the master for the tasks associated with the specified job.
-  // The tasks will be stored in *tasks, and whether the job is finished will
-  // be stored in `*job_finished`.
-  Status GetTasks(int64 job_id, std::vector<TaskInfo>* tasks,
-                  bool* job_finished);
+  // Releases a job client id, indicating that the id will no longer be used to
+  // read from the job.
+  Status ReleaseJobClient(int64 job_client_id);
 
-  // Queries the master for its registered workers. The worker info will be
-  // stored in `*workers`.
-  Status GetWorkers(std::vector<WorkerInfo>* workers);
+  // Attempts to remove a task. The task is removed if all consumers try to
+  // remove the task in the same round.
+  Status MaybeRemoveTask(int64 task_id, int64 consumer_index, int64 round,
+                         bool& removed);
+
+  // Heartbeats to the dispatcher, getting back the tasks that should be
+  // running, and whether the job is finished.
+  Status ClientHeartbeat(ClientHeartbeatRequest& req,
+                         ClientHeartbeatResponse& resp);
+
+  // Queries the dispatcher for its registered workers. The worker info will be
+  // stored in `workers`.
+  Status GetWorkers(std::vector<WorkerInfo>& workers);
 
  protected:
   Status EnsureInitialized() override;
 
  private:
-  std::unique_ptr<MasterService::Stub> stub_;
+  mutex mu_;
+  // Initialization is guarded by `mu_`, but using the stub does not require
+  // holding `mu_`
+  std::unique_ptr<DispatcherService::Stub> stub_;
 };
 
 // Client for communicating with the tf.data service worker.
 class DataServiceWorkerClient : public DataServiceClientBase {
  public:
   DataServiceWorkerClient(const std::string& address,
-                          const std::string& protocol)
-      : DataServiceClientBase(address, protocol) {}
+                          const std::string& protocol,
+                          const std::string& transfer_protocol)
+      : DataServiceClientBase(address, protocol),
+        transfer_protocol_(transfer_protocol) {}
 
-  // Fetches the next element for the specified task_id. The element's
-  // compressed tensors will be stored in *element. If no element is available,
-  // `*end_of_sequence` will be `true`, and `element` will be left unchanged.
-  Status GetElement(int64 task_id, CompressedElement* element,
-                    bool* end_of_sequence);
+  // Fetches an element from the worker.
+  Status GetElement(const GetElementRequest& req, GetElementResult& result);
+
+  // Makes a best effort to cancel all outstanding calls in progress for the
+  // client, and causes further calls to return Cancelled status.
+  void TryCancel();
 
  protected:
   Status EnsureInitialized() override;
 
  private:
-  std::unique_ptr<WorkerService::Stub> stub_;
+  const std::string transfer_protocol_;
+  mutex mu_;
+  // Initialization is guarded by `mu_`, but using the stub does not require
+  // holding `mu_`
+  std::unique_ptr<DataTransferClient> client_;
 };
 
-// Creates and initializes a new tf.data service master client.
-Status CreateDataServiceMasterClient(
+// Creates and initializes a new tf.data service dispatcher client.
+Status CreateDataServiceDispatcherClient(
     const std::string& address, const std::string& protocol,
-    std::unique_ptr<DataServiceMasterClient>* out);
+    std::unique_ptr<DataServiceDispatcherClient>& out);
 
 // Creates and initializes a new tf.data service worker client.
 Status CreateDataServiceWorkerClient(
     const std::string& address, const std::string& protocol,
-    std::unique_ptr<DataServiceWorkerClient>* out);
+    const std::string& transfer_protocol,
+    std::unique_ptr<DataServiceWorkerClient>& out);
 
 }  // namespace data
 }  // namespace tensorflow

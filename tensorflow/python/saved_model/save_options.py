@@ -56,13 +56,11 @@ class VariablePolicy(enum.Enum):
     Distributed variables are still saved as one variable under this policy.
 
   EXPAND_DISTRIBUTED_VARIABLES
-    Distributed variables will be explicitly expanded into their respective
-    distributed replicas, and their assigned devices will be saved. This is
-    useful when one wants to use the model for training in environments where
-    the original distribution strategy is not available. Checkpoints are
-    currently incompatible with this option, so it is not implemented in
-    `saved_model.save` (only the internal `saved_model.export_meta_graph` API
-    supports it for now).
+    Distributed variables will be saved with information about their components,
+    allowing for their restoration on load. Also, the saved graph will contain
+    references to those variables. This is useful when one wants to use the
+    model for training in environments where the original distribution strategy
+    is not available.
   """
 
   NONE = None
@@ -128,26 +126,22 @@ class SaveOptions(object):
         by a single tf.function you can use the `function_aliases` argument to
         store a map from the alias name to all concrete function names.
         E.g.
-        ```python
-        class MyModel:
-        @tf.function
-        def func():
-          ...
 
-        @tf.function
-        def serve():
-          ...
-          func()
+        >>> class Adder(tf.Module):
+        ...   @tf.function
+        ...   def double(self, x):
+        ...     return x + x
 
-        model = MyModel()
-        signatures = {
-            'serving_default': model.serve.get_concrete_function(),
-        }
-        options = tf.saved_model.SaveOptions(function_aliases={
-            'my_func': func,
-        })
-        tf.saved_model.save(model, export_dir, signatures, options)
-        ```
+        >>> model = Adder()
+        >>> model.double.get_concrete_function(
+        ...   tf.TensorSpec(shape=[], dtype=tf.float32, name="float_input"))
+        >>> model.double.get_concrete_function(
+        ...   tf.TensorSpec(shape=[], dtype=tf.string, name="string_input"))
+
+        >>> options = tf.saved_model.SaveOptions(
+        ...   function_aliases={'double': model.double})
+        >>> tf.saved_model.save(model, '/tmp/adder', options=options)
+
       experimental_io_device: string. Applies in a distributed setting.
         Tensorflow device to use to access the filesystem. If `None` (default)
         then for each variable the filesystem is accessed from the CPU:0 device

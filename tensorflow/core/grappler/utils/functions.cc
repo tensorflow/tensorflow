@@ -284,6 +284,10 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
   for (const auto& control_ret : func.control_ret()) {
     control_outputs.push_back({control_ret.first, control_ret.second});
   }
+  // Sort control outputs to keep FunctionDef output stable. The sort order of
+  // map entries in func.control_ret() are not stable.
+  // See b/174715578 for context on why stability is desired.
+  std::sort(control_outputs.begin(), control_outputs.end());
 
   std::vector<const FunctionDef::ArgAttrs*> arg_attr(inputs.size(), nullptr);
   for (const auto& attr : func.arg_attr()) {
@@ -313,7 +317,8 @@ Status ReplaceInputWithConst(const NodeDef& input_const, int input_index,
     return errors::InvalidArgument("Input node is not a constant: ",
                                    SummarizeNodeDef(input_const));
   }
-  if (input_index < 0 || input_index >= item->input_size()) {
+  const int item_input_size = item->input_size();
+  if (input_index < 0 || input_index >= item_input_size) {
     return errors::InvalidArgument(
         "Function input index is out of bound: index=", input_index,
         " input_size=", item->input_size());
@@ -354,7 +359,8 @@ Status RemoveFunctionOutputs(const absl::flat_hash_set<int>& remove_outputs,
 
   // Do some sanity checking of the removed outputs positions.
   for (int remove_output : remove_outputs) {
-    if (remove_output < 0 || remove_output >= item->output_size()) {
+    const int item_output_size = item->output_size();
+    if (remove_output < 0 || remove_output >= item_output_size) {
       return errors::InvalidArgument(
           "Function output index is out of bound: index=", remove_output,
           " output_size=", item->output_size());
@@ -366,7 +372,7 @@ Status RemoveFunctionOutputs(const absl::flat_hash_set<int>& remove_outputs,
     return remove_output_args.find(&output) != remove_output_args.end();
   };
 
-  for (int i = 0; i < item->output_size(); ++i) {
+  for (int i = 0, end = item->output_size(); i < end; ++i) {
     const OutputArgInstantiation& output = item->output(i);
     if (remove_outputs.contains(i)) {
       VLOG(3) << "Remove functions output: name=" << output.node_name
@@ -580,7 +586,7 @@ Status MakeFunctionDef(const GrapplerFunctionItem& item,
   }
 
   // Copy function arg attributes.
-  for (int i = 0; i < item.arg_attr().size(); ++i) {
+  for (int i = 0, end = item.arg_attr().size(); i < end; ++i) {
     const auto* attr = item.arg_attr().at(i);
     if (attr != nullptr) {
       (*func->mutable_arg_attr())[i] = *attr;

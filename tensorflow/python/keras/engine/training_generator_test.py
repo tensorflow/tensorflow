@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for training routines."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools
 
 from absl.testing import parameterized
@@ -34,7 +30,7 @@ from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import training
-from tensorflow.python.keras.engine import training_generator
+from tensorflow.python.keras.engine import training_generator_v1
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.platform import test
@@ -527,7 +523,7 @@ class TestConvertToGeneratorLike(test.TestCase, parameterized.TestCase):
         isinstance(data, (dataset_ops.DatasetV2, iterator_ops.Iterator))):
       return
 
-    generator, steps = training_generator.convert_to_generator_like(
+    generator, steps = training_generator_v1.convert_to_generator_like(
         data, batch_size=2, steps_per_epoch=expected_batches)
     self.assertEqual(steps, expected_batches)
 

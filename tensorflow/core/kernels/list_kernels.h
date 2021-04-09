@@ -281,20 +281,17 @@ class TensorListConcat : public OpKernel {
       std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>;
   explicit TensorListConcat(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
-    // TODO(skyewm): the HasAttr check can be removed once the
-    // element_shape_except_first_dim attr has been checked in for 2 weeks
-    // (around 1/14/2019).
     if (c->HasAttr("element_shape")) {
-      PartialTensorShape element_shape;
-      OP_REQUIRES_OK(c, c->GetAttr("element_shape", &element_shape));
-      if (!element_shape.unknown_rank()) {
-        element_shape_except_first_dim_ = PartialTensorShape(
-            gtl::ArraySlice<int64>(element_shape.dim_sizes()).subspan(1));
-      }
+      OP_REQUIRES_OK(c, c->GetAttr("element_shape", &element_shape_));
     }
   }
 
   void Compute(OpKernelContext* c) override {
+    PartialTensorShape element_shape_except_first_dim;
+    if (!element_shape_.unknown_rank()) {
+      element_shape_except_first_dim = PartialTensorShape(
+          gtl::ArraySlice<int64>(element_shape_.dim_sizes()).subspan(1));
+    }
     // Check that the input Variant tensor is indeed a TensorList and has the
     // correct element type.
     const TensorList* tensor_list = nullptr;
@@ -318,21 +315,21 @@ class TensorListConcat : public OpKernel {
                       "Concat requires elements to be at least vectors, ",
                       "found scalars instead."));
       // Split `element_shape` into `first_dim` and
-      // `element_shape_except_first_dim_`.
+      // `element_shape_except_first_dim`.
       first_dim = element_shape.dim_size(0);
-      element_shape_except_first_dim_ = element_shape;
-      element_shape_except_first_dim_.RemoveDim(0);
+      element_shape_except_first_dim = element_shape;
+      element_shape_except_first_dim.RemoveDim(0);
     }
-    // If the TensorList is empty, element_shape_except_first_dim_ must be fully
+    // If the TensorList is empty, element_shape_except_first_dim must be fully
     // defined.
     OP_REQUIRES(c,
                 !tensor_list->tensors().empty() ||
-                    element_shape_except_first_dim_.IsFullyDefined(),
+                    element_shape_except_first_dim.IsFullyDefined(),
                 errors::InvalidArgument(
                     "All except the first dimension must be fully defined ",
                     "when concating an empty tensor list. element_shape: ",
-                    element_shape_except_first_dim_.DebugString()));
-    // 1. Check that `element_shape_except_first_dim_` input tensor is
+                    element_shape_except_first_dim.DebugString()));
+    // 1. Check that `element_shape_except_first_dim` input tensor is
     //    compatible with the shapes of element tensors.
     // 2. Check that the elements have the same shape except the first dim.
     // 3. If `first_dim` is known, check that it is compatible with the leading
@@ -346,7 +343,7 @@ class TensorListConcat : public OpKernel {
       for (int i = 0; i < tensor_list->tensors().size(); ++i) {
         const Tensor& t = tensor_list->tensors()[i];
         if (t.dtype() != DT_INVALID) {
-          PartialTensorShape tmp = element_shape_except_first_dim_;
+          PartialTensorShape tmp = element_shape_except_first_dim;
           OP_REQUIRES(
               c, TensorShapeUtils::IsVectorOrHigher(t.shape()),
               errors::InvalidArgument("Concat saw a scalar shape at index ", i,
@@ -354,7 +351,7 @@ class TensorListConcat : public OpKernel {
           TensorShape shape_except_first_dim = TensorShape(
               gtl::ArraySlice<int64>(t.shape().dim_sizes()).subspan(1));
           OP_REQUIRES_OK(c, tmp.MergeWith(shape_except_first_dim,
-                                          &element_shape_except_first_dim_));
+                                          &element_shape_except_first_dim));
           OP_REQUIRES(c, first_dim == -1 || first_dim == t.shape().dim_size(0),
                       errors::InvalidArgument(
                           "First entry of element_shape input does not match ",
@@ -374,12 +371,11 @@ class TensorListConcat : public OpKernel {
       first_dim = inferred_first_dim;
     }
     TensorShape output_shape;
-    OP_REQUIRES(
-        c, element_shape_except_first_dim_.AsTensorShape(&output_shape),
-        errors::InvalidArgument(
-            "Trying to concat list with only uninitialized tensors ",
-            "but element_shape_except_first_dim_ is not fully defined: ",
-            element_shape_except_first_dim_.DebugString()));
+    OP_REQUIRES(c, element_shape_except_first_dim.AsTensorShape(&output_shape),
+                errors::InvalidArgument(
+                    "Trying to concat list with only uninitialized tensors ",
+                    "but element_shape_except_first_dim is not fully defined: ",
+                    element_shape_except_first_dim.DebugString()));
     // Build the lengths_tensor and leading dim of the output tensor by
     // iterating over all element tensors.
     Tensor* lengths_tensor = nullptr;
@@ -470,7 +466,7 @@ class TensorListConcat : public OpKernel {
 
  private:
   DataType element_dtype_;
-  PartialTensorShape element_shape_except_first_dim_;
+  PartialTensorShape element_shape_;
 };
 
 template <typename Device, typename T>

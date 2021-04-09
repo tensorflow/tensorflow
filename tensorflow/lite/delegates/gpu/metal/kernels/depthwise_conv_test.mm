@@ -13,196 +13,48 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/metal/kernels/add.h"
-
 #import <XCTest/XCTest.h>
 
-#include <string>
-#include <vector>
-
-#include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/tensor.h"
-#include "tensorflow/lite/delegates/gpu/common/util.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv_3x3_stride_h2_test_util.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv_3x3_test_util.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv_test_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
-using ::tflite::gpu::Axis;
-using ::tflite::gpu::BHWC;
-using ::tflite::gpu::DataType;
-using ::tflite::gpu::DepthwiseConvolution2DAttributes;
-using ::tflite::gpu::HW;
-using ::tflite::gpu::Linear;
-using ::tflite::gpu::OHWI;
-using ::tflite::gpu::OperationType;
-using ::tflite::gpu::Tensor;
-using ::tflite::gpu::TensorRef;
-using ::tflite::gpu::metal::CompareVectors;
-using ::tflite::gpu::metal::SingleOpModel;
-
-@interface DepthwiseConvTest : XCTestCase
+@interface DepthwiseConvMetalTest : XCTestCase
 @end
 
-@implementation DepthwiseConvTest
-- (void)setUp {
-  [super setUp];
+@implementation DepthwiseConvMetalTest {
+  tflite::gpu::metal::MetalExecutionEnvironment exec_env_;
 }
 
-- (void)testO4H1W1I2Strides1x1Dilation1x1 {
-  TensorRef<BHWC> input;
-  input.type = DataType::FLOAT32;
-  input.ref = 0;
-  input.shape = BHWC(1, 1, 1, 2);
-
-  DepthwiseConvolution2DAttributes attr;
-  Tensor<Linear, DataType::FLOAT32> bias;
-  bias.shape.v = 4;
-  bias.id = 1;
-  bias.data = {1, 2, 3, 4};
-  attr.bias = std::move(bias);
-
-  Tensor<OHWI, DataType::FLOAT32> weights;
-  weights.shape = OHWI(2, 1, 1, 2);
-  weights.id = 2;
-  weights.data = {1, 3, 2, 4};
-
-  attr.weights = std::move(weights);
-
-  attr.dilations = HW(1, 1);
-  attr.padding.prepended = HW(0, 0);
-  attr.padding.appended = HW(0, 0);
-  attr.strides = HW(1, 1);
-
-  TensorRef<BHWC> output;
-  output.type = DataType::FLOAT32;
-  output.ref = 3;
-  output.shape = BHWC(1, 1, 1, 4);
-
-  SingleOpModel model({ToString(OperationType::DEPTHWISE_CONVOLUTION), std::move(attr)}, {input},
-                      {output});
-  XCTAssertTrue(model.PopulateTensor(0, {1, 3}));
-  auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
-  status = CompareVectors({2, 4, 12, 16}, model.GetOutput(0), 1e-6f);
+- (void)testDepthwiseConvSimpleWeights {
+  auto status = DepthwiseConvSimpleWeightsTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
-- (void)testO2H1W1I1Strides2x2Dilation1x1 {
-  TensorRef<BHWC> input;
-  input.type = DataType::FLOAT32;
-  input.ref = 0;
-  input.shape = BHWC(1, 3, 3, 1);
-
-  DepthwiseConvolution2DAttributes attr;
-  Tensor<Linear, DataType::FLOAT32> bias;
-  bias.shape.v = 4;
-  bias.id = 1;
-  bias.data = {0, 0};
-  attr.bias = std::move(bias);
-
-  Tensor<OHWI, DataType::FLOAT32> weights;
-  weights.shape = OHWI(2, 1, 1, 1);
-  weights.id = 1;
-  weights.data = {1, 3};
-
-  attr.weights = std::move(weights);
-
-  attr.dilations = HW(1, 1);
-  attr.padding.prepended = HW(0, 0);
-  attr.padding.appended = HW(0, 0);
-  attr.strides = HW(2, 2);
-
-  TensorRef<BHWC> output;
-  output.type = DataType::FLOAT32;
-  output.ref = 3;
-  output.shape = BHWC(1, 2, 2, 2);
-
-  SingleOpModel model({ToString(OperationType::DEPTHWISE_CONVOLUTION), std::move(attr)}, {input},
-                      {output});
-  XCTAssertTrue(model.PopulateTensor(0, {1, 0, 1, 1, 0, 1, 1, 0, 1}));
-  auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
-  status = CompareVectors({1, 3, 1, 3, 1, 3, 1, 3}, model.GetOutput(0), 1e-6f);
+- (void)testDepthwiseConvNoMultiplier {
+  auto status = DepthwiseConvNoMultiplierTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
-- (void)testO2H2W2I1Strides1x1Dilation2x2 {
-  TensorRef<BHWC> input;
-  input.type = DataType::FLOAT32;
-  input.ref = 0;
-  input.shape = BHWC(1, 3, 3, 1);
-
-  DepthwiseConvolution2DAttributes attr;
-  Tensor<Linear, DataType::FLOAT32> bias;
-  bias.shape.v = 4;
-  bias.id = 1;
-  bias.data = {0, 0};
-  attr.bias = std::move(bias);
-
-  Tensor<OHWI, DataType::FLOAT32> weights;
-  weights.shape = OHWI(2, 2, 2, 1);
-  weights.id = 1;
-  weights.data = {1, 2, 3, 4, 5, 6, 7, 8};
-
-  attr.weights = std::move(weights);
-
-  attr.dilations = HW(2, 2);
-  attr.padding.prepended = HW(0, 0);
-  attr.padding.appended = HW(0, 0);
-  attr.strides = HW(1, 1);
-
-  TensorRef<BHWC> output;
-  output.type = DataType::FLOAT32;
-  output.ref = 3;
-  output.shape = BHWC(1, 1, 1, 2);
-
-  SingleOpModel model({ToString(OperationType::DEPTHWISE_CONVOLUTION), std::move(attr)}, {input},
-                      {output});
-  XCTAssertTrue(model.PopulateTensor(0, {1, 0, 1, 1, 0, 1, 1, 0, 1}));
-  auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
-  status = CompareVectors({10, 26}, model.GetOutput(0), 1e-6f);
+- (void)testDepthwiseConvMultiplier2 {
+  auto status = DepthwiseConvMultiplier2Test(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
-- (void)testShape2x2Kernel2x2 {
-  TensorRef<BHWC> input;
-  input.type = DataType::FLOAT32;
-  input.ref = 0;
-  input.shape = BHWC(1, 2, 2, 1);
-
-  DepthwiseConvolution2DAttributes attr;
-  Tensor<Linear, DataType::FLOAT32> bias;
-  bias.shape.v = 1;
-  bias.id = 1;
-  bias.data = {0};
-  attr.bias = std::move(bias);
-
-  Tensor<OHWI, DataType::FLOAT32> weights;
-  weights.shape = OHWI(1, 2, 2, 1);
-  weights.id = 1;
-  weights.data = {1, 2, 3, 4};
-
-  attr.weights = std::move(weights);
-
-  attr.dilations = HW(1, 1);
-  attr.padding.prepended = HW(0, 0);
-  attr.padding.appended = HW(1, 1);
-  attr.strides = HW(1, 1);
-
-  TensorRef<BHWC> output;
-  output.type = DataType::FLOAT32;
-  output.ref = 3;
-  output.shape = BHWC(1, 2, 2, 1);
-
-  SingleOpModel model({ToString(OperationType::DEPTHWISE_CONVOLUTION), std::move(attr)}, {input},
-                      {output});
-  XCTAssertTrue(model.PopulateTensor(0, {1, 4, 9, 16}));
-  auto status = model.Invoke();
+- (void)testDepthwiseConv3x3SimpleWeights {
+  auto status = DepthwiseConv3x3SimpleWeightsTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
-  status = CompareVectors({100, 52, 41, 16}, model.GetOutput(0), 1e-6f);
+}
+
+- (void)testDepthwiseConv3x3 {
+  auto status = DepthwiseConv3x3Test(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testDepthWiseConv3x3StrideH2SimpleWeights {
+  auto status = DepthWiseConv3x3StrideH2SimpleWeightsTest(&exec_env_);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

@@ -77,7 +77,7 @@ class NonMaxSuppressionV4OpModel : public BaseNMSOp {
       input_max_output_size_ =
           AddConstInput(TensorType_INT32, {max_output_size});
     } else {
-      input_max_output_size_ = AddInput(TensorType_INT32, {});
+      input_max_output_size_ = AddInput(TensorType_INT32);
     }
     input_iou_threshold_ = AddConstInput(TensorType_FLOAT32, {iou_threshold});
     input_score_threshold_ = AddInput({TensorType_FLOAT32, {}});
@@ -168,7 +168,7 @@ class NonMaxSuppressionV5OpModel : public BaseNMSOp {
       input_max_output_size_ =
           AddConstInput(TensorType_INT32, {max_output_size});
     } else {
-      input_max_output_size_ = AddInput(TensorType_INT32, {});
+      input_max_output_size_ = AddInput(TensorType_INT32);
     }
     input_iou_threshold_ = AddConstInput(TensorType_FLOAT32, {iou_threshold});
     input_score_threshold_ = AddInput({TensorType_FLOAT32, {}});

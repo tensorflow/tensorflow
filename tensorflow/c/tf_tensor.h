@@ -19,6 +19,7 @@ limitations under the License.
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 
@@ -44,6 +45,16 @@ limitations under the License.
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// Allocator Attributes used for tensor allocation.
+typedef struct TF_AllocatorAttributes {
+  size_t struct_size;
+  // Set boolean to 1 for CPU allocation, else 0.
+  TF_Bool on_host;
+} TF_AllocatorAttributes;
+
+#define TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE \
+  TF_OFFSET_OF_END(TF_AllocatorAttributes, on_host)
 
 // --------------------------------------------------------------------------
 // TF_Tensor holds a multi-dimensional array of elements of a single data type.

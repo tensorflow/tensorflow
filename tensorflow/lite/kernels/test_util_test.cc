@@ -47,33 +47,6 @@ TEST(TestUtilTest, QuantizeVectorScalingUp) {
   EXPECT_THAT(q_data, ElementsAreArray(expected));
 }
 
-TEST(KernelTestDelegateProvidersTest, DelegateProvidersParams) {
-  KernelTestDelegateProviders providers;
-  const auto& params = providers.ConstParams();
-  EXPECT_TRUE(params.HasParam("use_xnnpack"));
-  EXPECT_TRUE(params.HasParam("use_nnapi"));
-
-  int argc = 3;
-  const char* argv[] = {"program_name", "--use_nnapi=true",
-                        "--other_undefined_flag=1"};
-  EXPECT_TRUE(providers.InitFromCmdlineArgs(&argc, argv));
-  EXPECT_TRUE(params.Get<bool>("use_nnapi"));
-  EXPECT_EQ(2, argc);
-  EXPECT_EQ("--other_undefined_flag=1", argv[1]);
-}
-
-TEST(KernelTestDelegateProvidersTest, CreateTfLiteDelegates) {
-#if !defined(__Fuchsia__) && !defined(TFLITE_WITHOUT_XNNPACK)
-  KernelTestDelegateProviders providers;
-  providers.MutableParams()->Set<bool>("use_xnnpack", true);
-  EXPECT_GE(providers.CreateAllDelegates().size(), 1);
-
-  tools::ToolParams local_params;
-  local_params.Merge(providers.ConstParams());
-  local_params.Set<bool>("use_xnnpack", false);
-  EXPECT_TRUE(providers.CreateAllDelegates(local_params).empty());
-#endif
-}
 }  // namespace
 }  // namespace tflite
 

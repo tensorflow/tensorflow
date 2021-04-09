@@ -38,6 +38,7 @@ def _AddTest(test_class, op_name, testcase_name, fn):
   setattr(test_class, test_name, fn)
 
 
+@test_util.run_all_without_tensor_float_32
 class SelfAdjointEigTest(test.TestCase):
 
   @test_util.run_deprecated_v1
@@ -54,7 +55,7 @@ class SelfAdjointEigTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testConcurrentExecutesWithoutError(self):
     all_ops = []
-    with self.session(use_gpu=True) as sess:
+    with self.session():
       for compute_v_ in True, False:
         matrix1 = random_ops.random_normal([5, 5], seed=42)
         matrix2 = random_ops.random_normal([5, 5], seed=42)
@@ -83,7 +84,7 @@ class SelfAdjointEigTest(test.TestCase):
             "self_adjoint_eig_fail_if_denorms_flushed.txt")).astype(np.float32)
     self.assertEqual(matrix.shape, (32, 32))
     matrix_tensor = constant_op.constant(matrix)
-    with self.session(use_gpu=True) as sess:
+    with self.session():
       (e, v) = self.evaluate(linalg_ops.self_adjoint_eig(matrix_tensor))
       self.assertEqual(e.size, 32)
       self.assertAllClose(
@@ -155,13 +156,13 @@ def _GetSelfAdjointEigTest(dtype_, shape_, compute_v_):
     else:
       atol = 1e-12
     np_e, np_v = np.linalg.eigh(a)
-    with self.session(use_gpu=True):
+    with self.session():
       if compute_v_:
         tf_e, tf_v = linalg_ops.self_adjoint_eig(constant_op.constant(a))
 
         # Check that V*diag(E)*V^T is close to A.
-        a_ev = math_ops.matmul(
-            math_ops.matmul(tf_v, array_ops.matrix_diag(tf_e)),
+        a_ev = test_util.matmul_without_tf32(
+            test_util.matmul_without_tf32(tf_v, array_ops.matrix_diag(tf_e)),
             tf_v,
             adjoint_b=True)
         self.assertAllClose(self.evaluate(a_ev), a, atol=atol)
@@ -210,7 +211,8 @@ def _GetSelfAdjointEigGradTest(dtype_, shape_, compute_v_):
       tol = 1e-2
     else:
       tol = 1e-7
-    with self.session(use_gpu=True):
+    with self.session():
+
       def Compute(x):
         e, v = linalg_ops.self_adjoint_eig(x)
         # (complex) Eigenvectors are only unique up to an arbitrary phase

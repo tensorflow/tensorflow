@@ -61,16 +61,32 @@ TfLiteStatus SelectPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* input_condition =
-      GetInput(context, node, kInputTensorCondition);
-  const TfLiteTensor* input_x = GetInput(context, node, kInputTensorX);
-  const TfLiteTensor* input_y = GetInput(context, node, kInputTensorY);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input_condition;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensorCondition,
+                                          &input_condition));
+  const TfLiteTensor* input_x;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorX, &input_x));
+  const TfLiteTensor* input_y;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorY, &input_y));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   // Input must be bool.
   TF_LITE_ENSURE_TYPES_EQ(context, input_condition->type, kTfLiteBool);
   TF_LITE_ENSURE_TYPES_EQ(context, input_x->type, input_y->type);
   output->type = input_x->type;
+
+  // Respect the original output shape when there are mixed shapes to represent
+  // a scalar data.
+  if (GetTensorShape(input_condition).FlatSize() == 1 &&
+      GetTensorShape(input_x).FlatSize() == 1 &&
+      GetTensorShape(input_y).FlatSize() == 1 &&
+      GetTensorShape(output).FlatSize() == 1) {
+    return kTfLiteOk;
+  }
 
   bool same_shape = HaveSameShapes(input_condition, input_x) &&
                     HaveSameShapes(input_x, input_y);
@@ -111,11 +127,18 @@ TfLiteStatus SelectPrepare(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteStatus SelectEval(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
-  const TfLiteTensor* input_condition =
-      GetInput(context, node, kInputTensorCondition);
-  const TfLiteTensor* input_x = GetInput(context, node, kInputTensorX);
-  const TfLiteTensor* input_y = GetInput(context, node, kInputTensorY);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input_condition;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensorCondition,
+                                          &input_condition));
+  const TfLiteTensor* input_x;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorX, &input_x));
+  const TfLiteTensor* input_y;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorY, &input_y));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
 #define TF_LITE_SELECT(type, op)                                           \
   reference_ops::op(GetTensorShape(input_condition),                       \

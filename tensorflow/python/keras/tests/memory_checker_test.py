@@ -13,10 +13,6 @@
 # limitations under the License.
 # =============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python import keras
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -28,7 +24,7 @@ from tensorflow.python.platform import test
 class MemoryCheckerTest(test.TestCase):
 
   def testKerasBasic(self):
-    # TODO(kkb): Fix the the slowness on Forge.
+    # TODO(kkb): Fix the slowness on Forge.
     self.skipTest('This test is too slow on Forge so disabled for now.')
 
     x = array_ops.zeros([1, 1])
@@ -47,7 +43,7 @@ class MemoryCheckerTest(test.TestCase):
     memory_checker.assert_no_leak_if_all_possibly_except_one()
 
   def testKerasAdvanced(self):
-    # TODO(kkb): Fix the the slowness on Forge.
+    # TODO(kkb): Fix the slowness on Forge.
     self.skipTest('This test is too slow on Forge so disabled for now.')
 
     # A real world example taken from the following.

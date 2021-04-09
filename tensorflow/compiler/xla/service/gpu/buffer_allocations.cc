@@ -34,13 +34,13 @@ namespace gpu {
 
 Status BufferAllocations::TearDown(
     const std::set<se::DeviceMemoryBase>& live_addresses,
-    const BufferAssignment* buffer_assignment) {
+    absl::Span<const BufferAllocation> allocations) {
   // Deallocate temporary buffers, taking care to try to deallocate all of them
   // even if one of the deallocations fails.
   Status status;
-  const int64 num_buffers = buffer_assignment->Allocations().size();
+  const int64 num_buffers = allocations.size();
   for (BufferAllocation::Index i = 0; i < num_buffers; ++i) {
-    const BufferAllocation& allocation = buffer_assignment->GetAllocation(i);
+    const BufferAllocation& allocation = allocations[i];
     se::DeviceMemoryBase buffer_address = GetDeviceAddress(allocation.index());
     // Deallocate buffers marked "maybe_live_out" but aren't actually live out,
     // and temp buffers.

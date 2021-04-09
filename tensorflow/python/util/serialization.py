@@ -29,7 +29,7 @@ from tensorflow.python.util.compat import collections_abc
 def get_json_type(obj):
   """Serializes any object to a JSON-serializable structure.
 
-  Arguments:
+  Args:
       obj: the object to serialize
 
   Returns:
@@ -69,6 +69,9 @@ def get_json_type(obj):
 
   if isinstance(obj, collections_abc.Mapping):
     return dict(obj)
+
+  if obj is Ellipsis:
+    return {'class_name': '__ellipsis__'}
 
   if isinstance(obj, wrapt.ObjectProxy):
     return obj.__wrapped__

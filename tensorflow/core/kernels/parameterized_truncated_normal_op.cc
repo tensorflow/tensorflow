@@ -70,8 +70,8 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
 
     auto do_work = [samples_per_batch, num_elements, &ctx, &means, &stddevs,
                     &minvals, &maxvals, &gen, &output,
-                    kStdDevsInsideBoundsToUseRandnSampler](int start_batch,
-                                                           int limit_batch) {
+                    kStdDevsInsideBoundsToUseRandnSampler](int64 start_batch,
+                                                           int64 limit_batch) {
       // Capturing "gen" by-value would only make a copy for the _shared_
       // lambda.  Since we want to let each worker have its own copy, we pass
       // "gen" by reference and explicitly do a copy assignment here.
@@ -333,8 +333,8 @@ struct TruncatedNormalFunctorV2<CPUDevice, T> {
 
     auto do_work = [num_batches, samples_per_batch, &ctx, &bcast, &means,
                     &stddevs, &minvals, &maxvals, &gen, &output,
-                    kStdDevsInsideBoundsToUseRandnSampler](int start_output,
-                                                           int limit_output) {
+                    kStdDevsInsideBoundsToUseRandnSampler](int64 start_output,
+                                                           int64 limit_output) {
       // Capturing "gen" by-value would only make a copy for the _shared_
       // lambda.  Since we want to let each worker have its own copy, we pass
       // "gen" by reference and explicitly do a copy assignment here.

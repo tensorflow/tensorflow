@@ -214,13 +214,13 @@ std::string SanitizeErrorMessage(const std::string& error_message) {
   size_t pos = error_message.find(s1);
   if (pos != std::string::npos) {
     // Find the terminate point for flex op list.
-    auto end = error_message.find(".", pos);
+    auto end = error_message.find('.', pos);
     pruned_message.append(error_message.substr(pos, end - pos + 1));
   }
   pos = error_message.find(s2);
   if (pos != std::string::npos) {
     // Find the terminate point for custom op list.
-    auto end = error_message.find(".", pos);
+    auto end = error_message.find('.', pos);
     pruned_message.append(error_message.substr(pos, end - pos + 1));
   }
   return pruned_message;

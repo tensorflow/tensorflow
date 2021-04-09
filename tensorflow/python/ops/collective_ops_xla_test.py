@@ -56,7 +56,7 @@ class CollectiveOpXlaTest(test.TestCase):
           tensor_val = [i + 1.] * tensor_size
           constant = constant_op.constant(tensor_val)
 
-          @def_function.function(experimental_compile=True)
+          @def_function.function(jit_compile=True)
           def f(x):
             return 2 * x + 1
 

@@ -14,9 +14,6 @@
 # ==============================================================================
 """Adagrad optimizer implementation."""
 # pylint: disable=g-classes-have-attributes
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import numpy as np
 
@@ -26,7 +23,7 @@ from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.training import training_ops
+from tensorflow.python.training import gen_training_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -40,17 +37,25 @@ class Adagrad(optimizer_v2.OptimizerV2):
   the smaller the updates.
 
   Args:
-    learning_rate: A `Tensor`, floating point value, or a schedule that is a
-      `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.
-    initial_accumulator_value: A floating point value.
-      Starting value for the accumulators, must be non-negative.
-    epsilon: A small floating point value to avoid zero denominator.
+    learning_rate: Initial value for the learning rate:
+      either a floating point value,
+      or a `tf.keras.optimizers.schedules.LearningRateSchedule` instance.
+      Defaults to 0.001.
+      Note that `Adagrad` tends to benefit from higher initial learning rate
+      values compared to other optimizers.
+      To match the exact form in the original paper, use 1.0.
+    initial_accumulator_value: Floating point value.
+      Starting value for the accumulators (per-parameter momentum values).
+      Must be non-negative.
+    epsilon: Small floating point value used to maintain numerical stability.
     name: Optional name prefix for the operations created when applying
       gradients.  Defaults to `"Adagrad"`.
     **kwargs: Keyword arguments. Allowed to be one of
       `"clipnorm"` or `"clipvalue"`.
-      `"clipnorm"` (float) clips gradients by norm; `"clipvalue"` (float) clips
-      gradients by value.
+      `"clipnorm"` (float) clips gradients by norm and represents
+      the maximum L2 norm of each weight variable;
+      `"clipvalue"` (float) clips gradient by value and represents the
+      maximum absolute value of each weight variable.
 
   Reference:
     - [Duchi et al., 2011](
@@ -87,7 +92,8 @@ class Adagrad(optimizer_v2.OptimizerV2):
     super(Adagrad, self)._prepare_local(var_device, var_dtype, apply_state)
     apply_state[(var_device, var_dtype)].update(
         dict(
-            epsilon=ops.convert_to_tensor_v2(self.epsilon, var_dtype),
+            epsilon=ops.convert_to_tensor_v2_with_dispatch(
+                self.epsilon, var_dtype),
             neg_lr_t=-apply_state[(var_device, var_dtype)]['lr_t'],
             zero=array_ops.zeros((), dtype=dtypes.int64)))
 
@@ -108,7 +114,7 @@ class Adagrad(optimizer_v2.OptimizerV2):
     capable of instantiating the same optimizer from the config
     dictionary.
 
-    Arguments:
+    Args:
         config: A Python dictionary, typically the output of get_config.
         custom_objects: A Python dictionary mapping names to additional Python
           objects used to create this optimizer, such as a function used for a
@@ -129,12 +135,12 @@ class Adagrad(optimizer_v2.OptimizerV2):
                     or self._fallback_apply_state(var_device, var_dtype))
 
     acc = self.get_slot(var, 'accumulator')
-    return training_ops.resource_apply_adagrad_v2(
-        var.handle,
-        acc.handle,
-        coefficients['lr_t'],
-        coefficients['epsilon'],
-        grad,
+    return gen_training_ops.ResourceApplyAdagradV2(
+        var=var.handle,
+        accum=acc.handle,
+        lr=coefficients['lr_t'],
+        epsilon=coefficients['epsilon'],
+        grad=grad,
         use_locking=self._use_locking)
 
   def _resource_apply_sparse(self, grad, var, indices, apply_state=None):
@@ -143,20 +149,20 @@ class Adagrad(optimizer_v2.OptimizerV2):
                     or self._fallback_apply_state(var_device, var_dtype))
 
     acc = self.get_slot(var, 'accumulator')
-    return training_ops.resource_sparse_apply_adagrad_v2(
-        var.handle,
-        acc.handle,
-        coefficients['lr_t'],
-        coefficients['epsilon'],
-        grad,
-        indices,
+    return gen_training_ops.ResourceSparseApplyAdagradV2(
+        var=var.handle,
+        accum=acc.handle,
+        lr=coefficients['lr_t'],
+        epsilon=coefficients['epsilon'],
+        grad=grad,
+        indices=indices,
         use_locking=self._use_locking)
 
   def get_config(self):
     config = super(Adagrad, self).get_config()
     config.update({
         'learning_rate': self._serialize_hyperparameter('learning_rate'),
-        'decay': self._serialize_hyperparameter('decay'),
+        'decay': self._initial_decay,
         'initial_accumulator_value': self._initial_accumulator_value,
         'epsilon': self.epsilon,
     })

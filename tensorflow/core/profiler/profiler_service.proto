@@ -29,6 +29,7 @@ message ToolRequestOptions {
   bool save_to_repo = 3;
 }
 
+// Next-ID: 9
 message ProfileRequest {
   // In future, the caller will be able to customize when profiling starts and
   // stops. For now, it collects `duration_ms` milliseconds worth of data.
@@ -48,7 +49,7 @@ message ProfileRequest {
   ProfileOptions opts = 4;
 
   // The place where we will dump profile data. We will normally use
-  // MODEL_DIR/plugin/profile/ as our repository root.
+  // MODEL_DIR/plugins/profile/ as the repository root.
   string repository_root = 5;
 
   // The user provided profile session identifier.
@@ -61,7 +62,6 @@ message ProfileRequest {
   // In future, the caller will indicate which TF session is being profiled, and
   // only data relating to that program will be returned. For now, we assume
   // all activity during the profiling period is relevant.
-  // next-field: 9
 }
 
 message ProfileToolData {
@@ -73,6 +73,7 @@ message ProfileToolData {
   bytes data = 2;
 }
 
+// Next-ID: 8
 message ProfileResponse {
   // Data payload for each required tools.
   repeated ProfileToolData tool_data = 6;
@@ -82,7 +83,6 @@ message ProfileResponse {
   bool empty_trace = 7;
 
   reserved 1, 2, 3, 4, 5;
-  // next-field: 8
 }
 
 message TerminateRequest {
@@ -92,6 +92,7 @@ message TerminateRequest {
 
 message TerminateResponse {}
 
+// Next-ID: 4
 message MonitorRequest {
   // Duration for which to profile between each update.
   uint64 duration_ms = 1;
@@ -106,10 +107,9 @@ message MonitorRequest {
   int32 monitoring_level = 2;
   // True to display timestamp in monitoring result.
   bool timestamp = 3;
-
-  // next-field: 4
 }
 
+// Next-ID: 11
 message MonitorResponse {
   // Properly formatted string data that can be directly returned back to user.
   string data = 1;
@@ -118,6 +118,4 @@ message MonitorResponse {
   ProfilerServiceMonitorResult monitor_result = 10;
 
   reserved 2, 3, 4, 5, 6, 7, 8, 9;
-
-  // next-field: 11
 }

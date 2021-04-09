@@ -45,9 +45,8 @@ namespace tensorflow {
 class FailTestRMA : public CollectiveRemoteAccessLocal {
  public:
   FailTestRMA(const DeviceMgr* dev_mgr, DeviceResolverInterface* dev_resolver,
-              std::shared_ptr<UnboundedWorkQueue> work_queue, int64 step_id,
-              int fail_after)
-      : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, work_queue, step_id),
+              int64 step_id, int fail_after)
+      : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, step_id),
         fail_after_(fail_after) {}
 
   bool MaybeFail(const StatusCallback& done) {
@@ -71,12 +70,13 @@ class FailTestRMA : public CollectiveRemoteAccessLocal {
                     const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
                     const DeviceLocality& client_locality,
                     int dev_to_dev_stream_index,
+                    CancellationManager* cancellation_manager,
                     const StatusCallback& done) override {
     if (MaybeFail(done)) return;
     CollectiveRemoteAccessLocal::RecvFromPeer(
         peer_device, peer_task, peer_is_local, key, to_device, to_device_ctx,
         to_alloc_attr, to_tensor, client_locality, dev_to_dev_stream_index,
-        done);
+        cancellation_manager, done);
   }
 
   void PostToPeer(const string& peer_device, const string& peer_task,
@@ -85,11 +85,13 @@ class FailTestRMA : public CollectiveRemoteAccessLocal {
                   const AllocatorAttributes& from_alloc_attr,
                   const Tensor* from_tensor,
                   const DeviceLocality& client_locality,
+                  CancellationManager* cancellation_manager,
                   const StatusCallback& done) override {
     if (MaybeFail(done)) return;
     CollectiveRemoteAccessLocal::PostToPeer(
         peer_device, peer_task, key, from_device, from_device_ctx,
-        from_alloc_attr, from_tensor, client_locality, done);
+        from_alloc_attr, from_tensor, client_locality, cancellation_manager,
+        done);
   }
 
   mutex mu_;
@@ -113,7 +115,8 @@ static int64 kStepId = 123;
 
 class RingGathererTest : public ::testing::Test {
  protected:
-  RingGathererTest() : device_type_(DEVICE_CPU) {}
+  RingGathererTest()
+      : device_type_(DEVICE_CPU), col_exec_(nullptr), col_params_(nullptr) {}
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   void InitGPUDevices() {
@@ -130,6 +133,7 @@ class RingGathererTest : public ::testing::Test {
     stop_ = true;
     for (auto i : instances_) delete i;
     if (col_exec_) col_exec_->Unref();
+    if (col_params_) col_params_->Unref();
   }
 
   void Init(int num_workers, int num_devices, DataType dtype,
@@ -173,28 +177,30 @@ class RingGathererTest : public ::testing::Test {
     }
     dev_resolver_ = absl::make_unique<DeviceResolverLocal>(dev_mgr_.get());
     work_queue_ = std::make_shared<UnboundedWorkQueue>(Env::Default(), "test");
-    rma_ = new FailTestRMA(dev_mgr_.get(), dev_resolver_.get(), work_queue_,
-                           kStepId, fail_after);
-    col_exec_ = new BaseCollectiveExecutor(
-        &col_exec_mgr_, rma_, kStepId, dev_mgr_.get(), gpu_ring_order_.get());
-    col_params_.name = "test_collective";
+    rma_ = new FailTestRMA(dev_mgr_.get(), dev_resolver_.get(), kStepId,
+                           fail_after);
+    col_exec_ = new BaseCollectiveExecutor(&col_exec_mgr_, rma_, kStepId,
+                                           dev_mgr_.get(),
+                                           gpu_ring_order_.get(), work_queue_);
+    col_params_ = new CollectiveParams();
+    col_params_->name = "test_collective";
     static const int kGroupKey = 5;
-    col_params_.group.group_key = kGroupKey;
-    col_params_.group.device_type = device_type;
-    col_params_.group.group_size = num_workers * num_devices;
+    col_params_->group.group_key = kGroupKey;
+    col_params_->group.device_type = device_type;
+    col_params_->group.group_size = num_workers * num_devices;
     static const int kInstanceKey = 17;
-    col_params_.instance.instance_key = kInstanceKey;
-    col_params_.instance.impl_details.subdiv_offsets.clear();
-    col_params_.instance.type = GATHER_COLLECTIVE;
-    col_params_.instance.impl_details.collective_name = "RingGather";
-    col_params_.instance.data_type = dtype;
-    col_params_.instance.impl_details.subdiv_permutations.resize(num_subdivs);
-    col_params_.subdiv_rank.resize(num_subdivs);
+    col_params_->instance.instance_key = kInstanceKey;
+    col_params_->instance.impl_details.subdiv_offsets.clear();
+    col_params_->instance.type = GATHER_COLLECTIVE;
+    col_params_->instance.impl_details.collective_name = "RingGather";
+    col_params_->instance.data_type = dtype;
+    col_params_->instance.impl_details.subdiv_permutations.resize(num_subdivs);
+    col_params_->subdiv_rank.resize(num_subdivs);
     int subdiv_stride = num_devices / num_subdivs;
     for (int sdi = 0; sdi < num_subdivs; ++sdi) {
-      col_params_.instance.impl_details.subdiv_offsets.push_back(sdi *
-                                                                 subdiv_stride);
-      col_params_.subdiv_rank[sdi] = sdi * subdiv_stride;
+      col_params_->instance.impl_details.subdiv_offsets.push_back(
+          sdi * subdiv_stride);
+      col_params_->subdiv_rank[sdi] = sdi * subdiv_stride;
     }
 
     // Set up a local device ring order that's not just 0,1,2...
@@ -222,16 +228,16 @@ class RingGathererTest : public ::testing::Test {
           dev_name =
               strings::StrCat(task_name, "/gpu:", di % gpu_devices_.size());
         }
-        col_params_.instance.device_names.push_back(dev_name);
-        col_params_.instance.task_names.push_back(task_name);
+        col_params_->group.device_names.push_back(dev_name);
+        col_params_->group.task_names.push_back(task_name);
         // Normally each device would set is_local to its own perspective but
         // this test runs in a single process so is_local is always true.
-        col_params_.task.is_local.push_back(true);
+        col_params_->task.is_local.push_back(true);
         for (int sdi = 0; sdi < num_subdivs; ++sdi) {
           int rotated_di =
-              (di + col_params_.instance.impl_details.subdiv_offsets[sdi]) %
+              (di + col_params_->instance.impl_details.subdiv_offsets[sdi]) %
               num_devices;
-          col_params_.instance.impl_details.subdiv_permutations[sdi].push_back(
+          col_params_->instance.impl_details.subdiv_permutations[sdi].push_back(
               wi * num_devices + local_ring_order[rotated_di]);
         }
       }
@@ -240,7 +246,7 @@ class RingGathererTest : public ::testing::Test {
       for (int di = 0; di < num_devices; ++di) {
         int rank = wi * num_devices + di;
         instances_.push_back(new DeviceInstance(
-            rank, col_params_.instance.device_names[rank], device_type_, this));
+            rank, col_params_->group.device_names[rank], device_type_, this));
       }
     }
   }
@@ -369,8 +375,9 @@ class RingGathererTest : public ::testing::Test {
     cp->instance.impl_details.subdiv_permutations.clear();
     cp->subdiv_rank.clear();
     // Create a stub ring gatherer only for testing param initialization.
-    RingGatherer gatherer;
-    TF_CHECK_OK(gatherer.InitializeCollectiveParams(cp));
+    RingGatherer* gatherer = new RingGatherer;
+    core::ScopedUnref unref(gatherer);
+    TF_CHECK_OK(gatherer->InitializeCollectiveParams(cp));
     EXPECT_EQ(expected_subdiv_perms,
               cp->instance.impl_details.subdiv_permutations);
     EXPECT_EQ(expected_subdiv_rank, cp->subdiv_rank);
@@ -383,40 +390,41 @@ class RingGathererTest : public ::testing::Test {
         : parent_(parent),
           dev_name_(dev_name),
           device_type_(device_type),
-          rank_(rank) {
+          rank_(rank),
+          col_params_(new CollectiveParams()) {
       TF_CHECK_OK(parent_->dev_mgr_->LookupDevice(dev_name, &device_))
           << "Couldn't find device " << dev_name
           << " existing devices: " << parent_->dev_mgr_->DebugString();
-      col_params_.name = parent_->col_params_.name;
-      col_params_.group.group_key = parent_->col_params_.group.group_key;
-      col_params_.group.device_type = parent_->col_params_.group.device_type;
-      col_params_.group.group_size = parent_->col_params_.group.group_size;
-      col_params_.instance = parent->col_params_.instance;
-      col_params_.task.is_local = parent_->col_params_.task.is_local;
-      col_params_.subdiv_rank = parent_->col_params_.subdiv_rank;
+      col_params_->name = parent_->col_params_->name;
+      col_params_->group = parent_->col_params_->group;
+      col_params_->instance = parent->col_params_->instance;
+      col_params_->task.is_local = parent_->col_params_->task.is_local;
+      col_params_->subdiv_rank = parent_->col_params_->subdiv_rank;
 
-      int num_subdivs = static_cast<int>(col_params_.subdiv_rank.size());
-      int group_size = col_params_.group.group_size;
+      int num_subdivs = static_cast<int>(col_params_->subdiv_rank.size());
+      int group_size = col_params_->group.group_size;
       CHECK_EQ(group_size,
-               static_cast<int>(col_params_.instance.device_names.size()));
+               static_cast<int>(col_params_->group.device_names.size()));
       // Id of this device is at rank position in first subdiv perm.
       int my_device_id =
-          col_params_.instance.impl_details.subdiv_permutations[0][rank];
-      col_params_.default_rank = my_device_id;
+          col_params_->instance.impl_details.subdiv_permutations[0][rank];
+      col_params_->default_rank = my_device_id;
       // Set rank for all other subdivs by finding that device_id.
       for (int sdi = 0; sdi < num_subdivs; ++sdi) {
-        for (int r = 0; r < static_cast<int>(col_params_.instance.impl_details
+        for (int r = 0; r < static_cast<int>(col_params_->instance.impl_details
                                                  .subdiv_permutations[sdi]
                                                  .size());
              ++r) {
           if (my_device_id ==
-              col_params_.instance.impl_details.subdiv_permutations[sdi][r]) {
-            col_params_.subdiv_rank[sdi] = r;
+              col_params_->instance.impl_details.subdiv_permutations[sdi][r]) {
+            col_params_->subdiv_rank[sdi] = r;
             break;
           }
         }
       }
     }
+
+    ~DeviceInstance() { col_params_->Unref(); }
 
     void InitTensor(DataType dtype, const TensorShape& shape,
                     const std::function<void(Tensor*)>& init_f) {
@@ -443,6 +451,7 @@ class RingGathererTest : public ::testing::Test {
       OpKernelContext::Params op_params;
       op_params.step_id = kStepId;
       op_params.device = device_;
+      op_params.cancellation_manager = &parent_->cancellation_manager_;
       gtl::InlinedVector<TensorValue, 4> inputs;
       inputs.push_back(TensorValue(&input_tensor_));
       op_params.inputs = &inputs;
@@ -461,7 +470,7 @@ class RingGathererTest : public ::testing::Test {
       AllocatorAttributes generic_alloc_attr;
       op_params.output_attr_array = &generic_alloc_attr;
       std::unique_ptr<OpKernel> op = parent_->GetCollectiveGather(
-          col_params_, &input_tensor_, DEVICE_CPU, device_);
+          *col_params_, &input_tensor_, DEVICE_CPU, device_);
       op_params.op_kernel = op.get();
       OpKernelContext ctx(&op_params, 1);
 
@@ -475,15 +484,17 @@ class RingGathererTest : public ::testing::Test {
       CHECK_EQ(output_tensor_ptr, ctx.mutable_output(0));
       // Prepare a RingGatherer instance.
       string exec_key =
-          strings::StrCat(col_params_.instance.instance_key, ":0:0");
-      RingGatherer gatherer;
-      CollectiveContext col_ctx(parent_->col_exec_, parent_->dev_mgr_.get(),
-                                &ctx, &op_params, col_params_, exec_key,
-                                kStepId, &input_tensor_, output_tensor_ptr);
-      TF_CHECK_OK(gatherer.InitializeCollectiveContext(&col_ctx));
+          strings::StrCat(col_params_->instance.instance_key, ":0:0");
+      RingGatherer* gatherer = new RingGatherer;
+      core::ScopedUnref unref(gatherer);
+      auto col_ctx = std::make_shared<CollectiveContext>(
+          parent_->col_exec_, /*nccl_communicator*/ nullptr,
+          parent_->dev_mgr_.get(), &ctx, &op_params, col_params_, exec_key,
+          kStepId, &input_tensor_, output_tensor_ptr);
+      TF_CHECK_OK(gatherer->InitializeCollectiveContext(col_ctx));
 
       // Run the all-gather.
-      gatherer.Run([this](Status s) { status_ = s; });
+      gatherer->Run([this](Status s) { status_ = s; });
       if (status_.ok()) {
         CHECK(output_tensor_.CopyFrom(*ctx.mutable_output(0),
                                       ctx.mutable_output(0)->shape()));
@@ -502,7 +513,7 @@ class RingGathererTest : public ::testing::Test {
     Tensor input_tensor_;
     Tensor output_tensor_;
     Device* device_;
-    CollectiveParams col_params_;
+    CollectiveParams* col_params_;
     std::unique_ptr<CollectiveAdapter> ca_;
     std::unique_ptr<OpKernelContext> ctx_;
     Status status_;
@@ -516,36 +527,37 @@ class RingGathererTest : public ::testing::Test {
   std::unique_ptr<DeviceResolverLocal> dev_resolver_;
   std::shared_ptr<UnboundedWorkQueue> work_queue_;
   std::vector<DeviceInstance*> instances_;
-  CollectiveParams col_params_;
+  CollectiveParams* col_params_;
   std::vector<std::unique_ptr<tensorflow::Device>> gpu_devices_;
   std::unique_ptr<tensorflow::DeviceMgr> dev_mgr_;
   std::unique_ptr<string> gpu_ring_order_;
   mutex mu_;
   int32 gather_counter_ TF_GUARDED_BY(mu_) = 0;
+  CancellationManager cancellation_manager_;
 };
 
-CollectiveParams SetUpCollectiveParams(const int num_devs_per_task,
-                                       const int num_tasks) {
-  CollectiveParams cp;
+CollectiveParams* SetUpCollectiveParams(const int num_devs_per_task,
+                                        const int num_tasks) {
+  auto* cp = new CollectiveParams();
   const int kNumDevs = num_devs_per_task * num_tasks;
-  cp.group.group_key = 1;
-  cp.group.group_size = kNumDevs;
-  cp.group.device_type = DeviceType("GPU");
-  cp.group.num_tasks = num_tasks;
-  cp.instance.instance_key = 3;
-  cp.instance.type = GATHER_COLLECTIVE;
-  cp.instance.data_type = DataType(DT_FLOAT);
-  cp.instance.shape = TensorShape({kNumDevs * kNumDevs});
-  cp.instance.impl_details.collective_name = "RingGather";
-  cp.instance.impl_details.subdiv_offsets.push_back(0);
-  cp.is_source = false;
+  cp->group.group_key = 1;
+  cp->group.group_size = kNumDevs;
+  cp->group.device_type = DeviceType("GPU");
+  cp->group.num_tasks = num_tasks;
+  cp->instance.instance_key = 3;
+  cp->instance.type = GATHER_COLLECTIVE;
+  cp->instance.data_type = DataType(DT_FLOAT);
+  cp->instance.shape = TensorShape({kNumDevs * kNumDevs});
+  cp->instance.impl_details.collective_name = "RingGather";
+  cp->instance.impl_details.subdiv_offsets.push_back(0);
+  cp->is_source = false;
   for (int i = 0; i < kNumDevs; ++i) {
     int task_id = i / num_devs_per_task;
     int dev_id = i % num_devs_per_task;
     string task_name = strings::StrCat("/job:worker/replica:0/task:", task_id);
     string device_name = strings::StrCat(task_name, "/device:GPU:", dev_id);
-    cp.instance.task_names.push_back(task_name);
-    cp.instance.device_names.push_back(device_name);
+    cp->group.task_names.push_back(task_name);
+    cp->group.device_names.push_back(device_name);
   }
   return cp;
 }
@@ -553,23 +565,24 @@ CollectiveParams SetUpCollectiveParams(const int num_devs_per_task,
 TEST_F(RingGathererTest, InitializeParams) {
   const int kNumDevsPerTask = 8;
   const int kNumTasks = 3;
-  CollectiveParams cp = SetUpCollectiveParams(kNumDevsPerTask, kNumTasks);
+  CollectiveParams* cp = SetUpCollectiveParams(kNumDevsPerTask, kNumTasks);
+  core::ScopedUnref unref(cp);
 
-  cp.default_rank = 0;
-  cp.instance.impl_details.subdiv_offsets = {};
-  RunSubdivPermsTest(&cp, {{0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
-                            12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23}},
+  cp->default_rank = 0;
+  cp->instance.impl_details.subdiv_offsets = {};
+  RunSubdivPermsTest(cp, {{0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                           12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23}},
                      {0});
 
-  cp.instance.impl_details.subdiv_offsets = {0};
-  RunSubdivPermsTest(&cp, {{0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
-                            12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23}},
+  cp->instance.impl_details.subdiv_offsets = {0};
+  RunSubdivPermsTest(cp, {{0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                           12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23}},
                      {0});
 
-  cp.default_rank = 3;
-  cp.instance.impl_details.subdiv_offsets = {};
-  RunSubdivPermsTest(&cp, {{0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
-                            12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23}},
+  cp->default_rank = 3;
+  cp->instance.impl_details.subdiv_offsets = {};
+  RunSubdivPermsTest(cp, {{0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                           12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23}},
                      {3});
 }
 

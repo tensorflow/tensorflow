@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/ring_alg.h"
 
 #include <stdlib.h>
+
 #include <atomic>
 #include <functional>
 #include <utility>
@@ -163,7 +164,7 @@ Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
 
 Status RingAlg::InitializeCollectiveParams(CollectiveParams* col_params) {
   const string& device_name =
-      col_params->instance.device_names[col_params->default_rank];
+      col_params->group.device_names[col_params->default_rank];
   // Each subdiv permutation is a ring formed by rotating each
   // single-task subsequence of devices by an offset.  This makes most
   // sense when each task has the same number of devices but we can't
@@ -174,15 +175,15 @@ Status RingAlg::InitializeCollectiveParams(CollectiveParams* col_params) {
   // Precondition: device_names must be sorted so that all devices in
   // the same task are adjacent.
   VLOG(2) << "Sorted task names: "
-          << absl::StrJoin(col_params->instance.task_names, ", ");
+          << absl::StrJoin(col_params->group.task_names, ", ");
   std::vector<int> dev_per_task;
-  const string* prior_task_name = &col_params->instance.task_names[0];
+  const string* prior_task_name = &col_params->group.task_names[0];
   int dev_count = 1;
   for (int di = 1; di < col_params->group.group_size; ++di) {
-    if (col_params->instance.task_names[di] != *prior_task_name) {
+    if (col_params->group.task_names[di] != *prior_task_name) {
       dev_per_task.push_back(dev_count);
       dev_count = 1;
-      prior_task_name = &col_params->instance.task_names[di];
+      prior_task_name = &col_params->group.task_names[di];
     } else {
       ++dev_count;
     }
@@ -226,7 +227,7 @@ Status RingAlg::InitializeCollectiveParams(CollectiveParams* col_params) {
         int permuted_di = prior_dev_count + offset_di;
         int rank = static_cast<int>(perm.size());
         perm.push_back(permuted_di);
-        if (col_params->instance.device_names[permuted_di] == device_name) {
+        if (col_params->group.device_names[permuted_di] == device_name) {
           DCHECK_EQ(permuted_di, col_params->default_rank);
           col_params->subdiv_rank[sdi] = rank;
         }
@@ -240,10 +241,11 @@ Status RingAlg::InitializeCollectiveParams(CollectiveParams* col_params) {
   return Status::OK();
 }
 
-Status RingAlg::InitializeCollectiveContext(CollectiveContext* col_ctx) {
+Status RingAlg::InitializeCollectiveContext(
+    std::shared_ptr<CollectiveContext> col_ctx) {
   DCHECK(col_ctx->dev_mgr);
   col_ctx_ = col_ctx;
-  col_params_ = &col_ctx->col_params;
+  col_params_ = col_ctx->col_params;
   return collective_util::InitializeDeviceAndLocality(
       col_ctx->dev_mgr, col_ctx->device_name, &col_ctx->device,
       &col_ctx->device_locality);
@@ -276,12 +278,17 @@ void RingAlg::StartAbort(const Status& s) {
       status_.Update(s);
     }
   }
-  // If this is the initial entry to abort mode then invoke StartAbort
-  // on the CollectiveExecutor that invoked us.  That should start
-  // cancellation on all of the outstanding CollectiveRemoteAccess
-  // actions.
+  // If this is the initial entry to abort mode and it's not a cancellation,
+  // then invoke StartAbort on the CollectiveExecutor that invoked us.  That
+  // should start cancellation on all of the outstanding CollectiveRemoteAccess
+  // actions. If it's cancellation all pending send/recv should be cancelled as
+  // well and there's then no need to abort.
   if (abort_started) {
-    col_ctx_->col_exec->StartAbort(s);
+    if (col_ctx_->op_ctx->cancellation_manager() == nullptr ||
+        (!col_ctx_->op_ctx->cancellation_manager()->IsCancelled() &&
+         !col_ctx_->op_ctx->cancellation_manager()->IsCancelling())) {
+      col_ctx_->col_exec->StartAbort(s);
+    }
   }
 }
 
@@ -382,12 +389,13 @@ void RingAlg::DispatchSend(RingField* rf, const StatusCallback& done) {
   int send_to_rank = (rf->rank + 1) % group_size_;
   int send_to_dev_idx = col_params_->instance.impl_details
                             .subdiv_permutations[rf->subdiv_idx][send_to_rank];
-  col_ctx_->col_exec->PostToPeer(
-      col_params_->instance.device_names[send_to_dev_idx],
-      col_params_->instance.task_names[send_to_dev_idx], send_buf_key,
+  col_ctx_->col_exec->remote_access()->PostToPeer(
+      col_params_->group.device_names[send_to_dev_idx],
+      col_params_->group.task_names[send_to_dev_idx], send_buf_key,
       col_ctx_->device, col_ctx_->op_ctx->op_device_context(),
       col_ctx_->op_ctx->output_alloc_attr(0), &rf->chunk,
-      col_ctx_->device_locality, done);
+      col_ctx_->device_locality, col_ctx_->op_ctx->cancellation_manager(),
+      done);
 }
 
 void RingAlg::DispatchRecv(RingField* rf, const StatusCallback& done) {
@@ -401,13 +409,14 @@ void RingAlg::DispatchRecv(RingField* rf, const StatusCallback& done) {
   Tensor* dst_tensor = (!rf->second_pass && (col_params_->merge_op != nullptr))
                            ? &rf->tmp_chunk
                            : &rf->chunk;
-  col_ctx_->col_exec->RecvFromPeer(
-      col_params_->instance.device_names[rf->recv_dev_idx],
-      col_params_->instance.task_names[rf->recv_dev_idx],
+  col_ctx_->col_exec->remote_access()->RecvFromPeer(
+      col_params_->group.device_names[rf->recv_dev_idx],
+      col_params_->group.task_names[rf->recv_dev_idx],
       col_params_->task.is_local[rf->recv_dev_idx], recv_buf_key,
       col_ctx_->device, col_ctx_->op_ctx->op_device_context(),
       col_ctx_->op_ctx->output_alloc_attr(0), dst_tensor,
-      col_ctx_->device_locality, rf->subdiv_idx, done);
+      col_ctx_->device_locality, rf->subdiv_idx,
+      col_ctx_->op_ctx->cancellation_manager(), done);
 }
 
 string RingAlg::FieldState() {

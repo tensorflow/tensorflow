@@ -23,6 +23,7 @@ from absl.testing import parameterized
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -40,6 +41,7 @@ all_distributions = [
     strategy_combinations.multi_worker_mirrored_2x1_cpu,
     strategy_combinations.multi_worker_mirrored_2x1_gpu,
     strategy_combinations.multi_worker_mirrored_2x2_gpu,
+    strategy_combinations.multi_worker_mirrored_2x2_gpu_no_merge_call,
     strategy_combinations.multi_worker_mirrored_4x1_cpu,
 ]
 
@@ -286,4 +288,5 @@ class ExponentialMovingAverageTest(test.TestCase, parameterized.TestCase):
 
 
 if __name__ == "__main__":
-  combinations.main()
+  # TODO(b/172304955): enable logical devices.
+  test_util.main(config_logical_devices=False)

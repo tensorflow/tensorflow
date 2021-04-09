@@ -126,7 +126,7 @@ test_runner() {
   # Run a suite of tests, print failure logs (if any), wall-time each test,
   # and show the summary at the end.
   #
-  # Usage: test_runner <TEST_DESC> <ALL_TESTS> <TEST_BLACKLIST> <LOGS_DIR>
+  # Usage: test_runner <TEST_DESC> <ALL_TESTS> <TEST_DENYLIST> <LOGS_DIR>
   # e.g.,  test_runner "Tutorial test-on-install" \
   #                    "test1 test2 test3" "test2 test3" "/tmp/log_dir"
 
@@ -136,7 +136,7 @@ test_runner() {
 
   TEST_DESC=$1
   ALL_TESTS_STR=$2
-  TEST_BLACKLIST_SR=$3
+  TEST_DENYLIST_SR=$3
   LOGS_DIR=$4
 
   NUM_TESTS=$(echo "${ALL_TESTS_STR}" | wc -w)
@@ -152,9 +152,9 @@ test_runner() {
     ((COUNTER++))
     STAT_STR="(${COUNTER} / ${NUM_TESTS})"
 
-    if [[ "${TEST_BLACKLIST_STR}" == *"${CURR_TEST}"* ]]; then
+    if [[ "${TEST_DENYLIST_STR}" == *"${CURR_TEST}"* ]]; then
       ((SKIPPED_COUNTER++))
-      echo "${STAT_STR} Blacklisted ${TEST_DESC} SKIPPED: ${CURR_TEST}"
+      echo "${STAT_STR} Denylisted ${TEST_DESC} SKIPPED: ${CURR_TEST}"
       continue
     fi
 
@@ -222,7 +222,7 @@ configure_android_workspace() {
       echo "ERROR: Your WORKSPACE file does not seems to have proper android"
       echo "       configuration and not all the environment variables expected"
       echo "       inside ci_build android docker container are set."
-      echo "       Please configure it manually. See: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android/README.md"
+      echo "       Please configure it manually. See: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/android/test/README.md"
     else
       cat << EOF >> WORKSPACE
 android_sdk_repository(

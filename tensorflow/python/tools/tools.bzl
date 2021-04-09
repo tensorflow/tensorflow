@@ -21,6 +21,7 @@ def saved_model_compile_aot(
         variables_to_feed = "",
         target_triple = None,
         target_cpu = None,
+        multithreading = False,
         force_without_xla_support_flag = True,
         tags = None):
     """Compile a SavedModel directory accessible from a filegroup.
@@ -93,6 +94,11 @@ def saved_model_compile_aot(
         target architecture's triple).  Similar to clang's -target flag.
       target_cpu: The LLVM cpu name used for compilation.  Similar to clang's
         -mcpu flag.
+      multithreading: Whether to compile multithreaded AOT code.
+        Note, this increases the set of dependencies for binaries using
+        the AOT library at both build and runtime.  For example,
+        the resulting object files may have external dependencies on
+        multithreading libraries like nsync.
       force_without_xla_support_flag: Whether to compile even when
         `--define=with_xla_support=true` is not set.  If `False`, and the
         define is not passed when building, then the created `cc_library`
@@ -135,6 +141,7 @@ def saved_model_compile_aot(
             "--cpp_class {} ".format(cpp_class) +
             "--variables_to_feed {} ".format(variables_to_feed) +
             "--signature_def_key {} ".format(signature_def) +
+            "--multithreading {} ".format(multithreading) +
             "--target_triple " + target_triple + " " +
             ("--target_cpu " + target_cpu + " " if target_cpu else "") +
             "--tag_set {} ".format(tag_set)

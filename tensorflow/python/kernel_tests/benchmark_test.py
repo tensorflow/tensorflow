@@ -26,7 +26,6 @@ import numpy as np
 from tensorflow.core.util import test_log_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import gfile
@@ -96,7 +95,8 @@ class BenchmarkTest(test.TestCase):
     self.assertFalse(_ran_somebenchmark_but_shouldnt[0])
 
     # Run other benchmarks, but this wont run the one we care about
-    benchmark._run_benchmarks("unrelated")
+    with self.assertRaises(ValueError):
+      benchmark._run_benchmarks("unrelated")
 
     # Validate that SomeBenchmark has not run yet
     self.assertFalse(_ran_somebenchmark_1[0])
@@ -126,7 +126,6 @@ class BenchmarkTest(test.TestCase):
     self.assertFalse(_ran_somebenchmark_2[0])
     self.assertFalse(_ran_somebenchmark_but_shouldnt[0])
 
-  @test_util.disable_xla("b/123744455")  # GPU memory is incorrect
   def testReportingBenchmark(self):
     tempdir = test.get_temp_dir()
     try:

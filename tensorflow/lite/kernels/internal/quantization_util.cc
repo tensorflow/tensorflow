@@ -289,7 +289,7 @@ void PreprocessSoftmaxScaling(double beta, double input_scale,
     input_beta_real_multiplier = (1ll << 31) - 1.0;
   }
 #else   // TFLITE_EMULATE_FLOAT
-  const double input_beta_real_multiplier = std::min(
+  const double input_beta_real_multiplier = std::min<double>(
       beta * input_scale * (1 << (31 - input_integer_bits)), (1ll << 31) - 1.0);
 #endif  // TFLITE_EMULATE_FLOAT
 
@@ -342,13 +342,13 @@ void NudgeQuantizationRange(const float min, const float max,
   const float quant_max_float = static_cast<float>(quant_max);
   *nudged_scale = (max - min) / (quant_max_float - quant_min_float);
   const float zero_point_from_min = quant_min_float - min / *nudged_scale;
-  uint16 nudged_zero_point;
+  uint16_t nudged_zero_point;
   if (zero_point_from_min < quant_min_float) {
-    nudged_zero_point = static_cast<uint16>(quant_min);
+    nudged_zero_point = static_cast<uint16_t>(quant_min);
   } else if (zero_point_from_min > quant_max_float) {
-    nudged_zero_point = static_cast<uint16>(quant_max);
+    nudged_zero_point = static_cast<uint16_t>(quant_max);
   } else {
-    nudged_zero_point = static_cast<uint16>(TfLiteRound(zero_point_from_min));
+    nudged_zero_point = static_cast<uint16_t>(TfLiteRound(zero_point_from_min));
   }
   *nudged_min = (quant_min_float - nudged_zero_point) * (*nudged_scale);
   *nudged_max = (quant_max_float - nudged_zero_point) * (*nudged_scale);

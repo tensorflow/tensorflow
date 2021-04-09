@@ -44,26 +44,6 @@ TEST_F(PinToHostOptimizerTest, TryFindHostDeviceCpuXlaGpu) {
             "/device:CPU:0");
 }
 
-TEST_F(PinToHostOptimizerTest, TryFindHostDeviceXlaCpuXlaGpu) {
-  gtl::FlatSet<string> devices = {"/device:XLA_CPU:0", "/device:XLA_GPU:0"};
-
-  EXPECT_EQ(internal::TryFindHostDevice(devices, false, ""), "");
-  EXPECT_EQ(internal::TryFindHostDevice(devices, false, "/device:XLA_GPU:0"),
-            "/device:XLA_CPU:0");
-  EXPECT_EQ(internal::TryFindHostDevice(devices, false, "/device:XLA_GPU:*"),
-            "/device:XLA_CPU:0");
-}
-
-TEST_F(PinToHostOptimizerTest, TryFindHostDeviceXlaGpu) {
-  gtl::FlatSet<string> devices = {"/device:XLA_GPU:0"};
-
-  EXPECT_EQ(internal::TryFindHostDevice(devices, false, ""), "");
-  EXPECT_EQ(internal::TryFindHostDevice(devices, false, "/device:XLA_GPU:0"),
-            "");
-  EXPECT_EQ(internal::TryFindHostDevice(devices, false, "/device:XLA_GPU:*"),
-            "");
-}
-
 TEST_F(PinToHostOptimizerTest, OptimizeSmallOpsToHost) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output a = ops::Const(s.WithOpName("a"), 1, {1024, 1024});

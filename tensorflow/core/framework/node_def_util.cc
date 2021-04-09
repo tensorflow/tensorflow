@@ -447,9 +447,13 @@ Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
   const int original_size = sig->size();
   if (!arg_def.number_attr().empty()) {
     // Same type repeated "repeats" times.
-    int32 repeats = -1;
+    int64 repeats = -1;
     TF_RETURN_IF_ERROR(
         GetNodeAttr(node_or_attrs, arg_def.number_attr(), &repeats));
+    // We can't handle outputs that are larger than int32 sizes.
+    if (static_cast<int64>(static_cast<int32>(repeats)) != repeats) {
+      return errors::InvalidArgument("Number of outputs is too big: ", repeats);
+    }
     if (repeats < 0) {
       return errors::InvalidArgument("Value for number_attr() ", repeats,
                                      " < 0");
@@ -616,20 +620,15 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
     }
     auto iter = op_attrs.find(attr.first);
     if (iter == op_attrs.end()) {
-      // A common cause of this error is that TensorFlow has made a
-      // backwards-compatible change to the NodeDef (e.g., adding a
-      // new attr with a default value), but the binary consuming the
-      // NodeDef does not know about the new attribute; the solution
-      // in these cases is to ensure that the binary consuming the
-      // NodeDef is built with a version of TensorFlow no earlier than
-      // the binary producing it.
-      return errors::InvalidArgument(
-          "NodeDef mentions attr '", attr.first, "' not in ",
-          SummarizeOpDef(op_def),
-          "; NodeDef: ", FormatNodeDefForError(node_def),
-          ". (Check whether your GraphDef-interpreting binary is up to date "
-          "with your GraphDef-generating binary.).");
+      LOG_EVERY_N_SEC(ERROR, 5)
+          << "NodeDef mentions attribute " << attr.first
+          << " which is not in the op definition: " << SummarizeOpDef(op_def)
+          << " This may be expected if your graph generating binary is newer "
+          << " than this binary. Unknown attributes will be ignored."
+          << " NodeDef: " << FormatNodeDefForError(node_def);
+      continue;
     }
+
     // If attr value is placeholder, do not check it.
     if (attr.second.placeholder().empty()) {
       TF_RETURN_WITH_CONTEXT_IF_ERROR(
@@ -637,6 +636,7 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
           "; NodeDef: ", FormatNodeDefForError(node_def), "; ",
           SummarizeOpDef(op_def));
     }
+
     // Keep track of which attr names have (not) been found in the NodeDef.
     op_attrs.erase(iter);
   }
@@ -795,6 +795,8 @@ bool IsValidControlInputName(StringPiece sp) {
   }
 }
 
+const StringPiece kColocationGroupPrefixStringPiece(kColocationGroupPrefix);
+
 }  // namespace
 
 Status ValidateOpInput(const string& input_name, bool* is_control_input) {
@@ -924,17 +926,27 @@ Status AddPrefixAndSuffixToNode(StringPiece prefix, StringPiece suffix,
     attr.set_s(frame_name);
   }
 
-  // Update colocation constraints.
-  constexpr char kClassAttr[] = "_class";
-  auto class_attr = node_def->mutable_attr()->find(kClassAttr);
-  if (class_attr != node_def->mutable_attr()->end()) {
-    AttrValue new_value;
-    new_value.mutable_list()->add_s(
-        strings::StrCat(prefix, class_attr->second.s()));
-    node_def->mutable_attr()->erase(kClassAttr);
-    node_def->mutable_attr()->insert({kClassAttr, new_value});
-  }
+  return Status::OK();
+}
 
+Status MaybeAddPrefixToColocationConstraints(
+    const std::unordered_set<string>& match, StringPiece prefix,
+    NodeDef* node_def) {
+  auto attr = node_def->mutable_attr()->find(kColocationAttrName);
+  if (attr == node_def->mutable_attr()->end()) {
+    return Status::OK();
+  }
+  auto constraints_list = attr->second.mutable_list();
+  auto constraints_size = constraints_list->s_size();
+  for (size_t i = 0; i < constraints_size; ++i) {
+    StringPiece original(constraints_list->s(i));
+    if (absl::ConsumePrefix(&original, kColocationGroupPrefixStringPiece)) {
+      if (match.find(string(original)) != match.end()) {
+        (*constraints_list->mutable_s(i)) =
+            strings::StrCat(kColocationGroupPrefix, prefix, original);
+      }
+    }
+  }
   return Status::OK();
 }
 

@@ -196,6 +196,10 @@ bool TensorInterface::CanMove() const {
   return false;
 }
 
+std::string TensorInterface::SummarizeValue() const {
+  return tensor_.SummarizeValue(/*max_entries=*/3, /*print_v2=*/true);
+}
+
 DataType TensorInterface::Type() const { return tensor_.dtype(); }
 
 int TensorInterface::NumDims() const { return tensor_.dims(); }
@@ -288,7 +292,7 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status) {
   if (!tensor.CopyFrom(src, src.shape())) {
     return nullptr;
   }
-  return new TF_Tensor{new tensorflow::TensorInterface(tensor)};
+  return new TF_Tensor{new tensorflow::TensorInterface(std::move(tensor))};
 }
 
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {

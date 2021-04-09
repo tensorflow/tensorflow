@@ -19,15 +19,14 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 
+namespace tflite {
+namespace jni {
+
 const char kIllegalArgumentException[] = "java/lang/IllegalArgumentException";
 const char kIllegalStateException[] = "java/lang/IllegalStateException";
 const char kNullPointerException[] = "java/lang/NullPointerException";
-const char kIndexOutOfBoundsException[] = "java/lang/IndexOutOfBoundsException";
 const char kUnsupportedOperationException[] =
     "java/lang/UnsupportedOperationException";
-
-namespace tflite {
-namespace jni {
 
 void ThrowException(JNIEnv* env, const char* clazz, const char* fmt, ...) {
   va_list args;

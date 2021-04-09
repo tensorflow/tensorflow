@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_program.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
+#include "tensorflow/lite/delegates/gpu/common/kernel_info.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
@@ -61,9 +62,6 @@ class CLKernel {
     return SetBytesAuto(static_cast<const void*>(&value), sizeof(T));
   }
 
-  int GetPrivateMemorySize() const { return private_memory_size_; }
-  int GetMaxWorkGroupSize() const { return max_work_group_size_; }
-
   int GetBindingCounter() const { return binding_counter_; }
   void ResetBindingCounter() { binding_counter_ = 0; }
 
@@ -71,13 +69,13 @@ class CLKernel {
   // workaround for Mali memory leak
   absl::Status ReInit() const;
 
+  KernelInfo info_;
+
  private:
   void Release();
   absl::Status SetBytes(int index, const void* ptr, int length) const;
   absl::Status SetBytesAuto(const void* ptr, int length);
 
-  int private_memory_size_;
-  int max_work_group_size_;
   int binding_counter_ = -1;
 
   std::string function_name_;

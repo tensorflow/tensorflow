@@ -91,6 +91,17 @@ TEST(ResizeNearestNeighborReference, Test2x2To3x3) {
                                      output_shape, output_data);
 }
 
+TEST(ResizeNearestNeighborReference, Test2x2To3x3Int16) {
+  RuntimeShape input_shape = {1, 2, 2, 1};
+  std::vector<int16_t> input_data = {1, 2, 3, 4};
+  std::vector<int32> output_size_data = {3, 3};
+  RuntimeShape output_shape = {1, 3, 3, 1};
+  std::vector<int16_t> output_data = {1, 1, 2, 1, 1, 2, 3, 3, 4};
+
+  TestReferenceResizeNearestNeighbor(input_shape, input_data, output_size_data,
+                                     output_shape, output_data);
+}
+
 TEST(ResizeNearestNeighborReference, Test2x2To3x3_AlignCorners) {
   RuntimeShape input_shape = {1, 2, 2, 1};
   std::vector<uint8> input_data = {1, 2, 3, 4};

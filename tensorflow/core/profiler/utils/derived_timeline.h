@@ -69,8 +69,13 @@ class DerivedXLineBuilder {
   std::vector<DerivedXLineBuilder*> dependent_lines_;
 };
 
-using SymbolResolver = std::function<absl::string_view(
-    absl::string_view hlo_module_name, absl::string_view hlo_op)>;
+struct Symbol {
+  absl::string_view tf_op_name;
+  std::string source_info;
+};
+
+using SymbolResolver = std::function<Symbol(absl::string_view hlo_module_name,
+                                            absl::string_view hlo_op)>;
 
 // Derives TF name scope and op events from the TF op's fully qualified name.
 void ProcessTfOpEvent(absl::string_view tf_op_full_name, int64 offset_ps,
@@ -98,9 +103,6 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
 // derived timelines for the plane by calling DeriveEventsFromAnnotations.
 void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
                               XSpace* space, bool step_info_only = false);
-void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
-                              const std::vector<XPlane*>& device_traces,
-                              bool step_info_only = false);
 
 }  // namespace profiler
 }  // namespace tensorflow

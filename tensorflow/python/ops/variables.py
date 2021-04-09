@@ -27,7 +27,6 @@ import six
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
-from tensorflow.python import _pywrap_utils
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -41,6 +40,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_should_use
@@ -1794,8 +1794,13 @@ class RefVariable(VariableV1, core.Tensor):
           # pylint: disable=protected-access
           with ops.get_default_graph()._attr_scope({"_class": attr}):
             with ops.name_scope("Initializer"), ops.device(None):
+              initial_value = initial_value()
+              if isinstance(initial_value, trackable.CheckpointInitialValue):
+                self._maybe_initialize_trackable()
+                self._update_uid = initial_value.checkpoint_position.restore_uid
+                initial_value = initial_value.wrapped_value
               self._initial_value = ops.convert_to_tensor(
-                  initial_value(), name="initial_value", dtype=dtype)
+                  initial_value, name="initial_value", dtype=dtype)
               if shape is None:
                 shape = (
                     self._initial_value.get_shape()

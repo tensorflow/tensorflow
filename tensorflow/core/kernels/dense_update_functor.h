@@ -27,9 +27,6 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 enum DenseUpdateType { ADD, SUB, ASSIGN };
 
@@ -65,31 +62,6 @@ struct DenseUpdate<CPUDevice, T, ASSIGN> {
   }
 };
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-struct DenseUpdate<SYCLDevice, T, ADD> {
-  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat params,
-                  typename TTypes<T>::ConstFlat update) {
-    params.device(d) += update;
-  }
-};
-
-template <typename T>
-struct DenseUpdate<SYCLDevice, T, SUB> {
-  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat params,
-                  typename TTypes<T>::ConstFlat update) {
-    params.device(d) -= update;
-  }
-};
-
-template <typename T>
-struct DenseUpdate<SYCLDevice, T, ASSIGN> {
-  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat params,
-                  typename TTypes<T>::ConstFlat update) {
-    params.device(d) = update;
-  }
-};
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace functor
 

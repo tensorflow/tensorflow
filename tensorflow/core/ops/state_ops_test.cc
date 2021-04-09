@@ -69,6 +69,28 @@ TEST(StateOpsTest, ScatterUpdate_ShapeFn) {
   INFER_ERROR("Shapes must be equal rank, but are 1 and 0", op, "[2];[];[2]");
 }
 
+TEST(StateOpsTest, ResourceScatterNdUpdate_ShapeFn) {
+  ShapeInferenceTestOp op("ResourceScatterNdUpdate");
+  TF_ASSERT_OK(NodeDefBuilder("test", "ResourceScatterNdUpdate")
+                   .Input("ref", 0, DT_RESOURCE)
+                   .Input("indices", 0, DT_INT32)
+                   .Input("updates", 1, DT_FLOAT)
+                   .Finalize(&op.node_def));
+
+  std::vector<ShapeInferenceTestOp::ShapeAndType> shapes_and_types;
+  op.input_resource_handle_shapes_and_types.push_back(&shapes_and_types);
+  op.input_resource_handle_shapes_and_types.push_back(nullptr);
+  op.input_resource_handle_shapes_and_types.push_back(nullptr);
+  shapes_and_types.emplace_back("[?,?]", DT_FLOAT);
+  INFER_OK(op, "[?];[?,2];[?]", "");
+  INFER_ERROR("Shape must be at least rank 1 but is rank 0", op,
+              "[?];[?,2];[]");
+  INFER_ERROR(
+      "Dimensions [0,1) of indices[shape=[8,2]] = [8] must match "
+      "dimensions [0,1) of updates[shape=[9]] = [9]",
+      op, "[?];[8,2];[9]");
+}
+
 TEST(StateOpsTest, TemporaryVariable_ShapeFn) {
   ShapeInferenceTestOp op("TemporaryVariable");
   TensorShape shape({1, 2, 3});

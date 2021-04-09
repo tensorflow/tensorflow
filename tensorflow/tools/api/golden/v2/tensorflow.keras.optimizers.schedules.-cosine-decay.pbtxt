@@ -1,0 +1,18 @@
+path: "tensorflow.keras.optimizers.schedules.CosineDecay"
+tf_class {
+  is_instance: "<class \'tensorflow.python.keras.optimizer_v2.learning_rate_schedule.CosineDecay\'>"
+  is_instance: "<class \'tensorflow.python.keras.optimizer_v2.learning_rate_schedule.LearningRateSchedule\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'initial_learning_rate\', \'decay_steps\', \'alpha\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'None\'], "
+  }
+  member_method {
+    name: "from_config"
+    argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_config"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

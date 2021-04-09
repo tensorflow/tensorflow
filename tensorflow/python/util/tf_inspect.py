@@ -25,6 +25,20 @@ import six
 
 from tensorflow.python.util import tf_decorator
 
+
+# inspect.signature() is preferred over inspect.getfullargspec() in PY3.
+# Note that while it can handle TFDecorators, it will ignore a TFDecorator's
+# provided ArgSpec/FullArgSpec and instead return the signature of the
+# inner-most function.
+def signature(obj, *, follow_wrapped=True):
+  """TFDecorator-aware replacement for inspect.signature."""
+  return _inspect.signature(
+      tf_decorator.unwrap(obj)[1], follow_wrapped=follow_wrapped)
+
+
+Parameter = _inspect.Parameter
+Signature = _inspect.Signature
+
 ArgSpec = _inspect.ArgSpec
 
 
@@ -390,6 +404,20 @@ def isgeneratorfunction(object):  # pylint: disable=redefined-builtin
 def ismethod(object):  # pylint: disable=redefined-builtin
   """TFDecorator-aware replacement for inspect.ismethod."""
   return _inspect.ismethod(tf_decorator.unwrap(object)[1])
+
+
+def isanytargetmethod(object):  # pylint: disable=redefined-builtin
+  # pylint: disable=g-doc-args,g-doc-return-or-yield
+  """Checks all the decorated targets along the chain of decorators.
+
+  Returns True if any of the decorated targets in the chain is a method.
+  """
+  decorators, _ = tf_decorator.unwrap(object)
+  for decorator in decorators:
+    if _inspect.ismethod(decorator.decorated_target):
+      return True
+
+  return False
 
 
 def ismodule(object):  # pylint: disable=redefined-builtin

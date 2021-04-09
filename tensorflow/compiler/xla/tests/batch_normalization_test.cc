@@ -71,7 +71,7 @@ class BatchNormalizationTest
     CHECK_EQ(kY, input_array_.width());
   }
 
-  XlaOp CheckShape(XlaBuilder* b, const XlaOp& operand,
+  XlaOp CheckShape(XlaBuilder* b, const XlaOp operand,
                    const Shape& expected_shape) const {
     Shape actual_shape = b->GetShape(operand).ConsumeValueOrDie();
     CHECK(ShapeUtil::Equal(expected_shape, actual_shape))

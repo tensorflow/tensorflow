@@ -1080,6 +1080,21 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                       device)};
 }
 
+/* static */ port::Status GpuDriver::GetGpuGCNArchName(
+    hipDevice_t device, std::string* gcnArchName) {
+  hipDeviceProp_t props;
+  hipError_t result = tensorflow::wrap::hipGetDeviceProperties(&props, device);
+  if (result == hipSuccess) {
+    *gcnArchName = props.gcnArchName;
+    return port::Status::OK();
+  }
+  *gcnArchName = "";
+  return port::Status{
+      port::error::INTERNAL,
+      absl::StrFormat("failed to determine AMDGpu GCN Arch Name for device %d",
+                      device)};
+}
+
 // Helper function that turns the integer output of hipDeviceGetAttribute to
 // type T and wraps it in a StatusOr.
 template <typename T>

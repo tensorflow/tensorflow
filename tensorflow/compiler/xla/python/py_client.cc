@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/py_client.h"
 
+#include <memory>
+
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
+#include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/python/types.h"
@@ -28,111 +32,142 @@ namespace xla {
 namespace py = pybind11;
 namespace pprof = tensorflow::tfprof::pprof;
 
+PyClient::PyClient(std::unique_ptr<PjRtClient> pjrt_client)
+    : pjrt_client_(std::move(pjrt_client)) {}
 PyClient::PyClient(std::shared_ptr<PjRtClient> pjrt_client)
     : pjrt_client_(std::move(pjrt_client)) {}
 
-std::vector<ClientAndPtr<Device>> PyClient::Devices() {
-  std::vector<ClientAndPtr<Device>> devices;
-  devices.reserve(pjrt_client_->devices().size());
-  for (const auto& device : pjrt_client_->devices()) {
-    devices.push_back(WrapWithClient(shared_from_this(), device.get()));
-  }
-  return devices;
-}
-
-std::vector<ClientAndPtr<Device>> PyClient::LocalDevices() {
-  std::vector<ClientAndPtr<Device>> devices;
-  devices.reserve(pjrt_client_->local_devices().size());
-  for (Device* device : pjrt_client_->local_devices()) {
+std::vector<ClientAndPtr<PjRtDevice>> PyClient::Devices() {
+  std::vector<ClientAndPtr<PjRtDevice>> devices;
+  auto span = pjrt_client_->devices();
+  devices.reserve(span.size());
+  for (PjRtDevice* device : span) {
     devices.push_back(WrapWithClient(shared_from_this(), device));
   }
   return devices;
 }
 
-StatusOr<std::vector<std::vector<ClientAndPtr<Device>>>>
+std::vector<ClientAndPtr<PjRtDevice>> PyClient::LocalDevices() {
+  std::vector<ClientAndPtr<PjRtDevice>> devices;
+  devices.reserve(pjrt_client_->addressable_devices().size());
+  for (PjRtDevice* device : pjrt_client_->addressable_devices()) {
+    devices.push_back(WrapWithClient(shared_from_this(), device));
+  }
+  return devices;
+}
+
+std::vector<py::object> PyClient::LiveBuffers() {
+  CHECK(PyGILState_Check());
+  std::vector<py::object> buffers;
+  for (PyBuffer* buffer = buffers_; buffer; buffer = buffer->next_) {
+    if (!buffer->is_deleted()) {
+      buffers.push_back(py::reinterpret_borrow<py::object>(buffer->AsHandle()));
+    }
+  }
+  return buffers;
+}
+
+Status PyClient::Defragment() {
+  CHECK(PyGILState_Check());
+  absl::flat_hash_set<PjRtBuffer*> buffer_set;
+  for (PyBuffer* buffer = buffers_; buffer; buffer = buffer->next_) {
+    if (!buffer->is_deleted()) {
+      buffer_set.insert(buffer->buffer());
+    }
+  }
+  std::vector<PjRtBuffer*> buffers(buffer_set.begin(), buffer_set.end());
+
+  std::vector<PjRtExecutable*> execs;
+  for (PyExecutable* exec = executables_; exec; exec = exec->next_) {
+    execs.push_back(exec->mutable_pjrt_executable());
+  }
+  return pjrt_client_->Defragment(buffers, execs);
+}
+
+StatusOr<std::vector<std::vector<ClientAndPtr<PjRtDevice>>>>
 PyClient::GetDefaultDeviceAssignment(int num_replicas, int num_partitions) {
   TF_ASSIGN_OR_RETURN(
       DeviceAssignment device_assignment,
       pjrt_client_->GetDefaultDeviceAssignment(num_replicas, num_partitions));
-  std::vector<std::vector<ClientAndPtr<Device>>> result;
+  std::vector<std::vector<ClientAndPtr<PjRtDevice>>> result;
   result.resize(num_replicas);
   for (int r = 0; r < num_replicas; ++r) {
     result[r].resize(num_partitions);
     for (int p = 0; p < num_partitions; ++p) {
       int device_id = device_assignment(r, p);
-      auto iter = pjrt_client_->id_to_device().find(device_id);
-      CHECK(iter != pjrt_client_->id_to_device().end()) << device_id;
-      result[r][p] = WrapWithClient(shared_from_this(), iter->second);
+      TF_ASSIGN_OR_RETURN(PjRtDevice * device,
+                          pjrt_client_->LookupDevice(device_id));
+      result[r][p] = WrapWithClient(shared_from_this(), device);
     }
   }
   return result;
 }
 
-StatusOr<std::vector<ClientAndPtr<Device>>>
+StatusOr<std::vector<ClientAndPtr<PjRtDevice>>>
 PyClient::GetDefaultDeviceAssignment1D(int num_replicas) {
   TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
                       pjrt_client_->GetDefaultDeviceAssignment(
                           num_replicas, /*num_partitions=*/1));
-  std::vector<ClientAndPtr<Device>> result;
+  std::vector<ClientAndPtr<PjRtDevice>> result;
   for (int i = 0; i < num_replicas; ++i) {
     int device_id = device_assignment(i, 0);
-    auto iter = pjrt_client_->id_to_device().find(device_id);
-    CHECK(iter != pjrt_client_->id_to_device().end()) << device_id;
-    result.push_back(WrapWithClient(shared_from_this(), iter->second));
+    TF_ASSIGN_OR_RETURN(PjRtDevice * device,
+                        pjrt_client_->LookupDevice(device_id));
+    result.push_back(WrapWithClient(shared_from_this(), device));
   }
   return result;
 }
 
-StatusOr<std::unique_ptr<PyBuffer>> PyClient::BufferFromPyal(
-    const pybind11::object& argument, Device* device, bool force_copy,
-    PjRtBuffer::HostBufferSemantics host_buffer_semantics) {
+StatusOr<py::object> PyClient::BufferFromPyval(
+    pybind11::handle argument, PjRtDevice* device, bool force_copy,
+    PjRtClient::HostBufferSemantics host_buffer_semantics) {
   if (device == nullptr) {
-    TF_RET_CHECK(!pjrt_client_->local_devices().empty());
-    device = pjrt_client_->local_devices().front();
+    TF_RET_CHECK(!pjrt_client_->addressable_devices().empty());
+    device = pjrt_client_->addressable_devices().front();
   }
   CHECK(device != nullptr);
-  auto iter = pjrt_client_->id_to_device().find(device->id());
-  if (iter->second != device) {
+  TF_ASSIGN_OR_RETURN(PjRtDevice * found_device,
+                      pjrt_client_->LookupDevice(device->id()));
+  if (found_device != device) {
     return InvalidArgument("Cannot copy value to device '%s' with '%s' backend",
                            device->DebugString(),
                            pjrt_client_->platform_name());
   }
   GlobalPyRefManager()->CollectGarbage();
 
-  absl::optional<CastToArrayResult> c = CastToArray(argument);
-  if (!c) {
-    return InvalidArgument("from_python argument must be an array.");
-  }
+  DevicePutOptions options;
+  options.squash_64bit_types = false;
+  options.allow_zero_copy =
+      (!force_copy &&
+       (host_buffer_semantics == PjRtClient::HostBufferSemantics::kZeroCopy));
+  options.force_lazy_arrays = true;
+  TF_ASSIGN_OR_RETURN(DevicePutResult put,
+                      DevicePut(argument, device, options));
 
-  TF_ASSIGN_OR_RETURN(PythonBufferTree tree, GetPythonBufferTree(argument));
-  std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
-      GlobalPyRefManager()->ManageReference(std::move(c->array));
-
-  std::unique_ptr<PjRtBuffer> buffer;
-  {
-    py::gil_scoped_release gil_release;
-    TF_ASSIGN_OR_RETURN(
-        buffer, PjRtBuffer::FromHostBuffer(
-                    c->buf_ptr, c->shape, host_buffer_semantics,
-                    std::move(py_buffer_ref), pjrt_client_.get(), device));
+  if (put.owned_buffer) {
+    auto traceback = Traceback::Get();
+    return PyBuffer::Make(shared_from_this(), std::move(put.owned_buffer),
+                          std::move(traceback));
+  } else {
+    return py::reinterpret_borrow<py::object>(put.owning_pybuffer);
   }
-  auto traceback = Traceback::Get();
-  return std::make_unique<PyBuffer>(shared_from_this(), std::move(buffer),
-                                    std::move(traceback));
 }
 
-StatusOr<std::unique_ptr<PyExecutable>> PyClient::Compile(
+StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
     const XlaComputation& computation, CompileOptions options) {
   std::unique_ptr<PjRtExecutable> executable;
+  absl::optional<std::string> fingerprint;
   {
     py::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(executable,
-                        PjRtExecutable::Compile(computation, pjrt_client_.get(),
-                                                std::move(options)));
+                        pjrt_client_->Compile(computation, std::move(options)));
+    TF_ASSIGN_OR_RETURN(fingerprint,
+                        pjrt_client_->ExecutableFingerprint(*executable));
   }
   auto traceback = Traceback::Get();
-  return std::make_unique<PyExecutable>(
-      shared_from_this(), std::move(executable), std::move(traceback));
+  return std::make_shared<PyExecutable>(
+      shared_from_this(), std::move(executable), std::move(traceback),
+      std::move(fingerprint));
 }
 
 class ProfileBuilder {
@@ -201,7 +236,7 @@ namespace {
 struct HeapProfileKey {
   Traceback* traceback;
   int64 size;
-  Device* device;
+  PjRtDevice* device;
   bool operator==(const HeapProfileKey& other) const;
 };
 
@@ -232,12 +267,17 @@ H AbslHashValue(H h, const HeapProfileKey& key) {
 
 py::bytes PyClient::HeapProfile() {
   CHECK(PyGILState_Check());
+  absl::flat_hash_set<PjRtBuffer*> buffer_set;
   absl::flat_hash_map<HeapProfileKey, int64> entries;
   for (PyBuffer* buffer = buffers_; buffer; buffer = buffer->next_) {
-    HeapProfileKey key{buffer->traceback(),
-                       buffer->buffer()->OnDeviceSizeInBytes(),
-                       buffer->buffer()->device()};
-    ++entries[key];
+    // We only wish to count each PjRtBuffer once, even though they may be
+    // shared by multiple PyBuffers.
+    if (buffer_set.insert(buffer->buffer()).second) {
+      HeapProfileKey key{buffer->traceback().get(),
+                         buffer->buffer()->OnDeviceSizeInBytes(),
+                         buffer->buffer()->device()};
+      ++entries[key];
+    }
   }
 
   for (PyExecutable* executable = executables_; executable;

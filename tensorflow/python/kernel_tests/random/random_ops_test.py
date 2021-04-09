@@ -230,7 +230,7 @@ class TruncatedNormalTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testLargeShape(self):
-    with self.session(use_gpu=True):
+    with self.session():
       v = variables.Variable(
           array_ops.zeros(dtype=dtypes.float32, shape=[2**33, 1]))
       n = random_ops.truncated_normal(v.shape)
@@ -238,7 +238,7 @@ class TruncatedNormalTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testNoCSE(self):
-    with self.session(use_gpu=True):
+    with self.session():
       shape = [2, 3, 4]
       rnd1 = random_ops.truncated_normal(shape, 0.0, 1.0, dtypes.float32)
       rnd2 = random_ops.truncated_normal(shape, 0.0, 1.0, dtypes.float32)
@@ -336,8 +336,6 @@ class RandomUniformTest(RandomOpTestCommon):
       self.assertLess(error.max(), 5 * std)
 
   # Check that minval = maxval is fine iff we're producing no numbers
-  @test_util.disable_tfrt(
-      "TFE_TensorHandleToNumpy not implemented yet. b/156191611")
   def testUniformIntsDegenerate(self):
     for dt in dtypes.int32, dtypes.int64:
       def sample(n):
@@ -373,7 +371,7 @@ class RandomUniformTest(RandomOpTestCommon):
   def testNoCSE(self):
     shape = [2, 3, 4]
     for dtype in dtypes.float16, dtypes.float32, dtypes.int32:
-      with self.session(use_gpu=True):
+      with self.session():
         rnd1 = random_ops.random_uniform(shape, 0, 17, dtype=dtype)
         rnd2 = random_ops.random_uniform(shape, 0, 17, dtype=dtype)
         diff = (rnd2 - rnd1).eval()

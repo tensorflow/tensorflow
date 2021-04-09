@@ -18,12 +18,24 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/service/gpu/gpu_debug_info_manager.h"
+#if defined(__clang__) && __cplusplus >= 201703L  // clang C++17
+#define TF_PROFILER_DISABLE_CXX17_WARNINGS \
+  _Pragma("clang diagnostic push")         \
+      _Pragma("clang diagnostic ignored \"-Wc++98-c++11-c++14-compat\"")
+#define TF_PROFILER_ENABLE_CXX17_WARNINGS _Pragma("clang diagnostic pop")
+#else
+#define TF_PROFILER_DISABLE_CXX17_WARNINGS
+#define TF_PROFILER_ENABLE_CXX17_WARNINGS
+#endif
+
+TF_PROFILER_DISABLE_CXX17_WARNINGS
+#include "tensorflow/compiler/xla/service/xla_debug_info_manager.h"
+TF_PROFILER_ENABLE_CXX17_WARNINGS
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/profiler/internal/profiler_factory.h"
-#include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/lib/profiler_factory.h"
+#include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
@@ -45,7 +57,7 @@ class MetadataCollector : public ProfilerInterface {
 
   Status Start() override {
     if (!trace_active_) {
-      xla::gpu::GpuDebugInfoManager::Get()->StartTracing();
+      xla::XlaDebugInfoManager::Get()->StartTracing();
       trace_active_ = true;
     }
     return Status::OK();
@@ -53,7 +65,7 @@ class MetadataCollector : public ProfilerInterface {
 
   Status Stop() override {
     if (trace_active_) {
-      xla::gpu::GpuDebugInfoManager::Get()->StopTracing(&debug_info_);
+      xla::XlaDebugInfoManager::Get()->StopTracing(&debug_info_);
       trace_active_ = false;
     }
     return Status::OK();
@@ -79,7 +91,7 @@ class MetadataCollector : public ProfilerInterface {
   }
 
  private:
-  std::vector<xla::gpu::GpuModuleDebugInfo> debug_info_;
+  std::vector<xla::XlaModuleDebugInfo> debug_info_;
   bool trace_active_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(MetadataCollector);

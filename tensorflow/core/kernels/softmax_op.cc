@@ -29,9 +29,6 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 // Partial specialization for a CPUDevice, that uses the Eigen implementation
 // from SoftmaxEigenImpl.
@@ -46,10 +43,6 @@ struct SoftmaxFunctorBase {
 template <typename T>
 struct SoftmaxFunctor<CPUDevice, T> : SoftmaxFunctorBase<CPUDevice, T> {};
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-struct SoftmaxFunctor<SYCLDevice, T> : SoftmaxFunctorBase<SYCLDevice, T> {};
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace functor
 
 template <typename Device, typename T>
@@ -93,12 +86,4 @@ TF_CALL_FLOAT_TYPES(REGISTER_CPU);
 
 #undef REGISTER_CPU
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(
-    Name("Softmax").Device(DEVICE_SYCL).TypeConstraint<float>("T"),
-    SoftmaxOp<SYCLDevice, float>);
-REGISTER_KERNEL_BUILDER(
-    Name("Softmax").Device(DEVICE_SYCL).TypeConstraint<double>("T"),
-    SoftmaxOp<SYCLDevice, double>);
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

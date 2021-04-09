@@ -24,29 +24,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
-
-struct BufferDescriptor : public GPUObjectDescriptor {
-  DataType element_type;
-  int element_size;
-  MemoryType memory_type = MemoryType::GLOBAL;
-  std::vector<std::string> attributes;
-
-  absl::Status PerformSelector(const std::string& selector,
-                               const std::vector<std::string>& args,
-                               const std::vector<std::string>& template_args,
-                               std::string* result) const override;
-
-  GPUResources GetGPUResources() const override;
-  absl::Status PerformReadSelector(const std::vector<std::string>& args,
-                                   std::string* result) const;
-  absl::Status PerformGetPtrSelector(
-      const std::vector<std::string>& args,
-      const std::vector<std::string>& template_args, std::string* result) const;
-};
 
 // Buffer represent linear GPU data storage with arbitrary data format.
 // Buffer is moveable but not copyable.
@@ -61,7 +43,7 @@ class Buffer : public GPUObject {
   Buffer(const Buffer&) = delete;
   Buffer& operator=(const Buffer&) = delete;
 
-  ~Buffer();
+  virtual ~Buffer() { Release(); }
 
   // for profiling and memory statistics
   uint64_t GetMemorySizeInBytes() const { return size_; }
@@ -79,6 +61,9 @@ class Buffer : public GPUObject {
 
   absl::Status GetGPUResources(const GPUObjectDescriptor* obj_ptr,
                                GPUResourcesWithValue* resources) const override;
+
+  absl::Status CreateFromBufferDescriptor(const BufferDescriptor& desc,
+                                          CLContext* context);
 
  private:
   void Release();

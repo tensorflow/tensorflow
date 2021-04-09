@@ -57,7 +57,7 @@ se::DeviceMemoryBase WrapRedzoneBestEffort(se::RedzoneAllocator* rz_allocator,
 // If violations have occurred, mark the corresponding autotune result
 // as a failure.
 void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
-                   tensorflow::AutotuneResult* autotune_result);
+                   AutotuneResult* autotune_result);
 
 template <typename T>
 inline se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
@@ -146,11 +146,12 @@ class AutoTuneMap {
   }
 
  private:
-  AutoTuneMap(const string& name) : name_(name) {
+  AutoTuneMap(const std::string& name) : name_(name) {
     min_score_threshold_ = 1;
     int min_warmup_iterations = 10;
     const char* threshold_str = getenv("TF_AUTOTUNE_THRESHOLD");
     if (threshold_str != nullptr) {
+      VLOG(1) << "TF_AUTOTUNE_THRESHOLD = " << threshold_str;
       strings::safe_strto32(threshold_str, &min_score_threshold_);
     }
     const char* min_warmup_iteration_str =
@@ -174,8 +175,8 @@ class AutoTuneMap {
     }
   };
 
-  string GetActionSummary(StringPiece action, const Parameters& params,
-                          const Config& config) {
+  std::string GetActionSummary(StringPiece action, const Parameters& params,
+                               const Config& config) {
     return strings::Printf("autotune_map %s %s: %s -> (%s)", name_.c_str(),
                            string(action).c_str(), params.ToString().c_str(),
                            config.ToString().c_str());
@@ -189,7 +190,7 @@ class AutoTuneMap {
   };
   std::unordered_map<Parameters, ValueType, Hasher> params_config_map_
       TF_GUARDED_BY(mu_);
-  string name_;
+  std::string name_;
   int32 min_score_threshold_;
   int32 max_autotune_count_;
   int32 max_autotune_global_count_;
@@ -239,9 +240,12 @@ void LogFusedConvForwardAutotuneResults(
 
 // Returns the best algorithms for the config, one is the fastest, the other is
 // other is fastest with 0 scratch space. Unsuccessful autotuning results are
-// allowed and ignored.
-Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
-                              se::dnn::AlgorithmConfig* algo);
+// allowed and ignored. The "plans" can be null when Cudnn frontend APIs are not
+// used.
+Status BestCudnnConvAlgorithm(
+    absl::Span<const AutotuneResult> results,
+    std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>>* plans,
+    se::dnn::AlgorithmConfig* algo);
 
 }  // namespace tensorflow
 

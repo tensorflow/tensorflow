@@ -27,9 +27,11 @@ namespace profiler {
 
 enum class ContextType : int {
   kGeneric,
+  kLegacy,
   kTfExecutor,
   kSharedBatchScheduler,
   kPjRt,
+  kAdaptiveSharedBatchScheduler,
 };
 
 /*

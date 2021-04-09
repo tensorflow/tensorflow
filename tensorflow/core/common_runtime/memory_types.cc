@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -48,13 +49,13 @@ struct EndpointEq {
 static Status ProcessMemoryTypes(
     const DeviceType& device_type, const Graph* g,
     const std::function<Status(const Edge*, MemoryType, MemoryType)>& fn) {
-  if (device_type != DEVICE_GPU && device_type != DEVICE_SYCL) {
-    // On non-GPU and non-SYCL devices, HOST_MEMORY and DEVICE_MEMORY are always
-    // compatible.
+  if (device_type != DEVICE_GPU &&
+      !DeviceFactory::IsPluggableDevice(device_type.type_string())) {
+    // On non-GPU devices, HOST_MEMORY and DEVICE_MEMORY are always compatible.
     return Status::OK();
   }
-  // For GPU and SYCL device, HOST_MEMORY and DEVICE_MEMORY is not
-  // compatible. I.e., a conversion/transfer must be done.
+  // For GPU, HOST_MEMORY and DEVICE_MEMORY is not compatible. I.e., a
+  // conversion/transfer must be done.
   //
   // {node id, slot id} -> memory type.
   typedef std::unordered_map<Endpoint, MemoryType, EndpointHash, EndpointEq>

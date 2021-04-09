@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/c_test_util.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/strcat.h"
@@ -628,6 +630,40 @@ TEST(CAPI, Graph) {
   EXPECT_TRUE(found_scalar_const);
   EXPECT_TRUE(found_add);
   EXPECT_TRUE(found_neg);
+
+  // Clean up
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
+TEST(CAPI, UpdateEdge) {
+  TF_Status* s = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+
+  // Make two scalar constants.
+  TF_Operation* one = ScalarConst(1, graph, s, "one");
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Operation* two = ScalarConst(2, graph, s, "two");
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Add oper.
+  TF_Operation* add = Add(one, two, graph, s, "add");
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Add another oper to the graph.
+  TF_Operation* neg = Neg(add, graph, s, "neg");
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  NodeDef node_def_neg;
+  ASSERT_TRUE(GetNodeDef(neg, &node_def_neg));
+  EXPECT_EQ(string("add"), node_def_neg.input(0));
+
+  // update edge of neg
+  TF_UpdateEdge(graph, TF_Output{one, 0}, TF_Input{neg, 0}, s);
+
+  ASSERT_TRUE(GetNodeDef(neg, &node_def_neg));
+  EXPECT_EQ(string("one:0"), node_def_neg.input(0));
 
   // Clean up
   TF_DeleteGraph(graph);
@@ -2540,6 +2576,20 @@ TEST(CAPI, TestTensorIsNotAligned) {
     EXPECT_FALSE(TF_TensorIsAligned(a));
   }
   TF_DeleteTensor(a);
+}
+
+TEST(CAPI, MessageBufferConversion) {
+  NodeDef node_in, node_out;
+  node_in.set_name("Test name");
+  node_in.set_op("Test op");
+
+  TF_Buffer* buffer = TF_NewBuffer();
+  TF_CHECK_OK(MessageToBuffer(node_in, buffer));
+  TF_CHECK_OK(BufferToMessage(buffer, &node_out));
+  TF_DeleteBuffer(buffer);
+
+  protobuf::util::MessageDifferencer differencer;
+  EXPECT_TRUE(differencer.Compare(node_in, node_out));
 }
 
 }  // namespace
