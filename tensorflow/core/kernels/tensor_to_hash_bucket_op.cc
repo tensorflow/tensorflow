@@ -34,7 +34,8 @@ class TensorToHashBucketOp : public OpKernel {
     OP_REQUIRES(ctx, dtype == DT_INT8 || dtype == DT_UINT8 ||
                      dtype == DT_INT16 || dtype == DT_UINT16 ||
                      dtype == DT_INT32 || dtype == DT_UINT32 ||
-                     dtype == DT_INT64 || dtype == DT_UINT64,
+                     dtype == DT_INT64 || dtype == DT_UINT64 ||
+                     dtype == DT_FLOAT,
                 errors::InvalidArgument("TensorToHashBucketOp doesn't support "
                                         "datatype ", DataTypeString(dtype)));
   }
@@ -67,6 +68,7 @@ class TensorToHashBucketOp : public OpKernel {
                           TensorToHashBucketOp<CPUDevice, type>);
 
 TF_CALL_INTEGRAL_TYPES(REGISTER_CPU_KERNELS);
+REGISTER_CPU_KERNELS(float);
 
 #undef REGISTER_CPU_KERNELS
 
@@ -79,6 +81,7 @@ TF_CALL_INTEGRAL_TYPES(REGISTER_CPU_KERNELS);
                           TensorToHashBucketOp<GPUDevice, type>);
 
 TF_CALL_INTEGRAL_TYPES(REGISTER_GPU_KERNELS);
+REGISTER_GPU_KERNELS(float);
 
 #undef REGISTER_GPU_KERNELS
 

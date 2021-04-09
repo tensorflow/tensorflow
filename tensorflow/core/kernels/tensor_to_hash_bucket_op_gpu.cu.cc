@@ -23,9 +23,12 @@ namespace tensorflow {
 
 namespace {
 
-// We set the buffer size to 20 as it is sufficient to cover the number of
-// digits in any integer type.
-constexpr int kSharedMemBufferSizePerThread = 20;
+// We set the buffer size to 47 as it is sufficient to cover the number of
+// digits in any integer type or float type with 6 fractional digits.
+constexpr int kSharedMemBufferSizePerThread = 47;
+__device__ const char kNan[] = "nan";
+__device__ const char kInf[] = "inf";
+constexpr int kPrecision = 6;
 
 template<typename T>
 __device__ __forceinline__ void FillDigits(T val, int num_digits, int* i,
@@ -64,13 +67,108 @@ __device__ __forceinline__ int IntegerToString(T val, char *buf) {
   return i;
 }
 
+__device__ __forceinline__ int FloatToString(float val, char *buf) {
+  int i = 0;
+  if (isnan(val)) {
+    for (auto c: kNan) {
+      buf[i++] = c;
+    }
+    return i;
+  }
+  if (isinf(val)) {
+    for (auto c: kInf) {
+      buf[i++] = c;
+    }
+    return i;
+  }
+
+  bool is_neg = val < 0.0;
+  if (is_neg) {
+    val = -val;
+    buf[i++] = '-';
+  }
+
+  // This position is reserved for the potential carry digit at the end.
+  i++;
+  int start_i = i;
+
+  // Get the magnitude of the input number. And there should be at least one
+  // digit before the decimal point.
+  int m = static_cast<int>(log10(val));
+  if (m < 1) {
+    m = 0;
+  }
+
+  int digit;
+  // Fill the digits of the integral and fractional parts.
+  int fractional_digits = 0;
+  while (fractional_digits < kPrecision) {
+    double factor = pow(10.0, m);
+    if (!isinf(factor) && factor > 0) {
+      digit = floor(val / factor);
+      val -= digit * factor;
+      buf[i++] = digit + '0';
+      if (m < 0) {
+        fractional_digits++;
+      }
+    }
+    if (m == 0) {
+      buf[i++] = '.';
+    }
+    m--;
+  }
+
+  // Deal with the carry.
+  double factor = pow(10.0, m);
+  if (!isinf(factor) && factor > 0) {
+    digit = floor(val / factor);
+  }
+  bool carry_detected = false;
+  if (digit >= 5) {
+    int sum = 0;
+    int carry = 1;
+    for (int j = i - 1; j >= start_i; j--) {
+      if (buf[j] != '.') {
+        sum = (carry + buf[j] - '0') % 10;
+        carry = (carry + buf[j] - '0') / 10;
+        buf[j] = sum + '0';
+      }
+    }
+    if (carry != 0) {
+      buf[start_i - 1] = carry + '0';
+      carry_detected = true;
+    }
+  }
+
+  // If the position reserved for carry is not used, we need to shift the
+  // digits.
+  if (!carry_detected) {
+    for (int j = start_i - 1; j < i - 1; j++) {
+      buf[j] = buf[j + 1];
+    }
+    i--;
+  }
+
+  return i;
+}
+
+template<typename T>
+__device__ __forceinline__ int NumberToString(T val, char *buf) {
+  return IntegerToString(val, buf);
+}
+
+template<>
+__device__ __forceinline__ int NumberToString<float>(float val, char *buf) {
+  return FloatToString(val, buf);
+}
+
 template<typename T>
 __global__ void ComputeHashes(const T* __restrict__ vals, int vals_size,
                               int64 num_buckets, int64* __restrict__ hashes) {
   extern __shared__ char s[];
 
   GPU_1D_KERNEL_LOOP(tid, vals_size) {
-    int size = IntegerToString(
+    int size = NumberToString(
         vals[tid], s + threadIdx.x * kSharedMemBufferSizePerThread);
     uint64_t a_hash = ::util_gpu::Fingerprint64(
         s + threadIdx.x * kSharedMemBufferSizePerThread, size);
@@ -115,6 +213,7 @@ void LaunchTensorToHashBucket<Eigen::GpuDevice, T>::operator()(
         Eigen::GpuDevice, type>;
 
 TF_CALL_INTEGRAL_TYPES(REGISTER_FUNCTORS);
+REGISTER_FUNCTORS(float);
 
 #undef REGISTER_FUNCTORS
 

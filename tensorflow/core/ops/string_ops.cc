@@ -83,7 +83,9 @@ REGISTER_OP("StringToHashBucketFast")
 REGISTER_OP("_TensorToHashBucketFast")
     .Input("input: T")
     .Output("output: int64")
-    .Attr("T: {int8, uint8, int16, uint16, int32, uint32, int64, uint64}")
+    .Attr(
+        "T: {int8, uint8, int16, uint16, int32, uint32, int64, uint64, "
+        "float}")
     .Attr("num_buckets: int >= 1")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(

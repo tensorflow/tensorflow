@@ -461,6 +461,8 @@ TEST_F(RemapperTensorToHashBucketTest, I32) { RunTest<DT_INT32>(); }
 
 TEST_F(RemapperTensorToHashBucketTest, I64) { RunTest<DT_INT64>(); }
 
+TEST_F(RemapperTensorToHashBucketTest, F32) { RunTest<DT_FLOAT>(); }
+
 class RemapperFuseMatMulWithBiasTest : public RemapperTest {
  public:
   template <DataType DTYPE>

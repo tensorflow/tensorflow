@@ -46,6 +46,9 @@ struct LaunchTensorToHashBucket {
       case DT_INT64:
         strings::Appendf(&format, "lld");
         break;
+      case DT_FLOAT:
+        strings::Appendf(&format, "f");
+        break;
       default:
         bool type_not_supported = true;
         OP_REQUIRES(c, !type_not_supported,

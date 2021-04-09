@@ -76,6 +76,9 @@ constexpr char kIsTraining[] = "is_training";
 
 constexpr char kWidth[] = "width";
 constexpr char kFill[] = "fill";
+constexpr char kPrecision[] = "precision";
+constexpr char kScientific[] = "scientific";
+constexpr char kShortest[] = "shortest";
 
 constexpr int kMissingIndex = -1;
 
@@ -1000,7 +1003,8 @@ bool FindTensorToHashBucket(const RemapperContext& ctx, int node_index,
   if (!HasDataType(as_string_node_def, DT_INT8) &&
       !HasDataType(as_string_node_def, DT_INT16) &&
       !HasDataType(as_string_node_def, DT_INT32) &&
-      !HasDataType(as_string_node_def, DT_INT64)) {
+      !HasDataType(as_string_node_def, DT_INT64) &&
+      !HasDataType(as_string_node_def, DT_FLOAT)) {
      return false;
   }
   
@@ -1011,6 +1015,24 @@ bool FindTensorToHashBucket(const RemapperContext& ctx, int node_index,
 
   string fill;
   if (!GetNodeAttr(*as_string_node_def, kFill, &fill).ok() || fill != "") {
+    return false;
+  }
+
+  int precision;
+  if (!GetNodeAttr(*as_string_node_def, kPrecision, &precision).ok() ||
+      precision != -1) {
+    return false;
+  }
+
+  bool scientific;
+  if (!GetNodeAttr(*as_string_node_def, kScientific, &scientific).ok() ||
+      scientific) {
+    return false;
+  }
+
+  bool shortest;
+  if (!GetNodeAttr(*as_string_node_def, kShortest, &shortest).ok() ||
+      shortest) {
     return false;
   }
 
