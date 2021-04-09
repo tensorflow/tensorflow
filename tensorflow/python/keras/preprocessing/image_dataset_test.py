@@ -25,6 +25,7 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.preprocessing import image as image_preproc
 from tensorflow.python.keras.preprocessing import image_dataset
 from tensorflow.python.platform import test
+from tensorflow.python.framework import dtypes
 
 try:
   import PIL  # pylint:disable=g-import-not-at-top
@@ -34,16 +35,21 @@ except ImportError:
 
 class ImageDatasetFromDirectoryTest(keras_parameterized.TestCase):
 
-  def _get_images(self, count=16, color_mode='rgb'):
+  def _get_images(self,
+                  count=16,
+                  color_mode='rgb',
+                  min=0,
+                  max=256,
+                  dtype=None):
     width = height = 24
     imgs = []
     for _ in range(count):
       if color_mode == 'grayscale':
-        img = np.random.randint(0, 256, size=(height, width, 1))
+        img = np.random.randint(min, max, size=(height, width, 1))
       elif color_mode == 'rgba':
-        img = np.random.randint(0, 256, size=(height, width, 4))
+        img = np.random.randint(min, max, size=(height, width, 4))
       else:
-        img = np.random.randint(0, 256, size=(height, width, 3))
+        img = np.random.randint(min, max, size=(height, width, 3))
       img = image_preproc.array_to_img(img)
       imgs.append(img)
     return imgs
@@ -53,7 +59,10 @@ class ImageDatasetFromDirectoryTest(keras_parameterized.TestCase):
                          grayscale=False,
                          nested_dirs=False,
                          color_mode='rgb',
-                         count=16):
+                         count=16,
+                         min_img_val=0,
+                         max_img_val=256,
+                         dtype=None):
     # Get a unique temp directory
     temp_dir = os.path.join(self.get_temp_dir(), str(np.random.randint(1e6)))
     os.mkdir(temp_dir)
@@ -77,7 +86,7 @@ class ImageDatasetFromDirectoryTest(keras_parameterized.TestCase):
 
     # Save images to the paths
     i = 0
-    for img in self._get_images(color_mode=color_mode, count=count):
+    for img in self._get_images(color_mode=color_mode, count=count, min=min_img_val, max=max_img_val, dtype=dtype):
       path = paths[i % len(paths)]
       if color_mode == 'rgb':
         ext = 'jpg'
@@ -230,6 +239,20 @@ class ImageDatasetFromDirectoryTest(keras_parameterized.TestCase):
     self.assertLen(batch, 2)
     self.assertEqual(batch[0].shape, (8, 18, 18, 1))
     self.assertEqual(batch[0].dtype.name, 'float32')
+  
+  def test_image_dataset_from_directory_dtype_uint16(self):
+    if PIL is None:
+      return  # Skip test if PIL is not available.
+
+    directory = self._prepare_directory(num_classes=1, color_mode='rgba', min_img_val=256, max_img_val=60000, dtype=dtypes.uint16)
+    dataset = image_dataset.image_dataset_from_directory(
+        directory, batch_size=8, image_size=(18, 18), color_mode='rgba', dtype=dtypes.uint16)
+    batch = next(iter(dataset))
+    self.assertLen(batch, 2)
+    self.assertEqual(batch[0].dtype.name, 'uint16')
+
+    # Ensure pixel values aren't being clipped somewhere
+    self.assertGreaterEqual(np.max(batch[0]), 256)
 
   def test_image_dataset_from_directory_validation_split(self):
     if PIL is None:
