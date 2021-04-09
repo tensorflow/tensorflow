@@ -451,17 +451,16 @@ tf_cc_test(
 #     ],
 # )
 
-# TODO(b/160190568): Re-enable when it works again.
-# gpu_kernel_library(
-#     name = "gpu_relu_kernels",
-#     op = "relu",
-#     tile_size = "256",
-#     types = [
-#         "f16",
-#         "f32",
-#         "f64",
-#     ],
-# )
+gpu_kernel_library(
+    name = "gpu_relu_kernels",
+    op = "relu",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+)
 
 # TODO(b/25387198): Add an int32 kernel.
 gpu_kernel_library(
