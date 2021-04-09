@@ -129,8 +129,12 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         "LSTMBlockCellGrad",
         "MatMul",
     };
+#if TENSORFLOW_USE_ROCM
+    if (true) {
+#else 
     if (cuda_version_ >= 9010) {
       // Fp16 BatchMatMul is slow before CUDA 9.1.
+#endif
       list.insert("BatchMatMul");
       list.insert("BatchMatMulV2");
     }
@@ -142,6 +146,9 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
       list.insert("Conv3DBackpropInput");
       list.insert("Conv3DBackpropInputV2");
     }
+#if TENSORFLOW_USE_ROCM
+      list.insert("_ROCmFusedConvolutionBiasActivation");
+#endif
     if (cudnn_version_ >= 8000) {
       list.insert("DepthwiseConv2dNative");
       list.insert("DepthwiseConv2dNativeBackpropFilter");
