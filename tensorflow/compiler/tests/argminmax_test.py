@@ -28,7 +28,7 @@ from tensorflow.python.platform import test
 
 
 class ArgMinMaxTest(xla_test.XLATestCase):
-
+  """Test cases for argmin and argmax."""
   def _assertOpOutputMatchesExpected(self, op, axis, output_type, op_input,
                                      expected):
     """Verifies that 'op' produces 'expected' when fed input 'op_input' .
@@ -102,31 +102,35 @@ class ArgMinMaxTest(xla_test.XLATestCase):
       for output_type in minmax_types:
         # argmax NAN tests (ignore nan in tensor)
         self._assertOpOutputMatchesExpected(
-            math_ops.argmax,
-            axis=0,
-            output_type=output_type,
-            op_input=np.array([np.nan, 6.0, 7.0, -1.0, 4.0, np.nan, -50.0], dtype=dtype),
-            expected=output_type(2))
+          math_ops.argmax,
+          axis=0,
+          output_type=output_type,
+          op_input=np.array(
+              [np.nan, 6.0, 7.0, -1.0, 4.0, np.nan, -50.0],
+              dtype=dtype),
+          expected=output_type(2))
         self._assertOpOutputMatchesExpected(
-            math_ops.argmax,
-            axis=0,
-            output_type=output_type,
-            op_input=np.array([np.nan, np.nan, 1.0], dtype=dtype),
-            expected=output_type(2))
+          math_ops.argmax,
+          axis=0,
+          output_type=output_type,
+          op_input=np.array([np.nan, np.nan, 1.0], dtype=dtype),
+          expected=output_type(2))
 
         # argmin NAN tests (ignore nan in tensor)
         self._assertOpOutputMatchesExpected(
-            math_ops.argmin,
-            axis=0,
-            output_type=output_type,
-            op_input=np.array([np.nan, 6.0, 7.0, -1.0, 4.0, np.nan, -50.0], dtype=dtype),
-            expected=output_type(6))
+          math_ops.argmin,
+          axis=0,
+          output_type=output_type,
+          op_input=np.array(
+            [np.nan, 6.0, 7.0, -1.0, 4.0, np.nan, -50.0],
+            dtype=dtype),
+          expected=output_type(6))
         self._assertOpOutputMatchesExpected(
-            math_ops.argmin,
-            axis=0,
-            output_type=output_type,
-            op_input=np.array([np.nan, np.nan], dtype=dtype),
-            expected=output_type(0))
+          math_ops.argmin,
+          axis=0,
+          output_type=output_type,
+          op_input=np.array([np.nan, np.nan], dtype=dtype),
+          expected=output_type(0))
 
   def testInf(self):
     minmax_types = self.all_types & {np.int32, np.int64}
