@@ -1,6 +1,10 @@
 path: "tensorflow.__internal__.saved_model"
 tf_module {
   member {
+    name: "SavedModelBuilder"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "StructureCoder"
     mtype: "<type \'type\'>"
   }
