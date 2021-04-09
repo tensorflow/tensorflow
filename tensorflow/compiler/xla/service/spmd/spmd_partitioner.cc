@@ -2670,6 +2670,8 @@ Status SpmdPartitioningVisitor::HandlePad(HloInstruction* hlo) {
   // Create a window config to represent the pad.
   Window window;
   bool needs_masking = false;
+  const bool pad_value_is_zero =
+      hlo->operand(1)->IsConstant() && hlo->operand(1)->literal().IsZero({});
   for (int64 i = 0; i < hlo->shape().rank(); ++i) {
     const auto& pd = hlo->padding_config().dimensions(i);
     WindowDimension* dim = window.add_dimensions();
@@ -2680,9 +2682,16 @@ Status SpmdPartitioningVisitor::HandlePad(HloInstruction* hlo) {
     dim->set_padding_low(pd.edge_padding_low());
     dim->set_padding_high(pd.edge_padding_high());
     dim->set_base_dilation(pd.interior_padding() + 1);
-    needs_masking |= hlo->sharding().tile_assignment().dim(i) > 1 &&
-                     (pd.edge_padding_low() > 0 || pd.edge_padding_high() > 0 ||
-                      pd.interior_padding() > 0);
+    const int64 shard_count = hlo->sharding().tile_assignment().dim(i);
+    // Need masking only if there is non-zero padding value or the operand is
+    // unevenly partitioned. Halo exchange fills 0 in collective permute result
+    // for non-destination cores.
+    needs_masking |=
+        shard_count > 1 &&
+        (pd.edge_padding_low() > 0 || pd.edge_padding_high() > 0 ||
+         pd.interior_padding() > 0) &&
+        (!pad_value_is_zero ||
+         hlo->operand(0)->shape().dimensions(i) % shard_count != 0);
   }
 
   auto replicated_rhs = GetPartitionedHlo(hlo->operand(1))

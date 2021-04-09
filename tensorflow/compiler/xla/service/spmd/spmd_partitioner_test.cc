@@ -2285,6 +2285,30 @@ ENTRY entry {
                           op::Shape("f32[1]")));
 }
 
+// Same as above except that it uses zero padding, so there is no need for
+// masking.
+TEST_F(SpmdPartitioningTest, MergedPadThenSliceShiftRightNoMasking) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[4] parameter(0), sharding={devices=[4]0,1,2,3}
+  %init = f32[] constant(0)
+  %pad = f32[5] pad(%param0, %init), padding=1_0, sharding={devices=[4]0,1,2,3}
+  %copy = f32[5] copy(%pad), sharding={devices=[4]0,1,2,3}
+  %copy.1 = f32[5] copy(%copy), sharding={devices=[4]0,1,2,3}
+  ROOT %slice = f32[4] slice(%copy.1), slice={[0:4]}, sharding={devices=[4]0,1,2,3}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  auto param0 = AllOf(op::Parameter(0), op::Shape("f32[1]"));
+  EXPECT_THAT(root, AllOf(op::CollectivePermute(param0), op::Shape("f32[1]")));
+}
+
 TEST_F(SpmdPartitioningTest,
        PartialReplicateSliceAlongNonPartitionedDimension) {
   absl::string_view hlo_string = R"(
