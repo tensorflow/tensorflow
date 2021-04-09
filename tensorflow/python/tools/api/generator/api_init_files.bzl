@@ -26,6 +26,7 @@ TENSORFLOW_API_INIT_FILES = [
     "__internal__/train/__init__.py",
     "__internal__/types/__init__.py",
     "__internal__/saved_model/__init__.py",
+    "__internal__/saved_model/load/__init__.py",
     "__internal__/tracking/__init__.py",
     "__operators__/__init__.py",
     "audio/__init__.py",

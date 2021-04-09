@@ -8,6 +8,10 @@ tf_module {
     name: "StructureCoder"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "load"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "load_partial"
     argspec: "args=[\'export_dir\', \'filters\', \'tags\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
