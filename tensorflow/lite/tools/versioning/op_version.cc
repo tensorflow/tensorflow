@@ -901,6 +901,12 @@ void UpdateOpVersion(uint8_t* model_buffer_pointer) {
         OpSignature op_sig = GetOpSignature(op_code, op, subgraph);
         // Update builtin operator version.
         int32_t op_ver = GetBuiltinOperatorVersion(op_sig);
+        // Skip updating op version if the current node uses lower version.
+        // TODO(b/184366869): Populate multiple versions of operator once MLIR
+        // quantizer is ready.
+        if (op_ver <= op_code->version()) {
+          continue;
+        }
         if (!op_code->mutate_version(op_ver)) {
           LOG(ERROR) << "Can't set operator "
                      << EnumNameBuiltinOperator(builtin_code) << " to version "
