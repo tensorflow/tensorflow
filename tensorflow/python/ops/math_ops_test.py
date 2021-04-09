@@ -58,11 +58,11 @@ class ReduceTest(test_util.TensorFlowTestCase):
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
     with test_util.device(use_gpu=True):
       for axis in (0, -2):
-        self.assertAllEqual(self.evaluate(math_ops.reduce_sum(x, axis=axis)),
-                            [5, 7, 9])
+        self.assertAllEqual(
+            self.evaluate(math_ops.reduce_sum(x, axis=axis)), [5, 7, 9])
       for axis in (1, -1):
-        self.assertAllEqual(self.evaluate(math_ops.reduce_sum(x, axis=axis)),
-                            [6, 15])
+        self.assertAllEqual(
+            self.evaluate(math_ops.reduce_sum(x, axis=axis)), [6, 15])
       for axis in (None, (0, 1), (1, 0), (-1, 0), (0, -1), (-2, 1), (1, -2),
                    (-1, -2), (-2, -1)):
         self.assertEqual(self.evaluate(math_ops.reduce_sum(x, axis=axis)), 21)
@@ -357,8 +357,8 @@ class ScalarMulTest(test_util.TensorFlowTestCase):
     indices = constant_op.constant([0, 2, 5])
     x = math_ops.scalar_mul(-3, ops.IndexedSlices(values, indices))
     with test_util.device(use_gpu=True):
-      self.assertAllEqual(self.evaluate(x.values),
-                          [[-6, -9], [-15, -21], [0, 3]])
+      self.assertAllEqual(
+          self.evaluate(x.values), [[-6, -9], [-15, -21], [0, 3]])
       self.assertAllEqual(self.evaluate(x.indices), [0, 2, 5])
 
 
@@ -435,9 +435,11 @@ class AddNTest(test_util.TensorFlowTestCase):
 
   def test_iterable(self):
     """Test that add_n supports iterables (e.g. generators and dict values)."""
+
     def fn():
       yield 1
       yield 2
+
     values_dict = {"a": 1, "b": 2}
     with test_util.use_gpu():
       self.assertAllEqual(3, math_ops.add_n(fn()))
@@ -482,8 +484,9 @@ class DivAndModTest(test_util.TensorFlowTestCase):
 
   def testFloorModBfloat16(self):
     nums, divs = self.floatTestData()
-    tf_result = math_ops.floormod(math_ops.cast(nums, dtypes.bfloat16),
-                                  math_ops.cast(divs, dtypes.bfloat16))
+    tf_result = math_ops.floormod(
+        math_ops.cast(nums, dtypes.bfloat16),
+        math_ops.cast(divs, dtypes.bfloat16))
     np_result = nums % divs
     self.assertAllEqual(tf_result, np_result)
 
@@ -741,10 +744,8 @@ class NextAfterTest(test_util.TensorFlowTestCase):
 
       self.assertAllEqual(math_ops.nextafter(one, two) - one, eps)
       self.assertAllLess(math_ops.nextafter(one, zero) - one, 0)
-      self.assertAllEqual(
-          math_ops.is_nan(math_ops.nextafter(nan, one)), [True])
-      self.assertAllEqual(
-          math_ops.is_nan(math_ops.nextafter(one, nan)), [True])
+      self.assertAllEqual(math_ops.is_nan(math_ops.nextafter(nan, one)), [True])
+      self.assertAllEqual(math_ops.is_nan(math_ops.nextafter(one, nan)), [True])
       self.assertAllEqual(math_ops.nextafter(one, one), one)
 
   def testBroadcasting(self):
@@ -785,13 +786,13 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
           r"Attempt to convert a value .* with an unsupported type")
     else:
       error = TypeError
-      error_message = (
-          r"Failed to convert object of type .* to Tensor")
+      error_message = (r"Failed to convert object of type .* to Tensor")
 
     class RHSReturnsTrue(object):
 
       def __radd__(self, other):
         return True
+
     a = array_ops.ones([1], dtype=dtypes.int32) + RHSReturnsTrue()
     self.assertEqual(a, True)
 
