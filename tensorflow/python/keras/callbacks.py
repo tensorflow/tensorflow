@@ -2071,10 +2071,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
       embeddings_freq: frequency (in epochs) at which embedding layers will be
         visualized. If set to 0, embeddings won't be visualized.
       embeddings_metadata: a dictionary which maps layer name to a file name in
-        which metadata for this embedding layer is saved. See the
-        [details](
-          https://www.tensorflow.org/how_tos/embedding_viz/#metadata_optional)
-        about metadata files format. In case if the same metadata file is
+        which metadata for this embedding layer is saved. In case if the same metadata file is
         used for all embedding layers, string can be passed.
 
   Examples:
