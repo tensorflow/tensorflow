@@ -13808,9 +13808,9 @@ op {
     name: "handle"
     type: DT_VARIANT
     experimental_full_type {
-      type_id: FT_ARRAY
+      type_id: TFT_ARRAY
       args {
-        type_id: FT_VAR
+        type_id: TFT_VAR
         s: "element_dtype"
       }
     }
@@ -55485,9 +55485,9 @@ op {
     name: "output"
     type: DT_VARIANT
     experimental_full_type {
-      type_id: FT_ARRAY
+      type_id: TFT_ARRAY
       args {
-        type_id: FT_VAR
+        type_id: TFT_VAR
         s: "element_dtype"
       }
     }
@@ -55569,9 +55569,9 @@ op {
     name: "output_handle"
     type: DT_VARIANT
     experimental_full_type {
-      type_id: FT_ARRAY
+      type_id: TFT_ARRAY
       args {
-        type_id: FT_VAR
+        type_id: TFT_VAR
         s: "element_dtype"
       }
     }
@@ -55685,9 +55685,9 @@ op {
     name: "output_handle"
     type: DT_VARIANT
     experimental_full_type {
-      type_id: FT_ARRAY
+      type_id: TFT_ARRAY
       args {
-        type_id: FT_VAR
+        type_id: TFT_VAR
         s: "element_dtype"
       }
     }
@@ -55711,9 +55711,9 @@ op {
     name: "output_handles"
     type: DT_VARIANT
     experimental_full_type {
-      type_id: FT_ARRAY
+      type_id: TFT_ARRAY
       args {
-        type_id: FT_VAR
+        type_id: TFT_VAR
         s: "element_dtype"
       }
     }
@@ -55737,9 +55737,9 @@ op {
     name: "handle"
     type: DT_VARIANT
     experimental_full_type {
-      type_id: FT_ARRAY
+      type_id: TFT_ARRAY
       args {
-        type_id: FT_VAR
+        type_id: TFT_VAR
         s: "element_dtype"
       }
     }
@@ -55792,9 +55792,9 @@ op {
     name: "output_handle"
     type: DT_VARIANT
     experimental_full_type {
-      type_id: FT_ARRAY
+      type_id: TFT_ARRAY
       args {
-        type_id: FT_VAR
+        type_id: TFT_VAR
         s: "element_dtype"
       }
     }
@@ -55832,9 +55832,9 @@ op {
     name: "output_handle"
     type: DT_VARIANT
     experimental_full_type {
-      type_id: FT_ARRAY
+      type_id: TFT_ARRAY
       args {
-        type_id: FT_VAR
+        type_id: TFT_VAR
         s: "element_dtype"
       }
     }
@@ -55866,9 +55866,9 @@ op {
     name: "output_handle"
     type: DT_VARIANT
     experimental_full_type {
-      type_id: FT_ARRAY
+      type_id: TFT_ARRAY
       args {
-        type_id: FT_VAR
+        type_id: TFT_VAR
         s: "element_dtype"
       }
     }
@@ -55906,9 +55906,9 @@ op {
     name: "output_handle"
     type: DT_VARIANT
     experimental_full_type {
-      type_id: FT_ARRAY
+      type_id: TFT_ARRAY
       args {
-        type_id: FT_VAR
+        type_id: TFT_VAR
         s: "element_dtype"
       }
     }
@@ -55936,9 +55936,9 @@ op {
     name: "output_handle"
     type: DT_VARIANT
     experimental_full_type {
-      type_id: FT_ARRAY
+      type_id: TFT_ARRAY
       args {
-        type_id: FT_VAR
+        type_id: TFT_VAR
         s: "element_dtype"
       }
     }

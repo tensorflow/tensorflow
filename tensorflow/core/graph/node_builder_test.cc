@@ -76,10 +76,10 @@ REGISTER_OP("FullTypeOpBasicType")
     .SetTypeConstructor([](OpDef* op_def) {
       FullTypeDef* tdef =
           op_def->mutable_output_arg(0)->mutable_experimental_full_type();
-      tdef->set_type_id(FT_ARRAY);
+      tdef->set_type_id(TFT_ARRAY);
 
       FullTypeDef* arg = tdef->add_args();
-      arg->set_type_id(FT_VAR);
+      arg->set_type_id(TFT_VAR);
       arg->set_s("out_type");
 
       return Status::OK();
@@ -94,12 +94,12 @@ TEST(NodeBuilderTest, TypeConstructorBasicType) {
   FullTypeDef* ft;
   graph.NodeType(node->name(), &ft);
   ASSERT_NE(ft, nullptr);
-  ASSERT_EQ(ft->type_id(), FT_PRODUCT);
+  ASSERT_EQ(ft->type_id(), TFT_PRODUCT);
   ASSERT_EQ(ft->args_size(), 1);
   auto ot = ft->args(0);
-  ASSERT_EQ(ot.type_id(), FT_ARRAY);
-  ASSERT_EQ(ot.args(0).type_id(), FT_TENSOR);
-  ASSERT_EQ(ot.args(0).args(0).type_id(), FT_FLOAT);
+  ASSERT_EQ(ot.type_id(), TFT_ARRAY);
+  ASSERT_EQ(ot.args(0).type_id(), TFT_TENSOR);
+  ASSERT_EQ(ot.args(0).args(0).type_id(), TFT_FLOAT);
   ASSERT_EQ(ot.args(0).args(0).args().size(), 0);
 }
 
@@ -109,10 +109,10 @@ REGISTER_OP("FullTypeOpListType")
     .SetTypeConstructor([](OpDef* op_def) {
       FullTypeDef* tdef =
           op_def->mutable_output_arg(0)->mutable_experimental_full_type();
-      tdef->set_type_id(FT_ARRAY);
+      tdef->set_type_id(TFT_ARRAY);
 
       FullTypeDef* arg = tdef->add_args();
-      arg->set_type_id(FT_VAR);
+      arg->set_type_id(TFT_VAR);
       arg->set_s("out_types");
 
       return Status::OK();
@@ -127,13 +127,13 @@ TEST(NodeBuilderTest, TypeConstructorListType) {
   FullTypeDef* ft;
   graph.NodeType(node->name(), &ft);
   ASSERT_NE(ft, nullptr);
-  ASSERT_EQ(ft->type_id(), FT_PRODUCT);
+  ASSERT_EQ(ft->type_id(), TFT_PRODUCT);
   ASSERT_EQ(ft->args_size(), 1);
   auto ot = ft->args(0);
-  ASSERT_EQ(ot.type_id(), FT_ARRAY);
-  ASSERT_EQ(ot.args(0).type_id(), FT_PRODUCT);
-  ASSERT_EQ(ot.args(0).args(0).type_id(), FT_TENSOR);
-  ASSERT_EQ(ot.args(0).args(0).args(0).type_id(), FT_FLOAT);
+  ASSERT_EQ(ot.type_id(), TFT_ARRAY);
+  ASSERT_EQ(ot.args(0).type_id(), TFT_PRODUCT);
+  ASSERT_EQ(ot.args(0).args(0).type_id(), TFT_TENSOR);
+  ASSERT_EQ(ot.args(0).args(0).args(0).type_id(), TFT_FLOAT);
   ASSERT_EQ(ot.args(0).args(0).args(0).args().size(), 0);
 }
 

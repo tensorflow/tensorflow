@@ -675,12 +675,12 @@ TEST_F(GraphTest, NodeTypeBasicOperations) {
   ASSERT_EQ(ft, nullptr);
 
   FullTypeDef basic_t;
-  basic_t.set_type_id(FT_TENSOR);
+  basic_t.set_type_id(TFT_TENSOR);
   graph_.SetNodeType("A", basic_t);
 
   graph_.NodeType("A", &ft);
   ASSERT_NE(ft, nullptr);
-  ASSERT_EQ(ft->type_id(), FT_TENSOR);
+  ASSERT_EQ(ft->type_id(), TFT_TENSOR);
   graph_.NodeType("B", &ft);
   ASSERT_EQ(ft, nullptr);
 }
