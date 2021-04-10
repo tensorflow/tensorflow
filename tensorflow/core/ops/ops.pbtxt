@@ -58560,6 +58560,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BOOL
       }
     }
   }
@@ -58605,6 +58606,7 @@ op {
     allowed_values {
       list {
         type: DT_UINT8
+        type: DT_DOUBLE
         type: DT_FLOAT
         type: DT_HALF
       }
