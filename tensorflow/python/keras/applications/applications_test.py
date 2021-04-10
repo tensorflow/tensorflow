@@ -49,6 +49,8 @@ MODEL_LIST_NO_NASNET = [
     (mobilenet_v2.MobileNetV2, 1280),
     (mobilenet_v3.MobileNetV3Small, 1024),
     (mobilenet_v3.MobileNetV3Large, 1280),
+    (mobilenet_v3.MobileNetV3Small, 1024, {"minimalistic": True}),
+    (mobilenet_v3.MobileNetV3Large, 1280, {"minimalistic": True}),
     (densenet.DenseNet121, 1024),
     (densenet.DenseNet169, 1664),
     (densenet.DenseNet201, 1920),
@@ -60,6 +62,11 @@ MODEL_LIST_NO_NASNET = [
     (efficientnet.EfficientNetB5, 2048),
     (efficientnet.EfficientNetB6, 2304),
     (efficientnet.EfficientNetB7, 2560),
+    (efficientnet.EfficientNetB0, 1280, {"lite": True}),
+    (efficientnet.EfficientNetB1, 1280, {"lite": True}),
+    (efficientnet.EfficientNetB2, 1280, {"lite": True}),
+    (efficientnet.EfficientNetB3, 1280, {"lite": True}),
+    (efficientnet.EfficientNetB4, 1280, {"lite": True}),
 ]
 
 NASNET_LIST = [
@@ -81,9 +88,9 @@ class ApplicationsTest(test.TestCase, parameterized.TestCase):
         raise AssertionError('Shapes differ: %s vs %s' % (shape1, shape2))
 
   @parameterized.parameters(*MODEL_LIST)
-  def test_application_base(self, app, _):
+  def test_application_base(self, app, _, kwargs={}):
     # Can be instantiated with default arguments
-    model = app(weights=None)
+    model = app(weights=None, **kwargs)
     # Can be serialized and deserialized
     config = model.get_config()
     reconstructed_model = model.__class__.from_config(config)
@@ -91,13 +98,13 @@ class ApplicationsTest(test.TestCase, parameterized.TestCase):
     backend.clear_session()
 
   @parameterized.parameters(*MODEL_LIST)
-  def test_application_notop(self, app, last_dim):
+  def test_application_notop(self, app, last_dim, kwargs={}):
     if 'NASNet' or 'MobileNetV3' in app.__name__:
       only_check_last_dim = True
     else:
       only_check_last_dim = False
     output_shape = _get_output_shape(
-        lambda: app(weights=None, include_top=False))
+        lambda: app(weights=None, include_top=False, **kwargs))
     if only_check_last_dim:
       self.assertEqual(output_shape[-1], last_dim)
     else:
@@ -105,19 +112,22 @@ class ApplicationsTest(test.TestCase, parameterized.TestCase):
     backend.clear_session()
 
   @parameterized.parameters(MODEL_LIST)
-  def test_application_pooling(self, app, last_dim):
+  def test_application_pooling(self, app, last_dim, kwargs={}):
     output_shape = _get_output_shape(
-        lambda: app(weights=None, include_top=False, pooling='avg'))
+        lambda: app(weights=None, include_top=False, pooling='avg', **kwargs))
     self.assertShapeEqual(output_shape, (None, last_dim))
 
   @parameterized.parameters(*MODEL_LIST_NO_NASNET)
-  def test_application_variable_input_channels(self, app, last_dim):
+  def test_application_variable_input_channels(self, app, last_dim, kwargs={}):
     if backend.image_data_format() == 'channels_first':
       input_shape = (1, None, None)
     else:
       input_shape = (None, None, 1)
     output_shape = _get_output_shape(
-        lambda: app(weights=None, include_top=False, input_shape=input_shape))
+        lambda: app(
+          weights=None, include_top=False, input_shape=input_shape, **kwargs
+        )
+    )
     if 'MobileNetV3' in app.__name__:
       self.assertShapeEqual(output_shape, (None, 1, 1, last_dim))
     else:
@@ -129,7 +139,10 @@ class ApplicationsTest(test.TestCase, parameterized.TestCase):
     else:
       input_shape = (None, None, 4)
     output_shape = _get_output_shape(
-        lambda: app(weights=None, include_top=False, input_shape=input_shape))
+        lambda: app(
+          weights=None, include_top=False, input_shape=input_shape, **kwargs
+        )
+    )
     if 'MobileNetV3' in app.__name__:
       self.assertShapeEqual(output_shape, (None, 1, 1, last_dim))
     else:

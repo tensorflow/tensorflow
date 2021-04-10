@@ -27,7 +27,7 @@ import math
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.engine import training
-from tensorflow.python.keras.layers import VersionAwareLayers, ReLU
+from tensorflow.python.keras.layers import VersionAwareLayers
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.lib.io import file_io
@@ -204,10 +204,6 @@ BASE_DOCSTRING = """Instantiates the {name} architecture.
 """
 
 
-def relu6(x):
-  return ReLU(max_value=6)(x)
-
-
 def EfficientNet(
     width_coefficient,
     depth_coefficient,
@@ -282,9 +278,6 @@ def EfficientNet(
   if blocks_args == 'default':
     blocks_args = DEFAULT_BLOCKS_ARGS
 
-  if lite:
-    activation = relu6
-
   if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
@@ -331,7 +324,9 @@ def EfficientNet(
   x = img_input
 
   if lite:
-    x = layers.Normalization(mean=127.0, variance=128.0**2)(x)
+    x = layers.Normalization(
+      mean=127.0, variance=128.0**2, axis=bn_axis
+    )(x)
   else:
     x = layers.Rescaling(1. / 255.)(x)
     x = layers.Normalization(axis=bn_axis)(x)
@@ -350,7 +345,7 @@ def EfficientNet(
       kernel_initializer=CONV_KERNEL_INITIALIZER,
       name='stem_conv')(x)
   x = layers.BatchNormalization(axis=bn_axis, name='stem_bn')(x)
-  x = layers.Activation(activation, name='stem_activation')(x)
+  x = get_activation(activation, name='stem_activation', lite=lite)(x)
 
   # Build blocks
   blocks_args = copy.deepcopy(blocks_args)
@@ -383,7 +378,7 @@ def EfficientNet(
           activation,
           drop_connect_rate * b / blocks,
           name='block{}{}_'.format(i + 1, chr(j + 97)),
-          use_se=not lite,
+          lite=lite,
           **args)
       b += 1
 
@@ -397,7 +392,7 @@ def EfficientNet(
       kernel_initializer=CONV_KERNEL_INITIALIZER,
       name='top_conv')(x)
   x = layers.BatchNormalization(axis=bn_axis, name='top_bn')(x)
-  x = layers.Activation(activation, name='top_activation')(x)
+  x = get_activation(activation, name='top_activation', lite=lite)(x)
   if include_top:
     x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
     if dropout_rate > 0:
@@ -455,7 +450,7 @@ def block(inputs,
           expand_ratio=1,
           se_ratio=0.,
           id_skip=True,
-          use_se=True):
+          lite=False):
   """An inverted residual block.
 
   Args:
@@ -470,7 +465,8 @@ def block(inputs,
       expand_ratio: integer, scaling coefficient for the input filters.
       se_ratio: float between 0 and 1, fraction to squeeze the input filters.
       id_skip: boolean.
-      use_se: boolean. Whether to use squeeze and excitations blocks.
+      lite: boolean. Whether to create block for lite variant. Lite variant
+        is not using SE and has different activation function.
 
   Returns:
       output tensor for the block.
@@ -489,7 +485,7 @@ def block(inputs,
         name=name + 'expand_conv')(
             inputs)
     x = layers.BatchNormalization(axis=bn_axis, name=name + 'expand_bn')(x)
-    x = layers.Activation(activation, name=name + 'expand_activation')(x)
+    x = get_activation(activation, name=name+'expand_activation', lite=lite)(x)
   else:
     x = inputs
 
@@ -509,10 +505,10 @@ def block(inputs,
       depthwise_initializer=CONV_KERNEL_INITIALIZER,
       name=name + 'dwconv')(x)
   x = layers.BatchNormalization(axis=bn_axis, name=name + 'bn')(x)
-  x = layers.Activation(activation, name=name + 'activation')(x)
+  x = get_activation(activation, name=name + 'activation', lite=lite)(x)
 
   # Squeeze and Excitation phase
-  if (0 < se_ratio <= 1) and use_se:
+  if (0 < se_ratio <= 1) and not lite:
     filters_se = max(1, int(filters_in * se_ratio))
     se = layers.GlobalAveragePooling2D(name=name + 'se_squeeze')(x)
     if bn_axis == 1:
@@ -552,6 +548,14 @@ def block(inputs,
           drop_rate, noise_shape=(None, 1, 1, 1), name=name + 'drop')(x)
     x = layers.add([x, inputs], name=name + 'add')
   return x
+
+
+def get_activation(activation, name, lite):
+    """Returns activation layer for given model variant."""
+    if lite:
+      return layers.ReLU(max_value=6, name=name)
+    else:
+      return layers.Activation(activation, name=name)
 
 
 @keras_export('keras.applications.efficientnet.EfficientNetB0',
@@ -703,7 +707,8 @@ def EfficientNetB5(include_top=True,
                    pooling=None,
                    classes=1000,
                    classifier_activation='softmax',
-                   **kwargs):  # Todo: prevent from setting lite from kwargs
+                   **kwargs):
+  assert not kwargs.get("lite"), "Lite option only in B0-B4 variants."
   return EfficientNet(
       1.6,
       2.2,
@@ -729,7 +734,8 @@ def EfficientNetB6(include_top=True,
                    pooling=None,
                    classes=1000,
                    classifier_activation='softmax',
-                   **kwargs):  # Todo: prevent from setting lite from kwargs
+                   **kwargs):
+  assert not kwargs.get("lite"), "Lite option only in B0-B4 variants."
   return EfficientNet(
       1.8,
       2.6,
@@ -755,7 +761,8 @@ def EfficientNetB7(include_top=True,
                    pooling=None,
                    classes=1000,
                    classifier_activation='softmax',
-                   **kwargs):  # Todo: prevent from setting lite from kwargs
+                   **kwargs):
+  assert not kwargs.get("lite"), "Lite option only in B0-B4 variants."
   return EfficientNet(
       2.0,
       3.1,
