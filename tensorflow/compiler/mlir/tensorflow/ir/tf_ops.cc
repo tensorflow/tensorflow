@@ -57,6 +57,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Interfaces/DecodeAttributesInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/FoldInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -178,15 +179,38 @@ bool TensorFlowDialect::CanDuplicate(Operation *op) {
     return is_stateless.getValue();
 
   // Assume ops can be duplicated if modelled.
-  if (op->isRegistered()) return true;
+  return op->isRegistered();
+}
 
-  // Assume ops can be duplicated when the given op is not a stateful op.
-  const tensorflow::OpRegistrationData *op_reg_data = nullptr;
-  tensorflow::Status s = tensorflow::OpRegistry::Global()->LookUp(
-      op->getName().stripDialect().str(), &op_reg_data);
-  // Assume unregistered ops cannot be duplicated, while unmodelled ones only if
-  // stateless.
-  return s.ok() && !op_reg_data->op_def.is_stateful();
+// TF dialect fallback for MemoryEffectOpInterface. The filtering for returning
+// the interface is done in the return below and here it is empty as it is only
+// returned for known not-stateful and unmodelled ops.
+struct TensorFlowRegistryEffectInterfaceFallback
+    : public MemoryEffectOpInterface::FallbackModel<
+          TensorFlowRegistryEffectInterfaceFallback> {
+  static bool classof(Operation *op) { return true; }
+  void getEffects(
+      Operation *op,
+      SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+          &effects) const {}
+};
+
+void *TensorFlowDialect::getRegisteredInterfaceForOp(
+    mlir::TypeID interface, mlir::OperationName opName) {
+  if (interface == TypeID::get<mlir::MemoryEffectOpInterface>()) {
+    // Don't use fallback for modelled ops.
+    if (opName.getAbstractOperation()) return nullptr;
+
+    // Only use fallback interface for known not-stateful ops.
+    const tensorflow::OpRegistrationData *op_reg_data = nullptr;
+    tensorflow::Status s = tensorflow::OpRegistry::Global()->LookUp(
+        opName.stripDialect().str(), &op_reg_data);
+    return (s.ok() && !op_reg_data->op_def.is_stateful())
+               ? fallback_effect_op_interface_
+               : nullptr;
+  }
+
+  return nullptr;
 }
 
 // Returns true if the op can have side effects.
@@ -229,6 +253,8 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
   registerTypes();
   addInterfaces<TFInlinerInterface, TFDecodeAttributesInterface,
                 TFConstantFoldInterface>();
+  fallback_effect_op_interface_ =
+      new TensorFlowRegistryEffectInterfaceFallback();
   registerAttributes();
 
   // Support unknown operations because not all TensorFlow operations are
@@ -238,6 +264,10 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
   for (const auto &hook : *GetAdditionalOperationHooks()) {
     hook(*this);
   }
+}
+
+TensorFlowDialect::~TensorFlowDialect() {
+  delete fallback_effect_op_interface_;
 }
 
 namespace {

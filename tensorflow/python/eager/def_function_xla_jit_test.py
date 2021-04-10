@@ -25,6 +25,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -355,6 +356,23 @@ class DefFunctionTest(xla_test.XLATestCase):
       self.assertAllClose([40.0, 28.0], g(2.0))
       self.assertAllClose(40.0, f.get_concrete_function(2.0)(2.0))
       self.assertAllClose([40.0, 28.0], g.get_concrete_function(2.0)(2.0))
+
+  def testWhileLoopWithUnmodifiedCarriedShape(self):
+    with ops.device('device:{}:0'.format(self.device)):
+      signature = [tensor_spec.TensorSpec(shape=[None], dtype=dtypes.float32)]
+
+      # We define a signature that specifies unknown vector shape, then test
+      # that tf.shape constness gets properly propagated into the while_loop
+      # even when carried as part of the loop state.
+      @def_function.function(input_signature=signature, jit_compile=True)
+      def g(x):
+        return control_flow_ops.while_loop_v2(
+            lambda *_: True,
+            lambda y, shp: (y + random_ops.random_normal(shp)**2, shp),
+            (x, array_ops.shape(x)),
+            maximum_iterations=3)[0]
+
+      self.assertAllGreater(g(array_ops.zeros([7])), 0.)
 
   def testMethodCompilation(self):
 

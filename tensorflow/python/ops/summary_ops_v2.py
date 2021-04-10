@@ -40,12 +40,14 @@ from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gen_summary_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import summary_op_util
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import training_util
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
@@ -302,17 +304,20 @@ class SummaryWriter(object):
 class _ResourceSummaryWriter(SummaryWriter):
   """Implementation of SummaryWriter using a SummaryWriterInterface resource."""
 
-  def  __init__(self, shared_name, init_op_fn, name=None):
-    self._resource = gen_summary_ops.summary_writer(
-        shared_name=shared_name, name=name)
-    self._init_op_fn = init_op_fn
+  def __init__(self, create_fn, init_op_fn):
+    self._resource = create_fn()
     self._init_op = init_op_fn(self._resource)
     self._closed = False
     if context.executing_eagerly():
-      self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
-          handle=self._resource, handle_device="cpu:0")
+      self._set_up_resource_deleter()
     else:
       ops.add_to_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME, self._init_op)
+
+  # Extension point to be overridden by subclasses to customize deletion.
+
+  def _set_up_resource_deleter(self):
+    self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
+        handle=self._resource, handle_device="cpu:0")
 
   def set_as_default(self, step=None):
     """See `SummaryWriter.set_as_default`."""
@@ -350,6 +355,40 @@ class _ResourceSummaryWriter(SummaryWriter):
     finally:
       if context.executing_eagerly():
         self._closed = True
+
+
+class _TrackableResourceSummaryWriter(_ResourceSummaryWriter,
+                                      tracking.TrackableResource):
+  """A `_ResourceSummaryWriter` subclass that implements `TrackableResource`."""
+
+  def __init__(self, create_fn, init_op_fn):
+    # Resolve multiple inheritance via explicit calls to __init__() on parents.
+    tracking.TrackableResource.__init__(self, device="cpu:0")
+    self._create_fn = create_fn
+    self._init_op_fn = init_op_fn
+    # Pass .resource_handle into _ResourceSummaryWriter parent class rather than
+    # create_fn, to ensure it accesses the resource handle only through the
+    # cached property so that everything is using a single resource handle.
+    _ResourceSummaryWriter.__init__(
+        self, create_fn=lambda: self.resource_handle, init_op_fn=init_op_fn)
+
+  # Override for TrackableResource implementation.
+  def _create_resource(self):
+    return self._create_fn()
+
+  # Override for TrackableResource implementation.
+  def _initialize(self):
+    return self._init_op_fn(self.resource_handle)
+
+  # Override for TrackableResource implementation.
+  def _destroy_resource(self):
+    gen_resource_variable_ops.destroy_resource_op(
+        self.resource_handle, ignore_lookup_error=True)
+
+  def _set_up_resource_deleter(self):
+    # Override to suppress ResourceSummaryWriter implementation; we don't need
+    # the deleter since TrackableResource.__del__() handles it for us.
+    pass
 
 
 class _LegacyResourceSummaryWriter(SummaryWriter):
@@ -448,7 +487,8 @@ def create_file_writer_v2(logdir,
                           max_queue=None,
                           flush_millis=None,
                           filename_suffix=None,
-                          name=None):
+                          name=None,
+                          experimental_trackable=False):
   """Creates a summary file writer for the given log directory.
 
   Args:
@@ -458,6 +498,9 @@ def create_file_writer_v2(logdir,
     flush_millis: the largest interval between flushes. Defaults to 120,000.
     filename_suffix: optional suffix for the event file name. Defaults to `.v2`.
     name: a name for the op that creates the writer.
+    experimental_trackable: a boolean that controls whether the returned writer
+      will be a `TrackableResource`, which makes it compatible with SavedModel
+      when used as a `tf.Module` property.
 
   Returns:
     A SummaryWriter object.
@@ -482,20 +525,29 @@ def create_file_writer_v2(logdir,
         flush_millis = constant_op.constant(2 * 60 * 1000)
       if filename_suffix is None:
         filename_suffix = constant_op.constant(".v2")
-      # Use a unique shared_name to prevent resource sharing.
-      if context.executing_eagerly():
-        shared_name = context.shared_name()
+
+      def create_fn():
+        # Use unique shared_name to prevent resource sharing in eager mode, but
+        # otherwise use a fixed shared_name to allow SavedModel TF 1.x loading.
+        if context.executing_eagerly():
+          shared_name = context.shared_name()
+        else:
+          shared_name = ops.name_from_scope_name(scope)  # pylint: disable=protected-access
+        return gen_summary_ops.summary_writer(
+            shared_name=shared_name, name=name)
+
+      init_op_fn = functools.partial(
+          gen_summary_ops.create_summary_file_writer,
+          logdir=logdir,
+          max_queue=max_queue,
+          flush_millis=flush_millis,
+          filename_suffix=filename_suffix)
+      if experimental_trackable:
+        return _TrackableResourceSummaryWriter(
+            create_fn=create_fn, init_op_fn=init_op_fn)
       else:
-        shared_name = ops.name_from_scope_name(scope)  # pylint: disable=protected-access
-      return _ResourceSummaryWriter(
-          shared_name=shared_name,
-          init_op_fn=functools.partial(
-              gen_summary_ops.create_summary_file_writer,
-              logdir=logdir,
-              max_queue=max_queue,
-              flush_millis=flush_millis,
-              filename_suffix=filename_suffix),
-          name=name)
+        return _ResourceSummaryWriter(
+            create_fn=create_fn, init_op_fn=init_op_fn)
 
 
 def create_file_writer(logdir,

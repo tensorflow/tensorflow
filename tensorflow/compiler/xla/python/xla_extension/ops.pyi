@@ -218,9 +218,20 @@ def ReducePrecision(
     operand: XlaOp,
     exponent_bits: int,
     mantissa_bits: int) -> XlaOp: ...
+@overload
 def ReduceWindowWithGeneralPadding(
     operand: XlaOp,
     init_value: XlaOp,
+    computation: XlaComputation,
+    window_dimensions: Sequence[int],
+    window_strides: Sequence[int],
+    base_dilations: Sequence[int],
+    window_dilations: Sequence[int],
+    padding: Sequence[Tuple[int, int]]) -> XlaOp: ...
+@overload
+def ReduceWindowWithGeneralPadding(
+    operands: Sequence[XlaOp],
+    init_values: Sequence[XlaOp],
     computation: XlaComputation,
     window_dimensions: Sequence[int],
     window_strides: Sequence[int],

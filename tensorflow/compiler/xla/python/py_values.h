@@ -64,8 +64,7 @@ struct DevicePutOptions {
   bool force_lazy_arrays = true;
 };
 StatusOr<DevicePutResult> DevicePut(pybind11::handle arg, PjRtDevice* to_device,
-                                    const DevicePutOptions& options,
-                                    PyBuffer* py_buffer = nullptr);
+                                    const DevicePutOptions& options);
 
 // Returns `true` if `arg` is a JAX float0 array.
 bool IsFloat0(pybind11::array arg);

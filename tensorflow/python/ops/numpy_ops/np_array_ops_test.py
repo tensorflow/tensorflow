@@ -19,7 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import operator
 import sys
+from absl.testing import parameterized
 import numpy as np
 from six.moves import range
 from six.moves import zip
@@ -1180,6 +1182,25 @@ class ArrayManipulationTest(test.TestCase):
     else:
       self.assertSequenceEqual(actual.tolist(), expected.tolist())
 
+
+class ArrayMathTest(test.TestCase, parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      ('complex_mul_1', 2j, [2], int, [4j], operator.mul),
+      ('complex_mul_2', 2j, [0], int, [0], operator.mul),
+      ('complex_mul_3', 2j, [-2.0], float, [-4j], operator.mul),
+      ('complex_mul_4', 2j, [2j], complex, [-4], operator.mul),
+      ('float_mul_1', 2.0, [2], int, [4], operator.mul),
+      ('float_mul_2', 2.0, [0], int, [0], operator.mul),
+      ('float_mul_3', 2.0, [-2.0], float, [-4], operator.mul),
+      ('float_mul_4', 2.0, [2j], complex, [4j], operator.mul))
+  def testConstantBinOp(self, a, b, b_type, expected_result, test_func):
+    b = np_array_ops.array(b, dtype=b_type)
+    result = test_func(a, b)
+    if np.issubdtype(result.dtype.as_numpy_dtype, np.inexact):
+      self.assertAllClose(result, expected_result)
+    else:
+      self.assertAllEqual(result, expected_result)
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

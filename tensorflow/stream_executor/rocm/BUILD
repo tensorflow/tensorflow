@@ -197,19 +197,19 @@ cc_library(
 )
 
 cc_library(
-    name = "rocfft_if_static",
+    name = "hipfft_if_static",
     deps = if_static([
-        "@local_config_rocm//rocm:rocfft",
+        "@local_config_rocm//rocm:hipfft",
     ]),
 )
 
 cc_library(
-    name = "rocfft_plugin",
+    name = "hipfft_plugin",
     srcs = if_rocm_is_configured(["rocm_fft.cc"]),
     hdrs = if_rocm_is_configured(["rocm_fft.h"]),
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
-        ":rocfft_if_static",
+        ":hipfft_if_static",
         ":rocm_platform_id",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:fft",
@@ -333,7 +333,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
         ":miopen_plugin",
-        ":rocfft_plugin",
+        ":hipfft_plugin",
         ":rocblas_plugin",
         ":rocrand_plugin",
         ":rocm_driver",

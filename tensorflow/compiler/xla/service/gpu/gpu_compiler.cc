@@ -113,6 +113,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/real_imag_expander.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/result_caster.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
@@ -171,6 +172,7 @@ Status GpuCompiler::OptimizeHloModule(
     pipeline.AddPass<RealImagExpander>();
 
     pipeline.AddPass<OperandUpcaster>();
+    pipeline.AddPass<ResultCaster>();
 
     // Expand random number generation.
     pipeline.AddPass<RngExpander>();

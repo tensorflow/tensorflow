@@ -185,12 +185,12 @@ from tensorflow.python.ops.numpy_ops.np_utils import result_type
 
 
 # pylint: disable=redefined-builtin,undefined-variable
-@np_utils.np_doc("max", link=np_utils.AliasOf("maximum"))
+@np_utils.np_doc("max", link=np_utils.AliasOf("amax"))
 def max(a, axis=None, keepdims=None):
   return amax(a, axis=axis, keepdims=keepdims)
 
 
-@np_utils.np_doc("min", link=np_utils.AliasOf("minimum"))
+@np_utils.np_doc("min", link=np_utils.AliasOf("amin"))
 def min(a, axis=None, keepdims=None):
   return amin(a, axis=axis, keepdims=keepdims)
 

@@ -33,7 +33,7 @@ using tensorflow::TF_StatusPtr;
 Status ReluModel(AbstractContext* ctx,
                  absl::Span<AbstractTensorHandle* const> inputs,
                  absl::Span<AbstractTensorHandle*> outputs) {
-  return ops::Relu(ctx, inputs, outputs, "Relu");
+  return ops::Relu(ctx, inputs[0], outputs, "Relu");
 }
 
 Status SparseSoftmaxCrossEntropyWithLogitsModel(
@@ -41,7 +41,7 @@ Status SparseSoftmaxCrossEntropyWithLogitsModel(
     absl::Span<AbstractTensorHandle*> outputs) {
   std::vector<AbstractTensorHandle*> temp_outputs(2);
   TF_RETURN_IF_ERROR(ops::SparseSoftmaxCrossEntropyWithLogits(
-      ctx, inputs, absl::MakeSpan(temp_outputs),
+      ctx, inputs[0], inputs[1], absl::MakeSpan(temp_outputs),
       "SparseSoftmaxCrossEntropyWithLogits"));
   // `gradient_checker` only works with model that returns only 1 tensor.
   // Although, `ops::SparseSoftmaxCrossEntropyWithLogits` returns 2 tensors, the
@@ -55,7 +55,7 @@ Status SparseSoftmaxCrossEntropyWithLogitsModel(
 Status BiasAddModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
                     absl::Span<AbstractTensorHandle*> outputs) {
-  return ops::BiasAdd(ctx, inputs, outputs, "BiasAdd");
+  return ops::BiasAdd(ctx, inputs[0], inputs[1], outputs, "BiasAdd");
 }
 
 class CppGradients

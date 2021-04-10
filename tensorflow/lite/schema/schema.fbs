@@ -370,7 +370,8 @@ enum BuiltinOperator : int32 {
   HASHTABLE = 136,
   HASHTABLE_FIND = 137,
   HASHTABLE_IMPORT = 138,
-  HASHTABLE_SIZE = 139
+  HASHTABLE_SIZE = 139,
+  REDUCE_ALL = 140,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 

@@ -255,11 +255,11 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
     layer = normalization_v2.BatchNormalization(
         momentum=0.5, moving_variance_initializer='zeros')
     layer(x, training=True)
-    self.assertFalse(layer.fused)
-    # Since fused is not used, Bessel's correction is not used. The variance of
-    # [0, 2] is 1 without Bessel's correction. Since the momentum is 0.5, the
-    # variance is 1 * 0.5 == 0.5.
-    self.assertAllEqual(self.evaluate(layer.moving_variance), [0.5])
+    self.assertTrue(layer.fused)
+    # Since fused is used, Bessel's correction is used. The variance of [0, 2]
+    # is 2 with Bessel's correction. Since the momentum is 0.5, the variance is
+    # 2 * 0.5 == 1.
+    self.assertAllEqual(self.evaluate(layer.moving_variance), [1.])
 
 
 class BatchNormalizationV1Test(keras_parameterized.TestCase):
@@ -315,7 +315,7 @@ class BatchNormalizationV2Test(keras_parameterized.TestCase):
     self.assertIsNone(norm.fused)
     inp = keras.layers.Input(shape=(4, 4, 4, 4))
     norm(inp)
-    self.assertEqual(norm.fused, False)
+    self.assertEqual(norm.fused, True)
 
     norm = normalization_v2.BatchNormalization(virtual_batch_size=2)
     self.assertEqual(norm.fused, False)

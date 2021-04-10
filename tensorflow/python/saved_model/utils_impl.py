@@ -216,8 +216,7 @@ def get_element_from_tensor_info(tensor_info, graph=None, import_scope=None):
 def get_or_create_variables_dir(export_dir):
   """Return variables sub-directory, or create one if it doesn't exist."""
   variables_dir = get_variables_dir(export_dir)
-  if not file_io.file_exists(variables_dir):
-    file_io.recursive_create_dir(variables_dir)
+  file_io.recursive_create_dir(variables_dir)
   return variables_dir
 
 
@@ -239,8 +238,7 @@ def get_or_create_assets_dir(export_dir):
   """Return assets sub-directory, or create one if it doesn't exist."""
   assets_destination_dir = get_assets_dir(export_dir)
 
-  if not file_io.file_exists(assets_destination_dir):
-    file_io.recursive_create_dir(assets_destination_dir)
+  file_io.recursive_create_dir(assets_destination_dir)
 
   return assets_destination_dir
 
@@ -256,8 +254,7 @@ def get_or_create_debug_dir(export_dir):
   """Returns path to the debug sub-directory, creating if it does not exist."""
   debug_dir = get_debug_dir(export_dir)
 
-  if not file_io.file_exists(debug_dir):
-    file_io.recursive_create_dir(debug_dir)
+  file_io.recursive_create_dir(debug_dir)
 
   return debug_dir
 

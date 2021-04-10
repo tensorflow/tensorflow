@@ -4635,7 +4635,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_reorder_op",
     prefix = "sparse_reorder_op",
-    deps = SPARSE_DEPS,
+    deps = SPARSE_DEPS + if_cuda_or_rocm([
+        ":gpu_prim_hdrs",
+        ":gpu_prim_helpers",
+    ]),
 )
 
 tf_kernel_library(
@@ -4696,7 +4699,7 @@ tf_kernel_library(
     prefix = "sparse_to_dense_op",
     deps = SPARSE_DEPS + [
         "//third_party/eigen3",
-    ] + if_cuda([
+    ] + if_cuda_or_rocm([
         ":gpu_utils",
         "//tensorflow/core/platform:stream_executor",
     ]),
@@ -4708,6 +4711,7 @@ tf_kernel_library(
     deps = SPARSE_DEPS + [
         "//third_party/eigen3",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core:lib_internal",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
     ]) + if_cuda([

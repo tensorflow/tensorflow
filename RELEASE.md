@@ -31,6 +31,9 @@
 *   TF Core:
     *   Added `tf.saved_model.experimental.TrackableResource`, which allows the
         creation of custom wrapper objects for resource tensors.
+  
+*  `tf.lite`:
+  * Fix mean op reference quantization rounding issue.
 
 ## Thanks to our Contributors
 

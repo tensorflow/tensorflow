@@ -4082,6 +4082,27 @@ class ConvertArgMaxOp
   static StringRef GetDirection() { return "GE"; }
 };
 
+// Converts tensorflow ArgMin op to mhlo operations. The actual
+// implementation is in class ConvertArgMinMaxOp:
+//
+//   %init_index = constant dense<...> : tensor<T>
+//   %init = constant dense<...> : tensor<T>
+//   %reduce = "mhlo.reduce"(%selected_input, %select_index, %init,
+//                              %init_index) ["mhlo.arg_min"]
+class ConvertArgMinOp
+    : public ConvertArgMinMaxOp<ConvertArgMinOp, TF::ArgMinOp> {
+ public:
+  using ConvertArgMinMaxOp::ConvertArgMinMaxOp;
+
+  static Value GetInitialValue(Type reduce_element_type, Location loc,
+                               PatternRewriter &rewriter) {
+    return GetScalarLimitConstOfType(reduce_element_type, loc,
+                                     hlo::kInfinityMax, &rewriter);
+  }
+
+  static StringRef GetDirection() { return "LE"; }
+};
+
 // Converts TF TensorScatterUpdate op into Scatter Op with assignment:
 //
 //   %result = "mhlo.scatter"(%tensor, %indices, %updates)
@@ -6435,6 +6456,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertAllOp,
     ConvertAnyOp,
     ConvertArgMaxOp,
+    ConvertArgMinOp,
     ConvertBatchMatMulV2Op,
     ConvertBiasAddOp,
     ConvertBroadcastToOp,

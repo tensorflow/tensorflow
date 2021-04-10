@@ -366,3 +366,18 @@ tf_cc_test(
         "//tensorflow/core/platform:random",
     ],
 )
+
+cc_library(
+    name = "tfrt_cpu_pjrt_client",
+    srcs = ["tfrt_cpu_pjrt_client.cc"],
+    hdrs = ["tfrt_cpu_pjrt_client.h"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:semaphore",
+        "//tensorflow/compiler/xla/pjrt:worker_thread",
+        "//tensorflow/compiler/xla/service/cpu:cpu_xfeed",
+        "//tensorflow/core/platform:env",
+        "@com_google_absl//absl/strings",
+    ],
+)

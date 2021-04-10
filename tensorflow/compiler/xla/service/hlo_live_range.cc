@@ -219,6 +219,40 @@ void HloLiveRange::CalculateBufferStartEndMap() {
   }
 }
 
+int64 HloLiveRange::ComputePeakMemoryMoment() const {
+  std::vector<std::tuple<int64 /*time*/, bool /*is_end*/, const HloValue*>>
+      events;
+  for (const HloValue* value : alias_analysis_.dataflow_analysis().values()) {
+    auto it = buffer_live_ranges_.find(value);
+    if (it != buffer_live_ranges_.end()) {
+      events.emplace_back(it->second.start, false, value);
+      events.emplace_back(it->second.end + 1, true, value);
+    }
+  }
+  std::sort(events.begin(), events.end());
+
+  int64 memory_usage = 0;
+  int64 peak_usage = 0;
+  absl::optional<int64> peak_time;
+  for (const auto& event : events) {
+    int64 time;
+    bool is_end;
+    const HloValue* value;
+    std::tie(time, is_end, value) = event;
+    auto buffer_size = ShapeUtil::ByteSizeOf(value->instruction()->shape(), 8);
+    if (is_end) {
+      memory_usage -= buffer_size;
+    } else {
+      memory_usage += buffer_size;
+    }
+    if (peak_usage < memory_usage) {
+      peak_usage = memory_usage;
+      peak_time = time;
+    }
+  }
+  return peak_time.value_or(0);
+}
+
 std::string HloLiveRange::ToString() const {
   std::string output;
   absl::StrAppendFormat(&output, "HloLiveRange (max %d):\n",
@@ -237,6 +271,21 @@ std::string HloLiveRange::ToString() const {
       absl::StrAppendFormat(
           &output, "    %s%s:%d-%d\n", value->instruction()->name(),
           value->index().ToString(), it->second.start, it->second.end);
+    }
+  }
+
+  int64 peak_moment = ComputePeakMemoryMoment();
+
+  absl::StrAppendFormat(&output, "  Live ranges at %lld (peak):\n",
+                        peak_moment);
+  for (const HloValue* value : alias_analysis_.dataflow_analysis().values()) {
+    auto it = buffer_live_ranges_.find(value);
+    if (it != buffer_live_ranges_.end()) {
+      if (it->second.start <= peak_moment && peak_moment <= it->second.end) {
+        int64 bytes = ShapeUtil::ByteSizeOf(value->instruction()->shape(), 8);
+        absl::StrAppendFormat(&output, "    %s: %lld bytes\n",
+                              value->instruction()->name(), bytes);
+      }
     }
   }
 

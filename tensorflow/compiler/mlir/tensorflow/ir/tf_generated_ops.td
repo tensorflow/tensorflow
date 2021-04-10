@@ -3930,6 +3930,8 @@ tf.math.equal(x, y) ==> array([True,  True])
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_ErfOp : TF_Op<"Erf", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
@@ -9860,6 +9862,8 @@ tensor.}]>:$input_max,
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_QuantizeAndDequantizeV3Op : TF_Op<"QuantizeAndDequantizeV3", [NoSideEffect]> {
@@ -9878,6 +9882,38 @@ tensor, so its value can change during training.
 
     DefaultValuedAttr<BoolAttr, "true">:$signed_input,
     DefaultValuedAttr<BoolAttr, "true">:$range_given,
+    DefaultValuedAttr<BoolAttr, "false">:$narrow_range,
+    DefaultValuedAttr<I64Attr, "-1">:$axis
+  );
+
+  let results = (outs
+    TF_FloatTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_QuantizeAndDequantizeV4Op : TF_Op<"QuantizeAndDequantizeV4", [NoSideEffect]> {
+  let summary = "Quantizes then dequantizes a tensor.";
+
+  let description = [{
+    This is almost identical to QuantizeAndDequantizeV2, except that it returns a
+    gradient of 1 for inputs that are within the quantization range, or 0 otherwise.
+  }];
+
+  let arguments = (ins
+    Arg<TF_FloatTensor, [{Tensor to quantize and then dequantize.}]>:$input,
+    Arg<TF_FloatTensor, [{If `range_given == True`, this specifies the minimum input value that needs to
+be represented, otherwise it is determined from the min value of the `input`
+tensor.}]>:$input_min,
+    Arg<TF_FloatTensor, [{If `range_given == True`, this specifies the maximum input value that needs to
+be represented, otherwise it is determined from the max value of the `input`
+tensor.}]>:$input_max,
+
+    DefaultValuedAttr<BoolAttr, "true">:$signed_input,
+    DefaultValuedAttr<I64Attr, "8">:$num_bits,
+    DefaultValuedAttr<BoolAttr, "false">:$range_given,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["HALF_TO_EVEN", "HALF_UP"]>, "HALF_TO_EVEN">:$round_mode,
     DefaultValuedAttr<BoolAttr, "false">:$narrow_range,
     DefaultValuedAttr<I64Attr, "-1">:$axis
   );
@@ -18691,6 +18727,10 @@ A pseudo-op to represent host-side computation in an XLA program.
 
   TF_DerivedOperandTypeListAttr Tinputs = TF_DerivedOperandTypeListAttr<0>;
   TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
+
+  let extraClassDeclaration = [{
+    FuncOp GetHostFunc(mlir::OwningModuleRef* mlir_module);
+  }];
 
   let verifier = [{ return Verify(*this); }];
 }

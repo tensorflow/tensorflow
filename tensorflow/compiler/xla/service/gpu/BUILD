@@ -335,6 +335,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_loop",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
@@ -1302,6 +1303,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:qr_expander",
         "//tensorflow/compiler/xla/service:real_imag_expander",
         "//tensorflow/compiler/xla/service:reshape_mover",
+        "//tensorflow/compiler/xla/service:result_caster",
         "//tensorflow/compiler/xla/service:rng_bit_generator_expander",
         "//tensorflow/compiler/xla/service:rng_expander",
         "//tensorflow/compiler/xla/service:sharding_propagation",
@@ -1861,6 +1863,7 @@ cc_library(
 tf_cc_test(
     name = "horizontal_loop_fusion_test",
     srcs = ["horizontal_loop_fusion_test.cc"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":fusion_merger",
         ":horizontal_loop_fusion",

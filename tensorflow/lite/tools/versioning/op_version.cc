@@ -597,11 +597,22 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_PAD:
+    case BuiltinOperator_PADV2:
+      if (op_sig.options.single_input_op.num_dims > 4) {
+        return 4;
+      }
+      if (op_sig.input_types.at(0) == TensorType_INT16) {
+        return 3;
+      }
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_CONCATENATION:
     case BuiltinOperator_SOFTMAX:
     case BuiltinOperator_MEAN:
-    case BuiltinOperator_PAD:
-    case BuiltinOperator_PADV2:
     case BuiltinOperator_REDUCE_MAX:
     case BuiltinOperator_REDUCE_MIN:
     case BuiltinOperator_RELU6:
@@ -830,6 +841,8 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       }
       op_sig.options.strided_slice.num_dims = GetNumDims(subgraph, op, 0);
     } break;
+    case BuiltinOperator_PAD:
+    case BuiltinOperator_PADV2:
     case BuiltinOperator_SLICE:
     case BuiltinOperator_SPACE_TO_BATCH_ND:
     case BuiltinOperator_BATCH_TO_SPACE_ND:
@@ -888,6 +901,12 @@ void UpdateOpVersion(uint8_t* model_buffer_pointer) {
         OpSignature op_sig = GetOpSignature(op_code, op, subgraph);
         // Update builtin operator version.
         int32_t op_ver = GetBuiltinOperatorVersion(op_sig);
+        // Skip updating op version if the current node uses lower version.
+        // TODO(b/184366869): Populate multiple versions of operator once MLIR
+        // quantizer is ready.
+        if (op_ver <= op_code->version()) {
+          continue;
+        }
         if (!op_code->mutate_version(op_ver)) {
           LOG(ERROR) << "Can't set operator "
                      << EnumNameBuiltinOperator(builtin_code) << " to version "

@@ -120,7 +120,7 @@ if 'tf_nightly' in project_name:
     elif 'tensorflow_estimator' in pkg:
       REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.5.0.dev'
     elif 'keras' in pkg and 'keras_preprocessing' not in pkg:
-      REQUIRED_PACKAGES[i] = 'keras-nightly ~= 2.5.0.dev'
+      REQUIRED_PACKAGES[i] = 'keras-nightly ~= 2.6.0.dev'
 
 
 # grpcio does not build correctly on big-endian machines due to lack of
@@ -336,7 +336,7 @@ setup(
     classifiers=sorted([
         'Development Status :: 5 - Production/Stable',
         # TODO(angerson) Add IFTTT when possible
-        'Environment :: GPU :: NVIDIA CUDA :: 11.2',
+        'Environment :: GPU :: NVIDIA CUDA :: 11.0',
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',

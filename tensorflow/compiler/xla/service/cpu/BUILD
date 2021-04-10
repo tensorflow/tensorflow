@@ -90,11 +90,36 @@ filegroup(
 )
 
 cc_library(
+    name = "cpu_xfeed",
+    srcs = ["cpu_xfeed.cc"],
+    hdrs = ["cpu_xfeed.h"],
+    deps = [
+        ":cpu_runtime",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo_cost_analysis",
+        "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "cpu_transfer_manager",
     srcs = ["cpu_transfer_manager.cc"],
     hdrs = ["cpu_transfer_manager.h"],
     deps = [
         ":cpu_runtime",
+        ":cpu_xfeed",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -161,6 +186,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:all_to_all_decomposer",
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:dump",
+        "//tensorflow/compiler/xla/service:result_caster",
         "//tensorflow/compiler/xla/service:topk_rewriter",
         "//tensorflow/compiler/xla/service:map_inliner",
         "//tensorflow/compiler/xla/service:rng_bit_generator_expander",

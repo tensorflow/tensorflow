@@ -1069,8 +1069,13 @@ class StrategyIntegrationTest(test.TestCase):
   def testDistributeDatasetsFromFunction(self):
 
     def per_worker_dataset_fn():
+
+      def input_worker_device_fn(input_context):
+        self.assertIsNotNone(input_context)
+        return dataset_ops.DatasetV2.range(1, 11).batch(1)
+
       return self.strategy.distribute_datasets_from_function(
-          lambda _: dataset_ops.DatasetV2.range(1, 11).batch(1))
+          input_worker_device_fn)
 
     @def_function.function
     def worker_fn(iterator):

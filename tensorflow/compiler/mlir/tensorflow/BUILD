@@ -2050,6 +2050,23 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "bridge_logger_test",
+    size = "small",
+    srcs = ["utils/bridge_logger_test.cc"],
+    deps = [
+        ":bridge_logger",
+        ":serialize_mlir_module_utils",
+        ":tensorflow",
+        ":tensorflow_passes",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:test",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
 cc_library(
     name = "bridge_logger",
     srcs = ["utils/bridge_logger.cc"],

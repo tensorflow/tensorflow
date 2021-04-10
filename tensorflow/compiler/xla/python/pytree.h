@@ -28,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
 #include "absl/memory/memory.h"
 #include "pybind11/pybind11.h"
@@ -116,6 +117,9 @@ class PyTreeDef {
   void FlattenInto(
       pybind11::handle handle, std::vector<pybind11::object>& leaves,
       absl::optional<pybind11::function> leaf_predicate = absl::nullopt);
+  void FlattenInto(
+      pybind11::handle handle, absl::InlinedVector<pybind11::object, 2>& leaves,
+      absl::optional<pybind11::function> leaf_predicate = absl::nullopt);
 
   // Tests whether the given list is a flat list of leaves.
   static bool AllLeaves(const pybind11::iterable& x);
@@ -200,11 +204,17 @@ class PyTreeDef {
   // Recursive helper used to implement FromIterableTree()
   pybind11::object FromIterableTreeHelper(
       pybind11::handle xs,
-      std::vector<PyTreeDef::Node>::const_reverse_iterator* it) const;
+      absl::InlinedVector<PyTreeDef::Node, 1>::const_reverse_iterator* it)
+      const;
 
   // Computes the node kind of a given Python object.
   static PyTreeKind GetKind(const pybind11::handle& obj,
                             PyTreeTypeRegistry::Registration const** custom);
+
+  template <typename T>
+  void FlattenIntoImpl(
+      pybind11::handle handle, T& leaves,
+      const absl::optional<pybind11::function>& leaf_predicate);
 
   template <typename T>
   pybind11::object UnflattenImpl(T leaves) const;
@@ -212,7 +222,7 @@ class PyTreeDef {
   // Nodes, in a post-order traversal. We use an ordered traversal to minimize
   // allocations, and post-order corresponds to the order we need to rebuild the
   // tree structure.
-  std::vector<Node> traversal_;
+  absl::InlinedVector<Node, 1> traversal_;
 };
 
 template <typename H>

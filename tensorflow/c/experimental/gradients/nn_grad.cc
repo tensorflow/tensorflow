@@ -53,7 +53,7 @@ class ReluGradientFunction : public GradientFunction {
     // Calculate Grad
     std::string name = "relu_grad";
     TF_RETURN_IF_ERROR(
-        ReluGrad(ctx, {upstream_grad, activations}, grad_inputs, name.c_str()));
+        ReluGrad(ctx, upstream_grad, activations, grad_inputs, name.c_str()));
     return Status::OK();
   }
   ~ReluGradientFunction() override {
@@ -81,11 +81,10 @@ Status BroadcastMul(AbstractContext* ctx, AbstractTensorHandle* vec,
   AbstractTensorPtr minus_1(imm_ctx->CreateInt32Scalar(-1));
   ImmediateTensorHandlePtr dim(imm_ctx->CreateLocalHandle(minus_1.get()));
   vector<AbstractTensorHandle*> expand_dims_outputs(1);
-  TF_RETURN_IF_ERROR(ops::ExpandDims(ctx, {vec, dim.get()},
-                                     absl::MakeSpan(expand_dims_outputs),
-                                     "ExpandDims"));
+  TF_RETURN_IF_ERROR(ops::ExpandDims(
+      ctx, vec, dim.get(), absl::MakeSpan(expand_dims_outputs), "ExpandDims"));
   TF_RETURN_IF_ERROR(
-      ops::Mul(ctx, {expand_dims_outputs[0], mat}, outputs, "Mul"));
+      ops::Mul(ctx, expand_dims_outputs[0], mat, outputs, "Mul"));
   expand_dims_outputs[0]->Unref();
   return Status::OK();
 }
@@ -143,9 +142,9 @@ class BiasAddGradientFunction : public GradientFunction {
 
     // Grad for bias
     std::string name = "bias_add_grad";
-    TF_RETURN_IF_ERROR(BiasAddGrad(ctx, {upstream_grad},
-                                   grad_inputs.subspan(1, 1),
-                                   data_format.c_str(), name.c_str()));
+    TF_RETURN_IF_ERROR(BiasAddGrad(ctx, upstream_grad,
+                                   grad_inputs.subspan(1, 1), name.c_str(),
+                                   data_format.c_str()));
 
     return Status::OK();
   }

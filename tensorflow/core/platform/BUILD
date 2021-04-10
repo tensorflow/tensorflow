@@ -668,6 +668,24 @@ cc_library(
 )
 
 cc_library(
+    name = "statusor",
+    srcs = [
+        "statusor.cc",
+        "statusor_internals.h",
+    ],
+    hdrs = ["statusor.h"],
+    deps = [
+        ":logging",
+        ":macros",
+        ":status",
+        "//tensorflow/core/lib/core:errors",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "str_util",
     srcs = ["str_util.cc"],
     hdrs = ["str_util.h"],
@@ -884,6 +902,18 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:str_util",
+    ],
+)
+
+tf_cc_test(
+    name = "statusor_test",
+    size = "small",
+    srcs = ["statusor_test.cc"],
+    deps = [
+        ":statusor",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -1404,6 +1434,7 @@ filegroup(
         "stacktrace.h",
         "stacktrace_handler.h",
         "status.h",
+        "statusor.h",
         "str_util.h",
         "strcat.h",
         "stringpiece.h",
@@ -1651,6 +1682,9 @@ filegroup(
         "status.cc",
         "stack_frame.h",
         "status.h",
+        "statusor.h",
+        "statusor_internals.h",
+        "statusor.cc",
         "str_util.cc",
         "str_util.h",
         "strcat.cc",

@@ -902,15 +902,7 @@ bool ShapeInference::InferShapeForXlaHostComputeMlir(
   if (host_module.getValue().empty()) return false;
 
   mlir::OwningModuleRef module_for_func;
-  if (!tensorflow::DeserializeMlirModule(host_module.getValue().str(),
-                                         host_compute_op->getContext(),
-                                         &module_for_func)
-           .ok()) {
-    return false;
-  }
-
-  FuncOp func = module_for_func->lookupSymbol<FuncOp>("host_func");
-  if (!func) return false;
+  FuncOp func = host_compute_op.GetHostFunc(&module_for_func);
 
   // Update/use input shapes for function.
   FunctionType func_type = func.getType();

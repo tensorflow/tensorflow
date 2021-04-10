@@ -26,6 +26,10 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 #include "third_party/tensorrt/tensorrt_config.h"
 
+#if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
+
 namespace stream_executor {
 namespace internal {
 
@@ -133,8 +137,12 @@ port::StatusOr<void*> GetMiopenDsoHandle() {
   return GetDsoHandle("MIOpen", "");
 }
 
-port::StatusOr<void*> GetRocfftDsoHandle() {
+port::StatusOr<void*> GetHipfftDsoHandle() {
+#if TF_ROCM_VERSION < 40100
   return GetDsoHandle("rocfft", "");
+#else
+  return GetDsoHandle("hipfft", "");
+#endif
 }
 
 port::StatusOr<void*> GetRocrandDsoHandle() {
@@ -210,8 +218,8 @@ port::StatusOr<void*> GetMiopenDsoHandle() {
   return *result;
 }
 
-port::StatusOr<void*> GetRocfftDsoHandle() {
-  static auto result = new auto(DsoLoader::GetRocfftDsoHandle());
+port::StatusOr<void*> GetHipfftDsoHandle() {
+  static auto result = new auto(DsoLoader::GetHipfftDsoHandle());
   return *result;
 }
 

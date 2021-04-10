@@ -572,7 +572,13 @@ def class_and_config_for_serialized_keras_object(
 
   deserialized_objects = {}
   for key, item in cls_config.items():
-    if isinstance(item, dict) and '__passive_serialization__' in item:
+    if key == 'name':
+      # Assume that the value of 'name' is a string that should not be
+      # deserialized as a function. This avoids the corner case where
+      # cls_config['name'] has an identical name to a custom function and
+      # gets converted into that function.
+      deserialized_objects[key] = item
+    elif isinstance(item, dict) and '__passive_serialization__' in item:
       deserialized_objects[key] = deserialize_keras_object(
           item,
           module_objects=module_objects,

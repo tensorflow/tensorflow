@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"

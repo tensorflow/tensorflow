@@ -2436,7 +2436,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
       return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
         const HloInstruction* operand = hlo->operand(0);
         return operand_to_generator.at(operand)(
-            index.SourceIndexOfBitcast(hlo->shape(), operand->shape(), b_));
+            GetSourceIndexOfBitcast(index, hlo));
       };
     case HloOpcode::kReshape:
       CHECK_EQ(ShapeUtil::ElementsIn(hlo->shape()),

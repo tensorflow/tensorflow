@@ -28,30 +28,49 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
-// OptionaLiteralSlice is an augmented literal class which returns optional
-// values for each index (the value can be either valid or invalid). Underneath
-// it keeps two literals, a value literal, holding both the valid and garabage
-// value, and a masking litearl representing if a value is valid or garbage.
-class OptionaLiteralSlice {
+// OptionalLiteral is an augmented literal class which returns optional
+// values for each index (the value can be either valid or invalid). The
+// implementation keeps two literals, a value literal, holding both the valid
+// and garabage value, and a masking literal representing if a value is valid or
+// garbage.
+class OptionalLiteral {
  public:
-  explicit OptionaLiteralSlice(LiteralSlice value, LiteralSlice mask)
-      : value_(value), mask_(mask) {}
+  explicit OptionalLiteral(Literal value, Literal mask)
+      : value_(std::move(value)), mask_(std::move(mask)) {}
 
   template <typename NativeT>
-  absl::optional<NativeT> Get(absl::Span<const int64> multi_index) const {
-    if (mask_.Get<bool>(multi_index)) {
+  absl::optional<NativeT> Get(absl::Span<const int64> element_index,
+                              ShapeIndex shape_index = {}) const {
+    if (mask_.Get<bool>(element_index, shape_index)) {
       return absl::nullopt;
     } else {
-      return value_.Get<NativeT>(multi_index);
+      return value_.Get<NativeT>(element_index, shape_index);
     }
   }
 
   // Returns true if all values in this literal slice are value.
   bool AllValid() { return mask_.IsAll(0); }
 
+  // Get value out of this slice if all values are valid. Otherwise returns
+  // nullopt.
+  absl::optional<LiteralSlice> GetValue() {
+    if (!AllValid()) {
+      return absl::nullopt;
+    }
+    return LiteralSlice(value_);
+  }
+
  private:
-  LiteralSlice value_;
-  LiteralSlice mask_;
+  Literal value_;
+  Literal mask_;
+};
+
+enum ValueInferenceMode {
+  // Inference the constant value itself.
+  kValue = 0,
+  // Inference upper-bound and lower-bound of the value. Bounds are inclusive.
+  kUpperBound,
+  kLowerBound,
 };
 
 class ValueInference {
@@ -61,38 +80,16 @@ class ValueInference {
   // - What's the lower-bound of each value in a tensor.
   // - What's the constant value of each tensor.
   // - Whether or not each value in a tensor is dynamic.
-  explicit ValueInference(XlaBuilder* builder) : builder_(builder) {}
-  StatusOr<LiteralSlice> AnalyzeUpperBound(XlaOp op) {
-    return Unimplemented("Analyzing upper-bound is not implemented yet.");
+  explicit ValueInference(XlaBuilder* builder) : builder_(builder) {
+    CHECK(builder_);
   }
-  StatusOr<LiteralSlice> AnalyzeLowerBound(XlaOp op) {
-    return Unimplemented("Analyzing lower-bound is not implemented yet.");
-  }
-  StatusOr<LiteralSlice> AnalyzeIsDynamic(XlaOp op) {
-    return AnalyzeIsDynamic(op.handle());
-  }
-
-  // Returns a OptionalConstant, the value is nullopt it's dynamic, otherwise a
-  // concrete constant value.
-  StatusOr<OptionaLiteralSlice> AnalyzeOptionalConstant(XlaOp op) {
-    return AnalyzeOptionalConstant(op.handle());
-  }
+  StatusOr<Literal> AnalyzeIsDynamic(XlaOp op);
+  // Returns an OptionalLiteral. Each individual value of the literal is
+  // the concrete constant value if it can be inferred, otherwise a nullopt.
+  StatusOr<OptionalLiteral> AnalyzeConstant(XlaOp op, ValueInferenceMode mode);
 
  private:
-  StatusOr<LiteralSlice> AnalyzeIsDynamic(int64 handle);
-  StatusOr<LiteralSlice> AnalyzeConstant(int64 handle);
-  StatusOr<OptionaLiteralSlice> AnalyzeOptionalConstant(int64 handle);
-
-  StatusOr<Literal> AnalyzeIsDynamicLiteral(int64 handle);
-  StatusOr<Literal> AnalyzeConstantLiteral(int64 handle);
-
   XlaBuilder* builder_;
-  // Cache to avoid re-evaluating. Mapping of xla handle to evaluated
-  // literals.
-  absl::flat_hash_map<int64, Literal> upper_bound_;
-  absl::flat_hash_map<int64, Literal> lower_bound_;
-  absl::flat_hash_map<int64, Literal> is_dynamic_;
-  absl::flat_hash_map<int64, Literal> constant_;
   HloEvaluator evaluator_;
 };
 }  // namespace xla

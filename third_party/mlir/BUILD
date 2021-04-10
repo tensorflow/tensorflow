@@ -26,6 +26,14 @@ exports_files([
     "run_lit.sh",
 ])
 
+filegroup(
+    name = "c_headers",
+    srcs = glob(["include/mlir-c/**/*"]),  # <== i.e. match the entire tree
+    visibility = [
+        ":friends",
+    ],
+)
+
 [
     gentbl(
         name = name + "IncGen",
@@ -1694,6 +1702,7 @@ cc_library(
     deps = [
         ":Affine",
         ":Analysis",
+        ":DataLayoutInterfaces",
         ":DialectUtils",
         ":EDSC",
         ":IR",

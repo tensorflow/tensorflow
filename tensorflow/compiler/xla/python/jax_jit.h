@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_JAX_JIT_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_JAX_JIT_H_
 
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "pybind11/pybind11.h"
@@ -32,7 +33,6 @@ namespace jax {
 // defined, defaulting to the value of the flag otherwise).
 bool GetEnableX64();
 
-
 // The signature of Python jitted function call, partitioned into:
 // - dynamic positional arguments (i.e. positional args which are not static)
 // - static positional arguments (i.e. the args associated to static_argnums)
@@ -43,28 +43,24 @@ bool GetEnableX64();
 // (a) equality of the arguments and keyword arguments ArgSignature
 // (a) equality (delegated to Python) of the static arguments.
 struct CallSignature {
-  struct KwargEntry {
-    // To avoid comparing strings, we intern the kwargs strings.
-    // The compilation cache holds a reference to all the keys.
-    pybind11::handle key;
-    xla::PyTreeDef value_treedef;
-    bool operator==(const KwargEntry& other) const {
-      return key.ptr() == other.key.ptr() &&
-             value_treedef == other.value_treedef;
-    }
-    bool operator!=(const KwargEntry& other) const { return !(*this == other); }
-  };
-
-  // Only contains the arguments associated to `static_argnums`, sorted in the
-  // order of their argnum index.
-  std::vector<pybind11::object> static_args;
-  // A PyTreeDef for each positional dynamic (i.e. not static) argument.
-  std::vector<xla::PyTreeDef> dynamic_positional_args_treedef;
-  // Keyword arguments. Sorted by the keyword name.
-  std::vector<KwargEntry> keyword_args;
+  // A PyTreeDef for each dynamic argument, positional arguments first
+  // followed by keyword arguments. Keyword arguments are in the order given
+  // by dynamic_arg_names.
+  absl::InlinedVector<xla::PyTreeDef, 2> dynamic_arg_treedefs;
+  // Dynamic keyword argument names. Interned, and sorted by the keyword
+  // name.
+  std::vector<pybind11::object> dynamic_arg_names;
   // Shape and dtype for both the dynamic positional arguments and the keyword
   // arguments (sorted by keyword name).
-  std::vector<xla::PyArgSignature> dynamic_args_signatures;
+  absl::InlinedVector<xla::PyArgSignature, 2> dynamic_arg_signatures;
+
+  // Static arguments. Contains the positional arguments sorted in argument
+  // order, followed by static keyword arguments in the order given by
+  // `static_arg_names`.
+  std::vector<pybind11::object> static_args;
+  // Static keyword argument names. Interned, and sorted by keyword name.
+  std::vector<pybind11::object> static_arg_names;
+
   xla::PjRtDevice* device;
   bool jax_enable_x64;
 
@@ -80,12 +76,6 @@ struct CallSignature {
 };
 
 template <typename H>
-H AbslHashValue(H h, const CallSignature::KwargEntry& kw) {
-  h = H::combine(std::move(h), kw.key.ptr(), kw.value_treedef);
-  return h;
-}
-
-template <typename H>
 H AbslHashValue(H h, const CallSignature& s);
 
 // The resulting information of the parsing and conversion of the arguments.
@@ -97,7 +87,7 @@ struct ParsedArgumentsAsBuffers {
   CallSignature signature;
   // The concatenation of the dynamic positional arguments and the sorted
   // keyword arguments.
-  std::vector<pybind11::object> flat_dynamic_args;
+  absl::InlinedVector<pybind11::object, 2> flat_dynamic_args;
   std::vector<pybind11::object> keep_alive_objects;
 
   // The following is only valid if the parsing succeeds.
@@ -111,9 +101,10 @@ struct ParsedArgumentsAsBuffers {
 
 // Filter out static arguments, flatten and concatenate other arguments (i.e.
 // dynamic positional and keyword arguments), filling `arguments` in place.
-xla::Status ParseArguments(const pybind11::args& args,
-                           const pybind11::kwargs& py_kwargs,
+xla::Status ParseArguments(pybind11::handle args,
+                           const absl::optional<pybind11::kwargs>& py_kwargs,
                            absl::Span<int const> static_argnums,
+                           absl::Span<pybind11::str const> static_argnames,
                            ParsedArgumentsAsBuffers& arguments);
 
 // The function to call in `xla.cc` to add the bindings for this module.
