@@ -496,7 +496,6 @@ tf_py_test(
     srcs = ["convolutional_recurrent_test.py"],
     python_version = "PY3",
     shard_count = 8,
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -786,8 +785,8 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 12,
     tags = [
-        "no_rocm",
         "notsan",  # TODO(b/170870794)
+        "no_rocm", # fails as CPU-only
     ],
     deps = [
         "//tensorflow/python:client_testlib",
