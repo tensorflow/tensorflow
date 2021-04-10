@@ -350,7 +350,6 @@ cc_library(
         ":type_to_tflitetype",
         ":util",
         ":version",
-        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
