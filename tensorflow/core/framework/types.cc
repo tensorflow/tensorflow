@@ -21,27 +21,32 @@ limitations under the License.
 
 namespace tensorflow {
 
+struct DataTypeHasher {
+  std::size_t operator()(const DataType& k) const {
+    return std::hash<int>()(static_cast<int>(k));
+  }
+};
+
 // Mapping from some of the DType fields, for backward compatibility. All other
 // dtypes are mapped to FT_ANY, but can be added here if a counterpart is
 // defined.
-std::unordered_map<DataType, FullTypeId>* DT_TO_FT =
-    new std::unordered_map<DataType, FullTypeId>({
-        {DT_FLOAT, FT_FLOAT},
-        {DT_DOUBLE, FT_DOUBLE},
-        {DT_INT32, FT_INT32},
-        {DT_UINT8, FT_UINT8},
-        {DT_INT16, FT_INT16},
-        {DT_INT8, FT_INT8},
-        {DT_STRING, FT_STRING},
-        {DT_COMPLEX64, FT_COMPLEX64},
-        {DT_INT64, FT_INT64},
-        {DT_BOOL, FT_BOOL},
-        {DT_UINT16, FT_UINT16},
-        {DT_COMPLEX128, FT_COMPLEX128},
-        {DT_HALF, FT_HALF},
-        {DT_UINT32, FT_UINT32},
-        {DT_UINT64, FT_UINT64},
-    });
+auto* DT_TO_FT = new std::unordered_map<DataType, FullTypeId, DataTypeHasher>({
+    {DT_FLOAT, FT_FLOAT},
+    {DT_DOUBLE, FT_DOUBLE},
+    {DT_INT32, FT_INT32},
+    {DT_UINT8, FT_UINT8},
+    {DT_INT16, FT_INT16},
+    {DT_INT8, FT_INT8},
+    {DT_STRING, FT_STRING},
+    {DT_COMPLEX64, FT_COMPLEX64},
+    {DT_INT64, FT_INT64},
+    {DT_BOOL, FT_BOOL},
+    {DT_UINT16, FT_UINT16},
+    {DT_COMPLEX128, FT_COMPLEX128},
+    {DT_HALF, FT_HALF},
+    {DT_UINT32, FT_UINT32},
+    {DT_UINT64, FT_UINT64},
+});
 
 void map_dtype_to_tensor(const DataType& dtype, FullTypeDef* t) {
   t->set_type_id(FT_TENSOR);
