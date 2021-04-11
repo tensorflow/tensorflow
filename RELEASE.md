@@ -2,6 +2,7 @@
 
 ## Major Features and Improvements
 
+* Support for Python3.9 has been added.
 * TPU embedding support
   * Added `profile_data_directory` to `EmbeddingConfigSpec` in
     `_tpu_estimator_embedding.py`. This allows embedding lookup statistics
