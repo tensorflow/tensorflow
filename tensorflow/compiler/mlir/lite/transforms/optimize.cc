@@ -358,6 +358,11 @@ static bool FloatValueEquals(const Attribute &attr, double value) {
   });
 }
 
+// Returns true if the value's element type is F32.
+bool IsF32Value(Value value) {
+  return value.getType().cast<ShapedType>().getElementType().isF32();
+}
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
 
 // Fuse Add with proceeding FullyConnected.
@@ -491,6 +496,15 @@ struct FuseAddAndFullyConnected
       // TODO(b/180752069): Figure out new bias' type when old bias is empty.
       return failure();
     }
+
+    // The FC relies on constant folding, which is implemented on F32. Checks
+    // types to be F32.
+    {
+      if (!IsF32Value(add_op.rhs()) || !IsF32Value(fc_op.filter()) ||
+          !IsF32Value(old_bias))
+        return failure();
+    }
+
     auto new_bias = rewriter.create<TFL::FullyConnectedOp>(
         fc_op.getLoc(), old_bias.getType(),
         /*input=*/add_op.rhs(),

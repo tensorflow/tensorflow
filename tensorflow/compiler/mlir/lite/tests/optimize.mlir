@@ -1865,6 +1865,21 @@ func @FuseAddWithFullyConnectedWithBias(%arg: tensor<2x512xf32>) -> tensor<2x102
   // CHECK: return %[[RESULT]]
 }
 
+// Checks the `FuseAddAndFullyConnected` pattern is not applied if there is quantized type.
+// CHECK-LABEL: @FuseAddWithFullyConnectedWithQuantizedWeight
+func @FuseAddWithFullyConnectedWithQuantizedWeight(%arg: tensor<2x512xf32>) -> tensor<2x1024xf32> {
+  %cst_add = constant dense<2.0> : tensor<512xf32>
+  %cst_weights = "tfl.pseudo_qconst"() {qtype = tensor<3072x512x!quant.uniform<i8<-127:127>:f32, 0.039600040763616562>>, value = dense<1> : tensor<1024x512xi8>} : () -> tensor<1024x512x!quant.uniform<i8<-127:127>:f32, 0.039600040763616562>>
+  %cst_bias = constant dense<5.0> : tensor<1024xf32>
+
+  %0 = "tfl.add"(%arg, %cst_add) {fused_activation_function = "NONE"} : (tensor<2x512xf32>, tensor<512xf32>) -> tensor<2x512xf32>
+  %1 = "tfl.fully_connected" (%0, %cst_weights, %cst_bias) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x512xf32>, tensor<1024x512x!quant.uniform<i8<-127:127>:f32, 0.039600040763616562>>, tensor<1024xf32>) -> tensor<2x1024xf32>
+
+  return %1 : tensor<2x1024xf32>
+
+  // CHECK: tfl.add
+}
+
 // CHECK-LABEL: @FuseAddWithFullyConnectedNoBias
 // Note: Currently not fused.
 func @FuseAddWithFullyConnectedNoBias(%arg: tensor<2x512xf32>) -> tensor<2x1024xf32> {
