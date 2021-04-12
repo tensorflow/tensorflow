@@ -221,13 +221,6 @@ class IrEmitterUnnested : public IrEmitter {
       const HloInstruction& hlo,
       const llvm_ir::ElementGenerator& body_emitter) override;
 
-  // Same as `EmitTargetElementLoop`, but in given `thunk` rather than
-  // `LastThunk()`. The kernel implementation will be unrolled if
-  // `unroll_factor` is greater than one.
-  Status EmitTargetElementLoopInThunk(
-      const HloInstruction& hlo, const llvm_ir::ElementGenerator& body_emitter,
-      KernelThunk* thunk, int unroll_factor, bool few_waves = false);
-
   Status Postprocess(HloInstruction* hlo) override;
 
  private:
