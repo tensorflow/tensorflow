@@ -476,7 +476,7 @@ class GpuDriver {
 
 #if TENSORFLOW_USE_ROCM
   // tests the current device for MFMA insn support (ROCm only)
-  static port::Status GetMFMASupport(bool& support);
+  static port::StatusOr<bool> GetMFMASupport();
 #endif
 
   // Returns the number of multiprocessors on the device (note that the device
