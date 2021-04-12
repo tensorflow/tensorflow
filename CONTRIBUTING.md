@@ -200,6 +200,12 @@ There are two ways to run TensorFlow unit tests.
     bazel test ${flags} //tensorflow/python/...
     ```
 
+    For a single component e.g. softmax op:
+
+    ```bash
+    bazel test ${flags} tensorflow/python/kernel_tests:softmax_op_test
+    ```
+
 2.  Using [Docker](https://www.docker.com) and TensorFlow's CI scripts.
 
     ```bash
